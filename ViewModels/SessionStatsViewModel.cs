@@ -20,9 +20,10 @@ namespace FujinTerm.ViewModels;
 /// snapshots are held as record-struct properties and the window binds their
 /// fields directly (with <c>StringFormat</c> for plain numbers / percentages);
 /// durations and damage ranges get formatted getters here since
-/// <c>StringFormat</c> can't express "hours past 24" or a min–max pair. The
-/// "Exp progression →" cross-link is a host-supplied callback (the window doesn't
-/// know how to open the Workshop) so this VM stays free of view concerns.
+/// <c>StringFormat</c> can't express "hours past 24" or a min–max pair. A 1-second
+/// <see cref="DispatcherTimer"/> also re-snapshots on the wall clock so the
+/// durations and per-hour rates tick up live while the window is open, instead of
+/// only advancing when a tracker input changes.
 /// </remarks>
 public sealed partial class SessionStatsViewModel : ObservableObject, IDisposable
 {
@@ -32,7 +33,11 @@ public sealed partial class SessionStatsViewModel : ObservableObject, IDisposabl
     private readonly CombatSessionTracker _combatTracker;
     private readonly TimeAnalysisTracker _timeTracker;
     private readonly SessionActivityTracker _activityTracker;
-    private readonly Action? _onExpProgression;
+
+    /// <summary>Drives the live wall-clock ticking of durations / rates: the
+    /// time-derived figures advance with real time even when no tracker input
+    /// fires, so the user sees the session clock move.</summary>
+    private readonly DispatcherTimer _liveTick;
 
     private bool _refreshScheduled;
     private bool _disposed;
@@ -46,7 +51,8 @@ public sealed partial class SessionStatsViewModel : ObservableObject, IDisposabl
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(DurationText), nameof(MovingText), nameof(AttackingText),
         nameof(RestingText), nameof(WaitingText), nameof(RestingHpText), nameof(RestingMaText),
-        nameof(BlindedText), nameof(PoisonedText))]
+        nameof(BlindedText), nameof(PoisonedText), nameof(DiseasedText), nameof(ConfusedText),
+        nameof(HeldText))]
     private TimeAnalysisStats _time;
 
     [ObservableProperty]
@@ -60,8 +66,7 @@ public sealed partial class SessionStatsViewModel : ObservableObject, IDisposabl
     public SessionStatsViewModel(
         CombatSessionTracker combat,
         TimeAnalysisTracker time,
-        SessionActivityTracker activity,
-        Action? onExpProgression = null)
+        SessionActivityTracker activity)
     {
         ArgumentNullException.ThrowIfNull(combat);
         ArgumentNullException.ThrowIfNull(time);
@@ -69,11 +74,15 @@ public sealed partial class SessionStatsViewModel : ObservableObject, IDisposabl
         _combatTracker = combat;
         _timeTracker = time;
         _activityTracker = activity;
-        _onExpProgression = onExpProgression;
 
         _combatTracker.Changed += OnChanged;
         _timeTracker.Changed += OnChanged;
         _activityTracker.Changed += OnChanged;
+
+        _liveTick = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        _liveTick.Tick += (_, _) => Refresh();
+        _liveTick.Start();
+
         Refresh();
     }
 
@@ -88,6 +97,9 @@ public sealed partial class SessionStatsViewModel : ObservableObject, IDisposabl
     public string RestingMaText => Fmt(Time.RestingMa);
     public string BlindedText   => Fmt(Time.Blinded);
     public string PoisonedText  => Fmt(Time.Poisoned);
+    public string DiseasedText  => Fmt(Time.Diseased);
+    public string ConfusedText  => Fmt(Time.Confused);
+    public string HeldText      => Fmt(Time.Held);
 
     /// <summary>Session online time, sourced from the activity tracker so the
     /// "Session Statistics" section stays self-consistent with the kills/hour and
@@ -122,11 +134,6 @@ public sealed partial class SessionStatsViewModel : ObservableObject, IDisposabl
         _activityTracker.Reset();
     }
 
-    /// <summary>Cross-link to the Workshop's PROGRESS → Levels view, the canonical
-    /// owner of experience-progression data (kept out of this panel by design).</summary>
-    [RelayCommand]
-    private void ExpProgression() => _onExpProgression?.Invoke();
-
     // ----- Refresh plumbing --------------------------------------------
 
     private void OnChanged()
@@ -158,6 +165,7 @@ public sealed partial class SessionStatsViewModel : ObservableObject, IDisposabl
     {
         if (_disposed) return;
         _disposed = true;
+        _liveTick.Stop();
         _combatTracker.Changed -= OnChanged;
         _timeTracker.Changed -= OnChanged;
         _activityTracker.Changed -= OnChanged;

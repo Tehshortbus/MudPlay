@@ -3260,8 +3260,7 @@ public partial class MainWindowViewModel : ObservableObject
             DataContext = new SessionStatsViewModel(
                 AppServices.Current.CombatSession,
                 AppServices.Current.TimeAnalysis,
-                AppServices.Current.SessionActivity,
-                () => OpenWorkshopAt("levelprojection")),
+                AppServices.Current.SessionActivity),
         };
         window.Closed += (_, _) => _sessionStats = null;
         _sessionStats = window;

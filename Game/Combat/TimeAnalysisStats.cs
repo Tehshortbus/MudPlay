@@ -12,7 +12,8 @@ namespace FujinTerm.Game.Combat;
 /// <see cref="Moving"/>, <see cref="Attacking"/>, <see cref="RestingHp"/>,
 /// <see cref="RestingMa"/> — are mutually exclusive (the player is in exactly
 /// one at any instant) and partition <see cref="TimeOn"/>, so they sum to it.
-/// <see cref="Blinded"/> and <see cref="Poisoned"/> are <i>overlays</i>: an
+/// <see cref="Blinded"/>, <see cref="Poisoned"/>, <see cref="Diseased"/>,
+/// <see cref="Confused"/>, and <see cref="Held"/> are <i>overlays</i>: an
 /// affliction runs concurrently with whatever the player is doing (you stay
 /// poisoned while you fight or rest), so each is measured independently and is
 /// at most <see cref="TimeOn"/> — they are <b>not</b> part of the activity
@@ -28,7 +29,10 @@ public readonly record struct TimeAnalysisStats(
     TimeSpan RestingMa,
     // ----- Affliction overlays (concurrent; each ≤ TimeOn) -----
     TimeSpan Blinded,
-    TimeSpan Poisoned)
+    TimeSpan Poisoned,
+    TimeSpan Diseased,
+    TimeSpan Confused,
+    TimeSpan Held)
 {
     /// <summary>Total time resting, regardless of which pool was regenerating.</summary>
     public TimeSpan Resting => RestingHp + RestingMa;
@@ -53,6 +57,15 @@ public readonly record struct TimeAnalysisStats(
 
     /// <summary>Fraction of the session spent poisoned, 0–100 (overlay).</summary>
     public double PoisonedPercent => Pct(Poisoned);
+
+    /// <summary>Fraction of the session spent diseased, 0–100 (overlay).</summary>
+    public double DiseasedPercent => Pct(Diseased);
+
+    /// <summary>Fraction of the session spent confused, 0–100 (overlay).</summary>
+    public double ConfusedPercent => Pct(Confused);
+
+    /// <summary>Fraction of the session spent held / movement-prevented, 0–100 (overlay).</summary>
+    public double HeldPercent => Pct(Held);
 
     private double Pct(TimeSpan part) =>
         TimeOn <= TimeSpan.Zero ? 0 : 100.0 * part.TotalSeconds / TimeOn.TotalSeconds;

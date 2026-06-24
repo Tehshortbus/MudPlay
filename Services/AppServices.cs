@@ -2277,7 +2277,8 @@ public sealed class AppServices
         Inventory.Changed += () => CombatSession.RefreshMatchers();
 
         // Phase 11 — TimeAnalysisTracker. Divides the session's wall-clock time
-        // across the player's activities + the blinded / poisoned overlays. It
+        // across the player's activities + the affliction overlays (blinded /
+        // poisoned / diseased / confused / held). It
         // owns no subscriptions (its inputs span three sources), so forward each
         // here: PlayerState carries combat / position / vitals, Conditions the
         // affliction flags, and a confirmed room change (NewRoom differs from
@@ -2290,7 +2291,9 @@ public sealed class AppServices
         Conditions.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(Game.Conditions.ConditionTracker.ActiveFlags))
-                TimeAnalysis.NoteAfflictions(Conditions.IsBlinded, Conditions.IsPoisoned);
+                TimeAnalysis.NoteAfflictions(
+                    Conditions.IsBlinded, Conditions.IsPoisoned, Conditions.IsDiseased,
+                    Conditions.IsConfused, Conditions.IsMovementPrevented);
         };
         RoomTracker.StateChanged += t =>
         {

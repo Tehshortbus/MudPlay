@@ -29,6 +29,14 @@ public sealed class TimeAnalysisTrackerTests
     private static void Combat(TimeAnalysisTracker t, bool on) =>
         t.NotePlayerState(on, PlayerPosition.Standing, 100, 100, 100, 100);
 
+    // Named-overlay forwarder so a test only states the afflictions it cares
+    // about; the five overlays are independent, so the rest default off.
+    private static void Afflict(
+        TimeAnalysisTracker t,
+        bool blinded = false, bool poisoned = false, bool diseased = false,
+        bool confused = false, bool held = false) =>
+        t.NoteAfflictions(blinded, poisoned, diseased, confused, held);
+
     // ----- fresh / default ---------------------------------------------
 
     [Fact]
@@ -165,7 +173,7 @@ public sealed class TimeAnalysisTrackerTests
     {
         (TimeAnalysisTracker t, Clock c) = Make();
         Combat(t, true);
-        t.NoteAfflictions(blinded: true, poisoned: false);
+        Afflict(t, blinded: true);
         c.Advance(10);
 
         TimeAnalysisStats s = t.Snapshot();
@@ -177,15 +185,36 @@ public sealed class TimeAnalysisTrackerTests
     public void Poison_AccruesOnlyWhileActive()
     {
         (TimeAnalysisTracker t, Clock c) = Make();
-        t.NoteAfflictions(false, poisoned: true);
+        Afflict(t, poisoned: true);
         c.Advance(5);
-        t.NoteAfflictions(false, poisoned: false);
+        Afflict(t, poisoned: false);
         c.Advance(5);
 
         TimeAnalysisStats s = t.Snapshot();
         Assert.Equal(TimeSpan.FromSeconds(5), s.Poisoned);
         Assert.Equal(TimeSpan.FromSeconds(10), s.TimeOn);
         Assert.Equal(TimeSpan.FromSeconds(10), s.Waiting); // poison is an overlay, not an activity
+    }
+
+    [Fact]
+    public void EachAffliction_IsItsOwnIndependentTimer()
+    {
+        (TimeAnalysisTracker t, Clock c) = Make();
+        // Diseased the whole 10s; confused only the first 4s; held only the
+        // last 6s. Each overlay accrues independently of the others.
+        Afflict(t, diseased: true, confused: true);
+        c.Advance(4);
+        Afflict(t, diseased: true, held: true);
+        c.Advance(6);
+
+        TimeAnalysisStats s = t.Snapshot();
+        Assert.Equal(TimeSpan.FromSeconds(10), s.Diseased);
+        Assert.Equal(TimeSpan.FromSeconds(4), s.Confused);
+        Assert.Equal(TimeSpan.FromSeconds(6), s.Held);
+        Assert.Equal(TimeSpan.Zero, s.Blinded);
+        Assert.Equal(TimeSpan.Zero, s.Poisoned);
+        // Overlays never touch the activity partition.
+        Assert.Equal(TimeSpan.FromSeconds(10), s.Waiting);
     }
 
     // ----- invariants ---------------------------------------------------
@@ -198,7 +227,7 @@ public sealed class TimeAnalysisTrackerTests
         Combat(t, true);  c.Advance(7);                 // attacking
         Combat(t, false); t.NoteRoomChanged(); c.Advance(2); // moving
         t.NotePlayerState(false, PlayerPosition.Resting, 10, 100, 100, 100); c.Advance(9); // resting hp
-        t.NoteAfflictions(true, true); c.Advance(4);    // afflicted, still resting hp underneath
+        Afflict(t, blinded: true, poisoned: true); c.Advance(4); // afflicted, still resting hp underneath
 
         TimeAnalysisStats s = t.Snapshot();
         TimeSpan sum = s.Waiting + s.Moving + s.Attacking + s.RestingHp + s.RestingMa;
@@ -226,7 +255,7 @@ public sealed class TimeAnalysisTrackerTests
     {
         (TimeAnalysisTracker t, Clock c) = Make();
         Combat(t, true);
-        t.NoteAfflictions(true, true);
+        Afflict(t, blinded: true, poisoned: true, diseased: true, confused: true, held: true);
         c.Advance(20);
 
         t.Reset();
@@ -238,6 +267,9 @@ public sealed class TimeAnalysisTrackerTests
         Assert.Equal(TimeSpan.Zero, s.Attacking);
         Assert.Equal(TimeSpan.Zero, s.Blinded);
         Assert.Equal(TimeSpan.Zero, s.Poisoned);
+        Assert.Equal(TimeSpan.Zero, s.Diseased);
+        Assert.Equal(TimeSpan.Zero, s.Confused);
+        Assert.Equal(TimeSpan.Zero, s.Held);
     }
 
     [Fact]
@@ -248,7 +280,7 @@ public sealed class TimeAnalysisTrackerTests
         t.Changed += () => fired++;
         Combat(t, true);
         t.NoteRoomChanged();
-        t.NoteAfflictions(true, false);
+        Afflict(t, blinded: true);
         Assert.True(fired >= 3);
     }
 }

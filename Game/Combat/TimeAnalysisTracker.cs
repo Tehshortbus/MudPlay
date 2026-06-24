@@ -5,7 +5,8 @@ namespace FujinTerm.Game.Combat;
 /// activities for the Time Analysis panel (a reproduction of the MegaMUD Time
 /// Analysis screen): how long spent <b>waiting</b>, <b>moving</b>,
 /// <b>attacking</b>, <b>resting for HP</b>, and <b>resting for mana</b>, plus
-/// the overlay time spent <b>blinded</b> and <b>poisoned</b>. Produces a
+/// the overlay time spent <b>blinded</b>, <b>poisoned</b>, <b>diseased</b>,
+/// <b>confused</b>, and <b>held</b> (movement-prevented). Produces a
 /// <see cref="TimeAnalysisStats"/> snapshot the window binds.
 /// </summary>
 /// <remarks>
@@ -13,10 +14,11 @@ namespace FujinTerm.Game.Combat;
 /// The five activity buckets are mutually exclusive — at any instant the player
 /// is in exactly one — so they partition the session and sum to "time on". A
 /// priority resolves overlap: combat &gt; movement &gt; resting &gt; waiting.
-/// Blinded / poisoned are <i>overlays</i> measured independently: an affliction
-/// runs concurrently with whatever you're doing (you stay poisoned through a
-/// fight), so folding it into the activity partition would swallow real combat
-/// or resting time and misrepresent the session.
+/// Blinded / poisoned / diseased / confused / held are <i>overlays</i> measured
+/// independently: an affliction runs concurrently with whatever you're doing
+/// (you stay poisoned through a fight), so folding it into the activity
+/// partition would swallow real combat or resting time and misrepresent the
+/// session.
 /// </para>
 /// <para>
 /// The tracker is a self-settling state machine, not a polling timer. It caches
@@ -47,6 +49,13 @@ public sealed class TimeAnalysisTracker
 
     private enum Activity { Waiting, Moving, Attacking, RestingHp, RestingMa }
 
+    /// <summary>The independent affliction overlays, in snapshot order. Each is a
+    /// concurrent in/out timer — index into the <see cref="_afflictionOn"/> /
+    /// <see cref="_afflictionSince"/> / <see cref="_afflictionTotal"/> arrays.</summary>
+    private enum Affliction { Blinded, Poisoned, Diseased, Confused, Held }
+
+    private const int AfflictionCount = 5;
+
     private readonly Func<DateTimeOffset> _clock;
 
     private DateTimeOffset _sessionStart;
@@ -62,10 +71,13 @@ public sealed class TimeAnalysisTracker
     // Activity partition (sums to TimeOn).
     private TimeSpan _waiting, _moving, _attacking, _restingHp, _restingMa;
 
-    // Affliction overlays — each its own little in/out timer.
-    private bool _blinded, _poisoned;
-    private DateTimeOffset _blindedSince, _poisonedSince;
-    private TimeSpan _blindedTotal, _poisonedTotal;
+    // Affliction overlays — each its own little in/out timer, indexed by
+    // Affliction. Parallel arrays keep the five overlays uniform: _afflictionOn
+    // is the live state, _afflictionSince the instant it last switched on, and
+    // _afflictionTotal the accumulated time while on.
+    private readonly bool[] _afflictionOn = new bool[AfflictionCount];
+    private readonly DateTimeOffset[] _afflictionSince = new DateTimeOffset[AfflictionCount];
+    private readonly TimeSpan[] _afflictionTotal = new TimeSpan[AfflictionCount];
 
     /// <summary>Raised after any input updates the tallies, so the Time Analysis
     /// VM can refresh. Fires on the dispatch thread.</summary>
@@ -78,8 +90,7 @@ public sealed class TimeAnalysisTracker
         _sessionStart = now;
         _lastSettle = now;
         _position = PlayerPosition.Standing;
-        _blindedSince = now;
-        _poisonedSince = now;
+        for (int i = 0; i < AfflictionCount; i++) _afflictionSince[i] = now;
     }
 
     /// <summary>Push the player's combat / position / vitals (all carried on the
@@ -96,17 +107,30 @@ public sealed class TimeAnalysisTracker
     }
 
     /// <summary>Push the local player's affliction state (from
-    /// <c>ConditionTracker</c>). Blinded / poisoned are overlay timers,
-    /// independent of the activity partition.</summary>
-    public void NoteAfflictions(bool blinded, bool poisoned)
+    /// <c>ConditionTracker</c>). Each flag is an overlay timer, independent of
+    /// the activity partition and of one another. <paramref name="held"/> is the
+    /// movement-prevented condition.</summary>
+    public void NoteAfflictions(
+        bool blinded, bool poisoned, bool diseased, bool confused, bool held)
     {
         DateTimeOffset now = _clock();
         Settle(now);
-        if (blinded && !_blinded) _blindedSince = now;
-        _blinded = blinded;
-        if (poisoned && !_poisoned) _poisonedSince = now;
-        _poisoned = poisoned;
+        SetAffliction(Affliction.Blinded, blinded, now);
+        SetAffliction(Affliction.Poisoned, poisoned, now);
+        SetAffliction(Affliction.Diseased, diseased, now);
+        SetAffliction(Affliction.Confused, confused, now);
+        SetAffliction(Affliction.Held, held, now);
         Changed?.Invoke();
+    }
+
+    // Flip one overlay's live state; a fresh on-edge stamps the start instant so
+    // Settle accrues from here. (Settle has already drained the time up to now
+    // for any overlay that was already on, so no time is lost on a toggle.)
+    private void SetAffliction(Affliction a, bool on, DateTimeOffset now)
+    {
+        int i = (int)a;
+        if (on && !_afflictionOn[i]) _afflictionSince[i] = now;
+        _afflictionOn[i] = on;
     }
 
     /// <summary>Mark that the player just moved to a new room — opens the
@@ -132,8 +156,11 @@ public sealed class TimeAnalysisTracker
             Attacking: _attacking,
             RestingHp: _restingHp,
             RestingMa: _restingMa,
-            Blinded:   _blindedTotal,
-            Poisoned:  _poisonedTotal);
+            Blinded:   _afflictionTotal[(int)Affliction.Blinded],
+            Poisoned:  _afflictionTotal[(int)Affliction.Poisoned],
+            Diseased:  _afflictionTotal[(int)Affliction.Diseased],
+            Confused:  _afflictionTotal[(int)Affliction.Confused],
+            Held:      _afflictionTotal[(int)Affliction.Held]);
     }
 
     /// <summary>Zero every counter and restart the session clock — called on the
@@ -149,9 +176,12 @@ public sealed class TimeAnalysisTracker
         _position = PlayerPosition.Standing;
         _hp = _maxHp = _ma = _maxMa = 0;
         _lastRoomChangeAt = null;
-        _blinded = _poisoned = false;
-        _blindedSince = _poisonedSince = now;
-        _blindedTotal = _poisonedTotal = TimeSpan.Zero;
+        for (int i = 0; i < AfflictionCount; i++)
+        {
+            _afflictionOn[i] = false;
+            _afflictionSince[i] = now;
+            _afflictionTotal[i] = TimeSpan.Zero;
+        }
         Changed?.Invoke();
     }
 
@@ -178,8 +208,12 @@ public sealed class TimeAnalysisTracker
         }
         _lastSettle = now;
 
-        if (_blinded) { _blindedTotal += now - _blindedSince; _blindedSince = now; }
-        if (_poisoned) { _poisonedTotal += now - _poisonedSince; _poisonedSince = now; }
+        for (int i = 0; i < AfflictionCount; i++)
+        {
+            if (!_afflictionOn[i]) continue;
+            _afflictionTotal[i] += now - _afflictionSince[i];
+            _afflictionSince[i] = now;
+        }
     }
 
     // The active activity bucket at instant <paramref name="at"/>, by priority:

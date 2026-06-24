@@ -127,13 +127,6 @@
                             <TextBlock Grid.Column="0" Classes="lbl" Text="Dodge"/>
                             <TextBlock Grid.Column="1" Classes="val" Text="{Binding Combat.DodgePercent, StringFormat='{}{0:F0}%'}"/>
                         </Grid>
-
-                        <Button Content="Exp progression →"
-                                Command="{Binding ExpProgressionCommand}"
-                                HorizontalAlignment="Left"
-                                Margin="0,6,0,0"
-                                FontSize="11"
-                                ToolTip.Tip="Open the Character Workshop's PROGRESS → Levels view (the canonical owner of experience-progression data)."/>
                     </StackPanel>
                 </Expander>
 
@@ -183,6 +176,18 @@
                         <Grid ColumnDefinitions="120,*">
                             <TextBlock Grid.Column="0" Classes="lbl" Text="Poisoned"/>
                             <TextBlock Grid.Column="1" Classes="val" Text="{Binding PoisonedText}"/>
+                        </Grid>
+                        <Grid ColumnDefinitions="120,*">
+                            <TextBlock Grid.Column="0" Classes="lbl" Text="Diseased"/>
+                            <TextBlock Grid.Column="1" Classes="val" Text="{Binding DiseasedText}"/>
+                        </Grid>
+                        <Grid ColumnDefinitions="120,*">
+                            <TextBlock Grid.Column="0" Classes="lbl" Text="Confused"/>
+                            <TextBlock Grid.Column="1" Classes="val" Text="{Binding ConfusedText}"/>
+                        </Grid>
+                        <Grid ColumnDefinitions="120,*">
+                            <TextBlock Grid.Column="0" Classes="lbl" Text="Held"/>
+                            <TextBlock Grid.Column="1" Classes="val" Text="{Binding HeldText}"/>
                         </Grid>
                     </StackPanel>
                 </Expander>
