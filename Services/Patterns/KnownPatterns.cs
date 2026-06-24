@@ -50,6 +50,27 @@ public static class KnownPatterns
     public const string UserGainExperience   = "combat.user-gain-experience";
 
     /// <summary>
+    /// The local player's own swing MISSING — first-person "You … miss!".
+    /// Distinct from <see cref="MobMisses"/> (an incoming attack the mob
+    /// whiffs): this is OUR offensive miss, the denominator for the Phase 11
+    /// session hit/miss accuracy. The exact attack verb is weapon-driven, so
+    /// the pattern keys off the first-person subject + the word "miss"; the
+    /// quote-excluding body stops a "You say ""…miss…""" chat echo matching.
+    /// Best-effort wording — verify against a live combat capture before
+    /// relying on the exact phrasing.
+    /// </summary>
+    public const string UserMisses           = "combat.user-misses";
+
+    /// <summary>
+    /// The local player DODGING an incoming attack — "The &lt;mob&gt; … but
+    /// you dodge!". Carved out of <see cref="MobMisses"/> (whose broad
+    /// "&lt;mob&gt; … at you" shape also matches a dodge line) so Phase 11 can
+    /// count dodges separately for the dodge-rate denominator. Keys off the
+    /// canonical "you dodge" phrase, which only appears on a successful dodge.
+    /// </summary>
+    public const string UserDodges           = "combat.user-dodges";
+
+    /// <summary>
     /// Local-player death — "You have been slain by &lt;killer&gt;." per
     /// MajorMUD's canonical wording. <see cref="Game.Combat.DeathLineWatcher"/>
     /// subscribes here and emits the PlayerDied event that

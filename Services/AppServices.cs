@@ -768,6 +768,15 @@ public sealed class AppServices
     public Game.Combat.RoundDamageTracker RoundDamage { get; private set; } = null!;
 
     /// <summary>
+    /// Phase 11 — aggregates combat lines + <see cref="RoundDamage"/> rounds
+    /// into the session combat figures (hit / miss / crit / dodge rates,
+    /// physical &amp; backstab damage extents, per-round damage) the Session
+    /// Stats panel displays. Pure downstream subscriber; reset on the session
+    /// boundary alongside <see cref="RoundDamage"/>.
+    /// </summary>
+    public Game.Combat.CombatSessionTracker CombatSession { get; private set; } = null!;
+
+    /// <summary>
     /// Phase 9 PR 9.0d — observes the "You have been slain by..."
     /// line and emits <see cref="Game.Combat.DeathLineWatcher.PlayerDied"/>.
     /// DeathRecoveryManager (PR 9.I) is the primary consumer; other
@@ -1877,6 +1886,13 @@ public sealed class AppServices
         // doesn't ship CombatSessionTracker — Phase 11 does — but the
         // reset hook lives here on the data producer).
         Profile.ProfileLoaded += _ => RoundDamage.Reset();
+
+        // Phase 11 — CombatSessionTracker. Aggregates the same combat lines
+        // plus RoundDamage's closed rounds into the Session Stats figures.
+        // Reset on the same ProfileLoaded boundary as RoundDamage so the two
+        // stay in lockstep (a connect / character switch zeroes both).
+        CombatSession = new Game.Combat.CombatSessionTracker(Router, RoundDamage);
+        Profile.ProfileLoaded += _ => CombatSession.Reset();
 
         // Phase 9 PR 9.0d — local-death observation. Pure subscriber;
         // DeathRecoveryManager (PR 9.I) consumes the PlayerDied event

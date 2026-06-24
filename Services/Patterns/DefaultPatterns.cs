@@ -117,6 +117,21 @@ public static class DefaultPatterns
             @"^The (?<target>[\w -]+) \w+ you for (?<damage>\d+) damage!");
         yield return new RegexPattern(KnownPatterns.UserGainExperience,
             @"^You gain (?<exp>\d+) experience\.");
+        // Phase 11 — the local player's own swing missing. Weapon-driven
+        // verb, so we anchor on the first-person subject + the word "miss"
+        // rather than a fixed verb. The [^"]* body excludes a quoted chat
+        // line; the \b around "miss" keeps "dismiss" / "remiss" from
+        // matching. Best-effort wording (see KnownPatterns.UserMisses) —
+        // confirm against a live capture before trusting the miss rate.
+        yield return new RegexPattern(KnownPatterns.UserMisses,
+            @"^You\b[^""]*\bmiss(?:es)?\b");
+        // Phase 11 — local player dodges an incoming mob attack. The dodge
+        // line ("The kobold thief lunges at you, but you dodge!") also
+        // satisfies MobMisses, so CombatSessionTracker de-dupes by skipping
+        // a MobMisses line that carries "dodge". Keyed on the "you dodge"
+        // phrase, which is unique to a successful dodge.
+        yield return new RegexPattern(KnownPatterns.UserDodges,
+            @"^The (?<source>[\w -]+?) .*\byou dodge\b");
 
         // Phase 9 PR 9.0d — local-player death. MajorMUD's canonical
         // wording is "You have been slain by <killer>." — the killer
