@@ -405,6 +405,13 @@ public sealed class AppServices
     /// </summary>
     public Game.Remote.SuicideHandler Suicide { get; private set; } = null!;
 
+    /// <summary>
+    /// Consumer of <see cref="RemoteCommands"/> for <c>@reset</c> — an
+    /// authorised party member zeroes our Phase 11 session-stats trackers,
+    /// the same wipe the Session Stats window's "Reset session" button does.
+    /// </summary>
+    public Game.Remote.SessionResetHandler SessionReset { get; private set; } = null!;
+
     /// <summary>Snapshot of the most recent <c>stat</c>-screen parse. Written exclusively by <see cref="Stats"/>.</summary>
     public Game.PlayerStats PlayerStats { get; } = new();
 
@@ -2302,6 +2309,12 @@ public sealed class AppServices
                 SessionActivity.NoteExperience(exp);
         });
         Profile.ProfileLoaded += _ => SessionActivity.Reset();
+
+        // @reset — a party member zeroes our session-stats trackers (the same
+        // wipe as the window button / connect boundary). Constructed here, after
+        // all three Phase 11 trackers exist; RemoteCommands was built upstream.
+        SessionReset = new Game.Remote.SessionResetHandler(
+            RemoteCommands, CombatSession, TimeAnalysis, SessionActivity, Log);
 
         // PR 10.18 — item-cast buffs. A Bless slot may hold a #-token naming an
         // unlimited-use cast item (surfaced in the Spell Book); the director
