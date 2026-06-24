@@ -223,4 +223,64 @@ public sealed class CasterMessageMatcherTests
         Assert.Equal(new[] { "smite", "Raijin" }, caps);
         Assert.False(m.TryMatch("You cast smite XholyX at Raijin!", out _));
     }
+
+    // ----- TryMatchDamage (Phase 11 proc / attack-spell recogniser) -----
+
+    [Fact]
+    public void TryMatchDamage_SurfacesTheNumericCapture()
+    {
+        CasterMessageMatcher? m =
+            CasterMessageMatcher.TryCreate("You cast {s} at {target} for {damage} damage!");
+        Assert.NotNull(m);
+
+        Assert.True(m!.TryMatchDamage("You cast fireball at the kobold for 37 damage!", out int dmg));
+        Assert.Equal(37, dmg);
+    }
+
+    [Fact]
+    public void TryMatchDamage_StripsThousandsSeparators()
+    {
+        CasterMessageMatcher? m =
+            CasterMessageMatcher.TryCreate("Your weapon sears {target} for {damage} damage!");
+        Assert.NotNull(m);
+
+        Assert.True(m!.TryMatchDamage("Your weapon sears the dragon for 1,204 damage!", out int dmg));
+        Assert.Equal(1204, dmg);
+    }
+
+    [Fact]
+    public void TryMatchDamage_NumericOnlyTemplate_Compiles()
+    {
+        // A template with no string slot is still accepted so the damage
+        // recogniser can compile it (the confirmation helpers simply decline).
+        CasterMessageMatcher? m =
+            CasterMessageMatcher.TryCreate("The flames burst for {damage} damage!");
+        Assert.NotNull(m);
+
+        Assert.True(m!.TryMatchDamage("The flames burst for 9 damage!", out int dmg));
+        Assert.Equal(9, dmg);
+    }
+
+    [Fact]
+    public void TryMatchDamage_NoNumericSlot_MatchesWithZeroDamage()
+    {
+        // A recognised cast that carries no number still matches the template;
+        // damage stays 0.
+        CasterMessageMatcher? m = CasterMessageMatcher.TryCreate("You blast {target}!");
+        Assert.NotNull(m);
+
+        Assert.True(m!.TryMatchDamage("You blast the kobold!", out int dmg));
+        Assert.Equal(0, dmg);
+    }
+
+    [Fact]
+    public void TryMatchDamage_NonMatchingLine_ReturnsFalse()
+    {
+        CasterMessageMatcher? m =
+            CasterMessageMatcher.TryCreate("You cast {s} at {target} for {damage} damage!");
+        Assert.NotNull(m);
+
+        Assert.False(m!.TryMatchDamage("Raijin gossips: hi", out int dmg));
+        Assert.Equal(0, dmg);
+    }
 }

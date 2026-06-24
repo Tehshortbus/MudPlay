@@ -11,9 +11,11 @@ namespace FujinTerm.Game.Combat;
 /// "Physical" rolls up every landed melee swing — plain <see cref="Hits"/>,
 /// <see cref="Crits"/>, and <see cref="Backstabs"/> — into one damage extent
 /// (the player's "min/max damage seen for physical swings"); the backstab
-/// extent is also tracked on its own. Spell-cast damage is intentionally
-/// absent here: it lands in a separate row once the caster-message recogniser
-/// ships.
+/// extent is also tracked on its own. Configured attack-<see cref="SpellHits">
+/// spell</see> casts and weapon <see cref="ProcHits">procs</see> get their own
+/// rows: they're <i>not</i> swings, so they never move the physical extent or
+/// the hit / miss / crit denominators, though their damage still counts toward
+/// the per-round total (recognised via the game-data caster-message matcher).
 /// </remarks>
 public readonly record struct CombatSessionStats(
     // ----- Offensive: the player's own swings -----
@@ -35,7 +37,16 @@ public readonly record struct CombatSessionStats(
     int RoundsWithDamage,
     int RoundMinDamage,
     int RoundMaxDamage,
-    long RoundTotalDamage)
+    long RoundTotalDamage,
+    // ----- Weapon procs & configured attack spells (own rows; not swings) -----
+    int ProcHits,
+    int ProcMinDamage,
+    int ProcMaxDamage,
+    long ProcTotalDamage,
+    int SpellHits,
+    int SpellMinDamage,
+    int SpellMaxDamage,
+    long SpellTotalDamage)
 {
     /// <summary>Every swing that connected (hit + crit + backstab).</summary>
     public int LandedSwings => Hits + Crits + Backstabs;
@@ -66,6 +77,16 @@ public readonly record struct CombatSessionStats(
 
     /// <summary>Mean damage we dealt per round that did damage.</summary>
     public double RoundAvgDamage => Avg(RoundTotalDamage, RoundsWithDamage);
+
+    /// <summary>Mean damage per weapon proc that fired.</summary>
+    public double ProcAvgDamage => Avg(ProcTotalDamage, ProcHits);
+
+    /// <summary>Procs per landed basic swing, 0–100 — how often the weapon
+    /// procs when it connects.</summary>
+    public double ProcRate => Pct(ProcHits, LandedSwings);
+
+    /// <summary>Mean damage per configured attack-spell cast that landed.</summary>
+    public double SpellAvgDamage => Avg(SpellTotalDamage, SpellHits);
 
     private static double Pct(int part, int whole) => whole == 0 ? 0 : 100.0 * part / whole;
     private static double Avg(long total, int count) => count == 0 ? 0 : (double)total / count;

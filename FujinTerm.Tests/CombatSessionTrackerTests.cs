@@ -1,5 +1,6 @@
 using FujinTerm.Game;
 using FujinTerm.Game.Combat;
+using FujinTerm.Game.Spells;
 using FujinTerm.Services;
 using FujinTerm.Services.Patterns;
 using FujinTerm.Terminal;
@@ -24,11 +25,16 @@ public sealed class CombatSessionTrackerTests
         public CombatSessionTracker Tracker { get; }
         public int ChangedCount { get; private set; }
 
-        public Harness()
+        public Harness(
+            IReadOnlyList<CasterMessageMatcher>? spellMatchers = null,
+            CasterMessageMatcher? procMatcher = null)
         {
             DefaultPatterns.Seed(Router);
             Rounds = new RoundDamageTracker(Router, State);
-            Tracker = new CombatSessionTracker(Router, Rounds);
+            Tracker = new CombatSessionTracker(
+                Router, Rounds,
+                resolveSpellMatchers: spellMatchers is null ? null : () => spellMatchers,
+                resolveProcMatcher: procMatcher is null ? null : () => procMatcher);
             Tracker.Changed += () => ChangedCount++;
         }
 
@@ -260,5 +266,128 @@ public sealed class CombatSessionTrackerTests
         Assert.Equal(0, h.ChangedCount);
         h.Feed("You slash the kobold for 8 damage!");
         Assert.True(h.ChangedCount >= 1);
+    }
+
+    // ----- game-data recognition: configured attack spell + weapon proc -----
+
+    private static CasterMessageMatcher Matcher(string template) =>
+        CasterMessageMatcher.TryCreate(template)
+        ?? throw new InvalidOperationException($"template did not compile: {template}");
+
+    [Fact]
+    public void ConfiguredSpellCast_TalliesSpellRow_NotASwing()
+    {
+        // The cast line carries a first-person "You" source the UserHits regex
+        // also matches — recognition on the LineDispatched pass must veto the
+        // physical-swing classifier so it never becomes a melee hit.
+        using Harness h = new(
+            spellMatchers: new[] { Matcher("You cast {s} at {target} for {damage} damage!") });
+
+        h.Feed("You cast fireball at the kobold for 12 damage!");
+
+        CombatSessionStats s = h.Stats;
+        Assert.Equal(1, s.SpellHits);
+        Assert.Equal(12, s.SpellMinDamage);
+        Assert.Equal(12, s.SpellMaxDamage);
+        Assert.Equal(12, s.SpellTotalDamage);
+        // Not a swing: no physical figures move.
+        Assert.Equal(0, s.Hits);
+        Assert.Equal(0, s.LandedSwings);
+        Assert.Equal(0, s.TotalSwings);
+        Assert.Equal(0, s.PhysicalMaxDamage);
+    }
+
+    [Fact]
+    public void WeaponProc_AfterLandedSwing_TalliesProcRow_NotASwing()
+    {
+        using Harness h = new(
+            procMatcher: Matcher("Your weapon sears {target} for {damage} damage!"));
+
+        h.Feed("You slash the kobold for 8 damage!");        // a landed swing arms the proc
+        h.Feed("Your weapon sears the kobold for 4 damage!"); // proc fires off that swing
+
+        CombatSessionStats s = h.Stats;
+        Assert.Equal(1, s.Hits);          // the slash, still the only swing
+        Assert.Equal(1, s.LandedSwings);
+        Assert.Equal(1, s.ProcHits);
+        Assert.Equal(4, s.ProcMinDamage);
+        Assert.Equal(4, s.ProcMaxDamage);
+        Assert.Equal(4, s.ProcTotalDamage);
+        // The proc didn't touch the physical extent (8, not 4).
+        Assert.Equal(8, s.PhysicalMinDamage);
+    }
+
+    [Fact]
+    public void WeaponProc_WithoutPrecedingSwing_IsNotCounted()
+    {
+        // A proc fires only after a basic attack connects; an unarmed proc line
+        // (no landed swing before it) must not register.
+        using Harness h = new(
+            procMatcher: Matcher("Your weapon sears {target} for {damage} damage!"));
+
+        h.Feed("Your weapon sears the kobold for 4 damage!");
+
+        Assert.Equal(0, h.Stats.ProcHits);
+    }
+
+    [Fact]
+    public void WeaponProc_AfterMiss_IsNotCounted()
+    {
+        // A whiff clears the armed flag — a proc line right after a miss can't
+        // be attributed to a connected swing.
+        using Harness h = new(
+            procMatcher: Matcher("Your weapon sears {target} for {damage} damage!"));
+
+        h.Feed("You swing at the kobold, but miss!");
+        h.Feed("Your weapon sears the kobold for 4 damage!");
+
+        CombatSessionStats s = h.Stats;
+        Assert.Equal(1, s.Misses);
+        Assert.Equal(0, s.ProcHits);
+    }
+
+    [Fact]
+    public void ProcAndSpellDamage_CountTowardRoundTotal_NotAsSwings()
+    {
+        using Harness h = new(
+            spellMatchers: new[] { Matcher("You cast {s} at {target} for {damage} damage!") },
+            procMatcher: Matcher("Your weapon sears {target} for {damage} damage!"));
+
+        h.Feed("You slash the kobold for 8 damage!");          // swing  → round +8
+        h.Feed("Your weapon sears the kobold for 4 damage!");   // proc   → round +4
+        h.Feed("You cast fireball at the kobold for 12 damage!"); // spell → round +12
+        h.Feed("*Combat Off*");                                  // close round → 24
+
+        CombatSessionStats s = h.Stats;
+        // The whole round's damage (swing + proc + spell) lands in the per-round total.
+        Assert.Equal(1, s.RoundsWithDamage);
+        Assert.Equal(24, s.RoundTotalDamage);
+        Assert.Equal(24, s.RoundMinDamage);
+        // But only the slash is a swing.
+        Assert.Equal(1, s.Hits);
+        Assert.Equal(1, s.LandedSwings);
+        Assert.Equal(1, s.TotalSwings);
+        Assert.Equal(1, s.ProcHits);
+        Assert.Equal(1, s.SpellHits);
+    }
+
+    [Fact]
+    public void Reset_ZeroesProcAndSpellRows()
+    {
+        using Harness h = new(
+            spellMatchers: new[] { Matcher("You cast {s} at {target} for {damage} damage!") },
+            procMatcher: Matcher("Your weapon sears {target} for {damage} damage!"));
+
+        h.Feed("You slash the kobold for 8 damage!");
+        h.Feed("Your weapon sears the kobold for 4 damage!");
+        h.Feed("You cast fireball at the kobold for 12 damage!");
+
+        h.Tracker.Reset();
+
+        CombatSessionStats s = h.Stats;
+        Assert.Equal(0, s.ProcHits);
+        Assert.Equal(0, s.SpellHits);
+        Assert.Equal(0, s.ProcTotalDamage);
+        Assert.Equal(0, s.SpellTotalDamage);
     }
 }

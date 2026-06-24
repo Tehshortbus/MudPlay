@@ -33,8 +33,9 @@ namespace FujinTerm.Game.Spells;
 /// <item><c>{s}</c> → a generic name (spell or actor), role-agnostic; surfaced
 /// in template order. The shipped seed uses this form.</item>
 /// <item><c>{d}</c>, <c>{dmg}</c>, <c>{damage}</c> → a numeric capture (e.g.
-/// damage a spell dealt), consumed but dropped — confirmation never needs the
-/// value.</item>
+/// damage a spell / proc dealt). The confirmation path (<see cref="TryMatch"/>)
+/// drops it — it never needs the value — but <see cref="TryMatchDamage"/>
+/// surfaces it for the damage-message recogniser.</item>
 /// </list>
 /// All string captures are surfaced in template order. When a template pins
 /// both a <c>{spellname}</c> and a <c>{target}</c> slot,
@@ -78,25 +79,32 @@ public sealed class CasterMessageMatcher
 
     private readonly Regex _regex;
     private readonly int[] _stringGroupIndexes;
+    private readonly int[] _numberGroupIndexes;
     private readonly PlaceholderRole[] _stringRoles;
 
     /// <summary>The template this matcher was built from (verbatim).</summary>
     public string Template { get; }
 
     private CasterMessageMatcher(
-        string template, Regex regex, int[] stringGroupIndexes, PlaceholderRole[] stringRoles)
+        string template, Regex regex,
+        int[] stringGroupIndexes, int[] numberGroupIndexes, PlaceholderRole[] stringRoles)
     {
         Template = template;
         _regex = regex;
         _stringGroupIndexes = stringGroupIndexes;
+        _numberGroupIndexes = numberGroupIndexes;
         _stringRoles = stringRoles;
     }
 
     /// <summary>
     /// Build a matcher for <paramref name="template"/>, or <c>null</c> when
-    /// the template is blank or contains no string placeholder (nothing
-    /// to confirm a target against — such a record can't drive party-buff
-    /// confirmation).
+    /// the template is blank or carries no placeholder at all. A string
+    /// placeholder is required for the confirmation helpers
+    /// (<see cref="ConfirmsTarget"/> / <see cref="ConfirmsSpellTarget"/>) to
+    /// have anything to match a name against; a numeric-only template (e.g.
+    /// <c>... bursts for {damage} damage!</c>) is still accepted so the
+    /// damage-message recogniser can compile it — the confirmation helpers
+    /// then simply find no capture and decline.
     /// </summary>
     public static CasterMessageMatcher? TryCreate(string? template)
     {
@@ -104,10 +112,12 @@ public sealed class CasterMessageMatcher
 
         StringBuilder pattern = new();
         List<int> stringGroups = new();
+        List<int> numberGroups = new();
         List<PlaceholderRole> stringRoles = new();
         int group = 0;
         int last = 0;
         bool sawString = false;
+        bool sawNumber = false;
 
         foreach (Match tok in TokenSplit.Matches(template))
         {
@@ -116,6 +126,8 @@ public sealed class CasterMessageMatcher
             if (tok.Value is "{d}" or "{dmg}" or "{damage}")
             {
                 pattern.Append("(-?\\d[\\d,]*)");
+                numberGroups.Add(group);
+                sawNumber = true;
             }
             else
             {
@@ -130,12 +142,13 @@ public sealed class CasterMessageMatcher
         }
         pattern.Append(Regex.Escape(template[last..]));
 
-        if (!sawString) return null;
+        if (!sawString && !sawNumber) return null;
 
         Regex regex = new(pattern.ToString(),
             RegexOptions.CultureInvariant | RegexOptions.Compiled);
         return new CasterMessageMatcher(
-            template, regex, stringGroups.ToArray(), stringRoles.ToArray());
+            template, regex,
+            stringGroups.ToArray(), numberGroups.ToArray(), stringRoles.ToArray());
     }
 
     private static PlaceholderRole RoleOf(string token) => token switch
@@ -163,6 +176,41 @@ public sealed class CasterMessageMatcher
         for (int i = 0; i < _stringGroupIndexes.Length; i++)
             caps[i] = m.Groups[_stringGroupIndexes[i]].Value;
         stringCaptures = caps;
+        return true;
+    }
+
+    /// <summary>
+    /// Match <paramref name="line"/> and surface the first numeric
+    /// (<c>{d}</c> / <c>{dmg}</c> / <c>{damage}</c>) capture as
+    /// <paramref name="damage"/>. Returns <c>true</c> when the line matches the
+    /// template — even if the template has no numeric slot, in which case
+    /// <paramref name="damage"/> stays 0 (a recognised cast that simply did no
+    /// numeric damage); <c>false</c> only when the line doesn't match. This is
+    /// the value the confirmation-only <see cref="TryMatch"/> drops; the Phase
+    /// 11 damage recogniser uses it to tally proc / attack-spell rows.
+    /// </summary>
+    public bool TryMatchDamage(string? line, out int damage)
+    {
+        damage = 0;
+        if (string.IsNullOrEmpty(line)) return false;
+
+        Match m = _regex.Match(line);
+        if (!m.Success) return false;
+
+        foreach (int gi in _numberGroupIndexes)
+        {
+            string raw = m.Groups[gi].Value;
+            if (raw.Length == 0) continue;
+            if (int.TryParse(
+                    raw.Replace(",", string.Empty),
+                    System.Globalization.NumberStyles.AllowLeadingSign,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out int v))
+            {
+                damage = v;
+                break;
+            }
+        }
         return true;
     }
 

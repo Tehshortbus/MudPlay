@@ -1886,13 +1886,8 @@ public sealed class AppServices
         // doesn't ship CombatSessionTracker — Phase 11 does — but the
         // reset hook lives here on the data producer).
         Profile.ProfileLoaded += _ => RoundDamage.Reset();
-
-        // Phase 11 — CombatSessionTracker. Aggregates the same combat lines
-        // plus RoundDamage's closed rounds into the Session Stats figures.
-        // Reset on the same ProfileLoaded boundary as RoundDamage so the two
-        // stay in lockstep (a connect / character switch zeroes both).
-        CombatSession = new Game.Combat.CombatSessionTracker(Router, RoundDamage);
-        Profile.ProfileLoaded += _ => CombatSession.Reset();
+        // Phase 11 CombatSessionTracker is constructed after Inventory (its
+        // proc recogniser reads the worn-weapon snapshot) — see below.
 
         // Phase 9 PR 9.0d — local-death observation. Pure subscriber;
         // DeathRecoveryManager (PR 9.I) consumes the PlayerDied event
@@ -2232,6 +2227,27 @@ public sealed class AppServices
         // the same way for the test button.
         RoomTracker.AttachInventorySnapshot(() => Inventory.Snapshot);
         DeathRecovery.AttachInventorySnapshot(() => Inventory.Snapshot);
+
+        // Phase 11 — CombatSessionTracker. Aggregates the same combat lines
+        // plus RoundDamage's closed rounds into the Session Stats figures, and
+        // recognises two game-data-driven damage rows the fixed regex patterns
+        // can't: a configured attack SPELL's cast (Combat tab → KnownSpell →
+        // CasterMessage) and the equipped weapon's PROC (worn weapon → Items#N
+        // message). Both fold into their own rows — out of the swing accuracy +
+        // physical extent — while their damage still rolls into the per-round
+        // total via RoundDamage's UserHits subscription. Constructed here (not
+        // beside RoundDamage) because the proc resolver reads Inventory's
+        // worn-weapon snapshot. Matchers refresh on the boundaries that move
+        // them: connect / char switch (ProfileLoaded, which also zeroes the
+        // session in lockstep with RoundDamage), a Combat-tab edit
+        // (ProfileMutated), a game-data set swap (ActiveSetChanged), and a
+        // weapon swap (Inventory.Changed).
+        CombatSession = new Game.Combat.CombatSessionTracker(
+            Router, RoundDamage, AttackSpellMatchers, EquippedWeaponProcMatcher);
+        Profile.ProfileLoaded  += _ => { CombatSession.Reset(); CombatSession.RefreshMatchers(); };
+        Profile.ProfileMutated += _ => CombatSession.RefreshMatchers();
+        GameData.ActiveSetChanged += _ => { _procWeaponName = null; CombatSession.RefreshMatchers(); };
+        Inventory.Changed += () => CombatSession.RefreshMatchers();
 
         // PR 10.18 — item-cast buffs. A Bless slot may hold a #-token naming an
         // unlimited-use cast item (surfaced in the Spell Book); the director
@@ -2871,6 +2887,123 @@ public sealed class AppServices
             if (string.Equals(m.Name.Trim(), target, StringComparison.OrdinalIgnoreCase))
                 return m;
         return null;
+    }
+
+    /// <summary>
+    /// Find the active set's <see cref="Models.GameData.MessageRecord"/> for an
+    /// item — by <c>Items#N</c> link first, then by the item's resolved name.
+    /// An item-proc record's <see cref="Models.GameData.MessageRecord.CasterMessage"/>
+    /// is the line YOU see when the weapon procs. Returns <c>null</c> when no
+    /// record anchors to the item. Mirrors <see cref="FindSpellMessage"/>.
+    /// </summary>
+    private Models.GameData.MessageRecord? FindItemMessage(int itemNumber)
+    {
+        foreach (Models.GameData.MessageRecord m in Messages.Messages)
+        {
+            if (m.Links is null) continue;
+            foreach (Models.GameData.GameDataLink link in m.Links)
+                if (string.Equals(link.Table, "Items", StringComparison.OrdinalIgnoreCase)
+                    && link.Number == itemNumber)
+                    return m;
+        }
+
+        string? itemName = ItemNames.GetName(itemNumber);
+        if (string.IsNullOrWhiteSpace(itemName)) return null;
+        string target = itemName.Trim();
+        foreach (Models.GameData.MessageRecord m in Messages.Messages)
+            if (string.Equals(m.Name.Trim(), target, StringComparison.OrdinalIgnoreCase))
+                return m;
+        return null;
+    }
+
+    /// <summary>
+    /// Compile the <see cref="Game.Spells.CasterMessageMatcher"/>s for the
+    /// player's configured attack spells (the Combat tab's Normal + Alternate
+    /// single-target damage slots) from each spell's game-data
+    /// <see cref="Models.GameData.MessageRecord.CasterMessage"/>. Feeds
+    /// <see cref="CombatSession"/> so a recognised cast tallies its own
+    /// damage row instead of being miscounted as a melee swing. Re-read on each
+    /// refresh so a slot change takes effect without a reconnect; a blank /
+    /// unknown / message-less slot contributes nothing.
+    /// </summary>
+    private IReadOnlyList<Game.Spells.CasterMessageMatcher> AttackSpellMatchers()
+    {
+        Models.Profile.CombatSettings combat =
+            ReadSection<Models.Profile.CombatSettings>(Profile.Current, "Combat");
+        List<Game.Spells.CasterMessageMatcher> list = new(2);
+        Add(combat.NormalAttackSpell?.SpellName);
+        Add(combat.AlternateAttackSpell?.SpellName);
+        return list;
+
+        void Add(string? spellName)
+        {
+            if (AttackSpellMatcherFor(spellName) is { } matcher) list.Add(matcher);
+        }
+    }
+
+    /// <summary>
+    /// Resolve one attack-spell slot name to its caster-message matcher: match
+    /// the live spellbook by full name (the form a slot stores) or 4-letter
+    /// cast code, take its game-data record's
+    /// <see cref="Models.GameData.MessageRecord.CasterMessage"/>, and compile.
+    /// Returns <c>null</c> when the name is blank, unknown to the spellbook, has
+    /// no record, or the record has no usable caster template.
+    /// </summary>
+    private Game.Spells.CasterMessageMatcher? AttackSpellMatcherFor(string? spellName)
+    {
+        if (string.IsNullOrWhiteSpace(spellName)) return null;
+        string target = spellName.Trim();
+        foreach (Game.Spells.KnownSpell s in Spellbook.Available)
+        {
+            if (!string.Equals(s.Name.Trim(), target, StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(s.Short.Trim(), target, StringComparison.OrdinalIgnoreCase))
+                continue;
+            Models.GameData.MessageRecord? rec = FindSpellMessage(s.Number, s.Name);
+            return rec is null ? null : Game.Spells.CasterMessageMatcher.TryCreate(rec.CasterMessage);
+        }
+        return null;
+    }
+
+    // Equipped-weapon proc matcher, cached by weapon name so a hot
+    // Inventory.Changed (coin pickups republish the snapshot too) doesn't
+    // recompile the regex every time — only an actual weapon swap rebuilds.
+    // Invalidated by nulling _procWeaponName on a game-data set swap, where the
+    // same name may resolve to a different message.
+    private string? _procWeaponName;
+    private Game.Spells.CasterMessageMatcher? _procMatcherCache;
+
+    /// <summary>
+    /// Compile the <see cref="Game.Spells.CasterMessageMatcher"/> for the
+    /// currently-wielded weapon's proc, from the item's game-data
+    /// <see cref="Models.GameData.MessageRecord.CasterMessage"/>. Resolves the
+    /// worn "Weapon Hand" item → <see cref="ItemNames"/> Number →
+    /// <see cref="FindItemMessage"/>. Returns <c>null</c> when nothing's wielded
+    /// or the weapon has no proc message. Cached on the weapon name.
+    /// </summary>
+    private Game.Spells.CasterMessageMatcher? EquippedWeaponProcMatcher()
+    {
+        string? weapon = EquippedWeaponName();
+        if (string.Equals(weapon, _procWeaponName, StringComparison.OrdinalIgnoreCase))
+            return _procMatcherCache;
+        _procWeaponName = weapon;
+        _procMatcherCache = BuildWeaponProcMatcher(weapon);
+        return _procMatcherCache;
+    }
+
+    private string? EquippedWeaponName()
+    {
+        foreach (Game.Inventory.EquippedItem item in Inventory.Snapshot.EquippedItems)
+            if (string.Equals(item.Slot, "Weapon Hand", StringComparison.OrdinalIgnoreCase))
+                return item.Name;
+        return null;
+    }
+
+    private Game.Spells.CasterMessageMatcher? BuildWeaponProcMatcher(string? weaponName)
+    {
+        if (string.IsNullOrWhiteSpace(weaponName)) return null;
+        if (ItemNames.FindByName(weaponName) is not int number) return null;
+        Models.GameData.MessageRecord? rec = FindItemMessage(number);
+        return rec is null ? null : Game.Spells.CasterMessageMatcher.TryCreate(rec.CasterMessage);
     }
 
     /// <summary>
