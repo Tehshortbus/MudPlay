@@ -777,6 +777,15 @@ public sealed class AppServices
     public Game.Combat.CombatSessionTracker CombatSession { get; private set; } = null!;
 
     /// <summary>
+    /// Phase 11 — divides the session's wall-clock time across the player's
+    /// activities (waiting / moving / attacking / resting HP / resting MA) plus
+    /// the blinded / poisoned overlays, for the Time Analysis panel. Fed by
+    /// <see cref="PlayerState"/>, <see cref="Conditions"/>, and
+    /// <see cref="RoomTracker"/>; reset on the session boundary.
+    /// </summary>
+    public Game.Combat.TimeAnalysisTracker TimeAnalysis { get; private set; } = null!;
+
+    /// <summary>
     /// Phase 9 PR 9.0d — observes the "You have been slain by..."
     /// line and emits <see cref="Game.Combat.DeathLineWatcher.PlayerDied"/>.
     /// DeathRecoveryManager (PR 9.I) is the primary consumer; other
@@ -2248,6 +2257,29 @@ public sealed class AppServices
         Profile.ProfileMutated += _ => CombatSession.RefreshMatchers();
         GameData.ActiveSetChanged += _ => { _procWeaponName = null; CombatSession.RefreshMatchers(); };
         Inventory.Changed += () => CombatSession.RefreshMatchers();
+
+        // Phase 11 — TimeAnalysisTracker. Divides the session's wall-clock time
+        // across the player's activities + the blinded / poisoned overlays. It
+        // owns no subscriptions (its inputs span three sources), so forward each
+        // here: PlayerState carries combat / position / vitals, Conditions the
+        // affliction flags, and a confirmed room change (NewRoom differs from
+        // the previous) opens its movement window. Reset on the same
+        // ProfileLoaded boundary as the other Phase 11 trackers.
+        TimeAnalysis = new Game.Combat.TimeAnalysisTracker();
+        PlayerState.PropertyChanged += (_, _) => TimeAnalysis.NotePlayerState(
+            PlayerState.InCombat, PlayerState.Position,
+            PlayerState.Hp, PlayerState.MaxHp, PlayerState.Ma, PlayerState.MaxMa);
+        Conditions.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(Game.Conditions.ConditionTracker.ActiveFlags))
+                TimeAnalysis.NoteAfflictions(Conditions.IsBlinded, Conditions.IsPoisoned);
+        };
+        RoomTracker.StateChanged += t =>
+        {
+            if (t.NewRoom is not null && !ReferenceEquals(t.NewRoom, t.PreviousRoom))
+                TimeAnalysis.NoteRoomChanged();
+        };
+        Profile.ProfileLoaded += _ => TimeAnalysis.Reset();
 
         // PR 10.18 — item-cast buffs. A Bless slot may hold a #-token naming an
         // unlimited-use cast item (surfaced in the Spell Book); the director
