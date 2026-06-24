@@ -3244,18 +3244,29 @@ public partial class MainWindowViewModel : ObservableObject
         window.Show(main);
     }
 
+    /// <summary>Singleton handle for the live SessionStatsWindow — re-press toggles closed (CLAUDE.md window rule).</summary>
+    private SessionStatsWindow? _sessionStats;
+
     [RelayCommand]
     private void OpenSessionStats()
-        => OpenPlaceholder(
-            id: "session-stats",
-            panelName: "Session Stats",
-            phaseTag: "Phase 8",
-            headline: "Observed combat / time / session counters",
-            description:
-                "Player Statistics (observed Miss / Hit / Crit / BS / sneak / dodge " +
-                "rates), Time Analysis (moving / attacking / resting), Session " +
-                "Statistics (online time, monsters killed, exp earned). Plus kills/hr " +
-                "sparkline. Counters reset on connect.");
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
+            return;
+
+        if (_sessionStats is { } existing) { existing.Close(); return; }
+
+        SessionStatsWindow window = new()
+        {
+            DataContext = new SessionStatsViewModel(
+                AppServices.Current.CombatSession,
+                AppServices.Current.TimeAnalysis,
+                AppServices.Current.SessionActivity,
+                () => OpenWorkshopAt("levelprojection")),
+        };
+        window.Closed += (_, _) => _sessionStats = null;
+        _sessionStats = window;
+        window.Show(main);
+    }
 
     [RelayCommand]
     private void OpenWorkshop() => OpenWorkshopAt(null);

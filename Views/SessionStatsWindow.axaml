@@ -1,0 +1,232 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:FujinTerm.ViewModels"
+        xmlns:controls="using:FujinTerm.Controls"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="280" d:DesignHeight="600"
+        x:Class="FujinTerm.Views.SessionStatsWindow"
+        x:DataType="vm:SessionStatsViewModel"
+        Title="Session Stats"
+        Width="280" Height="600"
+        MinWidth="240" MinHeight="320"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False">
+
+    <Window.Styles>
+        <!-- Dense label / value rows shared by every section. -->
+        <Style Selector="TextBlock.lbl">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgSecBrush}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="TextBlock.val">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgBrush}"/>
+            <Setter Property="FontFamily" Value="{StaticResource FontMono}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="TextBlock.dim">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontFamily" Value="{StaticResource FontMono}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="TextBlock.sub">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontSize" Value="10"/>
+            <Setter Property="Margin" Value="0,4,0,2"/>
+        </Style>
+        <Style Selector="Expander">
+            <Setter Property="Margin" Value="0,0,0,2"/>
+        </Style>
+    </Window.Styles>
+
+    <DockPanel LastChildFill="True">
+
+        <!-- ============ Kills/hour sparkline (footer) ============ -->
+        <Border DockPanel.Dock="Bottom"
+                Background="{StaticResource ChromeBgBrush}"
+                BorderBrush="{StaticResource ChromeBorderSoftBrush}"
+                BorderThickness="0,1,0,0"
+                Padding="10,6">
+            <StackPanel Spacing="4">
+                <TextBlock Text="Kills/hour"
+                           Foreground="{StaticResource ChromeFgSecBrush}"
+                           FontSize="11"/>
+                <Border Background="{StaticResource ChromeBgSunkenBrush}"
+                        BorderBrush="{StaticResource ChromeBorderSoftBrush}"
+                        BorderThickness="1"
+                        CornerRadius="3"
+                        Padding="4"
+                        Height="44">
+                    <controls:SparklineControl Samples="{Binding KillsPerHour}"
+                                               Stroke="{StaticResource AccentGreenBrush}"
+                                               StrokeThickness="1.5"/>
+                </Border>
+            </StackPanel>
+        </Border>
+
+        <!-- ============ Three collapsible sections ============ -->
+        <ScrollViewer VerticalScrollBarVisibility="Auto"
+                      Background="{StaticResource ChromeBgBrush}"
+                      Padding="8,6">
+            <StackPanel Spacing="2">
+
+                <!-- ===== Player Statistics ===== -->
+                <Expander IsExpanded="True">
+                    <Expander.Header>
+                        <TextBlock Text="Player Statistics"
+                                   Foreground="{StaticResource ChromeFgBrush}"
+                                   FontSize="12"/>
+                    </Expander.Header>
+                    <StackPanel Spacing="2" Margin="4,2">
+                        <TextBlock Classes="sub" Text="Accuracy"/>
+
+                        <Grid ColumnDefinitions="64,46,*,Auto">
+                            <TextBlock Grid.Column="0" Classes="lbl" Text="Hit"/>
+                            <TextBlock Grid.Column="1" Classes="val" Text="{Binding Combat.HitPercent, StringFormat='{}{0:F0}%'}"/>
+                            <TextBlock Grid.Column="2" Classes="dim" Text="{Binding PhysicalRangeText}"/>
+                            <TextBlock Grid.Column="3" Classes="dim" Text="{Binding Combat.PhysicalAvgDamage, StringFormat='{}avg {0:F0}'}"/>
+                        </Grid>
+                        <Grid ColumnDefinitions="64,46,*,Auto">
+                            <TextBlock Grid.Column="0" Classes="lbl" Text="Miss"/>
+                            <TextBlock Grid.Column="1" Classes="val" Text="{Binding Combat.MissPercent, StringFormat='{}{0:F0}%'}"/>
+                        </Grid>
+                        <Grid ColumnDefinitions="64,46,*,Auto">
+                            <TextBlock Grid.Column="0" Classes="lbl" Text="Crit"/>
+                            <TextBlock Grid.Column="1" Classes="val" Text="{Binding Combat.CritPercent, StringFormat='{}{0:F0}%'}"/>
+                        </Grid>
+                        <Grid ColumnDefinitions="64,46,*,Auto">
+                            <TextBlock Grid.Column="0" Classes="lbl" Text="Backstab"/>
+                            <TextBlock Grid.Column="1" Classes="val" Text="{Binding Combat.Backstabs}"/>
+                            <TextBlock Grid.Column="2" Classes="dim" Text="{Binding BackstabRangeText}"/>
+                            <TextBlock Grid.Column="3" Classes="dim" Text="{Binding Combat.BackstabAvgDamage, StringFormat='{}avg {0:F0}'}"/>
+                        </Grid>
+                        <Grid ColumnDefinitions="64,46,*,Auto">
+                            <TextBlock Grid.Column="0" Classes="lbl" Text="Round"/>
+                            <TextBlock Grid.Column="2" Classes="dim" Text="{Binding RoundRangeText}"/>
+                            <TextBlock Grid.Column="3" Classes="dim" Text="{Binding Combat.RoundAvgDamage, StringFormat='{}avg {0:F0}'}"/>
+                        </Grid>
+
+                        <!-- Proc / spell rows — surface only once recognised. -->
+                        <Grid ColumnDefinitions="64,46,*,Auto" IsVisible="{Binding HasProcs}">
+                            <TextBlock Grid.Column="0" Classes="lbl" Text="Proc"/>
+                            <TextBlock Grid.Column="1" Classes="val" Text="{Binding Combat.ProcHits}"/>
+                            <TextBlock Grid.Column="2" Classes="dim" Text="{Binding ProcRangeText}"/>
+                            <TextBlock Grid.Column="3" Classes="dim" Text="{Binding Combat.ProcAvgDamage, StringFormat='{}avg {0:F0}'}"/>
+                        </Grid>
+                        <Grid ColumnDefinitions="64,46,*,Auto" IsVisible="{Binding HasSpells}">
+                            <TextBlock Grid.Column="0" Classes="lbl" Text="Spell"/>
+                            <TextBlock Grid.Column="1" Classes="val" Text="{Binding Combat.SpellHits}"/>
+                            <TextBlock Grid.Column="2" Classes="dim" Text="{Binding SpellRangeText}"/>
+                            <TextBlock Grid.Column="3" Classes="dim" Text="{Binding Combat.SpellAvgDamage, StringFormat='{}avg {0:F0}'}"/>
+                        </Grid>
+
+                        <Grid ColumnDefinitions="64,46,*,Auto" Margin="0,2,0,0">
+                            <TextBlock Grid.Column="0" Classes="lbl" Text="Dodge"/>
+                            <TextBlock Grid.Column="1" Classes="val" Text="{Binding Combat.DodgePercent, StringFormat='{}{0:F0}%'}"/>
+                        </Grid>
+
+                        <Button Content="Exp progression →"
+                                Command="{Binding ExpProgressionCommand}"
+                                HorizontalAlignment="Left"
+                                Margin="0,6,0,0"
+                                FontSize="11"
+                                ToolTip.Tip="Open the Character Workshop's PROGRESS → Levels view (the canonical owner of experience-progression data)."/>
+                    </StackPanel>
+                </Expander>
+
+                <!-- ===== Time Analysis ===== -->
+                <Expander IsExpanded="True">
+                    <Expander.Header>
+                        <TextBlock Text="Time Analysis"
+                                   Foreground="{StaticResource ChromeFgBrush}"
+                                   FontSize="12"/>
+                    </Expander.Header>
+                    <StackPanel Spacing="2" Margin="4,2">
+                        <TextBlock Classes="sub" Text="Totals"/>
+                        <Grid ColumnDefinitions="120,*">
+                            <TextBlock Grid.Column="0" Classes="lbl" Text="Duration"/>
+                            <TextBlock Grid.Column="1" Classes="val" Text="{Binding DurationText}"/>
+                        </Grid>
+                        <Grid ColumnDefinitions="120,*">
+                            <TextBlock Grid.Column="0" Classes="lbl" Text="Moving"/>
+                            <TextBlock Grid.Column="1" Classes="val" Text="{Binding MovingText}"/>
+                        </Grid>
+                        <Grid ColumnDefinitions="120,*">
+                            <TextBlock Grid.Column="0" Classes="lbl" Text="Attacking"/>
+                            <TextBlock Grid.Column="1" Classes="val" Text="{Binding AttackingText}"/>
+                        </Grid>
+                        <Grid ColumnDefinitions="120,*">
+                            <TextBlock Grid.Column="0" Classes="lbl" Text="Resting"/>
+                            <TextBlock Grid.Column="1" Classes="val" Text="{Binding RestingText}"/>
+                        </Grid>
+                        <Grid ColumnDefinitions="120,*">
+                            <TextBlock Grid.Column="0" Classes="lbl" Text="Waiting"/>
+                            <TextBlock Grid.Column="1" Classes="val" Text="{Binding WaitingText}"/>
+                        </Grid>
+
+                        <TextBlock Classes="sub" Text="Breakdown"/>
+                        <Grid ColumnDefinitions="120,*">
+                            <TextBlock Grid.Column="0" Classes="lbl" Text="Resting HPs"/>
+                            <TextBlock Grid.Column="1" Classes="val" Text="{Binding RestingHpText}"/>
+                        </Grid>
+                        <Grid ColumnDefinitions="120,*">
+                            <TextBlock Grid.Column="0" Classes="lbl" Text="Resting Mana"/>
+                            <TextBlock Grid.Column="1" Classes="val" Text="{Binding RestingMaText}"/>
+                        </Grid>
+                        <Grid ColumnDefinitions="120,*">
+                            <TextBlock Grid.Column="0" Classes="lbl" Text="Blinded"/>
+                            <TextBlock Grid.Column="1" Classes="val" Text="{Binding BlindedText}"/>
+                        </Grid>
+                        <Grid ColumnDefinitions="120,*">
+                            <TextBlock Grid.Column="0" Classes="lbl" Text="Poisoned"/>
+                            <TextBlock Grid.Column="1" Classes="val" Text="{Binding PoisonedText}"/>
+                        </Grid>
+                    </StackPanel>
+                </Expander>
+
+                <!-- ===== Session Statistics ===== -->
+                <Expander IsExpanded="True">
+                    <Expander.Header>
+                        <TextBlock Text="Session Statistics"
+                                   Foreground="{StaticResource ChromeFgBrush}"
+                                   FontSize="12"/>
+                    </Expander.Header>
+                    <StackPanel Spacing="2" Margin="4,2">
+                        <Grid ColumnDefinitions="120,*">
+                            <TextBlock Grid.Column="0" Classes="lbl" Text="Time online"/>
+                            <TextBlock Grid.Column="1" Classes="val" Text="{Binding TimeOnlineText}"/>
+                        </Grid>
+                        <Grid ColumnDefinitions="120,*">
+                            <TextBlock Grid.Column="0" Classes="lbl" Text="Monsters killed"/>
+                            <TextBlock Grid.Column="1" Classes="val" Text="{Binding Activity.MonstersKilled}"/>
+                        </Grid>
+                        <Grid ColumnDefinitions="120,*">
+                            <TextBlock Grid.Column="0" Classes="lbl" Text="Exp earned"/>
+                            <TextBlock Grid.Column="1" Classes="val" Text="{Binding Activity.ExperienceEarned, StringFormat='{}{0:N0}'}"/>
+                        </Grid>
+                        <Grid ColumnDefinitions="120,*">
+                            <TextBlock Grid.Column="0" Classes="lbl" Text="Kills/hour"/>
+                            <TextBlock Grid.Column="1" Classes="val" Text="{Binding Activity.KillsPerHour, StringFormat='{}{0:F1}'}"/>
+                        </Grid>
+                        <Grid ColumnDefinitions="120,*">
+                            <TextBlock Grid.Column="0" Classes="lbl" Text="Exp/hour"/>
+                            <TextBlock Grid.Column="1" Classes="val" Text="{Binding Activity.ExperiencePerHour, StringFormat='{}{0:N0}'}"/>
+                        </Grid>
+
+                        <Button Content="Reset session"
+                                Command="{Binding ResetCommand}"
+                                HorizontalAlignment="Left"
+                                Margin="0,8,0,0"
+                                FontSize="11"
+                                ToolTip.Tip="Wipe every session counter and restart the clocks. Counters also reset automatically on connect."/>
+                    </StackPanel>
+                </Expander>
+
+            </StackPanel>
+        </ScrollViewer>
+
+    </DockPanel>
+</Window>
