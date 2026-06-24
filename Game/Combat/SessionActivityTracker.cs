@@ -1,12 +1,12 @@
 namespace FujinTerm.Game.Combat;
 
 /// <summary>
-/// Phase 11 — counts the session's monster kills and experience earned for the
-/// Session Stats panel's "Session Statistics" section, and keeps a short rolling
-/// history of kill / experience events so the panel can draw kills/hour and
-/// exp/hour sparklines. Produces a <see cref="SessionActivityStats"/> snapshot
-/// plus bucketed series via <see cref="KillsPerHourSeries"/> and
-/// <see cref="ExperiencePerHourSeries"/>.
+/// Phase 11 — counts the session's monster kills, experience earned, and
+/// currency picked up vs. stashed/deposited for the Session Stats panel's
+/// "Session Statistics" section, and keeps a short rolling history of kill /
+/// experience events so the panel can draw kills/hour and exp/hour sparklines.
+/// Produces a <see cref="SessionActivityStats"/> snapshot plus bucketed series
+/// via <see cref="KillsPerHourSeries"/> and <see cref="ExperiencePerHourSeries"/>.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -38,6 +38,8 @@ public sealed class SessionActivityTracker
     private DateTimeOffset _sessionStart;
     private int _monstersKilled;
     private long _experienceEarned;
+    private long _currencyCollected;
+    private long _currencyStashed;
 
     // Kill timestamps within the rolling window, oldest first. Feeds only the
     // sparkline; the running total above is independent so the headline figure
@@ -81,11 +83,32 @@ public sealed class SessionActivityTracker
         Changed?.Invoke();
     }
 
+    /// <summary>Add currency picked up, as a copper value (auto-collected or
+    /// manually <c>get</c>'d). Non-positive amounts are ignored.</summary>
+    public void NoteCurrencyCollected(long copper)
+    {
+        if (copper <= 0) return;
+        _currencyCollected += copper;
+        Changed?.Invoke();
+    }
+
+    /// <summary>Add currency removed from the player this session — stash-room
+    /// <c>hide</c>s and bank <c>dep</c>osits alike — as a copper value.
+    /// Non-positive amounts are ignored.</summary>
+    public void NoteCurrencyStashed(long copper)
+    {
+        if (copper <= 0) return;
+        _currencyStashed += copper;
+        Changed?.Invoke();
+    }
+
     /// <summary>Point-in-time copy of the session's activity counters.</summary>
     public SessionActivityStats Snapshot() =>
-        new(TimeOnline:       _clock() - _sessionStart,
-            MonstersKilled:   _monstersKilled,
-            ExperienceEarned: _experienceEarned);
+        new(TimeOnline:        _clock() - _sessionStart,
+            MonstersKilled:    _monstersKilled,
+            ExperienceEarned:  _experienceEarned,
+            CurrencyCollected: _currencyCollected,
+            CurrencyStashed:   _currencyStashed);
 
     /// <summary>
     /// Kills/hour split into <paramref name="buckets"/> equal time slices across
@@ -150,6 +173,8 @@ public sealed class SessionActivityTracker
         _sessionStart = _clock();
         _monstersKilled = 0;
         _experienceEarned = 0;
+        _currencyCollected = 0;
+        _currencyStashed = 0;
         _recentKills.Clear();
         _recentExp.Clear();
         Changed?.Invoke();

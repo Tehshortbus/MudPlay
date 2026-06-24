@@ -2372,6 +2372,12 @@ public sealed class AppServices
         // counts aren't relevant to the new one.
         Profile.ProfileLoaded += _ => Cash.ResetTallies();
         Cash.SetAcquisitionGate(Acquisition);
+        // Phase 11 — feed confirmed coin pickups into the Session Stats
+        // currency-collected tally, converting each denomination to its copper
+        // value so mixed currency streams fold into one figure.
+        Cash.CoinCollected += (currency, count) =>
+            SessionActivity.NoteCurrencyCollected(
+                Game.Inventory.CurrencyHoldings.ToCopper(currency, count));
         // The auto-deposit gates read the authoritative inventory snapshot
         // (wealth value + coin count), so re-evaluate whenever the parser
         // updates holdings — this is the only path that catches buy / sell
@@ -2389,6 +2395,15 @@ public sealed class AppServices
             getSnapshot: () => Inventory.Snapshot,
             isEnabled: () => ReadAutoModeFlag(d => d.AutoGetCash),
             log: Log);
+        // Phase 11 — count stash-room hides toward the Session Stats
+        // stashed/deposited figure (copper value across the dispatched coins).
+        Stash.StashExecuted += (_, pairs) =>
+        {
+            long copper = 0;
+            foreach ((string currency, long amount) in pairs)
+                copper += Game.Inventory.CurrencyHoldings.ToCopper(currency, amount);
+            SessionActivity.NoteCurrencyStashed(copper);
+        };
 
         // Phase 9 PR 9.L — AutoGetItemsManager. The resolve delegate
         // maps a loose "You notice ..." entry back to an item Number
@@ -2624,6 +2639,9 @@ public sealed class AppServices
             autoLair: AutoLair,
             stash: Stash,
             log: Log);
+        // Phase 11 — bank deposits (already a copper value) join stash hides in
+        // the Session Stats stashed/deposited figure.
+        AutoDeposit.Deposited += copper => SessionActivity.NoteCurrencyStashed(copper);
 
         // PR 6.2 — follower-side @comeback. Watches for a movement-failure
         // line (prevents-movement flag / over-encumbered) immediately

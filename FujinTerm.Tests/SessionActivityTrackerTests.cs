@@ -58,6 +58,22 @@ public sealed class SessionActivityTrackerTests
         Assert.Equal(2000L, t.Snapshot().ExperienceEarned);
     }
 
+    [Fact]
+    public void NoteCurrency_SumsCollectedAndStashed_AndIgnoresNonPositive()
+    {
+        (SessionActivityTracker t, _) = Make();
+        t.NoteCurrencyCollected(1500);
+        t.NoteCurrencyCollected(500);
+        t.NoteCurrencyCollected(0);    // ignored
+        t.NoteCurrencyCollected(-10);  // ignored
+        t.NoteCurrencyStashed(1200);
+        t.NoteCurrencyStashed(0);      // ignored
+
+        SessionActivityStats s = t.Snapshot();
+        Assert.Equal(2000L, s.CurrencyCollected);
+        Assert.Equal(1200L, s.CurrencyStashed);
+    }
+
     // ----- derived rates -----------------------------------------------
 
     [Fact]
@@ -80,6 +96,16 @@ public sealed class SessionActivityTrackerTests
         c.Advance(30);
 
         Assert.Equal(32_400d, t.Snapshot().ExperiencePerHour, 3); // 16,200 / 0.5 h
+    }
+
+    [Fact]
+    public void CurrencyPerHour_DerivesFromTimeOnline()
+    {
+        (SessionActivityTracker t, Clock c) = Make();
+        t.NoteCurrencyCollected(9000);
+        c.Advance(30);
+
+        Assert.Equal(18_000d, t.Snapshot().CurrencyPerHour, 3); // 9,000 / 0.5 h
     }
 
     // ----- kills/hour series -------------------------------------------
@@ -176,6 +202,8 @@ public sealed class SessionActivityTrackerTests
         (SessionActivityTracker t, Clock c) = Make();
         for (int i = 0; i < 4; i++) t.NoteKill();
         t.NoteExperience(5000);
+        t.NoteCurrencyCollected(7000);
+        t.NoteCurrencyStashed(3000);
         c.Advance(20);
 
         t.Reset();
@@ -184,6 +212,8 @@ public sealed class SessionActivityTrackerTests
         SessionActivityStats s = t.Snapshot();
         Assert.Equal(0, s.MonstersKilled);
         Assert.Equal(0L, s.ExperienceEarned);
+        Assert.Equal(0L, s.CurrencyCollected);
+        Assert.Equal(0L, s.CurrencyStashed);
         Assert.Equal(TimeSpan.FromMinutes(10), s.TimeOnline); // clock restarted at Reset
     }
 

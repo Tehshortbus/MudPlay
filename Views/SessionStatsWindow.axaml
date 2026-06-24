@@ -275,6 +275,21 @@
                             <TextBlock Grid.Column="0" Classes="lbl" Text="Exp/hour"/>
                             <TextBlock Grid.Column="1" Classes="val" Text="{Binding Activity.ExperiencePerHour, StringFormat='{}{0:N0}'}"/>
                         </Grid>
+                        <Grid ColumnDefinitions="120,*">
+                            <TextBlock Grid.Column="0" Classes="lbl" Text="Currency"
+                                       ToolTip.Tip="Total currency picked up this session, in copper value."/>
+                            <TextBlock Grid.Column="1" Classes="val" Text="{Binding Activity.CurrencyCollected, StringFormat='{}{0:N0}'}"/>
+                        </Grid>
+                        <Grid ColumnDefinitions="120,*">
+                            <TextBlock Grid.Column="0" Classes="lbl" Text="Currency/hour"
+                                       ToolTip.Tip="Currency picked up per hour, in copper value."/>
+                            <TextBlock Grid.Column="1" Classes="val" Text="{Binding Activity.CurrencyPerHour, StringFormat='{}{0:N0}'}"/>
+                        </Grid>
+                        <Grid ColumnDefinitions="120,*">
+                            <TextBlock Grid.Column="0" Classes="lbl" Text="Stashed/dep."
+                                       ToolTip.Tip="Currency stashed or bank-deposited this session, in copper value."/>
+                            <TextBlock Grid.Column="1" Classes="val" Text="{Binding Activity.CurrencyStashed, StringFormat='{}{0:N0}'}"/>
+                        </Grid>
 
                         <Button Content="Reset session"
                                 Command="{Binding ResetCommand}"

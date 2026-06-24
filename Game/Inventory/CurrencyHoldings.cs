@@ -33,4 +33,19 @@ public readonly record struct CurrencyHoldings(
     /// <summary>Total physical coin count across every denomination —
     /// the input to the 3-coins-per-encumbrance-unit weight rule.</summary>
     public long TotalCoinCount => (long)Copper + Silver + Gold + Platinum + Runic;
+
+    /// <summary>Copper-farthing value of <paramref name="count"/> coins of the
+    /// named single-word denomination, using the same MajorMUD ratio ladder as
+    /// <see cref="TotalCopperValue"/>. Unrecognised names yield 0 so callers can
+    /// fold mixed currency streams without a separate validity check.</summary>
+    public static long ToCopper(string currency, long count) =>
+        currency.ToLowerInvariant() switch
+        {
+            "copper"   => count,
+            "silver"   => count * 10,
+            "gold"     => count * 100,
+            "platinum" => count * 10_000,
+            "runic"    => count * 1_000_000,
+            _          => 0,
+        };
 }

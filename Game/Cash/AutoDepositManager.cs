@@ -66,6 +66,11 @@ public sealed class AutoDepositManager : IDisposable
     private Action<byte[]>? _wireSender;
     private bool _disposed;
     private bool _busy;
+
+    /// <summary>Fires when a bank <c>dep</c> is dispatched on arrival, carrying
+    /// the deposited copper value. Lets the Session Stats tracker count
+    /// bank-deposited wealth alongside stash-room hides.</summary>
+    public event Action<long>? Deposited;
     private DepositPhase _phase = DepositPhase.Idle;
     private ResumeTarget _resume;
     private RoomKey _destination;
@@ -242,6 +247,7 @@ public sealed class AutoDepositManager : IDisposable
         }
         _log?.Info(LogCategory, $"depositing {depositValue} (wealth={held.TotalCopperValue} keep={keepValue})");
         Send($"dep {depositValue}");
+        Deposited?.Invoke(depositValue);
     }
 
     /// <summary>Total copper value of the per-currency keep-on-hand

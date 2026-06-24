@@ -31,6 +31,7 @@ public sealed class CashManagerTests
         public InventorySnapshot Snapshot { get; set; } = InventorySnapshot.Empty;
         public List<(string Currency, int Count, CashPolicy Policy)> Dispatches { get; } = new();
         public List<long> AutoDeposits { get; } = new();
+        public List<(string Currency, int Count)> Collected { get; } = new();
 
         public Harness()
         {
@@ -43,6 +44,7 @@ public sealed class CashManagerTests
             Cash.SetWireSender(b => Sent.Add(b));
             Cash.CashDispatched += (c, n, p) => Dispatches.Add((c, n, p));
             Cash.AutoDepositRequested += t => AutoDeposits.Add(t);
+            Cash.CoinCollected += (c, n) => Collected.Add((c, n));
         }
 
         public void Feed(string line)
@@ -160,6 +162,15 @@ public sealed class CashManagerTests
         h.Feed("You dropped 20 gold pieces.");
 
         Assert.Equal(30, h.Cash.HeldCoin("gold"));
+    }
+
+    [Fact]
+    public void PickedUp_RaisesCoinCollected()
+    {
+        using Harness h = new();
+        h.Feed("You picked up 50 gold pieces.");
+
+        Assert.Equal(("gold", 50), Assert.Single(h.Collected));
     }
 
     [Fact]

@@ -147,6 +147,12 @@ public sealed class CashManager : IDisposable
     /// thresholds.</summary>
     public event Action<long>? AutoDepositRequested;
 
+    /// <summary>Fires when the server confirms the player picked up coin
+    /// (a <c>CashPickedUp</c> line) — auto-collected or manually <c>get</c>'d
+    /// alike. Args: currency word, coin count. Lets the Session Stats tracker
+    /// tally how much was gathered without re-parsing the wire.</summary>
+    public event Action<string, int>? CoinCollected;
+
     public CashManager(
         MessageRouter router,
         Func<CashSettings> readSettings,
@@ -328,6 +334,7 @@ public sealed class CashManager : IDisposable
         if (currency is null) return;
 
         AdjustHeld(currency, count);
+        CoinCollected?.Invoke(currency, count);
         // Confirm our pending `get` — drain the matching in-flight delta so
         // the next gate evaluation works against the parser's fresh view.
         DecayInFlight(currency, count);
