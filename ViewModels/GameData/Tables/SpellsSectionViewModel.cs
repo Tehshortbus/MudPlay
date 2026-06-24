@@ -2,9 +2,11 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.Input;
 using FujinTerm.Game.GameData;
+using FujinTerm.Game.Spells;
 using FujinTerm.Models.GameData;
 using FujinTerm.Services;
 using FujinTerm.ViewModels.GameData.Edit;
@@ -179,13 +181,28 @@ public sealed class SpellsSectionViewModel : JsonTableSectionViewModel, IEditabl
         _messages.Save();
     }
 
+    // Scaling columns folded into the curated growth block — emitted once, in
+    // place of the first of them (MinBase, in MDB key order). The raw per-level
+    // numbers are unreadable on their own; SpellGrowthFormatter turns them into
+    // a magnitude range + per-level formula instead.
+    private static readonly HashSet<string> _scalingFields = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "MinBase", "MinInc", "MinIncLVLs",
+        "MaxBase", "MaxInc", "MaxIncLVLs",
+        "Dur", "DurInc", "DurIncLVLs", "Cap",
+    };
+
     /// <summary>
-    /// The spell's full imported data for the dialog's Game Data tab — every
-    /// field on the spell's row: enum columns (Magery / attack-type / targets)
-    /// formatted, each non-zero ability slot resolved to its name, and any
-    /// numeric reference (CastsSp / Summon / EquipItem / …) translated to the
-    /// real Spell / Monster / Item name. Empty when the active set has no Spells
-    /// table or no matching row.
+    /// The spell's full imported data for the dialog's Game Data tab. Enum
+    /// columns (attack-type / targets) format via the shared lookups; Magery and
+    /// MageryLVL collapse to one "Mage-1" row; the raw per-level scaling columns
+    /// collapse to a curated growth block (magnitude range, level cap, per-level
+    /// formula, at-cap duration) mirroring MMUD Explorer's spell browser; each
+    /// non-zero ability slot resolves to its name with any numeric reference
+    /// (CastsSp / Summon / EquipItem / …) translated to the real Spell / Monster
+    /// / Item name; and the "Learned From" / "Casted By" source lists resolve
+    /// their "Item #N" / "Monster #N" tokens to real names. Empty when the active
+    /// set has no Spells table or no matching row.
     /// </summary>
     private IReadOnlyList<GameDataInfoRow> BuildSpellInfoRows(int spellNumber)
     {
@@ -199,10 +216,36 @@ public sealed class SpellsSectionViewModel : JsonTableSectionViewModel, IEditabl
             if (ReadInt(r, "Number") == spellNumber) { found = r; break; }
         if (found is not { } el) return rows;
 
+        // Scaling inputs projected once — feeds the curated growth block that
+        // replaces the raw MinBase / MaxInc / Cap / … columns.
+        SpellFormulaInput? formula = new KnownSpellCatalog(_cache).GetFormulaByNumber(spellNumber);
+
         bool teleportRendered = false;
+        bool growthRendered = false;
         foreach (JsonProperty prop in el.EnumerateObject())
         {
             string field = prop.Name;
+
+            // Scaling columns collapse into one curated growth block, emitted
+            // in place of the first of them encountered (MinBase).
+            if (_scalingFields.Contains(field))
+            {
+                if (!growthRendered)
+                {
+                    EmitGrowthBlock(rows, formula);
+                    growthRendered = true;
+                }
+                continue;
+            }
+
+            // MageryLVL folds into the Magery row ("Mage-1"); never shown alone.
+            if (string.Equals(field, "MageryLVL", StringComparison.OrdinalIgnoreCase)) continue;
+            if (string.Equals(field, "Magery", StringComparison.OrdinalIgnoreCase))
+            {
+                if (MageryDisplay(el, prop.Value) is { } magery)
+                    rows.Add(new GameDataInfoRow("Magery", magery));
+                continue;
+            }
 
             // Ability pairs (Abil-N + AbilVal-N) collapse to one row; skip the
             // value half — it's rendered alongside its code.
@@ -212,6 +255,11 @@ public sealed class SpellsSectionViewModel : JsonTableSectionViewModel, IEditabl
                 if (prop.Value.ValueKind != JsonValueKind.Number
                     || !prop.Value.TryGetInt32(out int code) || code == 0)
                     continue;
+
+                // Damage / heal codes (1, 8, 17, 18) feed the curated magnitude
+                // range above — don't also render a bare "Damage(-MR): 0" row.
+                if (code is 1 or 8 or 17 or 18) continue;
+
                 string slot = field["Abil-".Length..];
                 int val = ReadInt(el, $"AbilVal-{slot}");
 
@@ -250,6 +298,39 @@ public sealed class SpellsSectionViewModel : JsonTableSectionViewModel, IEditabl
         return rows;
     }
 
+    // "Mage-1" / "Priest" — the spell's casting school with its magery-level
+    // suffix folded in (suffix dropped when MageryLVL is 0). Null when the
+    // school value can't be formatted.
+    private static string? MageryDisplay(JsonElement el, JsonElement mageryValue)
+    {
+        string? school = LookupEnums.FormatMagery(
+            mageryValue.ValueKind == JsonValueKind.Number ? mageryValue.GetRawText() : null);
+        if (string.IsNullOrWhiteSpace(school)) return null;
+        int lvl = ReadInt(el, "MageryLVL");
+        return lvl > 0 ? $"{school}-{lvl.ToString(CultureInfo.InvariantCulture)}" : school;
+    }
+
+    // The curated growth block — magnitude range ("Damage(-MR): 18 to 68"),
+    // level cap, per-level growth formula ("Max: 24+(2*lvl)"), and at-cap
+    // duration. Mirrors MMUD Explorer's spell-browser "LVL Cap" / "LVL
+    // Increases" block, minus the deliberately-omitted "OOM in N rounds" line.
+    private static void EmitGrowthBlock(List<GameDataInfoRow> rows, SpellFormulaInput? formula)
+    {
+        if (formula is not { } f) return;
+
+        if (SpellGrowthFormatter.MagnitudeRange(f) is { } range)
+            rows.Add(new GameDataInfoRow(SpellGrowthFormatter.MagnitudeLabel(f), range));
+        if (f.Cap > 0)
+            rows.Add(new GameDataInfoRow("LVL Cap", f.Cap.ToString(CultureInfo.InvariantCulture)));
+        if (SpellGrowthFormatter.GrowthFormula(f) is { } growth)
+            rows.Add(new GameDataInfoRow("LVL Increases", growth));
+        long durSecs = SpellGrowthFormatter.DurationSeconds(f);
+        if (durSecs > 0)
+            rows.Add(new GameDataInfoRow(
+                "Duration",
+                $"{durSecs.ToString(CultureInfo.InvariantCulture)} {(durSecs == 1 ? "second" : "seconds")}"));
+    }
+
     // "map/room (room name)" for a teleport spell — the destination map comes
     // from TeleportMap (141), the room from TeleportRoom (140), and the name is
     // resolved against the Rooms table by map + room.
@@ -284,8 +365,8 @@ public sealed class SpellsSectionViewModel : JsonTableSectionViewModel, IEditabl
     }
 
     // Render one scalar (non-ability) field: enum columns via the shared
-    // formatters, the "Casted By" source list summarised, blank / NUL text
-    // dropped. Returns null to omit the field.
+    // formatters, the "Learned From" / "Casted By" source lists resolved to real
+    // names, blank / NUL text dropped. Returns null to omit the field.
     private string? RenderField(string field, JsonElement value)
     {
         if (ColumnFormatters.TryGetValue(field, out var fmt))
@@ -304,9 +385,10 @@ public sealed class SpellsSectionViewModel : JsonTableSectionViewModel, IEditabl
         if (value.ValueKind == JsonValueKind.String)
         {
             if (CleanString(value.GetString()) is not { } s) return null;
-            return string.Equals(field, "Casted By", StringComparison.OrdinalIgnoreCase)
-                ? SummarizeList(s)
-                : s;
+            bool isSourceList =
+                string.Equals(field, "Casted By", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(field, "Learned From", StringComparison.OrdinalIgnoreCase);
+            return isSourceList ? ResolveSourceList(s) : s;
         }
         return null;
     }
@@ -330,14 +412,50 @@ public sealed class SpellsSectionViewModel : JsonTableSectionViewModel, IEditabl
         return table is null ? null : _cache.FindNameByNumber(table, val);
     }
 
-    // Comma-joined source lists ("Casted By") can run to dozens of rooms; show
-    // the count + the first several so a non-scrolling info dialog stays readable.
-    private static string SummarizeList(string raw)
+    // A "Learned From" / "Casted By" cell is a comma-joined list of
+    // "<Kind> #<number>" source tokens (e.g. "Item #328, Monster #198"). Resolve
+    // each token to the real Item / Monster / Spell / … name, dedupe, and — when
+    // the list runs long — show the count plus the first several so the
+    // non-scrolling info dialog stays readable.
+    private string ResolveSourceList(string raw)
     {
         string[] parts = raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        if (parts.Length <= 8) return string.Join(", ", parts);
-        return $"{parts.Length} sources — {string.Join(", ", parts.Take(8))}, …";
+        var names = new List<string>();
+        foreach (string part in parts)
+        {
+            string name = ResolveSourceToken(part);
+            if (!names.Contains(name, StringComparer.OrdinalIgnoreCase)) names.Add(name);
+        }
+        if (names.Count <= 8) return string.Join(", ", names);
+        return $"{names.Count} sources — {string.Join(", ", names.Take(8))}, …";
     }
+
+    // Translate one "<Kind> #<number>" source token to the referenced row's
+    // name (Item → Items, Monster → Monsters, …). Falls back to the raw token
+    // when the kind is unknown or the number has no matching row, so an
+    // unresolved reference stays visible rather than being dropped.
+    private string ResolveSourceToken(string token)
+    {
+        Match m = SourceToken.Match(token);
+        if (!m.Success
+            || !int.TryParse(m.Groups[2].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int number))
+            return token;
+        string? table = m.Groups[1].Value.ToLowerInvariant() switch
+        {
+            "item"      => "Items",
+            "monster"   => "Monsters",
+            "spell"     => "Spells",
+            "room"      => "Rooms",
+            "textblock" => "TextBlocks",
+            "class"     => "Classes",
+            _           => null,
+        };
+        if (table is null) return token;
+        return _cache.FindNameByNumber(table, number) ?? token;
+    }
+
+    // "<Kind> #<number>" with any trailing chance / qualifier ("(50%)") ignored.
+    private static readonly Regex SourceToken = new(@"^([A-Za-z]+)\s*#\s*(\d+)", RegexOptions.Compiled);
 
     private static int ReadInt(JsonElement row, string property)
         => row.TryGetProperty(property, out JsonElement e)
