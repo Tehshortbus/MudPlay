@@ -1622,11 +1622,14 @@ public sealed class AppServices
         // never trick it; ALSO skips on the first connect after a
         // hangup (HangupSignal.ConsumeSuppressEntry) so the user can
         // read the screen before they decide to act.
-        // Auto-entry obeys the master auto-responses switch: when every
-        // wired engine is off, the menu-match send is suppressed too.
+        // Auto-entry obeys the Auto-All kill switch: when the user (or an
+        // @auto-all off) actively silences automation, the menu-match send
+        // is suppressed too. We gate on KillSwitchEngaged, NOT AllWiredOff —
+        // a manual-play character runs with every auto-engine off but never
+        // pressed the kill switch, and must still auto-enter the realm.
         MainMenuEntry = new Game.MainMenuEntryAutomation(
             Router, GameCommands, HangupSignal,
-            isAutoEnabled: () => !AutoModeController.AllWiredOff,
+            isAutoEnabled: () => !AutoModeController.KillSwitchEngaged,
             log: Log);
         // Cleanup-driven proactive log-off. Subscribes to the same
         // CleanupWarningWatcher the reconnect scheduler reads; its safe

@@ -60,6 +60,14 @@ public sealed class AutoModeController
     /// </summary>
     private bool[]? _snapshot;
 
+    /// <summary>
+    /// True while the kill switch is actively engaged — engines were
+    /// snapshotted off by a kill press and not yet restored. Backs
+    /// <see cref="KillSwitchEngaged"/>; cleared on restore and on profile
+    /// load.
+    /// </summary>
+    private bool _killEngaged;
+
     public AutoModeController(ProfileService profile, LogService? log = null)
     {
         ArgumentNullException.ThrowIfNull(profile);
@@ -81,10 +89,28 @@ public sealed class AutoModeController
     }
 
     /// <summary>
-    /// Drop the remembered snapshot. Called on profile load so a newly
-    /// loaded character can't restore the previous character's state.
+    /// True while the Auto-All kill switch is actively engaged — the user
+    /// (or an <c>@auto-all off</c>) pressed it while engines were on and
+    /// has not restored them yet. Deliberately distinct from
+    /// <see cref="AllWiredOff"/>: a character who simply never enabled any
+    /// auto-engine has everything off WITHOUT the kill switch engaged.
+    /// Consumers that mean "did the user actively silence automation"
+    /// (e.g. the main-menu auto-entry suppression) must read this, not
+    /// <see cref="AllWiredOff"/>, so a manual-play character still
+    /// auto-enters the realm.
     /// </summary>
-    public void ResetSnapshot() => _snapshot = null;
+    public bool KillSwitchEngaged => _killEngaged;
+
+    /// <summary>
+    /// Drop the remembered snapshot and clear the kill-switch flag. Called
+    /// on profile load so a newly loaded character can't restore the
+    /// previous character's state or inherit its silenced-automation flag.
+    /// </summary>
+    public void ResetSnapshot()
+    {
+        _snapshot = null;
+        _killEngaged = false;
+    }
 
     /// <summary>
     /// Toggle the master switch. If any wired engine is on, snapshot the
@@ -113,6 +139,7 @@ public sealed class AutoModeController
                 _snapshot[i] = Wired[i].Get(am);
                 Wired[i].Set(am, false);
             }
+            _killEngaged = true;
             WriteGeneral(profile, general);
             _log?.Log(LogSeverity.Info, LogCategory, "Auto-All: every engine off (snapshot saved)");
             return true;
@@ -123,6 +150,7 @@ public sealed class AutoModeController
         {
             for (int i = 0; i < Wired.Length && i < snap.Length; i++)
                 Wired[i].Set(am, snap[i]);
+            _killEngaged = false;
             WriteGeneral(profile, general);
             _log?.Log(LogSeverity.Info, LogCategory, "Auto-All: restored snapshot");
         }
