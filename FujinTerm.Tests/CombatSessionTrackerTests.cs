@@ -201,6 +201,21 @@ public sealed class CombatSessionTrackerTests
         Assert.Equal(100d / 3d, s.DodgePercent, 3);
     }
 
+    [Fact]
+    public void AvoidPercent_FoldsDodgeAndMissTogether()
+    {
+        using Harness h = new();
+        h.Feed("The giant rat bites you for 3 damage!");          // mob hit
+        h.Feed("The giant rat swings at you");                    // plain miss
+        h.Feed("The kobold thief lunges at you, but you dodge!"); // dodge
+
+        CombatSessionStats s = h.Stats;
+        // Two of the three incoming attacks didn't land (one miss + one dodge),
+        // so the combined defensive "avoided" rate is 2/3.
+        Assert.Equal(2, s.AvoidedAttacks);
+        Assert.Equal(200d / 3d, s.AvoidPercent, 3);
+    }
+
     // ----- per-round damage (RoundComplete) ---------------------------
 
     [Fact]

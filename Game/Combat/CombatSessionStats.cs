@@ -75,6 +75,15 @@ public readonly record struct CombatSessionStats(
     /// <summary>Fraction of incoming attacks we dodged, 0–100.</summary>
     public double DodgePercent => Pct(Dodges, IncomingAttacks);
 
+    /// <summary>Incoming attacks that didn't connect — the mob whiffed or we
+    /// dodged. The Session Stats panel folds dodge and miss into one defensive
+    /// "avoided" readout, since both mean the blow never landed.</summary>
+    public int AvoidedAttacks => MobMisses + Dodges;
+
+    /// <summary>Fraction of incoming attacks we avoided (mob missed or we
+    /// dodged), 0–100 — the combined dodge-and-miss defensive rate.</summary>
+    public double AvoidPercent => Pct(AvoidedAttacks, IncomingAttacks);
+
     /// <summary>Mean damage we dealt per round that did damage.</summary>
     public double RoundAvgDamage => Avg(RoundTotalDamage, RoundsWithDamage);
 

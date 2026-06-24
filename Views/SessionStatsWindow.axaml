@@ -37,6 +37,20 @@
             <Setter Property="FontSize" Value="10"/>
             <Setter Property="Margin" Value="0,4,0,2"/>
         </Style>
+        <!-- Tiny column header for the combat table. -->
+        <Style Selector="TextBlock.colhdr">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontSize" Value="9"/>
+            <Setter Property="VerticalAlignment" Value="Bottom"/>
+        </Style>
+        <!-- Right-aligned numeric value (rate column). -->
+        <Style Selector="TextBlock.valr">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgBrush}"/>
+            <Setter Property="FontFamily" Value="{StaticResource FontMono}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="HorizontalAlignment" Value="Right"/>
+        </Style>
         <Style Selector="Expander">
             <Setter Property="Margin" Value="0,0,0,2"/>
         </Style>
@@ -80,52 +94,65 @@
                                    Foreground="{StaticResource ChromeFgBrush}"
                                    FontSize="12"/>
                     </Expander.Header>
-                    <StackPanel Spacing="2" Margin="4,2">
-                        <TextBlock Classes="sub" Text="Accuracy"/>
+                    <StackPanel Spacing="1" Margin="4,2">
+                        <!-- Column headers (shared widths align every data row). -->
+                        <Grid ColumnDefinitions="70,72,46,*">
+                            <TextBlock Grid.Column="0" Classes="sub" Text="Offense" Margin="0,0,0,0"/>
+                            <TextBlock Grid.Column="1" Classes="colhdr" Text="min–max"/>
+                            <TextBlock Grid.Column="2" Classes="colhdr" Text="avg"/>
+                            <TextBlock Grid.Column="3" Classes="colhdr" Text="rate" HorizontalAlignment="Right"/>
+                        </Grid>
 
-                        <Grid ColumnDefinitions="64,46,*,Auto">
+                        <Grid ColumnDefinitions="70,72,46,*">
                             <TextBlock Grid.Column="0" Classes="lbl" Text="Hit"/>
-                            <TextBlock Grid.Column="1" Classes="val" Text="{Binding Combat.HitPercent, StringFormat='{}{0:F0}%'}"/>
-                            <TextBlock Grid.Column="2" Classes="dim" Text="{Binding PhysicalRangeText}"/>
-                            <TextBlock Grid.Column="3" Classes="dim" Text="{Binding Combat.PhysicalAvgDamage, StringFormat='{}avg {0:F0}'}"/>
+                            <TextBlock Grid.Column="1" Classes="dim" Text="{Binding PhysicalRangeText}"/>
+                            <TextBlock Grid.Column="2" Classes="dim" Text="{Binding Combat.PhysicalAvgDamage, StringFormat='{}{0:F0}'}"/>
+                            <TextBlock Grid.Column="3" Classes="valr" Text="{Binding Combat.HitPercent, StringFormat='{}{0:F0}%'}"/>
                         </Grid>
-                        <Grid ColumnDefinitions="64,46,*,Auto">
+                        <Grid ColumnDefinitions="70,72,46,*">
                             <TextBlock Grid.Column="0" Classes="lbl" Text="Miss"/>
-                            <TextBlock Grid.Column="1" Classes="val" Text="{Binding Combat.MissPercent, StringFormat='{}{0:F0}%'}"/>
+                            <TextBlock Grid.Column="3" Classes="valr" Text="{Binding Combat.MissPercent, StringFormat='{}{0:F0}%'}"/>
                         </Grid>
-                        <Grid ColumnDefinitions="64,46,*,Auto">
+                        <Grid ColumnDefinitions="70,72,46,*">
                             <TextBlock Grid.Column="0" Classes="lbl" Text="Crit"/>
-                            <TextBlock Grid.Column="1" Classes="val" Text="{Binding Combat.CritPercent, StringFormat='{}{0:F0}%'}"/>
+                            <TextBlock Grid.Column="3" Classes="valr" Text="{Binding Combat.CritPercent, StringFormat='{}{0:F0}%'}"/>
                         </Grid>
-                        <Grid ColumnDefinitions="64,46,*,Auto">
+                        <Grid ColumnDefinitions="70,72,46,*">
                             <TextBlock Grid.Column="0" Classes="lbl" Text="Backstab"/>
-                            <TextBlock Grid.Column="1" Classes="val" Text="{Binding Combat.Backstabs}"/>
-                            <TextBlock Grid.Column="2" Classes="dim" Text="{Binding BackstabRangeText}"/>
-                            <TextBlock Grid.Column="3" Classes="dim" Text="{Binding Combat.BackstabAvgDamage, StringFormat='{}avg {0:F0}'}"/>
+                            <TextBlock Grid.Column="1" Classes="dim" Text="{Binding BackstabRangeText}"/>
+                            <TextBlock Grid.Column="2" Classes="dim" Text="{Binding Combat.BackstabAvgDamage, StringFormat='{}{0:F0}'}"/>
+                            <TextBlock Grid.Column="3" Classes="valr" Text="{Binding Combat.Backstabs, StringFormat='{}×{0}'}"/>
                         </Grid>
-                        <Grid ColumnDefinitions="64,46,*,Auto">
+                        <Grid ColumnDefinitions="70,72,46,*">
                             <TextBlock Grid.Column="0" Classes="lbl" Text="Round"/>
-                            <TextBlock Grid.Column="2" Classes="dim" Text="{Binding RoundRangeText}"/>
-                            <TextBlock Grid.Column="3" Classes="dim" Text="{Binding Combat.RoundAvgDamage, StringFormat='{}avg {0:F0}'}"/>
+                            <TextBlock Grid.Column="1" Classes="dim" Text="{Binding RoundRangeText}"/>
+                            <TextBlock Grid.Column="2" Classes="dim" Text="{Binding Combat.RoundAvgDamage, StringFormat='{}{0:F0}'}"/>
+                            <TextBlock Grid.Column="3" Classes="valr" Text="{Binding Combat.RoundsWithDamage, StringFormat='{}×{0}'}"/>
                         </Grid>
 
                         <!-- Proc / spell rows — surface only once recognised. -->
-                        <Grid ColumnDefinitions="64,46,*,Auto" IsVisible="{Binding HasProcs}">
+                        <Grid ColumnDefinitions="70,72,46,*" IsVisible="{Binding HasProcs}">
                             <TextBlock Grid.Column="0" Classes="lbl" Text="Proc"/>
-                            <TextBlock Grid.Column="1" Classes="val" Text="{Binding Combat.ProcHits}"/>
-                            <TextBlock Grid.Column="2" Classes="dim" Text="{Binding ProcRangeText}"/>
-                            <TextBlock Grid.Column="3" Classes="dim" Text="{Binding Combat.ProcAvgDamage, StringFormat='{}avg {0:F0}'}"/>
+                            <TextBlock Grid.Column="1" Classes="dim" Text="{Binding ProcRangeText}"/>
+                            <TextBlock Grid.Column="2" Classes="dim" Text="{Binding Combat.ProcAvgDamage, StringFormat='{}{0:F0}'}"/>
+                            <TextBlock Grid.Column="3" Classes="valr" Text="{Binding Combat.ProcHits, StringFormat='{}×{0}'}"/>
                         </Grid>
-                        <Grid ColumnDefinitions="64,46,*,Auto" IsVisible="{Binding HasSpells}">
+                        <Grid ColumnDefinitions="70,72,46,*" IsVisible="{Binding HasSpells}">
                             <TextBlock Grid.Column="0" Classes="lbl" Text="Spell"/>
-                            <TextBlock Grid.Column="1" Classes="val" Text="{Binding Combat.SpellHits}"/>
-                            <TextBlock Grid.Column="2" Classes="dim" Text="{Binding SpellRangeText}"/>
-                            <TextBlock Grid.Column="3" Classes="dim" Text="{Binding Combat.SpellAvgDamage, StringFormat='{}avg {0:F0}'}"/>
+                            <TextBlock Grid.Column="1" Classes="dim" Text="{Binding SpellRangeText}"/>
+                            <TextBlock Grid.Column="2" Classes="dim" Text="{Binding Combat.SpellAvgDamage, StringFormat='{}{0:F0}'}"/>
+                            <TextBlock Grid.Column="3" Classes="valr" Text="{Binding Combat.SpellHits, StringFormat='{}×{0}'}"/>
                         </Grid>
 
-                        <Grid ColumnDefinitions="64,46,*,Auto" Margin="0,2,0,0">
-                            <TextBlock Grid.Column="0" Classes="lbl" Text="Dodge"/>
-                            <TextBlock Grid.Column="1" Classes="val" Text="{Binding Combat.DodgePercent, StringFormat='{}{0:F0}%'}"/>
+                        <!-- Defense — dodge and miss folded into one "avoided" rate. -->
+                        <Grid ColumnDefinitions="70,72,46,*" Margin="0,4,0,0">
+                            <TextBlock Grid.Column="0" Classes="sub" Text="Defense" Margin="0,0,0,0"/>
+                            <TextBlock Grid.Column="3" Classes="colhdr" Text="rate" HorizontalAlignment="Right"/>
+                        </Grid>
+                        <Grid ColumnDefinitions="70,72,46,*">
+                            <TextBlock Grid.Column="0" Classes="lbl" Text="Dodge/Miss"
+                                       ToolTip.Tip="Incoming attacks avoided — the mob missed or we dodged."/>
+                            <TextBlock Grid.Column="3" Classes="valr" Text="{Binding Combat.AvoidPercent, StringFormat='{}{0:F0}%'}"/>
                         </Grid>
                     </StackPanel>
                 </Expander>
