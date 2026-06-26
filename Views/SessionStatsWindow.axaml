@@ -75,6 +75,17 @@
         <Style Selector="TextBlock.draghandle">
             <Setter Property="Cursor" Value="SizeAll"/>
         </Style>
+        <!-- Uniform panel width: every graph and section shares one capped,
+             left-anchored width so they line up and none stretches when the
+             window widens. -->
+        <Style Selector="StackPanel.panel">
+            <Setter Property="HorizontalAlignment" Value="Left"/>
+            <Setter Property="MaxWidth" Value="248"/>
+        </Style>
+        <Style Selector="Expander.panel">
+            <Setter Property="HorizontalAlignment" Value="Left"/>
+            <Setter Property="MaxWidth" Value="248"/>
+        </Style>
     </Window.Styles>
 
     <!-- Single scrollable column of reorderable panels: the two rate graphs and
@@ -106,11 +117,7 @@
             </StackPanel.ContextMenu>
 
             <!-- ===== Kills/hour graph ===== -->
-            <!-- Graphs are left-anchored with a capped width so widening the
-                 window doesn't stretch the sparkline; the stat sections below
-                 still fill the full width. -->
-            <StackPanel Tag="KillsGraph" Spacing="3"
-                        HorizontalAlignment="Left" MaxWidth="248"
+            <StackPanel Tag="KillsGraph" Classes="panel" Spacing="3"
                         IsVisible="{Binding IsKillsGraphVisible}">
                 <Grid ColumnDefinitions="*,Auto">
                     <TextBlock Grid.Column="0" Classes="lbl draghandle" Text="Kills/hour"/>
@@ -138,8 +145,7 @@
             </StackPanel>
 
             <!-- ===== Exp/hour graph ===== -->
-            <StackPanel Tag="ExpGraph" Spacing="3"
-                        HorizontalAlignment="Left" MaxWidth="248"
+            <StackPanel Tag="ExpGraph" Classes="panel" Spacing="3"
                         IsVisible="{Binding IsExpGraphVisible}">
                 <Grid ColumnDefinitions="*,Auto">
                     <TextBlock Grid.Column="0" Classes="lbl draghandle" Text="Exp/hour"/>
@@ -167,7 +173,7 @@
             </StackPanel>
 
             <!-- ===== Player Statistics ===== -->
-            <Expander Tag="PlayerStatistics" IsExpanded="True"
+            <Expander Tag="PlayerStatistics" Classes="panel" IsExpanded="True"
                       IsVisible="{Binding IsPlayerStatsVisible}">
                 <Expander.Header>
                     <TextBlock Classes="draghandle" Text="Player Statistics"
@@ -250,7 +256,7 @@
             </Expander>
 
             <!-- ===== Time Analysis ===== -->
-            <Expander Tag="TimeAnalysis" IsExpanded="True"
+            <Expander Tag="TimeAnalysis" Classes="panel" IsExpanded="True"
                       IsVisible="{Binding IsTimeAnalysisVisible}">
                 <Expander.Header>
                     <TextBlock Classes="draghandle" Text="Time Analysis"
@@ -313,7 +319,7 @@
             </Expander>
 
             <!-- ===== Session Statistics ===== -->
-            <Expander Tag="SessionStatistics" IsExpanded="True"
+            <Expander Tag="SessionStatistics" Classes="panel" IsExpanded="True"
                       IsVisible="{Binding IsSessionStatsVisible}">
                 <Expander.Header>
                     <TextBlock Classes="draghandle" Text="Session Statistics"
