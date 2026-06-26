@@ -67,29 +67,59 @@
             <Setter Property="HorizontalAlignment" Value="Right"/>
         </Style>
         <Style Selector="Expander">
-            <Setter Property="Margin" Value="0,0,0,2"/>
+            <Setter Property="Margin" Value="0"/>
+        </Style>
+        <!-- Drag handle down the left edge of every reorderable panel. The
+             grip is the ONLY drag trigger (see SessionStatsWindow.axaml.cs);
+             clicking elsewhere on a panel keeps its native behaviour
+             (expander toggle, button, text selection). -->
+        <Style Selector="Border.grip">
+            <Setter Property="Width" Value="16"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Cursor" Value="SizeAll"/>
+            <Setter Property="VerticalAlignment" Value="Stretch"/>
+        </Style>
+        <Style Selector="Border.grip > TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+            <Setter Property="VerticalAlignment" Value="Top"/>
+            <Setter Property="Margin" Value="0,6,0,0"/>
         </Style>
     </Window.Styles>
 
-    <DockPanel LastChildFill="True">
+    <!-- Single scrollable column of reorderable panels: the two rate graphs and
+         the three stat sections. Each panel carries a stable Tag id matching
+         SessionStatsLayoutStore.DefaultOrder; the code-behind reorders these
+         children by Tag on open and on drop, and the VM persists the order +
+         hidden set per character. Right-click anywhere → per-panel show/hide. -->
+    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                  Background="{StaticResource ChromeBgBrush}"
+                  Padding="8,6">
+        <StackPanel x:Name="PanelHost" Spacing="6">
+            <StackPanel.ContextMenu>
+                <ContextMenu>
+                    <MenuItem Header="Kills/hour graph" ToggleType="CheckBox"
+                              IsChecked="{Binding IsKillsGraphVisible, Mode=TwoWay}"/>
+                    <MenuItem Header="Exp/hour graph" ToggleType="CheckBox"
+                              IsChecked="{Binding IsExpGraphVisible, Mode=TwoWay}"/>
+                    <Separator/>
+                    <MenuItem Header="Player Statistics" ToggleType="CheckBox"
+                              IsChecked="{Binding IsPlayerStatsVisible, Mode=TwoWay}"/>
+                    <MenuItem Header="Time Analysis" ToggleType="CheckBox"
+                              IsChecked="{Binding IsTimeAnalysisVisible, Mode=TwoWay}"/>
+                    <MenuItem Header="Session Statistics" ToggleType="CheckBox"
+                              IsChecked="{Binding IsSessionStatsVisible, Mode=TwoWay}"/>
+                </ContextMenu>
+            </StackPanel.ContextMenu>
 
-        <!-- ============ Rate sparklines (header) ============ -->
-        <!-- Each chart carries a peak / floor y-axis (right column) so the
-             auto-scaled line can be read off against real values. -->
-        <Border DockPanel.Dock="Top"
-                Background="{StaticResource ChromeBgBrush}"
-                BorderBrush="{StaticResource ChromeBorderSoftBrush}"
-                BorderThickness="0,0,0,1"
-                Padding="10,6">
-            <StackPanel Spacing="6">
-
-                <!-- Kills/hour: toggle + session duration + chart. -->
-                <StackPanel Spacing="3">
+            <!-- ===== Kills/hour graph ===== -->
+            <Grid Tag="KillsGraph" ColumnDefinitions="Auto,*"
+                  IsVisible="{Binding IsKillsGraphVisible}">
+                <Border Grid.Column="0" Classes="grip"><TextBlock Text="&#x283F;"/></Border>
+                <StackPanel Grid.Column="1" Spacing="3">
                     <Grid ColumnDefinitions="*,Auto">
-                        <CheckBox Grid.Column="0" Content="Kills/hour"
-                                  IsChecked="{Binding ShowKillsGraph}"
-                                  Foreground="{StaticResource ChromeFgSecBrush}"
-                                  FontSize="11" Padding="4,0,0,0" MinHeight="0"/>
+                        <TextBlock Grid.Column="0" Classes="lbl" Text="Kills/hour"/>
                         <TextBlock Grid.Column="1" Classes="dim" Text="{Binding DurationText}"/>
                     </Grid>
                     <Border Background="{StaticResource ChromeBgSunkenBrush}"
@@ -97,8 +127,7 @@
                             BorderThickness="1"
                             CornerRadius="3"
                             Padding="4"
-                            Height="44"
-                            IsVisible="{Binding ShowKillsGraph}">
+                            Height="44">
                         <Grid ColumnDefinitions="*,34">
                             <controls:SparklineControl Grid.Column="0"
                                                        Samples="{Binding KillsPerHour}"
@@ -113,14 +142,15 @@
                         </Grid>
                     </Border>
                 </StackPanel>
+            </Grid>
 
-                <!-- Exp/hour: toggle + session duration + chart. -->
-                <StackPanel Spacing="3">
+            <!-- ===== Exp/hour graph ===== -->
+            <Grid Tag="ExpGraph" ColumnDefinitions="Auto,*"
+                  IsVisible="{Binding IsExpGraphVisible}">
+                <Border Grid.Column="0" Classes="grip"><TextBlock Text="&#x283F;"/></Border>
+                <StackPanel Grid.Column="1" Spacing="3">
                     <Grid ColumnDefinitions="*,Auto">
-                        <CheckBox Grid.Column="0" Content="Exp/hour"
-                                  IsChecked="{Binding ShowExpGraph}"
-                                  Foreground="{StaticResource ChromeFgSecBrush}"
-                                  FontSize="11" Padding="4,0,0,0" MinHeight="0"/>
+                        <TextBlock Grid.Column="0" Classes="lbl" Text="Exp/hour"/>
                         <TextBlock Grid.Column="1" Classes="dim" Text="{Binding DurationText}"/>
                     </Grid>
                     <Border Background="{StaticResource ChromeBgSunkenBrush}"
@@ -128,8 +158,7 @@
                             BorderThickness="1"
                             CornerRadius="3"
                             Padding="4"
-                            Height="44"
-                            IsVisible="{Binding ShowExpGraph}">
+                            Height="44">
                         <Grid ColumnDefinitions="*,34">
                             <controls:SparklineControl Grid.Column="0"
                                                        Samples="{Binding ExperiencePerHour}"
@@ -144,18 +173,13 @@
                         </Grid>
                     </Border>
                 </StackPanel>
+            </Grid>
 
-            </StackPanel>
-        </Border>
-
-        <!-- ============ Three collapsible sections ============ -->
-        <ScrollViewer VerticalScrollBarVisibility="Auto"
-                      Background="{StaticResource ChromeBgBrush}"
-                      Padding="8,6">
-            <StackPanel Spacing="2">
-
-                <!-- ===== Player Statistics ===== -->
-                <Expander IsExpanded="True">
+            <!-- ===== Player Statistics ===== -->
+            <Grid Tag="PlayerStatistics" ColumnDefinitions="Auto,*"
+                  IsVisible="{Binding IsPlayerStatsVisible}">
+                <Border Grid.Column="0" Classes="grip"><TextBlock Text="&#x283F;"/></Border>
+                <Expander Grid.Column="1" IsExpanded="True">
                     <Expander.Header>
                         <TextBlock Text="Player Statistics"
                                    Foreground="{StaticResource ChromeFgBrush}"
@@ -235,9 +259,13 @@
                         </Grid>
                     </StackPanel>
                 </Expander>
+            </Grid>
 
-                <!-- ===== Time Analysis ===== -->
-                <Expander IsExpanded="True">
+            <!-- ===== Time Analysis ===== -->
+            <Grid Tag="TimeAnalysis" ColumnDefinitions="Auto,*"
+                  IsVisible="{Binding IsTimeAnalysisVisible}">
+                <Border Grid.Column="0" Classes="grip"><TextBlock Text="&#x283F;"/></Border>
+                <Expander Grid.Column="1" IsExpanded="True">
                     <Expander.Header>
                         <TextBlock Text="Time Analysis"
                                    Foreground="{StaticResource ChromeFgBrush}"
@@ -297,9 +325,13 @@
                         </Grid>
                     </StackPanel>
                 </Expander>
+            </Grid>
 
-                <!-- ===== Session Statistics ===== -->
-                <Expander IsExpanded="True">
+            <!-- ===== Session Statistics ===== -->
+            <Grid Tag="SessionStatistics" ColumnDefinitions="Auto,*"
+                  IsVisible="{Binding IsSessionStatsVisible}">
+                <Border Grid.Column="0" Classes="grip"><TextBlock Text="&#x283F;"/></Border>
+                <Expander Grid.Column="1" IsExpanded="True">
                     <Expander.Header>
                         <TextBlock Text="Session Statistics"
                                    Foreground="{StaticResource ChromeFgBrush}"
@@ -342,9 +374,8 @@
                                 ToolTip.Tip="Wipe every session counter and restart the clocks. Counters also reset automatically on connect."/>
                     </StackPanel>
                 </Expander>
+            </Grid>
 
-            </StackPanel>
-        </ScrollViewer>
-
-    </DockPanel>
+        </StackPanel>
+    </ScrollViewer>
 </Window>

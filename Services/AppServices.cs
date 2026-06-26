@@ -85,6 +85,15 @@ public sealed class AppServices
     public SplitterLayoutStore SplitterLayouts { get; }
 
     /// <summary>
+    /// Per-character memory of the Session Stats window's panel order +
+    /// hidden set. The window's VM reads it on open and pushes drag-reorders /
+    /// visibility toggles back through it; it hydrates from
+    /// <see cref="CharacterProfile.SessionStatsLayout"/> on profile load and
+    /// snapshots back on save.
+    /// </summary>
+    public SessionStatsLayoutStore SessionStatsLayout { get; }
+
+    /// <summary>
     /// Ring buffer of recent cleaned (post-IAC) bytes from the live Telnet
     /// connection. Feeds the Wire Inspector window and any future
     /// "what did the server just say" diagnostic.
@@ -1346,6 +1355,7 @@ public sealed class AppServices
         Panels = new FloatingPanelHost();
         WindowLayouts = new WindowLayoutStore(Profile);
         SplitterLayouts = new SplitterLayoutStore(Profile);
+        SessionStatsLayout = new SessionStatsLayoutStore(Profile);
         Wire = new WireBuffer();
         Router = new MessageRouter();
 

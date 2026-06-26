@@ -2,6 +2,7 @@ using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FujinTerm.Game.Combat;
+using FujinTerm.Services;
 
 namespace FujinTerm.ViewModels;
 
@@ -33,6 +34,7 @@ public sealed partial class SessionStatsViewModel : ObservableObject, IDisposabl
     private readonly CombatSessionTracker _combatTracker;
     private readonly TimeAnalysisTracker _timeTracker;
     private readonly SessionActivityTracker _activityTracker;
+    private readonly SessionStatsLayoutStore _layoutStore;
 
     /// <summary>Drives the live wall-clock ticking of durations / rates: the
     /// time-derived figures advance with real time even when no tracker input
@@ -68,25 +70,52 @@ public sealed partial class SessionStatsViewModel : ObservableObject, IDisposabl
     [NotifyPropertyChangedFor(nameof(ExpPeakText), nameof(ExpFloorText))]
     private IReadOnlyList<double> _experiencePerHour = Array.Empty<double>();
 
-    /// <summary>Footer-graph visibility toggles — the kills/hour and exp/hour
-    /// sparklines can each be shown or hidden independently.</summary>
+    /// <summary>Per-panel visibility toggles — each of the five panels (the two
+    /// rate graphs and the three stat sections) can be shown or hidden via the
+    /// window's context menu. Each change is written through to the per-character
+    /// layout via <see cref="PersistLayout"/>; <see cref="_loadingLayout"/> gates
+    /// the write so applying a saved layout doesn't echo straight back to disk.</summary>
     [ObservableProperty]
-    private bool _showKillsGraph = true;
+    private bool _isKillsGraphVisible = true;
 
     [ObservableProperty]
-    private bool _showExpGraph = true;
+    private bool _isExpGraphVisible = true;
+
+    [ObservableProperty]
+    private bool _isPlayerStatsVisible = true;
+
+    [ObservableProperty]
+    private bool _isTimeAnalysisVisible = true;
+
+    [ObservableProperty]
+    private bool _isSessionStatsVisible = true;
+
+    /// <summary>Panel ids in their resolved top-to-bottom order — the window reads
+    /// this on open to reorder its panel host, and pushes drag-reorders back via
+    /// <see cref="SaveOrder"/>.</summary>
+    private List<string> _panelOrder = new();
+
+    /// <summary>Suppresses <see cref="PersistLayout"/> while
+    /// <see cref="LoadLayout"/> seeds the visibility toggles from a saved layout,
+    /// so hydration doesn't immediately write the same values back.</summary>
+    private bool _loadingLayout;
 
     public SessionStatsViewModel(
         CombatSessionTracker combat,
         TimeAnalysisTracker time,
-        SessionActivityTracker activity)
+        SessionActivityTracker activity,
+        SessionStatsLayoutStore layout)
     {
         ArgumentNullException.ThrowIfNull(combat);
         ArgumentNullException.ThrowIfNull(time);
         ArgumentNullException.ThrowIfNull(activity);
+        ArgumentNullException.ThrowIfNull(layout);
         _combatTracker = combat;
         _timeTracker = time;
         _activityTracker = activity;
+        _layoutStore = layout;
+
+        LoadLayout();
 
         _combatTracker.Changed += OnChanged;
         _timeTracker.Changed += OnChanged;
@@ -98,6 +127,62 @@ public sealed partial class SessionStatsViewModel : ObservableObject, IDisposabl
 
         Refresh();
     }
+
+    // ----- Panel layout (order + visibility) ---------------------------
+
+    /// <summary>The resolved panel order the window applies on open.</summary>
+    public IReadOnlyList<string> PanelOrder => _panelOrder;
+
+    /// <summary>Hydrate the order + visibility toggles from the per-character
+    /// layout store. Guarded so the toggle assignments don't write straight back.</summary>
+    private void LoadLayout()
+    {
+        _loadingLayout = true;
+        IReadOnlyList<(string Id, bool Visible)> resolved = _layoutStore.Resolve();
+        _panelOrder = resolved.Select(p => p.Id).ToList();
+        foreach ((string id, bool visible) in resolved)
+            SetVisible(id, visible);
+        _loadingLayout = false;
+    }
+
+    /// <summary>Push a new panel order (from a drag-reorder) through to the store,
+    /// keeping the current hidden set.</summary>
+    public void SaveOrder(IEnumerable<string> ids)
+    {
+        _panelOrder = ids.ToList();
+        PersistLayout();
+    }
+
+    /// <summary>Snapshot the live order + hidden set into the per-character store.</summary>
+    private void PersistLayout()
+    {
+        if (_loadingLayout) return;
+        List<string> hidden = new();
+        if (!IsKillsGraphVisible)   hidden.Add("KillsGraph");
+        if (!IsExpGraphVisible)     hidden.Add("ExpGraph");
+        if (!IsPlayerStatsVisible)  hidden.Add("PlayerStatistics");
+        if (!IsTimeAnalysisVisible) hidden.Add("TimeAnalysis");
+        if (!IsSessionStatsVisible) hidden.Add("SessionStatistics");
+        _layoutStore.Update(_panelOrder, hidden);
+    }
+
+    private void SetVisible(string id, bool visible)
+    {
+        switch (id)
+        {
+            case "KillsGraph":        IsKillsGraphVisible = visible; break;
+            case "ExpGraph":          IsExpGraphVisible = visible; break;
+            case "PlayerStatistics":  IsPlayerStatsVisible = visible; break;
+            case "TimeAnalysis":      IsTimeAnalysisVisible = visible; break;
+            case "SessionStatistics": IsSessionStatsVisible = visible; break;
+        }
+    }
+
+    partial void OnIsKillsGraphVisibleChanged(bool value) => PersistLayout();
+    partial void OnIsExpGraphVisibleChanged(bool value) => PersistLayout();
+    partial void OnIsPlayerStatsVisibleChanged(bool value) => PersistLayout();
+    partial void OnIsTimeAnalysisVisibleChanged(bool value) => PersistLayout();
+    partial void OnIsSessionStatsVisibleChanged(bool value) => PersistLayout();
 
     // ----- Time Analysis (durations) -----------------------------------
 

@@ -3264,7 +3264,8 @@ public partial class MainWindowViewModel : ObservableObject
             DataContext = new SessionStatsViewModel(
                 AppServices.Current.CombatSession,
                 AppServices.Current.TimeAnalysis,
-                AppServices.Current.SessionActivity),
+                AppServices.Current.SessionActivity,
+                AppServices.Current.SessionStatsLayout),
         };
         window.Closed += (_, _) => _sessionStats = null;
         _sessionStats = window;
