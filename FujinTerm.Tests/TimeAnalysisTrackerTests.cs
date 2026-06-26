@@ -18,10 +18,16 @@ public sealed class TimeAnalysisTrackerTests
         public void Advance(double seconds) => Now += TimeSpan.FromSeconds(seconds);
     }
 
+    // Most tests pin activity attribution, not the in-game gate, so Make arms
+    // the tracker at t0 (NoteInGame) — equivalent to "already in-game". The gate
+    // itself is exercised by the dedicated in-game tests below, which construct
+    // the tracker directly so they start disarmed.
     private static (TimeAnalysisTracker, Clock) Make()
     {
         Clock c = new();
-        return (new TimeAnalysisTracker(() => c.Now), c);
+        TimeAnalysisTracker t = new(() => c.Now);
+        t.NoteInGame();
+        return (t, c);
     }
 
     // Full-pool vitals so plain NotePlayerState calls don't accidentally read as
@@ -246,6 +252,79 @@ public sealed class TimeAnalysisTrackerTests
         TimeAnalysisStats s = t.Snapshot();
         Assert.Equal(50d, s.AttackingPercent, 3);
         Assert.Equal(50d, s.WaitingPercent, 3);
+    }
+
+    // ----- in-game gate ------------------------------------------------
+
+    [Fact]
+    public void BeforeInGame_NothingAccrues()
+    {
+        Clock c = new();
+        TimeAnalysisTracker t = new(() => c.Now); // constructed disarmed (no NoteInGame)
+        Combat(t, true);
+        c.Advance(30); // 30s at the BBS menu / login
+
+        TimeAnalysisStats s = t.Snapshot();
+        Assert.Equal(TimeSpan.Zero, s.TimeOn);
+        Assert.Equal(TimeSpan.Zero, s.Attacking);
+        Assert.Equal(TimeSpan.Zero, s.Waiting);
+    }
+
+    [Fact]
+    public void NoteInGame_StartsCounting_ExcludingTheMenuSpan()
+    {
+        Clock c = new();
+        TimeAnalysisTracker t = new(() => c.Now);
+        c.Advance(30);     // menu time — must not count
+        t.NoteInGame();    // enter the game
+        c.Advance(10);     // 10s in-game, idle
+
+        TimeAnalysisStats s = t.Snapshot();
+        Assert.Equal(TimeSpan.FromSeconds(10), s.TimeOn);
+        Assert.Equal(TimeSpan.FromSeconds(10), s.Waiting);
+    }
+
+    [Fact]
+    public void NoteInGame_IsIdempotent_LaterPromptsDontReanchor()
+    {
+        Clock c = new();
+        TimeAnalysisTracker t = new(() => c.Now);
+        t.NoteInGame();
+        c.Advance(5);
+        t.NoteInGame(); // a later prompt — must not restart the clock
+        c.Advance(5);
+
+        Assert.Equal(TimeSpan.FromSeconds(10), t.Snapshot().TimeOn);
+    }
+
+    [Fact]
+    public void Suspend_PausesAccrual_KeepingTotals_AndNoteInGameResumes()
+    {
+        Clock c = new();
+        TimeAnalysisTracker t = new(() => c.Now);
+        t.NoteInGame();
+        c.Advance(5);   // 5s in-game
+        t.Suspend();    // disconnect
+        c.Advance(60);  // a minute offline — excluded
+        t.NoteInGame(); // reconnect, back in-game
+        c.Advance(3);   // 3s more in-game
+
+        TimeAnalysisStats s = t.Snapshot();
+        Assert.Equal(TimeSpan.FromSeconds(8), s.TimeOn); // 5 + 3, the offline minute dropped
+        Assert.Equal(TimeSpan.FromSeconds(8), s.Waiting);
+    }
+
+    [Fact]
+    public void Reset_KeepsCountingWhenArmed()
+    {
+        // The @reset / window-button path: a reset taken mid-session re-anchors
+        // but stays armed, so accrual resumes immediately without a fresh prompt.
+        (TimeAnalysisTracker t, Clock c) = Make();
+        c.Advance(10);
+        t.Reset();
+        c.Advance(4);
+
+        Assert.Equal(TimeSpan.FromSeconds(4), t.Snapshot().TimeOn);
     }
 
     // ----- reset / change ----------------------------------------------

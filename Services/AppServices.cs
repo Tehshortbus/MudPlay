@@ -2300,7 +2300,14 @@ public sealed class AppServices
             if (t.NewRoom is not null && !ReferenceEquals(t.NewRoom, t.PreviousRoom))
                 TimeAnalysis.NoteRoomChanged();
         };
-        Profile.ProfileLoaded += _ => TimeAnalysis.Reset();
+        // In-game gate: the first prompt of the session arms accrual (idempotent
+        // — subsequent prompts no-op), so BBS-menu / login time never counts.
+        // Same WirePromptScanner the EventScheduler uses for its in-game latch.
+        PromptScanner.PromptObserved += _ => TimeAnalysis.NoteInGame();
+        // A fresh character starts disarmed: zero the counters, then Suspend so
+        // accrual waits for that character's first in-game prompt. (Disconnect
+        // disarms via MainWindowVM; @reset / the window button keep counting.)
+        Profile.ProfileLoaded += _ => { TimeAnalysis.Reset(); TimeAnalysis.Suspend(); };
 
         // Phase 11 — SessionActivityTracker. Counts kills + experience and keeps
         // the rolling kill history for the kills/hour sparkline. Like the other

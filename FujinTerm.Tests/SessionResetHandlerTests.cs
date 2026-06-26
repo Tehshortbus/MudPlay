@@ -82,12 +82,13 @@ public sealed class SessionResetHandlerTests
     {
         using Setup s = new();
         SeedPlayer(s.Players, "Leader", PlayerRemoteControls.AlterSettings);
+        s.Time.NoteInGame(); // in-game, so Time Analysis is accruing
         s.Clock.Advance(30); // 30 min of session time accrues
 
         s.Engine.DispatchForTests(Telepath("Leader", "@reset"));
         s.Clock.Advance(5);
 
-        // Clock restarted at @reset → only the post-reset 5 min remains.
+        // @reset re-anchors but stays armed → only the post-reset 5 min remains.
         Assert.Equal(TimeSpan.FromMinutes(5), s.Time.Snapshot().TimeOn);
     }
 

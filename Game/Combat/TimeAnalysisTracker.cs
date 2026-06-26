@@ -1,9 +1,9 @@
 namespace FujinTerm.Game.Combat;
 
 /// <summary>
-/// Phase 11 — divides the session's wall-clock time across the player's
-/// activities for the Time Analysis panel (a reproduction of the MegaMUD Time
-/// Analysis screen): how long spent <b>waiting</b>, <b>moving</b>,
+/// Phase 11 — divides the session's <i>in-game</i> wall-clock time across the
+/// player's activities for the Time Analysis panel (a reproduction of the
+/// MegaMUD Time Analysis screen): how long spent <b>waiting</b>, <b>moving</b>,
 /// <b>attacking</b>, <b>resting for HP</b>, and <b>resting for mana</b>, plus
 /// the overlay time spent <b>blinded</b>, <b>poisoned</b>, <b>diseased</b>,
 /// <b>confused</b>, and <b>held</b> (movement-prevented). Produces a
@@ -40,6 +40,13 @@ namespace FujinTerm.Game.Combat;
 /// counters are lock-free, matching <see cref="CombatSessionTracker"/>. The
 /// injectable clock keeps the time arithmetic unit-testable.
 /// </para>
+/// <para>
+/// The tracker is gated on being <i>in-game</i>: it stays disarmed (accruing
+/// nothing) until <see cref="NoteInGame"/> — wired to the first in-game prompt
+/// of the session — arms it, and <see cref="Suspend"/> re-disarms it on
+/// disconnect / character switch. So BBS-menu and offline time never count, and
+/// <c>TimeOn</c> equals the activity partition's sum rather than raw wall-clock.
+/// </para>
 /// </remarks>
 public sealed class TimeAnalysisTracker
 {
@@ -58,8 +65,12 @@ public sealed class TimeAnalysisTracker
 
     private readonly Func<DateTimeOffset> _clock;
 
-    private DateTimeOffset _sessionStart;
     private DateTimeOffset _lastSettle;
+
+    // Gate: time accrues only while in-game. Disarmed until the first in-game
+    // prompt of the session (NoteInGame) and re-disarmed on disconnect /
+    // character switch (Suspend), so BBS-menu and offline spans never count.
+    private bool _started;
 
     // Latest activity inputs (cached so a settle can classify the slice that
     // just ended before the new value takes effect for the next slice).
@@ -87,7 +98,6 @@ public sealed class TimeAnalysisTracker
     {
         _clock = clock ?? (static () => DateTimeOffset.Now);
         DateTimeOffset now = _clock();
-        _sessionStart = now;
         _lastSettle = now;
         _position = PlayerPosition.Standing;
         for (int i = 0; i < AfflictionCount; i++) _afflictionSince[i] = now;
@@ -143,6 +153,32 @@ public sealed class TimeAnalysisTracker
         Changed?.Invoke();
     }
 
+    /// <summary>Arm the tracker: the player reached the in-game prompt, so begin
+    /// attributing wall-clock time. Idempotent within a session — only the first
+    /// call after construction / <see cref="Suspend"/> takes effect, so it's safe
+    /// to wire to every prompt observation. Re-anchors the settle cursor to now,
+    /// excluding the preceding BBS-menu / offline span.</summary>
+    public void NoteInGame()
+    {
+        if (_started) return;
+        DateTimeOffset now = _clock();
+        _started = true;
+        _lastSettle = now;
+        for (int i = 0; i < AfflictionCount; i++) _afflictionSince[i] = now;
+        Changed?.Invoke();
+    }
+
+    /// <summary>Disarm the tracker, freezing the tallies where they stand —
+    /// called on disconnect and at the character-switch boundary. Accrued totals
+    /// survive (a play session spans reconnects); accrual simply pauses until the
+    /// next in-game prompt re-arms it via <see cref="NoteInGame"/>.</summary>
+    public void Suspend()
+    {
+        Settle(_clock());   // capture time up to the pause point (no-op if already disarmed)
+        _started = false;
+        Changed?.Invoke();
+    }
+
     /// <summary>Point-in-time copy of the session's time breakdown, settled to
     /// the current instant so the in-progress slice is included.</summary>
     public TimeAnalysisStats Snapshot()
@@ -150,7 +186,11 @@ public sealed class TimeAnalysisTracker
         DateTimeOffset now = _clock();
         Settle(now);
         return new TimeAnalysisStats(
-            TimeOn:    now - _sessionStart,
+            // In-game wall-clock is the activity partition's sum: time accrues
+            // only while armed, so the partition already excludes BBS-menu and
+            // offline spans. Deriving TimeOn from it keeps the buckets summing to
+            // it by construction.
+            TimeOn:    _waiting + _moving + _attacking + _restingHp + _restingMa,
             Waiting:   _waiting,
             Moving:    _moving,
             Attacking: _attacking,
@@ -163,13 +203,14 @@ public sealed class TimeAnalysisTracker
             Held:      _afflictionTotal[(int)Affliction.Held]);
     }
 
-    /// <summary>Zero every counter and restart the session clock — called on the
-    /// connect / character-switch boundary, matching the other Phase 11
-    /// trackers.</summary>
+    /// <summary>Zero every counter and re-anchor the settle cursor — the
+    /// <c>@reset</c> / "Reset session" wipe, matching the other Phase 11
+    /// trackers. Leaves the in-game arm state untouched, so a reset taken
+    /// mid-session keeps counting from now; <see cref="Suspend"/> is the path
+    /// that re-disarms for a fresh character / connection.</summary>
     public void Reset()
     {
         DateTimeOffset now = _clock();
-        _sessionStart = now;
         _lastSettle = now;
         _waiting = _moving = _attacking = _restingHp = _restingMa = TimeSpan.Zero;
         _inCombat = false;
@@ -191,6 +232,7 @@ public sealed class TimeAnalysisTracker
     // by the passage of time alone.
     private void Settle(DateTimeOffset now)
     {
+        if (!_started) return;   // accrue only while in-game (see NoteInGame)
         if (now <= _lastSettle) return;
 
         DateTimeOffset cursor = _lastSettle;

@@ -2112,6 +2112,10 @@ public partial class MainWindowViewModel : ObservableObject
                 // Phase 8 PR 8.2 — stop the event scheduler's timers
                 // and latch the Re-log flag (only if we were in-game).
                 AppServices.Current.EventScheduler.NotifyDisconnected();
+                // Phase 11 — pause Time Analysis accrual: we're no longer
+                // in-game, so the offline span doesn't count. Totals freeze
+                // and resume on the next in-game prompt after reconnect.
+                AppServices.Current.TimeAnalysis.Suspend();
 
                 // Drop per-session condition + buff-duration state so a
                 // fresh login starts clean: any non-auto-clearing
