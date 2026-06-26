@@ -5,10 +5,10 @@ namespace FujinTerm.Tests;
 
 /// <summary>
 /// Phase 11 — <see cref="SessionActivityTracker"/> kill / exp counters and the
-/// kills/hour rolling series. An injected clock makes the time arithmetic
+/// kills/hour running-average series. An injected clock makes the time arithmetic
 /// deterministic: kills and exp are pushed via the <c>Note*</c> forwarders and
-/// time advanced by hand, so each test pins exactly how a counter or sparkline
-/// bucket is attributed.
+/// time advanced by hand, so each test pins exactly how a counter or the running
+/// sparkline rate is derived.
 /// </summary>
 public sealed class SessionActivityTrackerTests
 {
@@ -111,7 +111,7 @@ public sealed class SessionActivityTrackerTests
     // ----- kills/hour series -------------------------------------------
 
     [Fact]
-    public void KillsPerHourSeries_BucketsKillsByTimeSlice()
+    public void KillsPerHourSeries_IsRunningRate_EndingAtTheHeadlineFigure()
     {
         (SessionActivityTracker t, Clock c) = Make();
         // 60-min session, 6 buckets ⇒ 10 min each. Kills land in bucket 1 and 4.
@@ -121,13 +121,16 @@ public sealed class SessionActivityTrackerTests
 
         IReadOnlyList<double> series = t.KillsPerHourSeries(6);
         Assert.Equal(6, series.Count);
-        // Each bucket is 10 min = 1/6 h, so one kill ⇒ 6 kills/hour.
-        Assert.Equal(0d, series[0], 3);
-        Assert.Equal(6d, series[1], 3);
-        Assert.Equal(0d, series[2], 3);
-        Assert.Equal(0d, series[3], 3);
-        Assert.Equal(6d, series[4], 3);
-        Assert.Equal(0d, series[5], 3);
+        // Each point is the CUMULATIVE rate at that slice end: kills so far ÷
+        // hours so far (slice end = (i+1)/6 h).
+        Assert.Equal(0d,   series[0], 3); // 0 / (1/6 h)
+        Assert.Equal(3d,   series[1], 3); // 1 / (2/6 h)
+        Assert.Equal(2d,   series[2], 3); // 1 / (3/6 h)
+        Assert.Equal(1.5d, series[3], 3); // 1 / (4/6 h)
+        Assert.Equal(2.4d, series[4], 3); // 2 / (5/6 h)
+        Assert.Equal(2d,   series[5], 3); // 2 / (6/6 h)
+        // The right-most point is the same kills/hour the panel prints.
+        Assert.Equal(t.Snapshot().KillsPerHour, series[^1], 3);
     }
 
     [Fact]
@@ -145,7 +148,7 @@ public sealed class SessionActivityTrackerTests
     }
 
     [Fact]
-    public void ExperiencePerHourSeries_WeightsBucketsByAmount()
+    public void ExperiencePerHourSeries_IsRunningRate_WeightedByAmount()
     {
         (SessionActivityTracker t, Clock c) = Make();
         // 60-min session, 6 buckets ⇒ 10 min each. Gains land in bucket 1 and 4.
@@ -155,13 +158,15 @@ public sealed class SessionActivityTrackerTests
 
         IReadOnlyList<double> series = t.ExperiencePerHourSeries(6);
         Assert.Equal(6, series.Count);
-        // Each bucket is 10 min = 1/6 h, so the amount scales ×6 to a per-hour rate.
-        Assert.Equal(0d, series[0], 3);
-        Assert.Equal(6000d, series[1], 3);   // 1000 exp / (1/6 h)
-        Assert.Equal(0d, series[2], 3);
-        Assert.Equal(0d, series[3], 3);
-        Assert.Equal(18000d, series[4], 3);  // 3000 exp / (1/6 h)
-        Assert.Equal(0d, series[5], 3);
+        // Cumulative exp ÷ hours so far, weighted by the gain amount.
+        Assert.Equal(0d,     series[0], 3); // 0    / (1/6 h)
+        Assert.Equal(3000d,  series[1], 3); // 1000 / (2/6 h)
+        Assert.Equal(2000d,  series[2], 3); // 1000 / (3/6 h)
+        Assert.Equal(1500d,  series[3], 3); // 1000 / (4/6 h)
+        Assert.Equal(4800d,  series[4], 3); // 4000 / (5/6 h)
+        Assert.Equal(4000d,  series[5], 3); // 4000 / (6/6 h)
+        // The right-most point is the same exp/hour the panel prints.
+        Assert.Equal(t.Snapshot().ExperiencePerHour, series[^1], 3);
     }
 
     [Fact]

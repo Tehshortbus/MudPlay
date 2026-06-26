@@ -111,32 +111,39 @@ public sealed class SessionActivityTracker
             CurrencyStashed:   _currencyStashed);
 
     /// <summary>
-    /// Kills/hour split into <paramref name="buckets"/> equal time slices across
-    /// the rolling window — oldest slice first, ready to feed
+    /// Kills/hour as a <paramref name="buckets"/>-point running-average curve
+    /// across the rolling window — oldest point first, ready to feed
     /// <c>SparklineControl</c>. The window spans the last <see cref="RateWindow"/>,
     /// clamped to the session start so a young session fills the chart rather than
-    /// trailing a long empty lead-in. Each slice's value is its kill count
-    /// converted to a per-hour rate; since the slices are equal-width that scaling
-    /// is uniform and doesn't change the rendered shape, but keeps the series true
-    /// to its "kills/hour" name.
+    /// trailing a long empty lead-in. Each point is the <i>cumulative</i> rate up
+    /// to that slice's end (kills so far ÷ time so far), so the curve reads as the
+    /// running kills/hour and its right-most point equals the headline
+    /// <see cref="SessionActivityStats.KillsPerHour"/> the panel prints — the two
+    /// are the same figure, not unrelated. (Per-slice instantaneous rates would
+    /// spike to hundreds/hour off a single kill in a few-second slice, which is
+    /// why we average cumulatively instead.)
     /// </summary>
     public IReadOnlyList<double> KillsPerHourSeries(int buckets) =>
-        BucketedPerHour(buckets, _recentKills, static t => t, static _ => 1.0);
+        CumulativePerHour(buckets, _recentKills, static t => t, static _ => 1.0);
 
     /// <summary>
-    /// Experience/hour split into <paramref name="buckets"/> equal time slices,
-    /// shaped exactly like <see cref="KillsPerHourSeries"/> but weighted by the
-    /// experience amount of each gain rather than a flat count — so the curve
-    /// tracks how much was earned over time, not merely how often.
+    /// Experience/hour as a running-average curve, shaped exactly like
+    /// <see cref="KillsPerHourSeries"/> but weighted by the experience amount of
+    /// each gain rather than a flat count — so the curve tracks the running
+    /// exp/hour and its right-most point matches the headline
+    /// <see cref="SessionActivityStats.ExperiencePerHour"/>.
     /// </summary>
     public IReadOnlyList<double> ExperiencePerHourSeries(int buckets) =>
-        BucketedPerHour(buckets, _recentExp, static e => e.At, static e => e.Amount);
+        CumulativePerHour(buckets, _recentExp, static e => e.At, static e => e.Amount);
 
-    // Shared bucketer for the rolling per-hour series: bins each event's
-    // weight into equal time slices across the window and scales every bin to a
-    // per-hour rate. Generic over the event shape so kills (flat weight 1) and
-    // experience (weight = amount) reuse the identical windowing / pruning math.
-    private IReadOnlyList<double> BucketedPerHour<T>(
+    // Shared bucketer for the running-average per-hour series: bins each event's
+    // weight into equal time slices, then emits the CUMULATIVE rate at each
+    // slice boundary (running weight ÷ running elapsed time). The final point is
+    // total-weight ÷ window-span — the same figure SessionActivityStats prints —
+    // so the chart and the headline number always agree. Generic over the event
+    // shape so kills (flat weight 1) and experience (weight = amount) reuse the
+    // identical windowing / pruning math.
+    private IReadOnlyList<double> CumulativePerHour<T>(
         int buckets, List<T> events, Func<T, DateTimeOffset> at, Func<T, double> weight)
     {
         if (buckets < 1) return Array.Empty<double>();
@@ -152,7 +159,7 @@ public sealed class SessionActivityTracker
         if (spanHours <= 0) return Array.Empty<double>();
 
         double bucketHours = spanHours / buckets;
-        double[] series = new double[buckets];
+        double[] perBucket = new double[buckets];
         foreach (T e in events)
         {
             DateTimeOffset t = at(e);
@@ -160,9 +167,16 @@ public sealed class SessionActivityTracker
             int idx = (int)((t - windowStart).TotalHours / bucketHours);
             if (idx >= buckets) idx = buckets - 1; // an event landing exactly at 'now'
             if (idx < 0) idx = 0;
-            series[idx] += weight(e);
+            perBucket[idx] += weight(e);
         }
-        for (int i = 0; i < buckets; i++) series[i] /= bucketHours;
+
+        double[] series = new double[buckets];
+        double cumWeight = 0;
+        for (int i = 0; i < buckets; i++)
+        {
+            cumWeight += perBucket[i];
+            series[i] = cumWeight / (bucketHours * (i + 1)); // running weight ÷ running hours
+        }
         return series;
     }
 
