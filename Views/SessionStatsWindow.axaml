@@ -51,6 +51,13 @@
             <Setter Property="VerticalAlignment" Value="Center"/>
             <Setter Property="HorizontalAlignment" Value="Right"/>
         </Style>
+        <!-- Sparkline y-axis tick (peak / floor labels). -->
+        <Style Selector="TextBlock.scale">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontFamily" Value="{StaticResource FontMono}"/>
+            <Setter Property="FontSize" Value="9"/>
+            <Setter Property="HorizontalAlignment" Value="Right"/>
+        </Style>
         <Style Selector="Expander">
             <Setter Property="Margin" Value="0,0,0,2"/>
         </Style>
@@ -58,11 +65,13 @@
 
     <DockPanel LastChildFill="True">
 
-        <!-- ============ Rate sparklines (footer) ============ -->
-        <Border DockPanel.Dock="Bottom"
+        <!-- ============ Rate sparklines (header) ============ -->
+        <!-- Each chart carries a peak / floor y-axis (right column) so the
+             auto-scaled line can be read off against real values. -->
+        <Border DockPanel.Dock="Top"
                 Background="{StaticResource ChromeBgBrush}"
                 BorderBrush="{StaticResource ChromeBorderSoftBrush}"
-                BorderThickness="0,1,0,0"
+                BorderThickness="0,0,0,1"
                 Padding="10,6">
             <StackPanel Spacing="6">
 
@@ -80,11 +89,20 @@
                             BorderThickness="1"
                             CornerRadius="3"
                             Padding="4"
-                            Height="40"
+                            Height="44"
                             IsVisible="{Binding ShowKillsGraph}">
-                        <controls:SparklineControl Samples="{Binding KillsPerHour}"
-                                                   Stroke="{StaticResource AccentGreenBrush}"
-                                                   StrokeThickness="1.5"/>
+                        <Grid ColumnDefinitions="*,34">
+                            <controls:SparklineControl Grid.Column="0"
+                                                       Samples="{Binding KillsPerHour}"
+                                                       Stroke="{StaticResource AccentGreenBrush}"
+                                                       StrokeThickness="1.5"/>
+                            <Grid Grid.Column="1" Margin="4,0,0,0">
+                                <TextBlock VerticalAlignment="Top" Classes="scale"
+                                           Text="{Binding KillsPeakText}"/>
+                                <TextBlock VerticalAlignment="Bottom" Classes="scale"
+                                           Text="{Binding KillsFloorText}"/>
+                            </Grid>
+                        </Grid>
                     </Border>
                 </StackPanel>
 
@@ -102,11 +120,20 @@
                             BorderThickness="1"
                             CornerRadius="3"
                             Padding="4"
-                            Height="40"
+                            Height="44"
                             IsVisible="{Binding ShowExpGraph}">
-                        <controls:SparklineControl Samples="{Binding ExperiencePerHour}"
-                                                   Stroke="{StaticResource AccentCyanBrush}"
-                                                   StrokeThickness="1.5"/>
+                        <Grid ColumnDefinitions="*,34">
+                            <controls:SparklineControl Grid.Column="0"
+                                                       Samples="{Binding ExperiencePerHour}"
+                                                       Stroke="{StaticResource AccentCyanBrush}"
+                                                       StrokeThickness="1.5"/>
+                            <Grid Grid.Column="1" Margin="4,0,0,0">
+                                <TextBlock VerticalAlignment="Top" Classes="scale"
+                                           Text="{Binding ExpPeakText}"/>
+                                <TextBlock VerticalAlignment="Bottom" Classes="scale"
+                                           Text="{Binding ExpFloorText}"/>
+                            </Grid>
+                        </Grid>
                     </Border>
                 </StackPanel>
 

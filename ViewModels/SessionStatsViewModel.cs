@@ -60,10 +60,12 @@ public sealed partial class SessionStatsViewModel : ObservableObject, IDisposabl
 
     /// <summary>Kills/hour series feeding the kills sparkline; reassigned each refresh.</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(KillsPeakText), nameof(KillsFloorText))]
     private IReadOnlyList<double> _killsPerHour = Array.Empty<double>();
 
     /// <summary>Experience/hour series feeding the exp sparkline; reassigned each refresh.</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ExpPeakText), nameof(ExpFloorText))]
     private IReadOnlyList<double> _experiencePerHour = Array.Empty<double>();
 
     /// <summary>Footer-graph visibility toggles — the kills/hour and exp/hour
@@ -126,6 +128,32 @@ public sealed partial class SessionStatsViewModel : ObservableObject, IDisposabl
     /// <summary>Drives the spell row's visibility — hidden until a configured
     /// attack spell lands.</summary>
     public bool HasSpells => Combat.SpellHits > 0;
+
+    // ----- Rate-graph scales -------------------------------------------
+    // The sparklines normalise each series to its own min–max, so the plot is
+    // shapely but unitless on its own. These label the y-axis — peak at the top
+    // edge, floor at the bottom — so a glance reads off the value the line maps
+    // to. Exp rates run large, so their labels abbreviate (k / M).
+
+    public string KillsPeakText  => RateLabel(Peak(KillsPerHour), compact: false);
+    public string KillsFloorText => RateLabel(Floor(KillsPerHour), compact: false);
+    public string ExpPeakText    => RateLabel(Peak(ExperiencePerHour), compact: true);
+    public string ExpFloorText   => RateLabel(Floor(ExperiencePerHour), compact: true);
+
+    private static double Peak(IReadOnlyList<double> s)  => s.Count > 0 ? s.Max() : 0;
+    private static double Floor(IReadOnlyList<double> s) => s.Count > 0 ? s.Min() : 0;
+
+    private static string RateLabel(double v, bool compact)
+    {
+        if (v <= 0) return "0";
+        if (!compact) return v.ToString("F0");
+        return v switch
+        {
+            >= 1_000_000 => $"{v / 1_000_000d:0.#}M",
+            >= 1_000     => $"{v / 1_000d:0.#}k",
+            _            => v.ToString("F0"),
+        };
+    }
 
     // ----- Commands ----------------------------------------------------
 
