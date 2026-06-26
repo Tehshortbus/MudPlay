@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
+using Avalonia.Media;
 using FujinTerm.ViewModels;
 
 namespace FujinTerm.Views;
@@ -10,9 +11,10 @@ namespace FujinTerm.Views;
 /// <summary>
 /// Modeless Session Stats window. Bound to <see cref="SessionStatsViewModel"/>;
 /// code-behind attaches the persisted window-layout, wires the global-hotkeys
-/// handler, disposes the VM on close, and hosts the panel drag-reorder gesture
-/// (grip → drag → drop), applying the VM's saved panel order on open and pushing
-/// reorders back through <see cref="SessionStatsViewModel.SaveOrder"/>.
+/// handler, disposes the VM on close, and hosts the panel drag-reorder gesture.
+/// A panel is dragged by its title label; an insertion line previews where it
+/// will land, and the VM's saved order is applied on open and pushed back on drop
+/// via <see cref="SessionStatsViewModel.SaveOrder"/>.
 /// </summary>
 public partial class SessionStatsWindow : Window
 {
@@ -21,14 +23,23 @@ public partial class SessionStatsWindow : Window
     private static readonly DataFormat<string> PanelFormat =
         DataFormat.CreateInProcessFormat<string>("fujin-session-stats-panel");
 
-    // The panel id under the press point, captured on pointer-down (only when
-    // the press lands on a grip) and promoted to a drag once the pointer moves
-    // past the threshold.
+    // Thin accent line slotted between panels during a drag to preview the drop
+    // position. Non-hit-testable so it never intercepts the drag's hit-testing.
+    private readonly Border _dropIndicator = new()
+    {
+        Height = 3,
+        Margin = new Thickness(2, 0),
+        CornerRadius = new CornerRadius(1.5),
+        IsHitTestVisible = false,
+    };
+
+    // The panel id under the press point, captured on pointer-down (only when the
+    // press lands on a title handle) and promoted to a drag past the threshold.
     private string? _pressedId;
     private Point _pressOrigin;
 
-    // DoDragDropAsync needs the originating PointerPressedEventArgs; we detect
-    // the drag in PointerMoved, so hold the press args.
+    // DoDragDropAsync needs the originating PointerPressedEventArgs; we detect the
+    // drag in PointerMoved, so hold the press args.
     private PointerPressedEventArgs? _pressArgs;
 
     public SessionStatsWindow()
@@ -38,13 +49,19 @@ public partial class SessionStatsWindow : Window
         FujinTerm.Services.AppServices.Current.WindowLayouts.AttachWindow(this, "session-stats");
         Closed += OnClosed;
 
+        _dropIndicator.Background =
+            this.TryFindResource("AccentCyanBrush", out object? res) && res is IBrush brush
+                ? brush
+                : Brushes.DeepSkyBlue;
+
         if (this.FindControl<StackPanel>("PanelHost") is { } host)
         {
-            // Tunnel so the grip records the pressed panel before the inner
-            // controls (expander headers, the Reset button) handle the click.
+            // Tunnel so the title handle records the pressed panel before the
+            // inner controls (expander headers, the Reset button) handle the click.
             host.AddHandler(PointerPressedEvent, OnPanelPointerPressed, RoutingStrategies.Tunnel);
             host.AddHandler(PointerMovedEvent, OnPanelPointerMoved, RoutingStrategies.Tunnel);
             host.AddHandler(DragDrop.DragOverEvent, OnPanelDragOver);
+            host.AddHandler(DragDrop.DragLeaveEvent, OnPanelDragLeave);
             host.AddHandler(DragDrop.DropEvent, OnPanelDrop);
         }
 
@@ -63,10 +80,10 @@ public partial class SessionStatsWindow : Window
 
     private void OnPanelPointerPressed(object? sender, PointerPressedEventArgs e)
     {
-        // Left-button only — right-click is the show/hide context menu.
-        // The grip is the sole drag trigger so clicking panel body keeps its
-        // native behaviour (expander toggle, button, text selection).
-        if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed || !IsOnGrip(e.Source as StyledElement))
+        // Left-button press on a title handle only. A click that doesn't move
+        // never starts a drag, so a section title still toggles its expander and
+        // right-click still opens the show/hide menu.
+        if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed || !IsOnDragHandle(e.Source as StyledElement))
         {
             _pressedId = null;
             _pressArgs = null;
@@ -95,15 +112,53 @@ public partial class SessionStatsWindow : Window
         _pressedId = null;
         _pressArgs = null;
 
+        StackPanel? host = this.FindControl<StackPanel>("PanelHost");
         var data = new DataTransfer();
         data.Add(DataTransferItem.Create(PanelFormat, id));
-        await DragDrop.DoDragDropAsync(trigger, data, DragDropEffects.Move);
+        try
+        {
+            await DragDrop.DoDragDropAsync(trigger, data, DragDropEffects.Move);
+        }
+        finally
+        {
+            // Drop fires before the await returns; this also clears the preview
+            // when the drag is cancelled or released outside the host.
+            host?.Children.Remove(_dropIndicator);
+        }
     }
 
     private void OnPanelDragOver(object? sender, DragEventArgs e)
-        => e.DragEffects = e.DataTransfer.Contains(PanelFormat)
-            ? DragDropEffects.Move
-            : DragDropEffects.None;
+    {
+        if (this.FindControl<StackPanel>("PanelHost") is not { } host) return;
+        if (!e.DataTransfer.Contains(PanelFormat))
+        {
+            e.DragEffects = DragDropEffects.None;
+            return;
+        }
+        e.DragEffects = DragDropEffects.Move;
+
+        // Slot the insertion line into the gap nearest the cursor.
+        host.Children.Remove(_dropIndicator);
+        int insertAt = host.Children.Count;
+        double y = e.GetPosition(host).Y;
+        for (int i = 0; i < host.Children.Count; i++)
+        {
+            Control child = host.Children[i];
+            if (child.Tag is not string || !child.IsVisible) continue;
+            if (y < child.Bounds.Y + child.Bounds.Height / 2)
+            {
+                insertAt = i;
+                break;
+            }
+        }
+        host.Children.Insert(insertAt, _dropIndicator);
+    }
+
+    private void OnPanelDragLeave(object? sender, DragEventArgs e)
+    {
+        if (this.FindControl<StackPanel>("PanelHost") is { } host)
+            host.Children.Remove(_dropIndicator);
+    }
 
     private void OnPanelDrop(object? sender, DragEventArgs e)
     {
@@ -111,44 +166,58 @@ public partial class SessionStatsWindow : Window
         if (this.FindControl<StackPanel>("PanelHost") is not { } host) return;
         if (e.DataTransfer.TryGetValue(PanelFormat) is not { } draggedId) return;
 
-        string? targetId = PanelIdOf(e.Source as StyledElement);
-        if (targetId is null || targetId == draggedId) return;
+        host.Children.Remove(_dropIndicator);
 
-        Control? dragged = PanelWithTag(host, draggedId);
-        Control? target = PanelWithTag(host, targetId);
-        if (dragged is null || target is null) return;
+        List<string> ids = OrderedTags(host);
+        int oldIndex = ids.IndexOf(draggedId);
+        if (oldIndex < 0) return;
 
-        int from = host.Children.IndexOf(dragged);
-        int to = host.Children.IndexOf(target);
-        if (from < 0 || to < 0) return;
-        host.Children.Move(from, to);
+        // Count the visible panels whose midpoint sits above the cursor — that's
+        // the gap the dragged panel lands in. Removing it first shifts the gap
+        // down by one when the drag was originally above the target.
+        int gap = 0;
+        double y = e.GetPosition(host).Y;
+        foreach (Control child in host.Children)
+        {
+            if (child.Tag is not string || !child.IsVisible) continue;
+            if (y >= child.Bounds.Y + child.Bounds.Height / 2) gap++;
+            else break;
+        }
 
-        vm.SaveOrder(OrderedTags(host));
+        ids.RemoveAt(oldIndex);
+        int insertIndex = Math.Clamp(gap > oldIndex ? gap - 1 : gap, 0, ids.Count);
+        ids.Insert(insertIndex, draggedId);
+
+        ApplyOrder(host, ids);
+        vm.SaveOrder(ids);
     }
 
     /// <summary>Reorder the panel host's children to match the VM's saved order.</summary>
     private void ApplySavedOrder()
     {
         if (DataContext is not SessionStatsViewModel vm) return;
-        if (this.FindControl<StackPanel>("PanelHost") is not { } host) return;
+        if (this.FindControl<StackPanel>("PanelHost") is { } host)
+            ApplyOrder(host, vm.PanelOrder);
+    }
 
-        IReadOnlyList<string> order = vm.PanelOrder;
-        for (int targetIdx = 0; targetIdx < order.Count; targetIdx++)
+    private static void ApplyOrder(StackPanel host, IReadOnlyList<string> ids)
+    {
+        for (int target = 0; target < ids.Count; target++)
         {
-            Control? panel = PanelWithTag(host, order[targetIdx]);
+            Control? panel = PanelWithTag(host, ids[target]);
             if (panel is null) continue;
             int cur = host.Children.IndexOf(panel);
-            if (cur >= 0 && cur != targetIdx)
-                host.Children.Move(cur, targetIdx);
+            if (cur >= 0 && cur != target)
+                host.Children.Move(cur, target);
         }
     }
 
-    // Walk up from the event source to the nearest grip-classed element; stop at
-    // the host so a press on the panel body (not the grip) yields false.
-    private bool IsOnGrip(StyledElement? src)
+    // Walk up from the event source to the nearest element flagged as a drag
+    // handle (a panel title); stop at the host so a press elsewhere yields false.
+    private static bool IsOnDragHandle(StyledElement? src)
     {
         for (StyledElement? e = src; e is not null and not StackPanel { Name: "PanelHost" }; e = e.Parent)
-            if (e is Border b && b.Classes.Contains("grip"))
+            if (e.Classes.Contains("draghandle"))
                 return true;
         return false;
     }
