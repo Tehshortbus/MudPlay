@@ -96,7 +96,9 @@
     <ScrollViewer VerticalScrollBarVisibility="Auto"
                   Background="{StaticResource ChromeBgBrush}"
                   Padding="8,6">
-        <StackPanel x:Name="PanelHost" Spacing="6">
+        <StackPanel x:Name="PanelHost" Spacing="6"
+                    Background="Transparent"
+                    DragDrop.AllowDrop="True">
             <StackPanel.ContextMenu>
                 <ContextMenu>
                     <MenuItem Header="Kills/hour graph" ToggleType="CheckBox"
@@ -117,7 +119,7 @@
             <Grid Tag="KillsGraph" ColumnDefinitions="Auto,*"
                   IsVisible="{Binding IsKillsGraphVisible}">
                 <Border Grid.Column="0" Classes="grip"><TextBlock Text="&#x283F;"/></Border>
-                <StackPanel Grid.Column="1" Spacing="3">
+                <StackPanel Grid.Column="1" Spacing="3" Margin="0,0,16,0">
                     <Grid ColumnDefinitions="*,Auto">
                         <TextBlock Grid.Column="0" Classes="lbl" Text="Kills/hour"/>
                         <TextBlock Grid.Column="1" Classes="dim" Text="{Binding DurationText}"/>
@@ -148,7 +150,7 @@
             <Grid Tag="ExpGraph" ColumnDefinitions="Auto,*"
                   IsVisible="{Binding IsExpGraphVisible}">
                 <Border Grid.Column="0" Classes="grip"><TextBlock Text="&#x283F;"/></Border>
-                <StackPanel Grid.Column="1" Spacing="3">
+                <StackPanel Grid.Column="1" Spacing="3" Margin="0,0,16,0">
                     <Grid ColumnDefinitions="*,Auto">
                         <TextBlock Grid.Column="0" Classes="lbl" Text="Exp/hour"/>
                         <TextBlock Grid.Column="1" Classes="dim" Text="{Binding DurationText}"/>
