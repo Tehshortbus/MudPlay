@@ -8,24 +8,28 @@ namespace FujinTerm.Game.Combat;
 /// can re-derive alternatives from the raw fields without a tracker change.
 /// </summary>
 /// <remarks>
-/// "Physical" rolls up every landed melee swing — plain <see cref="Hits"/>,
-/// <see cref="Crits"/>, and <see cref="Backstabs"/> — into one damage extent
-/// (the player's "min/max damage seen for physical swings"); the backstab
-/// extent is also tracked on its own. Configured attack-<see cref="SpellHits">
-/// spell</see> casts and weapon <see cref="ProcHits">procs</see> get their own
-/// rows: they're <i>not</i> swings, so they never move the physical extent or
-/// the hit / miss / crit denominators, though their damage still counts toward
-/// the per-round total (recognised via the game-data caster-message matcher).
+/// Each landed-swing category — plain <see cref="Hits"/>, <see cref="Crits"/>,
+/// and <see cref="Backstabs"/> — carries its own damage extent so the panel
+/// shows them on separate rows. "Physical" is the derived roll-up across all
+/// three (the player's "min/max damage seen for physical swings"). Configured
+/// attack-<see cref="SpellHits">spell</see> casts and weapon
+/// <see cref="ProcHits">procs</see> get their own rows: they're <i>not</i>
+/// swings, so they never move the physical extent or the hit / miss / crit
+/// denominators, though their damage still counts toward the per-round total
+/// (recognised via the game-data caster-message matcher).
 /// </remarks>
 public readonly record struct CombatSessionStats(
-    // ----- Offensive: the player's own swings -----
+    // ----- Offensive: the player's own swings (per-category extents) -----
     int Hits,
     int Crits,
     int Backstabs,
     int Misses,
-    int PhysicalMinDamage,
-    int PhysicalMaxDamage,
-    long PhysicalTotalDamage,
+    int HitMinDamage,
+    int HitMaxDamage,
+    long HitTotalDamage,
+    int CritMinDamage,
+    int CritMaxDamage,
+    long CritTotalDamage,
     int BackstabMinDamage,
     int BackstabMaxDamage,
     long BackstabTotalDamage,
@@ -62,6 +66,34 @@ public readonly record struct CombatSessionStats(
 
     /// <summary>Crit rate among landed swings, 0–100 (a miss can't crit).</summary>
     public double CritPercent => Pct(Crits, LandedSwings);
+
+    /// <summary>Mean damage per plain (non-crit, non-backstab) hit.</summary>
+    public double HitAvgDamage => Avg(HitTotalDamage, Hits);
+
+    /// <summary>Mean damage per critical hit.</summary>
+    public double CritAvgDamage => Avg(CritTotalDamage, Crits);
+
+    /// <summary>Smallest single-swing damage across the non-empty landed
+    /// categories (plain hit / crit / backstab); 0 before any swing lands.
+    /// Derived so each category can still be read on its own.</summary>
+    public int PhysicalMinDamage
+    {
+        get
+        {
+            int min = int.MaxValue;
+            if (Hits > 0) min = Math.Min(min, HitMinDamage);
+            if (Crits > 0) min = Math.Min(min, CritMinDamage);
+            if (Backstabs > 0) min = Math.Min(min, BackstabMinDamage);
+            return min == int.MaxValue ? 0 : min;
+        }
+    }
+
+    /// <summary>Largest single-swing damage across the landed categories;
+    /// 0 before any swing lands.</summary>
+    public int PhysicalMaxDamage => Math.Max(HitMaxDamage, Math.Max(CritMaxDamage, BackstabMaxDamage));
+
+    /// <summary>Total damage across every landed physical swing.</summary>
+    public long PhysicalTotalDamage => HitTotalDamage + CritTotalDamage + BackstabTotalDamage;
 
     /// <summary>Mean damage per landed physical swing.</summary>
     public double PhysicalAvgDamage => Avg(PhysicalTotalDamage, LandedSwings);

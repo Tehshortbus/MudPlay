@@ -82,6 +82,9 @@ public sealed class CombatSessionTrackerTests
         Assert.Equal(1, s.Hits);
         Assert.Equal(0, s.Crits);
         Assert.Equal(0, s.Backstabs);
+        Assert.Equal(8, s.HitMinDamage);
+        Assert.Equal(8, s.HitMaxDamage);
+        Assert.Equal(8d, s.HitAvgDamage);
         Assert.Equal(8, s.PhysicalMinDamage);
         Assert.Equal(8, s.PhysicalMaxDamage);
         Assert.Equal(100d, s.HitPercent);
@@ -97,6 +100,12 @@ public sealed class CombatSessionTrackerTests
         Assert.Equal(0, s.Hits);
         Assert.Equal(1, s.Crits);
         Assert.Equal(100d, s.CritPercent);
+        // Crit damage lands in its own extent (Phase 11 panel shows it on the
+        // Crit row), and still rolls into the physical max.
+        Assert.Equal(24, s.CritMinDamage);
+        Assert.Equal(24, s.CritMaxDamage);
+        Assert.Equal(24d, s.CritAvgDamage);
+        Assert.Equal(0, s.HitMaxDamage); // a crit is not a plain hit
         Assert.Equal(24, s.PhysicalMaxDamage);
     }
 

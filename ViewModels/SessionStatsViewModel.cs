@@ -43,7 +43,7 @@ public sealed partial class SessionStatsViewModel : ObservableObject, IDisposabl
     private bool _disposed;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(PhysicalRangeText), nameof(BackstabRangeText),
+    [NotifyPropertyChangedFor(nameof(HitRangeText), nameof(CritRangeText), nameof(BackstabRangeText),
         nameof(RoundRangeText), nameof(ProcRangeText), nameof(SpellRangeText),
         nameof(HasProcs), nameof(HasSpells))]
     private CombatSessionStats _combat;
@@ -116,7 +116,8 @@ public sealed partial class SessionStatsViewModel : ObservableObject, IDisposabl
 
     // ----- Player Statistics (damage ranges) ---------------------------
 
-    public string PhysicalRangeText => Range(Combat.PhysicalMinDamage, Combat.PhysicalMaxDamage);
+    public string HitRangeText      => Range(Combat.HitMinDamage, Combat.HitMaxDamage);
+    public string CritRangeText     => Range(Combat.CritMinDamage, Combat.CritMaxDamage);
     public string BackstabRangeText => Range(Combat.BackstabMinDamage, Combat.BackstabMaxDamage);
     public string RoundRangeText    => Range(Combat.RoundMinDamage, Combat.RoundMaxDamage);
     public string ProcRangeText     => Range(Combat.ProcMinDamage, Combat.ProcMaxDamage);

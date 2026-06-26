@@ -148,9 +148,12 @@ public sealed class CombatSessionTracker : IDisposable
             Crits:               _crit.Count,
             Backstabs:           _backstab.Count,
             Misses:              _misses,
-            PhysicalMinDamage:   MinOf(_hit, _crit, _backstab),
-            PhysicalMaxDamage:   Math.Max(_hit.Max, Math.Max(_crit.Max, _backstab.Max)),
-            PhysicalTotalDamage: _hit.Sum + _crit.Sum + _backstab.Sum,
+            HitMinDamage:        _hit.Count == 0 ? 0 : _hit.Min,
+            HitMaxDamage:        _hit.Max,
+            HitTotalDamage:      _hit.Sum,
+            CritMinDamage:       _crit.Count == 0 ? 0 : _crit.Min,
+            CritMaxDamage:       _crit.Max,
+            CritTotalDamage:     _crit.Sum,
             BackstabMinDamage:   _backstab.Count == 0 ? 0 : _backstab.Min,
             BackstabMaxDamage:   _backstab.Max,
             BackstabTotalDamage: _backstab.Sum,
@@ -310,17 +313,6 @@ public sealed class CombatSessionTracker : IDisposable
         if (summary.DamageDealt <= 0) return;
         _round.Add(summary.DamageDealt);
         Changed?.Invoke();
-    }
-
-    // Smallest min across the non-empty tallies (an empty tally's Min is 0 and
-    // must not win the comparison); 0 when nothing has landed yet.
-    private static int MinOf(in DamageTally a, in DamageTally b, in DamageTally c)
-    {
-        int min = int.MaxValue;
-        if (a.Count > 0) min = Math.Min(min, a.Min);
-        if (b.Count > 0) min = Math.Min(min, b.Min);
-        if (c.Count > 0) min = Math.Min(min, c.Min);
-        return min == int.MaxValue ? 0 : min;
     }
 
     public void Dispose()
