@@ -50,14 +50,16 @@ public static class KnownPatterns
     public const string UserGainExperience   = "combat.user-gain-experience";
 
     /// <summary>
-    /// The local player's own swing MISSING — first-person "You … miss!".
-    /// Distinct from <see cref="MobMisses"/> (an incoming attack the mob
-    /// whiffs): this is OUR offensive miss, the denominator for the Phase 11
-    /// session hit/miss accuracy. The exact attack verb is weapon-driven, so
-    /// the pattern keys off the first-person subject + the word "miss"; the
-    /// quote-excluding body stops a "You say ""…miss…""" chat echo matching.
-    /// Best-effort wording — verify against a live combat capture before
-    /// relying on the exact phrasing.
+    /// The local player's own swing MISSING. On the live realm a whiff prints
+    /// the same first-person swing skeleton as a hit ("You punch acid slime!")
+    /// but WITHOUT the "for N damage" tail — there is no literal "miss" word —
+    /// so the pattern matches a "You &lt;verb&gt; &lt;target&gt;!" line and
+    /// excludes the hit form (owned by <see cref="UserHits"/>) via a look-ahead
+    /// for "for N damage". Distinct from <see cref="MobMisses"/> (an incoming
+    /// attack the mob whiffs): this is OUR offensive miss, the denominator for
+    /// the Phase 11 session hit/miss accuracy. The skeleton also matches
+    /// self-emotes ending in "!", so <see cref="Game.Combat.CombatSessionTracker"/>
+    /// only counts a match while combat is engaged.
     /// </summary>
     public const string UserMisses           = "combat.user-misses";
 

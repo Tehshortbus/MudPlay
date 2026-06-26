@@ -57,6 +57,7 @@ public sealed class CombatSessionTracker : IDisposable
     private readonly IDisposable _userDodgesSub;
     private readonly IDisposable _mobHitsSub;
     private readonly IDisposable _mobMissesSub;
+    private readonly IDisposable _combatStatusSub;
     private readonly RoundDamageTracker _rounds;
 
     // Game-data-driven recognisers, resolved from live config + inventory and
@@ -81,6 +82,12 @@ public sealed class CombatSessionTracker : IDisposable
     // A proc fires only after a basic swing connects; set when one lands, and
     // consumed (cleared) by the proc it precedes or cleared by a whiff.
     private bool _lastWasLandedSwing;
+    // True between "*Combat Engaged*" and "*Combat Off*" (re-asserted by any
+    // hit / mob line). The UserMisses skeleton also matches self-emotes ending
+    // in "!", so a miss is only counted while this is set — outside combat a
+    // "You feel much better!" can't be a swing whiff. Any real swing-miss is
+    // bracketed by combat, so this never suppresses a genuine miss.
+    private bool _engaged;
     // Set on the LineDispatched pass when the current line is claimed as a
     // configured spell-cast or a weapon proc, so the later OnUserHits doesn't
     // double-count it as a physical swing. Reset at the start of each line.
@@ -105,11 +112,12 @@ public sealed class CombatSessionTracker : IDisposable
         _resolveSpellMatchers = resolveSpellMatchers;
         _resolveProcMatcher = resolveProcMatcher;
 
-        _userHitsSub   = router.Subscribe(KnownPatterns.UserHits,   OnUserHits);
-        _userMissesSub = router.Subscribe(KnownPatterns.UserMisses, OnUserMisses);
-        _userDodgesSub = router.Subscribe(KnownPatterns.UserDodges, OnUserDodges);
-        _mobHitsSub    = router.Subscribe(KnownPatterns.MobHits,    OnMobHits);
-        _mobMissesSub  = router.Subscribe(KnownPatterns.MobMisses,  OnMobMisses);
+        _userHitsSub     = router.Subscribe(KnownPatterns.UserHits,     OnUserHits);
+        _userMissesSub   = router.Subscribe(KnownPatterns.UserMisses,   OnUserMisses);
+        _userDodgesSub   = router.Subscribe(KnownPatterns.UserDodges,   OnUserDodges);
+        _mobHitsSub      = router.Subscribe(KnownPatterns.MobHits,      OnMobHits);
+        _mobMissesSub    = router.Subscribe(KnownPatterns.MobMisses,    OnMobMisses);
+        _combatStatusSub = router.Subscribe(KnownPatterns.CombatStatus, OnCombatStatus);
         // LineDispatched fires once per line BEFORE the fixed patterns, so the
         // game-data recogniser claims a spell-cast / proc line and vetoes the
         // physical-swing classifier that runs a moment later in OnUserHits.
@@ -179,6 +187,7 @@ public sealed class CombatSessionTracker : IDisposable
         _dodges = 0;
         _lastWasLandedSwing = false;
         _currentLineRecognized = false;
+        _engaged = false;
         Changed?.Invoke();
     }
 
@@ -236,6 +245,7 @@ public sealed class CombatSessionTracker : IDisposable
 
         if (!int.TryParse(match.Groups[2], out int dmg)) return;
 
+        _engaged = true; // a landed swing means we're mid-combat
         string line = match.Text;
         if (line.Contains("surprise", StringComparison.OrdinalIgnoreCase))
             _backstab.Add(dmg);
@@ -249,6 +259,9 @@ public sealed class CombatSessionTracker : IDisposable
 
     private void OnUserMisses(MatchResult _)
     {
+        // The miss skeleton also matches self-emotes ending in "!", so only a
+        // line seen while combat is engaged is a real swing whiff.
+        if (!_engaged) return;
         _misses++;
         _lastWasLandedSwing = false; // a whiff can't precede a proc
         Changed?.Invoke();
@@ -256,12 +269,14 @@ public sealed class CombatSessionTracker : IDisposable
 
     private void OnUserDodges(MatchResult _)
     {
+        _engaged = true; // an incoming attack means we're mid-combat
         _dodges++;
         Changed?.Invoke();
     }
 
     private void OnMobHits(MatchResult _)
     {
+        _engaged = true; // an incoming attack means we're mid-combat
         _mobHits++;
         Changed?.Invoke();
     }
@@ -272,8 +287,19 @@ public sealed class CombatSessionTracker : IDisposable
         // it's already counted by OnUserDodges, so skip it here to keep the
         // plain-miss tally and the dodge denominator from double-counting.
         if (match.Text.Contains("dodge", StringComparison.OrdinalIgnoreCase)) return;
+        _engaged = true; // an incoming attack means we're mid-combat
         _mobMisses++;
         Changed?.Invoke();
+    }
+
+    private void OnCombatStatus(MatchResult match)
+    {
+        // (?<status>Engaged|Off) — arm the miss gate while engaged, disarm when
+        // the server reports combat ended. Hits / mob lines re-arm it, so a
+        // spurious mid-round "*Combat Off*" (the server emits one when we cast)
+        // doesn't strand a following real swing-miss uncounted.
+        if (match.Groups.Count == 0) return;
+        _engaged = string.Equals(match.Groups[0], "Engaged", StringComparison.OrdinalIgnoreCase);
     }
 
     private void OnRoundComplete(RoundSummary summary)
@@ -306,6 +332,7 @@ public sealed class CombatSessionTracker : IDisposable
         _userDodgesSub.Dispose();
         _mobHitsSub.Dispose();
         _mobMissesSub.Dispose();
+        _combatStatusSub.Dispose();
         _router.LineDispatched -= OnLineDispatched;
         _rounds.RoundComplete -= OnRoundComplete;
     }

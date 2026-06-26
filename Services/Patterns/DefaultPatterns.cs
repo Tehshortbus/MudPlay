@@ -117,14 +117,19 @@ public static class DefaultPatterns
             @"^The (?<target>[\w -]+) \w+ you for (?<damage>\d+) damage!");
         yield return new RegexPattern(KnownPatterns.UserGainExperience,
             @"^You gain (?<exp>\d+) experience\.");
-        // Phase 11 — the local player's own swing missing. Weapon-driven
-        // verb, so we anchor on the first-person subject + the word "miss"
-        // rather than a fixed verb. The [^"]* body excludes a quoted chat
-        // line; the \b around "miss" keeps "dismiss" / "remiss" from
-        // matching. Best-effort wording (see KnownPatterns.UserMisses) —
-        // confirm against a live capture before trusting the miss rate.
+        // Phase 11 — the local player's own swing missing. On the live realm a
+        // whiff renders as the SAME first-person swing skeleton as a hit
+        // ("You punch acid slime!") but WITHOUT the "for N damage" tail — there
+        // is no literal word "miss". So we match a "You <verb> <target>!" line
+        // and exclude the hit form with a negative look-ahead for "for N damage"
+        // (which UserHits owns). [^!] body so the swing terminates at its own
+        // "!". This shape also matches the older explicit wording
+        // ("You swing at the kobold, but miss!"). It will additionally match
+        // self-emotes that end in "!" ("You feel much better!"), so
+        // CombatSessionTracker only counts a UserMisses line while combat is
+        // engaged — see its CombatStatus gate.
         yield return new RegexPattern(KnownPatterns.UserMisses,
-            @"^You\b[^""]*\bmiss(?:es)?\b");
+            @"^You (?![^\n]*\bfor \d+ damage\b)[^!]+!");
         // Phase 11 — local player dodges an incoming mob attack. The dodge
         // line ("The kobold thief lunges at you, but you dodge!") also
         // satisfies MobMisses, so CombatSessionTracker de-dupes by skipping

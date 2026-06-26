@@ -142,6 +142,54 @@ public sealed class CombatSessionTrackerTests
     }
 
     [Fact]
+    public void RealmWhiff_NoMissWord_CountsWhileEngaged()
+    {
+        // The live realm prints a whiff as the swing skeleton with no damage
+        // tail and no literal "miss" — "You punch acid slime!" — bracketed by
+        // combat. It must count toward the miss denominator.
+        using Harness h = new();
+        h.Feed("*Combat Engaged*");
+        h.Feed("You punch acid slime!");
+        h.Feed("You punch acid slime for 8 damage!");
+
+        CombatSessionStats s = h.Stats;
+        Assert.Equal(1, s.Misses);
+        Assert.Equal(1, s.Hits);
+        Assert.Equal(2, s.TotalSwings);
+    }
+
+    [Fact]
+    public void HitLine_IsNeverDoubleCountedAsMiss()
+    {
+        // The whiff skeleton would match a hit line too, but the "for N damage"
+        // look-ahead excludes it — a connecting swing must not also tick misses.
+        using Harness h = new();
+        h.Feed("*Combat Engaged*");
+        h.Feed("You critically punch giant rat for 21 damage!");
+
+        CombatSessionStats s = h.Stats;
+        Assert.Equal(0, s.Misses);
+        Assert.Equal(1, s.Crits);
+    }
+
+    [Fact]
+    public void EmoteEndingInBang_OutOfCombat_IsNotCountedAsMiss()
+    {
+        // "You feel much better!" satisfies the whiff skeleton, so without the
+        // combat-engaged gate it would inflate the miss count. Out of combat it
+        // must be ignored.
+        using Harness h = new();
+        h.Feed("You feel much better!");
+        Assert.Equal(0, h.Stats.Misses);
+
+        // After combat ends, the gate disarms again.
+        h.Feed("*Combat Engaged*");
+        h.Feed("*Combat Off*");
+        h.Feed("You feel much better!");
+        Assert.Equal(0, h.Stats.Misses);
+    }
+
+    [Fact]
     public void PhysicalExtent_SpansAllLandedCategories()
     {
         using Harness h = new();
@@ -353,6 +401,7 @@ public sealed class CombatSessionTrackerTests
         using Harness h = new(
             procMatcher: Matcher("Your weapon sears {target} for {damage} damage!"));
 
+        h.Feed("*Combat Engaged*");
         h.Feed("You swing at the kobold, but miss!");
         h.Feed("Your weapon sears the kobold for 4 damage!");
 
