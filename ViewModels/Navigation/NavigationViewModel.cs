@@ -1683,11 +1683,13 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
                 LoopBuilderWaypoints = b?.WaypointKeys;
                 break;
             case nameof(LoopBuilderSessionViewModel.CanSave):
-                // CanRun + RunStopLabel depend on CanSave while in
-                // LoopBuild mode — re-notify so the Run button enables
-                // the moment the user has two reachable clicks.
+                // CanRun + RunStopLabel + CanSaveCurrent all depend on
+                // CanSave while in LoopBuild mode — re-notify so the Run
+                // AND Save buttons enable the moment the user has two
+                // reachable clicks.
                 OnPropertyChanged(nameof(CanRun));
                 OnPropertyChanged(nameof(RunStopLabel));
+                OnPropertyChanged(nameof(CanSaveCurrent));
                 RebuildCurrentNavRows();
                 OnPropertyChanged(nameof(CurrentNavHeader));
                 break;
