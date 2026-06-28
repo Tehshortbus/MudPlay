@@ -241,7 +241,8 @@ public sealed class SpellsSectionViewModel : JsonTableSectionViewModel, IEditabl
                 resolveChain: catalog.GetFormulaByNumber,
                 resolveSpellName: catalog.GetSpellNameByNumber,
                 resolveTextblockCasts: tb => tbIndex.TryGetValue(tb, out IReadOnlyList<KnownSpell>? list)
-                    ? list : Array.Empty<KnownSpell>());
+                    ? list : Array.Empty<KnownSpell>(),
+                resolveMonsterName: n => _cache.FindNameByNumber("Monsters", n));
             if (effect.Length > 0 && effect != "—")
                 rows.Add(new GameDataInfoRow("Effect", effect));
         }

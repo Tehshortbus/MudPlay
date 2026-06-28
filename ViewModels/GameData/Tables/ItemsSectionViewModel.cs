@@ -203,7 +203,8 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
                 resolveChain: catalog.GetFormulaByNumber,
                 resolveSpellName: catalog.GetSpellNameByNumber,
                 resolveTextblockCasts: tb => idx.TryGetValue(tb, out IReadOnlyList<KnownSpell>? list)
-                    ? list : System.Array.Empty<KnownSpell>());
+                    ? list : System.Array.Empty<KnownSpell>(),
+                resolveMonsterName: n => _cache.FindNameByNumber("Monsters", n));
             return rendered == "—" ? string.Empty : rendered;
         }
 

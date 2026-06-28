@@ -36,14 +36,18 @@ public static class SpellEffectFormatter
     /// RemovesSpell clause). May be <c>null</c>.</param>
     /// <param name="resolveTextblockCasts">Maps a TextBlock record number to the
     /// spells it casts (for Abil-148 expansion). May be <c>null</c>.</param>
+    /// <param name="resolveMonsterName">Maps a monster number to its name, so a
+    /// Summon (Abil 12) renders "Summon hydra" instead of "Summon +590". May be
+    /// <c>null</c> (then Summon falls back to the raw number).</param>
     public static string Format(
         in SpellFormulaInput formula,
         int level,
         Func<int, SpellFormulaInput?> resolveChain,
         Func<int, string?>? resolveSpellName = null,
-        Func<int, IReadOnlyList<KnownSpell>>? resolveTextblockCasts = null)
+        Func<int, IReadOnlyList<KnownSpell>>? resolveTextblockCasts = null,
+        Func<int, string?>? resolveMonsterName = null)
         => FormatCore(formula, level, resolveChain, resolveSpellName, resolveTextblockCasts,
-                      visited: null, suppressDuration: false);
+                      resolveMonsterName, visited: null, suppressDuration: false);
 
     /// <summary>
     /// Format implementation that threads the EndCast cycle-guard set.
@@ -58,6 +62,7 @@ public static class SpellEffectFormatter
         Func<int, SpellFormulaInput?> resolveChain,
         Func<int, string?>? resolveSpellName,
         Func<int, IReadOnlyList<KnownSpell>>? resolveTextblockCasts,
+        Func<int, string?>? resolveMonsterName,
         HashSet<int>? visited,
         bool suppressDuration)
     {
@@ -84,7 +89,8 @@ public static class SpellEffectFormatter
         // TextBlock buff whose duration mirrors the form spell's — surfaces a
         // single duration figure instead of printing both.
         string affects = BuildAffects(
-            formula, level, resolveChain, resolveSpellName, resolveTextblockCasts, out long childDurTicks);
+            formula, level, resolveChain, resolveSpellName, resolveTextblockCasts, resolveMonsterName,
+            out long childDurTicks);
 
         // Durations are stored in 3-second spell-round ticks; show seconds. When
         // this render is itself a suppressed TextBlock child the parent owns the
@@ -109,9 +115,11 @@ public static class SpellEffectFormatter
             // MME's random-cast marker (pool = the MinBase..MaxBase spell range).
             string clause = a.Value != 0
                 ? BuildEndCast(
-                    formula, a.Value, level, resolveChain, resolveSpellName, resolveTextblockCasts, visited)
+                    formula, a.Value, level, resolveChain, resolveSpellName, resolveTextblockCasts,
+                    resolveMonsterName, visited)
                 : BuildRandomEndCast(
-                    formula, level, resolveChain, resolveSpellName, resolveTextblockCasts, visited);
+                    formula, level, resolveChain, resolveSpellName, resolveTextblockCasts,
+                    resolveMonsterName, visited);
             if (clause.Length > 0) parts.Add(clause);
         }
 
@@ -139,6 +147,38 @@ public static class SpellEffectFormatter
     /// </list>
     /// </summary>
     private static readonly int[] _affectSkip = { 1, 8, 17, 18, 122, 101, 115, 120, 137, 151, 164 };
+
+    /// <summary>Summon ability code (MME Abil 12) — its <c>AbilVal</c> is the
+    /// summoned monster number, resolved to a name when a resolver is supplied.</summary>
+    private const int SummonCode = 12;
+
+    /// <summary>
+    /// Display-only friendly wording for the effect string — plain English for
+    /// the jargon-y MME ability names that surface here. Canonical
+    /// <see cref="AbilityNames"/> is deliberately left untouched (it still
+    /// drives the spell's field-by-field rows + the Monster ability rollups);
+    /// this only softens the at-a-glance Effect summary. Limited to flag-style
+    /// codes (rendered name-only) where a phrase reads cleanly without a
+    /// trailing magnitude.
+    /// </summary>
+    private static readonly Dictionary<int, string> _friendlyAffect = new()
+    {
+        { 144, "ignores magic resistance" },   // NonMagicalSpell
+        {  51, "anti-magic" },                  // AntiMagic
+        {  23, "undead only" },                 // AffectsUndeadOnly
+        {  80, "animals only" },                // AffectsAnimalsOnly
+        { 108, "living only" },                 // AffectsLivingOnly
+        { 109, "non-living only" },             // NonLiving
+        {  97, "good only" },                   // GoodOnly
+        {  98, "evil only" },                   // EvilOnly
+        { 110, "non-good only" },               // NotGood
+        { 111, "non-evil only" },               // NotEvil
+        { 112, "neutral only" },                // NeutralOnly
+        { 113, "non-neutral only" },            // NotNeutral
+    };
+
+    private static string FriendlyAffect(int code, string canonical)
+        => _friendlyAffect.TryGetValue(code, out string? friendly) ? friendly : canonical;
 
     /// <summary>EndCast ability code (MME Abil 151). Its <c>AbilVal</c> is the
     /// spell number the cast chains into on completion.</summary>
@@ -207,6 +247,7 @@ public static class SpellEffectFormatter
         Func<int, SpellFormulaInput?> resolveChain,
         Func<int, string?>? resolveSpellName,
         Func<int, IReadOnlyList<KnownSpell>>? resolveTextblockCasts,
+        Func<int, string?>? resolveMonsterName,
         out long childDurTicks)
     {
         childDurTicks = 0;
@@ -216,8 +257,23 @@ public static class SpellEffectFormatter
         foreach (SpellAbility a in formula.Abilities)
         {
             if (a.Code == 0 || Array.IndexOf(_affectSkip, a.Code) >= 0) continue;
-            string? name = AbilityNames.GetName(a.Code);
-            if (name is null) continue;
+            string? canonical = AbilityNames.GetName(a.Code);
+            if (canonical is null) continue;
+
+            // Summon (12): AbilVal is a monster number, not a magnitude — render
+            // the creature's name ("Summon hydra") rather than "Summon +590".
+            if (a.Code == SummonCode)
+            {
+                string? mon = a.Value > 0 ? resolveMonsterName?.Invoke(a.Value)?.Trim() : null;
+                parts.Add(string.IsNullOrEmpty(mon)
+                    ? (a.Value != 0 ? $"{canonical} {Signed(a.Value)}" : canonical)
+                    : $"Summon {mon}");
+                continue;
+            }
+
+            // Display-only friendly wording (jargon → plain English); canonical
+            // AbilityNames is left intact for the field-by-field rows.
+            string name = FriendlyAffect(a.Code, canonical);
 
             // TextBlock's AbilVal is a record number, not a magnitude. Prefer
             // the real effect(s) the textblock casts — resolved via the Spells
@@ -229,7 +285,7 @@ public static class SpellEffectFormatter
             {
                 string expanded = ExpandTextblockCasts(
                     a.Value, level, resolveChain, resolveSpellName, resolveTextblockCasts,
-                    out long tbDurTicks);
+                    resolveMonsterName, out long tbDurTicks);
                 if (tbDurTicks > childDurTicks) childDurTicks = tbDurTicks;
                 if (expanded.Length > 0)
                 {
@@ -294,6 +350,7 @@ public static class SpellEffectFormatter
         Func<int, SpellFormulaInput?> resolveChain,
         Func<int, string?>? resolveSpellName,
         Func<int, IReadOnlyList<KnownSpell>>? resolveTextblockCasts,
+        Func<int, string?>? resolveMonsterName,
         HashSet<int>? visited)
     {
         if (chainedNumber == 0) return string.Empty;
@@ -313,7 +370,7 @@ public static class SpellEffectFormatter
 
         string effect = resolveChain(chainedNumber) is { } chained
             ? FormatCore(chained, level, resolveChain, resolveSpellName, resolveTextblockCasts,
-                         visited, suppressDuration: false)
+                         resolveMonsterName, visited, suppressDuration: false)
             : string.Empty;
 
         return effect.Length == 0 || effect == "—" ? prefix : $"{prefix} ({effect})";
@@ -337,6 +394,7 @@ public static class SpellEffectFormatter
         Func<int, SpellFormulaInput?> resolveChain,
         Func<int, string?>? resolveSpellName,
         Func<int, IReadOnlyList<KnownSpell>>? resolveTextblockCasts,
+        Func<int, string?>? resolveMonsterName,
         HashSet<int>? visited)
     {
         // A direct-damage / heal spell uses MinBase/MaxBase as its magnitude
@@ -362,7 +420,7 @@ public static class SpellEffectFormatter
                 : $"#{n.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
             string effect = FormatCore(
                 target, level, resolveChain, resolveSpellName, resolveTextblockCasts,
-                visited, suppressDuration: false);
+                resolveMonsterName, visited, suppressDuration: false);
             names.Add(name);
             effects.Add(effect == "—" ? string.Empty : effect);
         }
@@ -410,6 +468,7 @@ public static class SpellEffectFormatter
         Func<int, SpellFormulaInput?> resolveChain,
         Func<int, string?>? resolveSpellName,
         Func<int, IReadOnlyList<KnownSpell>>? resolveTextblockCasts,
+        Func<int, string?>? resolveMonsterName,
         out long maxChildDurTicks)
     {
         maxChildDurTicks = 0;
@@ -433,7 +492,7 @@ public static class SpellEffectFormatter
 
             string effect = FormatCore(
                 s.Formula, level, resolveChain, resolveSpellName,
-                resolveTextblockCasts: null, visited: null, suppressDuration: true);
+                resolveTextblockCasts: null, resolveMonsterName, visited: null, suppressDuration: true);
             if (effect.Length == 0 || effect == "—") continue;
             (IsRemovesOnlyEffect(effect) ? removes : gains).Add(effect);
         }
