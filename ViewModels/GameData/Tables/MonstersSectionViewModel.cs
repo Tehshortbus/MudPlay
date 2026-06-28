@@ -495,6 +495,15 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
                 shown++;
             }
 
+            // ----- Summons (what THIS monster spawns) -----
+            // Mirror of "Summoned By": some monsters (e.g. Leo the Quick)
+            // conjure other monsters — via a summon spell cast in combat
+            // (with a % chance), on death, or on spawn. Surface the spawned
+            // monster + how + the chance where one applies.
+            List<string> produces = FindOutgoingSummons(el);
+            for (int j = 0; j < produces.Count; j++)
+                AddRow(kv, j == 0 ? "Summons" : string.Empty, produces[j]);
+
             // ----- Spawns In (lair rooms) -----
             // Reverse lookup over the active room graph: every room whose
             // lair list names this monster is a spawn site. Listed as
@@ -653,6 +662,92 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
     }
 
     /// <summary>
+    /// Monsters this monster summons, each as
+    /// "&lt;name&gt; (&lt;how&gt;[, &lt;chance&gt;])" — the reverse of
+    /// <see cref="FindSummoningMonsters"/>. Walks the viewed monster's own
+    /// spell slots (create / death / spell-attack / hit-spell / between-
+    /// rounds), resolves each summon spell to its target monster, and
+    /// tags how + the % chance where the cast carries one.
+    /// </summary>
+    private List<string> FindOutgoingSummons(JsonElement monster)
+    {
+        JsonDocument? spellsDoc = _cache.GetRawTable("Spells");
+        if (spellsDoc is null) return new();
+
+        // Index spells by number so each cast slot is an O(1) resolve.
+        Dictionary<int, JsonElement> spellByNum = new();
+        foreach (JsonElement s in spellsDoc.RootElement.EnumerateArray())
+        {
+            int num = ReadInt(s, "Number");
+            if (num > 0) spellByNum[num] = s;
+        }
+
+        return BuildOutgoingSummonLabels(
+            monster,
+            spellId => spellByNum.TryGetValue(spellId, out JsonElement s) ? SummonTargets(s) : Array.Empty<int>(),
+            target => LookupMonsterName(target) ?? $"Monster #{target}");
+    }
+
+    /// <summary>
+    /// Pure label-builder behind <see cref="FindOutgoingSummons"/> —
+    /// extracted so the context + chance logic is testable without a
+    /// loaded cache. <paramref name="summonTargetsOf"/> maps a spell id to
+    /// the monster(s) it summons (empty for non-summon spells);
+    /// <paramref name="nameOf"/> maps a monster number to its display name.
+    /// </summary>
+    internal static List<string> BuildOutgoingSummonLabels(
+        JsonElement monster,
+        Func<int, IReadOnlyList<int>> summonTargetsOf,
+        Func<int, string> nameOf)
+    {
+        List<string> result = new();
+        HashSet<string> seen = new(StringComparer.Ordinal);
+        void Emit(int spellId, string context, string? chance)
+        {
+            if (spellId <= 0) return;
+            foreach (int target in summonTargetsOf(spellId))
+            {
+                string label = chance is null
+                    ? $"{nameOf(target)} ({context})"
+                    : $"{nameOf(target)} ({context}, {chance})";
+                if (seen.Add(label)) result.Add(label);
+            }
+        }
+
+        // Certain casts — no chance figure.
+        Emit(ReadInt(monster, "CreateSpell"), "on spawn", null);
+        Emit(ReadInt(monster, "DeathSpell"),  "on death", null);
+
+        // Combat — spell-attacks (carry an Att% chance) and per-hit spells.
+        for (int i = 0; i < 5; i++)
+        {
+            if (ReadInt(monster, $"AttType-{i}") == 2)
+            {
+                int truePct = (int)Math.Round(ReadDouble(monster, $"AttTrue%-{i}"));
+                int pct = truePct > 0 ? truePct : ReadInt(monster, $"Att%-{i}");
+                Emit(ReadInt(monster, $"AttAcc-{i}"), "combat", pct > 0 ? $"{pct}%" : null);
+            }
+            Emit(ReadInt(monster, $"AttHitSpell-{i}"), "combat, on hit", null);
+        }
+
+        // Between-rounds — MidSpell% is a cumulative threshold across the
+        // slots, so the per-spell chance is the delta (mirrors the
+        // "Between Rounds" rendering above).
+        int cumulative = 0;
+        for (int i = 0; i < 5; i++)
+        {
+            int spellId = ReadInt(monster, $"MidSpell-{i}");
+            if (spellId == 0) continue;
+            int threshold = ReadInt(monster, $"MidSpell%-{i}");
+            int delta = threshold - cumulative;
+            cumulative = threshold;
+            Emit(spellId, "between rounds", delta > 0 ? $"{delta}%" : null);
+        }
+
+        return result;
+    }
+
+    /// <summary>
     /// How <paramref name="monster"/> casts a spell in
     /// <paramref name="spellIds"/>, or <c>null</c> if it doesn't. Combat =
     /// a spell-attack (<c>AttType</c> 2 whose <c>AttAcc</c> is the spell),
@@ -693,23 +788,33 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
     /// <c>MinBase 1</c> (giant rat) but its summon value points elsewhere.
     /// </summary>
     internal static bool SpellSummons(JsonElement spell, int monsterNo)
+        => monsterNo > 0 && SummonTargets(spell).Contains(monsterNo);
+
+    /// <summary>
+    /// Monster number(s) <paramref name="spell"/> summons, or empty when
+    /// it isn't a summon spell. Encoding is inconsistent (see
+    /// <see cref="SpellSummons"/>): the summon abilities' own positive
+    /// values win, and only when none name a target does the spell's
+    /// <c>MinBase</c> stand in (e.g. "raptor summon" → 509 = tetraraptor).
+    /// </summary>
+    internal static IReadOnlyList<int> SummonTargets(JsonElement spell)
     {
-        if (monsterNo <= 0) return false;
+        List<int> targets = new();
         bool isSummon = false;
-        bool hasExplicitTarget = false;
         for (int i = 0; i < 10; i++)
         {
             if (ReadInt(spell, $"Abil-{i}") != 12) continue;   // 12 = summon
             isSummon = true;
             int target = ReadInt(spell, $"AbilVal-{i}");
-            if (target > 0)
-            {
-                hasExplicitTarget = true;
-                if (target == monsterNo) return true;
-            }
+            if (target > 0 && !targets.Contains(target)) targets.Add(target);
         }
-        if (!isSummon) return false;
-        return !hasExplicitTarget && ReadInt(spell, "MinBase") == monsterNo;
+        if (!isSummon) return Array.Empty<int>();
+        if (targets.Count == 0)
+        {
+            int minBase = ReadInt(spell, "MinBase");
+            if (minBase > 0) targets.Add(minBase);
+        }
+        return targets;
     }
 
     /// <summary>
