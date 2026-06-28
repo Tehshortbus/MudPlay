@@ -129,6 +129,30 @@ public sealed class SpellsGameDataTabTests : IDisposable
     }
 
     [Fact]
+    public void GameDataRows_SurfaceSummons_AcrossRandomChain()
+    {
+        // Blackwood-forest shape: spell → textblock 9404 → random 9405 →
+        // random 9406 which finally summons a monster. The walk must follow
+        // the random jumps and surface the spawn.
+        Seed("Spells", "[{\"Number\":1040,\"Name\":\"blackwood forest\",\"Abil-0\":148,\"AbilVal-0\":9404}]");
+        Seed("TBInfo", "[" +
+            "{\"Number\":9404,\"Action\":\"failitem 185:random 9405\"}," +
+            "{\"Number\":9405,\"Action\":\"50:addevil 0\\n100:random 9406\"}," +
+            "{\"Number\":9406,\"Action\":\"100:summon 877\"}]");
+        Seed("Monsters", "[{\"Number\":877,\"Name\":\"dark treant\"}]");
+        Seed("Items", "[{\"Number\":185,\"Name\":\"manhole\"}]");
+        _cache.SwitchSet("v1.11p");
+
+        var vm = new SpellsSectionViewModel(_cache);
+        IReadOnlyList<GameDataInfoRow> rows = vm.BuildSpellInfoRowsForTests(1040);
+
+        Assert.Equal("dark treant", rows.First(r => r.Label == "Summons").Value);
+        Assert.Equal("manhole", rows.First(r => r.Label == "Avoided by carrying").Value);
+        // The unhelpful raw "TextBlock 9404" effect row is suppressed.
+        Assert.DoesNotContain(rows, r => r.Label == "Effect" && r.Value.StartsWith("TextBlock"));
+    }
+
+    [Fact]
     public void GameDataRows_NoItemGate_WhenTextblockDoesntCast()
     {
         // A textblock that only gives an item (no cast) is a quest hook, not

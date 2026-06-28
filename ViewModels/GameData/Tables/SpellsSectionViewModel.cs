@@ -243,7 +243,11 @@ public sealed class SpellsSectionViewModel : JsonTableSectionViewModel, IEditabl
                 resolveTextblockCasts: tb => tbIndex.TryGetValue(tb, out IReadOnlyList<KnownSpell>? list)
                     ? list : Array.Empty<KnownSpell>(),
                 resolveMonsterName: n => _cache.FindNameByNumber("Monsters", n));
-            if (effect.Length > 0 && effect != "—")
+            // Skip the formatter's unhelpful "TextBlock N" fallback (emitted
+            // when a spell's only effect is a textblock it can't expand) — the
+            // Summons / Casts / item-gate rows from the textblock walk below
+            // carry the real info instead.
+            if (effect.Length > 0 && effect != "—" && !BareTextblock.IsMatch(effect))
                 rows.Add(new GameDataInfoRow("Effect", effect));
         }
 
@@ -311,20 +315,29 @@ public sealed class SpellsSectionViewModel : JsonTableSectionViewModel, IEditabl
                 }
 
                 // TextBlock (148) — the spell executes a TBInfo record. The bare
-                // record number means nothing to the user; instead surface the
-                // item gate around the textblock's cast so e.g. the "silver
-                // river" room-damage spell shows it's avoided by carrying a raft.
-                // (What the textblock actually casts is already in the Effect
-                // row via textblock expansion.) AbilVal holds the record number;
-                // a few spells stash it in MinBase with a zero AbilVal instead.
+                // record number means nothing to the user; instead walk the
+                // textblock's action chain and surface what it actually does:
+                // monsters it summons, spells it casts (the damage), and the
+                // item gate around them (e.g. the "silver river" room-damage
+                // spell is avoided by carrying a raft; a forest room-spell
+                // summons monsters unless you hold an item). AbilVal holds the
+                // record number; a few spells stash it in MinBase with a zero
+                // AbilVal instead.
                 if (code == 148)
                 {
                     int tb = val > 0 ? val : ReadInt(el, "MinBase");
-                    (IReadOnlyList<int> required, IReadOnlyList<int> avoided) = ParseTextblockItemGate(tb);
-                    if (required.Count > 0)
-                        rows.Add(new GameDataInfoRow("Requires carrying", JoinItemNames(required)));
-                    if (avoided.Count > 0)
-                        rows.Add(new GameDataInfoRow("Avoided by carrying", JoinItemNames(avoided)));
+                    TextblockEffects fx = WalkTextblockChain(tb);
+                    if (fx.HasEffect)
+                    {
+                        if (fx.Summons.Count > 0)
+                            rows.Add(new GameDataInfoRow("Summons", JoinNames("Monsters", fx.Summons)));
+                        if (fx.Casts.Count > 0)
+                            rows.Add(new GameDataInfoRow("Casts", JoinNames("Spells", fx.Casts)));
+                        if (fx.Required.Count > 0)
+                            rows.Add(new GameDataInfoRow("Requires carrying", JoinNames("Items", fx.Required)));
+                        if (fx.Avoided.Count > 0)
+                            rows.Add(new GameDataInfoRow("Avoided by carrying", JoinNames("Items", fx.Avoided)));
+                    }
                     continue;
                 }
 
@@ -507,69 +520,102 @@ public sealed class SpellsSectionViewModel : JsonTableSectionViewModel, IEditabl
         return _cache.FindNameByNumber(table, number) ?? token;
     }
 
-    /// <summary>
-    /// Inspect a TBInfo textblock's action chain for the item gate around a
-    /// <c>cast</c>. <c>failitem N</c> halts the chain when the player HAS item N
-    /// — so holding any such item AVOIDS the cast; <c>checkitem N</c> requires
-    /// item N for the chain to proceed. Returns the (required, avoided) item id
-    /// lists, but only when the chain actually casts something — so a quest
-    /// give-item textblock isn't mistaken for a damage gate. Reads TBInfo via
-    /// the cache (small table, scanned once on dialog open).
-    /// </summary>
-    private (IReadOnlyList<int> Required, IReadOnlyList<int> Avoided) ParseTextblockItemGate(int textblockNumber)
+    /// <summary>Effects collected from walking a spell's TBInfo textblock chain.</summary>
+    private sealed class TextblockEffects
     {
-        var required = new List<int>();
-        var avoided = new List<int>();
-        if (textblockNumber <= 0) return (required, avoided);
+        public readonly List<int> Summons = new();   // summon N (monster numbers)
+        public readonly List<int> Casts = new();     // cast N (spell numbers)
+        public readonly List<int> Avoided = new();   // failitem N (carrying avoids the effect)
+        public readonly List<int> Required = new();  // checkitem N (required for the effect)
 
-        JsonDocument? doc = _cache.GetRawTable("TBInfo");
-        if (doc is null) return (required, avoided);
+        /// <summary>True once the chain actually does something harmful/active —
+        /// the item gates are only meaningful when they guard a cast or summon
+        /// (so a quest give-item textblock isn't mistaken for a damage gate).</summary>
+        public bool HasEffect => Summons.Count > 0 || Casts.Count > 0;
 
-        string? action = null;
-        foreach (JsonElement el in doc.RootElement.EnumerateArray())
-            if (ReadInt(el, "Number") == textblockNumber)
-            {
-                action = el.TryGetProperty("Action", out JsonElement a) && a.ValueKind == JsonValueKind.String
-                    ? a.GetString() : null;
-                break;
-            }
-        if (string.IsNullOrEmpty(action)) return (required, avoided);
-
-        bool castsSomething = false;
-        foreach (string line in action.Split('\n'))
-        foreach (string rawCmd in line.Split(':'))
-        {
-            string[] tok = rawCmd.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            if (tok.Length == 0) continue;
-            switch (tok[0].ToLowerInvariant())
-            {
-                case "cast" when tok.Length >= 2:
-                    castsSomething = true;
-                    break;
-                case "failitem" when tok.Length >= 2 && int.TryParse(tok[1], out int fi) && !avoided.Contains(fi):
-                    avoided.Add(fi);
-                    break;
-                case "checkitem" when tok.Length >= 2 && int.TryParse(tok[1], out int ci) && !required.Contains(ci):
-                    required.Add(ci);
-                    break;
-            }
-        }
-
-        if (!castsSomething) { required.Clear(); avoided.Clear(); }
-        return (required, avoided);
+        public static void AddUnique(List<int> list, int v) { if (!list.Contains(v)) list.Add(v); }
     }
 
-    // Resolve item ids to their Items.Name (falling back to "Item #N"), comma-joined.
-    private string JoinItemNames(IReadOnlyList<int> itemIds)
+    /// <summary>
+    /// Walk a spell's TBInfo textblock action chain (bounded depth, cycle-
+    /// guarded) and collect what it does: monsters it <c>summon</c>s, spells it
+    /// <c>cast</c>s, and the <c>failitem</c> / <c>checkitem</c> item gates around
+    /// them. Chains follow <c>random N</c> branches and the <c>LinkTo</c>
+    /// pointer, so effects nested behind a roll (e.g. a forest room-spell whose
+    /// spawn sits two random-jumps deep) still surface. TBInfo is read via the
+    /// cache (small table) and indexed once.
+    /// </summary>
+    private TextblockEffects WalkTextblockChain(int rootTextblock)
     {
-        var names = new List<string>(itemIds.Count);
-        foreach (int id in itemIds)
-            names.Add(_cache.FindNameByNumber("Items", id) ?? $"Item #{id}");
+        var fx = new TextblockEffects();
+        if (rootTextblock <= 0) return fx;
+
+        JsonDocument? doc = _cache.GetRawTable("TBInfo");
+        if (doc is null) return fx;
+
+        var byNumber = new Dictionary<int, JsonElement>();
+        foreach (JsonElement el in doc.RootElement.EnumerateArray())
+        {
+            int num = ReadInt(el, "Number");
+            if (num > 0) byNumber.TryAdd(num, el);
+        }
+
+        const int MaxDepth = 8;
+        var visited = new HashSet<int>();
+
+        void Walk(int tb, int depth)
+        {
+            if (tb <= 0 || depth > MaxDepth || !visited.Add(tb)) return;
+            if (!byNumber.TryGetValue(tb, out JsonElement entry)) return;
+
+            string? action = entry.TryGetProperty("Action", out JsonElement a) && a.ValueKind == JsonValueKind.String
+                ? a.GetString() : null;
+            if (!string.IsNullOrEmpty(action))
+            {
+                foreach (string line in action.Split('\n'))
+                foreach (string rawCmd in line.Split(':'))
+                {
+                    string[] tok = rawCmd.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                    if (tok.Length < 2 || !int.TryParse(tok[1], out int arg)) continue;
+                    switch (tok[0].ToLowerInvariant())
+                    {
+                        case "summon":    TextblockEffects.AddUnique(fx.Summons, arg); break;
+                        case "cast":      TextblockEffects.AddUnique(fx.Casts, arg); break;
+                        case "failitem":  TextblockEffects.AddUnique(fx.Avoided, arg); break;
+                        case "checkitem": TextblockEffects.AddUnique(fx.Required, arg); break;
+                        case "random":    Walk(arg, depth + 1); break;
+                    }
+                }
+            }
+
+            int linkTo = ReadInt(entry, "LinkTo");
+            if (linkTo > 0) Walk(linkTo, depth + 1);
+        }
+
+        Walk(rootTextblock, 0);
+
+        // Item gates are only meaningful when the chain produced an active
+        // effect — otherwise a quest hook's checkitem would look like a gate.
+        if (!fx.HasEffect) { fx.Avoided.Clear(); fx.Required.Clear(); }
+        return fx;
+    }
+
+    // Resolve ids in <paramref name="table"/> to their Name (falling back to
+    // "<Table> #N"), comma-joined.
+    private string JoinNames(string table, IReadOnlyList<int> ids)
+    {
+        var names = new List<string>(ids.Count);
+        foreach (int id in ids)
+            names.Add(_cache.FindNameByNumber(table, id) ?? $"{table.TrimEnd('s')} #{id}");
         return string.Join(", ", names);
     }
 
     // "<Kind> #<number>" with any trailing chance / qualifier ("(50%)") ignored.
     private static readonly Regex SourceToken = new(@"^([A-Za-z]+)\s*#\s*(\d+)", RegexOptions.Compiled);
+
+    // The effect formatter's bare "TextBlock 9404" fallback — suppressed in
+    // favour of the walked Summons / Casts rows.
+    private static readonly Regex BareTextblock = new(@"^TextBlock \d+$", RegexOptions.Compiled);
 
     private static int ReadInt(JsonElement row, string property)
         => row.TryGetProperty(property, out JsonElement e)
