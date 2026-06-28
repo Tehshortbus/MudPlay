@@ -79,12 +79,36 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
         Title, "monster", "mob", "enemy", "creature", "lair", "regen", "respawn",
     };
 
+    /// <summary>
+    /// MajorMUD's HP-regen tick: a monster heals its <c>HPRegen</c> amount
+    /// once every 90 seconds (18 combat rounds × 5 s). Shared by the
+    /// "HP Regen" grid column and the edit dialog's HP detail row so the
+    /// two never drift. (GreaterMUD's 30 s / 6 rounds would branch here
+    /// off a realm flag if/when that realm is supported.)
+    /// </summary>
+    private const int RegenIntervalSeconds = 90;
+
     protected override IReadOnlyDictionary<string, Func<string?, string?>> ColumnFormatters { get; } =
         new Dictionary<string, Func<string?, string?>>(StringComparer.OrdinalIgnoreCase)
         {
-            ["Type"]  = LookupEnums.FormatMonType,
-            ["Align"] = LookupEnums.FormatMonAlignment,
+            ["Type"]    = LookupEnums.FormatMonType,
+            ["Align"]   = LookupEnums.FormatMonAlignment,
+            ["HPRegen"] = FormatHpRegen,
         };
+
+    /// <summary>
+    /// "2hp@90s" — HP healed per regen tick @ the tick interval, so the
+    /// regen rate reads at a glance. Zero-regen mobs show a plain "0";
+    /// non-numeric / empty values pass through unchanged.
+    /// </summary>
+    internal static string? FormatHpRegen(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return raw;
+        if (!int.TryParse(raw, System.Globalization.NumberStyles.Integer,
+                System.Globalization.CultureInfo.InvariantCulture, out int n))
+            return raw;
+        return n > 0 ? $"{n}hp@{RegenIntervalSeconds}s" : raw;
+    }
 
     public IRelayCommand<GameDataRow?> OpenEditAsyncCommand { get; }
     ICommand IEditableTableSectionViewModel.OpenEditCommand => OpenEditAsyncCommand;
@@ -290,7 +314,7 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
                 string hpDisplay = hp.ToString("N0", System.Globalization.CultureInfo.InvariantCulture);
                 int hpRegen = ReadInt(el, "HPRegen");
                 if (hpRegen > 0)
-                    hpDisplay += $" (Regens: {hpRegen:N0} HPs every 90 seconds [18 rounds])";
+                    hpDisplay += $" (Regens: {hpRegen:N0} HPs every {RegenIntervalSeconds} seconds [{RegenIntervalSeconds / 5} rounds])";
                 AddRow(kv, "HP", hpDisplay);
             }
 
