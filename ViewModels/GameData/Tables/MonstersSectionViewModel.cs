@@ -109,25 +109,29 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
 
     /// <summary>
     /// Synthesise the grid's "Accuracy" column — not a real MDB field.
-    /// Monsters store accuracy per attack (<c>AttAcc-N</c>); the
-    /// representative value is the primary physical attack's (the first
-    /// <c>AttType</c> 1/3 slot with a non-zero chance), falling back to
-    /// slot 0 so spell-only mobs still show something.
+    /// Monsters store accuracy per attack (<c>AttAcc-N</c>); a mob with
+    /// several attacks shows each one's accuracy slash-joined in attack
+    /// order ("10/42/8"). Only physical attacks count (<c>AttType</c> 1/3
+    /// with a non-zero chance) — spell-attack slots stash a spell id in
+    /// <c>AttAcc</c>, not an accuracy. Falls back to slot 0 so spell-only
+    /// mobs still show something.
     /// </summary>
     protected override IReadOnlyDictionary<string, string?>? ComputeRowCells(JsonElement element)
         => new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
         {
-            ["Accuracy"] = ComputePrimaryAccuracy(element),
+            ["Accuracy"] = ComputeAttackAccuracy(element),
         };
 
-    internal static string? ComputePrimaryAccuracy(JsonElement el)
+    internal static string? ComputeAttackAccuracy(JsonElement el)
     {
+        List<string> accuracies = new();
         for (int i = 0; i < 5; i++)
         {
             int attType = ReadInt(el, $"AttType-{i}");
             if ((attType == 1 || attType == 3) && ReadInt(el, $"Att%-{i}") > 0)
-                return ReadInt(el, $"AttAcc-{i}").ToString(System.Globalization.CultureInfo.InvariantCulture);
+                accuracies.Add(ReadInt(el, $"AttAcc-{i}").ToString(System.Globalization.CultureInfo.InvariantCulture));
         }
+        if (accuracies.Count > 0) return string.Join("/", accuracies);
         int slot0 = ReadInt(el, "AttAcc-0");
         return slot0 != 0 ? slot0.ToString(System.Globalization.CultureInfo.InvariantCulture) : null;
     }
