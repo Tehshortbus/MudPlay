@@ -511,6 +511,16 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
             // dead end in the panel.
             AddRoomList(kv, "Placed In", FindPlacedRooms(wccNo));
 
+            // ----- Summoned By (spell) -----
+            // The remaining "where does this come from" case: monsters
+            // that aren't laired OR placed are often conjured by a summon
+            // spell (Abil 12). Surface those spells so the source isn't a
+            // mystery. Best-effort — the summon→monster encoding is
+            // inconsistent (see SpellSummons).
+            List<string> summoners = FindSummoningSpells(wccNo);
+            if (summoners.Count > 0)
+                AddRow(kv, "Summoned By", string.Join(", ", summoners));
+
             break;
         }
         return kv;
@@ -552,6 +562,57 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
         }
         rooms.Sort(static (a, b) => a.Map != b.Map ? a.Map.CompareTo(b.Map) : a.Room.CompareTo(b.Room));
         return rooms;
+    }
+
+    /// <summary>
+    /// Spell names that summon <paramref name="wccNo"/> (best-effort —
+    /// see <see cref="SpellSummons"/>). Covers monsters that aren't
+    /// laired or placed but are conjured by a caster (Argak, raptors, …).
+    /// </summary>
+    private List<string> FindSummoningSpells(int wccNo)
+    {
+        List<string> spells = new();
+        JsonDocument? doc = _cache.GetRawTable("Spells");
+        if (doc is null) return spells;
+        foreach (JsonElement el in doc.RootElement.EnumerateArray())
+        {
+            if (!SpellSummons(el, wccNo)) continue;
+            int num = ReadInt(el, "Number");
+            string name = ReadString(el, "Name").Trim();
+            spells.Add(string.IsNullOrEmpty(name) ? $"Spell #{num}" : name);
+        }
+        return spells;
+    }
+
+    /// <summary>
+    /// True when <paramref name="spell"/> summons monster
+    /// <paramref name="monsterNo"/>. Summon spells carry ability code 12;
+    /// the summoned monster number is inconsistently encoded, so this is
+    /// best-effort: a summon ability's own value (<c>AbilVal</c>) wins
+    /// when positive, and only when NO summon ability names a target do we
+    /// fall back to the spell's <c>MinBase</c> (e.g. "raptor summon" →
+    /// MinBase 509 = tetraraptor). Preferring the ability value avoids
+    /// mis-attributing odd data — e.g. "summon silver skull" has
+    /// <c>MinBase 1</c> (giant rat) but its summon value points elsewhere.
+    /// </summary>
+    internal static bool SpellSummons(JsonElement spell, int monsterNo)
+    {
+        if (monsterNo <= 0) return false;
+        bool isSummon = false;
+        bool hasExplicitTarget = false;
+        for (int i = 0; i < 10; i++)
+        {
+            if (ReadInt(spell, $"Abil-{i}") != 12) continue;   // 12 = summon
+            isSummon = true;
+            int target = ReadInt(spell, $"AbilVal-{i}");
+            if (target > 0)
+            {
+                hasExplicitTarget = true;
+                if (target == monsterNo) return true;
+            }
+        }
+        if (!isSummon) return false;
+        return !hasExplicitTarget && ReadInt(spell, "MinBase") == monsterNo;
     }
 
     /// <summary>
