@@ -54,6 +54,17 @@ public abstract partial class GameDataTableSectionViewModel : GameDataSectionVie
     /// </summary>
     public virtual bool ShowUseColumn => true;
 
+    /// <summary>
+    /// Optional friendly grid-header overrides, keyed by column name in
+    /// <see cref="Columns"/>. When a column is present here the DataGrid
+    /// renders the mapped label as its header while the column name still
+    /// drives the value binding, search, sort, and formatters. Lets a
+    /// table show "AC" / "HP Regen" while keeping the raw MDB keys
+    /// (<c>ArmourClass</c> / <c>HPRegen</c>) as the data identity.
+    /// Columns absent from the map fall back to their raw name.
+    /// </summary>
+    public virtual IReadOnlyDictionary<string, string>? ColumnHeaders => null;
+
     /// <summary>Column the search box filters against by default (kept for status-bar display only).</summary>
     public abstract string SearchKeyColumn { get; }
 

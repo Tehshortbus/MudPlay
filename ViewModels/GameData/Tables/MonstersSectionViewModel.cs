@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.Input;
 using FujinTerm.Game.GameData;
+using FujinTerm.Game.Map;
 using FujinTerm.Models.GameData;
 using FujinTerm.Services;
 using FujinTerm.ViewModels.GameData.Edit;
@@ -34,6 +35,7 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
     private readonly SettingsResolver? _resolverRef;
     private readonly MonsterMessageStore? _monsterMessages;
     private readonly MonsterOverlaySeedStore? _overlaySeed;
+    private readonly RoomGraphManager? _roomGraph;
 
     public override string Id => "monsters";
     public override string Title => "Monsters";
@@ -46,17 +48,29 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
         "Name",
         "EXP",
         "HP",
+        "HPRegen",
         "ArmourClass",
         "DamageResist",
         "MagicRes",
-        "AvgDmg",
-        "Energy",
-        "HPRegen",
-        "RegenTime",
-        "Type",
+        "Accuracy",      // synthesised from the primary attack (see ComputeRowCells)
         "Align",
-        "Undead",
+        "Type",
     };
+
+    /// <summary>
+    /// Friendly grid headers — the columns above keep their raw MDB keys
+    /// (so binding / search / formatters work) but render compact labels.
+    /// </summary>
+    public override IReadOnlyDictionary<string, string> ColumnHeaders { get; } =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Number"]       = "ID",
+            ["HPRegen"]      = "HP Regen",
+            ["ArmourClass"]  = "AC",
+            ["DamageResist"] = "DR",
+            ["MagicRes"]     = "MR",
+            ["Align"]        = "Alignment",
+        };
 
     public override string SearchKeyColumn => "Name";
 
@@ -80,7 +94,8 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
         SettingsResolver? resolver = null,
         DialogService? dialogs = null,
         MonsterMessageStore? monsterMessages = null,
-        MonsterOverlaySeedStore? overlaySeed = null)
+        MonsterOverlaySeedStore? overlaySeed = null,
+        RoomGraphManager? roomGraph = null)
         : base(cache, resolver)
     {
         _cache = cache;
@@ -88,7 +103,33 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
         _resolverRef = resolver;
         _monsterMessages = monsterMessages;
         _overlaySeed = overlaySeed;
+        _roomGraph = roomGraph;
         OpenEditAsyncCommand = new AsyncRelayCommand<GameDataRow?>(OpenEditAsync);
+    }
+
+    /// <summary>
+    /// Synthesise the grid's "Accuracy" column — not a real MDB field.
+    /// Monsters store accuracy per attack (<c>AttAcc-N</c>); the
+    /// representative value is the primary physical attack's (the first
+    /// <c>AttType</c> 1/3 slot with a non-zero chance), falling back to
+    /// slot 0 so spell-only mobs still show something.
+    /// </summary>
+    protected override IReadOnlyDictionary<string, string?>? ComputeRowCells(JsonElement element)
+        => new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Accuracy"] = ComputePrimaryAccuracy(element),
+        };
+
+    internal static string? ComputePrimaryAccuracy(JsonElement el)
+    {
+        for (int i = 0; i < 5; i++)
+        {
+            int attType = ReadInt(el, $"AttType-{i}");
+            if ((attType == 1 || attType == 3) && ReadInt(el, $"Att%-{i}") > 0)
+                return ReadInt(el, $"AttAcc-{i}").ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+        int slot0 = ReadInt(el, "AttAcc-0");
+        return slot0 != 0 ? slot0.ToString(System.Globalization.CultureInfo.InvariantCulture) : null;
     }
 
     private async Task OpenEditAsync(GameDataRow? row)
@@ -426,9 +467,66 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
                 shown++;
             }
 
+            // ----- Spawns In (lair rooms) -----
+            // Reverse lookup over the active room graph: every room whose
+            // lair list names this monster is a spawn site. Listed as
+            // map/room pairs at the bottom per user spec; capped so a
+            // common mob (giant rat appears in dozens of rooms) doesn't
+            // flood the pane.
+            IReadOnlyList<RoomKey> spawns = FindSpawnRooms(wccNo);
+            if (spawns.Count > 0)
+            {
+                const int Cap = 60;
+                string list = string.Join(", ", spawns.Take(Cap).Select(k => $"{k.Map}/{k.Room}"));
+                if (spawns.Count > Cap) list += $", (+{spawns.Count - Cap} more)";
+                AddRow(kv, $"Spawns In ({spawns.Count})", list);
+            }
+
             break;
         }
         return kv;
+    }
+
+    /// <summary>
+    /// Rooms whose lair names <paramref name="wccNo"/>, sorted by
+    /// map then room. Reads the in-memory <see cref="RoomGraphManager"/>
+    /// (already parsed for the active set) so no 11 MB Rooms.json reload
+    /// is needed. Empty when the graph isn't wired or the monster lairs
+    /// nowhere.
+    /// </summary>
+    private IReadOnlyList<RoomKey> FindSpawnRooms(int wccNo)
+    {
+        if (_roomGraph is null) return Array.Empty<RoomKey>();
+        List<RoomKey> rooms = new();
+        foreach (Room room in _roomGraph.Rooms)
+        {
+            if (LairNamesMonster(room.RawLairTag, wccNo))
+                rooms.Add(room.Key);
+        }
+        rooms.Sort(static (a, b) => a.Map != b.Map ? a.Map.CompareTo(b.Map) : a.Room.CompareTo(b.Room));
+        return rooms;
+    }
+
+    /// <summary>
+    /// True when a <see cref="Room.RawLairTag"/> lists
+    /// <paramref name="wccNo"/> as one of its spawn monsters. v1.11p tags
+    /// are <c>"(Max N): id,id,…,[group-index]"</c> — the monster ids
+    /// precede the bracketed group key; the <c>[..]</c> suffix is parsed
+    /// off so its digits aren't mistaken for monster ids.
+    /// </summary>
+    internal static bool LairNamesMonster(string? rawLairTag, int wccNo)
+    {
+        if (string.IsNullOrEmpty(rawLairTag)) return false;
+        int bracket = rawLairTag.IndexOf('[');
+        string head = bracket >= 0 ? rawLairTag[..bracket] : rawLairTag;
+        int colon = head.IndexOf(':');
+        if (colon < 0) return false;
+        foreach (string token in head[(colon + 1)..]
+                     .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (int.TryParse(token, out int id) && id == wccNo) return true;
+        }
+        return false;
     }
 
     // ----- Field readers + row helpers -----

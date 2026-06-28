@@ -143,9 +143,15 @@ public partial class GameDataTableSectionView : UserControl
             // numeric columns properly (cell values are strings, so the
             // DataGrid's default sort would treat EXP as
             // "0, 1, 10, 100, 11, 2…").
+            // Friendly header when the VM maps one (e.g. "AC" for the
+            // ArmourClass key); raw column name otherwise.
+            string header = vm.ColumnHeaders is { } headers
+                && headers.TryGetValue(column, out string? friendly)
+                    ? friendly
+                    : column;
             RowsGrid.Columns.Add(new DataGridTextColumn
             {
-                Header             = column,
+                Header             = header,
                 Binding            = new Binding($"Cells[{index}].Value"),
                 Width              = DataGridLength.Auto,
                 CustomSortComparer = new NumericAwareCellComparer(index),

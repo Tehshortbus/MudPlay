@@ -2959,6 +2959,7 @@ public partial class MainWindowViewModel : ObservableObject
                 AppServices.Current.Dialogs,
                 AppServices.Current.Keybindings,
                 AppServices.Current.Profile,
+                AppServices.Current.RoomGraph,
                 initialSectionId),
         };
         window.Closed += (_, _) => _gameDataBrowser = null;
