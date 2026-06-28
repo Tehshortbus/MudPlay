@@ -511,15 +511,41 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
             // dead end in the panel.
             AddRoomList(kv, "Placed In", FindPlacedRooms(wccNo));
 
-            // ----- Summoned By (spell) -----
+            // ----- Summoned (spell sources) -----
             // The remaining "where does this come from" case: monsters
             // that aren't laired OR placed are often conjured by a summon
-            // spell (Abil 12). Surface those spells so the source isn't a
-            // mystery. Best-effort — the summon→monster encoding is
-            // inconsistent (see SpellSummons).
-            List<string> summoners = FindSummoningSpells(wccNo);
-            if (summoners.Count > 0)
-                AddRow(kv, "Summoned By", string.Join(", ", summoners));
+            // spell (Abil 12). Resolve who casts that spell:
+            //   • a ROOM via its room-spell (cast when a player enters) —
+            //     a location, listed like the other room sources;
+            //   • a MONSTER, in combat (spell-attack / hit-spell / between-
+            //     rounds) and/or as its death-spell and/or on spawn.
+            // Best-effort — the summon→monster encoding is inconsistent
+            // (see SpellSummons).
+            List<(int Number, string Name)> summonSpells = FindSummonSpells(wccNo);
+            if (summonSpells.Count > 0)
+            {
+                HashSet<int> spellIds = summonSpells.Select(s => s.Number).ToHashSet();
+
+                // Room-spell summons (room casts on entry) — a location.
+                AddRoomList(kv, "Summoned In", FindRoomSpellRooms(spellIds));
+
+                // Monster casters with their context tag(s).
+                List<string> mobs = FindSummoningMonsters(spellIds);
+                string by;
+                if (mobs.Count > 0)
+                {
+                    const int Cap = 20;
+                    by = string.Join(", ", mobs.Take(Cap));
+                    if (mobs.Count > Cap) by += $", (+{mobs.Count - Cap} more)";
+                }
+                else
+                {
+                    // No room or monster caster resolved — surface the bare
+                    // spell so the user still knows it's summonable.
+                    by = string.Join(", ", summonSpells.Select(s => $"{s.Name} (spell)"));
+                }
+                AddRow(kv, "Summoned By", by);
+            }
 
             break;
         }
@@ -565,13 +591,13 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
     }
 
     /// <summary>
-    /// Spell names that summon <paramref name="wccNo"/> (best-effort —
-    /// see <see cref="SpellSummons"/>). Covers monsters that aren't
-    /// laired or placed but are conjured by a caster (Argak, raptors, …).
+    /// Spells (number + name) that summon <paramref name="wccNo"/>
+    /// (best-effort — see <see cref="SpellSummons"/>). Covers monsters
+    /// that aren't laired or placed but are conjured by a caster.
     /// </summary>
-    private List<string> FindSummoningSpells(int wccNo)
+    private List<(int Number, string Name)> FindSummonSpells(int wccNo)
     {
-        List<string> spells = new();
+        List<(int, string)> spells = new();
         JsonDocument? doc = _cache.GetRawTable("Spells");
         if (doc is null) return spells;
         foreach (JsonElement el in doc.RootElement.EnumerateArray())
@@ -579,9 +605,80 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
             if (!SpellSummons(el, wccNo)) continue;
             int num = ReadInt(el, "Number");
             string name = ReadString(el, "Name").Trim();
-            spells.Add(string.IsNullOrEmpty(name) ? $"Spell #{num}" : name);
+            spells.Add((num, string.IsNullOrEmpty(name) ? $"Spell #{num}" : name));
         }
         return spells;
+    }
+
+    /// <summary>
+    /// Rooms whose room-spell (<see cref="Room.Spell"/>, cast when a
+    /// player enters) is one of <paramref name="spellIds"/> — i.e. rooms
+    /// that summon the monster on entry. Sorted by map then room.
+    /// </summary>
+    private IReadOnlyList<RoomKey> FindRoomSpellRooms(IReadOnlySet<int> spellIds)
+    {
+        if (_roomGraph is null) return Array.Empty<RoomKey>();
+        List<RoomKey> rooms = new();
+        foreach (Room room in _roomGraph.Rooms)
+        {
+            if (room.Spell != 0 && spellIds.Contains(room.Spell))
+                rooms.Add(room.Key);
+        }
+        rooms.Sort(static (a, b) => a.Map != b.Map ? a.Map.CompareTo(b.Map) : a.Room.CompareTo(b.Room));
+        return rooms;
+    }
+
+    /// <summary>
+    /// Monsters that cast one of <paramref name="spellIds"/>, each tagged
+    /// with how (combat / death / on spawn) — e.g. "Argak the Grey
+    /// (death)". Deduped by label; popular summon spells (cast by many
+    /// mobs) are capped by the caller.
+    /// </summary>
+    private List<string> FindSummoningMonsters(IReadOnlySet<int> spellIds)
+    {
+        List<string> casters = new();
+        HashSet<string> seen = new(StringComparer.Ordinal);
+        JsonDocument? doc = _cache.GetRawTable("Monsters");
+        if (doc is null) return casters;
+        foreach (JsonElement el in doc.RootElement.EnumerateArray())
+        {
+            string? ctx = SummonContext(el, spellIds);
+            if (ctx is null) continue;
+            int num = ReadInt(el, "Number");
+            string name = ReadString(el, "Name").Trim();
+            string label = $"{(string.IsNullOrEmpty(name) ? $"Monster #{num}" : name)} ({ctx})";
+            if (seen.Add(label)) casters.Add(label);
+        }
+        return casters;
+    }
+
+    /// <summary>
+    /// How <paramref name="monster"/> casts a spell in
+    /// <paramref name="spellIds"/>, or <c>null</c> if it doesn't. Combat =
+    /// a spell-attack (<c>AttType</c> 2 whose <c>AttAcc</c> is the spell),
+    /// a per-hit spell (<c>AttHitSpell</c>), or a between-rounds spell
+    /// (<c>MidSpell</c>); plus the <c>DeathSpell</c> ("death") and
+    /// <c>CreateSpell</c> ("on spawn"). A monster can carry several.
+    /// </summary>
+    internal static string? SummonContext(JsonElement monster, IReadOnlySet<int> spellIds)
+    {
+        bool combat = false;
+        for (int i = 0; i < 5; i++)
+        {
+            if (ReadInt(monster, $"AttType-{i}") == 2 && spellIds.Contains(ReadInt(monster, $"AttAcc-{i}")))
+                combat = true;
+            if (spellIds.Contains(ReadInt(monster, $"AttHitSpell-{i}"))) combat = true;
+            if (spellIds.Contains(ReadInt(monster, $"MidSpell-{i}"))) combat = true;
+        }
+        bool death = spellIds.Contains(ReadInt(monster, "DeathSpell"));
+        bool spawn = spellIds.Contains(ReadInt(monster, "CreateSpell"));
+        if (!combat && !death && !spawn) return null;
+
+        List<string> parts = new(3);
+        if (combat) parts.Add("combat");
+        if (death) parts.Add("death");
+        if (spawn) parts.Add("on spawn");
+        return string.Join(", ", parts);
     }
 
     /// <summary>
