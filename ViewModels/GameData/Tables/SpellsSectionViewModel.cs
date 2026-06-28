@@ -310,6 +310,24 @@ public sealed class SpellsSectionViewModel : JsonTableSectionViewModel, IEditabl
                     continue;
                 }
 
+                // TextBlock (148) — the spell executes a TBInfo record. The bare
+                // record number means nothing to the user; instead surface the
+                // item gate around the textblock's cast so e.g. the "silver
+                // river" room-damage spell shows it's avoided by carrying a raft.
+                // (What the textblock actually casts is already in the Effect
+                // row via textblock expansion.) AbilVal holds the record number;
+                // a few spells stash it in MinBase with a zero AbilVal instead.
+                if (code == 148)
+                {
+                    int tb = val > 0 ? val : ReadInt(el, "MinBase");
+                    (IReadOnlyList<int> required, IReadOnlyList<int> avoided) = ParseTextblockItemGate(tb);
+                    if (required.Count > 0)
+                        rows.Add(new GameDataInfoRow("Requires carrying", JoinItemNames(required)));
+                    if (avoided.Count > 0)
+                        rows.Add(new GameDataInfoRow("Avoided by carrying", JoinItemNames(avoided)));
+                    continue;
+                }
+
                 string abilName = AbilityNames.GetName(code) ?? $"Ability {code}";
                 string valueText = val.ToString(CultureInfo.InvariantCulture);
                 if (ResolveAbilityReference(code, val) is { } refName)
@@ -441,20 +459,28 @@ public sealed class SpellsSectionViewModel : JsonTableSectionViewModel, IEditabl
 
     // A "Learned From" / "Casted By" cell is a comma-joined list of
     // "<Kind> #<number>" source tokens (e.g. "Item #328, Monster #198"). Resolve
-    // each token to the real Item / Monster / Spell / … name, dedupe, and — when
-    // the list runs long — show the count plus the first several so the
-    // non-scrolling info dialog stays readable.
+    // each token to the real Item / Monster / Spell / … name, dedupe, and list
+    // them all — the Game Data tab scrolls, so no app-side truncation. A lone
+    // trailing "+" token is the MDB's own cap on a very long list (it stops
+    // emitting after ~20 sources); surface that as "+ more" rather than a
+    // dangling "+".
     private string ResolveSourceList(string raw)
     {
         string[] parts = raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         var names = new List<string>();
+        bool cappedInData = false;
         foreach (string part in parts)
         {
+            // The MDB caps the list with a trailing "+" marker; depending on
+            // where the field length fell it can arrive clean (", +") or
+            // glued onto a half-written token (", Ro+"). No real source token
+            // (Room M/R, Monster #N, …) contains '+', so any '+' marks the cap.
+            if (part.Contains('+')) { cappedInData = true; continue; }
             string name = ResolveSourceToken(part);
             if (!names.Contains(name, StringComparer.OrdinalIgnoreCase)) names.Add(name);
         }
-        if (names.Count <= 8) return string.Join(", ", names);
-        return $"{names.Count} sources — {string.Join(", ", names.Take(8))}, …";
+        string joined = string.Join(", ", names);
+        return cappedInData ? $"{joined}, + more" : joined;
     }
 
     // Translate one "<Kind> #<number>" source token to the referenced row's
@@ -479,6 +505,67 @@ public sealed class SpellsSectionViewModel : JsonTableSectionViewModel, IEditabl
         };
         if (table is null) return token;
         return _cache.FindNameByNumber(table, number) ?? token;
+    }
+
+    /// <summary>
+    /// Inspect a TBInfo textblock's action chain for the item gate around a
+    /// <c>cast</c>. <c>failitem N</c> halts the chain when the player HAS item N
+    /// — so holding any such item AVOIDS the cast; <c>checkitem N</c> requires
+    /// item N for the chain to proceed. Returns the (required, avoided) item id
+    /// lists, but only when the chain actually casts something — so a quest
+    /// give-item textblock isn't mistaken for a damage gate. Reads TBInfo via
+    /// the cache (small table, scanned once on dialog open).
+    /// </summary>
+    private (IReadOnlyList<int> Required, IReadOnlyList<int> Avoided) ParseTextblockItemGate(int textblockNumber)
+    {
+        var required = new List<int>();
+        var avoided = new List<int>();
+        if (textblockNumber <= 0) return (required, avoided);
+
+        JsonDocument? doc = _cache.GetRawTable("TBInfo");
+        if (doc is null) return (required, avoided);
+
+        string? action = null;
+        foreach (JsonElement el in doc.RootElement.EnumerateArray())
+            if (ReadInt(el, "Number") == textblockNumber)
+            {
+                action = el.TryGetProperty("Action", out JsonElement a) && a.ValueKind == JsonValueKind.String
+                    ? a.GetString() : null;
+                break;
+            }
+        if (string.IsNullOrEmpty(action)) return (required, avoided);
+
+        bool castsSomething = false;
+        foreach (string line in action.Split('\n'))
+        foreach (string rawCmd in line.Split(':'))
+        {
+            string[] tok = rawCmd.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (tok.Length == 0) continue;
+            switch (tok[0].ToLowerInvariant())
+            {
+                case "cast" when tok.Length >= 2:
+                    castsSomething = true;
+                    break;
+                case "failitem" when tok.Length >= 2 && int.TryParse(tok[1], out int fi) && !avoided.Contains(fi):
+                    avoided.Add(fi);
+                    break;
+                case "checkitem" when tok.Length >= 2 && int.TryParse(tok[1], out int ci) && !required.Contains(ci):
+                    required.Add(ci);
+                    break;
+            }
+        }
+
+        if (!castsSomething) { required.Clear(); avoided.Clear(); }
+        return (required, avoided);
+    }
+
+    // Resolve item ids to their Items.Name (falling back to "Item #N"), comma-joined.
+    private string JoinItemNames(IReadOnlyList<int> itemIds)
+    {
+        var names = new List<string>(itemIds.Count);
+        foreach (int id in itemIds)
+            names.Add(_cache.FindNameByNumber("Items", id) ?? $"Item #{id}");
+        return string.Join(", ", names);
     }
 
     // "<Kind> #<number>" with any trailing chance / qualifier ("(50%)") ignored.

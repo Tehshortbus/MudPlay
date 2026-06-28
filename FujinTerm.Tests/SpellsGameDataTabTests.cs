@@ -103,4 +103,44 @@ public sealed class SpellsGameDataTabTests : IDisposable
         Assert.Contains("10", effect.Value);
         Assert.Contains("20", effect.Value);
     }
+
+    // ----- textblock item gate (the "silver river" case) -----
+
+    [Fact]
+    public void GameDataRows_SurfaceTextblockItemGate()
+    {
+        // silver-river shape: spell executes textblock 2750, whose action
+        // casts "battered" UNLESS the player holds a raft (failitem). The
+        // raft items must surface as "Avoided by carrying".
+        Seed("Spells", "[{\"Number\":753,\"Name\":\"silver river\",\"Abil-0\":148,\"AbilVal-0\":2750}]");
+        Seed("TBInfo", "[{\"Number\":2750,\"Action\":\"failitem 690:failitem 691:failitem 1181:message 2096:cast 754\"}]");
+        Seed("Items", "[{\"Number\":690,\"Name\":\"log raft\"}," +
+                      "{\"Number\":691,\"Name\":\"wooden skiff\"}," +
+                      "{\"Number\":1181,\"Name\":\"silverbark canoe\"}]");
+        _cache.SwitchSet("v1.11p");
+
+        var vm = new SpellsSectionViewModel(_cache);
+        IReadOnlyList<GameDataInfoRow> rows = vm.BuildSpellInfoRowsForTests(753);
+
+        GameDataInfoRow avoided = rows.First(r => r.Label == "Avoided by carrying");
+        Assert.Equal("log raft, wooden skiff, silverbark canoe", avoided.Value);
+        // The bare "TextBlock 2750" record number is not shown.
+        Assert.DoesNotContain(rows, r => r.Label == "TextBlock");
+    }
+
+    [Fact]
+    public void GameDataRows_NoItemGate_WhenTextblockDoesntCast()
+    {
+        // A textblock that only gives an item (no cast) is a quest hook, not
+        // a damage gate — its checkitem/failitem must NOT surface here.
+        Seed("Spells", "[{\"Number\":760,\"Name\":\"quest hook\",\"Abil-0\":148,\"AbilVal-0\":3000}]");
+        Seed("TBInfo", "[{\"Number\":3000,\"Action\":\"checkitem 690 5:giveitem 700:message 9\"}]");
+        Seed("Items", "[{\"Number\":690,\"Name\":\"log raft\"}]");
+        _cache.SwitchSet("v1.11p");
+
+        var vm = new SpellsSectionViewModel(_cache);
+        IReadOnlyList<GameDataInfoRow> rows = vm.BuildSpellInfoRowsForTests(760);
+
+        Assert.DoesNotContain(rows, r => r.Label is "Avoided by carrying" or "Requires carrying");
+    }
 }
