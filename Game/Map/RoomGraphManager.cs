@@ -423,6 +423,7 @@ public sealed class RoomGraphManager
             Light = TryReadIntOrZero(row, "Light"),
             Shop  = TryReadIntOrZero(row, "Shop"),
             Spell = TryReadIntOrZero(row, "Spell"),
+            Npc   = TryReadIntOrZero(row, "NPC"),
             Delay = TryReadIntOrZero(row, "Delay"),
             Cmd   = cmd,
             RawLairTag = lairRaw,

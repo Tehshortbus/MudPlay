@@ -217,6 +217,35 @@ public sealed class RoomGraphManagerTests : IDisposable
     }
 
     [Fact]
+    public void OnActiveSetChanged_ParsesNpcPlacement()
+    {
+        // The NPC field is the placed-monster (fixed-spawn) home-room
+        // pointer — drives the Monsters tab's "Placed In" lookup. Room 1
+        // places monster 1076; room 3 has no placement (NPC absent → 0).
+        const string json = """
+            [
+              { "Map Number": 1, "Room Number": 1, "Name": "Throne",
+                "Light": 0, "Shop": 0, "NPC": 1076, "Lair": "", "Delay": 0,
+                "N": "1/3", "S": "0", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 1, "Room Number": 3, "Name": "Hall",
+                "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+                "N": "0", "S": "1/1", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+            ]
+            """;
+        SeedRooms("alpha", json);
+        GameDataCache cache = NewCache();
+        cache.SwitchSet("alpha");
+        RoomGraphManager graph = new(cache);
+
+        graph.OnActiveSetChanged("alpha");
+
+        Assert.Equal(1076, graph.GetRoom(new RoomKey(1, 1))!.Npc);
+        Assert.Equal(0, graph.GetRoom(new RoomKey(1, 3))!.Npc);   // absent → 0
+    }
+
+    [Fact]
     public void OnActiveSetChanged_FiresGraphReloaded()
     {
         SeedRooms("alpha", TwoRoomJson);

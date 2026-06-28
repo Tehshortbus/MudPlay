@@ -83,6 +83,16 @@ public sealed record Room
     public int Spell { get; init; }
 
     /// <summary>
+    /// <c>NPC</c> field from the MDB — the monster number of a monster
+    /// "placed" (fixed-spawn) in this room, or <c>0</c> for none. Unlike
+    /// lair groups (<see cref="RawLairTag"/>), a placed monster has a
+    /// single home room and typically a respawn timer (bosses, uniques,
+    /// shopkeepers). The Game Data Browser uses this to show a timed-
+    /// respawn monster's "Placed In" room.
+    /// </summary>
+    public int Npc { get; init; }
+
+    /// <summary>
     /// Per-room respawn delay tick from the MDB. Encodes the lair's
     /// time-to-repopulate via the GreaterMUD formula
     /// <c>seconds = (Delay - 1) × 60 + 30</c> (so <c>Delay = 5</c> →

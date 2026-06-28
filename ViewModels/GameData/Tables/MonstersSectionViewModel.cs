@@ -501,14 +501,15 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
             // map/room pairs at the bottom per user spec; capped so a
             // common mob (giant rat appears in dozens of rooms) doesn't
             // flood the pane.
-            IReadOnlyList<RoomKey> spawns = FindSpawnRooms(wccNo);
-            if (spawns.Count > 0)
-            {
-                const int Cap = 60;
-                string list = string.Join(", ", spawns.Take(Cap).Select(k => $"{k.Map}/{k.Room}"));
-                if (spawns.Count > Cap) list += $", (+{spawns.Count - Cap} more)";
-                AddRow(kv, $"Spawns In ({spawns.Count})", list);
-            }
+            AddRoomList(kv, "Spawns In", FindSpawnRooms(wccNo));
+
+            // ----- Placed In (fixed NPC room) -----
+            // Placed monsters (bosses / uniques / shopkeepers) live in a
+            // single home room via the room's NPC field rather than a
+            // lair group — typically the timed-respawn monsters that
+            // aren't laired anywhere. Show that room so they aren't a
+            // dead end in the panel.
+            AddRoomList(kv, "Placed In", FindPlacedRooms(wccNo));
 
             break;
         }
@@ -533,6 +534,38 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
         }
         rooms.Sort(static (a, b) => a.Map != b.Map ? a.Map.CompareTo(b.Map) : a.Room.CompareTo(b.Room));
         return rooms;
+    }
+
+    /// <summary>
+    /// Rooms that "place" <paramref name="wccNo"/> via their NPC field
+    /// (fixed-spawn home room), sorted by map then room. Empty when the
+    /// graph isn't wired or the monster is laired-only / unplaced.
+    /// </summary>
+    private IReadOnlyList<RoomKey> FindPlacedRooms(int wccNo)
+    {
+        if (_roomGraph is null) return Array.Empty<RoomKey>();
+        List<RoomKey> rooms = new();
+        foreach (Room room in _roomGraph.Rooms)
+        {
+            if (room.Npc == wccNo)
+                rooms.Add(room.Key);
+        }
+        rooms.Sort(static (a, b) => a.Map != b.Map ? a.Map.CompareTo(b.Map) : a.Room.CompareTo(b.Room));
+        return rooms;
+    }
+
+    /// <summary>
+    /// Append a "<paramref name="label"/> (N)" row listing the rooms as
+    /// map/room pairs, capped so a common mob doesn't flood the pane.
+    /// No-op when <paramref name="rooms"/> is empty.
+    /// </summary>
+    private static void AddRoomList(List<KeyValuePair<string, string>> kv, string label, IReadOnlyList<RoomKey> rooms)
+    {
+        if (rooms.Count == 0) return;
+        const int Cap = 60;
+        string list = string.Join(", ", rooms.Take(Cap).Select(k => $"{k.Map}/{k.Room}"));
+        if (rooms.Count > Cap) list += $", (+{rooms.Count - Cap} more)";
+        AddRow(kv, $"{label} ({rooms.Count})", list);
     }
 
     /// <summary>
