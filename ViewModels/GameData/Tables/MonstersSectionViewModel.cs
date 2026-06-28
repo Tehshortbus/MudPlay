@@ -538,21 +538,15 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
                 // Room-spell summons (room casts on entry) — a location.
                 AddRoomList(kv, "Summoned In", FindRoomSpellRooms(spellIds));
 
-                // Monster casters with their context tag(s).
+                // Monster casters with their context tag(s) — listed in
+                // full (the pane scrolls; no expand affordance on a
+                // truncated list). Falls back to the bare spell name when
+                // no room or monster caster resolves so the user still
+                // knows it's summonable.
                 List<string> mobs = FindSummoningMonsters(spellIds);
-                string by;
-                if (mobs.Count > 0)
-                {
-                    const int Cap = 20;
-                    by = string.Join(", ", mobs.Take(Cap));
-                    if (mobs.Count > Cap) by += $", (+{mobs.Count - Cap} more)";
-                }
-                else
-                {
-                    // No room or monster caster resolved — surface the bare
-                    // spell so the user still knows it's summonable.
-                    by = string.Join(", ", summonSpells.Select(s => $"{s.Name} (spell)"));
-                }
+                string by = mobs.Count > 0
+                    ? string.Join(", ", mobs)
+                    : string.Join(", ", summonSpells.Select(s => $"{s.Name} (spell)"));
                 AddRow(kv, "Summoned By", by);
             }
 
