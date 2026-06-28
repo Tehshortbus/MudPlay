@@ -204,6 +204,11 @@ public sealed class SpellsSectionViewModel : JsonTableSectionViewModel, IEditabl
     /// their "Item #N" / "Monster #N" tokens to real names. Empty when the active
     /// set has no Spells table or no matching row.
     /// </summary>
+    /// <summary>Test seam — exercises <see cref="BuildSpellInfoRows"/> (the
+    /// dialog's Game Data tab content) without standing up a dialog.</summary>
+    internal IReadOnlyList<GameDataInfoRow> BuildSpellInfoRowsForTests(int spellNumber)
+        => BuildSpellInfoRows(spellNumber);
+
     private IReadOnlyList<GameDataInfoRow> BuildSpellInfoRows(int spellNumber)
     {
         var rows = new List<GameDataInfoRow>();
@@ -218,7 +223,28 @@ public sealed class SpellsSectionViewModel : JsonTableSectionViewModel, IEditabl
 
         // Scaling inputs projected once — feeds the curated growth block that
         // replaces the raw MinBase / MaxInc / Cap / … columns.
-        SpellFormulaInput? formula = new KnownSpellCatalog(_cache).GetFormulaByNumber(spellNumber);
+        KnownSpellCatalog catalog = new(_cache);
+        SpellFormulaInput? formula = catalog.GetFormulaByNumber(spellNumber);
+
+        // Plain-English effect summary at the top — the same translator the
+        // Items "Other Info" pane + the Spell Book use, so the spell reads as
+        // "Dmg 1–4 · then casts X · Slowness" instead of a wall of raw ability
+        // codes (the field-by-field rows below stay for the full detail).
+        // Rendered at level 0: the formatter clamps Min/Max to ReqLevel so the
+        // base figures are still real, and the per-level scaling lives in the
+        // curated growth block.
+        if (formula is { } effectFormula)
+        {
+            IReadOnlyDictionary<int, IReadOnlyList<KnownSpell>> tbIndex = catalog.BuildCastByTextblockIndex();
+            string effect = SpellEffectFormatter.Format(
+                effectFormula, level: 0,
+                resolveChain: catalog.GetFormulaByNumber,
+                resolveSpellName: catalog.GetSpellNameByNumber,
+                resolveTextblockCasts: tb => tbIndex.TryGetValue(tb, out IReadOnlyList<KnownSpell>? list)
+                    ? list : Array.Empty<KnownSpell>());
+            if (effect.Length > 0 && effect != "—")
+                rows.Add(new GameDataInfoRow("Effect", effect));
+        }
 
         bool teleportRendered = false;
         bool growthRendered = false;
