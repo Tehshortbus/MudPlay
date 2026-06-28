@@ -506,10 +506,10 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
 
             // ----- Spawns In (lair rooms) -----
             // Reverse lookup over the active room graph: every room whose
-            // lair list names this monster is a spawn site. Listed as
-            // map/room pairs at the bottom per user spec; capped so a
-            // common mob (giant rat appears in dozens of rooms) doesn't
-            // flood the pane.
+            // lair list names this monster is a spawn site. Listed in full
+            // as map/room pairs at the bottom per user spec (the pane
+            // scrolls; a common mob like giant rat lairs in dozens of
+            // rooms and we show them all).
             AddRoomList(kv, "Spawns In", FindSpawnRooms(wccNo));
 
             // ----- Placed In (fixed NPC room) -----
@@ -818,16 +818,15 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
     }
 
     /// <summary>
-    /// Append a "<paramref name="label"/> (N)" row listing the rooms as
-    /// map/room pairs, capped so a common mob doesn't flood the pane.
-    /// No-op when <paramref name="rooms"/> is empty.
+    /// Append a "<paramref name="label"/> (N)" row listing every room as a
+    /// map/room pair. Not truncated — the Other Info pane scrolls and a
+    /// truncated list has no expand affordance, so show them all. No-op
+    /// when <paramref name="rooms"/> is empty.
     /// </summary>
     private static void AddRoomList(List<KeyValuePair<string, string>> kv, string label, IReadOnlyList<RoomKey> rooms)
     {
         if (rooms.Count == 0) return;
-        const int Cap = 60;
-        string list = string.Join(", ", rooms.Take(Cap).Select(k => $"{k.Map}/{k.Room}"));
-        if (rooms.Count > Cap) list += $", (+{rooms.Count - Cap} more)";
+        string list = string.Join(", ", rooms.Select(k => $"{k.Map}/{k.Room}"));
         AddRow(kv, $"{label} ({rooms.Count})", list);
     }
 
