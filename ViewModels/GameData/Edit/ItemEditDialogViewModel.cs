@@ -15,8 +15,10 @@ namespace FujinTerm.ViewModels.GameData.Edit;
 /// </summary>
 /// <remarks>
 /// The Details section mixes MDB-derived read-only fields (Weight,
-/// Price, Item type, Body location, Bought/sold) with overlay-editable
-/// carry-policy fields. MDB-canonical stats (ItemType, Worn slot,
+/// Price, Item type, Body location) with overlay-editable carry-policy
+/// fields; the read-only Bought/sold shop list lives in the right-pane
+/// "Other Info" with the rest of the non-assignable MDB data. MDB-
+/// canonical stats (ItemType, Worn slot,
 /// ArmourType, ArmourClass, etc.) are deliberately not user-overridable
 /// — every BBS supplies a concrete MDB so the MDB is the source of
 /// truth; only behaviour fields flow through the overlay.
@@ -55,7 +57,6 @@ public sealed partial class ItemEditDialogViewModel : ObservableObject, IDialogV
     public string Price        { get; }
     public string ItemTypeText { get; }
     public string BodyLocation { get; }
-    public string BoughtSold   { get; }
 
     /// <summary>Right-pane "Other Info" key/value list (read-only MDB fields).</summary>
     public IReadOnlyList<KeyValuePair<string, string>> MdbInfo { get; }
@@ -74,8 +75,7 @@ public sealed partial class ItemEditDialogViewModel : ObservableObject, IDialogV
         string weight,
         string price,
         string itemTypeText,
-        string bodyLocation,
-        string boughtSold)
+        string bodyLocation)
     {
         WccNoStr     = wccNoStr;
         Name         = existing?.Name ?? mdbName;
@@ -85,7 +85,6 @@ public sealed partial class ItemEditDialogViewModel : ObservableObject, IDialogV
         Price        = price;
         ItemTypeText = itemTypeText;
         BodyLocation = bodyLocation;
-        BoughtSold   = boughtSold;
 
         AutoCollect     = existing?.AutoCollect     ?? false;
         AutoDiscard     = existing?.AutoDiscard     ?? false;

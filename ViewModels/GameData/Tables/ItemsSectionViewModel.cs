@@ -126,8 +126,7 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
             weight:       mdb.Weight,
             price:        mdb.Price,
             itemTypeText: mdb.ItemTypeText,
-            bodyLocation: mdb.BodyLocation,
-            boughtSold:   mdb.BoughtSold);
+            bodyLocation: mdb.BodyLocation);
 
         ItemEditResult? result = await _dialogs.OpenWindowAsync<ItemEditDialogViewModel, ItemEditResult>(vm);
         if (result is null) return;
@@ -176,14 +175,13 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
         List<KeyValuePair<string, string>> otherInfo = new();
         string weight = string.Empty, price = string.Empty;
         string itemTypeText = string.Empty, bodyLocation = "None";
-        string boughtSold = string.Empty;
 
         if (!int.TryParse(wccNoStr, out int wccNo))
-            return new ItemMdbView(otherInfo, weight, price, itemTypeText, bodyLocation, boughtSold);
+            return new ItemMdbView(otherInfo, weight, price, itemTypeText, bodyLocation);
 
         JsonDocument? doc = _cache.GetRawTable("Items");
         if (doc is null)
-            return new ItemMdbView(otherInfo, weight, price, itemTypeText, bodyLocation, boughtSold);
+            return new ItemMdbView(otherInfo, weight, price, itemTypeText, bodyLocation);
 
         // Spell-effect renderer for weapon use-cast / proc rows. An item's
         // cast spell scales to the item's required level (ability code 135 =
@@ -224,7 +222,6 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
             price        = FormatPrice(el);
             itemTypeText = LookupEnums.FormatItemType(ReadString(el, "ItemType")) ?? string.Empty;
             bodyLocation = worn == 0 ? "None" : (LookupEnums.FormatWornSlot(ReadString(el, "Worn")) ?? "None");
-            boughtSold   = ResolveBoughtSold(obtainedFrom);
 
             // ----- Other Info pane (right pane) -----
             otherInfo.Add(new KeyValuePair<string, string>("WCC No", wccNoStr));
@@ -390,9 +387,17 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
             if (!string.IsNullOrEmpty(droppedBy))
                 otherInfo.Add(new KeyValuePair<string, string>("Dropped By", droppedBy));
 
+            // Bought / sold — shop buy/sell locations. Read-only MDB info
+            // (the user can't assign which shops carry an item), so it
+            // lives in this "Other Info" pane rather than the editable
+            // Details section.
+            string boughtSold = ResolveBoughtSold(obtainedFrom);
+            if (!string.IsNullOrEmpty(boughtSold))
+                otherInfo.Add(new KeyValuePair<string, string>("Bought / sold", boughtSold));
+
             break;
         }
-        return new ItemMdbView(otherInfo, weight, price, itemTypeText, bodyLocation, boughtSold);
+        return new ItemMdbView(otherInfo, weight, price, itemTypeText, bodyLocation);
     }
 
     // ----- Ability-row formatting helpers -----
@@ -691,6 +696,5 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
         string Weight,
         string Price,
         string ItemTypeText,
-        string BodyLocation,
-        string BoughtSold);
+        string BodyLocation);
 }
