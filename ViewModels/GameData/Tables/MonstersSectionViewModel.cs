@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.Input;
 using FujinTerm.Game.GameData;
+using FujinTerm.Game.Map;
 using FujinTerm.Models.GameData;
 using FujinTerm.Services;
 using FujinTerm.ViewModels.GameData.Edit;
@@ -34,6 +35,7 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
     private readonly SettingsResolver? _resolverRef;
     private readonly MonsterMessageStore? _monsterMessages;
     private readonly MonsterOverlaySeedStore? _overlaySeed;
+    private readonly RoomGraphManager? _roomGraph;
 
     public override string Id => "monsters";
     public override string Title => "Monsters";
@@ -46,17 +48,29 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
         "Name",
         "EXP",
         "HP",
+        "HPRegen",
         "ArmourClass",
         "DamageResist",
         "MagicRes",
-        "AvgDmg",
-        "Energy",
-        "HPRegen",
-        "RegenTime",
-        "Type",
+        "Accuracy",      // synthesised from the primary attack (see ComputeRowCells)
         "Align",
-        "Undead",
+        "Type",
     };
+
+    /// <summary>
+    /// Friendly grid headers — the columns above keep their raw MDB keys
+    /// (so binding / search / formatters work) but render compact labels.
+    /// </summary>
+    public override IReadOnlyDictionary<string, string> ColumnHeaders { get; } =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Number"]       = "ID",
+            ["HPRegen"]      = "HP Regen",
+            ["ArmourClass"]  = "AC",
+            ["DamageResist"] = "DR",
+            ["MagicRes"]     = "MR",
+            ["Align"]        = "Alignment",
+        };
 
     public override string SearchKeyColumn => "Name";
 
@@ -65,12 +79,36 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
         Title, "monster", "mob", "enemy", "creature", "lair", "regen", "respawn",
     };
 
+    /// <summary>
+    /// MajorMUD's HP-regen tick: a monster heals its <c>HPRegen</c> amount
+    /// once every 90 seconds (18 combat rounds × 5 s). Shared by the
+    /// "HP Regen" grid column and the edit dialog's HP detail row so the
+    /// two never drift. (GreaterMUD's 30 s / 6 rounds would branch here
+    /// off a realm flag if/when that realm is supported.)
+    /// </summary>
+    private const int RegenIntervalSeconds = 90;
+
     protected override IReadOnlyDictionary<string, Func<string?, string?>> ColumnFormatters { get; } =
         new Dictionary<string, Func<string?, string?>>(StringComparer.OrdinalIgnoreCase)
         {
-            ["Type"]  = LookupEnums.FormatMonType,
-            ["Align"] = LookupEnums.FormatMonAlignment,
+            ["Type"]    = LookupEnums.FormatMonType,
+            ["Align"]   = LookupEnums.FormatMonAlignment,
+            ["HPRegen"] = FormatHpRegen,
         };
+
+    /// <summary>
+    /// "2hp@90s" — HP healed per regen tick @ the tick interval, so the
+    /// regen rate reads at a glance. Zero-regen mobs show a plain "0";
+    /// non-numeric / empty values pass through unchanged.
+    /// </summary>
+    internal static string? FormatHpRegen(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return raw;
+        if (!int.TryParse(raw, System.Globalization.NumberStyles.Integer,
+                System.Globalization.CultureInfo.InvariantCulture, out int n))
+            return raw;
+        return n > 0 ? $"{n}hp@{RegenIntervalSeconds}s" : raw;
+    }
 
     public IRelayCommand<GameDataRow?> OpenEditAsyncCommand { get; }
     ICommand IEditableTableSectionViewModel.OpenEditCommand => OpenEditAsyncCommand;
@@ -80,7 +118,8 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
         SettingsResolver? resolver = null,
         DialogService? dialogs = null,
         MonsterMessageStore? monsterMessages = null,
-        MonsterOverlaySeedStore? overlaySeed = null)
+        MonsterOverlaySeedStore? overlaySeed = null,
+        RoomGraphManager? roomGraph = null)
         : base(cache, resolver)
     {
         _cache = cache;
@@ -88,7 +127,37 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
         _resolverRef = resolver;
         _monsterMessages = monsterMessages;
         _overlaySeed = overlaySeed;
+        _roomGraph = roomGraph;
         OpenEditAsyncCommand = new AsyncRelayCommand<GameDataRow?>(OpenEditAsync);
+    }
+
+    /// <summary>
+    /// Synthesise the grid's "Accuracy" column — not a real MDB field.
+    /// Monsters store accuracy per attack (<c>AttAcc-N</c>); a mob with
+    /// several attacks shows each one's accuracy slash-joined in attack
+    /// order ("10/42/8"). Only physical attacks count (<c>AttType</c> 1/3
+    /// with a non-zero chance) — spell-attack slots stash a spell id in
+    /// <c>AttAcc</c>, not an accuracy. Falls back to slot 0 so spell-only
+    /// mobs still show something.
+    /// </summary>
+    protected override IReadOnlyDictionary<string, string?>? ComputeRowCells(JsonElement element)
+        => new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Accuracy"] = ComputeAttackAccuracy(element),
+        };
+
+    internal static string? ComputeAttackAccuracy(JsonElement el)
+    {
+        List<string> accuracies = new();
+        for (int i = 0; i < 5; i++)
+        {
+            int attType = ReadInt(el, $"AttType-{i}");
+            if ((attType == 1 || attType == 3) && ReadInt(el, $"Att%-{i}") > 0)
+                accuracies.Add(ReadInt(el, $"AttAcc-{i}").ToString(System.Globalization.CultureInfo.InvariantCulture));
+        }
+        if (accuracies.Count > 0) return string.Join("/", accuracies);
+        int slot0 = ReadInt(el, "AttAcc-0");
+        return slot0 != 0 ? slot0.ToString(System.Globalization.CultureInfo.InvariantCulture) : null;
     }
 
     private async Task OpenEditAsync(GameDataRow? row)
@@ -245,7 +314,7 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
                 string hpDisplay = hp.ToString("N0", System.Globalization.CultureInfo.InvariantCulture);
                 int hpRegen = ReadInt(el, "HPRegen");
                 if (hpRegen > 0)
-                    hpDisplay += $" (Regens: {hpRegen:N0} HPs every 90 seconds [18 rounds])";
+                    hpDisplay += $" (Regens: {hpRegen:N0} HPs every {RegenIntervalSeconds} seconds [{RegenIntervalSeconds / 5} rounds])";
                 AddRow(kv, "HP", hpDisplay);
             }
 
@@ -426,9 +495,355 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
                 shown++;
             }
 
+            // ----- Summons (what THIS monster spawns) -----
+            // Mirror of "Summoned By": some monsters (e.g. Leo the Quick)
+            // conjure other monsters — via a summon spell cast in combat
+            // (with a % chance), on death, or on spawn. Surface the spawned
+            // monster + how + the chance where one applies.
+            List<string> produces = FindOutgoingSummons(el);
+            for (int j = 0; j < produces.Count; j++)
+                AddRow(kv, j == 0 ? "Summons" : string.Empty, produces[j]);
+
+            // ----- Spawns In (lair rooms) -----
+            // Reverse lookup over the active room graph: every room whose
+            // lair list names this monster is a spawn site. Listed in full
+            // as map/room pairs at the bottom per user spec (the pane
+            // scrolls; a common mob like giant rat lairs in dozens of
+            // rooms and we show them all).
+            AddRoomList(kv, "Spawns In", FindSpawnRooms(wccNo));
+
+            // ----- Placed In (fixed NPC room) -----
+            // Placed monsters (bosses / uniques / shopkeepers) live in a
+            // single home room via the room's NPC field rather than a
+            // lair group — typically the timed-respawn monsters that
+            // aren't laired anywhere. Show that room so they aren't a
+            // dead end in the panel.
+            AddRoomList(kv, "Placed In", FindPlacedRooms(wccNo));
+
+            // ----- Summoned (spell sources) -----
+            // The remaining "where does this come from" case: monsters
+            // that aren't laired OR placed are often conjured by a summon
+            // spell (Abil 12). Resolve who casts that spell:
+            //   • a ROOM via its room-spell (cast when a player enters) —
+            //     a location, listed like the other room sources;
+            //   • a MONSTER, in combat (spell-attack / hit-spell / between-
+            //     rounds) and/or as its death-spell and/or on spawn.
+            // Best-effort — the summon→monster encoding is inconsistent
+            // (see SpellSummons).
+            List<(int Number, string Name)> summonSpells = FindSummonSpells(wccNo);
+            if (summonSpells.Count > 0)
+            {
+                HashSet<int> spellIds = summonSpells.Select(s => s.Number).ToHashSet();
+
+                // Room-spell summons (room casts on entry) — a location.
+                AddRoomList(kv, "Summoned In", FindRoomSpellRooms(spellIds));
+
+                // Monster casters with their context tag(s) — listed in
+                // full (the pane scrolls; no expand affordance on a
+                // truncated list). Falls back to the bare spell name when
+                // no room or monster caster resolves so the user still
+                // knows it's summonable.
+                List<string> mobs = FindSummoningMonsters(spellIds);
+                string by = mobs.Count > 0
+                    ? string.Join(", ", mobs)
+                    : string.Join(", ", summonSpells.Select(s => $"{s.Name} (spell)"));
+                AddRow(kv, "Summoned By", by);
+            }
+
             break;
         }
         return kv;
+    }
+
+    /// <summary>
+    /// Rooms whose lair names <paramref name="wccNo"/>, sorted by
+    /// map then room. Reads the in-memory <see cref="RoomGraphManager"/>
+    /// (already parsed for the active set) so no 11 MB Rooms.json reload
+    /// is needed. Empty when the graph isn't wired or the monster lairs
+    /// nowhere.
+    /// </summary>
+    private IReadOnlyList<RoomKey> FindSpawnRooms(int wccNo)
+    {
+        if (_roomGraph is null) return Array.Empty<RoomKey>();
+        List<RoomKey> rooms = new();
+        foreach (Room room in _roomGraph.Rooms)
+        {
+            if (LairNamesMonster(room.RawLairTag, wccNo))
+                rooms.Add(room.Key);
+        }
+        rooms.Sort(static (a, b) => a.Map != b.Map ? a.Map.CompareTo(b.Map) : a.Room.CompareTo(b.Room));
+        return rooms;
+    }
+
+    /// <summary>
+    /// Rooms that "place" <paramref name="wccNo"/> via their NPC field
+    /// (fixed-spawn home room), sorted by map then room. Empty when the
+    /// graph isn't wired or the monster is laired-only / unplaced.
+    /// </summary>
+    private IReadOnlyList<RoomKey> FindPlacedRooms(int wccNo)
+    {
+        if (_roomGraph is null) return Array.Empty<RoomKey>();
+        List<RoomKey> rooms = new();
+        foreach (Room room in _roomGraph.Rooms)
+        {
+            if (room.Npc == wccNo)
+                rooms.Add(room.Key);
+        }
+        rooms.Sort(static (a, b) => a.Map != b.Map ? a.Map.CompareTo(b.Map) : a.Room.CompareTo(b.Room));
+        return rooms;
+    }
+
+    /// <summary>
+    /// Spells (number + name) that summon <paramref name="wccNo"/>
+    /// (best-effort — see <see cref="SpellSummons"/>). Covers monsters
+    /// that aren't laired or placed but are conjured by a caster.
+    /// </summary>
+    private List<(int Number, string Name)> FindSummonSpells(int wccNo)
+    {
+        List<(int, string)> spells = new();
+        JsonDocument? doc = _cache.GetRawTable("Spells");
+        if (doc is null) return spells;
+        foreach (JsonElement el in doc.RootElement.EnumerateArray())
+        {
+            if (!SpellSummons(el, wccNo)) continue;
+            int num = ReadInt(el, "Number");
+            string name = ReadString(el, "Name").Trim();
+            spells.Add((num, string.IsNullOrEmpty(name) ? $"Spell #{num}" : name));
+        }
+        return spells;
+    }
+
+    /// <summary>
+    /// Rooms whose room-spell (<see cref="Room.Spell"/>, cast when a
+    /// player enters) is one of <paramref name="spellIds"/> — i.e. rooms
+    /// that summon the monster on entry. Sorted by map then room.
+    /// </summary>
+    private IReadOnlyList<RoomKey> FindRoomSpellRooms(IReadOnlySet<int> spellIds)
+    {
+        if (_roomGraph is null) return Array.Empty<RoomKey>();
+        List<RoomKey> rooms = new();
+        foreach (Room room in _roomGraph.Rooms)
+        {
+            if (room.Spell != 0 && spellIds.Contains(room.Spell))
+                rooms.Add(room.Key);
+        }
+        rooms.Sort(static (a, b) => a.Map != b.Map ? a.Map.CompareTo(b.Map) : a.Room.CompareTo(b.Room));
+        return rooms;
+    }
+
+    /// <summary>
+    /// Monsters that cast one of <paramref name="spellIds"/>, each tagged
+    /// with how (combat / death / on spawn) — e.g. "Argak the Grey
+    /// (death)". Deduped by label; popular summon spells (cast by many
+    /// mobs) are capped by the caller.
+    /// </summary>
+    private List<string> FindSummoningMonsters(IReadOnlySet<int> spellIds)
+    {
+        List<string> casters = new();
+        HashSet<string> seen = new(StringComparer.Ordinal);
+        JsonDocument? doc = _cache.GetRawTable("Monsters");
+        if (doc is null) return casters;
+        foreach (JsonElement el in doc.RootElement.EnumerateArray())
+        {
+            string? ctx = SummonContext(el, spellIds);
+            if (ctx is null) continue;
+            int num = ReadInt(el, "Number");
+            string name = ReadString(el, "Name").Trim();
+            string label = $"{(string.IsNullOrEmpty(name) ? $"Monster #{num}" : name)} ({ctx})";
+            if (seen.Add(label)) casters.Add(label);
+        }
+        return casters;
+    }
+
+    /// <summary>
+    /// Monsters this monster summons, each as
+    /// "&lt;name&gt; (&lt;how&gt;[, &lt;chance&gt;])" — the reverse of
+    /// <see cref="FindSummoningMonsters"/>. Walks the viewed monster's own
+    /// spell slots (create / death / spell-attack / hit-spell / between-
+    /// rounds), resolves each summon spell to its target monster, and
+    /// tags how + the % chance where the cast carries one.
+    /// </summary>
+    private List<string> FindOutgoingSummons(JsonElement monster)
+    {
+        JsonDocument? spellsDoc = _cache.GetRawTable("Spells");
+        if (spellsDoc is null) return new();
+
+        // Index spells by number so each cast slot is an O(1) resolve.
+        Dictionary<int, JsonElement> spellByNum = new();
+        foreach (JsonElement s in spellsDoc.RootElement.EnumerateArray())
+        {
+            int num = ReadInt(s, "Number");
+            if (num > 0) spellByNum[num] = s;
+        }
+
+        return BuildOutgoingSummonLabels(
+            monster,
+            spellId => spellByNum.TryGetValue(spellId, out JsonElement s) ? SummonTargets(s) : Array.Empty<int>(),
+            target => LookupMonsterName(target) ?? $"Monster #{target}");
+    }
+
+    /// <summary>
+    /// Pure label-builder behind <see cref="FindOutgoingSummons"/> —
+    /// extracted so the context + chance logic is testable without a
+    /// loaded cache. <paramref name="summonTargetsOf"/> maps a spell id to
+    /// the monster(s) it summons (empty for non-summon spells);
+    /// <paramref name="nameOf"/> maps a monster number to its display name.
+    /// </summary>
+    internal static List<string> BuildOutgoingSummonLabels(
+        JsonElement monster,
+        Func<int, IReadOnlyList<int>> summonTargetsOf,
+        Func<int, string> nameOf)
+    {
+        List<string> result = new();
+        HashSet<string> seen = new(StringComparer.Ordinal);
+        void Emit(int spellId, string context, string? chance)
+        {
+            if (spellId <= 0) return;
+            foreach (int target in summonTargetsOf(spellId))
+            {
+                string label = chance is null
+                    ? $"{nameOf(target)} ({context})"
+                    : $"{nameOf(target)} ({context}, {chance})";
+                if (seen.Add(label)) result.Add(label);
+            }
+        }
+
+        // Certain casts — no chance figure.
+        Emit(ReadInt(monster, "CreateSpell"), "on spawn", null);
+        Emit(ReadInt(monster, "DeathSpell"),  "on death", null);
+
+        // Combat — spell-attacks (carry an Att% chance) and per-hit spells.
+        for (int i = 0; i < 5; i++)
+        {
+            if (ReadInt(monster, $"AttType-{i}") == 2)
+            {
+                int truePct = (int)Math.Round(ReadDouble(monster, $"AttTrue%-{i}"));
+                int pct = truePct > 0 ? truePct : ReadInt(monster, $"Att%-{i}");
+                Emit(ReadInt(monster, $"AttAcc-{i}"), "combat", pct > 0 ? $"{pct}%" : null);
+            }
+            Emit(ReadInt(monster, $"AttHitSpell-{i}"), "combat, on hit", null);
+        }
+
+        // Between-rounds — MidSpell% is a cumulative threshold across the
+        // slots, so the per-spell chance is the delta (mirrors the
+        // "Between Rounds" rendering above).
+        int cumulative = 0;
+        for (int i = 0; i < 5; i++)
+        {
+            int spellId = ReadInt(monster, $"MidSpell-{i}");
+            if (spellId == 0) continue;
+            int threshold = ReadInt(monster, $"MidSpell%-{i}");
+            int delta = threshold - cumulative;
+            cumulative = threshold;
+            Emit(spellId, "between rounds", delta > 0 ? $"{delta}%" : null);
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// How <paramref name="monster"/> casts a spell in
+    /// <paramref name="spellIds"/>, or <c>null</c> if it doesn't. Combat =
+    /// a spell-attack (<c>AttType</c> 2 whose <c>AttAcc</c> is the spell),
+    /// a per-hit spell (<c>AttHitSpell</c>), or a between-rounds spell
+    /// (<c>MidSpell</c>); plus the <c>DeathSpell</c> ("death") and
+    /// <c>CreateSpell</c> ("on spawn"). A monster can carry several.
+    /// </summary>
+    internal static string? SummonContext(JsonElement monster, IReadOnlySet<int> spellIds)
+    {
+        bool combat = false;
+        for (int i = 0; i < 5; i++)
+        {
+            if (ReadInt(monster, $"AttType-{i}") == 2 && spellIds.Contains(ReadInt(monster, $"AttAcc-{i}")))
+                combat = true;
+            if (spellIds.Contains(ReadInt(monster, $"AttHitSpell-{i}"))) combat = true;
+            if (spellIds.Contains(ReadInt(monster, $"MidSpell-{i}"))) combat = true;
+        }
+        bool death = spellIds.Contains(ReadInt(monster, "DeathSpell"));
+        bool spawn = spellIds.Contains(ReadInt(monster, "CreateSpell"));
+        if (!combat && !death && !spawn) return null;
+
+        List<string> parts = new(3);
+        if (combat) parts.Add("combat");
+        if (death) parts.Add("death");
+        if (spawn) parts.Add("on spawn");
+        return string.Join(", ", parts);
+    }
+
+    /// <summary>
+    /// True when <paramref name="spell"/> summons monster
+    /// <paramref name="monsterNo"/>. Summon spells carry ability code 12;
+    /// the summoned monster number is inconsistently encoded, so this is
+    /// best-effort: a summon ability's own value (<c>AbilVal</c>) wins
+    /// when positive, and only when NO summon ability names a target do we
+    /// fall back to the spell's <c>MinBase</c> (e.g. "raptor summon" →
+    /// MinBase 509 = tetraraptor). Preferring the ability value avoids
+    /// mis-attributing odd data — e.g. "summon silver skull" has
+    /// <c>MinBase 1</c> (giant rat) but its summon value points elsewhere.
+    /// </summary>
+    internal static bool SpellSummons(JsonElement spell, int monsterNo)
+        => monsterNo > 0 && SummonTargets(spell).Contains(monsterNo);
+
+    /// <summary>
+    /// Monster number(s) <paramref name="spell"/> summons, or empty when
+    /// it isn't a summon spell. Encoding is inconsistent (see
+    /// <see cref="SpellSummons"/>): the summon abilities' own positive
+    /// values win, and only when none name a target does the spell's
+    /// <c>MinBase</c> stand in (e.g. "raptor summon" → 509 = tetraraptor).
+    /// </summary>
+    internal static IReadOnlyList<int> SummonTargets(JsonElement spell)
+    {
+        List<int> targets = new();
+        bool isSummon = false;
+        for (int i = 0; i < 10; i++)
+        {
+            if (ReadInt(spell, $"Abil-{i}") != 12) continue;   // 12 = summon
+            isSummon = true;
+            int target = ReadInt(spell, $"AbilVal-{i}");
+            if (target > 0 && !targets.Contains(target)) targets.Add(target);
+        }
+        if (!isSummon) return Array.Empty<int>();
+        if (targets.Count == 0)
+        {
+            int minBase = ReadInt(spell, "MinBase");
+            if (minBase > 0) targets.Add(minBase);
+        }
+        return targets;
+    }
+
+    /// <summary>
+    /// Append a "<paramref name="label"/> (N)" row listing every room as a
+    /// map/room pair. Not truncated — the Other Info pane scrolls and a
+    /// truncated list has no expand affordance, so show them all. No-op
+    /// when <paramref name="rooms"/> is empty.
+    /// </summary>
+    private static void AddRoomList(List<KeyValuePair<string, string>> kv, string label, IReadOnlyList<RoomKey> rooms)
+    {
+        if (rooms.Count == 0) return;
+        string list = string.Join(", ", rooms.Select(k => $"{k.Map}/{k.Room}"));
+        AddRow(kv, $"{label} ({rooms.Count})", list);
+    }
+
+    /// <summary>
+    /// True when a <see cref="Room.RawLairTag"/> lists
+    /// <paramref name="wccNo"/> as one of its spawn monsters. v1.11p tags
+    /// are <c>"(Max N): id,id,…,[group-index]"</c> — the monster ids
+    /// precede the bracketed group key; the <c>[..]</c> suffix is parsed
+    /// off so its digits aren't mistaken for monster ids.
+    /// </summary>
+    internal static bool LairNamesMonster(string? rawLairTag, int wccNo)
+    {
+        if (string.IsNullOrEmpty(rawLairTag)) return false;
+        int bracket = rawLairTag.IndexOf('[');
+        string head = bracket >= 0 ? rawLairTag[..bracket] : rawLairTag;
+        int colon = head.IndexOf(':');
+        if (colon < 0) return false;
+        foreach (string token in head[(colon + 1)..]
+                     .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (int.TryParse(token, out int id) && id == wccNo) return true;
+        }
+        return false;
     }
 
     // ----- Field readers + row helpers -----

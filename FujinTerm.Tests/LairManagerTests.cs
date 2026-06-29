@@ -9,24 +9,33 @@ namespace FujinTerm.Tests;
 
 /// <summary>
 /// PR 7.18 — LairManager CRUD lifecycle, working against an isolated
-/// per-test BBS subfolder so the suite never touches user data. Mirrors
-/// <see cref="LoopManagerTests"/>' isolation pattern.
+/// per-test game-data set folder so the suite never touches user data.
+/// Mirrors <see cref="LoopManagerTests"/>' isolation pattern.
 /// </summary>
 public sealed class LairManagerTests : IDisposable
 {
-    private readonly string _bbs;
+    private readonly string _setName;
 
     public LairManagerTests()
     {
         string suffix = Guid.NewGuid().ToString("N").Substring(0, 12);
-        _bbs = "test-lair-" + suffix;
+        _setName = "test-lair-" + suffix;
     }
 
     public void Dispose()
     {
+        // Lairs now persist under the game-data set's Loops/ folder; the
+        // legacy-migration test also seeds a BBS-tree Lairs/ folder under
+        // the same name. Clean up both so nothing leaks into real Data/.
         try
         {
-            string bbsFolder = AppPaths.BbsFolder(_bbs);
+            string setFolder = Path.Combine(AppPaths.GameDataRoot, _setName);
+            if (Directory.Exists(setFolder)) Directory.Delete(setFolder, recursive: true);
+        }
+        catch { /* best-effort */ }
+        try
+        {
+            string bbsFolder = AppPaths.BbsFolder(_setName);
             if (Directory.Exists(bbsFolder)) Directory.Delete(bbsFolder, recursive: true);
         }
         catch { /* best-effort */ }
@@ -38,31 +47,31 @@ public sealed class LairManagerTests : IDisposable
     // ----- LoadAll lifecycle ----------------------------------------
 
     [Fact]
-    public void LoadAll_UnknownBbs_LeavesEmpty()
+    public void LoadAll_UnknownSet_LeavesEmpty()
     {
         LairManager m = new();
-        m.LoadAll(_bbs);
+        m.LoadAll(_setName);
         Assert.Empty(m.Setups);
-        Assert.Equal(_bbs, m.BbsName);
+        Assert.Equal(_setName, m.SetName);
     }
 
     [Fact]
-    public void LoadAll_Null_ClearsBbsAndSetups()
+    public void LoadAll_Null_ClearsSetAndSetups()
     {
         LairManager m = new();
-        m.LoadAll(_bbs);
+        m.LoadAll(_setName);
         m.LoadAll(null);
-        Assert.Null(m.BbsName);
+        Assert.Null(m.SetName);
         Assert.Empty(m.Setups);
     }
 
     // ----- Save / round-trip ----------------------------------------
 
     [Fact]
-    public void Save_AddsSetupToCatalogueAndPersistsToBbsLoopsFolderWithLairSuffix()
+    public void Save_AddsSetupToCatalogueAndPersistsToSetLoopsFolderWithLairSuffix()
     {
         LairManager m = new();
-        m.LoadAll(_bbs);
+        m.LoadAll(_setName);
         m.Save(NewSetup("Sewer rats", (5, 100), (5, 101)));
 
         Assert.Single(m.Setups);
@@ -73,7 +82,7 @@ public sealed class LairManagerTests : IDisposable
         // .lair.json suffix as the schema discriminator. Plain .json
         // files in the same folder belong to LoopManager.
         string expectedPath = Path.Combine(
-            AppPaths.BbsLoopsFolder(_bbs), "Sewer rats" + LairManager.LairFileSuffix);
+            AppPaths.GameDataSetLoopsFolder(_setName), "Sewer rats" + LairManager.LairFileSuffix);
         Assert.True(File.Exists(expectedPath));
     }
 
@@ -81,7 +90,7 @@ public sealed class LairManagerTests : IDisposable
     public void Save_RoundTripsAcrossLoadAll()
     {
         LairManager m1 = new();
-        m1.LoadAll(_bbs);
+        m1.LoadAll(_setName);
         LairSetup setup = new("Mixed", new[]
         {
             new LairMarker(1, 10),
@@ -94,7 +103,7 @@ public sealed class LairManagerTests : IDisposable
         m1.Save(setup);
 
         LairManager m2 = new();
-        m2.LoadAll(_bbs);
+        m2.LoadAll(_setName);
         LairSetup? round = m2.Get("Mixed");
 
         Assert.NotNull(round);
@@ -108,7 +117,7 @@ public sealed class LairManagerTests : IDisposable
     }
 
     [Fact]
-    public void Save_NoBbsBound_IsNoOp()
+    public void Save_NoSetActive_IsNoOp()
     {
         LairManager m = new();
         m.Save(NewSetup("orphan", (1, 1)));
@@ -119,7 +128,7 @@ public sealed class LairManagerTests : IDisposable
     public void Save_RequiresName()
     {
         LairManager m = new();
-        m.LoadAll(_bbs);
+        m.LoadAll(_setName);
         Assert.Throws<ArgumentException>(() => m.Save(new LairSetup()));
     }
 
@@ -129,7 +138,7 @@ public sealed class LairManagerTests : IDisposable
     public void Delete_RemovesFromCatalogueAndDisk()
     {
         LairManager m = new();
-        m.LoadAll(_bbs);
+        m.LoadAll(_setName);
         m.Save(NewSetup("doomed", (1, 1)));
 
         bool removed = m.Delete("doomed");
@@ -137,14 +146,14 @@ public sealed class LairManagerTests : IDisposable
         Assert.True(removed);
         Assert.Empty(m.Setups);
         Assert.False(File.Exists(Path.Combine(
-            AppPaths.BbsLoopsFolder(_bbs), "doomed" + LairManager.LairFileSuffix)));
+            AppPaths.GameDataSetLoopsFolder(_setName), "doomed" + LairManager.LairFileSuffix)));
     }
 
     [Fact]
     public void Delete_UnknownName_ReturnsFalse()
     {
         LairManager m = new();
-        m.LoadAll(_bbs);
+        m.LoadAll(_setName);
         Assert.False(m.Delete("nope"));
     }
 
@@ -154,7 +163,7 @@ public sealed class LairManagerTests : IDisposable
     public void Setups_OrderedAlphabetically()
     {
         LairManager m = new();
-        m.LoadAll(_bbs);
+        m.LoadAll(_setName);
         m.Save(NewSetup("zeta",   (1, 1)));
         m.Save(NewSetup("alpha",  (1, 2)));
         m.Save(NewSetup("MIDDLE", (1, 3)));
@@ -170,7 +179,7 @@ public sealed class LairManagerTests : IDisposable
         int fires = 0;
         m.SetupsChanged += () => fires++;
 
-        m.LoadAll(_bbs);
+        m.LoadAll(_setName);
         Assert.Equal(1, fires);
 
         m.Save(NewSetup("a", (1, 1)));
@@ -187,7 +196,7 @@ public sealed class LairManagerTests : IDisposable
         // as the suffix; the subsequent commit shortened it to .lair.
         // Users in the transition window get their files renamed
         // transparently on the next LoadAll.
-        string loops = AppPaths.BbsLoopsFolder(_bbs);
+        string loops = AppPaths.GameDataSetLoopsFolder(_setName);
         Directory.CreateDirectory(loops);
         const string intermediate = """
             {
@@ -201,7 +210,7 @@ public sealed class LairManagerTests : IDisposable
             intermediate);
 
         LairManager m = new();
-        m.LoadAll(_bbs);
+        m.LoadAll(_setName);
 
         // Renamed to the final suffix.
         Assert.True(File.Exists(Path.Combine(loops, "Transition" + LairManager.LairFileSuffix)));
@@ -215,7 +224,7 @@ public sealed class LairManagerTests : IDisposable
     {
         // Pre-existing legacy file under Data/BBS/{bbs}/Lairs/<name>.json
         // — the format we shipped before the storage unification.
-        string legacy = AppPaths.LegacyBbsLairsFolder(_bbs);
+        string legacy = AppPaths.LegacyBbsLairsFolder(_setName);
         Directory.CreateDirectory(legacy);
         const string legacyJson = """
             {
@@ -230,11 +239,11 @@ public sealed class LairManagerTests : IDisposable
         File.WriteAllText(Path.Combine(legacy, "Old Setup.json"), legacyJson);
 
         LairManager m = new();
-        m.LoadAll(_bbs);
+        m.LoadAll(_setName);
 
         // File migrated into the shared folder under the new suffix.
         Assert.True(File.Exists(Path.Combine(
-            AppPaths.BbsLoopsFolder(_bbs), "Old Setup" + LairManager.LairFileSuffix)));
+            AppPaths.GameDataSetLoopsFolder(_setName), "Old Setup" + LairManager.LairFileSuffix)));
         // Legacy folder cleaned up.
         Assert.False(Directory.Exists(legacy));
         // Setup loaded and accessible.
@@ -248,11 +257,11 @@ public sealed class LairManagerTests : IDisposable
     public void Save_NameWithIllegalFilenameChars_StillRoundTrips()
     {
         LairManager m1 = new();
-        m1.LoadAll(_bbs);
+        m1.LoadAll(_setName);
         m1.Save(NewSetup("setup/with:bad*chars", (1, 1)));
 
         LairManager m2 = new();
-        m2.LoadAll(_bbs);
+        m2.LoadAll(_setName);
         Assert.Single(m2.Setups);
         Assert.Equal("setup/with:bad*chars", m2.Setups[0].Name);
     }

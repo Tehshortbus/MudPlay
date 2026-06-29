@@ -611,6 +611,19 @@
                         </Grid>
                         <TextBlock Text="Searchable hidden" FontSize="11" Foreground="{StaticResource ChromeFgSecBrush}"/>
                     </StackPanel>
+                    <!-- Gap-bridge: dashed dim line drawn when two rooms
+                         connect but the map couldn't place them on
+                         adjacent cells (non-tiling diagonals in hand-built
+                         maps). Matches MapControl's ExitBridgePen
+                         (#8A8A8A, 1.5 px, 2,2 dash). -->
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <Grid Width="14" Height="14">
+                            <Border Background="#3A3A3A"/>
+                            <Line StartPoint="0,14" EndPoint="14,0" Stroke="#8A8A8A" StrokeThickness="1.5"
+                                  StrokeDashArray="2,2"/>
+                        </Grid>
+                        <TextBlock Text="Off-grid connection" FontSize="11" Foreground="{StaticResource ChromeFgSecBrush}"/>
+                    </StackPanel>
                 </StackPanel>
             </Border>
 

@@ -6,19 +6,20 @@ using FujinTerm.Services;
 namespace FujinTerm.Game.Map;
 
 /// <summary>
-/// Per-BBS catalogue of saved navigation loops. CRUD over the JSON
-/// files under <c>Data/BBS/{bbs}/Loops/</c>, plus the builder helpers
-/// the Navigation window needs to turn a sequence of clicked rooms
-/// into a runnable loop (gap-fill BFS for non-adjacent clicks,
+/// Per-game-data-set catalogue of saved navigation loops. CRUD over the
+/// JSON files under <c>Data/game data/{set}/Loops/</c>, plus the builder
+/// helpers the Navigation window needs to turn a sequence of clicked
+/// rooms into a runnable loop (gap-fill BFS for non-adjacent clicks,
 /// three-tier fallback for ambiguous click orders).
 /// </summary>
 /// <remarks>
 /// <para>
-/// Lifecycle: the catalogue is keyed by the active BBS name. When the
-/// connected BBS changes (or on profile load), <see cref="LoadAll"/>
-/// reloads from disk. Mutating methods (<see cref="Save"/>,
-/// <see cref="Delete"/>) update the in-memory cache and fire
-/// <see cref="LoopsChanged"/> so the UI can refresh.
+/// Lifecycle: the catalogue is keyed by the active game-data set (the
+/// realm's MDB), so the same loop library follows the realm across every
+/// BBS / character that points at that set. When the active set changes,
+/// <see cref="LoadAll"/> reloads from disk. Mutating methods
+/// (<see cref="Save"/>, <see cref="Delete"/>) update the in-memory cache
+/// and fire <see cref="LoopsChanged"/> so the UI can refresh.
 /// </para>
 /// <para>
 /// Gap-fill: when the user clicks rooms that aren't directly
@@ -35,11 +36,11 @@ public sealed class LoopManager
     private readonly RoomGraphManager _graph;
     private readonly LogService? _log;
 
-    private string? _bbsName;
+    private string? _setName;
     private readonly Dictionary<string, Loop> _loops = new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>BBS that <see cref="Loops"/> is currently sourced from. <c>null</c> when no BBS is bound.</summary>
-    public string? BbsName => _bbsName;
+    /// <summary>Game-data set that <see cref="Loops"/> is currently sourced from. <c>null</c> when no set is active.</summary>
+    public string? SetName => _setName;
 
     /// <summary>Loaded loops, ordered alphabetically by name.</summary>
     public IReadOnlyList<Loop> Loops =>
@@ -57,30 +58,30 @@ public sealed class LoopManager
         _log = log;
     }
 
-    // ----- BBS lifecycle ---------------------------------------------
+    // ----- Game-data-set lifecycle -----------------------------------
 
     /// <summary>
-    /// Rebuild the in-memory cache from disk for <paramref name="bbsName"/>.
-    /// Pass <c>null</c> to clear (no BBS bound). Idempotent on no-op
+    /// Rebuild the in-memory cache from disk for <paramref name="setName"/>.
+    /// Pass <c>null</c> to clear (no set active). Idempotent on no-op
     /// transitions — calling with the same name twice still rereads
     /// because the user may have hand-edited a loop file between
     /// calls.
     /// </summary>
-    public void LoadAll(string? bbsName)
+    public void LoadAll(string? setName)
     {
         _loops.Clear();
-        _bbsName = bbsName;
+        _setName = setName;
 
-        if (string.IsNullOrWhiteSpace(bbsName))
+        if (string.IsNullOrWhiteSpace(setName))
         {
             LoopsChanged?.Invoke();
             return;
         }
 
-        string folder = AppPaths.BbsLoopsFolder(bbsName);
+        string folder = AppPaths.GameDataSetLoopsFolder(setName);
         if (!Directory.Exists(folder))
         {
-            _log?.Info("Loops", $"no loops folder for '{bbsName}'; empty catalogue.");
+            _log?.Info("Loops", $"no loops folder for set '{setName}'; empty catalogue.");
             LoopsChanged?.Invoke();
             return;
         }
@@ -116,8 +117,8 @@ public sealed class LoopManager
         }
 
         string detail = failed == 0
-            ? $"Loaded {loaded} loop(s) for '{bbsName}'"
-            : $"Loaded {loaded} loop(s) for '{bbsName}' ({failed} malformed file(s) skipped)";
+            ? $"Loaded {loaded} loop(s) for set '{setName}'"
+            : $"Loaded {loaded} loop(s) for set '{setName}' ({failed} malformed file(s) skipped)";
         if (upgraded > 0) detail += $"; {upgraded} legacy loop(s) upgraded to v{Loop3Schema} in memory";
         _log?.Info("Loops", detail + ".");
         LoopsChanged?.Invoke();
@@ -132,22 +133,22 @@ public sealed class LoopManager
 
     /// <summary>
     /// Persist <paramref name="loop"/> under
-    /// <see cref="AppPaths.BbsLoopsFolder"/>. No-op when no BBS is
-    /// bound.
+    /// <see cref="AppPaths.GameDataSetLoopsFolder"/>. No-op when no set
+    /// is active.
     /// </summary>
     public void Save(Loop loop)
     {
         ArgumentNullException.ThrowIfNull(loop);
         if (string.IsNullOrWhiteSpace(loop.Name))
             throw new ArgumentException("Loop name is required.", nameof(loop));
-        if (_bbsName is null) return;
+        if (_setName is null) return;
 
         // Saving normalises to the current schema version so a v2
         // loop edited in the new editor lands on disk as v3 cleanly.
         loop.SchemaVersion = Loop3Schema;
         loop.Folder = NavFolders.Normalize(loop.Folder);
-        string root = AppPaths.BbsLoopsFolder(_bbsName);
-        // A loop name is unique BBS-wide, so a folder change is a move:
+        string root = AppPaths.GameDataSetLoopsFolder(_setName);
+        // A loop name is unique set-wide, so a folder change is a move:
         // delete any stale file for this name (in any folder) first so
         // we don't leave a duplicate behind.
         DeleteFileForName(root, loop.Name);
@@ -162,7 +163,7 @@ public sealed class LoopManager
     /// <summary>
     /// Move the loop named <paramref name="name"/> into
     /// <paramref name="folder"/> (empty = Loops root). No-op when the
-    /// loop isn't in the catalogue or no BBS is bound.
+    /// loop isn't in the catalogue or no set is active.
     /// </summary>
     public bool Move(string name, string? folder)
     {
@@ -177,14 +178,14 @@ public sealed class LoopManager
 
     /// <summary>
     /// Delete the loop named <paramref name="name"/>. No-op when not in
-    /// the catalogue or no BBS bound.
+    /// the catalogue or no set is active.
     /// </summary>
     public bool Delete(string name)
     {
-        if (_bbsName is null) return false;
+        if (_setName is null) return false;
         if (!_loops.Remove(name)) return false;
 
-        DeleteFileForName(AppPaths.BbsLoopsFolder(_bbsName), name);
+        DeleteFileForName(AppPaths.GameDataSetLoopsFolder(_setName), name);
         LoopsChanged?.Invoke();
         return true;
     }
@@ -192,7 +193,7 @@ public sealed class LoopManager
     /// <summary>
     /// Delete the on-disk <c>.loop</c> file for <paramref name="name"/>
     /// wherever it lives under <paramref name="root"/> (the name is
-    /// unique BBS-wide). Best-effort — failures are logged.
+    /// unique set-wide). Best-effort — failures are logged.
     /// </summary>
     private void DeleteFileForName(string root, string name)
     {

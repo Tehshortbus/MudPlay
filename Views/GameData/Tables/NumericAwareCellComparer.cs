@@ -44,7 +44,31 @@ internal sealed class NumericAwareCellComparer : IComparer
             return na.CompareTo(nb);
         }
 
+        // Leading-number fallback: cells that are numeric-with-a-suffix
+        // ("2hp@90s") or a numeric list ("10/25/5") still sort by their
+        // leading value rather than lexically (so "10…" doesn't sort
+        // before "2…"). Only kicks in when both sides start with a digit;
+        // purely-text cells ("Lawful Good") fall through to string compare.
+        if (TryLeadingNumber(a, out double la) && TryLeadingNumber(b, out double lb))
+        {
+            int cmp = la.CompareTo(lb);
+            if (cmp != 0) return cmp;
+        }
+
         return string.Compare(a, b, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>Parse the leading run of digits (optionally signed) from a cell value.</summary>
+    private static bool TryLeadingNumber(string? s, out double value)
+    {
+        value = 0;
+        if (string.IsNullOrEmpty(s)) return false;
+        int i = 0;
+        if (s[0] is '-' or '+') i++;
+        int start = i;
+        while (i < s.Length && char.IsDigit(s[i])) i++;
+        if (i == start) return false;                 // no digits after the optional sign
+        return double.TryParse(s.AsSpan(0, i), NumberStyles.Integer, CultureInfo.InvariantCulture, out value);
     }
 
     private string? ExtractCell(object? rowObject)

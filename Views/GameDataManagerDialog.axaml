@@ -1,0 +1,106 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:FujinTerm.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="520" d:DesignHeight="420"
+        x:Class="FujinTerm.Views.GameDataManagerDialog"
+        x:DataType="vm:GameDataManagerViewModel"
+        Title="Manage Game Data Sets"
+        Width="520" Height="420"
+        MinWidth="460" MinHeight="380"
+        WindowStartupLocation="CenterOwner">
+
+    <Window.Styles>
+        <Style Selector="TextBlock.Label">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="TextBlock.SectionHeader">
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="Margin" Value="0,0,0,6"/>
+        </Style>
+        <Style Selector="ComboBox">
+            <Setter Property="MinWidth" Value="160"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+        </Style>
+    </Window.Styles>
+
+    <Grid RowDefinitions="Auto,Auto,Auto,Auto,*,Auto" Margin="16">
+
+        <TextBlock Grid.Row="0"
+                   Text="Loops, lair setups and nav folders live in a game-data set's shared library. Copy or move a set's whole library into another set, or delete a set outright (its game-data tables and its loops)."
+                   TextWrapping="Wrap"
+                   FontSize="11"
+                   Foreground="{StaticResource ChromeFgMutedBrush}"
+                   Margin="0,0,0,14"/>
+
+        <!-- Copy / move section -->
+        <StackPanel Grid.Row="1" Spacing="8">
+            <TextBlock Classes="SectionHeader" Text="COPY OR MOVE LOOPS"/>
+            <Grid ColumnDefinitions="Auto,*,Auto,*" ColumnSpacing="8">
+                <TextBlock Grid.Column="0" Classes="Label" Text="From"/>
+                <ComboBox  Grid.Column="1"
+                           ItemsSource="{Binding Sets}"
+                           SelectedItem="{Binding SourceSet, Mode=TwoWay}"
+                           PlaceholderText="source set"/>
+                <TextBlock Grid.Column="2" Classes="Label" Text="To"/>
+                <ComboBox  Grid.Column="3"
+                           ItemsSource="{Binding Sets}"
+                           SelectedItem="{Binding DestSet, Mode=TwoWay}"
+                           PlaceholderText="destination set"/>
+            </Grid>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+                <Button Content="Copy loops"
+                        Command="{Binding CopyLoopsCommand}"
+                        IsEnabled="{Binding CanCopyOrMove}"
+                        MinWidth="96"/>
+                <Button Content="Move loops"
+                        Command="{Binding MoveLoopsCommand}"
+                        IsEnabled="{Binding CanCopyOrMove}"
+                        MinWidth="96"/>
+            </StackPanel>
+        </StackPanel>
+
+        <!-- Divider -->
+        <Border Grid.Row="2"
+                Height="1"
+                Background="{StaticResource ChromeBorderBrush}"
+                Margin="0,16"/>
+
+        <!-- Delete section -->
+        <StackPanel Grid.Row="3" Spacing="8">
+            <TextBlock Classes="SectionHeader" Text="DELETE A SET"/>
+            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                <TextBlock Grid.Column="0" Classes="Label" Text="Set"/>
+                <ComboBox  Grid.Column="1"
+                           ItemsSource="{Binding Sets}"
+                           SelectedItem="{Binding DeleteSet, Mode=TwoWay}"
+                           PlaceholderText="set to delete"/>
+                <Button    Grid.Column="2"
+                           Content="{Binding DeleteButtonText}"
+                           Command="{Binding DeleteSelectedSetCommand}"
+                           IsEnabled="{Binding CanDelete}"
+                           MinWidth="160"/>
+            </Grid>
+        </StackPanel>
+
+        <!-- Status -->
+        <TextBlock Grid.Row="4"
+                   Text="{Binding Status}"
+                   TextWrapping="Wrap"
+                   VerticalAlignment="Bottom"
+                   FontSize="11"
+                   Foreground="{StaticResource ChromeFgMutedBrush}"
+                   Margin="0,14,0,8"/>
+
+        <!-- Close -->
+        <StackPanel Grid.Row="5" Orientation="Horizontal"
+                    HorizontalAlignment="Right">
+            <Button Content="Close" Command="{Binding CloseCommand}" MinWidth="80"/>
+        </StackPanel>
+    </Grid>
+</Window>

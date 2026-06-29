@@ -125,6 +125,12 @@ public partial class App : Application
                 FujinTerm.ViewModels.BlacklistEditorDialogViewModel,
                 FujinTerm.Views.BlacklistEditorDialog>();
 
+            // Manage Sets… (Game Data menu) — copy/move a set's loop
+            // library between sets, or delete a set (tables + loops).
+            AppServices.Current.Dialogs.RegisterWindow<
+                FujinTerm.ViewModels.GameDataManagerViewModel,
+                FujinTerm.Views.GameDataManagerDialog>();
+
             // Phase 10 PR 10.11a — Quest editor (Character Workshop → Quest
             // Status → "Edit Quests…"). Names / show-hides / annotates quest
             // steps; writes the active set's {set}/quests.json overlay.

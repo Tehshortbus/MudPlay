@@ -424,6 +424,25 @@ public sealed class MapControl : Control
     // v1.11p. Distinct from action-magenta (no prerequisite action,
     // just a search) and from trap-red.
     private static readonly IPen   HiddenPen     = new Pen(new SolidColorBrush(Color.Parse("#008B8B")), 2.0);
+    // "Gap-bridge" pens — used when two rooms are connected by an exit
+    // but the layout couldn't place them on grid-adjacent cells (the map
+    // data has a non-tiling diagonal / off-by-one reciprocal, common in
+    // hand-built forest + sewer maps). Instead of a stub pointing into
+    // empty space we draw a direct dashed line between the two room
+    // centres so the connection is visible. Dashed + thinner (and the
+    // plain variant dimmer) so the user can still tell a true
+    // grid-adjacent connection from a forced bridge; trap / action /
+    // hidden keep their semantic hue for recognition.
+    private static readonly DashStyle BridgeDash = new(new double[] { 2, 2 }, 0);
+    private static readonly IPen   ExitBridgePen   = new Pen(new SolidColorBrush(Color.Parse("#8A8A8A")), 1.5) { DashStyle = BridgeDash, LineCap = PenLineCap.Round };
+    private static readonly IPen   TrapBridgePen   = new Pen(new SolidColorBrush(Color.Parse("#DC3C3C")), 1.5) { DashStyle = BridgeDash, LineCap = PenLineCap.Round };
+    private static readonly IPen   ActionBridgePen = new Pen(new SolidColorBrush(Color.Parse("#8B008B")), 1.5) { DashStyle = BridgeDash, LineCap = PenLineCap.Round };
+    private static readonly IPen   HiddenBridgePen = new Pen(new SolidColorBrush(Color.Parse("#008B8B")), 1.5) { DashStyle = BridgeDash, LineCap = PenLineCap.Round };
+    /// <summary>Max grid distance (Chebyshev) a gap-bridge line spans;
+    /// beyond this the rooms are too far apart to bridge cleanly and we
+    /// fall back to a dangling stub rather than shoot a line across the
+    /// map.</summary>
+    private const int BridgeMaxCells = 4;
     private static readonly IPen   RoomBorderPen = new Pen(new SolidColorBrush(Color.Parse("#D0D0D0")), 1.0);
     private static readonly IPen   CurrentPen    = new Pen(new SolidColorBrush(Color.Parse("#FFD24D")), 2.0);
     private static readonly IPen   LairBorderPen  = new Pen(new SolidColorBrush(Color.Parse("#B36F9C")), 1.5);
@@ -1045,12 +1064,22 @@ public sealed class MapControl : Control
     }
 
     /// <summary>
-    /// Walks <see cref="RoomLayout.EdgesFromCoord"/> once and draws
-    /// each (source, target) pair exactly once. When both endpoints
-    /// are placed cells, draws a single line between the two cell
-    /// centres — no overlap seam, no thickness bump. When the target
-    /// is dangling (an asymmetric / Euclidean-clashing exit), draws a
-    /// stub from the source cell's centre to its edge.
+    /// Walks <see cref="RoomLayout.EdgesFromCoord"/> once and draws each
+    /// connection exactly once. Three cases per exit, resolved against
+    /// the exit's REAL target room (not just the grid-adjacent cell):
+    /// <list type="bullet">
+    ///   <item><b>Grid-adjacent</b> — target sits on the expected
+    ///     neighbouring cell: a clean continuous line between the two
+    ///     centres (no overlap seam, no thickness bump).</item>
+    ///   <item><b>Gap-bridge</b> — target is placed but NOT adjacent
+    ///     (the map data wouldn't tile flat): a dashed direct line
+    ///     between the two room centres, up to
+    ///     <see cref="BridgeMaxCells"/> apart, so the connection is
+    ///     visible instead of vanishing into a stub-to-nowhere.</item>
+    ///   <item><b>Stub</b> — target genuinely unplaced (dropped
+    ///     collision / blacklisted) or beyond the bridge distance: a
+    ///     short stub from the source centre to its cell edge.</item>
+    /// </list>
     /// </summary>
     private void DrawAllExitLines(DrawingContext ctx, double tilePixels, double cx, double cy, Rect viewport)
     {
@@ -1065,48 +1094,132 @@ public sealed class MapControl : Control
             double srcY = cy + source.Y * tilePixels;
             Point srcPt = new(srcX, srcY);
 
+            // Resolve the room sitting at the source cell once — its exit
+            // table tells us where each exit ACTUALLY lands, which may
+            // differ from the grid-adjacent cell when the layout couldn't
+            // place the pair flat.
+            Room? sourceRoom =
+                Graph is not null && Layout.CoordToRoom.TryGetValue(source, out RoomKey srcKey)
+                    ? Graph.GetRoom(srcKey)
+                    : null;
+
             foreach (Direction dir in entry.Value)
             {
                 if (!TryPlanarOffset(dir, out int dx, out int dy)) continue;
-                (int X, int Y) target = (source.X + dx, source.Y + dy);
+                (int X, int Y) expected = (source.X + dx, source.Y + dy);
 
-                ((int X, int Y) A, (int X, int Y) B) pair = SortPair(source, target);
+                // Where does this exit's real target room sit? Prefer the
+                // graph-resolved target position; fall back to "whatever
+                // occupies the expected adjacent cell" when the graph
+                // isn't wired (keeps the old behaviour as a safety net).
+                bool targetPlaced;
+                (int X, int Y) actual;
+                if (sourceRoom is not null
+                    && sourceRoom.Exits.TryGetValue(dir, out RoomExit exit))
+                {
+                    // Graph resolved the real target. If it isn't placed
+                    // (dropped collision / blacklisted), this is a genuine
+                    // dangling stub — don't fall back to the adjacent-cell
+                    // heuristic, which could connect to the wrong room.
+                    targetPlaced = Layout.Positions.TryGetValue(exit.Target, out (int X, int Y) ac);
+                    actual = targetPlaced ? ac : expected;
+                }
+                else
+                {
+                    // No graph wired — legacy heuristic: trust whatever
+                    // occupies the expected adjacent cell.
+                    targetPlaced = Layout.CoordToRoom.ContainsKey(expected);
+                    actual = expected;
+                }
+
+                // Dedupe on the real endpoints so the reciprocal exit
+                // (drawn from the other room's side) doesn't double-draw.
+                (int X, int Y) bCoord = targetPlaced ? actual : expected;
+                ((int X, int Y) A, (int X, int Y) B) pair = SortPair(source, bCoord);
                 if (!drawn.Add(pair)) continue;
 
-                bool isTrap = IsTrapEdge(source, dir)
-                           || IsTrapEdge(target, Opposite(dir));
+                // Classify against the source side AND the real target
+                // side (its reciprocal exit carries the same hint).
                 // Priority at render time: trap > action > hidden >
                 // plain. Trap-red is critical safety info ("don't
                 // walk here unless disarmed"); action-magenta is
                 // routing info ("needs a lever pulled first");
                 // hidden-cyan is reveal info ("needs sea <dir>").
+                bool isTrap = IsTrapEdge(source, dir)
+                           || IsTrapEdge(bCoord, Opposite(dir));
                 bool isAction = !isTrap
                     && (IsActionRequiredEdge(source, dir)
-                     || IsActionRequiredEdge(target, Opposite(dir)));
+                     || IsActionRequiredEdge(bCoord, Opposite(dir)));
                 bool isHidden = !isTrap && !isAction
                     && (IsHiddenEdge(source, dir)
-                     || IsHiddenEdge(target, Opposite(dir)));
-                IPen pen = isTrap   ? TrapPen
-                         : isAction ? ActionPen
-                         : isHidden ? HiddenPen
-                         : ExitPen;
+                     || IsHiddenEdge(bCoord, Opposite(dir)));
 
-                if (Layout.CoordToRoom.ContainsKey(target))
+                switch (ClassifyConnection(targetPlaced, source, expected, actual, BridgeMaxCells))
                 {
-                    // Both endpoints placed — single continuous line.
-                    double tgtX = cx + target.X * tilePixels;
-                    double tgtY = cy + target.Y * tilePixels;
-                    Point tgtPt = new(tgtX, tgtY);
-                    ctx.DrawLine(pen, srcPt, tgtPt);
-                }
-                else
-                {
-                    // Dangling — stub from source cell centre to edge.
-                    Rect cell = ComputeCellRect(source, tilePixels, cx, cy);
-                    DrawStub(ctx, pen, cell, srcX, srcY, dir);
+                    case ConnectionKind.Adjacent:
+                    {
+                        // Grid-adjacent — clean continuous connector.
+                        IPen pen = isTrap ? TrapPen : isAction ? ActionPen : isHidden ? HiddenPen : ExitPen;
+                        Point tgtPt = new(cx + actual.X * tilePixels, cy + actual.Y * tilePixels);
+                        ctx.DrawLine(pen, srcPt, tgtPt);
+                        break;
+                    }
+                    case ConnectionKind.Bridge:
+                    {
+                        // Connected but not grid-adjacent — dashed direct
+                        // line between the two room centres, angled along
+                        // the real connection instead of a stub into space.
+                        IPen pen = isTrap ? TrapBridgePen : isAction ? ActionBridgePen
+                                 : isHidden ? HiddenBridgePen : ExitBridgePen;
+                        Point tgtPt = new(cx + actual.X * tilePixels, cy + actual.Y * tilePixels);
+                        ctx.DrawLine(pen, srcPt, tgtPt);
+                        break;
+                    }
+                    default:
+                    {
+                        // Target genuinely unplaced (dropped / blacklisted)
+                        // or too far to bridge — stub to the cell edge.
+                        IPen pen = isTrap ? TrapPen : isAction ? ActionPen : isHidden ? HiddenPen : ExitPen;
+                        Rect cell = ComputeCellRect(source, tilePixels, cx, cy);
+                        DrawStub(ctx, pen, cell, srcX, srcY, dir);
+                        break;
+                    }
                 }
             }
         }
+    }
+
+    /// <summary>How a single exit connection should be rendered.</summary>
+    internal enum ConnectionKind
+    {
+        /// <summary>Target on the expected neighbouring cell — clean line.</summary>
+        Adjacent,
+        /// <summary>Target placed but not adjacent — dashed gap-bridge line.</summary>
+        Bridge,
+        /// <summary>Target unplaced or too far — half-stub to the cell edge.</summary>
+        Stub,
+    }
+
+    /// <summary>
+    /// Decide how to render an exit from <paramref name="source"/> given
+    /// where its target actually landed. Pure geometry so the
+    /// adjacent / bridge / stub rule is unit-testable without a
+    /// <see cref="DrawingContext"/>. A target on the
+    /// <paramref name="expected"/> cell draws clean; one placed elsewhere
+    /// within <paramref name="bridgeMaxCells"/> (Chebyshev) bridges; an
+    /// unplaced or far target stubs.
+    /// </summary>
+    internal static ConnectionKind ClassifyConnection(
+        bool targetPlaced,
+        (int X, int Y) source,
+        (int X, int Y) expected,
+        (int X, int Y) actual,
+        int bridgeMaxCells)
+    {
+        if (!targetPlaced) return ConnectionKind.Stub;
+        if (actual == expected) return ConnectionKind.Adjacent;
+        int chebyshev = Math.Max(Math.Abs(actual.X - source.X), Math.Abs(actual.Y - source.Y));
+        return chebyshev <= bridgeMaxCells ? ConnectionKind.Bridge : ConnectionKind.Stub;
     }
 
     private bool IsTrapEdge((int X, int Y) coord, Direction dir)

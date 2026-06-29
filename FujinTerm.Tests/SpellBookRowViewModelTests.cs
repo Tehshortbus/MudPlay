@@ -227,7 +227,7 @@ public sealed class SpellBookRowViewModelTests
         KnownSpell s = Spell("sacr", "sacrifice", 18, f);
         SpellBookRowViewModel row = new(s, isObtained: false, level: 18, NoChain);
 
-        Assert.Equal("DrainLife -60 to -20 · AffectsLivingOnly", row.EffectText);
+        Assert.Equal("DrainLife -60 to -20 · living only", row.EffectText);
     }
 
     [Fact]
@@ -264,7 +264,7 @@ public sealed class SpellBookRowViewModelTests
         KnownSpell s = Spell("nmag", "nonmagic blast", 10, f);
         SpellBookRowViewModel row = new(s, isObtained: false, level: 10, NoChain);
 
-        Assert.Equal("Damage -15 to 20 · NonMagicalSpell", row.EffectText);
+        Assert.Equal("Damage -15 to 20 · ignores magic resistance", row.EffectText);
     }
 
     [Fact]
@@ -510,7 +510,7 @@ public sealed class SpellBookRowViewModelTests
         KnownSpell s = Spell("drgn", "way of the dragon", 8, f);
         SpellBookRowViewModel row = new(s, isObtained: true, level: 8, NoChain);
 
-        Assert.Equal("Dmg 13–14 · NonMagicalSpell", row.EffectText);
+        Assert.Equal("Dmg 13–14 · ignores magic resistance", row.EffectText);
     }
 
     [Fact]

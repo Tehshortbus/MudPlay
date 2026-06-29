@@ -85,6 +85,15 @@ public sealed class AppServices
     public SplitterLayoutStore SplitterLayouts { get; }
 
     /// <summary>
+    /// Per-character memory of the Session Stats window's panel order +
+    /// hidden set. The window's VM reads it on open and pushes drag-reorders /
+    /// visibility toggles back through it; it hydrates from
+    /// <see cref="CharacterProfile.SessionStatsLayout"/> on profile load and
+    /// snapshots back on save.
+    /// </summary>
+    public SessionStatsLayoutStore SessionStatsLayout { get; }
+
+    /// <summary>
     /// Ring buffer of recent cleaned (post-IAC) bytes from the live Telnet
     /// connection. Feeds the Wire Inspector window and any future
     /// "what did the server just say" diagnostic.
@@ -404,6 +413,13 @@ public sealed class AppServices
     /// caller back so they know our stored password is stale.
     /// </summary>
     public Game.Remote.SuicideHandler Suicide { get; private set; } = null!;
+
+    /// <summary>
+    /// Consumer of <see cref="RemoteCommands"/> for <c>@reset</c> — an
+    /// authorised party member zeroes our Phase 11 session-stats trackers,
+    /// the same wipe the Session Stats window's "Reset session" button does.
+    /// </summary>
+    public Game.Remote.SessionResetHandler SessionReset { get; private set; } = null!;
 
     /// <summary>Snapshot of the most recent <c>stat</c>-screen parse. Written exclusively by <see cref="Stats"/>.</summary>
     public Game.PlayerStats PlayerStats { get; } = new();
@@ -766,6 +782,32 @@ public sealed class AppServices
     /// <c>RoundComplete</c> event.
     /// </summary>
     public Game.Combat.RoundDamageTracker RoundDamage { get; private set; } = null!;
+
+    /// <summary>
+    /// Phase 11 — aggregates combat lines + <see cref="RoundDamage"/> rounds
+    /// into the session combat figures (hit / miss / crit / dodge rates,
+    /// physical &amp; backstab damage extents, per-round damage) the Session
+    /// Stats panel displays. Pure downstream subscriber; reset on the session
+    /// boundary alongside <see cref="RoundDamage"/>.
+    /// </summary>
+    public Game.Combat.CombatSessionTracker CombatSession { get; private set; } = null!;
+
+    /// <summary>
+    /// Phase 11 — divides the session's wall-clock time across the player's
+    /// activities (waiting / moving / attacking / resting HP / resting MA) plus
+    /// the blinded / poisoned overlays, for the Time Analysis panel. Fed by
+    /// <see cref="PlayerState"/>, <see cref="Conditions"/>, and
+    /// <see cref="RoomTracker"/>; reset on the session boundary.
+    /// </summary>
+    public Game.Combat.TimeAnalysisTracker TimeAnalysis { get; private set; } = null!;
+
+    /// <summary>
+    /// Phase 11 — counts the session's monster kills and experience earned and
+    /// keeps a rolling kill-timestamp history for the Session Stats panel's
+    /// kills/hour sparkline. Fed by <see cref="MonsterDeath"/> and the
+    /// experience-gain line; reset on the session boundary.
+    /// </summary>
+    public Game.Combat.SessionActivityTracker SessionActivity { get; private set; } = null!;
 
     /// <summary>
     /// Phase 9 PR 9.0d — observes the "You have been slain by..."
@@ -1151,6 +1193,14 @@ public sealed class AppServices
     public Game.PartyVitalsWatcher PartyVitals { get; private set; } = null!;
 
     /// <summary>
+    /// Leader-rest bridge — nudges <see cref="Health"/> to re-evaluate when
+    /// the party leader's rest / meditate posture flips, so a standing-idle
+    /// follower opportunistically tops off during the leader's downtime
+    /// without waiting on its own next prompt tick.
+    /// </summary>
+    public Game.PartyLeaderRestWatcher PartyLeaderRest { get; private set; } = null!;
+
+    /// <summary>
     /// Fulfillment half of the Phase 9 auto-engine coordination model —
     /// requesters post acquisition needs (light source, etc.), fulfilling
     /// engines claim + resolve them. No engine references another by
@@ -1203,6 +1253,12 @@ public sealed class AppServices
     /// move so their in-memory <c>Folder</c> values stay in sync.
     /// </summary>
     public Game.Map.NavFolderManager NavFolders { get; private set; } = null!;
+
+    /// <summary>
+    /// Game Data → "Manage Sets…" backend: copy / move a set's loop
+    /// library to another set, delete a set (tables + loops).
+    /// </summary>
+    public GameDataSetManager GameDataSetManager { get; private set; } = null!;
 
     /// <summary>
     /// Sole writer of <see cref="Game.PlayerState.Encumbrance"/>.
@@ -1313,6 +1369,7 @@ public sealed class AppServices
         Panels = new FloatingPanelHost();
         WindowLayouts = new WindowLayoutStore(Profile);
         SplitterLayouts = new SplitterLayoutStore(Profile);
+        SessionStatsLayout = new SessionStatsLayoutStore(Profile);
         Wire = new WireBuffer();
         Router = new MessageRouter();
 
@@ -1589,11 +1646,14 @@ public sealed class AppServices
         // never trick it; ALSO skips on the first connect after a
         // hangup (HangupSignal.ConsumeSuppressEntry) so the user can
         // read the screen before they decide to act.
-        // Auto-entry obeys the master auto-responses switch: when every
-        // wired engine is off, the menu-match send is suppressed too.
+        // Auto-entry obeys the Auto-All kill switch: when the user (or an
+        // @auto-all off) actively silences automation, the menu-match send
+        // is suppressed too. We gate on KillSwitchEngaged, NOT AllWiredOff —
+        // a manual-play character runs with every auto-engine off but never
+        // pressed the kill switch, and must still auto-enter the realm.
         MainMenuEntry = new Game.MainMenuEntryAutomation(
             Router, GameCommands, HangupSignal,
-            isAutoEnabled: () => !AutoModeController.AllWiredOff,
+            isAutoEnabled: () => !AutoModeController.KillSwitchEngaged,
             log: Log);
         // Cleanup-driven proactive log-off. Subscribes to the same
         // CleanupWarningWatcher the reconnect scheduler reads; its safe
@@ -1877,6 +1937,8 @@ public sealed class AppServices
         // doesn't ship CombatSessionTracker — Phase 11 does — but the
         // reset hook lives here on the data producer).
         Profile.ProfileLoaded += _ => RoundDamage.Reset();
+        // Phase 11 CombatSessionTracker is constructed after Inventory (its
+        // proc recogniser reads the worn-weapon snapshot) — see below.
 
         // Phase 9 PR 9.0d — local-death observation. Pure subscriber;
         // DeathRecoveryManager (PR 9.I) consumes the PlayerDied event
@@ -2001,14 +2063,26 @@ public sealed class AppServices
             hasEngageableHostiles: () => CombatTracker.HasEngageableHostiles,
             log: Log);
 
+        // Leader-rest nudge: a standing-idle follower's own PlayerState may
+        // not change between the 5s par polls that flip the leader's
+        // Resting / Meditating flags, so without this poke Health wouldn't
+        // re-evaluate (and start opportunistically resting) until its next
+        // prompt tick. Edge-triggered — fires only when the leader's posture
+        // actually flips. Process-lifetime singleton (not disposed here).
+        PartyLeaderRest = new Game.PartyLeaderRestWatcher(
+            PartyState, onLeaderRestChanged: () => Health.Evaluate());
+
         // Role-aware recovery: as a party follower we top off only to the
         // rest floor (not full) and ping the leader via @wait / @ok so we
         // don't silently hold or release the party. Solo / leader keeps the
         // full rest-max topoff — PartyRestSync self-gates the telepaths.
+        // isLeaderResting drives the inherent "rest while the leader rests"
+        // opportunistic topoff (gated only by the auto-heal master switch).
         Health.SetPartyRoleSync(
             isPartyFollower: () => PartyState.IsInParty && !PartyState.SelfIsLeader,
             requestPartyWait: () => PartyRest.RequestWait(Game.WaitReason.Health),
-            requestPartyOk: () => PartyRest.RequestOk(Game.WaitReason.Health));
+            requestPartyOk: () => PartyRest.RequestOk(Game.WaitReason.Health),
+            isLeaderResting: () => PartyLeaderRest.LeaderIsResting);
 
         // Server-side resting state clears on move; drop our latch
         // too so the next threshold breach actually fires `rest`
@@ -2217,6 +2291,80 @@ public sealed class AppServices
         RoomTracker.AttachInventorySnapshot(() => Inventory.Snapshot);
         DeathRecovery.AttachInventorySnapshot(() => Inventory.Snapshot);
 
+        // Phase 11 — CombatSessionTracker. Aggregates the same combat lines
+        // plus RoundDamage's closed rounds into the Session Stats figures, and
+        // recognises two game-data-driven damage rows the fixed regex patterns
+        // can't: a configured attack SPELL's cast (Combat tab → KnownSpell →
+        // CasterMessage) and the equipped weapon's PROC (worn weapon → Items#N
+        // message). Both fold into their own rows — out of the swing accuracy +
+        // physical extent — while their damage still rolls into the per-round
+        // total via RoundDamage's UserHits subscription. Constructed here (not
+        // beside RoundDamage) because the proc resolver reads Inventory's
+        // worn-weapon snapshot. Matchers refresh on the boundaries that move
+        // them: connect / char switch (ProfileLoaded, which also zeroes the
+        // session in lockstep with RoundDamage), a Combat-tab edit
+        // (ProfileMutated), a game-data set swap (ActiveSetChanged), and a
+        // weapon swap (Inventory.Changed).
+        CombatSession = new Game.Combat.CombatSessionTracker(
+            Router, RoundDamage, AttackSpellMatchers, EquippedWeaponProcMatcher);
+        Profile.ProfileLoaded  += _ => { CombatSession.Reset(); CombatSession.RefreshMatchers(); };
+        Profile.ProfileMutated += _ => CombatSession.RefreshMatchers();
+        GameData.ActiveSetChanged += _ => { _procWeaponName = null; CombatSession.RefreshMatchers(); };
+        Inventory.Changed += () => CombatSession.RefreshMatchers();
+
+        // Phase 11 — TimeAnalysisTracker. Divides the session's wall-clock time
+        // across the player's activities + the affliction overlays (blinded /
+        // poisoned / diseased / confused / held). It
+        // owns no subscriptions (its inputs span three sources), so forward each
+        // here: PlayerState carries combat / position / vitals, Conditions the
+        // affliction flags, and a confirmed room change (NewRoom differs from
+        // the previous) opens its movement window. Reset on the same
+        // ProfileLoaded boundary as the other Phase 11 trackers.
+        TimeAnalysis = new Game.Combat.TimeAnalysisTracker();
+        PlayerState.PropertyChanged += (_, _) => TimeAnalysis.NotePlayerState(
+            PlayerState.InCombat, PlayerState.Position,
+            PlayerState.Hp, PlayerState.MaxHp, PlayerState.Ma, PlayerState.MaxMa);
+        Conditions.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(Game.Conditions.ConditionTracker.ActiveFlags))
+                TimeAnalysis.NoteAfflictions(
+                    Conditions.IsBlinded, Conditions.IsPoisoned, Conditions.IsDiseased,
+                    Conditions.IsConfused, Conditions.IsMovementPrevented);
+        };
+        RoomTracker.StateChanged += t =>
+        {
+            if (t.NewRoom is not null && !ReferenceEquals(t.NewRoom, t.PreviousRoom))
+                TimeAnalysis.NoteRoomChanged();
+        };
+        // In-game gate: the first prompt of the session arms accrual (idempotent
+        // — subsequent prompts no-op), so BBS-menu / login time never counts.
+        // Same WirePromptScanner the EventScheduler uses for its in-game latch.
+        PromptScanner.PromptObserved += _ => TimeAnalysis.NoteInGame();
+        // A fresh character starts disarmed: zero the counters, then Suspend so
+        // accrual waits for that character's first in-game prompt. (Disconnect
+        // disarms via MainWindowVM; @reset / the window button keep counting.)
+        Profile.ProfileLoaded += _ => { TimeAnalysis.Reset(); TimeAnalysis.Suspend(); };
+
+        // Phase 11 — SessionActivityTracker. Counts kills + experience and keeps
+        // the rolling kill history for the kills/hour sparkline. Like the other
+        // Phase 11 trackers it owns no subscriptions: a kill arrives from
+        // MonsterDeath (specific or fallback alike — both mean one mob down) and
+        // experience from the gain line. Reset on the same session boundary.
+        SessionActivity = new Game.Combat.SessionActivityTracker();
+        MonsterDeath.MonsterDied += _ => SessionActivity.NoteKill();
+        Router.Subscribe(Services.Patterns.KnownPatterns.UserGainExperience, m =>
+        {
+            if (m.Groups.Count > 0 && int.TryParse(m.Groups[0], out int exp))
+                SessionActivity.NoteExperience(exp);
+        });
+        Profile.ProfileLoaded += _ => SessionActivity.Reset();
+
+        // @reset — a party member zeroes our session-stats trackers (the same
+        // wipe as the window button / connect boundary). Constructed here, after
+        // all three Phase 11 trackers exist; RemoteCommands was built upstream.
+        SessionReset = new Game.Remote.SessionResetHandler(
+            RemoteCommands, CombatSession, TimeAnalysis, SessionActivity, Log);
+
         // PR 10.18 — item-cast buffs. A Bless slot may hold a #-token naming an
         // unlimited-use cast item (surfaced in the Spell Book); the director
         // fires it by wielding + using the item, then re-wielding the displaced
@@ -2267,6 +2415,12 @@ public sealed class AppServices
         // counts aren't relevant to the new one.
         Profile.ProfileLoaded += _ => Cash.ResetTallies();
         Cash.SetAcquisitionGate(Acquisition);
+        // Phase 11 — feed confirmed coin pickups into the Session Stats
+        // currency-collected tally, converting each denomination to its copper
+        // value so mixed currency streams fold into one figure.
+        Cash.CoinCollected += (currency, count) =>
+            SessionActivity.NoteCurrencyCollected(
+                Game.Inventory.CurrencyHoldings.ToCopper(currency, count));
         // The auto-deposit gates read the authoritative inventory snapshot
         // (wealth value + coin count), so re-evaluate whenever the parser
         // updates holdings — this is the only path that catches buy / sell
@@ -2284,6 +2438,15 @@ public sealed class AppServices
             getSnapshot: () => Inventory.Snapshot,
             isEnabled: () => ReadAutoModeFlag(d => d.AutoGetCash),
             log: Log);
+        // Phase 11 — count stash-room hides toward the Session Stats
+        // stashed/deposited figure (copper value across the dispatched coins).
+        Stash.StashExecuted += (_, pairs) =>
+        {
+            long copper = 0;
+            foreach ((string currency, long amount) in pairs)
+                copper += Game.Inventory.CurrencyHoldings.ToCopper(currency, amount);
+            SessionActivity.NoteCurrencyStashed(copper);
+        };
 
         // Phase 9 PR 9.L — AutoGetItemsManager. The resolve delegate
         // maps a loose "You notice ..." entry back to an item Number
@@ -2371,39 +2534,58 @@ public sealed class AppServices
             applyBySetId: Equipment.ApplyBySetId,
             log: Log);
 
-        // Phase 7 PR 7.8 — per-BBS loop catalogue. PR 7.13 wires the
-        // BBS-change signals so the catalogue reloads on profile load
-        // and on explicit BBS pin from Settings → BBS Apply.
-        //
-        // Resolve through ResolveActiveBbs (NOT raw Profile.BbsName)
-        // so a blank-draft profile + global default-BBS still binds
-        // the catalogue to that default. Otherwise Save on a
-        // brand-new loop silently no-ops in LoopManager (the
-        // _bbsName==null bail) and the user-visible Save button
-        // appears to do nothing.
+        // Phase 7 PR 7.8 — per-game-data-set loop catalogue. Loops live
+        // under the active set's Loops/ folder, so the catalogue reloads
+        // whenever the active set changes (wired below, alongside lairs,
+        // since the two share one on-disk tree).
         Loops = new Game.Map.LoopManager(Bfs, RoomGraph, Log);
-        Profile.ProfileLoaded += _  => Loops.LoadAll(ResolveActiveBbs()?.Name);
-        Profile.BbsPinApplied += _  => Loops.LoadAll(ResolveActiveBbs()?.Name);
-        Profile.ProfileClosed += () => Loops.LoadAll(null);
 
         // Phase 7 PR 7.9 — MegaMUD .mp loop importer. Pure resolution
         // service over the active graph; no per-profile state of its
         // own. The Manage dialog calls it on user "Import .mp".
         MpImporter = new Game.Map.MpFile.MpFileImporter(RoomGraph, Log);
 
-        // Phase 7 PR 7.18 — Auto-Lair setup catalogue (per-BBS, mirrors
+        // Phase 7 PR 7.18 — Auto-Lair setup catalogue (per-set, mirrors
         // LoopManager) + game-data-driven respawn timer resolver +
         // in-session arrival tracker.
         Lairs = new Game.Map.LairManager(Log);
-        Profile.ProfileLoaded += _  => Lairs.LoadAll(ResolveActiveBbs()?.Name);
-        Profile.BbsPinApplied += _  => Lairs.LoadAll(ResolveActiveBbs()?.Name);
-        Profile.ProfileClosed += () => Lairs.LoadAll(null);
         LairTimers = new Game.Map.LairTimerStore(GameData, RoomGraph, RoomTracker, Log);
+
+        // Loops + lairs are per-game-data-set and share one on-disk tree,
+        // so they reload together on every active-set change. Mirrors the
+        // other per-set subsystems above: hook ActiveSetChanged, then
+        // prime from the current set. ApplyActiveGameDataSet re-derives the
+        // active set on every profile load / BBS pin / mutate / close, so
+        // this one hook covers every reload case the old per-BBS wiring did.
+        GameData.ActiveSetChanged += setName =>
+        {
+            Loops.LoadAll(setName);
+            Lairs.LoadAll(setName);
+        };
+        if (GameData.ActiveSet is not null)
+        {
+            Loops.LoadAll(GameData.ActiveSet);
+            Lairs.LoadAll(GameData.ActiveSet);
+        }
 
         // Shared folder CRUD over the Loops directory (loops + lairs
         // live in the same on-disk tree). Owns the filesystem move once
         // and reloads both managers, instead of either racing the dir.
         NavFolders = new Game.Map.NavFolderManager(Loops, Lairs, Log);
+
+        // Game Data → "Manage Sets…" backend. The reload callback re-pulls
+        // the active set's loop/lair caches after a copy/move touches it;
+        // the delete callback clears any profile / global reference that
+        // still names a just-deleted set.
+        GameDataSetManager = new GameDataSetManager(
+            GameData,
+            reloadActiveLibrary: () =>
+            {
+                Loops.LoadAll(GameData.ActiveSet);
+                Lairs.LoadAll(GameData.ActiveSet);
+            },
+            onSetDeleted: ClearGameDataSetReferences,
+            Log);
 
         // Phase 7 PR 7.18 — Encumbrance parser writes
         // PlayerState.Encumbrance from the `enc` line; HopTimingCalibrator
@@ -2519,6 +2701,9 @@ public sealed class AppServices
             autoLair: AutoLair,
             stash: Stash,
             log: Log);
+        // Phase 11 — bank deposits (already a copper value) join stash hides in
+        // the Session Stats stashed/deposited figure.
+        AutoDeposit.Deposited += copper => SessionActivity.NoteCurrencyStashed(copper);
 
         // PR 6.2 — follower-side @comeback. Watches for a movement-failure
         // line (prevents-movement flag / over-encumbered) immediately
@@ -2858,6 +3043,123 @@ public sealed class AppServices
     }
 
     /// <summary>
+    /// Find the active set's <see cref="Models.GameData.MessageRecord"/> for an
+    /// item — by <c>Items#N</c> link first, then by the item's resolved name.
+    /// An item-proc record's <see cref="Models.GameData.MessageRecord.CasterMessage"/>
+    /// is the line YOU see when the weapon procs. Returns <c>null</c> when no
+    /// record anchors to the item. Mirrors <see cref="FindSpellMessage"/>.
+    /// </summary>
+    private Models.GameData.MessageRecord? FindItemMessage(int itemNumber)
+    {
+        foreach (Models.GameData.MessageRecord m in Messages.Messages)
+        {
+            if (m.Links is null) continue;
+            foreach (Models.GameData.GameDataLink link in m.Links)
+                if (string.Equals(link.Table, "Items", StringComparison.OrdinalIgnoreCase)
+                    && link.Number == itemNumber)
+                    return m;
+        }
+
+        string? itemName = ItemNames.GetName(itemNumber);
+        if (string.IsNullOrWhiteSpace(itemName)) return null;
+        string target = itemName.Trim();
+        foreach (Models.GameData.MessageRecord m in Messages.Messages)
+            if (string.Equals(m.Name.Trim(), target, StringComparison.OrdinalIgnoreCase))
+                return m;
+        return null;
+    }
+
+    /// <summary>
+    /// Compile the <see cref="Game.Spells.CasterMessageMatcher"/>s for the
+    /// player's configured attack spells (the Combat tab's Normal + Alternate
+    /// single-target damage slots) from each spell's game-data
+    /// <see cref="Models.GameData.MessageRecord.CasterMessage"/>. Feeds
+    /// <see cref="CombatSession"/> so a recognised cast tallies its own
+    /// damage row instead of being miscounted as a melee swing. Re-read on each
+    /// refresh so a slot change takes effect without a reconnect; a blank /
+    /// unknown / message-less slot contributes nothing.
+    /// </summary>
+    private IReadOnlyList<Game.Spells.CasterMessageMatcher> AttackSpellMatchers()
+    {
+        Models.Profile.CombatSettings combat =
+            ReadSection<Models.Profile.CombatSettings>(Profile.Current, "Combat");
+        List<Game.Spells.CasterMessageMatcher> list = new(2);
+        Add(combat.NormalAttackSpell?.SpellName);
+        Add(combat.AlternateAttackSpell?.SpellName);
+        return list;
+
+        void Add(string? spellName)
+        {
+            if (AttackSpellMatcherFor(spellName) is { } matcher) list.Add(matcher);
+        }
+    }
+
+    /// <summary>
+    /// Resolve one attack-spell slot name to its caster-message matcher: match
+    /// the live spellbook by full name (the form a slot stores) or 4-letter
+    /// cast code, take its game-data record's
+    /// <see cref="Models.GameData.MessageRecord.CasterMessage"/>, and compile.
+    /// Returns <c>null</c> when the name is blank, unknown to the spellbook, has
+    /// no record, or the record has no usable caster template.
+    /// </summary>
+    private Game.Spells.CasterMessageMatcher? AttackSpellMatcherFor(string? spellName)
+    {
+        if (string.IsNullOrWhiteSpace(spellName)) return null;
+        string target = spellName.Trim();
+        foreach (Game.Spells.KnownSpell s in Spellbook.Available)
+        {
+            if (!string.Equals(s.Name.Trim(), target, StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(s.Short.Trim(), target, StringComparison.OrdinalIgnoreCase))
+                continue;
+            Models.GameData.MessageRecord? rec = FindSpellMessage(s.Number, s.Name);
+            return rec is null ? null : Game.Spells.CasterMessageMatcher.TryCreate(rec.CasterMessage);
+        }
+        return null;
+    }
+
+    // Equipped-weapon proc matcher, cached by weapon name so a hot
+    // Inventory.Changed (coin pickups republish the snapshot too) doesn't
+    // recompile the regex every time — only an actual weapon swap rebuilds.
+    // Invalidated by nulling _procWeaponName on a game-data set swap, where the
+    // same name may resolve to a different message.
+    private string? _procWeaponName;
+    private Game.Spells.CasterMessageMatcher? _procMatcherCache;
+
+    /// <summary>
+    /// Compile the <see cref="Game.Spells.CasterMessageMatcher"/> for the
+    /// currently-wielded weapon's proc, from the item's game-data
+    /// <see cref="Models.GameData.MessageRecord.CasterMessage"/>. Resolves the
+    /// worn "Weapon Hand" item → <see cref="ItemNames"/> Number →
+    /// <see cref="FindItemMessage"/>. Returns <c>null</c> when nothing's wielded
+    /// or the weapon has no proc message. Cached on the weapon name.
+    /// </summary>
+    private Game.Spells.CasterMessageMatcher? EquippedWeaponProcMatcher()
+    {
+        string? weapon = EquippedWeaponName();
+        if (string.Equals(weapon, _procWeaponName, StringComparison.OrdinalIgnoreCase))
+            return _procMatcherCache;
+        _procWeaponName = weapon;
+        _procMatcherCache = BuildWeaponProcMatcher(weapon);
+        return _procMatcherCache;
+    }
+
+    private string? EquippedWeaponName()
+    {
+        foreach (Game.Inventory.EquippedItem item in Inventory.Snapshot.EquippedItems)
+            if (string.Equals(item.Slot, "Weapon Hand", StringComparison.OrdinalIgnoreCase))
+                return item.Name;
+        return null;
+    }
+
+    private Game.Spells.CasterMessageMatcher? BuildWeaponProcMatcher(string? weaponName)
+    {
+        if (string.IsNullOrWhiteSpace(weaponName)) return null;
+        if (ItemNames.FindByName(weaponName) is not int number) return null;
+        Models.GameData.MessageRecord? rec = FindItemMessage(number);
+        return rec is null ? null : Game.Spells.CasterMessageMatcher.TryCreate(rec.CasterMessage);
+    }
+
+    /// <summary>
     /// Resolve a single room "You notice ..." entry for
     /// <see cref="AutoGetItems"/>: map the loose wording to an item
     /// Number, read its verbatim Name, and resolve the per-character
@@ -3110,6 +3412,37 @@ public sealed class AppServices
         Models.Settings.BbsProfile? bbs = ResolveActiveBbs();
         string? resolved = bbs?.ActiveGameDataSet ?? Settings.Current.DefaultGameDataSet;
         GameData.SwitchSet(resolved);
+    }
+
+    /// <summary>
+    /// Drop any persisted reference to a just-deleted game-data set so a
+    /// later resolve doesn't point <see cref="GameData"/> at a folder
+    /// that's gone. Clears the global
+    /// <see cref="Models.Settings.GlobalSettings.DefaultGameDataSet"/> and
+    /// every BBS profile's
+    /// <see cref="Models.Settings.BbsProfile.ActiveGameDataSet"/> that
+    /// named it. Wired into <see cref="GameDataSetManager"/> as its
+    /// delete callback.
+    /// </summary>
+    private void ClearGameDataSetReferences(string deletedSet)
+    {
+        bool Matches(string? s) => string.Equals(s, deletedSet, StringComparison.OrdinalIgnoreCase);
+
+        if (Matches(Settings.Current.DefaultGameDataSet))
+        {
+            Settings.Current.DefaultGameDataSet = null;
+            Settings.Save();
+        }
+
+        foreach (string name in Bbs.ListNames().ToArray())
+        {
+            Models.Settings.BbsProfile? p = Bbs.Get(name);
+            if (p is not null && Matches(p.ActiveGameDataSet))
+            {
+                p.ActiveGameDataSet = null;
+                Bbs.Save(p);
+            }
+        }
     }
 
     private void ApplyDisplayFromActiveBbs()

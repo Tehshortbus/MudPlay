@@ -253,10 +253,24 @@ public sealed class BfsMapper
         // Score-and-retry pass. If the primary layout carries any
         // non-Euclidean stubs (cluster, typically caused by reaching a
         // maze region via a bent path), try a small handful of retry
-        // origins picked from the rooms with the most stubs and pick
-        // whichever layout has the lowest total stub count after
-        // translating back so the original origin sits at (0,0). The
-        // user never sees the worse one.
+        // origins picked from the rooms with the most stubs and pick the
+        // BEST layout after translating back so the original origin sits
+        // at (0,0). The user never sees the worse one.
+        //
+        // "Best" = most rooms placed, with stub count as the tiebreak.
+        // Coverage comes first because a dropped room (collision the
+        // placer couldn't resolve) vanishes from the map entirely —
+        // strictly worse than a bent connector, which at least still
+        // shows the room and the fact that an exit exists. Optimising on
+        // stub count alone backfires: a layout that DROPS a whole cluster
+        // scores *fewer* stubs than one that places the cluster with a
+        // few bends, so the old metric actively preferred the sparser,
+        // more-wrong layout. (Real case: v1.11p map-1 sewers from origin
+        // 1/602 placed 537 rooms / 3 stubs, while a sewer-side retry
+        // origin placed all 571 rooms / 7 stubs — the fuller one is the
+        // correct render.) Every dropped room leaves at least one stub on
+        // its source side, so "stubs > 0" still reliably triggers the
+        // retry whenever coverage is incomplete.
         //
         // Why N candidates instead of just the single worst-stub room:
         // in a tight maze where every cluster room has similar stub
@@ -272,8 +286,9 @@ public sealed class BfsMapper
         if (maxRadius == int.MaxValue)
         {
             int primaryStubs = CountStubs(primary);
+            int primaryPlaced = primary.Positions.Count;
             _log?.Log(Services.LogSeverity.Debug, "BfsMapper",
-                $"BuildLayout origin={origin} primaryStubs={primaryStubs} positions={primary.Positions.Count}.");
+                $"BuildLayout origin={origin} primaryStubs={primaryStubs} positions={primaryPlaced}.");
             if (primaryStubs > 0)
             {
                 int triedCount = 0;
@@ -289,19 +304,25 @@ public sealed class BfsMapper
                         continue;
                     }
                     int secondaryStubs = CountStubs(secondary);
-                    bool replaces = secondaryStubs < primaryStubs;
+                    int secondaryPlaced = secondary.Positions.Count;
+                    bool replaces = RetryImproves(
+                        secondaryPlaced, secondaryStubs, primaryPlaced, primaryStubs);
                     _log?.Log(Services.LogSeverity.Debug, "BfsMapper",
-                        $"  retry#{triedCount} from {retryOrigin}: stubs={secondaryStubs}"
+                        $"  retry#{triedCount} from {retryOrigin}: placed={secondaryPlaced} stubs={secondaryStubs}"
                         + (replaces ? " — replaces primary." : " — keep primary."));
                     if (replaces)
                     {
                         primary = TranslateLayoutToNewOrigin(secondary, origin);
                         primaryStubs = secondaryStubs;
+                        primaryPlaced = secondaryPlaced;
+                        // A zero-stub layout has no dropped rooms (every
+                        // exit lands flat), so coverage is already maximal
+                        // — nothing left to improve.
                         if (primaryStubs == 0) break;
                     }
                 }
                 _log?.Log(Services.LogSeverity.Debug, "BfsMapper",
-                    $"BuildLayout origin={origin} final stubs={primaryStubs} after {triedCount} retry attempt(s).");
+                    $"BuildLayout origin={origin} final placed={primaryPlaced} stubs={primaryStubs} after {triedCount} retry attempt(s).");
             }
         }
 
@@ -509,6 +530,22 @@ public sealed class BfsMapper
                 kvp => kvp.Key,
                 kvp => (IReadOnlySet<Direction>)kvp.Value));
     }
+
+    /// <summary>
+    /// Retry-acceptance rule for the score-and-retry pass: a candidate
+    /// layout replaces the current best when it places MORE rooms, or
+    /// places the same number with FEWER stubs. Coverage dominates
+    /// because a dropped room disappears from the map entirely (strictly
+    /// worse than a bent connector); stub count only breaks ties between
+    /// equal-coverage layouts. Extracted + internal so the ordering is
+    /// unit-testable without standing up a full graph — optimising on
+    /// stubs alone silently prefers layouts that drop whole clusters.
+    /// </summary>
+    internal static bool RetryImproves(
+        int candidatePlaced, int candidateStubs,
+        int bestPlaced, int bestStubs)
+        => candidatePlaced > bestPlaced
+        || (candidatePlaced == bestPlaced && candidateStubs < bestStubs);
 
     /// <summary>
     /// Count exit-direction edges that don't actually reach their

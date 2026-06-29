@@ -1,5 +1,6 @@
 <Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="using:FujinTerm.Controls"
              x:Class="FujinTerm.App"
              RequestedThemeVariant="Dark">
     <!-- Dark variant matches the skeleton's chrome palette. -->
@@ -30,5 +31,11 @@
              this the Game Data Browser grids render with no chrome. -->
         <StyleInclude Source="avares://Avalonia.Controls.DataGrid/Themes/Fluent.xaml"/>
         <StyleInclude Source="avares://FujinTerm/Themes/Controls.axaml"/>
+        <!-- Click any modeless tool window to raise it above its siblings — owned
+             windows don't auto-raise on click on several Linux WMs. See
+             WindowBehaviors.RaiseToFrontOnClick. -->
+        <Style Selector="Window">
+            <Setter Property="controls:WindowBehaviors.RaiseToFrontOnClick" Value="True"/>
+        </Style>
     </Application.Styles>
 </Application>

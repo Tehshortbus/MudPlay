@@ -89,6 +89,19 @@ public sealed class InventoryManagerTests
         Assert.Equal(1, h.ChangedCount);
     }
 
+    [Theory]
+    [InlineData("copper", 7, 7L)]
+    [InlineData("silver", 3, 30L)]
+    [InlineData("gold", 4, 400L)]
+    [InlineData("platinum", 2, 20_000L)]
+    [InlineData("runic", 1, 1_000_000L)]
+    [InlineData("GOLD", 4, 400L)]     // case-insensitive
+    [InlineData("doubloons", 9, 0L)]  // unknown denomination → 0
+    public void ToCopper_AppliesTheRatioLadder(string currency, long count, long expected)
+    {
+        Assert.Equal(expected, CurrencyHoldings.ToCopper(currency, count));
+    }
+
     [Fact]
     public void EmptyPurse_BeforeParse_NotLoaded()
     {

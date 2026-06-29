@@ -150,4 +150,34 @@ public sealed class ItemUseCastEffectTests : IDisposable
             info.Single(kv => kv.Key.Trim() == "Effect");
         Assert.Equal("Dmg 30–50", effect.Value);
     }
+
+    [Fact]
+    public void BoughtSold_RendersInOtherInfo_NotTheEditableDetails()
+    {
+        // Shop #5 sits in room 1/10 ("General Store"); item #200 lists it in
+        // Obtained From. The bought/sold shop line is read-only MDB info, so
+        // it now belongs in the "Other Info" pane.
+        Seed("Shops", "[{\"Number\":5,\"Assigned To\":\"Room 1/10\"}]");
+        Seed("Rooms", "[{\"Map Number\":1,\"Room Number\":10,\"Name\":\"General Store\"}]");
+        Seed("Items", "[{\"Number\":200,\"Name\":\"Torch\",\"ItemType\":0,\"Obtained From\":\"Shop #5\"}]");
+        _cache.SwitchSet("v1.11p");
+
+        IReadOnlyList<KeyValuePair<string, string>> info = OtherInfoFor("200");
+
+        KeyValuePair<string, string> row = info.Single(kv => kv.Key == "Bought / sold");
+        Assert.Contains("General Store", row.Value);
+        Assert.Contains("1/10", row.Value);
+    }
+
+    [Fact]
+    public void BoughtSold_Absent_WhenItemHasNoShop()
+    {
+        // No shop reference in Obtained From → no Bought/sold row at all.
+        Seed("Items", "[{\"Number\":201,\"Name\":\"Quest Relic\",\"ItemType\":0,\"Obtained From\":\"Monster #1(50%)\"}]");
+        _cache.SwitchSet("v1.11p");
+
+        IReadOnlyList<KeyValuePair<string, string>> info = OtherInfoFor("201");
+
+        Assert.DoesNotContain(info, kv => kv.Key == "Bought / sold");
+    }
 }

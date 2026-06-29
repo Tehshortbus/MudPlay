@@ -145,6 +145,17 @@ public sealed partial class MessageEditDialogViewModel : ObservableObject, IDial
     /// <summary>True when the Game Data tab has content to show.</summary>
     public bool HasGameData => GameDataInfo.Count > 0;
 
+    /// <summary>
+    /// Tab the dialog opens on (0 = User Definitions, 1 = Game Data). A
+    /// spell the player can cast already has an authored cast message, so
+    /// it opens on User Definitions where the user's editable content
+    /// lives. A spell with no message — cast by a room / item / monster
+    /// (e.g. a river's damage-on-entry spell) — opens on Game Data, the
+    /// only meaningful info for it. Plain Messages-tab edits (no Game Data
+    /// tab) always stay on tab 0.
+    /// </summary>
+    public int InitialTabIndex => (HasGameData && _isNew) ? 1 : 0;
+
     public string Title => _isNew ? "Message — (new)" : $"Message — {_original.Name}";
 
     /// <summary>

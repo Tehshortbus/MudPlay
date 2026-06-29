@@ -164,4 +164,43 @@ public sealed class SpellEffectFormatterTests
         // its own affect — no runaway recursion.
         Assert.Equal("AC -1 · EndCast beta (Dodge -1)", result);
     }
+
+    // ----- Summon resolves to the monster name ----------------------------
+
+    [Fact]
+    public void Summon_ResolvesMonsterName()
+    {
+        // Summon (12) AbilVal is a monster number — render the creature's
+        // name, not "Summon +590".
+        SpellFormulaInput f = new() { Number = 90, Abilities = [Ab(12, 590)] };
+
+        string result = SpellEffectFormatter.Format(
+            f, level: 0, resolveChain: _ => null,
+            resolveMonsterName: n => n == 590 ? "hydra" : null);
+
+        Assert.Equal("Summon hydra", result);
+    }
+
+    [Fact]
+    public void Summon_NoResolver_FallsBackToNumber()
+    {
+        SpellFormulaInput f = new() { Number = 90, Abilities = [Ab(12, 590)] };
+        string result = SpellEffectFormatter.Format(f, level: 0, resolveChain: _ => null);
+        Assert.Equal("Summon +590", result);
+    }
+
+    // ----- friendly jargon wording ----------------------------------------
+
+    [Fact]
+    public void NonMagicalSpell_RendersFriendlyPhrase()
+    {
+        // 144 (NonMagicalSpell) → plain English in the effect summary.
+        SpellFormulaInput f = new()
+        {
+            Number = 1, MinBase = 5, MaxBase = 10,
+            Abilities = [Ab(1, 0), Ab(144, 0)],   // Damage + NonMagicalSpell flag
+        };
+        string result = SpellEffectFormatter.Format(f, level: 0, resolveChain: _ => null);
+        Assert.Equal("Dmg 5–10 · ignores magic resistance", result);
+    }
 }

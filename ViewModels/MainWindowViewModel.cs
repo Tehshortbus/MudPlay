@@ -2112,6 +2112,10 @@ public partial class MainWindowViewModel : ObservableObject
                 // Phase 8 PR 8.2 — stop the event scheduler's timers
                 // and latch the Re-log flag (only if we were in-game).
                 AppServices.Current.EventScheduler.NotifyDisconnected();
+                // Phase 11 — pause Time Analysis accrual: we're no longer
+                // in-game, so the offline span doesn't count. Totals freeze
+                // and resume on the next in-game prompt after reconnect.
+                AppServices.Current.TimeAnalysis.Suspend();
 
                 // Drop per-session condition + buff-duration state so a
                 // fresh login starts clean: any non-auto-clearing
@@ -2897,6 +2901,22 @@ public partial class MainWindowViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Game Data menu → "Manage Sets…". Immediate-action dialog: copy or
+    /// move a set's loop library into another set, or delete a set
+    /// (game-data tables + loops). A delete drops the set from the menu,
+    /// so rebuild the set list once the dialog closes.
+    /// </summary>
+    [RelayCommand]
+    private async Task OpenGameDataManagerAsync()
+    {
+        var svc = AppServices.Current;
+        ViewModels.GameDataManagerViewModel vm = new(svc.GameDataSetManager, svc.GameData);
+        await svc.Dialogs.OpenWindowAsync<
+            ViewModels.GameDataManagerViewModel, bool>(vm);
+        RebuildGameDataSetsMenu();
+    }
+
+    /// <summary>
     /// Open the Game Data Browser, optionally pre-selected to a named
     /// section. Toggles per the standard window-command rule
     /// (CLAUDE.md): when the browser is already open re-press behavior
@@ -2955,6 +2975,7 @@ public partial class MainWindowViewModel : ObservableObject
                 AppServices.Current.Dialogs,
                 AppServices.Current.Keybindings,
                 AppServices.Current.Profile,
+                AppServices.Current.RoomGraph,
                 initialSectionId),
         };
         window.Closed += (_, _) => _gameDataBrowser = null;
@@ -3244,18 +3265,29 @@ public partial class MainWindowViewModel : ObservableObject
         window.Show(main);
     }
 
+    /// <summary>Singleton handle for the live SessionStatsWindow — re-press toggles closed (CLAUDE.md window rule).</summary>
+    private SessionStatsWindow? _sessionStats;
+
     [RelayCommand]
     private void OpenSessionStats()
-        => OpenPlaceholder(
-            id: "session-stats",
-            panelName: "Session Stats",
-            phaseTag: "Phase 8",
-            headline: "Observed combat / time / session counters",
-            description:
-                "Player Statistics (observed Miss / Hit / Crit / BS / sneak / dodge " +
-                "rates), Time Analysis (moving / attacking / resting), Session " +
-                "Statistics (online time, monsters killed, exp earned). Plus kills/hr " +
-                "sparkline. Counters reset on connect.");
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
+            return;
+
+        if (_sessionStats is { } existing) { existing.Close(); return; }
+
+        SessionStatsWindow window = new()
+        {
+            DataContext = new SessionStatsViewModel(
+                AppServices.Current.CombatSession,
+                AppServices.Current.TimeAnalysis,
+                AppServices.Current.SessionActivity,
+                AppServices.Current.SessionStatsLayout),
+        };
+        window.Closed += (_, _) => _sessionStats = null;
+        _sessionStats = window;
+        window.Show(main);
+    }
 
     [RelayCommand]
     private void OpenWorkshop() => OpenWorkshopAt(null);

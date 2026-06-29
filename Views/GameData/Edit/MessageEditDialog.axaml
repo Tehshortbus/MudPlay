@@ -28,7 +28,7 @@
     <Border Background="{StaticResource ChromeBgBrush}" Padding="14">
         <Grid RowDefinitions="*,Auto" RowSpacing="10">
 
-          <TabControl Grid.Row="0">
+          <TabControl Grid.Row="0" SelectedIndex="{Binding InitialTabIndex, Mode=OneTime}">
             <TabItem Header="User Definitions">
               <Grid RowDefinitions="Auto,Auto,*" RowSpacing="10" Margin="0,8,0,0">
 

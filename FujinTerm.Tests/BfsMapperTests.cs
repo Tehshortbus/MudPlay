@@ -572,6 +572,52 @@ public sealed class BfsMapperTests : IDisposable
         Assert.DoesNotContain(new RoomKey(1, 5), layout.Positions.Keys);
     }
 
+    // ----- score-and-retry objective ---------------------------------
+    //
+    // Regression for the v1.11p map-1 sewers bug: from origin 1/602 the
+    // layout placed 537 rooms with 3 stubs, while a sewer-side retry
+    // origin placed all 571 rooms with 7 stubs. Optimising the retry on
+    // stub count alone kept the 537-room layout (fewer stubs) and dropped
+    // ~34 sewer rooms — they vanished from the map. The retry must value
+    // COVERAGE first and use stub count only as a tiebreak, because a
+    // dropped room (a collision the placer couldn't resolve) is strictly
+    // worse than a bent connector that still shows the room.
+
+    [Fact]
+    public void RetryImproves_PrefersMoreCoverage_EvenWithMoreStubs()
+    {
+        // The bug's exact numbers: 571 placed / 7 stubs must beat
+        // 537 placed / 3 stubs.
+        Assert.True(BfsMapper.RetryImproves(
+            candidatePlaced: 571, candidateStubs: 7,
+            bestPlaced: 537, bestStubs: 3));
+    }
+
+    [Fact]
+    public void RetryImproves_RejectsFewerCoverage_EvenWithFewerStubs()
+    {
+        // The inverse: a sparser-but-cleaner layout must NOT replace a
+        // fuller one. This is the case the old stubs-only rule got wrong.
+        Assert.False(BfsMapper.RetryImproves(
+            candidatePlaced: 537, candidateStubs: 3,
+            bestPlaced: 571, bestStubs: 7));
+    }
+
+    [Fact]
+    public void RetryImproves_BreaksCoverageTies_OnStubCount()
+    {
+        Assert.True(BfsMapper.RetryImproves(
+            candidatePlaced: 100, candidateStubs: 2,
+            bestPlaced: 100, bestStubs: 5));
+        Assert.False(BfsMapper.RetryImproves(
+            candidatePlaced: 100, candidateStubs: 5,
+            bestPlaced: 100, bestStubs: 2));
+        // Identical layouts don't replace (no strict improvement).
+        Assert.False(BfsMapper.RetryImproves(
+            candidatePlaced: 100, candidateStubs: 3,
+            bestPlaced: 100, bestStubs: 3));
+    }
+
     // ----- blacklist hook --------------------------------------------
 
     [Fact]

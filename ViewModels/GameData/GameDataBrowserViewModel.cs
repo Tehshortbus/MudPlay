@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
+using FujinTerm.Game.Map;
 using FujinTerm.Services;
 using FujinTerm.ViewModels.GameData.Tables;
 
@@ -67,9 +68,10 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject, IDispos
     private readonly DialogService? _dialogs;
     private readonly KeybindingStore? _keybindings;
     private readonly ProfileService? _profile;
+    private readonly RoomGraphManager? _roomGraph;
 
     public GameDataBrowserViewModel(GameDataCache gameData, string? initialSectionId = null)
-        : this(gameData, triggers: null, aliases: null, players: null, macros: null, messages: null, monsterMessages: null, monsterOverlaySeed: null, itemOverlaySeed: null, resolver: null, dialogs: null, keybindings: null, profile: null, initialSectionId) { }
+        : this(gameData, triggers: null, aliases: null, players: null, macros: null, messages: null, monsterMessages: null, monsterOverlaySeed: null, itemOverlaySeed: null, resolver: null, dialogs: null, keybindings: null, profile: null, roomGraph: null, initialSectionId: initialSectionId) { }
 
     public GameDataBrowserViewModel(
         GameDataCache gameData,
@@ -85,6 +87,7 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject, IDispos
         DialogService? dialogs = null,
         KeybindingStore? keybindings = null,
         ProfileService? profile = null,
+        RoomGraphManager? roomGraph = null,
         string? initialSectionId = null)
     {
         ArgumentNullException.ThrowIfNull(gameData);
@@ -101,6 +104,7 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject, IDispos
         _dialogs = dialogs;
         _keybindings = keybindings;
         _profile = profile;
+        _roomGraph = roomGraph;
         _gameData.ActiveSetChanged += OnActiveSetChanged;
 
         SeedSections();
@@ -223,7 +227,7 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject, IDispos
 
         // ----- MDB-derived (bottom group) ---------------------------------
 
-        Sections.Add(new MonstersSectionViewModel(_gameData, _resolver, _dialogs, _monsterMessages, _monsterOverlaySeed));
+        Sections.Add(new MonstersSectionViewModel(_gameData, _resolver, _dialogs, _monsterMessages, _monsterOverlaySeed, _roomGraph));
         Sections.Add(new ItemsSectionViewModel(_gameData, _resolver, _dialogs, _itemOverlaySeed));
         Sections.Add(new SpellsSectionViewModel(_gameData, _resolver, _messages, _dialogs));
         Sections.Add(new RoomsSectionViewModel(_gameData, _resolver));

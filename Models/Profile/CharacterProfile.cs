@@ -134,6 +134,15 @@ public sealed class CharacterProfile
     public string? EncryptedSuicidePassword { get; set; }
 
     /// <summary>
+    /// Persisted layout of the Session Stats window's panels — the user's
+    /// chosen panel order and hidden set. Populated by
+    /// <see cref="Services.SessionStatsLayoutStore"/> on profile save and
+    /// applied when the window opens. <c>null</c> means "use the default order,
+    /// all panels visible".
+    /// </summary>
+    public SessionStatsLayout? SessionStatsLayout { get; set; }
+
+    /// <summary>
     /// Persisted size + screen position per top-level window, keyed by
     /// stable id ("main", "backscroll", "settings", etc.). Populated by
     /// <see cref="Services.WindowLayoutStore"/> on profile save and consumed

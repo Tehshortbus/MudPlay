@@ -108,7 +108,7 @@
                                  Options sections above. -->
                             <TextBlock Classes="SectionHeader" Text="Details" Margin="0,10,0,4"/>
                             <Grid ColumnDefinitions="110,80,16,Auto,90"
-                                  RowDefinitions="Auto,Auto,Auto,Auto,Auto"
+                                  RowDefinitions="Auto,Auto,Auto,Auto"
                                   ColumnSpacing="8" RowSpacing="6"
                                   HorizontalAlignment="Left">
 
@@ -136,20 +136,12 @@
                                 <TextBox   Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="4"
                                            Classes="ReadOnlyField" Text="{Binding ItemTypeText}"/>
 
-                                <!-- Row 3: Body location (read-only display from MDB) -->
+                                <!-- Row 3: Body location (read-only display from MDB).
+                                     Bought/sold moved to the right-pane "Other Info"
+                                     (read-only MDB info the user can't assign). -->
                                 <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="Body location"/>
                                 <TextBox   Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="4"
                                            Classes="ReadOnlyField" Text="{Binding BodyLocation}"/>
-
-                                <!-- Row 4: Bought/sold — pure MDB-derived viewable display.
-                                     TextBlock (not a TextBox) so it's unambiguously
-                                     view-only — no input focus, no caret, no
-                                     editable-looking chrome. -->
-                                <TextBlock Grid.Row="4" Grid.Column="0" Classes="FieldLabel" Text="Bought / sold"/>
-                                <TextBlock Grid.Row="4" Grid.Column="1" Grid.ColumnSpan="4"
-                                           Text="{Binding BoughtSold}"
-                                           VerticalAlignment="Center"
-                                           TextWrapping="Wrap"/>
                             </Grid>
 
                         </StackPanel>

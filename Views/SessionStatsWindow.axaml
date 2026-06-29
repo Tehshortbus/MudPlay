@@ -1,0 +1,369 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:FujinTerm.ViewModels"
+        xmlns:controls="using:FujinTerm.Controls"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="280" d:DesignHeight="600"
+        x:Class="FujinTerm.Views.SessionStatsWindow"
+        x:DataType="vm:SessionStatsViewModel"
+        Title="Session Stats"
+        Width="280" Height="600"
+        MinWidth="240" MinHeight="320"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False">
+
+    <Window.Styles>
+        <!-- Dense label / value rows shared by every section. -->
+        <Style Selector="TextBlock.lbl">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgSecBrush}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="TextBlock.val">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgBrush}"/>
+            <Setter Property="FontFamily" Value="{StaticResource FontMono}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="TextBlock.dim">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontFamily" Value="{StaticResource FontMono}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        <!-- Right-aligned muted numeric (count / min–max / avg columns). -->
+        <Style Selector="TextBlock.dimr">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontFamily" Value="{StaticResource FontMono}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="HorizontalAlignment" Value="Right"/>
+        </Style>
+        <Style Selector="TextBlock.sub">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontSize" Value="10"/>
+            <Setter Property="Margin" Value="0,4,0,2"/>
+        </Style>
+        <!-- Tiny column header for the combat table. -->
+        <Style Selector="TextBlock.colhdr">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontSize" Value="9"/>
+            <Setter Property="VerticalAlignment" Value="Bottom"/>
+        </Style>
+        <!-- Right-aligned numeric value (rate column). -->
+        <Style Selector="TextBlock.valr">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgBrush}"/>
+            <Setter Property="FontFamily" Value="{StaticResource FontMono}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="HorizontalAlignment" Value="Right"/>
+        </Style>
+        <!-- Sparkline y-axis tick (peak / floor labels). -->
+        <Style Selector="TextBlock.scale">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontFamily" Value="{StaticResource FontMono}"/>
+            <Setter Property="FontSize" Value="9"/>
+            <Setter Property="HorizontalAlignment" Value="Right"/>
+        </Style>
+        <Style Selector="Expander">
+            <Setter Property="Margin" Value="0"/>
+        </Style>
+        <!-- Each panel's title is its drag handle (see SessionStatsWindow.axaml.cs).
+             Press-and-drag a title to reorder; a plain click on a section title
+             still toggles its expander (the 4px move threshold tells them apart). -->
+        <Style Selector="TextBlock.draghandle">
+            <Setter Property="Cursor" Value="SizeAll"/>
+        </Style>
+        <!-- Uniform panel width: every graph and section shares one capped,
+             left-anchored width so they line up and none stretches when the
+             window widens. -->
+        <Style Selector="StackPanel.panel">
+            <Setter Property="HorizontalAlignment" Value="Left"/>
+            <Setter Property="MaxWidth" Value="248"/>
+        </Style>
+        <Style Selector="Expander.panel">
+            <Setter Property="HorizontalAlignment" Value="Left"/>
+            <Setter Property="MaxWidth" Value="248"/>
+        </Style>
+    </Window.Styles>
+
+    <!-- Single scrollable column of reorderable panels: the two rate graphs and
+         the three stat sections. Each panel carries a stable Tag id matching
+         SessionStatsLayoutStore.DefaultOrder; the code-behind reorders these
+         children by Tag on open and on drop (drawing an insertion line as a drop
+         preview), and the VM persists the order + hidden set per character.
+         Right-click anywhere → per-panel show/hide. -->
+    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                  Background="{StaticResource ChromeBgBrush}"
+                  Padding="8,6">
+        <StackPanel x:Name="PanelHost" Spacing="6"
+                    Background="Transparent"
+                    DragDrop.AllowDrop="True">
+            <StackPanel.ContextMenu>
+                <ContextMenu>
+                    <MenuItem Header="Kills/hour graph" ToggleType="CheckBox"
+                              IsChecked="{Binding IsKillsGraphVisible, Mode=TwoWay}"/>
+                    <MenuItem Header="Exp/hour graph" ToggleType="CheckBox"
+                              IsChecked="{Binding IsExpGraphVisible, Mode=TwoWay}"/>
+                    <Separator/>
+                    <MenuItem Header="Player Statistics" ToggleType="CheckBox"
+                              IsChecked="{Binding IsPlayerStatsVisible, Mode=TwoWay}"/>
+                    <MenuItem Header="Time Analysis" ToggleType="CheckBox"
+                              IsChecked="{Binding IsTimeAnalysisVisible, Mode=TwoWay}"/>
+                    <MenuItem Header="Session Statistics" ToggleType="CheckBox"
+                              IsChecked="{Binding IsSessionStatsVisible, Mode=TwoWay}"/>
+                </ContextMenu>
+            </StackPanel.ContextMenu>
+
+            <!-- ===== Kills/hour graph ===== -->
+            <StackPanel Tag="KillsGraph" Classes="panel" Spacing="3"
+                        IsVisible="{Binding IsKillsGraphVisible}">
+                <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock Grid.Column="0" Classes="lbl draghandle" Text="Kills/hour"/>
+                    <TextBlock Grid.Column="1" Classes="dim" Text="{Binding DurationText}"/>
+                </Grid>
+                <Border Background="{StaticResource ChromeBgSunkenBrush}"
+                        BorderBrush="{StaticResource ChromeBorderSoftBrush}"
+                        BorderThickness="1"
+                        CornerRadius="3"
+                        Padding="4"
+                        Height="44">
+                    <Grid ColumnDefinitions="*,34">
+                        <controls:SparklineControl Grid.Column="0"
+                                                   Samples="{Binding KillsPerHour}"
+                                                   Stroke="{StaticResource AccentGreenBrush}"
+                                                   StrokeThickness="1.5"/>
+                        <Grid Grid.Column="1" Margin="4,0,0,0">
+                            <TextBlock VerticalAlignment="Top" Classes="scale"
+                                       Text="{Binding KillsPeakText}"/>
+                            <TextBlock VerticalAlignment="Bottom" Classes="scale"
+                                       Text="{Binding KillsFloorText}"/>
+                        </Grid>
+                    </Grid>
+                </Border>
+            </StackPanel>
+
+            <!-- ===== Exp/hour graph ===== -->
+            <StackPanel Tag="ExpGraph" Classes="panel" Spacing="3"
+                        IsVisible="{Binding IsExpGraphVisible}">
+                <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock Grid.Column="0" Classes="lbl draghandle" Text="Exp/hour"/>
+                    <TextBlock Grid.Column="1" Classes="dim" Text="{Binding DurationText}"/>
+                </Grid>
+                <Border Background="{StaticResource ChromeBgSunkenBrush}"
+                        BorderBrush="{StaticResource ChromeBorderSoftBrush}"
+                        BorderThickness="1"
+                        CornerRadius="3"
+                        Padding="4"
+                        Height="44">
+                    <Grid ColumnDefinitions="*,34">
+                        <controls:SparklineControl Grid.Column="0"
+                                                   Samples="{Binding ExperiencePerHour}"
+                                                   Stroke="{StaticResource AccentCyanBrush}"
+                                                   StrokeThickness="1.5"/>
+                        <Grid Grid.Column="1" Margin="4,0,0,0">
+                            <TextBlock VerticalAlignment="Top" Classes="scale"
+                                       Text="{Binding ExpPeakText}"/>
+                            <TextBlock VerticalAlignment="Bottom" Classes="scale"
+                                       Text="{Binding ExpFloorText}"/>
+                        </Grid>
+                    </Grid>
+                </Border>
+            </StackPanel>
+
+            <!-- ===== Player Statistics ===== -->
+            <Expander Tag="PlayerStatistics" Classes="panel" IsExpanded="True"
+                      IsVisible="{Binding IsPlayerStatsVisible}">
+                <Expander.Header>
+                    <TextBlock Classes="draghandle" Text="Player Statistics"
+                               Foreground="{StaticResource ChromeFgBrush}"
+                               FontSize="12"/>
+                </Expander.Header>
+                <StackPanel Spacing="1" Margin="4,2">
+                    <!-- Column headers (shared widths align every data row).
+                         "#" is the occurrence count; "rate" is a percentage
+                         and only shown where one is meaningful (hit / miss /
+                         crit accuracy, defensive avoidance) — swing-type and
+                         per-round rows leave it blank since a count, not a
+                         rate, is what describes them. -->
+                    <Grid ColumnDefinitions="60,30,52,28,*">
+                        <TextBlock Grid.Column="0" Classes="sub" Text="Offense" Margin="0,0,0,0"/>
+                        <TextBlock Grid.Column="1" Classes="colhdr" Text="#" HorizontalAlignment="Right"/>
+                        <TextBlock Grid.Column="2" Classes="colhdr" Text="min–max" HorizontalAlignment="Right"/>
+                        <TextBlock Grid.Column="3" Classes="colhdr" Text="avg" HorizontalAlignment="Right"/>
+                        <TextBlock Grid.Column="4" Classes="colhdr" Text="rate" HorizontalAlignment="Right"/>
+                    </Grid>
+
+                    <Grid ColumnDefinitions="60,30,52,28,*">
+                        <TextBlock Grid.Column="0" Classes="lbl" Text="Hit"/>
+                        <TextBlock Grid.Column="1" Classes="dimr" Text="{Binding Combat.Hits, StringFormat='{}×{0}'}"/>
+                        <TextBlock Grid.Column="2" Classes="dimr" Text="{Binding HitRangeText}"/>
+                        <TextBlock Grid.Column="3" Classes="dimr" Text="{Binding Combat.HitAvgDamage, StringFormat='{}{0:F0}'}"/>
+                        <TextBlock Grid.Column="4" Classes="valr" Text="{Binding Combat.HitPercent, StringFormat='{}{0:F0}%'}"/>
+                    </Grid>
+                    <Grid ColumnDefinitions="60,30,52,28,*">
+                        <TextBlock Grid.Column="0" Classes="lbl" Text="Miss"/>
+                        <TextBlock Grid.Column="1" Classes="dimr" Text="{Binding Combat.Misses, StringFormat='{}×{0}'}"/>
+                        <TextBlock Grid.Column="4" Classes="valr" Text="{Binding Combat.MissPercent, StringFormat='{}{0:F0}%'}"/>
+                    </Grid>
+                    <Grid ColumnDefinitions="60,30,52,28,*">
+                        <TextBlock Grid.Column="0" Classes="lbl" Text="Crit"/>
+                        <TextBlock Grid.Column="1" Classes="dimr" Text="{Binding Combat.Crits, StringFormat='{}×{0}'}"/>
+                        <TextBlock Grid.Column="2" Classes="dimr" Text="{Binding CritRangeText}"/>
+                        <TextBlock Grid.Column="3" Classes="dimr" Text="{Binding Combat.CritAvgDamage, StringFormat='{}{0:F0}'}"/>
+                        <TextBlock Grid.Column="4" Classes="valr" Text="{Binding Combat.CritPercent, StringFormat='{}{0:F0}%'}"/>
+                    </Grid>
+                    <Grid ColumnDefinitions="60,30,52,28,*">
+                        <TextBlock Grid.Column="0" Classes="lbl" Text="Backstab"/>
+                        <TextBlock Grid.Column="1" Classes="dimr" Text="{Binding Combat.Backstabs, StringFormat='{}×{0}'}"/>
+                        <TextBlock Grid.Column="2" Classes="dimr" Text="{Binding BackstabRangeText}"/>
+                        <TextBlock Grid.Column="3" Classes="dimr" Text="{Binding Combat.BackstabAvgDamage, StringFormat='{}{0:F0}'}"/>
+                    </Grid>
+                    <Grid ColumnDefinitions="60,30,52,28,*">
+                        <TextBlock Grid.Column="0" Classes="lbl" Text="Round"
+                                   ToolTip.Tip="Damage dealt per combat round, across rounds where we dealt damage."/>
+                        <TextBlock Grid.Column="1" Classes="dimr" Text="{Binding Combat.RoundsWithDamage, StringFormat='{}×{0}'}"/>
+                        <TextBlock Grid.Column="2" Classes="dimr" Text="{Binding RoundRangeText}"/>
+                        <TextBlock Grid.Column="3" Classes="dimr" Text="{Binding Combat.RoundAvgDamage, StringFormat='{}{0:F0}'}"/>
+                    </Grid>
+
+                    <!-- Proc / spell rows — surface only once recognised. -->
+                    <Grid ColumnDefinitions="60,30,52,28,*" IsVisible="{Binding HasProcs}">
+                        <TextBlock Grid.Column="0" Classes="lbl" Text="Proc"/>
+                        <TextBlock Grid.Column="1" Classes="dimr" Text="{Binding Combat.ProcHits, StringFormat='{}×{0}'}"/>
+                        <TextBlock Grid.Column="2" Classes="dimr" Text="{Binding ProcRangeText}"/>
+                        <TextBlock Grid.Column="3" Classes="dimr" Text="{Binding Combat.ProcAvgDamage, StringFormat='{}{0:F0}'}"/>
+                    </Grid>
+                    <Grid ColumnDefinitions="60,30,52,28,*" IsVisible="{Binding HasSpells}">
+                        <TextBlock Grid.Column="0" Classes="lbl" Text="Spell"/>
+                        <TextBlock Grid.Column="1" Classes="dimr" Text="{Binding Combat.SpellHits, StringFormat='{}×{0}'}"/>
+                        <TextBlock Grid.Column="2" Classes="dimr" Text="{Binding SpellRangeText}"/>
+                        <TextBlock Grid.Column="3" Classes="dimr" Text="{Binding Combat.SpellAvgDamage, StringFormat='{}{0:F0}'}"/>
+                    </Grid>
+
+                    <!-- Defense — dodge and miss folded into one "avoided" rate. -->
+                    <Grid ColumnDefinitions="60,30,52,28,*" Margin="0,4,0,0">
+                        <TextBlock Grid.Column="0" Classes="sub" Text="Defense" Margin="0,0,0,0"/>
+                        <TextBlock Grid.Column="4" Classes="colhdr" Text="rate" HorizontalAlignment="Right"/>
+                    </Grid>
+                    <Grid ColumnDefinitions="60,30,52,28,*">
+                        <TextBlock Grid.Column="0" Classes="lbl" Text="Dodge/Miss"
+                                   ToolTip.Tip="Incoming attacks avoided — the mob missed or we dodged."/>
+                        <TextBlock Grid.Column="4" Classes="valr" Text="{Binding Combat.AvoidPercent, StringFormat='{}{0:F0}%'}"/>
+                    </Grid>
+                </StackPanel>
+            </Expander>
+
+            <!-- ===== Time Analysis ===== -->
+            <Expander Tag="TimeAnalysis" Classes="panel" IsExpanded="True"
+                      IsVisible="{Binding IsTimeAnalysisVisible}">
+                <Expander.Header>
+                    <TextBlock Classes="draghandle" Text="Time Analysis"
+                               Foreground="{StaticResource ChromeFgBrush}"
+                               FontSize="12"/>
+                </Expander.Header>
+                <StackPanel Spacing="2" Margin="4,2">
+                    <TextBlock Classes="sub" Text="Totals"/>
+                    <Grid ColumnDefinitions="*,148">
+                        <TextBlock Grid.Column="0" Classes="lbl" Text="Duration"/>
+                        <TextBlock Grid.Column="1" Classes="valr" Text="{Binding DurationText}"/>
+                    </Grid>
+                    <Grid ColumnDefinitions="*,148">
+                        <TextBlock Grid.Column="0" Classes="lbl" Text="Moving"/>
+                        <TextBlock Grid.Column="1" Classes="valr" Text="{Binding MovingText}"/>
+                    </Grid>
+                    <Grid ColumnDefinitions="*,148">
+                        <TextBlock Grid.Column="0" Classes="lbl" Text="Attacking"/>
+                        <TextBlock Grid.Column="1" Classes="valr" Text="{Binding AttackingText}"/>
+                    </Grid>
+                    <Grid ColumnDefinitions="*,148">
+                        <TextBlock Grid.Column="0" Classes="lbl" Text="Resting"/>
+                        <TextBlock Grid.Column="1" Classes="valr" Text="{Binding RestingText}"/>
+                    </Grid>
+                    <Grid ColumnDefinitions="*,148">
+                        <TextBlock Grid.Column="0" Classes="lbl" Text="Waiting"/>
+                        <TextBlock Grid.Column="1" Classes="valr" Text="{Binding WaitingText}"/>
+                    </Grid>
+
+                    <TextBlock Classes="sub" Text="Breakdown"/>
+                    <Grid ColumnDefinitions="*,148">
+                        <TextBlock Grid.Column="0" Classes="lbl" Text="Resting HPs"/>
+                        <TextBlock Grid.Column="1" Classes="valr" Text="{Binding RestingHpText}"/>
+                    </Grid>
+                    <Grid ColumnDefinitions="*,148">
+                        <TextBlock Grid.Column="0" Classes="lbl" Text="Resting Mana"/>
+                        <TextBlock Grid.Column="1" Classes="valr" Text="{Binding RestingMaText}"/>
+                    </Grid>
+                    <Grid ColumnDefinitions="*,148">
+                        <TextBlock Grid.Column="0" Classes="lbl" Text="Blinded"/>
+                        <TextBlock Grid.Column="1" Classes="valr" Text="{Binding BlindedText}"/>
+                    </Grid>
+                    <Grid ColumnDefinitions="*,148">
+                        <TextBlock Grid.Column="0" Classes="lbl" Text="Poisoned"/>
+                        <TextBlock Grid.Column="1" Classes="valr" Text="{Binding PoisonedText}"/>
+                    </Grid>
+                    <Grid ColumnDefinitions="*,148">
+                        <TextBlock Grid.Column="0" Classes="lbl" Text="Diseased"/>
+                        <TextBlock Grid.Column="1" Classes="valr" Text="{Binding DiseasedText}"/>
+                    </Grid>
+                    <Grid ColumnDefinitions="*,148">
+                        <TextBlock Grid.Column="0" Classes="lbl" Text="Confused"/>
+                        <TextBlock Grid.Column="1" Classes="valr" Text="{Binding ConfusedText}"/>
+                    </Grid>
+                    <Grid ColumnDefinitions="*,148">
+                        <TextBlock Grid.Column="0" Classes="lbl" Text="Held"/>
+                        <TextBlock Grid.Column="1" Classes="valr" Text="{Binding HeldText}"/>
+                    </Grid>
+                </StackPanel>
+            </Expander>
+
+            <!-- ===== Session Statistics ===== -->
+            <Expander Tag="SessionStatistics" Classes="panel" IsExpanded="True"
+                      IsVisible="{Binding IsSessionStatsVisible}">
+                <Expander.Header>
+                    <TextBlock Classes="draghandle" Text="Session Statistics"
+                               Foreground="{StaticResource ChromeFgBrush}"
+                               FontSize="12"/>
+                </Expander.Header>
+                <StackPanel Spacing="1" Margin="4,2">
+                    <!-- total | per-hour table (shared widths align every row). -->
+                    <Grid ColumnDefinitions="*,76,72">
+                        <TextBlock Grid.Column="1" Classes="colhdr" Text="total" HorizontalAlignment="Right"/>
+                        <TextBlock Grid.Column="2" Classes="colhdr" Text="/ hr" HorizontalAlignment="Right"/>
+                    </Grid>
+                    <Grid ColumnDefinitions="*,76,72">
+                        <TextBlock Grid.Column="0" Classes="lbl" Text="Kills"/>
+                        <TextBlock Grid.Column="1" Classes="valr" Text="{Binding Activity.MonstersKilled, StringFormat='{}{0:N0}'}"/>
+                        <TextBlock Grid.Column="2" Classes="valr" Text="{Binding Activity.KillsPerHour, StringFormat='{}{0:F1}'}"/>
+                    </Grid>
+                    <Grid ColumnDefinitions="*,76,72">
+                        <TextBlock Grid.Column="0" Classes="lbl" Text="Experience"/>
+                        <TextBlock Grid.Column="1" Classes="valr" Text="{Binding Activity.ExperienceEarned, StringFormat='{}{0:N0}'}"/>
+                        <TextBlock Grid.Column="2" Classes="valr" Text="{Binding Activity.ExperiencePerHour, StringFormat='{}{0:N0}'}"/>
+                    </Grid>
+                    <Grid ColumnDefinitions="*,76,72">
+                        <TextBlock Grid.Column="0" Classes="lbl" Text="Currency"
+                                   ToolTip.Tip="Currency picked up this session, in copper value."/>
+                        <TextBlock Grid.Column="1" Classes="valr" Text="{Binding Activity.CurrencyCollected, StringFormat='{}{0:N0}'}"/>
+                        <TextBlock Grid.Column="2" Classes="valr" Text="{Binding Activity.CurrencyPerHour, StringFormat='{}{0:N0}'}"/>
+                    </Grid>
+                    <Grid ColumnDefinitions="*,76,72">
+                        <TextBlock Grid.Column="0" Classes="lbl" Text="Stashed"
+                                   ToolTip.Tip="Currency stashed or bank-deposited this session, in copper value."/>
+                        <TextBlock Grid.Column="1" Classes="valr" Text="{Binding Activity.CurrencyStashed, StringFormat='{}{0:N0}'}"/>
+                        <TextBlock Grid.Column="2" Classes="dim" Text="—" HorizontalAlignment="Right"/>
+                    </Grid>
+
+                    <Button Content="Reset session"
+                            Command="{Binding ResetCommand}"
+                            HorizontalAlignment="Left"
+                            Margin="0,8,0,0"
+                            FontSize="11"
+                            ToolTip.Tip="Wipe every session counter and restart the clocks. Counters also reset automatically on connect."/>
+                </StackPanel>
+            </Expander>
+
+        </StackPanel>
+    </ScrollViewer>
+</Window>

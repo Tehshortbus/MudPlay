@@ -87,6 +87,7 @@ public sealed class AutoDepositManagerTests : IDisposable
         public InventorySnapshot Snapshot { get; set; } = InventorySnapshot.Empty;
         public List<byte[]> Deposited { get; } = new();
         public List<byte[]> Stashed { get; } = new();
+        public List<long> DepositedValues { get; } = new();
 
         public IEnumerable<string> DepositLines() =>
             Deposited.Select(b => Encoding.Latin1.GetString(b).TrimEnd('\r'));
@@ -178,6 +179,7 @@ public sealed class AutoDepositManagerTests : IDisposable
             AutoDeposit = autoDeposit,
         };
         autoDeposit.SetWireSender(b => h.Deposited.Add(b));
+        autoDeposit.Deposited += v => h.DepositedValues.Add(v);
         stash.SetWireSender(b => h.Stashed.Add(b));
         return h;
     }
@@ -289,6 +291,9 @@ public sealed class AutoDepositManagerTests : IDisposable
         // Arrived → a single `dep <wealth - keep>`; keep floors are 0 here.
         Assert.Single(h.Deposited);
         Assert.Equal("dep 5000", h.DepositLines().Single());
+        // ...and the Deposited event carries the same copper value for the
+        // Session Stats stashed/deposited tally.
+        Assert.Equal(5000L, Assert.Single(h.DepositedValues));
 
         // Now walking back to the origin (1/1).
         Assert.Equal(new RoomKey(1, 1), h.Walker.Destination);
