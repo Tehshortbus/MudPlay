@@ -604,7 +604,23 @@ public sealed class BfsMapper
             }
             if (stubs > 0) ranked.Add((stubs, key));
         }
-        ranked.Sort(static (a, b) => b.Stubs.CompareTo(a.Stubs));
+        // Most stubs first, with a deterministic (Map, Room) tiebreak.
+        // The tiebreak matters: in a tight maze every cluster room ties
+        // on stub count, and List.Sort is NOT stable — without a total
+        // order the tie ordering is left to the runtime's introsort, so
+        // Take(count) below grabs a runtime-dependent slice of retry
+        // origins. Each retry origin is a different BFS root that yields
+        // a wholesale-different layout, which is how the SAME graph laid
+        // out differently on different machines (Windows vs Linux). The
+        // tiebreak makes the chosen layout a pure function of (graph,
+        // origin), identical everywhere.
+        ranked.Sort(static (a, b) =>
+        {
+            int byStubs = b.Stubs.CompareTo(a.Stubs);
+            if (byStubs != 0) return byStubs;
+            if (a.Key.Map != b.Key.Map) return a.Key.Map.CompareTo(b.Key.Map);
+            return a.Key.Room.CompareTo(b.Key.Room);
+        });
         return ranked.Take(count).Select(r => r.Key);
     }
 
