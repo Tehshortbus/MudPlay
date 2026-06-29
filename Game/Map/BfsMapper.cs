@@ -218,7 +218,10 @@ public sealed class BfsMapper
     /// BFS-planar layout from <paramref name="origin"/>. Caches the
     /// result; <see cref="OnGraphReloaded"/> evicts. The origin sits
     /// at (0, 0). Rooms whose grid position collides with an
-    /// already-placed room go into <see cref="RoomLayout.OffGrid"/>.
+    /// already-placed room — a non-Euclidean tangle the placer can't
+    /// seat flat — are force-seated at the nearest free cell by the
+    /// final <see cref="ForceSeatUnplaced"/> pass (rendered via a
+    /// dashed bridge / stub) rather than dropped from the map.
     /// </summary>
     /// <param name="maxRadius">
     /// Cap on hop distance from origin. <see cref="int.MaxValue"/>
@@ -324,6 +327,15 @@ public sealed class BfsMapper
                 _log?.Log(Services.LogSeverity.Debug, "BfsMapper",
                     $"BuildLayout origin={origin} final placed={primaryPlaced} stubs={primaryStubs} after {triedCount} retry attempt(s).");
             }
+
+            // Coverage backstop: after the placer + retry have done their
+            // best, any room still missing (a collision none of the clean
+            // passes could seat) gets force-seated at the nearest free
+            // cell so it stays visible. Skipped for bounded/minimap
+            // layouts — those are region-scoped and the retry already
+            // sat out, so leaving them as-is keeps them cheap and matches
+            // the maxRadius contract.
+            primary = ForceSeatUnplaced(primary);
         }
 
         lock (_cacheLock)
@@ -529,6 +541,213 @@ public sealed class BfsMapper
             TrapEdgesFromCoord: trapEdgesFromCoord.ToDictionary(
                 kvp => kvp.Key,
                 kvp => (IReadOnlySet<Direction>)kvp.Value));
+    }
+
+    /// <summary>
+    /// Final coverage pass: every room reachable from the origin through
+    /// planar exits should stay <i>visible</i>, even when the planar
+    /// placer couldn't seat it on a clean cell. BFS placement drops a
+    /// room when every coord it tried was occupied (a collision the retry
+    /// + deferred-resolution passes couldn't untangle); that dropped
+    /// room — and any subtree reachable only through it — then vanishes
+    /// from the map, leaving an exit stub pointing into empty space.
+    /// This pass finds those rooms and seats each at the nearest free
+    /// cell to where its connection lands, so the renderer draws a dashed
+    /// bridge (or, past the bridge cap, a stub) to a real cell instead of
+    /// dangling. Slightly-displaced-but-present beats absent.
+    /// </summary>
+    /// <remarks>
+    /// Mirrors <see cref="BuildLayoutCore"/>'s traversal rules so it only
+    /// touches rooms the clean placement was <i>supposed</i> to cover:
+    /// planar exits only (U/D rooms belong to another floor), and the
+    /// blacklist is honoured (blacklisted rooms — and rooms reachable
+    /// only through them — stay hidden). Returns the input layout
+    /// unchanged when the placement already covered everything, which is
+    /// the common case and keeps grid-clean layouts byte-identical.
+    /// </remarks>
+    private RoomLayout ForceSeatUnplaced(RoomLayout layout)
+    {
+        // Planar-reachable membership with the discovering parent +
+        // step recorded, so a dropped room can seat near where its
+        // connection actually points even when it has no reciprocal
+        // exit back to an already-placed neighbour.
+        Dictionary<RoomKey, (RoomKey Parent, Direction Step, int Dist)> membership =
+            ComputePlanarMembership(layout.Origin);
+
+        List<RoomKey> dropped = membership.Keys
+            .Where(k => !layout.Positions.ContainsKey(k))
+            .ToList();
+        if (dropped.Count == 0) return layout;   // clean — nothing to seat.
+
+        // Seat closest-to-origin first: a dropped room's dropped parent
+        // is then already seated (a valid anchor) by the time we reach
+        // it. Every dropped subtree's root has a placed parent, so this
+        // ordering guarantees each room sees a placed neighbour.
+        dropped.Sort((a, b) =>
+        {
+            int da = membership[a].Dist, db = membership[b].Dist;
+            if (da != db) return da.CompareTo(db);
+            if (a.Map != b.Map) return a.Map.CompareTo(b.Map);
+            return a.Room.CompareTo(b.Room);
+        });
+
+        Dictionary<RoomKey, (int X, int Y)> positions = new(layout.Positions);
+        Dictionary<(int X, int Y), RoomKey> coordToRoom = new(layout.CoordToRoom);
+        Dictionary<RoomKey, VerticalHint> vertical = new(layout.VerticalHints);
+
+        foreach (RoomKey key in dropped)
+        {
+            Room? room = _graph.GetRoom(key);
+            if (room is null) continue;
+
+            // Preferred spot = where the discovering parent's exit points.
+            // The parent is placed by now (original placement or seated
+            // earlier this pass), so this coord always resolves.
+            (RoomKey parent, Direction step, _) = membership[key];
+            (int X, int Y) preferred = positions[parent];
+            if (TryPlanarOffset(step, out int pdx, out int pdy))
+                preferred = (preferred.X + pdx, preferred.Y + pdy);
+
+            (int X, int Y) seat = FindSeat(room, preferred, positions, coordToRoom);
+            positions[key] = seat;
+            coordToRoom[seat] = key;
+            AnnotateVertical(room, vertical);
+        }
+
+        // Rebuild the edge surface from the expanded placement — same
+        // every-planar-exit-from-every-placed-room rule BuildLayoutCore
+        // uses, so seated rooms contribute their exits and the stubs that
+        // pointed at them now resolve to bridges.
+        var edges = new Dictionary<(int X, int Y), HashSet<Direction>>();
+        var trapEdges = new Dictionary<(int X, int Y), HashSet<Direction>>();
+        foreach ((RoomKey rk, (int X, int Y) coord) in positions)
+        {
+            Room? room = _graph.GetRoom(rk);
+            if (room is null) continue;
+            foreach ((Direction dir, RoomExit exit) in room.Exits)
+            {
+                if (!IsPlanar(dir)) continue;
+                AddEdge(edges, coord, dir);
+                if (exit.Hint == RoomExitHint.Trap)
+                    AddEdge(trapEdges, coord, dir);
+            }
+        }
+
+        return new RoomLayout(
+            Origin: layout.Origin,
+            Positions: positions,
+            VerticalHints: vertical,
+            OffGrid: Array.Empty<RoomKey>(),
+            CoordToRoom: coordToRoom,
+            EdgesFromCoord: edges.ToDictionary(
+                kvp => kvp.Key, kvp => (IReadOnlySet<Direction>)kvp.Value),
+            TrapEdgesFromCoord: trapEdges.ToDictionary(
+                kvp => kvp.Key, kvp => (IReadOnlySet<Direction>)kvp.Value));
+    }
+
+    /// <summary>
+    /// Rooms reachable from <paramref name="origin"/> through planar
+    /// exits — the set <see cref="BuildLayoutCore"/> is meant to place.
+    /// Records each room's discovering parent + step + hop distance.
+    /// Skips U/D edges (another floor) and blacklisted targets (and so,
+    /// transitively, rooms reachable only through them), matching the
+    /// core BFS so membership minus placed = exactly the dropped rooms.
+    /// </summary>
+    private Dictionary<RoomKey, (RoomKey Parent, Direction Step, int Dist)>
+        ComputePlanarMembership(RoomKey origin)
+    {
+        Dictionary<RoomKey, (RoomKey, Direction, int)> seen = new();
+        if (_graph.GetRoom(origin) is null) return seen;
+        seen[origin] = (origin, default, 0);            // sentinel parent
+
+        Queue<RoomKey> queue = new();
+        queue.Enqueue(origin);
+        while (queue.Count > 0)
+        {
+            RoomKey here = queue.Dequeue();
+            Room? room = _graph.GetRoom(here);
+            if (room is null) continue;
+            int hereDist = seen[here].Item3;
+
+            foreach ((Direction dir, RoomExit exit) in room.Exits)
+            {
+                if (!IsPlanar(dir)) continue;
+                RoomKey next = exit.Target;
+                if (seen.ContainsKey(next)) continue;
+                if (_graph.GetRoom(next) is null) continue;
+                // Blacklisted rooms are deliberately hidden; don't
+                // traverse through them (the origin is exempt — it was
+                // already placed).
+                if (_isBlacklisted?.Invoke(next) == true) continue;
+                seen[next] = (here, dir, hereDist + 1);
+                queue.Enqueue(next);
+            }
+        }
+        return seen;
+    }
+
+    /// <summary>
+    /// Choose a free cell for a force-seated room. Prefers the parent-
+    /// edge spot and any coord implied by a reciprocal exit to an
+    /// already-placed room, ranked by how many reciprocals would lie
+    /// flat there (ties → closest to <paramref name="preferred"/>), so a
+    /// seated room still slots into its local geometry when it can. Falls
+    /// back to a spiral search outward from <paramref name="preferred"/>
+    /// when every reciprocity-implied coord is taken.
+    /// </summary>
+    private static (int X, int Y) FindSeat(
+        Room room, (int X, int Y) preferred,
+        Dictionary<RoomKey, (int X, int Y)> positions,
+        Dictionary<(int X, int Y), RoomKey> coordToRoom)
+    {
+        (int X, int Y)? best = null;
+        int bestScore = int.MinValue;
+        int bestDist = int.MaxValue;
+
+        void Consider((int X, int Y) c)
+        {
+            if (coordToRoom.ContainsKey(c)) return;
+            int score = ScoreCoord(room, c, positions);
+            int dist = Math.Max(Math.Abs(c.X - preferred.X), Math.Abs(c.Y - preferred.Y));
+            if (score > bestScore || (score == bestScore && dist < bestDist))
+            {
+                best = c;
+                bestScore = score;
+                bestDist = dist;
+            }
+        }
+
+        Consider(preferred);
+        foreach ((Direction dir, RoomExit exit) in room.Exits)
+        {
+            if (!TryPlanarOffset(dir, out int dx, out int dy)) continue;
+            if (!positions.TryGetValue(exit.Target, out (int X, int Y) nb)) continue;
+            Consider((nb.X - dx, nb.Y - dy));
+        }
+
+        return best ?? SpiralToFreeCell(preferred, coordToRoom);
+    }
+
+    /// <summary>
+    /// Nearest free cell to <paramref name="center"/> by Chebyshev
+    /// distance, scanning closest rings first so the seat stays within
+    /// bridge range of its connection where possible. Always terminates:
+    /// only finitely many cells are occupied on an unbounded grid.
+    /// </summary>
+    private static (int X, int Y) SpiralToFreeCell(
+        (int X, int Y) center, Dictionary<(int X, int Y), RoomKey> coordToRoom)
+    {
+        if (!coordToRoom.ContainsKey(center)) return center;
+        for (int r = 1; ; r++)
+        {
+            for (int dx = -r; dx <= r; dx++)
+            for (int dy = -r; dy <= r; dy++)
+            {
+                if (Math.Max(Math.Abs(dx), Math.Abs(dy)) != r) continue;   // ring at radius r only
+                (int X, int Y) c = (center.X + dx, center.Y + dy);
+                if (!coordToRoom.ContainsKey(c)) return c;
+            }
+        }
     }
 
     /// <summary>

@@ -17,11 +17,13 @@ namespace FujinTerm.Game.Map;
 /// <para>
 /// Some rooms can't be placed on the 2D plane without colliding with
 /// an earlier-visited neighbour (MajorMUD allows non-Euclidean room
-/// layouts — N then S doesn't always return to the same coord). Those
-/// rooms land in <see cref="OffGrid"/>; the map UI renders them in a
-/// secondary lane with a connector back to whichever already-placed
-/// room they exit from. The off-grid set is empty for grid-clean
-/// neighbourhoods.
+/// layouts — N then S doesn't always return to the same coord). Rather
+/// than drop those rooms, <see cref="BfsMapper.BuildLayout"/>'s final
+/// pass force-seats each at the nearest free cell; the renderer draws a
+/// dashed bridge (or, when too far, a stub) along the real connection.
+/// They live in <see cref="Positions"/> / <see cref="CoordToRoom"/> like
+/// any other room. <see cref="OffGrid"/> is retained for shape but stays
+/// empty — no room is dropped to a separate lane any more.
 /// </para>
 /// </remarks>
 public sealed record RoomLayout(

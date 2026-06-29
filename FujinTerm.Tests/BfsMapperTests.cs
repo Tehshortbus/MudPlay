@@ -453,6 +453,93 @@ public sealed class BfsMapperTests : IDisposable
         Assert.Contains(Direction.W,  bEdges!);     // Euclidean W still there
     }
 
+    // ----- force-seat coverage (no dropped rooms) --------------------
+
+    [Fact]
+    public void BuildLayout_CollisionDrop_ForceSeatsRoomInsteadOfDropping()
+    {
+        // Non-Euclidean fixture engineered to make the planar placer
+        // drop a room. Two rooms compete for cell (1,-1):
+        //   1/1 (O) (0,0): N→1/2, NE→1/4
+        //   1/2      (0,-1): S→1/1, E→1/3   → 1/3 wants (1,-1)
+        //   1/4      (1,-1): SW→1/1          → claims (1,-1) first
+        //   1/3                              → (1,-1) taken, no free
+        //                                      reciprocal → DROPPED by
+        //                                      the core BFS + retry.
+        // The force-seat pass must seat 1/3 at the nearest free cell so
+        // it stays on the map (rendered via a dashed bridge), rather than
+        // vanishing. If ForceSeatUnplaced is removed this test fails.
+        const string Json = """
+            [
+              { "Map Number": 1, "Room Number": 1, "Name": "O",
+                "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+                "N": "1/2", "S": "0", "E": "0", "W": "0",
+                "NE": "1/4", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 1, "Room Number": 2, "Name": "Hub",
+                "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+                "N": "0", "S": "1/1", "E": "1/3", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 1, "Room Number": 3, "Name": "Spur",
+                "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+                "N": "0", "S": "0", "E": "0", "W": "1/2",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 1, "Room Number": 4, "Name": "Corner",
+                "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+                "N": "0", "S": "0", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "1/1", "U": "0", "D": "0" }
+            ]
+            """;
+        var (bfs, _) = NewMapper(Json);
+        RoomLayout layout = bfs.BuildLayout(new RoomKey(1, 1));
+
+        // Every planar-reachable room is on the map — none dropped.
+        Assert.Contains(new RoomKey(1, 1), layout.Positions.Keys);
+        Assert.Contains(new RoomKey(1, 2), layout.Positions.Keys);
+        Assert.Contains(new RoomKey(1, 3), layout.Positions.Keys);   // the room the core dropped
+        Assert.Contains(new RoomKey(1, 4), layout.Positions.Keys);
+
+        // No two rooms share a cell (force-seat picks free cells only),
+        // and CoordToRoom stays a faithful inverse of Positions.
+        Assert.Equal(layout.Positions.Count, layout.CoordToRoom.Count);
+        Assert.Equal(layout.Positions.Count,
+            layout.Positions.Values.Distinct().Count());
+        Assert.Equal(new RoomKey(1, 3), layout.CoordToRoom[layout.Positions[new RoomKey(1, 3)]]);
+    }
+
+    [Fact]
+    public void BuildLayout_ForceSeat_LeavesCleanLayoutsUnchanged()
+    {
+        // The standard grid fixture places every planar room cleanly, so
+        // the force-seat pass is a no-op: coords stay exactly where the
+        // planar placer put them (regression guard that the pass never
+        // disturbs an already-complete layout).
+        var (bfs, _) = NewMapper();
+        RoomLayout layout = bfs.BuildLayout(new RoomKey(1, 1));
+
+        Assert.Equal((0, 0),  layout.Positions[new RoomKey(1, 1)]);
+        Assert.Equal((0, -1), layout.Positions[new RoomKey(1, 2)]);
+        Assert.Equal((0, -2), layout.Positions[new RoomKey(1, 3)]);
+        Assert.Equal((1, 0),  layout.Positions[new RoomKey(1, 4)]);
+        Assert.Equal((1, -1), layout.Positions[new RoomKey(1, 5)]);
+        Assert.Equal((1, -2), layout.Positions[new RoomKey(1, 6)]);
+    }
+
+    [Fact]
+    public void BuildLayout_ForceSeat_DoesNotSeatBlacklistedSubtree()
+    {
+        // Force-seat must honour the blacklist: a blacklisted room — and
+        // any room reachable only through it — stay off the map. Plaza
+        // (1/2) is banned; North Square (1/3) is reachable only via it.
+        var (bfs, _) = NewMapper();
+        HashSet<RoomKey> banned = new() { new RoomKey(1, 2) };
+        bfs.ConfigureBlacklist(k => banned.Contains(k));
+
+        RoomLayout layout = bfs.BuildLayout(new RoomKey(1, 1));
+
+        Assert.DoesNotContain(new RoomKey(1, 2), layout.Positions.Keys);
+        Assert.DoesNotContain(new RoomKey(1, 3), layout.Positions.Keys);
+    }
+
     // ----- Layout cache ---------------------------------------------
 
     [Fact]
