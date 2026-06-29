@@ -264,23 +264,23 @@ public sealed class BfsMapper
         // stub count alone backfires: a layout that DROPS a whole cluster
         // scores *fewer* stubs than one that places the cluster with a
         // few bends, so the old metric actively preferred the sparser,
-        // more-wrong layout. (Real case: v1.11p map-1 sewers from origin
-        // 1/602 placed 537 rooms / 3 stubs, while a sewer-side retry
-        // origin placed all 571 rooms / 7 stubs — the fuller one is the
-        // correct render.) Every dropped room leaves at least one stub on
-        // its source side, so "stubs > 0" still reliably triggers the
-        // retry whenever coverage is incomplete.
+        // more-wrong layout. Every dropped room leaves at least one stub
+        // on its source side, so "stubs > 0" reliably triggers the retry
+        // whenever coverage is incomplete.
         //
-        // Candidate seeds (see PickRetryOrigins): the DROPPED rooms come
-        // first. A dropped room sits inside the very tangle the placer
-        // couldn't seat, so starting BFS there (while `positions` is still
-        // sparse) lays the cluster out cleanly. Crucially the best seed is
-        // usually itself dropped — when a whole subtree falls off, only one
-        // source-side stub remains on a placed room, so scanning placed
-        // rooms alone (the old behaviour) could never find a seed inside
-        // the missing region and the retry silently failed to recover it.
-        // Placed-but-stubbed rooms are tried after, for bend reduction once
-        // coverage is already complete.
+        // Candidate seeds (see PickRetryOrigins): the highest-degree
+        // PLACED rooms come first. A layout's coverage hinges on how
+        // central its origin is — a peripheral origin reaches a sub-area's
+        // single doorway at a bent angle, drops it, and never explores the
+        // block behind it. (Real case: v1.11p map-1 sewers from origin
+        // 1/602 place 567 of 571 rooms — the map-1→map-11 doorway collides
+        // and the whole map-11 block vanishes behind one stub. Re-rooting
+        // at almost any central sewer room recovers all 571.) Seeding from
+        // the dropped rooms themselves is useless: a dropped sub-area is
+        // reached through a one-way / vertical seam, so BFS from inside it
+        // can't return to the requested origin and the candidate is
+        // discarded. Placed-but-stubbed rooms are tried after the central
+        // ones, for bend reduction once coverage is already complete.
         //
         // Bounded layouts (maxRadius < int.MaxValue) are typically
         // minimap-scoped and already region-isolated; skip the retry
@@ -580,25 +580,31 @@ public sealed class BfsMapper
 
     /// <summary>
     /// Up to <paramref name="count"/> retry-origin seeds for the
-    /// score-and-retry pass, in try order. Two pools, coverage-recovery
-    /// first:
+    /// score-and-retry pass, in try order. Two pools:
     /// <list type="number">
-    ///   <item><b>Dropped rooms</b> — planar-reachable from
-    ///     <paramref name="origin"/> but absent from
-    ///     <paramref name="layout"/>'s placement (the placer hit an
-    ///     unresolvable collision and dropped them). A dropped room sits
-    ///     inside the tangle the placement couldn't seat, so re-rooting
-    ///     BFS there lays the cluster out while <c>positions</c> is still
-    ///     sparse. The best seed is usually itself dropped — a whole
-    ///     missing subtree leaves only one source-side stub on a placed
-    ///     room — so scanning placed rooms alone can't find it. Ranked by
-    ///     planar degree (junction rooms first).</item>
+    ///   <item><b>High-degree placed rooms</b> — the placed rooms with the
+    ///     most planar exits, which sit in the interior of the placed
+    ///     region. A layout's coverage is governed by how CENTRAL its
+    ///     origin is: a peripheral origin reaches a sub-area through its
+    ///     single doorway at a bent angle, collides on that doorway,
+    ///     drops it, and then never explores the whole block behind it.
+    ///     (The v1.11p sewers from 1/602 place only 567 of 571 rooms for
+    ///     exactly this reason — the map-1→map-11 doorway collides and the
+    ///     entire map-11 block vanishes behind a single stub.) Re-rooting
+    ///     BFS at a central, high-degree room reaches every sub-area
+    ///     symmetrically and recovers the dropped block: empirically every
+    ///     top-degree placed sewer room lays out all 571 rooms. Seeding
+    ///     from the dropped rooms themselves does NOT help — a dropped
+    ///     sub-area is typically reached through a one-way / vertical
+    ///     seam, so BFS from inside it can't even get back to the
+    ///     requested origin and the candidate is discarded. Ranked by
+    ///     planar degree descending.</item>
     ///   <item><b>Placed-but-stubbed rooms</b> — rooms whose exits bend.
     ///     Bend reduction once coverage is complete. Ranked by stub
     ///     count.</item>
     /// </list>
     /// Both pools carry a deterministic (Map, Room) tiebreak: ties are
-    /// common (every cluster room shares a degree / stub count) and
+    /// common (every grid room shares a degree / stub count) and
     /// <see cref="List{T}.Sort"/> is an introsort — not stable — so
     /// without a total order the tie ordering, and thus which seeds the
     /// <c>Take</c> keeps, would be left to the runtime. Each seed is a
@@ -608,20 +614,22 @@ public sealed class BfsMapper
     /// </summary>
     private IEnumerable<RoomKey> PickRetryOrigins(RoomLayout layout, RoomKey origin, int count)
     {
-        // Pool 1: dropped rooms (reachable − placed), ranked by planar degree.
-        HashSet<RoomKey> reachable = ComputePlanarReachable(origin);
-        List<(int Degree, RoomKey Key)> dropped = new();
-        foreach (RoomKey key in reachable)
+        // Pool 1: placed rooms ranked by planar degree (centrality proxy).
+        // The most-connected placed rooms are interior junctions; re-rooting
+        // BFS there reaches every sub-area symmetrically and maximises
+        // coverage (see summary for the sewers case).
+        List<(int Degree, RoomKey Key)> central = new();
+        foreach ((RoomKey key, (int X, int Y) _) in layout.Positions)
         {
-            if (layout.Positions.ContainsKey(key)) continue;
+            if (key.Equals(origin)) continue;
             Room? room = _graph.GetRoom(key);
             if (room is null) continue;
             int degree = 0;
             foreach ((Direction dir, RoomExit _) in room.Exits)
                 if (IsPlanar(dir)) degree++;
-            dropped.Add((degree, key));
+            central.Add((degree, key));
         }
-        dropped.Sort(static (a, b) =>
+        central.Sort(static (a, b) =>
         {
             int byDeg = b.Degree.CompareTo(a.Degree);
             if (byDeg != 0) return byDeg;
@@ -629,10 +637,12 @@ public sealed class BfsMapper
             return a.Key.Room.CompareTo(b.Key.Room);
         });
 
-        // Pool 2: placed rooms with bent exits, ranked by stub count.
+        // Pool 2: placed rooms with bent exits, ranked by stub count. Used
+        // for bend reduction once coverage is already maximal.
         List<(int Stubs, RoomKey Key)> stubbed = new();
         foreach ((RoomKey key, (int X, int Y) coord) in layout.Positions)
         {
+            if (key.Equals(origin)) continue;
             Room? room = _graph.GetRoom(key);
             if (room is null) continue;
             int stubs = 0;
@@ -656,45 +666,12 @@ public sealed class BfsMapper
             return a.Key.Room.CompareTo(b.Key.Room);
         });
 
-        return dropped.Select(d => d.Key)
+        // A high-degree room can also be stubbed; Distinct keeps each seed
+        // to one BFS pass and preserves first-occurrence (centrality) order.
+        return central.Select(c => c.Key)
             .Concat(stubbed.Select(s => s.Key))
+            .Distinct()
             .Take(count);
-    }
-
-    /// <summary>
-    /// Rooms reachable from <paramref name="origin"/> through planar exits,
-    /// honouring the blacklist (don't traverse through hidden rooms) and
-    /// skipping U/D — exactly the set <see cref="BuildLayoutCore"/> is
-    /// meant to place. Because the placer drops a room when every coord it
-    /// tried was occupied, <c>reachable − placed</c> is precisely the rooms
-    /// that fell off the map; <see cref="PickRetryOrigins"/> seeds retries
-    /// from them.
-    /// </summary>
-    private HashSet<RoomKey> ComputePlanarReachable(RoomKey origin)
-    {
-        HashSet<RoomKey> seen = new();
-        if (_graph.GetRoom(origin) is null) return seen;
-        seen.Add(origin);
-
-        Queue<RoomKey> queue = new();
-        queue.Enqueue(origin);
-        while (queue.Count > 0)
-        {
-            RoomKey here = queue.Dequeue();
-            Room? room = _graph.GetRoom(here);
-            if (room is null) continue;
-            foreach ((Direction dir, RoomExit exit) in room.Exits)
-            {
-                if (!IsPlanar(dir)) continue;
-                RoomKey next = exit.Target;
-                if (seen.Contains(next)) continue;
-                if (_graph.GetRoom(next) is null) continue;
-                if (_isBlacklisted?.Invoke(next) == true) continue;
-                seen.Add(next);
-                queue.Enqueue(next);
-            }
-        }
-        return seen;
     }
 
     /// <summary>
