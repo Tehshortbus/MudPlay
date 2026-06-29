@@ -253,9 +253,8 @@ public sealed class BfsMapper
         // Score-and-retry pass. If the primary layout carries any
         // non-Euclidean stubs (cluster, typically caused by reaching a
         // maze region via a bent path), try a small handful of retry
-        // origins picked from the rooms with the most stubs and pick the
-        // BEST layout after translating back so the original origin sits
-        // at (0,0). The user never sees the worse one.
+        // origins and keep the BEST layout after translating back so the
+        // original origin sits at (0,0). The user never sees the worse one.
         //
         // "Best" = most rooms placed, with stub count as the tiebreak.
         // Coverage comes first because a dropped room (collision the
@@ -272,13 +271,16 @@ public sealed class BfsMapper
         // its source side, so "stubs > 0" still reliably triggers the
         // retry whenever coverage is incomplete.
         //
-        // Why N candidates instead of just the single worst-stub room:
-        // in a tight maze where every cluster room has similar stub
-        // counts, the single "winner" of PickWorstStubRoom can be a
-        // tie-break loser — its BFS frontier doesn't expand cleanly
-        // even though *some* other cluster room would. Trying the top
-        // N gives us a chance at finding the best seed inside the
-        // tangle.
+        // Candidate seeds (see PickRetryOrigins): the DROPPED rooms come
+        // first. A dropped room sits inside the very tangle the placer
+        // couldn't seat, so starting BFS there (while `positions` is still
+        // sparse) lays the cluster out cleanly. Crucially the best seed is
+        // usually itself dropped — when a whole subtree falls off, only one
+        // source-side stub remains on a placed room, so scanning placed
+        // rooms alone (the old behaviour) could never find a seed inside
+        // the missing region and the retry silently failed to recover it.
+        // Placed-but-stubbed rooms are tried after, for bend reduction once
+        // coverage is already complete.
         //
         // Bounded layouts (maxRadius < int.MaxValue) are typically
         // minimap-scoped and already region-isolated; skip the retry
@@ -292,7 +294,7 @@ public sealed class BfsMapper
             if (primaryStubs > 0)
             {
                 int triedCount = 0;
-                foreach (RoomKey retryOrigin in PickRetryOrigins(primary, RetryCandidateCount))
+                foreach (RoomKey retryOrigin in PickRetryOrigins(primary, origin, RetryCandidateCount))
                 {
                     if (retryOrigin.Equals(origin)) continue;
                     triedCount++;
@@ -577,16 +579,58 @@ public sealed class BfsMapper
     }
 
     /// <summary>
-    /// Identify the top-<paramref name="count"/> rooms with the most
-    /// non-Euclidean reciprocal exits in the layout — the densest
-    /// cluster centres. Used as retry origins because starting BFS
-    /// from inside a tangle gives the local geometry early access to
-    /// the most-constraining rooms before frontier expansion gets a
-    /// chance to bend things. Skips rooms with zero stubs.
+    /// Up to <paramref name="count"/> retry-origin seeds for the
+    /// score-and-retry pass, in try order. Two pools, coverage-recovery
+    /// first:
+    /// <list type="number">
+    ///   <item><b>Dropped rooms</b> — planar-reachable from
+    ///     <paramref name="origin"/> but absent from
+    ///     <paramref name="layout"/>'s placement (the placer hit an
+    ///     unresolvable collision and dropped them). A dropped room sits
+    ///     inside the tangle the placement couldn't seat, so re-rooting
+    ///     BFS there lays the cluster out while <c>positions</c> is still
+    ///     sparse. The best seed is usually itself dropped — a whole
+    ///     missing subtree leaves only one source-side stub on a placed
+    ///     room — so scanning placed rooms alone can't find it. Ranked by
+    ///     planar degree (junction rooms first).</item>
+    ///   <item><b>Placed-but-stubbed rooms</b> — rooms whose exits bend.
+    ///     Bend reduction once coverage is complete. Ranked by stub
+    ///     count.</item>
+    /// </list>
+    /// Both pools carry a deterministic (Map, Room) tiebreak: ties are
+    /// common (every cluster room shares a degree / stub count) and
+    /// <see cref="List{T}.Sort"/> is an introsort — not stable — so
+    /// without a total order the tie ordering, and thus which seeds the
+    /// <c>Take</c> keeps, would be left to the runtime. Each seed is a
+    /// different BFS root yielding a wholesale-different layout, which is
+    /// how the same graph laid out differently on different machines. The
+    /// tiebreak makes the chosen layout a pure function of (graph, origin).
     /// </summary>
-    private IEnumerable<RoomKey> PickRetryOrigins(RoomLayout layout, int count)
+    private IEnumerable<RoomKey> PickRetryOrigins(RoomLayout layout, RoomKey origin, int count)
     {
-        List<(int Stubs, RoomKey Key)> ranked = new();
+        // Pool 1: dropped rooms (reachable − placed), ranked by planar degree.
+        HashSet<RoomKey> reachable = ComputePlanarReachable(origin);
+        List<(int Degree, RoomKey Key)> dropped = new();
+        foreach (RoomKey key in reachable)
+        {
+            if (layout.Positions.ContainsKey(key)) continue;
+            Room? room = _graph.GetRoom(key);
+            if (room is null) continue;
+            int degree = 0;
+            foreach ((Direction dir, RoomExit _) in room.Exits)
+                if (IsPlanar(dir)) degree++;
+            dropped.Add((degree, key));
+        }
+        dropped.Sort(static (a, b) =>
+        {
+            int byDeg = b.Degree.CompareTo(a.Degree);
+            if (byDeg != 0) return byDeg;
+            if (a.Key.Map != b.Key.Map) return a.Key.Map.CompareTo(b.Key.Map);
+            return a.Key.Room.CompareTo(b.Key.Room);
+        });
+
+        // Pool 2: placed rooms with bent exits, ranked by stub count.
+        List<(int Stubs, RoomKey Key)> stubbed = new();
         foreach ((RoomKey key, (int X, int Y) coord) in layout.Positions)
         {
             Room? room = _graph.GetRoom(key);
@@ -602,26 +646,55 @@ public sealed class BfsMapper
                     stubs++;
                 }
             }
-            if (stubs > 0) ranked.Add((stubs, key));
+            if (stubs > 0) stubbed.Add((stubs, key));
         }
-        // Most stubs first, with a deterministic (Map, Room) tiebreak.
-        // The tiebreak matters: in a tight maze every cluster room ties
-        // on stub count, and List.Sort is NOT stable — without a total
-        // order the tie ordering is left to the runtime's introsort, so
-        // Take(count) below grabs a runtime-dependent slice of retry
-        // origins. Each retry origin is a different BFS root that yields
-        // a wholesale-different layout, which is how the SAME graph laid
-        // out differently on different machines (Windows vs Linux). The
-        // tiebreak makes the chosen layout a pure function of (graph,
-        // origin), identical everywhere.
-        ranked.Sort(static (a, b) =>
+        stubbed.Sort(static (a, b) =>
         {
             int byStubs = b.Stubs.CompareTo(a.Stubs);
             if (byStubs != 0) return byStubs;
             if (a.Key.Map != b.Key.Map) return a.Key.Map.CompareTo(b.Key.Map);
             return a.Key.Room.CompareTo(b.Key.Room);
         });
-        return ranked.Take(count).Select(r => r.Key);
+
+        return dropped.Select(d => d.Key)
+            .Concat(stubbed.Select(s => s.Key))
+            .Take(count);
+    }
+
+    /// <summary>
+    /// Rooms reachable from <paramref name="origin"/> through planar exits,
+    /// honouring the blacklist (don't traverse through hidden rooms) and
+    /// skipping U/D — exactly the set <see cref="BuildLayoutCore"/> is
+    /// meant to place. Because the placer drops a room when every coord it
+    /// tried was occupied, <c>reachable − placed</c> is precisely the rooms
+    /// that fell off the map; <see cref="PickRetryOrigins"/> seeds retries
+    /// from them.
+    /// </summary>
+    private HashSet<RoomKey> ComputePlanarReachable(RoomKey origin)
+    {
+        HashSet<RoomKey> seen = new();
+        if (_graph.GetRoom(origin) is null) return seen;
+        seen.Add(origin);
+
+        Queue<RoomKey> queue = new();
+        queue.Enqueue(origin);
+        while (queue.Count > 0)
+        {
+            RoomKey here = queue.Dequeue();
+            Room? room = _graph.GetRoom(here);
+            if (room is null) continue;
+            foreach ((Direction dir, RoomExit exit) in room.Exits)
+            {
+                if (!IsPlanar(dir)) continue;
+                RoomKey next = exit.Target;
+                if (seen.Contains(next)) continue;
+                if (_graph.GetRoom(next) is null) continue;
+                if (_isBlacklisted?.Invoke(next) == true) continue;
+                seen.Add(next);
+                queue.Enqueue(next);
+            }
+        }
+        return seen;
     }
 
     /// <summary>
