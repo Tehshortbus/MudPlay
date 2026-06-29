@@ -412,12 +412,12 @@ public sealed partial class LoopEditorDialogViewModel : ObservableObject, IDialo
             SaveError = "Cycles need at least 2 waypoints.";
             return;
         }
-        if (_loops.BbsName is null)
+        if (_loops.SetName is null)
         {
-            // LoopManager silently no-ops the Save call when no BBS is
-            // bound — surface the cause instead of disappearing the
-            // dialog with no feedback.
-            SaveError = "No active BBS — pin a BBS in Settings before saving loops.";
+            // LoopManager silently no-ops the Save call when no game-data
+            // set is active — surface the cause instead of disappearing
+            // the dialog with no feedback.
+            SaveError = "No active game-data set — select one before saving loops.";
             return;
         }
 

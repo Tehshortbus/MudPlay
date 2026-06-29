@@ -5,8 +5,8 @@ using FujinTerm.Services;
 namespace FujinTerm.Game.Map;
 
 /// <summary>
-/// Folder CRUD over the shared per-BBS Loops directory
-/// (<see cref="AppPaths.BbsLoopsFolder"/>), which holds BOTH navigation
+/// Folder CRUD over the shared per-set Loops directory
+/// (<see cref="AppPaths.GameDataSetLoopsFolder"/>), which holds BOTH navigation
 /// loops (<see cref="LoopManager"/>) and Auto-Lair setups
 /// (<see cref="LairManager"/>) as real on-disk subdirectories. Because
 /// the two catalogues share one directory tree, a folder create /
@@ -52,8 +52,8 @@ public sealed class NavFolderManager
     /// </summary>
     public event Action? FoldersChanged;
 
-    /// <summary>The BBS whose Loops directory we operate on. Sourced from <see cref="LoopManager"/>.</summary>
-    private string? BbsName => _loops.BbsName;
+    /// <summary>The game-data set whose Loops directory we operate on. Sourced from <see cref="LoopManager"/>.</summary>
+    private string? SetName => _loops.SetName;
 
     /// <summary>
     /// Every folder (in stored <c>/</c> form) that physically exists
@@ -65,8 +65,8 @@ public sealed class NavFolderManager
         get
         {
             var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            if (BbsName is not { } bbs) return set;
-            string root = AppPaths.BbsLoopsFolder(bbs);
+            if (SetName is not { } setName) return set;
+            string root = AppPaths.GameDataSetLoopsFolder(setName);
             if (!Directory.Exists(root)) return set;
             foreach (string dir in Directory.EnumerateDirectories(root, "*", SearchOption.AllDirectories))
             {
@@ -80,15 +80,15 @@ public sealed class NavFolderManager
     /// <summary>
     /// Create an empty folder (and any missing ancestors) under the
     /// Loops root so it shows in the tree before any loop / lair is
-    /// filed under it. No-op when no BBS is bound, the path is the
+    /// filed under it. No-op when no set is active, the path is the
     /// root, or the directory already exists.
     /// </summary>
     public bool CreateFolder(string path)
     {
-        if (BbsName is not { } bbs) return false;
+        if (SetName is not { } setName) return false;
         string norm = NavFolders.Normalize(path);
         if (norm.Length == 0) return false;
-        string dir = NavFolders.ToDirectory(AppPaths.BbsLoopsFolder(bbs), norm);
+        string dir = NavFolders.ToDirectory(AppPaths.GameDataSetLoopsFolder(setName), norm);
         if (Directory.Exists(dir)) return false;
         Directory.CreateDirectory(dir);
         _log?.Info("NavFolders", $"created folder '{norm}'");
@@ -105,13 +105,13 @@ public sealed class NavFolderManager
     /// </summary>
     public bool RenameFolder(string oldPath, string newPath)
     {
-        if (BbsName is not { } bbs) return false;
+        if (SetName is not { } setName) return false;
         string from = NavFolders.Normalize(oldPath);
         string to = NavFolders.Normalize(newPath);
         if (from.Length == 0 || to.Length == 0) return false;
         if (string.Equals(from, to, StringComparison.OrdinalIgnoreCase)) return false;
 
-        string root = AppPaths.BbsLoopsFolder(bbs);
+        string root = AppPaths.GameDataSetLoopsFolder(setName);
         string fromDir = NavFolders.ToDirectory(root, from);
         string toDir = NavFolders.ToDirectory(root, to);
         if (!Directory.Exists(fromDir)) return false;
@@ -134,7 +134,7 @@ public sealed class NavFolderManager
         }
 
         _log?.Info("NavFolders", $"renamed folder '{from}' → '{to}'");
-        ReloadStores(bbs);
+        ReloadStores(setName);
         FoldersChanged?.Invoke();
         return true;
     }
@@ -149,11 +149,11 @@ public sealed class NavFolderManager
     /// </summary>
     public bool DeleteFolder(string path, bool moveContentsToParent = true)
     {
-        if (BbsName is not { } bbs) return false;
+        if (SetName is not { } setName) return false;
         string from = NavFolders.Normalize(path);
         if (from.Length == 0) return false;
 
-        string root = AppPaths.BbsLoopsFolder(bbs);
+        string root = AppPaths.GameDataSetLoopsFolder(setName);
         string dir = NavFolders.ToDirectory(root, from);
         if (!Directory.Exists(dir)) return false;
 
@@ -183,14 +183,14 @@ public sealed class NavFolderManager
         }
 
         _log?.Info("NavFolders", $"removed folder '{from}'");
-        ReloadStores(bbs);
+        ReloadStores(setName);
         FoldersChanged?.Invoke();
         return true;
     }
 
-    private void ReloadStores(string bbs)
+    private void ReloadStores(string setName)
     {
-        _loops.LoadAll(bbs);
-        _lairs.LoadAll(bbs);
+        _loops.LoadAll(setName);
+        _lairs.LoadAll(setName);
     }
 }

@@ -7,9 +7,9 @@ using FujinTerm.Services;
 namespace FujinTerm.Game.Map;
 
 /// <summary>
-/// Per-BBS Auto-Lair setup catalogue. Round-trips
+/// Per-set Auto-Lair setup catalogue. Round-trips
 /// <see cref="LairSetup"/>s under the shared
-/// <see cref="AppPaths.BbsLoopsFolder"/> — same folder as loops, with
+/// <see cref="AppPaths.GameDataSetLoopsFolder"/> — same folder as loops, with
 /// the <c>.lair.json</c> filename suffix as the schema discriminator.
 /// Mirrors <see cref="LoopManager"/>'s shape (same load-on-pin,
 /// save-fires-Changed, delete-on-name lifecycle) so the UI rail can
@@ -18,7 +18,7 @@ namespace FujinTerm.Game.Map;
 /// <remarks>
 /// One-shot migration: earlier exports lived under
 /// <see cref="AppPaths.LegacyBbsLairsFolder"/> as plain <c>.json</c>
-/// files. The first <see cref="LoadAll"/> for a given BBS scans that
+/// files. The first <see cref="LoadAll"/> for a given set scans that
 /// folder, copies each setup into the shared Loops folder with the
 /// <c>.lair.json</c> suffix, and removes the legacy directory once
 /// empty.
@@ -40,17 +40,17 @@ public sealed class LairManager
     private readonly LogService? _log;
     private readonly Dictionary<string, LairSetup> _setups
         = new(StringComparer.OrdinalIgnoreCase);
-    private string? _bbsName;
+    private string? _setName;
 
     public LairManager(LogService? log = null)
     {
         _log = log;
     }
 
-    /// <summary>BBS the catalogue is bound to, or null when no BBS is active.</summary>
-    public string? BbsName => _bbsName;
+    /// <summary>Game-data set the catalogue is bound to, or null when no set is active.</summary>
+    public string? SetName => _setName;
 
-    /// <summary>Saved setups for the active BBS, sorted by name (case-insensitive).</summary>
+    /// <summary>Saved setups for the active set, sorted by name (case-insensitive).</summary>
     public IReadOnlyList<LairSetup> Setups =>
         _setups.Values
                .OrderBy(s => s.Name, StringComparer.OrdinalIgnoreCase)
@@ -63,15 +63,15 @@ public sealed class LairManager
         _setups.TryGetValue(name, out LairSetup? setup) ? setup : null;
 
     /// <summary>
-    /// Rebuild the in-memory cache from disk for <paramref name="bbsName"/>.
+    /// Rebuild the in-memory cache from disk for <paramref name="setName"/>.
     /// Pass <c>null</c> to clear.
     /// </summary>
-    public void LoadAll(string? bbsName)
+    public void LoadAll(string? setName)
     {
         _setups.Clear();
-        _bbsName = bbsName;
+        _setName = setName;
 
-        if (string.IsNullOrWhiteSpace(bbsName))
+        if (string.IsNullOrWhiteSpace(setName))
         {
             SetupsChanged?.Invoke();
             return;
@@ -81,14 +81,14 @@ public sealed class LairManager
         // into the shared Loops/ folder. Step B (right after) renames
         // any intermediate .lair.json files to the final .lair suffix.
         // Both steps are safe to re-run.
-        MigrateLegacyFolderIfPresent(bbsName);
+        MigrateLegacyFolderIfPresent(setName);
 
-        string folder = AppPaths.BbsLoopsFolder(bbsName);
+        string folder = AppPaths.GameDataSetLoopsFolder(setName);
         MigrateIntermediateSuffixIfPresent(folder);
 
         if (!Directory.Exists(folder))
         {
-            _log?.Info("Lairs", $"no loops folder for '{bbsName}'; empty lair catalogue.");
+            _log?.Info("Lairs", $"no loops folder for set '{setName}'; empty lair catalogue.");
             SetupsChanged?.Invoke();
             return;
         }
@@ -118,28 +118,28 @@ public sealed class LairManager
             }
         }
         _log?.Info("Lairs",
-            $"loaded {loaded} setup(s) for '{bbsName}'"
+            $"loaded {loaded} setup(s) for set '{setName}'"
           + (failed > 0 ? $" ({failed} failed)" : string.Empty));
         SetupsChanged?.Invoke();
     }
 
     /// <summary>
     /// Persist <paramref name="setup"/> under
-    /// <see cref="AppPaths.BbsLoopsFolder"/> with the
+    /// <see cref="AppPaths.GameDataSetLoopsFolder"/> with the
     /// <see cref="LairFileSuffix"/> filename extension. No-op when no
-    /// BBS is bound.
+    /// set is active.
     /// </summary>
     public void Save(LairSetup setup)
     {
         ArgumentNullException.ThrowIfNull(setup);
         if (string.IsNullOrWhiteSpace(setup.Name))
             throw new ArgumentException("Setup name is required.", nameof(setup));
-        if (_bbsName is null) return;
+        if (_setName is null) return;
 
         setup.SchemaVersion = 1;
         setup.Folder = NavFolders.Normalize(setup.Folder);
-        string root = AppPaths.BbsLoopsFolder(_bbsName);
-        // A setup name is unique BBS-wide, so a folder change is a move:
+        string root = AppPaths.GameDataSetLoopsFolder(_setName);
+        // A setup name is unique set-wide, so a folder change is a move:
         // delete any stale file for this name (in any folder) first so
         // we don't leave a duplicate behind.
         DeleteFileForName(root, setup.Name);
@@ -154,7 +154,7 @@ public sealed class LairManager
     /// <summary>
     /// Move the setup named <paramref name="name"/> into
     /// <paramref name="folder"/> (empty = Loops root). No-op when the
-    /// setup isn't in the catalogue or no BBS is bound.
+    /// setup isn't in the catalogue or no set is active.
     /// </summary>
     public bool Move(string name, string? folder)
     {
@@ -167,13 +167,13 @@ public sealed class LairManager
         return true;
     }
 
-    /// <summary>Delete the setup named <paramref name="name"/>. No-op when not present or no BBS bound.</summary>
+    /// <summary>Delete the setup named <paramref name="name"/>. No-op when not present or no set is active.</summary>
     public bool Delete(string name)
     {
-        if (_bbsName is null) return false;
+        if (_setName is null) return false;
         if (!_setups.Remove(name)) return false;
 
-        DeleteFileForName(AppPaths.BbsLoopsFolder(_bbsName), name);
+        DeleteFileForName(AppPaths.GameDataSetLoopsFolder(_setName), name);
         SetupsChanged?.Invoke();
         return true;
     }
@@ -181,7 +181,7 @@ public sealed class LairManager
     /// <summary>
     /// Delete the on-disk <c>.lair</c> file for <paramref name="name"/>
     /// wherever it lives under <paramref name="root"/> (the name is
-    /// unique BBS-wide). Best-effort — failures are logged.
+    /// unique set-wide). Best-effort — failures are logged.
     /// </summary>
     private void DeleteFileForName(string root, string name)
     {
@@ -199,12 +199,12 @@ public sealed class LairManager
 
     // ----- internals -----------------------------------------------
 
-    private void MigrateLegacyFolderIfPresent(string bbsName)
+    private void MigrateLegacyFolderIfPresent(string setName)
     {
-        string legacy = AppPaths.LegacyBbsLairsFolder(bbsName);
+        string legacy = AppPaths.LegacyBbsLairsFolder(setName);
         if (!Directory.Exists(legacy)) return;
 
-        string target = AppPaths.BbsLoopsFolder(bbsName);
+        string target = AppPaths.GameDataSetLoopsFolder(setName);
         Directory.CreateDirectory(target);
 
         int moved = 0;

@@ -2528,34 +2528,39 @@ public sealed class AppServices
             applyBySetId: Equipment.ApplyBySetId,
             log: Log);
 
-        // Phase 7 PR 7.8 — per-BBS loop catalogue. PR 7.13 wires the
-        // BBS-change signals so the catalogue reloads on profile load
-        // and on explicit BBS pin from Settings → BBS Apply.
-        //
-        // Resolve through ResolveActiveBbs (NOT raw Profile.BbsName)
-        // so a blank-draft profile + global default-BBS still binds
-        // the catalogue to that default. Otherwise Save on a
-        // brand-new loop silently no-ops in LoopManager (the
-        // _bbsName==null bail) and the user-visible Save button
-        // appears to do nothing.
+        // Phase 7 PR 7.8 — per-game-data-set loop catalogue. Loops live
+        // under the active set's Loops/ folder, so the catalogue reloads
+        // whenever the active set changes (wired below, alongside lairs,
+        // since the two share one on-disk tree).
         Loops = new Game.Map.LoopManager(Bfs, RoomGraph, Log);
-        Profile.ProfileLoaded += _  => Loops.LoadAll(ResolveActiveBbs()?.Name);
-        Profile.BbsPinApplied += _  => Loops.LoadAll(ResolveActiveBbs()?.Name);
-        Profile.ProfileClosed += () => Loops.LoadAll(null);
 
         // Phase 7 PR 7.9 — MegaMUD .mp loop importer. Pure resolution
         // service over the active graph; no per-profile state of its
         // own. The Manage dialog calls it on user "Import .mp".
         MpImporter = new Game.Map.MpFile.MpFileImporter(RoomGraph, Log);
 
-        // Phase 7 PR 7.18 — Auto-Lair setup catalogue (per-BBS, mirrors
+        // Phase 7 PR 7.18 — Auto-Lair setup catalogue (per-set, mirrors
         // LoopManager) + game-data-driven respawn timer resolver +
         // in-session arrival tracker.
         Lairs = new Game.Map.LairManager(Log);
-        Profile.ProfileLoaded += _  => Lairs.LoadAll(ResolveActiveBbs()?.Name);
-        Profile.BbsPinApplied += _  => Lairs.LoadAll(ResolveActiveBbs()?.Name);
-        Profile.ProfileClosed += () => Lairs.LoadAll(null);
         LairTimers = new Game.Map.LairTimerStore(GameData, RoomGraph, RoomTracker, Log);
+
+        // Loops + lairs are per-game-data-set and share one on-disk tree,
+        // so they reload together on every active-set change. Mirrors the
+        // other per-set subsystems above: hook ActiveSetChanged, then
+        // prime from the current set. ApplyActiveGameDataSet re-derives the
+        // active set on every profile load / BBS pin / mutate / close, so
+        // this one hook covers every reload case the old per-BBS wiring did.
+        GameData.ActiveSetChanged += setName =>
+        {
+            Loops.LoadAll(setName);
+            Lairs.LoadAll(setName);
+        };
+        if (GameData.ActiveSet is not null)
+        {
+            Loops.LoadAll(GameData.ActiveSet);
+            Lairs.LoadAll(GameData.ActiveSet);
+        }
 
         // Shared folder CRUD over the Loops directory (loops + lairs
         // live in the same on-disk tree). Owns the filesystem move once

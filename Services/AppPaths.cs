@@ -322,16 +322,17 @@ public static class AppPaths
         Path.Combine(BbsFolder(bbsName), "bbs.json");
 
     /// <summary>
-    /// Per-BBS folder holding BOTH navigation loops AND Auto-Lair
-    /// setups. Loops save as <c>{name}.json</c>; lair setups save as
-    /// <c>{name}.lair.json</c> — the filename extension is the schema
-    /// discriminator so the two managers can scan the same folder and
-    /// pick up only their own files. Earlier exports under a separate
-    /// <c>Lairs/</c> folder are migrated on first load by
-    /// <see cref="Game.Map.LairManager.LoadAll"/>.
+    /// Per-game-data-set folder holding the whole navigation library:
+    /// loops (<c>{name}.loop</c>), Auto-Lair setups (<c>{name}.lair</c>),
+    /// and the user-created sub-folder tree that organises both. The
+    /// filename suffix is the schema discriminator so the loop and lair
+    /// managers can scan the same folder and pick up only their own
+    /// files. Keyed on the game-data set (the realm's MDB) rather than
+    /// the BBS, so the same nav library follows the realm across every
+    /// BBS / character that points at that set.
     /// </summary>
-    public static string BbsLoopsFolder(string bbsName) =>
-        Path.Combine(BbsFolder(bbsName), "Loops");
+    public static string GameDataSetLoopsFolder(string setName) =>
+        Path.Combine(GameDataSetDir(setName), "Loops");
 
     /// <summary>
     /// Legacy per-BBS folder that held Auto-Lair setups before the

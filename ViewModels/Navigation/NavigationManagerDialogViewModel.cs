@@ -31,7 +31,7 @@ namespace FujinTerm.ViewModels.Navigation;
 /// <para>
 /// Auto-Lair Mode section: lists saved <see cref="LairSetup"/>s
 /// stored alongside loops in the shared
-/// <see cref="AppPaths.BbsLoopsFolder"/> (lair files use the
+/// <see cref="AppPaths.GameDataSetLoopsFolder"/> (lair files use the
 /// <c>.lair.json</c> suffix). Each row exposes Run / Load / Edit /
 /// Delete — same row shape as the Loops section. New setups happen
 /// via "Save lairs" in the rail's build-mode strip; this dialog is

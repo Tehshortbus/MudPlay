@@ -8,16 +8,17 @@ namespace FujinTerm.Models.Profile;
 /// the scheduler cycles through. Mirrors <see cref="Game.Map.Loop"/>'s
 /// role for loops: storage shape, not runtime state. The
 /// <see cref="Game.Map.LairManager"/> round-trips one file per setup
-/// under <see cref="Services.AppPaths.BbsLoopsFolder"/> with the
+/// under <see cref="Services.AppPaths.GameDataSetLoopsFolder"/> with the
 /// <see cref="Game.Map.LairManager.LairFileSuffix"/> filename suffix.
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Why BBS-scoped, not per-character</b>: lair locations are game-
+/// <b>Why set-scoped, not per-character</b>: lair locations are game-
 /// data facts (where the spawn lives), not personal preferences. A
-/// "lower-sewers rats" setup is reusable by every character on the
-/// same BBS without copying. Per-character preference belongs in
-/// <see cref="Models.Profile.AutoLairSettings"/> instead.
+/// "lower-sewers rats" setup is reusable by every character on every
+/// BBS that shares the same game-data set without copying. Per-character
+/// preference belongs in <see cref="Models.Profile.AutoLairSettings"/>
+/// instead.
 /// </para>
 /// <para>
 /// <b>Why unordered markers</b>: the scheduler picks the next lair

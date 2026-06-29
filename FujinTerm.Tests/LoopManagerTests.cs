@@ -14,28 +14,20 @@ namespace FujinTerm.Tests;
 public sealed class LoopManagerTests : IDisposable
 {
     // AppPaths caches its roots at static-init time, so XDG_DATA_HOME
-    // can't be swapped between tests. We isolate via per-test GUID
-    // suffixes on BOTH the BBS name AND the game-data set name; the
-    // test cleans them up on Dispose so nothing leaks into the user's
-    // real Data/ tree.
-    private readonly string _bbs;
+    // can't be swapped between tests. We isolate via a per-test GUID
+    // suffix on the game-data set name (loops persist under the set's
+    // Loops/ folder); Dispose deletes it so nothing leaks into the
+    // user's real Data/ tree.
     private readonly string _setName;
 
     public LoopManagerTests()
     {
         string suffix = Guid.NewGuid().ToString("N").Substring(0, 12);
-        _bbs = "test-" + suffix;
         _setName = "test-set-" + suffix;
     }
 
     public void Dispose()
     {
-        try
-        {
-            string bbsFolder = AppPaths.BbsFolder(_bbs);
-            if (Directory.Exists(bbsFolder)) Directory.Delete(bbsFolder, recursive: true);
-        }
-        catch { /* best-effort */ }
         try
         {
             string setFolder = Path.Combine(AppPaths.GameDataRoot, _setName);
@@ -87,29 +79,29 @@ public sealed class LoopManagerTests : IDisposable
     // ----- LoadAll lifecycle ----------------------------------------
 
     [Fact]
-    public void LoadAll_UnknownBbs_LeavesEmpty()
+    public void LoadAll_UnknownSet_LeavesEmpty()
     {
         LoopManager m = NewManager();
-        m.LoadAll(_bbs);
+        m.LoadAll(_setName);
         Assert.Empty(m.Loops);
-        Assert.Equal(_bbs, m.BbsName);
+        Assert.Equal(_setName, m.SetName);
     }
 
     [Fact]
-    public void LoadAll_Null_ClearsBbsAndLoops()
+    public void LoadAll_Null_ClearsSetAndLoops()
     {
         LoopManager m = NewManager();
-        m.LoadAll(_bbs);
+        m.LoadAll(_setName);
         m.LoadAll(null);
-        Assert.Null(m.BbsName);
+        Assert.Null(m.SetName);
         Assert.Empty(m.Loops);
     }
 
     [Fact]
-    public void Save_AddsLoopToCatalogue_AndPersistsToBbsLoopsFolder()
+    public void Save_AddsLoopToCatalogue_AndPersistsToSetLoopsFolder()
     {
         LoopManager m = NewManager();
-        m.LoadAll(_bbs);
+        m.LoadAll(_setName);
 
         var loop = new Loop("Sewer farm", new[]
         {
@@ -122,7 +114,7 @@ public sealed class LoopManagerTests : IDisposable
         Assert.Equal("Sewer farm", m.Loops[0].Name);
 
         string expectedPath = Path.Combine(
-            AppPaths.BbsLoopsFolder(_bbs), "Sewer farm" + LoopManager.LoopFileSuffix);
+            AppPaths.GameDataSetLoopsFolder(_setName), "Sewer farm" + LoopManager.LoopFileSuffix);
         Assert.True(File.Exists(expectedPath));
     }
 
@@ -133,7 +125,7 @@ public sealed class LoopManagerTests : IDisposable
         // positions in a flat step list. Round-tripping preserves the
         // per-waypoint command + delay alongside the room.
         LoopManager m1 = NewManager();
-        m1.LoadAll(_bbs);
+        m1.LoadAll(_setName);
         m1.Save(new Loop("Albion run", new[]
         {
             new LoopWaypoint(new RoomKey(1, 1)),
@@ -141,7 +133,7 @@ public sealed class LoopManagerTests : IDisposable
         }));
 
         LoopManager m2 = NewManager();
-        m2.LoadAll(_bbs);
+        m2.LoadAll(_setName);
 
         Loop? round = m2.Get("Albion run");
         Assert.NotNull(round);
@@ -154,7 +146,7 @@ public sealed class LoopManagerTests : IDisposable
     }
 
     [Fact]
-    public void Save_NoBbsBound_IsNoOp()
+    public void Save_NoSetActive_IsNoOp()
     {
         LoopManager m = NewManager();
         m.Save(new Loop("orphan", new[] { new RoomKey(1, 1), new RoomKey(1, 2) }));
@@ -165,7 +157,7 @@ public sealed class LoopManagerTests : IDisposable
     public void Delete_RemovesFromCatalogueAndDisk()
     {
         LoopManager m = NewManager();
-        m.LoadAll(_bbs);
+        m.LoadAll(_setName);
         m.Save(new Loop("test", new[] { new RoomKey(1, 1), new RoomKey(1, 2) }));
 
         bool removed = m.Delete("test");
@@ -173,7 +165,7 @@ public sealed class LoopManagerTests : IDisposable
         Assert.True(removed);
         Assert.Empty(m.Loops);
         Assert.False(File.Exists(Path.Combine(
-            AppPaths.BbsLoopsFolder(_bbs), "test" + LoopManager.LoopFileSuffix)));
+            AppPaths.GameDataSetLoopsFolder(_setName), "test" + LoopManager.LoopFileSuffix)));
     }
 
     [Fact]
@@ -183,7 +175,7 @@ public sealed class LoopManagerTests : IDisposable
         int fires = 0;
         m.LoopsChanged += () => fires++;
 
-        m.LoadAll(_bbs);
+        m.LoadAll(_setName);
         Assert.Equal(1, fires);
 
         m.Save(new Loop("a", new[] { new RoomKey(1, 1), new RoomKey(1, 2) }));
@@ -197,7 +189,7 @@ public sealed class LoopManagerTests : IDisposable
     public void Loops_OrderedAlphabetically()
     {
         LoopManager m = NewManager();
-        m.LoadAll(_bbs);
+        m.LoadAll(_setName);
         var pair = new[] { new RoomKey(1, 1), new RoomKey(1, 2) };
         m.Save(new Loop("zeta",   pair));
         m.Save(new Loop("alpha",  pair));
@@ -210,11 +202,11 @@ public sealed class LoopManagerTests : IDisposable
     public void Save_LoopWithIllegalFilenameChar_StillRoundTrips()
     {
         LoopManager m = NewManager();
-        m.LoadAll(_bbs);
+        m.LoadAll(_setName);
         m.Save(new Loop("loop/with:bad*chars", new[] { new RoomKey(1, 1), new RoomKey(1, 2) }));
 
         LoopManager m2 = NewManager();
-        m2.LoadAll(_bbs);
+        m2.LoadAll(_setName);
         Assert.Single(m2.Loops);
         Assert.Equal("loop/with:bad*chars", m2.Loops[0].Name);
     }
@@ -285,7 +277,7 @@ public sealed class LoopManagerTests : IDisposable
         // Waypoints with null commands. Mid-leg CommandLoopSteps in
         // the flat list are dropped (logged warning) since v3 attaches
         // commands to waypoints, not arbitrary positions.
-        string folder = AppPaths.BbsLoopsFolder(_bbs);
+        string folder = AppPaths.GameDataSetLoopsFolder(_setName);
         Directory.CreateDirectory(folder);
         const string V2Json = """
             {
@@ -307,7 +299,7 @@ public sealed class LoopManagerTests : IDisposable
         File.WriteAllText(Path.Combine(folder, "Legacy.json"), V2Json);
 
         LoopManager m = NewManager();
-        m.LoadAll(_bbs);
+        m.LoadAll(_setName);
 
         Loop? loaded = m.Get("Legacy");
         Assert.NotNull(loaded);
@@ -325,7 +317,7 @@ public sealed class LoopManagerTests : IDisposable
     public void Save_RoundTrip_PreservesWaypointsAndNotes()
     {
         LoopManager m = NewManager();
-        m.LoadAll(_bbs);
+        m.LoadAll(_setName);
 
         var waypoints = new[]
         {
@@ -341,7 +333,7 @@ public sealed class LoopManagerTests : IDisposable
         // Reload from disk via a fresh manager — confirms the JSON
         // serialiser is round-tripping the v3 fields cleanly.
         LoopManager m2 = NewManager();
-        m2.LoadAll(_bbs);
+        m2.LoadAll(_setName);
         Loop? r = m2.Get("RoundTrip");
         Assert.NotNull(r);
         Assert.Equal(3, r!.SchemaVersion);
