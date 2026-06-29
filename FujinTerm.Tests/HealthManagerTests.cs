@@ -1223,6 +1223,205 @@ public sealed class HealthManagerTests
         Assert.False(h.HealthGateHeld);
     }
 
+    // ----- opportunistic follower rest (leader resting) ------------
+
+    [Fact]
+    public void Opportunistic_LeaderResting_RestsAboveOwnTrigger()
+    {
+        // Follower, leader resting, HP above our own 60% rest-trigger
+        // (no gate) but below the 95% rest-max → we ride the downtime and
+        // top off with `rest` (UseMeditateAbility default off).
+        using Harness h = new();
+        h.Health.SetPartyRoleSync(
+            isPartyFollower: () => true,
+            requestPartyWait: () => { },
+            requestPartyOk: () => { },
+            isLeaderResting: () => true);
+        h.SetPrompt(hp: 150, maxHp: 200);   // 75% — above trigger, below rest-max
+
+        Assert.False(h.HealthGateHeld);     // no floor breach → no gate
+        Assert.Contains("rest", h.SentLines);
+    }
+
+    [Fact]
+    public void Opportunistic_LeaderNotResting_DoesNotRest()
+    {
+        // Same vitals, but the leader is up and moving → no downtime to
+        // exploit, so a follower above its own floor stays standing.
+        using Harness h = new();
+        h.Health.SetPartyRoleSync(
+            isPartyFollower: () => true,
+            requestPartyWait: () => { },
+            requestPartyOk: () => { },
+            isLeaderResting: () => false);
+        h.SetPrompt(hp: 150, maxHp: 200);
+
+        Assert.DoesNotContain("rest", h.SentLines);
+        Assert.DoesNotContain("meditate", h.SentLines);
+    }
+
+    [Fact]
+    public void Opportunistic_NoLeaderRestSelector_DoesNotRest()
+    {
+        // Backward-compat: the 3-arg SetPartyRoleSync leaves isLeaderResting
+        // null, so opportunistic top-off never engages even as a follower.
+        using Harness h = new();
+        h.Health.SetPartyRoleSync(
+            isPartyFollower: () => true,
+            requestPartyWait: () => { },
+            requestPartyOk: () => { });
+        h.SetPrompt(hp: 150, maxHp: 200);
+
+        Assert.DoesNotContain("rest", h.SentLines);
+    }
+
+    [Fact]
+    public void Opportunistic_AlreadyAtRestMax_DoesNotRest()
+    {
+        // Nothing to top off (both pools at/above rest-max) → no rest even
+        // with the leader resting.
+        using Harness h = new();
+        h.Health.SetPartyRoleSync(
+            isPartyFollower: () => true,
+            requestPartyWait: () => { },
+            requestPartyOk: () => { },
+            isLeaderResting: () => true);
+        h.SetPrompt(hp: 200, maxHp: 200);   // full HP, no mana pool
+
+        Assert.DoesNotContain("rest", h.SentLines);
+        Assert.DoesNotContain("meditate", h.SentLines);
+    }
+
+    [Fact]
+    public void Opportunistic_MeditatePrefersWhenManaLowerPct()
+    {
+        // UseMeditateAbility on, no gate asserted: pick by live fill —
+        // MA% (50) < HP% (85) → meditate the more-depleted pool first.
+        HealthSettings s = new() { UseMeditateAbility = true };
+        using Harness h = new(s);
+        h.Health.SetPartyRoleSync(
+            isPartyFollower: () => true,
+            requestPartyWait: () => { },
+            requestPartyOk: () => { },
+            isLeaderResting: () => true);
+        h.SetPrompt(hp: 170, maxHp: 200, ma: 50, maxMa: 100); // 85% HP, 50% MA
+
+        Assert.Contains("meditate", h.SentLines);
+        Assert.DoesNotContain("rest", h.SentLines);
+    }
+
+    [Fact]
+    public void Opportunistic_RestsWhenHpLowerPct()
+    {
+        // UseMeditateAbility on but HP% (65) < MA% (90) → rest the more-
+        // depleted HP pool.
+        HealthSettings s = new() { UseMeditateAbility = true };
+        using Harness h = new(s);
+        h.Health.SetPartyRoleSync(
+            isPartyFollower: () => true,
+            requestPartyWait: () => { },
+            requestPartyOk: () => { },
+            isLeaderResting: () => true);
+        h.SetPrompt(hp: 130, maxHp: 200, ma: 90, maxMa: 100); // 65% HP, 90% MA
+
+        Assert.Contains("rest", h.SentLines);
+        Assert.DoesNotContain("meditate", h.SentLines);
+    }
+
+    [Fact]
+    public void Opportunistic_MeditateBeforeResting_OverridesPct()
+    {
+        // MeditateBeforeResting + any mana missing → meditate even though
+        // HP% (65) is the lower pool (would otherwise rest).
+        HealthSettings s = new() { UseMeditateAbility = true, MeditateBeforeResting = true };
+        using Harness h = new(s);
+        h.Health.SetPartyRoleSync(
+            isPartyFollower: () => true,
+            requestPartyWait: () => { },
+            requestPartyOk: () => { },
+            isLeaderResting: () => true);
+        h.SetPrompt(hp: 130, maxHp: 200, ma: 80, maxMa: 100); // 65% HP, 80% MA
+
+        Assert.Contains("meditate", h.SentLines);
+        Assert.DoesNotContain("rest", h.SentLines);
+    }
+
+    [Fact]
+    public void Opportunistic_InCombat_DoesNotRest()
+    {
+        // Leader resting + below rest-max, but we're mid-combat → never
+        // rest (same guard as the gated path).
+        using Harness h = new();
+        h.Health.SetPartyRoleSync(
+            isPartyFollower: () => true,
+            requestPartyWait: () => { },
+            requestPartyOk: () => { },
+            isLeaderResting: () => true);
+        h.State.InCombat = true;
+        h.SetPrompt(hp: 150, maxHp: 200);
+
+        Assert.DoesNotContain("rest", h.SentLines);
+    }
+
+    [Fact]
+    public void Opportunistic_HostilesPresent_DoesNotRest()
+    {
+        // Engageable mob in the room breaks rest every round → don't even
+        // try, just like the gated rest path.
+        using Harness h = new();
+        h.HostilesPresent = true;
+        h.Health.SetPartyRoleSync(
+            isPartyFollower: () => true,
+            requestPartyWait: () => { },
+            requestPartyOk: () => { },
+            isLeaderResting: () => true);
+        h.SetPrompt(hp: 150, maxHp: 200);
+
+        Assert.DoesNotContain("rest", h.SentLines);
+    }
+
+    [Fact]
+    public void Opportunistic_DoesNotRequestPartyWait()
+    {
+        // Riding the leader's voluntary rest must NOT @wait — they're
+        // already halted, and we're above our floor (no gate).
+        int waits = 0;
+        using Harness h = new();
+        h.Health.SetPartyRoleSync(
+            isPartyFollower: () => true,
+            requestPartyWait: () => waits++,
+            requestPartyOk: () => { },
+            isLeaderResting: () => true);
+        h.SetPrompt(hp: 150, maxHp: 200);
+
+        Assert.Contains("rest", h.SentLines);   // we did opportunistically rest
+        Assert.Equal(0, waits);                 // but never pinged the leader
+    }
+
+    [Fact]
+    public void Opportunistic_LeaderStandsUp_FiresPostRestChain()
+    {
+        // We rested in the downtime; the leader rising flips the selector
+        // false → the shared recovery branch runs the post-rest chain and
+        // clears the latch.
+        bool leaderResting = true;
+        HealthSettings s = new() { PostRestCommand = "stand" };
+        using Harness h = new(s);
+        h.Health.SetPartyRoleSync(
+            isPartyFollower: () => true,
+            requestPartyWait: () => { },
+            requestPartyOk: () => { },
+            isLeaderResting: () => leaderResting);
+        h.SetPrompt(hp: 150, maxHp: 200);
+        Assert.Contains("rest", h.SentLines);
+        Assert.True(h.Health.RestInFlight);
+
+        leaderResting = false;
+        h.Health.Evaluate();                // leader stood — re-evaluate
+        Assert.Contains("stand", h.SentLines);
+        Assert.False(h.Health.RestInFlight);
+    }
+
     // ----- gate-history captures asserter --------------------------
 
     [Fact]

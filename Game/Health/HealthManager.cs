@@ -93,6 +93,7 @@ public sealed class HealthManager : IDisposable
     private Func<bool>? _isPartyFollower;       // in a party AND not the leader
     private Action? _requestPartyWait;          // ping leader to halt (PartyRestSync)
     private Action? _requestPartyOk;            // release leader
+    private Func<bool>? _isLeaderResting;       // follower + leader is resting/meditating
     private bool _partyWaitSignaled;            // @wait sent, awaiting @ok
     private bool _hpGateAsserted;
     private bool _maGateAsserted;
@@ -227,11 +228,20 @@ public sealed class HealthManager : IDisposable
     /// (typically <see cref="PartyRestSync.RequestWait"/> /
     /// <see cref="PartyRestSync.RequestOk"/>) self-gate on party membership,
     /// so invoking them solo is a safe no-op.
+    /// <para>
+    /// <paramref name="isLeaderResting"/> (optional) reports whether we're a
+    /// follower and the party leader is currently resting / meditating. When
+    /// true and no recovery gate is held, <see cref="Evaluate"/> opportunistically
+    /// tops off to rest-max during the leader's downtime — inherent behavior,
+    /// gated only by the auto-heal master switch. Left null preserves the old
+    /// gate-only rest behavior.
+    /// </para>
     /// </summary>
     public void SetPartyRoleSync(
         Func<bool> isPartyFollower,
         Action requestPartyWait,
-        Action requestPartyOk)
+        Action requestPartyOk,
+        Func<bool>? isLeaderResting = null)
     {
         ArgumentNullException.ThrowIfNull(isPartyFollower);
         ArgumentNullException.ThrowIfNull(requestPartyWait);
@@ -239,6 +249,7 @@ public sealed class HealthManager : IDisposable
         _isPartyFollower = isPartyFollower;
         _requestPartyWait = requestPartyWait;
         _requestPartyOk = requestPartyOk;
+        _isLeaderResting = isLeaderResting;
     }
 
     /// <summary>True while the HP gate is held.</summary>
@@ -488,6 +499,19 @@ public sealed class HealthManager : IDisposable
         // is what actually exits the (resting) state.
         bool anyGate = _hpGateAsserted || _maGateAsserted;
 
+        // Opportunistic follower rest: the leader has stopped to rest /
+        // meditate, so we use the downtime to top off too — even above our
+        // own rest-trigger floors, up to rest-max. No gate is asserted (we're
+        // not below a floor, so we must NOT @wait a leader who's already
+        // voluntarily halted, and we don't hold the movement gate). It only
+        // engages when there's actually something to recover; once both pools
+        // hit rest-max NeedsOpportunisticTopOff goes false and the post-rest
+        // chain fires through the shared !shouldRest recovery branch.
+        bool opportunistic = !anyGate
+            && (_isLeaderResting?.Invoke() ?? false)
+            && NeedsOpportunisticTopOff(s);
+        bool shouldRest = anyGate || opportunistic;
+
         // Don't even try to rest while the room contains an engageable
         // hostile — every combat round breaks rest, so spamming `rest`
         // burns a wire round-trip per swing and we still don't recover.
@@ -500,7 +524,7 @@ public sealed class HealthManager : IDisposable
         // the cycle (kill → rest → kill → rest), as per user direction.
         bool hostilesPresent = _hasEngageableHostiles?.Invoke() ?? false;
 
-        if (anyGate && !_state.InCombat && !_restInFlight && !hostilesPresent)
+        if (shouldRest && !_state.InCombat && !_restInFlight && !hostilesPresent)
         {
             // Pick rest vs meditate based on user settings + which
             // pool is the proximate trigger.
@@ -513,15 +537,20 @@ public sealed class HealthManager : IDisposable
             // - With only MA gated (HP at max), prefer meditate when
             //   UseMeditateAbility is on — rest doesn't recover MA on
             //   most classes.
-            string command = ChooseRestCommand(s);
+            // The opportunistic path has no gate to read, so it picks on
+            // live pool percentages instead (ChooseOpportunisticRestCommand).
+            string command = anyGate
+                ? ChooseRestCommand(s)
+                : ChooseOpportunisticRestCommand(s);
 
             SendChained(s.PreRestCommand);
             SendCommand(command);
             _log?.Info(LogCategory,
-                $"{command} hp={_state.Hp}/{_state.MaxHp} ma={_state.Ma}/{_state.MaxMa}");
+                $"{command}{(anyGate ? "" : " (opportunistic, leader resting)")} " +
+                $"hp={_state.Hp}/{_state.MaxHp} ma={_state.Ma}/{_state.MaxMa}");
             _restInFlight = true;
         }
-        else if (!anyGate && _restInFlight)
+        else if (!shouldRest && _restInFlight)
         {
             SendChained(s.PostRestCommand);
             _log?.Info(LogCategory,
@@ -654,6 +683,44 @@ public sealed class HealthManager : IDisposable
         // flip MeditateBeforeResting for casters where mana recovery
         // matters more than HP catchup.
         return "rest";
+    }
+
+    /// <summary>
+    /// True when a follower riding the leader's rest downtime still has
+    /// something to top off — either pool sitting below its rest-max. Goes
+    /// false once both pools reach rest-max, which trips the shared recovery
+    /// branch (post-rest chain + latch clear). Guards each pool on
+    /// <c>Max &gt; 0</c> so a class with no mana pool never reports a phantom
+    /// MA deficit before prompt data loads.
+    /// </summary>
+    private bool NeedsOpportunisticTopOff(HealthSettings s)
+    {
+        int hpTarget = ResolveThreshold(s.HpThresholdMode, s.RestMaxHp, _state.MaxHp);
+        int maTarget = ResolveThreshold(s.MaThresholdMode, s.RestMaxMa, _state.MaxMa);
+        bool needHp = _state.MaxHp > 0 && _state.Hp < hpTarget;
+        bool needMa = _state.MaxMa > 0 && _state.Ma < maTarget;
+        return needHp || needMa;
+    }
+
+    /// <summary>
+    /// Rest-vs-meditate pick for the opportunistic (leader-resting) path,
+    /// per user direction: with no meditate ability it's always rest;
+    /// otherwise meditate when "meditate before resting" is set and we're
+    /// short any mana, else meditate when our mana% is below our hp%
+    /// (recover the more-depleted pool first), else rest. Distinct from
+    /// <see cref="ChooseRestCommand"/>, which reads the asserted gates —
+    /// here no gate is held, so the choice is driven by live pool fill.
+    /// </summary>
+    private string ChooseOpportunisticRestCommand(HealthSettings s)
+    {
+        if (!s.UseMeditateAbility) return "rest";
+
+        bool missingMana = _state.MaxMa > 0 && _state.Ma < _state.MaxMa;
+        if (s.MeditateBeforeResting && missingMana) return "meditate";
+
+        double hpPct = _state.MaxHp > 0 ? _state.Hp * 100.0 / _state.MaxHp : 100.0;
+        double maPct = _state.MaxMa > 0 ? _state.Ma * 100.0 / _state.MaxMa : 100.0;
+        return maPct < hpPct ? "meditate" : "rest";
     }
 
     /// <summary>

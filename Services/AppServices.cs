@@ -1193,6 +1193,14 @@ public sealed class AppServices
     public Game.PartyVitalsWatcher PartyVitals { get; private set; } = null!;
 
     /// <summary>
+    /// Leader-rest bridge — nudges <see cref="Health"/> to re-evaluate when
+    /// the party leader's rest / meditate posture flips, so a standing-idle
+    /// follower opportunistically tops off during the leader's downtime
+    /// without waiting on its own next prompt tick.
+    /// </summary>
+    public Game.PartyLeaderRestWatcher PartyLeaderRest { get; private set; } = null!;
+
+    /// <summary>
     /// Fulfillment half of the Phase 9 auto-engine coordination model —
     /// requesters post acquisition needs (light source, etc.), fulfilling
     /// engines claim + resolve them. No engine references another by
@@ -2049,14 +2057,26 @@ public sealed class AppServices
             hasEngageableHostiles: () => CombatTracker.HasEngageableHostiles,
             log: Log);
 
+        // Leader-rest nudge: a standing-idle follower's own PlayerState may
+        // not change between the 5s par polls that flip the leader's
+        // Resting / Meditating flags, so without this poke Health wouldn't
+        // re-evaluate (and start opportunistically resting) until its next
+        // prompt tick. Edge-triggered — fires only when the leader's posture
+        // actually flips. Process-lifetime singleton (not disposed here).
+        PartyLeaderRest = new Game.PartyLeaderRestWatcher(
+            PartyState, onLeaderRestChanged: () => Health.Evaluate());
+
         // Role-aware recovery: as a party follower we top off only to the
         // rest floor (not full) and ping the leader via @wait / @ok so we
         // don't silently hold or release the party. Solo / leader keeps the
         // full rest-max topoff — PartyRestSync self-gates the telepaths.
+        // isLeaderResting drives the inherent "rest while the leader rests"
+        // opportunistic topoff (gated only by the auto-heal master switch).
         Health.SetPartyRoleSync(
             isPartyFollower: () => PartyState.IsInParty && !PartyState.SelfIsLeader,
             requestPartyWait: () => PartyRest.RequestWait(Game.WaitReason.Health),
-            requestPartyOk: () => PartyRest.RequestOk(Game.WaitReason.Health));
+            requestPartyOk: () => PartyRest.RequestOk(Game.WaitReason.Health),
+            isLeaderResting: () => PartyLeaderRest.LeaderIsResting);
 
         // Server-side resting state clears on move; drop our latch
         // too so the next threshold breach actually fires `rest`
