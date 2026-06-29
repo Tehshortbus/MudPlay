@@ -177,6 +177,11 @@ public partial class MainWindow : Window
             Header  = "Import loops (MegaMUD .mp)…",
             Command = vm.ImportMegaMudLoopsCommand,
         });
+        GameDataMenu.Items.Add(new MenuItem
+        {
+            Header  = "Manage Sets…",
+            Command = vm.OpenGameDataManagerCommand,
+        });
 
         GameDataMenu.Items.Add(new Separator());
         GameDataMenu.Items.Add(new MenuItem

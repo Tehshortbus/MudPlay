@@ -1255,6 +1255,12 @@ public sealed class AppServices
     public Game.Map.NavFolderManager NavFolders { get; private set; } = null!;
 
     /// <summary>
+    /// Game Data → "Manage Sets…" backend: copy / move a set's loop
+    /// library to another set, delete a set (tables + loops).
+    /// </summary>
+    public GameDataSetManager GameDataSetManager { get; private set; } = null!;
+
+    /// <summary>
     /// Sole writer of <see cref="Game.PlayerState.Encumbrance"/>.
     /// Subscribes the <c>enc</c> line via MessageRouter.
     /// </summary>
@@ -2567,6 +2573,20 @@ public sealed class AppServices
         // and reloads both managers, instead of either racing the dir.
         NavFolders = new Game.Map.NavFolderManager(Loops, Lairs, Log);
 
+        // Game Data → "Manage Sets…" backend. The reload callback re-pulls
+        // the active set's loop/lair caches after a copy/move touches it;
+        // the delete callback clears any profile / global reference that
+        // still names a just-deleted set.
+        GameDataSetManager = new GameDataSetManager(
+            GameData,
+            reloadActiveLibrary: () =>
+            {
+                Loops.LoadAll(GameData.ActiveSet);
+                Lairs.LoadAll(GameData.ActiveSet);
+            },
+            onSetDeleted: ClearGameDataSetReferences,
+            Log);
+
         // Phase 7 PR 7.18 — Encumbrance parser writes
         // PlayerState.Encumbrance from the `enc` line; HopTimingCalibrator
         // logs measured per-hop times tagged with that level. Enabled via
@@ -3392,6 +3412,37 @@ public sealed class AppServices
         Models.Settings.BbsProfile? bbs = ResolveActiveBbs();
         string? resolved = bbs?.ActiveGameDataSet ?? Settings.Current.DefaultGameDataSet;
         GameData.SwitchSet(resolved);
+    }
+
+    /// <summary>
+    /// Drop any persisted reference to a just-deleted game-data set so a
+    /// later resolve doesn't point <see cref="GameData"/> at a folder
+    /// that's gone. Clears the global
+    /// <see cref="Models.Settings.GlobalSettings.DefaultGameDataSet"/> and
+    /// every BBS profile's
+    /// <see cref="Models.Settings.BbsProfile.ActiveGameDataSet"/> that
+    /// named it. Wired into <see cref="GameDataSetManager"/> as its
+    /// delete callback.
+    /// </summary>
+    private void ClearGameDataSetReferences(string deletedSet)
+    {
+        bool Matches(string? s) => string.Equals(s, deletedSet, StringComparison.OrdinalIgnoreCase);
+
+        if (Matches(Settings.Current.DefaultGameDataSet))
+        {
+            Settings.Current.DefaultGameDataSet = null;
+            Settings.Save();
+        }
+
+        foreach (string name in Bbs.ListNames().ToArray())
+        {
+            Models.Settings.BbsProfile? p = Bbs.Get(name);
+            if (p is not null && Matches(p.ActiveGameDataSet))
+            {
+                p.ActiveGameDataSet = null;
+                Bbs.Save(p);
+            }
+        }
     }
 
     private void ApplyDisplayFromActiveBbs()

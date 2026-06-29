@@ -2901,6 +2901,22 @@ public partial class MainWindowViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Game Data menu → "Manage Sets…". Immediate-action dialog: copy or
+    /// move a set's loop library into another set, or delete a set
+    /// (game-data tables + loops). A delete drops the set from the menu,
+    /// so rebuild the set list once the dialog closes.
+    /// </summary>
+    [RelayCommand]
+    private async Task OpenGameDataManagerAsync()
+    {
+        var svc = AppServices.Current;
+        ViewModels.GameDataManagerViewModel vm = new(svc.GameDataSetManager, svc.GameData);
+        await svc.Dialogs.OpenWindowAsync<
+            ViewModels.GameDataManagerViewModel, bool>(vm);
+        RebuildGameDataSetsMenu();
+    }
+
+    /// <summary>
     /// Open the Game Data Browser, optionally pre-selected to a named
     /// section. Toggles per the standard window-command rule
     /// (CLAUDE.md): when the browser is already open re-press behavior
