@@ -179,7 +179,7 @@ public partial class MainWindow : Window
         });
         GameDataMenu.Items.Add(new MenuItem
         {
-            Header  = "Manage Sets…",
+            Header  = "Manage Game Data…",
             Command = vm.OpenGameDataManagerCommand,
         });
 
