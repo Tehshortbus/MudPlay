@@ -50,8 +50,9 @@
                     <TextBlock Grid.Column="2" Classes="SectionHeader" Text="Name" Margin="0,4"/>
                 </Grid>
                 <ListBox Grid.Row="1"
+                         x:Name="EntriesList"
                          ItemsSource="{Binding Entries}"
-                         SelectedItem="{Binding SelectedEntry, Mode=TwoWay}"
+                         SelectionMode="Multiple"
                          Background="Transparent"
                          BorderThickness="0">
                     <ListBox.ItemTemplate>

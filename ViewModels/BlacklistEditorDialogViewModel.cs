@@ -30,9 +30,15 @@ public sealed partial class BlacklistEditorDialogViewModel
 
     public ObservableCollection<BlacklistedRoom> Entries { get; } = new();
 
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(CanRemoveSelected))]
-    private BlacklistedRoom? _selectedEntry;
+    /// <summary>
+    /// Live mirror of the list's multi-selection set. The dialog's
+    /// code-behind syncs this whenever <c>EntriesList.SelectionChanged</c>
+    /// fires (Avalonia exposes <c>SelectedItems</c> as a non-bindable
+    /// <see cref="System.Collections.IList"/>, so the sync is imperative).
+    /// <see cref="RemoveSelected"/> drops every entry in this set so a
+    /// Ctrl-/Shift-selection of several rows removes them all at once.
+    /// </summary>
+    public ObservableCollection<BlacklistedRoom> SelectedEntries { get; } = new();
 
     /// <summary>Map number input in the Add row (display string so empty stays empty).</summary>
     [ObservableProperty]
@@ -46,7 +52,7 @@ public sealed partial class BlacklistEditorDialogViewModel
     [NotifyPropertyChangedFor(nameof(CanAdd))]
     private string _addRoom = string.Empty;
 
-    public bool CanRemoveSelected => SelectedEntry is not null;
+    public bool CanRemoveSelected => SelectedEntries.Count > 0;
 
     /// <summary>True when both inputs parse + room exists + isn't already listed.</summary>
     public bool CanAdd
@@ -88,6 +94,9 @@ public sealed partial class BlacklistEditorDialogViewModel
         // Snapshot the store's current entries into the working copy.
         foreach (BlacklistedRoom e in _store.Entries)
             Entries.Add(new BlacklistedRoom(e.Map, e.Room, e.Name));
+
+        // The Remove-selected button enables off the live selection count.
+        SelectedEntries.CollectionChanged += (_, _) => OnPropertyChanged(nameof(CanRemoveSelected));
     }
 
     [RelayCommand]
@@ -106,10 +115,13 @@ public sealed partial class BlacklistEditorDialogViewModel
     [RelayCommand]
     private void RemoveSelected()
     {
-        if (SelectedEntry is not { } sel) return;
-        Entries.Remove(sel);
-        SelectedEntry = null;
-        OnPropertyChanged(nameof(CanAdd));               // free-up the (map,room) tuple for re-add
+        if (SelectedEntries.Count == 0) return;
+        // Snapshot first: removing from Entries re-fires the control's
+        // SelectionChanged, which clears + rebuilds SelectedEntries mid-loop.
+        foreach (BlacklistedRoom sel in SelectedEntries.ToList())
+            Entries.Remove(sel);
+        SelectedEntries.Clear();
+        OnPropertyChanged(nameof(CanAdd));               // free-up the (map,room) tuples for re-add
     }
 
     [RelayCommand]
