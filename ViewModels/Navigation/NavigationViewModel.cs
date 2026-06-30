@@ -1991,9 +1991,14 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
 
     /// <summary>
     /// Walk every room with a non-zero Cmd and ask TBInfo whether the
-    /// CMD's Action chain contains a teleport directive. The resulting
-    /// set drives the map's diagonal hash-line overlay so the user
-    /// can spot non-exit movement spots at a glance.
+    /// CMD's Action chain contains a teleport directive. Both literal
+    /// (<c>teleport &lt;room&gt; &lt;map&gt;</c>) and cast-delivered
+    /// (<c>cast &lt;spell&gt;</c> where the spell carries a teleport
+    /// ability) directives qualify — a random cast-teleport drops the
+    /// walker into the same room-uncertainty state a literal one does,
+    /// so it earns the same glyph. The resulting set drives the map's
+    /// diagonal hash-line overlay so the user can spot non-exit
+    /// movement spots at a glance.
     /// </summary>
     private void RefreshTeleportRooms()
     {
@@ -2002,9 +2007,14 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         foreach (Room room in Graph.Rooms)
         {
             if (room.Cmd <= 0) continue;
-            using IEnumerator<(string, RoomKey, int)> e =
+            using IEnumerator<(string, RoomKey, int)> literal =
                 TBInfoTeleportResolver.EnumerateTeleports(_services.TBInfo, room.Cmd).GetEnumerator();
-            if (e.MoveNext()) set.Add(room.Key);
+            if (literal.MoveNext()) { set.Add(room.Key); continue; }
+
+            using IEnumerator<(string, IReadOnlyList<RoomKey>, bool, int)> cast =
+                TBInfoCastTeleportResolver.EnumerateCastTeleports(
+                    _services.TBInfo, room.Cmd, room.Key.Map, _services.SpellCatalog).GetEnumerator();
+            if (cast.MoveNext()) set.Add(room.Key);
         }
         TeleportRooms = set;
     }
