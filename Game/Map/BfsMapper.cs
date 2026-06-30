@@ -355,6 +355,16 @@ public sealed class BfsMapper
     /// </summary>
     private const int RetryCandidateCount = 8;
 
+    /// <summary>
+    /// Maximum consecutive cells a single graphical crossing may tunnel
+    /// through (see the collision branch in <see cref="BuildLayoutCore"/>).
+    /// A bridge over a river is 1–3 cells wide; the cap is defensive
+    /// against a pathological structure that would otherwise hide a long
+    /// run of rooms. Matches the renderer's <c>BridgeMaxCells</c> gap
+    /// tolerance so what tunnels here can still draw a bridge connector.
+    /// </summary>
+    private const int TunnelMaxCells = 4;
+
     private RoomLayout BuildLayoutCore(RoomKey origin, int maxRadius)
     {
         var positions = new Dictionary<RoomKey, (int X, int Y)>
@@ -370,6 +380,14 @@ public sealed class BfsMapper
         var vertical = new Dictionary<RoomKey, VerticalHint>();
         var depth = new Dictionary<RoomKey, int> { [origin] = 0 };
 
+        // Tunnel-through bookkeeping (see the collision branch below).
+        // `covered` rooms hold a phantom coord in `positions` for
+        // child-offset math + BFS continuation but are kept out of
+        // `coordToRoom` and stripped from the drawn output; `coveredRun`
+        // caps how many consecutive cells a single crossing may hide.
+        var covered = new HashSet<RoomKey>();
+        var coveredRun = new Dictionary<RoomKey, int>();
+
         var queue = new Queue<RoomKey>();
         queue.Enqueue(origin);
 
@@ -381,11 +399,13 @@ public sealed class BfsMapper
         // floor only. When the player traverses U/D, the navigation
         // VM rebuilds the layout from the new origin.
         //
-        // Collisions: when a non-Euclidean exit produces a coord
-        // already occupied by another room, we skip the destination
-        // AND the edge. Drawing the edge stub without a destination
-        // produces a connector pointing into empty space, which was
-        // the user-visible bug in the prior off-grid-lane approach.
+        // Collisions: when a non-Euclidean exit produces a coord already
+        // occupied by another room, the destination is normally dropped
+        // (the edge becomes a render-time stub once edges are rebuilt
+        // below). The one exception is a graphical crossing — a straight
+        // path passing under a foreign structure on the same plane — which
+        // tunnels through so the path resumes on the far side; see the
+        // collision branch.
         while (queue.Count > 0)
         {
             RoomKey here = queue.Dequeue();
@@ -460,11 +480,30 @@ public sealed class BfsMapper
                 if (chosen is null)
                 {
                     // No free coord found (including tentative) —
-                    // collision. Source-side stub keeps the user's
-                    // view honest about the exit's existence.
-                    AddEdge(edgesFromCoord, hereXY, dir);
-                    if (exit.Hint == RoomExitHint.Trap)
-                        AddEdge(trapEdgesFromCoord, hereXY, dir);
+                    // collision. Normally we drop the room and stop
+                    // traversing it: that's the safety valve that keeps
+                    // non-Euclidean folds from stacking rooms on one
+                    // cell. But a *graphical crossing* — a straight path
+                    // passing under a foreign structure on the same plane
+                    // (a river under a bridge; there's no U/D layer, so
+                    // the river cell wants the same coord as a bridge
+                    // cell) — should TUNNEL THROUGH: hide the covered
+                    // room but keep walking so the path resumes on the
+                    // far side instead of the whole river east of the
+                    // bridge vanishing. We give the covered room a phantom
+                    // coord (its natural parent-edge offset) used only for
+                    // child-offset math and enqueue it; it's kept out of
+                    // coordToRoom and stripped from the drawn output.
+                    int run = (covered.Contains(here) ? coveredRun[here] : 0) + 1;
+                    if (run <= TunnelMaxCells
+                        && ShouldTunnelThrough(nextRoom, dir, tentative, positions, coordToRoom))
+                    {
+                        positions[next] = tentative;     // phantom (traversal only)
+                        depth[next] = hereDepth + 1;
+                        covered.Add(next);
+                        coveredRun[next] = run;
+                        queue.Enqueue(next);
+                    }
                     continue;
                 }
                 (int X, int Y) target = chosen.Value;
@@ -512,7 +551,16 @@ public sealed class BfsMapper
         // After moves settle, rebuild edgesFromCoord from scratch:
         // a moved room's stub edges live at the OLD coord. Easier to
         // recompute than to chase the deltas.
-        RefineWithDeferredResolution(positions, coordToRoom, origin);
+        RefineWithDeferredResolution(positions, coordToRoom, origin, covered);
+
+        // Drop the tunnelled-through (covered) rooms from the drawn set.
+        // They served their purpose during BFS — anchoring the far side of
+        // a crossing so traversal continued — but they share a cell with
+        // the foreign structure overhead, so they must not draw. Their
+        // neighbours' exits into them become honest stubs at render time
+        // (the target isn't in Positions), giving the clean "path goes
+        // under here" gap. coordToRoom never held them.
+        foreach (RoomKey c in covered) positions.Remove(c);
 
         edgesFromCoord.Clear();
         trapEdgesFromCoord.Clear();
@@ -822,7 +870,8 @@ public sealed class BfsMapper
     private void RefineWithDeferredResolution(
         Dictionary<RoomKey, (int X, int Y)> positions,
         Dictionary<(int X, int Y), RoomKey> coordToRoom,
-        RoomKey origin)
+        RoomKey origin,
+        IReadOnlySet<RoomKey> covered)
     {
         const int MaxIterations = 8;
         for (int iter = 0; iter < MaxIterations; iter++)
@@ -831,6 +880,11 @@ public sealed class BfsMapper
             foreach (RoomKey roomKey in positions.Keys.ToArray())
             {
                 if (roomKey.Equals(origin)) continue;       // anchor
+                // Tunnelled-through rooms hold a phantom coord that
+                // deliberately overlaps a foreign cell and aren't in
+                // coordToRoom; a free-move here would promote one to a
+                // real coord and draw it. Leave them pinned.
+                if (covered.Contains(roomKey)) continue;
                 Room? roomData = _graph.GetRoom(roomKey);
                 if (roomData is null) continue;
 
@@ -908,6 +962,42 @@ public sealed class BfsMapper
             }
             if (!moved) break;
         }
+    }
+
+    /// <summary>
+    /// Decide whether a collided room is a <i>graphical crossing</i> that
+    /// should tunnel through rather than be dropped. True only when the
+    /// path continues straight out the far side into territory we haven't
+    /// drawn yet, AND the blocking cell holds a structure this room has no
+    /// connection to. The two guards together pick out the river-under-a-
+    /// bridge case (straight river, foreign bridge cell) while leaving a
+    /// genuine non-Euclidean fold — which collides with one of its own
+    /// reciprocal neighbours — to drop-and-stub as before.
+    /// </summary>
+    private static bool ShouldTunnelThrough(
+        Room collided,
+        Direction entryDir,
+        (int X, int Y) tentative,
+        Dictionary<RoomKey, (int X, int Y)> positions,
+        Dictionary<(int X, int Y), RoomKey> coordToRoom)
+    {
+        // Straight-through continuation into an as-yet-undrawn room. No
+        // continuation (a dead-end side room) or an already-placed far
+        // side means tunnelling buys nothing — drop as before.
+        if (!collided.Exits.TryGetValue(entryDir, out RoomExit through)) return false;
+        if (!IsPlanar(entryDir)) return false;
+        if (positions.ContainsKey(through.Target)) return false;
+
+        // The blocking cell must hold a FOREIGN structure. A tight fold
+        // collides with one of its own reciprocal neighbours (which we
+        // want to keep as an honest stub); a crossing collides with a
+        // room this one shares no exit with (the bridge).
+        if (!coordToRoom.TryGetValue(tentative, out RoomKey occupant)) return false;
+        foreach ((Direction _, RoomExit ex) in collided.Exits)
+        {
+            if (ex.Target.Equals(occupant)) return false;
+        }
+        return true;
     }
 
     /// <summary>

@@ -718,4 +718,133 @@ public sealed class BfsMapperTests : IDisposable
         Assert.NotNull(path);
         Assert.Equal(new[] { Direction.N, Direction.N }, path);
     }
+
+    // ----- graphical crossing (river under a bridge) -----------------
+    //
+    // A straight path can pass UNDER a foreign structure on the same
+    // plane — a river under a bridge: there's no U/D layer, so the
+    // river cell wants the same coord as a bridge cell. Topology:
+    //
+    //        1/2 Bridge (0,-1)            (drawn first, depth 1)
+    //         |
+    //   River:  1/4 ─E─ 1/5 ─E─ 1/6 ─E─ 1/7
+    //         (-1,-1) (0,-1!) (1,-1) (2,-1)
+    //
+    //   1/1 Town (0,0) ─N→ 1/2 ; ─W→ 1/3 Bank (-1,0) ─N→ 1/4 River W.
+    //
+    // BFS places the Bridge (1/2) at (0,-1) at depth 1, then the river
+    // arrives there at depth 3 (Town→Bank→RiverW→RiverUnder) and
+    // collides. The Under-Bridge room (1/5) is hidden but the layout
+    // tunnels through it so the river east of the bridge still draws.
+    private const string RiverUnderBridgeJson = """
+        [
+          { "Map Number": 1, "Room Number": 1, "Name": "Town",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "1/2", "S": "0", "E": "0", "W": "1/3",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 2, "Name": "Bridge",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "1/1", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 3, "Name": "Bank",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "1/4", "S": "0", "E": "1/1", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 4, "Name": "River West",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "1/3", "E": "1/5", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 5, "Name": "River Under Bridge",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "0", "E": "1/6", "W": "1/4",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 6, "Name": "River East",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "0", "E": "1/7", "W": "1/5",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 7, "Name": "River Far East",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "0", "E": "0", "W": "1/6",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+        ]
+        """;
+
+    [Fact]
+    public void BuildLayout_RiverUnderBridge_TunnelsThrough_DrawsRiverEast()
+    {
+        var (bfs, _) = NewMapper(RiverUnderBridgeJson);
+        // Bounded (but ample) radius pins the raw BFS from this exact
+        // origin: the score-and-retry pass (unbounded only) would re-root
+        // to a symmetric layout that hides the bridge instead — the river
+        // draws fully either way, but we assert the per-origin core here.
+        RoomLayout layout = bfs.BuildLayout(new RoomKey(1, 1), maxRadius: 50);
+
+        // The foreign bridge cell stays put; the river resumes on the
+        // far side instead of the whole eastern river vanishing.
+        Assert.Equal((0, -1),  layout.Positions[new RoomKey(1, 2)]);   // Bridge drawn
+        Assert.Equal((-1, -1), layout.Positions[new RoomKey(1, 4)]);   // River West
+        Assert.Equal((1, -1),  layout.Positions[new RoomKey(1, 6)]);   // River East
+        Assert.Equal((2, -1),  layout.Positions[new RoomKey(1, 7)]);   // River Far East
+
+        // The Under-Bridge room is hidden — it shares the bridge cell,
+        // which still resolves to the Bridge (not the river room).
+        Assert.DoesNotContain(new RoomKey(1, 5), layout.Positions.Keys);
+        Assert.Equal(new RoomKey(1, 2), layout.CoordToRoom[(0, -1)]);
+
+        // The river's two interrupted ends render as honest stubs into
+        // the bridge cell — the "goes under here" gap.
+        Assert.True(layout.EdgesFromCoord.TryGetValue((-1, -1), out IReadOnlySet<Direction>? westEdges));
+        Assert.Contains(Direction.E, westEdges!);
+        Assert.True(layout.EdgesFromCoord.TryGetValue((1, -1), out IReadOnlySet<Direction>? eastEdges));
+        Assert.Contains(Direction.W, eastEdges!);
+    }
+
+    [Fact]
+    public void BuildLayout_PerpendicularBranchAtCollision_DoesNotTunnel()
+    {
+        // Same approach as the crossing, but the collided room's only
+        // onward exit is PERPENDICULAR (S), not straight-through (E).
+        // That's a genuine fold, not a graphical crossing — it must
+        // drop-and-stop exactly as before, so the branch behind it is
+        // lost rather than tunnelled.
+        const string Json = """
+            [
+              { "Map Number": 1, "Room Number": 1, "Name": "Town",
+                "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+                "N": "1/2", "S": "0", "E": "0", "W": "1/3",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 1, "Room Number": 2, "Name": "Bridge",
+                "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+                "N": "0", "S": "1/1", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 1, "Room Number": 3, "Name": "Bank",
+                "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+                "N": "1/4", "S": "0", "E": "1/1", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 1, "Room Number": 4, "Name": "River West",
+                "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+                "N": "0", "S": "1/3", "E": "1/5", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 1, "Room Number": 5, "Name": "Contested",
+                "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+                "N": "0", "S": "1/8", "E": "0", "W": "1/4",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 1, "Room Number": 8, "Name": "Behind",
+                "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+                "N": "1/5", "S": "0", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+            ]
+            """;
+        var (bfs, _) = NewMapper(Json);
+        // Bounded radius again pins the raw per-origin BFS (see the
+        // crossing test) — the unbounded retry would re-root to recover
+        // the dropped subtree by hiding the dead-end bridge instead.
+        RoomLayout layout = bfs.BuildLayout(new RoomKey(1, 1), maxRadius: 50);
+
+        Assert.Equal((0, -1), layout.Positions[new RoomKey(1, 2)]);     // Bridge drawn
+        Assert.Contains(new RoomKey(1, 4), layout.Positions.Keys);      // River West reached
+        // No straight-through → collided room dropped, subtree lost.
+        Assert.DoesNotContain(new RoomKey(1, 5), layout.Positions.Keys);
+        Assert.DoesNotContain(new RoomKey(1, 8), layout.Positions.Keys);
+    }
 }
