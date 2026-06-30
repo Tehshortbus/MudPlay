@@ -502,6 +502,30 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     // ----- Map binding ----------------------------------------------
 
     [ObservableProperty] private RoomLayout? _layout;
+    partial void OnLayoutChanged(RoomLayout? value) => OnPropertyChanged(nameof(MapSeedText));
+
+    /// <summary>
+    /// Diagnostic "seed" shown in the map header so a sparse vs. fuller
+    /// draw can be reported back precisely. The shape of the drawn map is
+    /// fully determined by the BFS root (<see cref="RoomLayout.LayoutRoot"/>),
+    /// so it leads; the room/stub counts qualify coverage, and a re-root
+    /// note appears when the score-and-retry pass anchored the BFS at a
+    /// different room than the one the player is standing in. Empty when
+    /// no layout is loaded.
+    /// </summary>
+    public string MapSeedText
+    {
+        get
+        {
+            if (Layout is not { } l) return string.Empty;
+            int rooms = l.Positions.Count;
+            string s = $"seed {l.LayoutRoot} · {rooms} room{(rooms == 1 ? "" : "s")}";
+            if (l.StubCount > 0) s += $" · {l.StubCount} stub{(l.StubCount == 1 ? "" : "s")}";
+            if (!l.LayoutRoot.Equals(l.Origin)) s += $" · re-rooted from {l.Origin}";
+            return s;
+        }
+    }
+
     [ObservableProperty] private RoomKey? _currentRoomKey;
     partial void OnCurrentRoomKeyChanged(RoomKey? value) => RefreshPreviewPath();
     [ObservableProperty] private RoomKey? _destinationRoomKey;

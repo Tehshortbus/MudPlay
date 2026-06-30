@@ -31,7 +31,31 @@ public sealed record RoomLayout(
     IReadOnlyList<RoomKey> OffGrid,
     IReadOnlyDictionary<(int X, int Y), RoomKey> CoordToRoom,
     IReadOnlyDictionary<(int X, int Y), IReadOnlySet<Direction>> EdgesFromCoord,
-    IReadOnlyDictionary<(int X, int Y), IReadOnlySet<Direction>> TrapEdgesFromCoord);
+    IReadOnlyDictionary<(int X, int Y), IReadOnlySet<Direction>> TrapEdgesFromCoord)
+{
+    /// <summary>
+    /// The room BFS structurally expanded from to produce this layout —
+    /// the "seed" that fully determines the drawn shape (two layouts with
+    /// the same root render identically, just translated). Equal to
+    /// <see cref="Origin"/> in the common case, but the score-and-retry
+    /// pass can re-root the layout at a more central room when the
+    /// requested origin produces a stub-heavy draw; the layout is then
+    /// translated so <see cref="Origin"/> still sits at (0,0) while
+    /// <see cref="LayoutRoot"/> records which room actually anchored the
+    /// BFS. Surfaced in the Navigation map header so a sparse vs. fuller
+    /// draw can be reported by seed.
+    /// </summary>
+    public RoomKey LayoutRoot { get; init; }
+
+    /// <summary>
+    /// Count of placed exit edges that don't reach their declared target
+    /// at the expected planar offset (the non-Euclidean "stub" connectors).
+    /// A coverage-quality signal: 0 means a perfectly flat layout; a high
+    /// count means BFS bent connectors to fit a maze region. Surfaced
+    /// alongside <see cref="LayoutRoot"/> in the map header.
+    /// </summary>
+    public int StubCount { get; init; }
+}
 
 /// <summary>Whether a room exposes an up/down exit that the planar layout drops.</summary>
 [Flags]

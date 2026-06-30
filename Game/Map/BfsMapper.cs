@@ -242,7 +242,8 @@ public sealed class BfsMapper
                 OffGrid: Array.Empty<RoomKey>(),
                 CoordToRoom: new Dictionary<(int X, int Y), RoomKey>(),
                 EdgesFromCoord: new Dictionary<(int X, int Y), IReadOnlySet<Direction>>(),
-                TrapEdgesFromCoord: new Dictionary<(int X, int Y), IReadOnlySet<Direction>>());
+                TrapEdgesFromCoord: new Dictionary<(int X, int Y), IReadOnlySet<Direction>>())
+            { LayoutRoot = origin };
             lock (_cacheLock) _layoutCache[cacheKey] = empty;
             return empty;
         }
@@ -285,6 +286,7 @@ public sealed class BfsMapper
         // Bounded layouts (maxRadius < int.MaxValue) are typically
         // minimap-scoped and already region-isolated; skip the retry
         // there.
+        int finalStubs;
         if (maxRadius == int.MaxValue)
         {
             int primaryStubs = CountStubs(primary);
@@ -326,7 +328,15 @@ public sealed class BfsMapper
                 _log?.Log(Services.LogSeverity.Debug, "BfsMapper",
                     $"BuildLayout origin={origin} final placed={primaryPlaced} stubs={primaryStubs} after {triedCount} retry attempt(s).");
             }
+            finalStubs = primaryStubs;
         }
+        else
+        {
+            // Bounded (minimap) layouts skip the retry pass; still record
+            // the stub count so the seed reads honestly if ever surfaced.
+            finalStubs = CountStubs(primary);
+        }
+        primary = primary with { StubCount = finalStubs };
 
         lock (_cacheLock)
         {
@@ -530,7 +540,8 @@ public sealed class BfsMapper
                 kvp => (IReadOnlySet<Direction>)kvp.Value),
             TrapEdgesFromCoord: trapEdgesFromCoord.ToDictionary(
                 kvp => kvp.Key,
-                kvp => (IReadOnlySet<Direction>)kvp.Value));
+                kvp => (IReadOnlySet<Direction>)kvp.Value))
+        { LayoutRoot = origin };
     }
 
     /// <summary>
@@ -711,7 +722,14 @@ public sealed class BfsMapper
             OffGrid: source.OffGrid,
             CoordToRoom: coordToRoom,
             EdgesFromCoord: edges,
-            TrapEdgesFromCoord: trapEdges);
+            TrapEdgesFromCoord: trapEdges)
+        {
+            // Origin moves to the requested room, but the BFS was actually
+            // anchored at source's root — keep that as the seed so the
+            // header reports the re-root honestly.
+            LayoutRoot = source.LayoutRoot,
+            StubCount = source.StubCount,
+        };
     }
 
     private static void AddEdge(Dictionary<(int X, int Y), HashSet<Direction>> map,
