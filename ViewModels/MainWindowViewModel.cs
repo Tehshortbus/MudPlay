@@ -844,6 +844,11 @@ public partial class MainWindowViewModel : ObservableObject
         // LoginAutomator's LoggedIntoGame fires (only point in the
         // session where the entry command is allowed to auto-fire).
         AppServices.Current.MainMenuEntry.SetWireSender(engineSend);
+        // StatlineReconciler — gate-wrapped so a `set statline` resend can't
+        // land mid-password-prompt. Armed unconditionally on every connect
+        // (below) so the live statline reconciles to the editor regardless of
+        // whether login was automated.
+        AppServices.Current.StatlineReconcile.SetWireSender(engineSend);
 
         // CleanupLogoutOrchestrator — proactive log-off on the nightly
         // shutdown warning. Safe = room clear of killable NPCs AND not
@@ -2083,6 +2088,11 @@ public partial class MainWindowViewModel : ObservableObject
                 // "are we in-game?" latch. The actual Logon fire
                 // happens on the first PromptObserved, not here.
                 AppServices.Current.EventScheduler.NotifyConnected();
+                // Reconcile the statline to the editor on EVERY connect —
+                // unconditional, unlike the auto-login-gated engines. Resets
+                // the Synced latch + retry counter; the actual resend (if any)
+                // is mismatch-gated and fires off the first in-game prompt.
+                AppServices.Current.StatlineReconcile.Arm();
                 // Re-enable any auto-actions the user opted into reviving on
                 // reconnect (Settings → Other). Only on a reconnect — a
                 // connect following a prior in-session disconnect — never on
@@ -2112,6 +2122,8 @@ public partial class MainWindowViewModel : ObservableObject
                 // Phase 8 PR 8.2 — stop the event scheduler's timers
                 // and latch the Re-log flag (only if we were in-game).
                 AppServices.Current.EventScheduler.NotifyDisconnected();
+                // Stop statline reconciliation until the next connect re-arms.
+                AppServices.Current.StatlineReconcile.Disarm();
                 // Phase 11 — pause Time Analysis accrual: we're no longer
                 // in-game, so the offline span doesn't count. Totals freeze
                 // and resume on the next in-game prompt after reconnect.

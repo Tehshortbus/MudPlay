@@ -55,6 +55,16 @@ public sealed class WirePromptScanner
     public event Action<PromptObservation>? PromptObserved;
 
     /// <summary>
+    /// Fired (at most once per <see cref="Append"/>) when a default-shaped
+    /// statline appears that the active pattern did <b>not</b> match — i.e. the
+    /// live prompt isn't the statline the editor authored. Drives the logon
+    /// reconciler to resend <c>set statline</c>. Structurally unreachable while
+    /// the active pattern IS the default, so default-statline users never see
+    /// it (and never trigger a resend).
+    /// </summary>
+    public event Action? PromptShapeUnmatched;
+
+    /// <summary>
     /// Swap in the status-line pattern for the active profile's statline —
     /// built by <see cref="StatlinePromptRegexBuilder"/> from the editor
     /// command string. Installed on profile load / mutation so the scanner
@@ -110,9 +120,11 @@ public sealed class WirePromptScanner
         // once and the regex is compiled.
         string text = _buffer.ToString();
         int lastEnd = 0;
+        bool activeMatched = false;
         foreach (Match m in _statusLine.Matches(text))
         {
             if (!int.TryParse(m.Groups["hp"].Value, out int hp)) continue;
+            activeMatched = true;
 
             string typeRaw = m.Groups["type"].Value;
             ManaType manaType = typeRaw switch
@@ -140,6 +152,25 @@ public sealed class WirePromptScanner
 
             PromptObserved?.Invoke(new PromptObservation(hp, manaType, mana, position));
             lastEnd = m.Index + m.Length;
+        }
+
+        // Mismatch detection for the logon reconciler: if the active pattern
+        // matched nothing here but a default-shaped statline IS present, the
+        // server is printing a statline our editor-built pattern doesn't
+        // recognise (typically: editor holds a custom statline but the game is
+        // still on the class default). Signal it once so the reconciler can
+        // resend `set statline`. Skipped when the active pattern already IS the
+        // default — default-statline users can't drift, so they never resend.
+        if (!activeMatched && !ReferenceEquals(_statusLine, StatlinePromptRegexBuilder.Default))
+        {
+            bool defaultMatched = false;
+            foreach (Match d in StatlinePromptRegexBuilder.Default.Matches(text))
+            {
+                defaultMatched = true;
+                int end = d.Index + d.Length;
+                if (end > lastEnd) lastEnd = end;
+            }
+            if (defaultMatched) PromptShapeUnmatched?.Invoke();
         }
 
         // Drop everything up to the last match — the tail (anything after the

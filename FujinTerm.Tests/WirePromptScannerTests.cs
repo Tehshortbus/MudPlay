@@ -161,4 +161,54 @@ public sealed class WirePromptScannerTests
 
         Assert.Empty(seen);
     }
+
+    [Fact]
+    public void PromptShapeUnmatched_FiresWhenDefaultShapeButActiveIsCustom()
+    {
+        // Editor authored a custom statline, but the game is still on the
+        // class default → the active (custom) pattern can't match, the
+        // permissive default does → mismatch fires once, no observation.
+        WirePromptScanner s = new();
+        s.InstallRegex(StatlinePromptRegexBuilder.Build("full custom <HP %h>"));
+        var observed = Collect(s);
+        int unmatched = 0;
+        s.PromptShapeUnmatched += () => unmatched++;
+
+        s.Append(B("[HP=120]:"));
+
+        Assert.Equal(1, unmatched);
+        Assert.Empty(observed);
+    }
+
+    [Fact]
+    public void PromptShapeUnmatched_NeverFiresOnDefaultPattern()
+    {
+        // Default-statline users run the permissive pattern AS the active
+        // one, so there's nothing to drift from → mismatch is structurally
+        // unreachable even when prompts arrive.
+        WirePromptScanner s = new();
+        int unmatched = 0;
+        s.PromptShapeUnmatched += () => unmatched++;
+
+        s.Append(B("[HP=120]:[HP=27/MA=31]:"));
+
+        Assert.Equal(0, unmatched);
+    }
+
+    [Fact]
+    public void PromptShapeUnmatched_DoesNotFire_WhenActiveMatches()
+    {
+        // The live prompt already has the editor's custom shape → active
+        // pattern matches → in sync, no mismatch signal.
+        WirePromptScanner s = new();
+        s.InstallRegex(StatlinePromptRegexBuilder.Build("full custom [HP=%h]:"));
+        var observed = Collect(s);
+        int unmatched = 0;
+        s.PromptShapeUnmatched += () => unmatched++;
+
+        s.Append(B("[HP=120]:"));
+
+        Assert.Equal(0, unmatched);
+        Assert.Single(observed);
+    }
 }

@@ -508,6 +508,13 @@ public sealed class AppServices
     public WirePromptScanner PromptScanner { get; }
 
     /// <summary>
+    /// Reasserts the editor's statline on every connect. Verifies the live
+    /// prompt against the editor-built pattern and resends <c>set statline</c>
+    /// when the game has drifted (e.g. a fresh character on the class default).
+    /// </summary>
+    public Game.StatlineReconciler StatlineReconcile { get; }
+
+    /// <summary>
     /// Sniffs the post-IAC wire stream for "BBS shutting down in N minutes"
     /// announcements. The connect lifecycle in MainWindowViewModel reads
     /// <see cref="CleanupWarningWatcher.Latest"/> on disconnect to decide
@@ -1387,6 +1394,13 @@ public sealed class AppServices
         PlayerState = new Game.PlayerState();
         PromptScanner = new WirePromptScanner();
         Player = new Game.PromptParser(PromptScanner, PlayerState);
+        // Reconcile the live statline to the editor on every connect. Reads the
+        // desired command from the active profile at send time so the latest
+        // saved value is what gets reasserted. Armed / disarmed by the connect
+        // lifecycle in MainWindowViewModel.
+        StatlineReconcile = new Game.StatlineReconciler(PromptScanner, Log);
+        StatlineReconcile.SetDesiredCommandProvider(
+            () => ReadSection<Models.Profile.StatlineSettings>(Profile.Current, "Statline").Command);
         PartyState = new Game.PartyState();
         Party = new Game.PartyManager(Router, PartyState);
         // Mirror the local character's live HP/MA into the self party
