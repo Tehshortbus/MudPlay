@@ -37,7 +37,6 @@ public static class MenuCommandIds
     // ----- Settings ------------------------------------------------------
     public const string SettingsOpen          = "settings.open";
     public const string SettingsOpenEvents    = "settings.open-events";
-    public const string SettingsOpenStatline  = "settings.open-statline";
 
     // ----- Game Data -----------------------------------------------------
     public const string GameDataActiveSet     = "game-data.active-set";

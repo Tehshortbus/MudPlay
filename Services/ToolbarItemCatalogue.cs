@@ -90,11 +90,11 @@ public static class ToolbarItemCatalogue
         // Bulk one-shot actions.
         new("ActionGetAll",       "Get All",              "IconGetAll",
             "GetAllCommand",
-            Tooltip: "Get All — wired in Phase 12 PR 12.4 (Quick Tools)",
+            Tooltip: "Get All — not yet wired",
             InDefaultLayout: false),
         new("ActionDropAll",      "Drop All",             "IconDropAll",
             "DropAllCommand",
-            Tooltip: "Drop All — wired in Phase 12 PR 12.4 (Quick Tools)",
+            Tooltip: "Drop All — not yet wired",
             InDefaultLayout: false),
         new("ActionEquipAll",     "Equip All",            "IconEquipAll",
             "EquipAllCommand",
