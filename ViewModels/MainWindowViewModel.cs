@@ -220,6 +220,17 @@ public partial class MainWindowViewModel : ObservableObject
     [ObservableProperty][NotifyPropertyChangedFor(nameof(IsAllAutoOff))] private bool _isAutoHideActive;
 
     /// <summary>
+    /// Master "Disable hangups" toggle. When on, every automatic disconnect
+    /// path (@hangup / @relog remote commands, low-HP emergency hangup,
+    /// nightly-cleanup log-off) is suppressed — the client drops the carrier
+    /// only on an explicit user action. Persisted in
+    /// <see cref="Models.Profile.GeneralSettings.DisableHangups"/> and
+    /// reseeded on profile load like the auto-mode toggles. Not part of
+    /// <see cref="IsAllAutoOff"/> — it gates disconnects, not auto-engines.
+    /// </summary>
+    [ObservableProperty] private bool _isDisableHangupsActive;
+
+    /// <summary>
     /// True when every wired auto-engine is off — drives the "Auto-All"
     /// master toggle's depressed/checked state. Mirrors
     /// <see cref="Game.AutoModeController.AllWiredOff"/> but computed from
@@ -863,6 +874,9 @@ public partial class MainWindowViewModel : ObservableObject
         AppServices.Current.CleanupLogout.SetConnectedCheck(() => IsConnected);
         AppServices.Current.CleanupLogout.SetAutoLogoutEnabledCheck(
             () => ResolveActiveBbs()?.ReconnectAfterCleanup ?? false);
+        AppServices.Current.CleanupLogout.SetHangupsDisabledCheck(
+            () => AppServices.Current.Profile.Current is { } p
+                && ReadGeneralFromProfile(p).DisableHangups);
         AppServices.Current.CleanupLogout.SetDisconnectCallback(
             () => _ = DisconnectInternalAsync());
 
@@ -975,6 +989,7 @@ public partial class MainWindowViewModel : ObservableObject
          && e.PropertyName != nameof(IsAutoGetCashActive)
          && e.PropertyName != nameof(IsAutoSneakActive)
          && e.PropertyName != nameof(IsAutoHideActive)
+         && e.PropertyName != nameof(IsDisableHangupsActive)
          && e.PropertyName != nameof(IsAllAutoOff)) return;
 
         foreach (ToolbarButtonItem row in ToolbarItems)
@@ -994,6 +1009,9 @@ public partial class MainWindowViewModel : ObservableObject
                 break;
             case "ToggleCapture":
                 row.IsActive = IsDumping;
+                break;
+            case "ToggleDisableHangups":
+                row.IsActive = IsDisableHangupsActive;
                 break;
             case "ToggleAutoCombat":
                 row.IsActive = IsAutoCombatActive;
@@ -3526,6 +3544,13 @@ public partial class MainWindowViewModel : ObservableObject
     [RelayCommand]
     private void ToggleAutoHide() => IsAutoHideActive = !IsAutoHideActive;
 
+    /// <summary>Flip the live <see cref="IsDisableHangupsActive"/> bit
+    /// (the partial OnXxxChanged hook persists it to
+    /// GeneralSettings.DisableHangups and the toolbar IsActive badge
+    /// follows). Bound from the toolbar / Action-menu / hotkey.</summary>
+    [RelayCommand]
+    private void ToggleDisableHangups() => IsDisableHangupsActive = !IsDisableHangupsActive;
+
     /// <summary>
     /// Master "Auto-All" kill-switch. Delegates to the shared
     /// <see cref="Game.AutoModeController"/> so the toolbar button, the
@@ -3633,6 +3658,9 @@ public partial class MainWindowViewModel : ObservableObject
     partial void OnIsAutoHideActiveChanged(bool value)
         => PersistAutoModeFlag(d => d.AutoHide = value);
 
+    partial void OnIsDisableHangupsActiveChanged(bool value)
+        => PersistGeneralFlag(g => g.DisableHangups = value);
+
     private void PersistAutoModeFlag(Action<Models.Profile.AutoActionDefaults> mutator)
     {
         if (_suppressAutoEngineWriteback) return;
@@ -3640,6 +3668,24 @@ public partial class MainWindowViewModel : ObservableObject
         profile.Settings ??= new();
         Models.Profile.GeneralSettings dto = ReadGeneralFromProfile(profile);
         mutator(dto.AutoMode);
+        profile.Settings["General"] =
+            System.Text.Json.JsonSerializer.SerializeToElement(dto);
+        AppServices.Current.Profile.Save();
+    }
+
+    /// <summary>
+    /// Persist a top-level <see cref="Models.Profile.GeneralSettings"/>
+    /// field (vs <see cref="PersistAutoModeFlag"/>'s nested AutoMode bits).
+    /// Same suppress guard so a profile-load reseed of the observable
+    /// doesn't re-persist what it just read.
+    /// </summary>
+    private void PersistGeneralFlag(Action<Models.Profile.GeneralSettings> mutator)
+    {
+        if (_suppressAutoEngineWriteback) return;
+        if (AppServices.Current.Profile.Current is not { } profile) return;
+        profile.Settings ??= new();
+        Models.Profile.GeneralSettings dto = ReadGeneralFromProfile(profile);
+        mutator(dto);
         profile.Settings["General"] =
             System.Text.Json.JsonSerializer.SerializeToElement(dto);
         AppServices.Current.Profile.Save();
@@ -3659,9 +3705,11 @@ public partial class MainWindowViewModel : ObservableObject
         try
         {
             Models.Profile.CharacterProfile? profile = AppServices.Current.Profile.Current;
-            Models.Profile.AutoActionDefaults am = profile is null
-                ? new Models.Profile.AutoActionDefaults()
-                : ReadGeneralFromProfile(profile).AutoMode;
+            Models.Profile.GeneralSettings general = profile is null
+                ? new Models.Profile.GeneralSettings()
+                : ReadGeneralFromProfile(profile);
+            Models.Profile.AutoActionDefaults am = general.AutoMode;
+            IsDisableHangupsActive = general.DisableHangups;
             IsAutoCombatActive   = am.AutoCombat;
             IsAutoNukeActive     = am.AutoNuke;
             IsAutoHealRestActive = am.AutoHealRest;

@@ -574,6 +574,10 @@ public sealed class HealthManager : IDisposable
     /// </summary>
     private void TryEmergencyHangup(HealthSettings s)
     {
+        // Master kill-switch: the user has declared only an explicit local
+        // action may drop the carrier. Hard-overrides AllowHangupInAllOffMode —
+        // an opted-out character won't auto-disconnect even at low HP.
+        if (_readGeneralSettings?.Invoke() is { DisableHangups: true }) return;
         if (_hangFired || s.HangIfBelowHp <= 0 || _state.MaxHp <= 0) return;
 
         int hangTrigger = ResolveThreshold(s.HpThresholdMode, s.HangIfBelowHp, _state.MaxHp);

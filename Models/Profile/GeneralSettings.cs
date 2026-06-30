@@ -72,6 +72,23 @@ public sealed class GeneralSettings
     /// </summary>
     public bool AllowHangupInAllOffMode { get; set; }
 
+    // ----- Master hangup kill-switch ---------------------------------
+
+    /// <summary>
+    /// When <c>true</c>, NO automatic hangup mechanic may drop the
+    /// carrier — the client disconnects only when the user explicitly
+    /// asks (hotkey / toolbar / menu). Suppresses all four automatic
+    /// paths: the <c>@hangup</c> and <c>@relog</c> remote commands, the
+    /// <see cref="Game.Health.HealthManager"/> low-HP emergency hangup,
+    /// and the <see cref="Game.CleanupLogoutOrchestrator"/> nightly-cleanup
+    /// log-off. Hard-overrides <see cref="AllowHangupInAllOffMode"/> — if
+    /// the user has explicitly disabled hangups, the emergency carve-out
+    /// stays silenced too. Default <c>false</c>. Char-tier; surfaced as
+    /// the "Disable hangups" toolbar toggle whose pressed state is
+    /// remembered per character, like the auto-mode toggles.
+    /// </summary>
+    public bool DisableHangups { get; set; }
+
     // ----- Re-enable auto-actions on reconnect -----------------------
     // One flag per auto-action (1-to-1 with AutoMode above). When a
     // reconnect happens (a TCP connect following a prior in-session

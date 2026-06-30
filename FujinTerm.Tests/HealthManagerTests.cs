@@ -1084,6 +1084,42 @@ public sealed class HealthManagerTests
         Assert.DoesNotContain("=x", h.SentLines);
     }
 
+    // ----- master "Disable hangups" kill-switch ---------------------
+
+    [Fact]
+    public void DisableHangups_HpBelowTrigger_NoHang()
+    {
+        // Engine live, HP well below the hang threshold, but the master
+        // kill-switch silences the emergency hangup.
+        using Harness h = new();
+        h.General = new Models.Profile.GeneralSettings { DisableHangups = true };
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 5;        // 2.5% — would normally hang
+
+        Assert.DoesNotContain("=x", h.SentLines);
+    }
+
+    [Fact]
+    public void DisableHangups_OverridesAllowHangupInAllOffMode()
+    {
+        // Both the all-off carve-out AND the master kill-switch are set —
+        // DisableHangups wins, so an all-engines-off character at lethal
+        // HP still won't auto-disconnect.
+        using Harness h = new();
+        h.AutoHealRestEnabled = false;
+        h.General = new Models.Profile.GeneralSettings
+        {
+            AllowHangupInAllOffMode = true,
+            DisableHangups = true,
+        };
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 5;
+
+        Assert.DoesNotContain("=x", h.SentLines);
+    }
+
     // ----- party-role-aware recovery (PR 9.B role fix) ---------------
 
     [Fact]

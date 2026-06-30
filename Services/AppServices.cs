@@ -1574,10 +1574,12 @@ public sealed class AppServices
         // connect — user manually re-enters the realm after reading
         // what's on the screen.
         Hangup = new Game.Remote.HangupHandler(RemoteCommands, GameCommands, HangupSignal);
+        Hangup.SetHangupsDisabledCheck(ReadDisableHangups);
         // @relog handler — graceful exit (GameCommands.ExitCommand) +
         // RelogSignal so MainWindowVM forces an unconditional reconnect
         // and the normal login automation logs the character back in.
         Relog = new Game.Remote.RelogHandler(RemoteCommands, GameCommands, RelogSignal);
+        Relog.SetHangupsDisabledCheck(ReadDisableHangups);
         // @divert handler — subscribes to ChatRouter telepaths and repeats
         // them to a target while diverting. Wire-sender bound in
         // MainWindowVM after the telnet client is up.
@@ -2861,6 +2863,17 @@ public sealed class AppServices
             ReadSection<Models.Profile.GeneralSettings>(Profile.Current, "General");
         return selector(general.AutoMode);
     }
+
+    /// <summary>
+    /// Live read of the master "Disable hangups" kill-switch from the
+    /// char-tier General section — the same store the toolbar toggle
+    /// writes. Wired into every automatic-hangup site (HangupHandler,
+    /// RelogHandler, CleanupLogout; HealthManager reads it through its own
+    /// General-settings provider) so flipping the toggle takes effect
+    /// without restarting an engine.
+    /// </summary>
+    private bool ReadDisableHangups() =>
+        ReadSection<Models.Profile.GeneralSettings>(Profile.Current, "General").DisableHangups;
 
     /// <summary>
     /// Feature 5 buff-duration source: map a 4-letter cast code to the

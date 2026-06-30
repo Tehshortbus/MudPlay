@@ -86,6 +86,10 @@
                           InputGesture="{Binding ToggleConnectionGesture}"/>
                 <MenuItem Header="_Quick Connect…" Command="{Binding OpenQuickConnectCommand}"/>
                 <MenuItem Header="BBS list"      Command="{Binding OpenBbsSettingsCommand}"/>
+                <MenuItem Header="Disable hangups"
+                          ToggleType="CheckBox"
+                          IsChecked="{Binding IsDisableHangupsActive, Mode=TwoWay}"
+                          ToolTip.Tip="Block every automatic disconnect — only you can hang up (hotkey / toolbar / menu)"/>
                 <Separator/>
                 <MenuItem Header="_New profile…"  InputGesture="{Binding NewProfileGesture}"       Command="{Binding NewProfileCommand}"/>
                 <MenuItem Header="_Open profile…" InputGesture="{Binding OpenProfileGesture}"       Command="{Binding OpenProfileCommand}"/>

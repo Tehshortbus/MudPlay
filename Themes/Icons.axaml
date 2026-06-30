@@ -36,6 +36,8 @@
     <!-- Capture / history -->
     <StreamGeometry x:Key="IconHistory">M21 12 A9 9 0 1 1 12 3 A9 9 0 1 1 21 12 Z M12 7 V12 L15 14 M3 12 H5</StreamGeometry>
     <StreamGeometry x:Key="IconRecord">M21 12 A9 9 0 1 1 12 3 A9 9 0 1 1 21 12 Z M15 12 A3 3 0 1 1 12 9 A3 3 0 1 1 15 12 Z</StreamGeometry>
+    <!-- Disable hangups: telephone handset with a prohibition slash -->
+    <StreamGeometry x:Key="IconNoHangup">M6 4 A2 2 0 0 0 4 6 C4 13 11 20 18 20 A2 2 0 0 0 20 18 L17 15 L14 17 A12 12 0 0 1 7 10 L9 7 Z M5 19 L19 5</StreamGeometry>
 
     <!-- Tools -->
     <StreamGeometry x:Key="IconTools">M3 17 L11 9 A4 4 0 0 1 16.5 3.5 L14 6 L15.5 7.5 L18 5 A4 4 0 0 1 12.5 11 L4.5 19 A1.4 1.4 0 0 1 2.5 17 Z</StreamGeometry>
