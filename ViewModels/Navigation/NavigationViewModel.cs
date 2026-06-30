@@ -502,28 +502,23 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     // ----- Map binding ----------------------------------------------
 
     [ObservableProperty] private RoomLayout? _layout;
-    partial void OnLayoutChanged(RoomLayout? value) => OnPropertyChanged(nameof(MapSeedText));
 
     /// <summary>
-    /// Diagnostic "seed" shown in the map header so a sparse vs. fuller
-    /// draw can be reported back precisely. The shape of the drawn map is
-    /// fully determined by the BFS root (<see cref="RoomLayout.LayoutRoot"/>),
-    /// so it leads; the room/stub counts qualify coverage, and a re-root
-    /// note appears when the score-and-retry pass anchored the BFS at a
-    /// different room than the one the player is standing in. Empty when
-    /// no layout is loaded.
+    /// Emit a system-log line each time a fresh map draw is generated,
+    /// recording the diagnostic "seed" — the BFS root that fully
+    /// determines the drawn shape (<see cref="RoomLayout.LayoutRoot"/>) —
+    /// alongside the coverage (room/stub counts) and any re-root note
+    /// from the score-and-retry pass. Lets a sparse vs. fuller draw be
+    /// reported precisely without occupying header chrome.
     /// </summary>
-    public string MapSeedText
+    partial void OnLayoutChanged(RoomLayout? value)
     {
-        get
-        {
-            if (Layout is not { } l) return string.Empty;
-            int rooms = l.Positions.Count;
-            string s = $"seed {l.LayoutRoot} · {rooms} room{(rooms == 1 ? "" : "s")}";
-            if (l.StubCount > 0) s += $" · {l.StubCount} stub{(l.StubCount == 1 ? "" : "s")}";
-            if (!l.LayoutRoot.Equals(l.Origin)) s += $" · re-rooted from {l.Origin}";
-            return s;
-        }
+        if (value is not { } l) return;
+        int rooms = l.Positions.Count;
+        string msg = $"map drawn — seed {l.LayoutRoot}, {rooms} room{(rooms == 1 ? "" : "s")}";
+        if (l.StubCount > 0) msg += $", {l.StubCount} stub{(l.StubCount == 1 ? "" : "s")}";
+        if (!l.LayoutRoot.Equals(l.Origin)) msg += $", re-rooted from {l.Origin}";
+        _services.Log?.Info("Navigation", msg);
     }
 
     [ObservableProperty] private RoomKey? _currentRoomKey;
