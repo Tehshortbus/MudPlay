@@ -31,7 +31,6 @@ public partial class ConversationWindow : Window
         if (DataContext is ConversationViewModel vm)
         {
             vm.ScrollToRowRequested += OnScrollToRow;
-            vm.RecallPicked += OnRecallPicked;
             // Land on the freshest row.
             if (vm.Rows.Count > 0) OnScrollToRow(vm.Rows[^1]);
             this.FindControl<TextBox>("InputBox")?.Focus();
@@ -43,15 +42,19 @@ public partial class ConversationWindow : Window
         if (DataContext is ConversationViewModel vm)
         {
             vm.ScrollToRowRequested -= OnScrollToRow;
-            vm.RecallPicked -= OnRecallPicked;
             vm.Dispose();
         }
     }
 
-    private void OnRecallPicked()
+    private void OnRecallSelected(object? sender, SelectionChangedEventArgs e)
     {
-        // A dropdown pick filled the input — focus it and park the caret
-        // at the end so the user can edit / press Enter without a click.
+        // Dropdown pick fills the box, then hands focus back to the input
+        // with the caret at the end so the user can edit / Enter at once.
+        if (sender is not ListBox { SelectedItem: string command } list) return;
+        if (DataContext is ConversationViewModel vm) vm.InputText = command;
+        // Clear the selection so the same entry can be re-picked next open.
+        list.SelectedIndex = -1;
+        this.FindControl<Button>("RecallButton")?.Flyout?.Hide();
         if (this.FindControl<TextBox>("InputBox") is { } box)
         {
             box.Focus();

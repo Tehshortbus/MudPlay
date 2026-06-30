@@ -55,17 +55,36 @@
                 BorderBrush="{StaticResource ChromeBorderSoftBrush}"
                 BorderThickness="0,1,0,0"
                 Padding="10,6">
-            <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
-                <ComboBox Grid.Column="0" Width="130"
-                          PlaceholderText="Recall…"
-                          ItemsSource="{Binding RecentCommands}"
-                          SelectedItem="{Binding SelectedRecall, Mode=TwoWay}"
-                          ToolTip.Tip="Recall a recently sent command (or use ↑ / ↓ in the box)"/>
-                <TextBox Grid.Column="1" x:Name="InputBox" Margin="6,0,0,0"
+            <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+                <TextBox Grid.Column="0" x:Name="InputBox"
                          PlaceholderText="Type a command or chat line, press Enter to send (↑ / ↓ to recall)"
                          Text="{Binding InputText, Mode=TwoWay}"
-                         KeyDown="OnInputKeyDown"/>
-                <Button Grid.Column="2" Margin="6,0,0,0"
+                         KeyDown="OnInputKeyDown">
+                    <TextBox.InnerRightContent>
+                        <!-- Recall chevron lives inside the input box: it drops
+                             the same newest-first history the ↑/↓ keys walk. -->
+                        <Button x:Name="RecallButton"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Padding="6,0"
+                                VerticalAlignment="Stretch"
+                                IsEnabled="{Binding HasRecentCommands}"
+                                ToolTip.Tip="Recall a recently sent command (or use ↑ / ↓ in the box)">
+                            <PathIcon Width="10" Height="10"
+                                      Data="M 0,0 L 8,0 L 4,5 Z"
+                                      Foreground="{StaticResource ChromeFgSecBrush}"/>
+                            <Button.Flyout>
+                                <Flyout Placement="TopEdgeAlignedRight">
+                                    <ListBox x:Name="RecallList"
+                                             ItemsSource="{Binding RecentCommands}"
+                                             SelectionChanged="OnRecallSelected"
+                                             MinWidth="240" MaxHeight="260"/>
+                                </Flyout>
+                            </Button.Flyout>
+                        </Button>
+                    </TextBox.InnerRightContent>
+                </TextBox>
+                <Button Grid.Column="1" Margin="6,0,0,0"
                         Content="Send" Command="{Binding SendInputCommand}"/>
             </Grid>
         </Border>

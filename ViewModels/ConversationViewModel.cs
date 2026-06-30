@@ -50,14 +50,11 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
 
     [ObservableProperty] private string _inputText = string.Empty;
 
-    /// <summary>Bound to the recall dropdown's selection; picking an entry copies it to the input.</summary>
-    [ObservableProperty] private string? _selectedRecall;
+    /// <summary>Drives the input box's recall-dropdown button (disabled when nothing's been sent yet).</summary>
+    [ObservableProperty] private bool _hasRecentCommands;
 
     /// <summary>Fired by the window's code-behind to scroll the newest row into view.</summary>
     public event Action<ConversationRowViewModel>? ScrollToRowRequested;
-
-    /// <summary>Raised after a recall-dropdown pick so the view can hand focus to the input box.</summary>
-    public event Action? RecallPicked;
 
     public ConversationViewModel(ChatHistoryStore history, CommandHistory commands, Action<string> sendUserText, Application app)
     {
@@ -190,17 +187,6 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
         if (!_suppressNavReset) _nav.Reset();
     }
 
-    partial void OnSelectedRecallChanged(string? value)
-    {
-        if (value is null) return;
-        SetInputSuppressed(value);
-        // Clear the selection so the same entry can be re-picked and the
-        // combo doesn't stick on a chosen command.
-        SelectedRecall = null;
-        // Hand focus to the input box so the user can edit / Enter at once.
-        RecallPicked?.Invoke();
-    }
-
     private void OnCommandsChanged() => RebuildRecentCommands();
 
     private void RebuildRecentCommands()
@@ -209,6 +195,7 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
         IReadOnlyList<string> e = _commands.Entries;
         for (int i = e.Count - 1; i >= 0; i--)
             RecentCommands.Add(e[i]);
+        HasRecentCommands = e.Count > 0;
     }
 
     private static Dictionary<ChatChannel, IBrush> BuildChannelBrushMap(Application app)
