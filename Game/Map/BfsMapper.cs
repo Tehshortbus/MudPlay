@@ -494,6 +494,20 @@ public sealed class BfsMapper
                     // coord (its natural parent-edge offset) used only for
                     // child-offset math and enqueue it; it's kept out of
                     // coordToRoom and stripped from the drawn output.
+
+                    // Blacklisted target: never tunnel it — only record the
+                    // source-side stub, so neither the tunnel path nor a
+                    // BFS continuation through it can resurrect a hidden room
+                    // or drag the rooms behind it onto the map. (Mirrors the
+                    // in-grid blacklist branch below.)
+                    if (_isBlacklisted?.Invoke(next) == true)
+                    {
+                        AddEdge(edgesFromCoord, hereXY, dir);
+                        if (exit.Hint == RoomExitHint.Trap)
+                            AddEdge(trapEdgesFromCoord, hereXY, dir);
+                        continue;
+                    }
+
                     int run = (covered.Contains(here) ? coveredRun[here] : 0) + 1;
                     if (run <= TunnelMaxCells
                         && ShouldTunnelThrough(nextRoom, dir, tentative, positions, coordToRoom))
@@ -966,15 +980,17 @@ public sealed class BfsMapper
 
     /// <summary>
     /// Decide whether a collided room is a <i>graphical crossing</i> that
-    /// should tunnel through rather than be dropped. True only when the
-    /// path continues straight out the far side into territory we haven't
-    /// drawn yet, AND the blocking cell holds a structure this room has no
-    /// connection to. The two guards together pick out the river-under-a-
-    /// bridge case (straight river, foreign bridge cell) while leaving a
-    /// genuine non-Euclidean fold — which collides with one of its own
-    /// reciprocal neighbours — to drop-and-stub as before.
+    /// should tunnel through rather than be dropped. True when the path
+    /// continues straight out the far side into territory we haven't drawn
+    /// yet, AND the blocking cell holds a structure this room has no
+    /// <i>two-way</i> connection to. The guards together pick out the
+    /// crossing cases — a river under a foreign bridge cell, and a one-way
+    /// bridge gap where the river room exits into a dock it can't return
+    /// from (so the two genuinely share a cell) — while leaving a true
+    /// non-Euclidean fold, which collides with one of its own reciprocal
+    /// neighbours, to drop-and-stub as before.
     /// </summary>
-    private static bool ShouldTunnelThrough(
+    private bool ShouldTunnelThrough(
         Room collided,
         Direction entryDir,
         (int X, int Y) tentative,
@@ -988,14 +1004,25 @@ public sealed class BfsMapper
         if (!IsPlanar(entryDir)) return false;
         if (positions.ContainsKey(through.Target)) return false;
 
-        // The blocking cell must hold a FOREIGN structure. A tight fold
-        // collides with one of its own reciprocal neighbours (which we
-        // want to keep as an honest stub); a crossing collides with a
-        // room this one shares no exit with (the bridge).
+        // The blocking cell must NOT hold a two-way neighbour. A tight fold
+        // collides with one of its own reciprocal neighbours (kept as an
+        // honest stub); a crossing collides either with a room it shares no
+        // exit with (a foreign bridge) or with one it exits into one-way (a
+        // bridge gap) — both of which legitimately share the cell.
         if (!coordToRoom.TryGetValue(tentative, out RoomKey occupant)) return false;
         foreach ((Direction _, RoomExit ex) in collided.Exits)
         {
-            if (ex.Target.Equals(occupant)) return false;
+            if (!ex.Target.Equals(occupant)) continue;
+            // collided has an exit into the occupant's cell. Disqualify the
+            // crossing only when it's a TWO-WAY link — a genuine fold we keep
+            // as an honest stub. A ONE-WAY exit (occupant has no edge back) is
+            // a bridge gap: you drop out of the river into the dock with no
+            // way to return, so the river room legitimately shares the dock's
+            // cell and should tunnel (drawn only when it's the current room).
+            Room? occRoom = _graph.GetRoom(occupant);
+            if (occRoom is null) return false;          // unknown — be safe, don't tunnel
+            foreach ((Direction _, RoomExit back) in occRoom.Exits)
+                if (back.Target.Equals(collided.Key)) return false;
         }
         return true;
     }
