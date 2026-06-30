@@ -1684,6 +1684,16 @@ public sealed class AppServices
         Profile.ProfileClosed += ResetDisplayToDefaults;
         Profile.ProfileMutated += _ => ApplyDisplayFromActiveBbs();
 
+        // Bridge: compile the prompt scanner's regex from the active
+        // character's statline command (Char-tier). The same string is sent
+        // to the BBS via `set statline`, so building the parser from it keeps
+        // them in lockstep. Re-hydrates on load AND on every ProfileMutated
+        // tick (the Statline section's Apply path fires one after a save);
+        // profile close drops back to the permissive class-default pattern.
+        Profile.ProfileLoaded += _ => ApplyStatlineRegex();
+        Profile.ProfileClosed += PromptScanner.ResetRegexToDefault;
+        Profile.ProfileMutated += _ => ApplyStatlineRegex();
+
         // Bridge: keep the live ToolbarConfig in sync with the loaded
         // character profile (Char-tier — each character can have its own
         // toolbar layout). Re-hydrates on every profile load AND on every
@@ -3476,6 +3486,13 @@ public sealed class AppServices
         Display.TerminalRows = defaults.TerminalRows;
         GameCommands.EntryCommand = defaults.GameEntryCommand;
         GameCommands.ExitCommand = defaults.GameExitCommand;
+    }
+
+    private void ApplyStatlineRegex()
+    {
+        Models.Profile.StatlineSettings statline =
+            ReadSection<Models.Profile.StatlineSettings>(Profile.Current, "Statline");
+        PromptScanner.InstallRegex(Game.StatlinePromptRegexBuilder.Build(statline.Command));
     }
 
     private void OnProfileLoaded(Models.Profile.CharacterProfile profile)

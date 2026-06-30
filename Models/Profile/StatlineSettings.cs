@@ -17,9 +17,10 @@ namespace FujinTerm.Models.Profile;
 /// <c>set statline</c> too.
 /// </para>
 /// <para>
-/// Phase 4 PR 4.7 ships the text-editor surface; Phase 12 PR 12.1
-/// replaces it with a token-builder dialog. The on-disk shape (one
-/// string) stays the same so the upgrade is transparent.
+/// This one string is the single source of truth for the statline: it's
+/// both what we send to the BBS and what
+/// <see cref="FujinTerm.Game.StatlinePromptRegexBuilder"/> compiles the
+/// prompt parser from, so the editor and the on-wire prompt can't drift.
 /// </para>
 /// </remarks>
 public sealed class StatlineSettings

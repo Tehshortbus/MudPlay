@@ -18,9 +18,11 @@ namespace FujinTerm.Game;
 /// </para>
 /// <para>
 /// <see cref="PlayerState.MaxHp"/> / <see cref="PlayerState.MaxMa"/>
-/// ratchet upward on every observation. Phase 12 statline gains
-/// <c>%H</c>/<c>%M</c> wildcards that emit explicit denominators; the
-/// scanner regex picks those up when the wildcard string carries them.
+/// ratchet upward on every observation. A custom statline may include the
+/// <c>%H</c>/<c>%M</c> max wildcards, but
+/// <see cref="StatlinePromptRegexBuilder"/> emits those as <i>non-capturing</i>
+/// digit runs — they render on the wire without feeding a second write path
+/// into the max fields, so this parser stays the sole writer (Phase 3 PR 3.5).
 /// </para>
 /// </remarks>
 public sealed class PromptParser : IDisposable
