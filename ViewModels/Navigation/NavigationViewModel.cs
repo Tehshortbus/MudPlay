@@ -1461,6 +1461,18 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
             {
                 if (!_contextTeleportDests.Contains(dest)) _contextTeleportDests.Add(dest);
             }
+            // Cast-delivered teleports (`cast <spell>` where the spell carries
+            // a teleport ability — the chained-spell rooms) surface their
+            // landing rooms too. A fixed room contributes one destination; a
+            // random jump contributes every room in its range, which lands the
+            // user in the multi-destination per-room menu below.
+            foreach ((string _, IReadOnlyList<RoomKey> dests, bool _, int _) in
+                     TBInfoCastTeleportResolver.EnumerateCastTeleports(
+                         _services.TBInfo, room.Cmd, room.Key.Map, _services.SpellCatalog))
+            {
+                foreach (RoomKey dest in dests)
+                    if (!_contextTeleportDests.Contains(dest)) _contextTeleportDests.Add(dest);
+            }
             // Only the multi-destination case needs per-room entries — a
             // single destination is served by the flat UseTeleport command.
             if (_contextTeleportDests.Count > 1)
