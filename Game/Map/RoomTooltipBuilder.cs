@@ -42,7 +42,8 @@ namespace FujinTerm.Game.Map;
 public static class RoomTooltipBuilder
 {
     public static string Build(Room room, RoomGraphManager graph, GameDataCache? data,
-        TBInfoStore? tbinfo = null, MonsterSpawnIndex? spawnIndex = null)
+        TBInfoStore? tbinfo = null, MonsterSpawnIndex? spawnIndex = null,
+        Game.Spells.KnownSpellCatalog? spellCatalog = null)
     {
         ArgumentNullException.ThrowIfNull(room);
         ArgumentNullException.ThrowIfNull(graph);
@@ -80,8 +81,10 @@ public static class RoomTooltipBuilder
         // 9. Room commands — TBInfo CMD chains for the room (use chime,
         // ring chime, etc. — keyword-triggered teleports that bypass
         // normal exits). Grouped per-destination so identical-target
-        // synonyms collapse to one line.
-        string commandsBlock = BuildRoomCommandsBlock(room, graph, tbinfo);
+        // synonyms collapse to one line. Includes cast-delivered
+        // teleports ("jump west" → bridge-jump spell) whose random range
+        // surfaces every landing room.
+        string commandsBlock = BuildRoomCommandsBlock(room, graph, tbinfo, spellCatalog);
         if (commandsBlock.Length > 0)
         {
             sb.Append('\n').Append('\n').Append(commandsBlock);
@@ -381,13 +384,15 @@ public static class RoomTooltipBuilder
 
     // ----- Room commands (TBInfo CMD chains) ------------------------
 
-    private static string BuildRoomCommandsBlock(Room room, RoomGraphManager graph, TBInfoStore? tbinfo)
+    private static string BuildRoomCommandsBlock(Room room, RoomGraphManager graph,
+        TBInfoStore? tbinfo, Game.Spells.KnownSpellCatalog? spellCatalog)
     {
         if (tbinfo is null || room.Cmd <= 0) return string.Empty;
 
-        // Group destination → list of keywords so multi-synonym CMDs
-        // ("use chime" / "ring chime" both teleporting to 1/65) render
-        // as one line instead of cluttering the tooltip.
+        // Literal teleports (`teleport <room> <map>`): group destination →
+        // list of keywords so multi-synonym CMDs ("use chime" / "ring
+        // chime" both teleporting to 1/65) render as one line instead of
+        // cluttering the tooltip.
         Dictionary<RoomKey, List<string>> byDest = new();
         Dictionary<RoomKey, int> minLevelByDest = new();
         foreach ((string keyword, RoomKey dest, int minLevel)
@@ -401,24 +406,95 @@ public static class RoomTooltipBuilder
             if (minLevel > minLevelByDest.GetValueOrDefault(dest))
                 minLevelByDest[dest] = minLevel;
         }
-        if (byDest.Count == 0) return string.Empty;
+
+        // Cast-delivered teleports (`cast <spell>`): group by the full
+        // destination set so two synonyms casting the same spell ("jump
+        // west" / "jump east" → bridge jump) collapse to one entry.
+        List<CastTeleportGroup> castGroups = ResolveCastGroups(room, tbinfo, spellCatalog);
+
+        if (byDest.Count == 0 && castGroups.Count == 0) return string.Empty;
 
         StringBuilder sb = new();
         sb.Append("Room commands:");
         foreach (KeyValuePair<RoomKey, List<string>> entry in byDest)
         {
-            Room? dest = graph.GetRoom(entry.Key);
-            string destName = dest is not null
-                ? $"{dest.DisplayName} ({entry.Key})"
-                : entry.Key.ToString();
             sb.Append('\n').Append("  ")
               .Append(string.Join(" / ", entry.Value))
-              .Append(" → ").Append(destName);
+              .Append(" → ").Append(FormatDest(graph, entry.Key));
             int ml = minLevelByDest.GetValueOrDefault(entry.Key);
             if (ml > 0)
                 sb.Append(" (").Append(RoomExit.FormatLevelGate(ml, 0)).Append(')');
         }
+        foreach (CastTeleportGroup g in castGroups)
+        {
+            sb.Append('\n').Append("  ")
+              .Append(string.Join(" / ", g.Keywords)).Append(" → ");
+            if (g.Destinations.Count == 1)
+            {
+                sb.Append(FormatDest(graph, g.Destinations[0]));
+                if (g.MinLevel > 0)
+                    sb.Append(" (").Append(RoomExit.FormatLevelGate(g.MinLevel, 0)).Append(')');
+            }
+            else
+            {
+                // A random multi-room landing is the walker's "tier 2
+                // lost state" trigger — list every possibility so the map
+                // can flag post-jump position uncertainty.
+                sb.Append(g.Random
+                    ? $"one of {g.Destinations.Count} rooms (random)"
+                    : $"{g.Destinations.Count} rooms");
+                if (g.MinLevel > 0)
+                    sb.Append(" (").Append(RoomExit.FormatLevelGate(g.MinLevel, 0)).Append(')');
+                sb.Append(':');
+                foreach (RoomKey d in g.Destinations)
+                    sb.Append('\n').Append("      ").Append(FormatDest(graph, d));
+            }
+        }
         return sb.ToString();
+    }
+
+    private static string FormatDest(RoomGraphManager graph, RoomKey key)
+    {
+        Room? dest = graph.GetRoom(key);
+        return dest is not null ? $"{dest.DisplayName} ({key})" : key.ToString();
+    }
+
+    /// <summary>
+    /// One cast-delivered teleport command (a keyword set + the rooms it
+    /// can drop the player into). Several synonyms casting the same
+    /// teleport spell share a group; <see cref="Random"/> is set when the
+    /// spell lands in a random room of a multi-room range.
+    /// </summary>
+    private sealed class CastTeleportGroup
+    {
+        public List<string> Keywords { get; } = new();
+        public IReadOnlyList<RoomKey> Destinations { get; init; } = Array.Empty<RoomKey>();
+        public bool Random { get; init; }
+        public int MinLevel { get; set; }
+    }
+
+    private static List<CastTeleportGroup> ResolveCastGroups(
+        Room room, TBInfoStore tbinfo, Game.Spells.KnownSpellCatalog? spellCatalog)
+    {
+        List<CastTeleportGroup> groups = new();
+        if (spellCatalog is null) return groups;
+
+        Dictionary<string, CastTeleportGroup> bySig = new();
+        foreach ((string keyword, IReadOnlyList<RoomKey> dests, bool random, int minLevel)
+                 in TBInfoCastTeleportResolver.EnumerateCastTeleports(
+                        tbinfo, room.Cmd, room.Key.Map, spellCatalog))
+        {
+            string sig = string.Join(",", dests);
+            if (!bySig.TryGetValue(sig, out CastTeleportGroup? g))
+            {
+                g = new CastTeleportGroup { Destinations = dests, Random = random };
+                bySig[sig] = g;
+                groups.Add(g);
+            }
+            if (!g.Keywords.Contains(keyword)) g.Keywords.Add(keyword);
+            if (minLevel > g.MinLevel) g.MinLevel = minLevel;
+        }
+        return groups;
     }
 
     // ----- Lair tag parsing -----------------------------------------

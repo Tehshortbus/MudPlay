@@ -569,6 +569,79 @@ public sealed class RoomTooltipBuilderTests : IDisposable
     }
 
     [Fact]
+    public void Build_RoomCmdCastTeleport_RandomRange_ListsEveryLandingRoom()
+    {
+        // Live repro: map 1 rooms 178-180 (CMD 9115) fire "jump west" /
+        // "jump east", both casting spell 923 "bridge jump" — a random
+        // teleport into one of rooms 2590-2594. The room-commands block
+        // surfaces the keywords + every possible landing room so the
+        // walker can flag post-jump position uncertainty.
+        const string castRooms = """
+            [
+              { "Map Number": 1, "Room Number": 178, "Name": "Bridge",
+                "Light": 0, "Shop": 0, "Spell": 0, "Lair": "", "Delay": 5, "CMD": 9115,
+                "N": "0", "S": "0", "E": "0", "W": "0",
+                "NE": "1/179", "NW": "0", "SE": "0", "SW": "1/177", "U": "0", "D": "0" },
+              { "Map Number": 1, "Room Number": 2590, "Name": "Murky River",
+                "Light": 0, "Shop": 0, "Spell": 0, "Lair": "", "Delay": 0, "CMD": 0,
+                "N": "0", "S": "0", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 1, "Room Number": 2591, "Name": "Murky River",
+                "Light": 0, "Shop": 0, "Spell": 0, "Lair": "", "Delay": 0, "CMD": 0,
+                "N": "0", "S": "0", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 1, "Room Number": 2592, "Name": "Murky River",
+                "Light": 0, "Shop": 0, "Spell": 0, "Lair": "", "Delay": 0, "CMD": 0,
+                "N": "0", "S": "0", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 1, "Room Number": 2593, "Name": "Murky River",
+                "Light": 0, "Shop": 0, "Spell": 0, "Lair": "", "Delay": 0, "CMD": 0,
+                "N": "0", "S": "0", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 1, "Room Number": 2594, "Name": "Murky River",
+                "Light": 0, "Shop": 0, "Spell": 0, "Lair": "", "Delay": 0, "CMD": 0,
+                "N": "0", "S": "0", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+            ]
+            """;
+        const string castTbinfo = """
+            [
+              { "Number": 9115, "LinkTo": 0,
+                "Action": "jump west:message 2664:cast 923\njump east:message 2664:cast 923\n",
+                "Called From": "Room 1/178, Room 1/179, Room 1/180" }
+            ]
+            """;
+        const string castSpells = """
+            [
+              { "Number": 923, "Name": "bridge jump", "Short": "bjump",
+                "MinBase": 2590, "MaxBase": 2594,
+                "Abil-0": 140, "AbilVal-0": 0, "Abil-1": 141, "AbilVal-1": 1 }
+            ]
+            """;
+        string setRoot = Path.Combine(_root, _setName);
+        Directory.CreateDirectory(setRoot);
+        File.WriteAllText(Path.Combine(setRoot, "Rooms.json"),  castRooms);
+        File.WriteAllText(Path.Combine(setRoot, "TBInfo.json"), castTbinfo);
+        File.WriteAllText(Path.Combine(setRoot, "Spells.json"), castSpells);
+        GameDataCache cache = new(_root);
+        cache.SwitchSet(_setName);
+        RoomGraphManager graph = new(cache);
+        graph.OnActiveSetChanged(_setName);
+        TBInfoStore tbinfo = new(cache);
+        tbinfo.OnActiveSetChanged(_setName);
+        Game.Spells.KnownSpellCatalog catalog = new(cache);
+
+        Room room = graph.GetRoom(new RoomKey(1, 178))!;
+        string text = RoomTooltipBuilder.Build(room, graph, cache, tbinfo,
+            spawnIndex: null, spellCatalog: catalog);
+
+        Assert.Contains("Room commands:", text);
+        Assert.Contains("jump west / jump east → one of 5 rooms (random):", text);
+        Assert.Contains("Murky River (1/2590)", text);
+        Assert.Contains("Murky River (1/2594)", text);
+    }
+
+    [Fact]
     public void Build_TextHintExit_RendersCommandAlternatives()
     {
         // Live repro: 1/1824 south "(Text: go crack, enter crack, go path)"
