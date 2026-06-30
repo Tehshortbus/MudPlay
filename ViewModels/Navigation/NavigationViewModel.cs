@@ -2048,19 +2048,32 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         //      on the player without waiting for a live locate.
         //   3. First room in the active graph (typically Map 1 /
         //      Room 1) — first-launch / fresh-profile fallback.
+        //
+        // The live current room (1) stays the origin even when blacklisted
+        // — BfsMapper exempts the origin so the "you are here" marker has
+        // an anchor, and the movement path re-roots off it once the player
+        // leaves. The fallback anchors (2, 3) are NOT the player's live
+        // position, so they must not anchor — and thereby exempt — a
+        // blacklisted room: blacklisting the parked / last-known room
+        // should hide it at once, not keep it visible until a live move.
         RoomKey? key = _services.RoomTracker.State.CurrentRoom?.Key;
         if (key is null && _services.Profile.Current?.LastKnownRoom is { } last
             && _services.RoomGraph.GetRoom(new RoomKey(last.Map, last.Room)) is not null)
         {
-            key = new RoomKey(last.Map, last.Room);
+            key = _services.Bfs.NearestVisibleRoom(new RoomKey(last.Map, last.Room));
         }
         if (key is null && _services.RoomGraph.RoomCount > 0)
         {
             foreach (Room first in _services.RoomGraph.Rooms)
             {
+                if (_services.RoomBlacklist.IsBlacklisted(first.Key)) continue;
                 key = first.Key;
                 break;
             }
+            // Degenerate (every room blacklisted): fall back to the first so
+            // the map still renders something via the origin exemption.
+            if (key is null)
+                foreach (Room first in _services.RoomGraph.Rooms) { key = first.Key; break; }
         }
         Layout = key is { } k ? _services.Bfs.BuildLayout(k) : null;
     }
