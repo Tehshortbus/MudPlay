@@ -31,6 +31,7 @@ public partial class ConversationWindow : Window
         if (DataContext is ConversationViewModel vm)
         {
             vm.ScrollToRowRequested += OnScrollToRow;
+            vm.RecallPicked += OnRecallPicked;
             // Land on the freshest row.
             if (vm.Rows.Count > 0) OnScrollToRow(vm.Rows[^1]);
             this.FindControl<TextBox>("InputBox")?.Focus();
@@ -42,7 +43,19 @@ public partial class ConversationWindow : Window
         if (DataContext is ConversationViewModel vm)
         {
             vm.ScrollToRowRequested -= OnScrollToRow;
+            vm.RecallPicked -= OnRecallPicked;
             vm.Dispose();
+        }
+    }
+
+    private void OnRecallPicked()
+    {
+        // A dropdown pick filled the input — focus it and park the caret
+        // at the end so the user can edit / press Enter without a click.
+        if (this.FindControl<TextBox>("InputBox") is { } box)
+        {
+            box.Focus();
+            box.CaretIndex = box.Text?.Length ?? 0;
         }
     }
 
@@ -73,8 +86,21 @@ public partial class ConversationWindow : Window
             return;
         }
 
-        if (e.Key != Key.Enter && e.Key != Key.Return) return;
         if (DataContext is not ConversationViewModel vm) return;
+
+        // Up / Down recall previously-sent commands into the box, same as
+        // the terminal canvas. The input is single-line, so the arrows
+        // have no native job here to clobber.
+        if (e.Key == Key.Up || e.Key == Key.Down)
+        {
+            if (e.Key == Key.Up) vm.RecallPrevious();
+            else vm.RecallNext();
+            if (sender is TextBox tb) tb.CaretIndex = tb.Text?.Length ?? 0;
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key != Key.Enter && e.Key != Key.Return) return;
         if (vm.SendInputCommand.CanExecute(null))
         {
             vm.SendInputCommand.Execute(null);

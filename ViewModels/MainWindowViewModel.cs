@@ -2508,6 +2508,7 @@ public partial class MainWindowViewModel : ObservableObject
         {
             DataContext = new ConversationViewModel(
                 AppServices.Current.ChatHistory,
+                AppServices.Current.CommandHistory,
                 SendUserText,
                 Application.Current),
         };

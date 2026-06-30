@@ -93,6 +93,13 @@ public sealed class TerminalControl : Control
     private int _pendingFlushRow;
     private int _pendingFlushCol;
 
+    // Per-control cursor over the shared command-recall history. Built
+    // lazily on first keystroke (AppServices.Current is live by then; it
+    // may not be at design-time construction).
+    private FujinTerm.Services.CommandHistoryNavigator? _historyNav;
+    private FujinTerm.Services.CommandHistoryNavigator HistoryNav =>
+        _historyNav ??= new(FujinTerm.Services.AppServices.Current.CommandHistory);
+
     public TerminalControl()
     {
         Focusable = true;
@@ -408,14 +415,15 @@ public sealed class TerminalControl : Control
         // Local-line-edit intercept. Enter flushes the buffer + CR;
         // Backspace pops the last buffered char (and consumes the
         // event regardless so we never send 0x08 to the wire when in
-        // line mode — per user: backspace just erases the buffer).
-        // All other special keys (arrows, F-keys, Ctrl+letter, Tab,
+        // line mode — per user: backspace just erases the buffer). Up /
+        // Down recall previously-sent commands into the buffer. The
+        // remaining special keys (Left/Right, F-keys, Ctrl+letter, Tab,
         // Escape) pass straight through via MapKey because they're
         // meaningful to the server immediately (login prompts, menu
         // navigation) and aren't part of any "line" the user is
         // composing. In character-mode (full-screen forms) the buffer is
-        // bypassed entirely — Enter/Backspace fall through to MapKey so
-        // the server's form reads each keystroke as it lands.
+        // bypassed entirely — Enter/Backspace/arrows fall through to
+        // MapKey so the server's form reads each keystroke as it lands.
         if (InputBuffer is { CharacterMode: false } buf)
         {
             if (e.Key == Key.Enter)
@@ -431,6 +439,11 @@ public sealed class TerminalControl : Control
                     _pendingFlushRow  = em.Screen.CursorY;
                     _pendingFlushCol  = em.Screen.CursorX;
                 }
+                // Record the typed line for Up/Down recall before the
+                // flush clears the buffer; blank lines are dropped by
+                // CommandHistory.Record itself.
+                FujinTerm.Services.AppServices.Current.CommandHistory.Record(buf.Text);
+                HistoryNav.Reset();
                 UserInput?.Invoke(buf.FlushBytes());
                 InvalidateVisual();
                 e.Handled = true;
@@ -439,6 +452,25 @@ public sealed class TerminalControl : Control
             if (e.Key == Key.Back)
             {
                 buf.Backspace();
+                e.Handled = true;
+                return;
+            }
+            // Up / Down recall a previously-sent command into the buffer.
+            // History navigation is reserved for line-mode; full-screen
+            // forms (CharacterMode) skip this whole block, so their raw
+            // CSI arrows still flow through MapKey below. Consumed even
+            // with empty history so the arrow never leaks to the wire
+            // mid-compose.
+            if (e.Key == Key.Up || e.Key == Key.Down)
+            {
+                string? recalled = e.Key == Key.Up
+                    ? HistoryNav.Previous(buf.Text)
+                    : HistoryNav.Next();
+                if (recalled is not null)
+                {
+                    buf.Set(recalled);
+                    InvalidateVisual();
+                }
                 e.Handled = true;
                 return;
             }
@@ -468,6 +500,9 @@ public sealed class TerminalControl : Control
         if (InputBuffer is { CharacterMode: false } buf)
         {
             buf.Append(e.Text);
+            // Typing a fresh char abandons history browsing — the next Up
+            // starts again from the newest entry.
+            HistoryNav.Reset();
             e.Handled = true;
             return;
         }

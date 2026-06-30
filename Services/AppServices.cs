@@ -155,6 +155,14 @@ public sealed class AppServices
     /// </summary>
     public Terminal.LocalInputBuffer InputBuffer { get; } = new();
 
+    /// <summary>
+    /// Shared recall ring of the user's most-recent typed commands. The
+    /// terminal line buffer and the Conversation window both record into
+    /// it and read from it for Up / Down recall. App-session lifetime —
+    /// see <see cref="CommandHistory"/>.
+    /// </summary>
+    public CommandHistory CommandHistory { get; } = new();
+
     public Game.PartyState PartyState { get; }
 
     /// <summary>
