@@ -103,6 +103,19 @@ public sealed class OtherSettings
     public int MaxHiddenSearchAttempts { get; set; } = 20;
 
     /// <summary>
+    /// When <c>true</c>, arm auto-search on demand: while the walker is
+    /// travelling a route that crosses an <c>(Item: N)</c> / <c>(Ticket: N)</c>
+    /// exit whose item the character isn't carrying (e.g. a boat for the
+    /// Silver River, a rope-and-grapple for a climb),
+    /// <see cref="Game.Map.AutoSearchManager"/> issues a bare <c>sea</c> on
+    /// every room entry to hunt the missing item until it's found — even
+    /// when the persisted Auto-Search master toggle is off. Read live by
+    /// <see cref="Game.Map.PathItemDemandTracker"/> through the resolver.
+    /// Default <c>false</c> (opt-in). Char-tier; surfaced in Settings → Other.
+    /// </summary>
+    public bool SearchRoomsIfItemNeeded { get; set; }
+
+    /// <summary>
     /// When <c>true</c>, <see cref="Game.HopTimingCalibrator"/> logs
     /// one Info line per observed hop with the wall-clock time + the
     /// current <see cref="Game.EncumbranceLevel"/>. Used to calibrate

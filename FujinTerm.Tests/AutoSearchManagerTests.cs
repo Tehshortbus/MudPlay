@@ -72,4 +72,47 @@ public sealed class AutoSearchManagerTests
         Assert.Single(sink);
         Assert.Equal("sea", Decode(sink[0]));
     }
+
+    [Fact]
+    public void OnRoomChanged_MasterOffDemandActive_SendsSea()
+    {
+        var mgr = new AutoSearchManager(
+            isEnabled: () => false,
+            isDemandActive: () => true);
+        mgr.SetWireSender(_ => { });
+
+        mgr.OnRoomChanged();
+
+        Assert.Single(mgr.LastSentForTests);
+        Assert.Equal("sea", Decode(mgr.LastSentForTests[0]));
+    }
+
+    [Fact]
+    public void OnRoomChanged_BothGatesOff_SendsNothing()
+    {
+        var mgr = new AutoSearchManager(
+            isEnabled: () => false,
+            isDemandActive: () => false);
+        mgr.SetWireSender(_ => { });
+
+        mgr.OnRoomChanged();
+
+        Assert.Empty(mgr.LastSentForTests);
+    }
+
+    [Fact]
+    public void OnRoomChanged_ReadsDemandGateLive()
+    {
+        bool demand = false;
+        var mgr = new AutoSearchManager(
+            isEnabled: () => false,
+            isDemandActive: () => demand);
+        mgr.SetWireSender(_ => { });
+
+        mgr.OnRoomChanged();          // no demand — no send
+        demand = true;
+        mgr.OnRoomChanged();          // demand — one send
+
+        Assert.Single(mgr.LastSentForTests);
+    }
 }

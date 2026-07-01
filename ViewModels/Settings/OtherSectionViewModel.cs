@@ -54,6 +54,7 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             yield return "Pick locks instead of bashing";
             yield return "Attempt pick-lock";
             yield return "Lockpicks";
+            yield return "Search rooms if item needed";
             yield return "Max comeback backtrack rooms";
             yield return "@comeback";
             yield return "Utilize self or party members to disarm traps";
@@ -119,6 +120,15 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     /// Thieves typically flip this on.
     /// </summary>
     [ObservableProperty] private bool _picklocksOverBash;
+
+    /// <summary>
+    /// When checked, auto-search arms on demand: travelling a route that
+    /// crosses an Item/Ticket exit whose item we're not carrying makes the
+    /// walker <c>sea</c> every room until the item turns up, even with the
+    /// Auto-Search master toggle off. Read live by
+    /// <see cref="Game.Map.PathItemDemandTracker"/>. Off by default.
+    /// </summary>
+    [ObservableProperty] private bool _searchRoomsIfItemNeeded;
 
     /// <summary>
     /// Off by default. When on, every observed Confirmed→Pending→Confirmed
@@ -197,7 +207,9 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             // branch when every Auto-* engine is off and
             // GeneralSettings.AllowHangupInAllOffMode set).
             // Removed per user direction: "Hangup if naked".
-            new StubField("Search rooms if item needed",     StubFieldKind.Check, "Phase 7 — walker auto-searches when item-collect requires it."),
+            // "Search rooms if item needed" graduated to a wired checkbox
+            // below the door caps (PathItemDemandTracker arms auto-search
+            // while a route needs an item we lack).
             // Removed per user direction: "Backwards if warning" (nonsense),
             // "Provide light in dimly lit rooms" (handled elsewhere),
             // "Don't move unless sneaking" (our movement engine always sneaks
@@ -259,6 +271,7 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             MaxBashAttempts       = Math.Clamp(MaxBashAttempts,       1, 100),
             MaxPickAttempts       = Math.Clamp(MaxPickAttempts,       1, 100),
             PicklocksOverBash     = PicklocksOverBash,
+            SearchRoomsIfItemNeeded = SearchRoomsIfItemNeeded,
             LogMovementHopTiming  = LogMovementHopTiming,
             MaxComebackBacktrackRooms = Math.Clamp(MaxComebackBacktrackRooms, 1, 50),
             AutoRequestComebackWhenLeftBehind = AutoRequestComebackWhenLeftBehind,
@@ -312,6 +325,7 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
         MaxBashAttempts       = dto.MaxBashAttempts;
         MaxPickAttempts       = dto.MaxPickAttempts;
         PicklocksOverBash     = dto.PicklocksOverBash;
+        SearchRoomsIfItemNeeded = dto.SearchRoomsIfItemNeeded;
         LogMovementHopTiming  = dto.LogMovementHopTiming;
         MaxComebackBacktrackRooms = dto.MaxComebackBacktrackRooms;
         AutoRequestComebackWhenLeftBehind = dto.AutoRequestComebackWhenLeftBehind;
@@ -371,6 +385,7 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     partial void OnMaxBashAttemptsChanged(int value)       => MarkDirty();
     partial void OnMaxPickAttemptsChanged(int value)       => MarkDirty();
     partial void OnPicklocksOverBashChanged(bool value)    => MarkDirty();
+    partial void OnSearchRoomsIfItemNeededChanged(bool value) => MarkDirty();
     partial void OnLogMovementHopTimingChanged(bool value) => MarkDirty();
     partial void OnMaxComebackBacktrackRoomsChanged(int value) => MarkDirty();
     partial void OnAutoRequestComebackWhenLeftBehindChanged(bool value) => MarkDirty();

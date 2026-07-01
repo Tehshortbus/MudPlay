@@ -1081,6 +1081,17 @@ public sealed class AppServices
     public Game.Map.AutoSearchManager AutoSearch { get; private set; } = null!;
 
     /// <summary>
+    /// Demand-driven auto-search coordinator — posts a
+    /// <see cref="NeedKind.PathItem"/> need when the walker plans a route
+    /// through an Item/Ticket exit whose item we don't carry, and resolves it
+    /// when the item enters inventory. While such a need is outstanding (and
+    /// Settings → Other "search rooms if item needed" is on),
+    /// <see cref="AutoSearch"/> arms itself via
+    /// <see cref="Game.Map.PathItemDemandTracker.SearchDemandActive"/>.
+    /// </summary>
+    public Game.Map.PathItemDemandTracker PathItemDemand { get; private set; } = null!;
+
+    /// <summary>
     /// Phase 9 PR 9.J — shared Acquisition movement-gate driver. Both
     /// <see cref="Cash"/> and <see cref="AutoGetItems"/> feed it; it owns
     /// the single assert/clear of
@@ -2630,11 +2641,28 @@ public sealed class AppServices
         // MainWindowViewModel after telnet connects.
         Greet = new Game.GreetManager(RoomClassifier, Players, Party.State,
             selfNameProvider: () => Party.LocalCharacterName ?? Profile.Current?.Name);
-        // Base auto-search — a bare `sea` on each genuine room entry (when
-        // the master toggle is on) reveals hidden items for the auto-get
-        // engines. Wire-sender bound by MainWindowViewModel after connect.
+        // Demand-driven auto-search (PR B). Posts a PathItem need when the
+        // walker plans a route through an Item/Ticket exit whose item we
+        // don't carry; resolves it when the item enters inventory. The
+        // enabled gate reads Settings → Other live through the resolver so a
+        // toggle takes effect without a profile reload. Walker's announce
+        // seam is bound after the walker is built (below).
+        PathItemDemand = new Game.Map.PathItemDemandTracker(
+            Needs,
+            isCarried: IsItemCarried,
+            inventoryLoaded: () => Inventory.IsLoaded,
+            isEnabled: () =>
+                Resolver.Resolve<Models.Profile.OtherSettings>("Other").SearchRoomsIfItemNeeded,
+            log: Log);
+        Inventory.Changed += PathItemDemand.OnInventoryChanged;
+
+        // Base auto-search — a bare `sea` on each genuine room entry reveals
+        // hidden items for the auto-get engines. Armed by the persisted
+        // master toggle OR the transient path-item demand gate above.
+        // Wire-sender bound by MainWindowViewModel after connect.
         AutoSearch = new Game.Map.AutoSearchManager(
             isEnabled: () => ReadAutoModeFlag(d => d.AutoSearch),
+            isDemandActive: () => PathItemDemand.SearchDemandActive,
             log: Log);
 
         // Drop the stale queue / ground snapshot when we actually change rooms.
@@ -2683,6 +2711,9 @@ public sealed class AppServices
         // arriving). Non-blocking; the settled-state guard in
         // StealthManager prevents a double-send when both paths fire.
         Walker.SetPreMoveHook(() => Stealth.RequestPreMoveStealth());
+        // PR B — announce the route's possession-gated item ids at walk-start
+        // so the demand tracker arms auto-search for anything we lack.
+        Walker.SetPathItemAnnouncer(PathItemDemand.OnPathItemsRequired);
 
         // Phase 10 PR 10.14 — auto-equip trigger coordinator. Reads the same live
         // Equipment blob as the apply engine and the HealthManager's recovery gates
@@ -3341,6 +3372,23 @@ public sealed class AppServices
         if (ItemNames.FindByName(weaponName) is not int number) return null;
         Models.GameData.MessageRecord? rec = FindItemMessage(number);
         return rec is null ? null : Game.Spells.CasterMessageMatcher.TryCreate(rec.CasterMessage);
+    }
+
+    /// <summary>
+    /// True when the given item id is in the current inventory snapshot —
+    /// carried or worn. The snapshot tracks names, so each carried / worn
+    /// display-name is mapped back to its item Number via
+    /// <see cref="ItemNames"/> (sharing the article/count normalization) and
+    /// compared. Backs <see cref="PathItemDemand"/>'s possession check.
+    /// </summary>
+    private bool IsItemCarried(int itemId)
+    {
+        Game.Inventory.InventorySnapshot snap = Inventory.Snapshot;
+        foreach (string name in snap.CarriedItems)
+            if (ItemNames.FindByName(name) == itemId) return true;
+        foreach (Game.Inventory.EquippedItem worn in snap.EquippedItems)
+            if (ItemNames.FindByName(worn.Name) == itemId) return true;
+        return false;
     }
 
     /// <summary>

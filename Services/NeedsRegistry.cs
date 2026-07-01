@@ -16,6 +16,18 @@ public enum NeedKind
     /// lantern / +illu gear / light spell) to see a dark room. Posted
     /// by auto-light, fulfilled opportunistically by auto-get.</summary>
     LightSource,
+
+    /// <summary>The character needs a specific item to traverse a
+    /// planned route — an <c>(Item: N)</c> / <c>(Ticket: N)</c> exit
+    /// gate the walker will hit but we don't carry the required item.
+    /// The <see cref="Need.Descriptor"/> is the item id (decimal). Posted
+    /// by <see cref="Game.Map.PathItemDemandTracker"/> at walk-start;
+    /// resolved when the item enters inventory. Its consumer today is the
+    /// Settings → Other "search rooms if item needed" affordance, which
+    /// arms auto-search while any such need is outstanding; later PRs add
+    /// active fulfillers (shop routing, monster-drop reroute, party
+    /// obtain) that claim the same needs.</summary>
+    PathItem,
 }
 
 /// <summary>

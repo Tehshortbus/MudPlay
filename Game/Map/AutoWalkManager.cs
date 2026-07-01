@@ -57,6 +57,7 @@ public sealed class AutoWalkManager : IRecoverableEngine
     private Func<RoomKey, RoomKey, string?>? _teleportResolver;
     private Func<bool>? _isLeaderWithFollowers;
     private Action? _preMoveHook;
+    private Action<IReadOnlyList<int>>? _pathItemAnnouncer;
     private readonly LogService? _log;
 
     private List<WalkStep>? _path;
@@ -387,6 +388,22 @@ public sealed class AutoWalkManager : IRecoverableEngine
     }
 
     /// <summary>
+    /// Planned-route item-requirement announcer (PR B). Invoked once at
+    /// walk-start with every item id gating an <c>(Item: N)</c> /
+    /// <c>(Ticket: N)</c> exit along the freshly-planned path — the items
+    /// the character must be carrying to complete the route. Bound to
+    /// <see cref="PathItemDemandTracker.OnPathItemsRequired"/>, which posts a
+    /// need for each one we lack so auto-search arms until it's found. Only
+    /// exits with a possession gate are reported; door / key / trap / hidden
+    /// exits have their own FSMs and aren't item-possession problems.
+    /// </summary>
+    public void SetPathItemAnnouncer(Action<IReadOnlyList<int>> announcer)
+    {
+        ArgumentNullException.ThrowIfNull(announcer);
+        _pathItemAnnouncer = announcer;
+    }
+
+    /// <summary>
     /// Test seam — pretend the wire prompt scanner just fired, so the
     /// pending command step can advance without a real telnet client.
     /// No-op when no command step is in flight.
@@ -506,6 +523,11 @@ public sealed class AutoWalkManager : IRecoverableEngine
             : $"{moveCount} step(s)";
         Raise(new WalkEvent(WalkEventKind.Started, detail, destination));
 
+        // Announce the items this route demands so the demand-driven
+        // auto-search can arm for anything we're not carrying. Best-effort:
+        // walks the graph along the planned directions from the source room.
+        AnnouncePlannedItemRequirements(source.Key, path);
+
         if (_coordinator.IsPaused)
         {
             State = WalkState.Paused;
@@ -515,6 +537,31 @@ public sealed class AutoWalkManager : IRecoverableEngine
 
         SendNextStep();
         return true;
+    }
+
+    // Walk the graph along the planned directions, collecting the item id of
+    // every possession-gated exit (Item / Ticket) crossed. The result is the
+    // set of items the route requires the character to carry; the demand
+    // tracker decides which are missing. Cheap (one dictionary lookup per hop)
+    // and side-effect-free — skipped entirely when no announcer is bound.
+    private void AnnouncePlannedItemRequirements(RoomKey source, IReadOnlyList<Direction> path)
+    {
+        if (_pathItemAnnouncer is null) return;
+
+        List<int>? required = null;
+        RoomKey cur = source;
+        foreach (Direction dir in path)
+        {
+            Room? room = _graph.GetRoom(cur);
+            if (room is null || !room.Exits.TryGetValue(dir, out RoomExit exit))
+                break;
+            if (exit.KeyItemId > 0
+                && exit.Hint is RoomExitHint.Item or RoomExitHint.Ticket)
+                (required ??= new List<int>()).Add(exit.KeyItemId);
+            cur = exit.Target;
+        }
+
+        if (required is not null) _pathItemAnnouncer(required);
     }
 
     public void Stop(string reason = "user stop")

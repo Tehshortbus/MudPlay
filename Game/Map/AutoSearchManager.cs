@@ -22,9 +22,17 @@ namespace FujinTerm.Game.Map;
 /// Fired from <c>AppServices</c>'s <see cref="RoomTracker.StateChanged"/>
 /// seam, which already collapses same-room redisplays to a single
 /// genuine room change, so <see cref="OnRoomChanged"/> runs once per new
-/// room. Off by default; the user arms it manually (toolbar / Action menu
-/// / <c>@auto-search</c>) — later PRs add the demand-driven auto-arm when
-/// a path needs an item we lack.
+/// room.
+/// </para>
+/// <para>
+/// Two independent gates arm the search: the persisted master toggle
+/// (<see cref="Models.Profile.AutoActionDefaults.AutoSearch"/>, off by
+/// default, driven by the toolbar / Action menu / <c>@auto-search</c>),
+/// and a transient <i>demand</i> gate — Settings → Other "search rooms if
+/// item needed" while a route needs an item we lack
+/// (<see cref="PathItemDemandTracker.SearchDemandActive"/>). Either being
+/// true issues the search; the demand gate never mutates the persisted
+/// flag, so it can't strand the toggle on once the item is found.
 /// </para>
 /// </remarks>
 public sealed class AutoSearchManager
@@ -33,13 +41,18 @@ public sealed class AutoSearchManager
     public const string LogCategory = "AutoSearch";
 
     private readonly Func<bool> _isEnabled;
+    private readonly Func<bool> _isDemandActive;
     private readonly LogService? _log;
     private readonly WireSender _wire = new();
 
-    public AutoSearchManager(Func<bool> isEnabled, LogService? log = null)
+    public AutoSearchManager(
+        Func<bool> isEnabled,
+        Func<bool>? isDemandActive = null,
+        LogService? log = null)
     {
         ArgumentNullException.ThrowIfNull(isEnabled);
         _isEnabled = isEnabled;
+        _isDemandActive = isDemandActive ?? (static () => false);
         _log = log;
     }
 
@@ -52,12 +65,17 @@ public sealed class AutoSearchManager
 
     /// <summary>
     /// Called on each genuine room change. Sends a bare <c>sea</c> when the
-    /// master toggle is on; a no-op otherwise.
+    /// master toggle is on OR the demand gate is active (a route needs an
+    /// item we lack and "search rooms if item needed" is on); a no-op
+    /// otherwise.
     /// </summary>
     public void OnRoomChanged()
     {
-        if (!_isEnabled()) return;
+        bool onDemand = !_isEnabled() && _isDemandActive();
+        if (!_isEnabled() && !onDemand) return;
         _wire.Send("sea");
-        _log?.Debug(LogCategory, "sent 'sea' on room entry");
+        _log?.Debug(LogCategory,
+            onDemand ? "sent 'sea' on room entry (path-item demand)"
+                     : "sent 'sea' on room entry");
     }
 }

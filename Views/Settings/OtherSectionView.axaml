@@ -127,6 +127,15 @@
                           ToolTip.Tip="When checked, the walker prefers `pick &lt;dir&gt;` over `bash &lt;dir&gt;` on doors where both verbs are viable. Bash is louder and breaks stealth; thieves typically flip this on."/>
             </Grid>
 
+            <!-- Demand-driven auto-search. When checked, travelling a route
+                 that crosses an (Item: N) / (Ticket: N) exit whose item you
+                 aren't carrying arms auto-search until that item turns up —
+                 independent of the Auto-Search master toggle. Char-tier. -->
+            <CheckBox Content="Search rooms if item needed"
+                      IsChecked="{Binding SearchRoomsIfItemNeeded, Mode=TwoWay}"
+                      Margin="0,12,0,0"
+                      ToolTip.Tip="When checked: if the walker plans a route through an exit that requires an item you're not carrying (a boat for the Silver River, a rope-and-grapple for a climb, a ticket, etc.), FujinTerm searches every room you enter (`sea`) to reveal the missing item, and stops once it's found. Works even when the Auto-Search master toggle is off. Applies only for this character."/>
+
             <!-- Leader-side @comeback backtrack budget. When a stranded
                  follower sends a bare @comeback (no room), the leader
                  pauses its engine and walks backwards along the path
