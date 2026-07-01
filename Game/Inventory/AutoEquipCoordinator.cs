@@ -31,6 +31,16 @@ namespace FujinTerm.Game.Inventory;
 /// later PR; until then Backstab is editable and manually / remotely appliable.
 /// The decision halves (<see cref="ClassifyRest"/>, <see cref="ResolveTarget"/>)
 /// are pure and unit-tested; the subscription plumbing is smoke-tested live.
+/// <para>
+/// A fired moment is <i>held</i> until the worn loadout is known
+/// (<see cref="Game.Inventory.InventoryManager.IsLoaded"/> — at least one full
+/// <c>i</c> dump parsed). The apply engine diffs the desired set against the live
+/// worn set, and an empty worn set reads as "nothing worn" rather than "unknown",
+/// so firing before the first dump would emit a <c>wear</c> for every set item —
+/// including one already worn (the game answers "You do not have X left
+/// unequipped."). Manual applies (the Workshop button, <c>@equip-&lt;set&gt;</c>)
+/// carry explicit intent and aren't gated here.
+/// </para>
 /// </remarks>
 public sealed class AutoEquipCoordinator : IDisposable
 {
@@ -39,6 +49,7 @@ public sealed class AutoEquipCoordinator : IDisposable
     private readonly Func<bool> _hpGateAsserted;
     private readonly Func<bool> _maGateAsserted;
     private readonly Func<string, EquipResult> _applyBySetId;
+    private readonly Func<bool> _wornLoadoutKnown;
     private readonly LogService? _log;
 
     private PlayerPosition _lastPosition;
@@ -50,6 +61,7 @@ public sealed class AutoEquipCoordinator : IDisposable
         Func<bool> hpGateAsserted,
         Func<bool> maGateAsserted,
         Func<string, EquipResult> applyBySetId,
+        Func<bool> wornLoadoutKnown,
         LogService? log = null)
     {
         ArgumentNullException.ThrowIfNull(player);
@@ -57,11 +69,13 @@ public sealed class AutoEquipCoordinator : IDisposable
         ArgumentNullException.ThrowIfNull(hpGateAsserted);
         ArgumentNullException.ThrowIfNull(maGateAsserted);
         ArgumentNullException.ThrowIfNull(applyBySetId);
+        ArgumentNullException.ThrowIfNull(wornLoadoutKnown);
         _player = player;
         _readEquipment = readEquipment;
         _hpGateAsserted = hpGateAsserted;
         _maGateAsserted = maGateAsserted;
         _applyBySetId = applyBySetId;
+        _wornLoadoutKnown = wornLoadoutKnown;
         _log = log;
 
         _lastPosition = player.Position;
@@ -135,6 +149,15 @@ public sealed class AutoEquipCoordinator : IDisposable
     private void Fire(EquipTriggerType type)
     {
         if (ResolveTarget(_readEquipment(), type) is not { } setId) return;
+        // Hold the fire until a full 'i' has established the worn set. Diffing a
+        // set against an empty (never-parsed) loadout treats every item as unworn
+        // and emits redundant `wear`s — e.g. re-wielding the weapon already held.
+        if (!_wornLoadoutKnown())
+        {
+            _log?.Debug(EquipmentManager.LogCategory,
+                $"auto-equip '{type}' held: worn loadout unknown (no inventory dump yet)");
+            return;
+        }
         if (_applyBySetId(setId) == EquipResult.Applied)
             _log?.Info(EquipmentManager.LogCategory, $"auto-equip '{type}' applied its set");
     }

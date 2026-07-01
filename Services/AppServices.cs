@@ -2679,6 +2679,10 @@ public sealed class AppServices
             hpGateAsserted: () => Health.HpGateAsserted,
             maGateAsserted: () => Health.MaGateAsserted,
             applyBySetId: Equipment.ApplyBySetId,
+            // Gate auto-fire on a known worn loadout — the engine can't diff a set
+            // against an inventory it hasn't parsed yet without emitting redundant
+            // wears for gear already worn.
+            wornLoadoutKnown: () => Inventory.IsLoaded,
             log: Log);
 
         // Phase 7 PR 7.8 — per-game-data-set loop catalogue. Loops live
