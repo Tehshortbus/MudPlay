@@ -80,6 +80,9 @@ public sealed class RemoteCommandCatalogTests
     // items), and the @equip- namespace now belongs to gear-set apply
     // (@equip-<set>). Dropped in favour of the prefix-routed @equip.
     [InlineData("@equip-all")]
+    // @home (mudop-only per the wiki) is dropped — FujinTerm won't wire it,
+    // so it must not linger in the catalog advertising an unhandled command.
+    [InlineData("@home")]
     public void RemovedFromCatalog(string cmd)
         => Assert.False(RemoteCommandCatalog.TryGetCategory(cmd, out _));
 
@@ -117,10 +120,10 @@ public sealed class RemoteCommandCatalogTests
         => Assert.Equal(PlayerRemoteControls.DivertConversations, Lookup("@divert"));
 
     [Fact]
-    public void Home_RoutesToSysopCommands_PerBearfatherWiki()
-        // Documented as mudop-only on the wiki — only sysop-tier players
-        // grant this. Default-deny for everyone else.
-        => Assert.Equal(PlayerRemoteControls.SysopCommands, Lookup("@home"));
+    public void Suicide_RoutesToSysopCommands()
+        // The lone SysopCommands member after @home was dropped — an
+        // irreversible action gated under "Elevated Commands".
+        => Assert.Equal(PlayerRemoteControls.SysopCommands, Lookup("@suicide"));
 
     // ===== Party-whitelist (None) =====
 
@@ -189,9 +192,10 @@ public sealed class RemoteCommandCatalogTests
         // Floor guard against silent drift. The catalog started from the
         // bearfather wiki baseline, then FujinTerm pruned the ailment /
         // status broadcast tokens (@blind / @diseased / @held — now owned
-        // by AilmentSyncEngine, not the permission grid) and the abandoned
-        // @seen / @panic, and added FujinTerm-specific verbs (@help,
-        // @atkprio, @atkorder, @lair). 56 is the current floor.
+        // by AilmentSyncEngine, not the permission grid), the abandoned
+        // @seen / @panic, and @home (mudop-only, won't-wire), and added
+        // FujinTerm-specific verbs (@help, @atkprio, @atkorder, @lair).
+        // 56 is the current floor.
         Assert.True(RemoteCommandCatalog.Count >= 56,
             $"Catalog should hold at least 56 entries; has {RemoteCommandCatalog.Count}.");
     }
@@ -227,7 +231,7 @@ public sealed class RemoteCommandCatalogTests
     [InlineData(PlayerRemoteControls.AlterSettings,     "@reset")]
     [InlineData(PlayerRemoteControls.HangupDisconnect,  "@hangup")]
     [InlineData(PlayerRemoteControls.HangupDisconnect,  "@relog")]
-    [InlineData(PlayerRemoteControls.SysopCommands,     "@home")]
+    [InlineData(PlayerRemoteControls.SysopCommands,     "@suicide")]
     public void Tooltip_ForCategory_ListsExpectedCommand(PlayerRemoteControls category, string command)
     {
         ViewModels.GameData.Edit.PlayerEditDialogViewModel vm = new(

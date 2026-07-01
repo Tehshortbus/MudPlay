@@ -269,6 +269,22 @@ public sealed class AppServices
     public Game.Remote.HelpHandler Help { get; }
 
     /// <summary>
+    /// Consumer of <see cref="RemoteCommands"/> for the
+    /// <see cref="Models.GameData.PlayerRemoteControls.QueryExperience"/>
+    /// category — <c>@exp</c> (session exp, rate, ETA) and <c>@level</c>
+    /// (level, total exp, exp-to-next). Read-only; replies only.
+    /// </summary>
+    public Game.Remote.ExperienceQueryHandler ExperienceQuery { get; private set; } = null!;
+
+    /// <summary>
+    /// Consumer of <see cref="RemoteCommands"/> for the
+    /// <see cref="Models.GameData.PlayerRemoteControls.QueryInventory"/>
+    /// category — <c>@wealth</c> / <c>@enc</c> / <c>@have</c>. Reads the
+    /// <see cref="Game.Inventory.InventoryManager"/> snapshot; replies only.
+    /// </summary>
+    public Game.Remote.InventoryQueryHandler InventoryQuery { get; private set; } = null!;
+
+    /// <summary>
     /// Consumer of <see cref="RemoteCommands"/> for the MovePlayer
     /// category: @goto / @loop / @lair / @stop / @rego. Wires the
     /// remote walk-to / loop-start / lair-cycle / pause / resume
@@ -2407,6 +2423,16 @@ public sealed class AppServices
         // all three Phase 11 trackers exist; RemoteCommands was built upstream.
         SessionReset = new Game.Remote.SessionResetHandler(
             RemoteCommands, CombatSession, TimeAnalysis, SessionActivity, Log);
+
+        // Read-only progression queries — @exp / @level report against the
+        // PlayerStats snapshot (from `stat` / `exp`) and the session
+        // exp-rate tracker. No wire output, so no sender to bind.
+        ExperienceQuery = new Game.Remote.ExperienceQueryHandler(
+            RemoteCommands, PlayerStats, SessionActivity);
+
+        // Read-only inventory queries — @wealth / @enc / @have report off
+        // the InventoryManager snapshot. No wire output either.
+        InventoryQuery = new Game.Remote.InventoryQueryHandler(RemoteCommands, Inventory);
 
         // PR 10.18 — item-cast buffs. A Bless slot may hold a #-token naming an
         // unlimited-use cast item (surfaced in the Spell Book); the director

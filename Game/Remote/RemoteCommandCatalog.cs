@@ -44,9 +44,8 @@ namespace FujinTerm.Game.Remote;
 ///   <item><b>DivertConversations</b> — @divert.</item>
 ///   <item><b>SysopCommands</b> ("Elevated Commands" in the Players-tab
 ///         UI) — high-trust commands beyond ordinary control:
-///         mudop-only (@home) and irreversible character actions
-///         (@suicide). Wider than just sysop powers per FujinTerm
-///         convention.</item>
+///         irreversible character actions (@suicide). Wider than just
+///         sysop powers per FujinTerm convention.</item>
 /// </list>
 /// </para>
 /// <para>
@@ -108,7 +107,6 @@ public static class RemoteCommandCatalog
             ["@wealth"]       = PlayerRemoteControls.QueryInventory,
             ["@enc"]          = PlayerRemoteControls.QueryInventory,
             ["@have"]         = PlayerRemoteControls.QueryInventory,
-            ["@home"]         = PlayerRemoteControls.SysopCommands,   // mudop-only per bearfather
             ["@suicide"]      = PlayerRemoteControls.SysopCommands,   // irreversible — gated under Elevated Commands
             ["@invite"]       = PlayerRemoteControls.RequestInvite,
             ["@join"]         = PlayerRemoteControls.RequestInvite,
