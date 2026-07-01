@@ -458,6 +458,56 @@ public sealed class InventoryManagerTests
     }
 
     [Fact]
+    public void Equip_WeaponSwap_ReturnsDisplacedWeaponToCarried()
+    {
+        using Harness h = new();
+        // Worn quarterstaff + a carried dagger, mirroring the reported scenario.
+        h.Feed("You are carrying quarterstaff (Weapon Hand), dagger, 5 copper farthings.");
+        h.Feed("Wealth:    5 copper farthings");
+        h.Feed("Encumbrance:    60/2880  -  Light  [2%]");
+
+        // Wielding the dagger vacates the hand: the dagger leaves the pack for the
+        // hand and the displaced quarterstaff returns to the pack (not vanishes).
+        h.Feed("You are now holding dagger.");
+
+        Assert.Contains(Worn(h), e => e is { Name: "dagger", Slot: "Weapon Hand" });
+        Assert.DoesNotContain(Worn(h), e => e.Name == "quarterstaff");
+        Assert.Contains("quarterstaff", Carried(h));
+        Assert.DoesNotContain("dagger", Carried(h));
+    }
+
+    [Fact]
+    public void Equip_WeaponSwapBack_MovesBothWeaponsCorrectly()
+    {
+        using Harness h = new();
+        h.Feed("You are carrying quarterstaff (Weapon Hand), dagger, 5 copper farthings.");
+        h.Feed("Wealth:    5 copper farthings");
+        h.Feed("Encumbrance:    60/2880  -  Light  [2%]");
+
+        h.Feed("You are now holding dagger.");        // quarterstaff → pack
+        h.Feed("You are now holding quarterstaff.");  // dagger → pack, quarterstaff → hand
+
+        Assert.Single(Worn(h), e => e.Slot == "Weapon Hand");
+        Assert.Contains(Worn(h), e => e is { Name: "quarterstaff", Slot: "Weapon Hand" });
+        Assert.Contains("dagger", Carried(h));
+        Assert.DoesNotContain("quarterstaff", Carried(h));
+    }
+
+    [Fact]
+    public void Equip_SameWeaponReconfirmed_DoesNotDuplicateIntoCarried()
+    {
+        using Harness h = new();
+        FeedEquippedBaseline(h);   // quarterstaff already in hand
+
+        // Re-confirming the same weapon must not shove a phantom copy into the pack.
+        h.Feed("You are now holding quarterstaff.");
+
+        Assert.Single(Worn(h), e => e.Slot == "Weapon Hand");
+        Assert.Contains(Worn(h), e => e is { Name: "quarterstaff", Slot: "Weapon Hand" });
+        Assert.DoesNotContain("quarterstaff", Carried(h));
+    }
+
+    [Fact]
     public void Remove_WeaponReadied_ClearsWeaponHand()
     {
         using Harness h = new();

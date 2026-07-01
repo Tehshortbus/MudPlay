@@ -238,16 +238,27 @@ public sealed partial class InventoryManager : IDisposable
         if (held.Success)
         {
             string name = held.Groups[1].Value.TrimEnd();
+            // A weapon swap prints only this one line, but the displaced weapon is
+            // still in the worn set — read its name off the vacated hand as it
+            // leaves so it returns to the pack (like the unnamed-removal path),
+            // instead of vanishing until the next full 'i' dump. Skip an item that
+            // matches the incoming name (a re-confirm of the same weapon).
+            var displaced = new List<string>();
             PatchEquipped(list =>
             {
+                foreach (EquippedItem e in list)
+                    if (e.Slot == "Weapon Hand"
+                        && !string.Equals(e.Name, name, StringComparison.OrdinalIgnoreCase))
+                        displaced.Add(e.Name);
                 list.RemoveAll(e => e.Slot == "Weapon Hand");
                 list.Add(new EquippedItem(name, "Weapon Hand"));
                 return true;
             });
-            // The weapon leaves the pack for the hand. (A weapon swap prints only
-            // this one line, so the displaced old weapon can't be named back into
-            // the pack here — the next full 'i' dump restores it.)
+            // The newly-held weapon leaves the pack for the hand; the displaced one
+            // returns to it.
             RemoveCarried(name);
+            foreach (string old in displaced)
+                PatchCarried(list => { list.Add(old); return true; });
             return;
         }
 
