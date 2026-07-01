@@ -100,6 +100,24 @@ public sealed class PartyRestSync : IDisposable
         Telepath(_party.LeaderName!, "@ok");
     }
 
+    /// <summary>
+    /// Broadcast <c>@heal</c> to the whole party (gangpath) — the flee-side
+    /// signal a low-HP follower emits instead of running. A follower that ran
+    /// off alone would break party formation and strand itself, so it asks the
+    /// party healer(s) to top it up and stays put; the leader owns the party's
+    /// run decision. Broadcasts rather than telepathing the leader (as
+    /// <see cref="RequestWait"/> / <see cref="RequestOk"/> do) because the
+    /// healer may be any party member, not just the leader. No-ops solo, as
+    /// leader, or without a wire-sender.
+    /// </summary>
+    public void RequestHeal()
+    {
+        if (!_party.IsInParty) return;
+        if (_party.SelfIsLeader) return;
+        if (_wireSender is null) return;
+        _wireSender(Encoding.Latin1.GetBytes("gang @heal\r"));
+    }
+
     public void Dispose()
     {
         if (_disposed) return;

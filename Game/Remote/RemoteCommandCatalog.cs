@@ -191,7 +191,9 @@ public static class RemoteCommandCatalog
             // signal. A sender may legitimately need it even when the
             // receiver's auto-heal thresholds don't naturally pick
             // them up (settings mismatch between healer and target).
-            // Phase 12 CastingDirector wires the handler.
+            // HealCommandHandler wires the receive side (a configured
+            // healer polls `par` so CastingDirector heals the requester);
+            // the emit side is HealthManager's follower flee-substitute.
             ["@heal"]         = PlayerRemoteControls.ExecuteCommands,
             // @party at QueryHealthStatus — non-party players with that
             // grant can use the no-args form as a status query

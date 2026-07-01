@@ -150,8 +150,9 @@ public sealed class RemoteCommandCatalogTests
         // an action request ("do something on my behalf"), not a
         // coordination signal. A sender may legitimately need it even
         // when the receiver's auto-heal thresholds don't naturally
-        // pick them up (settings mismatch). Phase 12 CastingDirector
-        // wires the handler.
+        // pick them up (settings mismatch). HealCommandHandler wires the
+        // receive side: a configured healer polls `par` so CastingDirector
+        // re-evaluates and heals the requester.
         => Assert.Equal(PlayerRemoteControls.ExecuteCommands, Lookup("@heal"));
 
     [Fact]

@@ -150,6 +150,49 @@ public sealed class PartyRestSyncTests
         sync.Dispose();
     }
 
+    // ===== RequestHeal — follower flee-substitute broadcast =====
+
+    [Fact]
+    public void RequestHeal_AsFollower_BroadcastsGangHeal()
+    {
+        // Broadcasts to the party (gangpath), not a leader telepath, since the
+        // healer may be any member. Leader name is irrelevant to the send.
+        var (sync, party, wire) = Setup();
+        party.IsInParty = true;
+        party.LeaderName = "Leader";
+        sync.RequestHeal();
+        Assert.Equal("gang @heal\r", LastWire(wire));
+    }
+
+    [Fact]
+    public void RequestHeal_Solo_SendsNothing()
+    {
+        var (sync, party, wire) = Setup();
+        Assert.False(party.IsInParty);
+        sync.RequestHeal();
+        Assert.Empty(wire);
+    }
+
+    [Fact]
+    public void RequestHeal_AsLeader_SendsNothing()
+    {
+        // The leader owns the party's run decision and has no healer to ping.
+        var (sync, party, wire) = Setup();
+        party.IsInParty = true;
+        party.SelfIsLeader = true;
+        sync.RequestHeal();
+        Assert.Empty(wire);
+    }
+
+    [Fact]
+    public void RequestHeal_NoWireSender_NoThrow()
+    {
+        PartyState party = new() { IsInParty = true, LeaderName = "Leader" };
+        PartyRestSync sync = new(party);
+        sync.RequestHeal();   // no SetWireSender — silent no-op
+        sync.Dispose();
+    }
+
     [Fact]
     public void PositionChange_DoesNotAutoFire()
     {

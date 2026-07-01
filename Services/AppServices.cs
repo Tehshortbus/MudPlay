@@ -302,6 +302,15 @@ public sealed class AppServices
     public Game.Remote.InventoryActionHandler InventoryAction { get; private set; } = null!;
 
     /// <summary>
+    /// Receive side of <c>@heal</c>: a configured party-healer polls <c>par</c>
+    /// on request so <see cref="CastDirector"/> re-evaluates its party-heal
+    /// thresholds against fresh member HP. The emit side is the follower
+    /// flee-substitute in <see cref="Health"/> / <see cref="PartyRest"/>.
+    /// Sends <c>par</c>, so its sender is bound in <c>MainWindowViewModel</c>.
+    /// </summary>
+    public Game.Remote.HealCommandHandler Heal { get; private set; } = null!;
+
+    /// <summary>
     /// Consumer of <see cref="RemoteCommands"/> for the MovePlayer
     /// category: @goto / @loop / @lair / @stop / @rego. Wires the
     /// remote walk-to / loop-start / lair-cycle / pause / resume
@@ -2145,11 +2154,16 @@ public sealed class AppServices
         // full rest-max topoff — PartyRestSync self-gates the telepaths.
         // isLeaderResting drives the inherent "rest while the leader rests"
         // opportunistic topoff (gated only by the auto-heal master switch).
+        // requestPartyHeal is the follower's flee-substitute: at the run-if-below
+        // trigger a follower broadcasts @heal (via PartyRest) instead of running
+        // off alone. Leader / solo still flee. The HealCommandHandler below is
+        // the receive side that turns that broadcast into a party heal.
         Health.SetPartyRoleSync(
             isPartyFollower: () => PartyState.IsInParty && !PartyState.SelfIsLeader,
             requestPartyWait: () => PartyRest.RequestWait(Game.WaitReason.Health),
             requestPartyOk: () => PartyRest.RequestOk(Game.WaitReason.Health),
-            isLeaderResting: () => PartyLeaderRest.LeaderIsResting);
+            isLeaderResting: () => PartyLeaderRest.LeaderIsResting,
+            requestPartyHeal: () => PartyRest.RequestHeal());
 
         // Server-side resting state clears on move; drop our latch
         // too so the next threshold breach actually fires `rest`
@@ -2467,6 +2481,15 @@ public sealed class AppServices
             GroundItems,
             PartyState,
             readCash: () => ReadSection<Models.Profile.CashSettings>(Profile.Current, "Cash"));
+
+        // Receive side of @heal — a configured party-healer polls `par` on
+        // request so CastingDirector re-evaluates its party-heal thresholds
+        // against fresh member HP. Emit side is the follower flee-substitute
+        // wired into Health.SetPartyRoleSync above. Wire-sender bound in
+        // MainWindowVM.
+        Heal = new Game.Remote.HealCommandHandler(
+            RemoteCommands,
+            readParty: () => ReadSection<Models.Profile.PartySettings>(Profile.Current, "Party"));
 
         // PR 10.18 — item-cast buffs. A Bless slot may hold a #-token naming an
         // unlimited-use cast item (surfaced in the Spell Book); the director

@@ -800,6 +800,9 @@ public partial class MainWindowViewModel : ObservableObject
         // Phase 12 — @drop-all / @deposit-all / @share emit drop / dep / with /
         // give on the same gate-wrapped pipeline.
         AppServices.Current.InventoryAction.SetWireSender(engineSend);
+        // Phase 12 — @heal receive side polls `par` so CastingDirector heals
+        // the requester off fresh party HP.
+        AppServices.Current.Heal.SetWireSender(engineSend);
         // Cluster 3 — StealthManager's auto-sneak / auto-hide commands.
         AppServices.Current.Stealth.SetWireSender(engineSend);
         // @do passthrough — gate-wrapped because a malicious caller's
