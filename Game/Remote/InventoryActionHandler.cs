@@ -11,6 +11,9 @@ namespace FujinTerm.Game.Remote;
 /// <see cref="InventoryQueryHandler"/>, these emit wire commands, so a
 /// wire-sender is bound (<see cref="SetWireSender"/>):
 /// <list type="bullet">
+///   <item><c>@get-all</c> — <c>get &lt;item&gt;</c> for every item on the
+///         room floor the <see cref="GroundItemTracker"/> last surveyed
+///         (cash is left for the cash policy engine).</item>
 ///   <item><c>@drop-all</c> — <c>drop &lt;item&gt;</c> for every
 ///         carried-but-unworn item (equipped gear is left worn).</item>
 ///   <item><c>@deposit-all</c> — bank the wealth above the per-denomination
@@ -21,19 +24,24 @@ namespace FujinTerm.Game.Remote;
 ///         the whole party (self keeps a share plus the remainder); a
 ///         party-whitelist command, so any active party member can call it.</item>
 /// </list>
-/// All three read the immutable <see cref="InventoryManager.Snapshot"/> and
-/// gate on <see cref="InventoryManager.IsLoaded"/> — a full <c>i</c> dump has
-/// to have landed before we know what to drop / bank / share. The engine
-/// gates authorisation via <see cref="RemoteCommandCatalog"/> before the
-/// handler runs. Wire replies ride the Latin1/CP437 BBS wire, so every reply
-/// is ASCII-only (no em-dash / approx glyphs).
+/// <c>@drop-all</c> / <c>@deposit-all</c> / <c>@share</c> read the immutable
+/// <see cref="InventoryManager.Snapshot"/> and gate on
+/// <see cref="InventoryManager.IsLoaded"/> — a full <c>i</c> dump has to have
+/// landed before we know what to drop / bank / share. <c>@get-all</c> reads
+/// the room-scoped <see cref="GroundItemTracker"/> instead (the last "You
+/// notice" survey). The engine gates authorisation via
+/// <see cref="RemoteCommandCatalog"/> before the handler runs. Wire replies
+/// ride the Latin1/CP437 BBS wire, so every reply is ASCII-only (no em-dash /
+/// approx glyphs).
 /// </summary>
 public sealed class InventoryActionHandler : IDisposable
 {
-    private static readonly string[] RegisteredCommands = { "@drop-all", "@deposit-all", "@share" };
+    private static readonly string[] RegisteredCommands =
+        { "@drop-all", "@deposit-all", "@share", "@get-all" };
 
     private readonly RemoteCommandManager _engine;
     private readonly InventoryManager _inventory;
+    private readonly GroundItemTracker _ground;
     private readonly PartyState _party;
     private readonly Func<CashSettings> _readCash;
     private Action<byte[]>? _wireSender;
@@ -42,21 +50,25 @@ public sealed class InventoryActionHandler : IDisposable
     public InventoryActionHandler(
         RemoteCommandManager engine,
         InventoryManager inventory,
+        GroundItemTracker ground,
         PartyState party,
         Func<CashSettings> readCash)
     {
         ArgumentNullException.ThrowIfNull(engine);
         ArgumentNullException.ThrowIfNull(inventory);
+        ArgumentNullException.ThrowIfNull(ground);
         ArgumentNullException.ThrowIfNull(party);
         ArgumentNullException.ThrowIfNull(readCash);
         _engine = engine;
         _inventory = inventory;
+        _ground = ground;
         _party = party;
         _readCash = readCash;
 
         Register("@drop-all", OnDropAll);
         Register("@deposit-all", OnDepositAll);
         Register("@share", OnShare);
+        Register("@get-all", OnGetAll);
     }
 
     /// <summary>
@@ -84,6 +96,32 @@ public sealed class InventoryActionHandler : IDisposable
             throw new InvalidOperationException(
                 $"RemoteCommandCatalog missing entry for '{command}'. Add it to the Map before registering.");
         _engine.RegisterHandler(command, category, handler);
+    }
+
+    /// <summary>
+    /// <c>@get-all</c> — <c>get &lt;item&gt;</c> for every item on the room
+    /// floor from the latest "You notice" survey. Cash is excluded by the
+    /// <see cref="GroundItemTracker"/> (the cash-policy engine owns coin), and
+    /// the leading article is stripped so the wire verb matches the item's
+    /// noun phrase. There is no bulk "get all" verb in MajorMUD, so this
+    /// paces one <c>get</c> per item. Encumbrance is left to the game to
+    /// enforce — the server refuses a pickup that would overload us, same as
+    /// the auto-get engine.
+    /// </summary>
+    private void OnGetAll(RemoteCommandContext ctx)
+    {
+        IReadOnlyList<string> ground = _ground.Items;
+        if (ground.Count == 0) { ctx.Reply("nothing on the ground to get"); return; }
+
+        int sent = 0;
+        foreach (string item in ground)
+        {
+            string name = StripArticle(item);
+            if (name.Length == 0) continue;
+            Send($"get {name}");
+            sent++;
+        }
+        ctx.Reply($"getting {sent} ground item{(sent == 1 ? "" : "s")}");
     }
 
     /// <summary>

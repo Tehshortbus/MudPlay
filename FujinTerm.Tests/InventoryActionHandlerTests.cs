@@ -29,6 +29,8 @@ public sealed class InventoryActionHandlerTests
         public required RemoteCommandManager Engine { get; init; }
         public required InventoryManager Inventory { get; init; }
         public required LineExtractor Lines { get; init; }
+        public required MessageRouter Router { get; init; }
+        public required GroundItemTracker Ground { get; init; }
         public required PlayerDatabase Players { get; init; }
         public required PartyState Party { get; init; }
         public required CashSettings Cash { get; init; }
@@ -46,21 +48,31 @@ public sealed class InventoryActionHandlerTests
         InventoryManager inv = new(log: null, itemWeightResolver: null, slotResolver: null);
         LineExtractor lines = new(new TerminalEmulator(80, 24));
         inv.AttachLineExtractor(lines);
+        GroundItemTracker ground = new(router);
         CashSettings cash = new();
         List<byte[]> wire = new();
-        InventoryActionHandler handler = new(engine, inv, party, () => cash);
+        InventoryActionHandler handler = new(engine, inv, ground, party, () => cash);
         handler.SetWireSender(wire.Add);
         return new Harness
         {
             Engine = engine,
             Inventory = inv,
             Lines = lines,
+            Router = router,
+            Ground = ground,
             Players = players,
             Party = party,
             Cash = cash,
             WireSent = wire,
         };
     }
+
+    // Push a single-line "You notice ... here." through the router so the
+    // GroundItemTracker's pattern subscription fires (the room-survey path).
+    private static void FeedRoom(MessageRouter router, string text) =>
+        router.Dispatch(new LineExtractor.EmittedLine(
+            text, Array.Empty<CellAttributes>(),
+            DateTimeOffset.UtcNow, IsPromptLine: false));
 
     private static void Feed(LineExtractor lines, string text)
     {
@@ -114,6 +126,37 @@ public sealed class InventoryActionHandlerTests
         int open = s.IndexOf('{');
         int close = s.LastIndexOf('}');
         return open >= 0 && close > open ? s[(open + 1)..close] : s;
+    }
+
+    // ----- @get-all ----------------------------------------------------
+
+    [Fact]
+    public void GetAll_EmptyFloor_ReportsNothing()
+    {
+        Harness h = Setup();
+        SeedPlayer(h.Players, "Bob", PlayerRemoteControls.ExecuteCommands);
+
+        h.Engine.DispatchForTests(Telepath("Bob", "@get-all"));
+
+        Assert.Equal("nothing on the ground to get", Assert.Single(Replies(h.Engine)));
+        Assert.Empty(Wire(h));
+    }
+
+    [Fact]
+    public void GetAll_GetsEachGroundItem_StrippingArticlesExcludingCash()
+    {
+        Harness h = Setup();
+        SeedPlayer(h.Players, "Bob", PlayerRemoteControls.ExecuteCommands);
+        FeedRoom(h.Router, "You notice a rusty dagger, 12 gold crowns, "
+                         + "an iron helm and a healing potion here.");
+
+        h.Engine.DispatchForTests(Telepath("Bob", "@get-all"));
+
+        // Coin ("12 gold crowns") is excluded; each item's article is stripped.
+        Assert.Equal(
+            new[] { "get rusty dagger", "get iron helm", "get healing potion" },
+            Wire(h));
+        Assert.Equal("getting 3 ground items", Assert.Single(Replies(h.Engine)));
     }
 
     // ----- @drop-all ---------------------------------------------------

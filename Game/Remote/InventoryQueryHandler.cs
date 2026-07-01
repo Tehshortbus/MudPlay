@@ -6,37 +6,46 @@ namespace FujinTerm.Game.Remote;
 /// <summary>
 /// Read-only <see cref="RemoteCommandManager"/> consumer for the
 /// <see cref="PlayerRemoteControls.QueryInventory"/> commands that report
-/// held wealth / carry weight / possession without touching the wire:
+/// held wealth / carry weight / possession / room loot without touching the
+/// wire:
 /// <list type="bullet">
 ///   <item><c>@wealth</c> — coins on hand, broken down by denomination.</item>
 ///   <item><c>@enc</c> — current / max carry weight, percentage, bracket.</item>
 ///   <item><c>@have &lt;item&gt;</c> — yes + count, or no, for a name
 ///         substring across carried and worn items.</item>
+///   <item><c>@what</c> — the items visible on the room floor, off the
+///         <see cref="GroundItemTracker"/>'s last "You notice" survey.</item>
 /// </list>
-/// All three read the immutable <see cref="InventoryManager.Snapshot"/>;
-/// each replies with a friendly "parse inventory first" line until the
-/// first full <c>i</c> dump lands (<see cref="InventoryManager.IsLoaded"/>).
-/// The engine gates authorisation via <see cref="RemoteCommandCatalog"/>
-/// before the handler runs.
+/// The wealth / carry / have trio read the immutable
+/// <see cref="InventoryManager.Snapshot"/>, each replying a friendly "parse
+/// inventory first" line until the first full <c>i</c> dump lands
+/// (<see cref="InventoryManager.IsLoaded"/>); <c>@what</c> reads the
+/// room-scoped ground snapshot instead. The engine gates authorisation via
+/// <see cref="RemoteCommandCatalog"/> before the handler runs.
 /// </summary>
 public sealed class InventoryQueryHandler : IDisposable
 {
-    private static readonly string[] RegisteredCommands = { "@wealth", "@enc", "@have" };
+    private static readonly string[] RegisteredCommands = { "@wealth", "@enc", "@have", "@what" };
 
     private readonly RemoteCommandManager _engine;
     private readonly InventoryManager _inventory;
+    private readonly GroundItemTracker _ground;
     private bool _disposed;
 
-    public InventoryQueryHandler(RemoteCommandManager engine, InventoryManager inventory)
+    public InventoryQueryHandler(
+        RemoteCommandManager engine, InventoryManager inventory, GroundItemTracker ground)
     {
         ArgumentNullException.ThrowIfNull(engine);
         ArgumentNullException.ThrowIfNull(inventory);
+        ArgumentNullException.ThrowIfNull(ground);
         _engine = engine;
         _inventory = inventory;
+        _ground = ground;
 
         Register("@wealth", OnWealth);
         Register("@enc", OnEnc);
         Register("@have", OnHave);
+        Register("@what", OnWhat);
     }
 
     public void Dispose()
@@ -98,6 +107,20 @@ public sealed class InventoryQueryHandler : IDisposable
             if (item.Name.Contains(query, StringComparison.OrdinalIgnoreCase)) count++;
 
         ctx.Reply(count > 0 ? $"yes - {count}x matching '{query}'" : $"no - nothing matching '{query}'");
+    }
+
+    /// <summary>
+    /// <c>@what</c> — the items on the room floor from the latest "You notice"
+    /// survey (cash excluded — that's <c>@wealth</c>'s domain). Reports the
+    /// verbatim item wording so the caller sees exactly what <c>@get-all</c>
+    /// would pick up. The snapshot is room-scoped and clears on movement, so
+    /// an empty list means the current room has no visible loot.
+    /// </summary>
+    private void OnWhat(RemoteCommandContext ctx)
+    {
+        IReadOnlyList<string> items = _ground.Items;
+        if (items.Count == 0) { ctx.Reply("nothing on the ground here"); return; }
+        ctx.Reply($"on the ground: {string.Join(", ", items)}");
     }
 
     private static string FormatCoins(CurrencyHoldings c)

@@ -13,15 +13,18 @@ namespace FujinTerm.Tests;
 
 /// <summary>
 /// Pins the read-only <see cref="InventoryQueryHandler"/> replies
-/// (<c>@wealth</c> / <c>@enc</c> / <c>@have</c>): every reply reads the
-/// immutable <see cref="InventoryManager.Snapshot"/> and each gates on
-/// "parse inventory first" until the first full <c>i</c> dump lands.
+/// (<c>@wealth</c> / <c>@enc</c> / <c>@have</c> / <c>@what</c>): the
+/// wealth / carry / have trio read the immutable
+/// <see cref="InventoryManager.Snapshot"/> and gate on "parse inventory
+/// first" until the first full <c>i</c> dump lands; <c>@what</c> reads the
+/// <see cref="GroundItemTracker"/>'s last "You notice" survey.
 /// </summary>
 public sealed class InventoryQueryHandlerTests
 {
     private static readonly DateTime Now = new(2026, 6, 21, 0, 0, 0, DateTimeKind.Utc);
 
-    private static (RemoteCommandManager engine, InventoryManager inv, LineExtractor lines, PlayerDatabase players)
+    private static (RemoteCommandManager engine, InventoryManager inv, LineExtractor lines,
+        PlayerDatabase players, MessageRouter router, GroundItemTracker ground)
         Setup()
     {
         MessageRouter router = new();
@@ -33,8 +36,9 @@ public sealed class InventoryQueryHandlerTests
         InventoryManager inv = new(log: null, itemWeightResolver: null, slotResolver: null);
         LineExtractor lines = new(new TerminalEmulator(80, 24));
         inv.AttachLineExtractor(lines);
-        _ = new InventoryQueryHandler(engine, inv);
-        return (engine, inv, lines, players);
+        GroundItemTracker ground = new(router);
+        _ = new InventoryQueryHandler(engine, inv, ground);
+        return (engine, inv, lines, players, router, ground);
     }
 
     private static void Feed(LineExtractor lines, string text)
@@ -48,6 +52,14 @@ public sealed class InventoryQueryHandlerTests
                 DateTimeOffset.UtcNow, IsPromptLine: false));
         }
     }
+
+    // Push a single-line "You notice ... here." through the router so the
+    // GroundItemTracker's pattern subscription fires (the same path a real
+    // room survey travels).
+    private static void FeedRoom(MessageRouter router, string text) =>
+        router.Dispatch(new LineExtractor.EmittedLine(
+            text, Array.Empty<CellAttributes>(),
+            DateTimeOffset.UtcNow, IsPromptLine: false));
 
     private static void FeedCurrencyDump(LineExtractor lines)
     {
@@ -86,7 +98,7 @@ public sealed class InventoryQueryHandlerTests
     [Fact]
     public void Wealth_BeforeParse_PointsAtInventory()
     {
-        var (engine, _, _, players) = Setup();
+        var (engine, _, _, players, _, _) = Setup();
         SeedPlayer(players, "Bob", PlayerRemoteControls.QueryInventory);
 
         engine.DispatchForTests(Telepath("Bob", "@wealth"));
@@ -97,7 +109,7 @@ public sealed class InventoryQueryHandlerTests
     [Fact]
     public void Wealth_ReportsCoinsHighToLow_WithCopperTotal()
     {
-        var (engine, _, lines, players) = Setup();
+        var (engine, _, lines, players, _, _) = Setup();
         SeedPlayer(players, "Bob", PlayerRemoteControls.QueryInventory);
         FeedCurrencyDump(lines);
 
@@ -114,7 +126,7 @@ public sealed class InventoryQueryHandlerTests
     [Fact]
     public void Enc_BeforeParse_PointsAtInventory()
     {
-        var (engine, _, _, players) = Setup();
+        var (engine, _, _, players, _, _) = Setup();
         SeedPlayer(players, "Bob", PlayerRemoteControls.QueryInventory);
 
         engine.DispatchForTests(Telepath("Bob", "@enc"));
@@ -125,7 +137,7 @@ public sealed class InventoryQueryHandlerTests
     [Fact]
     public void Enc_ReportsCurMaxPctBracket()
     {
-        var (engine, _, lines, players) = Setup();
+        var (engine, _, lines, players, _, _) = Setup();
         SeedPlayer(players, "Bob", PlayerRemoteControls.QueryInventory);
         FeedCurrencyDump(lines);
 
@@ -139,7 +151,7 @@ public sealed class InventoryQueryHandlerTests
     [Fact]
     public void Have_WithoutArgs_ShowsUsage()
     {
-        var (engine, _, lines, players) = Setup();
+        var (engine, _, lines, players, _, _) = Setup();
         SeedPlayer(players, "Bob", PlayerRemoteControls.QueryInventory);
         FeedCurrencyDump(lines);
 
@@ -151,7 +163,7 @@ public sealed class InventoryQueryHandlerTests
     [Fact]
     public void Have_BeforeParse_PointsAtInventory()
     {
-        var (engine, _, _, players) = Setup();
+        var (engine, _, _, players, _, _) = Setup();
         SeedPlayer(players, "Bob", PlayerRemoteControls.QueryInventory);
 
         engine.DispatchForTests(Telepath("Bob", "@have dagger"));
@@ -162,7 +174,7 @@ public sealed class InventoryQueryHandlerTests
     [Fact]
     public void Have_MatchesCarriedAndEquipped_CaseInsensitiveSubstring()
     {
-        var (engine, _, lines, players) = Setup();
+        var (engine, _, lines, players, _, _) = Setup();
         SeedPlayer(players, "Bob", PlayerRemoteControls.QueryInventory);
         Feed(lines, "You are carrying a rusty dagger, a healing potion, "
                   + "padded vest (Torso), a jagged dagger.");
@@ -176,7 +188,7 @@ public sealed class InventoryQueryHandlerTests
     [Fact]
     public void Have_NoMatch_ReportsNo()
     {
-        var (engine, _, lines, players) = Setup();
+        var (engine, _, lines, players, _, _) = Setup();
         SeedPlayer(players, "Bob", PlayerRemoteControls.QueryInventory);
         Feed(lines, "You are carrying a rusty dagger, a healing potion.");
         Feed(lines, "Encumbrance:    36/2880  -  Light  [1%]");
@@ -186,12 +198,39 @@ public sealed class InventoryQueryHandlerTests
         Assert.Equal("no - nothing matching 'longsword'", Assert.Single(Replies(engine)));
     }
 
+    // ----- @what -------------------------------------------------------
+
+    [Fact]
+    public void What_NoSurvey_ReportsNothing()
+    {
+        var (engine, _, _, players, _, _) = Setup();
+        SeedPlayer(players, "Bob", PlayerRemoteControls.QueryInventory);
+
+        engine.DispatchForTests(Telepath("Bob", "@what"));
+
+        Assert.Equal("nothing on the ground here", Assert.Single(Replies(engine)));
+    }
+
+    [Fact]
+    public void What_ReportsGroundItems_ExcludingCash()
+    {
+        var (engine, _, _, players, router, _) = Setup();
+        SeedPlayer(players, "Bob", PlayerRemoteControls.QueryInventory);
+        // Survey mixes loot and coin — coin is filtered, items keep wording.
+        FeedRoom(router, "You notice a rusty dagger, 5 gold crowns and a healing potion here.");
+
+        engine.DispatchForTests(Telepath("Bob", "@what"));
+
+        Assert.Equal("on the ground: a rusty dagger, a healing potion",
+            Assert.Single(Replies(engine)));
+    }
+
     // ----- gating ------------------------------------------------------
 
     [Fact]
     public void Wealth_FromUnauthorisedSender_IsDenied()
     {
-        var (engine, _, lines, players) = Setup();
+        var (engine, _, lines, players, _, _) = Setup();
         engine.WarnOnDenial = false;
         SeedPlayer(players, "Stranger",
             PlayerRemoteControls.All & ~PlayerRemoteControls.QueryInventory);

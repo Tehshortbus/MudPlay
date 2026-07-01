@@ -673,6 +673,8 @@ public partial class MainWindowViewModel : ObservableObject
         // Same survey line drives item auto-get — its own buffer
         // stitches wrapped rows so the multi-line "You notice" parses.
         AppServices.Current.AutoGetItems.AttachLineExtractor(Lines);
+        // And the @what / @get-all ground-item snapshot off the same survey.
+        AppServices.Current.GroundItems.AttachLineExtractor(Lines);
         // Inventory parser reads the full `i` dump (carried currency,
         // Wealth, Encumbrance) so CashManager's gate has live carry
         // weight; it buffers the wrapped deposit echo too.

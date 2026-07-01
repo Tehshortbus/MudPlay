@@ -277,19 +277,27 @@ public sealed class AppServices
     public Game.Remote.ExperienceQueryHandler ExperienceQuery { get; private set; } = null!;
 
     /// <summary>
+    /// Tracks the items on the current room floor from the "You notice
+    /// &lt;list&gt; here." survey (cash excluded). Feeds the read-side
+    /// <c>@what</c> and the write-side <c>@get-all</c>; cleared on room change.
+    /// </summary>
+    public Game.Inventory.GroundItemTracker GroundItems { get; private set; } = null!;
+
+    /// <summary>
     /// Consumer of <see cref="RemoteCommands"/> for the
     /// <see cref="Models.GameData.PlayerRemoteControls.QueryInventory"/>
-    /// category — <c>@wealth</c> / <c>@enc</c> / <c>@have</c>. Reads the
-    /// <see cref="Game.Inventory.InventoryManager"/> snapshot; replies only.
+    /// category — <c>@wealth</c> / <c>@enc</c> / <c>@have</c> / <c>@what</c>.
+    /// Reads the <see cref="Game.Inventory.InventoryManager"/> snapshot and the
+    /// <see cref="GroundItems"/> survey; replies only.
     /// </summary>
     public Game.Remote.InventoryQueryHandler InventoryQuery { get; private set; } = null!;
 
     /// <summary>
     /// Write-side consumer of <see cref="RemoteCommands"/> for the inventory /
-    /// cash action commands — <c>@drop-all</c> / <c>@deposit-all</c> (ExecuteCommands)
-    /// and <c>@share</c> (party-whitelist). Emits <c>drop</c> / <c>dep</c> /
-    /// <c>with</c> / <c>give</c> on the wire, so its sender is bound in
-    /// <c>MainWindowViewModel</c>.
+    /// cash action commands — <c>@get-all</c> / <c>@drop-all</c> /
+    /// <c>@deposit-all</c> (ExecuteCommands) and <c>@share</c> (party-whitelist).
+    /// Emits <c>get</c> / <c>drop</c> / <c>dep</c> / <c>with</c> / <c>give</c> on
+    /// the wire, so its sender is bound in <c>MainWindowViewModel</c>.
     /// </summary>
     public Game.Remote.InventoryActionHandler InventoryAction { get; private set; } = null!;
 
@@ -2439,16 +2447,24 @@ public sealed class AppServices
         ExperienceQuery = new Game.Remote.ExperienceQueryHandler(
             RemoteCommands, PlayerStats, SessionActivity);
 
-        // Read-only inventory queries — @wealth / @enc / @have report off
-        // the InventoryManager snapshot. No wire output either.
-        InventoryQuery = new Game.Remote.InventoryQueryHandler(RemoteCommands, Inventory);
+        // Room-floor loot snapshot from the "You notice <list> here." survey,
+        // cash filtered out. Feeds @what (read) and @get-all (get each).
+        // LineExtractor attached + OnRoomChanged wired below (and in MainWindowVM).
+        GroundItems = new Game.Inventory.GroundItemTracker(Router);
 
-        // Write-side inventory / cash actions — @drop-all / @deposit-all / @share
-        // emit drop / dep / with / give on the wire. Keep-on-hand floors come
-        // from the per-character Cash settings; wire-sender bound in MainWindowVM.
+        // Read-only inventory queries — @wealth / @enc / @have report off the
+        // InventoryManager snapshot; @what reports the GroundItems survey. No
+        // wire output either.
+        InventoryQuery = new Game.Remote.InventoryQueryHandler(RemoteCommands, Inventory, GroundItems);
+
+        // Write-side inventory / cash actions — @get-all / @drop-all /
+        // @deposit-all / @share emit get / drop / dep / with / give on the wire.
+        // Keep-on-hand floors come from the per-character Cash settings;
+        // wire-sender bound in MainWindowVM.
         InventoryAction = new Game.Remote.InventoryActionHandler(
             RemoteCommands,
             Inventory,
+            GroundItems,
             PartyState,
             readCash: () => ReadSection<Models.Profile.CashSettings>(Profile.Current, "Cash"));
 
@@ -2562,13 +2578,14 @@ public sealed class AppServices
         // MainWindowViewModel after telnet connects.
         Greet = new Game.GreetManager(RoomClassifier, Players, Party.State,
             selfNameProvider: () => Party.LocalCharacterName ?? Profile.Current?.Name);
-        // Drop the stale queue when we actually change rooms.
+        // Drop the stale queue / ground snapshot when we actually change rooms.
         RoomTracker.StateChanged += t =>
         {
             if (t.NewRoom is null) return;
             if (t.PreviousRoom is not null
              && t.PreviousRoom.Key.Equals(t.NewRoom.Key)) return;
             AutoGetItems.OnRoomChanged();
+            GroundItems.OnRoomChanged();
         };
 
         Walker = new Game.Map.AutoWalkManager(RoomGraph, Bfs, RoomTracker,
