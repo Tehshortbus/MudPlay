@@ -2315,10 +2315,17 @@ public sealed class AppServices
         // currency + numeric-encumbrance snapshot and patches it on
         // coin pickups / drops and item get / drop / buy / sell. CashManager
         // reads the snapshot for its encumbrance gate. The item-weight resolver
-        // lets item transactions move the encumbrance estimate between dumps
-        // (ItemNames is already loaded above). MarkStale on profile swap so the
+        // lets item transactions move the encumbrance estimate between dumps;
+        // the slot resolver labels a freshly-worn piece with its real slot (the
+        // wear line names none) so "Snapshot Current" files it correctly (both
+        // read ItemNames, already loaded above). MarkStale on profile swap so the
         // new character's first gate evaluation waits for a fresh `i`.
-        Inventory = new Game.Inventory.InventoryManager(Log, ItemNames.WeightOf);
+        Inventory = new Game.Inventory.InventoryManager(
+            Log,
+            ItemNames.WeightOf,
+            name => ItemNames.WornCodeOf(name) is int worn
+                ? Game.Inventory.EquipmentSlotMap.InventorySlotForWornCode(worn)
+                : null);
         Profile.ProfileLoaded += _ => Inventory.MarkStale();
         // PR 10.5 — death-recovery deathpile capture. RoomTracker.NoteDeath
         // records the worn + carried items from the last-known `i` snapshot

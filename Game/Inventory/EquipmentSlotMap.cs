@@ -106,6 +106,13 @@ public static class EquipmentSlotMap
             ["Worn"] = EquipmentSlot.Worn,
         };
 
+    // Inverse of FromWorn: the InventoryManager location string for a slot. Values
+    // in FromWorn are unique, so the inversion is clean; the paired Finger / Wrist
+    // slots share the game's single "(Finger)" / "(Wrist)" wording via their slot-1
+    // entry. Weapons take the held path, so they aren't resolved here.
+    private static readonly IReadOnlyDictionary<EquipmentSlot, string> ToWornString =
+        FromWorn.ToDictionary(kv => kv.Value, kv => kv.Key);
+
     /// <summary>Every slot in the Workshop's display order.</summary>
     public static IReadOnlyList<EquipmentSlot> DisplayOrder { get; } =
         Enum.GetValues<EquipmentSlot>();
@@ -129,6 +136,24 @@ public static class EquipmentSlotMap
     /// </summary>
     public static EquipmentSlot? FromWornString(string? slot) =>
         !string.IsNullOrEmpty(slot) && FromWorn.TryGetValue(slot, out EquipmentSlot s) ? s : null;
+
+    /// <summary>
+    /// The InventoryManager location string an item's <c>Items.Worn</c> code fills
+    /// (e.g. code 11 → <c>"Torso"</c>), or <c>null</c> when the code isn't a
+    /// wearable slot. Lets the incremental "You are now wearing X." path label a
+    /// freshly-worn piece with its true slot instead of a generic placeholder, so
+    /// "Snapshot Current" files it correctly. Finger / Wrist codes resolve to the
+    /// shared <c>"Finger"</c> / <c>"Wrist"</c> string; the off-hand code resolves to
+    /// <c>"Off-Hand"</c> (though off-hand items take the held path, not this one).
+    /// </summary>
+    public static string? InventorySlotForWornCode(int worn)
+    {
+        foreach (EquipmentSlot slot in DisplayOrder)
+            if (WornCodes.TryGetValue(slot, out int[]? codes) && codes.Contains(worn)
+                && ToWornString.TryGetValue(slot, out string? s))
+                return s;
+        return null;
+    }
 
     /// <summary>
     /// The game-data item names that can occupy <paramref name="slot"/> <i>and</i>

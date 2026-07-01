@@ -65,6 +65,13 @@ public sealed partial class InventoryManager : IDisposable
     // Null in tests that don't exercise item weight.
     private readonly Func<string, int?>? _itemWeight;
 
+    // Resolves a worn item's display-name to its true slot string ("Torso"), or
+    // null when unknown. The "You are now wearing X." line names no slot, so this
+    // supplies the real placement instead of a generic "Worn" that would misfile
+    // the piece in "Snapshot Current". Null in tests / when no game data is loaded
+    // — the handler falls back to the generic slot.
+    private readonly Func<string, string?>? _slotResolver;
+
     private LineExtractor? _lines;
     private bool _disposed;
 
@@ -94,10 +101,14 @@ public sealed partial class InventoryManager : IDisposable
     // transaction-start line and prepend it to the next row for one retry.
     private string _pendingMergeLine = "";
 
-    public InventoryManager(LogService? log = null, Func<string, int?>? itemWeightResolver = null)
+    public InventoryManager(
+        LogService? log = null,
+        Func<string, int?>? itemWeightResolver = null,
+        Func<string, string?>? slotResolver = null)
     {
         _log = log;
         _itemWeight = itemWeightResolver;
+        _slotResolver = slotResolver;
     }
 
     /// <summary>Fired (outside the lock) whenever the snapshot changes.</summary>
@@ -244,12 +255,15 @@ public sealed partial class InventoryManager : IDisposable
         if (worn.Success)
         {
             string name = worn.Groups[1].Value.TrimEnd();
-            // Slot stays generic — only Weapon Hand / Off-Hand are special-cased
-            // downstream, and AC / ability bonuses sum regardless of slot. The
-            // next full 'i' dump restores the exact 21-slot placement.
+            // The wear line names no slot; resolve the item's true slot from game
+            // data so "Snapshot Current" files it correctly (e.g. a re-worn vest
+            // returns to "Torso", not a generic bucket). Fall back to a generic
+            // "Worn" when unresolved — the next full 'i' dump restores the exact
+            // 21-slot placement, and AC / ability bonuses sum regardless of slot.
+            string slot = _slotResolver?.Invoke(name) ?? "Worn";
             PatchEquipped(list =>
             {
-                list.Add(new EquippedItem(name, "Worn"));
+                list.Add(new EquippedItem(name, slot));
                 return true;
             });
             RemoveCarried(name);

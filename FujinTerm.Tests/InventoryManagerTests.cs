@@ -22,9 +22,12 @@ public sealed class InventoryManagerTests
         public LineExtractor Lines { get; }
         public int ChangedCount { get; private set; }
 
-        public Harness(Func<string, int?>? itemWeight = null)
+        public Harness(
+            Func<string, int?>? itemWeight = null,
+            Func<string, string?>? slotResolver = null)
         {
-            Inv = new InventoryManager(log: null, itemWeightResolver: itemWeight);
+            Inv = new InventoryManager(
+                log: null, itemWeightResolver: itemWeight, slotResolver: slotResolver);
             Lines = new LineExtractor(new TerminalEmulator(80, 24));
             Inv.AttachLineExtractor(Lines);
             Inv.Changed += () => ChangedCount++;
@@ -793,5 +796,45 @@ public sealed class InventoryManagerTests
 
         Assert.Contains("torch", Carried(h));
         Assert.Equal(50, Weight(h));
+    }
+
+    // ----- incremental wear-slot resolution ----------------------------
+
+    [Fact]
+    public void Wear_ResolvesRealSlotFromGameData()
+    {
+        // The "You are now wearing X." line names no slot; the resolver supplies
+        // the item's true one so the worn set — and "Snapshot Current" — file it
+        // under "Torso" rather than a generic bucket.
+        using Harness h = new(slotResolver: name => name == "padded vest" ? "Torso" : null);
+        FeedCarriedBaseline(h);
+
+        h.Feed("You are now wearing padded vest.");
+
+        Assert.Contains(Worn(h), e => e is { Name: "padded vest", Slot: "Torso" });
+    }
+
+    [Fact]
+    public void Wear_NoResolver_FallsBackToGenericWornSlot()
+    {
+        using Harness h = new();   // no slot resolver wired
+        FeedCarriedBaseline(h);
+
+        h.Feed("You are now wearing padded vest.");
+
+        // Unresolved slots keep the generic placeholder — the next 'i' dump
+        // restores the exact placement.
+        Assert.Contains(Worn(h), e => e is { Name: "padded vest", Slot: "Worn" });
+    }
+
+    [Fact]
+    public void Wear_UnknownItem_FallsBackToGenericWornSlot()
+    {
+        using Harness h = new(slotResolver: _ => null);   // resolver knows nothing
+        FeedCarriedBaseline(h);
+
+        h.Feed("You are now wearing padded vest.");
+
+        Assert.Contains(Worn(h), e => e is { Name: "padded vest", Slot: "Worn" });
     }
 }

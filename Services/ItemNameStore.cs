@@ -49,6 +49,12 @@ public sealed class ItemNameStore
     // full 'i' dumps (see WeightOf).
     private readonly Dictionary<int, int> _encumByNumber = new();
 
+    // Item Number → Worn (equip-location code). Lets InventoryManager resolve the
+    // true slot for a freshly-worn piece — the "You are now wearing X." line names
+    // no slot — so the worn set carries its real placement between full 'i' dumps
+    // (see WornCodeOf).
+    private readonly Dictionary<int, int> _wornByNumber = new();
+
     /// <summary>Active set the store was last loaded from, or <c>null</c> if empty.</summary>
     public string? ActiveSet { get; private set; }
 
@@ -132,6 +138,18 @@ public sealed class ItemNameStore
             ? encum : null;
 
     /// <summary>
+    /// Equip-location code (MDB <c>Worn</c>) of the item a game display name
+    /// refers to, or <c>null</c> when nothing in the active set matches. Name
+    /// matching reuses <see cref="FindByName"/>'s article/count normalization.
+    /// Used by the inventory tracker to slot a freshly-worn piece by its real
+    /// location when the wear line itself names none.
+    /// </summary>
+    public int? WornCodeOf(string displayName)
+        => FindByName(displayName) is int number
+           && _wornByNumber.TryGetValue(number, out int worn)
+            ? worn : null;
+
+    /// <summary>
     /// Lower-case, trim, and strip a leading article / count token so a
     /// loose room phrasing collapses to the canonical item name shape.
     /// Shared by the reverse-index build and the
@@ -200,6 +218,7 @@ public sealed class ItemNameStore
         _names.Clear();
         _byNormalizedName.Clear();
         _encumByNumber.Clear();
+        _wornByNumber.Clear();
         _weaponNames = Array.Empty<string>();
         _offHandNames = Array.Empty<string>();
         ActiveSet = setName;
@@ -241,9 +260,11 @@ public sealed class ItemNameStore
             if (key.Length > 0)
                 _byNormalizedName.TryAdd(key, number);
             _encumByNumber[number] = ReadInt(row, "Encum");
+            int worn = ReadInt(row, "Worn");
+            _wornByNumber[number] = worn;
 
             if (ReadInt(row, "ItemType") == 1) weapons.Add(name);
-            if (ReadInt(row, "Worn") == 12) offHands.Add(name);
+            if (worn == 12) offHands.Add(name);
 
             parsed++;
         }
