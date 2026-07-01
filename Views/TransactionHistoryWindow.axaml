@@ -1,0 +1,76 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:FujinTerm.ViewModels"
+        xmlns:cash="using:FujinTerm.Game.Cash"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="520" d:DesignHeight="440"
+        x:Class="FujinTerm.Views.TransactionHistoryWindow"
+        x:DataType="vm:TransactionHistoryViewModel"
+        Title="Transaction History"
+        Width="520" Height="440"
+        MinWidth="360" MinHeight="240"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False">
+
+    <DockPanel LastChildFill="True">
+
+        <!-- ============ Column header ============ -->
+        <Border DockPanel.Dock="Top"
+                Background="{StaticResource ChromeBgElevBrush}"
+                BorderBrush="{StaticResource ChromeBorderSoftBrush}"
+                BorderThickness="0,0,0,1"
+                Padding="10,6">
+            <Grid ColumnDefinitions="72,56,*">
+                <TextBlock Grid.Column="0" Text="Time"
+                           Foreground="{StaticResource ChromeFgMutedBrush}" FontSize="11"/>
+                <TextBlock Grid.Column="1" Text="Type"
+                           Foreground="{StaticResource ChromeFgMutedBrush}" FontSize="11"/>
+                <TextBlock Grid.Column="2" Text="Action"
+                           Foreground="{StaticResource ChromeFgMutedBrush}" FontSize="11"/>
+            </Grid>
+        </Border>
+
+        <!-- ============ Entries list (+ empty placeholder) ============ -->
+        <Grid Background="{StaticResource ChromeBgSunkenBrush}">
+            <ListBox ItemsSource="{Binding Rows}"
+                     Background="Transparent"
+                     BorderThickness="0"
+                     SelectionMode="Multiple">
+                <ListBox.ItemTemplate>
+                    <DataTemplate DataType="cash:TransactionEntry">
+                        <Grid ColumnDefinitions="72,56,*" Margin="4,2">
+                            <TextBlock Grid.Column="0"
+                                       Text="{Binding Time, StringFormat='{}{0:HH:mm:ss}'}"
+                                       Foreground="{StaticResource ChromeFgMutedBrush}"
+                                       FontFamily="{StaticResource FontMono}"
+                                       FontSize="11"
+                                       VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="1"
+                                       Text="{Binding Kind}"
+                                       Foreground="{StaticResource ChromeFgSecBrush}"
+                                       FontFamily="{StaticResource FontMono}"
+                                       FontSize="11"
+                                       VerticalAlignment="Center"/>
+                            <SelectableTextBlock Grid.Column="2"
+                                                 Text="{Binding Detail}"
+                                                 Foreground="{StaticResource ChromeFgBrush}"
+                                                 FontFamily="{StaticResource FontMono}"
+                                                 FontSize="12"
+                                                 TextWrapping="Wrap"
+                                                 VerticalAlignment="Center"/>
+                        </Grid>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+
+            <TextBlock Text="No transactions yet."
+                       IsVisible="{Binding IsEmpty}"
+                       Foreground="{StaticResource ChromeFgMutedBrush}"
+                       FontSize="12"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center"/>
+        </Grid>
+
+    </DockPanel>
+</Window>

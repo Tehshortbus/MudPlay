@@ -3321,10 +3321,32 @@ public partial class MainWindowViewModel : ObservableObject
                 AppServices.Current.CombatSession,
                 AppServices.Current.TimeAnalysis,
                 AppServices.Current.SessionActivity,
-                AppServices.Current.SessionStatsLayout),
+                AppServices.Current.TransactionHistory,
+                AppServices.Current.SessionStatsLayout,
+                OpenTransactionHistory),
         };
         window.Closed += (_, _) => _sessionStats = null;
         _sessionStats = window;
+        window.Show(main);
+    }
+
+    /// <summary>Singleton handle for the live TransactionHistoryWindow — re-press toggles closed (CLAUDE.md window rule).</summary>
+    private TransactionHistoryWindow? _transactionHistory;
+
+    [RelayCommand]
+    private void OpenTransactionHistory()
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
+            return;
+
+        if (_transactionHistory is { } existing) { existing.Close(); return; }
+
+        TransactionHistoryWindow window = new()
+        {
+            DataContext = new TransactionHistoryViewModel(AppServices.Current.TransactionHistory),
+        };
+        window.Closed += (_, _) => _transactionHistory = null;
+        _transactionHistory = window;
         window.Show(main);
     }
 

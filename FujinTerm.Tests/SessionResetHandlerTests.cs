@@ -1,5 +1,6 @@
 using System.Text;
 using FujinTerm.Game;
+using FujinTerm.Game.Cash;
 using FujinTerm.Game.Combat;
 using FujinTerm.Game.Remote;
 using FujinTerm.Models.GameData;
@@ -10,11 +11,12 @@ using Xunit;
 namespace FujinTerm.Tests;
 
 /// <summary>
-/// <see cref="SessionResetHandler"/> — <c>@reset</c> zeroes the three Phase 11
-/// session-stats trackers, the same wipe the window button performs. Pins the
-/// reset reaching every tracker, the ungated success ack, and the
-/// AlterSettings permission gate (an unauthorised sender resets nothing). An
-/// injected clock makes the trackers' time arithmetic deterministic.
+/// <see cref="SessionResetHandler"/> — <c>@reset</c> zeroes the session-stats
+/// trackers and clears the transaction ledger, the same wipe the window button
+/// performs. Pins the reset reaching every tracker, the ungated success ack,
+/// and the AlterSettings permission gate (an unauthorised sender resets
+/// nothing). An injected clock makes the trackers' time arithmetic
+/// deterministic.
 /// </summary>
 public sealed class SessionResetHandlerTests
 {
@@ -34,6 +36,7 @@ public sealed class SessionResetHandlerTests
         public CombatSessionTracker Combat { get; }
         public TimeAnalysisTracker Time { get; }
         public SessionActivityTracker Activity { get; }
+        public TransactionHistoryTracker Transactions { get; }
         public Clock Clock { get; } = new();
 
         public Setup()
@@ -47,7 +50,8 @@ public sealed class SessionResetHandlerTests
             Combat = new CombatSessionTracker(router, new RoundDamageTracker(router, new PlayerState()));
             Time = new TimeAnalysisTracker(() => Clock.Now);
             Activity = new SessionActivityTracker(() => Clock.Now);
-            Handler = new SessionResetHandler(Engine, Combat, Time, Activity);
+            Transactions = new TransactionHistoryTracker(() => Clock.Now);
+            Handler = new SessionResetHandler(Engine, Combat, Time, Activity, Transactions);
         }
 
         public void Dispose() => Handler.Dispose();
@@ -75,6 +79,20 @@ public sealed class SessionResetHandlerTests
         SessionActivityStats stats = s.Activity.Snapshot();
         Assert.Equal(0, stats.MonstersKilled);
         Assert.Equal(0L, stats.ExperienceEarned);
+    }
+
+    [Fact]
+    public void Reset_WithPermission_ClearsTransactionLedger()
+    {
+        using Setup s = new();
+        SeedPlayer(s.Players, "Leader", PlayerRemoteControls.AlterSettings);
+        s.Transactions.NoteBankDeposit(5000);
+        s.Transactions.NoteStash(new[] { ("gold", 400L) }, new[] { "a torch" });
+        Assert.Equal(2, s.Transactions.Snapshot().Count);
+
+        s.Engine.DispatchForTests(Telepath("Leader", "@reset"));
+
+        Assert.Empty(s.Transactions.Snapshot());
     }
 
     [Fact]

@@ -1,3 +1,4 @@
+using FujinTerm.Game.Cash;
 using FujinTerm.Game.Combat;
 using FujinTerm.Models.GameData;
 using FujinTerm.Services;
@@ -14,16 +15,16 @@ namespace FujinTerm.Game.Remote;
 /// <c>LoopRunner.LoopEventKind.ReachedFirstWaypoint</c>).
 /// </summary>
 /// <remarks>
-/// Resets the three Phase 11 trackers — <see cref="CombatSessionTracker"/>,
-/// <see cref="TimeAnalysisTracker"/>, and <see cref="SessionActivityTracker"/>
-/// — restarting their clocks and clearing their counters, exactly as the
-/// window button and the connect / character-switch boundary do. Requires
-/// the <see cref="PlayerRemoteControls.AlterSettings"/> permission per the
-/// catalog (a "do something on my behalf" verb). The success ack is
-/// ungated; only failure replies obey
-/// <see cref="RemoteCommandManager.WarnOnDenial"/>, and once authorised this
-/// command can't fail. Like the other remote handlers it runs on the
-/// marshalled dispatch thread, so the lock-free trackers stay safe.
+/// Resets the session-stats trackers — <see cref="CombatSessionTracker"/>,
+/// <see cref="TimeAnalysisTracker"/>, <see cref="SessionActivityTracker"/>, and
+/// the <see cref="TransactionHistoryTracker"/> ledger — restarting their clocks
+/// and clearing their counters / entries, exactly as the window button and the
+/// connect / character-switch boundary do. Requires the
+/// <see cref="PlayerRemoteControls.AlterSettings"/> permission per the catalog
+/// (a "do something on my behalf" verb). The success ack is ungated; only
+/// failure replies obey <see cref="RemoteCommandManager.WarnOnDenial"/>, and
+/// once authorised this command can't fail. Like the other remote handlers it
+/// runs on the marshalled dispatch thread, so the lock-free trackers stay safe.
 /// </remarks>
 public sealed class SessionResetHandler : IDisposable
 {
@@ -34,6 +35,7 @@ public sealed class SessionResetHandler : IDisposable
     private readonly CombatSessionTracker _combat;
     private readonly TimeAnalysisTracker _time;
     private readonly SessionActivityTracker _activity;
+    private readonly TransactionHistoryTracker _transactions;
     private readonly LogService? _log;
     private bool _disposed;
 
@@ -42,16 +44,19 @@ public sealed class SessionResetHandler : IDisposable
         CombatSessionTracker combat,
         TimeAnalysisTracker time,
         SessionActivityTracker activity,
+        TransactionHistoryTracker transactions,
         LogService? log = null)
     {
         ArgumentNullException.ThrowIfNull(engine);
         ArgumentNullException.ThrowIfNull(combat);
         ArgumentNullException.ThrowIfNull(time);
         ArgumentNullException.ThrowIfNull(activity);
+        ArgumentNullException.ThrowIfNull(transactions);
         _engine = engine;
         _combat = combat;
         _time = time;
         _activity = activity;
+        _transactions = transactions;
         _log = log;
 
         if (!RemoteCommandCatalog.TryGetCategory(Command, out PlayerRemoteControls category))
@@ -71,6 +76,7 @@ public sealed class SessionResetHandler : IDisposable
         _combat.Reset();
         _time.Reset();
         _activity.Reset();
+        _transactions.Reset();
         _log?.Log(LogSeverity.Info, LogCategory, $"@reset from {ctx.Sender}: session counters zeroed.");
         ctx.Reply("session counters reset");
     }

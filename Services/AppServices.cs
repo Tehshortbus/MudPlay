@@ -867,6 +867,14 @@ public sealed class AppServices
     public Game.Combat.SessionActivityTracker SessionActivity { get; private set; } = null!;
 
     /// <summary>
+    /// Phase 12 — per-session ledger of cash/item offloads (bank deposits +
+    /// stash-room hides) behind the Session Stats → Transaction history window.
+    /// Fed by <see cref="AutoDeposit"/> and <see cref="Stash"/>; reset on the
+    /// same session boundary as the other session-stats trackers.
+    /// </summary>
+    public Game.Cash.TransactionHistoryTracker TransactionHistory { get; private set; } = null!;
+
+    /// <summary>
     /// Phase 9 PR 9.0d — observes the "You have been slain by..."
     /// line and emits <see cref="Game.Combat.DeathLineWatcher.PlayerDied"/>.
     /// DeathRecoveryManager (PR 9.I) is the primary consumer; other
@@ -2449,11 +2457,19 @@ public sealed class AppServices
         });
         Profile.ProfileLoaded += _ => SessionActivity.Reset();
 
+        // Phase 12 — TransactionHistory. A per-session ledger of cash/item
+        // offloads: bank `dep`osits (AutoDeposit.Deposited) and stash-room
+        // `hide`s (Stash.StashExecuted), wired to their events below. Feeds the
+        // Session Stats → Transaction history window; reset on the same session
+        // boundary as the other session-stats trackers.
+        TransactionHistory = new Game.Cash.TransactionHistoryTracker();
+        Profile.ProfileLoaded += _ => TransactionHistory.Reset();
+
         // @reset — a party member zeroes our session-stats trackers (the same
         // wipe as the window button / connect boundary). Constructed here, after
-        // all three Phase 11 trackers exist; RemoteCommands was built upstream.
+        // the session-stats trackers exist; RemoteCommands was built upstream.
         SessionReset = new Game.Remote.SessionResetHandler(
-            RemoteCommands, CombatSession, TimeAnalysis, SessionActivity, Log);
+            RemoteCommands, CombatSession, TimeAnalysis, SessionActivity, TransactionHistory, Log);
 
         // Read-only progression queries — @exp / @level report against the
         // PlayerStats snapshot (from `stat` / `exp`) and the session
@@ -2567,12 +2583,15 @@ public sealed class AppServices
             log: Log);
         // Phase 11 — count stash-room hides toward the Session Stats
         // stashed/deposited figure (copper value across the dispatched coins).
+        // Phase 12 — also record the hide (coins + items) in the transaction
+        // ledger.
         Stash.StashExecuted += dispatch =>
         {
             long copper = 0;
             foreach ((string currency, long amount) in dispatch.Currencies)
                 copper += Game.Inventory.CurrencyHoldings.ToCopper(currency, amount);
             SessionActivity.NoteCurrencyStashed(copper);
+            TransactionHistory.NoteStash(dispatch.Currencies, dispatch.Items);
         };
 
         // Phase 9 PR 9.L — AutoGetItemsManager. The resolve delegate
@@ -2830,8 +2849,13 @@ public sealed class AppServices
             stash: Stash,
             log: Log);
         // Phase 11 — bank deposits (already a copper value) join stash hides in
-        // the Session Stats stashed/deposited figure.
-        AutoDeposit.Deposited += copper => SessionActivity.NoteCurrencyStashed(copper);
+        // the Session Stats stashed/deposited figure. Phase 12 — and record the
+        // deposit in the transaction ledger.
+        AutoDeposit.Deposited += copper =>
+        {
+            SessionActivity.NoteCurrencyStashed(copper);
+            TransactionHistory.NoteBankDeposit(copper);
+        };
 
         // PR 6.2 — follower-side @comeback. Watches for a movement-failure
         // line (prevents-movement flag / over-encumbered) immediately
