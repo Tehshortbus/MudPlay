@@ -525,7 +525,8 @@ public sealed class InventoryManagerTests
         using Harness h = new();
         FeedCarriedBaseline(h);
 
-        h.Feed("You pick up rusty dagger.");
+        // MajorMUD's item-get confirmation is "You took X."
+        h.Feed("You took rusty dagger.");
 
         Assert.Contains("rusty dagger", Carried(h));
         Assert.Contains("lantern", Carried(h));   // baseline item untouched
@@ -629,13 +630,30 @@ public sealed class InventoryManagerTests
     }
 
     [Fact]
+    public void RemoveWeapon_MovesWeaponIntoCarried()
+    {
+        using Harness h = new();
+        // Baseline: a worn weapon (quarterstaff) plus carried gear.
+        h.Feed("You are carrying quarterstaff (Weapon Hand), padded gloves (Hands), lantern, 5 copper farthings.");
+        h.Feed("Wealth:    5 copper farthings");
+        h.Feed("Encumbrance:    60/2880  -  Light  [2%]");
+
+        // Weapon removal is unnamed, so the manager reads the outgoing weapon's
+        // name from the worn set and returns it to the pack.
+        h.Feed("You now have no weapon readied.");
+
+        Assert.DoesNotContain(Worn(h), e => e.Slot == "Weapon Hand");
+        Assert.Contains("quarterstaff", Carried(h));
+    }
+
+    [Fact]
     public void CarriedPatch_BeforeBaseline_IsIgnored()
     {
         using Harness h = new();
 
         // No 'i' parsed yet — adding to an empty pack would imply it holds only
         // this one item, so the line is consumed but not applied.
-        h.Feed("You pick up rusty dagger.");
+        h.Feed("You took rusty dagger.");
 
         Assert.False(h.Inv.IsLoaded);
         Assert.Empty(Carried(h));

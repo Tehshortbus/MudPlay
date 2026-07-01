@@ -262,7 +262,19 @@ public sealed partial class InventoryManager : IDisposable
 
         if (NoWeaponReadiedRegex().IsMatch(line))
         {
-            PatchEquipped(list => list.RemoveAll(e => e.Slot == "Weapon Hand") > 0);
+            // Weapon removal is unnamed ("You now have no weapon readied."),
+            // unlike the armor path which names its item. Read the outgoing
+            // weapon's name from the worn set as it leaves so it can return to
+            // the pack (unworn) just like removed armor.
+            var unreadied = new List<string>();
+            PatchEquipped(list =>
+            {
+                foreach (EquippedItem e in list)
+                    if (e.Slot == "Weapon Hand") unreadied.Add(e.Name);
+                return list.RemoveAll(e => e.Slot == "Weapon Hand") > 0;
+            });
+            foreach (string name in unreadied)
+                PatchCarried(list => { list.Add(name); return true; });
             return;
         }
 
@@ -377,10 +389,11 @@ public sealed partial class InventoryManager : IDisposable
             return;
         }
 
-        // Get: "You pick up rusty dagger." — the item enters the pack unworn.
-        // Currency pickups carry a numeric count and are matched (and returned)
-        // above, so only item lines reach here.
-        Match gotItem = PickUpItemRegex().Match(line);
+        // Get: "You took rusty dagger." — the item enters the pack unworn. The
+        // currency pickup ("You picked up N ...", no trailing period) is a
+        // different verb and is matched (and returned) above, so only item lines
+        // reach here.
+        Match gotItem = TookItemRegex().Match(line);
         if (gotItem.Success)
         {
             string name = gotItem.Groups[1].Value.TrimEnd();
@@ -818,12 +831,14 @@ public sealed partial class InventoryManager : IDisposable
     [GeneratedRegex(@"^You now have no weapon readied\.$")]
     private static partial Regex NoWeaponReadiedRegex();
 
-    // Item get / drop (single item). MajorMUD mixes tenses here — "You pick up
-    // torch." but "You dropped torch." — so both regexes tolerate the present
-    // and past forms. The currency forms carry a numeric count and are matched
-    // (and returned) earlier, so a coin line never reaches these.
-    [GeneratedRegex(@"^You pick(?:ed)? up (.+?)\.$")]
-    private static partial Regex PickUpItemRegex();
+    // Item get / drop (single item). MajorMUD phrases the item get as "You took
+    // X." and the item drop as "You dropped X." (the drop regex also tolerates
+    // the present-tense "You drop X."). The currency forms use different verbs
+    // ("You picked up N ..." with no trailing period / "You dropped N ...") and
+    // carry a numeric count; they're matched and returned earlier, so a coin
+    // line never reaches these.
+    [GeneratedRegex(@"^You took (.+?)\.$")]
+    private static partial Regex TookItemRegex();
 
     [GeneratedRegex(@"^You drop(?:ped)? (.+?)\.$")]
     private static partial Regex DropItemRegex();
