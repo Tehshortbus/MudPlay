@@ -21,8 +21,9 @@ namespace FujinTerm.ViewModels.CharacterWorkshop;
 /// stat sheet:
 /// <list type="bullet">
 /// <item><b>Monster Matchup</b> — pick a monster by name and see the
-/// <em>You → Monster</em> projection (hit%, damage, swings, DPS,
-/// rounds-to-kill) computed from your actual gear-derived offense.</item>
+/// <em>You → Monster</em> projection (hit%, damage, swings, DPS) computed from
+/// your gear-derived offense, with an optional weapon picker to model a
+/// different weapon's damage against the monster's damage resist.</item>
 /// <item><b>Monster → You</b> — the return direction, made interactive:
 /// your AC and dodge seed from the live stat + gear values but are editable,
 /// and every physical attack the monster has is listed with its own editable
@@ -50,11 +51,20 @@ public sealed partial class CalculatorsSectionViewModel : WorkshopSectionViewMod
     private readonly Dictionary<string, int> _monsterNumberByLabel = new();
     [ObservableProperty] private string? _selectedMonsterName;
 
+    // ----- Weapon picker (what-if offense) -------------------------------
+    /// <summary>Typeahead source: "&lt;name&gt; (#&lt;number&gt;)" per weapon item.</summary>
+    public ObservableCollection<string> WeaponNames { get; } = new();
+    private readonly Dictionary<string, int> _weaponNumberByLabel = new();
+    /// <summary>Selected what-if weapon — null / unmatched means the equipped weapon.</summary>
+    [ObservableProperty] private string? _selectedWeaponName;
+
     // ----- Monster values (editable, seeded by the name picker) -----------
     /// <summary>Monster AC used by the You → Monster hit calc — seeded on pick, editable. May be negative.</summary>
     [ObservableProperty] private int _monsterAc;
     /// <summary>Monster damage resist — seeded on pick, editable; trims each of your hits.</summary>
     [ObservableProperty] private int _monsterDr;
+    /// <summary>Monster dodge (the Dodge ability, abil 34) — seeded on pick, editable; lowers your hit chance. 0 for most monsters.</summary>
+    [ObservableProperty] private int _monsterDodge;
 
     // ----- Your values (editable, seeded from the live actuals) -----------
     /// <summary>Your attack accuracy — seeded from the gear-derived actual, editable.</summary>
@@ -94,6 +104,16 @@ public sealed partial class CalculatorsSectionViewModel : WorkshopSectionViewMod
     private int _actualAc;
     private int _actualDodge;
 
+    // Offense inputs captured on refresh so the weapon picker can re-derive
+    // damage / swings / crit without re-running the full stat aggregation.
+    private int _str, _agi, _level, _nCombatLevel, _encumCur, _encumMax;
+    private int _plusMaxDamage, _plusCrits;
+    private int _equipWeaponMin, _equipWeaponMax, _equipWeaponSpeed, _equipWeaponStrReq;
+
+    // Weapon override from the picker — empty / unmatched falls back to equipped.
+    private bool _hasSelectedWeapon;
+    private int _selWeaponMin, _selWeaponMax, _selWeaponSpeed, _selWeaponStrReq;
+
     // Alignment of the picked monster — decides which of the player's wards
     // applies in the incoming-hit calc.
     private bool _monsterIsEvil;
@@ -114,6 +134,7 @@ public sealed partial class CalculatorsSectionViewModel : WorkshopSectionViewMod
         _inventory.Changed += OnInventoryChanged;
         _questBonuses.Changed += OnQuestBonusesChanged;
         EnsureMonsterNames();
+        EnsureWeaponNames();
         Refresh();
     }
 
@@ -141,38 +162,36 @@ public sealed partial class CalculatorsSectionViewModel : WorkshopSectionViewMod
         EquipmentStatSummary t = combined.Totals;
 
         _realm = _gameData.ActiveRealm;
-        int level = _stats.Level;
-        int nCombatLevel = GetInt(classRow, "CombatLVL");
-        int str = _stats.Strength, agi = _stats.Agility, intel = _stats.Intellect, chm = _stats.Charm;
+        _level = _stats.Level;
+        _nCombatLevel = GetInt(classRow, "CombatLVL");
+        _str = _stats.Strength;
+        _agi = _stats.Agility;
+        int intel = _stats.Intellect, chm = _stats.Charm;
         EncumbranceReading encum = _inventory.Snapshot.Encumbrance;
-        int encumCur = encum.CurrentWeight, encumMax = encum.MaxWeight;
+        _encumCur = encum.CurrentWeight;
+        _encumMax = encum.MaxWeight;
 
-        _normalAccuracy = (level > 0 && nCombatLevel > 0)
-            ? CombatCalculator.CalcAccuracy(MudAttackType.Normal, _realm, level, nCombatLevel,
-                str, agi, intel, chm, t.TotalWornAccy,
+        // Accuracy stays keyed to the actual equipped weapon's str requirement —
+        // it's an editable input the weapon picker deliberately leaves alone.
+        _normalAccuracy = (_level > 0 && _nCombatLevel > 0)
+            ? CombatCalculator.CalcAccuracy(MudAttackType.Normal, _realm, _level, _nCombatLevel,
+                _str, _agi, intel, chm, t.TotalWornAccy,
                 _realm == RealmType.ParaMud ? t.PlusAccuracy : t.MaxSingleAbil22,
-                encumCur, encumMax, t.WeaponStrReq)
+                _encumCur, _encumMax, t.WeaponStrReq)
             : 0;
 
-        _hasWeapon = t.WeaponMax > 0;
-        MeleeDamageResult dmg = CombatCalculator.CalcMeleeDamage(
-            MudAttackType.Normal, _realm, str, t.WeaponMin, t.WeaponMax, t.PlusMaxDamage);
-        _avgWeaponDamage = _hasWeapon ? (dmg.MinDamage + dmg.MaxDamage) / 2 : 0;
-
-        SwingCalcResult swings = CombatCalculator.CalcSwings(
-            nCombatLevel, level, t.WeaponSpeed, agi, str, t.WeaponStrReq,
-            encumCur, encumMax, realmType: _realm);
-        _swingsPerRound = swings.RawSwings;
-
-        // Crit folds into DPS the same way CalculateAttack does: gear/quest crit
-        // (abil 58) + the Quick-and-Deadly bonus (only when STR meets the weapon's
-        // requirement), then diminishing returns. A crit averages 3× the max.
-        int qnd = (t.WeaponStrReq <= 0 || str >= t.WeaponStrReq) ? swings.QnDCritBonus : 0;
-        _critChance = _hasWeapon ? CombatCalculator.CalcCritChance(t.PlusCrits, qnd, _realm) : 0;
-        _avgCritDamage = _hasWeapon ? dmg.MaxDamage * 3 : 0;
+        // Capture the offense inputs, then derive damage / swings / crit through
+        // the shared helper so the weapon picker can re-run it in isolation.
+        _plusMaxDamage = t.PlusMaxDamage;
+        _plusCrits = t.PlusCrits;
+        _equipWeaponMin = t.WeaponMin;
+        _equipWeaponMax = t.WeaponMax;
+        _equipWeaponSpeed = t.WeaponSpeed;
+        _equipWeaponStrReq = t.WeaponStrReq;
+        ComputeOffense();
 
         _actualAc = _stats.ArmourClass;
-        _actualDodge = CombatCalculator.CalcDodge(level, agi, chm, t.PlusDodge, encumCur, encumMax);
+        _actualDodge = CombatCalculator.CalcDodge(_level, _agi, chm, t.PlusDodge, _encumCur, _encumMax);
         _protEvil = t.PlusProtEvil;
         _protGood = t.PlusProtGood;
         _damageResist = (int)Math.Round(t.PlusDR, MidpointRounding.AwayFromZero);
@@ -182,6 +201,35 @@ public sealed partial class CalculatorsSectionViewModel : WorkshopSectionViewMod
         PlayerAccuracy = _normalAccuracy;
         PlayerAc = _actualAc;
         PlayerDodge = _actualDodge;
+    }
+
+    // Derive avg damage / swings / crit from the captured offense inputs,
+    // honoring the weapon-picker override (empty picker = the equipped weapon).
+    // Accuracy is intentionally excluded — it's a separate editable input the
+    // weapon choice doesn't touch.
+    private void ComputeOffense()
+    {
+        int wMin = _hasSelectedWeapon ? _selWeaponMin : _equipWeaponMin;
+        int wMax = _hasSelectedWeapon ? _selWeaponMax : _equipWeaponMax;
+        int wSpeed = _hasSelectedWeapon ? _selWeaponSpeed : _equipWeaponSpeed;
+        int wStrReq = _hasSelectedWeapon ? _selWeaponStrReq : _equipWeaponStrReq;
+
+        _hasWeapon = wMax > 0;
+        MeleeDamageResult dmg = CombatCalculator.CalcMeleeDamage(
+            MudAttackType.Normal, _realm, _str, wMin, wMax, _plusMaxDamage);
+        _avgWeaponDamage = _hasWeapon ? (dmg.MinDamage + dmg.MaxDamage) / 2 : 0;
+
+        SwingCalcResult swings = CombatCalculator.CalcSwings(
+            _nCombatLevel, _level, wSpeed, _agi, _str, wStrReq,
+            _encumCur, _encumMax, realmType: _realm);
+        _swingsPerRound = swings.RawSwings;
+
+        // Crit folds into DPS the same way CalculateAttack does: gear/quest crit
+        // (abil 58) + the Quick-and-Deadly bonus (only when STR meets the weapon's
+        // requirement), then diminishing returns. A crit averages 3× the max.
+        int qnd = (wStrReq <= 0 || _str >= wStrReq) ? swings.QnDCritBonus : 0;
+        _critChance = _hasWeapon ? CombatCalculator.CalcCritChance(_plusCrits, qnd, _realm) : 0;
+        _avgCritDamage = _hasWeapon ? dmg.MaxDamage * 3 : 0;
     }
 
     // Populate the typeahead once from the active set. Cheap to retry if the set
@@ -208,6 +256,45 @@ public sealed partial class CalculatorsSectionViewModel : WorkshopSectionViewMod
         }
     }
 
+    // Populate the weapon typeahead once from the active set. Weapons are Items
+    // with ItemType == 1 (armour is 0). Cheap to retry if the set wasn't loaded
+    // at construction (no items yet).
+    private void EnsureWeaponNames()
+    {
+        if (WeaponNames.Count > 0) return;
+        JsonDocument? doc = _gameData.GetRawTable("Items");
+        if (doc is null) return;
+
+        foreach (JsonElement row in doc.RootElement.EnumerateArray())
+        {
+            if (GetInt(row, "ItemType") != 1) continue;
+            if (!row.TryGetProperty("Name", out JsonElement nameEl)) continue;
+            if (nameEl.ValueKind != JsonValueKind.String) continue;
+            string? name = nameEl.GetString();
+            if (string.IsNullOrEmpty(name)) continue;
+
+            int number = GetInt(row, "Number");
+            string label = string.Create(CultureInfo.InvariantCulture, $"{name} (#{number})");
+            WeaponNames.Add(label);
+            _weaponNumberByLabel[label] = number;
+        }
+    }
+
+    // Resolve an Items record by its Number — names aren't unique, so the
+    // typeahead label carries the number and we look up against it.
+    private JsonElement? FindItemRowByNumber(int number)
+    {
+        JsonDocument? doc = _gameData.GetRawTable("Items");
+        if (doc is null) return null;
+        foreach (JsonElement row in doc.RootElement.EnumerateArray())
+        {
+            if (row.TryGetProperty("Number", out JsonElement n)
+                && n.ValueKind == JsonValueKind.Number && n.TryGetInt32(out int v) && v == number)
+                return row;
+        }
+        return null;
+    }
+
     // Resolve the exact monster record by its Number — names aren't unique, so
     // the typeahead label carries the number and we look up against it.
     private JsonElement? FindMonsterRowByNumber(int number)
@@ -224,11 +311,40 @@ public sealed partial class CalculatorsSectionViewModel : WorkshopSectionViewMod
     }
 
     partial void OnSelectedMonsterNameChanged(string? value) => RebuildMonster();
+
+    partial void OnSelectedWeaponNameChanged(string? value)
+    {
+        ResolveSelectedWeapon();
+        ComputeOffense();
+        RecomputeOutgoing();
+    }
+
+    // Load the picked weapon's damage / speed / str-req, or clear the override
+    // (fall back to the equipped weapon) when the picker is empty or unmatched.
+    private void ResolveSelectedWeapon()
+    {
+        if (SelectedWeaponName is not null
+            && _weaponNumberByLabel.TryGetValue(SelectedWeaponName, out int number)
+            && FindItemRowByNumber(number) is JsonElement row)
+        {
+            _selWeaponMin = GetInt(row, "Min");
+            _selWeaponMax = GetInt(row, "Max");
+            _selWeaponSpeed = GetInt(row, "Speed");
+            _selWeaponStrReq = GetInt(row, "StrReq");
+            _hasSelectedWeapon = true;
+        }
+        else
+        {
+            _hasSelectedWeapon = false;
+        }
+    }
+
     partial void OnPlayerAccuracyChanged(int value) => RecomputeOutgoing();
     partial void OnPlayerAcChanged(int value) => RecomputeAllRows();
     partial void OnPlayerDodgeChanged(int value) => RecomputeAllRows();
     partial void OnMonsterAcChanged(int value) => RecomputeOutgoing();
     partial void OnMonsterDrChanged(int value) => RecomputeOutgoing();
+    partial void OnMonsterDodgeChanged(int value) => RecomputeOutgoing();
 
     // Seed the editable monster values + attack rows from the picked monster (or
     // reset to a blank, single-row state when the name is cleared) so the calc is
@@ -243,7 +359,7 @@ public sealed partial class CalculatorsSectionViewModel : WorkshopSectionViewMod
             || FindMonsterRowByNumber(monsterNumber) is not JsonElement row)
         {
             _monsterIsEvil = _monsterIsGood = false;
-            MonsterAc = MonsterDr = 0;
+            MonsterAc = MonsterDr = MonsterDodge = 0;
             MonsterAttacks.Add(NewAttackRow("—", 50));
             RenumberAttacks();
             RecomputeAllRows();
@@ -257,6 +373,9 @@ public sealed partial class CalculatorsSectionViewModel : WorkshopSectionViewMod
 
         MonsterAc = GetInt(row, "ArmourClass");
         MonsterDr = GetInt(row, "DamageResist");
+        // Dodge isn't a top-level column — it rides in the monster's ability
+        // slots (Abil-N == 34), like Lord of the Hunt's 70 dodge.
+        MonsterDodge = GetAbilityValue(row, 34);
 
         // Enumerate every physical attack (melee = 1, rob = 3) into an editable
         // row. Spell slots (type 2) carry spell metadata in those columns, so we
@@ -326,6 +445,7 @@ public sealed partial class CalculatorsSectionViewModel : WorkshopSectionViewMod
             ArmourClass: MonsterAc,
             DamageResist: MonsterDr,
             Hp: 0,
+            Dodge: MonsterDodge,
             HasPhysicalAttack: false,
             AttackAccuracy: 0,
             AvgAttackDamage: 0,
@@ -377,10 +497,11 @@ public sealed partial class CalculatorsSectionViewModel : WorkshopSectionViewMod
         foreach (MonsterAttackRowViewModel row in MonsterAttacks) RecomputeRow(row);
     }
 
-    /// <summary>Discard manual accuracy / AC / dodge edits and re-seed from the live actuals.</summary>
+    /// <summary>Discard manual weapon / accuracy / AC / dodge edits and re-seed from the live actuals.</summary>
     [RelayCommand]
     private void ResetDefenses()
     {
+        SelectedWeaponName = null;
         PlayerAccuracy = _normalAccuracy;
         PlayerAc = _actualAc;
         PlayerDodge = _actualDodge;
@@ -391,6 +512,19 @@ public sealed partial class CalculatorsSectionViewModel : WorkshopSectionViewMod
         if (row is not JsonElement el || el.ValueKind != JsonValueKind.Object) return 0;
         if (!el.TryGetProperty(property, out JsonElement v)) return 0;
         return v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out int n) ? n : 0;
+    }
+
+    // Scan a monster's ability slots (Abil-0..9) for the given code and return
+    // its paired AbilVal, or 0 when absent — how monsters carry Dodge (34) and
+    // other stat-style perks that aren't top-level columns.
+    private static int GetAbilityValue(JsonElement row, int code)
+    {
+        for (int i = 0; i < 10; i++)
+        {
+            if (GetInt(row, $"Abil-{i}") == code)
+                return GetInt(row, $"AbilVal-{i}");
+        }
+        return 0;
     }
 
     private void OnStatsChanged(object? sender, PropertyChangedEventArgs e) => Refresh();

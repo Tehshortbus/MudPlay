@@ -66,11 +66,8 @@
                                     <TextBlock Grid.Column="0" Classes="Section" Text="Your Values" VerticalAlignment="Center"/>
                                     <Button Grid.Column="1" Content="Reset to actual"
                                             Command="{Binding ResetDefensesCommand}"
-                                            ToolTip.Tip="Discard your accuracy / AC / dodge edits and re-seed from the live stat + gear values."/>
+                                            ToolTip.Tip="Discard your weapon / accuracy / AC / dodge edits and re-seed from the live stat + gear values."/>
                                 </Grid>
-
-                                <TextBlock Classes="FieldLabel"
-                                           Text="Seeded from your live stat + gear values — edit freely to explore. AC and dodge may be negative."/>
 
                                 <StackPanel Orientation="Horizontal" Spacing="14">
                                     <StackPanel Spacing="3">
@@ -90,8 +87,17 @@
                                 <Border Height="1" Background="{StaticResource ChromeBorderBrush}" Margin="0,2"/>
 
                                 <TextBlock Classes="Section" Text="You → Monster"/>
-                                <TextBlock Classes="FieldLabel"
-                                           Text="Your offense against the monster configured below, using the accuracy above."/>
+
+                                <StackPanel Spacing="3">
+                                    <TextBlock Classes="FieldLabel" Text="Weapon"/>
+                                    <AutoCompleteBox ItemsSource="{Binding WeaponNames}"
+                                                     SelectedItem="{Binding SelectedWeaponName, Mode=TwoWay}"
+                                                     FilterMode="ContainsOrdinal"
+                                                     MinimumPrefixLength="1"
+                                                     MinWidth="260"
+                                                     HorizontalAlignment="Left"
+                                                     PlaceholderText="Equipped weapon — type to model a different one…"/>
+                                </StackPanel>
 
                                 <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto">
                                     <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Hit Chance" Margin="0,2,16,2"/>
@@ -132,6 +138,10 @@
                                         <TextBlock Classes="FieldLabel" Text="Damage Resist"/>
                                         <NumericUpDown Classes="Stat" Value="{Binding MonsterDr, Mode=TwoWay}"/>
                                     </StackPanel>
+                                    <StackPanel Spacing="3">
+                                        <TextBlock Classes="FieldLabel" Text="Dodge"/>
+                                        <NumericUpDown Classes="Stat" Minimum="-9999" Value="{Binding MonsterDodge, Mode=TwoWay}"/>
+                                    </StackPanel>
                                 </StackPanel>
 
                                 <Border Height="1" Background="{StaticResource ChromeBorderBrush}" Margin="0,2"/>
@@ -140,7 +150,6 @@
                                      accuracy you set (vs your AC + dodge above). Rows are
                                      seeded from the monster but freely add/removed. -->
                                 <TextBlock Classes="Section" Text="Monster → You"/>
-                                <TextBlock Classes="FieldLabel" Text="Chance each attack lands on you. Add or remove rows to model any attack set."/>
 
                                 <!-- Column header. Fixed widths keep the header aligned
                                      with each attack row below (no shared size scope). -->
