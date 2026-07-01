@@ -206,9 +206,7 @@ public partial class MainWindowViewModel : ObservableObject
     // Toggle buttons, the Action-menu check items, and the Settings →
     // General checkboxes all write here. The partial OnXxxChanged
     // handlers persist to the profile and refresh the toolbar IsActive
-    // badge. AutoSearch is intentionally absent — no engine consumes it
-    // yet (IsAutoSearchWired => false), so it stays stubbed until the
-    // hidden-exit walker lands.
+    // badge.
     [ObservableProperty][NotifyPropertyChangedFor(nameof(IsAllAutoOff))] private bool _isAutoCombatActive;
     [ObservableProperty][NotifyPropertyChangedFor(nameof(IsAllAutoOff))] private bool _isAutoNukeActive;
     [ObservableProperty][NotifyPropertyChangedFor(nameof(IsAllAutoOff))] private bool _isAutoHealRestActive;
@@ -218,6 +216,7 @@ public partial class MainWindowViewModel : ObservableObject
     [ObservableProperty][NotifyPropertyChangedFor(nameof(IsAllAutoOff))] private bool _isAutoGetCashActive;
     [ObservableProperty][NotifyPropertyChangedFor(nameof(IsAllAutoOff))] private bool _isAutoSneakActive;
     [ObservableProperty][NotifyPropertyChangedFor(nameof(IsAllAutoOff))] private bool _isAutoHideActive;
+    [ObservableProperty][NotifyPropertyChangedFor(nameof(IsAllAutoOff))] private bool _isAutoSearchActive;
 
     /// <summary>
     /// Master "Disable hangups" toggle. When on, every automatic disconnect
@@ -234,13 +233,13 @@ public partial class MainWindowViewModel : ObservableObject
     /// True when every wired auto-engine is off — drives the "Auto-All"
     /// master toggle's depressed/checked state. Mirrors
     /// <see cref="Game.AutoModeController.AllWiredOff"/> but computed from
-    /// the live observables so the badge updates instantly. AutoSearch is
-    /// excluded (no engine yet), matching the controller's wired set.
+    /// the live observables so the badge updates instantly.
     /// </summary>
     public bool IsAllAutoOff =>
         !IsAutoCombatActive && !IsAutoNukeActive && !IsAutoHealRestActive
         && !IsAutoBlessActive && !IsAutoLightActive && !IsAutoGetItemsActive
-        && !IsAutoGetCashActive && !IsAutoSneakActive && !IsAutoHideActive;
+        && !IsAutoGetCashActive && !IsAutoSneakActive && !IsAutoHideActive
+        && !IsAutoSearchActive;
 
     public bool IsDisconnected => !IsConnected;
 
@@ -791,6 +790,9 @@ public partial class MainWindowViewModel : ObservableObject
         // Phase 9 PR 9.L — AutoGetItemsManager's `get <name>` commands
         // ride the same gate-wrapped pipeline.
         AppServices.Current.AutoGetItems.SetWireSender(engineSend);
+        // Base auto-search — the per-room `sea` rides the same gate-wrapped
+        // pipeline so it can't land mid-password-prompt.
+        AppServices.Current.AutoSearch.SetWireSender(engineSend);
         // Phase 9 PR 9.E follow-up — StashRoomManager's `hide N <coin>`
         // commands ride the same gate-wrapped pipeline.
         AppServices.Current.Stash.SetWireSender(engineSend);
@@ -997,6 +999,7 @@ public partial class MainWindowViewModel : ObservableObject
          && e.PropertyName != nameof(IsAutoGetCashActive)
          && e.PropertyName != nameof(IsAutoSneakActive)
          && e.PropertyName != nameof(IsAutoHideActive)
+         && e.PropertyName != nameof(IsAutoSearchActive)
          && e.PropertyName != nameof(IsDisableHangupsActive)
          && e.PropertyName != nameof(IsAllAutoOff)) return;
 
@@ -1047,6 +1050,9 @@ public partial class MainWindowViewModel : ObservableObject
                 break;
             case "ToggleAutoHide":
                 row.IsActive = IsAutoHideActive;
+                break;
+            case "ToggleAutoSearch":
+                row.IsActive = IsAutoSearchActive;
                 break;
             case "ToggleAllAutoOff":
                 // Depressed = auto-responses running; inverse of "all off".
@@ -3576,6 +3582,10 @@ public partial class MainWindowViewModel : ObservableObject
     [RelayCommand]
     private void ToggleAutoHide() => IsAutoHideActive = !IsAutoHideActive;
 
+    /// <summary>Flip the live <see cref="IsAutoSearchActive"/> bit.</summary>
+    [RelayCommand]
+    private void ToggleAutoSearch() => IsAutoSearchActive = !IsAutoSearchActive;
+
     /// <summary>Flip the live <see cref="IsDisableHangupsActive"/> bit
     /// (the partial OnXxxChanged hook persists it to
     /// GeneralSettings.DisableHangups and the toolbar IsActive badge
@@ -3690,6 +3700,9 @@ public partial class MainWindowViewModel : ObservableObject
     partial void OnIsAutoHideActiveChanged(bool value)
         => PersistAutoModeFlag(d => d.AutoHide = value);
 
+    partial void OnIsAutoSearchActiveChanged(bool value)
+        => PersistAutoModeFlag(d => d.AutoSearch = value);
+
     partial void OnIsDisableHangupsActiveChanged(bool value)
         => PersistGeneralFlag(g => g.DisableHangups = value);
 
@@ -3751,6 +3764,7 @@ public partial class MainWindowViewModel : ObservableObject
             IsAutoGetCashActive  = am.AutoGetCash;
             IsAutoSneakActive    = am.AutoSneak;
             IsAutoHideActive     = am.AutoHide;
+            IsAutoSearchActive   = am.AutoSearch;
         }
         finally
         {

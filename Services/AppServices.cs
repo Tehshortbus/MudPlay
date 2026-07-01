@@ -1072,6 +1072,15 @@ public sealed class AppServices
     public Game.Inventory.AutoGetItemsManager AutoGetItems { get; private set; } = null!;
 
     /// <summary>
+    /// Base auto-search engine — sends a bare <c>sea</c> on each room
+    /// entry while the AutoSearch master toggle is on, revealing hidden
+    /// items so <see cref="AutoGetItems"/> / <see cref="Cash"/> can
+    /// collect them. Fired from the <see cref="RoomTracker.StateChanged"/>
+    /// seam; off by default and armed manually.
+    /// </summary>
+    public Game.Map.AutoSearchManager AutoSearch { get; private set; } = null!;
+
+    /// <summary>
     /// Phase 9 PR 9.J — shared Acquisition movement-gate driver. Both
     /// <see cref="Cash"/> and <see cref="AutoGetItems"/> feed it; it owns
     /// the single assert/clear of
@@ -2621,12 +2630,20 @@ public sealed class AppServices
         // MainWindowViewModel after telnet connects.
         Greet = new Game.GreetManager(RoomClassifier, Players, Party.State,
             selfNameProvider: () => Party.LocalCharacterName ?? Profile.Current?.Name);
+        // Base auto-search — a bare `sea` on each genuine room entry (when
+        // the master toggle is on) reveals hidden items for the auto-get
+        // engines. Wire-sender bound by MainWindowViewModel after connect.
+        AutoSearch = new Game.Map.AutoSearchManager(
+            isEnabled: () => ReadAutoModeFlag(d => d.AutoSearch),
+            log: Log);
+
         // Drop the stale queue / ground snapshot when we actually change rooms.
         RoomTracker.StateChanged += t =>
         {
             if (t.NewRoom is null) return;
             if (t.PreviousRoom is not null
              && t.PreviousRoom.Key.Equals(t.NewRoom.Key)) return;
+            AutoSearch.OnRoomChanged();
             AutoGetItems.OnRoomChanged();
             GroundItems.OnRoomChanged();
         };

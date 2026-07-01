@@ -156,7 +156,7 @@ public static class ToolbarItemCatalogue
             InDefaultLayout: false),
         new("ToggleAutoSearch",   "Auto Search",          "IconSearch",
             "ToggleAutoSearchCommand",
-            Tooltip: "Auto Search — wired in Phase 7 (AutoWalkManager — search rooms while running)",
+            Tooltip: "Toggle Auto Search on / off (search each room on entry)",
             InDefaultLayout: false),
     };
 
