@@ -37,6 +37,13 @@
         <Style Selector="TextBlock.badge.off">
             <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
         </Style>
+        <!-- Bonus values read neutral grey; only a penalty (negative) shows red. -->
+        <Style Selector="TextBlock.bonusValue">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgSecBrush}"/>
+        </Style>
+        <Style Selector="TextBlock.bonusValue.negative">
+            <Setter Property="Foreground" Value="{StaticResource AccentRedBrush}"/>
+        </Style>
     </UserControl.Styles>
 
     <Grid Margin="22" ColumnDefinitions="220,*">
@@ -156,7 +163,8 @@
                                             <TextBlock Grid.Column="0" Classes="Field"
                                                        Text="{Binding Stat}" Margin="0,0,12,2"/>
                                             <TextBlock Grid.Column="1" Text="{Binding Value}"
-                                                       Foreground="{StaticResource AccentRedBrush}"
+                                                       Classes="bonusValue"
+                                                       Classes.negative="{Binding IsNegative}"
                                                        FontFamily="{StaticResource FontMono}"
                                                        FontWeight="SemiBold"
                                                        FontSize="{StaticResource FontSizeMd}"
