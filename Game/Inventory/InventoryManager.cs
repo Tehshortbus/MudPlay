@@ -70,10 +70,12 @@ public sealed partial class InventoryManager : IDisposable
     private bool _loaded;
     private DateTimeOffset _lastUpdated = DateTimeOffset.MinValue;
     private IReadOnlyList<EquippedItem> _equipped = Array.Empty<EquippedItem>();
-    // Carried-but-unworn item names from the last full 'i' dump. Unlike the
-    // worn set, this is NOT patched incrementally between dumps — death-recovery
-    // reads it as a best-effort "last-known" deathpile snapshot, and the worn
-    // half (which IS patched) is deduped against it at capture time.
+    // Carried-but-unworn item names. Re-based by each full 'i' dump and patched
+    // incrementally between dumps: get / buy add, drop / sell remove, and
+    // equip / remove move a name between this list and the worn set. Name
+    // matching is best-effort (case-insensitive) and self-corrects on the next
+    // 'i'. Death-recovery reads it as a "last-known" deathpile snapshot; the
+    // worn half is deduped against it at capture time.
     private IReadOnlyList<string> _carried = Array.Empty<string>();
 
     // ----- full-'i' capture FSM (single-threaded — OnLine only) --------
@@ -224,6 +226,10 @@ public sealed partial class InventoryManager : IDisposable
                 list.Add(new EquippedItem(name, "Weapon Hand"));
                 return true;
             });
+            // The weapon leaves the pack for the hand. (A weapon swap prints only
+            // this one line, so the displaced old weapon can't be named back into
+            // the pack here — the next full 'i' dump restores it.)
+            RemoveCarried(name);
             return;
         }
 
@@ -239,6 +245,7 @@ public sealed partial class InventoryManager : IDisposable
                 list.Add(new EquippedItem(name, "Worn"));
                 return true;
             });
+            RemoveCarried(name);
             return;
         }
 
@@ -248,6 +255,8 @@ public sealed partial class InventoryManager : IDisposable
             string name = removed.Groups[1].Value.TrimEnd();
             PatchEquipped(list =>
                 list.RemoveAll(e => string.Equals(e.Name, name, StringComparison.OrdinalIgnoreCase)) > 0);
+            // A removed piece returns to the pack (unworn) until re-equipped.
+            PatchCarried(list => { list.Add(name); return true; });
             return;
         }
 
@@ -324,6 +333,12 @@ public sealed partial class InventoryManager : IDisposable
         Match bought = BoughtRegex().Match(line);
         if (bought.Success)
         {
+            // The bought item enters the pack unworn (MajorMUD never auto-wields
+            // a purchase), so it lands in the carried list until the player wears
+            // or sells it.
+            string boughtName = bought.Groups[1].Value.TrimEnd();
+            PatchCarried(list => { list.Add(boughtName); return true; });
+
             string priceTail = bought.Groups[2].Value;
             long priceCopper = ParsePriceToCopper(priceTail);
             if (priceCopper > 0)
@@ -350,13 +365,34 @@ public sealed partial class InventoryManager : IDisposable
         Match sold = SoldRegex().Match(line);
         if (sold.Success)
         {
+            // The sold item leaves the pack.
+            RemoveCarried(sold.Groups[1].Value.TrimEnd());
+
             long price = ParsePriceToCopper(sold.Groups[2].Value);
             if (price > 0)
             {
                 lock (_lock) ApplyTransaction(price);
                 Changed?.Invoke();
             }
+            return;
         }
+
+        // Get: "You pick up rusty dagger." — the item enters the pack unworn.
+        // Currency pickups use the past tense ("You picked up N ...") and are
+        // matched above, so this present-tense form is always an item.
+        Match gotItem = PickUpItemRegex().Match(line);
+        if (gotItem.Success)
+        {
+            string name = gotItem.Groups[1].Value.TrimEnd();
+            PatchCarried(list => { list.Add(name); return true; });
+            return;
+        }
+
+        // Drop: "You drop rusty dagger." — the item leaves the pack. Currency
+        // drops use the past tense ("You dropped N ...") and are matched above.
+        Match droppedItem = DropItemRegex().Match(line);
+        if (droppedItem.Success)
+            RemoveCarried(droppedItem.Groups[1].Value.TrimEnd());
     }
 
     // ----- full parse --------------------------------------------------
@@ -495,6 +531,40 @@ public sealed partial class InventoryManager : IDisposable
             }
         }
         if (changed) Changed?.Invoke();
+    }
+
+    // Carried-list counterpart to PatchEquipped: same loaded-baseline gate (an
+    // add before the first 'i' would imply the pack holds only that one item),
+    // same publish-only-if-changed contract.
+    private void PatchCarried(Func<List<string>, bool> mutate)
+    {
+        bool changed = false;
+        lock (_lock)
+        {
+            if (_loaded)
+            {
+                var list = new List<string>(_carried);
+                if (mutate(list))
+                {
+                    _carried = list;
+                    changed = true;
+                }
+            }
+        }
+        if (changed) Changed?.Invoke();
+    }
+
+    // Drop the first carried entry matching name (case-insensitive). Only the
+    // first, so selling one of two identical items leaves the other in the pack.
+    private void RemoveCarried(string name)
+    {
+        PatchCarried(list =>
+        {
+            int idx = list.FindIndex(n => string.Equals(n, name, StringComparison.OrdinalIgnoreCase));
+            if (idx < 0) return false;
+            list.RemoveAt(idx);
+            return true;
+        });
     }
 
     // The capture buffer holds the "You are carrying ..." rows plus the Keys /
@@ -747,4 +817,13 @@ public sealed partial class InventoryManager : IDisposable
 
     [GeneratedRegex(@"^You now have no weapon readied\.$")]
     private static partial Regex NoWeaponReadiedRegex();
+
+    // Present-tense item get / drop (single item). The past-tense currency forms
+    // ("You picked up" / "You dropped") are matched earlier, so these never
+    // collide with a coin line.
+    [GeneratedRegex(@"^You pick up (.+?)\.$")]
+    private static partial Regex PickUpItemRegex();
+
+    [GeneratedRegex(@"^You drop (.+?)\.$")]
+    private static partial Regex DropItemRegex();
 }

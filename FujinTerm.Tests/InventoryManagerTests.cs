@@ -505,4 +505,126 @@ public sealed class InventoryManagerTests
         Assert.False(h.Inv.IsLoaded);
         Assert.Empty(Worn(h));
     }
+
+    // ----- incremental carried-item get / drop / buy / sell ------------
+
+    // A baseline 'i' dump with one worn item (padded gloves) and one carried-
+    // but-unworn item (lantern), so the patches below have a real pack to edit.
+    private static void FeedCarriedBaseline(Harness h)
+    {
+        h.Feed("You are carrying padded gloves (Hands), lantern, 5 copper farthings.");
+        h.Feed("Wealth:    5 copper farthings");
+        h.Feed("Encumbrance:    50/2880  -  Light  [2%]");
+    }
+
+    private static IReadOnlyList<string> Carried(Harness h) => h.Inv.Snapshot.CarriedItems;
+
+    [Fact]
+    public void Get_AddsItemToCarried()
+    {
+        using Harness h = new();
+        FeedCarriedBaseline(h);
+
+        h.Feed("You pick up rusty dagger.");
+
+        Assert.Contains("rusty dagger", Carried(h));
+        Assert.Contains("lantern", Carried(h));   // baseline item untouched
+    }
+
+    [Fact]
+    public void Drop_RemovesItemFromCarried()
+    {
+        using Harness h = new();
+        FeedCarriedBaseline(h);
+
+        h.Feed("You drop lantern.");
+
+        Assert.DoesNotContain("lantern", Carried(h));
+    }
+
+    [Fact]
+    public void Buy_AddsItemToCarried()
+    {
+        using Harness h = new();
+        FeedCarriedBaseline(h);
+
+        h.Feed("You bought torch for 5 copper farthings.");
+
+        Assert.Contains("torch", Carried(h));
+    }
+
+    [Fact]
+    public void Sell_RemovesItemFromCarried()
+    {
+        using Harness h = new();
+        FeedCarriedBaseline(h);
+
+        h.Feed("You sold lantern for 3 copper farthings.");
+
+        Assert.DoesNotContain("lantern", Carried(h));
+    }
+
+    [Fact]
+    public void Equip_MovesItemOutOfCarried()
+    {
+        using Harness h = new();
+        FeedCarriedBaseline(h);
+
+        // Wielding a carried weapon moves it from the pack to the hand — it must
+        // not linger in both lists.
+        h.Feed("You are now holding lantern.");
+
+        Assert.DoesNotContain("lantern", Carried(h));
+        Assert.Contains(Worn(h), e => e is { Name: "lantern", Slot: "Weapon Hand" });
+    }
+
+    [Fact]
+    public void Wear_MovesItemOutOfCarried()
+    {
+        using Harness h = new();
+        FeedCarriedBaseline(h);
+
+        h.Feed("You are now wearing lantern.");
+
+        Assert.DoesNotContain("lantern", Carried(h));
+    }
+
+    [Fact]
+    public void Remove_MovesWornItemIntoCarried()
+    {
+        using Harness h = new();
+        FeedCarriedBaseline(h);
+
+        // A removed worn piece returns to the pack as carried-but-unworn.
+        h.Feed("You have removed padded gloves.");
+
+        Assert.Contains("padded gloves", Carried(h));
+        Assert.DoesNotContain(Worn(h), e => e.Name == "padded gloves");
+    }
+
+    [Fact]
+    public void GetItem_DoesNotCollideWithCurrencyPickup()
+    {
+        using Harness h = new();
+        FeedCarriedBaseline(h);
+
+        // Past-tense currency line must not land in the carried item list.
+        h.Feed("You picked up 30 gold crowns.");
+
+        Assert.DoesNotContain(Carried(h), c => c.Contains("gold"));
+        Assert.Equal(30, h.Inv.Snapshot.Currency.Gold);
+    }
+
+    [Fact]
+    public void CarriedPatch_BeforeBaseline_IsIgnored()
+    {
+        using Harness h = new();
+
+        // No 'i' parsed yet — adding to an empty pack would imply it holds only
+        // this one item, so the line is consumed but not applied.
+        h.Feed("You pick up rusty dagger.");
+
+        Assert.False(h.Inv.IsLoaded);
+        Assert.Empty(Carried(h));
+    }
 }
