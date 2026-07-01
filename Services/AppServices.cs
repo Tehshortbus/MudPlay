@@ -2313,10 +2313,12 @@ public sealed class AppServices
 
         // Phase 9 — InventoryManager. Parses the full `i` dump into a
         // currency + numeric-encumbrance snapshot and patches it on
-        // coin pickups / drops. CashManager reads the snapshot for its
-        // encumbrance gate. MarkStale on profile swap so the new
-        // character's first gate evaluation waits for a fresh `i`.
-        Inventory = new Game.Inventory.InventoryManager(Log);
+        // coin pickups / drops and item get / drop / buy / sell. CashManager
+        // reads the snapshot for its encumbrance gate. The item-weight resolver
+        // lets item transactions move the encumbrance estimate between dumps
+        // (ItemNames is already loaded above). MarkStale on profile swap so the
+        // new character's first gate evaluation waits for a fresh `i`.
+        Inventory = new Game.Inventory.InventoryManager(Log, ItemNames.WeightOf);
         Profile.ProfileLoaded += _ => Inventory.MarkStale();
         // PR 10.5 — death-recovery deathpile capture. RoomTracker.NoteDeath
         // records the worn + carried items from the last-known `i` snapshot

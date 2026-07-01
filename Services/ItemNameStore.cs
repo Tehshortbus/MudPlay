@@ -18,8 +18,8 @@ namespace FujinTerm.Services;
 /// the raw <c>Items.json</c>, populates the int → string map plus the
 /// slot-filtered name lists in a single pass, and evicts the raw
 /// <see cref="JsonDocument"/>. Only the fields these indexes need
-/// (Number, Name, ItemType, Worn) are retained — full item editing is
-/// owned by the Game Data browser and reads its own copy.
+/// (Number, Name, ItemType, Worn, Encum) are retained — full item editing
+/// is owned by the Game Data browser and reads its own copy.
 /// </remarks>
 public sealed class ItemNameStore
 {
@@ -43,6 +43,11 @@ public sealed class ItemNameStore
     // duplicate display names are rare and the first id is as good as
     // any for an auto-get decision.
     private readonly Dictionary<string, int> _byNormalizedName = new();
+
+    // Item Number → Encum (carry weight). Lets InventoryManager adjust the
+    // live encumbrance estimate when an item enters / leaves the pack between
+    // full 'i' dumps (see WeightOf).
+    private readonly Dictionary<int, int> _encumByNumber = new();
 
     /// <summary>Active set the store was last loaded from, or <c>null</c> if empty.</summary>
     public string? ActiveSet { get; private set; }
@@ -115,6 +120,18 @@ public sealed class ItemNameStore
     }
 
     /// <summary>
+    /// Carry weight (MDB <c>Encum</c>) of the item a game display name refers
+    /// to, or <c>null</c> when nothing in the active set matches. Name matching
+    /// reuses <see cref="FindByName"/>'s article/count normalization, so
+    /// "a torch" / "torch" both resolve. Used by the inventory tracker to move
+    /// the encumbrance estimate as items enter / leave the pack.
+    /// </summary>
+    public int? WeightOf(string displayName)
+        => FindByName(displayName) is int number
+           && _encumByNumber.TryGetValue(number, out int encum)
+            ? encum : null;
+
+    /// <summary>
     /// Lower-case, trim, and strip a leading article / count token so a
     /// loose room phrasing collapses to the canonical item name shape.
     /// Shared by the reverse-index build and the
@@ -182,6 +199,7 @@ public sealed class ItemNameStore
     {
         _names.Clear();
         _byNormalizedName.Clear();
+        _encumByNumber.Clear();
         _weaponNames = Array.Empty<string>();
         _offHandNames = Array.Empty<string>();
         ActiveSet = setName;
@@ -222,6 +240,7 @@ public sealed class ItemNameStore
             string key = Normalize(name);
             if (key.Length > 0)
                 _byNormalizedName.TryAdd(key, number);
+            _encumByNumber[number] = ReadInt(row, "Encum");
 
             if (ReadInt(row, "ItemType") == 1) weapons.Add(name);
             if (ReadInt(row, "Worn") == 12) offHands.Add(name);

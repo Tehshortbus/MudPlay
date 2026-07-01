@@ -59,6 +59,12 @@ public sealed partial class InventoryManager : IDisposable
     private readonly LogService? _log;
     private readonly object _lock = new();
 
+    // Resolves a game item display-name ("a torch") to its carry weight (MDB
+    // Encum), or null when unknown. Lets item get / drop / buy / sell move the
+    // live encumbrance estimate the same way coin transactions already do.
+    // Null in tests that don't exercise item weight.
+    private readonly Func<string, int?>? _itemWeight;
+
     private LineExtractor? _lines;
     private bool _disposed;
 
@@ -88,9 +94,10 @@ public sealed partial class InventoryManager : IDisposable
     // transaction-start line and prepend it to the next row for one retry.
     private string _pendingMergeLine = "";
 
-    public InventoryManager(LogService? log = null)
+    public InventoryManager(LogService? log = null, Func<string, int?>? itemWeightResolver = null)
     {
         _log = log;
+        _itemWeight = itemWeightResolver;
     }
 
     /// <summary>Fired (outside the lock) whenever the snapshot changes.</summary>
@@ -350,6 +357,7 @@ public sealed partial class InventoryManager : IDisposable
             // or sells it.
             string boughtName = bought.Groups[1].Value.TrimEnd();
             PatchCarried(list => { list.Add(boughtName); return true; });
+            AdjustItemWeight(boughtName, +1);
 
             string priceTail = bought.Groups[2].Value;
             long priceCopper = ParsePriceToCopper(priceTail);
@@ -378,7 +386,9 @@ public sealed partial class InventoryManager : IDisposable
         if (sold.Success)
         {
             // The sold item leaves the pack.
-            RemoveCarried(sold.Groups[1].Value.TrimEnd());
+            string soldName = sold.Groups[1].Value.TrimEnd();
+            RemoveCarried(soldName);
+            AdjustItemWeight(soldName, -1);
 
             long price = ParsePriceToCopper(sold.Groups[2].Value);
             if (price > 0)
@@ -398,6 +408,7 @@ public sealed partial class InventoryManager : IDisposable
         {
             string name = gotItem.Groups[1].Value.TrimEnd();
             PatchCarried(list => { list.Add(name); return true; });
+            AdjustItemWeight(name, +1);
             return;
         }
 
@@ -405,7 +416,11 @@ public sealed partial class InventoryManager : IDisposable
         // carry a numeric count and are matched above.
         Match droppedItem = DropItemRegex().Match(line);
         if (droppedItem.Success)
-            RemoveCarried(droppedItem.Groups[1].Value.TrimEnd());
+        {
+            string name = droppedItem.Groups[1].Value.TrimEnd();
+            RemoveCarried(name);
+            AdjustItemWeight(name, -1);
+        }
     }
 
     // ----- full parse --------------------------------------------------
@@ -659,8 +674,38 @@ public sealed partial class InventoryManager : IDisposable
     {
         long weightDelta = TotalCoins() / 3 - oldCoins / 3;
         _curWeight = (int)Math.Max(0, _curWeight + weightDelta);
+        RecomputeEncumbrancePercent();
+    }
+
+    // Re-derive percentage + bracket from the current / max weight. Shared by
+    // the coin-weight and item-weight adjustments.
+    private void RecomputeEncumbrancePercent()
+    {
         _percentage = _maxWeight > 0 ? (int)((long)_curWeight * 100 / _maxWeight) : 0;
         _category = DeriveCategory(_percentage);
+    }
+
+    // Move the live encumbrance estimate as a single item enters (+1) or leaves
+    // (-1) the pack, reading its carry weight (MDB Encum) from the active game
+    // data. A null resolver, an unresolved name, or a zero-weight item is a
+    // no-op — and the next full 'i' dump re-bases the reading regardless, so a
+    // stale estimate self-corrects. Gated on a loaded baseline like the carried
+    // list: adjusting from a 0/0 reading would be meaningless.
+    private void AdjustItemWeight(string itemName, int sign)
+    {
+        if (_itemWeight is null) return;
+        if (_itemWeight(itemName) is not int weight || weight == 0) return;
+        bool changed = false;
+        lock (_lock)
+        {
+            if (_loaded)
+            {
+                _curWeight = (int)Math.Max(0, _curWeight + (long)sign * weight);
+                RecomputeEncumbrancePercent();
+                changed = true;
+            }
+        }
+        if (changed) Changed?.Invoke();
     }
 
     private static long ComputeWealth(int copper, int silver, int gold, int platinum, int runic)

@@ -22,9 +22,9 @@ public sealed class InventoryManagerTests
         public LineExtractor Lines { get; }
         public int ChangedCount { get; private set; }
 
-        public Harness()
+        public Harness(Func<string, int?>? itemWeight = null)
         {
-            Inv = new InventoryManager();
+            Inv = new InventoryManager(log: null, itemWeightResolver: itemWeight);
             Lines = new LineExtractor(new TerminalEmulator(80, 24));
             Inv.AttachLineExtractor(Lines);
             Inv.Changed += () => ChangedCount++;
@@ -657,5 +657,141 @@ public sealed class InventoryManagerTests
 
         Assert.False(h.Inv.IsLoaded);
         Assert.Empty(Carried(h));
+    }
+
+    // ----- incremental item-weight encumbrance -------------------------
+
+    // Stands in for the game-data Encum lookup: a fixed name→weight table.
+    // Unlisted names resolve to null, exercising the unknown-item path.
+    private static int? TestWeight(string name) => name switch
+    {
+        "torch" => 40,
+        "lantern" => 30,
+        "broadsword" => 150,
+        _ => null,
+    };
+
+    private static int Weight(Harness h) => h.Inv.Snapshot.Encumbrance.CurrentWeight;
+
+    [Fact]
+    public void Get_AddsItemWeightToEncumbrance()
+    {
+        using Harness h = new(TestWeight);
+        FeedCarriedBaseline(h);   // 50/2880
+
+        h.Feed("You took torch.");
+
+        Assert.Equal(90, Weight(h));   // 50 + 40
+    }
+
+    [Fact]
+    public void Drop_SubtractsItemWeightFromEncumbrance()
+    {
+        using Harness h = new(TestWeight);
+        FeedCarriedBaseline(h);   // 50/2880, holds lantern (30)
+
+        h.Feed("You dropped lantern.");
+
+        Assert.Equal(20, Weight(h));   // 50 - 30
+    }
+
+    [Fact]
+    public void Buy_AddsItemWeightToEncumbrance()
+    {
+        using Harness h = new(TestWeight);
+        FeedCarriedBaseline(h);
+
+        // "for nothing" so the purchase price moves no coins — isolates the
+        // item-weight change from the coin-weight change buying normally causes.
+        h.Feed("You bought broadsword for nothing.");
+
+        Assert.Equal(200, Weight(h));   // 50 + 150
+    }
+
+    [Fact]
+    public void Sell_SubtractsItemWeightFromEncumbrance()
+    {
+        using Harness h = new(TestWeight);
+        // 3 copper + a 2-copper sale = 5 copper: both sides floor to 1
+        // coin-weight unit, so the sale's coin weight is a no-op and only the
+        // lantern's item weight moves.
+        h.Feed("You are carrying lantern, 3 copper farthings.");
+        h.Feed("Wealth:    3 copper farthings");
+        h.Feed("Encumbrance:    50/2880  -  Light  [2%]");
+
+        h.Feed("You sold lantern for 2 copper farthings.");
+
+        Assert.Equal(20, Weight(h));   // 50 - 30
+    }
+
+    [Fact]
+    public void Equip_DoesNotChangeTotalWeight()
+    {
+        using Harness h = new(TestWeight);
+        FeedCarriedBaseline(h);   // holds lantern
+
+        // Wielding an item already on your person doesn't change carried weight —
+        // it moves between lists, not on/off the body.
+        h.Feed("You are now holding lantern.");
+
+        Assert.Equal(50, Weight(h));
+    }
+
+    [Fact]
+    public void Get_UnknownItem_LeavesWeightUntouched()
+    {
+        using Harness h = new(TestWeight);
+        FeedCarriedBaseline(h);
+
+        // Not in the weight table — the carried list still updates, but the
+        // encumbrance estimate holds until the next 'i' dump re-bases it.
+        h.Feed("You took mysterious orb.");
+
+        Assert.Contains("mysterious orb", Carried(h));
+        Assert.Equal(50, Weight(h));
+    }
+
+    [Fact]
+    public void Drop_ClampsWeightAtZero()
+    {
+        using Harness h = new(TestWeight);
+        // A light 10-unit pack holding a heavy broadsword (150).
+        h.Feed("You are carrying broadsword, 5 copper farthings.");
+        h.Feed("Wealth:    5 copper farthings");
+        h.Feed("Encumbrance:    10/2880  -  None  [0%]");
+
+        h.Feed("You dropped broadsword.");
+
+        // 10 - 150 floors at 0 rather than going negative.
+        Assert.Equal(0, Weight(h));
+    }
+
+    [Fact]
+    public void ItemWeight_RecomputesPercentageAndCategory()
+    {
+        using Harness h = new(TestWeight);
+        // Small max so a single heavy item visibly moves the bracket.
+        h.Feed("You are carrying 5 copper farthings.");
+        h.Feed("Wealth:    5 copper farthings");
+        h.Feed("Encumbrance:    10/200  -  None  [5%]");
+
+        h.Feed("You took broadsword.");   // +150 → 160/200 = 80%
+
+        EncumbranceReading e = h.Inv.Snapshot.Encumbrance;
+        Assert.Equal(160, e.CurrentWeight);
+        Assert.Equal(80, e.Percentage);
+        Assert.Equal(EncumbranceLevel.Heavy, e.Category);
+    }
+
+    [Fact]
+    public void ItemWeight_NoResolver_LeavesEncumbranceUntouched()
+    {
+        using Harness h = new();   // no weight resolver wired
+        FeedCarriedBaseline(h);
+
+        h.Feed("You took torch.");
+
+        Assert.Contains("torch", Carried(h));
+        Assert.Equal(50, Weight(h));
     }
 }
