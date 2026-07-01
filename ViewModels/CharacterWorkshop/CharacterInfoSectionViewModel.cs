@@ -141,7 +141,7 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
     [ObservableProperty] private string _encumbrance = "—";
     /// <summary>Per-denomination coins currently carried (nonzero only), or "none".</summary>
     [ObservableProperty] private string _currencyHeld = "—";
-    /// <summary>Consolidated wealth of every coin carried, broken into denominations.</summary>
+    /// <summary>Consolidated wealth in copper farthings (matches the game's <c>Wealth:</c> line).</summary>
     [ObservableProperty] private string _totalWealth = "—";
 
     // ----- Inventory: the full carry list from the last `i` dump ---------
@@ -459,7 +459,12 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
 
         CurrencyHoldings coins = snap.Currency;
         CurrencyHeld = FormatCoins(coins);
-        TotalWealth = coins.TotalCopperValue > 0 ? FormatWealth(coins.TotalCopperValue) : "—";
+        // The wealth line mirrors the game's own "Wealth:  N copper farthings"
+        // summary — the consolidated value in the base denomination, not a
+        // decomposition (the Coins line above carries the per-coin breakdown).
+        TotalWealth = coins.TotalCopperValue > 0
+            ? string.Create(CultureInfo.InvariantCulture, $"{coins.TotalCopperValue:N0} copper farthings")
+            : "—";
     }
 
     // Per-denomination coins currently carried, high → low, nonzero only.
@@ -472,28 +477,6 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
         if (c.Silver > 0) parts.Add($"{c.Silver:N0} silver");
         if (c.Copper > 0) parts.Add($"{c.Copper:N0} copper");
         return parts.Count > 0 ? string.Join(", ", parts) : "none";
-    }
-
-    // Greedy decomposition of the consolidated copper value back into the
-    // largest denominations — the "what's it all worth" figure, independent of
-    // which physical coins are actually held.
-    private static string FormatWealth(long totalCopper)
-    {
-        long remaining = totalCopper;
-        var parts = new List<string>(5);
-        void Take(long unit, string label)
-        {
-            long n = remaining / unit;
-            if (n <= 0) return;
-            parts.Add(string.Create(CultureInfo.InvariantCulture, $"{n:N0} {label}"));
-            remaining -= n * unit;
-        }
-        Take(1_000_000, "runic");
-        Take(10_000, "platinum");
-        Take(100, "gold");
-        Take(10, "silver");
-        Take(1, "copper");
-        return parts.Count > 0 ? string.Join(", ", parts) : "—";
     }
 
     // ----- Inventory: the full carry list from the last `i` dump ----------
