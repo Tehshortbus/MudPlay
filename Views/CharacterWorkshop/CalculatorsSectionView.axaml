@@ -93,7 +93,7 @@
                                 <TextBlock Classes="FieldLabel"
                                            Text="Your offense against the monster configured below, using the accuracy above."/>
 
-                                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto">
+                                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto">
                                     <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Hit Chance" Margin="0,2,16,2"/>
                                     <TextBlock Grid.Row="0" Grid.Column="1" Classes="FieldValue" Text="{Binding MatchupPlayerHit}" Margin="0,2"/>
                                     <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Damage" Margin="0,2,16,2"/>
@@ -105,10 +105,6 @@
                                     <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="DPS" Margin="0,2,16,2"
                                                IsVisible="{Binding MatchupHasWeapon}"/>
                                     <TextBlock Grid.Row="3" Grid.Column="1" Classes="FieldValue" Text="{Binding MatchupDps}" Margin="0,2"
-                                               IsVisible="{Binding MatchupHasWeapon}"/>
-                                    <TextBlock Grid.Row="4" Grid.Column="0" Classes="FieldLabel" Text="Rounds to Kill" Margin="0,2,16,2"
-                                               IsVisible="{Binding MatchupHasWeapon}"/>
-                                    <TextBlock Grid.Row="4" Grid.Column="1" Classes="FieldValue" Text="{Binding MatchupRounds}" Margin="0,2"
                                                IsVisible="{Binding MatchupHasWeapon}"/>
                                 </Grid>
                             </StackPanel>
@@ -135,10 +131,6 @@
                                     <StackPanel Spacing="3">
                                         <TextBlock Classes="FieldLabel" Text="Damage Resist"/>
                                         <NumericUpDown Classes="Stat" Value="{Binding MonsterDr, Mode=TwoWay}"/>
-                                    </StackPanel>
-                                    <StackPanel Spacing="3">
-                                        <TextBlock Classes="FieldLabel" Text="HP"/>
-                                        <NumericUpDown Classes="Stat" Value="{Binding MonsterHp, Mode=TwoWay}"/>
                                     </StackPanel>
                                 </StackPanel>
 

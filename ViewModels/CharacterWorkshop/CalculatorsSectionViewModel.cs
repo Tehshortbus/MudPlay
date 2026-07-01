@@ -55,8 +55,6 @@ public sealed partial class CalculatorsSectionViewModel : WorkshopSectionViewMod
     [ObservableProperty] private int _monsterAc;
     /// <summary>Monster damage resist — seeded on pick, editable; trims each of your hits.</summary>
     [ObservableProperty] private int _monsterDr;
-    /// <summary>Monster HP — seeded on pick, editable; drives rounds-to-kill.</summary>
-    [ObservableProperty] private int _monsterHp;
 
     // ----- Your values (editable, seeded from the live actuals) -----------
     /// <summary>Your attack accuracy — seeded from the gear-derived actual, editable.</summary>
@@ -79,7 +77,6 @@ public sealed partial class CalculatorsSectionViewModel : WorkshopSectionViewMod
     [ObservableProperty] private string _matchupPlayerDamage = "—";
     [ObservableProperty] private string _matchupSwings = "—";
     [ObservableProperty] private string _matchupDps = "—";
-    [ObservableProperty] private string _matchupRounds = "—";
     /// <summary>False when unarmed — gates the swings / DPS / rounds rows.</summary>
     [ObservableProperty] private bool _matchupHasWeapon;
 
@@ -232,7 +229,6 @@ public sealed partial class CalculatorsSectionViewModel : WorkshopSectionViewMod
     partial void OnPlayerDodgeChanged(int value) => RecomputeAllRows();
     partial void OnMonsterAcChanged(int value) => RecomputeOutgoing();
     partial void OnMonsterDrChanged(int value) => RecomputeOutgoing();
-    partial void OnMonsterHpChanged(int value) => RecomputeOutgoing();
 
     // Seed the editable monster values + attack rows from the picked monster (or
     // reset to a blank, single-row state when the name is cleared) so the calc is
@@ -247,7 +243,7 @@ public sealed partial class CalculatorsSectionViewModel : WorkshopSectionViewMod
             || FindMonsterRowByNumber(monsterNumber) is not JsonElement row)
         {
             _monsterIsEvil = _monsterIsGood = false;
-            MonsterAc = MonsterDr = MonsterHp = 0;
+            MonsterAc = MonsterDr = 0;
             MonsterAttacks.Add(NewAttackRow("—", 50));
             RenumberAttacks();
             RecomputeAllRows();
@@ -261,7 +257,6 @@ public sealed partial class CalculatorsSectionViewModel : WorkshopSectionViewMod
 
         MonsterAc = GetInt(row, "ArmourClass");
         MonsterDr = GetInt(row, "DamageResist");
-        MonsterHp = GetInt(row, "HP");
 
         // Enumerate every physical attack (melee = 1, rob = 3) into an editable
         // row. Spell slots (type 2) carry spell metadata in those columns, so we
@@ -319,18 +314,18 @@ public sealed partial class CalculatorsSectionViewModel : WorkshopSectionViewMod
     }
 
     // You → Monster projection. Uses the editable player accuracy (so tweaking the
-    // ticker moves the hit% and DPS) against the editable monster AC / DR / HP.
-    // Always computed — with no monster picked the values default to 0, which the
-    // user can hand-enter. Rounds-to-kill shows "—" until HP > 0.
+    // ticker moves the hit% and DPS) against the editable monster AC / DR. Always
+    // computed — with no monster picked the values default to 0, hand-editable.
     private void RecomputeOutgoing()
     {
-        // Only the monster's AC / DR / HP feed the player-side outputs we show;
-        // the attack fields drive the return direction (computed per-row instead),
+        // Only the monster's AC / DR feed the player-side outputs we show; the
+        // attack fields drive the return direction (computed per-row instead) and
+        // HP would only drive rounds-to-kill (dropped — this isn't a round sim),
         // so they can stay zeroed here.
         var monster = new MonsterMatchupProfile(
             ArmourClass: MonsterAc,
             DamageResist: MonsterDr,
-            Hp: MonsterHp,
+            Hp: 0,
             HasPhysicalAttack: false,
             AttackAccuracy: 0,
             AvgAttackDamage: 0,
@@ -360,9 +355,6 @@ public sealed partial class CalculatorsSectionViewModel : WorkshopSectionViewMod
             : "—";
         MatchupDps = res.HasWeapon
             ? res.PlayerDps.ToString("0.0", CultureInfo.InvariantCulture)
-            : "—";
-        MatchupRounds = res.RoundsToKill > 0
-            ? res.RoundsToKill.ToString(CultureInfo.InvariantCulture)
             : "—";
     }
 
