@@ -186,6 +186,51 @@
                         </Border>
                     </StackPanel>
                 </Expander>
+
+                <!-- ===== Movement Speed ===== -->
+                <Expander HorizontalAlignment="Stretch">
+                    <Expander.Header>
+                        <TextBlock Classes="BoxTitle" Text="Movement Speed"/>
+                    </Expander.Header>
+
+                    <Border Classes="SubBox" Margin="0,8,0,0">
+                        <StackPanel Spacing="10">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBlock Grid.Column="0" Classes="Section" Text="Inputs" VerticalAlignment="Center"/>
+                                <Button Grid.Column="1" Content="Reset to actual"
+                                        Command="{Binding ResetMovementCommand}"
+                                        ToolTip.Tip="Discard your edits and re-seed encumbrance + quickness from the live values."/>
+                            </Grid>
+
+                            <StackPanel Orientation="Horizontal" Spacing="14">
+                                <StackPanel Spacing="3">
+                                    <TextBlock Classes="FieldLabel" Text="Encumbrance %"/>
+                                    <NumericUpDown Classes="Stat" Maximum="100" Value="{Binding MoveEncumbrance, Mode=TwoWay}"/>
+                                </StackPanel>
+                                <StackPanel Spacing="3">
+                                    <TextBlock Classes="FieldLabel" Text="Quickness"/>
+                                    <NumericUpDown Classes="Stat" Value="{Binding MoveQuickness, Mode=TwoWay}"/>
+                                </StackPanel>
+                                <StackPanel Spacing="3">
+                                    <TextBlock Classes="FieldLabel" Text="Slowness"/>
+                                    <NumericUpDown Classes="Stat" Value="{Binding MoveSlowness, Mode=TwoWay}"/>
+                                </StackPanel>
+                            </StackPanel>
+
+                            <Border Height="1" Background="{StaticResource ChromeBorderBrush}" Margin="0,2"/>
+
+                            <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto">
+                                <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Speed" Margin="0,2,16,2"/>
+                                <TextBlock Grid.Row="0" Grid.Column="1" Classes="FieldValue" Text="{Binding MoveSpeedText}" Margin="0,2"/>
+                                <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Status" Margin="0,2,16,2"/>
+                                <TextBlock Grid.Row="1" Grid.Column="1" Classes="FieldValue" Text="{Binding MoveStatusText}"
+                                           Foreground="{StaticResource AccentAmberBrush}" Margin="0,2"/>
+                            </Grid>
+
+                            <TextBlock Classes="FieldLabel" Text="{Binding MoveAdviceText}" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Border>
+                </Expander>
             </StackPanel>
         </ScrollViewer>
     </Grid>

@@ -90,6 +90,17 @@ public sealed partial class CalculatorsSectionViewModel : WorkshopSectionViewMod
     /// <summary>False when unarmed — gates the swings / DPS / rounds rows.</summary>
     [ObservableProperty] private bool _matchupHasWeapon;
 
+    // ----- Movement Speed calculator -------------------------------------
+    /// <summary>Encumbrance percentage feeding the movement calc — seeded live, editable.</summary>
+    [ObservableProperty] private int _moveEncumbrance;
+    /// <summary>Total quickness feeding the movement calc — seeded from gear, editable.</summary>
+    [ObservableProperty] private int _moveQuickness;
+    /// <summary>Modelled slowness effect — seeds to 0, editable.</summary>
+    [ObservableProperty] private int _moveSlowness;
+    [ObservableProperty] private string _moveSpeedText = "—";
+    [ObservableProperty] private string _moveStatusText = "—";
+    [ObservableProperty] private string _moveAdviceText = string.Empty;
+
     // Captured player-side numbers (recomputed on every data refresh).
     private RealmType _realm;
     private int _normalAccuracy;
@@ -113,6 +124,11 @@ public sealed partial class CalculatorsSectionViewModel : WorkshopSectionViewMod
     // Weapon override from the picker — empty / unmatched falls back to equipped.
     private bool _hasSelectedWeapon;
     private int _selWeaponMin, _selWeaponMax, _selWeaponSpeed, _selWeaponStrReq;
+
+    // Movement inputs captured on refresh — encumbrance% and quickness have live
+    // sources; slowness is a modelled effect that always re-seeds to 0.
+    private int _actualEncumPercent;
+    private int _plusQuickness;
 
     // Alignment of the picked monster — decides which of the player's wards
     // applies in the incoming-hit calc.
@@ -196,11 +212,21 @@ public sealed partial class CalculatorsSectionViewModel : WorkshopSectionViewMod
         _protGood = t.PlusProtGood;
         _damageResist = (int)Math.Round(t.PlusDR, MidpointRounding.AwayFromZero);
 
+        _actualEncumPercent = encum.Percentage;
+        _plusQuickness = t.PlusQuickness;
+
         // Seed the editable inputs from the actuals. The setter recompute is
         // cheap and harmless when the attack list is still empty / no monster.
         PlayerAccuracy = _normalAccuracy;
         PlayerAc = _actualAc;
         PlayerDodge = _actualDodge;
+
+        MoveEncumbrance = _actualEncumPercent;
+        MoveQuickness = _plusQuickness;
+        MoveSlowness = 0;
+        // Seeding to values that equal the current backing field won't fire the
+        // setter, so recompute explicitly to guarantee the outputs are current.
+        RecomputeMovement();
     }
 
     // Derive avg damage / swings / crit from the captured offense inputs,
@@ -505,6 +531,40 @@ public sealed partial class CalculatorsSectionViewModel : WorkshopSectionViewMod
         PlayerAccuracy = _normalAccuracy;
         PlayerAc = _actualAc;
         PlayerDodge = _actualDodge;
+    }
+
+    // ----- Movement Speed --------------------------------------------------
+
+    partial void OnMoveEncumbranceChanged(int value) => RecomputeMovement();
+    partial void OnMoveQuicknessChanged(int value) => RecomputeMovement();
+    partial void OnMoveSlownessChanged(int value) => RecomputeMovement();
+
+    // Solve the movement speed vs the 1-second cap and phrase the advice. "Above
+    // cap" means faster than the cap (quickness to spare, since the game clamps
+    // movement at one second); "too slow" means more quickness is needed.
+    private void RecomputeMovement()
+    {
+        MovementSpeedResult res = MovementSpeedCalculator.Compute(MoveEncumbrance, MoveQuickness, MoveSlowness);
+        MoveSpeedText = string.Create(CultureInfo.InvariantCulture, $"{res.SpeedMillis / 1000.0:0.00} s");
+        (MoveStatusText, MoveAdviceText) = res.State switch
+        {
+            MovementCapState.AboveCap => ("Above cap",
+                string.Create(CultureInfo.InvariantCulture,
+                    $"You can shed {res.QuicknessToCap:0.0} quickness and stay capped.")),
+            MovementCapState.TooSlow => ("Too slow",
+                string.Create(CultureInfo.InvariantCulture,
+                    $"Need {res.QuicknessToCap:0.0} more quickness to reach the 1-second cap.")),
+            _ => ("Perfect", "Exactly at the 1-second movement cap."),
+        };
+    }
+
+    /// <summary>Discard manual movement edits and re-seed encumbrance / quickness from the live actuals.</summary>
+    [RelayCommand]
+    private void ResetMovement()
+    {
+        MoveEncumbrance = _actualEncumPercent;
+        MoveQuickness = _plusQuickness;
+        MoveSlowness = 0;
     }
 
     private static int GetInt(JsonElement? row, string property)
