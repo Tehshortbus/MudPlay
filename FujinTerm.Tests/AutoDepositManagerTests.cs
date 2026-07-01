@@ -19,9 +19,11 @@ namespace FujinTerm.Tests;
 /// stash room, offloads the excess coin (<c>dep</c> for a bank;
 /// per-currency <c>hide</c> via <see cref="StashRoomManager.ExecuteStash"/>
 /// for a stash), walks back to where it left off, and restarts the captured
-/// engine. A bare walk-to (or an idle stack) never reroutes. A stash always
-/// detours — there is no on-path skip (the stash only fires on the reroute,
-/// never on a manual walk-through).
+/// engine. A bare walk-to (or an idle stack) never reroutes. A stash room
+/// that sits on the active route (a resolved loop circuit room, or a marked
+/// Auto-Lair room) spends no detour — the manager stashes it on pass-through
+/// as the engine walks through; only an off-route stash room detours. A
+/// manual walk-through with no engine running never stashes.
 ///
 /// Headless: the gate is driven by mutating the snapshot + settings and
 /// calling <see cref="CashManager.OnInventoryChanged"/>; the walker is
@@ -349,28 +351,29 @@ public sealed class AutoDepositManagerTests : IDisposable
     }
 
     [Fact]
-    public void StashRoom_FiresHideThenWalksAndResumes()
+    public void StashOffLairRoute_DetoursStashesAndResumes()
     {
         using Harness h = NewHarness();
-        StartLair(h);
-        // Mark the destination (1/3) as a stash room on the character — on
-        // arrival the manager drives StashRoomManager.ExecuteStash, which
-        // fires one `hide` per held currency above its keep floor. No `dep`
+        StartLair(h);   // marks 1/1 + 1/3 (NOT 1/2)
+        // 1/2 is off the marked lair route, so the gate spends a dedicated
+        // detour: stop the lair, walk to the stash room, fire one `hide` per
+        // held currency above its keep floor, walk back, and resume. No `dep`
         // goes out on the bank channel.
-        h.Profile.Current!.StashRooms = new List<RoomRef> { new RoomRef(1, 3) };
-        ArmBankGate(h);
+        h.Profile.Current!.StashRooms = new List<RoomRef> { new RoomRef(1, 2) };
+        h.Settings.BankRoomKey = "1/2";
+        h.Settings.AutoDepositIfWealthExceeds = 1000;
 
         h.SetWealth(copper: 0, silver: 0, gold: 50, platinum: 0, runic: 0, totalCopperValue: 5000);
-        Arrive(h, new RoomKey(1, 2));
-        Arrive(h, new RoomKey(1, 3));
+        Assert.False(h.Lair.IsActive);                       // detour stopped it
+        Assert.Equal(new RoomKey(1, 2), h.Walker.Destination);
 
+        // Walk to the stash room (1/1 → 1/2) → hide fires on arrival.
+        Arrive(h, new RoomKey(1, 2));
         Assert.Empty(h.Deposited);
-        // 50 gold held, keep floors all 0 → a single `hide 50 gold`.
         Assert.Equal("hide 50 gold", Assert.Single(h.StashLines()));
 
-        // Walk back + resume.
+        // Walk back to origin (1/2 → 1/1) → lair resumes.
         Assert.Equal(new RoomKey(1, 1), h.Walker.Destination);
-        Arrive(h, new RoomKey(1, 2));
         Arrive(h, new RoomKey(1, 1));
         Assert.True(h.Lair.IsActive);
     }
@@ -390,41 +393,64 @@ public sealed class AutoDepositManagerTests : IDisposable
     }
 
     [Fact]
-    public void StashOnLoopCircuit_StillDetours()
+    public void StashOnLoopCircuit_SkipsDetour_StashesOnPassThrough()
     {
         using Harness h = NewHarness();
         StartLoop(h);
-        // Stash 1/2 sits on the loop circuit. There is no on-path skip: the
-        // stash only ever fires on a deliberate reroute (never passively on a
-        // walk-through), so the manager detours regardless — the loop stops
-        // and the walker heads for the stash room.
+        // Stash 1/2 sits on the loop circuit (1/1 → 1/2 → 1/3 → 1/2 → 1/1),
+        // so the gate crossing spends no detour: the loop keeps running and
+        // the stash fires when the character walks through 1/2 on its own.
         h.Profile.Current!.StashRooms = new List<RoomRef> { new RoomRef(1, 2) };
         h.Settings.BankRoomKey = "1/2";
         h.Settings.AutoDepositIfWealthExceeds = 1000;
 
         h.SetWealth(copper: 0, silver: 0, gold: 50, platinum: 0, runic: 0, totalCopperValue: 5000);
 
-        Assert.Equal(LoopState.Idle, h.Loop.State);
-        Assert.Equal(WalkState.Walking, h.Walker.State);
-        Assert.Equal(new RoomKey(1, 2), h.Walker.Destination);
+        // No detour — the loop was not stopped and nothing stashed yet.
+        Assert.Equal(LoopState.Running, h.Loop.State);
+        Assert.Empty(h.StashLines());
+
+        // Character laps through the stash room → stash in passing.
+        Arrive(h, new RoomKey(1, 2));
+        Assert.Equal("hide 50 gold", Assert.Single(h.StashLines()));
+        Assert.Equal(LoopState.Running, h.Loop.State);
     }
 
     [Fact]
-    public void StashOnLairPath_StillDetours()
+    public void StashOnLairMarkedRoom_SkipsDetour_StashesOnPassThrough()
     {
         using Harness h = NewHarness();
-        StartLair(h);
-        // Stash 1/3 is a MARKED Auto-Lair room. Same rule as the loop case —
-        // no on-path skip, so the manager detours and stashes rather than
-        // waiting to pass through.
+        StartLair(h);   // marks 1/1 + 1/3
+        // Stash 1/3 is a MARKED Auto-Lair room → on-route, no detour. The
+        // lair roams through its marked room and the stash fires in passing.
         h.Profile.Current!.StashRooms = new List<RoomRef> { new RoomRef(1, 3) };
         h.Settings.BankRoomKey = "1/3";
         h.Settings.AutoDepositIfWealthExceeds = 1000;
 
         h.SetWealth(copper: 0, silver: 0, gold: 50, platinum: 0, runic: 0, totalCopperValue: 5000);
 
-        Assert.False(h.Lair.IsActive);
-        Assert.Equal(WalkState.Walking, h.Walker.State);
-        Assert.Equal(new RoomKey(1, 3), h.Walker.Destination);
+        // No detour — the lair is still active and nothing stashed yet.
+        Assert.True(h.Lair.IsActive);
+        Assert.Empty(h.StashLines());
+
+        // Lair walks the character through its marked room → stash in passing.
+        Arrive(h, new RoomKey(1, 2));
+        Arrive(h, new RoomKey(1, 3));
+        Assert.Equal("hide 50 gold", Assert.Single(h.StashLines()));
+    }
+
+    [Fact]
+    public void PassThrough_WhenIdle_DoesNotStash()
+    {
+        using Harness h = NewHarness();
+        // No loop / lair running — a purely manual walk through a stash room
+        // must never stash (per user direction).
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Profile.Current!.StashRooms = new List<RoomRef> { new RoomRef(1, 2) };
+        h.SetWealth(copper: 0, silver: 0, gold: 50, platinum: 0, runic: 0, totalCopperValue: 5000);
+
+        Arrive(h, new RoomKey(1, 2));
+
+        Assert.Empty(h.StashLines());
     }
 }
