@@ -101,6 +101,34 @@ public sealed partial class CalculatorsSectionViewModel : WorkshopSectionViewMod
     [ObservableProperty] private string _moveStatusText = "—";
     [ObservableProperty] private string _moveAdviceText = string.Empty;
 
+    // ----- Swing calculator ----------------------------------------------
+    /// <summary>Selected swing weapon — null / unmatched means the equipped weapon.</summary>
+    [ObservableProperty] private string? _selectedSwingWeaponName;
+    /// <summary>Character level feeding the swing calc — seeded live, editable.</summary>
+    [ObservableProperty] private int _swingLevel;
+    /// <summary>Class combat level (1–5) — seeded from the class row, editable.</summary>
+    [ObservableProperty] private int _swingCombatLevel;
+    [ObservableProperty] private int _swingAgility;
+    [ObservableProperty] private int _swingStrength;
+    [ObservableProperty] private int _swingEncumbrance;
+    /// <summary>Speed-modifier label: "Normal (100)" / "Sped (85)" / "Slow (125)".</summary>
+    [ObservableProperty] private string _swingSpeedOption = "Normal (100)";
+    [ObservableProperty] private bool _swingBashing;
+    [ObservableProperty] private bool _swingSlowness;
+
+    [ObservableProperty] private string _swingEnergyText = "—";
+    [ObservableProperty] private string _swingRawText = "—";
+    [ObservableProperty] private string _swingEncumText = "—";
+    [ObservableProperty] private string _swingQndText = "—";
+    /// <summary>False when no weapon (equipped or picked) — gates the swing outputs.</summary>
+    [ObservableProperty] private bool _swingHasWeapon;
+
+    /// <summary>Fixed speed-modifier choices for the swing calc's combo box.</summary>
+    public string[] SwingSpeedOptions { get; } = { "Normal (100)", "Sped (85)", "Slow (125)" };
+
+    /// <summary>10-round swings / energy-carried breakdown for the picked setup.</summary>
+    public ObservableCollection<SwingRoundRow> SwingRounds { get; } = new();
+
     // Captured player-side numbers (recomputed on every data refresh).
     private RealmType _realm;
     private int _normalAccuracy;
@@ -129,6 +157,10 @@ public sealed partial class CalculatorsSectionViewModel : WorkshopSectionViewMod
     // sources; slowness is a modelled effect that always re-seeds to 0.
     private int _actualEncumPercent;
     private int _plusQuickness;
+
+    // Swing weapon override from the picker — empty / unmatched falls back to the
+    // equipped weapon's speed / str-req captured above.
+    private int _swingWeaponSpeed, _swingWeaponStrReq;
 
     // Alignment of the picked monster — decides which of the player's wards
     // applies in the incoming-hit calc.
@@ -227,6 +259,15 @@ public sealed partial class CalculatorsSectionViewModel : WorkshopSectionViewMod
         // Seeding to values that equal the current backing field won't fire the
         // setter, so recompute explicitly to guarantee the outputs are current.
         RecomputeMovement();
+
+        SwingLevel = _level;
+        SwingCombatLevel = _nCombatLevel;
+        SwingAgility = _agi;
+        SwingStrength = _str;
+        SwingEncumbrance = _actualEncumPercent;
+        // Keep any weapon the user picked; refresh its fallback speed / str-req.
+        ResolveSwingWeapon();
+        RecomputeSwing();
     }
 
     // Derive avg damage / swings / crit from the captured offense inputs,
@@ -565,6 +606,94 @@ public sealed partial class CalculatorsSectionViewModel : WorkshopSectionViewMod
         MoveEncumbrance = _actualEncumPercent;
         MoveQuickness = _plusQuickness;
         MoveSlowness = 0;
+    }
+
+    // ----- Swings ----------------------------------------------------------
+
+    partial void OnSelectedSwingWeaponNameChanged(string? value)
+    {
+        ResolveSwingWeapon();
+        RecomputeSwing();
+    }
+
+    partial void OnSwingLevelChanged(int value) => RecomputeSwing();
+    partial void OnSwingCombatLevelChanged(int value) => RecomputeSwing();
+    partial void OnSwingAgilityChanged(int value) => RecomputeSwing();
+    partial void OnSwingStrengthChanged(int value) => RecomputeSwing();
+    partial void OnSwingEncumbranceChanged(int value) => RecomputeSwing();
+    partial void OnSwingSpeedOptionChanged(string value) => RecomputeSwing();
+    partial void OnSwingBashingChanged(bool value) => RecomputeSwing();
+    partial void OnSwingSlownessChanged(bool value) => RecomputeSwing();
+
+    // Load the picked swing weapon's speed / str-req, or fall back to the equipped
+    // weapon when the picker is empty or unmatched.
+    private void ResolveSwingWeapon()
+    {
+        if (SelectedSwingWeaponName is not null
+            && _weaponNumberByLabel.TryGetValue(SelectedSwingWeaponName, out int number)
+            && FindItemRowByNumber(number) is JsonElement row)
+        {
+            _swingWeaponSpeed = GetInt(row, "Speed");
+            _swingWeaponStrReq = GetInt(row, "StrReq");
+        }
+        else
+        {
+            _swingWeaponSpeed = _equipWeaponSpeed;
+            _swingWeaponStrReq = _equipWeaponStrReq;
+        }
+    }
+
+    // Run the full swing model (energy per swing → 1000-budget swings with the
+    // round remainder carried forward) for the picked weapon + modifiers.
+    private void RecomputeSwing()
+    {
+        SwingHasWeapon = _swingWeaponSpeed > 0;
+        SwingRounds.Clear();
+
+        if (!SwingHasWeapon)
+        {
+            SwingEnergyText = SwingRawText = SwingEncumText = SwingQndText = "—";
+            return;
+        }
+
+        int speedModifier = SwingSpeedOption switch
+        {
+            "Sped (85)" => 85,
+            "Slow (125)" => 125,
+            _ => 100,
+        };
+
+        // CalcSwings derives the encumbrance % from current/max weight; the swing
+        // calc exposes the percentage directly, so pass it against a max of 100
+        // to make the internal ratio equal the entered percent.
+        SwingCalcResult res = CombatCalculator.CalcSwings(
+            SwingCombatLevel, SwingLevel, _swingWeaponSpeed, SwingAgility, SwingStrength,
+            _swingWeaponStrReq, currentEncum: SwingEncumbrance, maxEncum: 100,
+            speedModifier: speedModifier, hasSlowness: SwingSlowness,
+            isBashing: SwingBashing, realmType: _realm);
+
+        SwingEnergyText = res.EnergyPerSwing.ToString(CultureInfo.InvariantCulture);
+        SwingRawText = res.RawSwings.ToString("0.0", CultureInfo.InvariantCulture);
+        SwingEncumText = string.Create(CultureInfo.InvariantCulture, $"{res.EncumPercent}%");
+        SwingQndText = res.QnDCritBonus.ToString(CultureInfo.InvariantCulture);
+
+        for (int i = 0; i < res.SwingsPerRound.Length; i++)
+            SwingRounds.Add(new SwingRoundRow(i + 1, res.SwingsPerRound[i], res.EnergyRemaining[i]));
+    }
+
+    /// <summary>Discard manual swing edits and re-seed weapon / stats from the live actuals.</summary>
+    [RelayCommand]
+    private void ResetSwing()
+    {
+        SelectedSwingWeaponName = null;
+        SwingLevel = _level;
+        SwingCombatLevel = _nCombatLevel;
+        SwingAgility = _agi;
+        SwingStrength = _str;
+        SwingEncumbrance = _actualEncumPercent;
+        SwingSpeedOption = "Normal (100)";
+        SwingBashing = false;
+        SwingSlowness = false;
     }
 
     private static int GetInt(JsonElement? row, string property)
