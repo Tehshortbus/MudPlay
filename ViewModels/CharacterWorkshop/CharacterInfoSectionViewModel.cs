@@ -460,10 +460,11 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
         CurrencyHoldings coins = snap.Currency;
         CurrencyHeld = FormatCoins(coins);
         // The wealth line mirrors the game's own "Wealth:  N copper farthings"
-        // summary — the consolidated value in the base denomination, not a
-        // decomposition (the Coins line above carries the per-coin breakdown).
+        // summary — the consolidated value in the base denomination, ungrouped
+        // like the game (no thousands separator) and not decomposed (the Coins
+        // line above carries the per-coin breakdown).
         TotalWealth = coins.TotalCopperValue > 0
-            ? string.Create(CultureInfo.InvariantCulture, $"{coins.TotalCopperValue:N0} copper farthings")
+            ? string.Create(CultureInfo.InvariantCulture, $"{coins.TotalCopperValue} copper farthings")
             : "—";
     }
 
