@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Globalization;
+using System.Linq;
 using System.Text.Json;
 using Avalonia.Controls;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -11,6 +12,7 @@ using FujinTerm.Game;
 using FujinTerm.Game.Calculators;
 using FujinTerm.Game.Inventory;
 using FujinTerm.Game.Quests;
+using FujinTerm.Models.Profile;
 using FujinTerm.Services;
 using FujinTerm.Views.CharacterWorkshop;
 
@@ -28,6 +30,13 @@ namespace FujinTerm.ViewModels.CharacterWorkshop;
 /// your AC and dodge seed from the live stat + gear values but are editable,
 /// and every physical attack the monster has is listed with its own editable
 /// accuracy, so you can dial either side and watch the hit chance move.</item>
+/// <item><b>Movement Speed</b> — the encumbrance / quickness / slowness solver
+/// against the one-second movement cap.</item>
+/// <item><b>Swing</b> — the MMUD-Explorer swing model (energy per swing and the
+/// 10-round carry-over breakdown) for the equipped or a picked weapon.</item>
+/// <item><b>Backstab</b> — the realm-aware backstab damage range for the
+/// backstab-set weapon (or a picked one), reading level / strength / stealth /
+/// class-stealth and the +BS ability bonuses from the live character.</item>
 /// </list>
 /// The player-side offense/defense numbers refresh live from the stat snapshot,
 /// inventory, and completed-quest bonuses; the editable inputs re-seed to the
@@ -39,6 +48,7 @@ public sealed partial class CalculatorsSectionViewModel : WorkshopSectionViewMod
     private readonly GameDataCache _gameData;
     private readonly InventoryManager _inventory;
     private readonly QuestBonusState _questBonuses;
+    private readonly ProfileService _profile;
     private Control? _view;
 
     public override string Id => "calculators";
@@ -129,6 +139,30 @@ public sealed partial class CalculatorsSectionViewModel : WorkshopSectionViewMod
     /// <summary>10-round swings / energy-carried breakdown for the picked setup.</summary>
     public ObservableCollection<SwingRoundRow> SwingRounds { get; } = new();
 
+    // ----- Backstab calculator -------------------------------------------
+    /// <summary>
+    /// Selected backstab weapon — the only editable input. Defaults to the
+    /// weapon on the Equipment Manager's Backstab set (empty when none is set);
+    /// picking a different weapon models its damage instead. Empty = no result.
+    /// </summary>
+    [ObservableProperty] private string? _selectedBackstabWeaponName;
+
+    // Read-only context echoing what feeds the calc — pulled live from the
+    // character so the number is legible, not editable inputs.
+    [ObservableProperty] private string _backstabLevelText = "—";
+    [ObservableProperty] private string _backstabStrengthText = "—";
+    [ObservableProperty] private string _backstabStealthText = "—";
+    [ObservableProperty] private string _backstabClassStealthText = "—";
+    [ObservableProperty] private string _backstabBonusText = "—";
+    [ObservableProperty] private string _backstabRealmText = "—";
+    [ObservableProperty] private string _backstabWeaponRangeText = "—";
+
+    [ObservableProperty] private string _backstabMinText = "—";
+    [ObservableProperty] private string _backstabMaxText = "—";
+    [ObservableProperty] private string _backstabAvgText = "—";
+    /// <summary>False until a backstab weapon is chosen — gates the damage rows.</summary>
+    [ObservableProperty] private bool _backstabHasWeapon;
+
     // Captured player-side numbers (recomputed on every data refresh).
     private RealmType _realm;
     private int _normalAccuracy;
@@ -162,25 +196,40 @@ public sealed partial class CalculatorsSectionViewModel : WorkshopSectionViewMod
     // equipped weapon's speed / str-req captured above.
     private int _swingWeaponSpeed, _swingWeaponStrReq;
 
+    // Backstab inputs captured on refresh. Level / strength / max-damage are
+    // shared with the offense block above; stealth, the +BS bonuses, and the
+    // class-stealth flag are backstab-specific.
+    private int _stealth;
+    private int _plusBsMin, _plusBsMax;
+    private bool _hasClassStealth;
+    // The Backstab-set weapon label the picker seeds to (null = none configured);
+    // seeded once per loaded profile so a what-if pick survives data refreshes.
+    private string? _backstabDefaultWeaponLabel;
+    private bool _backstabSeeded;
+    private int _bsWeaponMin, _bsWeaponMax;
+
     // Alignment of the picked monster — decides which of the player's wards
     // applies in the incoming-hit calc.
     private bool _monsterIsEvil;
     private bool _monsterIsGood;
 
-    public CalculatorsSectionViewModel(PlayerStats stats, GameDataCache gameData, InventoryManager inventory, QuestBonusState questBonuses)
+    public CalculatorsSectionViewModel(PlayerStats stats, GameDataCache gameData, InventoryManager inventory, QuestBonusState questBonuses, ProfileService profile)
     {
         ArgumentNullException.ThrowIfNull(stats);
         ArgumentNullException.ThrowIfNull(gameData);
         ArgumentNullException.ThrowIfNull(inventory);
         ArgumentNullException.ThrowIfNull(questBonuses);
+        ArgumentNullException.ThrowIfNull(profile);
         _stats = stats;
         _gameData = gameData;
         _inventory = inventory;
         _questBonuses = questBonuses;
+        _profile = profile;
 
         _stats.PropertyChanged += OnStatsChanged;
         _inventory.Changed += OnInventoryChanged;
         _questBonuses.Changed += OnQuestBonusesChanged;
+        _profile.ProfileLoaded += OnProfileLoaded;
         EnsureMonsterNames();
         EnsureWeaponNames();
         Refresh();
@@ -268,6 +317,23 @@ public sealed partial class CalculatorsSectionViewModel : WorkshopSectionViewMod
         // Keep any weapon the user picked; refresh its fallback speed / str-req.
         ResolveSwingWeapon();
         RecomputeSwing();
+
+        _stealth = _stats.Stealth;
+        _plusBsMin = t.PlusBSMin;
+        _plusBsMax = t.PlusBSMax;
+        _hasClassStealth = ClassCapabilities.ClassHasStealth(classRow);
+        _backstabDefaultWeaponLabel = ResolveBackstabSetWeaponLabel();
+        // Seed the picker to the Backstab-set weapon once per loaded profile; a
+        // later what-if pick is preserved across data refreshes (like the swing
+        // weapon), and OnProfileLoaded resets the flag so switching characters
+        // re-seeds to that character's set.
+        if (!_backstabSeeded)
+        {
+            _backstabSeeded = true;
+            SelectedBackstabWeaponName = _backstabDefaultWeaponLabel;
+        }
+        ResolveBackstabWeapon();
+        RecomputeBackstab();
     }
 
     // Derive avg damage / swings / crit from the captured offense inputs,
@@ -696,6 +762,94 @@ public sealed partial class CalculatorsSectionViewModel : WorkshopSectionViewMod
         SwingSlowness = false;
     }
 
+    // ----- Backstab --------------------------------------------------------
+
+    partial void OnSelectedBackstabWeaponNameChanged(string? value)
+    {
+        ResolveBackstabWeapon();
+        RecomputeBackstab();
+    }
+
+    // Load the picked backstab weapon's damage range, or clear it (no result)
+    // when the picker is empty or unmatched. Unlike the swing calc, there is no
+    // equipped-weapon fallback: the picker defaults to the Backstab set's weapon.
+    private void ResolveBackstabWeapon()
+    {
+        if (SelectedBackstabWeaponName is not null
+            && _weaponNumberByLabel.TryGetValue(SelectedBackstabWeaponName, out int number)
+            && FindItemRowByNumber(number) is JsonElement row)
+        {
+            _bsWeaponMin = GetInt(row, "Min");
+            _bsWeaponMax = GetInt(row, "Max");
+        }
+        else
+        {
+            _bsWeaponMin = _bsWeaponMax = 0;
+        }
+    }
+
+    // Run the realm-aware backstab range (CalcBSDamage folds strength into the
+    // weapon bounds, applies the +BS ability bonuses, and scales by class vs
+    // racial stealth — Stock and ParaMUD differ inside the calculator).
+    private void RecomputeBackstab()
+    {
+        BackstabHasWeapon = _bsWeaponMax > 0;
+
+        BackstabLevelText = _level.ToString(CultureInfo.InvariantCulture);
+        BackstabStrengthText = _str.ToString(CultureInfo.InvariantCulture);
+        BackstabStealthText = _stealth.ToString(CultureInfo.InvariantCulture);
+        BackstabClassStealthText = _hasClassStealth ? "Class (scales with level)" : "Racial only (×75%)";
+        BackstabBonusText = string.Create(CultureInfo.InvariantCulture,
+            $"+{_plusBsMin} min / +{_plusBsMax} max / +{_plusMaxDamage} dmg");
+        BackstabRealmText = _realm == RealmType.Stock ? "Stock" : "ParaMUD / GreaterMUD";
+
+        if (!BackstabHasWeapon)
+        {
+            BackstabWeaponRangeText = "—";
+            BackstabMinText = BackstabMaxText = BackstabAvgText = "—";
+            return;
+        }
+
+        BackstabWeaponRangeText = string.Create(CultureInfo.InvariantCulture, $"{_bsWeaponMin}–{_bsWeaponMax}");
+        BSDamageResult res = CombatCalculator.CalcBSDamage(
+            _level, _stealth, _str, _bsWeaponMin, _bsWeaponMax,
+            _plusBsMin, _plusBsMax, _plusMaxDamage, _hasClassStealth, _realm);
+        BackstabMinText = res.MinDamage.ToString(CultureInfo.InvariantCulture);
+        BackstabMaxText = res.MaxDamage.ToString(CultureInfo.InvariantCulture);
+        BackstabAvgText = res.AvgDamage.ToString("0.0", CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>Reset the backstab weapon back to the Equipment Manager's Backstab-set weapon.</summary>
+    [RelayCommand]
+    private void ResetBackstab() => SelectedBackstabWeaponName = _backstabDefaultWeaponLabel;
+
+    // The Backstab-set weapon mapped to a "<name> (#<number>)" picker label, or
+    // null when the set has no weapon (or the item isn't a known weapon). Building
+    // the label from the gamedata row's own Name + Number keeps it byte-identical
+    // to the entries EnsureWeaponNames produced, so the picker matches on it.
+    private string? ResolveBackstabSetWeaponLabel()
+    {
+        string? itemName = BackstabSetWeaponName();
+        if (itemName is null) return null;
+        if (_gameData.FindRowByName("Items", itemName) is not JsonElement el) return null;
+        if (!el.TryGetProperty("Name", out JsonElement nameEl) || nameEl.ValueKind != JsonValueKind.String)
+            return null;
+        string realName = nameEl.GetString() ?? itemName;
+        int number = GetInt(el, "Number");
+        string label = string.Create(CultureInfo.InvariantCulture, $"{realName} (#{number})");
+        return _weaponNumberByLabel.ContainsKey(label) ? label : null;
+    }
+
+    // The trimmed weapon name on the profile's Backstab equipment set, or null
+    // when there's no profile / set / weapon slot filled.
+    private string? BackstabSetWeaponName()
+    {
+        EquipmentSettings? eq = _profile.Current?.Equipment;
+        EquipmentSet? set = eq?.Sets.FirstOrDefault(s => s.Trigger == EquipTriggerType.Backstab);
+        string? name = set?.Slots.FirstOrDefault(e => e.Slot == EquipmentSlot.Weapon)?.ItemName?.Trim();
+        return string.IsNullOrEmpty(name) ? null : name;
+    }
+
     private static int GetInt(JsonElement? row, string property)
     {
         if (row is not JsonElement el || el.ValueKind != JsonValueKind.Object) return 0;
@@ -720,10 +874,19 @@ public sealed partial class CalculatorsSectionViewModel : WorkshopSectionViewMod
     private void OnInventoryChanged() => Refresh();
     private void OnQuestBonusesChanged() => Refresh();
 
+    // A new character's Equipment Manager carries its own Backstab set, so drop
+    // the seed guard and let CaptureActuals re-seed the picker to it.
+    private void OnProfileLoaded(CharacterProfile _)
+    {
+        _backstabSeeded = false;
+        Refresh();
+    }
+
     public override void Dispose()
     {
         _stats.PropertyChanged -= OnStatsChanged;
         _inventory.Changed -= OnInventoryChanged;
         _questBonuses.Changed -= OnQuestBonusesChanged;
+        _profile.ProfileLoaded -= OnProfileLoaded;
     }
 }

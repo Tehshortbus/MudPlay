@@ -339,6 +339,75 @@
                                    Text="Pick a weapon (or equip one) to see the swing breakdown."/>
                     </StackPanel>
                 </Expander>
+
+                <!-- ===== Backstab Calculator ===== -->
+                <Expander HorizontalAlignment="Stretch">
+                    <Expander.Header>
+                        <TextBlock Classes="BoxTitle" Text="Backstab Calculator"/>
+                    </Expander.Header>
+
+                    <StackPanel Spacing="14" Margin="0,8,0,0">
+                        <Border Classes="SubBox">
+                            <StackPanel Spacing="10">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock Grid.Column="0" Classes="Section" Text="Weapon" VerticalAlignment="Center"/>
+                                    <Button Grid.Column="1" Content="Reset to backstab set"
+                                            Command="{Binding ResetBackstabCommand}"
+                                            ToolTip.Tip="Set the weapon back to the Equipment Manager's Backstab-set weapon."/>
+                                </Grid>
+
+                                <AutoCompleteBox ItemsSource="{Binding WeaponNames}"
+                                                 SelectedItem="{Binding SelectedBackstabWeaponName, Mode=TwoWay}"
+                                                 FilterMode="ContainsOrdinal"
+                                                 MinimumPrefixLength="1"
+                                                 MinWidth="260"
+                                                 HorizontalAlignment="Left"
+                                                 PlaceholderText="Backstab-set weapon — type to model a different one…"/>
+                                <TextBlock Classes="FieldLabel"
+                                           Text="Level, strength, stealth and the +BS bonuses are read live from your character."/>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Classes="SubBox">
+                            <StackPanel Spacing="10">
+                                <TextBlock Classes="Section" Text="Inputs (live)"/>
+                                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto">
+                                    <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Level" Margin="0,2,16,2"/>
+                                    <TextBlock Grid.Row="0" Grid.Column="1" Classes="FieldValue" Text="{Binding BackstabLevelText}" Margin="0,2"/>
+                                    <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Strength" Margin="0,2,16,2"/>
+                                    <TextBlock Grid.Row="1" Grid.Column="1" Classes="FieldValue" Text="{Binding BackstabStrengthText}" Margin="0,2"/>
+                                    <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Stealth" Margin="0,2,16,2"/>
+                                    <TextBlock Grid.Row="2" Grid.Column="1" Classes="FieldValue" Text="{Binding BackstabStealthText}" Margin="0,2"/>
+                                    <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="Stealth source" Margin="0,2,16,2"/>
+                                    <TextBlock Grid.Row="3" Grid.Column="1" Classes="FieldValue" Text="{Binding BackstabClassStealthText}" Margin="0,2"/>
+                                    <TextBlock Grid.Row="4" Grid.Column="0" Classes="FieldLabel" Text="Bonuses" Margin="0,2,16,2"/>
+                                    <TextBlock Grid.Row="4" Grid.Column="1" Classes="FieldValue" Text="{Binding BackstabBonusText}" Margin="0,2"/>
+                                    <TextBlock Grid.Row="5" Grid.Column="0" Classes="FieldLabel" Text="Realm" Margin="0,2,16,2"/>
+                                    <TextBlock Grid.Row="5" Grid.Column="1" Classes="FieldValue" Text="{Binding BackstabRealmText}" Margin="0,2"/>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Classes="SubBox" IsVisible="{Binding BackstabHasWeapon}">
+                            <StackPanel Spacing="10">
+                                <TextBlock Classes="Section" Text="Backstab damage"/>
+                                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto">
+                                    <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Weapon range" Margin="0,2,16,2"/>
+                                    <TextBlock Grid.Row="0" Grid.Column="1" Classes="FieldValue" Text="{Binding BackstabWeaponRangeText}" Margin="0,2"/>
+                                    <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Min" Margin="0,2,16,2"/>
+                                    <TextBlock Grid.Row="1" Grid.Column="1" Classes="FieldValue" Text="{Binding BackstabMinText}" Margin="0,2"/>
+                                    <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Max" Margin="0,2,16,2"/>
+                                    <TextBlock Grid.Row="2" Grid.Column="1" Classes="FieldValue" Text="{Binding BackstabMaxText}" Margin="0,2"/>
+                                    <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="Average" Margin="0,2,16,2"/>
+                                    <TextBlock Grid.Row="3" Grid.Column="1" Classes="FieldValue" Text="{Binding BackstabAvgText}" Margin="0,2"/>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock Classes="FieldLabel" IsVisible="{Binding !BackstabHasWeapon}"
+                                   Text="Pick a backstab weapon (or set one on the Backstab gear set) to see the damage range."/>
+                    </StackPanel>
+                </Expander>
             </StackPanel>
         </ScrollViewer>
     </Grid>
