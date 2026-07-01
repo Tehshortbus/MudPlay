@@ -378,8 +378,8 @@ public sealed partial class InventoryManager : IDisposable
         }
 
         // Get: "You pick up rusty dagger." — the item enters the pack unworn.
-        // Currency pickups use the past tense ("You picked up N ...") and are
-        // matched above, so this present-tense form is always an item.
+        // Currency pickups carry a numeric count and are matched (and returned)
+        // above, so only item lines reach here.
         Match gotItem = PickUpItemRegex().Match(line);
         if (gotItem.Success)
         {
@@ -388,8 +388,8 @@ public sealed partial class InventoryManager : IDisposable
             return;
         }
 
-        // Drop: "You drop rusty dagger." — the item leaves the pack. Currency
-        // drops use the past tense ("You dropped N ...") and are matched above.
+        // Drop: "You dropped torch." — the item leaves the pack. Currency drops
+        // carry a numeric count and are matched above.
         Match droppedItem = DropItemRegex().Match(line);
         if (droppedItem.Success)
             RemoveCarried(droppedItem.Groups[1].Value.TrimEnd());
@@ -818,12 +818,13 @@ public sealed partial class InventoryManager : IDisposable
     [GeneratedRegex(@"^You now have no weapon readied\.$")]
     private static partial Regex NoWeaponReadiedRegex();
 
-    // Present-tense item get / drop (single item). The past-tense currency forms
-    // ("You picked up" / "You dropped") are matched earlier, so these never
-    // collide with a coin line.
-    [GeneratedRegex(@"^You pick up (.+?)\.$")]
+    // Item get / drop (single item). MajorMUD mixes tenses here — "You pick up
+    // torch." but "You dropped torch." — so both regexes tolerate the present
+    // and past forms. The currency forms carry a numeric count and are matched
+    // (and returned) earlier, so a coin line never reaches these.
+    [GeneratedRegex(@"^You pick(?:ed)? up (.+?)\.$")]
     private static partial Regex PickUpItemRegex();
 
-    [GeneratedRegex(@"^You drop (.+?)\.$")]
+    [GeneratedRegex(@"^You drop(?:ped)? (.+?)\.$")]
     private static partial Regex DropItemRegex();
 }

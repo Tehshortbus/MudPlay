@@ -531,8 +531,21 @@ public sealed class InventoryManagerTests
         Assert.Contains("lantern", Carried(h));   // baseline item untouched
     }
 
+    // MajorMUD's actual drop confirmation is past tense ("You dropped X.").
     [Fact]
     public void Drop_RemovesItemFromCarried()
+    {
+        using Harness h = new();
+        FeedCarriedBaseline(h);
+
+        h.Feed("You dropped lantern.");
+
+        Assert.DoesNotContain("lantern", Carried(h));
+    }
+
+    // The present-tense phrasing is tolerated too, in case a realm uses it.
+    [Fact]
+    public void Drop_PresentTense_RemovesItemFromCarried()
     {
         using Harness h = new();
         FeedCarriedBaseline(h);
