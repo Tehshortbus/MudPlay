@@ -237,7 +237,7 @@ public sealed class AutoDepositManager : IDisposable
     {
         CashSettings cash = _readCash();
         CurrencyHoldings held = _getSnapshot().Currency;
-        long keepValue = KeepValueInCopper(cash);
+        long keepValue = cash.KeepOnHandCopper();
         long depositValue = held.TotalCopperValue - keepValue;
         if (depositValue <= 0)
         {
@@ -249,15 +249,6 @@ public sealed class AutoDepositManager : IDisposable
         Send($"dep {depositValue}");
         Deposited?.Invoke(depositValue);
     }
-
-    /// <summary>Total copper value of the per-currency keep-on-hand
-    /// floors — the slice of wealth we leave on the character.</summary>
-    private static long KeepValueInCopper(CashSettings c) =>
-        c.KeepCopperOnHand
-        + c.KeepSilverOnHand * 10
-        + c.KeepGoldOnHand * 100
-        + c.KeepPlatinumOnHand * 10000
-        + c.KeepRunicOnHand * 1000000;
 
     private bool IsStashRoom(RoomKey room)
     {

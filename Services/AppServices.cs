@@ -285,6 +285,15 @@ public sealed class AppServices
     public Game.Remote.InventoryQueryHandler InventoryQuery { get; private set; } = null!;
 
     /// <summary>
+    /// Write-side consumer of <see cref="RemoteCommands"/> for the inventory /
+    /// cash action commands — <c>@drop-all</c> / <c>@deposit-all</c> (ExecuteCommands)
+    /// and <c>@share</c> (party-whitelist). Emits <c>drop</c> / <c>dep</c> /
+    /// <c>with</c> / <c>give</c> on the wire, so its sender is bound in
+    /// <c>MainWindowViewModel</c>.
+    /// </summary>
+    public Game.Remote.InventoryActionHandler InventoryAction { get; private set; } = null!;
+
+    /// <summary>
     /// Consumer of <see cref="RemoteCommands"/> for the MovePlayer
     /// category: @goto / @loop / @lair / @stop / @rego. Wires the
     /// remote walk-to / loop-start / lair-cycle / pause / resume
@@ -2433,6 +2442,15 @@ public sealed class AppServices
         // Read-only inventory queries — @wealth / @enc / @have report off
         // the InventoryManager snapshot. No wire output either.
         InventoryQuery = new Game.Remote.InventoryQueryHandler(RemoteCommands, Inventory);
+
+        // Write-side inventory / cash actions — @drop-all / @deposit-all / @share
+        // emit drop / dep / with / give on the wire. Keep-on-hand floors come
+        // from the per-character Cash settings; wire-sender bound in MainWindowVM.
+        InventoryAction = new Game.Remote.InventoryActionHandler(
+            RemoteCommands,
+            Inventory,
+            PartyState,
+            readCash: () => ReadSection<Models.Profile.CashSettings>(Profile.Current, "Cash"));
 
         // PR 10.18 — item-cast buffs. A Bless slot may hold a #-token naming an
         // unlimited-use cast item (surfaced in the Spell Book); the director

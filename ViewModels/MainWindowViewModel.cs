@@ -795,6 +795,9 @@ public partial class MainWindowViewModel : ObservableObject
         // Phase 9 PR 9.E follow-up — auto-deposit reroute's bank `dep`
         // command rides the same gate-wrapped pipeline.
         AppServices.Current.AutoDeposit.SetWireSender(engineSend);
+        // Phase 12 — @drop-all / @deposit-all / @share emit drop / dep / with /
+        // give on the same gate-wrapped pipeline.
+        AppServices.Current.InventoryAction.SetWireSender(engineSend);
         // Cluster 3 — StealthManager's auto-sneak / auto-hide commands.
         AppServices.Current.Stealth.SetWireSender(engineSend);
         // @do passthrough — gate-wrapped because a malicious caller's

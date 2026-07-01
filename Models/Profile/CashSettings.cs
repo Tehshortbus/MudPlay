@@ -85,6 +85,21 @@ public sealed class CashSettings
     /// Default 0 — offload all.</summary>
     public long KeepRunicOnHand { get; set; }
 
+    /// <summary>
+    /// Total copper-farthing value of the per-denomination keep-on-hand
+    /// floors — the slice of wealth the character keeps after offloading
+    /// coin. Uses the MajorMUD ratio ladder (silver = 10, gold = 100,
+    /// platinum = 10 000, runic = 1 000 000 copper). Shared by the
+    /// auto-deposit reroute (the bank <c>dep</c> amount) and the
+    /// <c>@deposit-all</c> remote command (the deposit / withdraw target).
+    /// </summary>
+    public long KeepOnHandCopper() =>
+        KeepCopperOnHand
+        + KeepSilverOnHand * 10
+        + KeepGoldOnHand * 100
+        + KeepPlatinumOnHand * 10_000
+        + KeepRunicOnHand * 1_000_000;
+
     // ----- Encumbrance + cascade (persisted; engines deferred) -------
     // These knobs are visible in the Settings → Cash tab for MudProxy
     // parity but their engines haven't shipped yet (the original
