@@ -155,6 +155,7 @@ public sealed class AutoDepositManagerTests : IDisposable
         StashRoomManager stash = new(profile,
             readCash: () => h.Settings,
             getSnapshot: () => h.Snapshot,
+            resolveAutoStashItem: _ => null,
             isEnabled: () => true);
         AutoDepositManager autoDeposit = new(cash,
             readCash: () => h.Settings,

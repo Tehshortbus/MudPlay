@@ -2562,14 +2562,15 @@ public sealed class AppServices
         Stash = new Game.Cash.StashRoomManager(Profile,
             readCash: () => ReadSection<Models.Profile.CashSettings>(Profile.Current, "Cash"),
             getSnapshot: () => Inventory.Snapshot,
+            resolveAutoStashItem: ResolveAutoStashItem,
             isEnabled: () => ReadAutoModeFlag(d => d.AutoGetCash),
             log: Log);
         // Phase 11 — count stash-room hides toward the Session Stats
         // stashed/deposited figure (copper value across the dispatched coins).
-        Stash.StashExecuted += (_, pairs) =>
+        Stash.StashExecuted += dispatch =>
         {
             long copper = 0;
-            foreach ((string currency, long amount) in pairs)
+            foreach ((string currency, long amount) in dispatch.Currencies)
                 copper += Game.Inventory.CurrencyHoldings.ToCopper(currency, amount);
             SessionActivity.NoteCurrencyStashed(copper);
         };
@@ -3319,6 +3320,30 @@ public sealed class AppServices
             ItemOverlaySeed.GetOverlay(number));
 
         return new Game.Inventory.AutoGetItemsManager.ResolvedItem(name, overlay.AutoCollect ?? false);
+    }
+
+    /// <summary>
+    /// Resolve a single carried-inventory entry for <see cref="Stash"/>:
+    /// map the loose carry wording to an item Number, read its verbatim
+    /// Name, and resolve the per-character
+    /// <see cref="Models.GameData.ItemOverlay.AutoStash"/> override
+    /// (Defaults seed → Global → BBS → Char). Returns the canonical name
+    /// to <c>hide</c> when the item is flagged for auto-stash, else
+    /// <c>null</c> so the stash engine leaves it in the pack. AutoStash
+    /// defaults to <c>false</c> — stashing is opt-in per item.
+    /// </summary>
+    private string? ResolveAutoStashItem(string entry)
+    {
+        if (ItemNames.FindByName(entry) is not int number) return null;
+        string? name = ItemNames.GetName(number);
+        if (string.IsNullOrWhiteSpace(name)) return null;
+
+        Models.GameData.ItemOverlay overlay = Resolver.ResolveGameData<Models.GameData.ItemOverlay>(
+            "Items",
+            number.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            ItemOverlaySeed.GetOverlay(number));
+
+        return overlay.AutoStash ?? false ? name : null;
     }
 
     /// <summary>
