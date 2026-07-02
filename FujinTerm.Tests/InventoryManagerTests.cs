@@ -92,6 +92,42 @@ public sealed class InventoryManagerTests
         Assert.Equal(1, h.ChangedCount);
     }
 
+    [Fact]
+    public void FullParse_ReadiedLight_ParsedAsLitLightNotCarried()
+    {
+        using Harness h = new();
+
+        // Exact live capture: a lit lantern lists inline as "(Readied/239)".
+        h.Feed("You are carrying 2 platinum pieces, 38 gold crowns, 2 silver nobles, "
+             + "8 copper farthings, padded vest (Torso), padded pants (Legs), "
+             + "padded helm (Head), padded gloves (Hands), padded boots (Feet), "
+             + "lantern (Readied/239), quarterstaff (Two handed), dagger");
+        h.Feed("You have no keys.");
+        h.Feed("Wealth:    23828 copper farthings");
+        h.Feed("Encumbrance:    624/2880  -  Light  [21%]");
+
+        InventorySnapshot snap = h.Inv.Snapshot;
+        Assert.NotNull(snap.ReadiedLight);
+        ReadiedLight light = snap.ReadiedLight!.Value;
+        Assert.Equal("lantern", light.Name);
+        Assert.Equal(239, light.Readied);
+        Assert.Equal(TimeSpan.FromSeconds(239 * 30), light.RemainingTime);
+
+        // The lit light is not double-counted as a plain carried item; the
+        // unworn pack still holds the quarterstaff-less bits (dagger).
+        Assert.DoesNotContain(snap.CarriedItems, s => s.Contains("Readied", StringComparison.Ordinal));
+        Assert.DoesNotContain(snap.CarriedItems, s => s.Equals("lantern", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("dagger", snap.CarriedItems);
+    }
+
+    [Fact]
+    public void FullParse_NoReadiedLight_LeavesLightNull()
+    {
+        using Harness h = new();
+        FeedFullInventory(h);
+        Assert.Null(h.Inv.Snapshot.ReadiedLight);
+    }
+
     [Theory]
     [InlineData("copper", 7, 7L)]
     [InlineData("silver", 3, 30L)]

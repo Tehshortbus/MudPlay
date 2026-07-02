@@ -90,6 +90,9 @@ public sealed partial class InventoryManager : IDisposable
     // 'i'. Death-recovery reads it as a "last-known" deathpile snapshot; the
     // worn half is deduped against it at capture time.
     private IReadOnlyList<string> _carried = Array.Empty<string>();
+    // The lit light source, if the last dump listed one as "… (Readied/N)".
+    // Rebased by each full 'i': a dump with no readied light clears it.
+    private ReadiedLight? _readiedLight;
 
     // ----- full-'i' capture FSM (single-threaded — OnLine only) --------
     private bool _capturing;
@@ -132,7 +135,8 @@ public sealed partial class InventoryManager : IDisposable
                     new EncumbranceReading(_curWeight, _maxWeight, _percentage, _category),
                     _equipped,
                     _carried,
-                    _lastUpdated);
+                    _lastUpdated,
+                    _readiedLight);
             }
         }
     }
@@ -511,6 +515,7 @@ public sealed partial class InventoryManager : IDisposable
         int copper = 0, silver = 0, gold = 0, platinum = 0, runic = 0;
         var equipped = new List<EquippedItem>();
         var carried = new List<string>();
+        ReadiedLight? readiedLight = null;
         if (itemsText.Length > 0)
         {
             foreach (string token in itemsText.Split(", ", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
@@ -526,6 +531,18 @@ public sealed partial class InventoryManager : IDisposable
                         case "copper": copper = count; break;
                     }
                     currencyTokens.Add(token);
+                    continue;
+                }
+
+                // A lit light prints inline with a "(Readied/N)" suffix instead
+                // of a slot label; capture the countdown and don't file it as a
+                // plain carried item.
+                Match lit = ReadiedLightRegex().Match(token);
+                if (lit.Success)
+                {
+                    string name = lit.Groups[1].Value.TrimEnd();
+                    if (name.Length > 0 && int.TryParse(lit.Groups[2].Value, out int readied))
+                        readiedLight = new ReadiedLight(name, readied);
                     continue;
                 }
 
@@ -584,12 +601,14 @@ public sealed partial class InventoryManager : IDisposable
             _category = category;
             _equipped = equipped;
             _carried = carried;
+            _readiedLight = readiedLight;
             _loaded = true;
             _lastUpdated = DateTimeOffset.Now;
         }
 
         _log?.Debug(LogCategory,
-            $"parsed: wealth={wealthCopper} copper, enc={curWeight}/{maxWeight} {category} [{percentage}%], worn={equipped.Count}, carried={carried.Count}");
+            $"parsed: wealth={wealthCopper} copper, enc={curWeight}/{maxWeight} {category} [{percentage}%], worn={equipped.Count}, carried={carried.Count}"
+            + (readiedLight is { } rl ? $", lit={rl.Name} (Readied/{rl.Readied})" : ""));
         Changed?.Invoke();
     }
 
@@ -936,6 +955,11 @@ public sealed partial class InventoryManager : IDisposable
     // folded by NormalizeSlot.
     [GeneratedRegex(@"^(.*?)\s+\((Head|Ears|Eyes|Face|Neck|Back|Torso|Arms|Wrist|Hands|Finger|Waist|Legs|Feet|Worn|Off-Hand|Weapon Hand|Two handed)\)$")]
     private static partial Regex EquippedSlotRegex();
+
+    // A lit light prints inline as "lantern (Readied/239)" — the count is the
+    // remaining-charge counter (item's UseCount / 10 at full), not a slot.
+    [GeneratedRegex(@"^(.*?)\s+\(Readied/(\d+)\)$")]
+    private static partial Regex ReadiedLightRegex();
 
     // Incremental equip / remove lines (single item, between full 'i' dumps).
     [GeneratedRegex(@"^You are now holding (.+)\.$")]
