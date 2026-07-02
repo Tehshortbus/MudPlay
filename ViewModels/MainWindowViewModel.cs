@@ -2762,7 +2762,14 @@ public partial class MainWindowViewModel : ObservableObject
     }
 
     private void SyncProfileMenuState()
-        => HasNamedProfile = !AppServices.Current.Profile.IsBlankDraft && AppServices.Current.Profile.Current is not null;
+    {
+        HasNamedProfile = !AppServices.Current.Profile.IsBlankDraft && AppServices.Current.Profile.Current is not null;
+        // Save-profile-as renames the *current* profile without flipping
+        // HasNamedProfile, so the NotifyPropertyChangedFor on that bool
+        // won't fire — nudge the label directly so its embedded profile
+        // name refreshes on every state sync, rename included.
+        OnPropertyChanged(nameof(SaveProfileLabel));
+    }
 
     [RelayCommand]
     private void OpenSettings() => OpenSettingsAt(null);
