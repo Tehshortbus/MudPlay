@@ -224,6 +224,26 @@ public sealed class PlayerDatabase
         SaveObservations();
     }
 
+    // ----- Reads ---------------------------------------------------------
+
+    /// <summary>
+    /// Look up one player's merged record by name (given or full display
+    /// name — reduced to the given name, the stable key). Returns
+    /// <c>null</c> when no observation exists for that player. Read-only;
+    /// never creates a row. Used by <see cref="Game.Remote.PartyLevelTracker"/>
+    /// to read a party member's known level (exact or title-derived) at
+    /// path-planning time.
+    /// </summary>
+    public PlayerRecord? Find(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return null;
+        (string given, _) = PlayerObservation.SplitName(name);
+        if (string.IsNullOrEmpty(given)) return null;
+        if (!_observations.TryGetValue(given, out PlayerObservation? obs)) return null;
+        _customizations.TryGetValue(given, out PlayerCustomization c);
+        return PlayerRecord.Merge(obs, c);
+    }
+
     // ----- Greet tracking (BBS tier) ------------------------------------
 
     /// <summary>

@@ -364,6 +364,39 @@ public sealed class PlayerDatabaseTests
         Assert.Equal("Wizard", r.Title);
     }
 
+    [Fact]
+    public void Find_UnknownPlayer_ReturnsNull()
+    {
+        PlayerDatabase db = new();
+        Assert.Null(db.Find("Nobody"));
+    }
+
+    [Fact]
+    public void Find_ByGivenOrFullName_ReturnsMergedRecord()
+    {
+        PlayerDatabase db = new();
+        DateTime now = new(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc);
+        db.RecordObservation("Bob Ironhelm", "Mage", "Elf", "Good", "Wizard", null, null, now);
+        db.RecordLevel("Bob", 42, now);
+
+        PlayerRecord? byGiven = db.Find("Bob");
+        PlayerRecord? byFull  = db.Find("Bob Ironhelm");
+
+        Assert.NotNull(byGiven);
+        Assert.Equal(42, byGiven!.Level);
+        Assert.Equal("Wizard", byGiven.Title);
+        Assert.NotNull(byFull);
+        Assert.Equal("Bob", byFull!.GivenName);   // full name reduced to the given key
+    }
+
+    [Fact]
+    public void Find_BlankName_ReturnsNull()
+    {
+        PlayerDatabase db = new();
+        Assert.Null(db.Find(""));
+        Assert.Null(db.Find("   "));
+    }
+
     // ===== Load-time migration from legacy display-name keyed files =====
 
     // ===== Manual Add / Remove (PR B) =====

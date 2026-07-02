@@ -48,6 +48,20 @@ public sealed class MovementFilter : IRoomFilter
     /// </summary>
     public Func<int?>? LevelProvider { get; set; }
 
+    /// <summary>
+    /// Supplies the party's most-constraining <c>(Low, High)</c> level
+    /// window when this character is leading a party, or <c>null</c> when
+    /// solo, not leading, or nobody's level is known yet. Wired by
+    /// <see cref="AppServices"/> to <see cref="Game.Remote.PartyLevelTracker"/>.
+    /// When non-null it takes precedence over <see cref="LevelProvider"/>
+    /// in <see cref="IsExitBlocked"/>: BFS routes the party <b>around</b> a
+    /// gate that would leave a member behind, instead of walking the leader
+    /// through it. The bounds already fold in the leader's own level, so
+    /// the party branch never waves the leader through a gate the leader
+    /// can't cross either.
+    /// </summary>
+    public Func<(int Low, int High)?>? PartyLevelBoundsProvider { get; set; }
+
     /// <summary>Read-only snapshot of the currently-avoided room keys.</summary>
     public IReadOnlyCollection<RoomKey> Avoided => _avoided;
 
@@ -81,6 +95,19 @@ public sealed class MovementFilter : IRoomFilter
     public bool IsExitBlocked(in RoomExit exit)
     {
         if (!exit.HasLevelGate) return false;
+
+        // Party branch: when leading a party, route around a gate the
+        // whole party can't clear so no member is left behind. The bounds
+        // fold in the leader's own level, so this also covers the leader.
+        // Falls through to the self-only branch when no bounds are known
+        // (solo, not leading, or nobody's level parsed yet).
+        if (PartyLevelBoundsProvider?.Invoke() is { } bounds)
+        {
+            if (exit.MinLevel > 0 && bounds.Low < exit.MinLevel) return true;
+            if (exit.MaxLevel > 0 && bounds.High > exit.MaxLevel) return true;
+            return false;
+        }
+
         if (LevelProvider?.Invoke() is not { } level) return false;  // level unknown → don't gate
 
         // Form-A window: MinLevel>0 is a floor, MaxLevel>0 is a cap.

@@ -268,6 +268,71 @@ public sealed class MovementFilterTests
         Assert.True(filter.IsExitBlocked(GatedExit(10, 25)));  // 10..25, have 30
     }
 
+    // ----- IsExitBlocked: party-bounds branch ------------------------
+
+    [Fact]
+    public void PartyBounds_TakePrecedence_OverSelfLevel()
+    {
+        (_, MovementFilter filter) = NewPair();
+        // Self clears the floor, but the party's lowest member doesn't —
+        // route around so we don't leave that member behind.
+        filter.LevelProvider = () => 50;
+        filter.PartyLevelBoundsProvider = () => (Low: 18, High: 50);
+        Assert.True(filter.IsExitBlocked(GatedExit(20, 0)));   // need 20+, party low 18
+    }
+
+    [Fact]
+    public void PartyBounds_WholePartyClearsFloor_Allows()
+    {
+        (_, MovementFilter filter) = NewPair();
+        filter.PartyLevelBoundsProvider = () => (Low: 22, High: 40);
+        Assert.False(filter.IsExitBlocked(GatedExit(20, 0)));  // everyone ≥ 20
+    }
+
+    [Fact]
+    public void PartyBounds_HighestMemberAboveCap_Blocks()
+    {
+        (_, MovementFilter filter) = NewPair();
+        filter.PartyLevelBoundsProvider = () => (Low: 3, High: 30);
+        Assert.True(filter.IsExitBlocked(GatedExit(0, 25)));   // cap 25, someone is 30
+    }
+
+    [Fact]
+    public void PartyBounds_WholePartyWithinWindow_Allows()
+    {
+        (_, MovementFilter filter) = NewPair();
+        filter.PartyLevelBoundsProvider = () => (Low: 12, High: 24);
+        Assert.False(filter.IsExitBlocked(GatedExit(10, 25))); // 10..25 covers 12..24
+    }
+
+    [Fact]
+    public void PartyBounds_Null_FallsBackToSelfLevel()
+    {
+        (_, MovementFilter filter) = NewPair();
+        // Not leading / nobody's level known — provider returns null, so
+        // the self-only branch decides.
+        filter.PartyLevelBoundsProvider = () => null;
+        filter.LevelProvider = () => 19;
+        Assert.True(filter.IsExitBlocked(GatedExit(20, 0)));   // self-only: 19 < 20
+    }
+
+    [Fact]
+    public void PartyBounds_NoProvider_FallsBackToSelfLevel()
+    {
+        (_, MovementFilter filter) = NewPair();
+        // PartyLevelBoundsProvider unset entirely (solo character).
+        filter.LevelProvider = () => 30;
+        Assert.False(filter.IsExitBlocked(GatedExit(20, 0)));  // self-only: 30 ≥ 20
+    }
+
+    [Fact]
+    public void PartyBounds_NoGate_NeverBlocks()
+    {
+        (_, MovementFilter filter) = NewPair();
+        filter.PartyLevelBoundsProvider = () => (Low: 1, High: 1);
+        Assert.False(filter.IsExitBlocked(GatedExit(0, 0)));   // ungated exit
+    }
+
     // ----- IRoomFilter integration with BfsMapper -------------------
 
     [Fact]
