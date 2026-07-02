@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
+using FujinTerm.Game.Light;
 using FujinTerm.Services;
 
 namespace FujinTerm.Game.Map;
@@ -158,17 +159,10 @@ public static class RoomTooltipBuilder
     // ----- Light description ---------------------------------------
 
     private static string BuildLightDescription(int light)
-    {
-        // MMUD-Explorer's mapping (frmMap.frm:44617-44626). We render
-        // the descriptive line based on the room's own Light value;
-        // the player-illu-relative variant lands once we have a stat
-        // parser for the player's current illumination.
-        if (light <= -200) return "The room is pitch black";
-        if (light <= -150) return "The room is very dark — you can't see anything";
-        if (light <= -100) return "The room is barely visible";
-        if (light <  0)    return "The room is dimly lit";
-        return string.Empty;
-    }
+        // Room's own Light value only (charIllu 0); the player-illu-relative
+        // variant lands once a live charIllu feeds this. Shares LightModel's
+        // MME band table so the tooltip and the route predictor never drift.
+        => LightModel.Describe(LightModel.Classify(charIllu: 0, roomLight: light));
 
     // ----- Exits block ---------------------------------------------
 
