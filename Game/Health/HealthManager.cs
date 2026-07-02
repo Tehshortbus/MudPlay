@@ -385,7 +385,7 @@ public sealed class HealthManager : IDisposable
         {
             _restInFlight = false;
             _restConfirmedByPrompt = false;
-            _log?.Info(LogCategory,
+            _log?.Combat(LogCategory,
                 $"rest interrupted — position now {_state.Position} " +
                 $"(hp={_state.Hp}/{_state.MaxHp} ma={_state.Ma}/{_state.MaxMa} " +
                 $"inCombat={_state.InCombat})");
@@ -491,7 +491,7 @@ public sealed class HealthManager : IDisposable
                 // when idle), so the leader/solo path only runs when "not idle".
                 if (_requestPartyHeal is not null && (_isPartyFollower?.Invoke() ?? false))
                 {
-                    _log?.Info(LogCategory,
+                    _log?.Combat(LogCategory,
                         $"party follower low HP — requesting heal instead of fleeing ({reason})");
                     _requestPartyHeal();
                 }
@@ -512,7 +512,7 @@ public sealed class HealthManager : IDisposable
             int hpRunTrigger = ResolveThreshold(s.HpThresholdMode, s.RunIfBelowHp, _state.MaxHp);
             if (_state.Hp > hpRunTrigger && _lastKnownRoom is { } room)
             {
-                _log?.Info(LogCategory,
+                _log?.Combat(LogCategory,
                     $"flee complete — resuming engine={_fleeEngine.Name} at {room} " +
                     $"(HP {_state.Hp}/{_state.MaxHp} > run-trigger={hpRunTrigger})");
                 _fleeEngine.ResumeAfterRecovery(room);
@@ -575,7 +575,7 @@ public sealed class HealthManager : IDisposable
 
             SendChained(s.PreRestCommand);
             SendCommand(command);
-            _log?.Info(LogCategory,
+            _log?.Combat(LogCategory,
                 $"{command}{(anyGate ? "" : " (opportunistic, leader resting)")} " +
                 $"hp={_state.Hp}/{_state.MaxHp} ma={_state.Ma}/{_state.MaxMa}");
             _restInFlight = true;
@@ -583,7 +583,7 @@ public sealed class HealthManager : IDisposable
         else if (!shouldRest && _restInFlight)
         {
             SendChained(s.PostRestCommand);
-            _log?.Info(LogCategory,
+            _log?.Combat(LogCategory,
                 $"recovered hp={_state.Hp}/{_state.MaxHp} ma={_state.Ma}/{_state.MaxMa}");
             _restInFlight = false;
             _restConfirmedByPrompt = false;
@@ -640,7 +640,7 @@ public sealed class HealthManager : IDisposable
         Map.IRecoverableEngine? engine = _getActiveMovementEngine?.Invoke();
         if (engine is null)
         {
-            _log?.Info(LogCategory,
+            _log?.Combat(LogCategory,
                 $"flee skipped (no active movement engine) — {reason}");
             return;
         }
@@ -681,7 +681,7 @@ public sealed class HealthManager : IDisposable
         if (combat.BreakBeforeFleeing)
             SendCommand("break");
 
-        _log?.Info(LogCategory,
+        _log?.Combat(LogCategory,
             $"flee start engine={engine.Name} mode={combat.RunDirection} dir={direction} " +
             $"distance={distance} ({reason})");
         engine.SendBacktrackMove(direction);
@@ -784,7 +784,7 @@ public sealed class HealthManager : IDisposable
         {
             _fleeEngine.SendBacktrackMove(_fleeDirection);
             _fleeStepsRemaining--;
-            _log?.Info(LogCategory,
+            _log?.Combat(LogCategory,
                 $"flee step engine={_fleeEngine.Name} dir={_fleeDirection} " +
                 $"remaining={_fleeStepsRemaining}");
         }
@@ -792,7 +792,7 @@ public sealed class HealthManager : IDisposable
         if (!_restInFlight) return;
         _restInFlight = false;
         _restConfirmedByPrompt = false;
-        _log?.Info(LogCategory, "rest-in-flight cleared on room change");
+        _log?.Combat(LogCategory, "rest-in-flight cleared on room change");
     }
 
     /// <summary>

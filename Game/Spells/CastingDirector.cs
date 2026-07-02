@@ -429,7 +429,7 @@ public sealed class CastingDirector : IDisposable
 
         string key = p.Target.Trim().ToLowerInvariant();
         _activeUntil[(key, p.Short)] = _now().AddSeconds(p.DurationSec);
-        _log?.Info(LogCategory,
+        _log?.Combat(LogCategory,
             $"party-buff confirmed spell={p.Short} target={p.Target} " +
             $"duration={p.DurationSec}s");
         _pendingPartyCast = null;
@@ -506,7 +506,7 @@ public sealed class CastingDirector : IDisposable
                 && _manaCostLookup?.Invoke(cand.Spell) is { } cost
                 && _state.Ma < cost)
             {
-                _log?.Info(LogCategory,
+                _log?.Combat(LogCategory,
                     $"{category} skip spell={cand.Spell} cost={cost} ma={_state.Ma} " +
                     "(insufficient mana)");
                 continue;
@@ -524,7 +524,7 @@ public sealed class CastingDirector : IDisposable
             if (category == SpellCategory.Buffing && cand.Target is { } tgt)
                 ArmPartyBuffConfirm(cand.Spell, tgt);
 
-            _log?.Info(LogCategory,
+            _log?.Combat(LogCategory,
                 $"{category} fired spell={cand.Spell} target={cand.Target ?? "<self>"} " +
                 $"hp={_state.Hp}/{_state.MaxHp} ma={_state.Ma}/{_state.MaxMa}");
             // Tell the combat engine a between-round cast went out so it can
@@ -556,7 +556,7 @@ public sealed class CastingDirector : IDisposable
 
         _cast.NotifyExternalCastSent();
         _activeUntil[("", token)] = _now().AddSeconds(durationSec);
-        _log?.Info(LogCategory, $"Buffing item-cast fired token={token} duration={durationSec}s");
+        _log?.Combat(LogCategory, $"Buffing item-cast fired token={token} duration={durationSec}s");
         CastFired?.Invoke();
         return true;
     }
