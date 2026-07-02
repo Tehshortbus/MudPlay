@@ -1,0 +1,114 @@
+using System.Text.Json;
+using FujinTerm.Services;
+
+namespace FujinTerm.Game.Light;
+
+/// <summary>
+/// Catalogue of every light-source item (<c>ItemType 6</c>) in the active
+/// game-data set, keyed by name, for the auto-light provisioning logic: it
+/// answers a light's projected illumination (ability code 54, <c>IlluTarget</c>)
+/// and its burn budget (<c>UseCount</c>) so the engine can pick a light strong
+/// enough for a route and compute how many to carry for a target duration.
+/// </summary>
+/// <remarks>
+/// Mirrors <see cref="Combat.ItemMagicIndex"/>: the catalogue is built lazily by
+/// scanning the raw <c>Items</c> table's paired <c>Abil-0..19</c> /
+/// <c>AbilVal-0..19</c> columns, cached, and dropped on a game-data set switch
+/// so the next query rebuilds against the new set.
+/// </remarks>
+public sealed class LightItemIndex
+{
+    /// <summary>MDB <c>ItemType</c> for a light source.</summary>
+    private const int LightItemType = 6;
+
+    /// <summary>Ability code for a readied light's projected illumination
+    /// (<c>IlluTarget</c>, per <see cref="GameData.AbilityNames"/>).</summary>
+    private const int IlluTargetAbilityCode = 54;
+
+    /// <summary>Number of <c>Abil-N</c> slots on an Items row.</summary>
+    private const int AbilitySlots = 20;
+
+    private readonly GameDataCache _cache;
+    private IReadOnlyList<LightItem>? _all;
+    private Dictionary<string, LightItem>? _byName;
+
+    public LightItemIndex(GameDataCache cache)
+    {
+        ArgumentNullException.ThrowIfNull(cache);
+        _cache = cache;
+        _cache.ActiveSetChanged += _ => { _all = null; _byName = null; };
+    }
+
+    /// <summary>Every light item in the active set, in MDB order. Empty when no
+    /// set is active or the set has no <c>Items.json</c>.</summary>
+    public IReadOnlyList<LightItem> All => _all ??= Build(out _byName);
+
+    /// <summary>
+    /// Resolve a light by its game name (case-insensitive, whitespace-trimmed),
+    /// or <c>null</c> when no light with that name exists in the active set.
+    /// Feeds off the same catalogue as <see cref="All"/>; used to look up a
+    /// readied light's strength / burn budget from its parsed name.
+    /// </summary>
+    public LightItem? FindByName(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return null;
+        _ = All;   // ensure the by-name map is built alongside the list
+        return _byName is not null && _byName.TryGetValue(name.Trim(), out LightItem item)
+            ? item : null;
+    }
+
+    private IReadOnlyList<LightItem> Build(out Dictionary<string, LightItem>? byName)
+    {
+        List<LightItem> list = new();
+        Dictionary<string, LightItem> map = new(StringComparer.OrdinalIgnoreCase);
+
+        JsonDocument? doc = _cache.GetRawTable("Items");
+        if (doc is not null)
+        {
+            foreach (JsonElement row in doc.RootElement.EnumerateArray())
+            {
+                if (row.ValueKind != JsonValueKind.Object) continue;
+                if (ReadInt(row, "ItemType") != LightItemType) continue;
+                if (!row.TryGetProperty("Number", out JsonElement numEl)
+                    || !numEl.TryGetInt32(out int number) || number <= 0)
+                    continue;
+                if (!row.TryGetProperty("Name", out JsonElement nameEl)
+                    || nameEl.ValueKind != JsonValueKind.String)
+                    continue;
+                string? name = nameEl.GetString();
+                if (string.IsNullOrWhiteSpace(name)) continue;
+
+                LightItem item = new(number, name.Trim(),
+                    Strength: ReadIlluTarget(row), UseCount: ReadInt(row, "UseCount"));
+                list.Add(item);
+                // First writer wins on duplicate names — the id/strength are what
+                // callers need and the first row is as good as any.
+                map.TryAdd(item.Name, item);
+            }
+        }
+
+        byName = map;
+        return list;
+    }
+
+    private static int ReadIlluTarget(JsonElement row)
+    {
+        for (int i = 0; i < AbilitySlots; i++)
+        {
+            if (!row.TryGetProperty($"Abil-{i}", out JsonElement abilEl)) continue;
+            if (abilEl.ValueKind != JsonValueKind.Number) continue;
+            if (!abilEl.TryGetInt32(out int code) || code != IlluTargetAbilityCode) continue;
+            if (!row.TryGetProperty($"AbilVal-{i}", out JsonElement valEl)) continue;
+            if (valEl.ValueKind == JsonValueKind.Number && valEl.TryGetInt32(out int val))
+                return val;
+            return 0;
+        }
+        return 0;
+    }
+
+    private static int ReadInt(JsonElement row, string property)
+        => row.TryGetProperty(property, out JsonElement el)
+           && el.ValueKind == JsonValueKind.Number
+           && el.TryGetInt32(out int v)
+            ? v : 0;
+}
