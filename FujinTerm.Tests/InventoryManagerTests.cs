@@ -712,6 +712,95 @@ public sealed class InventoryManagerTests
         Assert.Empty(Carried(h));
     }
 
+    // ----- incremental give / receive ----------------------------------
+
+    [Fact]
+    public void GiveAway_RemovesItemFromCarried()
+    {
+        using Harness h = new();
+        FeedCarriedBaseline(h);   // holds lantern
+
+        h.Feed("You just gave lantern to Bob.");
+
+        Assert.DoesNotContain("lantern", Carried(h));
+    }
+
+    // A multi-word recipient (an NPC) must not eat into the greedy item group.
+    [Fact]
+    public void GiveAway_MultiWordRecipient_RemovesItem()
+    {
+        using Harness h = new();
+        FeedCarriedBaseline(h);
+
+        h.Feed("You just gave lantern to the old man.");
+
+        Assert.DoesNotContain("lantern", Carried(h));
+    }
+
+    [Fact]
+    public void Receive_AddsItemToCarried()
+    {
+        using Harness h = new();
+        FeedCarriedBaseline(h);
+
+        h.Feed("Bob just gave you rusty dagger.");
+
+        Assert.Contains("rusty dagger", Carried(h));
+        Assert.Contains("lantern", Carried(h));   // baseline item untouched
+    }
+
+    // An NPC / quest giver names more than one word before "just gave you".
+    [Fact]
+    public void Receive_MultiWordGiver_AddsItem()
+    {
+        using Harness h = new();
+        FeedCarriedBaseline(h);
+
+        h.Feed("The old man just gave you a brass key.");
+
+        Assert.Contains("a brass key", Carried(h));
+    }
+
+    // Giving coins adjusts the purse, not the pack — no phantom carried item.
+    [Fact]
+    public void GiveAway_Coins_AdjustsCurrencyNotCarried()
+    {
+        using Harness h = new();
+        h.Feed("You are carrying lantern, 30 gold crowns.");
+        h.Feed("Wealth:    3000 copper farthings");
+        h.Feed("Encumbrance:    50/2880  -  Light  [2%]");
+
+        h.Feed("You just gave 10 gold crowns to Bob.");
+
+        Assert.Equal(20, h.Inv.Snapshot.Currency.Gold);
+        Assert.DoesNotContain(Carried(h), c => c.Contains("gold"));
+    }
+
+    [Fact]
+    public void Receive_Coins_AdjustsCurrencyNotCarried()
+    {
+        using Harness h = new();
+        FeedCarriedBaseline(h);   // 5 copper
+
+        h.Feed("Bob just gave you 30 gold crowns.");
+
+        Assert.Equal(30, h.Inv.Snapshot.Currency.Gold);
+        Assert.DoesNotContain(Carried(h), c => c.Contains("gold"));
+    }
+
+    // "You don't have X to give." is a bounced give — nothing changes.
+    [Fact]
+    public void GiveFailed_LeavesCarriedUnchanged()
+    {
+        using Harness h = new();
+        FeedCarriedBaseline(h);
+
+        h.Feed("You don't have torch to give.");
+
+        Assert.Contains("lantern", Carried(h));
+        Assert.Single(Carried(h));
+    }
+
     // ----- incremental item-weight encumbrance -------------------------
 
     // Stands in for the game-data Encum lookup: a fixed name→weight table.

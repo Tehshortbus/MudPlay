@@ -424,6 +424,35 @@ public sealed partial class InventoryManager : IDisposable
             return;
         }
 
+        // Give away: "You just gave a torch to Bob." — the item (or coins) leaves
+        // us, exactly like a drop, so it must leave the pack / purse to keep the
+        // Character Workshop inventory and the possession checks (path-item gate,
+        // etc.) honest. The recipient is irrelevant to our own snapshot.
+        Match gaveAway = GaveItemAwayRegex().Match(line);
+        if (gaveAway.Success)
+        {
+            ApplyGiveTransfer(gaveAway.Groups[1].Value.TrimEnd(), -1);
+            return;
+        }
+
+        // Receive: "Bob just gave you a torch." — the item (or coins) enters our
+        // pack, like a get. Lets a hand-off from a party member (or another of
+        // our characters) show up without waiting for the next full 'i' dump.
+        Match received = ReceivedItemRegex().Match(line);
+        if (received.Success)
+        {
+            ApplyGiveTransfer(received.Groups[2].Value.TrimEnd(), +1);
+            return;
+        }
+
+        // Failed give: "You don't have a torch to give." — no state change (we
+        // never held it), logged so a give-driven flow can see the attempt bounced.
+        if (GiveFailedRegex().IsMatch(line))
+        {
+            _log?.Debug(LogCategory, "give bounced: item not held");
+            return;
+        }
+
         // Get: "You took rusty dagger." — the item enters the pack unworn. The
         // currency pickup ("You picked up N ...", no trailing period) is a
         // different verb and is matched (and returned) above, so only item lines
@@ -605,6 +634,26 @@ public sealed partial class InventoryManager : IDisposable
             }
         }
         if (changed) Changed?.Invoke();
+    }
+
+    // A give / receive of coins ("... 30 gold crowns ...") adjusts currency, not
+    // the pack; anything else is an item entering (+1) or leaving (-1) it. The
+    // currency guard stops a coin hand-off from being filed as a phantom carried
+    // item and keeps the purse in step, mirroring how drop / pickup split coins
+    // from items elsewhere in this class.
+    private void ApplyGiveTransfer(string name, int sign)
+    {
+        Match coin = CurrencyTokenRegex().Match(name);
+        if (coin.Success && int.TryParse(coin.Groups[1].Value, out int count))
+        {
+            lock (_lock) AdjustCurrency(coin.Groups[2].Value, sign * count);
+            Changed?.Invoke();
+            return;
+        }
+
+        if (sign > 0) PatchCarried(list => { list.Add(name); return true; });
+        else RemoveCarried(name);
+        AdjustItemWeight(name, sign);
     }
 
     // Drop the first carried entry matching name (case-insensitive). Only the
@@ -912,4 +961,18 @@ public sealed partial class InventoryManager : IDisposable
 
     [GeneratedRegex(@"^You drop(?:ped)? (.+?)\.$")]
     private static partial Regex DropItemRegex();
+
+    // Item / coin hand-off between characters. Give-away names the recipient
+    // ("... to Bob."); receive names the giver ("Bob just gave you ..."). The
+    // captured name (item or a currency token) is routed through the currency
+    // guard in ApplyGiveTransfer. The greedy item groups let a multi-word name
+    // ("a rusty dagger") round-trip; the recipient / giver token isn't used.
+    [GeneratedRegex(@"^You just gave (.+) to (.+)\.$")]
+    private static partial Regex GaveItemAwayRegex();
+
+    [GeneratedRegex(@"^(.+?) just gave you (.+)\.$")]
+    private static partial Regex ReceivedItemRegex();
+
+    [GeneratedRegex(@"^You don't have (.+) to give\.$")]
+    private static partial Regex GiveFailedRegex();
 }
