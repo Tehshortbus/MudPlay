@@ -136,6 +136,16 @@
                       Margin="0,12,0,0"
                       ToolTip.Tip="When checked: if the walker plans a route through an exit that requires an item you're not carrying (a boat for the Silver River, a rope-and-grapple for a climb, a ticket, etc.), FujinTerm searches every room you enter (`sea`) to reveal the missing item, and stops once it's found. Works even when the Auto-Search master toggle is off. Applies only for this character."/>
 
+            <!-- Shop-source routing. When checked, a walk-to that needs an
+                 item we're not carrying detours to the fewest-added-steps
+                 shop that stocks it, buys it, then resumes. Aborts if the
+                 item turns up first; falls back to search on a failed buy.
+                 Only plain walk-to's detour (not loops / auto-lair). -->
+            <CheckBox Content="Buy item if needed"
+                      IsChecked="{Binding BuyNeededPathItems, Mode=TwoWay}"
+                      Margin="0,8,0,0"
+                      ToolTip.Tip="When checked: if a walk-to crosses an exit that requires an item you're not carrying and a shop sells that item, FujinTerm detours to the shop that adds the fewest steps to your trip, buys the item, then continues to your original destination. If the item turns up first (e.g. from `Search rooms if item needed`) the detour is cancelled; if the buy fails (no gold, out of stock) it resumes and lets search keep hunting. Only detours for a direct walk-to — not for loops or auto-lair. Applies only for this character."/>
+
             <!-- Leader-side @comeback backtrack budget. When a stranded
                  follower sends a bare @comeback (no room), the leader
                  pauses its engine and walks backwards along the path

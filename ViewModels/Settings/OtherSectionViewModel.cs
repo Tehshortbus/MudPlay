@@ -55,6 +55,7 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             yield return "Attempt pick-lock";
             yield return "Lockpicks";
             yield return "Search rooms if item needed";
+            yield return "Buy item if needed";
             yield return "Max comeback backtrack rooms";
             yield return "@comeback";
             yield return "Utilize self or party members to disarm traps";
@@ -129,6 +130,15 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     /// <see cref="Game.Map.PathItemDemandTracker"/>. Off by default.
     /// </summary>
     [ObservableProperty] private bool _searchRoomsIfItemNeeded;
+
+    /// <summary>
+    /// When checked, actively buy a missing route item: a one-shot walk-to
+    /// that crosses an Item/Ticket exit whose item we lack detours to the
+    /// fewest-added-steps shop that stocks it, buys it, then resumes. Aborts
+    /// if the item turns up first; falls back to search on a failed buy.
+    /// Read live by <see cref="Game.Map.PathItemShopRouter"/>. Off by default.
+    /// </summary>
+    [ObservableProperty] private bool _buyNeededPathItems;
 
     /// <summary>
     /// Off by default. When on, every observed Confirmed→Pending→Confirmed
@@ -272,6 +282,7 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             MaxPickAttempts       = Math.Clamp(MaxPickAttempts,       1, 100),
             PicklocksOverBash     = PicklocksOverBash,
             SearchRoomsIfItemNeeded = SearchRoomsIfItemNeeded,
+            BuyNeededPathItems    = BuyNeededPathItems,
             LogMovementHopTiming  = LogMovementHopTiming,
             MaxComebackBacktrackRooms = Math.Clamp(MaxComebackBacktrackRooms, 1, 50),
             AutoRequestComebackWhenLeftBehind = AutoRequestComebackWhenLeftBehind,
@@ -326,6 +337,7 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
         MaxPickAttempts       = dto.MaxPickAttempts;
         PicklocksOverBash     = dto.PicklocksOverBash;
         SearchRoomsIfItemNeeded = dto.SearchRoomsIfItemNeeded;
+        BuyNeededPathItems    = dto.BuyNeededPathItems;
         LogMovementHopTiming  = dto.LogMovementHopTiming;
         MaxComebackBacktrackRooms = dto.MaxComebackBacktrackRooms;
         AutoRequestComebackWhenLeftBehind = dto.AutoRequestComebackWhenLeftBehind;
@@ -386,6 +398,7 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     partial void OnMaxPickAttemptsChanged(int value)       => MarkDirty();
     partial void OnPicklocksOverBashChanged(bool value)    => MarkDirty();
     partial void OnSearchRoomsIfItemNeededChanged(bool value) => MarkDirty();
+    partial void OnBuyNeededPathItemsChanged(bool value) => MarkDirty();
     partial void OnLogMovementHopTimingChanged(bool value) => MarkDirty();
     partial void OnMaxComebackBacktrackRoomsChanged(int value) => MarkDirty();
     partial void OnAutoRequestComebackWhenLeftBehindChanged(bool value) => MarkDirty();

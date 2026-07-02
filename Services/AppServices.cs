@@ -1092,6 +1092,21 @@ public sealed class AppServices
     public Game.Map.PathItemDemandTracker PathItemDemand { get; private set; } = null!;
 
     /// <summary>
+    /// Reverse index of the active set's <c>Shops.json</c> — item id → the
+    /// shops that stock it. Feeds <see cref="PathItemShopRouter"/>'s shop
+    /// lookup; rebuilt on <see cref="GameDataCache.ActiveSetChanged"/>.
+    /// </summary>
+    public ShopStockIndex ShopStock { get; private set; } = null!;
+
+    /// <summary>
+    /// Active fulfiller for <see cref="NeedKind.PathItem"/> needs backed by a
+    /// shop: on a one-shot walk-to that needs an uncarried item a shop sells,
+    /// detours to the fewest-added-steps shop, buys it, and resumes. Gated by
+    /// Settings → Other "buy item if needed".
+    /// </summary>
+    public Game.Map.PathItemShopRouter PathItemShopRouter { get; private set; } = null!;
+
+    /// <summary>
     /// Phase 9 PR 9.J — shared Acquisition movement-gate driver. Both
     /// <see cref="Cash"/> and <see cref="AutoGetItems"/> feed it; it owns
     /// the single assert/clear of
@@ -1905,6 +1920,13 @@ public sealed class AppServices
         GameData.ActiveSetChanged += ItemNames.OnActiveSetChanged;
         if (GameData.ActiveSet is not null)
             ItemNames.OnActiveSetChanged(GameData.ActiveSet);
+
+        // ShopStockIndex — item id → shops stocking it, from Shops.json.
+        // Feeds PathItemShopRouter's "who sells this?" lookup.
+        ShopStock = new ShopStockIndex(GameData, Log);
+        GameData.ActiveSetChanged += ShopStock.OnActiveSetChanged;
+        if (GameData.ActiveSet is not null)
+            ShopStock.OnActiveSetChanged(GameData.ActiveSet);
 
         // Phase 7 PR 7.1 — room tracker. Resets to Unknown on every
         // graph reload because per-room references are invalidated
@@ -2909,6 +2931,35 @@ public sealed class AppServices
             TransactionHistory.NoteBankDeposit(copper);
         };
 
+        // Shop-source routing (PR C). On a one-shot walk-to that needs an
+        // uncarried Item/Ticket-gate item a shop sells, detour to the
+        // fewest-added-steps shop, buy it, and resume — gated by Settings →
+        // Other "buy item if needed". Distances use the same movement filter
+        // the walker routes with so the estimate matches the real walk; the
+        // shop lookup joins ShopStock (who sells it) against the live graph
+        // (which rooms host those shops). engineWalkActive suppresses the
+        // detour while a loop / auto-lair run drives movement. WalkTo is
+        // deferred through the dispatcher because the triggering NeedPosted
+        // fires synchronously inside the walker's WalkTo. Wire-sender bound
+        // by MainWindowViewModel after connect.
+        PathItemShopRouter = new Game.Map.PathItemShopRouter(
+            shopRoomsSellingItem: ShopRoomsSellingItem,
+            currentRoom: () => RoomTracker.State.CurrentRoom?.Key,
+            walkDestination: () => Walker.Destination,
+            distanceBetween: (a, b) => Bfs.DistanceBetween(a, b, Movement),
+            isCarried: IsItemCarried,
+            itemName: ItemNames.GetName,
+            isEnabled: () =>
+                Resolver.Resolve<Models.Profile.OtherSettings>("Other").BuyNeededPathItems,
+            engineWalkActive: () =>
+                AutoLair.IsActive || LoopRunner.State != Game.Map.LoopState.Idle,
+            walkTo: key => Walker.WalkTo(key),
+            post: action => Avalonia.Threading.Dispatcher.UIThread.Post(action),
+            log: Log);
+        Needs.NeedPosted += PathItemShopRouter.OnNeedPosted;
+        Walker.Event += PathItemShopRouter.OnWalkEvent;
+        Inventory.Changed += PathItemShopRouter.OnInventoryChanged;
+
         // PR 6.2 — follower-side @comeback. Watches for a movement-failure
         // line (prevents-movement flag / over-encumbered) immediately
         // before "You are no longer following X." — the signature of being
@@ -3389,6 +3440,25 @@ public sealed class AppServices
         foreach (Game.Inventory.EquippedItem worn in snap.EquippedItems)
             if (ItemNames.FindByName(worn.Name) == itemId) return true;
         return false;
+    }
+
+    /// <summary>
+    /// Room keys of every shop in the live graph that stocks
+    /// <paramref name="itemId"/> — the join of <see cref="ShopStock"/> (which
+    /// shops sell it) against <see cref="RoomGraph"/> (which rooms host those
+    /// shops). Backs <see cref="PathItemShopRouter"/>'s detour-target search.
+    /// Only rooms present in the active graph can be walk targets, so shops
+    /// whose room isn't loaded are naturally excluded.
+    /// </summary>
+    private System.Collections.Generic.IReadOnlyList<Game.Map.RoomKey> ShopRoomsSellingItem(int itemId)
+    {
+        System.Collections.Generic.IReadOnlyCollection<int> shops = ShopStock.ShopsSelling(itemId);
+        if (shops.Count == 0) return System.Array.Empty<Game.Map.RoomKey>();
+        var rooms = new System.Collections.Generic.List<Game.Map.RoomKey>();
+        foreach (Game.Map.Room room in RoomGraph.Rooms)
+            if (room.Shop != 0 && shops.Contains(room.Shop))
+                rooms.Add(room.Key);
+        return rooms;
     }
 
     /// <summary>

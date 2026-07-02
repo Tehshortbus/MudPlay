@@ -793,6 +793,9 @@ public partial class MainWindowViewModel : ObservableObject
         // Base auto-search — the per-room `sea` rides the same gate-wrapped
         // pipeline so it can't land mid-password-prompt.
         AppServices.Current.AutoSearch.SetWireSender(engineSend);
+        // Shop-source routing (PR C) — the `buy <item>` at the detour shop
+        // rides the same gate-wrapped pipeline.
+        AppServices.Current.PathItemShopRouter.SetWireSender(engineSend);
         // Phase 9 PR 9.E follow-up — StashRoomManager's `hide N <coin>`
         // commands ride the same gate-wrapped pipeline.
         AppServices.Current.Stash.SetWireSender(engineSend);

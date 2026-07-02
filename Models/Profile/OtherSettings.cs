@@ -116,6 +116,23 @@ public sealed class OtherSettings
     public bool SearchRoomsIfItemNeeded { get; set; }
 
     /// <summary>
+    /// When <c>true</c>, actively source a missing route item from a shop:
+    /// on a one-shot walk-to that crosses an <c>(Item: N)</c> /
+    /// <c>(Ticket: N)</c> exit whose item we're not carrying, if any shop in
+    /// the active set stocks that item,
+    /// <see cref="Game.Map.PathItemShopRouter"/> detours to the shop adding
+    /// the fewest steps (<c>dist(cur,shop)+dist(shop,dest)</c>), issues
+    /// <c>buy &lt;item&gt;</c>, then resumes to the original destination. If
+    /// the item turns up first (e.g. via demand-driven search) the detour is
+    /// abandoned; a failed buy or unreachable shop falls back to search.
+    /// Only plain walk-to's detour — loop / auto-lair runs don't. Independent
+    /// of the Auto-Search master toggle. Read live by the router through the
+    /// resolver. Default <c>false</c> (opt-in). Char-tier; surfaced in
+    /// Settings → Other.
+    /// </summary>
+    public bool BuyNeededPathItems { get; set; }
+
+    /// <summary>
     /// When <c>true</c>, <see cref="Game.HopTimingCalibrator"/> logs
     /// one Info line per observed hop with the wall-clock time + the
     /// current <see cref="Game.EncumbranceLevel"/>. Used to calibrate
