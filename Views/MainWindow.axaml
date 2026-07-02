@@ -226,10 +226,10 @@
 
         <!-- ============ Toolbar (dynamic — built from ToolbarItems) ============ -->
         <!-- Layout comes from the active character's ToolbarSettings.Layout
-             via the catalogue. The three Borders mount at top / left /
+             via the catalogue. The four Borders mount at top / bottom / left /
              right; IsVisible on each is driven by ToolbarConfig's derived
-             ShowTop / ShowLeft / ShowRight flags so toggling the
-             Settings → Toolbar Show / Vertical / Side controls re-docks
+             ShowTop / ShowBottom / ShowLeft / ShowRight flags so toggling the
+             Settings → Toolbar Show / Position controls re-docks
              without a window rebuild. Item templates are inlined per-
              orientation because StackPanel orientation lives on the
              ItemsPanel, not the items themselves. -->

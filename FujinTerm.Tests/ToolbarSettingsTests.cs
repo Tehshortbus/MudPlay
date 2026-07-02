@@ -121,67 +121,61 @@ public sealed class ToolbarSettingsTests
         Assert.Equal(ToolbarItemKind.Separator,  snap.Layout[1].Kind);
     }
 
-    // ===== Visibility + orientation (Show / Vertical / Side) =====
+    // ===== Visibility + position (Show / Position) =====
 
     [Fact]
-    public void Defaults_VisibilityAndOrientation_AreHorizontalTopShown()
+    public void Defaults_VisibilityAndPosition_AreTopShown()
     {
         ToolbarSettings dto = new();
         Assert.True(dto.Visible);
-        Assert.False(dto.Vertical);
-        Assert.Equal(ToolbarSide.Left, dto.Side);
-        Assert.Equal(ToolbarHorizontalSide.Top, dto.HorizontalSide);
+        Assert.Equal(ToolbarPosition.Top, dto.Position);
     }
 
     [Fact]
-    public void RoundTripJson_PreservesVisibilityAndOrientation()
+    public void RoundTripJson_PreservesVisibilityAndPosition()
     {
         ToolbarSettings original = new()
         {
-            Visible        = false,
-            Vertical       = true,
-            Side           = ToolbarSide.Right,
-            HorizontalSide = ToolbarHorizontalSide.Bottom,
+            Visible  = false,
+            Position = ToolbarPosition.Right,
         };
         string json = JsonSerializer.Serialize(original);
         ToolbarSettings? round = JsonSerializer.Deserialize<ToolbarSettings>(json);
         Assert.NotNull(round);
         Assert.False(round!.Visible);
-        Assert.True(round.Vertical);
-        Assert.Equal(ToolbarSide.Right, round.Side);
-        Assert.Equal(ToolbarHorizontalSide.Bottom, round.HorizontalSide);
+        Assert.Equal(ToolbarPosition.Right, round.Position);
     }
 
     [Fact]
-    public void ToolbarConfig_ShowFlags_DriveByVisibleAndVerticalAndSide()
+    public void ToolbarConfig_ShowFlags_DriveByVisibleAndPosition()
     {
         ToolbarConfig live = new();
-        // Defaults: visible + horizontal → top.
+        // Defaults: visible + Top.
         Assert.True(live.ShowTop);
         Assert.False(live.ShowBottom);
         Assert.False(live.ShowLeft);
         Assert.False(live.ShowRight);
 
-        // Horizontal-bottom.
-        live.HorizontalSide = ToolbarHorizontalSide.Bottom;
+        // Bottom.
+        live.Position = ToolbarPosition.Bottom;
         Assert.False(live.ShowTop);
         Assert.True(live.ShowBottom);
         Assert.False(live.ShowLeft);
         Assert.False(live.ShowRight);
 
-        // Vertical mode ignores the horizontal edge entirely.
-        live.Vertical = true;
+        // Left.
+        live.Position = ToolbarPosition.Left;
         Assert.False(live.ShowTop);
         Assert.False(live.ShowBottom);
         Assert.True(live.ShowLeft);
         Assert.False(live.ShowRight);
 
-        // Vertical-right.
-        live.Side = ToolbarSide.Right;
+        // Right.
+        live.Position = ToolbarPosition.Right;
         Assert.False(live.ShowLeft);
         Assert.True(live.ShowRight);
 
-        // Master hide collapses every flag regardless of orientation.
+        // Master hide collapses every flag regardless of position.
         live.Visible = false;
         Assert.False(live.ShowTop);
         Assert.False(live.ShowBottom);
@@ -190,38 +184,30 @@ public sealed class ToolbarSettingsTests
     }
 
     [Fact]
-    public void ToolbarConfig_ApplyFrom_PropagatesVisibilityAndOrientation()
+    public void ToolbarConfig_ApplyFrom_PropagatesVisibilityAndPosition()
     {
         ToolbarConfig live = new();
         live.ApplyFrom(new ToolbarSettings
         {
-            Visible        = false,
-            Vertical       = true,
-            Side           = ToolbarSide.Right,
-            HorizontalSide = ToolbarHorizontalSide.Bottom,
+            Visible  = false,
+            Position = ToolbarPosition.Right,
         });
         Assert.False(live.Visible);
-        Assert.True(live.Vertical);
-        Assert.Equal(ToolbarSide.Right, live.Side);
-        Assert.Equal(ToolbarHorizontalSide.Bottom, live.HorizontalSide);
+        Assert.Equal(ToolbarPosition.Right, live.Position);
     }
 
     [Fact]
-    public void ToolbarConfig_Snapshot_RoundTripsVisibilityAndOrientation()
+    public void ToolbarConfig_Snapshot_RoundTripsVisibilityAndPosition()
     {
         ToolbarConfig live = new();
         live.ApplyFrom(new ToolbarSettings
         {
-            Visible        = false,
-            Vertical       = true,
-            Side           = ToolbarSide.Right,
-            HorizontalSide = ToolbarHorizontalSide.Bottom,
+            Visible  = false,
+            Position = ToolbarPosition.Right,
         });
         ToolbarSettings snap = live.Snapshot();
         Assert.False(snap.Visible);
-        Assert.True(snap.Vertical);
-        Assert.Equal(ToolbarSide.Right, snap.Side);
-        Assert.Equal(ToolbarHorizontalSide.Bottom, snap.HorizontalSide);
+        Assert.Equal(ToolbarPosition.Right, snap.Position);
     }
 
     [Fact]
