@@ -86,6 +86,37 @@ public sealed class AutoLightPlannerTests
     }
 
     [Fact]
+    public void DarkRoute_ReadiedLightAlreadyCovers_DoesNothing()
+    {
+        // Lantern (175) readied and healthy (100 min left, above the 60-min
+        // reorder threshold) covers the -300 room (need 150) → leave it lit
+        // rather than re-ready a carried light on every hop of the dark run.
+        ReadiedLight lit = new("lantern", Readied: 200);
+
+        AutoLightPlan plan = AutoLightPlanner.Plan(
+            Dark(-300), wornIllu: 0, readied: lit,
+            carriedLights: new[] { Torch }, Catalogue, Settings());
+
+        Assert.Equal(AutoLightAction.None, plan.Action);
+    }
+
+    [Fact]
+    public void DarkRoute_ReadiedLightTooWeak_ReadiesACoveringCarry()
+    {
+        // Torch (100) readied but the -300 room needs 150 → the lit light doesn't
+        // cover, so the guard stays out of the way and a carried lantern readies.
+        // Reorder off so the dwindling torch doesn't shadow the coverage decision.
+        ReadiedLight lit = new("torch", Readied: 60);
+
+        AutoLightPlan plan = AutoLightPlanner.Plan(
+            Dark(-300), wornIllu: 0, readied: lit,
+            carriedLights: new[] { Lantern }, Catalogue, Settings(reorder: 0));
+
+        Assert.Equal(AutoLightAction.Ready, plan.Action);
+        Assert.Equal("lantern", plan.LightName);
+    }
+
+    [Fact]
     public void PreferredLight_IsUsedAsIs_EvenWhenTooWeak()
     {
         // Need 150 illu but the user explicitly prefers a torch (100). Carried →

@@ -7,7 +7,7 @@ public enum AutoLightAction
     None,
 
     /// <summary>Ready a light already in the pack — the engine sends
-    /// <c>hold &lt;LightName&gt;</c>. No shop trip needed.</summary>
+    /// <c>use &lt;LightName&gt;</c>. No shop trip needed.</summary>
     Ready,
 
     /// <summary>Buy <see cref="AutoLightPlan.BuyCount"/> of

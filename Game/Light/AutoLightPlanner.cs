@@ -11,7 +11,7 @@ namespace FujinTerm.Game.Light;
 /// <em>what to do right now</em> as an <see cref="AutoLightPlan"/> — ready a
 /// carried light, buy a provisioning batch, top up a dwindling supply, or
 /// nothing. It never touches the wire or the game state; the wiring layer turns
-/// the plan into <c>hold</c> / <c>buy</c> commands.
+/// the plan into <c>use</c> / <c>buy</c> commands.
 /// </summary>
 /// <remarks>
 /// Preferred vs. auto: a named <see cref="AutoLightSettings.PreferredLightName"/>
@@ -63,6 +63,17 @@ public static class AutoLightPlanner
         if (routeScan.NeedsLight)
         {
             int minStrength = LightModel.IlluGapToSee(wornIllu, routeScan.DarkestRoomLight);
+
+            // A light is already lit whose strength alone clears the darkest room
+            // from the worn baseline — leave it be. The reorder branch above tops
+            // it up as its charge dwindles; swapping to another light here would
+            // re-fire `use` on every planned hop of the same dark run. (Coverage
+            // is a Strength question, so this holds even for a ground-picked light
+            // whose remaining charge we can't yet know.)
+            if (readied is { } lit && FindByName(lit.Name, catalogue) is { } litLight
+                && litLight.Strength >= minStrength)
+                return AutoLightPlan.Nothing(
+                    $"route dark: readied {lit.Name} already covers (illu {litLight.Strength} >= need {minStrength})");
 
             // a. Ready a carried light — no shop trip. Preferred if carried, else
             //    the weakest carried light that reaches the darkest room.
