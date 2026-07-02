@@ -283,6 +283,23 @@ public sealed class TerminalControl : Control
         }
         if (overlayText is not null)
         {
+            // MajorMUD keeps its prompt on the bottom row, so a buffer long
+            // enough to wrap would spill past the last row. Truncating the
+            // tail there hides the very text the user is typing (character
+            // mode doesn't suffer this — server echo scrolls the screen).
+            // First pass: find the caret's row if the buffer wraps at
+            // screen.Cols with no vertical limit; second pass shifts the
+            // whole overlay up by that overflow so the caret's row stays
+            // on-screen, the same effect a scroll produces.
+            int endCol = overlayStartCol;
+            int endRow = overlayStartRow;
+            foreach (char ch in overlayText)
+            {
+                if (endCol >= screen.Cols) { endCol = 0; endRow++; }
+                endCol++;
+            }
+            int rowShift = System.Math.Max(0, endRow - (screen.Rows - 1));
+
             int col = overlayStartCol;
             int row = overlayStartRow;
             foreach (char ch in overlayText)
@@ -293,23 +310,29 @@ public sealed class TerminalControl : Control
                     // instead of clipping at the right edge.
                     col = 0;
                     row++;
-                    if (row >= screen.Rows) break; // out of vertical room — silently truncate
                 }
-                double px = col * _cellW;
-                double py = row * _cellH;
-                // Match the cursor-cell foreground so the overlay reads
-                // inline with the prompt. Black BG fill first so any
-                // server-painted cells underneath don't bleed through.
-                context.FillRectangle(Brushes.Black,
-                    new Rect(px, py, _cellW, _cellH));
-                var glyph = new FormattedText(
-                    ch.ToString(),
-                    CultureInfo.InvariantCulture,
-                    FlowDirection.LeftToRight,
-                    _typeface,
-                    FontSize,
-                    Brushes.LightGray);
-                context.DrawText(glyph, new Point(px, py));
+                int drawRow = row - rowShift;
+                // Rows shifted above the top edge (only possible when the
+                // buffer is taller than the whole screen) fall away, just
+                // as they would scroll off — keep the tail nearest the caret.
+                if (drawRow >= 0 && drawRow < screen.Rows)
+                {
+                    double px = col * _cellW;
+                    double py = drawRow * _cellH;
+                    // Match the cursor-cell foreground so the overlay reads
+                    // inline with the prompt. Black BG fill first so any
+                    // server-painted cells underneath don't bleed through.
+                    context.FillRectangle(Brushes.Black,
+                        new Rect(px, py, _cellW, _cellH));
+                    var glyph = new FormattedText(
+                        ch.ToString(),
+                        CultureInfo.InvariantCulture,
+                        FlowDirection.LeftToRight,
+                        _typeface,
+                        FontSize,
+                        Brushes.LightGray);
+                    context.DrawText(glyph, new Point(px, py));
+                }
                 col++;
             }
             // Caret tracks the END of the LIVE buffer overlay (mode 1).
@@ -320,7 +343,7 @@ public sealed class TerminalControl : Control
             if (InputBuffer is { Length: > 0 })
             {
                 caretCol = col;
-                caretRow = row;
+                caretRow = row - rowShift;
             }
         }
 
