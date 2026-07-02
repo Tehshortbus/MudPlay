@@ -11,7 +11,7 @@ namespace FujinTerm.Game.Map;
 /// Settings → Other "search rooms if item needed" affordance: while any
 /// PathItem need is outstanding (and the feature is on),
 /// <see cref="AutoSearchManager"/> arms itself so every room entry issues a
-/// bare <c>sea</c>, hunting the concealed item that unlocks the route.
+/// bare <c>sea</c>, revealing the concealed item that unlocks the route.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -24,13 +24,14 @@ namespace FujinTerm.Game.Map;
 /// registry, so re-announcing the same route is a no-op.
 /// </para>
 /// <para>
-/// PR B only <see cref="NeedsRegistry.Post">posts</see> and
-/// <see cref="NeedsRegistry.Resolve">resolves</see> — there is no active
-/// fulfiller, the item is expected to surface from a room search / drop.
-/// Later PRs add claimants (shop routing, monster-drop reroute, party
-/// obtain) that <see cref="NeedsRegistry.TryClaim">claim</see> the same
-/// PathItem needs, which is why this rides the registry rather than a bespoke
-/// flag. Needs are dropped on character swap by the registry's
+/// This tracker only <see cref="NeedsRegistry.Post">posts</see> and
+/// <see cref="NeedsRegistry.Resolve">resolves</see> — the fulfillers react
+/// off the registry: <see cref="PartyPathItemGate"/> (party give / provision),
+/// <see cref="PathItemShopRouter"/> (buy the shortfall at a shop), and
+/// <c>MonsterDropRouter</c> (reroute for a drop-only item), plus the armed
+/// room search that reveals it off the floor. Riding the registry rather than
+/// a bespoke flag is what lets those claimants coordinate on the same need.
+/// Needs are dropped on character swap by the registry's
 /// <see cref="NeedsRegistry.Clear"/> (wired in <c>AppServices</c>).
 /// </para>
 /// <para>
