@@ -57,6 +57,7 @@ public sealed class AutoLightProvisionerTests
         public InventorySnapshot Snapshot = Snap();
         public AutoLightSettings Settings = new() { CarryHours = 12, ReorderThresholdMinutes = 60 };
         public Func<RoomKey, Room?> Graph = GraphOf(RoomAt(A, -300));
+        public readonly List<AutoLightBuyRequest> BuyRequests = new();
         public readonly AutoLightProvisioner Engine;
 
         public Harness()
@@ -69,6 +70,7 @@ public sealed class AutoLightProvisionerTests
                 wornIllu:    () => WornIllu,
                 settings:    () => Settings);
             Engine.SetWireSender(_ => { });
+            Engine.SetProvisioner(BuyRequests.Add);
         }
 
         public void Plan(params RoomKey[] route) => Engine.OnRoutePlanned(route);
@@ -145,12 +147,17 @@ public sealed class AutoLightProvisionerTests
     }
 
     [Fact]
-    public void BuyPlan_IsDeferred_SendsNothing()
+    public void BuyPlan_HandsOffToProvisioner_NoWireSend()
     {
         // Need 150, only a torch (100) carried → planner says Buy a lantern. The
-        // provisioning detour is a later slice, so nothing hits the wire yet.
+        // engine resolves the catalogue id and hands the carry batch to the shop
+        // router; the buy itself happens at the shop, so nothing hits the wire.
         Harness h = new() { Snapshot = Snap(carried: new[] { "torch" }) };
         h.Plan(A);
+        AutoLightBuyRequest req = Assert.Single(h.BuyRequests);
+        Assert.Equal(2, req.ItemId);            // lantern MDB id
+        Assert.Equal("lantern", req.LightName);
+        Assert.Equal(6, req.Count);             // CarryHours 12 / lantern 2 h burn
         Assert.Empty(h.Sent);
     }
 

@@ -802,6 +802,9 @@ public partial class MainWindowViewModel : ObservableObject
         // Active auto-light — the route's `use <light>` / `rem <old>` swap
         // rides the same gate-wrapped pipeline.
         AppServices.Current.AutoLightProvisioner.SetWireSender(engineSend);
+        // Auto-light provisioning detour — the `buy <light>` at the shop rides
+        // the same gate-wrapped pipeline.
+        AppServices.Current.AutoLightShopRouter.SetWireSender(engineSend);
         // Shop-source routing (PR C) — the `buy <item>` at the detour shop
         // rides the same gate-wrapped pipeline.
         AppServices.Current.PathItemShopRouter.SetWireSender(engineSend);

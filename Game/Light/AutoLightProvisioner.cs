@@ -48,6 +48,10 @@ public sealed class AutoLightProvisioner
     private readonly LogService? _log;
     private readonly WireSender _wire = new();
 
+    // Hand-off for the Buy verdict: the shop-detour router. Null until wired,
+    // in which case a Buy is logged and left for the reactive need-poster.
+    private Action<AutoLightBuyRequest>? _provision;
+
     // The light we last asked to ready, and the snapshot it was decided against.
     // Guards a re-send of `use` before the readied light shows up in a later `i`
     // dump; retired once a newer dump lands (confirming it or not).
@@ -81,6 +85,11 @@ public sealed class AutoLightProvisioner
     /// <summary>Bind the wire-sender — the gate-wrapped engine pipeline from
     /// <c>MainWindowViewModel</c>.</summary>
     public void SetWireSender(Action<byte[]> sender) => _wire.Bind(sender);
+
+    /// <summary>Bind the shop-detour hand-off — <see cref="AutoLightShopRouter"/>'s
+    /// <see cref="AutoLightShopRouter.OnBuyRequested"/>. Until bound, a Buy
+    /// verdict is logged and deferred to the reactive need-poster.</summary>
+    public void SetProvisioner(Action<AutoLightBuyRequest> provision) => _provision = provision;
 
     /// <summary>Test seam — bytes the engine asked to write to the wire.</summary>
     internal List<byte[]> LastSentForTests => _wire.LastSentForTests;
@@ -121,9 +130,7 @@ public sealed class AutoLightProvisioner
                 break;
 
             case AutoLightAction.Buy:
-                // Provisioning detour lands in a follow-up slice; the reactive
-                // AutoLightManager still posts a LightSource need meanwhile.
-                _log?.Debug(LogCategory, $"buy deferred: {plan.Reason}");
+                RequestProvision(plan.LightName!, plan.BuyCount, catalogue, plan.Reason);
                 break;
 
             case AutoLightAction.None:
@@ -150,6 +157,36 @@ public sealed class AutoLightProvisioner
         _pendingReadyName = name;
         _pendingSnapshotTime = snapTime;
         _log?.Info(LogCategory, $"readied {name} ({reason})");
+    }
+
+    // Hand the Buy verdict to the shop-detour router, resolving the light's MDB
+    // id from the catalogue (the router's shop / carried-count lookups key on
+    // id). Until a router is wired, the reactive AutoLightManager still posts a
+    // LightSource need, so a Buy just logs here.
+    private void RequestProvision(
+        string name, int count, IReadOnlyList<LightItem> catalogue, string reason)
+    {
+        if (_provision is null)
+        {
+            _log?.Debug(LogCategory, $"buy deferred (no provisioner): {reason}");
+            return;
+        }
+
+        int itemId = 0;
+        foreach (LightItem light in catalogue)
+            if (string.Equals(light.Name, name, StringComparison.OrdinalIgnoreCase))
+            {
+                itemId = light.Number;
+                break;
+            }
+        if (itemId <= 0)
+        {
+            _log?.Debug(LogCategory, $"buy skipped: no catalogue id for '{name}'");
+            return;
+        }
+
+        _log?.Info(LogCategory, $"provision requested: {reason}");
+        _provision(new AutoLightBuyRequest(itemId, name, Math.Max(1, count)));
     }
 
     // The carried-but-unworn tokens from the last `i` dump that name a light in

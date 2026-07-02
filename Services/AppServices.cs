@@ -1025,10 +1025,20 @@ public sealed class AppServices
     /// <summary>
     /// Active auto-light engine. Bound to the walker's route announcer: on each
     /// planned route it scans for the darkest room and readies a covering carried
-    /// light (<c>use &lt;light&gt;</c>) — and, in a later slice, provisions one it
-    /// lacks. Every action is gated by the AutoLight master toggle.
+    /// light (<c>use &lt;light&gt;</c>), or hands off to
+    /// <see cref="AutoLightShopRouter"/> to provision one it lacks. Every action
+    /// is gated by the AutoLight master toggle.
     /// </summary>
     public Game.Light.AutoLightProvisioner AutoLightProvisioner { get; private set; } = null!;
+
+    /// <summary>
+    /// Auto-light provisioning detour. On the provisioner's Buy verdict (route
+    /// dark, nothing carried covers) it walks to the fewest-added-steps shop that
+    /// stocks the light, buys the carry batch, and resumes — the provisioner
+    /// lights it on the resumed route. Gated entirely by the AutoLight master
+    /// toggle; wire-sender bound by <c>MainWindowViewModel</c> after connect.
+    /// </summary>
+    public Game.Light.AutoLightShopRouter AutoLightShopRouter { get; private set; } = null!;
 
     /// <summary>
     /// Phase 9 PR 9.I — death observation aggregator. Surfaces the loaded
@@ -2926,6 +2936,31 @@ public sealed class AppServices
             settings:    () => ReadSection<Models.Profile.AutoLightSettings>(Profile.Current, "AutoLight"),
             log:         Log);
         Walker.SetRouteAnnouncer(AutoLightProvisioner.OnRoutePlanned);
+
+        // Auto-light provisioning detour. When the provisioner's planner returns
+        // Buy (route dark, nothing carried covers), detour to the fewest-added-
+        // steps shop that stocks the light, buy the carry batch, and resume — the
+        // provisioner's ready path lights it on the resumed announcement. Reuses
+        // the same shop-lookup / distance / carried-count seams as
+        // PathItemShopRouter, but gated ENTIRELY by the AutoLight master toggle
+        // (no separate opt-in — a player who doesn't want light bought leaves
+        // AutoLight off). engineWalkActive suppresses the detour during a loop /
+        // lair run. Wire-sender bound by MainWindowViewModel after connect.
+        AutoLightShopRouter = new Game.Light.AutoLightShopRouter(
+            shopRoomsSellingItem: ShopRoomsSellingItem,
+            currentRoom: () => RoomTracker.State.CurrentRoom?.Key,
+            walkDestination: () => Walker.Destination,
+            distanceBetween: (a, b) => Bfs.DistanceBetween(a, b, Movement),
+            carriedCount: CountItemCarried,
+            isEnabled: () => ReadAutoModeFlag(d => d.AutoLight),
+            engineWalkActive: () =>
+                AutoLair.IsActive || LoopRunner.State != Game.Map.LoopState.Idle,
+            walkTo: key => Walker.WalkTo(key),
+            post: action => Avalonia.Threading.Dispatcher.UIThread.Post(action),
+            log: Log);
+        AutoLightProvisioner.SetProvisioner(AutoLightShopRouter.OnBuyRequested);
+        Walker.Event += AutoLightShopRouter.OnWalkEvent;
+        Inventory.Changed += AutoLightShopRouter.OnInventoryChanged;
 
         // Phase 10 PR 10.14 — auto-equip trigger coordinator. Reads the same live
         // Equipment blob as the apply engine and the HealthManager's recovery gates
