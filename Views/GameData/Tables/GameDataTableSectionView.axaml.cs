@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using Avalonia.Collections;
 using Avalonia.Controls;
 using Avalonia.Data;
 using Avalonia.Threading;
@@ -24,6 +26,17 @@ public partial class GameDataTableSectionView : UserControl
 {
     private bool _columnsBuilt;
 
+    // ----- Sort preservation across VM reloads ---------------------------
+    // A VM reload reassigns the bound rows collection wholesale (one
+    // PropertyChanged instead of N CollectionChanged — deliberate for
+    // 27k-row tables), which makes the DataGrid throw away its current
+    // CollectionView and build a fresh, unsorted one. That silently drops
+    // whatever column sort the user picked (e.g. editing a player then
+    // saving snapped the Players grid back to default order). We snapshot
+    // the active sort on every sort action and reapply it whenever the
+    // ItemsSource is swapped.
+    private readonly List<DataGridSortDescription> _sortSnapshot = new();
+
     /// <summary>
     /// Subscribed to the bound VM's <see cref="GameDataTableSectionViewModel.ScrollToRowRequested"/>
     /// so a cross-section navigation (Shops double-click → Rooms tab + room) actually
@@ -36,7 +49,9 @@ public partial class GameDataTableSectionView : UserControl
         InitializeComponent();
         // Either trigger can fire first depending on layout timing;
         // guard via _columnsBuilt so the second is a no-op.
-        DataContextChanged   += (_, _) => { TryBuildColumns(); WireAddRemoveButtons(); WireScrollHook(); };
+        // A DataContext swap means a different section — drop any captured
+        // sort so it can't be reapplied to an unrelated table's columns.
+        DataContextChanged   += (_, _) => { _sortSnapshot.Clear(); TryBuildColumns(); WireAddRemoveButtons(); WireScrollHook(); };
         AttachedToVisualTree += (_, _) => { TryBuildColumns(); WireAddRemoveButtons(); WireScrollHook(); };
 
         // Double-click any row → invoke the section's OpenEditCommand
@@ -68,6 +83,44 @@ public partial class GameDataTableSectionView : UserControl
                 if (item is GameDataRow row) vm.SelectedRows.Add(row);
             }
         };
+
+        // Deferred so the read runs AFTER the DataGrid has applied the
+        // sort the user just requested (Sorting fires pre-apply).
+        RowsGrid.Sorting += (_, _) =>
+            Dispatcher.UIThread.Post(SnapshotSort, DispatcherPriority.Background);
+
+        // ItemsSource swap == a VM reload built a fresh CollectionView;
+        // restore the user's sort onto it once it's live.
+        RowsGrid.PropertyChanged += (_, e) =>
+        {
+            if (e.Property == DataGrid.ItemsSourceProperty)
+                Dispatcher.UIThread.Post(RestoreSort, DispatcherPriority.Background);
+        };
+    }
+
+    /// <summary>Capture the grid's live sort so a reload can restore it.</summary>
+    private void SnapshotSort()
+    {
+        _sortSnapshot.Clear();
+        if (RowsGrid.CollectionView is { } view)
+            foreach (DataGridSortDescription description in view.SortDescriptions)
+                _sortSnapshot.Add(description);
+    }
+
+    /// <summary>Reapply the snapshotted sort onto the freshly-built CollectionView after a reload.</summary>
+    private void RestoreSort()
+    {
+        if (_sortSnapshot.Count == 0) return;
+        if (RowsGrid.CollectionView is not { } view) return;
+        // The user re-sorted after the last snapshot (or the new view is
+        // already sorted) — don't stomp it.
+        if (view.SortDescriptions.Count > 0) return;
+
+        // Restoring the descriptions reorders the rows; the DataGrid keys
+        // the header arrow off the same SortDescriptions collection, so the
+        // glyph follows without touching per-column state.
+        foreach (DataGridSortDescription description in _sortSnapshot)
+            view.SortDescriptions.Add(description);
     }
 
     /// <summary>
