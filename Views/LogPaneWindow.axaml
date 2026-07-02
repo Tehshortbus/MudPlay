@@ -24,8 +24,6 @@
                 <!-- Display filters for the always-on record levels. These
                      only hide/show rows that already exist. -->
                 <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                    <TextBlock Text="Show" Foreground="{StaticResource ChromeFgMutedBrush}"
-                               FontSize="11" VerticalAlignment="Center" Margin="0,0,2,0"/>
                     <CheckBox IsChecked="{Binding ShowInfo}"  Content="INF"
                               Foreground="{StaticResource SeverityInfoBrush}" FontSize="11"/>
                     <CheckBox IsChecked="{Binding ShowWarn}"  Content="WRN"
@@ -42,8 +40,6 @@
                         BorderBrush="{StaticResource ChromeBorderSoftBrush}"
                         BorderThickness="1,0,0,0" Padding="12,0,0,0">
                     <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                        <TextBlock Text="Diagnostics" Foreground="{StaticResource ChromeFgMutedBrush}"
-                                   FontSize="11" VerticalAlignment="Center" Margin="0,0,2,0"/>
                         <CheckBox IsChecked="{Binding DebugDiagnostics}"
                                   Content="Debug"
                                   Foreground="{StaticResource SeverityDebugBrush}"
