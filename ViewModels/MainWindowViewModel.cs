@@ -3634,6 +3634,52 @@ public partial class MainWindowViewModel : ObservableObject
     [RelayCommand]
     private void AllAutoOff() => AppServices.Current.AutoModeController.ToggleAll();
 
+    // ----- Inventory / equipment bulk actions (Action menu + toolbar) -----
+    // Local twins of the @get-all / @drop-all / @deposit-all remote commands
+    // and the Default gear set. Reuse the same engine backends; the status
+    // line the engine would reply on the party channel is surfaced in the
+    // program log instead.
+
+    /// <summary>"Get All" — pick up every item on the room floor.</summary>
+    [RelayCommand]
+    private void GetAll() => AppServices.Current.Log.Info(
+        Game.Inventory.InventoryManager.LogCategory,
+        AppServices.Current.InventoryAction.GetAll());
+
+    /// <summary>"Drop All" — drop every carried-but-unworn item.</summary>
+    [RelayCommand]
+    private void DropAll() => AppServices.Current.Log.Info(
+        Game.Inventory.InventoryManager.LogCategory,
+        AppServices.Current.InventoryAction.DropAll());
+
+    /// <summary>"Deposit All" — bank wealth down to the keep-on-hand floor.</summary>
+    [RelayCommand]
+    private void DepositAll() => AppServices.Current.Log.Info(
+        Game.Inventory.InventoryManager.LogCategory,
+        AppServices.Current.InventoryAction.DepositAll());
+
+    /// <summary>
+    /// "Equip All" — walk the character into the Default gear set. The
+    /// engine logs the apply and the wire shows the wears, so only the
+    /// no-wire outcomes (already worn / not configured / busy) get a
+    /// program-log note here.
+    /// </summary>
+    [RelayCommand]
+    private void EquipAll()
+    {
+        Game.Inventory.EquipResult result =
+            AppServices.Current.Equipment.ApplyByTrigger(Models.Profile.EquipTriggerType.Default);
+        string? note = result switch
+        {
+            Game.Inventory.EquipResult.NoChange => "Default gear set already worn.",
+            Game.Inventory.EquipResult.NotFound => "No default gear set configured.",
+            Game.Inventory.EquipResult.Busy     => "Equip already in progress.",
+            _ => null, // Applied — the engine logs the apply and the wire shows it.
+        };
+        if (note is not null)
+            AppServices.Current.Log.Info(Game.Inventory.EquipmentManager.LogCategory, note);
+    }
+
     private bool _suppressAutoEngineWriteback;
 
     /// <summary>

@@ -83,29 +83,27 @@ public static class ToolbarItemCatalogue
             "OpenLogPaneCommand",      ShortcutHint: "F9"),
 
         // ----- Action menu surface (PR 4.6b) ---------------------------------
-        // These mirror the Action menu in MainWindow.axaml. Commands aren't
-        // wired yet — the owning phase column below names the PR that will
-        // hook them up. Adding an entry here makes the action available in
-        // the Settings → Toolbar picker; on the live toolbar the button
-        // renders disabled (null Command) with the tooltip below until its
-        // command property exists on MainWindowViewModel.
+        // These mirror the Action menu in MainWindow.axaml. The CommandName
+        // resolves by reflection to the matching [RelayCommand] on
+        // MainWindowViewModel. Adding an entry here also makes the action
+        // available in the Settings → Toolbar picker.
 
         // Bulk one-shot actions.
         new("ActionGetAll",       "Get All",              "IconGetAll",
             "GetAllCommand",
-            Tooltip: "Get All — not yet wired",
+            Tooltip: "Get All — pick up every item on the room floor",
             InDefaultLayout: false),
         new("ActionDropAll",      "Drop All",             "IconDropAll",
             "DropAllCommand",
-            Tooltip: "Drop All — not yet wired",
+            Tooltip: "Drop All — drop every carried (unworn) item",
             InDefaultLayout: false),
         new("ActionEquipAll",     "Equip All",            "IconEquipAll",
             "EquipAllCommand",
-            Tooltip: "Equip All — wired in Phase 9 PR 9.11 (Workshop EQUIP)",
+            Tooltip: "Equip All — wear the Default gear set",
             InDefaultLayout: false),
         new("ActionDepositAll",   "Deposit All",          "IconDepositAll",
             "DepositAllCommand",
-            Tooltip: "Deposit All — wired in Phase 13 PR 13.E (CashManager)",
+            Tooltip: "Deposit All — bank wealth to the keep-on-hand floor",
             InDefaultLayout: false),
 
         // Master auto-responses switch. Active = auto-engines run; clicking

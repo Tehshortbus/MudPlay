@@ -109,6 +109,22 @@ public sealed class EquipmentManager
         return ApplySet(set) ? EquipResult.Applied : EquipResult.NoChange;
     }
 
+    /// <summary>
+    /// Resolve the gear set whose <see cref="EquipmentSet.Trigger"/> matches and
+    /// apply it. The local Action-menu / toolbar "Equip All" drives this with
+    /// <see cref="EquipTriggerType.Default"/> — the baseline loadout. Declines
+    /// while an apply is in flight; <see cref="EquipResult.NotFound"/> when no
+    /// set is configured for the trigger.
+    /// </summary>
+    public EquipResult ApplyByTrigger(EquipTriggerType trigger)
+    {
+        if (_isEquipping) return EquipResult.Busy;
+        EquipmentSet? set = _readEquipment().Sets
+            .FirstOrDefault(s => s.Trigger == trigger);
+        if (set is null) return EquipResult.NotFound;
+        return ApplySet(set) ? EquipResult.Applied : EquipResult.NoChange;
+    }
+
     private EquipmentSet? FindSet(string keyword)
     {
         EquipmentSettings cfg = _readEquipment();

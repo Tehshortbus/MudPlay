@@ -108,10 +108,18 @@ public sealed class InventoryActionHandler : IDisposable
     /// enforce — the server refuses a pickup that would overload us, same as
     /// the auto-get engine.
     /// </summary>
-    private void OnGetAll(RemoteCommandContext ctx)
+    private void OnGetAll(RemoteCommandContext ctx) => ctx.Reply(GetAll());
+
+    /// <summary>
+    /// Run the get-all sweep and return the status line. Shared by the
+    /// <c>@get-all</c> remote handler (which replies it on the party channel)
+    /// and the local Action-menu / toolbar "Get All" (which logs it). Emits the
+    /// paced <c>get</c> commands as a side effect.
+    /// </summary>
+    public string GetAll()
     {
         IReadOnlyList<string> ground = _ground.Items;
-        if (ground.Count == 0) { ctx.Reply("nothing on the ground to get"); return; }
+        if (ground.Count == 0) return "nothing on the ground to get";
 
         int sent = 0;
         foreach (string item in ground)
@@ -121,7 +129,7 @@ public sealed class InventoryActionHandler : IDisposable
             Send($"get {name}");
             sent++;
         }
-        ctx.Reply($"getting {sent} ground item{(sent == 1 ? "" : "s")}");
+        return $"getting {sent} ground item{(sent == 1 ? "" : "s")}";
     }
 
     /// <summary>
@@ -132,11 +140,18 @@ public sealed class InventoryActionHandler : IDisposable
     /// leading article is stripped so the wire verb matches on the item's noun
     /// phrase ("a rusty dagger" → <c>drop rusty dagger</c>).
     /// </summary>
-    private void OnDropAll(RemoteCommandContext ctx)
+    private void OnDropAll(RemoteCommandContext ctx) => ctx.Reply(DropAll());
+
+    /// <summary>
+    /// Run the drop-all sweep and return the status line. Shared by the
+    /// <c>@drop-all</c> remote handler and the local "Drop All" action. Emits a
+    /// <c>drop</c> per carried-but-unworn item as a side effect.
+    /// </summary>
+    public string DropAll()
     {
-        if (!_inventory.IsLoaded) { ctx.Reply("inventory not parsed yet (type i)"); return; }
+        if (!_inventory.IsLoaded) return "inventory not parsed yet (type i)";
         IReadOnlyList<string> carried = _inventory.Snapshot.CarriedItems;
-        if (carried.Count == 0) { ctx.Reply("nothing to drop"); return; }
+        if (carried.Count == 0) return "nothing to drop";
 
         foreach (string item in carried)
         {
@@ -144,7 +159,7 @@ public sealed class InventoryActionHandler : IDisposable
             if (name.Length == 0) continue;
             Send($"drop {name}");
         }
-        ctx.Reply($"dropping {carried.Count} carried item{(carried.Count == 1 ? "" : "s")}");
+        return $"dropping {carried.Count} carried item{(carried.Count == 1 ? "" : "s")}";
     }
 
     /// <summary>
@@ -155,27 +170,31 @@ public sealed class InventoryActionHandler : IDisposable
     /// reports); the game re-consolidates held coin to the highest denomination
     /// after the transaction, so we never have to name individual coins.
     /// </summary>
-    private void OnDepositAll(RemoteCommandContext ctx)
+    private void OnDepositAll(RemoteCommandContext ctx) => ctx.Reply(DepositAll());
+
+    /// <summary>
+    /// Level held coin to the keep-on-hand floor and return the status line.
+    /// Shared by the <c>@deposit-all</c> remote handler and the local "Deposit
+    /// All" action. Emits a <c>dep</c> / <c>with</c> as a side effect.
+    /// </summary>
+    public string DepositAll()
     {
-        if (!_inventory.IsLoaded) { ctx.Reply("wealth unknown - parse inventory first (type i)"); return; }
+        if (!_inventory.IsLoaded) return "wealth unknown - parse inventory first (type i)";
         long keep = _readCash().KeepOnHandCopper();
         long held = _inventory.Snapshot.Currency.TotalCopperValue;
         long delta = held - keep;
         if (delta > 0)
         {
             Send($"dep {delta}");
-            ctx.Reply($"depositing {delta:N0} copper (keeping {keep:N0})");
+            return $"depositing {delta:N0} copper (keeping {keep:N0})";
         }
-        else if (delta < 0)
+        if (delta < 0)
         {
             long shortfall = -delta;
             Send($"with {shortfall}");
-            ctx.Reply($"withdrawing {shortfall:N0} copper (up to {keep:N0} on hand)");
+            return $"withdrawing {shortfall:N0} copper (up to {keep:N0} on hand)";
         }
-        else
-        {
-            ctx.Reply($"already at keep-on-hand ({keep:N0} copper)");
-        }
+        return $"already at keep-on-hand ({keep:N0} copper)";
     }
 
     /// <summary>

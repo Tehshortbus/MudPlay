@@ -149,13 +149,14 @@
             </MenuItem>
 
             <MenuItem Header="_Action">
-                <!-- Bulk one-shot commands. Wired progressively as the
-                     owning phases ship; Action menu's job is the surface,
-                     not the engines. -->
-                <MenuItem Header="Get All"     IsEnabled="False" ToolTip.Tip="Not yet wired"/>
-                <MenuItem Header="Drop All"    IsEnabled="False" ToolTip.Tip="Not yet wired"/>
-                <MenuItem Header="Equip All"   IsEnabled="False" ToolTip.Tip="Wired in Phase 9 PR 9.11 (Workshop EQUIP → apply active set)"/>
-                <MenuItem Header="Deposit All" IsEnabled="False" ToolTip.Tip="Wired in Phase 13 PR 13.E (CashManager)"/>
+                <!-- Bulk one-shot commands. Local twins of the @get-all /
+                     @drop-all / @deposit-all remote commands and the Default
+                     gear set; the toolbar Get/Drop/Equip/Deposit buttons drive
+                     the same commands via the catalogue. -->
+                <MenuItem Header="Get All"     Command="{Binding GetAllCommand}"     ToolTip.Tip="Pick up every item on the room floor"/>
+                <MenuItem Header="Drop All"    Command="{Binding DropAllCommand}"    ToolTip.Tip="Drop every carried (unworn) item"/>
+                <MenuItem Header="Equip All"   Command="{Binding EquipAllCommand}"   ToolTip.Tip="Wear the Default gear set"/>
+                <MenuItem Header="Deposit All" Command="{Binding DepositAllCommand}" ToolTip.Tip="Bank wealth down to the keep-on-hand floor"/>
                 <Separator/>
 
                 <!-- Master auto-responses switch. Snapshot logic lives in
