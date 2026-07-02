@@ -1510,6 +1510,9 @@ public sealed class AppServices
         GameData.Log = bootstrapLog;
         Settings = new SettingsService();
         Profile = new ProfileService();
+        // Same late-bind pattern as GameData.Log above: the profile-lifecycle
+        // audit (load / swap / close / re-home) rides the always-on Info stream.
+        Profile.Log = bootstrapLog;
         Bbs = new BbsProfileStore();
 
         // Resolver subscribes to Profile events for active-BBS tracking; build
