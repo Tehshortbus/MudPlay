@@ -44,7 +44,7 @@ public static class RoomTooltipBuilder
 {
     public static string Build(Room room, RoomGraphManager graph, GameDataCache? data,
         TBInfoStore? tbinfo = null, MonsterSpawnIndex? spawnIndex = null,
-        Game.Spells.KnownSpellCatalog? spellCatalog = null)
+        Game.Spells.KnownSpellCatalog? spellCatalog = null, int charIllu = 0)
     {
         ArgumentNullException.ThrowIfNull(room);
         ArgumentNullException.ThrowIfNull(graph);
@@ -103,7 +103,7 @@ public static class RoomTooltipBuilder
             if (needBottomBlank) { sb.Append('\n'); needBottomBlank = false; }
             sb.Append('\n').Append("Room Light: ").Append(room.Light > 0 ? "+" : "")
               .Append(room.Light);
-            string lightDesc = BuildLightDescription(room.Light);
+            string lightDesc = BuildLightDescription(room.Light, charIllu);
             if (lightDesc.Length > 0) sb.Append('\n').Append(lightDesc);
         }
 
@@ -158,11 +158,13 @@ public static class RoomTooltipBuilder
 
     // ----- Light description ---------------------------------------
 
-    private static string BuildLightDescription(int light)
-        // Room's own Light value only (charIllu 0); the player-illu-relative
-        // variant lands once a live charIllu feeds this. Shares LightModel's
-        // MME band table so the tooltip and the route predictor never drift.
-        => LightModel.Describe(LightModel.Classify(charIllu: 0, roomLight: light));
+    private static string BuildLightDescription(int light, int charIllu)
+        // Visibility is a function of V = charIllu + roomLight: a lit lantern or
+        // worn +illu gear lifts a dark room out of the "can't see" bands, so the
+        // phrase reflects what the player actually sees, not the room's raw
+        // offset. Shares LightModel's MME band table so the tooltip and the
+        // route predictor never drift.
+        => LightModel.Describe(LightModel.Classify(charIllu, roomLight: light));
 
     // ----- Exits block ---------------------------------------------
 

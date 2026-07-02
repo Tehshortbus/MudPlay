@@ -915,6 +915,16 @@ public sealed class AppServices
     /// ReqLevel ≥ SpellImmu eligibility check.</summary>
     public Game.Combat.SpellReqLevelIndex SpellReqLevel { get; private set; } = null!;
 
+    /// <summary>Catalogue of every light-source item (<c>ItemType 6</c>) in the
+    /// active set — projected illumination (<c>IlluTarget</c>) + burn budget —
+    /// for computing carried illumination and provisioning a dark route.</summary>
+    public Game.Light.LightItemIndex Lights { get; private set; } = null!;
+
+    /// <summary>The player's live carried illumination (worn <c>+illu</c> gear +
+    /// the readied light's strength) — the <c>charIllu</c> input to the
+    /// <see cref="Game.Light.LightModel"/> visibility bands.</summary>
+    public Game.Light.PlayerIllumination PlayerIllumination { get; private set; } = null!;
+
     /// <summary>
     /// Phase 9 PR 9.A — observes mid-room arrival lines
     /// ("&lt;name&gt; &lt;verb&gt; into the room from &lt;dir&gt;.")
@@ -2454,6 +2464,13 @@ public sealed class AppServices
         ItemMagic = new Game.Combat.ItemMagicIndex(GameData);
         SpellReqLevel = new Game.Combat.SpellReqLevelIndex(GameData);
         Combat.SetMagicEligibility(MonsterMagic, ItemMagic, SpellReqLevel);
+
+        // Light catalogue + live carried illumination. The snapshot provider is
+        // deferred (Inventory is assigned later in this method), so reading
+        // PlayerIllumination.Current at tooltip / route time sees the live dump.
+        Lights = new Game.Light.LightItemIndex(GameData);
+        PlayerIllumination = new Game.Light.PlayerIllumination(
+            () => Inventory.Snapshot, Lights, GameData);
 
         // Actionability gate — the walker-gate owner releases when a room's
         // remaining hostiles are all un-actionable (no weapon hits, every
