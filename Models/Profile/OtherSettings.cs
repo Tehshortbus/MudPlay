@@ -133,6 +133,24 @@ public sealed class OtherSettings
     public bool BuyNeededPathItems { get; set; }
 
     /// <summary>
+    /// When <c>true</c>, source a missing route item no shop sells by
+    /// hunting for it: on a one-shot walk-to that crosses an <c>(Item: N)</c>
+    /// / <c>(Ticket: N)</c> exit whose item we're not carrying and which no
+    /// shop stocks, if some monster drops it,
+    /// <see cref="Game.Map.MonsterDropRouter"/> prompts (via
+    /// <see cref="Services.ConfirmService"/>) to reroute to the nearest room
+    /// that monster spawns in; on confirmation it walks there, waits for the
+    /// drop, then resumes to the original destination. Declining leaves the
+    /// need to demand-driven search. Complements
+    /// <see cref="BuyNeededPathItems"/> (which handles shop-sold items) —
+    /// this covers only what no shop sells. Only plain walk-to's reroute —
+    /// loop / auto-lair runs don't. Read live by the router through the
+    /// resolver. Default <c>false</c> (opt-in). Char-tier; surfaced in
+    /// Settings → Other.
+    /// </summary>
+    public bool HuntNeededPathItems { get; set; }
+
+    /// <summary>
     /// When <c>true</c>, <see cref="Game.HopTimingCalibrator"/> logs
     /// one Info line per observed hop with the wall-clock time + the
     /// current <see cref="Game.EncumbranceLevel"/>. Used to calibrate

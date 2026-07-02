@@ -1107,6 +1107,23 @@ public sealed class AppServices
     public Game.Map.PathItemShopRouter PathItemShopRouter { get; private set; } = null!;
 
     /// <summary>
+    /// Index of the active set's <c>Monsters.json</c> — which monsters drop
+    /// an item and where each spawns. Feeds
+    /// <see cref="MonsterDropRouter"/>'s hunt lookup; rebuilt on
+    /// <see cref="GameDataCache.ActiveSetChanged"/>.
+    /// </summary>
+    public MonsterDropIndex MonsterDrops { get; private set; } = null!;
+
+    /// <summary>
+    /// Active fulfiller for <see cref="NeedKind.PathItem"/> needs no shop can
+    /// satisfy: on a one-shot walk-to that needs an uncarried item no shop
+    /// sells, prompts to reroute to the nearest room a monster that drops it
+    /// spawns in, then resumes once it lands. Gated by Settings → Other
+    /// "hunt item if needed".
+    /// </summary>
+    public Game.Map.MonsterDropRouter MonsterDropRouter { get; private set; } = null!;
+
+    /// <summary>
     /// Phase 9 PR 9.J — shared Acquisition movement-gate driver. Both
     /// <see cref="Cash"/> and <see cref="AutoGetItems"/> feed it; it owns
     /// the single assert/clear of
@@ -1927,6 +1944,14 @@ public sealed class AppServices
         GameData.ActiveSetChanged += ShopStock.OnActiveSetChanged;
         if (GameData.ActiveSet is not null)
             ShopStock.OnActiveSetChanged(GameData.ActiveSet);
+
+        // MonsterDropIndex — item id → dropping monsters + their spawn rooms,
+        // from Monsters.json. Feeds MonsterDropRouter's "who drops this, and
+        // where?" lookup for items no shop sells.
+        MonsterDrops = new MonsterDropIndex(GameData, Log);
+        GameData.ActiveSetChanged += MonsterDrops.OnActiveSetChanged;
+        if (GameData.ActiveSet is not null)
+            MonsterDrops.OnActiveSetChanged(GameData.ActiveSet);
 
         // Phase 7 PR 7.1 — room tracker. Resets to Unknown on every
         // graph reload because per-room references are invalidated
@@ -2960,6 +2985,36 @@ public sealed class AppServices
         Walker.Event += PathItemShopRouter.OnWalkEvent;
         Inventory.Changed += PathItemShopRouter.OnInventoryChanged;
 
+        // Monster-drop reroute (PR D). The no-shop counterpart to the shop
+        // router: when a walk-to needs an uncarried Item/Ticket-gate item no
+        // shop sells but a monster drops, prompt (ConfirmService) to reroute
+        // to the nearest room that monster spawns in, then resume once the
+        // drop lands — gated by Settings → Other "hunt item if needed". The
+        // two routers are mutually exclusive via anyShopSells: this one acts
+        // only when no shop stocks the item. Nearest spawn is chosen with a
+        // single forward BFS (ComputeDistancesFrom) since a common monster
+        // spawns in hundreds of rooms; dropSpawnsForItem flattens the index's
+        // droppers × their spawn rooms lazily, only for the needed item.
+        MonsterDropRouter = new Game.Map.MonsterDropRouter(
+            dropSpawnsForItem: DropSpawnsForItem,
+            anyShopSells: ShopStock.AnyShopSells,
+            currentRoom: () => RoomTracker.State.CurrentRoom?.Key,
+            walkDestination: () => Walker.Destination,
+            distancesFrom: src => Bfs.ComputeDistancesFrom(src, Movement),
+            isCarried: IsItemCarried,
+            itemName: ItemNames.GetName,
+            isEnabled: () =>
+                Resolver.Resolve<Models.Profile.OtherSettings>("Other").HuntNeededPathItems,
+            engineWalkActive: () =>
+                AutoLair.IsActive || LoopRunner.State != Game.Map.LoopState.Idle,
+            confirm: (title, body) => Confirm.ConfirmAsync(title, body, "Reroute"),
+            walkTo: key => Walker.WalkTo(key),
+            post: action => Avalonia.Threading.Dispatcher.UIThread.Post(action),
+            log: Log);
+        Needs.NeedPosted += MonsterDropRouter.OnNeedPosted;
+        Walker.Event += MonsterDropRouter.OnWalkEvent;
+        Inventory.Changed += MonsterDropRouter.OnInventoryChanged;
+
         // PR 6.2 — follower-side @comeback. Watches for a movement-failure
         // line (prevents-movement flag / over-encumbered) immediately
         // before "You are no longer following X." — the signature of being
@@ -3459,6 +3514,27 @@ public sealed class AppServices
             if (room.Shop != 0 && shops.Contains(room.Shop))
                 rooms.Add(room.Key);
         return rooms;
+    }
+
+    /// <summary>
+    /// Every spawn site of a monster that drops <paramref name="itemId"/> —
+    /// the flatten of <see cref="MonsterDrops"/>'s droppers × each dropper's
+    /// spawn rooms, tagged with the monster and drop chance for the reroute
+    /// prompt. Backs <see cref="MonsterDropRouter"/>'s nearest-spawn search.
+    /// Computed lazily (only when a no-shop need fires), so the per-item
+    /// cross-product is never materialised at load time.
+    /// </summary>
+    private System.Collections.Generic.IReadOnlyList<Game.Map.MonsterDropSpawn> DropSpawnsForItem(int itemId)
+    {
+        System.Collections.Generic.IReadOnlyList<MonsterDropIndex.MonsterDrop> droppers
+            = MonsterDrops.DroppersOf(itemId);
+        if (droppers.Count == 0)
+            return System.Array.Empty<Game.Map.MonsterDropSpawn>();
+        var result = new System.Collections.Generic.List<Game.Map.MonsterDropSpawn>();
+        foreach (MonsterDropIndex.MonsterDrop d in droppers)
+            foreach (Game.Map.RoomKey room in MonsterDrops.SpawnRoomsOf(d.MonsterId))
+                result.Add(new Game.Map.MonsterDropSpawn(room, d.MonsterId, d.MonsterName, d.DropPercent));
+        return result;
     }
 
     /// <summary>

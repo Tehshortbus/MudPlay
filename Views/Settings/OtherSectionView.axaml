@@ -146,6 +146,16 @@
                       Margin="0,8,0,0"
                       ToolTip.Tip="When checked: if a walk-to crosses an exit that requires an item you're not carrying and a shop sells that item, FujinTerm detours to the shop that adds the fewest steps to your trip, buys the item, then continues to your original destination. If the item turns up first (e.g. from `Search rooms if item needed`) the detour is cancelled; if the buy fails (no gold, out of stock) it resumes and lets search keep hunting. Only detours for a direct walk-to — not for loops or auto-lair. Applies only for this character."/>
 
+            <!-- Monster-drop reroute. When checked, a walk-to that needs an
+                 item no shop sells prompts to reroute to the nearest room a
+                 monster that drops it spawns in, then resumes once the drop
+                 lands. Complements "Buy item if needed" (shop-sold items).
+                 Only plain walk-to's reroute (not loops / auto-lair). -->
+            <CheckBox Content="Hunt item if needed"
+                      IsChecked="{Binding HuntNeededPathItems, Mode=TwoWay}"
+                      Margin="0,8,0,0"
+                      ToolTip.Tip="When checked: if a walk-to crosses an exit that requires an item you're not carrying and NO shop sells it, but some monster drops it, FujinTerm asks whether to reroute to the nearest room that monster spawns in. If you confirm, it walks there so you can hunt the monster, then continues to your original destination once the item drops. If the item turns up first (e.g. from `Search rooms if item needed`) the reroute is cancelled. Only asks for a direct walk-to — not for loops or auto-lair. Applies only for this character."/>
+
             <!-- Leader-side @comeback backtrack budget. When a stranded
                  follower sends a bare @comeback (no room), the leader
                  pauses its engine and walks backwards along the path
