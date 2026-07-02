@@ -1023,6 +1023,14 @@ public sealed class AppServices
     public Game.Light.AutoLightManager AutoLight { get; private set; } = null!;
 
     /// <summary>
+    /// Active auto-light engine. Bound to the walker's route announcer: on each
+    /// planned route it scans for the darkest room and readies a covering carried
+    /// light (<c>use &lt;light&gt;</c>) — and, in a later slice, provisions one it
+    /// lacks. Every action is gated by the AutoLight master toggle.
+    /// </summary>
+    public Game.Light.AutoLightProvisioner AutoLightProvisioner { get; private set; } = null!;
+
+    /// <summary>
     /// Phase 9 PR 9.I — death observation aggregator. Surfaces the loaded
     /// profile's <see cref="Models.Profile.CharacterProfile.DeathHistory"/>
     /// as the Workshop DEATH section's deathpile grid, owns the per-character
@@ -2902,6 +2910,22 @@ public sealed class AppServices
         // so with "defer to party inventory" off (or solo) the behaviour is
         // unchanged.
         Walker.SetPathItemAnnouncer(PartyPathItemGate.OnPathItemsRequired);
+
+        // Active auto-light engine — announced the same planned route as the
+        // item gate above. It scans for the darkest room and readies a covering
+        // carried light before we walk into the dark. `wornIllu` is the worn-only
+        // baseline (the readied light it may swap out is excluded) so a light it
+        // picks is measured on its own strength. Gated by the AutoLight toggle;
+        // its wire-sender is bound by MainWindowViewModel after connect.
+        AutoLightProvisioner = new Game.Light.AutoLightProvisioner(
+            isEnabled:   () => ReadAutoModeFlag(d => d.AutoLight),
+            snapshot:    () => Inventory.Snapshot,
+            catalogue:   () => Lights.All,
+            resolveRoom: RoomGraph.GetRoom,
+            wornIllu:    () => PlayerIllumination.WornOnly,
+            settings:    () => ReadSection<Models.Profile.AutoLightSettings>(Profile.Current, "AutoLight"),
+            log:         Log);
+        Walker.SetRouteAnnouncer(AutoLightProvisioner.OnRoutePlanned);
 
         // Phase 10 PR 10.14 — auto-equip trigger coordinator. Reads the same live
         // Equipment blob as the apply engine and the HealthManager's recovery gates

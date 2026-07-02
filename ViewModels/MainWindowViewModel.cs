@@ -799,6 +799,9 @@ public partial class MainWindowViewModel : ObservableObject
         // Base auto-search — the per-room `sea` rides the same gate-wrapped
         // pipeline so it can't land mid-password-prompt.
         AppServices.Current.AutoSearch.SetWireSender(engineSend);
+        // Active auto-light — the route's `use <light>` / `rem <old>` swap
+        // rides the same gate-wrapped pipeline.
+        AppServices.Current.AutoLightProvisioner.SetWireSender(engineSend);
         // Shop-source routing (PR C) — the `buy <item>` at the detour shop
         // rides the same gate-wrapped pipeline.
         AppServices.Current.PathItemShopRouter.SetWireSender(engineSend);

@@ -48,13 +48,22 @@ public sealed class PlayerIllumination
         get
         {
             InventorySnapshot snap = _snapshot();
-            int worn = CharacterCalculator
-                .AggregateEquipmentStats(snap.EquippedItems, _cache)
-                .Totals.PlusIlluminate;
             int readied = snap.ReadiedLight is { } rl
                 ? _lights.FindByName(rl.Name)?.Strength ?? 0
                 : 0;
-            return worn + readied;
+            return WornOnly + readied;
         }
     }
+
+    /// <summary>
+    /// The worn-<c>+illu</c> half of <see cref="Current"/> on its own — the
+    /// readied light's projection excluded. This is the baseline the auto-light
+    /// planner needs: a light it picks to ready <i>replaces</i> the currently
+    /// readied one, so the strength it must project is measured from worn gear
+    /// alone, never crediting a light it may swap out. <c>0</c> before the first
+    /// <c>i</c> dump.
+    /// </summary>
+    public int WornOnly => CharacterCalculator
+        .AggregateEquipmentStats(_snapshot().EquippedItems, _cache)
+        .Totals.PlusIlluminate;
 }
