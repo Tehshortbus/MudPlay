@@ -181,6 +181,12 @@ public partial class MainWindowViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(IsReconnectPending))]
     [NotifyPropertyChangedFor(nameof(ConnectionLabel))]
     [NotifyPropertyChangedFor(nameof(ConnectionStatusText))]
+    // Swapping the active profile mid-session desyncs it from the live game
+    // state, so New / Open / Open-recent are disconnected-only (Save / Save-as
+    // stay available). Re-evaluate their CanExecute when the wire flips.
+    [NotifyCanExecuteChangedFor(nameof(NewProfileCommand))]
+    [NotifyCanExecuteChangedFor(nameof(OpenProfileCommand))]
+    [NotifyCanExecuteChangedFor(nameof(OpenRecentProfileCommand))]
     private bool _isConnected;
 
     [ObservableProperty]
@@ -2617,20 +2623,30 @@ public partial class MainWindowViewModel : ObservableObject
         : "_Save profile…";
 
     /// <summary>
+    /// True while it's safe to swap the active profile — only when the wire
+    /// is down. Loading a different (or blank) profile mid-session would fire
+    /// ProfileLoaded and reload every per-character service against the new
+    /// scope while still connected to the old character's game, desyncing
+    /// settings / party / game-data state. Gates New / Open / Open-recent;
+    /// Save / Save-as don't swap the active profile, so they stay available.
+    /// </summary>
+    private bool CanSwapProfile => IsDisconnected;
+
+    /// <summary>
     /// Blank-slate the running profile. The outgoing profile is auto-saved
     /// first (handled inside ProfileService.LoadBlank), then Current is
     /// replaced with a fresh in-memory draft. The user names + persists
     /// it later via File → Save profile (which routes to Save As since
     /// the draft has no name yet).
     /// </summary>
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanSwapProfile))]
     private void NewProfile()
     {
         AppServices.Current.Profile.LoadBlank();
         SyncProfileMenuState();
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanSwapProfile))]
     private async Task OpenProfileAsync()
     {
         ProfileService profile = AppServices.Current.Profile;
@@ -2714,7 +2730,7 @@ public partial class MainWindowViewModel : ObservableObject
         AppServices.Current.Log.Info("Profile", $"Saved profile '{name}' on '{bbs}'.");
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanSwapProfile))]
     private void OpenRecentProfile(ProfileRef? recent)
     {
         if (recent is null) return;
