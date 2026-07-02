@@ -172,6 +172,23 @@ public sealed class OtherSettings
     public bool DeferToPartyInventory { get; set; }
 
     /// <summary>
+    /// When <c>true</c> and leading a party, route <b>around</b>
+    /// <c>(Level: MIN to MAX)</c> gates the whole party can't clear rather
+    /// than walking the leader through and leaving a member behind. BFS
+    /// treats such a gate as non-traversable via
+    /// <see cref="Services.MovementFilter.PartyLevelBoundsProvider"/>, which
+    /// <see cref="Game.Remote.PartyLevelTracker"/> feeds from each member's
+    /// exact level (learned by an <c>@level</c> probe) or, until probed,
+    /// their title-derived level band. When the only safe way needs a gate
+    /// (all routes level-blocked), the walker's existing gates-ignored
+    /// re-probe still tells "level-gated" apart from "disconnected" so the
+    /// destination stays reachable. Read live by the filter through the
+    /// tracker. Default <c>false</c> (opt-in). Char-tier; surfaced in
+    /// Settings → Other.
+    /// </summary>
+    public bool AvoidPartyImpassableLevelGates { get; set; }
+
+    /// <summary>
     /// When <c>true</c>, <see cref="Game.HopTimingCalibrator"/> logs
     /// one Info line per observed hop with the wall-clock time + the
     /// current <see cref="Game.EncumbranceLevel"/>. Used to calibrate

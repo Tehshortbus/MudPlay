@@ -1141,6 +1141,23 @@ public sealed class AppServices
     public Game.Map.PartyPathItemGate PartyPathItemGate { get; private set; } = null!;
 
     /// <summary>
+    /// On-demand party-level probe — broadcasts <c>@level</c> and records
+    /// each member's exact level into <see cref="Players"/>. Fired by
+    /// <see cref="PartyLevel"/> on roster change so the players table stays
+    /// the authoritative level source (superseding the title-derived band).
+    /// </summary>
+    public Game.Remote.PartyLevelProbe PartyLevelProbe { get; private set; } = null!;
+
+    /// <summary>
+    /// Keeps the party's level bounds warm for path planning and feeds
+    /// <see cref="MovementFilter.PartyLevelBoundsProvider"/> so BFS routes a
+    /// following party around <c>(Level: MIN to MAX)</c> gates a member
+    /// can't clear. Gated by Settings → Other "avoid party-impassable level
+    /// gates".
+    /// </summary>
+    public Game.Remote.PartyLevelTracker PartyLevel { get; private set; } = null!;
+
+    /// <summary>
     /// Phase 9 PR 9.J — shared Acquisition movement-gate driver. Both
     /// <see cref="Cash"/> and <see cref="AutoGetItems"/> feed it; it owns
     /// the single assert/clear of
@@ -2764,6 +2781,25 @@ public sealed class AppServices
         // The leader coordinates redistribution once acquisition makes the
         // party whole — re-check on every inventory change.
         Inventory.Changed += PartyPathItemGate.OnInventoryChanged;
+
+        // Party-level probe + tracker. The probe broadcasts @level and
+        // persists each reply into the players table (RecordLevel), so the
+        // exact level supersedes the title band. The tracker fires it on
+        // roster change and exposes the party's most-constraining level
+        // window; MovementFilter reads that window to route a following
+        // party around gates a member can't clear. Both gated by the
+        // "avoid party-impassable level gates" toggle.
+        PartyLevelProbe = new Game.Remote.PartyLevelProbe(
+            PartyBroadcaster, Chat, PartyState,
+            recordLevel: (given, level) => Players.RecordLevel(given, level, DateTime.UtcNow),
+            log: Log);
+        PartyLevel = new Game.Remote.PartyLevelTracker(
+            PartyState, PartyLevelProbe, Players,
+            selfLevel: () => Stats.HasParsed ? PlayerStats.Level : (int?)null,
+            isEnabled: () =>
+                Resolver.Resolve<Models.Profile.OtherSettings>("Other").AvoidPartyImpassableLevelGates,
+            log: Log);
+        Movement.PartyLevelBoundsProvider = PartyLevel.Bounds;
 
         // Base auto-search — a bare `sea` on each genuine room entry reveals
         // hidden items for the auto-get engines. Armed by the persisted

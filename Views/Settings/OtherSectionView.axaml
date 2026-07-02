@@ -167,6 +167,16 @@
                       Margin="0,8,0,0"
                       ToolTip.Tip="When checked: if a walk-to crosses an exit that requires an item each party member needs (a rope-and-grapple, a boat, a ticket, etc.) and you're not carrying it, FujinTerm first asks the party `@have` for it. If a member is holding a spare (two or more), they're asked to `give` you one — a single holder via the permission-free `@party give`, or a specific holder via `@do give` when several have copies — and no search / shop / hunt is started. Only if no member has a spare does it fall through to `Search rooms if item needed` / `Buy item if needed` / `Hunt item if needed`. Does nothing when you're solo. Applies only for this character."/>
 
+            <!-- Party level-gate avoidance. When checked and leading a party,
+                 the walker routes AROUND (Level: MIN to MAX) gates the whole
+                 party can't clear instead of walking the leader through and
+                 leaving a member behind. Each member's level comes from an
+                 @level probe (exact) or their title band until probed. -->
+            <CheckBox Content="Avoid party-impassable level gates"
+                      IsChecked="{Binding AvoidPartyImpassableLevelGates, Mode=TwoWay}"
+                      Margin="0,8,0,0"
+                      ToolTip.Tip="When checked and you're leading a party: if a planned route crosses a level-gated exit (Level: MIN to MAX) that a party member can't pass — too low for the floor or too high for the cap — FujinTerm plans a path AROUND it so the group stays together and still reaches the destination, rather than walking you through and stranding that member. Each member's level is learned from an `@level` probe (sent when the roster changes); until they answer, their `who` title's level band is used. If every route to the destination is level-blocked, the walker still tells 'blocked by a gate' apart from 'no path exists'. Does nothing when you're solo or just following. Applies only for this character."/>
+
             <!-- Leader-side @comeback backtrack budget. When a stranded
                  follower sends a bare @comeback (no room), the leader
                  pauses its engine and walks backwards along the path

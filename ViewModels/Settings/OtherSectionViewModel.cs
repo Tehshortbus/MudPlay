@@ -58,6 +58,7 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             yield return "Buy item if needed";
             yield return "Hunt item if needed";
             yield return "Defer to party inventory";
+            yield return "Avoid party-impassable level gates";
             yield return "Max comeback backtrack rooms";
             yield return "@comeback";
             yield return "Utilize self or party members to disarm traps";
@@ -162,6 +163,16 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     /// <see cref="Game.Map.PartyPathItemGate"/>. Off by default.
     /// </summary>
     [ObservableProperty] private bool _deferToPartyInventory;
+
+    /// <summary>
+    /// When checked and leading a party, route <b>around</b> level gates the
+    /// whole party can't clear instead of walking the leader through and
+    /// leaving a member behind. Each member's level comes from an
+    /// <c>@level</c> probe (exact) or, until probed, their title band. Read
+    /// live by <see cref="Services.MovementFilter"/> through
+    /// <see cref="Game.Remote.PartyLevelTracker"/>. Off by default.
+    /// </summary>
+    [ObservableProperty] private bool _avoidPartyImpassableLevelGates;
 
     /// <summary>
     /// Off by default. When on, every observed Confirmed→Pending→Confirmed
@@ -308,6 +319,7 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             BuyNeededPathItems    = BuyNeededPathItems,
             HuntNeededPathItems   = HuntNeededPathItems,
             DeferToPartyInventory = DeferToPartyInventory,
+            AvoidPartyImpassableLevelGates = AvoidPartyImpassableLevelGates,
             LogMovementHopTiming  = LogMovementHopTiming,
             MaxComebackBacktrackRooms = Math.Clamp(MaxComebackBacktrackRooms, 1, 50),
             AutoRequestComebackWhenLeftBehind = AutoRequestComebackWhenLeftBehind,
@@ -365,6 +377,7 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
         BuyNeededPathItems    = dto.BuyNeededPathItems;
         HuntNeededPathItems   = dto.HuntNeededPathItems;
         DeferToPartyInventory = dto.DeferToPartyInventory;
+        AvoidPartyImpassableLevelGates = dto.AvoidPartyImpassableLevelGates;
         LogMovementHopTiming  = dto.LogMovementHopTiming;
         MaxComebackBacktrackRooms = dto.MaxComebackBacktrackRooms;
         AutoRequestComebackWhenLeftBehind = dto.AutoRequestComebackWhenLeftBehind;
@@ -428,6 +441,7 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     partial void OnBuyNeededPathItemsChanged(bool value) => MarkDirty();
     partial void OnHuntNeededPathItemsChanged(bool value) => MarkDirty();
     partial void OnDeferToPartyInventoryChanged(bool value) => MarkDirty();
+    partial void OnAvoidPartyImpassableLevelGatesChanged(bool value) => MarkDirty();
     partial void OnLogMovementHopTimingChanged(bool value) => MarkDirty();
     partial void OnMaxComebackBacktrackRoomsChanged(int value) => MarkDirty();
     partial void OnAutoRequestComebackWhenLeftBehindChanged(bool value) => MarkDirty();
