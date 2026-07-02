@@ -8,9 +8,10 @@ namespace FujinTerm.Services;
 /// Live observable mirror of the active character profile's toolbar
 /// layout + visibility / orientation. The main window's toolbar
 /// borders bind to the derived <see cref="ShowTop"/> /
-/// <see cref="ShowLeft"/> / <see cref="ShowRight"/> flags so the right
-/// border lights up automatically when the user toggles
-/// Settings → Toolbar's Show / Vertical / Side controls.
+/// <see cref="ShowBottom"/> / <see cref="ShowLeft"/> /
+/// <see cref="ShowRight"/> flags so the right border lights up
+/// automatically when the user toggles Settings → Toolbar's Show /
+/// Vertical / Side controls.
 /// <see cref="AppServices"/> hydrates on every
 /// <see cref="ProfileService.ProfileLoaded"/> /
 /// <see cref="ProfileService.ProfileMutated"/> tick and resets to
@@ -28,13 +29,15 @@ public sealed partial class ToolbarConfig : ObservableObject
     /// <summary>Master visibility — false hides every orientation.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowTop))]
+    [NotifyPropertyChangedFor(nameof(ShowBottom))]
     [NotifyPropertyChangedFor(nameof(ShowLeft))]
     [NotifyPropertyChangedFor(nameof(ShowRight))]
     private bool _visible = true;
 
-    /// <summary>True = mount on the side picked by <see cref="Side"/>; false = mount on top.</summary>
+    /// <summary>True = mount on the side picked by <see cref="Side"/>; false = mount on the edge picked by <see cref="HorizontalSide"/>.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowTop))]
+    [NotifyPropertyChangedFor(nameof(ShowBottom))]
     [NotifyPropertyChangedFor(nameof(ShowLeft))]
     [NotifyPropertyChangedFor(nameof(ShowRight))]
     private bool _vertical;
@@ -45,21 +48,30 @@ public sealed partial class ToolbarConfig : ObservableObject
     [NotifyPropertyChangedFor(nameof(ShowRight))]
     private ToolbarSide _side = ToolbarSide.Left;
 
-    /// <summary>True when the horizontal top toolbar border should render.</summary>
-    public bool ShowTop   => Visible && !Vertical;
+    /// <summary>Edge for the horizontal mount. Ignored when <see cref="Vertical"/> = true.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowTop))]
+    [NotifyPropertyChangedFor(nameof(ShowBottom))]
+    private ToolbarHorizontalSide _horizontalSide = ToolbarHorizontalSide.Top;
+
+    /// <summary>True when the horizontal-top toolbar border should render.</summary>
+    public bool ShowTop    => Visible && !Vertical && HorizontalSide == ToolbarHorizontalSide.Top;
+    /// <summary>True when the horizontal-bottom toolbar border should render.</summary>
+    public bool ShowBottom => Visible && !Vertical && HorizontalSide == ToolbarHorizontalSide.Bottom;
     /// <summary>True when the vertical-left toolbar border should render.</summary>
-    public bool ShowLeft  => Visible &&  Vertical && Side == ToolbarSide.Left;
+    public bool ShowLeft   => Visible &&  Vertical && Side == ToolbarSide.Left;
     /// <summary>True when the vertical-right toolbar border should render.</summary>
-    public bool ShowRight => Visible &&  Vertical && Side == ToolbarSide.Right;
+    public bool ShowRight  => Visible &&  Vertical && Side == ToolbarSide.Right;
 
     /// <summary>Replace the live layout + visibility / orientation with values from <paramref name="dto"/>.</summary>
     public void ApplyFrom(ToolbarSettings dto)
     {
         ArgumentNullException.ThrowIfNull(dto);
         ReplaceAll(dto.Layout is { Count: > 0 } ? dto.Layout : ToolbarDefaults.Build());
-        Visible  = dto.Visible;
-        Vertical = dto.Vertical;
-        Side     = dto.Side;
+        Visible        = dto.Visible;
+        Vertical       = dto.Vertical;
+        Side           = dto.Side;
+        HorizontalSide = dto.HorizontalSide;
     }
 
     /// <summary>Capture the live state into a fresh DTO for serialisation.</summary>
@@ -72,10 +84,11 @@ public sealed partial class ToolbarConfig : ObservableObject
         }
         return new ToolbarSettings
         {
-            Layout   = copy,
-            Visible  = Visible,
-            Vertical = Vertical,
-            Side     = Side,
+            Layout         = copy,
+            Visible        = Visible,
+            Vertical       = Vertical,
+            Side           = Side,
+            HorizontalSide = HorizontalSide,
         };
     }
 

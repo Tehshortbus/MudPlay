@@ -130,6 +130,7 @@ public sealed class ToolbarSettingsTests
         Assert.True(dto.Visible);
         Assert.False(dto.Vertical);
         Assert.Equal(ToolbarSide.Left, dto.Side);
+        Assert.Equal(ToolbarHorizontalSide.Top, dto.HorizontalSide);
     }
 
     [Fact]
@@ -137,9 +138,10 @@ public sealed class ToolbarSettingsTests
     {
         ToolbarSettings original = new()
         {
-            Visible  = false,
-            Vertical = true,
-            Side     = ToolbarSide.Right,
+            Visible        = false,
+            Vertical       = true,
+            Side           = ToolbarSide.Right,
+            HorizontalSide = ToolbarHorizontalSide.Bottom,
         };
         string json = JsonSerializer.Serialize(original);
         ToolbarSettings? round = JsonSerializer.Deserialize<ToolbarSettings>(json);
@@ -147,6 +149,7 @@ public sealed class ToolbarSettingsTests
         Assert.False(round!.Visible);
         Assert.True(round.Vertical);
         Assert.Equal(ToolbarSide.Right, round.Side);
+        Assert.Equal(ToolbarHorizontalSide.Bottom, round.HorizontalSide);
     }
 
     [Fact]
@@ -155,12 +158,21 @@ public sealed class ToolbarSettingsTests
         ToolbarConfig live = new();
         // Defaults: visible + horizontal → top.
         Assert.True(live.ShowTop);
+        Assert.False(live.ShowBottom);
         Assert.False(live.ShowLeft);
         Assert.False(live.ShowRight);
 
-        // Vertical-left.
+        // Horizontal-bottom.
+        live.HorizontalSide = ToolbarHorizontalSide.Bottom;
+        Assert.False(live.ShowTop);
+        Assert.True(live.ShowBottom);
+        Assert.False(live.ShowLeft);
+        Assert.False(live.ShowRight);
+
+        // Vertical mode ignores the horizontal edge entirely.
         live.Vertical = true;
         Assert.False(live.ShowTop);
+        Assert.False(live.ShowBottom);
         Assert.True(live.ShowLeft);
         Assert.False(live.ShowRight);
 
@@ -172,6 +184,7 @@ public sealed class ToolbarSettingsTests
         // Master hide collapses every flag regardless of orientation.
         live.Visible = false;
         Assert.False(live.ShowTop);
+        Assert.False(live.ShowBottom);
         Assert.False(live.ShowLeft);
         Assert.False(live.ShowRight);
     }
@@ -182,13 +195,15 @@ public sealed class ToolbarSettingsTests
         ToolbarConfig live = new();
         live.ApplyFrom(new ToolbarSettings
         {
-            Visible  = false,
-            Vertical = true,
-            Side     = ToolbarSide.Right,
+            Visible        = false,
+            Vertical       = true,
+            Side           = ToolbarSide.Right,
+            HorizontalSide = ToolbarHorizontalSide.Bottom,
         });
         Assert.False(live.Visible);
         Assert.True(live.Vertical);
         Assert.Equal(ToolbarSide.Right, live.Side);
+        Assert.Equal(ToolbarHorizontalSide.Bottom, live.HorizontalSide);
     }
 
     [Fact]
@@ -197,14 +212,16 @@ public sealed class ToolbarSettingsTests
         ToolbarConfig live = new();
         live.ApplyFrom(new ToolbarSettings
         {
-            Visible  = false,
-            Vertical = true,
-            Side     = ToolbarSide.Right,
+            Visible        = false,
+            Vertical       = true,
+            Side           = ToolbarSide.Right,
+            HorizontalSide = ToolbarHorizontalSide.Bottom,
         });
         ToolbarSettings snap = live.Snapshot();
         Assert.False(snap.Visible);
         Assert.True(snap.Vertical);
         Assert.Equal(ToolbarSide.Right, snap.Side);
+        Assert.Equal(ToolbarHorizontalSide.Bottom, snap.HorizontalSide);
     }
 
     [Fact]

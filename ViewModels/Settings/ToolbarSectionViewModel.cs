@@ -47,16 +47,20 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
     public ObservableCollection<ToolbarRowViewModel> Rows { get; } = new();
 
     // ----- Visibility + orientation (Phase 4 wired) -----------------------
-    // Three editor knobs that map onto ToolbarSettings.Visible / Vertical /
-    // Side. RadioButton bindings go via IsLeftSide / IsRightSide mirrors
-    // (Avalonia's RadioButton.IsChecked can't bind to an enum directly).
+    // Editor knobs that map onto ToolbarSettings.Visible / Vertical / Side /
+    // HorizontalSide. RadioButton bindings go via bool mirrors (IsLeftSide /
+    // IsRightSide, IsTop / IsBottom) because Avalonia's RadioButton.IsChecked
+    // can't bind to an enum directly. The Vertical checkbox is the orientation
+    // gate: when checked the Left/Right radios are live and Top/Bottom grey
+    // out; when unchecked it's the reverse.
 
     /// <summary>Master visibility toggle (Show toolbar).</summary>
     [ObservableProperty] private bool _showToolbar = true;
 
-    /// <summary>True = vertical orientation; false = horizontal top mount.</summary>
+    /// <summary>True = vertical orientation; false = horizontal mount.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(VerticalSideEnabled))]
+    [NotifyPropertyChangedFor(nameof(HorizontalSideEnabled))]
     private bool _verticalToolbar;
 
     /// <summary>Edge picked for the vertical mount; ignored when <see cref="VerticalToolbar"/> = false.</summary>
@@ -64,6 +68,12 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
     [NotifyPropertyChangedFor(nameof(IsLeftSide))]
     [NotifyPropertyChangedFor(nameof(IsRightSide))]
     private ToolbarSide _verticalSide = ToolbarSide.Left;
+
+    /// <summary>Edge picked for the horizontal mount; ignored when <see cref="VerticalToolbar"/> = true.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsTop))]
+    [NotifyPropertyChangedFor(nameof(IsBottom))]
+    private ToolbarHorizontalSide _horizontalSide = ToolbarHorizontalSide.Top;
 
     /// <summary>Left radio bound here — two-way mirror of <see cref="VerticalSide"/>.</summary>
     public bool IsLeftSide
@@ -79,8 +89,25 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
         set { if (value) VerticalSide = ToolbarSide.Right; }
     }
 
-    /// <summary>Radios are disabled until the user opts into vertical mode.</summary>
+    /// <summary>Top radio bound here — two-way mirror of <see cref="HorizontalSide"/>.</summary>
+    public bool IsTop
+    {
+        get => HorizontalSide == ToolbarHorizontalSide.Top;
+        set { if (value) HorizontalSide = ToolbarHorizontalSide.Top; }
+    }
+
+    /// <summary>Bottom radio bound here — two-way mirror of <see cref="HorizontalSide"/>.</summary>
+    public bool IsBottom
+    {
+        get => HorizontalSide == ToolbarHorizontalSide.Bottom;
+        set { if (value) HorizontalSide = ToolbarHorizontalSide.Bottom; }
+    }
+
+    /// <summary>Left/Right radios are live only in vertical mode.</summary>
     public bool VerticalSideEnabled => VerticalToolbar;
+
+    /// <summary>Top/Bottom radios are live only in horizontal mode.</summary>
+    public bool HorizontalSideEnabled => !VerticalToolbar;
 
     /// <summary>
     /// Currently-selected row in the toolbar list — the Move / Remove /
@@ -169,10 +196,11 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
 
         ToolbarSettings dto = new()
         {
-            Layout   = Rows.Select(r => r.ToModel()).ToList(),
-            Visible  = ShowToolbar,
-            Vertical = VerticalToolbar,
-            Side     = VerticalSide,
+            Layout         = Rows.Select(r => r.ToModel()).ToList(),
+            Visible        = ShowToolbar,
+            Vertical       = VerticalToolbar,
+            Side           = VerticalSide,
+            HorizontalSide = HorizontalSide,
         };
 
         profile.Settings ??= new();
@@ -219,6 +247,7 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
         ShowToolbar     = dto.Visible;
         VerticalToolbar = dto.Vertical;
         VerticalSide    = dto.Side;
+        HorizontalSide  = dto.HorizontalSide;
         RefreshShortcutRows();
     }
 
@@ -482,6 +511,7 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
         ShowToolbar     = dto.Visible;
         VerticalToolbar = dto.Vertical;
         VerticalSide    = dto.Side;
+        HorizontalSide  = dto.HorizontalSide;
         SelectedRow = null;
         RefreshShortcutRows();
         Dirty();
@@ -524,9 +554,10 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
     // Auto-generated PropertyChanged hooks for the visibility / orientation
     // observables — re-route into the shared Dirty() helper so the Apply
     // button lights up on any of the three knobs.
-    partial void OnShowToolbarChanged(bool value)         => Dirty();
-    partial void OnVerticalToolbarChanged(bool value)     => Dirty();
-    partial void OnVerticalSideChanged(ToolbarSide value) => Dirty();
+    partial void OnShowToolbarChanged(bool value)                        => Dirty();
+    partial void OnVerticalToolbarChanged(bool value)                    => Dirty();
+    partial void OnVerticalSideChanged(ToolbarSide value)                => Dirty();
+    partial void OnHorizontalSideChanged(ToolbarHorizontalSide value)    => Dirty();
 
     private void Dirty()
     {

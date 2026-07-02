@@ -428,6 +428,51 @@
             </Grid>
         </Border>
 
+        <!-- Bottom (horizontal). Docked after the status bar so the status
+             bar keeps the very-bottom edge and this toolbar sits directly
+             above it. Mirrors the Top border; ShowBottom drives visibility. -->
+        <Border DockPanel.Dock="Bottom" Classes="Toolbar"
+                IsVisible="{Binding Toolbar.ShowBottom}">
+            <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
+                <ItemsControl Grid.Column="0"
+                              ItemsSource="{Binding ToolbarItems}"
+                              VerticalAlignment="Center">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <StackPanel Orientation="Horizontal" Spacing="4"/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="svc:ToolbarButtonItem">
+                            <Panel>
+                                <Border Classes="ToolbarSeparator"
+                                        IsVisible="{Binding IsSeparator}"/>
+                                <Button Classes="ToolbarBtn"
+                                        Classes.Active="{Binding IsActive}"
+                                        Classes.Danger="{Binding IsDanger}"
+                                        IsVisible="{Binding IsButton}" IsEnabled="{Binding IsActionEnabled}"
+                                        Command="{Binding Command}"
+                                        ToolTip.Tip="{Binding Tooltip}">
+                                    <Panel>
+                                        <Path Data="{Binding IconResourceKey, Converter={x:Static svc:IconResourceConverter.Instance}}"
+                                              IsVisible="{Binding !ShowAlternate}"
+                                              Stroke="{Binding $parent[Button].Foreground}"
+                                              StrokeThickness="1.5" StrokeJoin="Round" StrokeLineCap="Round"
+                                              Width="16" Height="16" Stretch="Uniform"/>
+                                        <Path Data="{Binding AlternateIconResourceKey, Converter={x:Static svc:IconResourceConverter.Instance}}"
+                                              IsVisible="{Binding ShowAlternate}"
+                                              Stroke="{Binding $parent[Button].Foreground}"
+                                              StrokeThickness="1.5" StrokeJoin="Round" StrokeLineCap="Round"
+                                              Width="16" Height="16" Stretch="Uniform"/>
+                                    </Panel>
+                                </Button>
+                            </Panel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </Grid>
+        </Border>
+
         <!-- ============ Terminal canvas ============ -->
         <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
                       Background="{StaticResource ChromeBgSunkenBrush}">

@@ -29,7 +29,8 @@ public sealed class ToolbarSettings
 
     /// <summary>
     /// When true, the toolbar mounts vertically on the side picked by
-    /// <see cref="Side"/>; when false it mounts horizontally at the top.
+    /// <see cref="Side"/>; when false it mounts horizontally on the edge
+    /// picked by <see cref="HorizontalSide"/>.
     /// Default false (horizontal, matches MegaMUD's familiar layout).
     /// </summary>
     public bool Vertical { get; set; } = false;
@@ -39,6 +40,13 @@ public sealed class ToolbarSettings
     /// Ignored when the toolbar is horizontal. Default <see cref="ToolbarSide.Left"/>.
     /// </summary>
     public ToolbarSide Side { get; set; } = ToolbarSide.Left;
+
+    /// <summary>
+    /// Edge to dock the toolbar to when <see cref="Vertical"/> is false.
+    /// Ignored when the toolbar is vertical. Default
+    /// <see cref="ToolbarHorizontalSide.Top"/> (the familiar MegaMUD spot).
+    /// </summary>
+    public ToolbarHorizontalSide HorizontalSide { get; set; } = ToolbarHorizontalSide.Top;
 }
 
 /// <summary>Edge a vertical toolbar can dock to.</summary>
@@ -46,6 +54,13 @@ public enum ToolbarSide
 {
     Left,
     Right,
+}
+
+/// <summary>Edge a horizontal toolbar can dock to.</summary>
+public enum ToolbarHorizontalSide
+{
+    Top,
+    Bottom,
 }
 
 /// <summary>One entry in the persisted toolbar layout.</summary>
