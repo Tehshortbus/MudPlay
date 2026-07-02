@@ -104,4 +104,17 @@ public sealed class KeybindRegistryTests
         Assert.Contains(KeybindRegistry.BindableKeys, b => b.Key == Key.A);
         Assert.Contains(KeybindRegistry.BindableKeys, b => b.Key == Key.Z);
     }
+
+    [Fact]
+    public void KeyboardPeriod_IsForbidden_ButNumpadPeriodStaysBindable()
+    {
+        KeybindingStore store = DefaultStore();
+        // The keyboard period is the slow-talk say-precursor — it must never
+        // be bindable, so a macro can't swallow the leading `.` of a say.
+        Assert.True(KeybindRegistry.IsForbidden(store, Key.OemPeriod, false, false, false, out _));
+        Assert.DoesNotContain(KeybindRegistry.BindableKeys, b => b.Key == Key.OemPeriod);
+        // The numpad period is a normal movement key and stays bindable.
+        Assert.False(KeybindRegistry.IsForbidden(store, Key.Decimal, false, false, false, out _));
+        Assert.Contains(KeybindRegistry.BindableKeys, b => b.Key == Key.Decimal);
+    }
 }
