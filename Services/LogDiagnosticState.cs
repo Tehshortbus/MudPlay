@@ -1,36 +1,57 @@
 namespace FujinTerm.Services;
 
 /// <summary>
-/// Session-only diagnostic switches surfaced in the Log pane menu.
-/// Distinct from per-character settings — these don't persist; they
-/// reset to off on every app launch because verbose tracing burns IO
-/// and isn't an everyday-use affordance.
+/// Live per-character diagnostic switches that gate generation of the
+/// <see cref="LogSeverity.Debug"/> and <see cref="LogSeverity.Combat"/> log
+/// channels. Surfaced as the two generation toggles in the Log pane.
 /// </summary>
 /// <remarks>
 /// <para>
-/// Today's single switch — <see cref="CombatDiagnostics"/> — is the
-/// umbrella for everything combat-related: verbose Debug emission
-/// from Combat / CombatGate / RoomClassifier / Casting / Cash /
-/// Stealth categories AND <see cref="Game.Combat.RoundDamageTracker"/>'s
-/// per-round trace file under <c>Data/Logs/combat-*.log</c>. Per user
-/// direction we collapsed the six per-category toggles + the trace
-/// toggle that previously lived under Settings → Other into this
-/// single Log-menu knob.
+/// This is the in-memory source of truth. <c>AppServices</c> mirrors it to the
+/// Char-tier <c>LogDiagnosticsSettings</c> section: it applies the persisted
+/// values on <c>ProfileLoaded</c>, resets to off on <c>ProfileClosed</c>, and
+/// writes back on <see cref="Changed"/>. Both flags default off — verbose
+/// tracing burns IO and isn't an everyday affordance — and a fresh character
+/// (no saved section) reads off.
 /// </para>
 /// <para>
-/// Lives under <see cref="AppServices.LogDiagnostics"/> so any consumer
-/// (RoundDamageTracker today; future verbose emitters tomorrow) can
-/// read the live value without coupling to the Log pane's UI layer.
+/// <see cref="DebugDiagnostics"/> gates the cross-engine Debug traces; every
+/// <c>_log?.Debug(...)</c> site emits only while it's on.
+/// <see cref="CombatDiagnostics"/> gates the combat-decision channel AND
+/// <see cref="Game.Combat.RoundDamageTracker"/>'s per-round trace file under
+/// <c>Data/Logs/combat-*.log</c>.
+/// </para>
+/// <para>
+/// Lives under <c>AppServices.LogDiagnostics</c> and is wired into
+/// <see cref="LogService.Diagnostics"/> so the service can gate emission at the
+/// source without coupling to the Log pane's UI layer.
 /// </para>
 /// </remarks>
 public sealed class LogDiagnosticState
 {
+    private bool _debugDiagnostics;
     private bool _combatDiagnostics;
 
     /// <summary>
-    /// Master toggle for combat-related verbose emission + the per-
-    /// round trace file. Off by default; flip on while troubleshooting
-    /// a combat or healing engine, flip off again for normal play.
+    /// Master toggle for the generation-gated Debug channel. Off by
+    /// default; flip on to make every <c>_log?.Debug(...)</c> site across
+    /// the engines start emitting, flip off again for normal play.
+    /// </summary>
+    public bool DebugDiagnostics
+    {
+        get => _debugDiagnostics;
+        set
+        {
+            if (_debugDiagnostics == value) return;
+            _debugDiagnostics = value;
+            Changed?.Invoke();
+        }
+    }
+
+    /// <summary>
+    /// Master toggle for the combat-decision channel + the per-round trace
+    /// file. Off by default; flip on while troubleshooting a combat or
+    /// healing engine, flip off again for normal play.
     /// </summary>
     public bool CombatDiagnostics
     {
@@ -43,8 +64,8 @@ public sealed class LogDiagnosticState
         }
     }
 
-    /// <summary>Fires after any flag change so observers (e.g. the
-    /// LogPane VM mirroring the master state across windows) can
-    /// refresh their bound view.</summary>
+    /// <summary>Fires after any flag change so observers (the LogPane VM
+    /// mirroring state across windows; AppServices persisting the change to
+    /// the active character) can refresh.</summary>
     public event Action? Changed;
 }

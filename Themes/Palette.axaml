@@ -42,9 +42,8 @@
     <SolidColorBrush x:Key="ChromeFgMutedBrush"  Color="{StaticResource ChromeFgMutedColor}"/>
 
     <!-- ============ Accents ============ -->
-    <!-- Amber is the primary brand accent (logo, active toolbar buttons,
-         CMD-severity badge). AmberSoft is amber at ~18% opacity for
-         "active" backgrounds. -->
+    <!-- Amber is the primary brand accent (logo, active toolbar buttons).
+         AmberSoft is amber at ~18% opacity for "active" backgrounds. -->
     <Color x:Key="AccentAmberColor">#FFD4A24C</Color>
     <Color x:Key="AccentAmberSoftColor">#2ED4A24C</Color>
     <Color x:Key="AccentCyanColor">#FF5FB3D9</Color>
@@ -71,7 +70,6 @@
     <SolidColorBrush x:Key="SeverityInfoBrush"     Color="{StaticResource AccentCyanColor}"/>
     <SolidColorBrush x:Key="SeverityWarnBrush"     Color="{StaticResource AccentYellowColor}"/>
     <SolidColorBrush x:Key="SeverityErrorBrush"    Color="{StaticResource AccentRedColor}"/>
-    <SolidColorBrush x:Key="SeverityGameMsgBrush"  Color="{StaticResource AccentGreenColor}"/>
-    <SolidColorBrush x:Key="SeverityCmdBrush"      Color="{StaticResource AccentAmberColor}"/>
+    <SolidColorBrush x:Key="SeverityCombatBrush"   Color="{StaticResource AccentMagentaColor}"/>
 
 </ResourceDictionary>

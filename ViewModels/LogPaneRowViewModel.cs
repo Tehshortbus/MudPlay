@@ -35,12 +35,11 @@ public sealed class LogPaneRowViewModel
 
     private static string SeverityAbbrev(LogSeverity s) => s switch
     {
-        LogSeverity.Debug   => "DBG",
-        LogSeverity.Info    => "INF",
-        LogSeverity.Warn    => "WRN",
-        LogSeverity.Error   => "ERR",
-        LogSeverity.GameMsg => "GAM",
-        LogSeverity.Cmd     => "CMD",
-        _                   => "?",
+        LogSeverity.Debug  => "DBG",
+        LogSeverity.Info   => "INF",
+        LogSeverity.Warn   => "WRN",
+        LogSeverity.Error  => "ERR",
+        LogSeverity.Combat => "CBT",
+        _                  => "?",
     };
 }

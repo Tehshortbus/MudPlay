@@ -1500,6 +1500,10 @@ public sealed class AppServices
     private AppServices(LogService bootstrapLog)
     {
         Log = bootstrapLog;
+        // Gate the generation-gated Debug / Combat channels on the live
+        // per-character diagnostic toggles (applied from the profile below,
+        // flipped from the Log pane).
+        Log.Diagnostics = LogDiagnostics;
         // Late-bind the cache's log sink so SwitchSet emits the swap
         // audit entries (load / unload / swap) without coupling the
         // cache to AppServices construction order.
@@ -1875,6 +1879,14 @@ public sealed class AppServices
         Profile.ProfileLoaded += _ => ApplyToolbarFromActiveProfile();
         Profile.ProfileClosed += ResetToolbarToDefaults;
         Profile.ProfileMutated += _ => ApplyToolbarFromActiveProfile();
+
+        // Bridge: per-character log-diagnostic toggles (Char-tier). Apply the
+        // persisted state on load, reset to off on close, and persist back
+        // whenever a Log-pane toggle flips (the LogPane is the only editor —
+        // no Settings-tab Apply path, so we persist on Changed directly).
+        Profile.ProfileLoaded += _ => ApplyLogDiagnosticsFromActiveProfile();
+        Profile.ProfileClosed += ResetLogDiagnosticsToDefaults;
+        LogDiagnostics.Changed += PersistLogDiagnostics;
 
         // Bridge: per-character Party / Talk / Other settings into
         // their live engine knobs. Pre-fix the section VMs handled
@@ -3181,6 +3193,45 @@ public sealed class AppServices
     private void ResetToolbarToDefaults()
     {
         Toolbar.ApplyFrom(new Models.Profile.ToolbarSettings());
+    }
+
+    // Guards the persist-on-Changed handler while we're pushing values INTO
+    // LogDiagnostics from disk — otherwise applying the loaded state would
+    // immediately write it straight back.
+    private bool _suppressLogDiagnosticsPersist;
+
+    private void ApplyLogDiagnosticsFromActiveProfile()
+    {
+        Models.Profile.LogDiagnosticsSettings dto =
+            ReadSection<Models.Profile.LogDiagnosticsSettings>(Profile.Current, "LogDiagnostics");
+        _suppressLogDiagnosticsPersist = true;
+        LogDiagnostics.DebugDiagnostics  = dto.Debug;
+        LogDiagnostics.CombatDiagnostics = dto.Combat;
+        _suppressLogDiagnosticsPersist = false;
+    }
+
+    private void ResetLogDiagnosticsToDefaults()
+    {
+        _suppressLogDiagnosticsPersist = true;
+        LogDiagnostics.DebugDiagnostics  = false;
+        LogDiagnostics.CombatDiagnostics = false;
+        _suppressLogDiagnosticsPersist = false;
+    }
+
+    private void PersistLogDiagnostics()
+    {
+        if (_suppressLogDiagnosticsPersist) return;
+        // No loaded character → session-only value; nothing to persist to.
+        if (Profile.Current is not { } profile) return;
+
+        Models.Profile.LogDiagnosticsSettings dto = new()
+        {
+            Debug  = LogDiagnostics.DebugDiagnostics,
+            Combat = LogDiagnostics.CombatDiagnostics,
+        };
+        profile.Settings ??= new();
+        profile.Settings["LogDiagnostics"] = System.Text.Json.JsonSerializer.SerializeToElement(dto);
+        Profile.Save();
     }
 
     /// <summary>
