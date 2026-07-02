@@ -1,0 +1,86 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:FujinTerm.ViewModels.Settings"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="640" d:DesignHeight="480"
+             x:Class="FujinTerm.Views.Settings.AutoLightSectionView"
+             x:DataType="vm:AutoLightSectionViewModel">
+
+    <UserControl.Styles>
+        <Style Selector="TextBlock.SectionHeader">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="0,12,0,4"/>
+        </Style>
+        <Style Selector="TextBlock.FieldLabel">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgSecBrush}"/>
+            <Setter Property="FontSize" Value="{StaticResource FontSizeMd}"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="TextBlock.Readout">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontSize" Value="{StaticResource FontSizeSm}"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+        </Style>
+    </UserControl.Styles>
+
+    <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                  VerticalScrollBarVisibility="Auto">
+
+        <Grid>
+            <!-- No-profile banner. -->
+            <Border IsVisible="{Binding !HasProfile}" Padding="22"
+                    HorizontalAlignment="Stretch" VerticalAlignment="Top">
+                <StackPanel Spacing="10" MaxWidth="520" HorizontalAlignment="Left">
+                    <TextBlock Text="Auto-Light"
+                               Foreground="{StaticResource ChromeFgBrush}"
+                               FontSize="{StaticResource FontSizeLg}"
+                               FontWeight="SemiBold"/>
+                    <TextBlock Text="Load or create a character profile to edit auto-light provisioning."
+                               Foreground="{StaticResource ChromeFgSecBrush}"
+                               FontSize="{StaticResource FontSizeMd}"
+                               TextWrapping="Wrap"/>
+                </StackPanel>
+            </Border>
+
+            <StackPanel IsVisible="{Binding HasProfile}"
+                        Margin="22" Spacing="4"
+                        MaxWidth="640" HorizontalAlignment="Left">
+
+                <TextBlock Classes="SectionHeader" Text="Provisioning"/>
+                <TextBlock Classes="Readout"
+                           Text="Enable Auto-Light on the General tab (or the toolbar toggle) to arm these. When a route runs dark, the engine readies a light — and, if provisioning is on, buys enough to cover the trip."/>
+
+                <Grid ColumnDefinitions="180,140,Auto" RowDefinitions="Auto,Auto,Auto" Margin="0,8,0,0">
+
+                    <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Preferred light"/>
+                    <ComboBox Grid.Row="0" Grid.Column="1"
+                              ItemsSource="{Binding AvailableLights}"
+                              SelectedItem="{Binding SelectedLight, Mode=TwoWay}"
+                              Width="220" HorizontalAlignment="Left"
+                              ToolTip.Tip="Which light to buy and ready. 'Automatic' lets the engine pick a light strong enough for the route's darkest room."/>
+
+                    <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Carry (hours)"/>
+                    <NumericUpDown Grid.Row="1" Grid.Column="1"
+                                   Value="{Binding CarryHours, Mode=TwoWay}"
+                                   Minimum="0" Maximum="48" Increment="1" FormatString="0"
+                                   Width="120" HorizontalAlignment="Left"
+                                   ToolTip.Tip="Hours of lit time to keep on hand before a dark route. Divided by a light's burn time to size the buy. 0 = don't stock up."/>
+
+                    <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Reorder at (min left)"/>
+                    <NumericUpDown Grid.Row="2" Grid.Column="1"
+                                   Value="{Binding ReorderThresholdMinutes, Mode=TwoWay}"
+                                   Minimum="0" Maximum="600" Increment="5" FormatString="0"
+                                   Width="120" HorizontalAlignment="Left"
+                                   ToolTip.Tip="When remaining burn time drops below this, path out to a shop, restock to the carry target, and return. 0 = never reorder mid-route."/>
+                </Grid>
+
+                <TextBlock Classes="Readout" Margin="0,8,0,0"
+                           Text="{Binding CarryReadout}"/>
+
+            </StackPanel>
+        </Grid>
+    </ScrollViewer>
+</UserControl>
