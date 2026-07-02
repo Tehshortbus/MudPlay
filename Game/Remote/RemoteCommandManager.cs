@@ -624,6 +624,20 @@ public sealed class RemoteCommandManager : IDisposable
             }
         }
 
+        // Health-query fallback — checking a member's HP/MA/lives is a
+        // party social baseline: any active party member may ask, grant
+        // or no grant. These (@health / @status / @lives) are pure
+        // queries with no directive path, so DisallowPartyDirectives —
+        // which gates only @party's action sub-commands — doesn't apply.
+        // @party is excluded here because it keeps its own gated fallback
+        // below.
+        if (requiredCategory == PlayerRemoteControls.QueryHealthStatus
+            && !command.Equals("@party", StringComparison.OrdinalIgnoreCase)
+            && IsActivePartyMember(sender))
+        {
+            return true;
+        }
+
         // @party fallback — the Phase 6 spec guarantees that base @party
         // commands are always allowed inside an active party regardless
         // of per-player grants (it's the social baseline of party play).

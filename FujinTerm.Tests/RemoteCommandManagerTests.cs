@@ -437,11 +437,11 @@ public sealed class RemoteCommandManagerTests
     }
 
     [Fact]
-    public void PartyFallback_OtherQueryHealthStatusCommand_NoFallback()
+    public void HealthFallback_PartyMemberWithoutGrant_StillReachesHandler()
     {
-        // Fallback is @party-specific — @health (also QueryHealthStatus)
-        // does NOT auto-grant for party members. They must still carry
-        // the per-player flag to issue @health, per the existing model.
+        // Checking a member's HP/MA/lives is a party social baseline —
+        // @health (QueryHealthStatus) auto-grants for an active party
+        // member even with no per-player flag, mirroring @par.
         var (engine, party, _) = Setup();
         SeedPartyMember(party, "Buddy");
 
@@ -449,6 +449,39 @@ public sealed class RemoteCommandManagerTests
         engine.RegisterHandler("@health", PlayerRemoteControls.QueryHealthStatus, _ => fired = true);
 
         engine.DispatchForTests(Telepath("Buddy", "@health"));
+
+        Assert.True(fired);
+    }
+
+    [Fact]
+    public void HealthFallback_DisallowPartyDirectives_DoesNotBlockHealthQuery()
+    {
+        // DisallowPartyDirectives gates only @party's action sub-commands;
+        // @health is a pure query, so a party member can still ask even
+        // with directives disallowed.
+        var (engine, party, _) = Setup();
+        SeedPartyMember(party, "Buddy");
+        engine.DisallowPartyDirectives = true;
+
+        bool fired = false;
+        engine.RegisterHandler("@health", PlayerRemoteControls.QueryHealthStatus, _ => fired = true);
+
+        engine.DispatchForTests(Telepath("Buddy", "@health"));
+
+        Assert.True(fired);
+    }
+
+    [Fact]
+    public void HealthFallback_NonPartyWithoutGrant_StillDenied()
+    {
+        // The baseline is party-scoped: a stranger with no grant is still
+        // denied @health.
+        var (engine, _, _) = Setup();
+
+        bool fired = false;
+        engine.RegisterHandler("@health", PlayerRemoteControls.QueryHealthStatus, _ => fired = true);
+
+        engine.DispatchForTests(Telepath("Stranger", "@health"));
 
         Assert.False(fired);
     }
