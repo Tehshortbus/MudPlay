@@ -286,6 +286,84 @@ public sealed class PlayerDatabaseTests
         Assert.Equal("Iron Helm", r.Equipment![0].ItemName);
     }
 
+    // ===== RecordLevel — exact level from an @level probe reply =====
+
+    [Fact]
+    public void RecordLevel_CreatesRecord_WhenPlayerUnknown()
+    {
+        PlayerDatabase db = new();
+        DateTime now = new(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        db.RecordLevel("Bob", 42, now);
+
+        PlayerRecord r = Assert.Single(db.Players);
+        Assert.Equal("Bob", r.GivenName);
+        Assert.Equal(42, r.Level);
+        Assert.Equal(now, r.FirstSeenUtc);
+        Assert.Equal(now, r.LastSeenUtc);
+    }
+
+    [Fact]
+    public void RecordLevel_UpdatesLevelAndLastSeen_KeepingOtherFields()
+    {
+        // A probed level supersedes the title-derived range but must not
+        // disturb the other observation fields — answering @level only
+        // tells us the level and that they're present right now.
+        PlayerDatabase db = new();
+        DateTime first = new(2026, 5, 1, 0, 0, 0, DateTimeKind.Utc);
+        DateTime later = new(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        db.RecordObservation("Bob", "Mage", "Elf", "Good", "Wizard", "Guild", null, first);
+        db.RecordLevel("Bob", 51, later);
+
+        PlayerRecord r = Assert.Single(db.Players);
+        Assert.Equal(51, r.Level);
+        Assert.Equal("Mage",   r.Class);
+        Assert.Equal("Wizard", r.Title);
+        Assert.Equal("Guild",  r.Gang);
+        Assert.Equal(first, r.FirstSeenUtc);   // "known since" preserved
+        Assert.Equal(later, r.LastSeenUtc);    // presence refreshed
+    }
+
+    [Fact]
+    public void RecordLevel_SplitsFullName_KeysOnGiven()
+    {
+        PlayerDatabase db = new();
+        DateTime now = new(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        db.RecordLevel("Bob Ironhelm", 33, now);
+
+        PlayerRecord r = Assert.Single(db.Players);
+        Assert.Equal("Bob", r.GivenName);
+        Assert.Equal(33, r.Level);
+    }
+
+    [Fact]
+    public void RecordLevel_NonPositive_NoOp()
+    {
+        PlayerDatabase db = new();
+        db.RecordLevel("Bob", 0, DateTime.UtcNow);
+        db.RecordLevel("Bob", -3, DateTime.UtcNow);
+        Assert.Empty(db.Players);
+    }
+
+    [Fact]
+    public void RecordObservation_AfterLevel_PreservesLevel()
+    {
+        // A later who-observation carries no level; the probed level must
+        // survive (with-expression leaves untouched fields intact).
+        PlayerDatabase db = new();
+        DateTime t1 = new(2026, 5, 1, 0, 0, 0, DateTimeKind.Utc);
+        DateTime t2 = new(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        db.RecordLevel("Bob", 42, t1);
+        db.RecordObservation("Bob Ironhelm", null, null, "Good", "Wizard", null, null, t2);
+
+        PlayerRecord r = Assert.Single(db.Players);
+        Assert.Equal(42, r.Level);
+        Assert.Equal("Wizard", r.Title);
+    }
+
     // ===== Load-time migration from legacy display-name keyed files =====
 
     // ===== Manual Add / Remove (PR B) =====

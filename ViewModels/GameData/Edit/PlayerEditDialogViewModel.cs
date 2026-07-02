@@ -123,16 +123,17 @@ public sealed partial class PlayerEditDialogViewModel : ObservableObject, IDialo
     }
 
     /// <summary>
-    /// Display value for the Level row. <c>null</c> when neither an
-    /// exact level nor a derivable range is known. Once <c>@level</c> /
-    /// <c>@exp</c> remote parsing ships, an exact <c>PlayerRecord.Level</c>
-    /// will take precedence over the title-derived range — for now the
-    /// range is the only signal we have.
+    /// Display value for the Level row. Prefers the exact level learned
+    /// from an <c>@level</c> probe reply (<see cref="PlayerRecord.Level"/>);
+    /// falls back to the title-derived range from
+    /// <see cref="ClassTitleTable"/> when the player has never answered one.
+    /// <c>null</c> when neither is known.
     /// </summary>
     public string? LevelText
     {
         get
         {
+            if (_original.Level is { } exact) return exact.ToString();
             (int min, int max)? range = ClassTitleTable.LookupLevelRange(_original.Title);
             return range is null ? null : ClassTitleTable.FormatLevelRange(range.Value);
         }
