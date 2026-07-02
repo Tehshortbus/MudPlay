@@ -796,6 +796,10 @@ public partial class MainWindowViewModel : ObservableObject
         // Shop-source routing (PR C) — the `buy <item>` at the detour shop
         // rides the same gate-wrapped pipeline.
         AppServices.Current.PathItemShopRouter.SetWireSender(engineSend);
+        // Party-inventory deferral (PR E) — the `@party give` / `@do give`
+        // hand-off rides the same gate-wrapped pipeline. The @have probe
+        // itself broadcasts through the already-bound PartyBroadcaster.
+        AppServices.Current.PartyPathItemGate.SetWireSender(engineSend);
         // Phase 9 PR 9.E follow-up — StashRoomManager's `hide N <coin>`
         // commands ride the same gate-wrapped pipeline.
         AppServices.Current.Stash.SetWireSender(engineSend);

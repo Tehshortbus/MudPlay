@@ -151,6 +151,20 @@ public sealed class OtherSettings
     public bool HuntNeededPathItems { get; set; }
 
     /// <summary>
+    /// When <c>true</c>, ask the party for a missing route item before
+    /// searching / buying / hunting for it: on a walk-to that crosses an
+    /// <c>(Item: N)</c> / <c>(Ticket: N)</c> exit whose per-member item we're
+    /// not carrying, <see cref="Game.Map.PartyPathItemGate"/> broadcasts
+    /// <c>@have</c> to the party and — if a member holds a spare — has them
+    /// <c>give</c> it over instead of posting a search / shop / hunt need. Only
+    /// a genuine shortfall (no member has a spare) falls through to the demand
+    /// pipeline. No-op when solo. Complements the search / buy / hunt sources
+    /// (it runs ahead of them). Read live by the gate through the resolver.
+    /// Default <c>false</c> (opt-in). Char-tier; surfaced in Settings → Other.
+    /// </summary>
+    public bool DeferToPartyInventory { get; set; }
+
+    /// <summary>
     /// When <c>true</c>, <see cref="Game.HopTimingCalibrator"/> logs
     /// one Info line per observed hop with the wall-clock time + the
     /// current <see cref="Game.EncumbranceLevel"/>. Used to calibrate

@@ -1124,6 +1124,23 @@ public sealed class AppServices
     public Game.Map.MonsterDropRouter MonsterDropRouter { get; private set; } = null!;
 
     /// <summary>
+    /// On-demand party-inventory probe — broadcasts <c>@have</c> and aggregates
+    /// the party's replies into per-member counts. Feeds
+    /// <see cref="PartyPathItemGate"/>'s give-from-surplus decision.
+    /// </summary>
+    public Game.Remote.PartyInventoryProbe PartyInventory { get; private set; } = null!;
+
+    /// <summary>
+    /// Party-first stage of the path-item pipeline: on a walk-to that needs an
+    /// uncarried per-member Item/Ticket item, probes the party
+    /// (<see cref="PartyInventory"/>) and, if a member has a spare, arranges a
+    /// <c>give</c> instead of posting a need. Only a genuine shortfall falls
+    /// through to <see cref="PathItemDemand"/>. Gated by Settings → Other
+    /// "defer to party inventory".
+    /// </summary>
+    public Game.Map.PartyPathItemGate PartyPathItemGate { get; private set; } = null!;
+
+    /// <summary>
     /// Phase 9 PR 9.J — shared Acquisition movement-gate driver. Both
     /// <see cref="Cash"/> and <see cref="AutoGetItems"/> feed it; it owns
     /// the single assert/clear of
@@ -2703,6 +2720,29 @@ public sealed class AppServices
             log: Log);
         Inventory.Changed += PathItemDemand.OnInventoryChanged;
 
+        // Party-inventory awareness (PR E). The probe broadcasts @have and
+        // aggregates the party's replies; the gate sits ahead of the demand
+        // tracker on the walker's announce seam. When "defer to party
+        // inventory" is on and we're grouped, a needed per-member item we lack
+        // is probed first — if a member has a spare it's handed over (give)
+        // and no need is posted; a shortfall forwards to PathItemDemand so
+        // search / shop / hunt still cover it. Solo / feature-off passes the
+        // announced list straight through. The probe self-subscribes to
+        // ChatRouter for replies; the give hand-off's wire-sender is bound by
+        // MainWindowViewModel after connect.
+        PartyInventory = new Game.Remote.PartyInventoryProbe(PartyBroadcaster, Chat, PartyState, Log);
+        PartyPathItemGate = new Game.Map.PartyPathItemGate(
+            isCarried: IsItemCarried,
+            query: (id, name) => PartyInventory.QueryAsync(id, name),
+            itemName: ItemNames.GetName,
+            isEnabled: () =>
+                Resolver.Resolve<Models.Profile.OtherSettings>("Other").DeferToPartyInventory,
+            inParty: () => PartyState.IsInParty,
+            selfGivenName: () => GivenNameOf(Party.LocalCharacterName ?? Profile.Current?.Name),
+            forward: PathItemDemand.OnPathItemsRequired,
+            post: action => Avalonia.Threading.Dispatcher.UIThread.Post(action),
+            log: Log);
+
         // Base auto-search — a bare `sea` on each genuine room entry reveals
         // hidden items for the auto-get engines. Armed by the persisted
         // master toggle OR the transient path-item demand gate above.
@@ -2759,8 +2799,12 @@ public sealed class AppServices
         // StealthManager prevents a double-send when both paths fire.
         Walker.SetPreMoveHook(() => Stealth.RequestPreMoveStealth());
         // PR B — announce the route's possession-gated item ids at walk-start
-        // so the demand tracker arms auto-search for anything we lack.
-        Walker.SetPathItemAnnouncer(PathItemDemand.OnPathItemsRequired);
+        // so the demand tracker arms auto-search for anything we lack. PR E
+        // interposes the party-inventory gate ahead of the tracker: it forwards
+        // anything the party can't cover to PathItemDemand.OnPathItemsRequired,
+        // so with "defer to party inventory" off (or solo) the behaviour is
+        // unchanged.
+        Walker.SetPathItemAnnouncer(PartyPathItemGate.OnPathItemsRequired);
 
         // Phase 10 PR 10.14 — auto-equip trigger coordinator. Reads the same live
         // Equipment blob as the apply engine and the HealthManager's recovery gates
@@ -3478,6 +3522,20 @@ public sealed class AppServices
         if (ItemNames.FindByName(weaponName) is not int number) return null;
         Models.GameData.MessageRecord? rec = FindItemMessage(number);
         return rec is null ? null : Game.Spells.CasterMessageMatcher.TryCreate(rec.CasterMessage);
+    }
+
+    /// <summary>
+    /// The given (first) name of <paramref name="fullName"/>, or <c>null</c>
+    /// when unset. MajorMUD telepath / party-give syntax addresses by given
+    /// name only, so <see cref="Game.Map.PartyPathItemGate"/>'s self-recipient
+    /// is reduced the same way <see cref="Game.Remote.PartyBroadcaster"/>
+    /// reduces its recipients.
+    /// </summary>
+    private static string? GivenNameOf(string? fullName)
+    {
+        if (string.IsNullOrEmpty(fullName)) return null;
+        int space = fullName.IndexOf(' ');
+        return space >= 0 ? fullName[..space] : fullName;
     }
 
     /// <summary>

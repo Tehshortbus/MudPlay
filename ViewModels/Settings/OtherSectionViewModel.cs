@@ -57,6 +57,7 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             yield return "Search rooms if item needed";
             yield return "Buy item if needed";
             yield return "Hunt item if needed";
+            yield return "Defer to party inventory";
             yield return "Max comeback backtrack rooms";
             yield return "@comeback";
             yield return "Utilize self or party members to disarm traps";
@@ -150,6 +151,17 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     /// live by <see cref="Game.Map.MonsterDropRouter"/>. Off by default.
     /// </summary>
     [ObservableProperty] private bool _huntNeededPathItems;
+
+    /// <summary>
+    /// When checked, ask the party before searching / buying / hunting a
+    /// missing route item: a walk-to that crosses an Item/Ticket exit whose
+    /// per-member item we lack broadcasts <c>@have</c>, and if a member has a
+    /// spare it's handed over (<c>give</c>) instead of posting a demand need.
+    /// Only a genuine shortfall falls through to the search / shop / hunt
+    /// sources. No-op when solo. Read live by
+    /// <see cref="Game.Map.PartyPathItemGate"/>. Off by default.
+    /// </summary>
+    [ObservableProperty] private bool _deferToPartyInventory;
 
     /// <summary>
     /// Off by default. When on, every observed Confirmed→Pending→Confirmed
@@ -295,6 +307,7 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             SearchRoomsIfItemNeeded = SearchRoomsIfItemNeeded,
             BuyNeededPathItems    = BuyNeededPathItems,
             HuntNeededPathItems   = HuntNeededPathItems,
+            DeferToPartyInventory = DeferToPartyInventory,
             LogMovementHopTiming  = LogMovementHopTiming,
             MaxComebackBacktrackRooms = Math.Clamp(MaxComebackBacktrackRooms, 1, 50),
             AutoRequestComebackWhenLeftBehind = AutoRequestComebackWhenLeftBehind,
@@ -351,6 +364,7 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
         SearchRoomsIfItemNeeded = dto.SearchRoomsIfItemNeeded;
         BuyNeededPathItems    = dto.BuyNeededPathItems;
         HuntNeededPathItems   = dto.HuntNeededPathItems;
+        DeferToPartyInventory = dto.DeferToPartyInventory;
         LogMovementHopTiming  = dto.LogMovementHopTiming;
         MaxComebackBacktrackRooms = dto.MaxComebackBacktrackRooms;
         AutoRequestComebackWhenLeftBehind = dto.AutoRequestComebackWhenLeftBehind;
@@ -413,6 +427,7 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     partial void OnSearchRoomsIfItemNeededChanged(bool value) => MarkDirty();
     partial void OnBuyNeededPathItemsChanged(bool value) => MarkDirty();
     partial void OnHuntNeededPathItemsChanged(bool value) => MarkDirty();
+    partial void OnDeferToPartyInventoryChanged(bool value) => MarkDirty();
     partial void OnLogMovementHopTimingChanged(bool value) => MarkDirty();
     partial void OnMaxComebackBacktrackRoomsChanged(int value) => MarkDirty();
     partial void OnAutoRequestComebackWhenLeftBehindChanged(bool value) => MarkDirty();
