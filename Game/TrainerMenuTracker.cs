@@ -38,6 +38,16 @@ namespace FujinTerm.Game;
 /// <c>"Point Cost Chart"</c> can ever flip the state machine on its own —
 /// without an outbound <c>train stats</c> the marker is ignored entirely.
 /// </para>
+/// <para>
+/// Initial character creation is the one entry path with no outbound
+/// <c>train stats</c>: the game menu walks class → race → alignment →
+/// training on its own. That training screen still renders the same
+/// full-screen menu, and its top row carries the "MAJOR MUD Character
+/// Creation" box beside the "Point Cost Chart" panel. A marker line
+/// bearing BOTH phrases stands in for the outbound gate — a chat line
+/// can't carry both — so the state machine flips and downstream input
+/// switches to character mode just as it does for in-game training.
+/// </para>
 /// </remarks>
 public sealed class TrainerMenuTracker : IDisposable
 {
@@ -52,6 +62,18 @@ public sealed class TrainerMenuTracker : IDisposable
 
     /// <summary>Test seam.</summary>
     public Func<DateTime> NowProvider { get; set; } = () => DateTime.UtcNow;
+
+    /// <summary>
+    /// Substring unique to the initial character-creation training
+    /// screen — the "MAJOR MUD Character Creation" box shares the menu's
+    /// top terminal row with the "Point Cost Chart" panel. Its presence
+    /// on a marker line confirms menu entry <em>without</em> an outbound
+    /// <c>train stats</c>: character creation walks class → race →
+    /// alignment → training with no such command, so the outbound gate
+    /// never arms. A single line carrying BOTH this phrase and "Point
+    /// Cost Chart" is the full-screen menu, not chat noise.
+    /// </summary>
+    private const string CharacterCreationSignature = "Character Creation";
 
     private DateTime? _expectingMenuSince;
     private bool _inMenu;
@@ -115,15 +137,30 @@ public sealed class TrainerMenuTracker : IDisposable
             $"Observed outbound `{cmd}` — armed menu-marker watch for {ExpectingMenuWindow.TotalSeconds:0} s.");
     }
 
-    private void OnMenuMarker(MatchResult _)
+    private void OnMenuMarker(MatchResult match)
     {
-        if (_expectingMenuSince is null) return;
-        DateTime now = NowProvider();
-        if (now - _expectingMenuSince.Value > ExpectingMenuWindow)
+        // Two confirmation paths:
+        //  1. In-game `train stats` / `train` — ObserveOutbound armed a
+        //     short window and this marker landed inside it.
+        //  2. Initial character creation — the training screen is reached
+        //     from the class/race/alignment flow with no outbound `train
+        //     stats`, so the gate never armed. The char-creation training
+        //     row carries the "Character Creation" box title next to the
+        //     "Point Cost Chart" panel; a line bearing both phrases is the
+        //     full-screen menu, not chat noise, so it stands in for the gate.
+        bool gateArmed = false;
+        if (_expectingMenuSince is { } armedAt)
         {
-            _expectingMenuSince = null;
-            return;
+            if (NowProvider() - armedAt <= ExpectingMenuWindow)
+                gateArmed = true;
+            else
+                _expectingMenuSince = null; // window lapsed — disarm
         }
+
+        bool characterCreation =
+            match.Text.Contains(CharacterCreationSignature, StringComparison.OrdinalIgnoreCase);
+
+        if (!gateArmed && !characterCreation) return;
         if (_inMenu) return;
         _inMenu = true;
         _rosterSnapshot = _party.Members
@@ -131,7 +168,8 @@ public sealed class TrainerMenuTracker : IDisposable
             .Select(m => m.Name)
             .ToList();
         _log?.Log(LogSeverity.Info, "TrainerMenu",
-            $"Entered trainer menu — snapshot {_rosterSnapshot.Count} non-self member(s).");
+            $"Entered trainer menu ({(gateArmed ? "train-stats gate" : "character creation")}) — "
+            + $"snapshot {_rosterSnapshot.Count} non-self member(s).");
         MenuEntered?.Invoke();
     }
 
