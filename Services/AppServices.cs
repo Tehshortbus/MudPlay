@@ -2748,15 +2748,22 @@ public sealed class AppServices
         PartyInventory = new Game.Remote.PartyInventoryProbe(PartyBroadcaster, Chat, PartyState, Log);
         PartyPathItemGate = new Game.Map.PartyPathItemGate(
             isCarried: IsItemCarried,
+            selfCount: CountItemCarried,
             query: (id, name) => PartyInventory.QueryAsync(id, name),
             itemName: ItemNames.GetName,
             isEnabled: () =>
                 Resolver.Resolve<Models.Profile.OtherSettings>("Other").DeferToPartyInventory,
+            searchEnabled: () =>
+                Resolver.Resolve<Models.Profile.OtherSettings>("Other").SearchRoomsIfItemNeeded,
             inParty: () => PartyState.IsInParty,
+            selfIsLeader: () => PartyState.SelfIsLeader,
             selfGivenName: () => GivenNameOf(Party.LocalCharacterName ?? Profile.Current?.Name),
             forward: PathItemDemand.OnPathItemsRequired,
             post: action => Avalonia.Threading.Dispatcher.UIThread.Post(action),
             log: Log);
+        // The leader coordinates redistribution once acquisition makes the
+        // party whole — re-check on every inventory change.
+        Inventory.Changed += PartyPathItemGate.OnInventoryChanged;
 
         // Base auto-search — a bare `sea` on each genuine room entry reveals
         // hidden items for the auto-get engines. Armed by the persisted
@@ -2764,7 +2771,8 @@ public sealed class AppServices
         // Wire-sender bound by MainWindowViewModel after connect.
         AutoSearch = new Game.Map.AutoSearchManager(
             isEnabled: () => ReadAutoModeFlag(d => d.AutoSearch),
-            isDemandActive: () => PathItemDemand.SearchDemandActive,
+            isDemandActive: () =>
+                PathItemDemand.SearchDemandActive || PartyPathItemGate.SearchDemandActive,
             log: Log);
 
         // Drop the stale queue / ground snapshot when we actually change rooms.
@@ -3568,6 +3576,25 @@ public sealed class AppServices
         foreach (Game.Inventory.EquippedItem worn in snap.EquippedItems)
             if (ItemNames.FindByName(worn.Name) == itemId) return true;
         return false;
+    }
+
+    /// <summary>
+    /// How many copies of <paramref name="itemId"/> the current snapshot holds
+    /// (carried + worn). The carried list stores one entry per copy, so gives /
+    /// receives accumulate as distinct entries; matching each display-name back
+    /// to its Number and counting yields the live copy count the leader's
+    /// party-provisioning redistribution needs. Backs
+    /// <see cref="Game.Map.PartyPathItemGate"/>'s self-count seam.
+    /// </summary>
+    private int CountItemCarried(int itemId)
+    {
+        int count = 0;
+        Game.Inventory.InventorySnapshot snap = Inventory.Snapshot;
+        foreach (string name in snap.CarriedItems)
+            if (ItemNames.FindByName(name) == itemId) count++;
+        foreach (Game.Inventory.EquippedItem worn in snap.EquippedItems)
+            if (ItemNames.FindByName(worn.Name) == itemId) count++;
+        return count;
     }
 
     /// <summary>

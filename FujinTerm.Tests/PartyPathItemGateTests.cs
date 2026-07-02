@@ -15,13 +15,18 @@ public sealed class PartyPathItemGateTests
     /// <c>post</c> runs inline, and the give hand-off's wire is captured. Since
     /// the query task is already completed, <c>OnPathItemsRequired</c> runs the
     /// whole check-then-act path before it returns, so assertions read the
-    /// captured wire / forwards directly.
+    /// captured wire / forwards directly. <see cref="IsLeader"/> defaults to
+    /// <c>false</c> — the follower self-borrow path — so the E1 tests read
+    /// unchanged; leader-provisioning tests flip it on.
     /// </summary>
     private sealed class Harness
     {
         public readonly HashSet<int> Carried = new();
+        public readonly Dictionary<int, int> SelfCounts = new();
         public bool Enabled = true;
+        public bool SearchEnabled = true;
         public bool InParty = true;
+        public bool IsLeader;
         public string? SelfGiven = "Fujin";
         public readonly Dictionary<int, string> Names = new();
         public readonly Dictionary<int, PartyInventoryProbe.PartyItemResult> Results = new();
@@ -35,6 +40,7 @@ public sealed class PartyPathItemGateTests
         {
             Gate = new PartyPathItemGate(
                 isCarried: id => Carried.Contains(id),
+                selfCount: id => SelfCounts.TryGetValue(id, out int v) ? v : (Carried.Contains(id) ? 1 : 0),
                 query: (id, name) =>
                 {
                     QueryCount++;
@@ -45,7 +51,9 @@ public sealed class PartyPathItemGateTests
                 },
                 itemName: id => Names.TryGetValue(id, out string? n) ? n : null,
                 isEnabled: () => Enabled,
+                searchEnabled: () => SearchEnabled,
                 inParty: () => InParty,
+                selfIsLeader: () => IsLeader,
                 selfGivenName: () => SelfGiven,
                 forward: ids => Forwarded.AddRange(ids),
                 post: a => a(),
@@ -62,6 +70,8 @@ public sealed class PartyPathItemGateTests
             Results[id] = new PartyInventoryProbe.PartyItemResult(id, total, counts.Length, counts.Length, dict);
         }
     }
+
+    // ----- Off / solo pass-through (leader-agnostic) --------------------------
 
     [Fact]
     public void FeatureOff_ForwardsWholeListUnchanged()
@@ -81,6 +91,8 @@ public sealed class PartyPathItemGateTests
         Assert.Equal(new[] { 7 }, h.Forwarded);
         Assert.Equal(0, h.QueryCount);
     }
+
+    // ----- Follower self-borrow (E1 behaviour, IsLeader = false) --------------
 
     [Fact]
     public void AlreadyCarried_SkippedNotProbedNotForwarded()
@@ -245,5 +257,145 @@ public sealed class PartyPathItemGateTests
 
         Assert.Equal(1, h.QueryCount);
         Assert.Single(h.Sent);
+    }
+
+    // ----- Leader provisioning (IsLeader = true) ------------------------------
+
+    [Fact]
+    public void Leader_EveryoneHasOne_NoGivesNoForward()
+    {
+        var h = new Harness { IsLeader = true };
+        h.Names[1] = "rope";
+        h.SelfCounts[1] = 1;
+        h.SetResult(1, ("Bob", 1));   // self 1 + Bob 1 == party size 2
+        h.Gate.OnPathItemsRequired(new[] { 1 });
+
+        // Provisioned even though we carry it (a follower might not) — but the
+        // pool is already whole, so nothing is handed out or forwarded.
+        Assert.Empty(h.Sent);
+        Assert.Empty(h.Forwarded);
+        Assert.False(h.Gate.SearchDemandActive);
+    }
+
+    [Fact]
+    public void Leader_SelfHasSurplus_GivesOwnToZeroHolder()
+    {
+        var h = new Harness { IsLeader = true };
+        h.Names[1] = "rope";
+        h.SelfCounts[1] = 2;          // we hold two
+        h.SetResult(1, ("Bob", 0));   // Bob has none; pool = 2, size = 2
+        h.Gate.OnPathItemsRequired(new[] { 1 });
+
+        Assert.Equal("give rope to Bob\r", Assert.Single(h.Sent));
+        Assert.Empty(h.Forwarded);
+    }
+
+    [Fact]
+    public void Leader_HolderSurplus_DirectsHolderToZeroHolders()
+    {
+        var h = new Harness { IsLeader = true };
+        h.Names[1] = "rope";
+        h.SelfCounts[1] = 0;
+        // self 0 + Bob 3 == party size 3 (self, Bob, Al); Al has none.
+        h.SetResult(1, ("Bob", 3), ("Al", 0));
+        h.Gate.OnPathItemsRequired(new[] { 1 });
+
+        Assert.Equal(
+            new[] { "/Bob @do give rope to Fujin\r", "/Bob @do give rope to Al\r" },
+            h.Sent);
+        Assert.Empty(h.Forwarded);
+    }
+
+    [Fact]
+    public void Leader_MultiSourceSpreadsAcrossZeroHolders()
+    {
+        var h = new Harness { IsLeader = true };
+        h.Names[1] = "rope";
+        h.SelfCounts[1] = 1;
+        // self 1 + Bob 2 + Al 2 + Cy 0 + Dan 0 == party size 5.
+        h.SetResult(1, ("Bob", 2), ("Al", 2), ("Cy", 0), ("Dan", 0));
+        h.Gate.OnPathItemsRequired(new[] { 1 });
+
+        Assert.Equal(
+            new[] { "/Bob @do give rope to Cy\r", "/Al @do give rope to Dan\r" },
+            h.Sent);
+        Assert.Empty(h.Forwarded);
+    }
+
+    [Fact]
+    public void Leader_Shortfall_ForwardsAndArmsSearch()
+    {
+        var h = new Harness { IsLeader = true };
+        h.Names[1] = "rope";
+        h.SelfCounts[1] = 0;
+        h.SetResult(1, ("Bob", 0));   // pool 0 < size 2 — genuine shortfall
+        h.Gate.OnPathItemsRequired(new[] { 1 });
+
+        Assert.Empty(h.Sent);                       // no hand-off yet — nothing to give
+        Assert.Equal(new[] { 1 }, h.Forwarded);     // shortfall goes to the demand pipeline
+        Assert.True(h.Gate.SearchDemandActive);     // and search stays armed for more copies
+    }
+
+    [Fact]
+    public void Leader_ShortfallSearchOff_ForwardsOnceNoSearchArm()
+    {
+        var h = new Harness { IsLeader = true, SearchEnabled = false };
+        h.Names[1] = "rope";
+        h.SelfCounts[1] = 0;
+        h.SetResult(1, ("Bob", 0));
+        h.Gate.OnPathItemsRequired(new[] { 1 });
+
+        Assert.Empty(h.Sent);
+        Assert.Equal(new[] { 1 }, h.Forwarded);
+        Assert.False(h.Gate.SearchDemandActive);    // no multi-copy search without the toggle
+    }
+
+    [Fact]
+    public void Leader_ShortfallThenAcquires_RedistributesOnInventoryChange()
+    {
+        var h = new Harness { IsLeader = true };
+        h.Names[1] = "rope";
+        h.SelfCounts[1] = 0;
+        h.SetResult(1, ("Bob", 0));   // pool 0 < size 2
+        h.Gate.OnPathItemsRequired(new[] { 1 });
+        Assert.True(h.Gate.SearchDemandActive);
+        Assert.Empty(h.Sent);
+
+        // We search up two copies; the pool is now whole (self 2 + Bob 0 = 2).
+        h.SelfCounts[1] = 2;
+        h.Gate.OnInventoryChanged();
+
+        Assert.Equal("give rope to Bob\r", Assert.Single(h.Sent));
+        Assert.False(h.Gate.SearchDemandActive);    // slot cleared once handed out
+    }
+
+    [Fact]
+    public void Leader_InventoryChangeStillShort_KeepsSearching()
+    {
+        var h = new Harness { IsLeader = true };
+        h.Names[1] = "rope";
+        h.SelfCounts[1] = 0;
+        h.SetResult(1, ("Bob", 0), ("Al", 0));   // pool 0 < size 3
+        h.Gate.OnPathItemsRequired(new[] { 1 });
+
+        // One copy found — still short of the party of three.
+        h.SelfCounts[1] = 1;
+        h.Gate.OnInventoryChanged();
+
+        Assert.Empty(h.Sent);
+        Assert.True(h.Gate.SearchDemandActive);
+    }
+
+    [Fact]
+    public void Leader_NoWireSender_ForwardsInsteadOfGiving()
+    {
+        var h = new Harness(bindWire: false) { IsLeader = true };
+        h.Names[1] = "rope";
+        h.SelfCounts[1] = 2;
+        h.SetResult(1, ("Bob", 0));   // pool whole, but we can't send the give
+        h.Gate.OnPathItemsRequired(new[] { 1 });
+
+        Assert.Empty(h.Sent);
+        Assert.Equal(new[] { 1 }, h.Forwarded);
     }
 }

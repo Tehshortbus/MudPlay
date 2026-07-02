@@ -151,16 +151,23 @@ public sealed class OtherSettings
     public bool HuntNeededPathItems { get; set; }
 
     /// <summary>
-    /// When <c>true</c>, ask the party for a missing route item before
+    /// When <c>true</c>, consult the party for a missing route item before
     /// searching / buying / hunting for it: on a walk-to that crosses an
-    /// <c>(Item: N)</c> / <c>(Ticket: N)</c> exit whose per-member item we're
-    /// not carrying, <see cref="Game.Map.PartyPathItemGate"/> broadcasts
-    /// <c>@have</c> to the party and — if a member holds a spare — has them
-    /// <c>give</c> it over instead of posting a search / shop / hunt need. Only
-    /// a genuine shortfall (no member has a spare) falls through to the demand
-    /// pipeline. No-op when solo. Complements the search / buy / hunt sources
-    /// (it runs ahead of them). Read live by the gate through the resolver.
-    /// Default <c>false</c> (opt-in). Char-tier; surfaced in Settings → Other.
+    /// <c>(Item: N)</c> / <c>(Ticket: N)</c> exit whose per-member item is in
+    /// play, <see cref="Game.Map.PartyPathItemGate"/> broadcasts <c>@have</c>
+    /// and acts on the reply. <b>As leader</b> it treats the party (self +
+    /// everyone who answered) as one pool needing one copy each: members keep
+    /// what they hold; only the net shortfall goes to the demand pipeline
+    /// (search / shop / hunt, per the toggles below — auto-search stays armed
+    /// until the pool is whole), then the leader coordinates the hand-off so
+    /// each member ends with exactly one (<c>give</c> for our own spares,
+    /// <c>/&lt;holder&gt; @do give</c> to direct others'). <b>As a follower</b>
+    /// doing its own walk, it borrows a single spare (holder count ≥ 2) to
+    /// itself instead of posting a need. A genuine shortfall falls through to
+    /// the demand pipeline; no-op when solo. Complements the search / buy /
+    /// hunt sources (it runs ahead of them). Read live by the gate through the
+    /// resolver. Default <c>false</c> (opt-in). Char-tier; surfaced in
+    /// Settings → Other.
     /// </summary>
     public bool DeferToPartyInventory { get; set; }
 
