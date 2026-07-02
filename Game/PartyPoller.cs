@@ -46,7 +46,9 @@ namespace FujinTerm.Game;
 /// it's safe to keep the timer running even when not in a party —
 /// <see cref="DoParPoll"/> short-circuits on
 /// <see cref="PartyState.IsInParty"/> = false so we don't spam <c>par</c>
-/// at the wire while solo.
+/// at the wire while solo. It also short-circuits on
+/// <see cref="IsParPollEnabled"/> so the poll obeys the auto-heal/rest
+/// toggle (and, through it, the auto-all kill switch).
 /// </para>
 /// </remarks>
 public sealed partial class PartyPoller : IDisposable
@@ -61,6 +63,17 @@ public sealed partial class PartyPoller : IDisposable
 
     /// <summary>How often to send <c>par</c> on the wire. Default 5 s per the Phase 6 spec.</summary>
     public TimeSpan ParCadence { get; private set; } = TimeSpan.FromSeconds(5);
+
+    /// <summary>
+    /// Live gate for the timed <c>par</c> poll. <c>par</c>'s sole purpose
+    /// is reading party health, so it rides the same auto-heal/rest toggle
+    /// that governs every other automatic action — when that's off (and
+    /// because AutoModeController's kill-all zeroes the heal/rest flag, when
+    /// auto-all is off too) the timer must not put <c>par</c> on the wire.
+    /// Null = ungated (test / pre-wire default), matching the historical
+    /// always-on behaviour.
+    /// </summary>
+    public Func<bool>? IsParPollEnabled { get; set; }
 
     // ----- @health nag escalation knobs (shared with @join nag) ----------
     // Pushed in by AppServices.ApplyPartyFromActiveProfile from the same
@@ -404,6 +417,7 @@ public sealed partial class PartyPoller : IDisposable
     {
         if (_wireSender is null) return;
         if (!_state.IsInParty) return;
+        if (IsParPollEnabled is { } gate && !gate()) return;
         _wireSender(Encoding.Latin1.GetBytes("par\r"));
     }
 }

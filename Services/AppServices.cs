@@ -1628,7 +1628,13 @@ public sealed class AppServices
         // Phase 6 PR 6.4 — drives the on-join @health exchange + the
         // periodic par poll. Wire-sender + cadence-from-settings hookup
         // happens in MainWindowViewModel / PR 6.9.
-        PartyPoller = new Game.PartyPoller(Chat, PartyState, Party);
+        PartyPoller = new Game.PartyPoller(Chat, PartyState, Party)
+        {
+            // par reads party health, so it lives under the auto-heal/rest
+            // toggle like every other automatic action. AutoModeController's
+            // kill-all zeroes that flag, so auto-all off silences par too.
+            IsParPollEnabled = () => ReadAutoModeFlag(d => d.AutoHealRest),
+        };
         // Phase 6 PR 6.7 — emit side of @wait/@ok. Observes our own
         // position transitions and telepaths the leader when we enter
         // / leave a rest state. Wire-sender hookup in MainWindowVM.
