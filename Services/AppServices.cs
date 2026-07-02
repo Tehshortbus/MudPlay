@@ -1327,6 +1327,13 @@ public sealed class AppServices
     public Game.PartyVitalsWatcher PartyVitals { get; private set; } = null!;
 
     /// <summary>
+    /// Follower-movement pause bridge — holds every movement engine while
+    /// we're a party follower, so the leader's drag isn't fought by our own
+    /// walk / loop / auto-lair.
+    /// </summary>
+    public Game.PartyFollowerMovementGate PartyFollowerMovement { get; private set; } = null!;
+
+    /// <summary>
     /// Leader-rest bridge — nudges <see cref="Health"/> to re-evaluate when
     /// the party leader's rest / meditate posture flips, so a standing-idle
     /// follower opportunistically tops off during the leader's downtime
@@ -2056,6 +2063,14 @@ public sealed class AppServices
             PartyState, MovementCoordinator,
             readSettings: () => ReadSection<Models.Profile.PartySettings>(Profile.Current, "Party"),
             log: Log);
+
+        // Follower-movement pause bridge — asserts MovementCoordinator's
+        // FollowerGate while we're a party follower (in a party, not leading)
+        // so the leader's drag isn't fought by our own walk / loop / auto-lair.
+        // Unconditional: leader-driven movement is a hard game constraint, not
+        // a user toggle.
+        PartyFollowerMovement = new Game.PartyFollowerMovementGate(
+            PartyState, MovementCoordinator, Log);
 
         // Phase 9 PR 9.J — needs registry. Cross-engine fulfillment hub;
         // auto-light (9.K) posts, auto-get (9.L) fulfils. Cleared on
