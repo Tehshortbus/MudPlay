@@ -17,20 +17,22 @@ public sealed class PathItemShopRouterTests
 
     private static string Decode(byte[] b) => Encoding.Latin1.GetString(b).TrimEnd('\r');
 
-    private static Need PathNeed(int id)
-        => new(NeedKind.PathItem, id.ToString(), "test", DateTimeOffset.Now);
+    private static Need PathNeed(int id, int qty = 1)
+        => new(NeedKind.PathItem, id.ToString(), "test", DateTimeOffset.Now, qty);
 
     private sealed class Harness
     {
         public readonly Dictionary<int, List<RoomKey>> ShopRooms = new();
         public readonly Dictionary<(RoomKey From, RoomKey To), int> Dist = new();
-        public readonly HashSet<int> Carried = new();
+        public readonly Dictionary<int, int> Carried = new();
         public readonly Dictionary<int, string> Names = new() { [42] = "boat" };
         public RoomKey? Current = Cur;
         public RoomKey? WalkDest = Dest;
         public bool Enabled = true;
         public bool EngineWalk;
         public readonly List<RoomKey> Walks = new();
+
+        public void Carry(int id, int n = 1) => Carried[id] = n;
 
         public PathItemShopRouter Build() => new(
             shopRoomsSellingItem: id => ShopRooms.TryGetValue(id, out List<RoomKey>? r)
@@ -39,7 +41,7 @@ public sealed class PathItemShopRouterTests
             currentRoom: () => Current,
             walkDestination: () => WalkDest,
             distanceBetween: (a, b) => Dist.TryGetValue((a, b), out int d) ? d : null,
-            isCarried: Carried.Contains,
+            carriedCount: id => Carried.TryGetValue(id, out int c) ? c : 0,
             itemName: id => Names.TryGetValue(id, out string? n) ? n : null,
             isEnabled: () => Enabled,
             engineWalkActive: () => EngineWalk,
@@ -100,7 +102,7 @@ public sealed class PathItemShopRouterTests
     public void OnNeedPosted_ItemAlreadyCarried_NoDetour()
     {
         var h = new Harness().WithSingleShop();
-        h.Carried.Add(42);
+        h.Carry(42);
         PathItemShopRouter r = h.Build();
 
         r.OnNeedPosted(PathNeed(42));
@@ -228,7 +230,7 @@ public sealed class PathItemShopRouterTests
         r.OnNeedPosted(PathNeed(42));
         r.OnWalkEvent(new WalkEvent(WalkEventKind.Finished, "reached", ShopA));
 
-        h.Carried.Add(42);               // the buy landed
+        h.Carry(42);                     // the buy landed
         r.OnInventoryChanged();
 
         Assert.Equal(2, h.Walks.Count);
@@ -243,7 +245,7 @@ public sealed class PathItemShopRouterTests
         PathItemShopRouter r = h.Build();
         r.OnNeedPosted(PathNeed(42));    // walking to shop
 
-        h.Carried.Add(42);               // search revealed it en route
+        h.Carry(42);                     // search revealed it en route
         r.OnInventoryChanged();
 
         Assert.Equal(2, h.Walks.Count);
@@ -321,5 +323,79 @@ public sealed class PathItemShopRouterTests
 
         Assert.Single(h.Walks);
         Assert.Equal(ShopA, h.Walks[0]);
+    }
+
+    // ----- Party shortfall: buy the full count ------------------------------
+
+    [Fact]
+    public void OnWalkEvent_ArriveAtShop_BuysWholeShortfall()
+    {
+        var h = new Harness().WithSingleShop();
+        PathItemShopRouter r = h.Build();
+        r.OnNeedPosted(PathNeed(42, qty: 4));      // party of four, none held
+
+        r.OnWalkEvent(new WalkEvent(WalkEventKind.Finished, "reached", ShopA));
+
+        Assert.Equal(
+            new[] { "buy boat", "buy boat", "buy boat", "buy boat" },
+            r.LastSentForTests.Select(Decode).ToArray());
+        Assert.True(r.DetourActive);               // still Buying until the count lands
+    }
+
+    [Fact]
+    public void OnWalkEvent_ArriveAtShop_BuysOnlyTheMissingDelta()
+    {
+        var h = new Harness().WithSingleShop();
+        h.Carry(42, 1);                            // already hold one of the four
+        PathItemShopRouter r = h.Build();
+        r.OnNeedPosted(PathNeed(42, qty: 4));
+
+        r.OnWalkEvent(new WalkEvent(WalkEventKind.Finished, "reached", ShopA));
+
+        Assert.Equal(3, r.LastSentForTests.Count); // buy the three still missing
+    }
+
+    [Fact]
+    public void OnInventoryChanged_ShortfallPartiallyBought_KeepsDetour()
+    {
+        var h = new Harness().WithSingleShop();
+        PathItemShopRouter r = h.Build();
+        r.OnNeedPosted(PathNeed(42, qty: 3));
+        r.OnWalkEvent(new WalkEvent(WalkEventKind.Finished, "reached", ShopA));
+
+        h.Carry(42, 2);                            // two of three landed — still short
+        r.OnInventoryChanged();
+
+        Assert.True(r.DetourActive);               // don't resume until the party's whole
+        Assert.Single(h.Walks);                    // still only the shop walk
+    }
+
+    [Fact]
+    public void OnInventoryChanged_FullShortfallBought_ResumesToDestination()
+    {
+        var h = new Harness().WithSingleShop();
+        PathItemShopRouter r = h.Build();
+        r.OnNeedPosted(PathNeed(42, qty: 3));
+        r.OnWalkEvent(new WalkEvent(WalkEventKind.Finished, "reached", ShopA));
+
+        h.Carry(42, 3);                            // all three copies in the pack
+        r.OnInventoryChanged();
+
+        Assert.Equal(2, h.Walks.Count);
+        Assert.Equal(Dest, h.Walks[1]);
+        Assert.False(r.DetourActive);
+    }
+
+    [Fact]
+    public void OnNeedPosted_AlreadyHoldsFullShortfall_NoDetour()
+    {
+        var h = new Harness().WithSingleShop();
+        h.Carry(42, 4);                            // whole party need already covered locally
+        PathItemShopRouter r = h.Build();
+
+        r.OnNeedPosted(PathNeed(42, qty: 4));
+
+        Assert.False(r.DetourActive);
+        Assert.Empty(h.Walks);
     }
 }

@@ -46,24 +46,24 @@ public sealed class PathItemDemandTracker
     private const string LogCategory = "AutoSearch";
 
     private readonly NeedsRegistry _needs;
-    private readonly Func<int, bool> _isCarried;
+    private readonly Func<int, int> _carriedCount;
     private readonly Func<bool> _inventoryLoaded;
     private readonly Func<bool> _isEnabled;
     private readonly LogService? _log;
 
     public PathItemDemandTracker(
         NeedsRegistry needs,
-        Func<int, bool> isCarried,
+        Func<int, int> carriedCount,
         Func<bool> inventoryLoaded,
         Func<bool> isEnabled,
         LogService? log = null)
     {
         ArgumentNullException.ThrowIfNull(needs);
-        ArgumentNullException.ThrowIfNull(isCarried);
+        ArgumentNullException.ThrowIfNull(carriedCount);
         ArgumentNullException.ThrowIfNull(inventoryLoaded);
         ArgumentNullException.ThrowIfNull(isEnabled);
         _needs = needs;
-        _isCarried = isCarried;
+        _carriedCount = carriedCount;
         _inventoryLoaded = inventoryLoaded;
         _isEnabled = isEnabled;
         _log = log;
@@ -79,34 +79,38 @@ public sealed class PathItemDemandTracker
         => _isEnabled() && _needs.Outstanding(NeedKind.PathItem).Count > 0;
 
     /// <summary>
-    /// Walk-start callback (bound to
-    /// <see cref="AutoWalkManager.SetPathItemAnnouncer"/>): every item id
-    /// gating an Item/Ticket exit along the planned route. Posts a PathItem
-    /// need for each not currently carried. A no-op when the feature is off
-    /// or inventory hasn't been read yet — without a known loadout we can't
-    /// tell "missing" from "have it", and guessing would arm a false search.
+    /// Walk-start callback (reached via <see cref="PartyPathItemGate"/>'s
+    /// forward): every item id gating an Item/Ticket exit along the planned
+    /// route the party can't already cover. Posts a PathItem need for
+    /// <paramref name="quantity"/> copies (1 solo; the leader's shortfall
+    /// when provisioning the whole party) for each item we don't already
+    /// carry that many of. A no-op when the feature is off or inventory
+    /// hasn't been read yet — without a known loadout we can't tell
+    /// "missing" from "have it", and guessing would arm a false search.
     /// </summary>
-    public void OnPathItemsRequired(IReadOnlyList<int> itemIds)
+    public void OnPathItemsRequired(IReadOnlyList<int> itemIds, int quantity = 1)
     {
         ArgumentNullException.ThrowIfNull(itemIds);
         if (!_isEnabled()) return;
         if (!_inventoryLoaded()) return;
         if (itemIds.Count == 0) return;
 
+        int want = Math.Max(1, quantity);
         var considered = new HashSet<int>();
         foreach (int id in itemIds)
         {
             if (id <= 0 || !considered.Add(id)) continue;
-            if (_isCarried(id)) continue;
-            _needs.Post(NeedKind.PathItem, id.ToString(CultureInfo.InvariantCulture), Requester);
+            if (_carriedCount(id) >= want) continue;
+            _needs.Post(NeedKind.PathItem, id.ToString(CultureInfo.InvariantCulture), Requester, want);
         }
     }
 
     /// <summary>
     /// Inventory-change callback (wired to <c>InventoryManager.Changed</c>):
-    /// resolves any outstanding PathItem need whose item is now carried, so
-    /// the demand gate — and thus auto-search — drops the moment the route's
-    /// missing item turns up.
+    /// resolves any outstanding PathItem need once we carry the full
+    /// requested count — not just the first copy — so the demand gate (and
+    /// thus auto-search) stays armed until the leader has acquired every
+    /// copy the party needs, then drops.
     /// </summary>
     public void OnInventoryChanged()
     {
@@ -116,10 +120,10 @@ public sealed class PathItemDemandTracker
         {
             if (int.TryParse(need.Descriptor, NumberStyles.Integer,
                     CultureInfo.InvariantCulture, out int id)
-                && _isCarried(id))
+                && _carriedCount(id) >= need.Quantity)
             {
                 _needs.Resolve(need);
-                _log?.Info(LogCategory, $"path item {id} acquired — search demand cleared");
+                _log?.Info(LogCategory, $"path item {id} acquired (x{need.Quantity}) — search demand cleared");
             }
         }
     }

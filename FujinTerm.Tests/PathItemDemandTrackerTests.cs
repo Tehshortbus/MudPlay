@@ -10,17 +10,26 @@ public sealed class PathItemDemandTrackerTests
     private sealed class Harness
     {
         public readonly NeedsRegistry Needs = new();
-        public readonly HashSet<int> Carried = new();
+        public readonly Dictionary<int, int> Carried = new();
         public bool InventoryLoaded = true;
         public bool Enabled = true;
 
         public PathItemDemandTracker Build() => new(
             Needs,
-            isCarried: Carried.Contains,
+            carriedCount: id => Carried.TryGetValue(id, out int n) ? n : 0,
             inventoryLoaded: () => InventoryLoaded,
             isEnabled: () => Enabled);
 
+        public void Carry(int id, int n = 1) => Carried[id] = n;
+
         public int OutstandingCount => Needs.Outstanding(NeedKind.PathItem).Count;
+
+        public int? QuantityOf(int id)
+        {
+            foreach (Need n in Needs.Outstanding(NeedKind.PathItem))
+                if (n.Descriptor == id.ToString()) return n.Quantity;
+            return null;
+        }
     }
 
     [Fact]
@@ -39,7 +48,7 @@ public sealed class PathItemDemandTrackerTests
     public void OnPathItemsRequired_CarriedItem_PostsNothing()
     {
         var h = new Harness();
-        h.Carried.Add(42);
+        h.Carry(42);
         PathItemDemandTracker t = h.Build();
 
         t.OnPathItemsRequired(new[] { 42 });
@@ -85,7 +94,7 @@ public sealed class PathItemDemandTrackerTests
     public void OnPathItemsRequired_MultipleMissingItems_PostsEach()
     {
         var h = new Harness();
-        h.Carried.Add(2);           // carried — should be skipped
+        h.Carry(2);                 // carried — should be skipped
         PathItemDemandTracker t = h.Build();
 
         t.OnPathItemsRequired(new[] { 1, 2, 3 });
@@ -113,7 +122,7 @@ public sealed class PathItemDemandTrackerTests
         t.OnPathItemsRequired(new[] { 42 });
         Assert.True(t.SearchDemandActive);
 
-        h.Carried.Add(42);          // item turns up in the pack
+        h.Carry(42);                // item turns up in the pack
         t.OnInventoryChanged();
 
         Assert.Equal(0, h.OutstandingCount);
@@ -154,6 +163,72 @@ public sealed class PathItemDemandTrackerTests
         PathItemDemandTracker t = h.Build();
 
         t.OnPathItemsRequired(System.Array.Empty<int>());
+
+        Assert.Equal(0, h.OutstandingCount);
+        Assert.False(t.SearchDemandActive);
+    }
+
+    // ----- Quantity (party shortfall) --------------------------------------
+
+    [Fact]
+    public void OnPathItemsRequired_Quantity_PostsNeedWithCount()
+    {
+        var h = new Harness();
+        PathItemDemandTracker t = h.Build();
+
+        t.OnPathItemsRequired(new[] { 42 }, quantity: 4);   // leader provisions a party of four
+
+        Assert.Equal(4, h.QuantityOf(42));
+    }
+
+    [Fact]
+    public void OnPathItemsRequired_CarrySomeButNotAll_StillPosts()
+    {
+        var h = new Harness();
+        h.Carry(42, 1);             // hold one, but the party needs three
+        PathItemDemandTracker t = h.Build();
+
+        t.OnPathItemsRequired(new[] { 42 }, quantity: 3);
+
+        Assert.Equal(1, h.OutstandingCount);
+        Assert.Equal(3, h.QuantityOf(42));
+    }
+
+    [Fact]
+    public void OnPathItemsRequired_CarryFullCount_PostsNothing()
+    {
+        var h = new Harness();
+        h.Carry(42, 3);             // already hold the whole shortfall
+        PathItemDemandTracker t = h.Build();
+
+        t.OnPathItemsRequired(new[] { 42 }, quantity: 3);
+
+        Assert.Equal(0, h.OutstandingCount);
+    }
+
+    [Fact]
+    public void OnInventoryChanged_FirstCopyOfMany_LeavesNeedOutstanding()
+    {
+        var h = new Harness();
+        PathItemDemandTracker t = h.Build();
+        t.OnPathItemsRequired(new[] { 42 }, quantity: 3);
+
+        h.Carry(42, 1);             // one copy in — still two short
+        t.OnInventoryChanged();
+
+        Assert.Equal(1, h.OutstandingCount);
+        Assert.True(t.SearchDemandActive);
+    }
+
+    [Fact]
+    public void OnInventoryChanged_FullCountReached_ResolvesNeed()
+    {
+        var h = new Harness();
+        PathItemDemandTracker t = h.Build();
+        t.OnPathItemsRequired(new[] { 42 }, quantity: 3);
+
+        h.Carry(42, 3);             // the whole shortfall is now carried
+        t.OnInventoryChanged();
 
         Assert.Equal(0, h.OutstandingCount);
         Assert.False(t.SearchDemandActive);

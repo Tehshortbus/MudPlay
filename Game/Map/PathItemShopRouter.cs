@@ -10,9 +10,10 @@ namespace FujinTerm.Game.Map;
 /// shop: when a one-shot <see cref="AutoWalkManager.WalkTo(RoomKey)">walk</see>
 /// crosses an <c>(Item: N)</c> / <c>(Ticket: N)</c> gate whose item we're not
 /// carrying, and a shop in the active set stocks that item, detour to the
-/// shop that adds the fewest steps, <c>buy</c> the item, then resume to the
-/// original destination. Backs the Settings → Other "buy item if needed"
-/// affordance.
+/// shop that adds the fewest steps, <c>buy</c> the needed count (the whole
+/// party shortfall the need carries — one <c>buy</c> per still-missing copy),
+/// then resume to the original destination. Backs the Settings → Other "buy
+/// item if needed" affordance.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -40,14 +41,14 @@ namespace FujinTerm.Game.Map;
 /// gate, and hijacking a farm loop to shop would be surprising.
 /// </para>
 /// <para>
-/// <b>Resolution paths.</b> The item entering inventory
-/// (<see cref="OnInventoryChanged"/>) resumes the original walk — whether it
-/// arrived from the <c>buy</c>, from demand-search revealing it en route
-/// (found-first abort), or from a party hand-off. A <c>buy</c> that produces
-/// no item within <see cref="OnBuyTimeout">the buy window</see> (no gold,
-/// out of stock, refused) and a shop we can't reach both fail gracefully:
-/// log, resume to the destination, and leave the need outstanding for search
-/// to keep hunting. The need's own lifecycle (post / resolve) stays owned by
+/// <b>Resolution paths.</b> Reaching the needed count in inventory
+/// (<see cref="OnInventoryChanged"/>) resumes the original walk — whether the
+/// copies came from the <c>buy</c> run, from demand-search revealing them en
+/// route (found-first abort), or from a party hand-off. Buys that don't all
+/// land within <see cref="OnBuyTimeout">the buy window</see> (no gold, out of
+/// stock, refused) and a shop we can't reach both fail gracefully: log, resume
+/// to the destination, and leave the need outstanding so search can turn up
+/// the rest. The need's own lifecycle (post / resolve) stays owned by
 /// <see cref="PathItemDemandTracker"/>; this router only reacts.
 /// </para>
 /// <para>
@@ -71,7 +72,7 @@ public sealed class PathItemShopRouter : IDisposable
     private readonly Func<RoomKey?> _currentRoom;
     private readonly Func<RoomKey?> _walkDestination;
     private readonly Func<RoomKey, RoomKey, int?> _distanceBetween;
-    private readonly Func<int, bool> _isCarried;
+    private readonly Func<int, int> _carriedCount;
     private readonly Func<int, string?> _itemName;
     private readonly Func<bool> _isEnabled;
     private readonly Func<bool> _engineWalkActive;
@@ -84,6 +85,7 @@ public sealed class PathItemShopRouter : IDisposable
 
     private Phase _phase = Phase.Idle;
     private int _itemId;
+    private int _targetCount = 1;
     private RoomKey _origDest;
     private RoomKey _shopRoom;
 
@@ -92,7 +94,7 @@ public sealed class PathItemShopRouter : IDisposable
         Func<RoomKey?> currentRoom,
         Func<RoomKey?> walkDestination,
         Func<RoomKey, RoomKey, int?> distanceBetween,
-        Func<int, bool> isCarried,
+        Func<int, int> carriedCount,
         Func<int, string?> itemName,
         Func<bool> isEnabled,
         Func<bool> engineWalkActive,
@@ -105,7 +107,7 @@ public sealed class PathItemShopRouter : IDisposable
         ArgumentNullException.ThrowIfNull(currentRoom);
         ArgumentNullException.ThrowIfNull(walkDestination);
         ArgumentNullException.ThrowIfNull(distanceBetween);
-        ArgumentNullException.ThrowIfNull(isCarried);
+        ArgumentNullException.ThrowIfNull(carriedCount);
         ArgumentNullException.ThrowIfNull(itemName);
         ArgumentNullException.ThrowIfNull(isEnabled);
         ArgumentNullException.ThrowIfNull(engineWalkActive);
@@ -115,7 +117,7 @@ public sealed class PathItemShopRouter : IDisposable
         _currentRoom = currentRoom;
         _walkDestination = walkDestination;
         _distanceBetween = distanceBetween;
-        _isCarried = isCarried;
+        _carriedCount = carriedCount;
         _itemName = itemName;
         _isEnabled = isEnabled;
         _engineWalkActive = engineWalkActive;
@@ -154,7 +156,8 @@ public sealed class PathItemShopRouter : IDisposable
                 CultureInfo.InvariantCulture, out int itemId)
             || itemId <= 0)
             return;
-        if (_isCarried(itemId)) return;
+        int target = Math.Max(1, need.Quantity);
+        if (_carriedCount(itemId) >= target) return;   // already hold the whole shortfall
 
         string? name = _itemName(itemId);
         if (string.IsNullOrWhiteSpace(name)) return;
@@ -165,6 +168,7 @@ public sealed class PathItemShopRouter : IDisposable
         if (!TrySelectShop(cur, dest, itemId, out RoomKey shopRoom)) return;
 
         _itemId = itemId;
+        _targetCount = target;
         _origDest = dest;
         _shopRoom = shopRoom;
         _phase = Phase.WalkingToShop;
@@ -213,8 +217,8 @@ public sealed class PathItemShopRouter : IDisposable
     public void OnInventoryChanged()
     {
         if (_phase is not (Phase.WalkingToShop or Phase.Buying)) return;
-        if (!_isCarried(_itemId)) return;
-        _log?.Info(LogCategory, $"path item {_itemId} acquired — resuming to {_origDest}");
+        if (_carriedCount(_itemId) < _targetCount) return;   // still short of the party's need
+        _log?.Info(LogCategory, $"path item {_itemId} acquired (x{_targetCount}) — resuming to {_origDest}");
         ResumeToPath();
     }
 
@@ -227,7 +231,7 @@ public sealed class PathItemShopRouter : IDisposable
     public void OnBuyTimeout()
     {
         if (_phase != Phase.Buying) return;
-        if (_isCarried(_itemId)) return; // race: OnInventoryChanged handled it
+        if (_carriedCount(_itemId) >= _targetCount) return; // race: OnInventoryChanged handled it
         _log?.Info(LogCategory,
             $"buy of path item {_itemId} did not complete in time — resuming to {_origDest}");
         ResumeToPath();
@@ -240,8 +244,13 @@ public sealed class PathItemShopRouter : IDisposable
         _phase = Phase.Buying;
         string? name = _itemName(_itemId);
         if (string.IsNullOrWhiteSpace(name)) { ResumeToPath(); return; }
-        _log?.Info(LogCategory, $"at shop {_shopRoom} — buying '{name}'");
-        _wire.Send($"buy {name}");
+        // Buy the whole shortfall in one visit — one `buy <name>` per copy the
+        // party still lacks, so the leader leaves with enough to hand out. The
+        // walk resumes only once the target count lands (or the buy window
+        // elapses), so movement never interrupts the run of buys.
+        int toBuy = Math.Max(1, _targetCount - _carriedCount(_itemId));
+        _log?.Info(LogCategory, $"at shop {_shopRoom} — buying '{name}' x{toBuy}");
+        for (int i = 0; i < toBuy; i++) _wire.Send($"buy {name}");
         ArmBuyTimer();
     }
 

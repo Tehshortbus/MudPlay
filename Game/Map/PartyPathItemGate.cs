@@ -11,7 +11,7 @@ namespace FujinTerm.Game.Map;
 /// <see cref="PathItemDemandTracker"/>: when a planned route crosses an
 /// <c>(Item: N)</c> / <c>(Ticket: N)</c> gate whose per-member item the party
 /// might lack, this consults the party (via <see cref="PartyInventoryProbe"/>)
-/// before spending a search / shop / hunt on it. Backs the Settings → Other
+/// before spending a search / shop detour on it. Backs the Settings → Other
 /// "defer to party inventory" affordance.
 /// </summary>
 /// <remarks>
@@ -29,18 +29,19 @@ namespace FujinTerm.Game.Map;
 /// hand-off so every zero-holder ends up with one: it gives its own spares
 /// directly (<c>give &lt;item&gt; to &lt;R&gt;</c>) and directs other holders'
 /// spares with a targeted <c>/&lt;holder&gt; @do give &lt;item&gt; to
-/// &lt;R&gt;</c>. If the pool is short, the shortfall is forwarded to the
-/// demand pipeline (search / shop / hunt, per the user's checked options); when
-/// "search rooms if item needed" is on, the slot is retained so
-/// <see cref="SearchDemandActive"/> keeps auto-search armed past the first copy
-/// and the redistribution fires (via <see cref="OnInventoryChanged"/>) the
-/// moment the pool becomes whole.
+/// &lt;R&gt;</c>. If the pool is short, the shortfall <em>count</em> — how many
+/// copies the leader's own bag must gain to reach one-per-member — is forwarded
+/// to the demand pipeline (search / shop, per the user's checked options), so a
+/// shop detour buys that many rather than a single copy; when "search rooms if
+/// item needed" is on, the slot is retained so <see cref="SearchDemandActive"/>
+/// keeps auto-search armed past the first copy and the redistribution fires (via
+/// <see cref="OnInventoryChanged"/>) the moment the pool becomes whole.
 /// </para>
 /// <para>
 /// <b>Non-leader — borrow a spare for self.</b> A grouped follower doing its
 /// own walk-to keeps the original E1 behaviour: if it lacks a gated item and a
 /// member holds a spare (count &gt;= 2, holder keeps one), it asks for a single
-/// hand-off to itself rather than posting a search / shop / hunt need.
+/// hand-off to itself rather than posting a search / shop need.
 /// </para>
 /// <para>
 /// Both paths degrade to forwarding the announced list unchanged when the
@@ -49,12 +50,12 @@ namespace FujinTerm.Game.Map;
 /// deferred off the walker's <c>WalkTo</c> call stack through <see cref="_post"/>.
 /// </para>
 /// <para>
-/// Scope of this slice: acquisition of multiple copies rides auto-search
-/// (armed until the pool is whole); shop-buy and monster-hunt remain
-/// single-copy best-effort (the demand pipeline buys / hunts one per posted
-/// need). Non-responders are treated as outside the pool — the leader
-/// provisions only itself and the members that answered, leaving a silent
-/// member to its own per-member pipeline.
+/// Scope: multiple copies are acquired by the forwarded shortfall count — a
+/// shop detour buys that many, and auto-search stays armed (until the pool is
+/// whole) to reveal the rest off the floor. Monster-drop reroute remains
+/// single-copy best-effort. Non-responders are treated as outside the pool —
+/// the leader provisions only itself and the members that answered, leaving a
+/// silent member to its own per-member pipeline.
 /// </para>
 /// </remarks>
 public sealed class PartyPathItemGate
@@ -77,7 +78,7 @@ public sealed class PartyPathItemGate
     private readonly Func<bool> _inParty;
     private readonly Func<bool> _selfIsLeader;
     private readonly Func<string?> _selfGivenName;
-    private readonly Action<IReadOnlyList<int>> _forward;
+    private readonly Action<IReadOnlyList<int>, int> _forward;
     private readonly Action<Action> _post;
     private readonly LogService? _log;
     private readonly object _gate = new();
@@ -94,7 +95,7 @@ public sealed class PartyPathItemGate
         Func<bool> inParty,
         Func<bool> selfIsLeader,
         Func<string?> selfGivenName,
-        Action<IReadOnlyList<int>> forward,
+        Action<IReadOnlyList<int>, int> forward,
         Action<Action> post,
         LogService? log = null)
     {
@@ -158,7 +159,7 @@ public sealed class PartyPathItemGate
         ArgumentNullException.ThrowIfNull(itemIds);
         if (!_isEnabled() || !_inParty())
         {
-            _forward(itemIds);
+            _forward(itemIds, 1);   // solo / off: one copy for self, unchanged behaviour
             return;
         }
 
@@ -206,7 +207,7 @@ public sealed class PartyPathItemGate
     private async Task ProvisionAsync(int id)
     {
         string? name = _itemName(id);
-        if (string.IsNullOrWhiteSpace(name)) { _forward(new[] { id }); return; }
+        if (string.IsNullOrWhiteSpace(name)) { _forward(new[] { id }, 1); return; }
 
         // Reserve the slot up-front so a re-announce mid-probe doesn't kick off
         // a second probe / double-give for the same item.
@@ -225,14 +226,20 @@ public sealed class PartyPathItemGate
 
         if (TryComplete(id)) return;
 
-        // Genuine shortfall: feed the demand pipeline (search / shop / hunt per
-        // the user's checked options). With search on, keep the slot so
-        // SearchDemandActive stays armed for copies beyond the first and the
-        // redistribution fires once the pool is whole; otherwise it's a
-        // one-shot best-effort and the slot is dropped.
+        // Genuine shortfall: feed the demand pipeline (search / shop per the
+        // user's checked options) with the count the leader must acquire so the
+        // whole party clears the gate — the leader's own bag must hold at least
+        // (partySize - othersTotal) so the pool reaches one-per-member. This is
+        // the same wholeness check TryComplete uses, expressed as a target.
+        // With search on, keep the slot so SearchDemandActive stays armed for
+        // copies beyond the first and the redistribution fires once the pool is
+        // whole; otherwise it's a one-shot best-effort and the slot is dropped.
+        int othersTotal = 0;
+        foreach (int c in others.Values) othersTotal += c;
+        int target = Math.Max(1, (1 + others.Count) - othersTotal);
         if (!_searchEnabled())
             lock (_gate) _pending.Remove(id);
-        _forward(new[] { id });
+        _forward(new[] { id }, target);
     }
 
     /// <summary>
@@ -263,7 +270,7 @@ public sealed class PartyPathItemGate
 
     private void Redistribute(string name, IReadOnlyDictionary<string, int> others, int selfNow, int id)
     {
-        if (_wireSender is null) { _forward(new[] { id }); return; }
+        if (_wireSender is null) { _forward(new[] { id }, 1); return; }
 
         // null giver / sink == self. Sources offer their surplus above one;
         // sinks are the zero-holders. Feasibility (totalHeld >= partySize) was
@@ -281,7 +288,7 @@ public sealed class PartyPathItemGate
 
         string? self = _selfGivenName();
         bool selfInvolved = sinks.Contains(null) || sources.Contains(null);
-        if (selfInvolved && string.IsNullOrEmpty(self)) { _forward(new[] { id }); return; }
+        if (selfInvolved && string.IsNullOrEmpty(self)) { _forward(new[] { id }, 1); return; }
 
         int sent = 0;
         int si = 0;
@@ -303,7 +310,7 @@ public sealed class PartyPathItemGate
     private async Task TryBorrowSpareAsync(int id)
     {
         string? name = _itemName(id);
-        if (string.IsNullOrWhiteSpace(name)) { _forward(new[] { id }); return; }
+        if (string.IsNullOrWhiteSpace(name)) { _forward(new[] { id }, 1); return; }
 
         PartyInventoryProbe.PartyItemResult result = await _query(id, name).ConfigureAwait(true);
 
@@ -326,11 +333,11 @@ public sealed class PartyPathItemGate
         }
 
         // No member has a spare to give — post the need so demand-driven
-        // search / shop / hunt take over.
-        if (holder is null) { _forward(new[] { id }); return; }
+        // search / shop take over.
+        if (holder is null) { _forward(new[] { id }, 1); return; }
 
         string self = _selfGivenName() ?? string.Empty;
-        if (self.Length == 0 || _wireSender is null) { _forward(new[] { id }); return; }
+        if (self.Length == 0 || _wireSender is null) { _forward(new[] { id }, 1); return; }
 
         if (membersWithAny == 1)
             // Only the holder has any copies: @party give is permission-free

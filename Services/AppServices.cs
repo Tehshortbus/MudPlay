@@ -2745,7 +2745,7 @@ public sealed class AppServices
         // seam is bound after the walker is built (below).
         PathItemDemand = new Game.Map.PathItemDemandTracker(
             Needs,
-            isCarried: IsItemCarried,
+            carriedCount: CountItemCarried,
             inventoryLoaded: () => Inventory.IsLoaded,
             isEnabled: () =>
                 Resolver.Resolve<Models.Profile.OtherSettings>("Other").SearchRoomsIfItemNeeded,
@@ -3075,7 +3075,7 @@ public sealed class AppServices
             currentRoom: () => RoomTracker.State.CurrentRoom?.Key,
             walkDestination: () => Walker.Destination,
             distanceBetween: (a, b) => Bfs.DistanceBetween(a, b, Movement),
-            isCarried: IsItemCarried,
+            carriedCount: CountItemCarried,
             itemName: ItemNames.GetName,
             isEnabled: () =>
                 Resolver.Resolve<Models.Profile.OtherSettings>("Other").BuyNeededPathItems,
