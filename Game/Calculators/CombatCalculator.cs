@@ -384,9 +384,16 @@ public static class CombatCalculator
     /// Per-hit damage range for a Mystic martial-arts attack (Punch / Kick /
     /// Jumpkick), modelling MMUD Explorer's <c>CalculateAttack</c> for the realm
     /// selected by <paramref name="realmType"/>. Requires a positive
-    /// <paramref name="martialArtsSkill"/>; returns a zero range otherwise.
+    /// <paramref name="maPlusSkill"/>; returns a zero range otherwise.
     /// </summary>
     /// <remarks>
+    /// <para><paramref name="maPlusSkill"/> is MME's <c>nMAPlusSkill</c> — the
+    /// item-granted per-attack martial-arts <em>skill</em> bonus, NOT the
+    /// character's Martial Arts skill stat (that stat feeds accuracy, never this
+    /// damage formula). No stock ability grants a +MA-skill bonus, so it is
+    /// normally 0; MME's Calc-Combat toggle floors it to 1, which is what the
+    /// Character Info panel feeds. Passing the Martial Arts skill stat here inflates
+    /// the damage by that stat's whole magnitude (~20-30×).</para>
     /// <para><b>Stock</b> scales the skill by the level (capped at 20):
     /// <c>min = skill*nTemp/8 + 2</c>; <c>punch max = skill*(nTemp+3)/4 + 6</c>,
     /// <c>kick max = skill*nTemp/6 + 7</c>, <c>jumpkick max = skill*nTemp/6 + 8</c>
@@ -405,10 +412,10 @@ public static class CombatCalculator
     /// +max-damage sum (Abil 4); strength is added internally.</para>
     /// </remarks>
     public static MeleeDamageResult CalcMartialArtsDamage(MudAttackType attackType, RealmType realmType,
-                                                          int level, int martialArtsSkill, int strength,
+                                                          int level, int maPlusSkill, int strength,
                                                           int plusMaxDamage, int maPlusDamage)
     {
-        if (martialArtsSkill <= 0)
+        if (maPlusSkill <= 0)
             return new MeleeDamageResult(0, 0);
 
         int min, max;
@@ -416,25 +423,25 @@ public static class CombatCalculator
         {
             // GreaterMUD: a level-driven band with the skill added flat (not the
             // Stock skill×level scaling).
-            min = GmudMaBand(level, level / 8.0 + 2, level / 6.0, floor: 5) + martialArtsSkill;
+            min = GmudMaBand(level, level / 8.0 + 2, level / 6.0, floor: 5) + maPlusSkill;
             max = attackType switch
             {
                 MudAttackType.Punch => GmudMaBand(level, (level + 3) / 4.0 + 6, level / 4.0, floor: 12),
                 MudAttackType.Kick => GmudMaBand(level, level / 5.0 + 7, level / 4.0, floor: 10),
                 MudAttackType.Jumpkick => GmudMaBand(level, level / 6.0 + 7, level / 4.0, floor: 10),
                 _ => 0,
-            } + martialArtsSkill;
+            } + maPlusSkill;
         }
         else
         {
             // Stock: skill scales by level (capped at 20), per the Fix() formula.
             int nTemp = Math.Min(level, 20);
-            min = (martialArtsSkill * nTemp) / 8 + 2;
+            min = (maPlusSkill * nTemp) / 8 + 2;
             max = attackType switch
             {
-                MudAttackType.Punch => (martialArtsSkill * (nTemp + 3)) / 4 + 6,
-                MudAttackType.Kick => (martialArtsSkill * nTemp) / 6 + 7,
-                MudAttackType.Jumpkick => (martialArtsSkill * nTemp) / 6 + 8,
+                MudAttackType.Punch => (maPlusSkill * (nTemp + 3)) / 4 + 6,
+                MudAttackType.Kick => (maPlusSkill * nTemp) / 6 + 7,
+                MudAttackType.Jumpkick => (maPlusSkill * nTemp) / 6 + 8,
                 _ => 0,
             };
         }

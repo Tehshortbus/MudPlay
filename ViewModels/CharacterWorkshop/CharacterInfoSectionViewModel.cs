@@ -378,9 +378,15 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
             KickAccuracy = (maBaseAccy + t.PlusKickAccy - kickAccyPenalty).ToString(CultureInfo.InvariantCulture);
             JumpKickAccuracy = (maBaseAccy + t.PlusJumpKickAccy - jumpKickAccyPenalty).ToString(CultureInfo.InvariantCulture);
 
-            PunchDamage = MARange(MudAttackType.Punch, realm, level, maSkill, str, t.PlusMaxDamage, t.PlusPunchDmg);
-            KickDamage = MARange(MudAttackType.Kick, realm, level, maSkill, str, t.PlusMaxDamage, t.PlusKickDmg);
-            JumpKickDamage = MARange(MudAttackType.Jumpkick, realm, level, maSkill, str, t.PlusMaxDamage, t.PlusJumpKickDmg);
+            // The damage formula takes MME's nMAPlusSkill — the item-granted
+            // per-attack MA +skill bonus, floored to 1 by its Calc-Combat toggle —
+            // NOT the Martial Arts skill stat (that stat drives accuracy above, and
+            // gates these rows on/off, but never the damage magnitude). No stock
+            // ability grants a +MA-skill bonus, so 1 is the value MME uses.
+            const int maPlusSkill = 1;
+            PunchDamage = MARange(MudAttackType.Punch, realm, level, maPlusSkill, str, t.PlusMaxDamage, t.PlusPunchDmg);
+            KickDamage = MARange(MudAttackType.Kick, realm, level, maPlusSkill, str, t.PlusMaxDamage, t.PlusKickDmg);
+            JumpKickDamage = MARange(MudAttackType.Jumpkick, realm, level, maPlusSkill, str, t.PlusMaxDamage, t.PlusJumpKickDmg);
         }
         else
         {
@@ -389,11 +395,11 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
         }
     }
 
-    private static string MARange(MudAttackType type, RealmType realm, int level, int maSkill, int str,
+    private static string MARange(MudAttackType type, RealmType realm, int level, int maPlusSkill, int str,
                                   int plusMaxDamage, int maPlusDamage)
     {
         MeleeDamageResult d = CombatCalculator.CalcMartialArtsDamage(
-            type, realm, level, maSkill, str, plusMaxDamage, maPlusDamage);
+            type, realm, level, maPlusSkill, str, plusMaxDamage, maPlusDamage);
         return string.Create(CultureInfo.InvariantCulture, $"{d.MinDamage}-{d.MaxDamage}");
     }
 
