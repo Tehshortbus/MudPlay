@@ -27,6 +27,15 @@ namespace FujinTerm.Game;
 /// </remarks>
 public sealed class ChatHistoryStore : IDisposable
 {
+    /// <summary>
+    /// Upper bound on retained entries. The store is in-memory and
+    /// app-lifetime, so an all-day session would otherwise grow the
+    /// collection without limit; past this many the oldest rows drop off
+    /// the front. Generous enough that the Conversation window's scrollback
+    /// never feels truncated in practice.
+    /// </summary>
+    private const int MaxEntries = 5_000;
+
     private readonly ChatRouter _router;
     private readonly ObservableCollection<ChatLogEntry> _entries = new();
     private DateOnly _lastDate;
@@ -65,6 +74,11 @@ public sealed class ChatHistoryStore : IDisposable
         }
 
         _entries.Add(entry);
+
+        // Bounded ring: shed the oldest rows once past the cap. Chat arrives
+        // at human speech rates, so the O(n) front-removal is off any hot path.
+        while (_entries.Count > MaxEntries)
+            _entries.RemoveAt(0);
     }
 
     /// <summary>
