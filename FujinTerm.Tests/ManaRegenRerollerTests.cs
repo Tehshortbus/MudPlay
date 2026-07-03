@@ -226,4 +226,34 @@ public sealed class ManaRegenRerollerTests
         Assert.Empty(h.Recasts);
         Assert.Equal(1, h.AbilQueries);            // only the pre-dispose query
     }
+
+    // ----- IsRollSpell classifier -----------------------------------
+    // The single source of truth for "this pick reroll-eligible?": a code-145
+    // ability whose stored AbilVal is 0. Shared by the landing classifier and
+    // the Spells tab range readout, so pin the exact signature.
+
+    private static SpellFormulaInput FormulaWith(params SpellAbility[] abilities)
+        => new() { Abilities = abilities };
+
+    [Fact]
+    public void IsRollSpell_TrueForCode145WithZeroValue()
+        => Assert.True(ManaRegenReroller.IsRollSpell(
+            FormulaWith(new SpellAbility(145, 0))));
+
+    [Fact]
+    public void IsRollSpell_FalseForFixedRegenBonus()
+        // AbilVal != 0 is a flat +N regen buff, not a roll — no reroll.
+        => Assert.False(ManaRegenReroller.IsRollSpell(
+            FormulaWith(new SpellAbility(145, 12))));
+
+    [Fact]
+    public void IsRollSpell_FalseForManaHotCodes()
+        // Chaos surge (heal-mana / HP-regen codes, no 145) recasts on expiry.
+        => Assert.False(ManaRegenReroller.IsRollSpell(
+            FormulaWith(new SpellAbility(150, 0), new SpellAbility(123, 0))));
+
+    [Fact]
+    public void IsRollSpell_TrueWhenRollSlotSitsAmongOthers()
+        => Assert.True(ManaRegenReroller.IsRollSpell(
+            FormulaWith(new SpellAbility(7, 3), new SpellAbility(145, 0))));
 }

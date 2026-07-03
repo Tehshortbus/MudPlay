@@ -59,7 +59,25 @@ public sealed class ManaRegenReroller : IDisposable
 
     /// <summary>The ability code the reroll logic reads off an <c>abil</c>
     /// breakdown — mana-regen is ability 145.</summary>
-    private const int ManaRegenCode = 145;
+    public const int ManaRegenAbilityCode = 145;
+
+    /// <summary>
+    /// True when <paramref name="formula"/> is a mana-regen <i>roll</i> spell —
+    /// it carries a code-<see cref="ManaRegenAbilityCode"/> ability whose stored
+    /// <c>AbilVal</c> is 0, the signature of nature tap / mana flux (the
+    /// magnitude is rolled from the level-scaled Min/Max range on each cast). A
+    /// fixed +N regen buff (AbilVal = N) or a mana HoT (chaos surge, codes
+    /// 150 / 123) is excluded — rerolling those is pointless. Shared by the
+    /// caller's landing classifier and the Spells tab's range readout so the
+    /// "what counts as a roll spell" rule lives in exactly one place.
+    /// </summary>
+    public static bool IsRollSpell(in SpellFormulaInput formula)
+    {
+        foreach (SpellAbility a in formula.Abilities)
+            if (a.Code == ManaRegenAbilityCode && a.Value == 0)
+                return true;
+        return false;
+    }
 
     private readonly AbilBreakdownParser _parser;
     private readonly Func<ManaRegenRerollConfig> _readConfig;
@@ -144,7 +162,7 @@ public sealed class ManaRegenReroller : IDisposable
     private void OnBreakdown(AbilBreakdown b)
     {
         if (!_awaitingAbil) return;
-        if (b.Code != ManaRegenCode) return;   // an unrelated abil query — keep waiting
+        if (b.Code != ManaRegenAbilityCode) return;   // an unrelated abil query — keep waiting
 
         _awaitingAbil = false;
 

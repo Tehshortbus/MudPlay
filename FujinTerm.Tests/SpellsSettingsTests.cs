@@ -35,6 +35,11 @@ public sealed class SpellsSettingsTests
         Assert.Null(dto.WhenHpFullSpell);
         Assert.Null(dto.WhenMaFullSpell);
 
+        // Mana-regen reroll is inert by default: a null threshold disables
+        // rerolling so nothing fires until the user sets one; cap defaults to 3.
+        Assert.Null(dto.ManaRegenRerollThreshold);
+        Assert.Equal(3, dto.ManaRegenRerollCap);
+
         Assert.Null(dto.CureHoldsSpell);
         Assert.Null(dto.CurePoisonSpell);
         Assert.Null(dto.CureDiseaseSpell);
@@ -97,6 +102,9 @@ public sealed class SpellsSettingsTests
             WhenHpFullSpell    = "warcry",
             WhenMaFullSpell    = "ancient-curse",
 
+            ManaRegenRerollThreshold = -5,   // negative rolls are valid (mana flux subtracts)
+            ManaRegenRerollCap       = 4,
+
             CureHoldsSpell     = "freedom",
             CurePoisonSpell    = "antidote",
             CureDiseaseSpell   = "purify",
@@ -140,6 +148,9 @@ public sealed class SpellsSettingsTests
         Assert.Equal(dto.MaRegenSpell,       round.MaRegenSpell);
         Assert.Equal(dto.WhenHpFullSpell,    round.WhenHpFullSpell);
         Assert.Equal(dto.WhenMaFullSpell,    round.WhenMaFullSpell);
+
+        Assert.Equal(dto.ManaRegenRerollThreshold, round.ManaRegenRerollThreshold);
+        Assert.Equal(dto.ManaRegenRerollCap,       round.ManaRegenRerollCap);
 
         Assert.Equal(dto.CureHoldsSpell,     round.CureHoldsSpell);
         Assert.Equal(dto.CurePoisonSpell,    round.CurePoisonSpell);

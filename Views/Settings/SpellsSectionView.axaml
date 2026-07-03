@@ -136,6 +136,38 @@
                                      ToolTip.Tip="Cast when MA is full and we're between actions."/>
                 </Grid>
 
+                <!-- ============ Mana-regen reroll (Paradigm roll spells) ============ -->
+                <!-- Nature tap / mana flux (ability 145, roll value) land a fresh
+                     ± mana-regen-rate modifier each cast; a bad roll is worth
+                     recasting. After the buff lands the engine reads the rolled
+                     value off `abil 145` and recasts until it meets the
+                     threshold, up to the cap, stopping early at the mana floor.
+                     Empty threshold = rerolling off (recast on expiry only).
+                     Paradigm-only — Stock has no abil breakdown to read. -->
+                <TextBlock Classes="SectionHeader" Text="Mana-regen reroll (Paradigm roll spells)"/>
+                <TextBlock Text="{Binding ManaRegenRerollHint}"
+                           Foreground="{StaticResource ChromeFgMutedBrush}"
+                           FontSize="{StaticResource FontSizeSm}"
+                           FontStyle="Italic"
+                           TextWrapping="Wrap"
+                           MaxWidth="440" HorizontalAlignment="Left"
+                           Margin="0,0,0,6"/>
+                <Grid ColumnDefinitions="180,*" RowDefinitions="Auto,Auto">
+                    <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Reroll if roll below"/>
+                    <NumericUpDown Grid.Row="0" Grid.Column="1"
+                                   Value="{Binding ManaRegenRerollThreshold, Mode=TwoWay}"
+                                   Minimum="-9999" Maximum="9999" Increment="1" FormatString="0"
+                                   Width="120" HorizontalAlignment="Left"
+                                   ToolTip.Tip="Recast the mana-regen roll spell when its rolled contribution lands below this. Leave empty to disable rerolling — the spell then just recasts on expiry. Paradigm only."/>
+
+                    <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Max rerolls"/>
+                    <NumericUpDown Grid.Row="1" Grid.Column="1"
+                                   Value="{Binding ManaRegenRerollCap, Mode=TwoWay}"
+                                   Minimum="1" Maximum="20" Increment="1" FormatString="0"
+                                   Width="120" HorizontalAlignment="Left"
+                                   ToolTip.Tip="Hard ceiling on consecutive rerolls per cast cycle before accepting whatever landed. Rerolling also stops early if paying for the next cast would drop mana below the buff floor."/>
+                </Grid>
+
                 <!-- ============ Other spells ============ -->
                 <TextBlock Classes="SectionHeader" Text="Other spells"/>
                 <Grid ColumnDefinitions="180,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto">

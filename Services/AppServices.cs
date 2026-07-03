@@ -3712,13 +3712,8 @@ public sealed class AppServices
     /// excluded — rerolling those is pointless / wrong.
     /// </summary>
     private bool IsManaRegenRollSpell(string shortCode)
-    {
-        string target = shortCode.Trim();
-        foreach (Game.Spells.KnownSpell s in Spellbook.Available)
-            if (string.Equals(s.Short.Trim(), target, StringComparison.OrdinalIgnoreCase))
-                return s.Formula.Abilities.Any(a => a.Code == 145 && a.Value == 0);
-        return false;
-    }
+        => Spellbook.FindByCastCode(shortCode) is { } s
+           && Game.Spells.ManaRegenReroller.IsRollSpell(s.Formula);
 
     /// <summary>
     /// Reroll affordability gate: would paying for one more recast of the

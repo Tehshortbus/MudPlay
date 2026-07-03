@@ -73,6 +73,8 @@ public sealed partial class SpellsSectionViewModel : SettingsSectionViewModel
         "Minor self heal", "Major self heal", "Curing", "Buffing", "Debuffing",
         "Healing", "Regeneration", "Minor heal", "Major heal",
         "HP Regen", "Mana Regen", "When HP full", "When Mana full",
+        "Mana-regen reroll", "Reroll if roll below", "Reroll threshold",
+        "Max rerolls", "Reroll cap", "Nature tap", "Mana flux",
         "Other spells", "Cure Holds", "Cure poison", "Cure disease", "Cure blindness",
         "Room light", "Light", "Bless",
         "Ailment handling", "Coordination",
@@ -115,6 +117,19 @@ public sealed partial class SpellsSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private string? _maRegenSpell;
     [ObservableProperty] private string? _whenHpFullSpell;
     [ObservableProperty] private string? _whenMaFullSpell;
+
+    // ----- Mana-regen reroll (Paradigm roll spells) -----------------
+    // Empty threshold = rerolling off (the spell just recasts on expiry).
+
+    [ObservableProperty] private int? _manaRegenRerollThreshold;
+    [ObservableProperty] private int _manaRegenRerollCap = 3;
+
+    /// <summary>Plain-language state of the mana-regen reroll for the current
+    /// <see cref="MaRegenSpell"/> pick — the level-scaled roll range when it
+    /// resolves to a Paradigm roll spell (nature tap / mana flux, ability code
+    /// 145), otherwise why rerolling doesn't apply. Recomputed when the pick or
+    /// the spellbook (class / level) changes.</summary>
+    public string ManaRegenRerollHint => BuildManaRegenRerollHint();
 
     // ----- Cures + utility ------------------------------------------
 
@@ -173,7 +188,33 @@ public sealed partial class SpellsSectionViewModel : SettingsSectionViewModel
         _suppressDirty = false;
     }
 
-    private void OnSpellbookChanged() => OnPropertyChanged(nameof(SpellSuggestions));
+    private void OnSpellbookChanged()
+    {
+        OnPropertyChanged(nameof(SpellSuggestions));
+        // Class / level swap rescales the roll range shown in the reroll hint.
+        OnPropertyChanged(nameof(ManaRegenRerollHint));
+    }
+
+    // Resolves the current MaRegenSpell pick to its roll range (nature tap /
+    // mana flux, code 145) via the shared classifier, or explains why
+    // rerolling doesn't apply. Kept off the render path — only rebuilt when the
+    // pick or the spellbook changes.
+    private string BuildManaRegenRerollHint()
+    {
+        if (NullIfBlank(MaRegenSpell) is not { } code)
+            return "Pick a mana-regen spell above to configure rerolling.";
+
+        if (_spellbook.FindByCastCode(code) is not { } spell)
+            return $"'{code}' isn't in this class's spell list — rerolling needs a known roll spell.";
+
+        if (!Game.Spells.ManaRegenReroller.IsRollSpell(spell.Formula))
+            return $"{spell.Name.Trim()} isn't a roll spell — it just recasts on expiry, so rerolling doesn't apply.";
+
+        (long min, long max) = Game.Spells.SpellCalculator.AffectMagnitude(spell.Formula, _spellbook.Level);
+        string atLevel = _spellbook.Level > 0 ? $" at level {_spellbook.Level}" : string.Empty;
+        return $"{spell.Name.Trim()} rolls {min}…{max} to your mana-regen rate{atLevel}. " +
+               "Recast until the roll reaches the threshold (Paradigm only).";
+    }
 
     public override void Apply()
     {
@@ -195,6 +236,9 @@ public sealed partial class SpellsSectionViewModel : SettingsSectionViewModel
             MaRegenSpell      = NullIfBlank(MaRegenSpell),
             WhenHpFullSpell   = NullIfBlank(WhenHpFullSpell),
             WhenMaFullSpell   = NullIfBlank(WhenMaFullSpell),
+
+            ManaRegenRerollThreshold = ManaRegenRerollThreshold,
+            ManaRegenRerollCap       = ManaRegenRerollCap,
 
             CureHoldsSpell     = NullIfBlank(CureHoldsSpell),
             CurePoisonSpell    = NullIfBlank(CurePoisonSpell),
@@ -267,6 +311,9 @@ public sealed partial class SpellsSectionViewModel : SettingsSectionViewModel
         MaRegenSpell    = dto.MaRegenSpell;
         WhenHpFullSpell = dto.WhenHpFullSpell;
         WhenMaFullSpell = dto.WhenMaFullSpell;
+
+        ManaRegenRerollThreshold = dto.ManaRegenRerollThreshold;
+        ManaRegenRerollCap       = dto.ManaRegenRerollCap;
 
         CureHoldsSpell     = dto.CureHoldsSpell;
         CurePoisonSpell    = dto.CurePoisonSpell;
@@ -361,9 +408,18 @@ public sealed partial class SpellsSectionViewModel : SettingsSectionViewModel
     partial void OnMinorHealSpellChanged(string? value)      => MarkDirty();
     partial void OnMajorHealSpellChanged(string? value)      => MarkDirty();
     partial void OnHpRegenSpellChanged(string? value)        => MarkDirty();
-    partial void OnMaRegenSpellChanged(string? value)        => MarkDirty();
     partial void OnWhenHpFullSpellChanged(string? value)     => MarkDirty();
     partial void OnWhenMaFullSpellChanged(string? value)     => MarkDirty();
+
+    partial void OnMaRegenSpellChanged(string? value)
+    {
+        MarkDirty();
+        // The reroll hint keys off the mana-regen pick.
+        OnPropertyChanged(nameof(ManaRegenRerollHint));
+    }
+
+    partial void OnManaRegenRerollThresholdChanged(int? value) => MarkDirty();
+    partial void OnManaRegenRerollCapChanged(int value)        => MarkDirty();
 
     partial void OnCureHoldsSpellChanged(string? value)      => MarkDirty();
     partial void OnCurePoisonSpellChanged(string? value)     => MarkDirty();
