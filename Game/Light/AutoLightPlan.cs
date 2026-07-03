@@ -13,6 +13,14 @@ public enum AutoLightAction
     /// <summary>Buy <see cref="AutoLightPlan.BuyCount"/> of
     /// <see cref="AutoLightPlan.LightName"/> (a shop detour), then ready one.</summary>
     Buy,
+
+    /// <summary>Preemptive restock: the readied light is dwindling below the
+    /// reorder threshold, so top the pack up to the carry target
+    /// (<see cref="AutoLightPlan.BuyCount"/> of
+    /// <see cref="AutoLightPlan.LightName"/>) before it dies. A shop detour like
+    /// <see cref="Buy"/>, but the still-lit light keeps burning — the engine
+    /// requests this at most once per readied-light instance.</summary>
+    Reorder,
 }
 
 /// <summary>
@@ -35,4 +43,7 @@ public readonly record struct AutoLightPlan(
 
     public static AutoLightPlan BuyLight(string name, int count, string reason) =>
         new(AutoLightAction.Buy, name, count, reason);
+
+    public static AutoLightPlan ReorderLight(string name, int count, string reason) =>
+        new(AutoLightAction.Reorder, name, count, reason);
 }

@@ -58,6 +58,15 @@ public sealed class AutoLightProvisioner
     private string? _pendingReadyName;
     private DateTimeOffset _pendingSnapshotTime;
 
+    // The readied light instance we last fired a reorder for. A reorder is
+    // requested at most once per instance — the readied charge only refreshes on
+    // an `i` dump, so an unlatched reorder would re-detour on every dump while the
+    // light sits below the threshold, over-buying. Retired when the readied light
+    // is replaced/refreshed (name change, charge climbs, or it's gone), which is
+    // the only trustworthy signal a fresh light got lit — carried-spare charge is
+    // unknowable until it's `use`d, so we never key the latch off the pack.
+    private ReadiedLight? _reorderRequestedFor;
+
     public AutoLightProvisioner(
         Func<bool> isEnabled,
         Func<InventorySnapshot> snapshot,
@@ -116,6 +125,8 @@ public sealed class AutoLightProvisioner
                 || snap.LastUpdated > _pendingSnapshotTime))
             _pendingReadyName = null;
 
+        RetireReorderLatch(snap.ReadiedLight);
+
         int wornIllu = _wornIllu();
         IReadOnlyList<LightItem> catalogue = _catalogue();
         RouteLightScan scan = RouteLightScanner.Scan(route, _resolveRoom, wornIllu);
@@ -133,10 +144,64 @@ public sealed class AutoLightProvisioner
                 RequestProvision(plan.LightName!, plan.BuyCount, catalogue, plan.Reason);
                 break;
 
+            case AutoLightAction.Reorder:
+                RequestReorder(plan, snap.ReadiedLight, catalogue);
+                break;
+
             case AutoLightAction.None:
             default:
                 break;
         }
+    }
+
+    /// <summary>
+    /// Reorder poll bound to <c>InventoryManager.Changed</c>. An `i` dump is the
+    /// only moment the readied light's charge refreshes, so this is where a
+    /// dwindling supply is caught: it re-runs the planner against an empty route
+    /// (the reorder verdict is route-independent) and hands a resulting restock to
+    /// the shop-detour router — at most once per readied-light instance. A no-op
+    /// unless the AutoLight master toggle is on.
+    /// </summary>
+    public void OnInventoryChanged()
+    {
+        if (!_isEnabled()) return;
+
+        InventorySnapshot snap = _snapshot();
+        RetireReorderLatch(snap.ReadiedLight);
+        if (snap.ReadiedLight is null) return;
+
+        IReadOnlyList<LightItem> catalogue = _catalogue();
+        AutoLightPlan plan = AutoLightPlanner.Plan(
+            RouteLightScan.Empty, _wornIllu(), snap.ReadiedLight,
+            CarriedLights(snap.CarriedItems, catalogue), catalogue, _settings());
+
+        if (plan.Action == AutoLightAction.Reorder)
+            RequestReorder(plan, snap.ReadiedLight, catalogue);
+    }
+
+    // Fire a reorder detour once per readied-light instance. The route-dark Buy
+    // path relies on the router's own detour/suppression de-dup, but a reorder
+    // re-fires on every `i` dump while the light stays below threshold, so it
+    // needs this latch on top. Only latch when the hand-off actually took.
+    private void RequestReorder(
+        AutoLightPlan plan, ReadiedLight? current, IReadOnlyList<LightItem> catalogue)
+    {
+        if (_reorderRequestedFor is not null) return;
+        if (RequestProvision(plan.LightName!, plan.BuyCount, catalogue, plan.Reason))
+            _reorderRequestedFor = current;
+    }
+
+    // Retire the reorder latch once the light we reordered for is gone or a fresh
+    // one is lit. Charge drains monotonically for a given physical light, so a
+    // climb in Readied (or a name change / a null) is the signal a different light
+    // took its place — at which point a new reorder may fire when it too dwindles.
+    private void RetireReorderLatch(ReadiedLight? current)
+    {
+        if (_reorderRequestedFor is not { } prev) return;
+        if (current is not { } cur
+            || !string.Equals(cur.Name, prev.Name, StringComparison.OrdinalIgnoreCase)
+            || cur.Readied > prev.Readied)
+            _reorderRequestedFor = null;
     }
 
     private void ReadyLight(string name, string? readiedName, DateTimeOffset snapTime, string reason)
@@ -159,17 +224,19 @@ public sealed class AutoLightProvisioner
         _log?.Info(LogCategory, $"readied {name} ({reason})");
     }
 
-    // Hand the Buy verdict to the shop-detour router, resolving the light's MDB
-    // id from the catalogue (the router's shop / carried-count lookups key on
-    // id). Until a router is wired, the reactive AutoLightManager still posts a
-    // LightSource need, so a Buy just logs here.
-    private void RequestProvision(
+    // Hand a Buy / Reorder verdict to the shop-detour router, resolving the
+    // light's MDB id from the catalogue (the router's shop / carried-count lookups
+    // key on id). Returns whether the hand-off actually fired — the reorder latch
+    // keys off that so a dropped request (no router wired / unknown id) doesn't
+    // wedge the latch shut. Until a router is wired, the reactive AutoLightManager
+    // still posts a LightSource need, so a Buy just logs here.
+    private bool RequestProvision(
         string name, int count, IReadOnlyList<LightItem> catalogue, string reason)
     {
         if (_provision is null)
         {
             _log?.Debug(LogCategory, $"buy deferred (no provisioner): {reason}");
-            return;
+            return false;
         }
 
         int itemId = 0;
@@ -182,11 +249,12 @@ public sealed class AutoLightProvisioner
         if (itemId <= 0)
         {
             _log?.Debug(LogCategory, $"buy skipped: no catalogue id for '{name}'");
-            return;
+            return false;
         }
 
         _log?.Info(LogCategory, $"provision requested: {reason}");
         _provision(new AutoLightBuyRequest(itemId, name, Math.Max(1, count)));
+        return true;
     }
 
     // The carried-but-unworn tokens from the last `i` dump that name a light in

@@ -2961,6 +2961,10 @@ public sealed class AppServices
         AutoLightProvisioner.SetProvisioner(AutoLightShopRouter.OnBuyRequested);
         Walker.Event += AutoLightShopRouter.OnWalkEvent;
         Inventory.Changed += AutoLightShopRouter.OnInventoryChanged;
+        // Reorder poll: an `i` dump is the only moment the readied light's charge
+        // refreshes, so the provisioner catches a dwindling supply here and hands
+        // a restock to the same shop-detour router (once per readied instance).
+        Inventory.Changed += AutoLightProvisioner.OnInventoryChanged;
 
         // Phase 10 PR 10.14 — auto-equip trigger coordinator. Reads the same live
         // Equipment blob as the apply engine and the HealthManager's recovery gates

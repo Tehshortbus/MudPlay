@@ -75,6 +75,8 @@ public sealed class AutoLightProvisionerTests
 
         public void Plan(params RoomKey[] route) => Engine.OnRoutePlanned(route);
 
+        public void Poll() => Engine.OnInventoryChanged();
+
         public IReadOnlyList<string> Sent => Engine.LastSentForTests
             .Select(b => Encoding.Latin1.GetString(b).TrimEnd('\r'))
             .ToList();
@@ -194,5 +196,91 @@ public sealed class AutoLightProvisionerTests
         h.Snapshot = Snap(readied: new ReadiedLight("lantern", 200), stamp: 2);
         h.Plan(A);
         Assert.Equal(new[] { "use lantern" }, h.Sent);
+    }
+
+    [Fact]
+    public void Reorder_ReadiedBelowThreshold_HandsRestockToProvisioner()
+    {
+        // Lantern readied at 100 pts → 50 min left, below the 60-min threshold. An
+        // `i` dump lands (poll) → hand a full carry batch to the shop router; the
+        // still-lit lantern keeps burning, so nothing hits the wire.
+        Harness h = new() { Snapshot = Snap(readied: new ReadiedLight("lantern", 100)) };
+        h.Poll();
+        AutoLightBuyRequest req = Assert.Single(h.BuyRequests);
+        Assert.Equal(2, req.ItemId);            // lantern MDB id
+        Assert.Equal("lantern", req.LightName);
+        Assert.Equal(6, req.Count);             // CarryHours 12 / lantern 2 h burn
+        Assert.Empty(h.Sent);
+    }
+
+    [Fact]
+    public void Reorder_SameDwindlingLight_RequestsOnlyOnce()
+    {
+        // The readied charge only refreshes on an `i` dump, so a second poll on the
+        // same still-dwindling lantern must not re-detour — the latch holds.
+        Harness h = new() { Snapshot = Snap(readied: new ReadiedLight("lantern", 100)) };
+        h.Poll();
+        h.Snapshot = Snap(readied: new ReadiedLight("lantern", 90));   // drained further
+        h.Poll();
+        Assert.Single(h.BuyRequests);
+    }
+
+    [Fact]
+    public void Reorder_FreshLightLit_RetiresLatchThenRefiresWhenItDwindles()
+    {
+        // Reorder once for the dwindling lantern; a fresh lantern gets lit (charge
+        // climbs past the threshold) → latch retires, no duplicate. When that one
+        // in turn dwindles below the threshold, a new reorder fires.
+        Harness h = new() { Snapshot = Snap(readied: new ReadiedLight("lantern", 100)) };
+        h.Poll();
+        h.Snapshot = Snap(readied: new ReadiedLight("lantern", 240));  // fresh copy lit
+        h.Poll();
+        Assert.Single(h.BuyRequests);                                  // no duplicate
+        h.Snapshot = Snap(readied: new ReadiedLight("lantern", 100));  // now dwindling again
+        h.Poll();
+        Assert.Equal(2, h.BuyRequests.Count);
+    }
+
+    [Fact]
+    public void Reorder_ReadiedAboveThreshold_DoesNotRequest()
+    {
+        // 240 pts → 120 min left, above the 60-min threshold → no restock.
+        Harness h = new() { Snapshot = Snap(readied: new ReadiedLight("lantern", 240)) };
+        h.Poll();
+        Assert.Empty(h.BuyRequests);
+    }
+
+    [Fact]
+    public void Reorder_NoReadiedLight_DoesNotRequest()
+    {
+        // Nothing lit → nothing to reorder (a fresh ground-pickup's charge is
+        // unknown until `use`d, so we never reorder off carried spares).
+        Harness h = new() { Snapshot = Snap(carried: new[] { "lantern" }) };
+        h.Poll();
+        Assert.Empty(h.BuyRequests);
+    }
+
+    [Fact]
+    public void Reorder_Disabled_DoesNotRequest()
+    {
+        Harness h = new() { Enabled = false, Snapshot = Snap(readied: new ReadiedLight("lantern", 100)) };
+        h.Poll();
+        Assert.Empty(h.BuyRequests);
+    }
+
+    [Fact]
+    public void Reorder_RoutePlannedAndPoll_ShareTheLatch()
+    {
+        // The route-planned path fires the same reorder branch (it precedes the
+        // route-dark check), so a route announcement that already reordered must
+        // latch a following poll — one request across both seams.
+        Harness h = new()
+        {
+            Snapshot = Snap(carried: new[] { "lantern" }, readied: new ReadiedLight("lantern", 100)),
+        };
+        h.Plan(A);
+        h.Poll();
+        Assert.Single(h.BuyRequests);
+        Assert.Empty(h.Sent);           // reorder never readies — the lantern stays lit
     }
 }

@@ -192,17 +192,18 @@ public sealed class AutoLightPlannerTests
     }
 
     [Fact]
-    public void Reorder_ReadiedLightBelowThreshold_BuysSameLight()
+    public void Reorder_ReadiedLightBelowThreshold_RestocksSameLight()
     {
         // Lantern readied at 100 points → 50 min left, below the 60-min threshold →
-        // restock the lantern even though the route is lit.
+        // restock the lantern even though the route is lit. Distinct from a
+        // route-dark Buy so the engine can latch it once per readied instance.
         ReadiedLight low = new("lantern", Readied: 100);
 
         AutoLightPlan plan = AutoLightPlanner.Plan(
             Lit, wornIllu: 0, readied: low,
             carriedLights: System.Array.Empty<LightItem>(), Catalogue, Settings(carry: 12, reorder: 60));
 
-        Assert.Equal(AutoLightAction.Buy, plan.Action);
+        Assert.Equal(AutoLightAction.Reorder, plan.Action);
         Assert.Equal("lantern", plan.LightName);
         Assert.Equal(6, plan.BuyCount);
     }

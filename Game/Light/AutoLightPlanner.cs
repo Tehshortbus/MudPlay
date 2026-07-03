@@ -53,7 +53,7 @@ public static class AutoLightPlanner
             {
                 LightItem? restock = FindByName(rl.Name, catalogue) ?? preferred;
                 if (restock is { } rs)
-                    return AutoLightPlan.BuyLight(
+                    return AutoLightPlan.ReorderLight(
                         rs.Name, CarryCount(settings.CarryHours, rs.BurnTime),
                         $"reorder: {rl.Name} at ~{remainingMinutes:0} min left");
             }
