@@ -28,6 +28,14 @@
          (Phase 6 → 0.6.x), minor for in-phase milestones, patch for
          post-release fixes. -->
     <Version>0.6.0</Version>
+
+    <!-- Memory footprint: pin the Workstation GC (one small heap) rather than
+         the Server GC (a heap + background thread per core), which on a
+         many-core box inflates committed memory for a desktop client that
+         never needs that allocation throughput. Keep concurrent/background
+         collection on so gen2 sweeps don't stall the UI thread. -->
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
   </PropertyGroup>
 
   <ItemGroup>
@@ -61,6 +69,15 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="FujinTerm.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Trade a little GC CPU for a smaller resident set: the collector
+         compacts the LOH more aggressively and returns decommitted segments
+         to the OS instead of holding them for reuse. Scale is 0-9; 5 is a
+         moderate setting fit for a long-running desktop client where idle
+         RSS matters more than peak allocation throughput. -->
+    <RuntimeHostConfigurationOption Include="System.GC.ConserveMemory" Value="5" />
   </ItemGroup>
 
   <ItemGroup>
