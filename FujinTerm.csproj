@@ -72,15 +72,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Trade a little GC CPU for a smaller resident set: the collector
-         compacts the LOH more aggressively and returns decommitted segments
-         to the OS instead of holding them for reuse. Scale is 0-9; 5 is a
-         moderate setting fit for a long-running desktop client where idle
-         RSS matters more than peak allocation throughput. -->
-    <RuntimeHostConfigurationOption Include="System.GC.ConserveMemory" Value="5" />
-  </ItemGroup>
-
-  <ItemGroup>
     <PackageReference Include="Avalonia" Version="12.0.2" />
     <PackageReference Include="Avalonia.Desktop" Version="12.0.2" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="12.0.2" />
