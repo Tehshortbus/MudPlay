@@ -251,7 +251,7 @@
                     <NumericUpDown Grid.Column="3"
                                    Value="{Binding MultiAttackMaxCastsPerRoom, Mode=TwoWay}"
                                    Minimum="0" Maximum="100" Width="100" HorizontalAlignment="Left"
-                                   ToolTip.Tip="Cap on back-to-back fires."/>
+                                   ToolTip.Tip="Casts per room — blank = no limit, 0 = never cast (off), N = at most N."/>
                     <NumericUpDown Grid.Column="4"
                                    Value="{Binding MultiAttackMinManaPerCast, Mode=TwoWay}"
                                    Minimum="0" Maximum="100000" Width="130" HorizontalAlignment="Left"
@@ -277,7 +277,7 @@
                     <NumericUpDown Grid.Column="3"
                                    Value="{Binding AreaDebuffMaxCastsPerRoom, Mode=TwoWay}"
                                    Minimum="0" Maximum="100" Width="100" HorizontalAlignment="Left"
-                                   ToolTip.Tip="Cap on back-to-back fires."/>
+                                   ToolTip.Tip="Casts per room — blank = no limit, 0 = never cast (off), N = at most N."/>
                     <NumericUpDown Grid.Column="4"
                                    Value="{Binding AreaDebuffMinManaPerCast, Mode=TwoWay}"
                                    Minimum="0" Maximum="100000" Width="130" HorizontalAlignment="Left"
@@ -302,7 +302,7 @@
                     <NumericUpDown Grid.Column="3"
                                    Value="{Binding SingleTargetDebuffMaxCastsPerRoom, Mode=TwoWay}"
                                    Minimum="0" Maximum="100" Width="100" HorizontalAlignment="Left"
-                                   ToolTip.Tip="Re-cast cap for the active fight."/>
+                                   ToolTip.Tip="Casts per room — blank = no limit, 0 = never cast (off), N = at most N."/>
                     <NumericUpDown Grid.Column="4"
                                    Value="{Binding SingleTargetDebuffMinManaPerCast, Mode=TwoWay}"
                                    Minimum="0" Maximum="100000" Width="130" HorizontalAlignment="Left"
@@ -327,7 +327,7 @@
                     <NumericUpDown Grid.Column="3"
                                    Value="{Binding NormalAttackSpellMaxCastsPerRoom, Mode=TwoWay}"
                                    Minimum="0" Maximum="100" Width="100" HorizontalAlignment="Left"
-                                   ToolTip.Tip="Cap on back-to-back fires."/>
+                                   ToolTip.Tip="Casts per room — blank = no limit, 0 = never cast (off), N = at most N."/>
                     <NumericUpDown Grid.Column="4"
                                    Value="{Binding NormalAttackSpellMinManaPerCast, Mode=TwoWay}"
                                    Minimum="0" Maximum="100000" Width="130" HorizontalAlignment="Left"
@@ -352,7 +352,7 @@
                     <NumericUpDown Grid.Column="3"
                                    Value="{Binding AlternateAttackSpellMaxCastsPerRoom, Mode=TwoWay}"
                                    Minimum="0" Maximum="100" Width="100" HorizontalAlignment="Left"
-                                   ToolTip.Tip="Cap on back-to-back fires."/>
+                                   ToolTip.Tip="Casts per room — blank = no limit, 0 = never cast (off), N = at most N."/>
                     <NumericUpDown Grid.Column="4"
                                    Value="{Binding AlternateAttackSpellMinManaPerCast, Mode=TwoWay}"
                                    Minimum="0" Maximum="100000" Width="130" HorizontalAlignment="Left"

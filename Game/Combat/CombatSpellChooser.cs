@@ -323,9 +323,10 @@ public sealed class CombatSpellChooser
     private static bool IsLevelBlocked(in CombatSpellContext ctx, CombatSpellAction action) =>
         ctx.LevelBlockedActions is { } set && set.Contains(action);
 
-    /// <summary>Under the per-room cast cap. 0 = unlimited.</summary>
+    /// <summary>Under the per-room cast cap. <c>null</c> = no limit;
+    /// <c>0</c> = never cast (explicit off); <c>N</c> = fire until N reached.</summary>
     private static bool CastsOk(CombatSpellSlot slot, int castsSoFar) =>
-        slot.MaxCastsPerRoom <= 0 || castsSoFar < slot.MaxCastsPerRoom;
+        slot.MaxCastsPerRoom is not { } cap || castsSoFar < cap;
 
     private static bool ManaOk(CombatSpellSlot slot, in CombatSpellContext ctx, ThresholdMode mode)
     {

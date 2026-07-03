@@ -18,7 +18,7 @@ namespace FujinTerm.Tests;
 public sealed class CombatSpellChooserTests
 {
     private static CombatSpellSlot Slot(
-        string? name, int minEnemies = 0, int maxCasts = 0, int minMana = 0) => new()
+        string? name, int minEnemies = 0, int? maxCasts = null, int minMana = 0) => new()
     {
         SpellName = name,
         MinEnemies = minEnemies,
@@ -221,6 +221,35 @@ public sealed class CombatSpellChooserTests
         // New target, but the room-wide single-debuff cap (1) is reached →
         // no more debuffs.
         Assert.Null(sut.ChooseDebuff(settings, Ctx(target: "a kobold")));
+    }
+
+    [Fact]
+    public void ChooseDebuff_Single_MaxCastsZero_NeverCasts()
+    {
+        CombatSpellChooser sut = new();
+        CombatSettings settings = new()
+        {
+            // 0 is an explicit off switch, not "unlimited".
+            SingleTargetDebuffSpell = Slot("weaken", maxCasts: 0),
+            NormalAttackSpell = Slot("harm"),
+        };
+
+        Assert.Null(sut.ChooseDebuff(settings, Ctx(target: "a rat")));
+    }
+
+    [Fact]
+    public void Choose_MultiAttack_MaxCastsZero_NeverCasts()
+    {
+        CombatSpellChooser sut = new();
+        CombatSettings settings = new()
+        {
+            // Configured spell, but a 0 cap means it must never fire.
+            MultiAttackSpell = Slot("star", minEnemies: 3, maxCasts: 0),
+            NormalAttackSpell = Slot("harm"),
+        };
+
+        CombatSpellDecision r = sut.Choose(settings, Ctx(enemies: 4));
+        Assert.NotEqual(CombatSpellAction.MultiAttack, r.Action);
     }
 
     // ----- 3. Attack phase: multi-attack while qualified ----------------

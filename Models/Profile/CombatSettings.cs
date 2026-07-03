@@ -242,8 +242,11 @@ public sealed class CombatSpellSlot
     public int MinEnemies { get; set; }
 
     /// <summary>Cap on back-to-back fires within one room / engagement.
-    /// 0 = unlimited.</summary>
-    public int MaxCastsPerRoom { get; set; }
+    /// <c>null</c> (blank in the editor) = no limit — cast as often as the
+    /// slot's other gates allow; <c>0</c> = never cast (an explicit off
+    /// switch that keeps the spell name configured); <c>N &gt; 0</c> = at most
+    /// N casts per room.</summary>
+    public int? MaxCastsPerRoom { get; set; }
 
     /// <summary>Minimum mana required to cast — interpreted per
     /// <see cref="CombatSettings.SpellManaThresholdMode"/>.</summary>
