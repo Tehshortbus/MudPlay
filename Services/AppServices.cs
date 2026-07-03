@@ -1610,6 +1610,12 @@ public sealed class AppServices
         Party.AttachPlayerState(PlayerState);
         Tick = new Game.TickEngine(Router);
         Regen = new Game.RegenTracker(PlayerState);
+        // Seed the regen cadence from the active realm (Stock 30/20/10 vs
+        // ParaMud's thirds-on-a-10s-grid) and re-seed on every set switch.
+        // ActiveRealm reads Stock until a set with an Info table loads; the
+        // subscription corrects it when SwitchSet first fires.
+        Regen.SetRealm(GameData.ActiveRealm);
+        GameData.ActiveSetChanged += _ => Regen.SetRealm(GameData.ActiveRealm);
         RegenDiagnostics = new Game.RegenDiagnosticsRecorder(Regen, PlayerState, Log);
         // RemoteCommands is constructed AFTER Chat / Party / Players are
         // ready (they're all dependencies). Handler registration ships

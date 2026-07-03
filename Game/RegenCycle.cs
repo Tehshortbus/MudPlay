@@ -15,8 +15,10 @@ public sealed partial class RegenCycle : ObservableObject
     /// <summary>Human-readable tag for diagnostics ("HP natural", "HP rest", "MP medi", etc.).</summary>
     public string Name { get; }
 
-    /// <summary>Fixed cycle length — realm constant, not refined by observation.</summary>
-    public TimeSpan Interval { get; }
+    /// <summary>Cycle length for the active realm — a realm constant, not
+    /// refined by observation, but re-seeded when the realm changes via
+    /// <see cref="Reseed"/> (see <see cref="RealmRegenProfile"/>).</summary>
+    public TimeSpan Interval { get; private set; }
 
     /// <summary>Running-average per-tick amount (HP / MP delta). Refined via observation.</summary>
     public RegenStat Stat { get; }
@@ -39,6 +41,19 @@ public sealed partial class RegenCycle : ObservableObject
         Name = name;
         Interval = interval;
         Stat = new RegenStat(interval);
+    }
+
+    /// <summary>
+    /// Re-seed the cycle length for a new realm cadence. Keeps the current
+    /// <see cref="Anchor"/> (the countdown re-phases to the new interval from
+    /// wherever it sits) and resets the amount estimate, which was learned
+    /// under the old realm's cadence.
+    /// </summary>
+    public void Reseed(TimeSpan interval)
+    {
+        if (interval <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(interval));
+        Interval = interval;
+        Stat.Reseed(interval);
     }
 
     /// <summary>(Re)start the cycle, anchoring at <paramref name="at"/>.</summary>

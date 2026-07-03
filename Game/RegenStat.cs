@@ -9,8 +9,8 @@ namespace FujinTerm.Game;
 /// </summary>
 public sealed partial class RegenStat : ObservableObject
 {
-    /// <summary>Seed interval used until observation refines the estimate.</summary>
-    public TimeSpan SeedInterval { get; }
+    /// <summary>Seed interval used until observation refines the estimate. Re-set on a realm switch via <see cref="Reseed"/>.</summary>
+    public TimeSpan SeedInterval { get; private set; }
 
     /// <summary>Current best estimate of the regen tick interval (seconds-precision).</summary>
     [ObservableProperty]
@@ -74,6 +74,21 @@ public sealed partial class RegenStat : ObservableObject
     /// <summary>Reset the amount estimate + sample count back to seed.</summary>
     public void Reset()
     {
+        EstimatedAmount = 0;
+        SampleCount = 0;
+    }
+
+    /// <summary>
+    /// Re-seed the interval for a new realm cadence (see
+    /// <see cref="RealmRegenProfile"/>) and clear the amount estimate — the
+    /// old per-tick average was learned under a different divisor / cadence,
+    /// so it's stale. <see cref="AddSample"/>'s cycle-count math keys off
+    /// <see cref="SeedInterval"/>, so it has to move with the realm.
+    /// </summary>
+    public void Reseed(TimeSpan seedInterval)
+    {
+        SeedInterval = seedInterval;
+        EstimatedInterval = seedInterval;
         EstimatedAmount = 0;
         SampleCount = 0;
     }
