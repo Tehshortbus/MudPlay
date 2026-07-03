@@ -13,14 +13,18 @@ namespace FujinTerm.Game.Map;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The ceiling is <c>maxRacialStrength + bestGearBonus</c>:
+/// The ceiling is <c>maxRacialStrength + bestGearBonus + heldBonus</c>:
 /// </para>
 /// <list type="bullet">
 ///   <item>the strongest race's trainable Strength cap (<c>Races.xSTR</c>, plus any
-///   innate <c>Strength</c> ability — 0 in stock data, folded for completeness); and</item>
+///   innate <c>Strength</c> ability — 0 in stock data, folded for completeness);</item>
 ///   <item>the best per-slot <c>+Strength</c> gear (item ability code 46) obtainable by
 ///   any one class — each wear slot contributes its single strongest wearable piece, and
-///   the two-ring / two-wrist slots contribute their best piece twice.</item>
+///   the two-ring / two-wrist slots contribute their best piece twice; and</item>
+///   <item>the best <c>+Strength</c> <em>held</em> item per Unique-Pool (item ability code
+///   188) — a "held" item (ParaMUD's floating spheres) grants its stats just by being
+///   carried, ungated by class or <c>StrReq</c>, but only one item may be held per pool, so
+///   a pool contributes its single strongest <c>+Strength</c> piece and distinct pools stack.</item>
 /// </list>
 /// <para>
 /// Race and class optimise independently: item eligibility (<see cref="ItemEquipFilter"/>)
@@ -52,6 +56,11 @@ public sealed class MaxStrengthIndex
     /// <summary>Ability slots on an Items row (<c>Abil-0..19</c>).</summary>
     private const int ItemAbilitySlots = 20;
 
+    /// <summary>Item ability code <c>188</c> (<see cref="GameData.AbilityNames"/>
+    /// "Unique Pool"): flags a "held" item whose stats apply just by being carried, and
+    /// whose <c>AbilVal</c> is the pool id — only one item may be held per pool.</summary>
+    private const int UniquePoolCode = 188;
+
     private readonly GameDataCache _cache;
     private int? _max;
 
@@ -81,14 +90,27 @@ public sealed class MaxStrengthIndex
         int baseStrength = MaxRacialStrength(races);
         if (baseStrength <= 0) return DoorPolicy.UnbashableStrengthThreshold;
 
-        // Candidate +Strength gear: (row, bonus, slot). Level / alignment stay wide
-        // open; an item whose StrReq exceeds what the strongest race can train to is
-        // unreachable, so it never counts.
+        // Split +Strength items into worn/wielded gear and "held" Unique-Pool items.
+        //  - Gear: slotted, per-class equip-gated below; an item whose StrReq exceeds what
+        //    the strongest race can train to is unreachable, so it never counts.
+        //  - Held: a Unique-Pool (code 188) item grants its stats just by being carried
+        //    (ParaMUD's floating spheres), ungated by class / StrReq. Only one item may be
+        //    held per pool, so a pool contributes its single strongest +Strength piece;
+        //    distinct pools stack.
         List<(JsonElement Row, int Bonus, EquipmentSlot Slot)> candidates = new();
+        Dictionary<int, int> bestPerPool = new();
         foreach (JsonElement row in items.RootElement.EnumerateArray())
         {
             if (row.ValueKind != JsonValueKind.Object) continue;
             int bonus = StrengthBonus(row, ItemAbilitySlots);
+
+            if (TryUniquePool(row, out int pool))
+            {
+                if (!bestPerPool.TryGetValue(pool, out int best) || bonus > best)
+                    bestPerPool[pool] = bonus;
+                continue;   // never also counted as worn gear
+            }
+
             if (bonus <= 0) continue;
             if (ReadInt(row, "StrReq") > baseStrength) continue;
             if (EquipmentSlotMap.SlotForItem(row) is not { } slot) continue;
@@ -105,7 +127,10 @@ public sealed class MaxStrengthIndex
             bestGear = Math.Max(bestGear, GearBonusForClass(candidates, cp));
         }
 
-        return baseStrength + bestGear;
+        int heldBonus = 0;
+        foreach (int b in bestPerPool.Values) heldBonus += b;
+
+        return baseStrength + bestGear + heldBonus;
     }
 
     // Highest trainable Strength across races: Races.xSTR plus any innate +Strength.
@@ -156,6 +181,21 @@ public sealed class MaxStrengthIndex
             sum += ReadInt(row, $"AbilVal-{i}");
         }
         return sum;
+    }
+
+    // A Unique-Pool (code 188) item's stats apply while carried, not worn; its AbilVal is
+    // the pool id, and only one item per pool may be held. Returns false when the row
+    // carries no such flag (so it flows through the normal worn/wielded gear path).
+    private static bool TryUniquePool(JsonElement row, out int pool)
+    {
+        for (int i = 0; i < ItemAbilitySlots; i++)
+        {
+            if (ReadInt(row, $"Abil-{i}") != UniquePoolCode) continue;
+            pool = ReadInt(row, $"AbilVal-{i}");
+            return true;
+        }
+        pool = 0;
+        return false;
     }
 
     private static int ReadInt(JsonElement row, string property)

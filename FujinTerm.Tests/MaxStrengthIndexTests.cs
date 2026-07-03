@@ -56,6 +56,15 @@ public sealed class MaxStrengthIndexTests : IDisposable
         " {\"Number\":13,\"Name\":\"cursed gauntlet\",\"ItemType\":2,\"Worn\":3,\"StrReq\":999,\"Abil-0\":46,\"AbilVal-0\":50}," +
         " {\"Number\":14,\"Name\":\"war axe\",\"ItemType\":1,\"WeaponType\":2,\"StrReq\":0,\"ClassRest-0\":1,\"Abil-0\":46,\"AbilVal-0\":20}]";
 
+    // Held Unique-Pool (code 188) items — stats apply while merely carried, ungated by
+    // class / StrReq, one item per pool.
+    //  - red / green sphere : pool 1, +15 / +8 STR — pool contributes its best (15), not both
+    //  - amulet of carrying : pool 2, +5  STR — a distinct pool stacks on top
+    private const string HeldItems =
+        "[{\"Number\":20,\"Name\":\"floating red sphere\",\"ItemType\":0,\"Worn\":0,\"StrReq\":0,\"Abil-0\":46,\"AbilVal-0\":15,\"Abil-1\":188,\"AbilVal-1\":1}," +
+        " {\"Number\":21,\"Name\":\"floating green sphere\",\"ItemType\":0,\"Worn\":0,\"StrReq\":0,\"Abil-0\":46,\"AbilVal-0\":8,\"Abil-1\":188,\"AbilVal-1\":1}," +
+        " {\"Number\":22,\"Name\":\"amulet of carrying\",\"ItemType\":0,\"Worn\":0,\"StrReq\":0,\"Abil-0\":46,\"AbilVal-0\":5,\"Abil-1\":188,\"AbilVal-1\":2}]";
+
     [Fact]
     public void MaxAchievableStrength_StrongestRacePlusBestGearOverAllClasses()
     {
@@ -69,6 +78,21 @@ public sealed class MaxStrengthIndexTests : IDisposable
         MaxStrengthIndex index = new(cache);
 
         Assert.Equal(230, index.MaxAchievableStrength);
+    }
+
+    [Fact]
+    public void MaxAchievableStrength_HeldUniquePoolItems_BestPerPoolSummed()
+    {
+        // Ogre base 190, no worn/wielded gear. Held: pool 1 (red +15 / green +8) yields its
+        // best 15 — only one item per pool may be held, so 15 not 23; pool 2 (+5) stacks.
+        // => 190 + 15 + 5 = 210 (a naive sum-all-held would give 218 or 228).
+        SeedSet("held", ("Races", Races), ("Classes", Classes), ("Items", HeldItems));
+        GameDataCache cache = new(_root);
+        cache.SwitchSet("held");
+
+        MaxStrengthIndex index = new(cache);
+
+        Assert.Equal(210, index.MaxAchievableStrength);
     }
 
     [Fact]
