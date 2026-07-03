@@ -113,6 +113,7 @@ public sealed class CastingDirector : IDisposable
     private Func<MessageRecord, string?>? _shortFromAppliedRecord;
     private Func<int, string?>? _classNameByNumber;
     private Func<string, bool>? _isPartyWideBuff;
+    private Action<string>? _selfBuffLandedSink;
     private Func<DateTime> _now = () => DateTime.UtcNow;
     private LineExtractor? _lines;
 
@@ -354,6 +355,21 @@ public sealed class CastingDirector : IDisposable
     }
 
     /// <summary>
+    /// Wire a sink notified with the 4-letter cast code every time one of OUR
+    /// self-buffs is confirmed to have landed (via the ConditionTracker
+    /// AppliedMessage path). The mana-regen reroll engine subscribes here to
+    /// learn when a code-145 roll spell (nature tap / mana flux) re-landed so it
+    /// can read <c>abil 145</c> and reroll a bad value; the sink itself owns the
+    /// spell / realm filtering. Optional — until wired, self-buff landings only
+    /// refresh the recast timer.
+    /// </summary>
+    public void SetSelfBuffLandedSink(Action<string> sink)
+    {
+        ArgumentNullException.ThrowIfNull(sink);
+        _selfBuffLandedSink = sink;
+    }
+
+    /// <summary>
     /// Override the clock used for buff-expiry math. Test seam — production
     /// uses <see cref="DateTime.UtcNow"/>.
     /// </summary>
@@ -407,9 +423,15 @@ public sealed class CastingDirector : IDisposable
         // A self-cast buff confirmed via its AppliedMessage — start (or
         // refresh) its duration timer keyed to self so the recast window
         // is honoured. Party-cast confirmation rides OnLine instead.
-        if (_shortFromAppliedRecord?.Invoke(r) is { } shortCode
-            && _buffInfoByShort?.Invoke(shortCode) is { } info)
-            _activeUntil[("", shortCode)] = _now().AddSeconds(info.DurationSec);
+        if (_shortFromAppliedRecord?.Invoke(r) is { } shortCode)
+        {
+            if (_buffInfoByShort?.Invoke(shortCode) is { } info)
+                _activeUntil[("", shortCode)] = _now().AddSeconds(info.DurationSec);
+            // Feed the reroll engine: a re-landed code-145 roll spell wants its
+            // fresh roll read off abil 145. The sink filters for the roll spell
+            // + Paradigm realm; here we just report the confirmed landing.
+            _selfBuffLandedSink?.Invoke(shortCode);
+        }
         Evaluate();
     }
 

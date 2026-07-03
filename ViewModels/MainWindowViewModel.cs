@@ -662,6 +662,9 @@ public partial class MainWindowViewModel : ObservableObject
         // duration timer. Self-buff confirmation goes through the
         // ConditionTracker AppliedMessage path instead.
         AppServices.Current.CastDirector.AttachLineExtractor(Lines);
+        // abil-breakdown parser — feeds the mana-regen reroll engine the rolled
+        // `spells:` slice of `abil 145` after a nature-tap / mana-flux landing.
+        AppServices.Current.AbilBreakdown.AttachLineExtractor(Lines);
         // Inbound ailment chip-clear — PartyAilmentTracker watches server
         // lines for OUR cure spell landing on a party member (matched by the
         // cure spell's CasterMessage template) and clears that member's
@@ -784,6 +787,9 @@ public partial class MainWindowViewModel : ObservableObject
         // ride the same gate-wrapped pipeline so spell commands respect
         // the suicide-password / trainer-menu lockouts upstream.
         AppServices.Current.Cast.SetWireSender(engineSend);
+        // Mana-regen reroll engine's `abil 145` query + cooldown-bypassing
+        // recast ride the same gate-wrapped pipeline as the cast engine.
+        AppServices.Current.SetEngineWireSender(engineSend);
         // PR 10.18 — item-cast buff sequencer's wield/use/wield commands ride
         // the same gate-wrapped pipeline as the other engines.
         AppServices.Current.ItemCast.SetWireSender(engineSend);
@@ -2187,6 +2193,7 @@ public partial class MainWindowViewModel : ObservableObject
                 // on the next session.
                 AppServices.Current.Conditions.ClearAll();
                 AppServices.Current.CastDirector.ResetBuffTracking();
+                AppServices.Current.ManaRegen.Reset();
 
                 // Categorise: if the user clicked Disconnect, the flag was
                 // set in DisconnectInternalAsync. Otherwise check for a

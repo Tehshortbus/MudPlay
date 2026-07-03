@@ -497,6 +497,7 @@ public sealed class CastingDirectorTests
         public ConditionTracker Conditions { get; }
         public CastingDirector Director { get; }
         public List<string> CastsSent { get; } = new();
+        public List<string> SelfBuffLanded { get; } = new();
         public SpellsSettings Spells { get; set; } = new();
         public HealthSettings Health { get; set; } = new();
         public bool AutoBlessEnabled { get; set; } = true;
@@ -536,6 +537,9 @@ public sealed class CastingDirectorTests
                     ? (info.Caster, info.Duration)
                     : null,
                 record => record.Name);
+            // Capture the reroll sink so a test can assert a confirmed self-buff
+            // landing is reported to the mana-regen reroll engine.
+            Director.SetSelfBuffLandedSink(SelfBuffLanded.Add);
             // Healthy baseline so Tier-1 doesn't fire over the cure path.
             State.MaxHp = 200;
             State.Hp = 200;
@@ -590,6 +594,19 @@ public sealed class CastingDirectorTests
 
         Assert.Single(h.CastsSent);
         Assert.Equal("neutralize", h.CastsSent[0]);
+    }
+
+    [Fact]
+    public void SelfBuffLanding_NotifiesTheRerollSink()
+    {
+        using CureHarness h = new();
+        // A confirmed self-buff — its condition Name doubles as the cast short
+        // in this harness, so a resolved landing reports that short to the sink.
+        h.RecordCondition("ntap", MessageFlags.None, "You tap into the mana around you.");
+
+        h.FeedLine("You tap into the mana around you.");
+
+        Assert.Contains("ntap", h.SelfBuffLanded);
     }
 
     [Fact]

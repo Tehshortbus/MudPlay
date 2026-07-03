@@ -985,6 +985,21 @@ public sealed class AppServices
     public Game.Spells.CastingDirector CastDirector { get; private set; } = null!;
 
     /// <summary>
+    /// Parser for <c>abil &lt;code&gt;</c> breakdown output. Attached to the
+    /// live line stream in the main VM; feeds <see cref="ManaRegen"/> the
+    /// rolled <c>spells:</c> slice of an <c>abil 145</c> mana-regen read.
+    /// </summary>
+    public Game.AbilBreakdownParser AbilBreakdown { get; private set; } = null!;
+
+    /// <summary>
+    /// Paradigm-only mana-regen roll-spell reroll engine (nature tap / mana
+    /// flux, ability 145). Driven by <see cref="CastDirector"/>'s self-buff
+    /// landing sink + <see cref="AbilBreakdown"/>; recasts a below-threshold
+    /// roll up to the configured cap.
+    /// </summary>
+    public Game.Spells.ManaRegenReroller ManaRegen { get; private set; } = null!;
+
+    /// <summary>
     /// PR 10.18 — runs the equip → use → re-equip wire sequence for an
     /// item-cast Bless slot (a <see cref="Game.Spells.ItemCastToken"/>). Driven
     /// by <see cref="CastDirector"/>; wire-sender bound in the main VM.
@@ -2462,6 +2477,35 @@ public sealed class AppServices
         CastDirector.SetPartyWideBuffCheck(IsPartyWideBuff);
         Tick.CombatTickElapsed += CastDirector.OnCombatTick;
 
+        // Mana-regen roll-spell reroll (Paradigm only). AbilBreakdown parses
+        // `abil 145`; ManaRegen reads its rolled `spells:` slice after each
+        // nature-tap / mana-flux landing and recasts a below-threshold roll up
+        // to the cap, hard-stopping at the buff mana floor. The abil query + the
+        // deliberate cooldown-bypassing recast go out on the raw engine sender
+        // (bound in the main VM); the recast still notifies Cast so the
+        // one-cast-per-round cooldown bookkeeping stays honest.
+        AbilBreakdown = new Game.AbilBreakdownParser(Log);
+        ManaRegen = new Game.Spells.ManaRegenReroller(
+            AbilBreakdown,
+            readConfig: () =>
+            {
+                Models.Profile.SpellsSettings s =
+                    ReadSection<Models.Profile.SpellsSettings>(Profile.Current, "Spells");
+                return new Game.Spells.ManaRegenRerollConfig(
+                    s.ManaRegenRerollThreshold, s.ManaRegenRerollCap);
+            },
+            sendAbilQuery: () =>
+                _engineWireSend?.Invoke(System.Text.Encoding.Latin1.GetBytes("abil 145\r")),
+            recast: shortCode =>
+            {
+                _engineWireSend?.Invoke(
+                    System.Text.Encoding.Latin1.GetBytes(shortCode.Trim() + "\r"));
+                Cast.NotifyExternalCastSent();
+            },
+            canAffordReroll: CanAffordManaRegenReroll,
+            log: Log);
+        CastDirector.SetSelfBuffLandedSink(OnSelfBuffLandedForReroll);
+
         // Phase 9 PR 9.A (spell extension) — opt the combat engine into the
         // per-round combat-spell economy (pre-attack debuff + multi/normal/
         // alternate attack spells) atop the shared CastCoordinator so the
@@ -3620,6 +3664,84 @@ public sealed class AppServices
             if (string.Equals(s.Name.Trim(), record.Name.Trim(), StringComparison.OrdinalIgnoreCase))
                 return s.Short;
         return null;
+    }
+
+    // ----- Mana-regen reroll glue ---------------------------------------
+    // Raw engine wire-send used by the reroll engine for its abil query + the
+    // deliberate cooldown-bypassing recast. Bound in the main VM alongside the
+    // per-service SetWireSender calls; null until the first connect.
+    private Action<byte[]>? _engineWireSend;
+
+    /// <summary>Bind the raw engine wire-sender the mana-regen reroll engine
+    /// uses to send <c>abil 145</c> and its recast. Same
+    /// <c>engineSend</c> the per-service <c>SetWireSender</c> calls receive.</summary>
+    public void SetEngineWireSender(Action<byte[]> send)
+    {
+        ArgumentNullException.ThrowIfNull(send);
+        _engineWireSend = send;
+    }
+
+    /// <summary>
+    /// A self-buff of ours landed (confirmed via its AppliedMessage). On
+    /// Paradigm, if it's the configured mana-regen spell AND that spell is a
+    /// code-145 rolled affect (nature tap / mana flux, not a HoT like chaos
+    /// surge), hand it to the reroll engine to read <c>abil 145</c> and reroll a
+    /// bad value. Stock has no abil breakdown, so it's a no-op there.
+    /// </summary>
+    private void OnSelfBuffLandedForReroll(string shortCode)
+    {
+        if (string.IsNullOrWhiteSpace(shortCode)) return;
+        if (GameData.ActiveRealm != Game.RealmType.ParaMud) return;
+
+        Models.Profile.SpellsSettings spells =
+            ReadSection<Models.Profile.SpellsSettings>(Profile.Current, "Spells");
+        string? maRegen = spells.MaRegenSpell?.Trim();
+        if (string.IsNullOrEmpty(maRegen)) return;
+        if (!string.Equals(maRegen, shortCode.Trim(), StringComparison.OrdinalIgnoreCase)) return;
+        if (!IsManaRegenRollSpell(maRegen)) return;
+
+        ManaRegen.OnRollSpellLanded(maRegen);
+    }
+
+    /// <summary>
+    /// True when the spell with cast code <paramref name="shortCode"/> carries a
+    /// code-145 (mana-regen) ability whose <c>AbilVal</c> is 0 — the signature
+    /// of a <i>rolled</i> regen-rate modifier (nature tap / mana flux) whose
+    /// magnitude comes from the level-scaled Min/Max range. A fixed +N regen
+    /// buff (AbilVal = N) or a mana HoT (code 150 / 123, e.g. chaos surge) is
+    /// excluded — rerolling those is pointless / wrong.
+    /// </summary>
+    private bool IsManaRegenRollSpell(string shortCode)
+    {
+        string target = shortCode.Trim();
+        foreach (Game.Spells.KnownSpell s in Spellbook.Available)
+            if (string.Equals(s.Short.Trim(), target, StringComparison.OrdinalIgnoreCase))
+                return s.Formula.Abilities.Any(a => a.Code == 145 && a.Value == 0);
+        return false;
+    }
+
+    /// <summary>
+    /// Reroll affordability gate: would paying for one more recast of the
+    /// configured mana-regen spell drop mana below the buff floor
+    /// (<see cref="Models.Profile.HealthSettings.BlessIfAboveMa"/> percent of
+    /// max)? An unknown cost is treated as free. Returns <c>false</c> when the
+    /// pool is unknown or the recast would breach the floor.
+    /// </summary>
+    private bool CanAffordManaRegenReroll()
+    {
+        int maxMa = PlayerState.MaxMa;
+        if (maxMa <= 0) return false;
+
+        Models.Profile.SpellsSettings spells =
+            ReadSection<Models.Profile.SpellsSettings>(Profile.Current, "Spells");
+        string? shortCode = spells.MaRegenSpell?.Trim();
+        if (string.IsNullOrEmpty(shortCode)) return false;
+
+        int cost = Spellbook.ManaCostOf(shortCode) ?? 0;
+        Models.Profile.HealthSettings health =
+            ReadSection<Models.Profile.HealthSettings>(Profile.Current, "Health");
+        int floor = (int)Math.Round(maxMa * (health.BlessIfAboveMa / 100.0));
+        return PlayerState.Ma - cost >= floor;
     }
 
     /// <summary>
