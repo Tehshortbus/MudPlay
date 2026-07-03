@@ -55,6 +55,8 @@ public sealed class RegenTracker : IDisposable
     private DateTimeOffset? _lastArtifactAt;
     private int _lastHp;
     private int _lastMa;
+    private DateTimeOffset? _lastHpTickAt;
+    private DateTimeOffset? _lastMaTickAt;
     private bool _hpBaselineSet;
     private bool _maBaselineSet;
     private bool _disposed;
@@ -147,7 +149,9 @@ public sealed class RegenTracker : IDisposable
         // valid even when MA sits at max and never upticks.
         if (natClaimed) MpNatural.Start(now);
 
-        HpTickObserved?.Invoke(new RegenSample(now, delta, TimeSpan.Zero, _state.Position));
+        TimeSpan sinceLast = _lastHpTickAt is { } prevTick ? now - prevTick : TimeSpan.Zero;
+        _lastHpTickAt = now;
+        HpTickObserved?.Invoke(new RegenSample(now, delta, sinceLast, _state.Position));
     }
 
     private void ConsiderMa()
@@ -179,7 +183,9 @@ public sealed class RegenTracker : IDisposable
         // still see a live HP countdown driven by observed MA ticks.
         if (natClaimed) HpNatural.Start(now);
 
-        MaTickObserved?.Invoke(new RegenSample(now, delta, TimeSpan.Zero, _state.Position));
+        TimeSpan sinceLast = _lastMaTickAt is { } prevTick ? now - prevTick : TimeSpan.Zero;
+        _lastMaTickAt = now;
+        MaTickObserved?.Invoke(new RegenSample(now, delta, sinceLast, _state.Position));
     }
 
     /// <summary>
@@ -237,7 +243,13 @@ public sealed class RegenTracker : IDisposable
     }
 }
 
-/// <summary>One observed regen sample — payload of the tick-observed events.</summary>
+/// <summary>
+/// One observed regen sample — payload of the tick-observed events.
+/// <paramref name="IntervalSinceLast"/> is the wall-clock gap since the
+/// previous observed uptick of the <i>same</i> stream (HP or MA), or
+/// <see cref="TimeSpan.Zero"/> for the first sample. It carries the raw
+/// cadence a diagnostic can read a realm's real tick timing off of.
+/// </summary>
 public readonly record struct RegenSample(
     DateTimeOffset Timestamp,
     int Delta,

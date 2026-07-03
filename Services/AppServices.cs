@@ -596,6 +596,14 @@ public sealed class AppServices
     public Game.RegenTracker Regen { get; }
 
     /// <summary>
+    /// Debug-channel instrument that traces observed HP / MA regen ticks to
+    /// the program log (silent unless the Log pane's Debug toggle is on). Held
+    /// here purely to keep the <see cref="Regen"/> subscription alive for the
+    /// app's lifetime; nothing reads it back.
+    /// </summary>
+    public Game.RegenDiagnosticsRecorder RegenDiagnostics { get; }
+
+    /// <summary>
     /// Live mirror of the loaded character profile's Display settings.
     /// The Settings → Display section writes through to this so changes
     /// (font size in particular) apply without restarting the app.
@@ -1602,6 +1610,7 @@ public sealed class AppServices
         Party.AttachPlayerState(PlayerState);
         Tick = new Game.TickEngine(Router);
         Regen = new Game.RegenTracker(PlayerState);
+        RegenDiagnostics = new Game.RegenDiagnosticsRecorder(Regen, PlayerState, Log);
         // RemoteCommands is constructed AFTER Chat / Party / Players are
         // ready (they're all dependencies). Handler registration ships
         // in PR 6.3 — the engine is empty here; we just wire the plumbing.
