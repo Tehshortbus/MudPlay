@@ -23,6 +23,9 @@ namespace FujinTerm.Game;
 /// <see cref="StatlinePromptRegexBuilder"/> emits those as <i>non-capturing</i>
 /// digit runs — they render on the wire without feeding a second write path
 /// into the max fields, so this parser stays the sole writer (Phase 3 PR 3.5).
+/// The high-water mark reads low until the character is first seen at full;
+/// the authoritative ceilings come from the <c>stat</c> screen via
+/// <see cref="ApplyStatScreenMax"/> (routed here to preserve sole ownership).
 /// </para>
 /// </remarks>
 public sealed class PromptParser : IDisposable
@@ -60,6 +63,22 @@ public sealed class PromptParser : IDisposable
 
         State.Position = obs.Position;
         State.HasPromptData = true;
+    }
+
+    /// <summary>
+    /// Snap <see cref="PlayerState.MaxHp"/> / <see cref="PlayerState.MaxMa"/>
+    /// to the authoritative ceilings read off the <c>stat</c> screen. The
+    /// standard status line carries only current HP / MA, so the prompt path
+    /// learns the maxima as a high-water mark that reads low until the
+    /// character is observed at full — the stat screen is the true source, so
+    /// this overrides even downward. Routed through the parser to keep it the
+    /// sole writer of the max fields (Phase 3 PR 3.5). A non-positive value is
+    /// ignored so a failed / absent parse can't wipe an already-learned max.
+    /// </summary>
+    public void ApplyStatScreenMax(int maxHp, int maxMa)
+    {
+        if (maxHp > 0) State.MaxHp = maxHp;
+        if (maxMa > 0) State.MaxMa = maxMa;
     }
 
     public void Dispose()

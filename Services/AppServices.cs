@@ -1753,6 +1753,12 @@ public sealed class AppServices
                 // on reload, leaving the Workshop blank. No-op on unnamed drafts.
                 Profile.Save();
             }
+            // The status line carries only current HP / MA, so PromptParser
+            // learns the maxima as a high-water mark that reads low until the
+            // character is seen at full. The stat screen reports the true
+            // ceilings — snap PlayerState.MaxHp/MaxMa to them (routed through
+            // PromptParser to keep it the sole writer of the max fields).
+            Player.ApplyStatScreenMax(snapshot.MaxHits, snapshot.MaxMana);
             SeedSpellbook(snapshot);
         };
         // Restore the snapshot back into live PlayerStats whenever a
@@ -1766,6 +1772,11 @@ public sealed class AppServices
         Profile.ProfileLoaded += p =>
         {
             Stats.Hydrate(p.LastKnownStats);
+            // Seed the live max ceilings from the persisted snapshot so a
+            // returning session starts correct instead of re-learning the
+            // high-water mark from prompts. Null / never-stat'd passes 0,
+            // which ApplyStatScreenMax ignores.
+            Player.ApplyStatScreenMax(p.LastKnownStats?.MaxHits ?? 0, p.LastKnownStats?.MaxMana ?? 0);
             SeedSpellbook(p.LastKnownStats);
         };
         Profile.ProfileClosed += () =>
