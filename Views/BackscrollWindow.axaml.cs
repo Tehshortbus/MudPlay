@@ -8,12 +8,15 @@ namespace FujinTerm.Views;
 
 /// <summary>
 /// Modeless terminal-history window. Bound to <see cref="BackscrollViewModel"/>.
-/// Code-behind handles three concerns XAML can't express cleanly: scrolling
-/// to a Find-next match, scrolling to the live tail, and disposing the VM
-/// on close.
+/// Code-behind handles concerns XAML can't express cleanly: scrolling to a
+/// Find-next match, scrolling to the live tail, gating live mirroring on focus
+/// + scroll position, and disposing the VM on close.
 /// </summary>
 public partial class BackscrollWindow : Window
 {
+    // Mx437 16pt cell height; rows are a fixed line-height in the transcript.
+    private const double RowHeight = 16;
+
     private ScrollViewer? _scroll;
     private SelectableTranscript? _transcript;
 
@@ -37,6 +40,14 @@ public partial class BackscrollWindow : Window
             vm.FindMatchRequested += OnFindMatch;
             vm.GoToLiveRequested  += OnGoToLive;
 
+            // Live mirroring is only worthwhile — and only affordable — while
+            // the user is watching the tail: window focused AND scrolled to the
+            // bottom. Track both so the VM can defer transcript-wide refreshes
+            // otherwise (see BackscrollViewModel.AutoFollow).
+            if (_scroll is not null) _scroll.ScrollChanged += OnScrollChanged;
+            Activated   += OnActivationChanged;
+            Deactivated += OnActivationChanged;
+
             // Wait for the first arrange pass before we scroll to the live
             // tail — otherwise heights are still zero and the ScrollViewer
             // would no-op.
@@ -51,12 +62,34 @@ public partial class BackscrollWindow : Window
 
     private void OnClosed(object? sender, EventArgs e)
     {
+        if (_scroll is not null) _scroll.ScrollChanged -= OnScrollChanged;
+        Activated   -= OnActivationChanged;
+        Deactivated -= OnActivationChanged;
         if (DataContext is BackscrollViewModel vm)
         {
             vm.FindMatchRequested -= OnFindMatch;
             vm.GoToLiveRequested  -= OnGoToLive;
             vm.Dispose();
         }
+    }
+
+    private void OnScrollChanged(object? sender, ScrollChangedEventArgs e) => UpdateAutoFollow();
+
+    private void OnActivationChanged(object? sender, EventArgs e) => UpdateAutoFollow();
+
+    /// <summary>
+    /// Mirror the live screen only while the user is actually watching the
+    /// tail — window focused AND scrolled to the bottom. Otherwise the VM
+    /// defers the (full-transcript) refresh, keeping the main terminal smooth.
+    /// </summary>
+    private void UpdateAutoFollow()
+    {
+        if (_scroll is null || DataContext is not BackscrollViewModel vm) return;
+        double maxOffset = _scroll.Extent.Height - _scroll.Viewport.Height;
+        // A couple rows of slack so a single appended live line doesn't drop
+        // us out of follow while we're parked at the bottom.
+        bool atBottom = maxOffset <= RowHeight || _scroll.Offset.Y >= maxOffset - RowHeight * 2;
+        vm.AutoFollow = IsActive && atBottom;
     }
 
     /// <summary>
@@ -78,9 +111,8 @@ public partial class BackscrollWindow : Window
         _transcript.SelectionEnd = abs + length;
 
         // No per-row container to BringIntoView — approximate the y offset
-        // by row index × cell height. Mx437 16pt cells = 16px line height.
-        const double rowHeight = 16;
-        double target = rowIndex * rowHeight - _scroll.Viewport.Height / 2;
+        // by row index × cell height.
+        double target = rowIndex * RowHeight - _scroll.Viewport.Height / 2;
         target = Math.Max(0, Math.Min(target, _scroll.Extent.Height - _scroll.Viewport.Height));
         _scroll.Offset = new Avalonia.Vector(_scroll.Offset.X, target);
     }
