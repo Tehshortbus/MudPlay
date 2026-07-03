@@ -106,6 +106,9 @@ public sealed class MonsterSpawnIndex
                 linked++;
             }
         }
+
+        // Folded into the spawn map — release the pinned raw Monsters JsonDocument.
+        _cache.EvictTable("Monsters");
         _log?.Log(LogSeverity.Info, "MonsterSpawnIndex",
             $"Built spawn index — {_summonedAt.Count} room(s) host {linked} monster reference(s).");
     }

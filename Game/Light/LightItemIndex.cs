@@ -87,6 +87,8 @@ public sealed class LightItemIndex
             }
         }
 
+        // Folded into the catalogue — release the pinned raw Items JsonDocument.
+        _cache.EvictTable("Items");
         byName = map;
         return list;
     }
