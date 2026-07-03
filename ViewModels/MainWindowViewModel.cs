@@ -2949,7 +2949,11 @@ public partial class MainWindowViewModel : ObservableObject
                 sendText: SendTextFromSettings,
                 initialSectionId: sectionId),
         };
-        window.Closed += (_, _) => _settings = null;
+        window.Closed += (_, _) =>
+        {
+            if (window.DataContext is SettingsWindowViewModel vm) vm.Dispose();
+            _settings = null;
+        };
         _settings = window;
         window.Show(main);
     }

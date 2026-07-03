@@ -237,6 +237,11 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
         Priority = new PriorityRankingViewModel(MarkDirty);
         _profile.ProfileLoaded += OnProfileChanged;
         _profile.ProfileClosed += OnProfileClosedExternally;
+        OnDispose(() =>
+        {
+            _profile.ProfileLoaded -= OnProfileChanged;
+            _profile.ProfileClosed -= OnProfileClosedExternally;
+        });
         _suppressDirty = true;
         LoadFromProfile();
         _suppressDirty = false;

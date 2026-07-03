@@ -85,6 +85,12 @@ public sealed partial class StatlineSectionViewModel : SettingsSectionViewModel
         _profile.ProfileLoaded += OnProfileChanged;
         _profile.ProfileClosed += OnProfileClosedExternally;
         _playerState.PropertyChanged += OnPlayerStateChanged;
+        OnDispose(() =>
+        {
+            _profile.ProfileLoaded -= OnProfileChanged;
+            _profile.ProfileClosed -= OnProfileClosedExternally;
+            _playerState.PropertyChanged -= OnPlayerStateChanged;
+        });
 
         LoadFromProfile();
         _suppressDirty = false;

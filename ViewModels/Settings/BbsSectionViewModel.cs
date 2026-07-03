@@ -174,13 +174,21 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         _display = display;
         _globalSettings = globalSettings;
 
-        _profile.ProfileLoaded += _ => RefreshProfileState();
-        _profile.ProfileClosed += RefreshProfileState;
+        Action<CharacterProfile> onProfileLoaded = _ => RefreshProfileState();
         // SuicidePasswordTracker writes a new encrypted blob and
         // calls NotifyMutated on commit; pick that up so the
         // Settings → BBS field reflects the freshly-captured value
         // without requiring the user to reload the section.
-        _profile.ProfileMutated += _ => RefreshSuicidePassword();
+        Action<CharacterProfile> onProfileMutated = _ => RefreshSuicidePassword();
+        _profile.ProfileLoaded += onProfileLoaded;
+        _profile.ProfileClosed += RefreshProfileState;
+        _profile.ProfileMutated += onProfileMutated;
+        OnDispose(() =>
+        {
+            _profile.ProfileLoaded -= onProfileLoaded;
+            _profile.ProfileClosed -= RefreshProfileState;
+            _profile.ProfileMutated -= onProfileMutated;
+        });
         RefreshProfileState();
         LoadConfirmFromGlobalSettings();
 

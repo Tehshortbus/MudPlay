@@ -110,6 +110,13 @@ public sealed partial class EventsSectionViewModel : SettingsSectionViewModel
         _events.AutoDisabledChanged += OnAutoDisabledChanged;
         _profile.ProfileLoaded += OnProfileLoaded;
         _profile.ProfileClosed += OnProfileClosed;
+        OnDispose(() =>
+        {
+            _events.Events.CollectionChanged -= OnEventsCollectionChanged;
+            _events.AutoDisabledChanged -= OnAutoDisabledChanged;
+            _profile.ProfileLoaded -= OnProfileLoaded;
+            _profile.ProfileClosed -= OnProfileClosed;
+        });
 
         RebuildRows();
     }

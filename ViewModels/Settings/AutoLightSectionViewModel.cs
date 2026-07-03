@@ -76,6 +76,12 @@ public sealed partial class AutoLightSectionViewModel : SettingsSectionViewModel
         _profile.ProfileLoaded += OnProfileChanged;
         _profile.ProfileClosed += OnProfileClosedExternally;
         if (_data is not null) _data.ActiveSetChanged += OnActiveSetChanged;
+        OnDispose(() =>
+        {
+            _profile.ProfileLoaded -= OnProfileChanged;
+            _profile.ProfileClosed -= OnProfileClosedExternally;
+            if (_data is not null) _data.ActiveSetChanged -= OnActiveSetChanged;
+        });
 
         RebuildLightList();
         _suppressDirty = true;

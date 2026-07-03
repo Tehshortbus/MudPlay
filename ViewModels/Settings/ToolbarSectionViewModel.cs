@@ -146,6 +146,13 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
         // seed, not the source of truth once the user starts rebinding.
         _keybindings.BindingChanged  += OnBindingChanged;
         _keybindings.BindingsReloaded += RefreshAllShortcutHints;
+        OnDispose(() =>
+        {
+            _profile.ProfileLoaded -= OnProfileChanged;
+            _profile.ProfileClosed -= OnProfileClosedExternally;
+            _keybindings.BindingChanged  -= OnBindingChanged;
+            _keybindings.BindingsReloaded -= RefreshAllShortcutHints;
+        });
 
         LoadFromProfile();
         _suppressDirty = false;

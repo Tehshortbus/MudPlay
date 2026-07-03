@@ -178,6 +178,11 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
         _globalSettings = globalSettings;
         _profile.ProfileLoaded += OnProfileChanged;
         _profile.ProfileClosed += OnProfileClosedExternally;
+        OnDispose(() =>
+        {
+            _profile.ProfileLoaded -= OnProfileChanged;
+            _profile.ProfileClosed -= OnProfileClosedExternally;
+        });
 
         LoadFromProfile();
         _suppressDirty = false;

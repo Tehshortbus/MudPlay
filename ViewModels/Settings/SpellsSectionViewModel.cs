@@ -148,6 +148,12 @@ public sealed partial class SpellsSectionViewModel : SettingsSectionViewModel
         _profile.ProfileLoaded += OnProfileChanged;
         _profile.ProfileClosed += OnProfileClosedExternally;
         _spellbook.Changed += OnSpellbookChanged;
+        OnDispose(() =>
+        {
+            _profile.ProfileLoaded -= OnProfileChanged;
+            _profile.ProfileClosed -= OnProfileClosedExternally;
+            _spellbook.Changed -= OnSpellbookChanged;
+        });
         _suppressDirty = true;
         LoadFromProfile();
         _suppressDirty = false;

@@ -76,6 +76,11 @@ public sealed partial class TalkSectionViewModel : SettingsSectionViewModel
         _profile = profile;
         _profile.ProfileLoaded += OnProfileChanged;
         _profile.ProfileClosed += OnProfileClosedExternally;
+        OnDispose(() =>
+        {
+            _profile.ProfileLoaded -= OnProfileChanged;
+            _profile.ProfileClosed -= OnProfileClosedExternally;
+        });
         _suppressDirty = true;
         LoadFromProfile();
         _suppressDirty = false;

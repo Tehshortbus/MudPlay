@@ -99,6 +99,12 @@ public sealed partial class HealthSectionViewModel : SettingsSectionViewModel
         _profile.ProfileLoaded += OnProfileChanged;
         _profile.ProfileClosed += OnProfileClosedExternally;
         if (_state is not null) _state.PropertyChanged += OnStateChanged;
+        OnDispose(() =>
+        {
+            _profile.ProfileLoaded -= OnProfileChanged;
+            _profile.ProfileClosed -= OnProfileClosedExternally;
+            if (_state is not null) _state.PropertyChanged -= OnStateChanged;
+        });
         _suppressDirty = true;
         LoadFromProfile();
         _suppressDirty = false;
