@@ -648,14 +648,14 @@ public sealed class CastingDirectorTests
         Assert.Equal("freedom", h.CastsSent[0]);
     }
 
-    // ----- Buffing (Bless1–10 slot walk) -----------------------------
+    // ----- Buffing (bless slot walk) ---------------------------------
 
     [Fact]
     public void Buff_OutOfCombat_FiresFirstUnactiveSlot()
     {
         using CureHarness h = new();
-        h.Spells.Bless1Spell = "bless";
-        h.Spells.Bless2Spell = "haste";
+        h.Spells.BlessSlots[1] ="bless";
+        h.Spells.BlessSlots[2] ="haste";
         h.Health.BlessIfAboveMa = 50;
         h.State.MaxMa = 100;
         h.State.Ma = 80;
@@ -673,7 +673,7 @@ public sealed class CastingDirectorTests
     {
         using CureHarness h = new();
         h.AutoBlessEnabled = false;          // Auto-Bless engine disabled
-        h.Spells.Bless1Spell = "bless";
+        h.Spells.BlessSlots[1] ="bless";
         h.Health.BlessIfAboveMa = 50;
         h.State.MaxMa = 100;
         h.State.Ma = 80;
@@ -689,8 +689,8 @@ public sealed class CastingDirectorTests
     public void Buff_SkipsActiveBuff_PicksNext()
     {
         using CureHarness h = new();
-        h.Spells.Bless1Spell = "bless";
-        h.Spells.Bless2Spell = "haste";
+        h.Spells.BlessSlots[1] ="bless";
+        h.Spells.BlessSlots[2] ="haste";
         h.Health.BlessIfAboveMa = 50;
         h.State.MaxMa = 100;
         h.State.Ma = 80;
@@ -714,7 +714,7 @@ public sealed class CastingDirectorTests
     public void Buff_AllActive_NoCast()
     {
         using CureHarness h = new();
-        h.Spells.Bless1Spell = "bless";
+        h.Spells.BlessSlots[1] ="bless";
         h.Health.BlessIfAboveMa = 50;
         h.State.MaxMa = 100;
         h.State.Ma = 80;
@@ -738,7 +738,7 @@ public sealed class CastingDirectorTests
         // Cast → confirm (300s timer) → no recast mid-duration → recast once
         // inside the 15s-of-expiry window.
         using CureHarness h = new();
-        h.Spells.Bless1Spell = "bless";
+        h.Spells.BlessSlots[1] ="bless";
         h.BuffInfo["bless"] = (string.Empty, 300);
         h.Health.BlessIfAboveMa = 50;
         h.State.MaxMa = 100;
@@ -775,7 +775,7 @@ public sealed class CastingDirectorTests
         // Server-confirmed early wear-off drops the timer so the next pass
         // re-attempts without waiting out the stale clock.
         using CureHarness h = new();
-        h.Spells.Bless1Spell = "bless";
+        h.Spells.BlessSlots[1] ="bless";
         h.BuffInfo["bless"] = (string.Empty, 300);
         h.Health.BlessIfAboveMa = 50;
         h.State.MaxMa = 100;
@@ -806,7 +806,7 @@ public sealed class CastingDirectorTests
     {
         // MA too low — saving for heals.
         using CureHarness h = new();
-        h.Spells.Bless1Spell = "bless";
+        h.Spells.BlessSlots[1] ="bless";
         h.Health.BlessIfAboveMa = 70;
         h.State.MaxMa = 100;
         h.State.Ma = 50;
@@ -824,7 +824,7 @@ public sealed class CastingDirectorTests
         // suppresses buff casts to keep the backstab window open.
         using CureHarness h = new();
         h.Director.SetStealthGate(() => true);
-        h.Spells.Bless1Spell = "bless";
+        h.Spells.BlessSlots[1] ="bless";
         h.Health.BlessIfAboveMa = 50;
         h.State.MaxMa = 100;
         h.State.Ma = 80;
@@ -844,7 +844,7 @@ public sealed class CastingDirectorTests
         // (still-default) InCombat=false window.
         using CureHarness h = new();
         h.State.InCombat = true;
-        h.Spells.Bless1Spell = "bless";
+        h.Spells.BlessSlots[1] ="bless";
         h.Health.BlessIfAboveMa = 50;
         h.State.MaxMa = 100;
         h.State.Ma = 80;
@@ -861,7 +861,7 @@ public sealed class CastingDirectorTests
     {
         using CureHarness h = new();
         const string token = "#emerald tipped crozier";
-        h.Spells.Bless1Spell = token;
+        h.Spells.BlessSlots[1] =token;
         h.Health.BlessIfAboveMa = 50;
         h.State.MaxMa = 100;
         h.State.Ma = 80;
@@ -895,7 +895,7 @@ public sealed class CastingDirectorTests
     {
         using CureHarness h = new();
         const string token = "#wand of fire";
-        h.Spells.Bless1Spell = token;
+        h.Spells.BlessSlots[1] =token;
         h.Health.BlessIfAboveMa = 50;
         h.State.MaxMa = 100;
         h.State.Ma = 80;
@@ -919,7 +919,7 @@ public sealed class CastingDirectorTests
     {
         using CureHarness h = new();
         const string token = "#emerald tipped crozier";
-        h.Spells.Bless1Spell = token;
+        h.Spells.BlessSlots[1] =token;
         // MA below the bless floor: a mana-drawing buff would be suppressed.
         h.Health.BlessIfAboveMa = 50;
         h.State.MaxMa = 100;
@@ -944,7 +944,7 @@ public sealed class CastingDirectorTests
     {
         using CureHarness h = new();
         const string token = "#shimmering greatsword";
-        h.Spells.Bless1Spell = token;
+        h.Spells.BlessSlots[1] =token;
         h.Health.BlessIfAboveMa = 50;
         h.State.MaxMa = 100;
         h.State.InCombat = false;
@@ -992,7 +992,7 @@ public sealed class CastingDirectorTests
         // Bless1 configured + active → utility regen is next non-
         // active slot.
         using CureHarness h = new();
-        h.Spells.Bless1Spell = "bless";
+        h.Spells.BlessSlots[1] ="bless";
         h.Spells.HpRegenSpell = "trollskin";
         h.Health.BlessIfAboveMa = 50;
         h.State.MaxMa = 100;

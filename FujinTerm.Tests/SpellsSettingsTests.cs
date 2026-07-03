@@ -1,4 +1,6 @@
+using System.Linq;
 using System.Text.Json;
+using FujinTerm.Game;
 using FujinTerm.Models.Profile;
 using Xunit;
 
@@ -40,9 +42,9 @@ public sealed class SpellsSettingsTests
 
         Assert.Null(dto.RoomLightSpell);
 
-        Assert.Null(dto.Bless1Spell);
-        Assert.Null(dto.Bless5Spell);
-        Assert.Null(dto.Bless10Spell);
+        // Bless slots start empty — the sparse map has no entries until the
+        // user fills a slot, so a fresh profile serialises no bless data.
+        Assert.Empty(dto.BlessSlots);
 
         // Ailment-coordination toggles default UNCHECKED — most parties want
         // to pause (@wait) and broadcast (.@poisoned) on every ailment.
@@ -102,16 +104,13 @@ public sealed class SpellsSettingsTests
 
             RoomLightSpell     = "light",
 
-            Bless1Spell  = "bless",
-            Bless2Spell  = "shield",
-            Bless3Spell  = "haste",
-            Bless4Spell  = "armor",
-            Bless5Spell  = "resist-fire",
-            Bless6Spell  = "resist-cold",
-            Bless7Spell  = "true-seeing",
-            Bless8Spell  = "stoneskin",
-            Bless9Spell  = "fly",
-            Bless10Spell = "guardian",
+            BlessSlots = new()
+            {
+                [1]  = "bless",       [2] = "shield",     [3] = "haste",
+                [4]  = "armor",       [5] = "resist-fire", [6] = "resist-cold",
+                [7]  = "true-seeing", [8] = "stoneskin",  [9] = "fly",
+                [10] = "guardian",    [13] = "sanctuary", // a sparse gap + a beyond-10 slot
+            },
 
             IgnorePoison           = true,
             IgnoreBlindness        = true,
@@ -149,16 +148,7 @@ public sealed class SpellsSettingsTests
 
         Assert.Equal(dto.RoomLightSpell,     round.RoomLightSpell);
 
-        Assert.Equal(dto.Bless1Spell,  round.Bless1Spell);
-        Assert.Equal(dto.Bless2Spell,  round.Bless2Spell);
-        Assert.Equal(dto.Bless3Spell,  round.Bless3Spell);
-        Assert.Equal(dto.Bless4Spell,  round.Bless4Spell);
-        Assert.Equal(dto.Bless5Spell,  round.Bless5Spell);
-        Assert.Equal(dto.Bless6Spell,  round.Bless6Spell);
-        Assert.Equal(dto.Bless7Spell,  round.Bless7Spell);
-        Assert.Equal(dto.Bless8Spell,  round.Bless8Spell);
-        Assert.Equal(dto.Bless9Spell,  round.Bless9Spell);
-        Assert.Equal(dto.Bless10Spell, round.Bless10Spell);
+        Assert.Equal(dto.BlessSlots, round.BlessSlots);
 
         Assert.Equal(dto.IgnorePoison,           round.IgnorePoison);
         Assert.Equal(dto.IgnoreBlindness,        round.IgnoreBlindness);
@@ -168,5 +158,59 @@ public sealed class SpellsSettingsTests
         Assert.Equal(dto.DoNotAnnounceBlindness, round.DoNotAnnounceBlindness);
         Assert.Equal(dto.DoNotAnnounceConfusion, round.DoNotAnnounceConfusion);
         Assert.Equal(dto.DoNotAnnounceDiseased,  round.DoNotAnnounceDiseased);
+    }
+
+    // ----- Bless-slot count policy + sparse persistence --------------
+
+    [Theory]
+    [InlineData(RealmType.Stock, SpellsSettings.StockBlessSlotCount)]
+    [InlineData(RealmType.ParaMud, SpellsSettings.ParaMudBlessSlotCount)]
+    public void BlessSlotCountFor_MatchesRealmCap(RealmType realm, int expected)
+        => Assert.Equal(expected, SpellsSettings.BlessSlotCountFor(realm));
+
+    [Fact]
+    public void BlessSlotCounts_StockTenParaMudFifteen()
+    {
+        Assert.Equal(10, SpellsSettings.StockBlessSlotCount);
+        Assert.Equal(15, SpellsSettings.ParaMudBlessSlotCount);
+    }
+
+    [Fact]
+    public void BlessSlots_SerializeSparsely_NoGhostSlots()
+    {
+        SpellsSettings dto = new();
+        dto.BlessSlots[1]  = "bles";
+        dto.BlessSlots[3]  = "prot";
+        dto.BlessSlots[12] = "shie";   // a ParaMud-only slot
+
+        string json = JsonSerializer.Serialize(dto);
+        using JsonDocument doc = JsonDocument.Parse(json);
+        JsonElement slots = doc.RootElement.GetProperty("BlessSlots");
+
+        // Only the three filled slots persist — no null-valued ghost keys for
+        // the empty 2 / 4-11 / 13-15 positions.
+        Assert.Equal(3, slots.EnumerateObject().Count());
+        Assert.Equal("bles", slots.GetProperty("1").GetString());
+        Assert.Equal("prot", slots.GetProperty("3").GetString());
+        Assert.Equal("shie", slots.GetProperty("12").GetString());
+        Assert.False(slots.TryGetProperty("2", out _));
+    }
+
+    [Fact]
+    public void BlessSlots_RoundTrip_PreservesOutOfRangeSlots()
+    {
+        // A pick in slot 15 (only visible on a 15-slot ParaMud realm) must
+        // survive a round-trip so a profile stays portable when loaded on a
+        // 10-slot Stock realm and back.
+        SpellsSettings original = new();
+        original.BlessSlots[2]  = "bles";
+        original.BlessSlots[15] = "gsha";
+
+        string json = JsonSerializer.Serialize(original);
+        SpellsSettings restored = JsonSerializer.Deserialize<SpellsSettings>(json)!;
+
+        Assert.Equal("bles", restored.BlessSlots[2]);
+        Assert.Equal("gsha", restored.BlessSlots[15]);
+        Assert.Equal(2, restored.BlessSlots.Count);
     }
 }

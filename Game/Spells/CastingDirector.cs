@@ -849,34 +849,29 @@ public sealed class CastingDirector : IDisposable
     }
 
     /// <summary>
-    /// Walk the 14 self-buff slots (10 Bless + HpRegen + MaRegen +
-    /// WhenHpFull + WhenMaFull) and return the first configured slot due to
-    /// recast on us. Hard-gated to out-of-combat — self buffs are expensive
-    /// and shouldn't burn a combat round.
+    /// Walk the self-buff slots (the sparse Bless slots in slot-index order,
+    /// then HpRegen + MaRegen + WhenHpFull + WhenMaFull) and return the first
+    /// configured slot due to recast on us. Hard-gated to out-of-combat — self
+    /// buffs are expensive and shouldn't burn a combat round.
     /// </summary>
     private CastCandidate? PickSelfBuff(SpellsSettings spells, bool manaBuffsAllowed)
     {
         if (_state.InCombat) return null;
 
-        (string? Spell, bool Eligible)[] slots =
-        {
-            (spells.Bless1Spell,      true),
-            (spells.Bless2Spell,      true),
-            (spells.Bless3Spell,      true),
-            (spells.Bless4Spell,      true),
-            (spells.Bless5Spell,      true),
-            (spells.Bless6Spell,      true),
-            (spells.Bless7Spell,      true),
-            (spells.Bless8Spell,      true),
-            (spells.Bless9Spell,      true),
-            (spells.Bless10Spell,     true),
-            (spells.HpRegenSpell,     true),
-            (spells.MaRegenSpell,     true),
-            // WhenHp/MaFull additionally require the matching pool to be at
-            // max — they're "downtime, ready for next fight" buffs.
-            (spells.WhenHpFullSpell,  _state.MaxHp > 0 && _state.Hp >= _state.MaxHp),
-            (spells.WhenMaFullSpell,  _state.MaxMa > 0 && _state.Ma >= _state.MaxMa),
-        };
+        // Bless slots first (in priority = slot-index order), then the regen /
+        // "when full" downtime buffs.
+        IEnumerable<(string? Spell, bool Eligible)> slots =
+            spells.BlessSlots.OrderBy(kv => kv.Key)
+                .Select(kv => ((string?)kv.Value, true))
+                .Concat(new (string? Spell, bool Eligible)[]
+                {
+                    (spells.HpRegenSpell,     true),
+                    (spells.MaRegenSpell,     true),
+                    // WhenHp/MaFull additionally require the matching pool to be
+                    // at max — they're "downtime, ready for next fight" buffs.
+                    (spells.WhenHpFullSpell,  _state.MaxHp > 0 && _state.Hp >= _state.MaxHp),
+                    (spells.WhenMaFullSpell,  _state.MaxMa > 0 && _state.Ma >= _state.MaxMa),
+                });
 
         foreach ((string? slot, bool eligible) in slots)
         {
