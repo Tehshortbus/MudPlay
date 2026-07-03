@@ -222,6 +222,33 @@ public sealed class SpellCalculatorTests
         Assert.Equal(10, SpellCalculator.Duration(spell, 6));
     }
 
+    // ----- round → wall-clock seconds ----------------------------------
+    // Duration is in spell ROUNDS; a spell round is 3 s (NOT the 5-second
+    // combat round). Consumers convert with * SpellRoundSeconds.
+
+    [Fact]
+    public void SpellRoundSeconds_IsThree_NotTheCombatRound()
+        // Guards the spell-round length against being "corrected" to the
+        // 5-second combat round — the two are deliberately different, and
+        // conflating them is what made the recast clock fire 3× too early.
+        => Assert.Equal(3, SpellCalculator.SpellRoundSeconds);
+
+    [Theory]
+    [InlineData(100, 0, 0, 50, 300)]  // nature tap: Dur=100 flat → 100 rounds → 5:00
+    [InlineData(7, 1, 4, 50, 57)]     // regeneration: 7 + Fix(50/4)=19 rounds → 57 s
+    [InlineData(10, 0, 0, 50, 30)]    // rejuvinating field: Dur=10 → 30 s
+    public void Duration_TimesRoundSeconds_GivesWallClock(
+        int dur, int durInc, int durIncLvls, int level, long expectedSeconds)
+    {
+        SpellFormulaInput spell = new()
+        {
+            Dur = dur, DurInc = durInc, DurIncLVLs = durIncLvls,
+        };
+
+        long seconds = SpellCalculator.Duration(spell, level) * SpellCalculator.SpellRoundSeconds;
+        Assert.Equal(expectedSeconds, seconds);
+    }
+
     // ----- mana cost (no 143 gate) -------------------------------------
 
     [Theory]

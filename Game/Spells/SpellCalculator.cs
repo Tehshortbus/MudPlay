@@ -42,8 +42,20 @@ public static class SpellCalculator
         Func<int, SpellFormulaInput?>? resolveChain = null)
         => Scaled(spell, level, healsInstead: true, useMax: true, resolveChain, energyRem: 0);
 
-    /// <summary>Effect duration at <paramref name="level"/>. No override,
-    /// no energy multiplier — straight base + per-level slope.</summary>
+    /// <summary>
+    /// Seconds per spell-duration round — MMUD Explorer's <c>SPELL_ROUND_SECS</c>
+    /// (<c>modMMudFunc.bas</c>). <see cref="Duration"/> is returned in spell
+    /// rounds; multiply by this for wall-clock seconds. Deliberately distinct
+    /// from the <b>5-second combat round</b> — a spell round is 3 s. Lives here,
+    /// next to the getter that produces rounds, so every duration consumer
+    /// converts the same way (the display formatters and the recast clock).
+    /// </summary>
+    public const int SpellRoundSeconds = 3;
+
+    /// <summary>Effect duration at <paramref name="level"/>, in <b>spell rounds</b>
+    /// (one round = <see cref="SpellRoundSeconds"/> s — multiply for wall-clock
+    /// seconds). No override, no energy multiplier — straight base + per-level
+    /// slope.</summary>
     public static long Duration(in SpellFormulaInput spell, int level)
     {
         int clamped = ClampLevel(level, spell.Cap, spell.ReqLevel);

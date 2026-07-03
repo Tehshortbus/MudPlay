@@ -32,12 +32,6 @@ public static class SpellGrowthFormatter
     private const int HealCode = 18;
     private const int NonMagicalSpellCode = 144;
 
-    // Seconds per spell-duration tick — matches SpellEffectFormatter's
-    // SPELL_ROUND_SECS. Durations are stored in 3-second ticks; the display
-    // shows seconds. Duplicated as a bare constant (not worth a shared holder
-    // for one domain number) so this formatter needs no cross-class coupling.
-    private const int SpellRoundSeconds = 3;
-
     /// <summary>
     /// The level the at-cap figures are evaluated at: the spell's cap when it
     /// has one, otherwise its obtain level (floored to 1 so an unleveled spell
@@ -89,7 +83,7 @@ public static class SpellGrowthFormatter
     /// <c>0</c> when the spell has no duration. Stored ticks are 3 seconds each.
     /// </summary>
     public static long DurationSeconds(in SpellFormulaInput spell)
-        => SpellCalculator.Duration(spell, DisplayLevel(spell)) * SpellRoundSeconds;
+        => SpellCalculator.Duration(spell, DisplayLevel(spell)) * SpellCalculator.SpellRoundSeconds;
 
     /// <summary>
     /// The per-level growth formula: one clause per scaling component

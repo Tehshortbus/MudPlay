@@ -3489,7 +3489,8 @@ public sealed class AppServices
     /// Feature 5 buff-duration source: map a 4-letter cast code to the
     /// buff's <see cref="Models.GameData.MessageRecord.CasterMessage"/>
     /// confirmation template plus its computed effect duration in
-    /// seconds (<see cref="Game.Spells.SpellCalculator.Duration"/> at the
+    /// seconds (<see cref="Game.Spells.SpellCalculator.Duration"/> rounds ×
+    /// <see cref="Game.Spells.SpellCalculator.SpellRoundSeconds"/> at the
     /// live <see cref="Game.Spells.SpellbookState.Level"/>). Returns
     /// <c>null</c> for an unknown code, a code with no game-data message
     /// record, or a record with no caster line.
@@ -3498,6 +3499,7 @@ public sealed class AppServices
     /// PR 10.18 item-cast recast clock: resolve a Bless-slot
     /// <see cref="Game.Spells.ItemCastToken"/> to the cast item's spell effect
     /// duration in seconds (<see cref="Game.Spells.SpellCalculator.Duration"/>
+    /// rounds × <see cref="Game.Spells.SpellCalculator.SpellRoundSeconds"/>
     /// at the live <see cref="Game.Spells.SpellbookState.Level"/>). Returns
     /// <c>null</c> when the token doesn't resolve to a class cast item or the
     /// cast spell has no duration (i.e. it isn't a buff) — the director then
@@ -3510,8 +3512,10 @@ public sealed class AppServices
             return null;
         if (SpellCatalog.GetFormulaByNumber(item.SpellNumber) is not { } formula)
             return null;
-        long dur = Game.Spells.SpellCalculator.Duration(formula, Spellbook.Level);
-        return dur > 0 ? dur : null;
+        // Duration is in spell rounds — convert to wall-clock seconds for the
+        // recast clock (CastingDirector treats the returned value as seconds).
+        long rounds = Game.Spells.SpellCalculator.Duration(formula, Spellbook.Level);
+        return rounds > 0 ? rounds * Game.Spells.SpellCalculator.SpellRoundSeconds : null;
     }
 
     /// <summary>
@@ -3537,7 +3541,10 @@ public sealed class AppServices
             if (!string.Equals(s.Short.Trim(), target, StringComparison.OrdinalIgnoreCase)) continue;
             Models.GameData.MessageRecord? rec = FindSpellMessage(s.Number, s.Name);
             if (rec is null || string.IsNullOrWhiteSpace(rec.CasterMessage)) return null;
-            return (rec.CasterMessage, Game.Spells.SpellCalculator.Duration(s.Formula, Spellbook.Level));
+            // Duration is in spell rounds; the recast clock wants wall-clock seconds.
+            long durSec = Game.Spells.SpellCalculator.Duration(s.Formula, Spellbook.Level)
+                          * Game.Spells.SpellCalculator.SpellRoundSeconds;
+            return (rec.CasterMessage, durSec);
         }
         return null;
     }
