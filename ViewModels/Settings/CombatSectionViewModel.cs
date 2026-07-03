@@ -26,6 +26,7 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
     private const string TabKey = "Combat";
 
     private readonly ProfileService _profile;
+    private readonly Game.Spells.SpellbookState _spellbook;
     private Control? _view;
     private bool _suppressDirty;
     private bool _dirty;
@@ -35,6 +36,15 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
     public override bool IsDirty => _dirty;
 
     public bool HasProfile => _profile.Current is not null;
+
+    /// <summary>Known-spell suggestions for the spell-combat typeahead boxes —
+    /// the current class's learnable list (level gate ignored), ordered by name
+    /// + distinct by cast-code, from
+    /// <see cref="Game.Spells.SpellbookState.AvailablePicks"/>. Each box commits
+    /// the 4-letter <see cref="Game.Spells.SpellPick.Short"/> cast-code (what the
+    /// game recognises — the same value <see cref="Models.Profile.CombatSpellSlot.SpellName"/>
+    /// stores). Refreshes when the spellbook rebuilds (class swap / reroll).</summary>
+    public IReadOnlyList<Game.Spells.SpellPick> SpellSuggestions => _spellbook.AvailablePicks;
 
     public override Control View => _view ??= new CombatSectionView { DataContext = this };
 
@@ -234,13 +244,16 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
     {
         ArgumentNullException.ThrowIfNull(profile);
         _profile = profile;
+        _spellbook = AppServices.Current.Spellbook;
         Priority = new PriorityRankingViewModel(MarkDirty);
         _profile.ProfileLoaded += OnProfileChanged;
         _profile.ProfileClosed += OnProfileClosedExternally;
+        _spellbook.Changed += OnSpellbookChanged;
         OnDispose(() =>
         {
             _profile.ProfileLoaded -= OnProfileChanged;
             _profile.ProfileClosed -= OnProfileClosedExternally;
+            _spellbook.Changed -= OnSpellbookChanged;
         });
         _suppressDirty = true;
         LoadFromProfile();
@@ -357,6 +370,8 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
 
     private void OnProfileChanged(CharacterProfile _) => ReloadAfterProfileSwap();
     private void OnProfileClosedExternally() => ReloadAfterProfileSwap();
+
+    private void OnSpellbookChanged() => OnPropertyChanged(nameof(SpellSuggestions));
 
     private void ReloadAfterProfileSwap()
     {
