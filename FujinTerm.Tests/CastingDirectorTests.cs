@@ -146,6 +146,40 @@ public sealed class CastingDirectorTests
     }
 
     [Fact]
+    public void MinorHeal_PrefersHpRegenHoT_OverSingleTargetInRoutineBand()
+    {
+        // HP trips the minor trigger but stays above the major (life-threat)
+        // trigger → cast the HP-regen HoT first instead of the instant heal.
+        using Harness h = new();
+        h.Spells.MinorHealSpell = "heal";
+        h.Spells.HpRegenSpell = "regen";
+        h.Health.MinorHealCombatTrigger = 70;
+        h.Health.MajorHealCombatTrigger = 40;
+
+        h.SetPrompt(hp: 60, maxHp: 100, inCombat: true);    // 40 < 60 <= 70
+
+        Assert.Single(h.CastsSent);
+        Assert.Equal("regen", h.CastsSent[0]);
+    }
+
+    [Fact]
+    public void MinorHeal_LifeThreatBand_UsesInstantHeal_NotHoT()
+    {
+        // Below the major trigger the HoT is NOT substituted — a slow HoT that
+        // heals a round later is the wrong call when HP is critical.
+        using Harness h = new();
+        h.Spells.MinorHealSpell = "heal";
+        h.Spells.HpRegenSpell = "regen";
+        h.Health.MinorHealCombatTrigger = 70;
+        h.Health.MajorHealCombatTrigger = 40;
+
+        h.SetPrompt(hp: 30, maxHp: 100, inCombat: true);    // 30 <= 40 → life-threat
+
+        Assert.Single(h.CastsSent);
+        Assert.Equal("heal", h.CastsSent[0]);
+    }
+
+    [Fact]
     public void RoutineCombat_NoCast_WhenAboveThreshold()
     {
         using Harness h = new();
@@ -988,29 +1022,33 @@ public sealed class CastingDirectorTests
     // ----- Utility (regen buffs + idle-fallback) --------------------
 
     [Fact]
-    public void Utility_HpRegenSpell_PicksWhenNotActive()
+    public void Utility_HpRegenSpell_NotCastAsBuff_WhenHpFull()
     {
+        // The HP-regen slot is assisted healing, not a downtime buff: at full
+        // HP with nothing to heal, the buff path must NOT fire it. (A user who
+        // wants it always-up puts it in a Bless slot instead.)
         using CureHarness h = new();
         h.Spells.HpRegenSpell = "trollskin";
         h.Health.BlessIfAboveMa = 50;
         h.State.MaxMa = 100;
         h.State.Ma = 80;
+        h.State.MaxHp = 200;
+        h.State.Hp = 200;                 // full → minor-heal path never trips
         h.State.InCombat = false;
 
         h.Director.Evaluate();
 
-        Assert.Single(h.CastsSent);
-        Assert.Equal("trollskin", h.CastsSent[0]);
+        Assert.Empty(h.CastsSent);
     }
 
     [Fact]
-    public void Utility_RegenSlotsAfterBless1To10()
+    public void Utility_MaRegenSlotAfterBless1To10()
     {
-        // Bless1 configured + active → utility regen is next non-
-        // active slot.
+        // Bless1 configured + active → the mana-regen downtime buff is the next
+        // non-active self-buff slot (HP-regen is no longer a buff slot).
         using CureHarness h = new();
         h.Spells.BlessSlots[1] ="bless";
-        h.Spells.HpRegenSpell = "trollskin";
+        h.Spells.MaRegenSpell = "kindred";
         h.Health.BlessIfAboveMa = 50;
         h.State.MaxMa = 100;
         h.State.Ma = 80;
@@ -1026,7 +1064,7 @@ public sealed class CastingDirectorTests
         h.Director.Evaluate();
 
         Assert.Single(h.CastsSent);
-        Assert.Equal("trollskin", h.CastsSent[0]);
+        Assert.Equal("kindred", h.CastsSent[0]);
     }
 
     [Fact]
@@ -1103,6 +1141,37 @@ public sealed class CastingDirectorTests
 
         h.Director.Evaluate();
         Assert.Empty(h.CastsSent);
+    }
+
+    [Fact]
+    public void MinorHeal_HpRegenHoTActive_FallsThroughToSingleTargetHeal()
+    {
+        // HoT-first on the trigger, then — once it's confirmed ticking with
+        // remaining duration — the minor path drops to the instant single-
+        // target heal for the immediate top-up while the HoT works.
+        using CureHarness h = new();
+        h.Spells.HpRegenSpell = "regen";
+        h.Spells.MinorHealSpell = "heal";
+        h.Health.MinorHealCombatTrigger = 70;
+        h.Health.MajorHealCombatTrigger = 40;
+        h.BuffInfo["regen"] = (string.Empty, 300);
+        h.RecordCondition("regen", MessageFlags.None,
+            applied: "You begin to regenerate.", endsWith: "Your regeneration fades.");
+
+        // Drop into the routine band last so the HoT-first cast fires cleanly.
+        h.State.MaxHp = 100;
+        h.State.InCombat = true;
+        h.State.Hp = 60;
+        Assert.Equal("regen", h.CastsSent[^1]);
+
+        // Confirm the HoT landed → 300s timer → no longer recast-due.
+        h.FeedLine("You begin to regenerate.");
+        h.CastsSent.Clear();
+        h.Cast.OnCombatTick();
+
+        h.Director.Evaluate();
+        Assert.Single(h.CastsSent);
+        Assert.Equal("heal", h.CastsSent[0]);
     }
 
     // ----- Party-heal (single + AOE thresholding) -------------------

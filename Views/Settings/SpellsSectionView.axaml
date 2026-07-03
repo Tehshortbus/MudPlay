@@ -100,7 +100,7 @@
                                      ItemTemplate="{StaticResource SpellPickItem}"
                                      PlaceholderText="Type code or name…"
                                      Width="260" HorizontalAlignment="Left"
-                                     ToolTip.Tip="Auto-regen utility (e.g. troll-skin) cast during downtime."/>
+                                     ToolTip.Tip="HP-regen HoT (e.g. regeneration) used as assisted healing: when the Minor heal threshold trips, this is cast FIRST — ahead of the single-target minor heal — unless HP is already in life-threat range or the HoT is still ticking. Want it kept always-up instead? Put it in a Bless slot."/>
 
                     <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="Mana Regen"/>
                     <AutoCompleteBox Grid.Row="3" Grid.Column="1"

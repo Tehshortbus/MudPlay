@@ -34,7 +34,12 @@ namespace FujinTerm.Game.Spells;
 /// player. Thresholds: <see cref="HealthSettings.MinorHealCombatTrigger"/>
 /// / <see cref="HealthSettings.MajorHealCombatTrigger"/> while
 /// <see cref="PlayerState.InCombat"/>; <see cref="HealthSettings.HealRestTrigger"/>
-/// during rest.</item>
+/// during rest. When an HP-regen HoT
+/// (<see cref="SpellsSettings.HpRegenSpell"/>) is configured, the minor path
+/// casts it FIRST — ahead of the single-target heal — whenever HP trips the
+/// minor trigger while still above the major (life-threat) trigger and the
+/// HoT isn't already ticking on us; a running HoT falls through to the
+/// instant single-target heal.</item>
 /// <item><b>Curing</b> — remove an active ailment. The actual
 /// ailment state comes from <see cref="Conditions.ConditionTracker"/>
 /// (game-data Messages tab owns the patterns). Per-ailment cure
@@ -623,7 +628,6 @@ public sealed class CastingDirector : IDisposable
     private string? PickMinorSelfHeal(SpellsSettings spells, HealthSettings health)
     {
         if (_state.MaxHp <= 0) return null;
-        if (string.IsNullOrWhiteSpace(spells.MinorHealSpell)) return null;
         if (!ManaClearsHealFloor(health)) return null;
 
         int hpPct = (int)Math.Round(_state.Hp * 100.0 / _state.MaxHp);
@@ -639,7 +643,22 @@ public sealed class CastingDirector : IDisposable
         // mid-walk between rooms.
         if (!_state.InCombat && _state.Position != PlayerPosition.Resting) return null;
 
-        return spells.MinorHealSpell;
+        // Prefer an HP-regen HoT (regeneration / rejuvinating field) over the
+        // single-target heal: once it's ticking it restores far more per mana
+        // than repeated instant heals, so cast it FIRST when the minor-heal
+        // trigger trips. Two gates keep it safe:
+        //  • It's only substituted while HP sits ABOVE the major-heal trigger —
+        //    inside the life-threat band we want the instant top-up, never a
+        //    slow HoT that heals a round later.
+        //  • IsRecastDue is false once the HoT is confirmed active with
+        //    remaining duration, so a running HoT falls through to the instant
+        //    single-target heal for the immediate top-up while it ticks.
+        if (hpPct > health.MajorHealCombatTrigger
+            && !string.IsNullOrWhiteSpace(spells.HpRegenSpell)
+            && IsRecastDue("", spells.HpRegenSpell))
+            return spells.HpRegenSpell;
+
+        return string.IsNullOrWhiteSpace(spells.MinorHealSpell) ? null : spells.MinorHealSpell;
     }
 
     /// <summary>
@@ -872,22 +891,30 @@ public sealed class CastingDirector : IDisposable
 
     /// <summary>
     /// Walk the self-buff slots (the sparse Bless slots in slot-index order,
-    /// then HpRegen + MaRegen + WhenHpFull + WhenMaFull) and return the first
-    /// configured slot due to recast on us. Hard-gated to out-of-combat — self
-    /// buffs are expensive and shouldn't burn a combat round.
+    /// then MaRegen + WhenHpFull + WhenMaFull) and return the first configured
+    /// slot due to recast on us. Hard-gated to out-of-combat — self buffs are
+    /// expensive and shouldn't burn a combat round.
     /// </summary>
+    /// <remarks>
+    /// <see cref="SpellsSettings.HpRegenSpell"/> deliberately does NOT live here:
+    /// an HP-regen HoT is treated as assisted healing, cast reactively by the
+    /// minor-self-heal path (<see cref="PickMinorSelfHeal"/>) when HP trips the
+    /// trigger — not maintained always-up like a buff. A user who wants a
+    /// constantly-refreshed regen buff puts that spell in a Bless slot instead.
+    /// <see cref="SpellsSettings.MaRegenSpell"/> stays a downtime buff — it tops
+    /// the mana pool (and feeds the reroll engine), it doesn't heal HP.
+    /// </remarks>
     private CastCandidate? PickSelfBuff(SpellsSettings spells, bool manaBuffsAllowed)
     {
         if (_state.InCombat) return null;
 
-        // Bless slots first (in priority = slot-index order), then the regen /
-        // "when full" downtime buffs.
+        // Bless slots first (in priority = slot-index order), then the mana-regen
+        // / "when full" downtime buffs.
         IEnumerable<(string? Spell, bool Eligible)> slots =
             spells.BlessSlots.OrderBy(kv => kv.Key)
                 .Select(kv => ((string?)kv.Value, true))
                 .Concat(new (string? Spell, bool Eligible)[]
                 {
-                    (spells.HpRegenSpell,     true),
                     (spells.MaRegenSpell,     true),
                     // WhenHp/MaFull additionally require the matching pool to be
                     // at max — they're "downtime, ready for next fight" buffs.
