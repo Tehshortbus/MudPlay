@@ -66,8 +66,33 @@ public sealed class SpellsSettings
     /// <summary>Auto-regen utility (e.g. troll-skin) cast during downtime.</summary>
     public string? HpRegenSpell { get; set; }
 
-    /// <summary>Auto-regen utility for the mana pool.</summary>
+    /// <summary>Auto-regen utility for the mana pool. Holds either a
+    /// code-145 regen-rate <i>roll</i> spell (nature tap / mana flux — a
+    /// persistent ± modifier to the mana-regen rate that the reroll logic can
+    /// re-cast when it lands below <see cref="ManaRegenRerollThreshold"/>) or a
+    /// mana heal-over-time buff (chaos surge — recast on expiry like an HP
+    /// HoT). The reroll path only engages for roll spells; HoTs fall through to
+    /// the normal recast-when-due behaviour.</summary>
     public string? MaRegenSpell { get; set; }
+
+    /// <summary>
+    /// Reroll the <see cref="MaRegenSpell"/> when its rolled mana-regen
+    /// contribution (the code-145 <c>spells:</c> slice, positive or negative)
+    /// lands below this value — a bad roll drags the mana-regen rate down, so
+    /// the engine re-casts to try for a better one. <c>null</c> disables
+    /// rerolling (the spell then just recasts on expiry). Seeded from the
+    /// spell's level-scaled roll range on the Spells tab.
+    /// </summary>
+    public int? ManaRegenRerollThreshold { get; set; }
+
+    /// <summary>
+    /// Maximum consecutive rerolls of the <see cref="MaRegenSpell"/> per cast
+    /// cycle before accepting whatever landed — a hard ceiling so a persistently
+    /// unlucky streak can't drain the mana pool. Rerolling also hard-stops early
+    /// if paying for the next cast would drop mana below the buff floor.
+    /// Defaults to 3.
+    /// </summary>
+    public int ManaRegenRerollCap { get; set; } = 3;
 
     /// <summary>Cast when HP is full and we're between actions (room spell,
     /// debuff, etc.).</summary>
