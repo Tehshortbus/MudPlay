@@ -57,6 +57,30 @@ public sealed class DoorPolicyTests
             playerStrength: 100, playerPicklocks: 100));
     }
 
+    [Fact]
+    public void IsAchievable_DynamicCeiling_BashableAboveDefaultButBelowSetMax()
+    {
+        // A realm whose gear lifts the ceiling to 280 lets a 250-req door be bashed —
+        // it was unbashable under the 200 default.
+        Assert.True(DoorPolicy.IsAchievable(statRequirement: 250, canBash: true,
+            playerStrength: 260, playerPicklocks: 0, maxBashableStrength: 280));
+        Assert.False(DoorPolicy.IsAchievable(statRequirement: 250, canBash: true,
+            playerStrength: 260, playerPicklocks: 0, maxBashableStrength: 200));
+    }
+
+    [Fact]
+    public void ChooseVerb_DynamicCeiling_PicksBashWhenSetMaxAllows()
+    {
+        // 250-req door with a 280 ceiling: bash is on the table (player meets it).
+        Assert.Equal("bash", DoorPolicy.ChooseVerb(250, canBash: true,
+            playerStrength: 260, playerPicklocks: 260, preferPickOverBash: false,
+            maxBashableStrength: 280));
+        // Same door under the 200 default: bash barred, walker must pick.
+        Assert.Equal("pick", DoorPolicy.ChooseVerb(250, canBash: true,
+            playerStrength: 260, playerPicklocks: 260, preferPickOverBash: false,
+            maxBashableStrength: 200));
+    }
+
     // ----- ChooseVerb -------------------------------------------------
 
     [Fact]

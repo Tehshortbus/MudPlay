@@ -920,6 +920,12 @@ public sealed class AppServices
     /// for computing carried illumination and provisioning a dark route.</summary>
     public Game.Light.LightItemIndex Lights { get; private set; } = null!;
 
+    /// <summary>The highest Strength any race + class + gear build can reach on the
+    /// active set — the door FSM's per-set bash ceiling, replacing the old hardcoded
+    /// 200. Feeds <see cref="Game.Map.DoorOpenManager"/> via a provider so a
+    /// strength-gated door is only ruled unbashable when no build could open it.</summary>
+    public Game.Map.MaxStrengthIndex MaxStrength { get; private set; } = null!;
+
     /// <summary>The player's live carried illumination (worn <c>+illu</c> gear +
     /// the readied light's strength) — the <c>charIllu</c> input to the
     /// <see cref="Game.Light.LightModel"/> visibility bands.</summary>
@@ -1823,10 +1829,11 @@ public sealed class AppServices
         // restarting an engine. Wire-sender is bound by MainWindowVM
         // alongside the trap one (gate-wrapped SendUserInput).
         Door = new Game.Map.DoorOpenManager(Router, PlayerStats,
-            maxBashAttemptsProvider:    () => Resolver.Resolve<Models.Profile.OtherSettings>("Other").MaxBashAttempts,
-            maxPickAttemptsProvider:    () => Resolver.Resolve<Models.Profile.OtherSettings>("Other").MaxPickAttempts,
-            picklocksOverBashProvider:  () => Resolver.Resolve<Models.Profile.OtherSettings>("Other").PicklocksOverBash,
-            itemNameLookup:             id => ItemNames.GetName(id),
+            maxBashAttemptsProvider:       () => Resolver.Resolve<Models.Profile.OtherSettings>("Other").MaxBashAttempts,
+            maxPickAttemptsProvider:       () => Resolver.Resolve<Models.Profile.OtherSettings>("Other").MaxPickAttempts,
+            picklocksOverBashProvider:     () => Resolver.Resolve<Models.Profile.OtherSettings>("Other").PicklocksOverBash,
+            itemNameLookup:                id => ItemNames.GetName(id),
+            maxBashableStrengthProvider:   () => MaxStrength.MaxAchievableStrength,
             log: Log);
         // LeaderDoorAssistManager — observes the leader failing to bash a
         // door and pitches in. Reads the Party-tab toggle + the Other-tab
@@ -2489,6 +2496,12 @@ public sealed class AppServices
         Lights = new Game.Light.LightItemIndex(GameData);
         PlayerIllumination = new Game.Light.PlayerIllumination(
             () => Inventory.Snapshot, Lights, GameData);
+
+        // Per-set bash ceiling — strongest race's Strength cap plus the best
+        // +Strength gear any class can wear. The door FSM (constructed earlier)
+        // reads this via its maxBashableStrengthProvider so a strength-gated door
+        // is only ruled unbashable when no reachable build could open it.
+        MaxStrength = new Game.Map.MaxStrengthIndex(GameData);
 
         // Actionability gate — the walker-gate owner releases when a room's
         // remaining hostiles are all un-actionable (no weapon hits, every

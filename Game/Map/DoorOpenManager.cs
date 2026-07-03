@@ -20,8 +20,9 @@ namespace FujinTerm.Game.Map;
 ///   viable.</item>
 ///   <item>Otherwise prefer <c>bash &lt;dir&gt;</c> when the door is
 ///   bashable (<c>canBash</c> from the modifier, strength req
-///   feasible vs <see cref="DoorPolicy.UnbashableStrengthThreshold"/>,
-///   live <see cref="Game.PlayerStats.Strength"/> meets the
+///   feasible vs the active set's
+///   <see cref="MaxStrengthIndex.MaxAchievableStrength"/>, live
+///   <see cref="Game.PlayerStats.Strength"/> meets the
 ///   threshold).</item>
 ///   <item>If only one verb is viable, use it. If neither is, fail
 ///   immediately with <c>DoorOpenResult.Failed("no viable verb")</c>.</item>
@@ -46,6 +47,7 @@ public sealed class DoorOpenManager : IDisposable
     private readonly PlayerStats _stats;
     private readonly Func<int> _maxBashProvider;
     private readonly Func<int> _maxPickProvider;
+    private readonly Func<int> _maxBashStrengthProvider;
     private readonly Func<bool> _picklocksOverBashProvider;
     private readonly Func<int, string?> _itemNameLookup;
     private readonly LogService? _log;
@@ -85,6 +87,7 @@ public sealed class DoorOpenManager : IDisposable
         Func<int> maxPickAttemptsProvider,
         Func<bool> picklocksOverBashProvider,
         Func<int, string?>? itemNameLookup = null,
+        Func<int>? maxBashableStrengthProvider = null,
         LogService? log = null)
     {
         ArgumentNullException.ThrowIfNull(router);
@@ -97,6 +100,10 @@ public sealed class DoorOpenManager : IDisposable
         _maxBashProvider = maxBashAttemptsProvider;
         _maxPickProvider = maxPickAttemptsProvider;
         _picklocksOverBashProvider = picklocksOverBashProvider;
+        // The per-set bash ceiling (MaxStrengthIndex). Absent it, fall back to the
+        // conservative constant so plain-door tests can construct without game data.
+        _maxBashStrengthProvider = maxBashableStrengthProvider
+                                   ?? (() => DoorPolicy.UnbashableStrengthThreshold);
         // Default to "no items known" so plain-door tests can construct
         // the manager without an ItemNameStore.
         _itemNameLookup = itemNameLookup ?? (_ => null);
@@ -237,7 +244,8 @@ public sealed class DoorOpenManager : IDisposable
             cur.CanBash,
             _stats.Strength,
             _stats.Picklocks,
-            _picklocksOverBashProvider());
+            _picklocksOverBashProvider(),
+            _maxBashStrengthProvider());
         if (verb is null)
         {
             // No bash/pick viable. Try the key path if available;
@@ -430,7 +438,7 @@ public sealed class DoorOpenManager : IDisposable
         // Validate the fallback is viable per the same policy gate.
         bool otherViable = other == "bash"
             ? cur.CanBash
-              && cur.StatRequirement <= DoorPolicy.UnbashableStrengthThreshold
+              && cur.StatRequirement <= _maxBashStrengthProvider()
               && (cur.StatRequirement <= 0 || _stats.Strength >= cur.StatRequirement)
             : (cur.StatRequirement <= 0 || _stats.Picklocks >= cur.StatRequirement);
         if (!otherViable || other is null)
