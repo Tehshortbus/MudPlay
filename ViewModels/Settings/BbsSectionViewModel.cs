@@ -78,7 +78,7 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private int _terminalCols = 80;
     [ObservableProperty] private int _terminalRows = 25;
     [ObservableProperty] private double _fontSize = 16.0;
-    [ObservableProperty] private int _scrollbackLines = 10_000;
+    [ObservableProperty] private int _scrollbackLines = 4_000;
 
     // ----- Game-menu commands (per-BBS) -----
     // The two main-menu picks for entering / leaving the realm. Stored

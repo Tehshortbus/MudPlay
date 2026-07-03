@@ -28,7 +28,7 @@ public sealed class BbsProfileFieldsTests
         Assert.Equal(80, dto.TerminalCols);
         Assert.Equal(25, dto.TerminalRows);
         Assert.Equal(16.0, dto.FontSize);
-        Assert.Equal(10_000, dto.ScrollbackLines);
+        Assert.Equal(4_000, dto.ScrollbackLines);
 
         // Game-menu commands default to MajorMUD's standard picks:
         // E to enter the realm, =x to log off from the main menu.

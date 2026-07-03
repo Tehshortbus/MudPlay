@@ -136,7 +136,7 @@ public sealed class BbsProfile
     /// Applies on next launch — in-place ring resize would need to copy /
     /// drop rows and is intentionally deferred.
     /// </summary>
-    public int ScrollbackLines { get; set; } = 10_000;
+    public int ScrollbackLines { get; set; } = 4_000;
 
     /// <summary>
     /// Per-tab settings deltas at the BBS tier — same shape as
