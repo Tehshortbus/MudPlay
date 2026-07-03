@@ -17,7 +17,7 @@ public sealed class RealmRegenProfileTests
     public void ParaMud_UsesTheMeasuredTenSecondGrid()
     {
         // Derived from live Paradigm captures: natural +rate/3 every 10 s, rest
-        // riding the same grid. Meditate defaults to the grid pending a capture.
+        // riding the same grid. Meditate isn't split — same 10 s as Stock.
         Assert.Equal(TimeSpan.FromSeconds(10), RealmRegenProfile.ParaMud.StandingInterval);
         Assert.Equal(TimeSpan.FromSeconds(10), RealmRegenProfile.ParaMud.RestingInterval);
         Assert.Equal(TimeSpan.FromSeconds(10), RealmRegenProfile.ParaMud.MeditatingInterval);

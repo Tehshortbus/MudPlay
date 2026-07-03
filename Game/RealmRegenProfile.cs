@@ -22,9 +22,9 @@ namespace FujinTerm.Game;
 /// (rate 27) paying +9 on the same 10 s grid — i.e. the stock 30 s natural
 /// cadence divided into thirds, with rest riding the same grid at 3× the
 /// amount (the resting multiplier lives in
-/// <see cref="Calculators.CharacterCalculator.CalcHpRegen"/>, not here). No
-/// ParaMud meditate capture exists yet; it defaults to the 10 s grid pending
-/// measurement.
+/// <see cref="Calculators.CharacterCalculator.CalcHpRegen"/>, not here).
+/// Meditate is <i>not</i> split into thirds on ParaMud — it behaves the same
+/// as Stock, keeping its native 10 s cadence.
 /// </para>
 /// <para>
 /// This models only the observable <i>interval</i> — the per-tick amount is
@@ -46,13 +46,13 @@ public readonly record struct RealmRegenProfile(
 
     /// <summary>
     /// ParaMud cadence — the stock natural cycle split into thirds on a 10 s
-    /// grid (measured), with rest riding the same grid. Meditate defaults to
-    /// the grid pending a live capture.
+    /// grid (measured), with rest riding the same grid. Meditate isn't split;
+    /// it keeps the Stock cadence.
     /// </summary>
     public static readonly RealmRegenProfile ParaMud = new(
         TimeSpan.FromSeconds(10),
         TimeSpan.FromSeconds(10),
-        TimeSpan.FromSeconds(10));
+        RegenConstants.SeedMeditatingInterval);   // unsplit — same as Stock.
 
     /// <summary>The cadence profile for a realm family — ParaMud, else Stock.</summary>
     public static RealmRegenProfile For(RealmType realm) =>
