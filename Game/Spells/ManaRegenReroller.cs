@@ -59,7 +59,7 @@ public sealed class ManaRegenReroller : IDisposable
 
     /// <summary>The ability code the reroll logic reads off an <c>abil</c>
     /// breakdown — mana-regen is ability 145.</summary>
-    public const int ManaRegenAbilityCode = 145;
+    public const int ManaRegenAbilityCode = RegenSpellClassifier.ManaRegenCode;
 
     /// <summary>
     /// True when <paramref name="formula"/> is a mana-regen <i>roll</i> spell —
@@ -67,17 +67,14 @@ public sealed class ManaRegenReroller : IDisposable
     /// <c>AbilVal</c> is 0, the signature of nature tap / mana flux (the
     /// magnitude is rolled from the level-scaled Min/Max range on each cast). A
     /// fixed +N regen buff (AbilVal = N) or a mana HoT (chaos surge, codes
-    /// 150 / 123) is excluded — rerolling those is pointless. Shared by the
-    /// caller's landing classifier and the Spells tab's range readout so the
-    /// "what counts as a roll spell" rule lives in exactly one place.
+    /// 150 / 123) is excluded — rerolling those is pointless. Thin alias over
+    /// <see cref="RegenSpellClassifier.Classify"/>'s
+    /// <see cref="RegenSpellTraits.ManaRegenRoll"/> trait so the "what counts as
+    /// a roll spell" rule lives in exactly one place, shared by the caller's
+    /// landing classifier and the Spells tab's range readout.
     /// </summary>
     public static bool IsRollSpell(in SpellFormulaInput formula)
-    {
-        foreach (SpellAbility a in formula.Abilities)
-            if (a.Code == ManaRegenAbilityCode && a.Value == 0)
-                return true;
-        return false;
-    }
+        => RegenSpellClassifier.Has(formula, RegenSpellTraits.ManaRegenRoll);
 
     private readonly AbilBreakdownParser _parser;
     private readonly Func<ManaRegenRerollConfig> _readConfig;
