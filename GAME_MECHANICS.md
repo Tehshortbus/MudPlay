@@ -102,17 +102,21 @@ conflate them.
   client reads this line as species-scoped attack-spell immunity and gates that spell out of
   the attack cascade (primary → alternate → weapon) for the rest of the room.
 
-**Percentage resistance** *(mechanic [CONFIRMED]; the exact wire line for the resist / heal
-case is not yet recorded — ask before parsing it)*
-- A monster's resistance to a spell type is a **percentage**, and is **not** the immunity
-  above — it's a numeric reduction on the damage, not the `no effect` line.
+**Percentage resistance** *([CONFIRMED])* — a separate, numeric mechanic, **not** the immunity
+above:
+- A monster's resistance to a spell type is a **percentage**, applied as a numeric reduction on
+  the spell's damage — it does **not** produce the `no effect` line.
 - At **exactly 100%** resist the spell lands but deals **0 damage**.
-- **Above 100%** resist the damage goes **negative** — the spell **heals** the monster
-  instead of harming it.
+- **Above 100%** resist the damage goes **negative** — the spell **heals** the monster instead
+  of harming it.
+- There is **no single canonical resist / heal line** to match: every combat spell has its
+  **own** verbose cast / hit text, so the tell isn't a fixed message — it's the **damage number**
+  carried in that spell's hit line. **0 or a negative number is the resist signal.** Detecting
+  it means reading the per-spell damage value, not matching one string.
 - Consequence: immunity is the only one of the two that emits `Your spell has no effect on
-  <monster>.` (and the engine gates on it). An over-100%-resist cast produces no such line;
-  it silently heals the target, so "full resist" must never be treated as equivalent to
-  immunity.
+  <monster>.` (and it's what the engine gates on). An over-100%-resist cast emits no such line —
+  the only evidence is the 0 / negative damage figure — so "full resist" must never be treated as
+  equivalent to immunity.
 
 ## Items & acquisition
 
