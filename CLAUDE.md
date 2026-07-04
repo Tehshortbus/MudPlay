@@ -15,6 +15,12 @@ The phased implementation plan is **complete** — the app is at **1.0.0** and i
 
 - **PR cadence**: one fix / feature = one PR; one PR at a time; the next doesn't begin until the current merges. Keep each PR focused (see PR-size discipline under Scope discipline).
 - **Versioning (semver, post-1.0)**: the version lives once in `FujinTerm.csproj` `<Version>` (`AppInfo.Version` reads it back for the `@version` reply). Bump it with the change — **MAJOR** = whole-program refactor, **MINOR** = a large PR, **PATCH** = a small / bugfix PR.
+- **Every PR updates the version history.** `CHANGELOG.md` is the running record, newest entry first. On each PR, in the same branch:
+  1. Bump `<Version>` in `FujinTerm.csproj` per the semver policy above.
+  2. Prepend a new `## <version>` section to `CHANGELOG.md` (above the previous entry) — a one-line summary paragraph, then whichever of **Added** (new features) / **Changed** (enhancements to existing features) / **Fixed** (bug fixes) / **Removed** apply. Describe the *why/effect*, not the diff.
+  3. Replace the current-version block at the top of `README.md` (between the `<!-- current-version:start -->` / `<!-- current-version:end -->` markers) so it mirrors the new top CHANGELOG entry.
+
+  These three moves are part of Definition of Done — a PR that changes behavior but leaves the version, changelog, or README block stale is incomplete.
 - **Code-review gate per PR** (in addition to Definition of Done below): scan the diff for dead code, stale comments, function placement against the folder layout, duplication of existing helpers, thread-safety, and PR-size discipline.
 - **Push every commit to the open PR.** If a PR is open on the branch, every commit landed afterwards but before the PR merges goes straight up — never accumulate local commits the user has to ask about. After each commit (or batch of related commits), `git push` so the PR on GitHub matches local HEAD. If the PR description's scope goes stale because of the new commits, refresh it via `gh pr edit` in the same push.
 - **Reproduce from a bug report.** Users capture client state via the in-app **Bug Report** (menu-bar button or terminal right-click → *Bug report…*), which writes a Markdown snapshot to their Desktop that they attach to a GitHub issue. When fixing a reported bug, start from that capture — its Movement / Player / Settings / Program-log / Scrollback sections pin the failing state at the moment of the problem.
@@ -152,6 +158,7 @@ Before reporting a change as complete:
 - [ ] No `Console.WriteLine` left in app code — log via the existing `Log` event so the UI can show it.
 - [ ] No `.Result` or `.Wait()` introduced. No `async void` outside event handlers.
 - [ ] No new top-level folders. No new dependencies without flagging the choice to the user.
+- [ ] Version history updated: `<Version>` bumped, `CHANGELOG.md` gets a new top entry, and the README current-version block mirrors it (see Versioning under Workflow).
 
 ## Tests
 

@@ -142,6 +142,20 @@ public sealed class AutoPartyManager : IDisposable
         public bool Acknowledged { get; set; }
     }
 
+    // Immutable view of one active nag, for the bug-report engine-state dump.
+    public readonly record struct NagSnapshot(
+        string Given, DateTime InvitedAt, DateTime? LastJoinAt, int JoinSends, bool Acknowledged);
+
+    // Read-only snapshot of the in-flight @join nags. UI-thread only (same as
+    // every mutation), so no lock — the bug-report capture runs on that thread.
+    public IReadOnlyList<NagSnapshot> ActiveNagSnapshot()
+    {
+        List<NagSnapshot> list = new(_activeNags.Count);
+        foreach (NagState s in _activeNags.Values)
+            list.Add(new NagSnapshot(s.Given, s.InvitedAt, s.LastJoinAt, s.JoinSends, s.Acknowledged));
+        return list;
+    }
+
     // UI-thread tick that walks _activeNags and fires `@join` resends + cap
     // checks. Started on first nag, stopped when the map empties.
     private Avalonia.Threading.DispatcherTimer? _nagTimer;

@@ -1,5 +1,9 @@
 # FujinTerm
 
+<!-- current-version:start -->
+> **Version 1.1.1** — Richer in-app bug-report capture, so a single report pins more of the failing state: the report now stamps the app version and Debug/Combat diagnostics state, adds Party and Live-engine-state sections, reports movement suspect-strikes and exit sets, and timestamps scrollback lines. See the [version history](CHANGELOG.md) for the full changelog.
+<!-- current-version:end -->
+
 A modern Telnet terminal client for **MajorMUD** and other BBS door games, built in C# / .NET 10 with [Avalonia](https://avaloniaui.net/). It renders a faithful CP437 cell grid with full VT100/ANSI parsing, and layers a MegaMUD-style automation suite (combat, party, navigation, healing, and more) on top — all in modeless, dockable windows so the terminal stays live while you configure anything.
 
 Linux is the primary platform; Windows and macOS are supported through Avalonia.

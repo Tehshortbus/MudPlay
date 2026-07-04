@@ -54,11 +54,13 @@ public static class BugReportBuilder
         [
             new("Session", SafeSection(() => BuildSession(svc, realm, now))),
             new("Player state", SafeSection(() => BuildPlayerState(svc))),
+            new("Party", SafeSection(() => BuildParty(svc))),
             new("Inventory", SafeSection(() => BuildInventory(svc))),
             new("Player Workshop", SafeSection(() => BuildWorkshop(svc))),
             new("Movement engine", SafeSection(() => BuildMovement(svc))),
             new("Special room markers", SafeSection(() => BuildRoomMarkers(svc))),
             new("Auto-mode", SafeSection(() => BuildAutoMode(svc))),
+            new("Live engine state", SafeSection(() => BuildEngineState(svc))),
             new("Settings (excluding BBS + Display)", SafeSection(() => BuildSettings(svc))),
             new("Program log", SafeSection(() => BuildLog(svc))),
             new("Scrollback", SafeSection(() => BuildScrollback(emulator))),
@@ -106,11 +108,98 @@ public static class BugReportBuilder
     private static string BuildSession(AppServices svc, RealmType realm, DateTimeOffset now)
     {
         StringBuilder sb = new();
+        Kv(sb, "Version", AppInfo.Version);
         Kv(sb, "Captured at", now.ToString("yyyy-MM-dd HH:mm:ss zzz"));
         Kv(sb, "Realm", $"{RealmLabel(realm)} ({realm})");
         Kv(sb, "Active game-data set", svc.GameData.ActiveSet ?? "(none)");
         Kv(sb, "Character", svc.Profile.CurrentProfileName ?? "(none loaded)");
         Kv(sb, "BBS", svc.Profile.CurrentBbsName ?? "(none)");
+        // Diagnostic-channel state gates whether the Program-log tail carries any
+        // decision trail: both flags default off, and every _log?.Debug/Combat
+        // site is skipped at generation time when off, so a report captured with
+        // them off has Info-only logs. Surface the state so a triager knows why.
+        Kv(sb, "Debug diagnostics", (svc.Log.Diagnostics?.DebugDiagnostics ?? false) ? "on" : "off");
+        Kv(sb, "Combat diagnostics", (svc.Log.Diagnostics?.CombatDiagnostics ?? false) ? "on" : "off");
+        return sb.ToString();
+    }
+
+    // Party roster snapshot — who's grouped, their roles, and the pending-invite
+    // flags. Party-relevant bugs (self-cast family-name targeting, @join-nag
+    // chasing an [Invited] row) hinge on exactly this state, which the `par`
+    // echo in scrollback only shows indirectly.
+    private static string BuildParty(AppServices svc)
+    {
+        PartyState party = svc.PartyState;
+        StringBuilder sb = new();
+        Kv(sb, "In party", party.IsInParty.ToString());
+        Kv(sb, "Self is leader", party.SelfIsLeader.ToString());
+        Kv(sb, "Leader", party.LeaderName ?? "(none)");
+
+        sb.Append("\n**Members** (").Append(party.Members.Count).Append(")\n\n");
+        if (party.Members.Count == 0) { sb.Append("_(none)_\n"); return sb.ToString(); }
+
+        foreach (PartyMember m in party.Members)
+        {
+            sb.Append("- ").Append(string.IsNullOrWhiteSpace(m.Name) ? "(unnamed)" : m.Name);
+            if (!string.IsNullOrWhiteSpace(m.Class)) sb.Append(" (").Append(m.Class).Append(')');
+
+            List<string> tags = new();
+            if (m.IsSelf) tags.Add("self");
+            if (m.IsLeader) tags.Add("leader");
+            if (m.IsInvited) tags.Add("invited");
+            tags.Add(m.Rank.ToString().ToLowerInvariant() + "rank");
+            tags.Add(m.Position.ToString());
+            if (m.IsWaiting) tags.Add("WAIT");
+            foreach (string flag in AilmentFlags(m)) tags.Add(flag);
+            sb.Append(" — ").Append(string.Join(", ", tags));
+
+            // Invited rows carry no health round-trip yet, so their percents are
+            // meaningless — skip the H/M readout for them.
+            if (!m.IsInvited) sb.Append("  [").Append(m.HpRichDisplay).Append(' ').Append(m.MaRichDisplay).Append(']');
+            sb.Append('\n');
+        }
+        return sb.ToString();
+    }
+
+    private static IEnumerable<string> AilmentFlags(PartyMember m)
+    {
+        if (m.Resting) yield return "resting";
+        if (m.Meditating) yield return "meditating";
+        if (m.Blinded) yield return "blind";
+        if (m.Poisoned) yield return "poison";
+        if (m.Diseased) yield return "disease";
+        if (m.Confused) yield return "confuse";
+        if (m.Held) yield return "held";
+    }
+
+    // In-flight automation FSM state that the log lines only hint at: the @join
+    // nag table (which invitees we're chasing and how far along) and the combat
+    // weapon-swap shadow (what we believe is equipped, without re-parsing `inv`).
+    // These are the exact internals a triager otherwise has to reconstruct from
+    // code + log timestamps.
+    private static string BuildEngineState(AppServices svc)
+    {
+        StringBuilder sb = new();
+
+        IReadOnlyList<AutoPartyManager.NagSnapshot> nags = svc.AutoParty.ActiveNagSnapshot();
+        sb.Append("**@join nags** (").Append(nags.Count).Append(")\n\n");
+        if (nags.Count == 0) sb.Append("_(none active)_\n");
+        else foreach (AutoPartyManager.NagSnapshot n in nags)
+        {
+            sb.Append("- ").Append(n.Given)
+              .Append(": invited ").Append(n.InvitedAt.ToLocalTime().ToString("HH:mm:ss"))
+              .Append(", sends=").Append(n.JoinSends)
+              .Append(", lastJoin=").Append(n.LastJoinAt?.ToLocalTime().ToString("HH:mm:ss") ?? "(none)")
+              .Append(", acknowledged=").Append(n.Acknowledged).Append('\n');
+        }
+
+        Game.Combat.CombatManager.DebugState combat = svc.Combat.Snapshot();
+        sb.Append("\n**Combat weapon shadow**\n\n");
+        Kv(sb, "Current target", combat.CurrentTarget ?? "(none)");
+        Kv(sb, "Last equipped weapon", combat.LastEquippedWeapon ?? "(none sent)");
+        Kv(sb, "Last equipped off-hand", combat.LastEquippedOffHand ?? "(none)");
+        Kv(sb, "Using alternate weapon", combat.UsingAlternateWeapon.ToString());
+
         return sb.ToString();
     }
 
@@ -189,6 +278,16 @@ public static class BugReportBuilder
         Kv(sb, "Current room",
             roomState.CurrentRoom is { } room ? $"{room.Key.Map}/{room.Key.Room} — {room.DisplayName}" : "(unknown)");
         Kv(sb, "Room confidence", roomState.Confidence.ToString());
+        // Suspect-strike count + the last observation's exit sets drive the
+        // walker's hidden-search / lost-recovery decisions — the exact inputs a
+        // "walker got lost / re-searched" report needs.
+        Kv(sb, "Suspect strikes", roomState.SuspectStrikes.ToString());
+        Kv(sb, "Observed exits",
+            roomState.ObservedExitDirections is { Count: > 0 } obs
+                ? string.Join(", ", obs) : "(none observed)");
+        Kv(sb, "Open-door exits",
+            roomState.OpenDoorDirections is { Count: > 0 } doors
+                ? string.Join(", ", doors) : "(none)");
         // RoomTracker anchors its timestamps in UTC (DateTimeOffset.UtcNow); the
         // rest of the report uses local .Now. The two are the same absolute
         // instant so all the tracker's comparisons work either way, but printing
@@ -286,6 +385,14 @@ public static class BugReportBuilder
         if (take == 0) return "_(log empty)_";
 
         StringBuilder sb = new();
+        // Both diagnostic channels off ⇒ the tail below is Info-only; the
+        // engines' Debug/Combat decision traces were never generated. Flag it so
+        // a triager doesn't read the absence of a trail as the engine going quiet.
+        bool debugOn = svc.Log.Diagnostics?.DebugDiagnostics ?? false;
+        bool combatOn = svc.Log.Diagnostics?.CombatDiagnostics ?? false;
+        if (!debugOn && !combatOn)
+            sb.Append("> Debug + Combat diagnostics were off — no decision-trail entries below. ")
+              .Append("Enable them in the Log pane and reproduce for a fuller capture.\n\n");
         sb.Append("Last ").Append(take).Append(" of ").Append(entries.Length).Append(" entries.\n\n```\n");
         for (int i = entries.Length - take; i < entries.Length; i++)
         {
@@ -299,25 +406,36 @@ public static class BugReportBuilder
 
     private static string BuildScrollback(TerminalEmulator emulator)
     {
-        List<string> lines = new();
+        // Scrollback rows carry the wall-clock instant they scrolled off; the
+        // live-screen tail is the current grid and has no per-row time. Keep the
+        // timestamp with each row so the log's timestamps can be aligned against
+        // the wire I/O (e.g. matching a nag-cancel log line to the telepath that
+        // triggered it).
+        List<(DateTimeOffset? Ts, string Text)> lines = new();
 
         foreach (ScrollbackBuffer.Row row in emulator.Screen.Scrollback.Enumerate())
-            lines.Add(RowText(row.Cells));
+            lines.Add((row.Timestamp, RowText(row.Cells)));
 
         TerminalScreen screen = emulator.Screen;
         for (int y = 0; y < screen.Rows; y++)
-            lines.Add(RowText(screen.Row(y).ToArray()));
+            lines.Add((null, RowText(screen.Row(y).ToArray())));
 
         // Trim only trailing blank padding rows from the live screen; keep
         // interior blanks (they may be meaningful spacing the user saw).
-        while (lines.Count > 0 && lines[^1].Length == 0) lines.RemoveAt(lines.Count - 1);
+        while (lines.Count > 0 && lines[^1].Text.Length == 0) lines.RemoveAt(lines.Count - 1);
 
         int take = Math.Min(ScrollbackLines, lines.Count);
         if (take == 0) return "_(nothing on screen yet)_";
 
         StringBuilder sb = new();
-        sb.Append("Last ").Append(take).Append(" line(s).\n\n```\n");
-        for (int i = lines.Count - take; i < lines.Count; i++) sb.Append(lines[i]).Append('\n');
+        sb.Append("Last ").Append(take)
+          .Append(" line(s). Scrollback rows are timestamped; the live-screen tail (no time prefix) is the current grid.\n\n```\n");
+        for (int i = lines.Count - take; i < lines.Count; i++)
+        {
+            (DateTimeOffset? ts, string text) = lines[i];
+            sb.Append(ts is { } t ? t.ToLocalTime().ToString("HH:mm:ss") : "        ")
+              .Append(' ').Append(text).Append('\n');
+        }
         sb.Append("```");
         return sb.ToString();
     }
