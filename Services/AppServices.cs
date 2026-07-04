@@ -1099,6 +1099,11 @@ public sealed class AppServices
     // walk / loop / auto-lair.
     public Game.PartyFollowerMovementGate PartyFollowerMovement { get; private set; } = null!;
 
+    // Inbound-@wait pause bridge — holds the active movement engine while a
+    // party member has asked us to @wait (or announced .@held) and hasn't yet
+    // sent @ok, so a loop doesn't walk away from a resting member.
+    public Game.PartyWaitMovementGate PartyWaitMovement { get; private set; } = null!;
+
     // Leader-rest bridge — nudges Health to re-evaluate when
     // the party leader's rest / meditate posture flips, so a standing-idle
     // follower opportunistically tops off during the leader's downtime
@@ -1855,6 +1860,14 @@ public sealed class AppServices
         // a user toggle.
         PartyFollowerMovement = new Game.PartyFollowerMovementGate(
             PartyState, MovementCoordinator, Log);
+
+        // Inbound-@wait pause bridge — asserts MovementCoordinator's
+        // PartyWaitGate while a party member has telepathed @wait (or announced
+        // .@held) and hasn't sent @ok, so our own loop / Auto-Lair / walk-to
+        // holds instead of splitting from a resting member. PartyEssentials was
+        // constructed earlier and already applies the leader-side opt-out.
+        PartyWaitMovement = new Game.PartyWaitMovementGate(
+            PartyEssentials, MovementCoordinator, Log);
 
         // Needs registry. Cross-engine fulfillment hub;
         // auto-light (9.K) posts, auto-get (9.L) fulfils. Cleared on
@@ -3675,8 +3688,10 @@ public sealed class AppServices
         Party.AutoInviteEnabled = dto.AutoInviteReconnecting;
         Party.DisconnectGraceWindow = TimeSpan.FromSeconds(Math.Clamp(dto.IfLeadingWaitTotalSec, 0, 3600));
         // Same "If leading, wait only" window also caps the invite-as-wait-signal
-        // loop hold before we uninvite a no-show.
+        // loop hold before we uninvite a no-show, and the inbound-@wait pause
+        // before we give up on a member who never sent @ok.
         AutoParty.InviteWaitWindow = TimeSpan.FromSeconds(Math.Clamp(dto.IfLeadingWaitTotalSec, 0, 3600));
+        PartyWaitMovement.WaitWindow = TimeSpan.FromSeconds(Math.Clamp(dto.IfLeadingWaitTotalSec, 0, 3600));
         Party.LocalRankPreference = dto.Rank;
         PartyBroadcaster.AutoExpResetEnabled = dto.ResetStatisticsOnLoopStart;
         // Shared nag cadence — same Settings.Party knobs feed both the
@@ -3703,6 +3718,7 @@ public sealed class AppServices
         Party.AutoInviteEnabled = defaults.AutoInviteReconnecting;
         Party.DisconnectGraceWindow = TimeSpan.FromSeconds(defaults.IfLeadingWaitTotalSec);
         AutoParty.InviteWaitWindow = TimeSpan.FromSeconds(defaults.IfLeadingWaitTotalSec);
+        PartyWaitMovement.WaitWindow = TimeSpan.FromSeconds(defaults.IfLeadingWaitTotalSec);
         Party.LocalRankPreference = defaults.Rank;
         PartyBroadcaster.AutoExpResetEnabled = defaults.ResetStatisticsOnLoopStart;
         TimeSpan nagInitial = TimeSpan.FromSeconds(defaults.JoinNagInitialDelaySec);

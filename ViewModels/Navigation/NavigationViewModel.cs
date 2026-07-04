@@ -37,6 +37,8 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         _services.Recovery.TierChanged    += OnRecoveryTierChanged;
         _services.Walker.Event += OnWalkerEvent;
         _services.MovementCoordinator.PauseStateChanged += OnPauseChanged;
+        _services.MovementCoordinator.GatesChanged += OnGatesChanged;
+        _services.Conditions.PropertyChanged += OnConditionsChanged;
         _services.RoomGraph.GraphReloaded += OnGraphReloaded;
         _services.TBInfo.StoreReloaded    += RefreshTeleportRooms;
         _services.Loops.LoopsChanged += OnLoopsChanged;
@@ -86,6 +88,8 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         _services.Recovery.TierChanged    -= OnRecoveryTierChanged;
         _services.Walker.Event -= OnWalkerEvent;
         _services.MovementCoordinator.PauseStateChanged -= OnPauseChanged;
+        _services.MovementCoordinator.GatesChanged -= OnGatesChanged;
+        _services.Conditions.PropertyChanged -= OnConditionsChanged;
         _services.RoomGraph.GraphReloaded -= OnGraphReloaded;
         _services.TBInfo.StoreReloaded    -= RefreshTeleportRooms;
         _services.Loops.LoopsChanged -= OnLoopsChanged;
@@ -1829,6 +1833,106 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     }
     private void OnPauseChanged(bool paused) => IsPaused = paused;
 
+    // Every gate assert/clear may change the live "why are we paused" label,
+    // even when the overall paused state doesn't flip (Combat → Resting keeps
+    // IsPaused true). RefreshActivityStatus is a no-op when nothing actually
+    // changed, so refiring on each transition is cheap.
+    private void OnGatesChanged() => RefreshActivityStatus();
+
+    // Our own "held" ailment stops movement server-side without asserting any
+    // client gate, so the chip watches the condition flags directly to surface
+    // it. Only ActiveFlags is relevant here — ignore other property changes.
+    private void OnConditionsChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(Game.Conditions.ConditionTracker.ActiveFlags))
+            RefreshActivityStatus();
+    }
+
+    // ----- Top-bar activity status (moving / fighting / waiting-why) --
+
+    // Human-readable "what is the movement engine doing right now" for the
+    // top-bar chip: Moving, Fighting, Paused (user), or Waiting with the
+    // reason. The reason comes straight from the MovementCoordinator gate that
+    // is holding the engine — the client never has to guess why a loop stalled.
+    private enum NavActivityKind { None, Moving, Fighting, Waiting, Paused }
+
+    private string _activityStatus = string.Empty;
+    private NavActivityKind _activityKind = NavActivityKind.None;
+
+    // Chip text ("Fighting", "Waiting — resting (low HP)", …). Empty when idle.
+    public string ActivityStatus => _activityStatus;
+    // Chip only shows while an engine is executing.
+    public bool HasActivityStatus => _activityKind != NavActivityKind.None;
+    // Colour-class selectors for the chip (green / red / amber / muted).
+    public bool ActivityIsMoving   => _activityKind == NavActivityKind.Moving;
+    public bool ActivityIsFighting => _activityKind == NavActivityKind.Fighting;
+    public bool ActivityIsWaiting  => _activityKind == NavActivityKind.Waiting;
+    public bool ActivityIsPaused   => _activityKind == NavActivityKind.Paused;
+
+    private void RefreshActivityStatus()
+    {
+        (string text, NavActivityKind kind) = ComputeActivity();
+        if (text == _activityStatus && kind == _activityKind) return;
+        _activityStatus = text;
+        _activityKind   = kind;
+        OnPropertyChanged(nameof(ActivityStatus));
+        OnPropertyChanged(nameof(HasActivityStatus));
+        OnPropertyChanged(nameof(ActivityIsMoving));
+        OnPropertyChanged(nameof(ActivityIsFighting));
+        OnPropertyChanged(nameof(ActivityIsWaiting));
+        OnPropertyChanged(nameof(ActivityIsPaused));
+    }
+
+    // Map the live engine + gate state to the chip. Idle → hidden. Running with
+    // nothing gating → Moving. Otherwise the highest-priority reason wins: an
+    // explicit user pause is the headline (only the user can clear it), then
+    // combat (Fighting), then our own "held" ailment (blocks movement
+    // server-side even with no client gate asserted), then the recovery / party
+    // holds. Gate constants are matched by value so a future gate never silently
+    // maps to "Moving" — an unrecognized one still surfaces as "Waiting — <gate>".
+    private (string Text, NavActivityKind Kind) ComputeActivity()
+    {
+        if (!IsAnyExecuting) return (string.Empty, NavActivityKind.None);
+
+        Game.Map.MovementCoordinator mc = _services.MovementCoordinator;
+        IReadOnlyCollection<string> gates = mc.AssertedGates;
+
+        // User pause and combat outrank everything, including a held ailment:
+        // an explicit pause is the user's own doing, and mid-fight "Fighting" is
+        // the more useful readout than "Held".
+        if (gates.Contains(Game.Map.MovementCoordinator.UserGate))
+            return ("Paused", NavActivityKind.Paused);
+        if (gates.Contains(Game.Map.MovementCoordinator.CombatGate))
+            return ("Fighting", NavActivityKind.Fighting);
+
+        // Our own held/entangled state stops movement at the server; no gate is
+        // asserted for it, so a stuck loop would otherwise read "Moving".
+        if (_services.Conditions.IsMovementPrevented)
+            return ("Waiting — held", NavActivityKind.Waiting);
+
+        if (!mc.IsPaused) return ("Moving", NavActivityKind.Moving);
+
+        if (gates.Contains(Game.Map.MovementCoordinator.HealthRecoveryGate))
+            return ("Waiting — resting (low HP)", NavActivityKind.Waiting);
+        if (gates.Contains(Game.Map.MovementCoordinator.ManaRecoveryGate))
+            return ("Waiting — meditating (low mana)", NavActivityKind.Waiting);
+        if (gates.Contains(Game.Map.MovementCoordinator.PartyWaitGate))
+            return ("Waiting — party asked to wait", NavActivityKind.Waiting);
+        if (gates.Contains(Game.Map.MovementCoordinator.PartyVitalsGate))
+            return ("Waiting — party member hurt", NavActivityKind.Waiting);
+        if (gates.Contains(Game.Map.MovementCoordinator.PartyInviteGate))
+            return ("Waiting — for invitee to join", NavActivityKind.Waiting);
+        if (gates.Contains(Game.Map.MovementCoordinator.FollowerGate))
+            return ("Waiting — following leader", NavActivityKind.Waiting);
+        if (gates.Contains(Game.Map.MovementCoordinator.CorpseRecoveryGate))
+            return ("Waiting — recovering corpse", NavActivityKind.Waiting);
+        if (gates.Contains(Game.Map.MovementCoordinator.AcquisitionGate))
+            return ("Waiting — looting", NavActivityKind.Waiting);
+
+        string first = gates.FirstOrDefault() ?? "?";
+        return ($"Waiting — {first}", NavActivityKind.Waiting);
+    }
+
     private void RefreshFromTracker()
     {
         RoomState state = _services.RoomTracker.State;
@@ -2286,6 +2390,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(RunStopLabel));
         OnPropertyChanged(nameof(TopBarStatusText));
         OnPropertyChanged(nameof(TopBarStatusBadge));
+        RefreshActivityStatus();
         OnPropertyChanged(nameof(EngineActionIsIdle));
         OnPropertyChanged(nameof(EngineActionIsWalking));
         OnPropertyChanged(nameof(EngineActionIsLooping));

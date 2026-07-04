@@ -68,6 +68,14 @@ public sealed class MovementCoordinator
     // it, so a queued route resumes on its own.
     public const string FollowerGate = "Follower";
 
+    // Asserted by PartyWaitMovementGate while at least one other party member has
+    // asked us to hold via an inbound @wait telepath (or a .@held say, which the
+    // PartyAilmentTracker routes through the same NotePause path). Clears when
+    // every waiting member sends @ok. The leader-side "ignore @wait when leading"
+    // opt-out is honoured upstream in PartyEssentialHandlers.NotePause, so this
+    // gate only reflects waits the user hasn't chosen to ignore.
+    public const string PartyWaitGate = "PartyWait";
+
     private const int HistoryCapacity = 200;
 
     private readonly LogService? _log;
@@ -86,6 +94,15 @@ public sealed class MovementCoordinator
     // vice versa. Single-gate changes that don't flip the overall paused state
     // do not fire (e.g. clearing HealthRecovery while User is still asserted).
     public event Action<bool>? PauseStateChanged;
+
+    // Fires after EVERY real gate assert/clear, whether or not it flips the
+    // overall paused state. PauseStateChanged is the coarse "are we moving or
+    // not" signal; this is the fine-grained "which gate changed" signal a UI
+    // needs to keep a live "why are we paused" label accurate — e.g. Combat
+    // clearing into a still-asserted HealthRecovery keeps IsPaused true (so
+    // PauseStateChanged stays silent) but the reason shown to the user must
+    // switch from "Fighting" to "Resting."
+    public event Action? GatesChanged;
 
     // Last HistoryCapacity gate transitions, oldest first. Backs a gate
     // timeline debug view and grep-friendly forensics on what asserted /
@@ -112,6 +129,7 @@ public sealed class MovementCoordinator
         if (!_assertedGates.Add(gate)) return;
         RecordTransition(gate, asserted: true, asserter, reason);
         if (!wasPaused) PauseStateChanged?.Invoke(true);
+        GatesChanged?.Invoke();
     }
 
     // Clear gate. Idempotent — clearing a gate that wasn't asserted is a no-op
@@ -123,6 +141,7 @@ public sealed class MovementCoordinator
         if (!_assertedGates.Remove(gate)) return;
         RecordTransition(gate, asserted: false, asserter, reason);
         if (!IsPaused) PauseStateChanged?.Invoke(false);
+        GatesChanged?.Invoke();
     }
 
     private void RecordTransition(string gate, bool asserted, string? asserter, string? reason)

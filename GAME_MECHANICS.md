@@ -255,6 +255,14 @@ flag). These are hard eligibility gates, independent of resistance and level imm
   member. Consequence for parsing: a bracket-less row must still parse (or reconciliation drops
   the member), and an absent bracket on a known-caster row (`BaselineMp > 0`) means 0, not
   "unchanged."
+- **[CONFIRMED]** `@wait` / `@ok` is a leader-directed **pause flag**, not a momentary signal. A
+  follower telepaths `@wait` to the leader to hold the party; the leader stays paused until
+  **either** the same member telepaths `@ok`, **or** the leader's own wait timer expires. The
+  timer is the "If leading, wait only (s)" cap (`PartySettings.IfLeadingWaitTotalSec`); on expiry
+  the leader gives up and resumes so a dropped / AFK member can't strand the party forever. A
+  `.@held` say routes through the same pause (a held member can't move, so the party waits for
+  them) and releases via that member's `@ok` on cure. The leader-side "ignore @wait when leading"
+  opt-out drops inbound `@wait` before it ever pauses.
 
 ## Talk / chat
 
