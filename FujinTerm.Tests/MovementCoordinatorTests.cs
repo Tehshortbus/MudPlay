@@ -148,6 +148,7 @@ public sealed class MovementCoordinatorTests
         Assert.Equal("HealthRecovery", MovementCoordinator.HealthRecoveryGate);
         Assert.Equal("ManaRecovery",   MovementCoordinator.ManaRecoveryGate);
         Assert.Equal("CorpseRecovery", MovementCoordinator.CorpseRecoveryGate);
+        Assert.Equal("PartyWait",      MovementCoordinator.PartyWaitGate);
     }
 
     [Fact]

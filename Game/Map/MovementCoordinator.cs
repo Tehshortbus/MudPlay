@@ -68,6 +68,14 @@ public sealed class MovementCoordinator
     // it, so a queued route resumes on its own.
     public const string FollowerGate = "Follower";
 
+    // Asserted by PartyWaitMovementGate while at least one other party member has
+    // asked us to hold via an inbound @wait telepath (or a .@held say, which the
+    // PartyAilmentTracker routes through the same NotePause path). Clears when
+    // every waiting member sends @ok. The leader-side "ignore @wait when leading"
+    // opt-out is honoured upstream in PartyEssentialHandlers.NotePause, so this
+    // gate only reflects waits the user hasn't chosen to ignore.
+    public const string PartyWaitGate = "PartyWait";
+
     private const int HistoryCapacity = 200;
 
     private readonly LogService? _log;
