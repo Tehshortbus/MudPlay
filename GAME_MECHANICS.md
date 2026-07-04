@@ -247,6 +247,14 @@ flag). These are hard eligibility gates, independent of resistance and level imm
 - **[CONFIRMED]** Party size: minimum 2, maximum 6.
 - **[CONFIRMED]** Leader disconnect disbands the whole party — no grace-window auto-invite for
   a dropped leader.
+- **[CONFIRMED]** A `par` row's secondary-resource bracket — mana `[M:N%]` for casters, kai
+  `[K:N%]` for Mystics / monks — is **omitted entirely when the resource is exactly 0 points**,
+  and this holds for mana and kai alike. It's a 0-*points* rule, not a 0-*percent* one: a caster
+  with a few points left still prints `[M: 0%]` (bracket present). The row keeps its `[H:N%]`
+  bracket, so a drained member is a member row missing its secondary field — not a dropped
+  member. Consequence for parsing: a bracket-less row must still parse (or reconciliation drops
+  the member), and an absent bracket on a known-caster row (`BaselineMp > 0`) means 0, not
+  "unchanged."
 
 ## Talk / chat
 

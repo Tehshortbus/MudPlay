@@ -105,13 +105,15 @@ public sealed partial class PartyManager : IDisposable
     //
     // The secondary-resource bracket is optional AND its letter is
     // class-dependent: casters show mana ([M:N%]), Mystics / monks show kai
-    // ([K:N%]) — so the bracket must accept BOTH letters. It vanishes entirely
-    // when the pool reads 0% (a Mystic whose kai has drained shows no bracket).
-    // Missing the [K:] alternative was a real bug: a Mystic party member's
-    // [K:N%] row failed to match, so par reconciliation read them as having left
-    // and dropped their roster row every poll — then re-added them (firing the
-    // on-join @health round-trip) on the one poll where their kai read 0% and
-    // the bracket disappeared. Both letters feed the same mp group.
+    // ([K:N%]) — so the bracket must accept BOTH letters. par omits the whole
+    // bracket when the pool is EXACTLY 0 points (not merely 0% — a caster with a
+    // few points left still prints [M: 0%]); this 0-point omission is the same
+    // for mana and kai. Missing the [K:] alternative was a real bug, kai-unique
+    // only because [M:] was already recognized: a Mystic party member's [K:N%]
+    // row failed to match, so par reconciliation read them as having left and
+    // dropped their roster row every poll — then re-added them (firing the
+    // on-join @health round-trip) on the one poll where their kai hit 0 and the
+    // bracket disappeared. Both letters feed the same mp group.
     //
     // IMPORTANT: the percentage is right-padded to a 3-char column. At 100%
     // there's no padding ([H:100%]), at <100% there's a leading space ([H: 85%],
@@ -872,10 +874,11 @@ public sealed partial class PartyManager : IDisposable
         string klass = m.Groups["class"].Success ? m.Groups["class"].Value.Trim() : string.Empty;
         int hpPct = int.Parse(m.Groups["hp"].Value, System.Globalization.CultureInfo.InvariantCulture);
         // Secondary-resource bracket ([M:N%] mana or [K:N%] kai) is omitted
-        // when the class has none (Warriors) or the pool reads 0% (a Mystic
-        // whose kai has drained). Absent = leave MpPercent unchanged on
-        // existing members; default 0 on new ones. Both letters feed this one
-        // mp group — the PartyWindow renders a single secondary bar per member.
+        // when the class has none (Warriors) or the pool is exactly 0 points —
+        // par drops the whole bracket at 0 for mana and kai alike. Both letters
+        // feed this one mp group; the PartyWindow renders a single secondary bar
+        // per member. An absent bracket is ambiguous on its own, so the write
+        // below disambiguates by BaselineMp (see there).
         int? mpPct = m.Groups["mp"].Success
             ? int.Parse(m.Groups["mp"].Value, System.Globalization.CultureInfo.InvariantCulture)
             : (int?)null;
@@ -930,7 +933,20 @@ public sealed partial class PartyManager : IDisposable
         PartyMember member = AddOrTouchMember(name, isSelf);
         if (klass.Length > 0) member.Class = klass;
         member.HpPercent = hpPct;
-        if (mpPct is { } v) member.MpPercent = v;
+        if (mpPct is { } v)
+        {
+            member.MpPercent = v;
+        }
+        else if (member.BaselineMp > 0)
+        {
+            // Bracket absent for a member we KNOW has a secondary pool (a prior
+            // @health set BaselineMp) means the pool drained to exactly 0 — par
+            // omits [M:]/[K:] at 0. Show 0 rather than freezing the bar at the
+            // last non-zero percent. BaselineMp == 0 is a no-pool class (or a
+            // member not yet @health'd), where an absent bracket carries no
+            // percentage to infer, so leave MpPercent alone there.
+            member.MpPercent = 0;
+        }
         member.Position = position;
         member.Rank     = rank;
         // Mirror the par-state into the boolean flags so the PartyWindow

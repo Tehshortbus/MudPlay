@@ -908,6 +908,42 @@ public sealed class PartyManagerTests
     }
 
     [Fact]
+    public void ParPoll_KnownCasterDrainedToZero_ShowsZeroNotStalePercent()
+    {
+        // par omits the [M:]/[K:] bracket at exactly 0 points. For a member we
+        // KNOW has a secondary pool (a prior @health set BaselineMp), an absent
+        // bracket means drained-to-0 — the mana bar must read 0, not freeze at
+        // the last non-zero percent.
+        var (router, p) = Setup(localCharacterName: "Raijin");
+        router.Dispatch(Line("You are now following Fujin."));
+        // @health round-trip gives Fujin a known mana pool (BaselineMp > 0).
+        p.SetMemberHealthSnapshot("Fujin WuzHere", hpCur: 200, hpMax: 200, mpCur: 300, mpMax: 300);
+        PartyMember fujin = p.State.Members.First(m => m.Name.StartsWith("Fujin", StringComparison.Ordinal));
+
+        // Poll 1: mana present at 40%.
+        router.Dispatch(Line("The following people are in your travel party:"));
+        p.FeedTestLines(new[]
+        {
+            "  Fujin WuzHere                  (Priest)     [M: 40%] [H: 82%]   - Frontrank",
+            "  Raijin WuzHere                 (Priest)     [M:100%] [H: 86%]   - Backrank",
+        });
+        p.FeedTestPromptLine();
+        Assert.Equal(40, fujin.MpPercent);
+
+        // Poll 2: mana drained to 0 → [M:] bracket vanishes entirely.
+        router.Dispatch(Line("The following people are in your travel party:"));
+        p.FeedTestLines(new[]
+        {
+            "  Fujin WuzHere                  (Priest)              [H: 76%]   - Frontrank",
+            "  Raijin WuzHere                 (Priest)     [M:100%] [H: 90%]   - Backrank",
+        });
+        p.FeedTestPromptLine();
+
+        // The bar reads 0, not the stale 40 from poll 1.
+        Assert.Equal(0, fujin.MpPercent);
+    }
+
+    [Fact]
     public void DefaultPatterns_HaveAllPartyEntries()
     {
         MessageRouter router = new();
