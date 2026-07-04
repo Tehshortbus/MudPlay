@@ -10,14 +10,16 @@ public sealed class RealmRegenProfileTests
     {
         Assert.Equal(TimeSpan.FromSeconds(30), RealmRegenProfile.Stock.StandingInterval);
         Assert.Equal(TimeSpan.FromSeconds(20), RealmRegenProfile.Stock.RestingInterval);
-        Assert.Equal(TimeSpan.FromSeconds(10), RealmRegenProfile.Stock.MeditatingInterval);
+        // Re-measured 15 s grid, overriding the 10 s MME SEC_PER_MEDI_TICK seed.
+        Assert.Equal(TimeSpan.FromSeconds(15), RealmRegenProfile.Stock.MeditatingInterval);
     }
 
     [Fact]
     public void ParaMud_UsesTheMeasuredTenSecondGrid()
     {
         // Derived from live Paradigm captures: natural +rate/3 every 10 s, rest
-        // riding the same grid. Meditate isn't split — same 10 s as Stock.
+        // riding the same grid. Meditate isn't split — it keeps the 10 s MME seed
+        // (pending re-verification), where Stock now rides a re-measured 15 s grid.
         Assert.Equal(TimeSpan.FromSeconds(10), RealmRegenProfile.ParaMud.StandingInterval);
         Assert.Equal(TimeSpan.FromSeconds(10), RealmRegenProfile.ParaMud.RestingInterval);
         Assert.Equal(TimeSpan.FromSeconds(10), RealmRegenProfile.ParaMud.MeditatingInterval);
