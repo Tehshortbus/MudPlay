@@ -451,6 +451,19 @@ public sealed class PartyEssentialHandlers : IDisposable
         if (wasPaused && !IsPaused) PauseGateChanged?.Invoke(false);
     }
 
+    // Force-release every outstanding @wait at once — the second release path
+    // beside a per-member @ok. The leader's wait timer expired
+    // (PartyWaitMovementGate), so we stop holding for members who never sent
+    // @ok: clear the roster WAIT chips too and fire the single paused→unpaused
+    // transition so the movement bridge resumes. No-op when nobody is waiting.
+    public void ClearAllWaits()
+    {
+        if (WaitingMembers.Count == 0) return;
+        foreach (string member in WaitingMembers) SetMemberWaitFlag(member, false);
+        WaitingMembers.Clear();
+        PauseGateChanged?.Invoke(false);
+    }
+
     // Mirror the WaitingMembers set onto the matching PartyMember.IsWaiting so the
     // PartyWindow can render a per-row WAIT chip without binding through the
     // HashSet. Senders are matched by given-name (first whitespace-delimited

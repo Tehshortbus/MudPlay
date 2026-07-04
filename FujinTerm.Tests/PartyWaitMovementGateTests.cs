@@ -107,4 +107,70 @@ public sealed class PartyWaitMovementGateTests
 
         Assert.DoesNotContain(MovementCoordinator.PartyWaitGate, coord.AssertedGates);
     }
+
+    // ----- Wait-timer expiry (second release path beside @ok) -----
+
+    [Fact]
+    public void WaitTimer_ExpiresAfterWindow_ForceReleasesWaitAndGate()
+    {
+        var (engine, handlers, party, coord, gate) = Setup();
+        DateTime t = Now;
+        gate.NowProvider = () => t;
+        gate.WaitWindow = TimeSpan.FromSeconds(30);
+        SeedPartyMember(party, "Follower");
+        PartyMember row = party.Members[0];
+
+        engine.DispatchForTests(Telepath("Follower", "@wait"));
+        Assert.Contains(MovementCoordinator.PartyWaitGate, coord.AssertedGates);
+        Assert.True(row.IsWaiting);
+
+        // 29s — not yet expired.
+        t = Now.AddSeconds(29);
+        gate.TickForTests();
+        Assert.Contains(MovementCoordinator.PartyWaitGate, coord.AssertedGates);
+
+        // 31s — the leader gives up: gate, wait set, and roster chip all clear.
+        t = Now.AddSeconds(31);
+        gate.TickForTests();
+        Assert.DoesNotContain(MovementCoordinator.PartyWaitGate, coord.AssertedGates);
+        Assert.False(coord.IsPaused);
+        Assert.Empty(handlers.WaitingMembers);
+        Assert.False(row.IsWaiting);
+    }
+
+    [Fact]
+    public void WaitTimer_ZeroWindow_NeverExpires()
+    {
+        var (engine, _, party, coord, gate) = Setup();
+        DateTime t = Now;
+        gate.NowProvider = () => t;
+        gate.WaitWindow = TimeSpan.Zero;   // timeout disabled — only @ok releases
+        SeedPartyMember(party, "Follower");
+
+        engine.DispatchForTests(Telepath("Follower", "@wait"));
+        t = Now.AddHours(1);
+        gate.TickForTests();
+
+        Assert.Contains(MovementCoordinator.PartyWaitGate, coord.AssertedGates);
+    }
+
+    [Fact]
+    public void OkBeforeTimer_ReleasesWithoutWaitingForExpiry()
+    {
+        var (engine, _, party, coord, gate) = Setup();
+        DateTime t = Now;
+        gate.NowProvider = () => t;
+        gate.WaitWindow = TimeSpan.FromSeconds(30);
+        SeedPartyMember(party, "Follower");
+
+        engine.DispatchForTests(Telepath("Follower", "@wait"));
+        engine.DispatchForTests(Telepath("Follower", "@ok"));   // clears well before the window
+
+        Assert.DoesNotContain(MovementCoordinator.PartyWaitGate, coord.AssertedGates);
+
+        // A later tick past the old deadline must not resurrect or misfire.
+        t = Now.AddSeconds(60);
+        gate.TickForTests();
+        Assert.DoesNotContain(MovementCoordinator.PartyWaitGate, coord.AssertedGates);
+    }
 }
