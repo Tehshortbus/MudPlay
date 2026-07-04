@@ -31,6 +31,13 @@ it isn't here and you're unsure, ask.
   single-slot swap needs no explicit `rem` first.
 
 **Other**
+- **[CONFIRMED]** A weapon equip / swap prints a **single** line — `You are now holding <new>.`.
+  Swapping into an occupied weapon hand emits **no** removal line for the old weapon; the
+  displaced weapon returns to the pack silently.
+- **[CONFIRMED]** An armor swap into an occupied slot prints **two separate lines**, in order:
+  `You have removed <old>.` then `You are now wearing <new>.`. (This is the split from a weapon
+  swap: armor names the displaced piece with an explicit removal line, a weapon does not.) The
+  two lines arrive back-to-back but are distinct — the client matches each on its own.
 - **[CONFIRMED]** No effect in the game force-unequips gear (no disarm / removal effects).
   Worn state changes *only* from commands the player or the client issues.
 - **[OBSERVED]** A two-handed weapon needs both hands free; the game rejects the wield while an
@@ -84,6 +91,33 @@ it isn't here and you're unsure, ask.
 - **[OBSERVED]** `Your fists have no effect against this monster!` — you're swinging bare-handed
   (no weapon in hand, or it left your hand).
 
+## Attack spells: immunity vs resistance
+
+Two **distinct** mechanics decide why an attack spell fails to hurt a monster — do not
+conflate them.
+
+**Immunity** *([CONFIRMED])*
+- A monster immune to a spell's damage type draws `Your spell has no effect on <monster>.` —
+  a hard, binary immunity to that spell type (e.g. a `harm` spell vs an acid slime). The
+  client reads this line as species-scoped attack-spell immunity and gates that spell out of
+  the attack cascade (primary → alternate → weapon) for the rest of the room.
+
+**Percentage resistance** *([CONFIRMED])* — a separate, numeric mechanic, **not** the immunity
+above:
+- A monster's resistance to a spell type is a **percentage**, applied as a numeric reduction on
+  the spell's damage — it does **not** produce the `no effect` line.
+- At **exactly 100%** resist the spell lands but deals **0 damage**.
+- **Above 100%** resist the damage goes **negative** — the spell **heals** the monster instead
+  of harming it.
+- There is **no single canonical resist / heal line** to match: every combat spell has its
+  **own** verbose cast / hit text, so the tell isn't a fixed message — it's the **damage number**
+  carried in that spell's hit line. **0 or a negative number is the resist signal.** Detecting
+  it means reading the per-spell damage value, not matching one string.
+- Consequence: immunity is the only one of the two that emits `Your spell has no effect on
+  <monster>.` (and it's what the engine gates on). An over-100%-resist cast emits no such line —
+  the only evidence is the 0 / negative damage figure — so "full resist" must never be treated as
+  equivalent to immunity.
+
 ## Items & acquisition
 
 - **[CONFIRMED]** Items are acquired via `buy` / `get` / `search`+`get`. There is no "hunt"
@@ -106,9 +140,10 @@ it isn't here and you're unsure, ask.
 
 | Event | Line |
 |---|---|
-| Wear (names no slot) | `You are now wearing <X>.` |
+| Weapon equip / swap (one line) | `You are now holding <X>.` |
+| Armor wear, empty slot (names no slot) | `You are now wearing <X>.` |
+| Armor swap into an occupied slot (two lines) | `You have removed <old>.` then `You are now wearing <new>.` |
 | Remove | `You have removed <X>.` |
-| Weapon swap (two lines) | `You removed <old>.` then `You are now wearing <new>.` |
 | Already worn | `You do not have <X> left unequipped.` |
 | Sneak armed (ACK) | `Attempting to sneak...` |
 | Sneak soft-fail | `Attempting to sneak...You don't think you're sneaking.` |
@@ -117,3 +152,4 @@ it isn't here and you're unsure, ask.
 | Sneak blocked (hard) | `You may not sneak right now!` |
 | Weapon ineffective | `Your weapon has no effect against this monster!` |
 | Fists ineffective | `Your fists have no effect against this monster!` |
+| Spell immunity | `Your spell has no effect on <monster>.` |
