@@ -2,6 +2,23 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0): **MAJOR** = whole-program refactor, **MINOR** = a large PR, **PATCH** = a small / bugfix PR.
 
+## 1.4.0
+
+A batch of party, movement, and navigation bug fixes plus two UI quality-of-life touches.
+
+**Fixed**
+- **A party Mystic/monk was dropped and re-added every `par` poll, spamming mid-combat `@health`.** The `par`-row parser only recognized the mana bracket `[M:N%]`, but a Mystic's secondary resource is *kai*, rendered `[K:N%]`. So every poll where a Mystic member had kai, their row failed to match, end-of-block reconciliation read them as having left the party and dropped their roster row — then re-added them on the one poll where their kai happened to read 0% (the game omits the bracket entirely at 0%), and that re-add fired PartyPoller's on-join `@health` round-trip *mid-fight*. The row regex now accepts both `[M:…]` and `[K:…]` into the same resource field, so a Mystic parses whether their kai is full or drained and their roster row stays put across the cycle.
+- **A drained party caster's mana/kai bar froze at its last non-zero reading instead of dropping to 0.** `par` omits the secondary-resource bracket entirely when the pool is at *exactly 0 points* (a 0-*points* rule, not 0-*percent* — a caster with a few points left still prints `[M: 0%]`), and this holds for mana and kai alike. The row parser left the percentage untouched on an absent bracket, so a fully-drained member's bar stayed pinned at whatever it last showed. When the member is a known caster (a prior `@health` established their pool), an absent bracket is now read as 0, so the PartyWindow bar empties correctly; no-pool classes and not-yet-`@health`'d members are unaffected.
+- **A `@health` round-trip was sent the instant an invite went out, before the invitee had joined.** Inviting a player added their roster row with the invited flag still unset, and `ObservableCollection.Add` fires its change notification *synchronously* — so the party poller saw the new member and fired the on-join `@health` before the code that marks the row invited had even run. The row is now constructed with the invited flag already set, so the poller's "skip invited members" gate holds and `@health` only fires once the player actually joins the party.
+- **The auto-walker / movement loop stalled after crossing a text exit (e.g. `go path`, `go manhole`).** The walker announces a text exit to the room-tracker *with* its resolved cardinal, then sends the bytes — which flow back through the outbound-movement observer, which announced the *same* step a second time (cardinal-less). That phantom pending move kept the tracker's queue non-empty after the walker had already landed, holding it in the `Pending` state and stalling the walk until the next room re-display flushed the phantom. The observer's text-exit path now debounces against the engine's own announcement, exactly as the cardinal path already did, so a text-exit step enqueues once and the walk continues without a stall.
+- **A navigation loop's blue loop-path overlay vanished when the Navigation window was closed and reopened mid-loop.** Reopening constructed a fresh view-model that seeded the walk path and status text but not the loop polyline, so the loop line only reappeared after the next step redrew it. The overlay is now seeded on construction, so an active loop's path shows immediately on reopen.
+
+**Added**
+- **Session Stats is now on the terminal right-click context menu.** The main-window right-click menu gains an *Open Session Stats* entry (mirroring its hotkey), alongside the other quick-open window shortcuts.
+
+**Changed**
+- **The Settings *Spells* tab is now labelled *Spells + Ailments*,** reflecting that it configures both spell casting and ailment handling. The persistence keys are unchanged, so existing per-tier settings carry over untouched.
+
 ## 1.3.0
 
 Pre-emptive elemental-resistance guard for attack spells.

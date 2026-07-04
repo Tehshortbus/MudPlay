@@ -656,4 +656,56 @@ public sealed class PartyPollerTests
 
         Assert.Empty(wire);
     }
+
+    [Fact]
+    public void YouInvitedLine_ThroughPartyManager_SkipsHealthRoundTrip()
+    {
+        // Regression for the live bug: "You have invited Raijin to follow
+        // you." fired /Raijin @health immediately, before Raijin joined.
+        // Root cause was PartyManager adding the roster row with IsInvited
+        // still default-false — Members.Add fired the poller's on-join
+        // round-trip synchronously, before OnYouInvited set the flag true.
+        // The flag is now set at construction, so the add-time gate blocks.
+        var (_, mgr, state, _, router, wire) = Setup();
+        mgr.LocalCharacterName = "Fujin";
+
+        router.Dispatch(new Terminal.LineExtractor.EmittedLine(
+            "You have invited Raijin to follow you.",
+            new Terminal.CellAttributes[64],
+            DateTimeOffset.UnixEpoch,
+            IsPromptLine: false));
+
+        // The row exists (for the PartyWindow INVITED chip) and is invited,
+        // but no @health went out — the invitee hasn't joined.
+        Assert.Contains(state.Members,
+            m => m.Name.Equals("Raijin", StringComparison.OrdinalIgnoreCase) && m.IsInvited);
+        Assert.Empty(wire);
+    }
+
+    [Fact]
+    public void InviteThenFollows_ThroughPartyManager_FiresHealthOnlyOnJoin()
+    {
+        // Pins the full sequence: the invite echo must stay silent, and the
+        // @health round-trip fires exactly once — when the invitee actually
+        // starts following (IsInvited flips true→false on the same row).
+        var (_, mgr, state, _, router, wire) = Setup();
+        mgr.LocalCharacterName = "Fujin";
+
+        router.Dispatch(new Terminal.LineExtractor.EmittedLine(
+            "You have invited Raijin to follow you.",
+            new Terminal.CellAttributes[64],
+            DateTimeOffset.UnixEpoch,
+            IsPromptLine: false));
+        Assert.Empty(wire);   // nothing yet — still pending
+
+        router.Dispatch(new Terminal.LineExtractor.EmittedLine(
+            "Raijin started to follow you.",
+            new Terminal.CellAttributes[32],
+            DateTimeOffset.UnixEpoch,
+            IsPromptLine: false));
+
+        // Now — and only now — the on-join @health goes out, once.
+        byte[] sent = Assert.Single(wire);
+        Assert.Equal("/Raijin @health\r", Encoding.Latin1.GetString(sent));
+    }
 }

@@ -61,6 +61,13 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         _services.Macros.Macros.CollectionChanged += OnMacrosCollectionChanged;
         RefreshFromTracker();
         RefreshFromWalker();
+        // Seed the loop overlay from the live LoopRunner state. RefreshFromWalker
+        // above already seeds the walker path + the engine-action text, but the
+        // blue loop polyline (LoopPath) is otherwise only drawn from
+        // OnLoopRunnerEvent — so a Navigation window reopened mid-loop would show
+        // no loop line until the loop's next step fired an event. Seeding here
+        // mirrors the overlay refresh the event handler runs.
+        RefreshLoopOverlays();
         RefreshLayout();
         RefreshFavorites();
         RefreshCrawlerChords();

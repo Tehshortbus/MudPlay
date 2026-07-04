@@ -228,24 +228,50 @@ public sealed class RoomTracker
     // Echo-aware overload for OutboundMovementObserver. The observer fires from
     // SendUserInput right after the walker / loop-runner already called
     // NoteMoveSent directly — drop the second announcement when the most-recent
-    // direction matches within CardinalDebounceWindow. Manual cardinal typing
+    // direction matches within MoveDebounceWindow. Manual cardinal typing
     // (no walker call) lands as a real announcement.
     public void NoteMoveSentByObserver(Direction direction, DateTimeOffset? whenUtc = null)
     {
         DateTimeOffset when = whenUtc ?? DateTimeOffset.UtcNow;
         if (_lastCardinalAnnouncement is { Dir: var lastDir, At: var lastAt }
             && lastDir == direction
-            && (when - lastAt) < CardinalDebounceWindow)
+            && (when - lastAt) < MoveDebounceWindow)
         {
             _log?.Log(LogSeverity.Debug, "RoomTracker",
-                $"Debounced observer echo of NoteMoveSent({direction}); engine already announced within {CardinalDebounceWindow.TotalMilliseconds:0} ms.");
+                $"Debounced observer echo of NoteMoveSent({direction}); engine already announced within {MoveDebounceWindow.TotalMilliseconds:0} ms.");
             return;
         }
         NoteMoveSent(direction, whenUtc);
     }
 
+    // Echo-aware overload for OutboundMovementObserver's text-exit path. Mirrors
+    // the cardinal debounce above. SpecialExitDispatch (walker / loop-runner)
+    // announces a text exit WITH its resolved cardinal, then pumps the bytes;
+    // those bytes flow back through SendUserInput → the observer, which would
+    // otherwise enqueue a SECOND, cardinal-less pending move for the same
+    // physical step. That phantom keeps the pending queue non-empty after the
+    // walker has already landed, holding the tracker in Pending and stalling the
+    // walk until the next observation flushes it. Drop the observer echo when the
+    // engine just announced the same command. Manual text typing (no engine
+    // call, or past the window) lands as a real announcement.
+    public void NoteMoveSentByObserver(string command, DateTimeOffset? whenUtc = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(command);
+        DateTimeOffset when = whenUtc ?? DateTimeOffset.UtcNow;
+        if (_lastTextAnnouncement is { Command: var lastCmd, At: var lastAt }
+            && string.Equals(lastCmd, command, StringComparison.OrdinalIgnoreCase)
+            && (when - lastAt) < MoveDebounceWindow)
+        {
+            _log?.Log(LogSeverity.Debug, "RoomTracker",
+                $"Debounced observer echo of NoteMoveSent('{command}'); engine already announced within {MoveDebounceWindow.TotalMilliseconds:0} ms.");
+            return;
+        }
+        NoteMoveSent(command, whenUtc: whenUtc);
+    }
+
     private (Direction Dir, DateTimeOffset At)? _lastCardinalAnnouncement;
-    private static readonly TimeSpan CardinalDebounceWindow = TimeSpan.FromMilliseconds(100);
+    private (string Command, DateTimeOffset At)? _lastTextAnnouncement;
+    private static readonly TimeSpan MoveDebounceWindow = TimeSpan.FromMilliseconds(100);
 
     // Text-exit move (e.g. "go path") — used by the look-direction-interception
     // work for arbitrary text commands that don't map to a Direction.
@@ -253,6 +279,7 @@ public sealed class RoomTracker
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(command);
         DateTimeOffset when = whenUtc ?? DateTimeOffset.UtcNow;
+        _lastTextAnnouncement = (command, when);
         EnqueuePending(new PendingMove(cardinal, command, when));
         AppendStep(new DirectionDto(cardinal, command));
 

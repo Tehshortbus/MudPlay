@@ -496,6 +496,7 @@
                         <MenuItem Header="Open Player Workshop" InputGesture="{Binding WorkshopGesture}"     Command="{Binding OpenWorkshopCommand}"/>
                         <MenuItem Header="Open Conversation"    InputGesture="{Binding ConversationGesture}" Command="{Binding OpenConversationCommand}"/>
                         <MenuItem Header="Open Navigation"      InputGesture="{Binding NavigationGesture}"   Command="{Binding OpenNavigationCommand}"/>
+                        <MenuItem Header="Open Session Stats"   InputGesture="{Binding SessionStatsGesture}" Command="{Binding OpenSessionStatsCommand}"/>
                         <Separator/>
                         <!-- Diagnostics — freeze current client state + recent
                              output into a Markdown report on the Desktop. -->
