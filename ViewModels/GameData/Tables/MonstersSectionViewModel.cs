@@ -18,8 +18,8 @@ namespace FujinTerm.ViewModels.GameData.Tables;
 // Column names mirror the MajorMUD MDB schema verbatim (per data-v1.11p.mdb). EXP is the
 // experience reward, MagicRes is the magic-resist score, AvgDmg is the average per-round
 // outgoing damage, RegenTime is respawn cadence in ticks. Type and Align render via
-// LookupEnums ("Solo" / "Lawful Good" / etc.) and Undead is a boolean from the MDB so it
-// already arrives as "true" / "false".
+// LookupEnums ("Solo" / "Lawful Good" / etc.). Undead is a byte-boolean from the MDB
+// (0 = no, non-zero = yes — the MDB stores Boolean True as -1, which arrives as 255).
 public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEditableTableSectionViewModel
 {
     private readonly GameDataCache _cache;
@@ -273,7 +273,11 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
             AddRowIfPresent(kv, "Type",     LookupEnums.FormatMonType(ReadString(el, "Type")));
             AddRowIfPresent(kv, "Alignment", LookupEnums.FormatMonAlignment(ReadString(el, "Align")));
 
-            if (ReadInt(el, "Undead") == 1) AddRow(kv, "Undead", "Yes");
+            // Undead is a byte-boolean: 0 = not undead, any non-zero = undead.
+            // Across 1.11p it holds 0, 1, AND 255 (the MDB's Boolean True stored
+            // as -1), so the test must be != 0 — never == 1, which silently drops
+            // the 255 rows (banshee, zombie cat, skeletal steed, …).
+            if (ReadInt(el, "Undead") != 0) AddRow(kv, "Undead", "Yes");
 
             // HP + HP Regen combined into one row, in the form
             // "7200 (Regens: 2000 HPs every 90 seconds [18 rounds])".

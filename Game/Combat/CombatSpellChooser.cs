@@ -32,10 +32,16 @@ namespace FujinTerm.Game.Combat;
 // meet its mana gate this round is skipped (we fall through to the attack phase)
 // rather than stalling the round.
 //
-// Damage-immunity fallback (priest harm vs an acid slime, etc.) is intentionally
-// NOT handled here yet — it needs the server's spell-no-effect message wording,
-// which isn't modelled. When that lands, the engine marks the target's primary
-// attack spell as ineffective and the chooser skips it to the alternate.
+// Three deterministic "skip this single-target attack spell" inputs flow in via
+// CombatSpellContext, each gating NormalAttackSpell / AlternateAttackSpell down
+// the cascade to the next slot (then the weapon):
+//   - ImmuneAttackSpells — the target's species produced a "Your spell has no
+//     effect on X." line this room (a hard targeting/immunity mismatch).
+//   - LevelBlockedActions — the spell's ReqLevel is below the monster's SpellImmu
+//     (a level gate from game data).
+//   - ResistBlockedActions — the target resists the spell's damage *element*
+//     ≥ 100%, so it would deal 0 damage or heal the monster (elemental only —
+//     Magic Resist and poison are not deterministic; see MonsterResistIndex).
 public sealed class CombatSpellChooser
 {
     private bool _areaDebuffCast;
@@ -180,6 +186,7 @@ public sealed class CombatSpellChooser
         if (IsConfigured(normal)
             && !IsImmune(ctx, CombatSpellAction.NormalAttackSpell)
             && !IsLevelBlocked(ctx, CombatSpellAction.NormalAttackSpell)
+            && !IsResistBlocked(ctx, CombatSpellAction.NormalAttackSpell)
             && CastsOk(normal, _normalAttackCasts)
             && ManaOk(normal, ctx, mode))
             return new CombatSpellDecision(CombatSpellAction.NormalAttackSpell, normal.SpellName!);
@@ -188,6 +195,7 @@ public sealed class CombatSpellChooser
         if (IsConfigured(alt)
             && !IsImmune(ctx, CombatSpellAction.AlternateAttackSpell)
             && !IsLevelBlocked(ctx, CombatSpellAction.AlternateAttackSpell)
+            && !IsResistBlocked(ctx, CombatSpellAction.AlternateAttackSpell)
             && CastsOk(alt, _alternateAttackCasts)
             && ManaOk(alt, ctx, mode))
             return new CombatSpellDecision(CombatSpellAction.AlternateAttackSpell, alt.SpellName!);
@@ -288,6 +296,17 @@ public sealed class CombatSpellChooser
     private static bool IsLevelBlocked(in CombatSpellContext ctx, CombatSpellAction action) =>
         ctx.LevelBlockedActions is { } set && set.Contains(action);
 
+    // The current target resists this attack spell's damage *element* ≥ 100%, so
+    // the spell would deal 0 damage (exactly 100%) or heal the monster (> 100%) —
+    // game data lets us skip it pre-emptively down the cascade. Only single-target
+    // attack slots are guarded (multi/area room spells hit the whole room), and
+    // only elemental spells are ever resist-blocked: Magic Resist (AttType 4) and
+    // poison (AttType 6) aren't deterministic, so their spells never land here (see
+    // MonsterResistIndex). A negative or 1–99% resist is NOT blocked — the spell
+    // still deals (bonus or reduced) damage.
+    private static bool IsResistBlocked(in CombatSpellContext ctx, CombatSpellAction action) =>
+        ctx.ResistBlockedActions is { } set && set.Contains(action);
+
     // Under the per-room cast cap. null = no limit; 0 = never cast (explicit
     // off); N = fire until N reached.
     private static bool CastsOk(CombatSpellSlot slot, int castsSoFar) =>
@@ -357,6 +376,10 @@ public readonly record struct CombatSpellDecision(CombatSpellAction Action, stri
 // when false the chooser never offers the multi-target attack spell or either
 // debuff (the single-target Normal / Alternate attack spells are NOT nukes and
 // stay available). Defaults true so unwired callers / tests behave as before.
+// ResistBlockedActions is the set of single-target attack actions whose damage
+// *element* the current target resists ≥ 100% (0 damage or heal), or null when
+// nothing is resist-blocked — elemental only; M.R. and poison spells never
+// appear here.
 public readonly record struct CombatSpellContext(
     int EnemyCount,
     string TargetRawName,
@@ -366,4 +389,5 @@ public readonly record struct CombatSpellContext(
     IReadOnlySet<CombatSpellAction>? ImmuneAttackSpells = null,
     bool SpellsAvailable = true,
     IReadOnlySet<CombatSpellAction>? LevelBlockedActions = null,
-    bool AllowNukes = true);
+    bool AllowNukes = true,
+    IReadOnlySet<CombatSpellAction>? ResistBlockedActions = null);
