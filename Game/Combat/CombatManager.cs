@@ -69,16 +69,6 @@ public sealed partial class CombatManager : IDisposable
     private readonly Func<PartySettings>? _readPartySettings;
     private readonly Func<bool> _isEnabled;
     private readonly Func<string?> _readOwnGivenName;
-    // Resolves whether a configured weapon name is two-handed (Items.WeaponType
-    // 2H). Injected so the manager stays game-data-free; null ⇒ never two-handed
-    // (preserves the original always-equip-off-hand behaviour for tests).
-    private readonly Func<string?, bool> _isTwoHandedWeapon;
-    // Reports the weapon the game currently has worn (live inventory's Weapon
-    // Hand slot), or null when unknown / nothing worn. Consulted before an equip
-    // so we never re-send `eq X` for a weapon already in hand — the game answers
-    // that with "You do not have X left unequipped." null ⇒ no inventory hook
-    // (tests), so the shadow-only behaviour is preserved.
-    private readonly Func<string?>? _readEquippedWeapon;
     private readonly LogService? _log;
 
     private readonly IDisposable _announceSub;
@@ -103,6 +93,16 @@ public sealed partial class CombatManager : IDisposable
     private static readonly TimeSpan EngageConfirmWindow = TimeSpan.FromSeconds(5);
 
     private Action<byte[]>? _wireSender;
+    // Gear actuation is owned by EquipmentManager (the sole actuator). Combat
+    // decides which weapon/loadout it wants and hands the act off through these
+    // delegates — it never touches the wire for gear itself. swapWeapon equips a
+    // weapon + off-hand immediately (the fast, unpaced path that must land before
+    // the next swing); prepBackstabArmor applies the Backstab set's armor as a
+    // synchronous burst in the pre-move sequence, before the sn. Until wired both
+    // no-op, so the manager stays a pure decider (tests assert on the decision,
+    // not the actuation).
+    private Action<string?, string?>? _swapWeapon;
+    private Action? _prepBackstabArmor;
     private Func<bool>? _isSneaking;
     private Func<int, bool>? _hasSeeHidden;
     private Func<bool>? _seeHiddenClearActive;
@@ -174,21 +174,7 @@ public sealed partial class CombatManager : IDisposable
     // bare CR to force a room re-display so we re-pick from what's actually here.
     private DateTimeOffset? _awaitingEngageSince;
 
-    // ----- Weapon-swap shadow state -----------------------------------
-    // No `inv`/`eq` parse — we shadow-track what we last sent to the
-    // server. Cleared on the fists-no-effect recovery path (equipment
-    // fell off; re-equip from scratch next attack).
-
-    // The weapon name last sent via the equip helper. null means we haven't sent
-    // an equip yet — first attack will trigger an equip to the configured
-    // normal/BS weapon.
-    private string? _lastEquippedWeapon;
-
-    // The off-hand name last sent via the equip helper, or null when nothing is
-    // in the off-hand (or we cleared it to wield a two-hander). Tracked so a swap
-    // to a two-handed weapon can `remove` the shield first — the game needs both
-    // hands free.
-    private string? _lastEquippedOffHand;
+    // ----- Weapon-swap decision state ---------------------------------
 
     // True when we've swapped to the alternate weapon for the current room (a
     // no-effect line fired against the normal weapon vs the current target's
@@ -219,9 +205,7 @@ public sealed partial class CombatManager : IDisposable
         Func<bool> isEnabled,
         Func<string?> readOwnGivenName,
         LogService? log = null,
-        Func<PartySettings>? readPartySettings = null,
-        Func<string?, bool>? isTwoHandedWeapon = null,
-        Func<string?>? readEquippedWeapon = null)
+        Func<PartySettings>? readPartySettings = null)
     {
         ArgumentNullException.ThrowIfNull(router);
         ArgumentNullException.ThrowIfNull(classifier);
@@ -239,8 +223,6 @@ public sealed partial class CombatManager : IDisposable
         _isEnabled    = isEnabled;
         _readOwnGivenName = readOwnGivenName;
         _readPartySettings = readPartySettings;
-        _isTwoHandedWeapon = isTwoHandedWeapon ?? (static _ => false);
-        _readEquippedWeapon = readEquippedWeapon;
         _log = log;
 
         _classifier.EntitiesObserved += OnEntitiesObserved;
@@ -264,21 +246,32 @@ public sealed partial class CombatManager : IDisposable
         _wireSender = sender;
     }
 
+    // Wire the gear actuator (EquipmentManager, the sole gear owner). swapWeapon
+    // equips a weapon + off-hand immediately — the unpaced fast path that must
+    // land before the next swing; prepBackstabArmor applies the Backstab set's
+    // armor synchronously in the pre-move sequence, before the sn (null when no
+    // backstab-armor automation is wired — the weapon still gets swapped either
+    // way).
+    public void SetWeaponActuator(
+        Action<string?, string?> swapWeapon, Action? prepBackstabArmor = null)
+    {
+        ArgumentNullException.ThrowIfNull(swapWeapon);
+        _swapWeapon = swapWeapon;
+        _prepBackstabArmor = prepBackstabArmor;
+    }
+
     // The monster name we last sent `attack` against, or null when no fight is in
     // flight.
     public string? CurrentTarget => _currentTarget;
 
-    // Immutable view of the weapon-swap shadow + current target, for the
-    // bug-report engine-state dump. LastEquippedWeapon == null means no equip has
-    // gone out yet this session — the state that made a redundant first-round
-    // `eq` visible in a report.
-    public readonly record struct DebugState(
-        string? CurrentTarget, string? LastEquippedWeapon, string? LastEquippedOffHand,
-        bool UsingAlternateWeapon);
+    // Immutable view of the combat decision state, for the bug-report
+    // engine-state dump. The believed-worn weapon is no longer shadowed here —
+    // live inventory is authoritative (the actuator diffs against it), so the
+    // report reads the worn weapon straight from the inventory snapshot instead.
+    public readonly record struct DebugState(string? CurrentTarget, bool UsingAlternateWeapon);
 
     // UI-thread only (router handlers + the capture both run there), so no lock.
-    public DebugState Snapshot() =>
-        new(_currentTarget, _lastEquippedWeapon, _lastEquippedOffHand, _usingAlternateWeapon);
+    public DebugState Snapshot() => new(_currentTarget, _usingAlternateWeapon);
 
     // Wire the backstab gating delegates: isSneaking reports whether the
     // character is in the sneaking stealth state (StealthManager.IsSneaking) and
@@ -656,9 +649,11 @@ public sealed partial class CombatManager : IDisposable
 
     // ----- Weapon-swap mechanics --------------------------------------
 
-    // Re-equip cascade at end of combat (room cleared). Priority: BS weapon (when
-    // configured) → normal weapon (when we'd swapped to alt). The fail-set +
-    // alt-mode flag clear here so the next room starts fresh.
+    // End-of-combat cleanup (room cleared). Resets the per-room fail-set +
+    // spell economy, and reverts an alternate-weapon swap back to normal. The
+    // backstab re-gear is NOT done here: equipping breaks sneak, so the backstab
+    // loadout must be applied in the pre-move sequence, immediately before the
+    // sn (see PrepBackstabForMove) — not raced against it at room-clear.
     private void OnRoomCleared(CombatSettings settings)
     {
         _normalWeaponFailedMonsters.Clear();
@@ -672,24 +667,36 @@ public sealed partial class CombatManager : IDisposable
         _attackSpellImmuneSpecies.Clear();
         _spellChooser.ResetForNewRoom();
 
-        // BS weapon takes precedence — re-equip after every fight so
-        // the next room can backstab. If no BS configured but we
-        // ended on the alternate, revert to normal.
-        if (settings.DoBackstab && !string.IsNullOrWhiteSpace(settings.BackstabWeapon))
-        {
-            EquipWeapon(settings.BackstabWeapon, settings.BackstabOffHand);
-            _usingAlternateWeapon = false;
-        }
-        else if (_usingAlternateWeapon)
-        {
-            EquipWeapon(settings.NormalWeapon, settings.NormalOffHand);
-            _usingAlternateWeapon = false;
-        }
+        // Revert an alt-weapon swap so the next fight opens on the normal
+        // weapon — but skip it when backstab is active, since the pre-move
+        // sequence re-gears to the backstab weapon before the next approach and
+        // a normal-then-backstab double swap would be wasted commands.
+        bool backstabActive = settings.DoBackstab
+            && !string.IsNullOrWhiteSpace(settings.BackstabWeapon);
+        if (!backstabActive && _usingAlternateWeapon)
+            _swapWeapon?.Invoke(settings.NormalWeapon, settings.NormalOffHand);
+        _usingAlternateWeapon = false;
     }
 
-    // Decide which weapon should be on for the next attack and emit the equip
-    // line if it's a change. Called from OnEntitiesObserved just before
-    // SendAttack.
+    // Pre-move backstab prep — invoked from the walker / loop-runner pre-move
+    // hook immediately before the sneak, so the whole approach sequence is
+    // weapon → armor → sn → move. Equipping breaks sneak, so the gear MUST land
+    // before the sn; the actuator sends both synchronously (SwapWeapon is
+    // unpaced, ApplyBackstabArmor is a synchronous burst) so nothing trails into
+    // the sneak. No-op unless backstab is enabled with a configured weapon.
+    public void PrepBackstabForMove()
+    {
+        CombatSettings settings = _readSettings();
+        if (!settings.DoBackstab || string.IsNullOrWhiteSpace(settings.BackstabWeapon))
+            return;
+        _swapWeapon?.Invoke(settings.BackstabWeapon, settings.BackstabOffHand);
+        _prepBackstabArmor?.Invoke();
+        _usingAlternateWeapon = false;
+    }
+
+    // Decide which weapon should be on for the next attack and hand it to the
+    // actuator (EquipmentManager owns the wire + worn-diff + two-handed rule).
+    // Called from OnEntitiesObserved just before SendAttack.
     private void EquipForAttack(CombatSettings settings, bool wantAlternate)
     {
         string? weapon;
@@ -706,53 +713,7 @@ public sealed partial class CombatManager : IDisposable
             offHand = settings.NormalOffHand;
             _usingAlternateWeapon = false;
         }
-        EquipWeapon(weapon, offHand);
-    }
-
-    // Send equip commands for the given weapon + off-hand. Idempotent vs the
-    // shadow state: re-equipping the same weapon no-ops. Two-handed-aware:
-    // switching to a two-hander first `remove`s any tracked off-hand (it needs
-    // both hands), and a two-hander is never paired with an off-hand. A
-    // one-handed weapon equips its configured off-hand alongside it.
-    private void EquipWeapon(string? weapon, string? offHand)
-    {
-        if (string.IsNullOrWhiteSpace(weapon)) return;
-        if (string.Equals(weapon, _lastEquippedWeapon, StringComparison.OrdinalIgnoreCase))
-            return;
-
-        // Already worn per live inventory — skip the equip and sync the shadow so
-        // subsequent rounds short-circuit on the cheap check above. Covers the
-        // fresh-session / fresh-room case where our shadow is still null but the
-        // weapon is already in hand (a redundant `eq` would draw "You do not have
-        // X left unequipped.").
-        if (string.Equals(weapon, _readEquippedWeapon?.Invoke(), StringComparison.OrdinalIgnoreCase))
-        {
-            _lastEquippedWeapon = weapon;
-            return;
-        }
-
-        bool newIsTwoHanded = _isTwoHandedWeapon(weapon);
-
-        // Free the off-hand before wielding a two-hander — the game rejects the
-        // equip while a shield occupies the off-hand slot.
-        if (newIsTwoHanded && !string.IsNullOrWhiteSpace(_lastEquippedOffHand))
-        {
-            Send($"remove {_lastEquippedOffHand.Trim()}");
-            _lastEquippedOffHand = null;
-        }
-
-        _log?.Combat(LogCategory,
-            $"equip weapon={weapon} offhand={(newIsTwoHanded ? "<two-handed>" : offHand ?? "<none>")}");
-        Send($"eq {weapon.Trim()}");
-        _lastEquippedWeapon = weapon;
-
-        // A two-hander occupies both hands — only a one-handed weapon carries an
-        // off-hand.
-        if (!newIsTwoHanded && !string.IsNullOrWhiteSpace(offHand))
-        {
-            Send($"eq {offHand.Trim()}");
-            _lastEquippedOffHand = offHand;
-        }
+        _swapWeapon?.Invoke(weapon, offHand);
     }
 
     private void Send(string text)
@@ -807,14 +768,13 @@ public sealed partial class CombatManager : IDisposable
             SendAttack(settings.AlternateAttackCommand, tgt, priority: null);
     }
 
-    // "Your fists have no effect" — our weapon fell off (server-side drop /
-    // removal we didn't track). Clear the shadow state so the next attack
-    // re-equips from scratch.
+    // "Your fists have no effect" — we're swinging bare-handed (a weapon that
+    // isn't hitting, or one that left our hand). Drop the target so the next
+    // observation re-decides and re-hands the weapon to the actuator, which
+    // re-equips it when live gear shows it's no longer worn.
     private void OnFistsNoEffect(MatchResult _)
     {
-        _log?.Warn(LogCategory, "fists-no-effect — clearing equipped-weapon shadow state");
-        _lastEquippedWeapon = null;
-        _lastEquippedOffHand = null;
+        _log?.Warn(LogCategory, "fists-no-effect — forcing a weapon re-pick from live gear");
         _usingAlternateWeapon = false;
 
         // Force a re-equip on the next attack by triggering a fresh

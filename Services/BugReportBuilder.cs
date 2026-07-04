@@ -194,10 +194,14 @@ public static class BugReportBuilder
         }
 
         Game.Combat.CombatManager.DebugState combat = svc.Combat.Snapshot();
-        sb.Append("\n**Combat weapon shadow**\n\n");
+        // The believed-worn weapon is no longer shadowed in the combat engine —
+        // EquipmentManager diffs against live inventory, so the report reads the
+        // worn weapon / off-hand straight from the snapshot.
+        Game.Inventory.InventorySnapshot inv = svc.Inventory.Snapshot;
+        sb.Append("\n**Combat weapon state**\n\n");
         Kv(sb, "Current target", combat.CurrentTarget ?? "(none)");
-        Kv(sb, "Last equipped weapon", combat.LastEquippedWeapon ?? "(none sent)");
-        Kv(sb, "Last equipped off-hand", combat.LastEquippedOffHand ?? "(none)");
+        Kv(sb, "Worn weapon", WornSlot(inv, "Weapon Hand") ?? "(none)");
+        Kv(sb, "Worn off-hand", WornSlot(inv, "Off-Hand") ?? "(none)");
         Kv(sb, "Using alternate weapon", combat.UsingAlternateWeapon.ToString());
 
         return sb.ToString();
@@ -460,6 +464,16 @@ public static class BugReportBuilder
 
     private static void Kv(StringBuilder sb, string key, string value)
         => sb.Append("- **").Append(key).Append("**: ").Append(value).Append('\n');
+
+    // The item worn in a given inventory slot (e.g. "Weapon Hand"), or null when
+    // that slot is empty / the loadout hasn't been parsed yet.
+    private static string? WornSlot(InventorySnapshot inv, string slot)
+    {
+        foreach (EquippedItem e in inv.EquippedItems)
+            if (string.Equals(e.Slot, slot, StringComparison.OrdinalIgnoreCase))
+                return e.Name;
+        return null;
+    }
 
     // Serialize value into a fenced JSON block.
     private static string Json(object? value)

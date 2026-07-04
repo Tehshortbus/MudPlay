@@ -1989,13 +1989,7 @@ public sealed class AppServices
             readOwnGivenName: () => Profile.CurrentProfileName,
             log: Log,
             readPartySettings: () =>
-                ReadSection<Models.Profile.PartySettings>(Profile.Current, "Party"),
-            isTwoHandedWeapon: IsConfiguredWeaponTwoHanded,
-            // Live worn-weapon feed from the inventory snapshot's Weapon Hand
-            // slot, so the first combat round skips equipping a weapon already in
-            // hand instead of drawing a "left unequipped" reject.
-            readEquippedWeapon: () => Inventory.Snapshot.EquippedItems
-                .FirstOrDefault(e => e.Slot == "Weapon Hand").Name);
+                ReadSection<Models.Profile.PartySettings>(Profile.Current, "Party"));
 
         // HealthManager. Master on/off is
         // GeneralSettings.AutoMode.AutoHealRest (shared with the
@@ -2460,8 +2454,15 @@ public sealed class AppServices
                 p.Settings["Combat"] = System.Text.Json.JsonSerializer.SerializeToElement(combat);
                 Profile.Save();
             },
+            isTwoHanded: IsConfiguredWeaponTwoHanded,
             log: Log);
         EquipRemote = new Game.Remote.EquipHandler(RemoteCommands, Equipment);
+
+        // EquipmentManager is the sole gear actuator: the combat engine decides
+        // which weapon it wants and hands the act off here. The backstab-set
+        // armor (deltas only, synchronous) and the weapon swap both fire from the
+        // pre-move sequence, before the sn — equipping breaks sneak.
+        Combat.SetWeaponActuator(Equipment.SwapWeapon, () => Equipment.ApplyBackstabArmor());
 
         // CashManager. Subscribes to cash-on-ground
         // / cash-picked-up / cash-dropped patterns and dispatches
@@ -2654,12 +2655,18 @@ public sealed class AppServices
             && !TrapDisarm.CanDisarm
             && TrapDelegation.AnyPartyMemberCanDisarm());
         Walker.SetTrapDelegateStopper(TrapDelegation.Cancel);
-        // Proactive pre-move sneak: `sn` goes out as the last
-        // command before each walker move so the move itself is sneaked
-        // (the reactive RoomTracker hook above only re-sneaks AFTER
-        // arriving). Non-blocking; the settled-state guard in
-        // StealthManager prevents a double-send when both paths fire.
-        Walker.SetPreMoveHook(() => Stealth.RequestPreMoveStealth());
+        // Proactive pre-move approach sequence: gear then `sn`, both as the last
+        // commands before each walker move so the move itself is sneaked (the
+        // reactive RoomTracker hook above only re-sneaks AFTER arriving).
+        // Backstab gear goes out FIRST — equipping breaks sneak, so the loadout
+        // must land before the sn (weapon → armor → sn → move). PrepBackstabForMove
+        // no-ops unless backstab is enabled. Non-blocking; the settled-state
+        // guard in StealthManager prevents a double sn when both paths fire.
+        Walker.SetPreMoveHook(() =>
+        {
+            Combat.PrepBackstabForMove();
+            Stealth.RequestPreMoveStealth();
+        });
         // PR B — announce the route's possession-gated item ids at walk-start
         // so the demand tracker arms auto-search for anything we lack. PR E
         // interposes the party-inventory gate ahead of the tracker: it forwards
@@ -2812,8 +2819,13 @@ public sealed class AppServices
         // overlay.
         LoopRunner = new Game.Map.LoopRunner(RoomTracker, MovementCoordinator,
             PromptScanner, Log, RoomGraph, Recovery, Bfs, Walker, Movement);
-        // Same proactive pre-move sneak for loop circuits.
-        LoopRunner.SetPreMoveHook(() => Stealth.RequestPreMoveStealth());
+        // Same proactive pre-move approach sequence for loop circuits — backstab
+        // gear before the sneak (equipping breaks sneak), then the move.
+        LoopRunner.SetPreMoveHook(() =>
+        {
+            Combat.PrepBackstabForMove();
+            Stealth.RequestPreMoveStealth();
+        });
         // Avoid-list mutation mid-loop → LoopRunner re-routes via a
         // Stop+Start cycle so the new filter applies on the next BFS.
         Movement.AvoidedChanged += () => LoopRunner.NotifyAvoidedChanged();

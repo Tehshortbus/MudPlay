@@ -2,6 +2,17 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0): **MAJOR** = whole-program refactor, **MINOR** = a large PR, **PATCH** = a small / bugfix PR.
 
+## 1.2.0
+
+Gear actuation gets a single owner, and enabled backstab loadouts now arm themselves in the auto-walker's pre-move sequence.
+
+**Added**
+- **Backstab gear auto-fire.** When a Backstab equipment set is enabled, the auto-walker now gears up for the next sneak as part of its pre-move sequence: the backstab weapon and the set's armor are equipped — sending only the pieces not already worn — and *then* the sneak fires, so the whole approach is weapon → armor → sneak → move. Because equipping breaks sneak, the gear has to land before the `sn`; sequencing it into the pre-move step guarantees that and puts the loadout in hand before the surprise round.
+
+**Changed**
+- **The Equipment Manager is now the sole actuator for gear.** Combat decides which weapon to wield and delegates the swap; equipping logic no longer lives in two places, so a set applied from the Workshop and a weapon flipped mid-fight take the exact same path. Swaps use the uniform `eq` verb and diff against the *live* worn loadout, so only the pieces that actually differ hit the wire — no redundant equips, and no cached "believed-equipped" shadow that could drift out of sync with what's really worn.
+- The bug report's combat weapon state now reads the live worn weapon / off-hand straight from inventory instead of the removed shadow fields.
+
 ## 1.1.1
 
 Richer in-app bug-report capture, so a single report pins more of the failing state.

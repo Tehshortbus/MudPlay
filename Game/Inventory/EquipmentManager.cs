@@ -31,6 +31,10 @@ public sealed class EquipmentManager
     private readonly Func<InventorySnapshot> _getSnapshot;
     private readonly Func<CombatSettings> _readCombat;
     private readonly Action<CombatSettings> _writeCombat;
+    // Resolves whether a weapon name is two-handed (Items.WeaponType 2H). Injected
+    // so the actuator stays game-data-free; null ⇒ never two-handed (one-handed
+    // off-hand behaviour, the safe default for tests).
+    private readonly Func<string?, bool> _isTwoHanded;
     private readonly LogService? _log;
     private readonly WireSender _wire = new();
 
@@ -43,6 +47,7 @@ public sealed class EquipmentManager
         Func<InventorySnapshot> getSnapshot,
         Func<CombatSettings> readCombat,
         Action<CombatSettings> writeCombat,
+        Func<string?, bool>? isTwoHanded = null,
         LogService? log = null)
     {
         ArgumentNullException.ThrowIfNull(readEquipment);
@@ -53,6 +58,7 @@ public sealed class EquipmentManager
         _getSnapshot = getSnapshot;
         _readCombat = readCombat;
         _writeCombat = writeCombat;
+        _isTwoHanded = isTwoHanded ?? (static _ => false);
         _log = log;
     }
 
@@ -119,6 +125,82 @@ public sealed class EquipmentManager
         return null;
     }
 
+    // ----- immediate weapon swap (combat fast path) -----------------------
+
+    // Equip weapon + off-hand NOW, bypassing the paced queue. A mid-combat
+    // weapon flip must land before the next swing, so it can't sit behind — or
+    // be declined by — a running full-loadout apply; it also doesn't set
+    // _isEquipping, so the paced queue and this fast path stay independent.
+    // Diffs against live worn gear (the single source of truth): a weapon
+    // already in the Weapon Hand is skipped (a redundant `eq` draws "You do not
+    // have X left unequipped."); a two-hander first `rem`s whatever occupies the
+    // off-hand (the game refuses the wield with a hand full — the auto-trade
+    // doesn't apply), while a one-hander equips its configured off-hand when
+    // that isn't already worn. Empty weapon ⇒ no-op.
+    public void SwapWeapon(string? weapon, string? offHand)
+    {
+        string? w = weapon?.Trim();
+        if (string.IsNullOrEmpty(w)) return;
+
+        InventorySnapshot snap = _getSnapshot();
+        string? wornWeapon = SlotItem(snap, "Weapon Hand");
+        string? wornOffHand = SlotItem(snap, "Off-Hand");
+        bool twoHanded = _isTwoHanded(w);
+
+        if (!string.Equals(w, wornWeapon, StringComparison.OrdinalIgnoreCase))
+        {
+            if (twoHanded && !string.IsNullOrWhiteSpace(wornOffHand))
+                _wire.Send($"rem {wornOffHand!.Trim()}");
+            _log?.Info(LogCategory,
+                $"swap weapon={w} offhand={(twoHanded ? "<two-handed>" : offHand ?? "<none>")}");
+            _wire.Send($"eq {w}");
+        }
+
+        if (twoHanded) return;   // a two-hander fills both hands — no off-hand equip
+
+        string? oh = offHand?.Trim();
+        if (!string.IsNullOrEmpty(oh)
+            && !string.Equals(oh, wornOffHand, StringComparison.OrdinalIgnoreCase))
+            _wire.Send($"eq {oh}");
+    }
+
+    private static string? SlotItem(InventorySnapshot snap, string slot)
+    {
+        foreach (EquippedItem e in snap.EquippedItems)
+            if (string.Equals(e.Slot, slot, StringComparison.OrdinalIgnoreCase))
+                return e.Name;
+        return null;
+    }
+
+    // ----- Backstab-set armor (pre-move prep) -----------------------------
+
+    // Apply the Backstab set's ARMOR as part of the pre-move approach sequence.
+    // The combat engine calls this (via PrepBackstabForMove) right before the
+    // sneak: equipping breaks sneak, so the armor MUST be sent before the sn —
+    // it can't sit on the paced queue and trail into the move. The whole delta
+    // is therefore sent as one synchronous burst (deltas only, so the burst is
+    // usually a piece or two: the Backstab set overlaps the worn loadout).
+    // Weapon + off-hand slots are excluded — the immediate weapon swap owns
+    // those. No-op unless a Backstab set exists and is Enabled ("automation may
+    // equip this set"); declines while a paced full-loadout apply is in flight.
+    public EquipResult ApplyBackstabArmor()
+    {
+        if (_isEquipping) return EquipResult.Busy;
+        EquipmentSet? set = _readEquipment().Sets
+            .FirstOrDefault(s => s.Trigger == EquipTriggerType.Backstab);
+        if (set is not { Enabled: true }) return EquipResult.NotFound;
+
+        InventorySnapshot snap = _getSnapshot();
+        var worn = new HashSet<string>(
+            snap.EquippedItems.Select(e => e.Name), StringComparer.OrdinalIgnoreCase);
+        List<string> cmds = BuildWearCommands(set, worn, armorOnly: true);
+        if (cmds.Count == 0) return EquipResult.NoChange;
+
+        _log?.Info(LogCategory, $"backstab armor — {cmds.Count} piece(s)");
+        foreach (string cmd in cmds) _wire.Send(cmd);
+        return EquipResult.Applied;
+    }
+
     // True when the apply produced a change — a wear sequence started or a virtual
     // slot wrote CombatSettings. False when the set is already fully in effect.
     private bool ApplySet(EquipmentSet set)
@@ -151,13 +233,17 @@ public sealed class EquipmentManager
     // {no change} (empty item) slots are skipped; an already-worn item is
     // skipped so re-applying a set issues no redundant wears. The game
     // auto-removes whatever occupies a slot when the new item is worn, so no
-    // explicit remove is needed for a full-loadout swap.
-    internal static List<string> BuildWearCommands(EquipmentSet set, ISet<string> wornNames)
+    // explicit remove is needed for a full-loadout swap. armorOnly additionally
+    // skips the held slots (Weapon / Off-Hand) — the backstab auto-fire leaves
+    // the weapon to the combat engine's immediate swap.
+    internal static List<string> BuildWearCommands(
+        EquipmentSet set, ISet<string> wornNames, bool armorOnly = false)
     {
         var cmds = new List<string>();
         foreach (EquipmentSlotEntry e in set.Slots)
         {
             if (IsVirtual(e.Slot)) continue;
+            if (armorOnly && e.Slot is EquipmentSlot.Weapon or EquipmentSlot.OffHand) continue;
             string? name = e.ItemName?.Trim();
             if (string.IsNullOrEmpty(name)) continue;
             if (wornNames.Contains(name)) continue;
