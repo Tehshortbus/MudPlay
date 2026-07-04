@@ -5,51 +5,35 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game.Remote;
 
-/// <summary>
-/// Leader-side <c>@comeback</c> party-pickup flow. A stranded follower
-/// whose lead engine walked off and left them behind sends
-/// <c>@comeback &lt;map&gt;/&lt;room&gt;</c> (e.g. <c>@comeback 9/1012</c>)
-/// or a bare <c>@comeback</c>; this manager pauses the running movement
-/// engine, walks to recover them, re-invites (left-behind members are
-/// dropped from the party server-side), waits for the follow
-/// confirmation, then resumes whatever was running.
-/// </summary>
-/// <remarks>
-/// <para>
-/// <b>Stop-and-restart, not gate-pause.</b> Asserting a
-/// <see cref="MovementCoordinator"/> gate would block the recovery walk
-/// itself — <see cref="AutoWalkManager.WalkTo"/> parks in
-/// <see cref="WalkState.Paused"/> while any gate is asserted. So we
-/// snapshot the running engine's resume state, <c>Stop()</c> it, run the
-/// recovery walk gate-clean, then re-<c>Start</c> the captured engine.
-/// </para>
-/// <list type="bullet">
-/// <item><b>Idle</b> (no engine running) → reply <c>"I can't I'm idle"</c>
-/// and do nothing.</item>
-/// <item><b>Explicit room</b> → walk straight there, re-invite, await
-/// follow, resume.</item>
-/// <item><b>No room</b> → walk backwards along the path just taken (the
-/// <see cref="RoomTracker.GetHistory"/> trail), room by room, up to
-/// <see cref="MaxBacktrackRooms"/>, checking for the follower at each
-/// arrival; recover on sight, else go idle and let the player handle
-/// it.</item>
-/// </list>
-/// <para>
-/// Everything runs on the UI thread — <see cref="AutoWalkManager.Event"/>,
-/// <see cref="PartyManager.MemberFollowConfirmed"/>, and the follow
-/// timeout's <see cref="DispatcherTimer"/> all fire there, so no
-/// marshalling is needed. Single-flight: a second <c>@comeback</c> while
-/// one is in progress replies busy and is ignored.
-/// </para>
-/// </remarks>
+// Leader-side @comeback party-pickup flow. A stranded follower whose lead engine
+// walked off and left them behind sends @comeback <map>/<room> (e.g.
+// @comeback 9/1012) or a bare @comeback; this manager pauses the running movement
+// engine, walks to recover them, re-invites (left-behind members are dropped from
+// the party server-side), waits for the follow confirmation, then resumes
+// whatever was running.
+//
+// Stop-and-restart, not gate-pause. Asserting a MovementCoordinator gate would
+// block the recovery walk itself — AutoWalkManager.WalkTo parks in Paused while
+// any gate is asserted. So we snapshot the running engine's resume state, Stop()
+// it, run the recovery walk gate-clean, then re-Start the captured engine.
+//   - Idle (no engine running) → reply "I can't I'm idle" and do nothing.
+//   - Explicit room → walk straight there, re-invite, await follow, resume.
+//   - No room → walk backwards along the path just taken (the
+//     RoomTracker.GetHistory trail), room by room, up to MaxBacktrackRooms,
+//     checking for the follower at each arrival; recover on sight, else go idle
+//     and let the player handle it.
+//
+// Everything runs on the UI thread — AutoWalkManager.Event,
+// PartyManager.MemberFollowConfirmed, and the follow timeout's DispatcherTimer
+// all fire there, so no marshalling is needed. Single-flight: a second @comeback
+// while one is in progress replies busy and is ignored.
 public sealed class PartyComebackManager : IDisposable
 {
     private const string LogCategory = "Comeback";
 
-    /// <summary>How long to wait for the recovered follower's
-    /// <c>"X started to follow you."</c> confirmation before resuming
-    /// the paused engine anyway, so a follower who never re-follows
-    /// can't hang the leader indefinitely.</summary>
+    // How long to wait for the recovered follower's "X started to follow you."
+    // confirmation before resuming the paused engine anyway, so a follower who
+    // never re-follows can't hang the leader indefinitely.
     private static readonly TimeSpan FollowTimeout = TimeSpan.FromSeconds(20);
 
     private readonly RemoteCommandManager _engine;
@@ -71,13 +55,9 @@ public sealed class PartyComebackManager : IDisposable
     private readonly List<RoomKey> _backtrack = new();
     private int _backtrackIndex;
 
-    /// <summary>
-    /// Backtrack budget — how many rooms back along the just-walked path
-    /// the leader will search for a stranded follower before giving up
-    /// and going idle. Mirrors
-    /// <see cref="Models.Profile.OtherSettings.MaxComebackBacktrackRooms"/>;
-    /// clamped to 1..50 on use.
-    /// </summary>
+    // Backtrack budget — how many rooms back along the just-walked path the leader
+    // will search for a stranded follower before giving up and going idle. Mirrors
+    // OtherSettings.MaxComebackBacktrackRooms; clamped to 1..50 on use.
     public int MaxBacktrackRooms { get; set; } = 10;
 
     public PartyComebackManager(

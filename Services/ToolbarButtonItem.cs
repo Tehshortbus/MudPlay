@@ -4,14 +4,11 @@ using FujinTerm.Models.Profile;
 
 namespace FujinTerm.Services;
 
-/// <summary>
-/// Per-row view-model that the main window's dynamic toolbar
-/// <c>ItemsControl</c> binds to. Built by <c>MainWindowViewModel</c>
-/// from <see cref="ToolbarConfig.Layout"/> via
-/// <see cref="ToolbarItemCatalogue"/>; carries every property the
-/// XAML template needs (icon resource key, command, tooltip, plus a
-/// pair of observable state flags for the connect / capture buttons).
-/// </summary>
+// Per-row view-model that the main window's dynamic toolbar ItemsControl binds
+// to. Built by MainWindowViewModel from ToolbarConfig.Layout via
+// ToolbarItemCatalogue; carries every property the XAML template needs (icon
+// resource key, command, tooltip, plus a pair of observable state flags for the
+// connect / capture buttons).
 public sealed partial class ToolbarButtonItem : ObservableObject
 {
     public ToolbarItemKind Kind { get; }
@@ -23,36 +20,30 @@ public sealed partial class ToolbarButtonItem : ObservableObject
     public string Label { get; }
     public string? IconResourceKey { get; }
 
-    /// <summary>
-    /// Optional secondary icon used by the connection-toggle button to
-    /// swap between "plug" (disconnected) and "unplug" (connected).
-    /// </summary>
+    // Optional secondary icon used by the connection-toggle button to swap
+    // between "plug" (disconnected) and "unplug" (connected).
     public string? AlternateIconResourceKey { get; }
 
-    /// <summary>
-    /// Tooltip text (icon-only buttons use this as their label).
-    /// Observable so the movement Start button can re-label itself
-    /// "Resume" when the active nav mode is paused.
-    /// </summary>
+    // Tooltip text (icon-only buttons use this as their label). Observable so
+    // the movement Start button can re-label itself "Resume" when the active nav
+    // mode is paused.
     [ObservableProperty] private string _tooltip;
 
-    /// <summary>
-    /// Whether the button is currently actionable. Default true; the
-    /// movement Start / Pause / Stop rows toggle it with engine state so
-    /// a button that would no-op renders disabled (greyed) instead of
-    /// firing. Bound to the toolbar button's <c>IsEnabled</c>.
-    /// </summary>
+    // Whether the button is currently actionable. Default true; the movement
+    // Start / Pause / Stop rows toggle it with engine state so a button that
+    // would no-op renders disabled (greyed) instead of firing. Bound to the
+    // toolbar button's IsEnabled.
     [ObservableProperty] private bool _isActionEnabled = true;
 
     public ICommand? Command { get; }
 
-    /// <summary>Toolbar button's <c>Active</c> visual state (amber).</summary>
+    // Toolbar button's Active visual state (amber).
     [ObservableProperty] private bool _isActive;
 
-    /// <summary>Toolbar button's <c>Danger</c> visual state (red hover).</summary>
+    // Toolbar button's Danger visual state (red hover).
     [ObservableProperty] private bool _isDanger;
 
-    /// <summary>True → show <see cref="AlternateIconResourceKey"/> in place of <see cref="IconResourceKey"/>.</summary>
+    // True → show AlternateIconResourceKey in place of IconResourceKey.
     [ObservableProperty] private bool _showAlternate;
 
     public ToolbarButtonItem(

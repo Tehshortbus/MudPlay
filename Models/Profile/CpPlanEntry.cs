@@ -1,17 +1,14 @@
 namespace FujinTerm.Models.Profile;
 
-/// <summary>
-/// One row of the Character Workshop's CP Allocation plan — the target value of
-/// each trainable attribute at a given level. Persisted as
-/// <see cref="CharacterProfile.CharacterPlan"/> (oldest → newest level) and
-/// consumed by the CP grid (and, in later PRs, auto-train + <c>@train</c>).
-/// </summary>
-/// <remarks>
-/// Values are the cumulative target stats <i>at</i> <see cref="Level"/> (not
-/// per-level deltas), measured against the live raw-base baseline. The baseline
-/// (current level's raw stats) is not stored here — it's recomputed live from
-/// <see cref="Game.PlayerStats"/> minus equipment bonuses.
-/// </remarks>
+// One row of the Character Workshop's CP Allocation plan — the target value of
+// each trainable attribute at a given level. Persisted as
+// CharacterProfile.CharacterPlan (oldest → newest level) and consumed by the CP
+// grid, auto-train, and @train.
+//
+// Values are the cumulative target stats at Level (not per-level deltas),
+// measured against the live raw-base baseline. The baseline (current level's
+// raw stats) is not stored here — it's recomputed live from Game.PlayerStats
+// minus equipment bonuses.
 public sealed class CpPlanEntry
 {
     public int Level { get; set; }

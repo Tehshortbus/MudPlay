@@ -7,19 +7,16 @@ using FujinTerm.Services;
 
 namespace FujinTerm.ViewModels;
 
-/// <summary>
-/// Staged editor for the per-BBS room blacklist. Pre-loaded with the
-/// store's current entries; in-dialog Add / Remove mutate a local
-/// working copy. <b>Save</b> commits the working copy to the store
-/// (which persists + redraws); <b>Cancel</b> discards.
-/// </summary>
-/// <remarks>
-/// Add flow: the user types a Map number and a Room number; as
-/// soon as both parse cleanly the dialog looks up the room in the
-/// active graph and pre-fills the Name preview from
-/// <see cref="Room.DisplayName"/>. The Add button is enabled when
-/// the key resolves AND the key isn't already in the working list.
-/// </remarks>
+// Staged editor for the per-BBS room blacklist. Pre-loaded with the store's
+// current entries; in-dialog Add / Remove mutate a local working copy. Save
+// commits the working copy to the store (which persists + redraws); Cancel
+// discards.
+//
+// Add flow: the user types a Map number and a Room number; as soon as both
+// parse cleanly the dialog looks up the room in the active graph and
+// pre-fills the Name preview from Room.DisplayName. The Add button is
+// enabled when the key resolves AND the key isn't already in the working
+// list.
 public sealed partial class BlacklistEditorDialogViewModel
     : ObservableObject, IDialogViewModel<bool>
 {
@@ -30,23 +27,20 @@ public sealed partial class BlacklistEditorDialogViewModel
 
     public ObservableCollection<BlacklistedRoom> Entries { get; } = new();
 
-    /// <summary>
-    /// Live mirror of the list's multi-selection set. The dialog's
-    /// code-behind syncs this whenever <c>EntriesList.SelectionChanged</c>
-    /// fires (Avalonia exposes <c>SelectedItems</c> as a non-bindable
-    /// <see cref="System.Collections.IList"/>, so the sync is imperative).
-    /// <see cref="RemoveSelected"/> drops every entry in this set so a
-    /// Ctrl-/Shift-selection of several rows removes them all at once.
-    /// </summary>
+    // Live mirror of the list's multi-selection set. The dialog's code-behind
+    // syncs this whenever EntriesList.SelectionChanged fires (Avalonia exposes
+    // SelectedItems as a non-bindable System.Collections.IList, so the sync is
+    // imperative). RemoveSelected drops every entry in this set so a
+    // Ctrl-/Shift-selection of several rows removes them all at once.
     public ObservableCollection<BlacklistedRoom> SelectedEntries { get; } = new();
 
-    /// <summary>Map number input in the Add row (display string so empty stays empty).</summary>
+    // Map number input in the Add row (display string so empty stays empty).
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(AddNamePreview))]
     [NotifyPropertyChangedFor(nameof(CanAdd))]
     private string _addMap = string.Empty;
 
-    /// <summary>Room number input in the Add row.</summary>
+    // Room number input in the Add row.
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(AddNamePreview))]
     [NotifyPropertyChangedFor(nameof(CanAdd))]
@@ -54,7 +48,7 @@ public sealed partial class BlacklistEditorDialogViewModel
 
     public bool CanRemoveSelected => SelectedEntries.Count > 0;
 
-    /// <summary>True when both inputs parse + room exists + isn't already listed.</summary>
+    // True when both inputs parse + room exists + isn't already listed.
     public bool CanAdd
     {
         get
@@ -67,12 +61,9 @@ public sealed partial class BlacklistEditorDialogViewModel
         }
     }
 
-    /// <summary>
-    /// Name preview for the Add row. Reads from the active set's
-    /// Rooms.json via <see cref="RoomGraphManager.GetRoom"/>; shows
-    /// the room's <see cref="Room.DisplayName"/> when it exists, a
-    /// placeholder otherwise.
-    /// </summary>
+    // Name preview for the Add row. Reads from the active set's Rooms.json
+    // via RoomGraphManager.GetRoom; shows the room's Room.DisplayName when it
+    // exists, a placeholder otherwise.
     public string AddNamePreview
     {
         get

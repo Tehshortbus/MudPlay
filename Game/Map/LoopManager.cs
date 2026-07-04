@@ -5,31 +5,23 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game.Map;
 
-/// <summary>
-/// Per-game-data-set catalogue of saved navigation loops. CRUD over the
-/// JSON files under <c>Data/game data/{set}/Loops/</c>, plus the builder
-/// helpers the Navigation window needs to turn a sequence of clicked
-/// rooms into a runnable loop (gap-fill BFS for non-adjacent clicks,
-/// three-tier fallback for ambiguous click orders).
-/// </summary>
-/// <remarks>
-/// <para>
-/// Lifecycle: the catalogue is keyed by the active game-data set (the
-/// realm's MDB), so the same loop library follows the realm across every
-/// BBS / character that points at that set. When the active set changes,
-/// <see cref="LoadAll"/> reloads from disk. Mutating methods
-/// (<see cref="Save"/>, <see cref="Delete"/>) update the in-memory cache
-/// and fire <see cref="LoopsChanged"/> so the UI can refresh.
-/// </para>
-/// <para>
-/// Gap-fill: when the user clicks rooms that aren't directly
-/// connected, <see cref="ExpandClickedRooms"/> runs
-/// <see cref="BfsMapper.FindPath"/> between consecutive clicks and
-/// inlines the intermediate hops. Surfaces a per-segment error when a
-/// segment can't be pathed — the editor disables Save until the user
-/// removes the bad click.
-/// </para>
-/// </remarks>
+// Per-game-data-set catalogue of saved navigation loops. CRUD over the
+// JSON files under Data/game data/{set}/Loops/, plus the builder helpers
+// the Navigation window needs to turn a sequence of clicked rooms into a
+// runnable loop (gap-fill BFS for non-adjacent clicks, three-tier fallback
+// for ambiguous click orders).
+//
+// Lifecycle: the catalogue is keyed by the active game-data set (the
+// realm's MDB), so the same loop library follows the realm across every
+// BBS / character that points at that set. When the active set changes,
+// LoadAll reloads from disk. Mutating methods (Save, Delete) update the
+// in-memory cache and fire LoopsChanged so the UI can refresh.
+//
+// Gap-fill: when the user clicks rooms that aren't directly connected,
+// waypoint expansion runs BfsMapper.FindPath between consecutive clicks
+// and inlines the intermediate hops. Surfaces a per-segment error when a
+// segment can't be pathed — the editor disables Save until the user
+// removes the bad click.
 public sealed class LoopManager
 {
     private readonly BfsMapper _bfs;
@@ -39,14 +31,14 @@ public sealed class LoopManager
     private string? _setName;
     private readonly Dictionary<string, Loop> _loops = new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>Game-data set that <see cref="Loops"/> is currently sourced from. <c>null</c> when no set is active.</summary>
+    // Game-data set that Loops is currently sourced from. null when no set is active.
     public string? SetName => _setName;
 
-    /// <summary>Loaded loops, ordered alphabetically by name.</summary>
+    // Loaded loops, ordered alphabetically by name.
     public IReadOnlyList<Loop> Loops =>
         _loops.Values.OrderBy(l => l.Name, StringComparer.OrdinalIgnoreCase).ToArray();
 
-    /// <summary>Fires after any mutation to <see cref="Loops"/> (load, save, delete).</summary>
+    // Fires after any mutation to Loops (load, save, delete).
     public event Action? LoopsChanged;
 
     public LoopManager(BfsMapper bfs, RoomGraphManager graph, LogService? log = null)
@@ -60,13 +52,10 @@ public sealed class LoopManager
 
     // ----- Game-data-set lifecycle -----------------------------------
 
-    /// <summary>
-    /// Rebuild the in-memory cache from disk for <paramref name="setName"/>.
-    /// Pass <c>null</c> to clear (no set active). Idempotent on no-op
-    /// transitions — calling with the same name twice still rereads
-    /// because the user may have hand-edited a loop file between
-    /// calls.
-    /// </summary>
+    // Rebuild the in-memory cache from disk for setName. Pass null to clear
+    // (no set active). Idempotent on no-op transitions — calling with the
+    // same name twice still rereads because the user may have hand-edited a
+    // loop file between calls.
     public void LoadAll(string? setName)
     {
         _loops.Clear();
@@ -124,18 +113,11 @@ public sealed class LoopManager
         LoopsChanged?.Invoke();
     }
 
-    /// <summary>
-    /// Lookup by name. Returns <c>null</c> when the loop isn't in the
-    /// catalogue.
-    /// </summary>
+    // Lookup by name. Returns null when the loop isn't in the catalogue.
     public Loop? Get(string name) =>
         _loops.TryGetValue(name, out Loop? loop) ? loop : null;
 
-    /// <summary>
-    /// Persist <paramref name="loop"/> under
-    /// <see cref="AppPaths.GameDataSetLoopsFolder"/>. No-op when no set
-    /// is active.
-    /// </summary>
+    // Persist loop under GameDataSetLoopsFolder. No-op when no set is active.
     public void Save(Loop loop)
     {
         ArgumentNullException.ThrowIfNull(loop);
@@ -160,11 +142,8 @@ public sealed class LoopManager
         LoopsChanged?.Invoke();
     }
 
-    /// <summary>
-    /// Move the loop named <paramref name="name"/> into
-    /// <paramref name="folder"/> (empty = Loops root). No-op when the
-    /// loop isn't in the catalogue or no set is active.
-    /// </summary>
+    // Move the loop named name into folder (empty = Loops root). No-op when
+    // the loop isn't in the catalogue or no set is active.
     public bool Move(string name, string? folder)
     {
         if (Get(name) is not { } loop) return false;
@@ -176,10 +155,8 @@ public sealed class LoopManager
         return true;
     }
 
-    /// <summary>
-    /// Delete the loop named <paramref name="name"/>. No-op when not in
-    /// the catalogue or no set is active.
-    /// </summary>
+    // Delete the loop named name. No-op when not in the catalogue or no set
+    // is active.
     public bool Delete(string name)
     {
         if (_setName is null) return false;
@@ -190,11 +167,8 @@ public sealed class LoopManager
         return true;
     }
 
-    /// <summary>
-    /// Delete the on-disk <c>.loop</c> file for <paramref name="name"/>
-    /// wherever it lives under <paramref name="root"/> (the name is
-    /// unique set-wide). Best-effort — failures are logged.
-    /// </summary>
+    // Delete the on-disk .loop file for name wherever it lives under root
+    // (the name is unique set-wide). Best-effort — failures are logged.
     private void DeleteFileForName(string root, string name)
     {
         if (!Directory.Exists(root)) return;
@@ -211,48 +185,36 @@ public sealed class LoopManager
 
     // ----- builder helpers -------------------------------------------
 
-    /// <summary>
-    /// Convenience wrapper around <see cref="LoopExpander.Expand"/>
-    /// pre-bound to this manager's <see cref="BfsMapper"/>. Used by
-    /// the builder for the live-preview step count + unreachable
-    /// summary; the runner expands directly via
-    /// <see cref="LoopExpander"/> at start time.
-    /// </summary>
+    // Convenience wrapper around LoopExpander.Expand pre-bound to this
+    // manager's BfsMapper. Used by the builder for the live-preview step
+    // count + unreachable summary; the runner expands directly via
+    // LoopExpander at start time.
     public (IReadOnlyList<LoopStep> Steps, IReadOnlyList<(RoomKey From, RoomKey To)> UnreachableSegments)
         ExpandWaypoints(IReadOnlyList<LoopWaypoint> waypoints, IRoomFilter? filter = null)
         => LoopExpander.Expand(waypoints, _bfs, filter);
 
     // ----- internals -------------------------------------------------
 
-    /// <summary>Current schema version persisted on save.</summary>
+    // Current schema version persisted on save.
     public const int Loop3Schema = 3;
 
-    /// <summary>
-    /// Upgrade an in-memory <see cref="Loop"/> in place if its
-    /// <see cref="Loop.SchemaVersion"/> is below the current version.
-    /// Returns <c>true</c> when an upgrade was applied so the caller
-    /// can surface a count in the load log.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// v1 → v3: file had IsCircular + flat Steps. <c>Waypoints</c>
-    /// stays empty — the v1 schema had no waypoint anchors to
-    /// recover, so legacy loops can't be re-expanded by avoid-list
-    /// change until the user re-saves them in the builder.
-    /// </para>
-    /// <para>
-    /// v2 → v3: file had UserWaypoints + Steps. Copy UserWaypoints
-    /// into <see cref="Loop.Waypoints"/> with null commands; any
-    /// mid-leg <c>CommandLoopStep</c>s in the flat list are dropped
-    /// (logged once) because v3 attaches commands to waypoints, not
-    /// arbitrary positions.
-    /// </para>
-    /// <para>
-    /// The on-disk file isn't rewritten — upgrades are in-memory
-    /// only so a user who downgrades doesn't lose their old files.
-    /// The next user-driven Save persists the v3 form.
-    /// </para>
-    /// </remarks>
+    // Upgrade an in-memory Loop in place if its SchemaVersion is below the
+    // current version. Returns true when an upgrade was applied so the
+    // caller can surface a count in the load log.
+    //
+    // v1 → v3: file had IsCircular + flat Steps. Waypoints stays empty —
+    // the v1 schema had no waypoint anchors to recover, so legacy loops
+    // can't be re-expanded by avoid-list change until the user re-saves
+    // them in the builder.
+    //
+    // v2 → v3: file had UserWaypoints + Steps. Copy UserWaypoints into
+    // Waypoints with null commands; any mid-leg CommandLoopSteps in the
+    // flat list are dropped (logged once) because v3 attaches commands to
+    // waypoints, not arbitrary positions.
+    //
+    // The on-disk file isn't rewritten — upgrades are in-memory only so a
+    // user who downgrades doesn't lose their old files. The next
+    // user-driven Save persists the v3 form.
     private bool UpgradeIfNeeded(Loop loop)
     {
         if (loop.SchemaVersion >= Loop3Schema) return false;
@@ -306,11 +268,8 @@ public sealed class LoopManager
         return count;
     }
 
-    /// <summary>
-    /// Make <paramref name="name"/> filesystem-safe. The user can call
-    /// a loop anything; we strip path separators + reserved chars and
-    /// append <c>.json</c>.
-    /// </summary>
+    // Make name filesystem-safe. The user can call a loop anything; we
+    // strip path separators + reserved chars and append the loop suffix.
     private static string SafeFileName(string name)
     {
         char[] invalid = Path.GetInvalidFileNameChars();
@@ -320,15 +279,12 @@ public sealed class LoopManager
         return sb.ToString() + LoopFileSuffix;
     }
 
-    /// <summary>Filename suffix for loop files in the shared Loops folder.</summary>
+    // Filename suffix for loop files in the shared Loops folder.
     public const string LoopFileSuffix = ".loop";
 
-    /// <summary>
-    /// Rename pre-suffix-migration <c>{name}.json</c> files to
-    /// <c>{name}.loop</c> so the new <see cref="LoadAll"/> scan picks
-    /// them up. Skips files whose target already exists. Best-effort —
-    /// failures are logged but don't break the load path.
-    /// </summary>
+    // Rename pre-suffix-migration {name}.json files to {name}.loop so the new
+    // LoadAll scan picks them up. Skips files whose target already exists.
+    // Best-effort — failures are logged but don't break the load path.
     private void MigrateLegacyJsonFilesIfPresent(string folder)
     {
         if (!Directory.Exists(folder)) return;

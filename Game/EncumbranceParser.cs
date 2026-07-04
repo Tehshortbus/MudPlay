@@ -5,13 +5,9 @@ using FujinTerm.Services.Patterns;
 
 namespace FujinTerm.Game;
 
-/// <summary>
-/// Sole writer of <see cref="PlayerState.Encumbrance"/>. Subscribes to
-/// <see cref="KnownPatterns.UserEncumbrance"/> via the
-/// <see cref="MessageRouter"/> and extracts the bracket from the trailing
-/// label, e.g. <c>"Encumbrance:    0/2880  -  None  [0%]"</c> →
-/// <see cref="EncumbranceLevel.None"/>.
-/// </summary>
+// Sole writer of PlayerState.Encumbrance. Subscribes to
+// KnownPatterns.UserEncumbrance via the MessageRouter and extracts the bracket
+// from the trailing label, e.g. "Encumbrance:    0/2880  -  None  [0%]" → None.
 public sealed partial class EncumbranceParser : IDisposable
 {
     private readonly PlayerState _state;
@@ -38,13 +34,10 @@ public sealed partial class EncumbranceParser : IDisposable
         _log?.Debug("Encumbrance", $"observed {level} from '{match.Text}'");
     }
 
-    /// <summary>
-    /// Pulls the encumbrance bracket from an <c>Encumbrance:</c> line.
-    /// Returns <see cref="EncumbranceLevel.Unknown"/> when the bracket
-    /// token isn't recognisable — the server uses a small fixed set
-    /// (None / Light / Medium / Heavy / Encumbered) but the parser is
-    /// case-insensitive in case a custom realm tweaks the casing.
-    /// </summary>
+    // Pulls the encumbrance bracket from an `Encumbrance:` line. Returns Unknown
+    // when the bracket token isn't recognisable — the server uses a small fixed
+    // set (None / Light / Medium / Heavy / Encumbered) but the parser is
+    // case-insensitive in case a custom realm tweaks the casing.
     public static EncumbranceLevel ParseLevel(string? line)
     {
         if (string.IsNullOrWhiteSpace(line)) return EncumbranceLevel.Unknown;

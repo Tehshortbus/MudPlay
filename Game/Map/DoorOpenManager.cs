@@ -3,44 +3,32 @@ using FujinTerm.Services.Patterns;
 
 namespace FujinTerm.Game.Map;
 
-/// <summary>
-/// State machine that drives the walker's bash → pick → open flow for
-/// a single door. Mirrors <see cref="TrapDisarmManager"/>'s shape:
-/// one request in flight at a time, FIFO queue for follow-ups, the
-/// walker (or any other caller) gets a single terminal
-/// <see cref="DoorOpenResult"/> via callback when the request settles.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Decision matrix per request (see <see cref="DoorPolicy"/>):
-/// </para>
-/// <list type="number">
-///   <item>Honour <see cref="Models.Profile.OtherSettings.PicklocksOverBash"/>
-///   — if set, try <c>pick &lt;dir&gt;</c> first when picking is
-///   viable.</item>
-///   <item>Otherwise prefer <c>bash &lt;dir&gt;</c> when the door is
-///   bashable (<c>canBash</c> from the modifier, strength req
-///   feasible vs the active set's
-///   <see cref="MaxStrengthIndex.MaxAchievableStrength"/>, live
-///   <see cref="Game.PlayerStats.Strength"/> meets the
-///   threshold).</item>
-///   <item>If only one verb is viable, use it. If neither is, fail
-///   immediately with <c>DoorOpenResult.Failed("no viable verb")</c>.</item>
-///   <item>On verb failure (server "fails" line), retry up to the
-///   configured cap; if exhausted AND the other verb is viable,
-///   fall back to it; otherwise fail.</item>
-///   <item>Bash success → <c>Opened</c> directly (bash both unlocks
-///   AND swings the door). Pick success → <c>open &lt;dir&gt;</c> →
-///   on <c>"is now open"</c> → <c>Opened</c>.</item>
-/// </list>
-/// <para>
-/// Single-pattern matchers: the regex doesn't capture direction so
-/// other in-flight commands (manual user typing) could in theory
-/// match the wrong context. The walker funnels through one request
-/// at a time and the keyed-door FSM (commit 3) inherits the same
-/// matchers — practical conflict is negligible.
-/// </para>
-/// </remarks>
+// State machine that drives the walker's bash → pick → open flow for a
+// single door. Mirrors TrapDisarmManager's shape: one request in flight
+// at a time, FIFO queue for follow-ups, the walker (or any other caller)
+// gets a single terminal DoorOpenResult via callback when the request
+// settles.
+//
+// Decision matrix per request (see DoorPolicy):
+//   1) Honour OtherSettings.PicklocksOverBash — if set, try pick <dir>
+//      first when picking is viable.
+//   2) Otherwise prefer bash <dir> when the door is bashable (canBash
+//      from the modifier, strength req feasible vs the active set's
+//      MaxStrengthIndex.MaxAchievableStrength, live PlayerStats.Strength
+//      meets the threshold).
+//   3) If only one verb is viable, use it. If neither is, fail
+//      immediately with DoorOpenResult.Failed("no viable verb").
+//   4) On verb failure (server "fails" line), retry up to the configured
+//      cap; if exhausted AND the other verb is viable, fall back to it;
+//      otherwise fail.
+//   5) Bash success → Opened directly (bash both unlocks AND swings the
+//      door). Pick success → open <dir> → on "is now open" → Opened.
+//
+// Single-pattern matchers: the regex doesn't capture direction so other
+// in-flight commands (manual user typing) could in theory match the wrong
+// context. The walker funnels through one request at a time and the
+// keyed-door FSM inherits the same matchers — practical conflict is
+// negligible.
 public sealed class DoorOpenManager : IDisposable
 {
     private readonly MessageRouter _router;
@@ -71,13 +59,13 @@ public sealed class DoorOpenManager : IDisposable
     private int _verbAttempts;
     private bool _triedFallbackVerb;
 
-    /// <summary>Current state — exposed for tests + diagnostics.</summary>
+    // Current state — exposed for tests + diagnostics.
     public DoorState CurrentState => _state;
 
-    /// <summary>Direction of the in-flight request, or null when idle.</summary>
+    // Direction of the in-flight request, or null when idle.
     public string? CurrentDirection => _current?.DirectionShort;
 
-    /// <summary>Outstanding queue depth (excludes the in-flight request).</summary>
+    // Outstanding queue depth (excludes the in-flight request).
     public int QueueDepth => _queue.Count;
 
     public DoorOpenManager(
@@ -121,13 +109,11 @@ public sealed class DoorOpenManager : IDisposable
         _keyUnknownSub  = _router.Subscribe(KnownPatterns.DoorKeyUnknown,       OnKeyUnknown);
     }
 
-    /// <summary>
-    /// Bind the wire-sender. Same shape as <see cref="TrapDisarmManager.SetWireSender"/>
-    /// — MainWindowVM supplies the gate-wrapped <c>SendUserInput</c>.
-    /// </summary>
+    // Bind the wire-sender. Same shape as TrapDisarmManager.SetWireSender
+    // — MainWindowVM supplies the gate-wrapped SendUserInput.
     public void SetWireSender(Action<byte[]> sender) => _wire.Bind(sender);
 
-    /// <summary>Test seam — bytes the manager asked to write to the wire.</summary>
+    // Test seam — bytes the manager asked to write to the wire.
     internal List<byte[]> LastSentForTests => _wire.LastSentForTests;
 
     public void Dispose()
@@ -146,19 +132,14 @@ public sealed class DoorOpenManager : IDisposable
         _keyUnknownSub.Dispose();
     }
 
-    /// <summary>
-    /// Queue a door-open request. The walker normalises
-    /// <paramref name="direction"/> to short form (<c>"n"</c> /
-    /// <c>"ne"</c> / <c>"u"</c>) before calling. The callback fires
-    /// exactly once on terminal state. <paramref name="keyItemId"/>
-    /// is <c>0</c> for plain doors; non-zero indexes the door's key
-    /// in <see cref="ItemNameStore"/>. When the door is keyed and
-    /// has a stat alternative, the manager tries bash/pick first to
-    /// save the key's limited charges (per MudProxy's 1280-1322
-    /// pattern); only falls back to the single-shot
-    /// <c>use &lt;keyName&gt; &lt;dir&gt;</c> + <c>open &lt;dir&gt;</c>
-    /// when bash/pick are unviable or exhaust.
-    /// </summary>
+    // Queue a door-open request. The walker normalises direction to short
+    // form ("n" / "ne" / "u") before calling. The callback fires exactly
+    // once on terminal state. keyItemId is 0 for plain doors; non-zero
+    // indexes the door's key in ItemNameStore. When the door is keyed and
+    // has a stat alternative, the manager tries bash/pick first to save
+    // the key's limited charges; only falls back to the single-shot
+    // use <keyName> <dir> + open <dir> when bash/pick are unviable or
+    // exhaust.
     public void Enqueue(
         Direction direction,
         int statRequirement,
@@ -174,11 +155,8 @@ public sealed class DoorOpenManager : IDisposable
         TryStartNext();
     }
 
-    /// <summary>
-    /// Backwards-compatible overload for plain-door callers (no key).
-    /// Equivalent to <see cref="Enqueue(Direction, int, bool, int, string, Action{DoorOpenResult})"/>
-    /// with <c>keyItemId = 0</c>.
-    /// </summary>
+    // Overload for plain-door callers (no key). Equivalent to the keyed
+    // Enqueue with keyItemId = 0.
     public void Enqueue(
         Direction direction,
         int statRequirement,
@@ -187,10 +165,8 @@ public sealed class DoorOpenManager : IDisposable
         Action<DoorOpenResult> reply)
         => Enqueue(direction, statRequirement, canBash, keyItemId: 0, sender, reply);
 
-    /// <summary>
-    /// Abort the current request (if any) + drain the queue. Pending
-    /// callers receive a <c>Failed("flow stopped")</c> reply.
-    /// </summary>
+    // Abort the current request (if any) + drain the queue. Pending
+    // callers receive a Failed("flow stopped") reply.
     public void StopAll()
     {
         if (_current is { } cur)
@@ -500,20 +476,20 @@ public sealed class DoorOpenManager : IDisposable
         _ => "?",
     };
 
-    /// <summary>Public FSM state — exposed for tests + diagnostics.</summary>
+    // Public FSM state — exposed for tests + diagnostics.
     public enum DoorState
     {
-        /// <summary>No request in flight.</summary>
+        // No request in flight.
         Idle,
-        /// <summary>Picking the first verb based on player stats + settings.</summary>
+        // Picking the first verb based on player stats + settings.
         SelectingVerb,
-        /// <summary>Sent <c>bash &lt;dir&gt;</c>; awaiting success/failure line.</summary>
+        // Sent bash <dir>; awaiting success/failure line.
         WaitingBash,
-        /// <summary>Sent <c>pick &lt;dir&gt;</c>; awaiting success/failure line.</summary>
+        // Sent pick <dir>; awaiting success/failure line.
         WaitingPick,
-        /// <summary>Pick succeeded (or door was unlocked); sent <c>open &lt;dir&gt;</c>; awaiting opened line.</summary>
+        // Pick succeeded (or door was unlocked); sent open <dir>; awaiting opened line.
         WaitingOpen,
-        /// <summary>Sent <c>use &lt;keyName&gt; &lt;dir&gt;</c>; awaiting unlock-success / key-missing.</summary>
+        // Sent use <keyName> <dir>; awaiting unlock-success / key-missing.
         WaitingUseKey,
     }
 

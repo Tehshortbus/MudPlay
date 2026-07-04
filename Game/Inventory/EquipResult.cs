@@ -1,20 +1,18 @@
 namespace FujinTerm.Game.Inventory;
 
-/// <summary>
-/// Outcome of an <c>@equip-&lt;set&gt;</c> / set-apply request, so callers
-/// (the <see cref="Game.Remote.EquipHandler"/>) can craft the right reply.
-/// </summary>
+// Outcome of an @equip-<set> / set-apply request, so callers (EquipHandler) can
+// craft the right reply.
 public enum EquipResult
 {
-    /// <summary>A wear sequence started (or a virtual-slot write landed).</summary>
+    // A wear sequence started (or a virtual-slot write landed).
     Applied,
 
-    /// <summary>The set was found but the character already wears it — no-op.</summary>
+    // The set was found but the character already wears it — no-op.
     NoChange,
 
-    /// <summary>No set matched the keyword (or set name).</summary>
+    // No set matched the keyword (or set name).
     NotFound,
 
-    /// <summary>An equip sequence is already in flight; the request was declined.</summary>
+    // An equip sequence is already in flight; the request was declined.
     Busy,
 }

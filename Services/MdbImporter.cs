@@ -6,43 +6,34 @@ using JetDatabaseReader;
 
 namespace FujinTerm.Services;
 
-/// <summary>
-/// Imports every user table from a Microsoft Access <c>.mdb</c> /
-/// <c>.accdb</c> database into a folder of JSON files (one per table)
-/// under <see cref="AppPaths.GameDataRoot"/>. Each subfolder of
-/// <c>Data/game data/</c> becomes a switchable "game-data set" the
-/// <see cref="GameDataCache"/> can activate.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Backed by <see cref="AccessReader"/> from JetDatabaseReader — a
-/// pure-managed Jet3 / Jet4 / ACCDB reader. No native dependencies, no
-/// OLE DB / ACE / ODBC / Wine: the same binary reads Jet on Windows,
-/// Linux, and macOS.
-/// </para>
-/// <para>
-/// "Every user table" means every table the database exposes — the
-/// importer has no allow-list. Access metadata tables (<c>MSys*</c>)
-/// and orphaned temp tables (names beginning with <c>~</c>) are
-/// filtered out. This lets us pick up new MajorMUD-flavoured tables
-/// that future realm releases add without code changes.
-/// </para>
-/// </remarks>
+// Imports every user table from a Microsoft Access .mdb / .accdb database into
+// a folder of JSON files (one per table) under AppPaths.GameDataRoot. Each
+// subfolder of Data/game data/ becomes a switchable "game-data set" the
+// GameDataCache can activate.
+//
+// Backed by AccessReader from JetDatabaseReader — a pure-managed Jet3 / Jet4 /
+// ACCDB reader. No native dependencies, no OLE DB / ACE / ODBC / Wine: the same
+// binary reads Jet on Windows, Linux, and macOS.
+//
+// "Every user table" means every table the database exposes — the importer has
+// no allow-list. Access metadata tables (MSys*) and orphaned temp tables
+// (names beginning with ~) are filtered out. This lets us pick up new
+// MajorMUD-flavoured tables that future realm releases add without code changes.
 public sealed class MdbImporter
 {
-    /// <summary>Root directory imported sets land under (<see cref="AppPaths.GameDataRoot"/>).</summary>
+    // Root directory imported sets land under.
     public string GameDataRoot { get; } = AppPaths.GameDataRoot;
 
-    /// <summary>Single-line status text — connection / table being read / completion.</summary>
+    // Single-line status text — connection / table being read / completion.
     public event Action<string>? OnStatusChanged;
 
-    /// <summary>Overall progress — fires once per table with <c>(tablesDone, tablesTotal)</c>.</summary>
+    // Overall progress — fires once per table with (tablesDone, tablesTotal).
     public event Action<int, int>? OnProgressChanged;
 
-    /// <summary>Per-table row progress — fires at ~5% increments with <c>(tableName, rowsDone, rowsTotal)</c>.</summary>
+    // Per-table row progress — fires at ~5% increments with (tableName, rowsDone, rowsTotal).
     public event Action<string, int, int>? OnRowProgress;
 
-    /// <summary>Non-fatal per-table errors. The importer continues with the next table.</summary>
+    // Non-fatal per-table errors. The importer continues with the next table.
     public event Action<string>? OnError;
 
     public MdbImporter()
@@ -50,7 +41,7 @@ public sealed class MdbImporter
         Directory.CreateDirectory(GameDataRoot);
     }
 
-    /// <summary>List of imported subfolders under <see cref="GameDataRoot"/>, alphabetical.</summary>
+    // Imported subfolders under GameDataRoot, alphabetical.
     public IReadOnlyList<string> GetGameDataFolders()
     {
         if (!Directory.Exists(GameDataRoot)) return Array.Empty<string>();
@@ -62,30 +53,22 @@ public sealed class MdbImporter
             .ToArray();
     }
 
-    /// <summary>Absolute path of an imported subfolder by name.</summary>
+    // Absolute path of an imported subfolder by name.
     public string GetSubfolderPath(string folderName)
         => Path.Combine(GameDataRoot, folderName);
 
     // ----- Import entry point ----------------------------------------------
 
-    /// <summary>
-    /// Read every user table from <paramref name="mdbFilePath"/> and
-    /// write each as <c>{table}.json</c> under <c>GameDataRoot / folderName</c>.
-    /// </summary>
-    /// <param name="mdbFilePath">Absolute path to the <c>.mdb</c> / <c>.accdb</c> file.</param>
-    /// <param name="targetSubfolder">
-    /// Subfolder name under <see cref="GameDataRoot"/>. Defaults to the
-    /// file's basename. The Phase 5 import-conflict dialog feeds the
-    /// user's chosen set name here.
-    /// </param>
-    /// <param name="cancellationToken">Cancellation propagated to row reads + file writes.</param>
-    /// <returns>
-    /// An <see cref="MdbImportResult"/> carrying success, the on-disk
-    /// folder name, a human-readable message safe to show in a dialog,
-    /// and counts (tables found / imported / skipped, plus total rows
-    /// imported). Counts are zero on failure paths; the message field
-    /// always carries enough detail to surface in the Program Log.
-    /// </returns>
+    // Read every user table from the .mdb / .accdb at mdbFilePath and write each
+    // as {table}.json under GameDataRoot/folderName. targetSubfolder names the
+    // subfolder under GameDataRoot, defaulting to the file's basename (the
+    // import-conflict dialog feeds the user's chosen set name here).
+    //
+    // Returns an MdbImportResult carrying success, the on-disk folder name, a
+    // human-readable message safe to show in a dialog, and counts (tables found
+    // / imported / skipped, plus total rows imported). Counts are zero on
+    // failure paths; the message field always carries enough detail to surface
+    // in the Program Log.
     public async Task<MdbImportResult> ImportAsync(
         string mdbFilePath,
         string? targetSubfolder = null,
@@ -277,11 +260,8 @@ public sealed class MdbImporter
         Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
     };
 
-    /// <summary>
-    /// Strip filesystem-invalid characters from a table name so it can
-    /// safely become a JSON filename. Internal — exposed via the test
-    /// surface only.
-    /// </summary>
+    // Strip filesystem-invalid characters from a table name so it can safely
+    // become a JSON filename. Internal — exposed via the test surface only.
     internal static string MakeFilesystemSafe(string name)
     {
         char[] invalid = Path.GetInvalidFileNameChars();
@@ -299,19 +279,20 @@ public sealed class MdbImporter
     }
 }
 
-/// <summary>
-/// Outcome of one <see cref="MdbImporter.ImportAsync"/> invocation. The
-/// caller uses the counts to compose status text and to recognise the
-/// MajorMUD MDB shape (9 user tables = old realm format, 10 = new
-/// format; anything less is a malformed / truncated MDB).
-/// </summary>
-/// <param name="Success">True when the database opened and every reachable table was at least attempted.</param>
-/// <param name="Message">Multi-line summary safe for the Program Log.</param>
-/// <param name="FolderName">On-disk subfolder under <see cref="AppPaths.GameDataRoot"/> the JSON landed in; empty on failure.</param>
-/// <param name="TablesFound">User tables enumerated from the MDB (MSys* + ~tmp filtered out).</param>
-/// <param name="TablesImported">Tables successfully written to JSON.</param>
-/// <param name="TablesSkipped">Tables that the importer attempted but a per-table error aborted (see <see cref="MdbImporter.OnError"/> for the reasons).</param>
-/// <param name="RowsImported">Sum of rows across every imported table.</param>
+// Outcome of one MdbImporter.ImportAsync invocation. The caller uses the counts
+// to compose status text and to recognise the MajorMUD MDB shape (9 user tables
+// = old realm format, 10 = new format; anything less is a malformed / truncated
+// MDB).
+//   Success        — true when the database opened and every reachable table
+//                    was at least attempted.
+//   Message        — multi-line summary safe for the Program Log.
+//   FolderName     — on-disk subfolder under AppPaths.GameDataRoot the JSON
+//                    landed in; empty on failure.
+//   TablesFound    — user tables enumerated from the MDB (MSys* + ~tmp filtered out).
+//   TablesImported — tables successfully written to JSON.
+//   TablesSkipped  — tables the importer attempted but a per-table error
+//                    aborted (see OnError for the reasons).
+//   RowsImported   — sum of rows across every imported table.
 public readonly record struct MdbImportResult(
     bool   Success,
     string Message,
@@ -321,7 +302,7 @@ public readonly record struct MdbImportResult(
     int    TablesSkipped,
     int    RowsImported)
 {
-    /// <summary>Build a failure result. All counts zero, folder name empty.</summary>
+    // Build a failure result. All counts zero, folder name empty.
     public static MdbImportResult Failure(string message)
         => new(false, message, string.Empty, 0, 0, 0, 0);
 }

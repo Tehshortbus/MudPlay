@@ -3,14 +3,11 @@ using Avalonia.Data.Converters;
 
 namespace FujinTerm.ViewModels;
 
-/// <summary>
-/// Inverse of <see cref="GreaterThanZeroConverter"/> — returns
-/// <c>true</c> when the bound numeric is at or below zero. Used to
-/// show the PartyWindow's MA placeholder Border for rows where
-/// <c>BaselineMp</c> is 0; together with the GreaterThanZero converter
-/// on the real MA grid, exactly one of the two renders per row and
-/// the column past MA stays aligned across rows.
-/// </summary>
+// Inverse of GreaterThanZeroConverter — returns true when the bound numeric
+// is at or below zero. Used to show the PartyWindow's MA placeholder Border
+// for rows where BaselineMp is 0; together with the GreaterThanZero
+// converter on the real MA grid, exactly one of the two renders per row and
+// the column past MA stays aligned across rows.
 public sealed class LessThanOrEqualZeroConverter : IValueConverter
 {
     public static LessThanOrEqualZeroConverter Instance { get; } = new();

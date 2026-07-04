@@ -5,32 +5,20 @@ using FujinTerm.Models.Profile;
 
 namespace FujinTerm.Services;
 
-/// <summary>
-/// Per-character avoided + stash room set. Implements
-/// <see cref="IRoomFilter"/> for BFS — the walker / loop runner /
-/// auto-lair scheduler all read <see cref="IsAvoided"/> at planning
-/// time so the avoided rooms are dropped from candidate paths.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Scope: Char-only (per the planning conversation). Lives on
-/// <see cref="CharacterProfile.AvoidedRooms"/> +
-/// <see cref="CharacterProfile.StashRooms"/>, not in
-/// <see cref="SettingsResolver"/> — the avoided set is a personal
-/// no-go list, not a per-realm or per-BBS rule.
-/// </para>
-/// <para>
-/// Wiring: <see cref="AppServices"/> subscribes the filter to
-/// <see cref="ProfileService.ProfileLoaded"/> +
-/// <see cref="ProfileService.ProfileClosed"/>. Mutating methods
-/// (<see cref="MarkAvoided"/>, <see cref="UnmarkAvoided"/>,
-/// <see cref="MarkStash"/>, <see cref="UnmarkStash"/>) update the
-/// in-memory set, mirror the change back into the loaded profile,
-/// persist via <see cref="ProfileService.Save"/>, and fire
-/// <see cref="AvoidedChanged"/> / <see cref="StashChanged"/> so the
-/// map UI can recolour the affected cells.
-/// </para>
-/// </remarks>
+// Per-character avoided + stash room set. Implements IRoomFilter for BFS —
+// the walker / loop runner / auto-lair scheduler all read IsAvoided at
+// planning time so the avoided rooms are dropped from candidate paths.
+//
+// Scope: Char-only. Lives on CharacterProfile.AvoidedRooms +
+// CharacterProfile.StashRooms, not in SettingsResolver — the avoided set is a
+// personal no-go list, not a per-realm or per-BBS rule.
+//
+// Wiring: AppServices subscribes the filter to
+// ProfileService.ProfileLoaded + ProfileService.ProfileClosed. Mutating
+// methods (MarkAvoided, UnmarkAvoided, MarkStash, UnmarkStash) update the
+// in-memory set, mirror the change back into the loaded profile, persist via
+// ProfileService.Save, and fire AvoidedChanged / StashChanged so the map UI
+// can recolour the affected cells.
 public sealed class MovementFilter : IRoomFilter
 {
     private readonly ProfileService _profile;
@@ -38,40 +26,33 @@ public sealed class MovementFilter : IRoomFilter
     private readonly HashSet<RoomKey> _avoided = new();
     private readonly HashSet<RoomKey> _stash = new();
 
-    /// <summary>
-    /// Supplies the player's current character level for Form-A exit
-    /// level-gate evaluation, or <c>null</c> when the level isn't known
-    /// yet (no <c>stat</c> screen parsed). Wired by
-    /// <see cref="AppServices"/> to <c>StatParser</c>. When null,
-    /// <see cref="IsExitBlocked"/> never blocks — we don't refuse a walk
-    /// on a gate we can't yet evaluate.
-    /// </summary>
+    // Supplies the player's current character level for Form-A exit
+    // level-gate evaluation, or null when the level isn't known yet (no stat
+    // screen parsed). Wired by AppServices to StatParser. When null,
+    // IsExitBlocked never blocks — we don't refuse a walk on a gate we can't
+    // yet evaluate.
     public Func<int?>? LevelProvider { get; set; }
 
-    /// <summary>
-    /// Supplies the party's most-constraining <c>(Low, High)</c> level
-    /// window when this character is leading a party, or <c>null</c> when
-    /// solo, not leading, or nobody's level is known yet. Wired by
-    /// <see cref="AppServices"/> to <see cref="Game.Remote.PartyLevelTracker"/>.
-    /// When non-null it takes precedence over <see cref="LevelProvider"/>
-    /// in <see cref="IsExitBlocked"/>: BFS routes the party <b>around</b> a
-    /// gate that would leave a member behind, instead of walking the leader
-    /// through it. The bounds already fold in the leader's own level, so
-    /// the party branch never waves the leader through a gate the leader
-    /// can't cross either.
-    /// </summary>
+    // Supplies the party's most-constraining (Low, High) level window when
+    // this character is leading a party, or null when solo, not leading, or
+    // nobody's level is known yet. Wired by AppServices to
+    // Game.Remote.PartyLevelTracker. When non-null it takes precedence over
+    // LevelProvider in IsExitBlocked: BFS routes the party around a gate that
+    // would leave a member behind, instead of walking the leader through it.
+    // The bounds already fold in the leader's own level, so the party branch
+    // never waves the leader through a gate the leader can't cross either.
     public Func<(int Low, int High)?>? PartyLevelBoundsProvider { get; set; }
 
-    /// <summary>Read-only snapshot of the currently-avoided room keys.</summary>
+    // Read-only snapshot of the currently-avoided room keys.
     public IReadOnlyCollection<RoomKey> Avoided => _avoided;
 
-    /// <summary>Read-only snapshot of the currently-flagged stash-room keys.</summary>
+    // Read-only snapshot of the currently-flagged stash-room keys.
     public IReadOnlyCollection<RoomKey> Stash => _stash;
 
-    /// <summary>Fires after every mutation to the avoided set, including profile reload.</summary>
+    // Fires after every mutation to the avoided set, including profile reload.
     public event Action? AvoidedChanged;
 
-    /// <summary>Fires after every mutation to the stash set, including profile reload.</summary>
+    // Fires after every mutation to the stash set, including profile reload.
     public event Action? StashChanged;
 
     public MovementFilter(ProfileService profile, LogService? log = null)
@@ -88,10 +69,8 @@ public sealed class MovementFilter : IRoomFilter
         if (_profile.Current is { } current) OnProfileLoaded(current);
     }
 
-    /// <inheritdoc/>
     public bool IsAvoided(RoomKey key) => _avoided.Contains(key);
 
-    /// <inheritdoc/>
     public bool IsExitBlocked(in RoomExit exit)
     {
         if (!exit.HasLevelGate) return false;
@@ -118,13 +97,11 @@ public sealed class MovementFilter : IRoomFilter
         return false;
     }
 
-    /// <summary>True when the user has flagged this room as a stash drop-off point.</summary>
+    // True when the user has flagged this room as a stash drop-off point.
     public bool IsStash(RoomKey key) => _stash.Contains(key);
 
-    /// <summary>
-    /// Add the room to the avoided set. No-op when already avoided or
-    /// when no profile is loaded. Persists immediately.
-    /// </summary>
+    // Add the room to the avoided set. No-op when already avoided or when no
+    // profile is loaded. Persists immediately.
     public void MarkAvoided(RoomKey key)
     {
         if (_profile.Current is not { } current) return;
@@ -137,7 +114,7 @@ public sealed class MovementFilter : IRoomFilter
         AvoidedChanged?.Invoke();
     }
 
-    /// <summary>Remove the room from the avoided set. Persists immediately.</summary>
+    // Remove the room from the avoided set. Persists immediately.
     public void UnmarkAvoided(RoomKey key)
     {
         if (_profile.Current is not { } current) return;
@@ -151,7 +128,7 @@ public sealed class MovementFilter : IRoomFilter
         AvoidedChanged?.Invoke();
     }
 
-    /// <summary>Flag the room as a stash drop-off point. Persists immediately.</summary>
+    // Flag the room as a stash drop-off point. Persists immediately.
     public void MarkStash(RoomKey key)
     {
         if (_profile.Current is not { } current) return;
@@ -164,7 +141,7 @@ public sealed class MovementFilter : IRoomFilter
         StashChanged?.Invoke();
     }
 
-    /// <summary>Clear the room's stash-room flag. Persists immediately.</summary>
+    // Clear the room's stash-room flag. Persists immediately.
     public void UnmarkStash(RoomKey key)
     {
         if (_profile.Current is not { } current) return;

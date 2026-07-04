@@ -1,34 +1,28 @@
 namespace FujinTerm.Game.Light;
 
-/// <summary>What the auto-light engine should do about the route ahead.</summary>
+// What the auto-light engine should do about the route ahead.
 public enum AutoLightAction
 {
-    /// <summary>Route is lit and any readied light is healthy — do nothing.</summary>
+    // Route is lit and any readied light is healthy — do nothing.
     None,
 
-    /// <summary>Ready a light already in the pack — the engine sends
-    /// <c>use &lt;LightName&gt;</c>. No shop trip needed.</summary>
+    // Ready a light already in the pack — the engine sends use <LightName>.
+    // No shop trip needed.
     Ready,
 
-    /// <summary>Buy <see cref="AutoLightPlan.BuyCount"/> of
-    /// <see cref="AutoLightPlan.LightName"/> (a shop detour), then ready one.</summary>
+    // Buy BuyCount of LightName (a shop detour), then ready one.
     Buy,
 
-    /// <summary>Preemptive restock: the readied light is dwindling below the
-    /// reorder threshold, so top the pack up to the carry target
-    /// (<see cref="AutoLightPlan.BuyCount"/> of
-    /// <see cref="AutoLightPlan.LightName"/>) before it dies. A shop detour like
-    /// <see cref="Buy"/>, but the still-lit light keeps burning — the engine
-    /// requests this at most once per readied-light instance.</summary>
+    // Preemptive restock: the readied light is dwindling below the reorder
+    // threshold, so top the pack up to the carry target (BuyCount of LightName)
+    // before it dies. A shop detour like Buy, but the still-lit light keeps
+    // burning — the engine requests this at most once per readied-light instance.
     Reorder,
 }
 
-/// <summary>
-/// The auto-light engine's decision for the current situation, produced by the
-/// pure <see cref="AutoLightPlanner"/>. Carries the action, the light it names,
-/// how many to buy (0 for <see cref="AutoLightAction.Ready"/> /
-/// <see cref="AutoLightAction.None"/>), and a human-readable reason for the log.
-/// </summary>
+// The auto-light engine's decision for the current situation, produced by the
+// pure AutoLightPlanner. Carries the action, the light it names, how many to buy
+// (0 for Ready / None), and a human-readable reason for the log.
 public readonly record struct AutoLightPlan(
     AutoLightAction Action,
     string? LightName,

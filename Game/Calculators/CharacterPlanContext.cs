@@ -6,13 +6,11 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game.Calculators;
 
-/// <summary>
-/// The live inputs a CP plan is computed against: the raw-base baseline (current
-/// stats minus equipment bonuses, floored at the race minimum), the race min/max
-/// bounds, and the realm. Resolved from <see cref="PlayerStats"/> + game data +
-/// equipment; shared by the CP Allocation tab and the auto-train engine so the
-/// baseline math lives in exactly one place.
-/// </summary>
+// The live inputs a CP plan is computed against: the raw-base baseline (current
+// stats minus equipment bonuses, floored at the race minimum), the race min/max
+// bounds, and the realm. Resolved from PlayerStats + game data + equipment;
+// shared by the CP Allocation tab and the auto-train engine so the baseline math
+// lives in exactly one place.
 public readonly record struct CharacterPlanContext(
     bool HasCharacter,
     CpPlanEntry Baseline,
@@ -20,11 +18,9 @@ public readonly record struct CharacterPlanContext(
     CpPlanEntry RaceMax,
     RealmType Realm)
 {
-    /// <summary>
-    /// Resolve the plan context for the live character. <see cref="HasCharacter"/>
-    /// is false (entries defaulted) when no race resolves — no character or no
-    /// game-data set loaded.
-    /// </summary>
+    // Resolve the plan context for the live character. HasCharacter is false
+    // (entries defaulted) when no race resolves — no character or no game-data
+    // set loaded.
     public static CharacterPlanContext Resolve(PlayerStats stats, GameDataCache gameData, InventoryManager inventory)
     {
         ArgumentNullException.ThrowIfNull(stats);

@@ -4,12 +4,9 @@ using FujinTerm.Models.Profile;
 
 namespace FujinTerm.ViewModels;
 
-/// <summary>
-/// XAML converter that renders a <see cref="PartyRank"/> as the short
-/// one-letter chip label the PartyWindow draws on the self row
-/// (Front → "F", Mid → "M", Back → "B"). Single static instance —
-/// no per-binding state.
-/// </summary>
+// XAML converter that renders a PartyRank as the short one-letter chip label
+// the PartyWindow draws on the self row (Front → "F", Mid → "M", Back →
+// "B"). Single static instance — no per-binding state.
 public sealed class RankChipConverter : IValueConverter
 {
     public static RankChipConverter Instance { get; } = new();

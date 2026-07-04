@@ -6,73 +6,51 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game.Health;
 
-/// <summary>
-/// Phase 9 PR 9.B — passive HP/MA threshold behavior. Asserts and
-/// clears <see cref="MovementCoordinator.HealthRecoveryGate"/> +
-/// <see cref="MovementCoordinator.ManaRecoveryGate"/> on configured
-/// thresholds and drives the rest / stand cycle with pre- / post-rest
-/// command sequencing. Does NOT decide spell casts — those route
-/// through <c>CastingDirector</c> (PR 9.D).
-/// </summary>
-/// <remarks>
-/// <para>
-/// State model — three transitions per pool (HP and MA each track
-/// independently):
-/// </para>
-/// <list type="bullet">
-/// <item><b>Threshold breach</b>: HP / MA drops to or below the
-/// configured rest-trigger. Asserts the corresponding recovery gate.
-/// Walker (and any other gate consumer) pauses immediately.</item>
-/// <item><b>Rest-out</b>: when either gate is held AND the player is
-/// out of combat (<see cref="PlayerState.InCombat"/> false), send any
-/// configured pre-rest command(s) and then <c>rest</c>. Idempotent —
-/// won't re-send rest while one is already in flight.</item>
-/// <item><b>Recovery complete</b>: both pools have climbed to or past
-/// their configured rest-target. Clears both gates, sends
-/// <c>stand</c>, and emits any post-rest command(s). Walker resumes
-/// when the last gate clears.</item>
-/// </list>
-/// <para>
-/// In-combat semantics: the HP/MA gates can assert mid-fight (so the
-/// walker doesn't try to leave the room when a fight is going badly),
-/// but <c>rest</c> is NEVER sent while <see cref="PlayerState.InCombat"/>
-/// is true. As soon as <c>CombatStateTracker</c> clears the
-/// <see cref="MovementCoordinator.CombatGate"/> and InCombat flips
-/// false, the next <see cref="Evaluate"/> tick fires the rest command.
-/// </para>
-/// <para>
-/// Pre/post-rest commands honour the <c>^M</c>-or-<c>;</c> chaining
-/// convention documented on
-/// <see cref="HealthSettings.PreRestCommand"/>: split the string on
-/// either marker, trim each fragment, send each as its own wire line.
-/// </para>
-/// <para>
-/// Run-if-below: when <see cref="PlayerState.Hp"/> drops to or below
-/// <see cref="HealthSettings.RunIfBelowHp"/> mid-combat AND a movement
-/// engine is active, the active engine is paused and the character
-/// flees <see cref="Models.Profile.CombatSettings.RunDistance"/> rooms
-/// (Backward = inverse of last sent direction; Forward = engine's next
-/// planned), optionally preceded by <c>break</c>. The engine resumes via
-/// <see cref="Map.IRecoverableEngine.ResumeAfterRecovery"/> once HP
-/// climbs back above the run-trigger. Multi-step flee advances one room
-/// per <see cref="NoteRoomChanged(Map.RoomKey?)"/>.
-/// </para>
-/// <para>
-/// Hang-if-below: <see cref="PlayerState.Hp"/> at or below
-/// <see cref="HealthSettings.HangIfBelowHp"/> fires a single-shot hard
-/// disconnect via the configured exit command. Setting the threshold to
-/// 0 disables the check.
-/// </para>
-/// </remarks>
+// Passive HP/MA threshold behavior. Asserts and clears
+// MovementCoordinator.HealthRecoveryGate + ManaRecoveryGate on configured
+// thresholds and drives the rest / stand cycle with pre- / post-rest command
+// sequencing. Does NOT decide spell casts — those route through CastingDirector.
+//
+// State model — three transitions per pool (HP and MA each track independently):
+//   Threshold breach: HP / MA drops to or below the configured rest-trigger.
+//     Asserts the corresponding recovery gate. Walker (and any other gate
+//     consumer) pauses immediately.
+//   Rest-out: when either gate is held AND the player is out of combat
+//     (PlayerState.InCombat false), send any configured pre-rest command(s) and
+//     then `rest`. Idempotent — won't re-send rest while one is already in flight.
+//   Recovery complete: both pools have climbed to or past their configured
+//     rest-target. Clears both gates, sends `stand`, and emits any post-rest
+//     command(s). Walker resumes when the last gate clears.
+//
+// In-combat semantics: the HP/MA gates can assert mid-fight (so the walker
+// doesn't try to leave the room when a fight is going badly), but `rest` is NEVER
+// sent while PlayerState.InCombat is true. As soon as CombatStateTracker clears
+// the CombatGate and InCombat flips false, the next Evaluate tick fires the rest
+// command.
+//
+// Pre/post-rest commands honour the ^M-or-; chaining convention documented on
+// HealthSettings.PreRestCommand: split the string on either marker, trim each
+// fragment, send each as its own wire line.
+//
+// Run-if-below: when PlayerState.Hp drops to or below HealthSettings.RunIfBelowHp
+// mid-combat AND a movement engine is active, the active engine is paused and the
+// character flees CombatSettings.RunDistance rooms (Backward = inverse of last
+// sent direction; Forward = engine's next planned), optionally preceded by
+// `break`. The engine resumes via IRecoverableEngine.ResumeAfterRecovery once HP
+// climbs back above the run-trigger. Multi-step flee advances one room per
+// NoteRoomChanged.
+//
+// Hang-if-below: PlayerState.Hp at or below HealthSettings.HangIfBelowHp fires a
+// single-shot hard disconnect via the configured exit command. Setting the
+// threshold to 0 disables the check.
 public sealed class HealthManager : IDisposable
 {
-    /// <summary>LogService category — appears as <c>[Health]</c> rows
-    /// per assert / clear / rest / stand decision.</summary>
+    // LogService category — appears as [Health] rows per assert / clear / rest /
+    // stand decision.
     public const string LogCategory = "Health";
 
-    /// <summary>Identifier the HealthManager uses when flipping the
-    /// HealthRecovery / ManaRecovery gates. Surfaces in
-    /// <see cref="MovementCoordinator.History"/>.</summary>
+    // Identifier the HealthManager uses when flipping the HealthRecovery /
+    // ManaRecovery gates. Surfaces in MovementCoordinator.History.
     public const string AsserterName = "HealthManager";
 
     private static readonly char[] CommandChainSplit = new[] { ';', '\n' };
@@ -116,14 +94,10 @@ public sealed class HealthManager : IDisposable
         LogService? log = null)
         : this(state, coordinator, readSettings, isEnabled, readHangupCommand: null, log) { }
 
-    /// <summary>
-    /// Constructor with a <c>readHangupCommand</c> selector so the
-    /// hangup-on-emergency path uses the user's configured exit
-    /// command (typically <c>=x</c> or <c>;o</c>, set in Settings →
-    /// Other → Game Exit). Without it, the hangup path no-ops with a
-    /// log warning. AppServices wires
-    /// <c>() =&gt; GameCommands.ExitCommand</c>.
-    /// </summary>
+    // Constructor with a readHangupCommand selector so the hangup-on-emergency
+    // path uses the user's configured exit command (typically =x or ;o, set in
+    // Settings → Other → Game Exit). Without it, the hangup path no-ops with a
+    // log warning. AppServices wires () => GameCommands.ExitCommand.
     public HealthManager(
         PlayerState state,
         MovementCoordinator coordinator,
@@ -140,35 +114,23 @@ public sealed class HealthManager : IDisposable
                hasEngageableHostiles: null,
                log) { }
 
-    /// <summary>
-    /// Full constructor. The three additional selectors wire the
-    /// flee path:
-    /// <list type="bullet">
-    /// <item><c>getActiveMovementEngine</c> — returns the
-    /// <see cref="Map.IRecoverableEngine"/> that's currently running
-    /// (Walker / Loop / AutoLair are exclusive). Returns <c>null</c>
-    /// when no engine is active — flee then no-ops since "if you
-    /// aren't running a movement engine, the flee-if-below wouldn't
-    /// fire" per user direction.</item>
-    /// <item><c>getLastSentDirection</c> — most recent outbound
-    /// direction, inverted for the Backward flee mode. Typically wired
-    /// to the last entry on <c>EngineRecoveryGate.ExecutedSinceAnchor</c>.</item>
-    /// <item><c>readCombatSettings</c> — for the flee knobs
-    /// <see cref="Models.Profile.CombatSettings.RunDirection"/>,
-    /// <see cref="Models.Profile.CombatSettings.BreakBeforeFleeing"/> and
-    /// <see cref="Models.Profile.CombatSettings.RunDistance"/>.</item>
-    /// <item><c>readGeneralSettings</c> — for
-    /// <see cref="Models.Profile.GeneralSettings.AllowHangupInAllOffMode"/>,
-    /// the emergency-hangup carve-out.</item>
-    /// <item><c>hasEngageableHostiles</c> — returns true while the room
-    /// contains at least one engageable monster. Gates the rest-out
-    /// branch so we don't spam <c>rest</c> every tick while a hostile
-    /// keeps breaking it (per user direction: "if a room has hostiles
-    /// it will break resting every combat round preventing you from
-    /// resting, so you need to clear the room and then rest"). Typically
-    /// wired to <see cref="CombatStateTracker.HasEngageableHostiles"/>.</item>
-    /// </list>
-    /// </summary>
+    // Full constructor. The additional selectors wire the flee path:
+    //   getActiveMovementEngine — returns the IRecoverableEngine that's currently
+    //     running (Walker / Loop / AutoLair are exclusive). Returns null when no
+    //     engine is active — flee then no-ops, since flee-if-below only fires
+    //     while a movement engine is running.
+    //   getLastSentDirection — most recent outbound direction, inverted for the
+    //     Backward flee mode. Typically wired to the last entry on
+    //     EngineRecoveryGate.ExecutedSinceAnchor.
+    //   readCombatSettings — for the flee knobs CombatSettings.RunDirection,
+    //     BreakBeforeFleeing and RunDistance.
+    //   readGeneralSettings — for GeneralSettings.AllowHangupInAllOffMode, the
+    //     emergency-hangup carve-out.
+    //   hasEngageableHostiles — returns true while the room contains at least one
+    //     engageable monster. Gates the rest-out branch so we don't spam `rest`
+    //     every tick while a hostile keeps breaking it (a room with hostiles
+    //     breaks resting every combat round, so the room must be cleared first).
+    //     Typically wired to CombatStateTracker.HasEngageableHostiles.
     public HealthManager(
         PlayerState state,
         MovementCoordinator coordinator,
@@ -200,54 +162,41 @@ public sealed class HealthManager : IDisposable
         _state.PropertyChanged += OnStateChanged;
     }
 
-    /// <summary>Bind the wire sender. Until set, the engine logs
-    /// decisions but doesn't actually send <c>rest</c> / <c>stand</c>
-    /// / pre- / post-rest commands.</summary>
+    // Bind the wire sender. Until set, the engine logs decisions but doesn't
+    // actually send rest / stand / pre- / post-rest commands.
     public void SetWireSender(Action<byte[]> sender)
     {
         ArgumentNullException.ThrowIfNull(sender);
         _wireSender = sender;
     }
 
-    /// <summary>
-    /// Wire party-role-aware recovery. <paramref name="isPartyFollower"/>
-    /// returns true when the local character is following a party leader
-    /// (in a party AND not the leader). While following:
-    /// <list type="bullet">
-    /// <item>The recovery gates clear as soon as a pool climbs just past
-    /// the rest-trigger floor (target = trigger + 1) rather than the full
-    /// rest-max — a follower tops off to safety, not to full, so it
-    /// doesn't hold the party for a routine heal. The party healer / leader
-    /// owns full topoff.</item>
-    /// <item><paramref name="requestPartyWait"/> fires when a recovery gate
-    /// first asserts (dropped below the floor → ping the leader to halt);
-    /// <paramref name="requestPartyOk"/> fires when the last gate clears
-    /// (back above the floor → release the leader).</item>
-    /// </list>
-    /// Until wired — or when not following — recovery targets rest-max and
-    /// no party signals are emitted (solo / leader behavior). The callbacks
-    /// (typically <see cref="PartyRestSync.RequestWait"/> /
-    /// <see cref="PartyRestSync.RequestOk"/>) self-gate on party membership,
-    /// so invoking them solo is a safe no-op.
-    /// <para>
-    /// <paramref name="isLeaderResting"/> (optional) reports whether we're a
-    /// follower and the party leader is currently resting / meditating. When
-    /// true and no recovery gate is held, <see cref="Evaluate"/> opportunistically
-    /// tops off to rest-max during the leader's downtime — inherent behavior,
-    /// gated only by the auto-heal master switch. Left null preserves the old
-    /// gate-only rest behavior.
-    /// </para>
-    /// <para>
-    /// <paramref name="requestPartyHeal"/> (optional) is the follower's
-    /// flee-substitute: when the run-if-below HP trigger fires AND we're a
-    /// follower, <see cref="Evaluate"/> invokes this instead of
-    /// <see cref="TryFlee"/> — a follower must not run off alone (it breaks
-    /// party formation), so it broadcasts <c>@heal</c> and stays put while the
-    /// party healer tops it up. Leader / solo still flee. Left null preserves
-    /// the flee-for-everyone behavior. Typically wired to
-    /// <see cref="PartyRestSync.RequestHeal"/>.
-    /// </para>
-    /// </summary>
+    // Wire party-role-aware recovery. isPartyFollower returns true when the local
+    // character is following a party leader (in a party AND not the leader). While
+    // following:
+    //   The recovery gates clear as soon as a pool climbs just past the
+    //     rest-trigger floor (target = trigger + 1) rather than the full rest-max
+    //     — a follower tops off to safety, not to full, so it doesn't hold the
+    //     party for a routine heal. The party healer / leader owns full topoff.
+    //   requestPartyWait fires when a recovery gate first asserts (dropped below
+    //     the floor → ping the leader to halt); requestPartyOk fires when the last
+    //     gate clears (back above the floor → release the leader).
+    // Until wired — or when not following — recovery targets rest-max and no party
+    // signals are emitted (solo / leader behavior). The callbacks (typically
+    // PartyRestSync.RequestWait / RequestOk) self-gate on party membership, so
+    // invoking them solo is a safe no-op.
+    //
+    // isLeaderResting (optional) reports whether we're a follower and the party
+    // leader is currently resting / meditating. When true and no recovery gate is
+    // held, Evaluate opportunistically tops off to rest-max during the leader's
+    // downtime — inherent behavior, gated only by the auto-heal master switch.
+    // Left null preserves the old gate-only rest behavior.
+    //
+    // requestPartyHeal (optional) is the follower's flee-substitute: when the
+    // run-if-below HP trigger fires AND we're a follower, Evaluate invokes this
+    // instead of TryFlee — a follower must not run off alone (it breaks party
+    // formation), so it broadcasts @heal and stays put while the party healer tops
+    // it up. Leader / solo still flee. Left null preserves the flee-for-everyone
+    // behavior. Typically wired to PartyRestSync.RequestHeal.
     public void SetPartyRoleSync(
         Func<bool> isPartyFollower,
         Action requestPartyWait,
@@ -265,21 +214,19 @@ public sealed class HealthManager : IDisposable
         _requestPartyHeal = requestPartyHeal;
     }
 
-    /// <summary>True while the HP gate is held.</summary>
+    // True while the HP gate is held.
     public bool HpGateAsserted => _hpGateAsserted;
 
-    /// <summary>True while the MA gate is held.</summary>
+    // True while the MA gate is held.
     public bool MaGateAsserted => _maGateAsserted;
 
-    /// <summary>True between the <c>rest</c> emit and the corresponding
-    /// <c>stand</c> emit.</summary>
+    // True between the rest emit and the corresponding stand emit.
     public bool RestInFlight => _restInFlight;
 
-    /// <summary>True between the run-if-below reaction (a <c>flee</c> for
-    /// leader / solo, or a broadcast <c>@heal</c> for a party follower) and the
-    /// next time <see cref="PlayerState.InCombat"/> goes false. Single-shot per
-    /// combat so a low-HP fight can't burn the reaction on every HP-changed
-    /// event.</summary>
+    // True between the run-if-below reaction (a flee for leader / solo, or a
+    // broadcast @heal for a party follower) and the next time
+    // PlayerState.InCombat goes false. Single-shot per combat so a low-HP fight
+    // can't burn the reaction on every HP-changed event.
     public bool FledThisCombat => _fledThisCombat;
 
     private void OnStateChanged(object? sender, PropertyChangedEventArgs e)
@@ -298,11 +245,9 @@ public sealed class HealthManager : IDisposable
         }
     }
 
-    /// <summary>
-    /// Re-evaluate gate state + rest/stand pacing against the current
-    /// player state. Public so tests can drive it deterministically
-    /// without needing a real PropertyChanged firing.
-    /// </summary>
+    // Re-evaluate gate state + rest/stand pacing against the current player
+    // state. Public so tests can drive it deterministically without needing a
+    // real PropertyChanged firing.
     public void Evaluate()
     {
         if (!_isEnabled())
@@ -352,15 +297,14 @@ public sealed class HealthManager : IDisposable
         // character is genuinely dead OR a producer races the
         // ordering. Either way a zero-on-zero comparison would assert
         // spuriously. Skip until the first real value lands —
-        // DeathLineWatcher (PR 9.0d) handles the actual dead case via
+        // DeathLineWatcher handles the actual dead case via
         // PlayerDied + recovery routing, which doesn't need a rest
         // gate.
         if (_state.Hp <= 0 && _state.Ma <= 0) return;
         HealthSettings s = _readSettings();
 
-        // Rest-interruption recovery (mirrors MudProxy's
-        // OnRestingStateChanged). Two-step latch so we don't race the
-        // (Resting) prompt arrival:
+        // Rest-interruption recovery on a resting-state change. Two-step
+        // latch so we don't race the (Resting) prompt arrival:
         //   1. We send `rest` and set _restInFlight=true.
         //   2. On the FIRST Evaluate tick where Position==Resting, we
         //      flip _restConfirmedByPrompt=true — the server has put
@@ -592,16 +536,14 @@ public sealed class HealthManager : IDisposable
         TryEmergencyHangup(s);
     }
 
-    /// <summary>
-    /// Hangup-on-emergency: HP below <see cref="HealthSettings.HangIfBelowHp"/>
-    /// triggers a hard disconnect via the configured Game-Exit command.
-    /// Single-shot — the disconnect command goes once per session and the
-    /// log captures it for postmortem. Defaults: HangIfBelowHp=5 (%).
-    /// Setting it to 0 disables the check entirely (no false positives on
-    /// dead/respawned chars). Called from the normal evaluate path and —
-    /// when <see cref="Models.Profile.GeneralSettings.AllowHangupInAllOffMode"/>
-    /// is set — from the engine-disabled carve-out.
-    /// </summary>
+    // Hangup-on-emergency: HP below HealthSettings.HangIfBelowHp triggers a hard
+    // disconnect via the configured Game-Exit command. Single-shot — the
+    // disconnect command goes once per session and the log captures it for
+    // postmortem. Defaults: HangIfBelowHp=5 (%). Setting it to 0 disables the
+    // check entirely (no false positives on dead/respawned chars). Called from
+    // the normal evaluate path and — when
+    // GeneralSettings.AllowHangupInAllOffMode is set — from the engine-disabled
+    // carve-out.
     private void TryEmergencyHangup(HealthSettings s)
     {
         // Master kill-switch: the user has declared only an explicit local
@@ -629,12 +571,9 @@ public sealed class HealthManager : IDisposable
         }
     }
 
-    /// <summary>
-    /// Try to dispatch a single flee step. No-ops (with a log line)
-    /// when no movement engine is active, when the configured
-    /// direction can't be resolved, or when the flee selectors
-    /// weren't wired by the consumer.
-    /// </summary>
+    // Try to dispatch a single flee step. No-ops (with a log line) when no
+    // movement engine is active, when the configured direction can't be resolved,
+    // or when the flee selectors weren't wired by the consumer.
     private void TryFlee(string reason)
     {
         Map.IRecoverableEngine? engine = _getActiveMovementEngine?.Invoke();
@@ -719,14 +658,11 @@ public sealed class HealthManager : IDisposable
         return "rest";
     }
 
-    /// <summary>
-    /// True when a follower riding the leader's rest downtime still has
-    /// something to top off — either pool sitting below its rest-max. Goes
-    /// false once both pools reach rest-max, which trips the shared recovery
-    /// branch (post-rest chain + latch clear). Guards each pool on
-    /// <c>Max &gt; 0</c> so a class with no mana pool never reports a phantom
-    /// MA deficit before prompt data loads.
-    /// </summary>
+    // True when a follower riding the leader's rest downtime still has something
+    // to top off — either pool sitting below its rest-max. Goes false once both
+    // pools reach rest-max, which trips the shared recovery branch (post-rest
+    // chain + latch clear). Guards each pool on Max > 0 so a class with no mana
+    // pool never reports a phantom MA deficit before prompt data loads.
     private bool NeedsOpportunisticTopOff(HealthSettings s)
     {
         int hpTarget = ResolveThreshold(s.HpThresholdMode, s.RestMaxHp, _state.MaxHp);
@@ -736,15 +672,12 @@ public sealed class HealthManager : IDisposable
         return needHp || needMa;
     }
 
-    /// <summary>
-    /// Rest-vs-meditate pick for the opportunistic (leader-resting) path,
-    /// per user direction: with no meditate ability it's always rest;
-    /// otherwise meditate when "meditate before resting" is set and we're
-    /// short any mana, else meditate when our mana% is below our hp%
-    /// (recover the more-depleted pool first), else rest. Distinct from
-    /// <see cref="ChooseRestCommand"/>, which reads the asserted gates —
-    /// here no gate is held, so the choice is driven by live pool fill.
-    /// </summary>
+    // Rest-vs-meditate pick for the opportunistic (leader-resting) path: with no
+    // meditate ability it's always rest; otherwise meditate when "meditate before
+    // resting" is set and we're short any mana, else meditate when our mana% is
+    // below our hp% (recover the more-depleted pool first), else rest. Distinct
+    // from ChooseRestCommand, which reads the asserted gates — here no gate is
+    // held, so the choice is driven by live pool fill.
     private string ChooseOpportunisticRestCommand(HealthSettings s)
     {
         if (!s.UseMeditateAbility) return "rest";
@@ -757,22 +690,17 @@ public sealed class HealthManager : IDisposable
         return maPct < hpPct ? "meditate" : "rest";
     }
 
-    /// <summary>
-    /// Called by an external observer (RoomTracker via AppServices)
-    /// when the player's location changes. Server-side resting state
-    /// is auto-cleared on move, so our <see cref="_restInFlight"/>
-    /// latch must drop too — otherwise the next recovery cycle would
-    /// skip the <c>rest</c> emit because we'd still think we were
-    /// sitting.
-    /// </summary>
+    // Called by an external observer (RoomTracker via AppServices) when the
+    // player's location changes. Server-side resting state is auto-cleared on
+    // move, so our _restInFlight latch must drop too — otherwise the next
+    // recovery cycle would skip the rest emit because we'd still think we were
+    // sitting.
     public void NoteRoomChanged() => NoteRoomChanged(newRoom: null);
 
-    /// <summary>
-    /// Overload that captures the new room key so the flee path can
-    /// (a) step its multi-move queue on every arrival and (b) call
-    /// <see cref="Map.IRecoverableEngine.ResumeAfterRecovery"/> with
-    /// the correct anchor once HP recovers.
-    /// </summary>
+    // Overload that captures the new room key so the flee path can (a) step its
+    // multi-move queue on every arrival and (b) call
+    // IRecoverableEngine.ResumeAfterRecovery with the correct anchor once HP
+    // recovers.
     public void NoteRoomChanged(Map.RoomKey? newRoom)
     {
         if (newRoom is { } r) _lastKnownRoom = r;
@@ -795,13 +723,9 @@ public sealed class HealthManager : IDisposable
         _log?.Combat(LogCategory, "rest-in-flight cleared on room change");
     }
 
-    /// <summary>
-    /// Percentage mode: treat <paramref name="value"/> as 0..100 of
-    /// <paramref name="max"/>. Absolute mode: pass through as-is.
-    /// Defensive against <paramref name="max"/> being zero or negative
-    /// (returns 0 — no false-positive gate fire when prompt data isn't
-    /// loaded yet).
-    /// </summary>
+    // Percentage mode: treat value as 0..100 of max. Absolute mode: pass through
+    // as-is. Defensive against max being zero or negative (returns 0 — no
+    // false-positive gate fire when prompt data isn't loaded yet).
     private static int ResolveThreshold(ThresholdMode mode, int value, int max)
     {
         if (mode == ThresholdMode.Percentage)
@@ -812,13 +736,10 @@ public sealed class HealthManager : IDisposable
         return value;
     }
 
-    /// <summary>
-    /// Send pre-/post-rest chain — split on <c>;</c> or <c>^M</c> /
-    /// newline (the documented HealthSettings convention), trim each
-    /// fragment, send each as its own wire line. Empty / whitespace-
-    /// only input is a no-op so leaving the field blank just skips the
-    /// pre/post phase.
-    /// </summary>
+    // Send pre-/post-rest chain — split on ; or ^M / newline (the documented
+    // HealthSettings convention), trim each fragment, send each as its own wire
+    // line. Empty / whitespace-only input is a no-op so leaving the field blank
+    // just skips the pre/post phase.
     private void SendChained(string raw)
     {
         if (string.IsNullOrWhiteSpace(raw)) return;

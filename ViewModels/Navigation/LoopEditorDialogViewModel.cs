@@ -9,18 +9,14 @@ using FujinTerm.Services;
 
 namespace FujinTerm.ViewModels.Navigation;
 
-/// <summary>
-/// Modeless editor for an existing <see cref="Loop"/> — rename, edit
-/// notes, reorder / remove waypoints, attach / clear per-waypoint
-/// commands + delays. Adding a new waypoint requires picking a room
-/// on the map; that's the builder's job, not the editor's.
-/// </summary>
-/// <remarks>
-/// Save mutates the loop in place + persists via
-/// <see cref="LoopManager.Save"/>, which fires LoopsChanged so the
-/// Navigation pane refreshes. Cancel / X discards every edit; the
-/// dialog works on its own row view-models until Save runs.
-/// </remarks>
+// Modeless editor for an existing Loop — rename, edit notes, reorder /
+// remove waypoints, attach / clear per-waypoint commands + delays. Adding a
+// new waypoint requires picking a room on the map; that's the builder's job,
+// not the editor's.
+//
+// Save mutates the loop in place + persists via LoopManager.Save, which
+// fires LoopsChanged so the Navigation pane refreshes. Cancel / X discards
+// every edit; the dialog works on its own row view-models until Save runs.
 public sealed partial class LoopEditorDialogViewModel : ObservableObject, IDialogViewModel<Loop?>
 {
     public event Action<Loop?>? CloseRequested;
@@ -32,12 +28,9 @@ public sealed partial class LoopEditorDialogViewModel : ObservableObject, IDialo
     private readonly ConfirmService? _confirm;
     private readonly bool _isNew;
 
-    /// <summary>
-    /// Window title — flips between "Create Loop" (when the dialog
-    /// was opened on a fresh empty loop) and "Edit Loop" (mutating
-    /// an existing saved loop). Bound from the AXAML
-    /// <c>Window.Title</c>.
-    /// </summary>
+    // Window title — flips between "Create Loop" (when the dialog was opened
+    // on a fresh empty loop) and "Edit Loop" (mutating an existing saved
+    // loop). Bound from the AXAML Window.Title.
     public string DialogTitle => _isNew ? "Create Loop" : "Edit Loop";
 
     [ObservableProperty] private string _name = string.Empty;
@@ -52,45 +45,34 @@ public sealed partial class LoopEditorDialogViewModel : ObservableObject, IDialo
     [ObservableProperty] private string _selectedCommand = string.Empty;
     [ObservableProperty] private int _selectedDelayMs = DefaultCommandDelayMs;
 
-    /// <summary>
-    /// Text input for the "add waypoint" row. Accepts the same input
-    /// dialects as the Navigation window's room search box —
-    /// coordinate (<c>"1/297"</c>, <c>"1,297"</c>, bare <c>"297"</c>
-    /// across all maps) or substring against room names. Monster
-    /// matches are deliberately omitted; this row's only job is to
-    /// pick a waypoint room.
-    /// </summary>
+    // Text input for the "add waypoint" row. Accepts the same input dialects
+    // as the Navigation window's room search box — coordinate ("1/297",
+    // "1,297", bare "297" across all maps) or substring against room names.
+    // Monster matches are deliberately omitted; this row's only job is to
+    // pick a waypoint room.
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasAddWaypointError))]
     private string _newWaypointQuery = string.Empty;
 
-    /// <summary>
-    /// Inline validation message for the add-waypoint row. Empty when
-    /// the input is valid OR not yet evaluated; set after a failed
-    /// Add attempt.
-    /// </summary>
+    // Inline validation message for the add-waypoint row. Empty when the
+    // input is valid OR not yet evaluated; set after a failed Add attempt.
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasAddWaypointError))]
     private string _addWaypointError = string.Empty;
 
     public bool HasAddWaypointError => !string.IsNullOrEmpty(AddWaypointError);
 
-    /// <summary>
-    /// Live-search dropdown rows. Mirrors the Navigation search box
-    /// behaviour minus the monster category — rooms only, since the
-    /// editor only ever needs to pick a waypoint room.
-    /// </summary>
+    // Live-search dropdown rows. Mirrors the Navigation search box behaviour
+    // minus the monster category — rooms only, since the editor only ever
+    // needs to pick a waypoint room.
     public ObservableCollection<RoomSearchResult> SearchResults { get; } = new();
 
     public bool HasSearchResults => SearchResults.Count > 0;
 
-    /// <summary>
-    /// User-highlighted row in the dropdown ListBox. Enter on the
-    /// TextBox commits this row when set; falls back to the top
-    /// result otherwise, then to the literal query (key parse / single
-    /// name match) so an experienced user can type "1/297&lt;Enter&gt;"
-    /// without ever moving focus to the dropdown.
-    /// </summary>
+    // User-highlighted row in the dropdown ListBox. Enter on the TextBox
+    // commits this row when set; falls back to the top result otherwise, then
+    // to the literal query (key parse / single name match) so an experienced
+    // user can type "1/297<Enter>" without ever moving focus to the dropdown.
     [ObservableProperty] private RoomSearchResult? _selectedSearchResult;
 
     // Debounce keystrokes — same 120 ms window the Navigation search
@@ -100,7 +82,7 @@ public sealed partial class LoopEditorDialogViewModel : ObservableObject, IDialo
 
     private const int DefaultCommandDelayMs = 1200;
 
-    /// <summary>True when a waypoint row is selected for command edit.</summary>
+    // True when a waypoint row is selected for command edit.
     public bool HasSelection => SelectedRow is not null;
 
     public LoopEditorDialogViewModel(
@@ -169,13 +151,10 @@ public sealed partial class LoopEditorDialogViewModel : ObservableObject, IDialo
         SelectedDelayMs = DefaultCommandDelayMs;
     }
 
-    /// <summary>
-    /// Per-row ✎ button → opens the modeless WaypointActionEditDialog
-    /// pre-seeded with the row's current command + delay. On Save the
-    /// returned values are applied to the row in place. The dialog is
-    /// the primary path for editing per-waypoint actions; the in-dialog
-    /// footer editor is gone.
-    /// </summary>
+    // Per-row ✎ button → opens the modeless WaypointActionEditDialog
+    // pre-seeded with the row's current command + delay. On Save the returned
+    // values are applied to the row in place. The dialog is the primary path
+    // for editing per-waypoint actions; the in-dialog footer editor is gone.
     [RelayCommand]
     private async Task EditWaypointActionAsync(LoopWaypointRowViewModel? row)
     {
@@ -192,11 +171,9 @@ public sealed partial class LoopEditorDialogViewModel : ObservableObject, IDialo
         row.RefreshDisplay();
     }
 
-    /// <summary>
-    /// Apply the inline command/delay edits to the selected waypoint
-    /// row so the list reflects them. Save consolidates the rows into
-    /// the persisted loop.
-    /// </summary>
+    // Apply the inline command/delay edits to the selected waypoint row so
+    // the list reflects them. Save consolidates the rows into the persisted
+    // loop.
     [RelayCommand]
     private void ApplyCommandEdit()
     {
@@ -228,13 +205,10 @@ public sealed partial class LoopEditorDialogViewModel : ObservableObject, IDialo
         RebuildSearchResults(NewWaypointQuery);
     }
 
-    /// <summary>
-    /// Rebuild <see cref="SearchResults"/> from <paramref name="query"/>.
-    /// Two input dialects, both mirroring the Navigation search box:
-    /// coordinate (<c>"1/297"</c>, <c>"1,297"</c>, <c>"1 297"</c>, or
-    /// bare <c>"297"</c> across all maps) and room-name substring.
-    /// Monster matches are intentionally omitted.
-    /// </summary>
+    // Rebuild SearchResults from query. Two input dialects, both mirroring
+    // the Navigation search box: coordinate ("1/297", "1,297", "1 297", or
+    // bare "297" across all maps) and room-name substring. Monster matches
+    // are intentionally omitted.
     private void RebuildSearchResults(string query)
     {
         SearchResults.Clear();
@@ -287,12 +261,9 @@ public sealed partial class LoopEditorDialogViewModel : ObservableObject, IDialo
         OnPropertyChanged(nameof(HasSearchResults));
     }
 
-    /// <summary>
-    /// Parse a coordinate token. Returns <c>(map, room)</c> when both
-    /// numbers were supplied (separator: <c>/</c>, <c>,</c>, or
-    /// whitespace), <c>(null, room)</c> for a bare single number, or
-    /// <c>(null, null)</c> for non-numeric input.
-    /// </summary>
+    // Parse a coordinate token. Returns (map, room) when both numbers were
+    // supplied (separator: /, ,, or whitespace), (null, room) for a bare
+    // single number, or (null, null) for non-numeric input.
     private static (int? Map, int? Room) TryParseCoordinate(string text)
     {
         string[] parts = text.Split(new[] { '/', ',', ' ', '\t' },
@@ -306,12 +277,10 @@ public sealed partial class LoopEditorDialogViewModel : ObservableObject, IDialo
         return (null, null);
     }
 
-    /// <summary>
-    /// Add a waypoint at the end of the list. Priority: the dropdown's
-    /// highlighted row → the top dropdown row → the literal query
-    /// parsed as a key or matched as a unique name. Empty input is a
-    /// no-op (the dropdown is empty + the textbox has nothing to add).
-    /// </summary>
+    // Add a waypoint at the end of the list. Priority: the dropdown's
+    // highlighted row → the top dropdown row → the literal query parsed as a
+    // key or matched as a unique name. Empty input is a no-op (the dropdown
+    // is empty + the textbox has nothing to add).
     [RelayCommand]
     private void AddWaypoint()
     {
@@ -348,13 +317,10 @@ public sealed partial class LoopEditorDialogViewModel : ObservableObject, IDialo
         AddWaypointError = string.Empty;
     }
 
-    /// <summary>
-    /// Last-resort literal resolution — covers the case where the
-    /// user typed something that didn't show up in
-    /// <see cref="SearchResults"/> (e.g. an exact key whose debounce
-    /// hadn't fired yet). Returns null when ambiguous so we don't
-    /// guess.
-    /// </summary>
+    // Last-resort literal resolution — covers the case where the user typed
+    // something that didn't show up in SearchResults (e.g. an exact key whose
+    // debounce hadn't fired yet). Returns null when ambiguous so we don't
+    // guess.
     private RoomKey? ResolveLiteralQuery(string? query)
     {
         string q = (query ?? string.Empty).Trim();
@@ -385,13 +351,10 @@ public sealed partial class LoopEditorDialogViewModel : ObservableObject, IDialo
 
     // ----- dialog commit ---------------------------------------------
 
-    /// <summary>
-    /// Inline validation message for the Save row. Empty when the
-    /// dialog is in a savable state; populated on the next Save
-    /// click with whatever's blocking it (empty name, too few
-    /// waypoints, no BBS bound, etc.) so the user sees feedback
-    /// instead of a button that visibly does nothing.
-    /// </summary>
+    // Inline validation message for the Save row. Empty when the dialog is in
+    // a savable state; populated on the next Save click with whatever's
+    // blocking it (empty name, too few waypoints, no BBS bound, etc.) so the
+    // user sees feedback instead of a button that visibly does nothing.
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasSaveError))]
     private string _saveError = string.Empty;
@@ -476,11 +439,9 @@ public sealed partial class LoopEditorDialogViewModel : ObservableObject, IDialo
         CloseRequested?.Invoke(_original);
     }
 
-    /// <summary>
-    /// True when <paramref name="runner"/>'s current loop is the one
-    /// we just edited. Matched by the pre-rename name so a rename
-    /// during the edit still detects the running-loop case.
-    /// </summary>
+    // True when runner's current loop is the one we just edited. Matched by
+    // the pre-rename name so a rename during the edit still detects the
+    // running-loop case.
     private static bool IsEditingRunningLoop(LoopRunner runner, string oldName)
         => runner.CurrentLoop is { } cur
         && string.Equals(cur.Name, oldName, StringComparison.OrdinalIgnoreCase);
@@ -503,10 +464,8 @@ public sealed partial class LoopEditorDialogViewModel : ObservableObject, IDialo
     }
 }
 
-/// <summary>
-/// Per-row VM for the editor's Waypoints ListBox. Carries the
-/// resolved room name (read-only) + the editable command + delay.
-/// </summary>
+// Per-row VM for the editor's Waypoints ListBox. Carries the resolved room
+// name (read-only) + the editable command + delay.
 public sealed partial class LoopWaypointRowViewModel : ObservableObject
 {
     public RoomKey Key { get; }
@@ -515,15 +474,13 @@ public sealed partial class LoopWaypointRowViewModel : ObservableObject
     [ObservableProperty] private string? _command;
     [ObservableProperty] private int _delayMs;
 
-    /// <summary>True when this waypoint has a command attached — drives the row's command badge in the AXAML.</summary>
+    // True when this waypoint has a command attached — drives the row's command badge in the AXAML.
     public bool HasCommand => !string.IsNullOrEmpty(Command);
 
-    /// <summary>
-    /// One-line summary for the row's cyan badge — combines Command
-    /// with DelayMs when both are set, so the user can see at a glance
-    /// what the waypoint will fire and how long the loop waits after.
-    /// Examples: <c>"rest"</c>, <c>"dep 100 · 1500ms"</c>.
-    /// </summary>
+    // One-line summary for the row's cyan badge — combines Command with
+    // DelayMs when both are set, so the user can see at a glance what the
+    // waypoint will fire and how long the loop waits after. Examples: "rest",
+    // "dep 100 · 1500ms".
     public string CommandSummary
     {
         get

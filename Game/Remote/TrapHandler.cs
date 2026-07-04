@@ -3,42 +3,25 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game.Remote;
 
-/// <summary>
-/// Consumer of <see cref="RemoteCommandManager"/> for
-/// <c>@trap &lt;direction&gt;</c> and <c>@trap stop</c>. The actual
-/// search → disarm state machine lives in
-/// <see cref="TrapDisarmManager"/>; this handler is the auth + queue
-/// boundary.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Two responsibilities:
-/// </para>
-/// <list type="number">
-///   <item>Direction parsing — normalise the sender's arg
-///         (<c>n / north / ne / northeast / ...</c>) into the
-///         canonical short form before queueing.</item>
-///   <item>Channel-aware soft-gate on
-///         <see cref="TrapDisarmManager.CanDisarm"/>:
-///         <list type="bullet">
-///           <item>Telepath / Gangpath + no skill → reply
-///                 <c>{can't disarm — no Traps skill}</c> so the
-///                 sender knows we're not the right target. Gated on
-///                 <see cref="RemoteCommandManager.WarnOnDenial"/>.</item>
-///           <item>Local (Say) + no skill → silent. Broadcast
-///                 channels reach every player in the room; only
-///                 trap-skilled characters should answer, and a
-///                 chorus of "{can't disarm}" replies from everyone
-///                 else would be noise.</item>
-///         </list></item>
-/// </list>
-/// <para>
-/// Hard-blocks (reroll, suicide-lives) don't apply to @trap — the
-/// destructive verbs aren't in the wire path here. The
-/// <see cref="PlayerRemoteControls.ExecuteCommands"/> tier check on
-/// the engine side gates who can ask at all.
-/// </para>
-/// </remarks>
+// Consumer of RemoteCommandManager for @trap <direction> and @trap stop. The
+// actual search → disarm state machine lives in TrapDisarmManager; this handler
+// is the auth + queue boundary.
+//
+// Two responsibilities:
+//   1. Direction parsing — normalise the sender's arg
+//      (n / north / ne / northeast / ...) into the canonical short form before
+//      queueing.
+//   2. Channel-aware soft-gate on TrapDisarmManager.CanDisarm:
+//        - Telepath / Gangpath + no skill → reply {can't disarm — no Traps
+//          skill} so the sender knows we're not the right target. Gated on
+//          RemoteCommandManager.WarnOnDenial.
+//        - Local (Say) + no skill → silent. Broadcast channels reach every
+//          player in the room; only trap-skilled characters should answer, and a
+//          chorus of "{can't disarm}" replies from everyone else would be noise.
+//
+// Hard-blocks (reroll, suicide-lives) don't apply to @trap — the destructive
+// verbs aren't in the wire path here. The PlayerRemoteControls.ExecuteCommands
+// tier check on the engine side gates who can ask at all.
 public sealed class TrapHandler : IDisposable
 {
     private static readonly string[] RegisteredCommands = { "@trap" };

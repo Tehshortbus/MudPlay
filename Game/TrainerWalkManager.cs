@@ -14,46 +14,42 @@ using FujinTerm.Services.Patterns;
 
 namespace FujinTerm.Game;
 
-/// <summary>
-/// The manual / armed entry point for "go train". Resolves the nearest allowed,
-/// level-appropriate trainer (<see cref="TrainerCatalog.SelectNearest"/> + BFS
-/// distance), detours a running loop / auto-lair to it, sends <c>train</c> on
-/// arrival, and — once the "attain level N" line confirms the level-up —
-/// refreshes stats and hands off to <see cref="AutoTrainManager"/> to apply the
-/// CP plan, then resumes the engine.
-/// </summary>
-/// <remarks>
-/// <para><b>Can-level detection without polling.</b> <see cref="PlayerStats.Exp"/>
-/// is the live experience total — <see cref="StatParser"/> re-anchors it on every
-/// stat/exp poll and accrues each "You gain N experience." line. "Can train" is that
-/// total meeting the next level's cumulative threshold
-/// (<see cref="ExperienceTableCalculator.CalcExpNeeded"/>) — exactly the top
-/// Level-Projection row's <i>Exp to level</i> hitting 0. We watch
-/// <see cref="PlayerStats.PropertyChanged"/>, so a kill that crosses the threshold
-/// fires the armed run immediately; no <c>exp</c> poll.</para>
-/// <para><b>Engine detour</b> mirrors <c>AutoDepositManager</c>: snapshot the
-/// running Loop / Auto-Lair, stop it (stop-and-restart, not a gate, so the detour
-/// walk owns the wire), train, then restart it. Manual Train Now does the same
-/// when an engine is running; with none it just walks + trains. Both the armed run
-/// and Train Now stop once only <see cref="AutoTrainerSettings.LevelsToKeep"/>
-/// bankable levels remain (the reserve), and both gate the CP-apply on the
-/// Auto-train-stats toggle. The one always-applies path is the Train Now CP-only
-/// reconcile (<see cref="SetCpSpendConfirm"/>): when no banked level is left to
-/// train but the current level has an unapplied, affordable plan raise, it prompts
-/// and — on yes — allocates CP without a fresh level-up.</para>
-/// </remarks>
+// The manual / armed entry point for "go train". Resolves the nearest
+// allowed, level-appropriate trainer (TrainerCatalog.SelectNearest + BFS
+// distance), detours a running loop / auto-lair to it, sends train on arrival,
+// and — once the "attain level N" line confirms the level-up — refreshes stats
+// and hands off to AutoTrainManager to apply the CP plan, then resumes the engine.
+//
+// Can-level detection without polling. PlayerStats.Exp is the live experience
+// total — StatParser re-anchors it on every stat/exp poll and accrues each
+// "You gain N experience." line. "Can train" is that total meeting the next
+// level's cumulative threshold (ExperienceTableCalculator.CalcExpNeeded) —
+// exactly the top Level-Projection row's Exp to level hitting 0. We watch
+// PlayerStats.PropertyChanged, so a kill that crosses the threshold fires the
+// armed run immediately; no exp poll.
+//
+// Engine detour mirrors AutoDepositManager: snapshot the running Loop /
+// Auto-Lair, stop it (stop-and-restart, not a gate, so the detour walk owns
+// the wire), train, then restart it. Manual Train Now does the same when an
+// engine is running; with none it just walks + trains. Both the armed run and
+// Train Now stop once only AutoTrainerSettings.LevelsToKeep bankable levels
+// remain (the reserve), and both gate the CP-apply on the Auto-train-stats
+// toggle. The one always-applies path is the Train Now CP-only reconcile
+// (SetCpSpendConfirm): when no banked level is left to train but the current
+// level has an unapplied, affordable plan raise, it prompts and — on yes —
+// allocates CP without a fresh level-up.
 public sealed class TrainerWalkManager : IDisposable
 {
     private enum Phase { Idle, Walking, Training, RefreshingStats, ApplyingCp }
     private enum ResumeKind { None, Loop, Lair }
 
-    /// <summary>Why a (looping) train run stopped — shapes the <c>@train</c> reply.</summary>
+    // Why a (looping) train run stopped — shapes the @train reply.
     private enum StopReason { None, ProgressedTooFar, NoMoney, Timeout }
 
     private readonly record struct ResumeTarget(ResumeKind Kind, Loop? Loop);
 
-    /// <summary>Hard cap on loop iterations / the bankable-level scan — a safety
-    /// net so a misbehaving trainer can never spin the train loop unbounded.</summary>
+    // Hard cap on loop iterations / the bankable-level scan — a safety net so a
+    // misbehaving trainer can never spin the train loop unbounded.
     private const int MaxTrainLoopSteps = 60;
 
     private readonly PlayerStats _stats;
@@ -94,15 +90,15 @@ public sealed class TrainerWalkManager : IDisposable
     private Func<Task<bool>>? _confirmCpSpend;
     private bool _confirming;         // a CP-spend confirm dialog is open (gates IsBusy)
 
-    /// <summary>How long to wait for the "attain level" line after sending <c>train</c>.</summary>
+    // How long to wait for the "attain level" line after sending train.
     public TimeSpan TrainConfirmTimeout { get; } = TimeSpan.FromSeconds(8);
-    /// <summary>How long to wait for the post-train <c>stat</c> refresh before giving up on CP.</summary>
+    // How long to wait for the post-train stat refresh before giving up on CP.
     public TimeSpan StatRefreshTimeout { get; } = TimeSpan.FromSeconds(8);
 
-    /// <summary>Raised when <see cref="IsBusy"/> / <see cref="CanTrainNow"/> may have changed.</summary>
+    // Raised when IsBusy / CanTrainNow may have changed.
     public event Action? StateChanged;
 
-    /// <summary>Raised after a level's CP plan row is applied + removed — the CP tab reloads.</summary>
+    // Raised after a level's CP plan row is applied + removed — the CP tab reloads.
     public event Action? PlanApplied;
 
     public TrainerWalkManager(PlayerStats stats, StatParser statParser, GameDataCache gameData,
@@ -146,34 +142,28 @@ public sealed class TrainerWalkManager : IDisposable
     public void SetWireSender(Action<byte[]> sender) => _wire.Bind(sender);
     internal List<byte[]> LastSentForTests => _wire.LastSentForTests;
 
-    /// <summary>
-    /// Wires the prompt shown when Train Now finds no banked level to train but the
-    /// current level has an unapplied, affordable CP plan raise (the stuck-at-level-N
-    /// reconcile). Returns the user's yes/no. Kept as an abstract delegate so the
-    /// Game layer never references the UI dialog directly.
-    /// </summary>
+    // Wires the prompt shown when Train Now finds no banked level to train but the
+    // current level has an unapplied, affordable CP plan raise (the stuck-at-level-N
+    // reconcile). Returns the user's yes/no. Kept as an abstract delegate so the
+    // Game layer never references the UI dialog directly.
     public void SetCpSpendConfirm(Func<Task<bool>> confirm) => _confirmCpSpend = confirm;
 
-    /// <summary>True while a walk/train run (or the CP-apply it hands off, or a
-    /// CP-spend confirm prompt) is in flight.</summary>
+    // True while a walk/train run (or the CP-apply it hands off, or a CP-spend
+    // confirm prompt) is in flight.
     public bool IsBusy => _phase != Phase.Idle || _autoTrain.IsBusy || _confirming;
 
-    /// <summary>True when Train Now would do something: a CP plan is applicable, or we can level.</summary>
+    // True when Train Now would do something: a CP plan is applicable, or we can level.
     public bool CanTrainNow => _autoTrain.CanTrainNow || CanLevelNow();
 
-    /// <summary>
-    /// Manual trigger (CP Allocation tab "Train Now"). Assesses the banked-exp /
-    /// buffer situation before acting:
-    /// <list type="bullet">
-    /// <item>banked levels above the <see cref="AutoTrainerSettings.LevelsToKeep"/>
-    /// reserve → walk + loop <c>train</c> down to the reserve, applying the CP plan
-    /// per the Auto-train-stats toggle;</item>
-    /// <item>no bankable level but the current level has an affordable, unapplied CP
-    /// plan raise → prompt the user, and on yes walk + allocate CP without levelling
-    /// (the stuck-at-level-N reconcile);</item>
-    /// <item>otherwise nothing to do — log why.</item>
-    /// </list>
-    /// </summary>
+    // Manual trigger (CP Allocation tab "Train Now"). Assesses the banked-exp /
+    // buffer situation before acting:
+    //   * banked levels above the AutoTrainerSettings.LevelsToKeep reserve → walk +
+    //     loop train down to the reserve, applying the CP plan per the
+    //     Auto-train-stats toggle;
+    //   * no bankable level but the current level has an affordable, unapplied CP
+    //     plan raise → prompt the user, and on yes walk + allocate CP without
+    //     levelling (the stuck-at-level-N reconcile);
+    //   * otherwise nothing to do — log why.
     public void TrainNow()
     {
         if (IsBusy || !_wire.IsBound) return;
@@ -220,19 +210,15 @@ public sealed class TrainerWalkManager : IDisposable
         if (proceed && !IsBusy) BeginCpReconcile();
     }
 
-    /// <summary>
-    /// Remote <c>@train</c> trigger — train where we are (no walk; assumes we're
-    /// already at a trainer). Behaviour follows the Auto-Trainer toggles:
-    /// <list type="bullet">
-    /// <item>neither set → a single <c>train</c>;</item>
-    /// <item>Auto-train set → loop <c>train</c> across every banked level until the
-    /// trainer rejects us (progressed-too-far / no-money) or the banked exp runs
-    /// out, then report;</item>
-    /// <item>both set → as above, plus apply the CP plan through the final level.</item>
-    /// </list>
-    /// <paramref name="reply"/> (when supplied) receives a one-line status report
-    /// once the run settles. No engine detour — a remote train is used while parked.
-    /// </summary>
+    // Remote @train trigger — train where we are (no walk; assumes we're already at
+    // a trainer). Behaviour follows the Auto-Trainer toggles:
+    //   * neither set → a single train;
+    //   * Auto-train set → loop train across every banked level until the trainer
+    //     rejects us (progressed-too-far / no-money) or the banked exp runs out,
+    //     then report;
+    //   * both set → as above, plus apply the CP plan through the final level.
+    // reply (when supplied) receives a one-line status report once the run settles.
+    // No engine detour — a remote train is used while parked.
     public void TrainInPlace(Action<string>? reply = null)
     {
         if (IsBusy || !_wire.IsBound) return;
@@ -676,8 +662,8 @@ public sealed class TrainerWalkManager : IDisposable
         return CountBankableAbove(_stats.Level) > keep;
     }
 
-    // How many further levels above <paramref name="level"/> the banked exp can
-    // still reach — the count of Level-Projection rows past `level` whose "Exp to
+    // How many further levels above level the banked exp can still reach — the
+    // count of Level-Projection rows past level whose "Exp to
     // level" is already 0. Delegates to the pure budgeter so the boundary logic
     // (exact-threshold counts, monotonic stop, cap) is unit-tested in one place.
     private int CountBankableAbove(int level) =>

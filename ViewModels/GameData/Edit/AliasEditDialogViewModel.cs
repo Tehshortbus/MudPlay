@@ -7,30 +7,23 @@ using FujinTerm.Services;
 
 namespace FujinTerm.ViewModels.GameData.Edit;
 
-/// <summary>
-/// Per-record edit dialog for Game Data Browser → Aliases. Editable
-/// fields: Name (required, no whitespace, unique, must not collide
-/// with a chat-channel command), Enabled, Expansion (multi-line,
-/// <c>^M</c> / <c>;</c> split, <c>{0}</c>/<c>{N}</c> positional
-/// substitution).
-/// </summary>
-/// <remarks>
-/// Validation runs live; <see cref="StatusMessage"/> + <see cref="HasError"/>
-/// flag the dialog when the name is blank / has whitespace / matches
-/// another alias / collides with a chat-channel command (see
-/// <see cref="AliasEngine.NameConflictReason"/>). Save returns the
-/// updated <see cref="Alias"/>; Cancel returns <c>null</c>.
-/// </remarks>
+// Per-record edit dialog for Game Data Browser → Aliases. Editable fields: Name
+// (required, no whitespace, unique, must not collide with a chat-channel command),
+// Enabled, Expansion (multi-line, ^M / ; split, {0}/{N} positional substitution).
+//
+// Validation runs live; StatusMessage + HasError flag the dialog when the name is
+// blank / has whitespace / matches another alias / collides with a chat-channel command
+// (AliasEngine.NameConflictReason). Save returns the updated Alias; Cancel returns null.
 public sealed partial class AliasEditDialogViewModel : ObservableObject, IDialogViewModel<Alias>
 {
-    /// <summary>Matches a <c>{N}</c> placeholder where N is a non-negative integer. Used by the live preview panel.</summary>
+    // Matches a {N} placeholder where N is a non-negative integer. Used by the live preview panel.
     private static readonly Regex _placeholderPattern = new(@"\{(?<n>\d+)\}", RegexOptions.Compiled);
 
     public event Action<Alias?>? CloseRequested;
 
     private readonly Alias _original;
     private readonly AliasEngine _engine;
-    /// <summary>True for "Add new alias" flows; false when editing. Drives the title + the duplicate-name self-skip.</summary>
+    // True for "Add new alias" flows; false when editing. Drives the title + the duplicate-name self-skip.
     private readonly bool _isNew;
 
     [ObservableProperty]
@@ -47,10 +40,7 @@ public sealed partial class AliasEditDialogViewModel : ObservableObject, IDialog
 
     public string Title => _isNew ? "Alias — (new)" : $"Alias — {_original.Name}";
 
-    /// <summary>
-    /// Returns the first validation problem, or <c>null</c> when the
-    /// record is savable.
-    /// </summary>
+    // Returns the first validation problem, or null when the record is savable.
     private string? GetValidationError()
     {
         if (string.IsNullOrWhiteSpace(Name))      return "Name is required.";
@@ -64,10 +54,7 @@ public sealed partial class AliasEditDialogViewModel : ObservableObject, IDialog
     public bool HasError => GetValidationError() is not null;
     public bool CanSave  => !HasError;
 
-    /// <summary>
-    /// Status line text — error reason (red) when invalid, friendly
-    /// preview hint (muted) when valid.
-    /// </summary>
+    // Status line text — error reason (red) when invalid, friendly preview hint (muted) when valid.
     public string StatusMessage
     {
         get
@@ -78,12 +65,9 @@ public sealed partial class AliasEditDialogViewModel : ObservableObject, IDialog
         }
     }
 
-    /// <summary>
-    /// Read-only list of <c>{N}</c> placeholders referenced by the
-    /// current expansion, plus <c>{0}</c> if used. Helps the user see
-    /// what the typed args have to fill in. Empty when the expansion
-    /// uses no placeholders (a static alias like <c>gh → get all here</c>).
-    /// </summary>
+    // Read-only list of {N} placeholders referenced by the current expansion, plus {0}
+    // if used. Helps the user see what the typed args have to fill in. Empty when the
+    // expansion uses no placeholders (a static alias like gh → get all here).
     public string PlaceholderHints
     {
         get

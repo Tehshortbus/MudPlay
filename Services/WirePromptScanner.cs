@@ -4,86 +4,64 @@ using FujinTerm.Game;
 
 namespace FujinTerm.Services;
 
-/// <summary>
-/// Streaming scanner that watches the post-IAC byte stream from the live
-/// Telnet connection for MajorMUD status-line prompts and fires one
-/// <see cref="PromptObserved"/> event per match. Bypasses
-/// <see cref="Terminal.LineExtractor"/> for prompt parsing because the
-/// server rewrites the statline in place (CR + erase-line + new content
-/// on the same row) — by the time the cell grid finally emits a "line",
-/// only the last statline survives and any intermediate HP / MA / position
-/// changes are lost. Scanning the wire stream catches every update as it
-/// lands.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Stateful: CSI escapes (<c>ESC '[' params final-byte</c>) are stripped
-/// inline as bytes arrive, so a sequence like
-/// <c>[HP=27\x1b[0;37m/MA=31\x1b[0;37m]:</c> still matches the regex.
-/// A small carryover buffer (~1 KB cap) preserves partial matches
-/// across chunk boundaries.
-/// </para>
-/// <para>
-/// Unanchored on purpose: the server chains multiple statlines back-to-back
-/// on the same row (<c>[HP=27/MA=31]:[HP=28/MA=34]:[HP=29/MA=34]:</c>),
-/// so the original <c>^</c>-anchored line regex would only catch the first.
-/// </para>
-/// </remarks>
+// Streaming scanner that watches the post-IAC byte stream from the live Telnet
+// connection for MajorMUD status-line prompts and fires one PromptObserved event
+// per match. Bypasses Terminal.LineExtractor for prompt parsing because the
+// server rewrites the statline in place (CR + erase-line + new content on the
+// same row) — by the time the cell grid finally emits a "line", only the last
+// statline survives and any intermediate HP / MA / position changes are lost.
+// Scanning the wire stream catches every update as it lands.
+//
+// Stateful: CSI escapes (ESC '[' params final-byte) are stripped inline as bytes
+// arrive, so a sequence like [HP=27\x1b[0;37m/MA=31\x1b[0;37m]: still matches the
+// regex. A small carryover buffer (~1 KB cap) preserves partial matches across
+// chunk boundaries.
+//
+// Unanchored on purpose: the server chains multiple statlines back-to-back on
+// the same row ([HP=27/MA=31]:[HP=28/MA=34]:[HP=29/MA=34]:), so a ^-anchored
+// line regex would only catch the first.
 public sealed class WirePromptScanner
 {
     private const int BufferCap = 1024;
 
-    /// <summary>
-    /// Stripped-text carryover. Bytes flow through the inline ANSI state
-    /// machine into here; the regex runs against this string.
-    /// </summary>
+    // Stripped-text carryover. Bytes flow through the inline ANSI state machine
+    // into here; the regex runs against this string.
     private readonly StringBuilder _buffer = new(BufferCap);
 
     private StripState _state;
 
-    /// <summary>
-    /// The active status-line pattern. Defaults to the permissive
-    /// class-default shape; <see cref="InstallRegex"/> swaps in a regex
-    /// built from the user's custom statline so the parser matches whatever
-    /// the editor authored. Reference assignment is atomic, so a swap from
-    /// the UI thread while <see cref="Append"/> reads it off the Telnet pump
-    /// is safe — at worst one append still uses the previous pattern.
-    /// </summary>
+    // The active status-line pattern. Defaults to the permissive class-default
+    // shape; InstallRegex swaps in a regex built from the user's custom statline
+    // so the parser matches whatever the editor authored. Reference assignment is
+    // atomic, so a swap from the UI thread while Append reads it off the Telnet
+    // pump is safe — at worst one append still uses the previous pattern.
     private Regex _statusLine = StatlinePromptRegexBuilder.Default;
 
-    /// <summary>Fired once per matched status line, in the order observed on the wire.</summary>
+    // Fired once per matched status line, in the order observed on the wire.
     public event Action<PromptObservation>? PromptObserved;
 
-    /// <summary>
-    /// Fired (at most once per <see cref="Append"/>) when a default-shaped
-    /// statline appears that the active pattern did <b>not</b> match — i.e. the
-    /// live prompt isn't the statline the editor authored. Drives the logon
-    /// reconciler to resend <c>set statline</c>. Structurally unreachable while
-    /// the active pattern IS the default, so default-statline users never see
-    /// it (and never trigger a resend).
-    /// </summary>
+    // Fired (at most once per Append) when a default-shaped statline appears that
+    // the active pattern did NOT match — i.e. the live prompt isn't the statline
+    // the editor authored. Drives the logon reconciler to resend `set statline`.
+    // Structurally unreachable while the active pattern IS the default, so
+    // default-statline users never see it (and never trigger a resend).
     public event Action? PromptShapeUnmatched;
 
-    /// <summary>
-    /// Swap in the status-line pattern for the active profile's statline —
-    /// built by <see cref="StatlinePromptRegexBuilder"/> from the editor
-    /// command string. Installed on profile load / mutation so the scanner
-    /// reads exactly the shape the BBS was told to print.
-    /// </summary>
+    // Swap in the status-line pattern for the active profile's statline — built
+    // by StatlinePromptRegexBuilder from the editor command string. Installed on
+    // profile load / mutation so the scanner reads exactly the shape the BBS was
+    // told to print.
     public void InstallRegex(Regex statusLine)
     {
         ArgumentNullException.ThrowIfNull(statusLine);
         _statusLine = statusLine;
     }
 
-    /// <summary>Restore the permissive class-default pattern (on profile close).</summary>
+    // Restore the permissive class-default pattern (on profile close).
     public void ResetRegexToDefault() => _statusLine = StatlinePromptRegexBuilder.Default;
 
-    /// <summary>
-    /// Append <paramref name="data"/> from the live Telnet stream. Strips
-    /// CSI escapes inline, runs the status-line regex, and fires
-    /// <see cref="PromptObserved"/> for each match.
-    /// </summary>
+    // Append data from the live Telnet stream. Strips CSI escapes inline, runs
+    // the status-line regex, and fires PromptObserved for each match.
     public void Append(ReadOnlySpan<byte> data)
     {
         if (data.IsEmpty) return;
@@ -190,7 +168,7 @@ public sealed class WirePromptScanner
         }
     }
 
-    /// <summary>Reset the scanner — drops carryover and any in-flight CSI escape.</summary>
+    // Reset the scanner — drops carryover and any in-flight CSI escape.
     public void Reset()
     {
         _buffer.Clear();
@@ -200,7 +178,7 @@ public sealed class WirePromptScanner
     private enum StripState : byte { Normal, EscSeen, Csi }
 }
 
-/// <summary>One observed prompt — payload of <see cref="WirePromptScanner.PromptObserved"/>.</summary>
+// One observed prompt — payload of WirePromptScanner.PromptObserved.
 public readonly record struct PromptObservation(
     int Hp,
     ManaType ManaType,

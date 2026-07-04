@@ -5,56 +5,41 @@ using FujinTerm.Services.Patterns;
 
 namespace FujinTerm.Game;
 
-/// <summary>
-/// The combat-cycle heartbeat. Every automation engine (HealthManager,
-/// CastingDirector, CombatManager) subscribes to <see cref="CombatTickElapsed"/>
-/// or one of the regen-tick events; the status bar binds to the
-/// observable last-tick timestamps for the countdown display.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Combat tick is fixed at 5 s — invariant across MajorMUD realm flavours.
-/// Two sources drive the event:
-/// </para>
-/// <list type="bullet">
-///   <item><description>
-///   <b>Damage-driven</b>: server damage lines (UserHits + MobHits) are
-///   the canonical "a tick just elapsed" signal. On match, the tick fires
-///   immediately and <see cref="LastCombatTick"/> is stamped at now.
-///   </description></item>
-///   <item><description>
-///   <b>Timer fallback</b>: a 100 ms <see cref="DispatcherTimer"/> checks
-///   whether 5 s has elapsed since the last stamped tick and fires
-///   otherwise. This keeps the heartbeat going when the user is idle / out
-///   of combat / between hits.
-///   </description></item>
-/// </list>
-/// <para>
-/// HP and MA regen ticks use the same timer-fallback only — server damage
-/// lines don't correlate to regen. Intervals are realm-specific and the
-/// spec is explicit: don't assume a realm. <see cref="HpRegenInterval"/>
-/// and <see cref="ManaRegenInterval"/> default to <see cref="TimeSpan.Zero"/>
-/// (disabled — the corresponding events don't fire). Phase 4
-/// Settings.Health will surface the knobs and Phase 12 Settings.RealmType
-/// will populate presets.
-/// </para>
-/// </remarks>
+// The combat-cycle heartbeat. Every automation engine (HealthManager,
+// CastingDirector, CombatManager) subscribes to CombatTickElapsed or one of
+// the regen-tick events; the status bar binds to the observable last-tick
+// timestamps for the countdown display.
+//
+// Combat tick is fixed at 5 s — invariant across MajorMUD realm flavours.
+// Two sources drive the event:
+//   Damage-driven: server damage lines (UserHits + MobHits) are the canonical
+//     "a tick just elapsed" signal. On match, the tick fires immediately and
+//     LastCombatTick is stamped at now.
+//   Timer fallback: a 100 ms DispatcherTimer checks whether 5 s has elapsed
+//     since the last stamped tick and fires otherwise. This keeps the
+//     heartbeat going when the user is idle / out of combat / between hits.
+//
+// HP and MA regen ticks use the same timer-fallback only — server damage
+// lines don't correlate to regen. Intervals are realm-specific, so we don't
+// assume a realm. HpRegenInterval and ManaRegenInterval default to
+// TimeSpan.Zero (disabled — the corresponding events don't fire); the
+// Settings.Health and Settings.RealmType surfaces populate them.
 public sealed partial class TickEngine : ObservableObject, IDisposable
 {
-    /// <summary>Combat tick interval — universal across MajorMUD realm flavours.</summary>
+    // Combat tick interval — universal across MajorMUD realm flavours.
     public static readonly TimeSpan CombatTickInterval = TimeSpan.FromSeconds(5);
 
     private readonly DispatcherTimer _timer;
     private readonly List<IDisposable> _patternSubs = new();
     private bool _disposed;
 
-    /// <summary>HP regen interval. <see cref="TimeSpan.Zero"/> disables the regen event.</summary>
+    // HP regen interval. TimeSpan.Zero disables the regen event.
     public TimeSpan HpRegenInterval { get; set; } = TimeSpan.Zero;
 
-    /// <summary>MA / KAI regen interval. <see cref="TimeSpan.Zero"/> disables the regen event.</summary>
+    // MA / KAI regen interval. TimeSpan.Zero disables the regen event.
     public TimeSpan ManaRegenInterval { get; set; } = TimeSpan.Zero;
 
-    /// <summary>Wall-clock time of the last combat tick, or <c>null</c> before the first fire.</summary>
+    // Wall-clock time of the last combat tick, or null before the first fire.
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(TimeToNextCombatTick))]
     private DateTimeOffset? _lastCombatTick;
@@ -67,7 +52,8 @@ public sealed partial class TickEngine : ObservableObject, IDisposable
     [NotifyPropertyChangedFor(nameof(TimeToNextManaRegenTick))]
     private DateTimeOffset? _lastManaRegenTick;
 
-    /// <summary>Time remaining to the next combat tick, or <c>null</c> if no tick has been observed yet.</summary>
+    // Time remaining to the next combat tick, or null if no tick has been
+    // observed yet.
     public TimeSpan? TimeToNextCombatTick => RemainingFor(LastCombatTick, CombatTickInterval);
 
     public TimeSpan? TimeToNextHpRegenTick =>
@@ -76,13 +62,13 @@ public sealed partial class TickEngine : ObservableObject, IDisposable
     public TimeSpan? TimeToNextManaRegenTick =>
         ManaRegenInterval == TimeSpan.Zero ? null : RemainingFor(LastManaRegenTick, ManaRegenInterval);
 
-    /// <summary>Fired on every combat tick — every 5 s, refreshed by damage lines.</summary>
+    // Fired on every combat tick — every 5 s, refreshed by damage lines.
     public event Action? CombatTickElapsed;
 
-    /// <summary>Fired at <see cref="HpRegenInterval"/> when configured.</summary>
+    // Fired at HpRegenInterval when configured.
     public event Action? HpRegenTickElapsed;
 
-    /// <summary>Fired at <see cref="ManaRegenInterval"/> when configured.</summary>
+    // Fired at ManaRegenInterval when configured.
     public event Action? ManaRegenTickElapsed;
 
     public TickEngine(MessageRouter router)
@@ -109,14 +95,11 @@ public sealed partial class TickEngine : ObservableObject, IDisposable
         _timer.Start();
     }
 
-    /// <summary>
-    /// Damage-line callback. Stamps <see cref="LastCombatTick"/> at now
-    /// and fires <see cref="CombatTickElapsed"/> the first time per
-    /// debounce window. Subsequent damage hits for the same physical
-    /// line (Megamind's UserHits regex is broad enough to also match
-    /// mob-on-player hits, so both pattern subs fire on a single line)
-    /// refresh the timestamp without firing again.
-    /// </summary>
+    // Damage-line callback. Stamps LastCombatTick at now and fires
+    // CombatTickElapsed the first time per debounce window. Subsequent damage
+    // hits for the same physical line (the UserHits regex is broad enough to
+    // also match mob-on-player hits, so both pattern subs fire on a single
+    // line) refresh the timestamp without firing again.
     private void RecordCombatTick()
     {
         DateTimeOffset now = DateTimeOffset.Now;

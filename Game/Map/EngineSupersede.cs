@@ -1,18 +1,14 @@
 namespace FujinTerm.Game.Map;
 
-/// <summary>
-/// Which of the three concurrent movement engines is about to take
-/// over the wire — the others get stopped so the chosen one owns the
-/// command stream uncontested.
-/// </summary>
-/// <remarks>
-/// <see cref="Walker"/> is the special case: <see cref="AutoWalkManager.WalkTo"/>
-/// already supersedes its own prior plan, so the walker is NOT stopped
-/// when keeping it. The loop and lair cases stop the walker because a
-/// goto-walk left in flight would otherwise drive the wire while
-/// <see cref="LoopRunner"/> or <see cref="AutoLairManager"/> is also
-/// trying to.
-/// </remarks>
+// Which of the three concurrent movement engines is about to take over
+// the wire — the others get stopped so the chosen one owns the command
+// stream uncontested.
+//
+// Walker is the special case: AutoWalkManager.WalkTo already supersedes
+// its own prior plan, so the walker is NOT stopped when keeping it. The
+// loop and lair cases stop the walker because a goto-walk left in flight
+// would otherwise drive the wire while LoopRunner or AutoLairManager is
+// also trying to.
 internal enum SupersedeKeep
 {
     Walker,
@@ -20,21 +16,15 @@ internal enum SupersedeKeep
     Lair,
 }
 
-/// <summary>
-/// Stop whichever of the three concurrent movement engines would
-/// collide with the engine that's about to start. Shared by
-/// <see cref="FujinTerm.Game.Remote.MovePlayerHandler"/> (remote
-/// @goto / @loop / @lair) and
-/// <see cref="FujinTerm.Game.Events.EventManager"/> (scheduled
-/// walk-to / loop / auto-lair events).
-/// </summary>
-/// <remarks>
-/// Without this, a second engine spinning up while a prior one is
-/// still issuing wire commands produces interleaved moves and a
-/// confused state machine on both sides. See
-/// <see cref="FujinTerm.Game.Remote.MovePlayerHandler"/>'s in-source
-/// comment for the canonical narrative.
-/// </remarks>
+// Stop whichever of the three concurrent movement engines would collide
+// with the engine that's about to start. Shared by MovePlayerHandler
+// (remote @goto / @loop / @lair) and EventManager (scheduled walk-to /
+// loop / auto-lair events).
+//
+// Without this, a second engine spinning up while a prior one is still
+// issuing wire commands produces interleaved moves and a confused state
+// machine on both sides. MovePlayerHandler's in-source comment carries the
+// canonical narrative.
 internal static class EngineSupersede
 {
     public static void StopOthers(

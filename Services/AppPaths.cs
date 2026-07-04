@@ -1,64 +1,54 @@
 namespace FujinTerm.Services;
 
-/// <summary>
-/// Resolves and exposes every directory and file path FujinTerm reads or writes.
-/// Centralizes platform-specific conventions (XDG on Linux, %LocalAppData% on
-/// Windows, ~/Library/Application Support on macOS) so the rest of the app never
-/// concatenates raw paths.
-/// </summary>
-/// <remarks>
-/// Everything user-writable sits under a single <c>Data/</c> root for ease of
-/// backup and inspection — see <c>docs/00-foundations.md</c> for the layout.
-/// Setting the <c>FUJINTERM_DATA_ROOT</c> environment variable overrides the
-/// platform default; useful for tests, portable installs, and sandboxed dev runs.
-/// </remarks>
+// Resolves and exposes every directory and file path FujinTerm reads or writes.
+// Centralizes platform-specific conventions (XDG on Linux, %LocalAppData% on
+// Windows, ~/Library/Application Support on macOS) so the rest of the app never
+// concatenates raw paths.
+//
+// Everything user-writable sits under a single Data/ root for ease of backup and
+// inspection. Setting the FUJINTERM_DATA_ROOT environment variable overrides the
+// platform default; useful for tests, portable installs, and sandboxed dev runs.
 public static class AppPaths
 {
     private const string AppFolderName = "FujinTerm";
     private const string DataSubfolder = "Data";
 
-    /// <summary>Single root containing all user-writable app data.</summary>
+    // Single root containing all user-writable app data.
     public static string DataRoot { get; }
 
-    /// <summary>
-    /// Tiny one-line text file that overrides <see cref="DataRoot"/> with a
-    /// user-chosen absolute path. Lives at the platform-config equivalent
-    /// (Linux: <c>~/.config/FujinTerm/</c>, Windows: <c>%LocalAppData%\FujinTerm\</c>,
-    /// macOS: <c>~/Library/Preferences/FujinTerm/</c>) — the *only* file
-    /// FujinTerm writes outside <see cref="DataRoot"/>. Absent on a fresh
-    /// install; created by the Settings → General "Change data directory"
-    /// migration flow. <see cref="DataRootRelocator"/> writes it; this
-    /// type only reads it at static-init.
-    /// </summary>
+    // Tiny one-line text file that overrides DataRoot with a user-chosen
+    // absolute path. Lives at the platform-config equivalent
+    // (Linux: ~/.config/FujinTerm/, Windows: %LocalAppData%\FujinTerm\,
+    // macOS: ~/Library/Preferences/FujinTerm/) — the only file FujinTerm writes
+    // outside DataRoot. Absent on a fresh install; created by the Settings →
+    // General "Change data directory" migration flow. DataRootRelocator writes
+    // it; this type only reads it at static-init.
     public static string PointerFile { get; }
 
-    /// <summary>The path resolution source for the active <see cref="DataRoot"/> — useful for the Settings UI tooltip.</summary>
+    // The path resolution source for the active DataRoot — useful for the
+    // Settings UI tooltip.
     public static DataRootSource DataRootResolvedFrom { get; }
 
-    /// <summary>Imported game-data sets (Defaults tier — read-only base).</summary>
+    // Imported game-data sets (Defaults tier — read-only base).
     public static string GameDataRoot { get; }
 
-    /// <summary>Global-tier settings file (one per install).</summary>
+    // Global-tier settings file (one per install).
     public static string GlobalSettingsFile { get; }
 
-    /// <summary>BBS-tier files (one per BBS).</summary>
+    // BBS-tier files (one per BBS).
     public static string BbsDir { get; }
 
-    /// <summary>Debug logs from DebugLogWriter.</summary>
+    // Debug logs from DebugLogWriter.
     public static string LogsDir { get; }
 
-    /// <summary>
-    /// App-shipped fallback defaults, alongside the executable.
-    /// Read-only at runtime; populated by the build pipeline.
-    /// </summary>
+    // App-shipped fallback defaults, alongside the executable. Read-only at
+    // runtime; populated by the build pipeline.
     public static string DefaultsDir { get; }
 
-    /// <summary>
-    /// Production-build starter pack (e.g., the pre-converted v1.11p MDB).
-    /// Returns the path when present (release artifact); <c>null</c> in dev builds.
-    /// First-run logic in later phases copies this into <see cref="GameDataRoot"/>
-    /// when non-null and the game-data root is empty.
-    /// </summary>
+    // Production-build starter pack (e.g., the pre-converted v1.11p MDB).
+    // Returns the path when present (release artifact); null in dev builds.
+    // First-run logic copies this into GameDataRoot when non-null and the
+    // game-data root is empty.
     public static string? BundledDataDir { get; }
 
     static AppPaths()
@@ -120,160 +110,124 @@ public static class AppPaths
         Directory.CreateDirectory(LogsDir);
     }
 
-    /// <summary>
-    /// Per-set Messages catalogue file, scoped INSIDE the game-data
-    /// set's folder so the catalogue travels with the set. Replaces
-    /// the older <c>Data/Global/Messages/{set}.json</c> location —
-    /// pairing the file with the MDB tables keeps a curated realm
-    /// together (back it up, copy it to another machine, etc.).
-    /// </summary>
+    // Per-set Messages catalogue file, scoped INSIDE the game-data set's folder
+    // so the catalogue travels with the set. Replaces the older
+    // Data/Global/Messages/{set}.json location — pairing the file with the MDB
+    // tables keeps a curated realm together (back it up, copy it to another
+    // machine, etc.).
     public static string MessagesFile(string setName) =>
         Path.Combine(GameDataSetDir(setName), "messages.json");
 
-    /// <summary>
-    /// Per-set Monster Messages catalogue file — one combat-line bundle
-    /// per Monsters table row (HitYou / HitOther / DeathLine /
-    /// ArmorBlock / Dodge / Miss + flavor prefixes). Sits beside the
-    /// per-set spell <see cref="MessagesFile"/> so the realm's complete
-    /// parser dataset travels together.
-    /// </summary>
+    // Per-set Monster Messages catalogue file — one combat-line bundle per
+    // Monsters table row (HitYou / HitOther / DeathLine / ArmorBlock / Dodge /
+    // Miss + flavor prefixes). Sits beside the per-set spell MessagesFile so
+    // the realm's complete parser dataset travels together.
     public static string MonsterMessagesFile(string setName) =>
         Path.Combine(GameDataSetDir(setName), "monster-messages.json");
 
-    /// <summary>
-    /// User-writable MonsterMessages seed JSON, hosted in the XDG-resolved
-    /// <c>Data/Global/</c> folder. Acts as the fallback when the per-set
-    /// <see cref="MonsterMessagesFile"/> doesn't exist yet for a set.
-    /// Bootstrapped from <see cref="BundledMonsterMessagesSeedFile"/> on
-    /// first app launch if missing; the user can hand-edit it (or delete
-    /// it to re-bootstrap from the bundled copy).
-    /// </summary>
+    // User-writable MonsterMessages seed JSON, hosted in the XDG-resolved
+    // Data/Global/ folder. Acts as the fallback when the per-set
+    // MonsterMessagesFile doesn't exist yet for a set. Bootstrapped from
+    // BundledMonsterMessagesSeedFile on first app launch if missing; the user
+    // can hand-edit it (or delete it to re-bootstrap from the bundled copy).
     public static string DefaultMonsterMessagesSeedFile =>
         Path.Combine(DataRoot, "Global", "MonsterMessages.seed.json");
 
-    /// <summary>Read-only bundled copy shipped next to the executable — the bootstrap source.</summary>
+    // Read-only bundled copy shipped next to the executable — the bootstrap source.
     public static string BundledMonsterMessagesSeedFile { get; } =
         Path.Combine(AppContext.BaseDirectory, "Defaults", "MonsterMessages.seed.json");
 
-    /// <summary>
-    /// User-writable MonsterOverlay seed JSON for the given realm flavor,
-    /// hosted in the XDG-resolved <c>Data/Global/</c> folder. Holds the
-    /// Defaults-tier baseline for relationship / priority / NotHostile /
-    /// DontBackstab — decoded from the realm's stock MegaMUD
-    /// <c>Monsters.md</c>. The active game-data set's <c>Info.json[0].Legit</c>
-    /// picks which realm seed to apply (<c>0/1</c> = stock, <c>2</c> =
-    /// paradigm). Bootstrapped from the matching
-    /// <see cref="BundledMonsterOverlaySeedFile"/> on first app launch.
-    /// The seed itself is never written by the app; user edits go to
-    /// higher tiers via <see cref="SettingsResolver.WriteGameDataAt"/>.
-    /// </summary>
+    // User-writable MonsterOverlay seed JSON for the given realm flavor, hosted
+    // in the XDG-resolved Data/Global/ folder. Holds the Defaults-tier baseline
+    // for relationship / priority / NotHostile / DontBackstab — decoded from
+    // the realm's stock MegaMUD Monsters.md. The active game-data set's
+    // Info.json[0].Legit picks which realm seed to apply (0/1 = stock, 2 =
+    // paradigm). Bootstrapped from the matching BundledMonsterOverlaySeedFile
+    // on first app launch. The seed itself is never written by the app; user
+    // edits go to higher tiers via SettingsResolver.WriteGameDataAt.
     public static string MonsterOverlaySeedFile(string realm) =>
         Path.Combine(DataRoot, "Global", $"MonsterOverlay.{realm}.seed.json");
 
-    /// <summary>Read-only bundled copy of the realm's overlay seed, shipped next to the executable.</summary>
+    // Read-only bundled copy of the realm's overlay seed, shipped next to the executable.
     public static string BundledMonsterOverlaySeedFile(string realm) =>
         Path.Combine(AppContext.BaseDirectory, "Defaults", $"MonsterOverlay.{realm}.seed.json");
 
-    /// <summary>
-    /// User-writable ItemOverlay seed JSON for the given realm flavor —
-    /// parallel of <see cref="MonsterOverlaySeedFile"/>, but for items.
-    /// Holds the Defaults-tier baseline for the 9 user-facing Options
-    /// flags (Auto-collect / Auto-discard / Auto-find / Auto-open /
-    /// Auto-buy / Auto-sell / Cannot-be-taken / Must-have-minimum /
-    /// Loyal-item) plus MinToKeep / MaxToGet, decoded from the realm's
-    /// stock MegaMUD <c>Items.md</c>. The active game-data set's
-    /// <c>Info.json[0].Legit</c> picks which realm seed to apply
-    /// (<c>0/1</c> = stock, <c>2</c> = paradigm). Bootstrapped from
-    /// the matching <see cref="BundledItemOverlaySeedFile"/> on first
-    /// app launch. The seed itself is never written by the app; user
-    /// edits go to higher tiers via
-    /// <see cref="SettingsResolver.WriteGameDataAt"/>.
-    /// </summary>
+    // User-writable ItemOverlay seed JSON for the given realm flavor — parallel
+    // of MonsterOverlaySeedFile, but for items. Holds the Defaults-tier
+    // baseline for the 9 user-facing Options flags (Auto-collect / Auto-discard
+    // / Auto-find / Auto-open / Auto-buy / Auto-sell / Cannot-be-taken /
+    // Must-have-minimum / Loyal-item) plus MinToKeep / MaxToGet, decoded from
+    // the realm's stock MegaMUD Items.md. The active game-data set's
+    // Info.json[0].Legit picks which realm seed to apply (0/1 = stock, 2 =
+    // paradigm). Bootstrapped from the matching BundledItemOverlaySeedFile on
+    // first app launch. The seed itself is never written by the app; user edits
+    // go to higher tiers via SettingsResolver.WriteGameDataAt.
     public static string ItemOverlaySeedFile(string realm) =>
         Path.Combine(DataRoot, "Global", $"ItemOverlay.{realm}.seed.json");
 
-    /// <summary>Read-only bundled copy of the realm's item-overlay seed, shipped next to the executable.</summary>
+    // Read-only bundled copy of the realm's item-overlay seed, shipped next to the executable.
     public static string BundledItemOverlaySeedFile(string realm) =>
         Path.Combine(AppContext.BaseDirectory, "Defaults", $"ItemOverlay.{realm}.seed.json");
 
-    /// <summary>
-    /// Per-set Triggers file scoped inside the game-data set's folder.
-    /// Stores only the <see cref="Models.GameData.TriggerLocation.GameData"/>-
-    /// scoped triggers; <see cref="Models.GameData.TriggerLocation.Profile"/>-
-    /// scoped ones live on <see cref="Models.Profile.CharacterProfile.Triggers"/>.
-    /// </summary>
+    // Per-set Triggers file scoped inside the game-data set's folder. Stores
+    // only the TriggerLocation.GameData-scoped triggers; the
+    // TriggerLocation.Profile-scoped ones live on CharacterProfile.Triggers.
     public static string TriggersFile(string setName) =>
         Path.Combine(GameDataSetDir(setName), "triggers.json");
 
-    /// <summary>
-    /// Per-set Quest definitions overlay scoped inside the game-data set's
-    /// folder (sibling to <see cref="TriggersFile"/>). Holds the user-owned
-    /// quest layer — display name, show/hide visibility, and edited step
-    /// markdown, keyed by quest-flag number + step. <see cref="QuestStore"/>
-    /// resolves it over the universal <see cref="DefaultQuestDefsSeedFile"/>
-    /// underlay; the mechanical data (ordered steps + stat bonuses) is crawled
-    /// from the set's <c>TBInfo</c> at runtime, not stored here.
-    /// </summary>
+    // Per-set Quest definitions overlay scoped inside the game-data set's folder
+    // (sibling to TriggersFile). Holds the user-owned quest layer — display
+    // name, show/hide visibility, and edited step markdown, keyed by quest-flag
+    // number + step. QuestStore resolves it over the universal
+    // DefaultQuestDefsSeedFile underlay; the mechanical data (ordered steps +
+    // stat bonuses) is crawled from the set's TBInfo at runtime, not stored here.
     public static string QuestsFile(string setName) =>
         Path.Combine(GameDataSetDir(setName), "quests.json");
 
-    /// <summary>
-    /// <summary>
-    /// User-writable Messages seed JSON, hosted in the XDG-resolved
-    /// <c>Data/Global/</c> folder. Shared across every game-data set —
-    /// the catalogue's message text (e.g. "You feel lucky") is universal
-    /// across MajorMUD realms. <see cref="MessageStore"/> falls back to
-    /// this when the user's per-set <see cref="MessagesFile"/> doesn't
-    /// exist for the active set. Bootstrapped from
-    /// <see cref="BundledMessagesSeedFile"/> on first app launch if
-    /// missing; the user can hand-edit it (or delete it to re-bootstrap
-    /// from the bundled copy).
-    /// </summary>
+    // User-writable Messages seed JSON, hosted in the XDG-resolved Data/Global/
+    // folder. Shared across every game-data set — the catalogue's message text
+    // (e.g. "You feel lucky") is universal across MajorMUD realms. MessageStore
+    // falls back to this when the user's per-set MessagesFile doesn't exist for
+    // the active set. Bootstrapped from BundledMessagesSeedFile on first app
+    // launch if missing; the user can hand-edit it (or delete it to re-bootstrap
+    // from the bundled copy).
     public static string DefaultMessagesSeedFile =>
         Path.Combine(DataRoot, "Global", "Messages.seed.json");
 
-    /// <summary>Read-only bundled copy shipped next to the executable — the bootstrap source.</summary>
+    // Read-only bundled copy shipped next to the executable — the bootstrap source.
     public static string BundledMessagesSeedFile { get; } =
         Path.Combine(AppContext.BaseDirectory, "Defaults", "Messages.seed.json");
 
-    /// <summary>
-    /// User-writable Triggers seed JSON, hosted in the XDG-resolved
-    /// <c>Data/Global/</c> folder. <see cref="TriggerEngine"/> falls
-    /// back to this when a set has no per-set <see cref="TriggersFile"/>.
-    /// Bootstrapped from <see cref="BundledTriggersSeedFile"/> on first
-    /// app launch if missing.
-    /// </summary>
+    // User-writable Triggers seed JSON, hosted in the XDG-resolved Data/Global/
+    // folder. TriggerEngine falls back to this when a set has no per-set
+    // TriggersFile. Bootstrapped from BundledTriggersSeedFile on first app
+    // launch if missing.
     public static string DefaultTriggersSeedFile =>
         Path.Combine(DataRoot, "Global", "Triggers.seed.json");
 
-    /// <summary>Read-only bundled copy shipped next to the executable — the bootstrap source.</summary>
+    // Read-only bundled copy shipped next to the executable — the bootstrap source.
     public static string BundledTriggersSeedFile { get; } =
         Path.Combine(AppContext.BaseDirectory, "Defaults", "Triggers.seed.json");
 
-    /// <summary>
-    /// User-writable Quest definitions seed JSON, hosted in the XDG-resolved
-    /// <c>Data/Global/</c> folder. Universal across every game-data set — keyed
-    /// by quest-flag number + step, which custom realms reuse for the same
-    /// quests, so a curated set of names + step write-ups ports everywhere.
-    /// <see cref="QuestStore"/> falls back to this when the active set's per-set
-    /// <see cref="QuestsFile"/> doesn't name a quest. Bootstrapped from
-    /// <see cref="BundledQuestDefsSeedFile"/> on first app launch if missing;
-    /// never written by the app (user edits go to the per-set overlay).
-    /// </summary>
+    // User-writable Quest definitions seed JSON, hosted in the XDG-resolved
+    // Data/Global/ folder. Universal across every game-data set — keyed by
+    // quest-flag number + step, which custom realms reuse for the same quests,
+    // so a curated set of names + step write-ups ports everywhere. QuestStore
+    // falls back to this when the active set's per-set QuestsFile doesn't name a
+    // quest. Bootstrapped from BundledQuestDefsSeedFile on first app launch if
+    // missing; never written by the app (user edits go to the per-set overlay).
     public static string DefaultQuestDefsSeedFile =>
         Path.Combine(DataRoot, "Global", "QuestDefs.seed.json");
 
-    /// <summary>Read-only bundled copy shipped next to the executable — the bootstrap source.</summary>
+    // Read-only bundled copy shipped next to the executable — the bootstrap source.
     public static string BundledQuestDefsSeedFile { get; } =
         Path.Combine(AppContext.BaseDirectory, "Defaults", "QuestDefs.seed.json");
 
-    /// <summary>
-    /// Bootstrap missing seed files in <c>Data/Global/</c> by copying
-    /// from the bundled <c>Defaults/</c> next to the executable. Called
-    /// once during app startup. Pre-existing user-edited Global seeds
-    /// are never overwritten — to reset a seed, delete the Global copy
-    /// and the next launch re-bootstraps from the bundled source.
-    /// </summary>
+    // Bootstrap missing seed files in Data/Global/ by copying from the bundled
+    // Defaults/ next to the executable. Called once during app startup.
+    // Pre-existing user-edited Global seeds are never overwritten — to reset a
+    // seed, delete the Global copy and the next launch re-bootstraps from the
+    // bundled source.
     public static void EnsureGlobalSeedsBootstrapped()
     {
         Directory.CreateDirectory(Path.Combine(DataRoot, "Global"));
@@ -304,100 +258,77 @@ public static class AppPaths
         catch { /* best-effort; if the copy fails the store falls through to an empty seed */ }
     }
 
-    /// <summary>Path to a single imported game-data set's directory.</summary>
+    // Path to a single imported game-data set's directory.
     public static string GameDataSetDir(string setName) =>
         Path.Combine(GameDataRoot, setName);
 
-    /// <summary>
-    /// Folder holding all files for one BBS — primary settings JSON
-    /// plus per-set override side-files (<c>monster_overrides.{set}.json</c>,
-    /// <c>message_overrides.{set}.json</c>, …) and any future helper
-    /// files (per-BBS favorites list, character roster, etc.).
-    /// </summary>
+    // Folder holding all files for one BBS — primary settings JSON plus per-set
+    // override side-files (monster_overrides.{set}.json,
+    // message_overrides.{set}.json, …) and any future helper files (per-BBS
+    // favorites list, character roster, etc.).
     public static string BbsFolder(string bbsName) =>
         Path.Combine(BbsDir, bbsName);
 
-    /// <summary>Primary BBS settings file inside <see cref="BbsFolder"/>.</summary>
+    // Primary BBS settings file inside BbsFolder.
     public static string BbsProfileFile(string bbsName) =>
         Path.Combine(BbsFolder(bbsName), "bbs.json");
 
-    /// <summary>
-    /// Per-game-data-set folder holding the whole navigation library:
-    /// loops (<c>{name}.loop</c>), Auto-Lair setups (<c>{name}.lair</c>),
-    /// and the user-created sub-folder tree that organises both. The
-    /// filename suffix is the schema discriminator so the loop and lair
-    /// managers can scan the same folder and pick up only their own
-    /// files. Keyed on the game-data set (the realm's MDB) rather than
-    /// the BBS, so the same nav library follows the realm across every
-    /// BBS / character that points at that set.
-    /// </summary>
+    // Per-game-data-set folder holding the whole navigation library: loops
+    // ({name}.loop), Auto-Lair setups ({name}.lair), and the user-created
+    // sub-folder tree that organises both. The filename suffix is the schema
+    // discriminator so the loop and lair managers can scan the same folder and
+    // pick up only their own files. Keyed on the game-data set (the realm's MDB)
+    // rather than the BBS, so the same nav library follows the realm across
+    // every BBS / character that points at that set.
     public static string GameDataSetLoopsFolder(string setName) =>
         Path.Combine(GameDataSetDir(setName), "Loops");
 
-    /// <summary>
-    /// Legacy per-BBS folder that held Auto-Lair setups before the
-    /// Loops + Lairs storage unification. Kept around as a source for
-    /// the one-shot migration in <see cref="Game.Map.LairManager.LoadAll"/>;
-    /// once empty, the folder is removed and never recreated.
-    /// </summary>
+    // Legacy per-BBS folder that held Auto-Lair setups before the Loops + Lairs
+    // storage unification. Kept around as a source for the one-shot migration in
+    // Game.Map.LairManager.LoadAll; once empty, the folder is removed and never
+    // recreated.
     public static string LegacyBbsLairsFolder(string bbsName) =>
         Path.Combine(BbsFolder(bbsName), "Lairs");
 
-    /// <summary>
-    /// Per-BBS observed-players side-file. One PlayerObservation per
-    /// player ever seen on this BBS; the Phase 5 PR 5.20 design keeps
-    /// observations at the BBS tier so the same display name on a
-    /// different BBS counts as a different person.
-    /// </summary>
+    // Per-BBS observed-players side-file. One PlayerObservation per player ever
+    // seen on this BBS; observations live at the BBS tier so the same display
+    // name on a different BBS counts as a different person.
     public static string BbsPlayersFile(string bbsName) =>
         Path.Combine(BbsFolder(bbsName), "players.json");
 
-    /// <summary>
-    /// Per-BBS map-room blacklist file. Entries hide their target
-    /// rooms from the navigation map render and the search box —
-    /// typical use is hiding ganghouse / sysop-only rooms behind
-    /// dead-end doors that clutter the layout.
-    /// </summary>
+    // Per-BBS map-room blacklist file. Entries hide their target rooms from the
+    // navigation map render and the search box — typical use is hiding
+    // ganghouse / sysop-only rooms behind dead-end doors that clutter the layout.
     public static string BbsRoomBlacklistFile(string bbsName) =>
         Path.Combine(BbsFolder(bbsName), "room_blacklist.json");
 
-    /// <summary>
-    /// Per-BBS folder holding every character that connects to that BBS.
-    /// Profiles live UNDER the BBS folder because each MajorMUD server
-    /// allows only one character of a given name — so the same character
-    /// name on two different BBSes is two different people, and nesting
-    /// under the BBS keeps them from colliding on a flat profiles list.
-    /// </summary>
+    // Per-BBS folder holding every character that connects to that BBS. Profiles
+    // live UNDER the BBS folder because each MajorMUD server allows only one
+    // character of a given name — so the same character name on two different
+    // BBSes is two different people, and nesting under the BBS keeps them from
+    // colliding on a flat profiles list.
     public static string BbsProfilesDir(string bbsName) =>
         Path.Combine(BbsFolder(bbsName), "profiles");
 
-    /// <summary>
-    /// Folder holding all files for one character on a given BBS —
-    /// primary profile JSON plus per-set override side-files and any
-    /// future per-character helper files (macros, triggers, equipment
-    /// sets, death history, etc.).
-    /// </summary>
+    // Folder holding all files for one character on a given BBS — primary
+    // profile JSON plus per-set override side-files and any future per-character
+    // helper files (macros, triggers, equipment sets, death history, etc.).
     public static string ProfileFolder(string bbsName, string characterName) =>
         Path.Combine(BbsProfilesDir(bbsName), characterName);
 
-    /// <summary>Primary character profile file inside <see cref="ProfileFolder"/>.</summary>
+    // Primary character profile file inside ProfileFolder.
     public static string CharacterProfileFile(string bbsName, string characterName) =>
         Path.Combine(ProfileFolder(bbsName, characterName), "profile.json");
 
-    /// <summary>
-    /// Per-set game-data override side-file at the given tier. Routes
-    /// to the right folder: Global → <see cref="DataRoot"/>/Global,
-    /// BBS → <see cref="BbsFolder"/>, Character → <see cref="ProfileFolder"/>.
-    /// File name is <c>{table-lowercase}_overrides.{set}.json</c>, e.g.
-    /// <c>monster_overrides.data-v1.11p.json</c>. <see cref="SettingsTier.Defaults"/>
-    /// is read-only and throws.
-    /// </summary>
-    /// <param name="tier">Tier the override lives at.</param>
-    /// <param name="tierScopeName">For BBS / Character tiers: the BBS or profile name. Ignored for Global.</param>
-    /// <param name="table">Game-data table the override applies to (e.g. <c>"Monsters"</c>, <c>"Messages"</c>).</param>
-    /// <param name="setName">Active game-data set name (paired with the override file).</param>
-    /// <param name="characterBbs">For the Character tier only: the BBS the profile lives under
-    /// (profiles nest at <c>BBS/{bbs}/profiles/{char}/</c>). Ignored for other tiers.</param>
+    // Per-set game-data override side-file at the given tier. Routes to the
+    // right folder: Global → DataRoot/Global, BBS → BbsFolder,
+    // Character → ProfileFolder. File name is
+    // {table-lowercase}_overrides.{set}.json, e.g.
+    // monster_overrides.data-v1.11p.json. The Defaults tier is read-only and
+    // throws. tierScopeName is the BBS or profile name for BBS / Character
+    // tiers (ignored for Global). characterBbs, for the Character tier only, is
+    // the BBS the profile lives under (profiles nest at
+    // BBS/{bbs}/profiles/{char}/); ignored for other tiers.
     public static string OverrideFile(SettingsTier tier, string? tierScopeName, string table, string setName, string? characterBbs = null)
     {
         string folder = tier switch
@@ -416,10 +347,8 @@ public static class AppPaths
             ? throw new InvalidOperationException($"OverrideFile for {label} tier requires a scope name (the BBS or profile).")
             : scope;
 
-    /// <summary>
-    /// Path for a new debug log file. Caller supplies a topic; the timestamp is
-    /// generated at call time so concurrent loggers don't collide.
-    /// </summary>
+    // Path for a new debug log file. Caller supplies a topic; the timestamp is
+    // generated at call time so concurrent loggers don't collide.
     public static string NewDebugLogFile(string topic)
     {
         string ts = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
@@ -453,15 +382,15 @@ public static class AppPaths
     }
 }
 
-/// <summary>Where <see cref="AppPaths.DataRoot"/> was resolved from at startup.</summary>
+// Where AppPaths.DataRoot was resolved from at startup.
 public enum DataRootSource
 {
-    /// <summary>Platform-standard user-data path (the install default).</summary>
+    // Platform-standard user-data path (the install default).
     PlatformDefault,
 
-    /// <summary>User-relocated; <see cref="AppPaths.PointerFile"/> points here.</summary>
+    // User-relocated; AppPaths.PointerFile points here.
     PointerFile,
 
-    /// <summary><c>FUJINTERM_DATA_ROOT</c> env var override (tests / CI).</summary>
+    // FUJINTERM_DATA_ROOT env var override (tests / CI).
     EnvironmentVariable,
 }

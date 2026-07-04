@@ -5,58 +5,45 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game.Map;
 
-/// <summary>
-/// Active fulfiller for <see cref="NeedKind.PathItem"/> needs backed by a
-/// shop: when a one-shot <see cref="AutoWalkManager.WalkTo(RoomKey)">walk</see>
-/// crosses an <c>(Item: N)</c> / <c>(Ticket: N)</c> gate whose item we're not
-/// carrying, and a shop in the active set stocks that item, detour to the
-/// shop that adds the fewest steps, <c>buy</c> the needed count (the whole
-/// party shortfall the need carries — one <c>buy</c> per still-missing copy),
-/// then resume to the original destination. Backs the Settings → Other "buy
-/// item if needed" affordance.
-/// </summary>
-/// <remarks>
-/// <para>
-/// <b>Trigger.</b> <see cref="PathItemDemandTracker"/> posts a PathItem need
-/// at walk-start; <see cref="OnNeedPosted"/> (wired to
-/// <see cref="NeedsRegistry.NeedPosted"/>) reacts. The event fires only for a
-/// genuinely new need, so its argument is always an item the current walk
-/// just demanded — never a stale leftover. Only one detour runs at a time:
-/// re-entrant posts (a multi-gate route announces several) are ignored while
-/// a detour is in flight, so v1 services one item per walk and leaves the
-/// rest to demand-driven search.
-/// </para>
-/// <para>
-/// <b>Shop selection.</b> Among the rooms hosting a shop that stocks the
-/// item, pick the one minimising <c>dist(cur, shop) + dist(shop, dest)</c> —
-/// the smallest number of steps added to the trip. Distances use the same
-/// <see cref="IRoomFilter"/> the walker routes with, so the estimate matches
-/// the walk that actually runs. Ties break on the nearer shop, then room key
-/// order, for determinism.
-/// </para>
-/// <para>
-/// <b>Scope.</b> Detours apply only to a plain walk-to. When a loop or
-/// auto-lair run is driving movement (<c>engineWalkActive</c>) the need is
-/// left to demand-driven search — those routes rarely cross a possession
-/// gate, and hijacking a farm loop to shop would be surprising.
-/// </para>
-/// <para>
-/// <b>Resolution paths.</b> Reaching the needed count in inventory
-/// (<see cref="OnInventoryChanged"/>) resumes the original walk — whether the
-/// copies came from the <c>buy</c> run, from demand-search revealing them en
-/// route (found-first abort), or from a party hand-off. Buys that don't all
-/// land within <see cref="OnBuyTimeout">the buy window</see> (no gold, out of
-/// stock, refused) and a shop we can't reach both fail gracefully: log, resume
-/// to the destination, and leave the need outstanding so search can turn up
-/// the rest. The need's own lifecycle (post / resolve) stays owned by
-/// <see cref="PathItemDemandTracker"/>; this router only reacts.
-/// </para>
-/// <para>
-/// Inventory / graph / walker are reached through delegates so the FSM stays
-/// unit-testable without a live line stream, room graph, and dispatcher.
-/// Each delegate has exactly one production binding in <c>AppServices</c>.
-/// </para>
-/// </remarks>
+// Active fulfiller for NeedKind.PathItem needs backed by a shop: when a
+// one-shot walk crosses an (Item: N) / (Ticket: N) gate whose item we're not
+// carrying, and a shop in the active set stocks that item, detour to the shop
+// that adds the fewest steps, buy the needed count (the whole party shortfall
+// the need carries — one buy per still-missing copy), then resume to the
+// original destination. Backs the Settings → Other "buy item if needed"
+// affordance.
+//
+// Trigger. PathItemDemandTracker posts a PathItem need at walk-start;
+// OnNeedPosted (wired to NeedsRegistry.NeedPosted) reacts. The event fires only
+// for a genuinely new need, so its argument is always an item the current walk
+// just demanded — never a stale leftover. Only one detour runs at a time:
+// re-entrant posts (a multi-gate route announces several) are ignored while a
+// detour is in flight, so we service one item per walk and leave the rest to
+// demand-driven search.
+//
+// Shop selection. Among the rooms hosting a shop that stocks the item, pick the
+// one minimising dist(cur, shop) + dist(shop, dest) — the smallest number of
+// steps added to the trip. Distances use the same IRoomFilter the walker routes
+// with, so the estimate matches the walk that actually runs. Ties break on the
+// nearer shop, then room key order, for determinism.
+//
+// Scope. Detours apply only to a plain walk-to. When a loop or auto-lair run is
+// driving movement (engineWalkActive) the need is left to demand-driven
+// search — those routes rarely cross a possession gate, and hijacking a farm
+// loop to shop would be surprising.
+//
+// Resolution paths. Reaching the needed count in inventory (OnInventoryChanged)
+// resumes the original walk — whether the copies came from the buy run, from
+// demand-search revealing them en route (found-first abort), or from a party
+// hand-off. Buys that don't all land within the buy window (no gold, out of
+// stock, refused) and a shop we can't reach both fail gracefully: log, resume
+// to the destination, and leave the need outstanding so search can turn up the
+// rest. The need's own lifecycle (post / resolve) stays owned by
+// PathItemDemandTracker; this router only reacts.
+//
+// Inventory / graph / walker are reached through delegates so the FSM stays
+// unit-testable without a live line stream, room graph, and dispatcher. Each
+// delegate has exactly one production binding in AppServices.
 public sealed class PathItemShopRouter : IDisposable
 {
     private const string LogCategory = "AutoSearch";
@@ -129,22 +116,20 @@ public sealed class PathItemShopRouter : IDisposable
             Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
     }
 
-    /// <summary>Bind the wire sink used to issue the <c>buy</c> command.</summary>
+    // Bind the wire sink used to issue the buy command.
     public void SetWireSender(Action<byte[]> sender) => _wire.Bind(sender);
 
-    /// <summary>Every buffer this router pushed to the wire, in order (test seam).</summary>
+    // Every buffer this router pushed to the wire, in order (test seam).
     internal IReadOnlyList<byte[]> LastSentForTests => _wire.LastSentForTests;
 
-    /// <summary>True while a shop detour is in progress (walking to shop or buying).</summary>
+    // True while a shop detour is in progress (walking to shop or buying).
     public bool DetourActive => _phase != Phase.Idle;
 
-    /// <summary>
-    /// New-need callback (wired to <see cref="NeedsRegistry.NeedPosted"/>).
-    /// Decides whether the item warrants a shop detour and, if so, arms one
-    /// toward the fewest-added-steps shop. A no-op when the feature is off,
-    /// an engine walk is driving, a detour is already running, no shop
-    /// stocks the item, or we can't compute a route.
-    /// </summary>
+    // New-need callback (wired to NeedsRegistry.NeedPosted). Decides whether the
+    // item warrants a shop detour and, if so, arms one toward the
+    // fewest-added-steps shop. A no-op when the feature is off, an engine walk
+    // is driving, a detour is already running, no shop stocks the item, or we
+    // can't compute a route.
     public void OnNeedPosted(Need need)
     {
         if (need.Kind != NeedKind.PathItem) return;
@@ -177,11 +162,9 @@ public sealed class PathItemShopRouter : IDisposable
         _post(() => _walkTo(shopRoom));
     }
 
-    /// <summary>
-    /// Walker-event callback (wired to <see cref="AutoWalkManager.Event"/>).
-    /// Advances the detour: arrival at the shop starts the buy; a failed or
-    /// user-redirected walk abandons the detour.
-    /// </summary>
+    // Walker-event callback (wired to AutoWalkManager.Event). Advances the
+    // detour: arrival at the shop starts the buy; a failed or user-redirected
+    // walk abandons the detour.
     public void OnWalkEvent(WalkEvent e)
     {
         switch (_phase)
@@ -208,12 +191,10 @@ public sealed class PathItemShopRouter : IDisposable
         }
     }
 
-    /// <summary>
-    /// Inventory-change callback (wired to <c>InventoryManager.Changed</c>).
-    /// When the item we detoured for is now carried — bought, revealed by
-    /// search en route, or handed over — resume the original walk. The found
-    /// case doubles as the found-first abort for an in-flight shop walk.
-    /// </summary>
+    // Inventory-change callback (wired to InventoryManager.Changed). When the
+    // item we detoured for is now carried — bought, revealed by search en route,
+    // or handed over — resume the original walk. The found case doubles as the
+    // found-first abort for an in-flight shop walk.
     public void OnInventoryChanged()
     {
         if (_phase is not (Phase.WalkingToShop or Phase.Buying)) return;
@@ -222,12 +203,10 @@ public sealed class PathItemShopRouter : IDisposable
         ResumeToPath();
     }
 
-    /// <summary>
-    /// Buy-window elapsed. If the item still isn't carried the <c>buy</c>
-    /// didn't land (no gold, out of stock, class-refused) — resume to the
-    /// destination and leave the need outstanding for search. Invoked on the
-    /// UI thread via the injected post delegate; tests call it directly.
-    /// </summary>
+    // Buy-window elapsed. If the item still isn't carried the buy didn't land
+    // (no gold, out of stock, class-refused) — resume to the destination and
+    // leave the need outstanding for search. Invoked on the UI thread via the
+    // injected post delegate; tests call it directly.
     public void OnBuyTimeout()
     {
         if (_phase != Phase.Buying) return;

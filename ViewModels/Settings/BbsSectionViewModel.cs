@@ -10,20 +10,15 @@ using FujinTerm.Views.Settings;
 
 namespace FujinTerm.ViewModels.Settings;
 
-/// <summary>
-/// "BBS" tab. Owns the list of saved BBS records (globally shared across
-/// every character) and the field-editor for whichever one is selected.
-/// Per-character credentials (username, password, menu-nav sequence)
-/// live on the character profile and ship in PR 4.5b / 4.5c — this PR
-/// is the BBS record itself only.
-/// </summary>
-/// <remarks>
-/// Apply walks the cached in-memory BBS profiles and persists every
-/// dirty one. Discard reloads the currently-selected BBS from disk so
-/// pending edits are dropped. Adding / deleting a BBS commits immediately
-/// (those are structural, not field-level edits — the OK / Cancel commit
-/// only covers field tweaks).
-/// </remarks>
+// "BBS" tab. Owns the list of saved BBS records (globally shared across every
+// character) and the field-editor for whichever one is selected. Per-character
+// credentials (username, password, menu-nav sequence) live on the character
+// profile.
+//
+// Apply walks the cached in-memory BBS profiles and persists every dirty one.
+// Discard reloads the currently-selected BBS from disk so pending edits are
+// dropped. Adding / deleting a BBS commits immediately (those are structural, not
+// field-level edits — the OK / Cancel commit only covers field tweaks).
 public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
 {
     private readonly BbsProfileStore _bbsStore;
@@ -52,7 +47,7 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
 
     public override Control View => _view ??= new BbsSectionView { DataContext = this };
 
-    /// <summary>Names of every saved BBS profile (left rail of the tab).</summary>
+    // Names of every saved BBS profile (left rail of the tab).
     public ObservableCollection<string> AvailableBbsNames { get; } = new();
 
     [ObservableProperty]
@@ -87,17 +82,14 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private string _gameEntryCommand = "E";
     [ObservableProperty] private string _gameExitCommand = "=x";
 
-    // ----- Per-character credentials (PR 4.5b) -----
-    /// <summary>
-    /// True when any character profile is loaded — including unsaved
-    /// drafts. Credentials, sysop flag, and menu nav all bind against the
-    /// in-memory CharacterProfile; the password is encrypted with the
-    /// per-user .credkey (not anything keyed on the profile name) so an
-    /// unsaved draft can carry them forward into its first Save just
-    /// fine. Only used now to dim the credentials block when literally
-    /// no profile object exists (a state we never actually reach at
-    /// runtime, but the guard keeps designer-time previews honest).
-    /// </summary>
+    // ----- Per-character credentials -----
+    // True when any character profile is loaded — including unsaved drafts.
+    // Credentials, sysop flag, and menu nav all bind against the in-memory
+    // CharacterProfile; the password is encrypted with the per-user .credkey (not
+    // anything keyed on the profile name) so an unsaved draft can carry them
+    // forward into its first Save just fine. Only used now to dim the credentials
+    // block when literally no profile object exists (a state we never actually
+    // reach at runtime, but the guard keeps designer-time previews honest).
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CredentialsHint))]
     [NotifyPropertyChangedFor(nameof(IsCredentialsHintWarning))]
@@ -117,7 +109,7 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
 
     [ObservableProperty] private bool _showSuicidePassword;
 
-    /// <summary>True when the loaded profile carries a stored suicide password.</summary>
+    // True when the loaded profile carries a stored suicide password.
     public bool HasSuicidePassword => !string.IsNullOrEmpty(SuicidePassword);
 
     // ----- Confirm prompts (Global tier — install-wide UX preferences) -----
@@ -131,10 +123,10 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private bool _confirmSaveSettings = false;
     [ObservableProperty] private bool _confirmDeletes = false;
 
-    /// <summary>Editable rows for the per-character menu-nav sequence.</summary>
+    // Editable rows for the per-character menu-nav sequence.
     public ObservableCollection<MenuStepEditorViewModel> MenuNavSteps { get; } = new();
 
-    /// <summary>Helper text under the credentials section.</summary>
+    // Helper text under the credentials section.
     public string CredentialsHint
     {
         get
@@ -147,12 +139,9 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         }
     }
 
-    /// <summary>
-    /// True when the credentials hint should be drawn in a warning color
-    /// (e.g., red) — currently only for the unsaved-draft case, so the
-    /// user can see at a glance that their edits won't persist until
-    /// they Save / Save As.
-    /// </summary>
+    // True when the credentials hint should be drawn in a warning color (e.g.,
+    // red) — currently only for the unsaved-draft case, so the user can see at a
+    // glance that their edits won't persist until they Save / Save As.
     public bool IsCredentialsHintWarning =>
         HasProfile && _profile.CurrentProfileName is null;
 
@@ -241,11 +230,8 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         ClearDirty();
     }
 
-    /// <summary>
-    /// Hydrate the four Confirm* observables from the Global-tier
-    /// settings file. Runs once at ctor time; Discard re-runs it to
-    /// roll back unsaved edits.
-    /// </summary>
+    // Hydrate the four Confirm* observables from the Global-tier settings file.
+    // Runs once at ctor time; Discard re-runs it to roll back unsaved edits.
     private void LoadConfirmFromGlobalSettings()
     {
         ConfirmSettings dto = new();
@@ -272,11 +258,8 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         _suppressDirty = prev;
     }
 
-    /// <summary>
-    /// Persist the four Confirm* observables back into the Global tier
-    /// and trigger the live mirror via
-    /// <see cref="SettingsService.GlobalSettingsChanged"/>.
-    /// </summary>
+    // Persist the four Confirm* observables back into the Global tier and trigger
+    // the live mirror via SettingsService.GlobalSettingsChanged.
     private void SaveConfirmToGlobalSettings()
     {
         ConfirmSettings dto = new()
@@ -292,23 +275,19 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         _globalSettings.Save();
     }
 
-    /// <summary>
-    /// Push the BBS section's character-side decisions onto the loaded
-    /// profile. The BBS link is now the folder the profile lives under
-    /// (there's no <c>BbsName</c> field on the DTO), so "pinning a BBS"
-    /// means one of three things depending on profile state:
-    ///   • Blank draft → <see cref="ProfileService.PinDraftBbs"/> records
-    ///     the home BBS so the draft's first Save lands under it.
-    ///   • Named profile, same BBS → nothing to move; just re-commit
-    ///     credentials.
-    ///   • Named profile, different BBS → re-home the on-disk folder.
-    ///     No name clash in the destination → silent move now. Clash →
-    ///     prompt for a new name asynchronously and finish the move in the
-    ///     continuation (Apply itself stays synchronous; the Settings
-    ///     window may close while the prompt is up).
-    /// Every path ends in <see cref="CommitCredentials"/>, which writes the
-    /// per-BBS credential slice and fires the mutate / pin notifications.
-    /// </summary>
+    // Push the BBS section's character-side decisions onto the loaded profile. The
+    // BBS link is now the folder the profile lives under (there's no BbsName field
+    // on the DTO), so "pinning a BBS" means one of three things depending on
+    // profile state:
+    //   • Blank draft → ProfileService.PinDraftBbs records the home BBS so the
+    //     draft's first Save lands under it.
+    //   • Named profile, same BBS → nothing to move; just re-commit credentials.
+    //   • Named profile, different BBS → re-home the on-disk folder. No name clash
+    //     in the destination → silent move now. Clash → prompt for a new name
+    //     asynchronously and finish the move in the continuation (Apply itself
+    //     stays synchronous; the Settings window may close while the prompt is up).
+    // Every path ends in CommitCredentials, which writes the per-BBS credential
+    // slice and fires the mutate / pin notifications.
     private void ApplyToCurrentProfile()
     {
         if (SelectedBbsName is not { } bbs) return;
@@ -344,12 +323,10 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         }
     }
 
-    /// <summary>
-    /// Re-home flow for the name-clash case: prompt the user for a fresh
-    /// profile name in the destination BBS, then move + commit. Fire-and-
-    /// forget from <see cref="ApplyToCurrentProfile"/> so Apply stays
-    /// synchronous; cancelling the prompt leaves the profile where it is.
-    /// </summary>
+    // Re-home flow for the name-clash case: prompt the user for a fresh profile
+    // name in the destination BBS, then move + commit. Fire-and-forget from
+    // ApplyToCurrentProfile so Apply stays synchronous; cancelling the prompt
+    // leaves the profile where it is.
     private async Task ReHomeWithRenameAsync(string bbs, CharacterProfile character)
     {
         string? currentName = _profile.CurrentProfileName;
@@ -381,11 +358,9 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         CommitCredentials(bbs, character);
     }
 
-    /// <summary>
-    /// Suggest a destination profile name that doesn't already exist under
-    /// <paramref name="bbs"/>, so the rename prompt's default is valid. Tries
-    /// the original name first, then appends <c> 2</c>, <c> 3</c>, …
-    /// </summary>
+    // Suggest a destination profile name that doesn't already exist under the
+    // given BBS, so the rename prompt's default is valid. Tries the original name
+    // first, then appends " 2", " 3", …
     private string DeriveUniqueName(string bbs, string baseName)
     {
         if (!_profile.Exists(bbs, baseName)) return baseName;
@@ -396,15 +371,13 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         }
     }
 
-    /// <summary>
-    /// Write the per-BBS credential slice (username, password, menu-nav,
-    /// sysop flag) onto the loaded profile and persist. Runs whenever any
-    /// CharacterProfile is loaded (draft or named) because the inline
-    /// EncryptedPassword is keyed off the per-user .credkey, not the profile
-    /// name — a draft's BbsCredentials survive into its first Save. Ends in
-    /// the mutate / pin notifications so the main window's title / Host /
-    /// Port re-resolve and any Quick Connect override clears.
-    /// </summary>
+    // Write the per-BBS credential slice (username, password, menu-nav, sysop
+    // flag) onto the loaded profile and persist. Runs whenever any
+    // CharacterProfile is loaded (draft or named) because the inline
+    // EncryptedPassword is keyed off the per-user .credkey, not the profile name —
+    // a draft's BbsCredentials survive into its first Save. Ends in the mutate /
+    // pin notifications so the main window's title / Host / Port re-resolve and any
+    // Quick Connect override clears.
     private void CommitCredentials(string bbs, CharacterProfile character)
     {
         // Case-insensitive: BBS names are folder names on a case-insensitive
@@ -626,14 +599,10 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         RefreshSuicidePassword();
     }
 
-    /// <summary>
-    /// Hydrate <see cref="SuicidePassword"/> from the loaded profile's
-    /// encrypted blob. Runs on every profile load / mutate / close so
-    /// the field reflects the live state — including the wipe case
-    /// where <see cref="Game.SuicidePasswordTracker"/> saw <c>pro</c>'s
-    /// "You do not have a suicide password set." line and cleared the
-    /// stored value.
-    /// </summary>
+    // Hydrate SuicidePassword from the loaded profile's encrypted blob. Runs on
+    // every profile load / mutate / close so the field reflects the live state —
+    // including the wipe case where Game.SuicidePasswordTracker saw `pro`'s "You do
+    // not have a suicide password set." line and cleared the stored value.
     private void RefreshSuicidePassword()
     {
         string decrypted = string.Empty;
@@ -722,14 +691,11 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         Dirty();
     }
 
-    /// <summary>
-    /// Toggling Show ON pulls the stored password out of the credential store
-    /// on demand — so users can verify what's saved without leaking the
-    /// plaintext through the UI on every Settings open. Toggling OFF
-    /// leaves the box as-is (the user may have started editing); if they
-    /// haven't touched it, <see cref="_pendingPassword"/> stays null and
-    /// the Apply path no-ops the credential store.
-    /// </summary>
+    // Toggling Show ON pulls the stored password out of the credential store on
+    // demand — so users can verify what's saved without leaking the plaintext
+    // through the UI on every Settings open. Toggling OFF leaves the box as-is (the
+    // user may have started editing); if they haven't touched it, _pendingPassword
+    // stays null and the Apply path no-ops the credential store.
     partial void OnShowPasswordChanged(bool value)
     {
         if (!value) return;

@@ -2,44 +2,31 @@ using FujinTerm.Game;
 
 namespace FujinTerm.Game.Map;
 
-/// <summary>
-/// Verb selection + achievability helpers for the door FSM. Captures
-/// the decision matrix the walker consults at door-handling time.
-/// </summary>
-/// <remarks>
-/// <para>
-/// The "unbashable strength threshold" — the highest
-/// <c>StatRequirement</c> a door can carry and still be bashable by
-/// some reachable build — is supplied per game-data set by
-/// <see cref="MaxStrengthIndex.MaxAchievableStrength"/>, which walks
-/// the Races table and the item <c>+Strength</c> slot matrix. Both
-/// decision methods take it as a parameter and fall back to
-/// <see cref="UnbashableStrengthThreshold"/> when no set is loaded.
-/// </para>
-/// </remarks>
+// Verb selection + achievability helpers for the door FSM. Captures the
+// decision matrix the walker consults at door-handling time.
+//
+// The "unbashable strength threshold" — the highest StatRequirement a
+// door can carry and still be bashable by some reachable build — is
+// supplied per game-data set by MaxStrengthIndex.MaxAchievableStrength,
+// which walks the Races table and the item +Strength slot matrix. Both
+// decision methods take it as a parameter and fall back to
+// UnbashableStrengthThreshold when no set is loaded.
 public static class DoorPolicy
 {
-    /// <summary>
-    /// Fallback ceiling for "is this door bashable by anyone on this
-    /// realm?", used when no game-data set is loaded so
-    /// <see cref="MaxStrengthIndex"/> can't compute the real maximum.
-    /// Doors with <c>StatRequirement &gt;</c> the effective ceiling are
-    /// treated as bash-impossible even when the data marks them
-    /// <c>(picklocks/strength)</c>.
-    /// </summary>
+    // Fallback ceiling for "is this door bashable by anyone on this
+    // realm?", used when no game-data set is loaded so MaxStrengthIndex
+    // can't compute the real maximum. Doors with StatRequirement above the
+    // effective ceiling are treated as bash-impossible even when the data
+    // marks them (picklocks/strength).
     public const int UnbashableStrengthThreshold = 200;
 
-    /// <summary>
-    /// True when the door has at least one viable opening path for
-    /// the current character — bash, pick, or "no req at all".
-    /// Consulted by the walker before sending the first verb so an
-    /// impossible door fails fast with a clean reason instead of
-    /// burning bash/pick attempts at the server.
-    /// </summary>
-    /// <param name="maxBashableStrength">The active set's
-    /// <see cref="MaxStrengthIndex.MaxAchievableStrength"/> — the highest
-    /// Strength any build can reach. A door needing more than this can't be
-    /// bashed by anyone. Defaults to <see cref="UnbashableStrengthThreshold"/>.</param>
+    // True when the door has at least one viable opening path for the
+    // current character — bash, pick, or "no req at all". Consulted by the
+    // walker before sending the first verb so an impossible door fails fast
+    // with a clean reason instead of burning bash/pick attempts at the
+    // server. maxBashableStrength is the active set's
+    // MaxAchievableStrength — the highest Strength any build can reach; a
+    // door needing more than this can't be bashed by anyone.
     public static bool IsAchievable(
         int statRequirement, bool canBash, int playerStrength, int playerPicklocks,
         int maxBashableStrength = UnbashableStrengthThreshold)
@@ -58,24 +45,12 @@ public static class DoorPolicy
         return bashable || pickable;
     }
 
-    /// <summary>
-    /// Decide which verb (<c>"bash"</c> or <c>"pick"</c>) to attempt
-    /// first for a door. The walker calls this once per request; the
-    /// FSM may fall back to the other verb on repeated failure.
-    /// </summary>
-    /// <param name="statRequirement">Door's required strength / picklock skill (0 = none).</param>
-    /// <param name="canBash">True when the modifier reads "picklocks/strength" — bash possible.</param>
-    /// <param name="playerStrength">Live <see cref="PlayerStats.Strength"/>.</param>
-    /// <param name="playerPicklocks">Live <see cref="PlayerStats.Picklocks"/>.</param>
-    /// <param name="preferPickOverBash">User setting from Settings.Other.</param>
-    /// <param name="maxBashableStrength">The active set's
-    /// <see cref="MaxStrengthIndex.MaxAchievableStrength"/> — the highest
-    /// Strength any build can reach. Bash is never chosen for a door needing
-    /// more than this. Defaults to <see cref="UnbashableStrengthThreshold"/>.</param>
-    /// <returns>
-    /// <c>"bash"</c>, <c>"pick"</c>, or <c>null</c> when neither verb
-    /// can succeed (caller surfaces a "no viable verb" failure).
-    /// </returns>
+    // Decide which verb ("bash" or "pick") to attempt first for a door.
+    // The walker calls this once per request; the FSM may fall back to the
+    // other verb on repeated failure. maxBashableStrength is the active
+    // set's MaxAchievableStrength — bash is never chosen for a door needing
+    // more than that. Returns "bash", "pick", or null when neither verb can
+    // succeed (caller surfaces a "no viable verb" failure).
     public static string? ChooseVerb(
         int statRequirement,
         bool canBash,

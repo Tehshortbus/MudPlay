@@ -2,11 +2,9 @@ using FujinTerm.Terminal;
 
 namespace FujinTerm.Services.Patterns;
 
-/// <summary>
-/// Matches when the line's text starts with a fixed prefix. Faster than
-/// <see cref="RegexPattern"/> for the common "line begins with X"
-/// classification cases; emits no capture groups.
-/// </summary>
+// Matches when the line's text starts with a fixed prefix. Faster than
+// RegexPattern for the common "line begins with X" classification cases; emits
+// no capture groups.
 public sealed class PrefixPattern : IMessagePattern
 {
     private static readonly string[] EmptyGroups = [];
@@ -16,12 +14,9 @@ public sealed class PrefixPattern : IMessagePattern
     public string Prefix { get; }
     public StringComparison Comparison { get; }
 
-    /// <summary>
-    /// Construct with the pattern's stable <paramref name="id"/>, the
-    /// <paramref name="prefix"/> text to look for, an optional
-    /// <paramref name="priority"/>, and an optional
-    /// <paramref name="comparison"/> mode (default ordinal — case-sensitive).
-    /// </summary>
+    // Construct with the pattern's stable id, the prefix text to look for, an
+    // optional priority, and an optional comparison mode (default ordinal —
+    // case-sensitive).
     public PrefixPattern(
         string id,
         string prefix,

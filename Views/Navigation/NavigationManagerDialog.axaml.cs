@@ -7,19 +7,15 @@ using FujinTerm.ViewModels.Navigation;
 
 namespace FujinTerm.Views.Navigation;
 
-/// <summary>
-/// Modeless dialog hosting saved Loops + Auto-Lair markers for
-/// rename/delete/unmark actions. Surfaced from the NavigationWindow's
-/// "Manage" chip in the action row.
-/// </summary>
-/// <remarks>
-/// Drag-drop lives in code-behind (allowed for drag-session state per
-/// CLAUDE.md): a leaf row is the drag source; a folder node — or the
-/// empty tree area (root) — is the drop target. The actual move routes
-/// back through the view-model's <see cref="NavigationManagerDialogViewModel.MoveLoopToFolder"/>
-/// / <see cref="NavigationManagerDialogViewModel.MoveLairToFolder"/> so
-/// the store + on-disk layout stay the single source of truth.
-/// </remarks>
+// Modeless dialog hosting saved Loops + Auto-Lair markers for
+// rename/delete/unmark actions. Surfaced from the NavigationWindow's "Manage"
+// chip in the action row.
+//
+// Drag-drop lives in code-behind (allowed for drag-session state per CLAUDE.md):
+// a leaf row is the drag source; a folder node — or the empty tree area (root) —
+// is the drop target. The actual move routes back through the view-model's
+// MoveLoopToFolder / MoveLairToFolder so the store + on-disk layout stay the
+// single source of truth.
 public partial class NavigationManagerDialog : Window
 {
     // In-process object reference carried by the drag session. Avalonia 12's

@@ -24,10 +24,9 @@
          compiled DLL; AppInfo.Version reads it back at runtime so the
          @version remote-command reply tracks every release without a
          hand-edit. Bump this here and the @version pong updates with
-         the next build. Major number tracks the master-plan phase
-         (Phase 6 → 0.6.x), minor for in-phase milestones, patch for
-         post-release fixes. -->
-    <Version>0.6.0</Version>
+         the next build. Semver policy (post-1.0): MAJOR = whole-program
+         refactor, MINOR = a large PR, PATCH = a small / bugfix PR. -->
+    <Version>1.0.0</Version>
 
     <!-- Memory footprint: pin the Workstation GC (one small heap) rather than
          the Server GC (a heap + background thread per core), which on a

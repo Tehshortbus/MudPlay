@@ -1,42 +1,32 @@
 namespace FujinTerm.Models.Profile;
 
-/// <summary>
-/// Per-character toolbar layout. An ordered list of items — top-to-bottom
-/// in Settings ≡ left-to-right on the live toolbar. Each item is either
-/// a button (resolved through <see cref="Services.ToolbarItemCatalogue"/>
-/// against its <see cref="ToolbarItem.ActionId"/>) or a separator.
-/// Persisted as the <c>"Toolbar"</c> entry in
-/// <see cref="CharacterProfile.Settings"/>.
-/// </summary>
-/// <remarks>
-/// Char-tier (not Global) — different characters land on different
-/// toolbar layouts. <c>null</c> Layout means "use defaults": the 13
-/// standard buttons in their original group order.
-/// </remarks>
+// Per-character toolbar layout. An ordered list of items — top-to-bottom in
+// Settings ≡ left-to-right on the live toolbar. Each item is either a button
+// (resolved through Services.ToolbarItemCatalogue against its
+// ToolbarItem.ActionId) or a separator. Persisted as the "Toolbar" entry in
+// CharacterProfile.Settings.
+//
+// Char-tier (not Global) — different characters land on different toolbar
+// layouts. null Layout means "use defaults": the 13 standard buttons in their
+// original group order.
 public sealed class ToolbarSettings
 {
-    /// <summary>
-    /// Ordered toolbar items. <c>null</c> or empty falls back to
-    /// <see cref="Services.ToolbarDefaults"/>.
-    /// </summary>
+    // Ordered toolbar items. null or empty falls back to
+    // Services.ToolbarDefaults.
     public List<ToolbarItem>? Layout { get; set; }
 
-    /// <summary>
-    /// Master visibility — when false the toolbar is hidden entirely
-    /// regardless of <see cref="Position"/>. Default true.
-    /// </summary>
+    // Master visibility — when false the toolbar is hidden entirely regardless
+    // of Position. Default true.
     public bool Visible { get; set; } = true;
 
-    /// <summary>
-    /// Edge the toolbar docks to — one of four. Top / Bottom mount it
-    /// horizontally; Left / Right mount it vertically. Ignored when
-    /// <see cref="Visible"/> is false. Default <see cref="ToolbarPosition.Top"/>
-    /// (the familiar MegaMUD spot).
-    /// </summary>
+    // Edge the toolbar docks to — one of four. Top / Bottom mount it
+    // horizontally; Left / Right mount it vertically. Ignored when Visible is
+    // false. Default ToolbarPosition.Top (the familiar MegaMUD spot).
     public ToolbarPosition Position { get; set; } = ToolbarPosition.Top;
 }
 
-/// <summary>Edge the toolbar docks to. Top / Bottom are horizontal mounts; Left / Right are vertical.</summary>
+// Edge the toolbar docks to. Top / Bottom are horizontal mounts; Left / Right
+// are vertical.
 public enum ToolbarPosition
 {
     Top,
@@ -45,15 +35,13 @@ public enum ToolbarPosition
     Right,
 }
 
-/// <summary>One entry in the persisted toolbar layout.</summary>
+// One entry in the persisted toolbar layout.
 public sealed class ToolbarItem
 {
     public ToolbarItemKind Kind { get; set; } = ToolbarItemKind.Button;
 
-    /// <summary>
-    /// Stable action id resolved against <see cref="Services.ToolbarItemCatalogue"/>.
-    /// <c>null</c> when <see cref="Kind"/> is <see cref="ToolbarItemKind.Separator"/>.
-    /// </summary>
+    // Stable action id resolved against Services.ToolbarItemCatalogue. null when
+    // Kind is ToolbarItemKind.Separator.
     public string? ActionId { get; set; }
 }
 

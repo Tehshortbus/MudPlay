@@ -7,20 +7,14 @@ using FujinTerm.Views.Settings;
 
 namespace FujinTerm.ViewModels.Settings;
 
-/// <summary>
-/// "Combat" tab — auto-attack engine config. Weapon Combat picks the items
-/// for each role, Targeting governs target order + attack timing + polite
-/// mode, Options governs room-skip + BS flow, Spell Combat picks per-role
-/// damage / debuff spells. Persists as the <c>"Combat"</c> entry in
-/// <see cref="CharacterProfile.Settings"/>.
-/// </summary>
-/// <remarks>
-/// Wires DTO storage only — <c>CombatManager</c> (the auto-attack engine
-/// that reads these values) lands in a later phase. No
-/// <c>ApplyToServices</c> call yet; CombatManager will subscribe to
-/// <see cref="ProfileService.ProfileLoaded"/> when it arrives and re-read
-/// the DTO from there.
-/// </remarks>
+// "Combat" tab — auto-attack engine config. Weapon Combat picks the items for
+// each role, Targeting governs target order + attack timing + polite mode,
+// Options governs room-skip + BS flow, Spell Combat picks per-role damage /
+// debuff spells. Persists as the "Combat" entry in CharacterProfile.Settings.
+//
+// Wires DTO storage only. There's no ApplyToServices call — CombatManager (the
+// auto-attack engine that reads these values) subscribes to
+// ProfileService.ProfileLoaded and re-reads the DTO from there.
 public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
 {
     private const string TabKey = "Combat";
@@ -37,13 +31,12 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
 
     public bool HasProfile => _profile.Current is not null;
 
-    /// <summary>Known-spell suggestions for the spell-combat typeahead boxes —
-    /// the current class's learnable list (level gate ignored), ordered by name
-    /// + distinct by cast-code, from
-    /// <see cref="Game.Spells.SpellbookState.AvailablePicks"/>. Each box commits
-    /// the 4-letter <see cref="Game.Spells.SpellPick.Short"/> cast-code (what the
-    /// game recognises — the same value <see cref="Models.Profile.CombatSpellSlot.SpellName"/>
-    /// stores). Refreshes when the spellbook rebuilds (class swap / reroll).</summary>
+    // Known-spell suggestions for the spell-combat typeahead boxes — the current
+    // class's learnable list (level gate ignored), ordered by name + distinct by
+    // cast-code, from Game.Spells.SpellbookState.AvailablePicks. Each box commits
+    // the 4-letter SpellPick.Short cast-code (what the game recognises — the same
+    // value CombatSpellSlot.SpellName stores). Refreshes when the spellbook
+    // rebuilds (class swap / reroll).
     public IReadOnlyList<Game.Spells.SpellPick> SpellSuggestions => _spellbook.AvailablePicks;
 
     public override Control View => _view ??= new CombatSectionView { DataContext = this };
@@ -78,8 +71,8 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
 
     // ----- Combat priority order ------------------------------------
 
-    /// <summary>The four combat categories in their fixed key order; the
-    /// ranking VM reorders them and reports each category's 1-based rank.</summary>
+    // The four combat categories in their fixed key order; the ranking VM reorders
+    // them and reports each category's 1-based rank.
     private static readonly (string Key, string Label, string? Tip)[] _priorityDefs =
     {
         ("Backstab", "Backstab",
@@ -92,8 +85,8 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
             "Priority of the physical weapon swing — the terminal fallback that always applies. Placing it above another category suppresses that category whenever a swing is possible."),
     };
 
-    /// <summary>Reorderable per-round action order. Row position is the rank,
-    /// so the four categories always form a clean 1..4 permutation.</summary>
+    // Reorderable per-round action order. Row position is the rank, so the four
+    // categories always form a clean 1..4 permutation.
     public PriorityRankingViewModel Priority { get; }
 
     // ----- Weapon slots --------------------------------------------
@@ -115,27 +108,20 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private bool _targetOrderNormal = true;
     [ObservableProperty] private bool _targetOrderReverse;
 
-    /// <summary>
-    /// Bound to the Target Priority ComboBox (the "who"). Default
-    /// <see cref="Models.Profile.TargetPriority.Default"/> — pick our own
-    /// target from game data; the follow modes mirror the party leader /
-    /// a named member's announced monster.
-    /// </summary>
+    // Bound to the Target Priority ComboBox (the "who"). Default
+    // TargetPriority.Default — pick our own target from game data; the follow
+    // modes mirror the party leader / a named member's announced monster.
     [ObservableProperty] private TargetPriority _targetPriority = TargetPriority.Default;
 
-    /// <summary>Party member whose target we mirror when
-    /// <see cref="TargetPriority"/> is
-    /// <see cref="Models.Profile.TargetPriority.FollowMember"/>.</summary>
+    // Party member whose target we mirror when TargetPriority is FollowMember.
     [ObservableProperty] private string _targetPriorityMemberName = string.Empty;
 
-    /// <summary>True when the Target-Priority member-name field is enabled —
-    /// only meaningful for
-    /// <see cref="Models.Profile.TargetPriority.FollowMember"/>.</summary>
+    // True when the Target-Priority member-name field is enabled — only meaningful
+    // for TargetPriority.FollowMember.
     public bool TargetPriorityMemberEnabled =>
         TargetPriority == TargetPriority.FollowMember;
 
-    /// <summary>Target Priority dropdown rows — friendly labels paired with
-    /// the enum value.</summary>
+    // Target Priority dropdown rows — friendly labels paired with the enum value.
     public IReadOnlyList<TargetPriorityOption> TargetPriorityOptions { get; } =
         new[]
         {
@@ -144,22 +130,18 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
             new TargetPriorityOption(TargetPriority.FollowMember, "Attack what player attacks"),
         };
 
-    /// <summary>
-    /// Bound to the Attack Order ComboBox (the "when"). Default
-    /// <see cref="AttackTiming.Default"/> — no party / room re-fire.
-    /// </summary>
+    // Bound to the Attack Order ComboBox (the "when"). Default AttackTiming.Default
+    // — no party / room re-fire.
     [ObservableProperty] private AttackTiming _attackTiming = AttackTiming.Default;
 
-    /// <summary>Player name required when
-    /// <see cref="AttackTiming"/> is <see cref="AttackTiming.AttackAfter"/>.</summary>
+    // Player name required when AttackTiming is AttackAfter.
     [ObservableProperty] private string _attackAfterPlayerName = string.Empty;
 
-    /// <summary>True when the player-name field is enabled — only
-    /// meaningful for <see cref="AttackTiming.AttackAfter"/>.</summary>
+    // True when the player-name field is enabled — only meaningful for
+    // AttackTiming.AttackAfter.
     public bool AttackAfterEnabled => AttackTiming == AttackTiming.AttackAfter;
 
-    /// <summary>Available <see cref="AttackTiming"/> values for the
-    /// ComboBox ItemsSource.</summary>
+    // Available AttackTiming values for the ComboBox ItemsSource.
     public IReadOnlyList<AttackTiming> AttackTimingOptions { get; } =
         new[]
         {
@@ -169,8 +151,7 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
             AttackTiming.AttackAfter,
         };
 
-    /// <summary>Bound to the PoliteMode ComboBox <c>SelectedItem</c>.
-    /// Default <see cref="PoliteMode.Off"/>.</summary>
+    // Bound to the PoliteMode ComboBox SelectedItem. Default PoliteMode.Off.
     [ObservableProperty] private PoliteMode _politeMode = PoliteMode.Off;
 
     public IReadOnlyList<PoliteMode> PoliteModeOptions { get; } =
@@ -194,14 +175,13 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
     // above. HealthManager.TryFlee reads RunDirection / BreakBeforeFleeing
     // from CombatSettings.
 
-    /// <summary>When checked (default) an auto-flee retraces the rooms just
-    /// walked through (<see cref="RunDirection.Backward"/>); when unchecked it
-    /// pushes forward along the active walker path
-    /// (<see cref="RunDirection.Forward"/>).</summary>
+    // When checked (default) an auto-flee retraces the rooms just walked through
+    // (RunDirection.Backward); when unchecked it pushes forward along the active
+    // walker path (RunDirection.Forward).
     [ObservableProperty] private bool _goBackwardsIfRunning = true;
 
-    /// <summary>When checked (default) <c>break</c> is sent before the first
-    /// flee move so auto-attack disengages and the move lands cleanly.</summary>
+    // When checked (default) `break` is sent before the first flee move so
+    // auto-attack disengages and the move lands cleanly.
     [ObservableProperty] private bool _breakBeforeFleeing = true;
 
     // ----- Spell combat ---------------------------------------------
@@ -364,13 +344,12 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
     private static string? NullIfBlank(string? s) =>
         string.IsNullOrWhiteSpace(s) ? null : s.Trim();
 
-    /// <summary>Spell-slot integer fields share a 0..100,000 range — covers
-    /// both percentage and absolute mana thresholds + the cast / enemy
-    /// counts which top out far below.</summary>
+    // Spell-slot integer fields share a 0..100,000 range — covers both percentage
+    // and absolute mana thresholds + the cast / enemy counts which top out far below.
     private static int ClampSpell(int value) => Math.Clamp(value, 0, 100_000);
 
-    /// <summary>Per-room cast cap: <c>null</c> (blank) stays "no limit";
-    /// a supplied value clamps to the editor's 0..100 range (0 = never cast).</summary>
+    // Per-room cast cap: null (blank) stays "no limit"; a supplied value clamps to
+    // the editor's 0..100 range (0 = never cast).
     private static int? ClampCasts(int? value) => value is { } v ? Math.Clamp(v, 0, 100) : null;
 
     private void OnProfileChanged(CharacterProfile _) => ReloadAfterProfileSwap();
@@ -573,7 +552,6 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
     // Display
     partial void OnShowCombatRoundTotalsChanged(bool value)      => MarkDirty();
 
-    /// <summary>One Target Priority dropdown row — pairs the enum value with
-    /// its friendly label.</summary>
+    // One Target Priority dropdown row — pairs the enum value with its friendly label.
     public sealed record TargetPriorityOption(TargetPriority Value, string Label);
 }

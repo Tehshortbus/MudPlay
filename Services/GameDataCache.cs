@@ -5,74 +5,51 @@ using FujinTerm.Game;
 
 namespace FujinTerm.Services;
 
-/// <summary>
-/// Live mirror of the imported MajorMUD game data on disk. Holds the
-/// raw <see cref="JsonDocument"/> per loaded table for the currently
-/// active set, exposes set switching with an
-/// <see cref="ActiveSetChanged"/> event, and gives later phases the
-/// eviction primitive they need to drop raw JSON once it has been
-/// folded into typed model collections (per-tab services in PRs 5.5+
-/// own those conversions).
-/// </summary>
-/// <remarks>
-/// <para>
-/// Storage layout is the one written by <see cref="MdbImporter"/>:
-/// <c>Data/game data/{set-name}/{table-name}.json</c>. Each
-/// subdirectory of <see cref="AppPaths.GameDataRoot"/> is a switchable
-/// set; the set picker on the Game Data menu (Phase 5 PR 5.22) reads
-/// <see cref="AvailableSets"/>.
-/// </para>
-/// <para>
-/// Tables are loaded lazily — <see cref="SwitchSet"/> only flips the
-/// active set name and clears the prior set's table cache; consumers
-/// pull tables on demand via <see cref="GetRawTable"/>. This keeps
-/// the working set small when only a few tables are actually needed
-/// for a given subsystem.
-/// </para>
-/// <para>
-/// Memory hygiene (per MudProxy's MemoryOptimization plan): once a
-/// per-tab consumer has converted the raw <see cref="JsonDocument"/>
-/// into typed model collections it calls <see cref="EvictTable"/> to
-/// drop the raw bytes — savings on large data sets land in the
-/// 150–170 MB range there. <see cref="EvictAll"/> wipes everything
-/// without changing the active set.
-/// </para>
-/// <para>
-/// Wiring (Phase 0 PR 0.2 event protocol): <see cref="AppServices"/>
-/// constructs the cache and subscribes it to
-/// <see cref="ProfileService.ProfileLoaded"/> +
-/// <see cref="ProfileService.BbsPinApplied"/> so the pinned BBS's
-/// <see cref="Models.Settings.BbsProfile.ActiveGameDataSet"/> drives
-/// the switch automatically (falling back to
-/// <see cref="Models.Settings.GlobalSettings.DefaultGameDataSet"/>
-/// when no BBS is pinned). Manual switches via the File → Game Data
-/// → Active set menu write back to the resolved BBS profile.
-/// </para>
-/// </remarks>
+// Live mirror of the imported MajorMUD game data on disk. Holds the raw
+// JsonDocument per loaded table for the currently active set, exposes set
+// switching with an ActiveSetChanged event, and provides the eviction primitive
+// consumers need to drop raw JSON once it has been folded into typed model
+// collections (the per-tab services own those conversions).
+//
+// Storage layout is the one written by MdbImporter:
+// Data/game data/{set-name}/{table-name}.json. Each subdirectory of
+// AppPaths.GameDataRoot is a switchable set; the set picker on the Game Data menu
+// reads AvailableSets.
+//
+// Tables are loaded lazily — SwitchSet only flips the active set name and clears
+// the prior set's table cache; consumers pull tables on demand via GetRawTable.
+// This keeps the working set small when only a few tables are actually needed
+// for a given subsystem.
+//
+// Memory hygiene: once a per-tab consumer has converted the raw JsonDocument into
+// typed model collections it calls EvictTable to drop the raw bytes — savings on
+// large data sets land in the 150–170 MB range. EvictAll wipes everything
+// without changing the active set.
+//
+// Wiring: AppServices constructs the cache and subscribes it to
+// ProfileService.ProfileLoaded + ProfileService.BbsPinApplied so the pinned BBS's
+// BbsProfile.ActiveGameDataSet drives the switch automatically (falling back to
+// GlobalSettings.DefaultGameDataSet when no BBS is pinned). Manual switches via
+// the File → Game Data → Active set menu write back to the resolved BBS profile.
 public sealed class GameDataCache
 {
     private readonly Dictionary<string, JsonDocument> _tables = new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>Root the cache walks (<see cref="AppPaths.GameDataRoot"/>). Captured at construction.</summary>
+    // Root the cache walks (AppPaths.GameDataRoot). Captured at construction.
     public string GameDataRoot { get; }
 
-    /// <summary>Name of the active set, or <c>null</c> when nothing is selected.</summary>
+    // Name of the active set, or null when nothing is selected.
     public string? ActiveSet { get; private set; }
 
-    /// <summary>
-    /// Formula family the active set targets, derived from its <c>Info</c>
-    /// table the same way MMUD Explorer does: <c>Legit == 2</c> →
-    /// <see cref="RealmType.ParaMud"/> (GreaterMUD / Paradigm), anything
-    /// else → <see cref="RealmType.Stock"/>. Returns <see cref="RealmType.Stock"/>
-    /// when no set is active or the <c>Info</c> table is missing / malformed
-    /// (Stock is the safe default — most realms are Stock-derived).
-    /// </summary>
-    /// <remarks>
-    /// Reads through <see cref="GetRawTable"/>, so the first access lazily
-    /// loads (and caches) <c>Info.json</c>. The realm only changes when the
-    /// active set changes, so callers can read this per-calculation cheaply;
-    /// the <c>Info</c> table is tiny.
-    /// </remarks>
+    // Formula family the active set targets, derived from its Info table:
+    // Legit == 2 → RealmType.ParaMud (GreaterMUD / Paradigm), anything else →
+    // RealmType.Stock. Returns RealmType.Stock when no set is active or the Info
+    // table is missing / malformed (Stock is the safe default — most realms are
+    // Stock-derived).
+    //
+    // Reads through GetRawTable, so the first access lazily loads (and caches)
+    // Info.json. The realm only changes when the active set changes, so callers
+    // can read this per-calculation cheaply; the Info table is tiny.
     public RealmType ActiveRealm
     {
         get
@@ -92,38 +69,29 @@ public sealed class GameDataCache
         }
     }
 
-    /// <summary>
-    /// Fires whenever <see cref="ActiveSet"/> changes — including the
-    /// transition from a real set to <c>null</c> (no set picked).
-    /// Carries the new set name. Subscribers should drop any per-set
-    /// state they had cached and re-pull whatever they need from the
-    /// cache.
-    /// </summary>
+    // Fires whenever ActiveSet changes — including the transition from a real set
+    // to null (no set picked). Carries the new set name. Subscribers should drop
+    // any per-set state they had cached and re-pull whatever they need from the
+    // cache.
     public event Action<string?>? ActiveSetChanged;
 
-    /// <summary>
-    /// Optional log sink — when set (production wires
-    /// <see cref="AppServices.Log"/> after construction), every
-    /// <see cref="SwitchSet"/> emits an Info entry naming the
-    /// outgoing + incoming set so the user can verify swap success
-    /// in the program log. Tests leave it null.
-    /// </summary>
+    // Optional log sink — when set (production wires AppServices.Log after
+    // construction), every SwitchSet emits an Info entry naming the outgoing +
+    // incoming set so the user can verify swap success in the program log. Tests
+    // leave it null.
     public LogService? Log { get; set; }
 
     public GameDataCache() : this(AppPaths.GameDataRoot) { }
 
-    /// <summary>Test seam — lets tests point at an isolated root.</summary>
+    // Test seam — lets tests point at an isolated root.
     internal GameDataCache(string gameDataRoot)
     {
         GameDataRoot = gameDataRoot;
         Directory.CreateDirectory(GameDataRoot);
     }
 
-    /// <summary>
-    /// Imported sets visible on disk, alphabetical. Each entry is a
-    /// folder name directly under <see cref="GameDataRoot"/> — pass
-    /// these to <see cref="SwitchSet"/> to activate.
-    /// </summary>
+    // Imported sets visible on disk, alphabetical. Each entry is a folder name
+    // directly under GameDataRoot — pass these to SwitchSet to activate.
     public IReadOnlyList<string> AvailableSets => EnumerateSets();
 
     private IReadOnlyList<string> EnumerateSets()
@@ -137,12 +105,8 @@ public sealed class GameDataCache
             .ToArray();
     }
 
-    /// <summary>
-    /// Table names currently held in the raw cache for
-    /// <see cref="ActiveSet"/>. Empty before any
-    /// <see cref="GetRawTable"/> call; empty again after
-    /// <see cref="EvictAll"/>.
-    /// </summary>
+    // Table names currently held in the raw cache for ActiveSet. Empty before any
+    // GetRawTable call; empty again after EvictAll.
     public IReadOnlyList<string> LoadedTables
     {
         get
@@ -151,18 +115,14 @@ public sealed class GameDataCache
         }
     }
 
-    /// <summary>
-    /// Flip the active set. Pass <c>null</c> to clear. Fires
-    /// <see cref="ActiveSetChanged"/> with the new value when the
-    /// effective set changes; suppresses the event on no-op switches.
-    /// </summary>
-    /// <remarks>
-    /// Setting an unknown set name still flips <see cref="ActiveSet"/>
-    /// to that string — the cache assumes the caller knows what
-    /// they're doing (e.g. a profile points at a set that hasn't been
-    /// imported yet, so the user can see the mismatch in the UI rather
-    /// than silently falling back).
-    /// </remarks>
+    // Flip the active set. Pass null to clear. Fires ActiveSetChanged with the
+    // new value when the effective set changes; suppresses the event on no-op
+    // switches.
+    //
+    // Setting an unknown set name still flips ActiveSet to that string — the
+    // cache assumes the caller knows what they're doing (e.g. a profile points at
+    // a set that hasn't been imported yet, so the user can see the mismatch in
+    // the UI rather than silently falling back).
     public void SwitchSet(string? setName)
     {
         // Normalize empty → null so the event payload is consistent.
@@ -184,22 +144,17 @@ public sealed class GameDataCache
         ActiveSetChanged?.Invoke(setName);
     }
 
-    /// <summary>
-    /// Reload the raw cache for the current set. Cheaper than
-    /// SwitchSet(null) → SwitchSet(name) because no event fires.
-    /// </summary>
+    // Reload the raw cache for the current set. Cheaper than SwitchSet(null) →
+    // SwitchSet(name) because no event fires.
     public void Reload()
     {
         EvictAll();
     }
 
-    /// <summary>
-    /// Lazy-load (or return the cached) <see cref="JsonDocument"/> for
-    /// <paramref name="tableName"/> in the active set. Returns
-    /// <c>null</c> when no set is active or the table file does not
-    /// exist on disk. The table name is matched case-insensitively
-    /// against the JSON filename.
-    /// </summary>
+    // Lazy-load (or return the cached) JsonDocument for tableName in the active
+    // set. Returns null when no set is active or the table file does not exist on
+    // disk. The table name is matched case-insensitively against the JSON
+    // filename.
     public JsonDocument? GetRawTable(string tableName)
     {
         if (ActiveSet is null) return null;
@@ -222,22 +177,17 @@ public sealed class GameDataCache
         }
     }
 
-    /// <summary>Try-get variant of <see cref="GetRawTable"/>.</summary>
+    // Try-get variant of GetRawTable.
     public bool TryGetRawTable(string tableName, out JsonDocument? doc)
     {
         doc = GetRawTable(tableName);
         return doc is not null;
     }
 
-    /// <summary>
-    /// Lookup the <c>Name</c> field of the row in
-    /// <paramref name="tableName"/> whose <c>Number</c> field equals
-    /// <paramref name="number"/>. Returns <c>null</c> when the table
-    /// isn't in the active set, the row isn't found, or either field
-    /// is missing on the matched row. Used by edit dialogs to render
-    /// <see cref="Models.GameData.GameDataLink"/> back-references as
-    /// human-readable labels.
-    /// </summary>
+    // Lookup the Name field of the row in tableName whose Number field equals
+    // number. Returns null when the table isn't in the active set, the row isn't
+    // found, or either field is missing on the matched row. Used by edit dialogs
+    // to render GameDataLink back-references as human-readable labels.
     public string? FindNameByNumber(string tableName, int number)
     {
         JsonDocument? doc = GetRawTable(tableName);
@@ -253,16 +203,12 @@ public sealed class GameDataCache
         return null;
     }
 
-    /// <summary>
-    /// Return the row in <paramref name="tableName"/> whose <c>Name</c>
-    /// field equals <paramref name="name"/> (case-insensitive), or
-    /// <c>null</c> when the table isn't in the active set or no row
-    /// matches. The returned <see cref="JsonElement"/> stays valid for
-    /// the lifetime of the cached <see cref="JsonDocument"/> (until the
-    /// next <see cref="SwitchSet"/> / <see cref="EvictTable"/>). Used by
-    /// the trap-delegation capability lookup to resolve a party member's
-    /// class / race row before scanning its abilities.
-    /// </summary>
+    // Return the row in tableName whose Name field equals name (case-insensitive),
+    // or null when the table isn't in the active set or no row matches. The
+    // returned JsonElement stays valid for the lifetime of the cached
+    // JsonDocument (until the next SwitchSet / EvictTable). Used by the
+    // trap-delegation capability lookup to resolve a party member's class / race
+    // row before scanning its abilities.
     public JsonElement? FindRowByName(string tableName, string name)
     {
         ArgumentNullException.ThrowIfNull(name);
@@ -278,11 +224,8 @@ public sealed class GameDataCache
         return null;
     }
 
-    /// <summary>
-    /// Drop the cached <see cref="JsonDocument"/> for one table. Used
-    /// by per-tab consumers after they've folded the raw JSON into
-    /// typed model collections (the MemoryOptimization pattern).
-    /// </summary>
+    // Drop the cached JsonDocument for one table. Used by per-tab consumers after
+    // they've folded the raw JSON into typed model collections.
     public bool EvictTable(string tableName)
     {
         ArgumentNullException.ThrowIfNull(tableName);
@@ -294,11 +237,8 @@ public sealed class GameDataCache
         }
     }
 
-    /// <summary>
-    /// Drop every cached table. Called implicitly by
-    /// <see cref="SwitchSet"/> and <see cref="Reload"/>; callers can
-    /// use it to free memory after a bulk-conversion pass too.
-    /// </summary>
+    // Drop every cached table. Called implicitly by SwitchSet and Reload; callers
+    // can use it to free memory after a bulk-conversion pass too.
     public void EvictAll()
     {
         lock (_tables)
@@ -308,12 +248,10 @@ public sealed class GameDataCache
         }
     }
 
-    /// <summary>
-    /// Resolve a table-name → JSON file path under the given set.
-    /// Looks for a case-insensitive match against existing files so the
-    /// caller can pass either the table's wire name or the on-disk
-    /// filename. Returns <c>null</c> when no match exists.
-    /// </summary>
+    // Resolve a table-name → JSON file path under the given set. Looks for a
+    // case-insensitive match against existing files so the caller can pass either
+    // the table's wire name or the on-disk filename. Returns null when no match
+    // exists.
     private string? ResolveTablePath(string setName, string tableName)
     {
         string setDir = Path.Combine(GameDataRoot, setName);

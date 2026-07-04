@@ -7,91 +7,58 @@ using FujinTerm.Services.Patterns;
 
 namespace FujinTerm.Game.Combat;
 
-/// <summary>
-/// Phase 9 PR 9.A — auto-attack engine. Subscribes to
-/// <see cref="RoomEntityClassifier.EntitiesObserved"/> and (for
-/// re-fire pacing) to <see cref="KnownPatterns.PartyAttackAnnounce"/>.
-/// Picks a target per <see cref="MonsterOverlay.Priority"/> +
-/// <see cref="CombatSettings.TargetOrder"/>, filters out anything not
-/// flagged <see cref="MonsterRelationship.Enemy"/>, and sends the
-/// configured attack command. Server auto-repeats swings each
-/// 5-second round; CombatManager re-picks when the room re-displays
-/// without the current target, and resumes (re-engages) when the
-/// server reports <c>*Combat Off*</c> mid-fight — e.g. a manual buff /
-/// heal cast interrupts our round but the mob is still alive and
-/// swinging at us.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Target selection — single source of truth across the engine:
-/// </para>
-/// <list type="number">
-/// <item>Classifier filters Also-Here to <see cref="EntityKind.Monster"/>.</item>
-/// <item>Each monster's <see cref="MonsterOverlay"/> is resolved via
-/// <see cref="MonsterOverlaySeedStore"/> (Defaults tier) merged with
-/// <see cref="SettingsResolver.ResolveGameData{T}"/> (Global / BBS /
-/// Char overrides).</item>
-/// <item>Engageable = <see cref="MonsterRelationship.Enemy"/> AND
-/// <see cref="MonsterMessageRecord.DeathLine"/> non-empty (i.e. the
-/// monster has a known death-line pattern so it's killable).</item>
-/// <item>Engageable list is sorted by
-/// <see cref="MonsterAttackPriority"/> (First=0 highest, Last=4
-/// lowest), tiebreak by appearance order in the Also-Here line.</item>
-/// <item><see cref="CombatSettings.TargetOrder"/> picks
-/// <c>Normal</c> = first sorted (highest prio) or <c>Reverse</c> =
-/// last sorted (lowest prio).</item>
-/// </list>
-/// <para>
-/// A "moves to attack X" announce drives two independent knobs (the
-/// "who" and the "when" of party combat):
-/// </para>
-/// <para>
-/// Target Priority — WHO (<see cref="CombatSettings.TargetPriority"/>):
-/// </para>
-/// <list type="bullet">
-/// <item><see cref="TargetPriority.Default"/> — pick our own target;
-/// ignore others' announces for target selection.</item>
-/// <item><see cref="TargetPriority.FollowLeader"/> — switch our target
-/// to the party leader's announced monster
-/// (<see cref="PartyState.LeaderName"/>).</item>
-/// <item><see cref="TargetPriority.FollowMember"/> — switch to the
-/// named <see cref="CombatSettings.TargetPriorityMemberName"/>'s
-/// announced monster.</item>
-/// </list>
-/// <para>
-/// Either follow mode applies the standard un-actionable failback: if
-/// game data proves we can't hit the followed monster (no weapon hits,
-/// every attack spell level-blocked) we re-pick our own next actionable
-/// target instead of following into a fight we can't contribute to.
-/// </para>
-/// <para>
-/// Attack Order — WHEN (<see cref="CombatSettings.AttackTiming"/>):
-/// re-fires our OWN current target to control initiative order; never
-/// switches the monster.
-/// </para>
-/// <list type="bullet">
-/// <item><see cref="AttackTiming.Default"/> — never re-fire.</item>
-/// <item><see cref="AttackTiming.AttackLastParty"/> — re-fire on a
-/// party member's announce. Excludes non-party players.</item>
-/// <item><see cref="AttackTiming.AttackLastRoom"/> — re-fire on
-/// anyone's announce.</item>
-/// <item><see cref="AttackTiming.AttackAfter"/> — re-fire only on
-/// the named <see cref="CombatSettings.AttackAfterPlayerName"/>'s
-/// announce.</item>
-/// </list>
-/// <para>
-/// Our own announce never drives either knob (we already swung; matched
-/// against the own-name reader). Attack Order re-fire requires a non-null
-/// <see cref="CurrentTarget"/> — we can only re-issue against a target we
-/// already chose. The interim-pick rule: on room entry we dispatch our own
-/// target immediately (<see cref="OnEntitiesObserved"/>), then a follow mode
-/// switches to the leader / member's target the moment they announce.
-/// </para>
-/// </remarks>
+// Auto-attack engine. Subscribes to RoomEntityClassifier.EntitiesObserved and
+// (for re-fire pacing) to KnownPatterns.PartyAttackAnnounce. Picks a target per
+// MonsterOverlay.Priority + CombatSettings.TargetOrder, filters out anything not
+// flagged MonsterRelationship.Enemy, and sends the configured attack command.
+// Server auto-repeats swings each 5-second round; CombatManager re-picks when
+// the room re-displays without the current target, and resumes (re-engages)
+// when the server reports *Combat Off* mid-fight — e.g. a manual buff / heal
+// cast interrupts our round but the mob is still alive and swinging at us.
+//
+// Target selection — single source of truth across the engine:
+//   1. Classifier filters Also-Here to EntityKind.Monster.
+//   2. Each monster's MonsterOverlay is resolved via MonsterOverlaySeedStore
+//      (Defaults tier) merged with SettingsResolver.ResolveGameData (Global /
+//      BBS / Char overrides).
+//   3. Engageable = MonsterRelationship.Enemy (Relationship-based only).
+//   4. Engageable list is sorted by MonsterAttackPriority (First=0 highest,
+//      Last=4 lowest), tiebreak by appearance order in the Also-Here line.
+//   5. CombatSettings.TargetOrder picks Normal = first sorted (highest prio) or
+//      Reverse = last sorted (lowest prio).
+//
+// A "moves to attack X" announce drives two independent knobs (the "who" and
+// the "when" of party combat):
+//
+// Target Priority — WHO (CombatSettings.TargetPriority):
+//   - Default      — pick our own target; ignore others' announces.
+//   - FollowLeader — switch our target to the party leader's announced monster
+//                    (PartyState.LeaderName).
+//   - FollowMember — switch to the named TargetPriorityMemberName's monster.
+// Either follow mode applies the standard un-actionable failback: if game data
+// proves we can't hit the followed monster (no weapon hits, every attack spell
+// level-blocked) we re-pick our own next actionable target instead of following
+// into a fight we can't contribute to.
+//
+// Attack Order — WHEN (CombatSettings.AttackTiming): re-fires our OWN current
+// target to control initiative order; never switches the monster.
+//   - Default         — never re-fire.
+//   - AttackLastParty — re-fire on a party member's announce (excludes
+//                       non-party players).
+//   - AttackLastRoom  — re-fire on anyone's announce.
+//   - AttackAfter     — re-fire only on the named AttackAfterPlayerName's
+//                       announce.
+//
+// Our own announce never drives either knob (we already swung; matched against
+// the own-name reader). Attack Order re-fire requires a non-null CurrentTarget —
+// we can only re-issue against a target we already chose. The interim-pick rule:
+// on room entry we dispatch our own target immediately (OnEntitiesObserved),
+// then a follow mode switches to the leader / member's target the moment they
+// announce.
 public sealed partial class CombatManager : IDisposable
 {
-    /// <summary>LogService category — appears as <c>[Combat]</c> rows
-    /// per swing decision + target swap + re-fire.</summary>
+    // LogService category — appears as [Combat] rows per swing decision + target
+    // swap + re-fire.
     public const string LogCategory = "Combat";
 
     private readonly RoomEntityClassifier _classifier;
@@ -118,15 +85,15 @@ public sealed partial class CombatManager : IDisposable
     private readonly IDisposable _spellNoEffectSub;
     private readonly IDisposable _combatStatusSub;
 
-    /// <summary>Minimum gap between safety-net <c>l</c> refreshes. Keeps
-    /// a flurry of miss/hit lines from spamming the server.</summary>
+    // Minimum gap between safety-net `l` refreshes. Keeps a flurry of miss/hit
+    // lines from spamming the server.
     private static readonly TimeSpan RoomRefreshCooldown = TimeSpan.FromSeconds(3);
 
-    /// <summary>How long to wait for the server's <c>*Combat Engaged*</c>
-    /// after sending a fresh attack before assuming the attack hit a stale
-    /// room view and firing a CR re-display. One combat round — a real
-    /// engage prints the line well within a round, so a full round with no
-    /// confirmation means the named target isn't actually here.</summary>
+    // How long to wait for the server's *Combat Engaged* after sending a fresh
+    // attack before assuming the attack hit a stale room view and firing a CR
+    // re-display. One combat round — a real engage prints the line well within a
+    // round, so a full round with no confirmation means the named target isn't
+    // actually here.
     private static readonly TimeSpan EngageConfirmWindow = TimeSpan.FromSeconds(5);
 
     private Action<byte[]>? _wireSender;
@@ -135,96 +102,70 @@ public sealed partial class CombatManager : IDisposable
     private Func<bool>? _seeHiddenClearActive;
     private string? _currentTarget;
 
-    /// <summary>
-    /// Spell-vs-weapon mode bridge (combat-spell economy, opt-in via
-    /// <see cref="SetCombatSpellCaster"/>). Non-null = the current round's
-    /// action is a combat spell against this RawName, so the tick
-    /// heartbeat (<see cref="OnCombatTick"/>) must re-issue the cast each
-    /// round (casts don't auto-repeat server-side the way weapon swings
-    /// do). <c>null</c> = weapon mode (server auto-repeats) or idle. Every
-    /// weapon <see cref="SendAttack"/> clears it — any swing exits spell
-    /// mode. Lives in the main file because <see cref="SendAttack"/>
-    /// touches it; the rest of the spell machinery is in
-    /// <c>CombatManager.Spells.cs</c>.
-    /// </summary>
+    // Spell-vs-weapon mode bridge (combat-spell economy, opt-in via
+    // SetCombatSpellCaster). Non-null = the current round's action is a combat
+    // spell against this RawName, so the tick heartbeat (OnCombatTick) must
+    // re-issue the cast each round (casts don't auto-repeat server-side the way
+    // weapon swings do). null = weapon mode (server auto-repeats) or idle. Every
+    // weapon SendAttack clears it — any swing exits spell mode. Lives in the main
+    // file because SendAttack touches it; the rest of the spell machinery is in
+    // CombatManager.Spells.cs.
     private string? _castingSpellTarget;
 
     private string? _lastAttackCommand;
     private DateTimeOffset _lastRoomRefreshAt = DateTimeOffset.MinValue;
     private bool _disposed;
 
-    /// <summary>
-    /// Set when the server emits <c>*Combat Off*</c> — our auto-attack
-    /// stopped. The server fires this on a kill AND whenever a round is
-    /// interrupted by a non-attack action (we manually cast a buff /
-    /// heal mid-round, got stunned, etc.). On a kill the room re-display
-    /// / death path clears <see cref="_currentTarget"/> and we re-pick
-    /// normally; on an interrupt the target is still alive in the room
-    /// but the server is no longer swinging for us. This flag lets the
-    /// next incoming mob combat-line (<see cref="OnCombatLine"/>) resume
-    /// the attack instead of short-circuiting on the stale
-    /// <see cref="_currentTarget"/> ("server still swinging"). Cleared
-    /// the moment we send any attack or the server reports
-    /// <c>Engaged</c>.
-    /// </summary>
+    // Set when the server emits *Combat Off* — our auto-attack stopped. The
+    // server fires this on a kill AND whenever a round is interrupted by a
+    // non-attack action (we manually cast a buff / heal mid-round, got stunned,
+    // etc.). On a kill the room re-display / death path clears _currentTarget and
+    // we re-pick normally; on an interrupt the target is still alive in the room
+    // but the server is no longer swinging for us. This flag lets the next
+    // incoming mob combat-line (OnCombatLine) resume the attack instead of
+    // short-circuiting on the stale _currentTarget ("server still swinging").
+    // Cleared the moment we send any attack or the server reports Engaged.
     private bool _combatOff;
 
-    /// <summary>
-    /// Timestamp of the last interrupt-resume (see
-    /// <see cref="TryResumeEngage"/>) — paces re-engages to one per round so
-    /// a non-sustaining attack (KAI pummel, which emits <c>*Combat Off*</c>
-    /// after every strike) can't spin.
-    /// </summary>
+    // Timestamp of the last interrupt-resume (see TryResumeEngage) — paces
+    // re-engages to one per round so a non-sustaining attack (KAI pummel, which
+    // emits *Combat Off* after every strike) can't spin.
     private DateTimeOffset _lastInterruptResumeAt = DateTimeOffset.MinValue;
 
-    /// <summary>
-    /// Minimum spacing between interrupt-resumes. Shorter than a combat
-    /// round (~5s) so a legitimate next-round resume isn't blocked, but long
-    /// enough to swallow the instant <c>Off</c>/<c>Engaged</c> cycle a
-    /// per-strike attack produces.
-    /// </summary>
+    // Minimum spacing between interrupt-resumes. Shorter than a combat round
+    // (~5s) so a legitimate next-round resume isn't blocked, but long enough to
+    // swallow the instant Off/Engaged cycle a per-strike attack produces.
     private static readonly TimeSpan ResumePacing = TimeSpan.FromMilliseconds(2500);
 
-    /// <summary>
-    /// When a between-round CastingDirector cast was last sent (armed by
-    /// <see cref="NoteBetweenRoundCast"/>). The <c>*Combat Off*</c> the
-    /// server fires in response arrives within
-    /// <see cref="CastInterruptResumeWindow"/> of this stamp; that lets
-    /// <see cref="OnCombatStatus"/> attribute the Off to OUR cast and resume
-    /// the weapon attack immediately, instead of idling a full round. A
-    /// per-strike Off from a non-sustaining attack (KAI pummel) lands well
-    /// outside the window, so it never trips this path.
-    /// </summary>
+    // When a between-round CastingDirector cast was last sent (armed by
+    // NoteBetweenRoundCast). The *Combat Off* the server fires in response
+    // arrives within CastInterruptResumeWindow of this stamp; that lets
+    // OnCombatStatus attribute the Off to OUR cast and resume the weapon attack
+    // immediately, instead of idling a full round. A per-strike Off from a
+    // non-sustaining attack (KAI pummel) lands well outside the window, so it
+    // never trips this path.
     private DateTimeOffset _betweenRoundCastAt = DateTimeOffset.MinValue;
 
-    /// <summary>How recent a between-round cast must be for the next
-    /// <c>*Combat Off*</c> to count as that cast's interrupt. Generous
-    /// enough to cover send→Off network latency, far shorter than a round
-    /// so a later pummel Off can't be misattributed.</summary>
+    // How recent a between-round cast must be for the next *Combat Off* to count
+    // as that cast's interrupt. Generous enough to cover send→Off network
+    // latency, far shorter than a round so a later pummel Off can't be
+    // misattributed.
     private static readonly TimeSpan CastInterruptResumeWindow = TimeSpan.FromSeconds(3);
 
-    /// <summary>
-    /// Server-confirmed engagement, driven ONLY by the wire
-    /// <c>*Combat Engaged*</c> / <c>*Combat Off*</c> lines — unlike
-    /// <see cref="_combatOff"/> (optimistically cleared on every attack
-    /// send), this stays a faithful mirror of what the server actually
-    /// told us. The engage-verification safety net keys off this: an
-    /// attack we sent that the server never acknowledged with
-    /// <c>*Combat Engaged*</c> means we swung at a target that isn't in
-    /// the room we can currently see (stale room view — a movement was in
-    /// flight, or the named mob walked out / was replaced).
-    /// </summary>
+    // Server-confirmed engagement, driven ONLY by the wire *Combat Engaged* /
+    // *Combat Off* lines — unlike _combatOff (optimistically cleared on every
+    // attack send), this stays a faithful mirror of what the server actually told
+    // us. The engage-verification safety net keys off this: an attack we sent
+    // that the server never acknowledged with *Combat Engaged* means we swung at
+    // a target that isn't in the room we can currently see (stale room view — a
+    // movement was in flight, or the named mob walked out / was replaced).
     private bool _engageConfirmed;
 
-    /// <summary>
-    /// When non-null, the moment a fresh attack went out for which we are
-    /// still waiting on <c>*Combat Engaged*</c>. Armed by
-    /// <see cref="NoteAttackSent"/>, disarmed on confirmation (or on the
-    /// room going empty). Once <see cref="EngageConfirmWindow"/> elapses
-    /// with no confirmation, <see cref="VerifyEngagement"/> drops the
-    /// stale target and fires a bare CR to force a room re-display so we
-    /// re-pick from what's actually here.
-    /// </summary>
+    // When non-null, the moment a fresh attack went out for which we are still
+    // waiting on *Combat Engaged*. Armed by NoteAttackSent, disarmed on
+    // confirmation (or on the room going empty). Once EngageConfirmWindow elapses
+    // with no confirmation, VerifyEngagement drops the stale target and fires a
+    // bare CR to force a room re-display so we re-pick from what's actually here.
     private DateTimeOffset? _awaitingEngageSince;
 
     // ----- Weapon-swap shadow state -----------------------------------
@@ -232,35 +173,33 @@ public sealed partial class CombatManager : IDisposable
     // server. Cleared on the fists-no-effect recovery path (equipment
     // fell off; re-equip from scratch next attack).
 
-    /// <summary>The weapon name last sent via the equip helper.
-    /// <c>null</c> means we haven't sent an equip yet — first attack
-    /// will trigger an equip to the configured normal/BS weapon.</summary>
+    // The weapon name last sent via the equip helper. null means we haven't sent
+    // an equip yet — first attack will trigger an equip to the configured
+    // normal/BS weapon.
     private string? _lastEquippedWeapon;
 
-    /// <summary>The off-hand name last sent via the equip helper, or
-    /// <c>null</c> when nothing is in the off-hand (or we cleared it to
-    /// wield a two-hander). Tracked so a swap to a two-handed weapon can
-    /// <c>remove</c> the shield first — the game needs both hands free.</summary>
+    // The off-hand name last sent via the equip helper, or null when nothing is
+    // in the off-hand (or we cleared it to wield a two-hander). Tracked so a swap
+    // to a two-handed weapon can `remove` the shield first — the game needs both
+    // hands free.
     private string? _lastEquippedOffHand;
 
-    /// <summary>True when we've swapped to the alternate weapon for
-    /// the current room (a no-effect line fired against the normal
-    /// weapon vs the current target's species). Cleared on
-    /// room-cleared.</summary>
+    // True when we've swapped to the alternate weapon for the current room (a
+    // no-effect line fired against the normal weapon vs the current target's
+    // species). Cleared on room-cleared.
     private bool _usingAlternateWeapon;
 
-    /// <summary>Canonical species names that produced a no-effect line
-    /// against our normal weapon. Room-scoped — cleared on
-    /// room-cleared so a fresh room re-tries the normal weapon. Keyed
-    /// to <see cref="EngageableCandidate.ResolvedName"/> (base species,
-    /// not the prefixed display name).</summary>
+    // Canonical species names that produced a no-effect line against our normal
+    // weapon. Room-scoped — cleared on room-cleared so a fresh room re-tries the
+    // normal weapon. Keyed to EngageableCandidate.ResolvedName (base species, not
+    // the prefixed display name).
     private readonly HashSet<string> _normalWeaponFailedMonsters =
         new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>How many no-effect lines a monster species needs to
-    /// produce before we add it to <see cref="_normalWeaponFailedMonsters"/>.
-    /// Mirrors <see cref="CombatSettings.NoEffectFailureThreshold"/>;
-    /// cached here to track per-species count.</summary>
+    // How many no-effect lines a monster species needs to produce before we add
+    // it to _normalWeaponFailedMonsters. Mirrors
+    // CombatSettings.NoEffectFailureThreshold; cached here to track per-species
+    // count.
     private readonly Dictionary<string, int> _noEffectCounts =
         new(StringComparer.OrdinalIgnoreCase);
 
@@ -308,30 +247,24 @@ public sealed partial class CombatManager : IDisposable
         _combatStatusSub   = router.Subscribe(KnownPatterns.CombatStatus,   OnCombatStatus);
     }
 
-    /// <summary>Bind the wire sender — typically the
-    /// <c>TelnetClient.SendAsync</c> wrapper that
-    /// <see cref="MainWindowViewModel"/> exposes. Until set,
-    /// CombatManager silently no-ops on its outbound side (state
-    /// transitions still log).</summary>
+    // Bind the wire sender — typically the TelnetClient.SendAsync wrapper that
+    // MainWindowViewModel exposes. Until set, CombatManager silently no-ops on
+    // its outbound side (state transitions still log).
     public void SetWireSender(Action<byte[]> sender)
     {
         ArgumentNullException.ThrowIfNull(sender);
         _wireSender = sender;
     }
 
-    /// <summary>The monster name we last sent <c>attack</c> against,
-    /// or <c>null</c> when no fight is in flight.</summary>
+    // The monster name we last sent `attack` against, or null when no fight is in
+    // flight.
     public string? CurrentTarget => _currentTarget;
 
-    /// <summary>
-    /// Wire the backstab gating delegates:
-    /// <paramref name="isSneaking"/> reports whether the character is in
-    /// the sneaking stealth state (StealthManager.IsSneaking) and
-    /// <paramref name="hasSeeHidden"/> reports whether a given monster
-    /// Number carries the SeeHidden ability (<see cref="SeeHiddenIndex"/>).
-    /// Until set, backstab never fires — the engine sends the normal
-    /// attack regardless of <see cref="CombatSettings.DoBackstab"/>.
-    /// </summary>
+    // Wire the backstab gating delegates: isSneaking reports whether the
+    // character is in the sneaking stealth state (StealthManager.IsSneaking) and
+    // hasSeeHidden reports whether a given monster Number carries the SeeHidden
+    // ability (SeeHiddenIndex). Until set, backstab never fires — the engine
+    // sends the normal attack regardless of CombatSettings.DoBackstab.
     public void SetBackstabHooks(Func<bool> isSneaking, Func<int, bool> hasSeeHidden)
     {
         ArgumentNullException.ThrowIfNull(isSneaking);
@@ -340,39 +273,31 @@ public sealed partial class CombatManager : IDisposable
         _hasSeeHidden = hasSeeHidden;
     }
 
-    /// <summary>
-    /// Wire the combat-off "clear hostiles when seen Hidden" override:
-    /// <paramref name="seeHiddenClearActive"/> reports whether
-    /// <see cref="CombatStateTracker"/> has latched a force-clear for the
-    /// current room (stealth runner hit a SeeHidden monster with the
-    /// toggle on). The tracker owns the decision + latch — it fires first
-    /// on the shared observation and also holds the walker gate so we
-    /// actually stop to fight. When it returns true and combat is OFF, the
-    /// engine engages anyway and bypasses the Min/Max gate to clear the
-    /// whole room. Until set, the override never fires.
-    /// </summary>
+    // Wire the combat-off "clear hostiles when seen Hidden" override:
+    // seeHiddenClearActive reports whether CombatStateTracker has latched a
+    // force-clear for the current room (stealth runner hit a SeeHidden monster
+    // with the toggle on). The tracker owns the decision + latch — it fires first
+    // on the shared observation and also holds the walker gate so we actually
+    // stop to fight. When it returns true and combat is OFF, the engine engages
+    // anyway and bypasses the Min/Max gate to clear the whole room. Until set,
+    // the override never fires.
     public void SetSeeHiddenClearGate(Func<bool> seeHiddenClearActive)
     {
         ArgumentNullException.ThrowIfNull(seeHiddenClearActive);
         _seeHiddenClearActive = seeHiddenClearActive;
     }
 
-    /// <summary>
-    /// Called by the MonsterDeath subscriber when a death-line match
-    /// resolves to a monster whose name might be ours. Clears
-    /// <see cref="_currentTarget"/> when the dead monster shares a
-    /// name with our current target (either the raw / unflavored
-    /// case where two same-name mobs occupy the room, or the flavored
-    /// case where the resolved species matches). Without this, the
-    /// next <see cref="OnEntitiesObserved"/> sees another live entity
-    /// with the same <c>RawName</c> still in the engageable list and
-    /// short-circuits ("server still swinging") — so we'd never
-    /// re-issue <c>attack</c> against the surviving instance, and
-    /// CombatManager goes silent while the other rats keep biting.
-    /// </summary>
-    /// <param name="deadMonsterName">Base / display name of the dead
-    /// monster, lifted from the matched death-line's
-    /// <see cref="MonsterDeathIdentity.Name"/>.</param>
+    // Called by the MonsterDeath subscriber when a death-line match resolves to a
+    // monster whose name might be ours. deadMonsterName is the base / display
+    // name of the dead monster, lifted from the matched death-line's
+    // MonsterDeathIdentity.Name. Clears _currentTarget when the dead monster
+    // shares a name with our current target (either the raw / unflavored case
+    // where two same-name mobs occupy the room, or the flavored case where the
+    // resolved species matches). Without this, the next OnEntitiesObserved sees
+    // another live entity with the same RawName still in the engageable list and
+    // short-circuits ("server still swinging") — so we'd never re-issue `attack`
+    // against the surviving instance, and CombatManager goes silent while the
+    // other rats keep biting.
     public void NoteMonsterDied(string deadMonsterName)
     {
         if (string.IsNullOrEmpty(deadMonsterName)) return;
@@ -412,17 +337,14 @@ public sealed partial class CombatManager : IDisposable
         }
     }
 
-    /// <summary>
-    /// Force our combat target to the named monster and engage it this round,
-    /// regardless of the master auto-attack switch — the explicit-engage path
-    /// behind the <c>@kill &lt;target&gt;</c> remote command. When the named
-    /// monster is in our live room view, the round is dispatched through the
-    /// full per-round chooser so the configured weapon swap / attack-spell /
-    /// backstab selection apply exactly as they would for any single target.
-    /// When we have no room view (or the name isn't in it), we send a literal
-    /// <c>attack &lt;name&gt;</c> and let the server resolve the instance.
-    /// No-op on a blank name.
-    /// </summary>
+    // Force our combat target to the named monster and engage it this round,
+    // regardless of the master auto-attack switch — the explicit-engage path
+    // behind the @kill <target> remote command. When the named monster is in our
+    // live room view, the round is dispatched through the full per-round chooser
+    // so the configured weapon swap / attack-spell / backstab selection apply
+    // exactly as they would for any single target. When we have no room view (or
+    // the name isn't in it), we send a literal `attack <name>` and let the server
+    // resolve the instance. No-op on a blank name.
     public void RetargetTo(string monsterName)
     {
         if (string.IsNullOrWhiteSpace(monsterName)) return;
@@ -671,26 +593,19 @@ public sealed partial class CombatManager : IDisposable
         DispatchRoundAction(settings, picked, engageable.Count, obs);
     }
 
-    /// <summary>
-    /// True when a backstab is still owed for this room — sneaking, with
-    /// <see cref="CombatSettings.DoBackstab"/> on, and no occupant carries
-    /// SeeHidden. The BS round must fire before any spell or normal swing
-    /// or it's a guaranteed fail. Shared by the backstab gate in
-    /// <see cref="OnEntitiesObserved"/> and the combat-spell chooser
-    /// context so both agree on the gate.
-    /// </summary>
+    // True when a backstab is still owed for this room — sneaking, with
+    // CombatSettings.DoBackstab on, and no occupant carries SeeHidden. The BS
+    // round must fire before any spell or normal swing or it's a guaranteed fail.
+    // Shared by the backstab gate in OnEntitiesObserved and the combat-spell
+    // chooser context so both agree on the gate.
     private bool BackstabPending(CombatSettings settings, RoomEntitiesObservation obs) =>
         settings.DoBackstab && _isSneaking?.Invoke() == true && !RoomHasSeeHidden(obs);
 
-    /// <summary>
-    /// Equip the normal/alternate weapon and send the weapon attack
-    /// command against <paramref name="targetRaw"/>. Sets
-    /// <see cref="CurrentTarget"/>; <see cref="SendAttack"/> clears the
-    /// spell-mode bridge so the server's auto-repeat owns subsequent
-    /// rounds. Shared by the initial weapon path in
-    /// <see cref="OnEntitiesObserved"/> and the heartbeat's
-    /// spell-conditions-lapsed fallback.
-    /// </summary>
+    // Equip the normal/alternate weapon and send the weapon attack command
+    // against targetRaw. Sets CurrentTarget; SendAttack clears the spell-mode
+    // bridge so the server's auto-repeat owns subsequent rounds. Shared by the
+    // initial weapon path in OnEntitiesObserved and the heartbeat's
+    // spell-conditions-lapsed fallback.
     private void SendWeaponAttack(
         CombatSettings settings, string targetRaw, bool useAlt,
         MonsterAttackPriority? priority = null)
@@ -703,11 +618,9 @@ public sealed partial class CombatManager : IDisposable
         _currentTarget = targetRaw;
     }
 
-    /// <summary>
-    /// True when any monster currently in the room carries SeeHidden —
-    /// which defeats the sneaking character's backstab for the whole
-    /// room. No-op (false) until the backstab hooks are wired.
-    /// </summary>
+    // True when any monster currently in the room carries SeeHidden — which
+    // defeats the sneaking character's backstab for the whole room. No-op (false)
+    // until the backstab hooks are wired.
     private bool RoomHasSeeHidden(RoomEntitiesObservation obs)
     {
         if (_hasSeeHidden is null) return false;
@@ -723,12 +636,9 @@ public sealed partial class CombatManager : IDisposable
 
     // ----- Weapon-swap mechanics --------------------------------------
 
-    /// <summary>
-    /// Re-equip cascade at end of combat (room cleared). Priority:
-    /// BS weapon (when configured) → normal weapon (when we'd
-    /// swapped to alt). The fail-set + alt-mode flag clear here so
-    /// the next room starts fresh.
-    /// </summary>
+    // Re-equip cascade at end of combat (room cleared). Priority: BS weapon (when
+    // configured) → normal weapon (when we'd swapped to alt). The fail-set +
+    // alt-mode flag clear here so the next room starts fresh.
     private void OnRoomCleared(CombatSettings settings)
     {
         _normalWeaponFailedMonsters.Clear();
@@ -757,11 +667,9 @@ public sealed partial class CombatManager : IDisposable
         }
     }
 
-    /// <summary>
-    /// Decide which weapon should be on for the next attack and emit
-    /// the equip line if it's a change. Called from
-    /// <see cref="OnEntitiesObserved"/> just before <see cref="SendAttack"/>.
-    /// </summary>
+    // Decide which weapon should be on for the next attack and emit the equip
+    // line if it's a change. Called from OnEntitiesObserved just before
+    // SendAttack.
     private void EquipForAttack(CombatSettings settings, bool wantAlternate)
     {
         string? weapon;
@@ -781,14 +689,11 @@ public sealed partial class CombatManager : IDisposable
         EquipWeapon(weapon, offHand);
     }
 
-    /// <summary>
-    /// Send equip commands for the given weapon + off-hand. Idempotent
-    /// vs the shadow state: re-equipping the same weapon no-ops.
-    /// Two-handed-aware: switching to a two-hander first <c>remove</c>s
-    /// any tracked off-hand (it needs both hands), and a two-hander is
-    /// never paired with an off-hand. A one-handed weapon equips its
-    /// configured off-hand alongside it.
-    /// </summary>
+    // Send equip commands for the given weapon + off-hand. Idempotent vs the
+    // shadow state: re-equipping the same weapon no-ops. Two-handed-aware:
+    // switching to a two-hander first `remove`s any tracked off-hand (it needs
+    // both hands), and a two-hander is never paired with an off-hand. A
+    // one-handed weapon equips its configured off-hand alongside it.
     private void EquipWeapon(string? weapon, string? offHand)
     {
         if (string.IsNullOrWhiteSpace(weapon)) return;
@@ -827,15 +732,11 @@ public sealed partial class CombatManager : IDisposable
 
     // ----- No-effect handlers -----------------------------------------
 
-    /// <summary>
-    /// Server says our weapon has no effect against the current
-    /// target. Count the species; once the count crosses
-    /// <see cref="CombatSettings.NoEffectFailureThreshold"/>, add it
-    /// to the room-scoped fail-set so the next pick swaps preemptively.
-    /// If we're already on the alternate weapon when this fires, the
-    /// monster is genuinely unhittable for us — log + leave for the
-    /// user / future unhittable-set work.
-    /// </summary>
+    // Server says our weapon has no effect against the current target. Count the
+    // species; once the count crosses CombatSettings.NoEffectFailureThreshold,
+    // add it to the room-scoped fail-set so the next pick swaps preemptively. If
+    // we're already on the alternate weapon when this fires, the monster is
+    // genuinely unhittable for us — log + leave it.
     private void OnWeaponNoEffect(MatchResult _)
     {
         if (!_isEnabled()) return;
@@ -875,11 +776,9 @@ public sealed partial class CombatManager : IDisposable
             SendAttack(settings.AlternateAttackCommand, tgt, priority: null);
     }
 
-    /// <summary>
-    /// "Your fists have no effect" — our weapon fell off (server-side
-    /// drop / removal we didn't track). Clear the shadow state so the
-    /// next attack re-equips from scratch.
-    /// </summary>
+    // "Your fists have no effect" — our weapon fell off (server-side drop /
+    // removal we didn't track). Clear the shadow state so the next attack
+    // re-equips from scratch.
     private void OnFistsNoEffect(MatchResult _)
     {
         _log?.Warn(LogCategory, "fists-no-effect — clearing equipped-weapon shadow state");
@@ -895,15 +794,15 @@ public sealed partial class CombatManager : IDisposable
         _currentTarget = null;
     }
 
-    /// <summary>Map current target's RawName back to its base species
-    /// via the live observation. Falls back to <c>_currentTarget</c>
-    /// when no match is found (orphaned target).</summary>
+    // Map current target's RawName back to its base species via the live
+    // observation. Falls back to _currentTarget when no match is found (orphaned
+    // target).
     private string ResolveSpeciesFromCurrentTarget() =>
         _currentTarget is { } tgt ? ResolveSpeciesByName(tgt) : string.Empty;
 
-    /// <summary>Map a monster RawName back to its base species via the live
-    /// observation (strips any flavor prefix). Falls back to the raw name
-    /// itself when no match is found.</summary>
+    // Map a monster RawName back to its base species via the live observation
+    // (strips any flavor prefix). Falls back to the raw name itself when no match
+    // is found.
     private string ResolveSpeciesByName(string rawName)
     {
         if (string.IsNullOrWhiteSpace(rawName)) return string.Empty;
@@ -919,14 +818,12 @@ public sealed partial class CombatManager : IDisposable
         return rawName;
     }
 
-    /// <summary>
-    /// "Moves to attack X" announce handler. Drives two independent knobs:
-    /// Target Priority (WHO — switch our target to the followed player's
-    /// monster) and Attack Order (WHEN — re-fire our own target to control
-    /// initiative). Target Priority is consulted first; when it takes the
-    /// round's action (the announce was the leader / followed member's),
-    /// Attack Order is skipped so we don't double-send.
-    /// </summary>
+    // "Moves to attack X" announce handler. Drives two independent knobs: Target
+    // Priority (WHO — switch our target to the followed player's monster) and
+    // Attack Order (WHEN — re-fire our own target to control initiative). Target
+    // Priority is consulted first; when it takes the round's action (the announce
+    // was the leader / followed member's), Attack Order is skipped so we don't
+    // double-send.
     private void OnAttackAnnounce(MatchResult match)
     {
         // (?<player>\w+) at positional 0, (?<target>.+?) at 1.
@@ -956,18 +853,14 @@ public sealed partial class CombatManager : IDisposable
         HandleAttackOrderRefire(settings, announcer, announcedTarget);
     }
 
-    /// <summary>
-    /// Target Priority (the "who"): when configured to follow the party
-    /// leader (<see cref="TargetPriority.FollowLeader"/>) or a named member
-    /// (<see cref="TargetPriority.FollowMember"/>), and THIS announce is from
-    /// that player, switch our target to their announced monster and dispatch
-    /// this round against it (through the full per-round chooser so the weapon
-    /// swap / spell selection apply). If game data proves the monster
-    /// un-actionable for us, re-pick our own next actionable target instead.
-    /// Returns true when this announce was the followed player's and we took
-    /// the round's action; false when Target Priority is Default or the
-    /// announcer isn't the one we follow.
-    /// </summary>
+    // Target Priority (the "who"): when configured to follow the party leader
+    // (FollowLeader) or a named member (FollowMember), and THIS announce is from
+    // that player, switch our target to their announced monster and dispatch this
+    // round against it (through the full per-round chooser so the weapon swap /
+    // spell selection apply). If game data proves the monster un-actionable for
+    // us, re-pick our own next actionable target instead. Returns true when this
+    // announce was the followed player's and we took the round's action; false
+    // when Target Priority is Default or the announcer isn't the one we follow.
     private bool TryFollowTargetPriority(
         CombatSettings settings, string announcer, string announcedTarget)
     {
@@ -1016,23 +909,19 @@ public sealed partial class CombatManager : IDisposable
         return true;
     }
 
-    /// <summary>
-    /// Attack Order (the "when"): re-fire our OWN current target to reclaim
-    /// last position in initiative when another player announces against that
-    /// same target after us. Never switches the monster — Target Priority owns
-    /// "who". No-op unless we already have a target, the announce is against
-    /// that exact target, and the announcer qualifies for the configured mode:
-    /// <list type="bullet">
-    /// <item>AttackLastParty — any party member.</item>
-    /// <item>AttackLastRoom — any player.</item>
-    /// <item>AttackAfter — the named player only.</item>
-    /// <item>Default — never (own cadence).</item>
-    /// </list>
-    /// The "after us" condition is implicit: we only hold a target once we've
-    /// announced, so an announce arriving while <c>_currentTarget</c> is set
-    /// is by definition after ours; an announce that preceded ours never
-    /// reaches here (no target yet).
-    /// </summary>
+    // Attack Order (the "when"): re-fire our OWN current target to reclaim last
+    // position in initiative when another player announces against that same
+    // target after us. Never switches the monster — Target Priority owns "who".
+    // No-op unless we already have a target, the announce is against that exact
+    // target, and the announcer qualifies for the configured mode:
+    //   - AttackLastParty — any party member.
+    //   - AttackLastRoom  — any player.
+    //   - AttackAfter     — the named player only.
+    //   - Default         — never (own cadence).
+    // The "after us" condition is implicit: we only hold a target once we've
+    // announced, so an announce arriving while _currentTarget is set is by
+    // definition after ours; an announce that preceded ours never reaches here
+    // (no target yet).
     private void HandleAttackOrderRefire(
         CombatSettings settings, string announcer, string announcedTarget)
     {
@@ -1058,14 +947,12 @@ public sealed partial class CombatManager : IDisposable
                    refireReason: $"{settings.AttackTiming} announcer={announcer}");
     }
 
-    /// <summary>
-    /// Build an <see cref="EngageableCandidate"/> for the monster matching
-    /// <paramref name="name"/> (RawName or ResolvedName, case-insensitive) in
-    /// <paramref name="obs"/>, resolving its overlay priority. Returns null
-    /// when no numbered monster entity matches — the caller falls back to a
-    /// literal attack command. Used by Target Priority to route a followed
-    /// target through the full per-round dispatch (weapon swap / spell pick).
-    /// </summary>
+    // Build an EngageableCandidate for the monster matching name (RawName or
+    // ResolvedName, case-insensitive) in obs, resolving its overlay priority.
+    // Returns null when no numbered monster entity matches — the caller falls
+    // back to a literal attack command. Used by Target Priority to route a
+    // followed target through the full per-round dispatch (weapon swap / spell
+    // pick).
     private EngageableCandidate? TryBuildCandidate(RoomEntitiesObservation obs, string name)
     {
         for (int i = 0; i < obs.Entities.Count; i++)
@@ -1088,23 +975,18 @@ public sealed partial class CombatManager : IDisposable
         return null;
     }
 
-    /// <summary>
-    /// Safety net: a combat line (user hit / mob hit / mob miss) means
-    /// something is swinging at us — but if the classifier shows no
-    /// engageable monster and we have no current target, our view of
-    /// the room is stale (entity dropped after a death, arrival line
-    /// lost, prefix not resolved against the overlay, etc.). Send a
-    /// bare CR (<c>^M</c>) so the server re-emits a short room view;
-    /// the classifier repopulates, OnEntitiesObserved picks a target,
-    /// and the next round we swing back. Debounced so a burst of
-    /// combat lines doesn't flood the wire.
-    /// </summary>
-    /// <remarks>
-    /// Bare CR is preferred over <c>l</c> because the server's CR
-    /// response is the compact "where am I" payload — the Also Here
-    /// list plus prompt without the room description, exits block,
-    /// and ground-item enumeration that <c>l</c> dumps.
-    /// </remarks>
+    // Safety net: a combat line (user hit / mob hit / mob miss) means something
+    // is swinging at us — but if the classifier shows no engageable monster and
+    // we have no current target, our view of the room is stale (entity dropped
+    // after a death, arrival line lost, prefix not resolved against the overlay,
+    // etc.). Send a bare CR (^M) so the server re-emits a short room view; the
+    // classifier repopulates, OnEntitiesObserved picks a target, and the next
+    // round we swing back. Debounced so a burst of combat lines doesn't flood the
+    // wire.
+    //
+    // Bare CR is preferred over `l` because the server's CR response is the
+    // compact "where am I" payload — the Also Here list plus prompt without the
+    // room description, exits block, and ground-item enumeration that `l` dumps.
     private void OnCombatLine(MatchResult _)
     {
         if (!_isEnabled()) return;
@@ -1141,14 +1023,11 @@ public sealed partial class CombatManager : IDisposable
         _wireSender(Encoding.Latin1.GetBytes("\r"));
     }
 
-    /// <summary>
-    /// "You don't see &lt;X&gt; here!" — server can't find the target
-    /// we just attacked. Different from MonsterDeathWatcher's path:
-    /// catches cases where the death line was missed, the mob fled,
-    /// or a partymate killed it between our send and the server's
-    /// resolve. Drop the current target and refresh the room so the
-    /// next observation picks a fresh target.
-    /// </summary>
+    // "You don't see <X> here!" — server can't find the target we just attacked.
+    // Different from MonsterDeathWatcher's path: catches cases where the death
+    // line was missed, the mob fled, or a partymate killed it between our send
+    // and the server's resolve. Drop the current target and refresh the room so
+    // the next observation picks a fresh target.
     private void OnTargetNotHere(MatchResult _)
     {
         if (!_isEnabled()) return;
@@ -1168,13 +1047,11 @@ public sealed partial class CombatManager : IDisposable
         _wireSender(Encoding.Latin1.GetBytes("\r"));
     }
 
-    /// <summary>
-    /// Re-engage the room after an interrupt turned our auto-attack off
-    /// (an in-between self-heal / buff cast, a stun, etc.) while an
-    /// engageable mob is still present. Disarms the interrupt flag, drops
-    /// the stale target so <see cref="OnEntitiesObserved"/> re-picks and
-    /// re-equips cleanly, then re-issues the round's action.
-    /// </summary>
+    // Re-engage the room after an interrupt turned our auto-attack off (an
+    // in-between self-heal / buff cast, a stun, etc.) while an engageable mob is
+    // still present. Disarms the interrupt flag, drops the stale target so
+    // OnEntitiesObserved re-picks and re-equips cleanly, then re-issues the
+    // round's action.
     private void ResumeEngage(RoomEntitiesObservation live)
     {
         _combatOff = false;
@@ -1183,17 +1060,14 @@ public sealed partial class CombatManager : IDisposable
         OnEntitiesObserved(live);
     }
 
-    /// <summary>
-    /// Round-paced wrapper over <see cref="ResumeEngage"/>: re-engages at
-    /// most once per <see cref="ResumePacing"/> window. The pacing is what
-    /// keeps a re-issued attack that itself emits <c>*Combat Off*</c> every
-    /// strike (KAI pummel and other non-sustaining attacks) from spinning —
-    /// the resume can't fire again until the next round, no matter how fast
-    /// the off/engaged lines cycle. Shared by the mob-swing resume
-    /// (<see cref="OnCombatLine"/>) and the deterministic tick resume
-    /// (<see cref="OnCombatTick"/>) so the two paths never double-fire in a
-    /// single round. Returns true when it actually resumed.
-    /// </summary>
+    // Round-paced wrapper over ResumeEngage: re-engages at most once per
+    // ResumePacing window. The pacing is what keeps a re-issued attack that
+    // itself emits *Combat Off* every strike (KAI pummel and other non-sustaining
+    // attacks) from spinning — the resume can't fire again until the next round,
+    // no matter how fast the off/engaged lines cycle. Shared by the mob-swing
+    // resume (OnCombatLine) and the deterministic tick resume (OnCombatTick) so
+    // the two paths never double-fire in a single round. Returns true when it
+    // actually resumed.
     private bool TryResumeEngage(RoomEntitiesObservation live)
     {
         DateTimeOffset now = DateTimeOffset.Now;
@@ -1203,21 +1077,15 @@ public sealed partial class CombatManager : IDisposable
         return true;
     }
 
-    /// <summary>
-    /// Signal from <see cref="Spells.CastingDirector.CastFired"/> that a
-    /// between-round cast (self-heal / cure / buff / debuff) just went to the
-    /// server. Arms <see cref="OnCombatStatus"/> to attribute the imminent
-    /// <c>*Combat Off*</c> to that cast and resume the weapon attack promptly
-    /// (see <see cref="_betweenRoundCastAt"/>).
-    /// </summary>
+    // Signal from Spells.CastingDirector.CastFired that a between-round cast
+    // (self-heal / cure / buff / debuff) just went to the server. Arms
+    // OnCombatStatus to attribute the imminent *Combat Off* to that cast and
+    // resume the weapon attack promptly (see _betweenRoundCastAt).
     public void NoteBetweenRoundCast() => _betweenRoundCastAt = DateTimeOffset.Now;
 
-    /// <summary>
-    /// Track <c>*Combat On*/*Combat Off*</c>. <c>Off</c> arms the
-    /// resume-after-interrupt path (see <see cref="_combatOff"/>);
-    /// <c>Engaged</c> means the server is swinging for us again, so we
-    /// disarm it.
-    /// </summary>
+    // Track *Combat On*/*Combat Off*. Off arms the resume-after-interrupt path
+    // (see _combatOff); Engaged means the server is swinging for us again, so we
+    // disarm it.
     private void OnCombatStatus(MatchResult match)
     {
         if (match.Groups.Count == 0) return;
@@ -1327,30 +1195,23 @@ public sealed partial class CombatManager : IDisposable
         NoteAttackSent();
     }
 
-    /// <summary>
-    /// Arm the engage-verification timer after a fresh attack goes out.
-    /// No-op once the server has confirmed engagement (subsequent rounds
-    /// of an already-acknowledged fight don't re-arm — only the first
-    /// unconfirmed swing matters). <see cref="VerifyEngagement"/> consumes
-    /// the timestamp on the combat tick.
-    /// </summary>
+    // Arm the engage-verification timer after a fresh attack goes out. No-op once
+    // the server has confirmed engagement (subsequent rounds of an
+    // already-acknowledged fight don't re-arm — only the first unconfirmed swing
+    // matters). VerifyEngagement consumes the timestamp on the combat tick.
     private void NoteAttackSent()
     {
         if (_engageConfirmed) return;
         _awaitingEngageSince ??= DateTimeOffset.Now;
     }
 
-    /// <summary>
-    /// Engage-verification safety net, run on every combat tick. If we
-    /// sent an attack and the server never answered with
-    /// <c>*Combat Engaged*</c> within <see cref="EngageConfirmWindow"/>,
-    /// the named target isn't in the room we can actually see (a movement
-    /// was in flight when we swung, or the mob walked out / was replaced).
-    /// Drop the stale target and fire a bare CR to force a fresh room
-    /// display so <see cref="OnEntitiesObserved"/> re-picks from what's
-    /// really here. Shares the <see cref="RoomRefreshCooldown"/> debounce
-    /// with the other CR-refresh paths.
-    /// </summary>
+    // Engage-verification safety net, run on every combat tick. If we sent an
+    // attack and the server never answered with *Combat Engaged* within
+    // EngageConfirmWindow, the named target isn't in the room we can actually see
+    // (a movement was in flight when we swung, or the mob walked out / was
+    // replaced). Drop the stale target and fire a bare CR to force a fresh room
+    // display so OnEntitiesObserved re-picks from what's really here. Shares the
+    // RoomRefreshCooldown debounce with the other CR-refresh paths.
     private void VerifyEngagement()
     {
         if (_awaitingEngageSince is not { } since) return;

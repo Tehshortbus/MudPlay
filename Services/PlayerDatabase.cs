@@ -7,34 +7,24 @@ using FujinTerm.Models.Settings;
 
 namespace FujinTerm.Services;
 
-/// <summary>
-/// Two-layer store of player records — the BBS-tier observation list
-/// (one row per player ever seen on the active BBS) merged with the
-/// loaded character's customization dictionary (per-player remote-
-/// command permissions, auto-party toggles, etc.). Both layers persist
-/// to disk: observations to <c>Data/BBS/{name}/players.json</c>;
-/// customizations to the loaded profile's
-/// <see cref="CharacterProfile.PlayerCustomizations"/> dictionary,
-/// pruned at save time so only non-default entries hit disk.
-/// </summary>
-/// <remarks>
-/// <para>
-/// <see cref="Players"/> is the merged view bound by the Game Data
-/// Browser → Players tab. Observation writes
-/// (<see cref="RecordObservation"/> from <see cref="Game.WhoListParser"/>
-/// + the future look-on-player parser) update the BBS layer and
-/// schedule a disk save; customization writes (<see cref="EditCustomization"/>
-/// from the player edit dialog) update the Character layer and
-/// schedule a profile save. Either path rebuilds <see cref="Players"/>.
-/// </para>
-/// <para>
-/// On BBS swap the observation layer reloads from disk; on profile
-/// swap the customization layer reloads. <see cref="PurgeStale"/>
-/// drops observations only — customizations stay attached to the
-/// profile, harmless when no record exists for them at the moment
-/// (a later observation re-binds them automatically).
-/// </para>
-/// </remarks>
+// Two-layer store of player records — the BBS-tier observation list (one row
+// per player ever seen on the active BBS) merged with the loaded character's
+// customization dictionary (per-player remote-command permissions, auto-party
+// toggles, etc.). Both layers persist to disk: observations to
+// Data/BBS/{name}/players.json; customizations to the loaded profile's
+// CharacterProfile.PlayerCustomizations dictionary, pruned at save time so
+// only non-default entries hit disk.
+//
+// Players is the merged view bound by the Game Data Browser → Players tab.
+// Observation writes (RecordObservation from the who-list + look-on-player
+// parsers) update the BBS layer and schedule a disk save; customization writes
+// (EditCustomization from the player edit dialog) update the Character layer
+// and schedule a profile save. Either path rebuilds Players.
+//
+// On BBS swap the observation layer reloads from disk; on profile swap the
+// customization layer reloads. PurgeStale drops observations only —
+// customizations stay attached to the profile, harmless when no record exists
+// for them at the moment (a later observation re-binds them automatically).
 public sealed class PlayerDatabase
 {
     private readonly ProfileService? _profile;
@@ -42,52 +32,39 @@ public sealed class PlayerDatabase
 
     // ----- Backing layers ------------------------------------------------
 
-    /// <summary>
-    /// BBS-tier observations, keyed by GIVEN name (case-insensitive).
-    /// Given name is the stable identity across train-stats family-name
-    /// changes — keying on display name causes the same player to split
-    /// into two rows the moment they rename, which is the bug fixed
-    /// alongside this comment.
-    /// </summary>
+    // BBS-tier observations, keyed by GIVEN name (case-insensitive). Given
+    // name is the stable identity across train-stats family-name changes —
+    // keying on display name would split the same player into two rows the
+    // moment they rename.
     private readonly Dictionary<string, PlayerObservation> _observations =
         new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>
-    /// Char-tier customizations, keyed by GIVEN name (case-insensitive).
-    /// Same rationale as <see cref="_observations"/>: the user's
-    /// per-player toggles must follow the player across renames, not
-    /// orphan when their family name changes. Empty when no profile
-    /// loaded.
-    /// </summary>
+    // Char-tier customizations, keyed by GIVEN name (case-insensitive). Same
+    // rationale as _observations: the user's per-player toggles must follow
+    // the player across renames, not orphan when their family name changes.
+    // Empty when no profile loaded.
     private readonly Dictionary<string, PlayerCustomization> _customizations =
         new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>Active BBS the observation layer currently mirrors. <c>null</c> when no BBS is pinned.</summary>
+    // Active BBS the observation layer currently mirrors. Null when no BBS is pinned.
     private string? _activeBbsName;
 
-    /// <summary>Backing store for the merged view — observable so views can react to updates.</summary>
+    // Merged view — observable so views can react to updates.
     public ObservableCollection<PlayerRecord> Players { get; } = new();
 
-    /// <summary>
-    /// Raised after a <c>who</c> / manual observation is recorded, carrying the
-    /// player's GIVEN name. <see cref="Game.AlignmentTracker"/> uses it to clear
-    /// the local character's stale-alignment flag once our own row is
-    /// re-observed by a <c>who</c>.
-    /// </summary>
+    // Raised after a who / manual observation is recorded, carrying the
+    // player's GIVEN name. AlignmentTracker uses it to clear the local
+    // character's stale-alignment flag once our own row is re-observed by a who.
     public event Action<string>? ObservationRecorded;
 
     // ----- Construction --------------------------------------------------
 
-    /// <summary>Parameterless ctor for tests and in-memory-only scenarios — no disk persistence.</summary>
+    // Parameterless ctor for tests and in-memory-only scenarios — no disk persistence.
     public PlayerDatabase() { }
 
-    /// <summary>
-    /// Production ctor. Subscribes to <see cref="ProfileService.ProfileLoaded"/>,
-    /// <see cref="ProfileService.ProfileClosed"/>,
-    /// <see cref="ProfileService.ProfileSaving"/>, and
-    /// <see cref="ProfileService.BbsPinApplied"/> so both layers stay
-    /// in sync with whichever character + BBS the user is on.
-    /// </summary>
+    // Production ctor. Subscribes to ProfileService's ProfileLoaded /
+    // ProfileClosed / ProfileSaving / BbsPinApplied so both layers stay in sync
+    // with whichever character + BBS the user is on.
     public PlayerDatabase(ProfileService profile, Func<BbsProfile?> activeBbsProvider)
     {
         ArgumentNullException.ThrowIfNull(profile);
@@ -103,18 +80,14 @@ public sealed class PlayerDatabase
 
     // ----- Observation writes (BBS tier) --------------------------------
 
-    /// <summary>
-    /// Apply one observed row (typically from <c>who</c> output). Wire
-    /// names are split via <see cref="PlayerObservation.SplitName"/> on
-    /// the first whitespace; the record is keyed on
-    /// <see cref="PlayerObservation.GivenName"/> so a player who renames
-    /// at the train-stats screen (family-name change) updates her
-    /// existing row instead of creating a duplicate. Existing records
-    /// merge — nulls don't overwrite — so a sparse observation only
-    /// updates the fields it has; the observed family name DOES
-    /// overwrite, because seeing a new family name is itself an
-    /// observation. Saves the BBS observation file after the merge.
-    /// </summary>
+    // Apply one observed row (typically from who output). Wire names are split
+    // on the first whitespace; the record is keyed on given name so a player
+    // who renames at the train-stats screen (family-name change) updates her
+    // existing row instead of creating a duplicate. Existing records merge —
+    // nulls don't overwrite — so a sparse observation only updates the fields
+    // it has; the observed family name DOES overwrite, because seeing a new
+    // family name is itself an observation. Saves the BBS observation file
+    // after the merge.
     public void RecordObservation(
         string name,
         string? @class,
@@ -168,17 +141,13 @@ public sealed class PlayerDatabase
         ObservationRecorded?.Invoke(given);
     }
 
-    /// <summary>
-    /// Apply one <c>look &lt;player&gt;</c> observation — race + class
-    /// extracted from the description sentence, plus the equipment
-    /// loadout block. Creates a new record if the player is unknown,
-    /// merges into the existing observation otherwise. Nulls for race /
-    /// class don't overwrite (caller may have failed to infer either);
-    /// equipment, when supplied, REPLACES the previous loadout (it's a
-    /// fresh snapshot, not a delta — empty list means "they were
-    /// equipped with Nothing"). Saves the BBS observation file after
-    /// the merge.
-    /// </summary>
+    // Apply one "look <player>" observation — race + class extracted from the
+    // description sentence, plus the equipment loadout block. Creates a new
+    // record if the player is unknown, merges into the existing observation
+    // otherwise. Nulls for race / class don't overwrite (caller may have failed
+    // to infer either); equipment, when supplied, REPLACES the previous loadout
+    // (it's a fresh snapshot, not a delta — empty list means "they were
+    // equipped with Nothing"). Saves the BBS observation file after the merge.
     public void RecordLook(
         string name,
         string? race,
@@ -226,14 +195,11 @@ public sealed class PlayerDatabase
 
     // ----- Reads ---------------------------------------------------------
 
-    /// <summary>
-    /// Look up one player's merged record by name (given or full display
-    /// name — reduced to the given name, the stable key). Returns
-    /// <c>null</c> when no observation exists for that player. Read-only;
-    /// never creates a row. Used by <see cref="Game.Remote.PartyLevelTracker"/>
-    /// to read a party member's known level (exact or title-derived) at
-    /// path-planning time.
-    /// </summary>
+    // Look up one player's merged record by name (given or full display name —
+    // reduced to the given name, the stable key). Returns null when no
+    // observation exists for that player. Read-only; never creates a row. Used
+    // by PartyLevelTracker to read a party member's known level (exact or
+    // title-derived) at path-planning time.
     public PlayerRecord? Find(string name)
     {
         if (string.IsNullOrWhiteSpace(name)) return null;
@@ -246,12 +212,10 @@ public sealed class PlayerDatabase
 
     // ----- Greet tracking (BBS tier) ------------------------------------
 
-    /// <summary>
-    /// When <see cref="Game.GreetManager"/> last auto-greeted this player
-    /// (UTC), or <c>null</c> if never. Keyed on given name like every
-    /// other observation lookup. The manager compares this against the
-    /// local-calendar day to enforce "greet at most once per day".
-    /// </summary>
+    // When GreetManager last auto-greeted this player (UTC), or null if never.
+    // Keyed on given name like every other observation lookup. The manager
+    // compares this against the local-calendar day to enforce "greet at most
+    // once per day".
     public DateTime? GetLastGreetedUtc(string givenName)
     {
         if (string.IsNullOrWhiteSpace(givenName)) return null;
@@ -260,17 +224,12 @@ public sealed class PlayerDatabase
         return _observations.TryGetValue(given, out PlayerObservation? o) ? o.LastGreetedUtc : null;
     }
 
-    /// <summary>
-    /// Stamp the auto-greet time for one player. Creates a minimal
-    /// observation row when the player is unknown (we genuinely just saw
-    /// them in the room), otherwise updates the existing row's
-    /// <see cref="PlayerObservation.LastGreetedUtc"/> in place — every
-    /// other field is left untouched (greeting isn't a who/look
-    /// observation, so it must not overwrite class / race / LastSeen).
-    /// Saves the BBS observation file. Called by
-    /// <see cref="Game.GreetManager"/> right after emitting
-    /// <c>greet</c> / <c>look</c>.
-    /// </summary>
+    // Stamp the auto-greet time for one player. Creates a minimal observation
+    // row when the player is unknown (we genuinely just saw them in the room),
+    // otherwise updates the existing row's LastGreetedUtc in place — every
+    // other field is left untouched (greeting isn't a who/look observation, so
+    // it must not overwrite class / race / LastSeen). Saves the BBS observation
+    // file. Called by GreetManager right after emitting greet / look.
     public void RecordGreeted(string name, DateTime whenUtc)
     {
         ArgumentNullException.ThrowIfNull(name);
@@ -301,20 +260,15 @@ public sealed class PlayerDatabase
         SaveObservations();
     }
 
-    /// <summary>
-    /// Record one player's exact character level, as learned from an
-    /// <c>@level</c> probe reply (<c>"Level N, X exp, …"</c>). This is the
-    /// authoritative source for a player's level — it supersedes the
-    /// 5-level band the game's title otherwise implies (see
-    /// <see cref="Game.GameData.ClassTitleTable"/>). Keyed on given name
-    /// like every other observation lookup; creates a minimal row when the
-    /// player is unknown (we only get a level reply from someone we asked,
-    /// so they're real), otherwise updates the existing row's
-    /// <see cref="PlayerObservation.Level"/> and bumps
-    /// <see cref="PlayerObservation.LastSeenUtc"/> — answering a telepath
-    /// proves presence. Every other field is left untouched. Saves the BBS
-    /// observation file.
-    /// </summary>
+    // Record one player's exact character level, as learned from an @level
+    // probe reply ("Level N, X exp, …"). This is the authoritative source for
+    // a player's level — it supersedes the 5-level band the game's title
+    // otherwise implies (see ClassTitleTable). Keyed on given name like every
+    // other observation lookup; creates a minimal row when the player is
+    // unknown (we only get a level reply from someone we asked, so they're
+    // real), otherwise updates the existing row's Level and bumps LastSeenUtc —
+    // answering a telepath proves presence. Every other field is left
+    // untouched. Saves the BBS observation file.
     public void RecordLevel(string name, int level, DateTime nowUtc)
     {
         ArgumentNullException.ThrowIfNull(name);
@@ -347,14 +301,11 @@ public sealed class PlayerDatabase
         ObservationRecorded?.Invoke(given);
     }
 
-    /// <summary>
-    /// Replace the customization slice for one player. Triggered by the
-    /// player edit dialog Save path; persists via
-    /// <see cref="ProfileService.Save"/>. Defaults aren't stored: a
-    /// pristine "everything off / no notes" customization removes any
-    /// existing entry so the profile JSON doesn't bloat with one row
-    /// per observed stranger.
-    /// </summary>
+    // Replace the customization slice for one player. Triggered by the player
+    // edit dialog Save path; persists via ProfileService.Save. Defaults aren't
+    // stored: a pristine "everything off / no notes" customization removes any
+    // existing entry so the profile JSON doesn't bloat with one row per
+    // observed stranger.
     public bool EditCustomization(string nameOrGiven, PlayerCustomization customization)
     {
         if (string.IsNullOrWhiteSpace(nameOrGiven)) return false;
@@ -375,15 +326,12 @@ public sealed class PlayerDatabase
         return true;
     }
 
-    /// <summary>
-    /// Manually add a player record from the Game Data Browser → Players
-    /// tab's Add button. Differs from <see cref="RecordObservation"/>
-    /// only in intent — same merge semantics if the given-name already
-    /// exists (overwrites Family, bumps LastSeen, keeps prior fields the
-    /// caller didn't supply). Returns <c>true</c> when a brand-new row
-    /// was created, <c>false</c> when the call merged into an existing
-    /// row.
-    /// </summary>
+    // Manually add a player record from the Game Data Browser → Players tab's
+    // Add button. Differs from RecordObservation only in intent — same merge
+    // semantics if the given-name already exists (overwrites Family, bumps
+    // LastSeen, keeps prior fields the caller didn't supply). Returns true when
+    // a brand-new row was created, false when the call merged into an existing
+    // row.
     public bool AddManual(string givenName, string familyName, DateTime nowUtc)
     {
         ArgumentNullException.ThrowIfNull(givenName);
@@ -402,16 +350,12 @@ public sealed class PlayerDatabase
         return isNew;
     }
 
-    /// <summary>
-    /// Remove the observation for one player by given-name. Returns
-    /// <c>true</c> when a row was removed. The customization layer
-    /// stays attached to the profile — if the user re-observes this
-    /// player later (via <c>who</c> or <c>look</c>), the customization
-    /// automatically re-binds. To reset customizations too, the user
-    /// uses the edit dialog to clear every flag (which removes the
-    /// customization entry once <see cref="PlayerCustomization.IsDefault"/>
-    /// is true).
-    /// </summary>
+    // Remove the observation for one player by given-name. Returns true when a
+    // row was removed. The customization layer stays attached to the profile —
+    // if the user re-observes this player later (via who or look), the
+    // customization automatically re-binds. To reset customizations too, the
+    // user uses the edit dialog to clear every flag (which removes the
+    // customization entry once PlayerCustomization.IsDefault is true).
     public bool RemoveByGivenName(string givenName)
     {
         if (string.IsNullOrWhiteSpace(givenName)) return false;
@@ -423,13 +367,10 @@ public sealed class PlayerDatabase
         return true;
     }
 
-    /// <summary>
-    /// Drop every observation last seen more than <paramref name="days"/>
-    /// days ago, EXCEPT those whose customization is flagged
-    /// <see cref="PlayerCustomization.DontAutoDelete"/>. Returns the
-    /// number removed. Customizations for purged players stay attached
-    /// to the profile — a later observation re-binds them automatically.
-    /// </summary>
+    // Drop every observation last seen more than days days ago, EXCEPT those
+    // whose customization is flagged DontAutoDelete. Returns the number
+    // removed. Customizations for purged players stay attached to the profile —
+    // a later observation re-binds them automatically.
     public int PurgeStale(int days, DateTime nowUtc)
     {
         if (days <= 0) return 0;
@@ -453,10 +394,8 @@ public sealed class PlayerDatabase
         return removed;
     }
 
-    /// <summary>
-    /// Replace the BBS-tier observation layer wholesale. Used by load-
-    /// from-disk paths and by tests that want a deterministic baseline.
-    /// </summary>
+    // Replace the BBS-tier observation layer wholesale. Used by load-from-disk
+    // paths and by tests that want a deterministic baseline.
     public void ReplaceObservations(IEnumerable<PlayerObservation> rows)
     {
         _observations.Clear();
@@ -524,15 +463,11 @@ public sealed class PlayerDatabase
         Rebuild();
     }
 
-    /// <summary>
-    /// Insert one observation, collapsing collisions on
-    /// <see cref="PlayerObservation.GivenName"/>. The newer LastSeenUtc
-    /// wins for the volatile fields (FamilyName / Class / Race / etc.);
-    /// the older FirstSeenUtc is retained so the "we've known this
-    /// player since X" stat survives the merge. Equipment is treated
-    /// the same as in <see cref="RecordLook"/> — the newer snapshot
-    /// replaces the older when present.
-    /// </summary>
+    // Insert one observation, collapsing collisions on GivenName. The newer
+    // LastSeenUtc wins for the volatile fields (FamilyName / Class / Race /
+    // etc.); the older FirstSeenUtc is retained so the "we've known this player
+    // since X" stat survives the merge. Equipment is treated the same as in
+    // RecordLook — the newer snapshot replaces the older when present.
     private void MergeOnLoad(PlayerObservation o)
     {
         if (!_observations.TryGetValue(o.GivenName, out PlayerObservation? existing))
@@ -568,12 +503,10 @@ public sealed class PlayerDatabase
         return a.Value >= b.Value ? a : b;
     }
 
-    /// <summary>
-    /// Pushed onto <see cref="ProfileService.ProfileSaving"/> so the
-    /// in-memory customization dict gets serialised onto the profile
-    /// JUST before the file is written. Pristine entries are pruned —
-    /// only customizations that hold a non-default value land on disk.
-    /// </summary>
+    // Pushed onto ProfileService.ProfileSaving so the in-memory customization
+    // dict gets serialised onto the profile JUST before the file is written.
+    // Pristine entries are pruned — only customizations that hold a non-default
+    // value land on disk.
     private void SnapshotCustomizationsForSave(CharacterProfile profile)
     {
         if (_customizations.Count == 0)

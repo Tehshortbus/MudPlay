@@ -2,41 +2,35 @@ using System;
 
 namespace FujinTerm.Game.Calculators;
 
-/// <summary>
-/// Pure combat formulas (hit/dodge, magic resist, backstab damage + accuracy,
-/// attack accuracy, swings) ported from MMUD Explorer VB6. Stock and ParaMUD
-/// branches select on <see cref="RealmType"/>; callers resolve the active
-/// realm from <see cref="Services.GameDataCache.ActiveRealm"/>. All methods
-/// are pure.
-/// </summary>
+// Pure MajorMUD combat formulas (hit/dodge, magic resist, backstab damage +
+// accuracy, attack accuracy, swings). Stock and ParaMUD branches select on
+// RealmType; callers resolve the active realm from GameDataCache.ActiveRealm.
+// All methods are pure.
 public static class CombatCalculator
 {
     // ----- Constants -------------------------------------------------------
 
-    /// <summary>Stock hit-chance floor.</summary>
+    // Stock hit-chance floor.
     public const int STOCK_HIT_MIN = 8;
-    /// <summary>ParaMUD hit-chance floor (1 against light armour types ≤ 6).</summary>
+    // ParaMUD hit-chance floor (1 against light armour types <= 6).
     public const int PARAMUD_HIT_MIN = 2;
-    /// <summary>Stock hit-chance ceiling.</summary>
+    // Stock hit-chance ceiling.
     public const int STOCK_HIT_CAP = 99;
-    /// <summary>ParaMUD hit-chance ceiling.</summary>
+    // ParaMUD hit-chance ceiling.
     public const int PARAMUD_HIT_CAP = 100;
-    /// <summary>Stock dodge ceiling.</summary>
+    // Stock dodge ceiling.
     public const int STOCK_DODGE_CAP = 95;
-    /// <summary>ParaMUD dodge soft cap (diminishing returns kick in above this).</summary>
+    // ParaMUD dodge soft cap (diminishing returns kick in above this).
     public const int PARAMUD_DODGE_SOFTCAP = 55;
-    /// <summary>ParaMUD dodge hard ceiling.</summary>
+    // ParaMUD dodge hard ceiling.
     public const int PARAMUD_DODGE_CAP = 98;
-    /// <summary>Maximum swings landable in a single round.</summary>
+    // Maximum swings landable in a single round.
     public const int MAX_SWINGS = 5;
 
     // ----- Hit chance ------------------------------------------------------
 
-    /// <summary>
-    /// Hit chance against a defender. Ported from VB6
-    /// <c>CalculateAttackDefense</c> — returns the attacker hit%, the defender
-    /// dodge%, and the net hit% after dodge, plus the realm caps applied.
-    /// </summary>
+    // Hit chance against a defender — returns the attacker hit%, the defender
+    // dodge%, and the net hit% after dodge, plus the realm caps applied.
     public static HitCalcResult CalculateHitChance(
         int attackerAccuracy, int defenderAC, int defenderDodge,
         int protEvil = 0, int protGood = 0, int perception = 0,
@@ -152,10 +146,8 @@ public static class CombatCalculator
             DodgeCap: dodgeCap);
     }
 
-    /// <summary>
-    /// Scale a defender's vile ward by evil level. VB6: ≤Seedy → 0,
-    /// ≤Criminal → halved, then always divided by 10.
-    /// </summary>
+    // Scale a defender's vile ward by evil level: <=Seedy → 0, <=Criminal →
+    // halved, then always divided by 10.
     private static int AdjustVileWard(int vileWard, EvilLevel evilLevel)
     {
         if (vileWard <= 0 || evilLevel <= EvilLevel.Saint) return 0;
@@ -164,10 +156,7 @@ public static class CombatCalculator
         return vileWard / 10;
     }
 
-    /// <summary>
-    /// Hit-chance floor. ParaMUD: 2 (1 against light armour type ≤ 6).
-    /// Stock: 8.
-    /// </summary>
+    // Hit-chance floor. ParaMUD: 2 (1 against light armour type <= 6). Stock: 8.
     private static int GetHitMin(int defenderArmourType, RealmType realmType)
     {
         if (realmType == RealmType.ParaMud)
@@ -182,11 +171,9 @@ public static class CombatCalculator
 
     // ----- Dodge -----------------------------------------------------------
 
-    /// <summary>
-    /// Raw dodge value from stats (NOT a percentage — feed it to
-    /// <see cref="CalcDodgeVSAccuracy"/>). Includes a low-encumbrance bonus
-    /// when under 33% encumbered.
-    /// </summary>
+    // Raw dodge value from stats (NOT a percentage — feed it to
+    // CalcDodgeVSAccuracy). Includes a low-encumbrance bonus when under 33%
+    // encumbered.
     public static int CalcDodge(int level, int agility, int charm, int plusDodge,
                                 double currentEncum = 0, double maxEncum = -1)
     {
@@ -207,11 +194,9 @@ public static class CombatCalculator
         return dodge;
     }
 
-    /// <summary>
-    /// Convert a raw dodge value to a dodge percentage against an accuracy.
-    /// ParaMUD uses a quadratic with diminishing returns above the soft cap;
-    /// Stock uses a linear formula.
-    /// </summary>
+    // Convert a raw dodge value to a dodge percentage against an accuracy.
+    // ParaMUD uses a quadratic with diminishing returns above the soft cap;
+    // Stock uses a linear formula.
     public static int CalcDodgeVSAccuracy(int rawDodge, int accuracy, RealmType realmType)
     {
         if (rawDodge <= 0) return 0;
@@ -243,11 +228,9 @@ public static class CombatCalculator
         return dodgePercent;
     }
 
-    /// <summary>
-    /// ParaMUD diminishing-returns curve:
-    /// <c>triNum = (sqrt(8*value/scale + 1) - 1) / 2</c>, sign-preserving,
-    /// rescaled by <paramref name="scale"/>.
-    /// </summary>
+    // ParaMUD diminishing-returns curve:
+    // triNum = (sqrt(8*value/scale + 1) - 1) / 2, sign-preserving, rescaled by
+    // scale.
     public static double ParaMud_DiminishingReturns(double value, double scale)
     {
         if (scale <= 0) return value;
@@ -263,9 +246,7 @@ public static class CombatCalculator
 
     // ----- Magic resistance ------------------------------------------------
 
-    /// <summary>
-    /// Magic resistance: <c>Floor((INT + WIL*3) / 4) + modifiers</c>.
-    /// </summary>
+    // Magic resistance: Floor((INT + WIL*3) / 4) + modifiers.
     public static int CalcMR(int intellect, int willpower, int modifiers = 0)
     {
         return (intellect + (willpower * 3)) / 4 + modifiers;
@@ -273,18 +254,15 @@ public static class CombatCalculator
 
     // ----- Backstab damage -------------------------------------------------
 
-    /// <summary>
-    /// Backstab damage range, matching the game engine's <c>CalcBSDamage</c>.
-    /// Core per bound: <c>(level*2) + (stealth/10) + (damage*2) + bsDmgMod</c>,
-    /// then class-stealth scales by <c>(level+100)/100</c> while racial-only
-    /// stealth scales by 75% with no level term (no realm branch — the realm
-    /// difference lives in the strength folding). <paramref name="weaponMin"/> /
-    /// <paramref name="weaponMax"/> are the raw weapon bounds; strength folds in
-    /// here — min gets <c>(STR-100)/10</c> (doubled in Stock, floored at 0), max
-    /// gets <c>(STR-50)/10</c> (ParaMUD floors at 0). <paramref name="maxDmgBonus"/>
-    /// is the item +max-damage ability sum (Abil 4) only; the strength max bonus
-    /// is computed internally, so callers pass the item-only value.
-    /// </summary>
+    // Backstab damage range, matching the MajorMUD backstab formula.
+    // Core per bound: (level*2) + (stealth/10) + (damage*2) + bsDmgMod, then
+    // class-stealth scales by (level+100)/100 while racial-only stealth scales by
+    // 75% with no level term (no realm branch — the realm difference lives in the
+    // strength folding). weaponMin / weaponMax are the raw weapon bounds;
+    // strength folds in here — min gets (STR-100)/10 (doubled in Stock, floored
+    // at 0), max gets (STR-50)/10 (ParaMUD floors at 0). maxDmgBonus is the item
+    // +max-damage ability sum (Abil 4) only; the strength max bonus is computed
+    // internally, so callers pass the item-only value.
     public static BSDamageResult CalcBSDamage(int level, int stealth, int strength,
                                                int weaponMin, int weaponMax,
                                                int bsMinBonus, int bsMaxBonus,
@@ -329,18 +307,15 @@ public static class CombatCalculator
 
     // ----- Melee damage (Normal / Bash / Smash) ----------------------------
 
-    /// <summary>
-    /// Per-hit weapon damage range for a Normal / Bash / Smash attack, matching
-    /// MMUD's <c>CalculateAttack</c>. Strength folds into the base range — max
-    /// gets <c>(STR-50)/10</c> (Stock allows negative; ParaMUD floors at 0),
-    /// min gets <c>(STR-100)/10</c> (doubled in Stock, floored at 0). Then by
-    /// type: Bash pre-rolls ×1.1 and multiplies ×3 (Stock) / ×2.5–3 (ParaMUD);
-    /// Smash pre-rolls ×1.2 and multiplies ×5. Both truncations match the game's
-    /// integer <c>Fix</c>. No defender DR is modelled (this is the raw range
-    /// before mitigation). <paramref name="plusMaxDamage"/> is the item +max
-    /// damage ability sum (Abil 4); strength is added on top here, so callers
-    /// pass the item-only value to avoid double-counting.
-    /// </summary>
+    // Per-hit weapon damage range for a Normal / Bash / Smash MajorMUD attack.
+    // Strength folds into the base range — max gets (STR-50)/10 (Stock allows
+    // negative; ParaMUD floors at 0), min gets (STR-100)/10 (doubled in Stock,
+    // floored at 0). Then by type: Bash pre-rolls x1.1 and multiplies x3 (Stock)
+    // / x2.5-3 (ParaMUD); Smash pre-rolls x1.2 and multiplies x5. Both
+    // truncations match the game's integer Fix. No defender DR is modelled (this
+    // is the raw range before mitigation). plusMaxDamage is the item +max damage
+    // ability sum (Abil 4); strength is added on top here, so callers pass the
+    // item-only value to avoid double-counting.
     public static MeleeDamageResult CalcMeleeDamage(MudAttackType attackType, RealmType realmType,
                                                     int strength, int weaponMin, int weaponMax,
                                                     int plusMaxDamage, int plusMinDamage = 0)
@@ -380,37 +355,32 @@ public static class CombatCalculator
         return new MeleeDamageResult(min, max);
     }
 
-    /// <summary>
-    /// Per-hit damage range for a Mystic martial-arts attack (Punch / Kick /
-    /// Jumpkick), modelling MMUD Explorer's <c>CalculateAttack</c> for the realm
-    /// selected by <paramref name="realmType"/>. Requires a positive
-    /// <paramref name="maPlusSkill"/>; returns a zero range otherwise.
-    /// </summary>
-    /// <remarks>
-    /// <para><paramref name="maPlusSkill"/> is MME's <c>nMAPlusSkill</c> — the
-    /// item-granted per-attack martial-arts <em>skill</em> bonus, NOT the
-    /// character's Martial Arts skill stat (that stat feeds accuracy, never this
-    /// damage formula). No stock ability grants a +MA-skill bonus, so it is
-    /// normally 0; MME's Calc-Combat toggle floors it to 1, which is what the
-    /// Character Info panel feeds. Passing the Martial Arts skill stat here inflates
-    /// the damage by that stat's whole magnitude (~20-30×).</para>
-    /// <para><b>Stock</b> scales the skill by the level (capped at 20):
-    /// <c>min = skill*nTemp/8 + 2</c>; <c>punch max = skill*(nTemp+3)/4 + 6</c>,
-    /// <c>kick max = skill*nTemp/6 + 7</c>, <c>jumpkick max = skill*nTemp/6 + 8</c>
-    /// (all <c>Fix()</c> truncated).</para>
-    /// <para><b>GreaterMUD / ParaMUD</b> uses a level-driven band with the skill
-    /// added flat — <c>min = round(lvl/8+2) + skill</c> below 20 (else
-    /// <c>round(lvl/6)</c> floored 5); per-type max <c>round((lvl+3)/4+6)</c> /
-    /// <c>round(lvl/5+7)</c> / <c>round(lvl/6+7)</c> below 20 (else
-    /// <c>round(lvl/4)</c> floored 12/10/10) + skill — rounding half-to-even.</para>
-    /// <para>Strength then folds in exactly as <see cref="CalcMeleeDamage"/> does
-    /// (max gets <c>(STR-50)/10</c>, min gets <c>(STR-100)/10</c> doubled in Stock,
-    /// floored at 0; ParaMUD has no negative-strength penalty). After the range is
-    /// clamped, the item martial-arts damage bonus (<paramref name="maPlusDamage"/>,
-    /// Abil 92/93/94) is added to both bounds, then the kick ×1.33 / jumpkick ×1.66
-    /// multiplier (truncated). <paramref name="plusMaxDamage"/> is the item
-    /// +max-damage sum (Abil 4); strength is added internally.</para>
-    /// </remarks>
+    // Per-hit damage range for a Mystic martial-arts MajorMUD attack (Punch /
+    // Kick / Jumpkick) for the realm selected by realmType. Requires a positive
+    // maPlusSkill; returns a zero range otherwise.
+    //
+    // maPlusSkill is the item-granted per-attack martial-arts SKILL bonus, NOT
+    // the character's Martial Arts skill stat (that stat feeds accuracy, never
+    // this damage formula). No stock ability grants a +MA-skill bonus, so it is
+    // normally 0; the combat-calc path floors it to 1, which is what the
+    // Character Info panel feeds. Passing the Martial Arts skill stat here
+    // inflates the damage by that stat's whole magnitude (~20-30x).
+    //
+    // Stock scales the skill by the level (capped at 20):
+    //   min = skill*nTemp/8 + 2; punch max = skill*(nTemp+3)/4 + 6,
+    //   kick max = skill*nTemp/6 + 7, jumpkick max = skill*nTemp/6 + 8
+    //   (all Fix() truncated).
+    // GreaterMUD / ParaMUD uses a level-driven band with the skill added flat —
+    //   min = round(lvl/8+2) + skill below 20 (else round(lvl/6) floored 5);
+    //   per-type max round((lvl+3)/4+6) / round(lvl/5+7) / round(lvl/6+7) below
+    //   20 (else round(lvl/4) floored 12/10/10) + skill — rounding half-to-even.
+    // Strength then folds in exactly as CalcMeleeDamage does (max gets
+    // (STR-50)/10, min gets (STR-100)/10 doubled in Stock, floored at 0; ParaMUD
+    // has no negative-strength penalty). After the range is clamped, the item
+    // martial-arts damage bonus (maPlusDamage, Abil 92/93/94) is added to both
+    // bounds, then the kick x1.33 / jumpkick x1.66 multiplier (truncated).
+    // plusMaxDamage is the item +max-damage sum (Abil 4); strength is added
+    // internally.
     public static MeleeDamageResult CalcMartialArtsDamage(MudAttackType attackType, RealmType realmType,
                                                           int level, int maPlusSkill, int strength,
                                                           int plusMaxDamage, int maPlusDamage)
@@ -481,14 +451,10 @@ public static class CombatCalculator
         return new MeleeDamageResult(min, max);
     }
 
-    /// <summary>
-    /// One GreaterMUD martial-arts level band: under level 20 the
-    /// <paramref name="subTwenty"/> term is used; at 20+ the
-    /// <paramref name="twentyPlus"/> term is used and floored at
-    /// <paramref name="floor"/>. Both round half-to-even, mirroring MME's VB6
-    /// <c>Double</c>→<c>Long</c> assignment in <c>CalculateAttack</c> (which uses
-    /// <c>/</c>, not the <c>Fix()</c> the Stock branch uses).
-    /// </summary>
+    // One GreaterMUD martial-arts level band: under level 20 the subTwenty term
+    // is used; at 20+ the twentyPlus term is used and floored at floor. Both
+    // round half-to-even, mirroring the game's Double→Long assignment (which uses
+    // /, not the Fix() the Stock branch uses).
     private static int GmudMaBand(int level, double subTwenty, double twentyPlus, int floor)
     {
         if (level < 20)
@@ -497,14 +463,13 @@ public static class CombatCalculator
         return t < floor ? floor : t;
     }
 
-    /// <summary>
-    /// Backstab accuracy. ParaMUD:
-    /// <c>(Stealth/3) + ((AGI-50+LVL)/2) + 15 + PlusBSAccy + NormAccy</c>,
-    /// minus 15 when STR is under the weapon requirement. Stock:
-    /// <c>(Stealth+AGI)/2 + PlusBSAccy/2</c>, +5 with class stealth else -15.
-    /// Encumbrance is not applied here — the displayed Stealth stat already
-    /// incorporates it.
-    /// </summary>
+    // Backstab accuracy. ParaMUD:
+    //   (Stealth/3) + ((AGI-50+LVL)/2) + 15 + PlusBSAccy + NormAccy, minus 15
+    //   when STR is under the weapon requirement.
+    // Stock:
+    //   (Stealth+AGI)/2 + PlusBSAccy/2, +5 with class stealth else -15.
+    // Encumbrance is not applied here — the displayed Stealth stat already
+    // incorporates it.
     public static int CalcBackstabAccuracy(int stealth, int agility, int level,
                                             int strength, int weaponStrReq,
                                             int plusBSAccuracy, int plusNormalAccuracy,
@@ -536,12 +501,10 @@ public static class CombatCalculator
 
     // ----- Attack accuracy -------------------------------------------------
 
-    /// <summary>
-    /// Level + combat-level base accuracy term shared by Stock and ParaMUD.
-    /// Returns <c>(sqrtPart, basePart)</c> so renderers can show the
-    /// intermediate <c>sqrt(level)</c>. Stock applies an integer-sqrt
-    /// precision-correction loop that ParaMUD skips.
-    /// </summary>
+    // Level + combat-level base accuracy term shared by Stock and ParaMUD.
+    // Returns (sqrtPart, basePart) so renderers can show the intermediate
+    // sqrt(level). Stock applies an integer-sqrt precision-correction loop that
+    // ParaMUD skips.
     public static (int sqrtPart, int basePart) CalcBaseAccuracy(int level, int nCombatLevel, RealmType realm)
     {
         if (level <= 0) return (0, 0);
@@ -559,16 +522,13 @@ public static class CombatCalculator
         return (sqrtPart, basePart);
     }
 
-    /// <summary>
-    /// Accuracy for a given attack type (Normal / Bash / Smash), aiming to
-    /// match the in-game <c>stat all</c> Accy column. Branches heavily by
-    /// realm: pity-accy and stat weighting differ, ParaMUD even-rounds the
-    /// gear sum and applies a 1.5x smash multiplier plus a weapon-StrReq
-    /// penalty. Bash applies -15, smash -25 (both realms).
-    /// <paramref name="totalWornAccy"/> is the summed Accy field of all worn
-    /// items; <paramref name="maxSingleAbil22"/> is the highest single
-    /// accuracy ability (22/105/106).
-    /// </summary>
+    // Accuracy for a given attack type (Normal / Bash / Smash), aiming to match
+    // the in-game "stat all" Accy column. Branches heavily by realm: pity-accy
+    // and stat weighting differ, ParaMUD even-rounds the gear sum and applies a
+    // 1.5x smash multiplier plus a weapon-StrReq penalty. Bash applies -15, smash
+    // -25 (both realms). totalWornAccy is the summed Accy field of all worn
+    // items; maxSingleAbil22 is the highest single accuracy ability
+    // (22/105/106).
     public static int CalcAccuracy(MudAttackType attackType, RealmType realm,
                                     int level, int nCombatLevel,
                                     int strength, int agility, int intellect, int charm,
@@ -658,12 +618,10 @@ public static class CombatCalculator
 
     // ----- Swings ----------------------------------------------------------
 
-    /// <summary>
-    /// Energy per swing. Core
-    /// <c>(speed*1000) / (((Level*(Combat+2)+45) * (AGI+150)) / 6)</c>, then a
-    /// strength-under-requirement penalty, a speed modifier (skipped during
-    /// backstab), and an encumbrance adjustment.
-    /// </summary>
+    // Energy per swing. Core
+    // (speed*1000) / (((Level*(Combat+2)+45) * (AGI+150)) / 6), then a
+    // strength-under-requirement penalty, a speed modifier (skipped during
+    // backstab), and an encumbrance adjustment.
     public static int CalcEnergyUsed(int combatLevel, int level, int attackSpeed, int agility,
                                       int strength = 0, int weaponStrReq = 0,
                                       int encumPercent = -1, int speedModifier = 100,
@@ -693,11 +651,9 @@ public static class CombatCalculator
         return energy;
     }
 
-    /// <summary>
-    /// Swings per round across a 10-round simulation, carrying the energy
-    /// remainder forward each round (which produces the repeating swing
-    /// pattern). Includes the Quick &amp; Deadly crit bonus.
-    /// </summary>
+    // Swings per round across a 10-round simulation, carrying the energy
+    // remainder forward each round (which produces the repeating swing pattern).
+    // Includes the Quick & Deadly crit bonus.
     public static SwingCalcResult CalcSwings(int combatLevel, int level, int attackSpeed,
                                               int agility, int strength, int weaponStrReq,
                                               int currentEncum, int maxEncum,
@@ -742,12 +698,10 @@ public static class CombatCalculator
             EnergyRemaining: energyRemaining);
     }
 
-    /// <summary>
-    /// Quick &amp; Deadly crit bonus from a fast weapon at low encumbrance.
-    /// ParaMUD: <c>(1000 - energy*5) / 50</c>. Stock:
-    /// <c>(200 - energy) + (AGI-50)/10</c>, capped at 20, halved at ≥ 33%
-    /// encumbrance. Zero at energy ≥ 200 (and, Stock-only, above 66% encum).
-    /// </summary>
+    // Quick & Deadly crit bonus from a fast weapon at low encumbrance.
+    // ParaMUD: (1000 - energy*5) / 50. Stock: (200 - energy) + (AGI-50)/10,
+    // capped at 20, halved at >= 33% encumbrance. Zero at energy >= 200 (and,
+    // Stock-only, above 66% encum).
     public static int CalcQuickAndDeadlyBonus(int agility, int energyUsed, int encumPercent,
                                                RealmType realmType)
     {
@@ -768,13 +722,11 @@ public static class CombatCalculator
         }
     }
 
-    /// <summary>
-    /// Critical-hit chance: the gear / quest crit rating (ability 58, already
-    /// aggregated) plus the Quick &amp; Deadly bonus, then MMUD's
-    /// diminishing-returns handling above 40 — ParaMUD (GreaterMUD) hard-caps at
-    /// 65; Stock compresses the overflow to <c>40 + (over-40)/3</c>, capped at 99.
-    /// Mirrors <c>CalculateAttack</c>'s nCritChance path. Floored at 0.
-    /// </summary>
+    // Critical-hit chance: the gear / quest crit rating (ability 58, already
+    // aggregated) plus the Quick & Deadly bonus, then MajorMUD's
+    // diminishing-returns handling above 40 — ParaMUD (GreaterMUD) hard-caps at
+    // 65; Stock compresses the overflow to 40 + (over-40)/3, capped at 99.
+    // Floored at 0.
     public static int CalcCritChance(int critRating, int quickAndDeadlyBonus, RealmType realmType)
     {
         int crit = critRating + quickAndDeadlyBonus;

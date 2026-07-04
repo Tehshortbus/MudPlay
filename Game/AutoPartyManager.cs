@@ -5,38 +5,26 @@ using FujinTerm.Services.Patterns;
 
 namespace FujinTerm.Game;
 
-/// <summary>
-/// Engine that consumes the per-player <see cref="PlayerCustomization"/>
-/// auto-party flags. Two behaviours, both gated on the loaded character's
-/// PlayerDatabase customizations:
-/// </summary>
-/// <remarks>
-/// <list type="bullet">
-///   <item><b>Invite-on-seen</b> — when a player whose row carries
-///         <see cref="PlayerCustomization.InviteToPartyIfSeen"/>
-///         appears in our current room (via the
-///         <see cref="KnownPatterns.RoomAlsoHere"/> "Also here: ..." line),
-///         send <c>invite &lt;given&gt;</c> on the wire. TTL-suppressed at
-///         <see cref="InviteCooldown"/> per recipient so subsequent room
-///         re-renders don't re-spam. Skipped when the player is already
-///         in <see cref="PartyState.Members"/>.</item>
-///   <item><b>Accept-invite</b> — when another player sends us an in-game
-///         party invite (<see cref="KnownPatterns.PartyInviteReceived"/>,
-///         matching "X has invited you to follow him/her"), look up
-///         their customization. If
-///         <see cref="PlayerCustomization.JoinPartyIfInvited"/> is set,
-///         send <c>follow &lt;given&gt;</c> (the MajorMUD accept
-///         mechanism — joining someone's party is "follow them";
-///         <see cref="PartyManager"/> already maps "You are now
-///         following X" to "we joined X's party").</item>
-/// </list>
-/// <para>
-/// Threading: handler invocation is on the dispatcher thread (the
-/// MessageRouter marshals upstream). All state reads + writes happen
-/// there, so the <c>_recentlyInvited</c> dictionary doesn't need its
-/// own lock.
-/// </para>
-/// </remarks>
+// Engine that consumes the per-player PlayerCustomization auto-party flags. Two
+// behaviours, both gated on the loaded character's PlayerDatabase
+// customizations:
+//
+//   Invite-on-seen — when a player whose row carries InviteToPartyIfSeen
+//   appears in our current room (via the RoomAlsoHere "Also here: ..." line),
+//   send `invite <given>` on the wire. TTL-suppressed at InviteCooldown per
+//   recipient so subsequent room re-renders don't re-spam. Skipped when the
+//   player is already in PartyState.Members.
+//
+//   Accept-invite — when another player sends us an in-game party invite
+//   (PartyInviteReceived, matching "X has invited you to follow him/her"), look
+//   up their customization. If JoinPartyIfInvited is set, send `follow <given>`
+//   (the MajorMUD accept mechanism — joining someone's party is "follow them";
+//   PartyManager already maps "You are now following X" to "we joined X's
+//   party").
+//
+// Threading: handler invocation is on the dispatcher thread (the MessageRouter
+// marshals upstream). All state reads + writes happen there, so the
+// _recentlyInvited dictionary doesn't need its own lock.
 public sealed class AutoPartyManager : IDisposable
 {
     private readonly MessageRouter _router;
@@ -52,130 +40,110 @@ public sealed class AutoPartyManager : IDisposable
     private readonly IDisposable _youInvitedSub;
     private bool _disposed;
 
-    /// <summary>
-    /// Per-recipient TTL on auto-invites. Subsequent room renders within
-    /// this window won't re-fire the invite — they either accepted
-    /// (and would be in <see cref="PartyState.Members"/>, taking the
-    /// already-in-party branch) or they declined, in which case we
-    /// shouldn't keep nagging them once per move. Default 60 s; tunable
-    /// at runtime if a feature surfaces a knob for it.
-    /// </summary>
+    // Per-recipient TTL on auto-invites. Subsequent room renders within this
+    // window won't re-fire the invite — they either accepted (and would be in
+    // PartyState.Members, taking the already-in-party branch) or they declined,
+    // in which case we shouldn't keep nagging them once per move. Default 60 s;
+    // tunable at runtime if a feature surfaces a knob for it.
     public TimeSpan InviteCooldown { get; set; } = TimeSpan.FromSeconds(60);
 
     // ----- @join nag escalation knobs (Settings → Party) ------------------
-    /// <summary>Wait this long after the initial <c>invite</c> before the first <c>@join</c> nag.</summary>
+    // Wait this long after the initial `invite` before the first `@join` nag.
     public TimeSpan JoinNagInitialDelay { get; set; } = TimeSpan.FromSeconds(5);
-    /// <summary>Cadence for subsequent <c>@join</c> resends.</summary>
+    // Cadence for subsequent `@join` resends.
     public TimeSpan JoinNagFrequency { get; set; } = TimeSpan.FromSeconds(10);
-    /// <summary>Hard cap on the total nag window measured from the initial <c>invite</c>.</summary>
+    // Hard cap on the total nag window measured from the initial `invite`.
     public TimeSpan JoinNagMaxTotal { get; set; } = TimeSpan.FromSeconds(55);
 
-    /// <summary>
-    /// Master switch for the <c>@join</c> nag. When false, invites still go out
-    /// but no <c>@join</c> follow-up is ever sent — and any in-flight nag stops
-    /// firing. Mirrors <see cref="Models.Profile.PartySettings.SendJoinToInvited"/>.
-    /// </summary>
+    // Master switch for the `@join` nag. When false, invites still go out but
+    // no `@join` follow-up is ever sent — and any in-flight nag stops firing.
+    // Mirrors PartySettings.SendJoinToInvited.
     public bool JoinNagEnabled { get; set; } = true;
 
-    /// <summary>
-    /// Test seam — overrides <see cref="DateTime.UtcNow"/> for the TTL
-    /// math so unit tests don't have to <c>Thread.Sleep</c>. Defaults
-    /// to <see cref="DateTime.UtcNow"/>.
-    /// </summary>
+    // Test seam — overrides DateTime.UtcNow for the TTL math so unit tests don't
+    // have to Thread.Sleep. Defaults to DateTime.UtcNow.
     public Func<DateTime> NowProvider { get; set; } = () => DateTime.UtcNow;
 
-    /// <summary>Test seam — most recent bytes the engine asked to write to the wire.</summary>
+    // Test seam — most recent bytes the engine asked to write to the wire.
     internal List<byte[]> LastSentForTests => _wire.LastSentForTests;
 
-    /// <summary>Per-given-name TTL map suppressing rapid re-invites.</summary>
+    // Per-given-name TTL map suppressing rapid re-invites.
     private readonly Dictionary<string, DateTime> _recentlyInvited =
         new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>
-    /// Per-given-name TTL map suppressing auto-invites for a player we
-    /// just kicked. When the user clicks the Uninvite button (or any
-    /// other path through <c>uninvite X</c>), the server emits
-    /// "X has been removed from your followers." — we stamp X here so
-    /// the next "Also here: X" line doesn't immediately re-add them
-    /// and start the nag flow again. Default suppression window is
-    /// 1 hour; users who want a longer / permanent block can turn off
-    /// <c>InviteToPartyIfSeen</c> on the Players-tab record instead.
-    /// </summary>
+    // Per-given-name TTL map suppressing auto-invites for a player we just
+    // kicked. When the user clicks the Uninvite button (or any other path
+    // through `uninvite X`), the server emits "X has been removed from your
+    // followers." — we stamp X here so the next "Also here: X" line doesn't
+    // immediately re-add them and start the nag flow again. Default suppression
+    // window is 1 hour; users who want a longer / permanent block can turn off
+    // InviteToPartyIfSeen on the Players-tab record instead.
     private readonly Dictionary<string, DateTime> _recentlyUninvited =
         new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>Window after an uninvite during which the player won't be auto-invited again. Default 1 h.</summary>
+    // Window after an uninvite during which the player won't be auto-invited
+    // again. Default 1 h.
     public TimeSpan UninviteSuppression { get; set; } = TimeSpan.FromHours(1);
 
     // ----- Invite-as-wait-signal (Settings → Party "If leading, wait only") --
-    /// <summary>
-    /// How long, after auto-inviting a seen player while a loop is running,
-    /// we hold the loop (via <see cref="MovementCoordinator.PartyInviteGate"/>)
-    /// waiting for them to join before giving up — at which point we
-    /// <c>uninvite</c> them and let the loop resume. Mirrors the Party-tab
-    /// "If leading, wait only (s)" value
-    /// (<see cref="Models.Profile.PartySettings.IfLeadingWaitTotalSec"/>).
-    /// <c>0</c> disables the wait-signal entirely (invite + nag still run,
-    /// but the loop never pauses and we never auto-uninvite).
-    /// </summary>
+    // How long, after auto-inviting a seen player while a loop is running, we
+    // hold the loop (via MovementCoordinator.PartyInviteGate) waiting for them
+    // to join before giving up — at which point we `uninvite` them and let the
+    // loop resume. Mirrors the Party-tab "If leading, wait only (s)" value
+    // (PartySettings.IfLeadingWaitTotalSec). 0 disables the wait-signal
+    // entirely (invite + nag still run, but the loop never pauses and we never
+    // auto-uninvite).
     public TimeSpan InviteWaitWindow { get; set; } = TimeSpan.FromSeconds(90);
 
     private MovementCoordinator? _coordinator;
     private Func<bool>? _isLooping;
 
-    /// <summary>Per-given-name invite-wait deadlines — present while we're
-    /// holding the loop for an auto-invited player to join. Maps to the
-    /// moment the invite went out; the wait expires at
-    /// <c>invitedAt + InviteWaitWindow</c>.</summary>
+    // Per-given-name invite-wait deadlines — present while we're holding the
+    // loop for an auto-invited player to join. Maps to the moment the invite
+    // went out; the wait expires at invitedAt + InviteWaitWindow.
     private readonly Dictionary<string, DateTime> _inviteWaits =
         new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>Members whose <see cref="PartyMember.IsInvited"/> we're
-    /// watching so a pending invite flipping accepted releases the loop hold.</summary>
+    // Members whose IsInvited we're watching so a pending invite flipping
+    // accepted releases the loop hold.
     private readonly HashSet<PartyMember> _watchedMembers = new();
 
-    /// <summary>Identifier surfaced in <see cref="MovementCoordinator.History"/>
-    /// when we flip the PartyInvite gate.</summary>
+    // Identifier surfaced in MovementCoordinator.History when we flip the
+    // PartyInvite gate.
     private const string InviteGateAsserter = "AutoPartyManager";
 
-    /// <summary>
-    /// Late-bind the movement gate used by the invite-as-wait-signal
-    /// behaviour. AppServices constructs <see cref="AutoPartyManager"/>
-    /// before the <see cref="MovementCoordinator"/> / loop engine exist,
-    /// so they're injected here once available. <paramref name="isLooping"/>
-    /// reports whether a loop circuit is currently active — the wait only
-    /// engages while looping.
-    /// </summary>
+    // Late-bind the movement gate used by the invite-as-wait-signal behaviour.
+    // AppServices constructs AutoPartyManager before the MovementCoordinator /
+    // loop engine exist, so they're injected here once available. isLooping
+    // reports whether a loop circuit is currently active — the wait only
+    // engages while looping.
     public void SetMovementGate(MovementCoordinator coordinator, Func<bool> isLooping)
     {
         _coordinator = coordinator;
         _isLooping   = isLooping;
     }
 
-    /// <summary>Per-target nag-escalation state — live for the duration of the @join sequence.</summary>
+    // Per-target nag-escalation state — live for the duration of the @join
+    // sequence.
     private readonly Dictionary<string, NagState> _activeNags =
         new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>
-    /// One target's @join nag progression. The engine ticks all active
-    /// nags on every dispatcher tick (UI thread) and on every external
-    /// observation (telepath reply, party-add, follower-state flip).
-    /// </summary>
+    // One target's @join nag progression. The engine ticks all active nags on
+    // every dispatcher tick (UI thread) and on every external observation
+    // (telepath reply, party-add, follower-state flip).
     private sealed class NagState
     {
         public string Given { get; set; } = string.Empty;
         public DateTime InvitedAt { get; set; }
         public DateTime? LastJoinAt { get; set; }
         public int JoinSends { get; set; }
-        /// <summary>True once the target telepathed back <c>{Ok}</c> — stop firing @join but keep waiting for them to actually follow.</summary>
+        // True once the target telepathed back {Ok} — stop firing @join but
+        // keep waiting for them to actually follow.
         public bool Acknowledged { get; set; }
     }
 
-    /// <summary>
-    /// UI-thread tick that walks <see cref="_activeNags"/> and fires
-    /// <c>@join</c> resends + cap checks. Started on first nag, stopped
-    /// when the map empties.
-    /// </summary>
+    // UI-thread tick that walks _activeNags and fires `@join` resends + cap
+    // checks. Started on first nag, stopped when the map empties.
     private Avalonia.Threading.DispatcherTimer? _nagTimer;
 
     public AutoPartyManager(MessageRouter router, PlayerDatabase players, PartyState party, LogService? log = null)
@@ -275,12 +243,9 @@ public sealed class AutoPartyManager : IDisposable
         if (_watchedMembers.Remove(m)) m.PropertyChanged -= OnMemberPropertyChanged;
     }
 
-    /// <summary>
-    /// A pending-invite row flipping <see cref="PartyMember.IsInvited"/>
-    /// false is the realm-confirmed join (set by
-    /// <c>PartyManager.OnFollowsYou</c>) — stop the @join nag and release
-    /// the loop hold for them.
-    /// </summary>
+    // A pending-invite row flipping IsInvited false is the realm-confirmed join
+    // (set by PartyManager.OnFollowsYou) — stop the @join nag and release the
+    // loop hold for them.
     private void OnMemberPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         if (e.PropertyName != nameof(PartyMember.IsInvited)) return;
@@ -315,12 +280,10 @@ public sealed class AutoPartyManager : IDisposable
         }
     }
 
-    /// <summary>
-    /// "X has been removed from your followers." — leader-side
-    /// uninvite confirmation. Suppress further auto-invites of X for
-    /// <see cref="UninviteSuppression"/> and cancel any in-flight
-    /// nag so we don't immediately re-add the person we just kicked.
-    /// </summary>
+    // "X has been removed from your followers." — leader-side uninvite
+    // confirmation. Suppress further auto-invites of X for UninviteSuppression
+    // and cancel any in-flight nag so we don't immediately re-add the person we
+    // just kicked.
     private void OnFollowerRemoved(MatchResult match)
     {
         if (match.Groups.Count == 0) return;
@@ -360,14 +323,11 @@ public sealed class AutoPartyManager : IDisposable
         }
     }
 
-    /// <summary>
-    /// Bind the wire-sender — same shape as
-    /// <see cref="Remote.PartyEssentialHandlers.SetWireSender"/>. The
-    /// main-window VM supplies <c>SendUserInput</c>; pre-binding, the
-    /// engine still processes events but produces no wire output (so
-    /// tests can inspect <see cref="LastSentForTests"/> without
-    /// configuring a real sender).
-    /// </summary>
+    // Bind the wire-sender — same shape as
+    // Remote.PartyEssentialHandlers.SetWireSender. The main-window VM supplies
+    // SendUserInput; pre-binding, the engine still processes events but produces
+    // no wire output (so tests can inspect LastSentForTests without configuring
+    // a real sender).
     public void SetWireSender(Action<byte[]> sender) => _wire.Bind(sender);
 
     public void Dispose()
@@ -415,18 +375,14 @@ public sealed class AutoPartyManager : IDisposable
         TryAutoAccept(sender);
     }
 
-    /// <summary>
-    /// "You have invited X to follow you." — server echo after any
-    /// outbound <c>invite X</c> we sent. Catches BOTH the
-    /// <see cref="TryAutoInvite"/> auto-path AND the manual-typed
-    /// path (user types <c>invite Raijin</c> at the prompt). Starts
-    /// the @join nag for X if one isn't already running, so the
-    /// escalation behaviour is identical regardless of who initiated
-    /// the invite. Idempotent — if <see cref="TryAutoInvite"/> just
-    /// fired and already started a nag for X, <see cref="StartNag"/>
-    /// would simply replace the entry with a fresh one (same
-    /// invited-at timestamp since both paths use NowProvider()).
-    /// </summary>
+    // "You have invited X to follow you." — server echo after any outbound
+    // `invite X` we sent. Catches BOTH the TryAutoInvite auto-path AND the
+    // manual-typed path (user types `invite Raijin` at the prompt). Starts the
+    // @join nag for X if one isn't already running, so the escalation behaviour
+    // is identical regardless of who initiated the invite. Idempotent — if
+    // TryAutoInvite just fired and already started a nag for X, StartNag would
+    // simply replace the entry with a fresh one (same invited-at timestamp since
+    // both paths use NowProvider()).
     private void OnYouInvited(MatchResult match)
     {
         if (match.Groups.Count == 0) return;
@@ -514,17 +470,13 @@ public sealed class AutoPartyManager : IDisposable
         BeginInviteWait(given, now);
     }
 
-    /// <summary>
-    /// Trainer-menu exit hook — re-fire <c>invite</c> for every member
-    /// who was in the party when the menu opened but is no longer in
-    /// the roster (their follower-side view dissolved during our
-    /// absence even though the leader-side <c>[Invited]</c> slot is
-    /// still hot). Existing AutoPartyManager flows handle the rest:
-    /// the follower's <see cref="OnPartyInviteReceived"/> auto-accepts
-    /// if they have <see cref="PlayerCustomization.JoinPartyIfInvited"/>
-    /// set, and the @join nag escalation covers anyone who doesn't
-    /// auto-accept within the initial-delay window.
-    /// </summary>
+    // Trainer-menu exit hook — re-fire `invite` for every member who was in the
+    // party when the menu opened but is no longer in the roster (their
+    // follower-side view dissolved during our absence even though the
+    // leader-side [Invited] slot is still hot). Existing flows handle the rest:
+    // the follower's OnPartyInviteReceived auto-accepts if they have
+    // JoinPartyIfInvited set, and the @join nag escalation covers anyone who
+    // doesn't auto-accept within the initial-delay window.
     private void OnTrainerMenuExited()
     {
         if (_trainerMenu is null) return;
@@ -605,7 +557,7 @@ public sealed class AutoPartyManager : IDisposable
 
     // ----- @join nag escalation ----------------------------------------
 
-    /// <summary>Begin (or replace) the @join nag flow for <paramref name="given"/>.</summary>
+    // Begin (or replace) the @join nag flow for given.
     private void StartNag(string given, DateTime invitedAt)
     {
         // Master opt-out — the invite still went out, we just don't chase it.
@@ -619,7 +571,8 @@ public sealed class AutoPartyManager : IDisposable
         EnsureNagTimerRunning();
     }
 
-    /// <summary>End the nag flow for <paramref name="given"/> — they joined, declined, replied non-Ok, or the window expired.</summary>
+    // End the nag flow for given — they joined, declined, replied non-Ok, or
+    // the window expired.
     private void CancelNag(string given, string reason)
     {
         if (!_activeNags.Remove(given)) return;
@@ -628,7 +581,7 @@ public sealed class AutoPartyManager : IDisposable
         if (_activeNags.Count == 0) StopNagTimer();
     }
 
-    /// <summary>Abort every active nag — used on the became-a-follower transition.</summary>
+    // Abort every active nag — used on the became-a-follower transition.
     private void CancelAllNags(string reason)
     {
         if (_activeNags.Count == 0) return;
@@ -641,11 +594,8 @@ public sealed class AutoPartyManager : IDisposable
         StopNagTimer();
     }
 
-    /// <summary>
-    /// Lazily spin up the dispatcher tick that walks active nags.
-    /// 500 ms cadence is fine — nag decisions are second-resolution,
-    /// not millisecond-sensitive.
-    /// </summary>
+    // Lazily spin up the dispatcher tick that walks active nags. 500 ms cadence
+    // is fine — nag decisions are second-resolution, not millisecond-sensitive.
     private void EnsureNagTimerRunning()
     {
         if (_nagTimer is not null) return;
@@ -662,7 +612,7 @@ public sealed class AutoPartyManager : IDisposable
         _nagTimer = null;
     }
 
-    /// <summary>Test seam — runs one pass of the nag loop without a real timer.</summary>
+    // Test seam — runs one pass of the nag loop without a real timer.
     internal void TickNagsForTests() => TickNags();
 
     private void TickNags()
@@ -720,11 +670,9 @@ public sealed class AutoPartyManager : IDisposable
 
     // ----- Invite-as-wait-signal ---------------------------------------
 
-    /// <summary>
-    /// Engage the loop hold for an auto-invited player. Only fires while a
-    /// loop is running and the wait window is non-zero — otherwise the
-    /// invite + nag run unchanged and the circuit keeps moving.
-    /// </summary>
+    // Engage the loop hold for an auto-invited player. Only fires while a loop
+    // is running and the wait window is non-zero — otherwise the invite + nag
+    // run unchanged and the circuit keeps moving.
     private void BeginInviteWait(string given, DateTime invitedAt)
     {
         if (_coordinator is null) return;
@@ -738,10 +686,8 @@ public sealed class AutoPartyManager : IDisposable
             $"Holding loop for {given} to join (up to {InviteWaitWindow.TotalSeconds:0}s).");
     }
 
-    /// <summary>
-    /// Drop the invite-wait for <paramref name="given"/> (they joined, were
-    /// uninvited, or the party dissolved) and re-evaluate the gate.
-    /// </summary>
+    // Drop the invite-wait for given (they joined, were uninvited, or the party
+    // dissolved) and re-evaluate the gate.
     private void EndInviteWait(string given, string reason)
     {
         if (!_inviteWaits.Remove(given)) return;
@@ -751,12 +697,10 @@ public sealed class AutoPartyManager : IDisposable
         if (_activeNags.Count == 0 && _inviteWaits.Count == 0) StopNagTimer();
     }
 
-    /// <summary>
-    /// Uninvite anyone whose wait window has elapsed. The server's
-    /// "removed from your followers" echo then suppresses re-invite and
-    /// cancels their nag via <see cref="OnFollowerRemoved"/>; here we just
-    /// drop the wait so the gate can release and the loop resume.
-    /// </summary>
+    // Uninvite anyone whose wait window has elapsed. The server's "removed from
+    // your followers" echo then suppresses re-invite and cancels their nag via
+    // OnFollowerRemoved; here we just drop the wait so the gate can release and
+    // the loop resume.
     private void ExpireInviteWaits(DateTime now)
     {
         if (_inviteWaits.Count == 0) return;
@@ -771,7 +715,7 @@ public sealed class AutoPartyManager : IDisposable
         }
     }
 
-    /// <summary>Assert the PartyInvite gate while any wait is pending, clear it otherwise.</summary>
+    // Assert the PartyInvite gate while any wait is pending, clear it otherwise.
     private void RefreshInviteGate()
     {
         if (_coordinator is null) return;
@@ -787,7 +731,7 @@ public sealed class AutoPartyManager : IDisposable
         }
     }
 
-    /// <summary>Drop every pending invite-wait and release the gate.</summary>
+    // Drop every pending invite-wait and release the gate.
     private void ClearAllInviteWaits(string reason)
     {
         if (_inviteWaits.Count == 0) return;
@@ -799,12 +743,10 @@ public sealed class AutoPartyManager : IDisposable
 
     // ----- Parsing helpers ---------------------------------------------
 
-    /// <summary>
-    /// Split an "Also here:" list capture into individual names. Handles
-    /// the three forms observed in MajorMUD: single ("Raijin"), comma
-    /// ("Foo, Bar"), and Oxford-and ("Foo, Bar and Baz" / "Foo, Bar, and
-    /// Baz"). The capture is already <c>.</c>-stripped by the regex.
-    /// </summary>
+    // Split an "Also here:" list capture into individual names. Handles the
+    // three forms observed in MajorMUD: single ("Raijin"), comma ("Foo, Bar"),
+    // and Oxford-and ("Foo, Bar and Baz" / "Foo, Bar, and Baz"). The capture is
+    // already `.`-stripped by the regex.
     private static IEnumerable<string> SplitOccupantList(string list)
     {
         // Normalise " and " → ", " so the comma split handles both forms
@@ -819,14 +761,11 @@ public sealed class AutoPartyManager : IDisposable
         }
     }
 
-    /// <summary>
-    /// Extract the given name from a list entry. The "Also here:" list
-    /// can include suffixes like "Raijin (sneaking)" or "Forged WuzHere"
-    /// (full display name with family). MajorMUD's <c>invite</c> command
-    /// only accepts the given name, so always take the first
-    /// whitespace-delimited token, then strip any trailing punctuation
-    /// or parenthetical.
-    /// </summary>
+    // Extract the given name from a list entry. The "Also here:" list can
+    // include suffixes like "Raijin (sneaking)" or "Forged WuzHere" (full
+    // display name with family). MajorMUD's `invite` command only accepts the
+    // given name, so always take the first whitespace-delimited token, then
+    // strip any trailing punctuation or parenthetical.
     private static string ExtractGiven(string raw)
     {
         if (string.IsNullOrWhiteSpace(raw)) return string.Empty;

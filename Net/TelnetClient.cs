@@ -7,17 +7,15 @@ using static FujinTerm.Net.TelnetProtocol;
 
 namespace FujinTerm.Net;
 
-/// <summary>
-/// A minimal Telnet client tailored for connecting to BBSes.
-///
-/// Responsibilities:
-///   • Open a TCP connection to host:port.
-///   • Continuously read bytes; strip out Telnet IAC commands; surface the
-///     remaining "display data" bytes via the DataReceived event.
-///   • Auto-negotiate a small set of options (BINARY, ECHO, SUP-GA,
-///     TERM-TYPE, NAWS) the way a typical terminal client would.
-///   • Forward user keystrokes back to the server (with IAC byte escaping).
-/// </summary>
+// A minimal Telnet client tailored for connecting to BBSes.
+//
+// Responsibilities:
+//   • Open a TCP connection to host:port.
+//   • Continuously read bytes; strip out Telnet IAC commands; surface the
+//     remaining "display data" bytes via the DataReceived event.
+//   • Auto-negotiate a small set of options (BINARY, ECHO, SUP-GA,
+//     TERM-TYPE, NAWS) the way a typical terminal client would.
+//   • Forward user keystrokes back to the server (with IAC byte escaping).
 public sealed class TelnetClient : IAsyncDisposable
 {
     private readonly TcpClient _tcp = new();
@@ -37,46 +35,41 @@ public sealed class TelnetClient : IAsyncDisposable
     private int _sbLen;
     private readonly byte[] _sbBuf = new byte[256];
 
-    /// <summary>Terminal type string sent in response to TERM-TYPE SEND.</summary>
+    // Terminal type string sent in response to TERM-TYPE SEND.
     public string TerminalType { get; set; } = "ansi-bbs";
 
-    /// <summary>Window size advertised through NAWS (columns).</summary>
+    // Window size advertised through NAWS (columns).
     public int Cols { get; set; } = 80;
 
-    /// <summary>Window size advertised through NAWS (rows).</summary>
+    // Window size advertised through NAWS (rows).
     public int Rows { get; set; } = 25;
 
-    /// <summary>
-    /// Seconds of socket idle before the OS starts probing the connection
-    /// with TCP keepalive packets. <c>0</c> disables keepalive — the OS
-    /// default (~2 hours on Linux) is too long for a BBS. Set before
-    /// <see cref="ConnectAsync"/>; applied to the live socket once the
-    /// TCP connection is established. Hardcoded interval / retry-count
-    /// give a ~30 s tail (3 probes 10 s apart) before the socket dies.
-    /// </summary>
+    // Seconds of socket idle before the OS starts probing the connection with
+    // TCP keepalive packets. 0 disables keepalive — the OS default (~2 hours
+    // on Linux) is too long for a BBS. Set before ConnectAsync; applied to the
+    // live socket once the TCP connection is established. Hardcoded interval /
+    // retry-count give a ~30 s tail (3 probes 10 s apart) before the socket
+    // dies.
     public int NoResponseTimeoutSeconds { get; set; }
 
-    /// <summary>
-    /// Wall-clock timestamp of the most recent read that returned bytes.
-    /// <see cref="DateTimeOffset.MinValue"/> if no data has arrived yet
-    /// this session. The connection-lifecycle code in
-    /// <c>MainWindowViewModel</c> reads this on <see cref="Disconnected"/>
-    /// to distinguish a server-side carrier drop from a keepalive
-    /// timeout — long quiet stretch + dead socket = no response.
-    /// </summary>
+    // Wall-clock timestamp of the most recent read that returned bytes.
+    // DateTimeOffset.MinValue if no data has arrived yet this session. The
+    // connection-lifecycle code in MainWindowViewModel reads this on
+    // Disconnected to distinguish a server-side carrier drop from a keepalive
+    // timeout — long quiet stretch + dead socket = no response.
     public DateTimeOffset LastDataReceived { get; private set; } = DateTimeOffset.MinValue;
 
 
     public bool IsConnected => _tcp.Connected && _stream is not null;
 
-    /// <summary>Raised on the read-loop thread when display bytes arrive.</summary>
+    // Raised on the read-loop thread when display bytes arrive.
     public event Action<ReadOnlyMemory<byte>>? DataReceived;
     public event Action? Connected;
     public event Action? Disconnected;
-    /// <summary>Diagnostic log line (negotiation traffic, errors).</summary>
+    // Diagnostic log line (negotiation traffic, errors).
     public event Action<string>? Log;
 
-    /// <summary>Open the TCP socket and start the background read loop.</summary>
+    // Open the TCP socket and start the background read loop.
     public async Task ConnectAsync(string host, int port, CancellationToken ct = default)
     {
         await _tcp.ConnectAsync(host, port, ct);
@@ -87,15 +80,12 @@ public sealed class TelnetClient : IAsyncDisposable
         Connected?.Invoke();
     }
 
-    /// <summary>
-    /// Configure TCP-level keepalive on the connected socket, gated on
-    /// <see cref="NoResponseTimeoutSeconds"/>. Cross-platform via .NET's
-    /// SocketOptionName.TcpKeepAlive* (mapped to TCP_KEEPIDLE / INTVL /
-    /// CNT on Linux, the equivalents on Windows + macOS). Best-effort:
-    /// any platform that doesn't support a given option throws, which
-    /// we swallow — keepalive is a defense, not a correctness
-    /// requirement.
-    /// </summary>
+    // Configure TCP-level keepalive on the connected socket, gated on
+    // NoResponseTimeoutSeconds. Cross-platform via .NET's
+    // SocketOptionName.TcpKeepAlive* (mapped to TCP_KEEPIDLE / INTVL / CNT on
+    // Linux, the equivalents on Windows + macOS). Best-effort: any platform
+    // that doesn't support a given option throws, which we swallow —
+    // keepalive is a defense, not a correctness requirement.
     private void ApplyKeepAlive()
     {
         int idle = NoResponseTimeoutSeconds;
@@ -108,11 +98,9 @@ public sealed class TelnetClient : IAsyncDisposable
         try { sock.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.TcpKeepAliveRetryCount, 3); } catch { }
     }
 
-    /// <summary>
-    /// Send raw bytes to the server. If the payload contains any IAC (255)
-    /// bytes they are doubled — the protocol's escape rule — so the server
-    /// reads them as data instead of command escapes.
-    /// </summary>
+    // Send raw bytes to the server. If the payload contains any IAC (255)
+    // bytes they are doubled — the protocol's escape rule — so the server
+    // reads them as data instead of command escapes.
     public async Task SendAsync(ReadOnlyMemory<byte> data, CancellationToken ct = default)
     {
         if (_stream is null) return;
@@ -133,11 +121,11 @@ public sealed class TelnetClient : IAsyncDisposable
         await _stream.WriteAsync(buf.AsMemory(0, o), ct);
     }
 
-    /// <summary>Convenience: send a string as Latin-1 (8-bit "ANSI") bytes.</summary>
+    // Convenience: send a string as Latin-1 (8-bit "ANSI") bytes.
     public Task SendTextAsync(string text, CancellationToken ct = default)
         => SendAsync(Encoding.Latin1.GetBytes(text), ct);
 
-    /// <summary>Cancel the read loop, close the socket.</summary>
+    // Cancel the read loop, close the socket.
     public async Task DisconnectAsync()
     {
         try { _cts?.Cancel(); } catch { }
@@ -155,10 +143,8 @@ public sealed class TelnetClient : IAsyncDisposable
         _tcp.Dispose();
     }
 
-    /// <summary>
-    /// Tell the server about a (new) window size via NAWS. Only sent if NAWS
-    /// has actually been negotiated — otherwise the server isn't expecting it.
-    /// </summary>
+    // Tell the server about a (new) window size via NAWS. Only sent if NAWS
+    // has actually been negotiated — otherwise the server isn't expecting it.
     public async Task SendWindowSizeAsync(int cols, int rows, CancellationToken ct = default)
     {
         Cols = cols;
@@ -224,12 +210,10 @@ public sealed class TelnetClient : IAsyncDisposable
 
     private byte _pendingCmd;
 
-    /// <summary>
-    /// Walk the input bytes through the Telnet command-stripping state
-    /// machine, copying display bytes to <paramref name="output"/> and
-    /// dispatching DO/DONT/WILL/WONT and SB/SE blocks as they're found.
-    /// Returns the number of display bytes written.
-    /// </summary>
+    // Walk the input bytes through the Telnet command-stripping state machine,
+    // copying display bytes to output and dispatching DO/DONT/WILL/WONT and
+    // SB/SE blocks as they're found. Returns the number of display bytes
+    // written.
     private int Interpret(ReadOnlySpan<byte> input, Span<byte> output)
     {
         int outLen = 0;
@@ -271,10 +255,8 @@ public sealed class TelnetClient : IAsyncDisposable
         return outLen;
     }
 
-    /// <summary>
-    /// React to a DO/DONT/WILL/WONT request. We say yes only to the small
-    /// option set we actually implement; everything else is politely refused.
-    /// </summary>
+    // React to a DO/DONT/WILL/WONT request. We say yes only to the small
+    // option set we actually implement; everything else is politely refused.
     private void HandleNegotiation(byte cmd, byte opt)
     {
         Log?.Invoke($"RX: {CmdName(cmd)} {OptName(opt)}");
@@ -313,10 +295,8 @@ public sealed class TelnetClient : IAsyncDisposable
         }
     }
 
-    /// <summary>
-    /// Handle a completed IAC SB ... IAC SE block. Today only TERM-TYPE
-    /// SEND is interesting — we reply with the configured terminal name.
-    /// </summary>
+    // Handle a completed IAC SB ... IAC SE block. Today only TERM-TYPE SEND is
+    // interesting — we reply with the configured terminal name.
     private void HandleSubNegotiation()
     {
         if (_sbLen < 1) return;
@@ -336,7 +316,7 @@ public sealed class TelnetClient : IAsyncDisposable
         }
     }
 
-    /// <summary>Send a single 3-byte IAC <cmd> <opt> negotiation packet.</summary>
+    // Send a single 3-byte IAC <cmd> <opt> negotiation packet.
     private void SendCommand(byte cmd, byte opt)
     {
         if (_stream is null) return;

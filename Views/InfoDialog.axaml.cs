@@ -4,12 +4,10 @@ using Avalonia.Markup.Xaml;
 
 namespace FujinTerm.Views;
 
-/// <summary>
-/// Reusable read-only modeless dialog for "show this text and a Close
-/// button" affordances — About, License, Keyboard shortcuts, anything that
-/// doesn't earn a bespoke window. Call <see cref="Configure"/> after
-/// construction; then <c>Show(owner)</c>.
-/// </summary>
+// Reusable read-only modeless dialog for "show this text and a Close
+// button" affordances — About, License, Keyboard shortcuts, anything that
+// doesn't earn a bespoke window. Call Configure after construction; then
+// Show(owner).
 public partial class InfoDialog : Window
 {
     public InfoDialog()
@@ -20,7 +18,7 @@ public partial class InfoDialog : Window
 
     private void InitializeComponent() => AvaloniaXamlLoader.Load(this);
 
-    /// <summary>Set the window title and body text.</summary>
+    // Set the window title and body text.
     public void Configure(string title, string body)
     {
         Title = title;

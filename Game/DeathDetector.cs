@@ -5,31 +5,20 @@ using FujinTerm.Terminal;
 
 namespace FujinTerm.Game;
 
-/// <summary>
-/// Watches inbound lines for the post-suicide / killed-in-combat
-/// <c>You now have N lives remaining.</c> message and tells
-/// <see cref="RoomTracker.NoteDeath"/> so the room the character died
-/// in is captured on the profile and the tracker switches to
-/// <see cref="RoomConfidence.PendingRespawn"/> ahead of the respawn
-/// room display.
-/// </summary>
-/// <remarks>
-/// <para>
-/// MajorMUD emits two phrasings off the same wire shape:
-/// </para>
-/// <list type="bullet">
-///   <item><c>You now have N lives remaining.</c> — after a death
-///   (suicide command or combat kill). This counts as death.</item>
-///   <item><c>You have N lives left.</c> — after a miracle save. The
-///   character survived; not a death.</item>
-/// </list>
-/// <para>
-/// Only the first phrasing fires the detector. Same regex shape
-/// <see cref="StatParser"/> uses for its always-on lives-count update,
-/// but with the verb tightened to <c>"now have"</c> so the miracle-save
-/// line can't trip a phantom death record.
-/// </para>
-/// </remarks>
+// Watches inbound lines for the post-suicide / killed-in-combat "You now have N
+// lives remaining." message and tells RoomTracker.NoteDeath so the room the
+// character died in is captured on the profile and the tracker switches to
+// PendingRespawn ahead of the respawn room display.
+//
+// MajorMUD emits two phrasings off the same wire shape:
+//   "You now have N lives remaining." — after a death (suicide command or
+//   combat kill). This counts as death.
+//   "You have N lives left." — after a miracle save. The character survived;
+//   not a death.
+//
+// Only the first phrasing fires the detector. Same regex shape StatParser uses
+// for its always-on lives-count update, but with the verb tightened to "now
+// have" so the miracle-save line can't trip a phantom death record.
 public sealed partial class DeathDetector : IDisposable
 {
     private readonly RoomTracker _tracker;
@@ -43,11 +32,9 @@ public sealed partial class DeathDetector : IDisposable
         _log = log;
     }
 
-    /// <summary>
-    /// Bind to the per-session <see cref="LineExtractor"/>; called by
-    /// <see cref="AppServices"/> when the telnet client connects.
-    /// Idempotent — re-attaching to the same extractor is a no-op.
-    /// </summary>
+    // Bind to the per-session LineExtractor; called by AppServices when the
+    // telnet client connects. Idempotent — re-attaching to the same extractor is
+    // a no-op.
     public void AttachLineExtractor(LineExtractor lines)
     {
         ArgumentNullException.ThrowIfNull(lines);
@@ -63,7 +50,7 @@ public sealed partial class DeathDetector : IDisposable
         _lines = null;
     }
 
-    /// <summary>Test seam — feed a plain text line.</summary>
+    // Test seam — feed a plain text line.
     internal void FeedTestLine(string text, DateTimeOffset? when = null)
     {
         OnLine(new LineExtractor.EmittedLine(
@@ -81,12 +68,9 @@ public sealed partial class DeathDetector : IDisposable
         _tracker.NoteDeath(lives, line.Text.Trim(), line.Timestamp);
     }
 
-    /// <summary>
-    /// <c>You now have N lives remaining.</c> — the post-death form.
-    /// Singular <c>life</c> handled too (1 remaining). The
-    /// <c>You have N lives left.</c> miracle-save form is intentionally
-    /// not matched here.
-    /// </summary>
+    // "You now have N lives remaining." — the post-death form. Singular "life"
+    // handled too (1 remaining). The "You have N lives left." miracle-save form
+    // is intentionally not matched here.
     [GeneratedRegex(@"^You now have (\d+) (?:lives?|life) remaining\.",
         RegexOptions.CultureInvariant)]
     private static partial Regex DeathRx();

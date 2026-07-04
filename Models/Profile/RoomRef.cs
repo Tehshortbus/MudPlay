@@ -1,11 +1,8 @@
 namespace FujinTerm.Models.Profile;
 
-/// <summary>
-/// JSON-friendly representation of a <see cref="Game.Map.RoomKey"/>
-/// for per-character storage (avoided rooms, stash rooms, future
-/// favorites bookmarks). Plain mutable POCO so
-/// <see cref="System.Text.Json"/> round-trips it without a converter.
-/// </summary>
+// JSON-friendly representation of a Game.Map.RoomKey for per-character storage
+// (avoided rooms, stash rooms, future favorites bookmarks). Plain mutable POCO
+// so System.Text.Json round-trips it without a converter.
 public sealed class RoomRef
 {
     public int Map { get; set; }

@@ -1,29 +1,22 @@
 namespace FujinTerm.Services;
 
-/// <summary>
-/// Application-wide log ring buffer with severity tags. Producers call
-/// <see cref="Log"/> (or one of the per-severity shorthands); consumers
-/// subscribe to <see cref="EntryAdded"/> or snapshot the buffer via
-/// <see cref="Snapshot"/>. Phase 1's <c>LogPaneWindow</c> is the primary
-/// consumer; the status bar binds to <see cref="Latest"/>.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Thread-safety: <see cref="Log"/> may be called from any thread (e.g., the
-/// Telnet read loop). The ring buffer is guarded by an internal lock; the
-/// <see cref="EntryAdded"/> event is fired <i>after</i> the lock is released,
-/// on the calling thread. Subscribers that touch UI state must marshal via
-/// <c>Dispatcher.UIThread.Post</c> themselves.
-/// </para>
-/// <para>
-/// Capacity defaults to 2000 entries; oldest entries are overwritten on
-/// wraparound. Settings.Display will expose the size knob in Phase 4; for
-/// Phase 0 it's a constructor argument.
-/// </para>
-/// </remarks>
+// Application-wide log ring buffer with severity tags. Producers call Log
+// (or one of the per-severity shorthands); consumers subscribe to EntryAdded
+// or snapshot the buffer via Snapshot. The LogPaneWindow is the primary
+// consumer; the status bar binds to Latest.
+//
+// Thread-safety: Log may be called from any thread (e.g., the Telnet read
+// loop). The ring buffer is guarded by an internal lock; the EntryAdded
+// event is fired after the lock is released, on the calling thread.
+// Subscribers that touch UI state must marshal via Dispatcher.UIThread.Post
+// themselves.
+//
+// Capacity defaults to 2000 entries; oldest entries are overwritten on
+// wraparound. The size knob is exposed in Settings.Display; the constructor
+// takes the initial value.
 public sealed class LogService
 {
-    /// <summary>Default ring-buffer capacity. Overridable via the constructor.</summary>
+    // Default ring-buffer capacity. Overridable via the constructor.
     public const int DefaultCapacity = 2000;
 
     private readonly object _gate = new();
@@ -32,47 +25,40 @@ public sealed class LogService
     private int _count;         // live entries in the ring (≤ Capacity)
     private LogEntry? _latest;
 
-    /// <summary>Fired after each successful <see cref="Log"/> call, on the producer's thread.</summary>
+    // Fired after each successful Log call, on the producer's thread.
     public event Action<LogEntry>? EntryAdded;
 
-    /// <summary>
-    /// Session diagnostic state gating generation of the <see cref="LogSeverity.Debug"/>
-    /// and <see cref="LogSeverity.Combat"/> channels. Null in unit tests that don't
-    /// exercise gating — treated as "all diagnostics off" so <see cref="Debug(string, string)"/>
-    /// / <see cref="Combat(string, string)"/> no-op. The running app wires
-    /// <c>AppServices.LogDiagnostics</c> here so the LogPane toggles (persisted per-character)
-    /// gate emission at the source, not just at display.
-    /// </summary>
+    // Session diagnostic state gating generation of the Debug and Combat
+    // channels. Null in unit tests that don't exercise gating — treated as
+    // "all diagnostics off" so Debug / Combat no-op. The running app wires
+    // AppServices.LogDiagnostics here so the LogPane toggles (persisted
+    // per-character) gate emission at the source, not just at display.
     public LogDiagnosticState? Diagnostics { get; set; }
 
-    /// <summary>True when the Debug channel should be generated. Guard hot paths on this
-    /// before building an interpolated Debug message so the disabled path stays allocation-free.</summary>
+    // True when the Debug channel should be generated. Guard hot paths on
+    // this before building an interpolated Debug message so the disabled path
+    // stays allocation-free.
     public bool IsDebugEnabled => Diagnostics?.DebugDiagnostics ?? false;
 
-    /// <summary>True when the Combat channel should be generated. Guard hot paths on this
-    /// before building an interpolated Combat message so the disabled path stays allocation-free.</summary>
+    // True when the Combat channel should be generated. Guard hot paths on
+    // this before building an interpolated Combat message so the disabled
+    // path stays allocation-free.
     public bool IsCombatEnabled => Diagnostics?.CombatDiagnostics ?? false;
 
-    /// <summary>
-    /// Per-source double-click handler registry. The LogPane looks
-    /// up the handler by an entry's <see cref="LogEntry.Source"/>
-    /// and invokes it when the user double-clicks the row — lets a
-    /// service like <c>SpellCoverageAuditor</c> register
-    /// <c>"GameData/Coverage"</c> + open a detail window without the
-    /// LogPane needing to know what coverage even is. Keys are
-    /// matched ordinal-case-sensitive (same convention as the
-    /// entry's Source tag).
-    /// </summary>
+    // Per-source double-click handler registry. The LogPane looks up the
+    // handler by an entry's LogEntry.Source and invokes it when the user
+    // double-clicks the row — lets a service like SpellCoverageAuditor
+    // register "GameData/Coverage" + open a detail window without the LogPane
+    // needing to know what coverage even is. Keys are matched
+    // ordinal-case-sensitive (same convention as the entry's Source tag).
     private readonly Dictionary<string, Action> _detailHandlers = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Action<LogEntry>> _entryHandlers = new(StringComparer.Ordinal);
 
-    /// <summary>
-    /// Register a no-arg double-click handler for entries whose
-    /// <see cref="LogEntry.Source"/> matches <paramref name="source"/>.
-    /// Replaces any prior handler for that source (last one wins).
-    /// Idempotent at startup time. Use when the handler doesn't need
-    /// the row's payload (e.g. opens a singleton detail window).
-    /// </summary>
+    // Register a no-arg double-click handler for entries whose
+    // LogEntry.Source matches source. Replaces any prior handler for that
+    // source (last one wins). Idempotent at startup time. Use when the
+    // handler doesn't need the row's payload (e.g. opens a singleton detail
+    // window).
     public void RegisterDetailHandler(string source, Action handler)
     {
         ArgumentException.ThrowIfNullOrEmpty(source);
@@ -80,14 +66,11 @@ public sealed class LogService
         lock (_detailHandlers) { _detailHandlers[source] = handler; }
     }
 
-    /// <summary>
-    /// Register an entry-aware double-click handler. Used when the
-    /// handler needs the row's <see cref="LogEntry.Context"/> or
-    /// <see cref="LogEntry.Message"/> — e.g. the Phase 9 RoomClassifier
-    /// unknown-entity fix dialog, which reads the raw "Also Here:"
-    /// line from Context and parses the unknown name out of Message.
-    /// Coexists with the no-arg variant; both fire on double-click.
-    /// </summary>
+    // Register an entry-aware double-click handler. Used when the handler
+    // needs the row's LogEntry.Context or LogEntry.Message — e.g. the
+    // RoomClassifier unknown-entity fix dialog, which reads the raw "Also
+    // Here:" line from Context and parses the unknown name out of Message.
+    // Coexists with the no-arg variant; both fire on double-click.
     public void RegisterDetailHandler(string source, Action<LogEntry> handler)
     {
         ArgumentException.ThrowIfNullOrEmpty(source);
@@ -95,10 +78,8 @@ public sealed class LogService
         lock (_entryHandlers) { _entryHandlers[source] = handler; }
     }
 
-    /// <summary>
-    /// Invoke the no-arg detail handler for <paramref name="source"/>,
-    /// or return <c>false</c> if no handler is registered.
-    /// </summary>
+    // Invoke the no-arg detail handler for source, or return false if no
+    // handler is registered.
     public bool TryInvokeDetailHandler(string source)
     {
         if (string.IsNullOrEmpty(source)) return false;
@@ -111,13 +92,10 @@ public sealed class LogService
         return true;
     }
 
-    /// <summary>
-    /// Invoke the entry-aware detail handler for
-    /// <paramref name="entry"/>'s source, or return <c>false</c> if no
-    /// entry-aware handler is registered. The LogPane fires both this
-    /// AND the no-arg overload on double-click so the two registration
-    /// styles can coexist.
-    /// </summary>
+    // Invoke the entry-aware detail handler for entry's source, or return
+    // false if no entry-aware handler is registered. The LogPane fires both
+    // this AND the no-arg overload on double-click so the two registration
+    // styles can coexist.
     public bool TryInvokeDetailHandler(LogEntry entry)
     {
         if (string.IsNullOrEmpty(entry.Source)) return false;
@@ -130,19 +108,18 @@ public sealed class LogService
         return true;
     }
 
-    /// <summary>Maximum number of entries retained.</summary>
+    // Maximum number of entries retained.
     public int Capacity { get; }
 
-    /// <summary>Live entries currently in the ring. Cheap (single
-    /// integer read under the gate) — readers that need the count
-    /// shouldn't call <see cref="Snapshot"/>, which allocates an
-    /// entire ring-sized array per call.</summary>
+    // Live entries currently in the ring. Cheap (single integer read under
+    // the gate) — readers that need the count shouldn't call Snapshot, which
+    // allocates an entire ring-sized array per call.
     public int Count
     {
         get { lock (_gate) { return _count; } }
     }
 
-    /// <summary>Most recently appended entry, or <c>null</c> if nothing has been logged yet.</summary>
+    // Most recently appended entry, or null if nothing has been logged yet.
     public LogEntry? Latest
     {
         get { lock (_gate) { return _latest; } }
@@ -155,16 +132,13 @@ public sealed class LogService
         _ring = new LogEntry[capacity];
     }
 
-    /// <summary>Append an entry. Stamps <see cref="LogEntry.Timestamp"/> at call time.</summary>
+    // Append an entry. Stamps LogEntry.Timestamp at call time.
     public void Log(LogSeverity severity, string source, string message)
         => Log(severity, source, message, context: null);
 
-    /// <summary>
-    /// Append an entry with an optional <paramref name="context"/> payload —
-    /// the raw wire line (or producer-supplied string) that the LogPane's
-    /// double-click handler copies to the clipboard. See
-    /// <see cref="LogEntry.Context"/> for the convention.
-    /// </summary>
+    // Append an entry with an optional context payload — the raw wire line
+    // (or producer-supplied string) that the LogPane's double-click handler
+    // copies to the clipboard. See LogEntry.Context for the convention.
     public void Log(LogSeverity severity, string source, string message, string? context)
     {
         LogEntry entry = new(
@@ -185,10 +159,8 @@ public sealed class LogService
         EntryAdded?.Invoke(entry);
     }
 
-    /// <summary>
-    /// Copy the live entries out in oldest-to-newest order. Returns a fresh
-    /// array; safe for the caller to retain.
-    /// </summary>
+    // Copy the live entries out in oldest-to-newest order. Returns a fresh
+    // array; safe for the caller to retain.
     public LogEntry[] Snapshot()
     {
         lock (_gate)
@@ -208,7 +180,7 @@ public sealed class LogService
         }
     }
 
-    /// <summary>Drop every entry. Does not fire <see cref="EntryAdded"/>.</summary>
+    // Drop every entry. Does not fire EntryAdded.
     public void Clear()
     {
         lock (_gate)
@@ -246,35 +218,26 @@ public sealed class LogService
 
     // ----- Convenience shorthands with context payload ----------------
     // The Warn / Debug / Combat paths are the ones that need it today
-    // (Phase 9 RoomClassifier emits Warn rows with the raw "Also Here" line
-    // carried in Context; combat traces carry the raw wire line). Other
-    // severities can grow their own overload when a producer wants one.
+    // (RoomClassifier emits Warn rows with the raw "Also Here" line carried
+    // in Context; combat traces carry the raw wire line). Other severities
+    // can grow their own overload when a producer wants one.
 
-    /// <summary>
-    /// Append a <see cref="LogSeverity.Warn"/> entry with a
-    /// <see cref="LogEntry.Context"/> payload that the LogPane's
-    /// double-click handler copies to the clipboard. Phase 9
-    /// <c>RoomClassifier</c> uses this for Unknown-entity rows.
-    /// </summary>
+    // Append a Warn entry with a Context payload that the LogPane's
+    // double-click handler copies to the clipboard. RoomClassifier uses this
+    // for Unknown-entity rows.
     public void Warn(string source, string message, string? context)
         => Log(LogSeverity.Warn, source, message, context);
 
-    /// <summary>
-    /// Append a <see cref="LogSeverity.Debug"/> entry with a
-    /// <see cref="LogEntry.Context"/> payload. Generation-gated on the
-    /// Debug toggle.
-    /// </summary>
+    // Append a Debug entry with a Context payload. Generation-gated on the
+    // Debug toggle.
     public void Debug(string source, string message, string? context)
     {
         if (!IsDebugEnabled) return;
         Log(LogSeverity.Debug, source, message, context);
     }
 
-    /// <summary>
-    /// Append a <see cref="LogSeverity.Combat"/> entry with a
-    /// <see cref="LogEntry.Context"/> payload. Generation-gated on the
-    /// Combat toggle.
-    /// </summary>
+    // Append a Combat entry with a Context payload. Generation-gated on the
+    // Combat toggle.
     public void Combat(string source, string message, string? context)
     {
         if (!IsCombatEnabled) return;

@@ -4,11 +4,9 @@ using FujinTerm.ViewModels;
 
 namespace FujinTerm.Views;
 
-/// <summary>
-/// Modeless Session Stats → Transaction history window. Bound to
-/// <see cref="TransactionHistoryViewModel"/>; code-behind only disposes the
-/// VM on close (unsubscribing it from the tracker) — everything else is XAML.
-/// </summary>
+// Modeless Session Stats → Transaction history window. Bound to
+// TransactionHistoryViewModel; code-behind only disposes the VM on close
+// (unsubscribing it from the tracker) — everything else is XAML.
 public partial class TransactionHistoryWindow : Window
 {
     public TransactionHistoryWindow()

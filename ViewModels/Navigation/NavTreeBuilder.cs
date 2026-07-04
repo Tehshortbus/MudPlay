@@ -5,25 +5,18 @@ using FujinTerm.Game.Map;
 
 namespace FujinTerm.ViewModels.Navigation;
 
-/// <summary>
-/// Turns a flat list of row view-models — each tagged with a stored
-/// <c>/</c>-separated folder path — plus the set of folders that must
-/// exist even when empty into the nested folder/leaf tree the
-/// navigation surfaces render. Shared by the Manage dialog (loops +
-/// lairs) and the rail (gotos + loops + lairs) so the grouping logic
-/// lives in one place.
-/// </summary>
+// Turns a flat list of row view-models — each tagged with a stored
+// /-separated folder path — plus the set of folders that must exist even
+// when empty into the nested folder/leaf tree the navigation surfaces
+// render. Shared by the Manage dialog (loops + lairs) and the rail (gotos +
+// loops + lairs) so the grouping logic lives in one place.
 public static class NavTreeBuilder
 {
-    /// <summary>
-    /// Build the top-level node list for <paramref name="rows"/>.
-    /// Folders sort before leaves; both alphabetical
-    /// (case-insensitive, via <see cref="SortKeyOf"/>).
-    /// <paramref name="folderOf"/> returns a row's stored folder
-    /// (empty = root). <paramref name="allFolders"/> seeds folders
-    /// that have no rows yet (empty folders the user created) so they
-    /// still render.
-    /// </summary>
+    // Build the top-level node list for rows. Folders sort before leaves;
+    // both alphabetical (case-insensitive, via SortKeyOf). folderOf returns
+    // a row's stored folder (empty = root). allFolders seeds folders that
+    // have no rows yet (empty folders the user created) so they still
+    // render.
     public static List<object> Build<TRow>(
         IEnumerable<TRow> rows,
         Func<TRow, string?> folderOf,
@@ -71,12 +64,9 @@ public static class NavTreeBuilder
         return roots;
     }
 
-    /// <summary>
-    /// Replace <paramref name="target"/>'s contents with a freshly
-    /// built tree, preserving folder expand/collapse state across the
-    /// rebuild (keyed by folder path) so a refresh doesn't snap every
-    /// folder back open.
-    /// </summary>
+    // Replace target's contents with a freshly built tree, preserving folder
+    // expand/collapse state across the rebuild (keyed by folder path) so a
+    // refresh doesn't snap every folder back open.
     public static void Sync<TRow>(
         ObservableCollection<object> target,
         IEnumerable<TRow> rows,

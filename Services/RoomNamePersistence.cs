@@ -5,27 +5,18 @@ using FujinTerm.Game.Map;
 
 namespace FujinTerm.Services;
 
-/// <summary>
-/// Writes a single learned-name update back to the active set's
-/// <c>Rooms.json</c> file. Matches the row by
-/// (<c>"Map Number"</c>, <c>"Room Number"</c>) and mutates its
-/// <c>"Name"</c> field in place, preserving the rest of the document.
-/// </summary>
-/// <remarks>
-/// <para>
-/// We accept the per-write file-rewrite cost (~5MB JSON on a real
-/// dataset) because the prompt is rare in practice — only fires for
-/// the ~140 ganghouse rooms a player can stumble into. Atomic via
-/// temp-file-and-rename so an interrupted write can't corrupt the
-/// source file.
-/// </para>
-/// <para>
-/// Concurrent writes are not supported — the writer assumes the
-/// prompt UI serialises confirmations. The cache is evicted after
-/// the write so the next consumer that asks for <c>Rooms.json</c>
-/// re-loads the updated file from disk.
-/// </para>
-/// </remarks>
+// Writes a single learned-name update back to the active set's Rooms.json file.
+// Matches the row by ("Map Number", "Room Number") and mutates its "Name" field
+// in place, preserving the rest of the document.
+//
+// We accept the per-write file-rewrite cost (~5MB JSON on a real dataset)
+// because the prompt is rare in practice — only fires for the ~140 ganghouse
+// rooms a player can stumble into. Atomic via temp-file-and-rename so an
+// interrupted write can't corrupt the source file.
+//
+// Concurrent writes are not supported — the writer assumes the prompt UI
+// serialises confirmations. The cache is evicted after the write so the next
+// consumer that asks for Rooms.json re-loads the updated file from disk.
 public sealed class RoomNamePersistence
 {
     private readonly GameDataCache _cache;
@@ -38,11 +29,8 @@ public sealed class RoomNamePersistence
         _log = log;
     }
 
-    /// <summary>
-    /// Persist <paramref name="name"/> as the Name field for the row
-    /// matching <paramref name="key"/> in the active set's
-    /// <c>Rooms.json</c>. Returns <c>true</c> on success.
-    /// </summary>
+    // Persist name as the Name field for the row matching key in the active
+    // set's Rooms.json. Returns true on success.
     public bool Persist(RoomKey key, string name)
     {
         if (string.IsNullOrWhiteSpace(name)) return false;

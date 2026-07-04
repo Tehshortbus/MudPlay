@@ -7,31 +7,23 @@ using FujinTerm.Models.Profile;
 namespace FujinTerm.Services;
 
 
-/// <summary>
-/// Drives the per-character BBS handshake. Walks the menu-nav sequence the
-/// user authored on the BBS section — wait for a pattern, send a reply,
-/// move on — until the final step's response is sent and
-/// <see cref="LoggedIntoGame"/> fires. The reply text supports two
-/// case-insensitive placeholders: <c>{username}</c> / <c>{userid}</c> for
-/// the configured username and <c>{password}</c> / <c>{passwd}</c> for
-/// the password decrypted from <see cref="PasswordProtector"/>.
-/// </summary>
-/// <remarks>
-/// <para>
-/// One-shot credential guard: once a step containing <c>{username}</c>
-/// (resp. <c>{password}</c>) has been answered AND the next step's
-/// pattern matches — meaning the BBS accepted the response — that
-/// placeholder is "locked" for the rest of the session. A later step
-/// in the queue that references the same placeholder will abort the
-/// automator. Stops a malicious server from prompting "what is your
-/// username again?" mid-session and getting it echoed back.
-/// </para>
-/// <para>
-/// State is lock-guarded so the UI-thread <see cref="Feed"/> call can't
-/// race the post-<c>ConfigureAwait(false)</c> continuation in
-/// <c>ResolveAndSendAsync</c> or the per-step timeout callback.
-/// </para>
-/// </remarks>
+// Drives the per-character BBS handshake. Walks the menu-nav sequence the user
+// authored on the BBS section — wait for a pattern, send a reply, move on —
+// until the final step's response is sent and LoggedIntoGame fires. The reply
+// text supports two case-insensitive placeholders: {username} / {userid} for
+// the configured username and {password} / {passwd} for the password decrypted
+// from PasswordProtector.
+//
+// One-shot credential guard: once a step containing {username} (resp.
+// {password}) has been answered AND the next step's pattern matches — meaning
+// the BBS accepted the response — that placeholder is "locked" for the rest of
+// the session. A later step that references the same placeholder aborts the
+// automator, so a malicious server can't re-prompt "what is your username
+// again?" mid-session and get it echoed back.
+//
+// State is lock-guarded so the UI-thread Feed call can't race the
+// post-ConfigureAwait(false) continuation in ResolveAndSendAsync or the
+// per-step timeout callback.
 public sealed class LoginAutomator : IDisposable
 {
     private const int BufferCap = 4096;
@@ -61,19 +53,18 @@ public sealed class LoginAutomator : IDisposable
     private bool _usernameLocked;
     private bool _passwordLocked;
 
-    /// <summary>Fired after the final step matches and its response is sent.</summary>
+    // Fired after the final step matches and its response is sent.
     public event Action? LoggedIntoGame;
 
-    /// <summary>Fired when a step's send fails (no value to substitute, send IO error, etc.). Payload is a short reason.</summary>
+    // Fired when a step's send fails (no value to substitute, send IO error,
+    // etc.). Payload is a short reason.
     public event Action<string>? Aborted;
 
-    /// <summary>True once <see cref="Start"/> has been called and the queue has steps left.</summary>
     public bool IsRunning => _started && !_disposed && _stepIndex < _steps.Count;
 
-    /// <summary>Zero-based index of the step currently being awaited. Exposed for diagnostics.</summary>
+    // Zero-based index of the step currently being awaited; exposed for diagnostics.
     public int CurrentStepIndex => _stepIndex;
 
-    /// <summary>Total number of steps in the queue.</summary>
     public int StepCount => _steps.Count;
 
     public LoginAutomator(
@@ -92,7 +83,7 @@ public sealed class LoginAutomator : IDisposable
         _log = log;
     }
 
-    /// <summary>Convert each persisted <see cref="MenuStep"/> into its runtime form.</summary>
+    // Convert each persisted MenuStep into its runtime form.
     public static IReadOnlyList<AutomationStep> BuildSteps(BbsCredentials credentials)
     {
         ArgumentNullException.ThrowIfNull(credentials);
@@ -104,11 +95,9 @@ public sealed class LoginAutomator : IDisposable
         return steps;
     }
 
-    /// <summary>
-    /// Build a ready-to-start automator from a character's BBS credentials.
-    /// Returns <c>null</c> when there's nothing to do — no credentials,
-    /// or the credentials carry no menu-nav steps.
-    /// </summary>
+    // Build a ready-to-start automator from a character's BBS credentials.
+    // Returns null when there's nothing to do — no credentials, or the
+    // credentials carry no menu-nav steps.
     public static LoginAutomator? TryBuild(
         BbsCredentials? credentials,
         PasswordProtector passwords,
@@ -140,7 +129,7 @@ public sealed class LoginAutomator : IDisposable
         return new LoginAutomator(steps, username, resolvePassword, sendText, log);
     }
 
-    /// <summary>Begin the automation.</summary>
+    // Begin the automation.
     public void Start()
     {
         bool done;
@@ -153,11 +142,9 @@ public sealed class LoginAutomator : IDisposable
         if (done) FireDone();
     }
 
-    /// <summary>
-    /// Feed display bytes (post-IAC, pre-emulator). CSI sequences are stripped
-    /// inline; the resulting plain text is appended to a rolling buffer and
-    /// the current step's pattern is tested against it.
-    /// </summary>
+    // Feed display bytes (post-IAC, pre-emulator). CSI sequences are stripped
+    // inline; the resulting plain text is appended to a rolling buffer and the
+    // current step's pattern is tested against it.
     public void Feed(ReadOnlySpan<byte> data)
     {
         lock (_lock)
@@ -348,12 +335,9 @@ public sealed class LoginAutomator : IDisposable
     private enum StripState : byte { Normal, EscSeen, Csi }
 }
 
-/// <summary>
-/// One step in the <see cref="LoginAutomator"/> queue: the substring to
-/// wait for and the raw reply template (with optional <c>{username}</c> /
-/// <c>{password}</c> placeholders). Substitution + the trailing CR are
-/// added by the automator at send time, not here.
-/// </summary>
+// One step in the LoginAutomator queue: the substring to wait for and the raw
+// reply template (with optional {username} / {password} placeholders).
+// Substitution and the trailing CR are added by the automator at send time.
 public sealed class AutomationStep
 {
     public string WaitForPattern { get; }
@@ -365,12 +349,9 @@ public sealed class AutomationStep
         SendTemplate = sendTemplate ?? string.Empty;
     }
 
-    /// <summary>
-    /// Returns <c>true</c> + the index just past the matched span if
-    /// <paramref name="text"/> contains the step's pattern (case-insensitive
-    /// substring). The caller uses <paramref name="matchEnd"/> to trim the
-    /// buffer so the same characters can't satisfy a later step.
-    /// </summary>
+    // Returns true plus the index just past the matched span if text contains
+    // the step's pattern (case-insensitive substring). The caller uses matchEnd
+    // to trim the buffer so the same characters can't satisfy a later step.
     public bool TryMatch(string text, out int matchEnd)
     {
         matchEnd = 0;

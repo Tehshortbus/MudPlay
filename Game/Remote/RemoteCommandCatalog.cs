@@ -2,93 +2,68 @@ using FujinTerm.Models.GameData;
 
 namespace FujinTerm.Game.Remote;
 
-/// <summary>
-/// Single source of truth mapping every documented MajorMUD / MegaMUD
-/// @-command to the <see cref="PlayerRemoteControls"/> category that
-/// gates it. Sourced from the bearfather wiki canonical reference:
-/// https://kyau.net/wiki/MajorMUD:Remote_Commands
-/// </summary>
-/// <remarks>
-/// <para>
-/// Phase 6 only ships handlers for the party-essential subset
-/// (<see cref="PartyEssentialHandlers"/>); Phase 7 and Phase 12 register
-/// the rest. Whichever phase wires a command, it looks the category up
-/// here via <see cref="TryGetCategory"/> rather than hardcoding —
-/// keeping the mapping in one place means "Fujin grants Raijin
-/// QueryHealthStatus" produces consistent behaviour across every
-/// `@health`-class command without per-handler ceremony.
-/// </para>
-/// <para>
-/// Categories follow the 12-checkbox grid in the Game Data Browser →
-/// Players edit dialog:
-/// <list type="bullet">
-///   <item><b>QueryVersion</b> — version / fingerprint introspection + @help.</item>
-///   <item><b>QueryExperience</b> — exp / level numbers.</item>
-///   <item><b>QueryHealthStatus</b> — health / mana / state flags / lives.</item>
-///   <item><b>QueryLocation</b> — @where / @path / @who (room, route
-///         progress, who's in the room).</item>
-///   <item><b>QueryInventory</b> — items / cash / encumbrance / have-checks.</item>
-///   <item><b>RequestInvite</b> — party invite / join / leave signals.</item>
-///   <item><b>MovePlayer</b> — goto / loop / lair / stop / rego.</item>
-///   <item><b>ExecuteCommands</b> — @do passthrough, bulk inventory actions
-///         (@get-all / @drop-all / @deposit-all), and gear-set apply
-///         (@equip-&lt;set&gt;).</item>
-///   <item><b>HangupDisconnect</b> — @hangup / @relog.</item>
-///   <item><b>AlterSettings</b> — auto-* toggles, @settings. Note:
-///         <c>@reset</c> also sits in this category in the catalog,
-///         but its actual home is Phase 8 SessionStats (it zeroes the
-///         live tracking metrics — exp earned per hour, combat
-///         round observations, etc.); the AlterSettings categorisation
-///         is just permission-grouping with the other "alter
-///         something on my behalf" verbs.</item>
-///   <item><b>DivertConversations</b> — @divert.</item>
-///   <item><b>SysopCommands</b> ("Elevated Commands" in the Players-tab
-///         UI) — high-trust commands beyond ordinary control:
-///         irreversible character actions (@suicide). Wider than just
-///         sysop powers per FujinTerm convention.</item>
-/// </list>
-/// </para>
-/// <para>
-/// Party-coordination commands (@wait / @ok / @comeback / @share) map
-/// to <see cref="PlayerRemoteControls.None"/> — they're gated by the
-/// engine's party-whitelist branch instead of the per-player flag check.
-/// Any active party member can issue them by default. Settings.Talk →
-/// Disallow @party commands narrows ONLY the <c>@party &lt;sub&gt;</c>
-/// directive path (attack / rest / meditate / go / …); it does not touch
-/// these coordination signals. <c>@kill</c> is NOT in this family — it's
-/// an action request ("attack this target on my behalf") and sits at
-/// <see cref="PlayerRemoteControls.ExecuteCommands"/> alongside @do / @heal.
-/// </para>
-/// <para>
-/// The ailment / status broadcast tokens (<c>@poisoned</c> / <c>@blind</c>
-/// / <c>@confused</c> / <c>@diseased</c> / <c>@held</c>) are deliberately
-/// NOT in this catalog. They're not permission-gated remote commands —
-/// they're say-channel state announcements emitted by
-/// <see cref="Conditions.AilmentSyncEngine"/> and observed by
-/// <see cref="Conditions.PartyAilmentTracker"/> to mirror a member's
-/// condition on the party window. Their suppression lives in the cure /
-/// ailment settings, not the per-player remote-control grid.
-/// </para>
-/// <para>
-/// <c>@heal</c> is the exception in that family: it's
-/// <see cref="PlayerRemoteControls.ExecuteCommands"/> rather than
-/// party-whitelist. The semantic is "do something on my behalf"
-/// (cast a heal on the sender) rather than a coordination signal,
-/// and a sender may legitimately need it even when the receiver's
-/// auto-heal thresholds don't naturally pick them up (settings
-/// mismatch between healer and target). Requires the receiver to
-/// have granted the sender ExecuteCommands explicitly. Phase 12
-/// CastingDirector wires the handler.
-/// </para>
-/// </remarks>
+// Single source of truth mapping every documented MajorMUD / MegaMUD @-command
+// to the PlayerRemoteControls category that gates it. Sourced from the
+// bearfather wiki canonical reference:
+// https://kyau.net/wiki/MajorMUD:Remote_Commands
+//
+// Whichever handler wires a command, it looks the category up here via
+// TryGetCategory rather than hardcoding — keeping the mapping in one place means
+// "Fujin grants Raijin QueryHealthStatus" produces consistent behaviour across
+// every @health-class command without per-handler ceremony.
+//
+// Categories follow the 12-checkbox grid in the Game Data Browser → Players edit
+// dialog:
+//   - QueryVersion — version / fingerprint introspection + @help.
+//   - QueryExperience — exp / level numbers.
+//   - QueryHealthStatus — health / mana / state flags / lives.
+//   - QueryLocation — @where / @path / @who (room, route progress, who's in the
+//     room).
+//   - QueryInventory — items / cash / encumbrance / have-checks.
+//   - RequestInvite — party invite / join / leave signals.
+//   - MovePlayer — goto / loop / lair / stop / rego.
+//   - ExecuteCommands — @do passthrough, bulk inventory actions (@get-all /
+//     @drop-all / @deposit-all), and gear-set apply (@equip-<set>).
+//   - HangupDisconnect — @hangup / @relog.
+//   - AlterSettings — auto-* toggles, @settings. Note: @reset also sits in this
+//     category in the catalog, but its actual home is the session-stats tracker
+//     (it zeroes the live tracking metrics — exp earned per hour, combat round
+//     observations, etc.); the AlterSettings categorisation is just
+//     permission-grouping with the other "alter something on my behalf" verbs.
+//   - DivertConversations — @divert.
+//   - SysopCommands ("Elevated Commands" in the Players-tab UI) — high-trust
+//     commands beyond ordinary control: irreversible character actions
+//     (@suicide). Wider than just sysop powers.
+//
+// Party-coordination commands (@wait / @ok / @comeback / @share) map to
+// PlayerRemoteControls.None — they're gated by the engine's party-whitelist
+// branch instead of the per-player flag check. Any active party member can issue
+// them by default. Settings.Talk → Disallow @party commands narrows ONLY the
+// @party <sub> directive path (attack / rest / meditate / go / …); it does not
+// touch these coordination signals. @kill is NOT in this family — it's an action
+// request ("attack this target on my behalf") and sits at
+// PlayerRemoteControls.ExecuteCommands alongside @do / @heal.
+//
+// The ailment / status broadcast tokens (@poisoned / @blind / @confused /
+// @diseased / @held) are deliberately NOT in this catalog. They're not
+// permission-gated remote commands — they're say-channel state announcements
+// emitted by Conditions.AilmentSyncEngine and observed by
+// Conditions.PartyAilmentTracker to mirror a member's condition on the party
+// window. Their suppression lives in the cure / ailment settings, not the
+// per-player remote-control grid.
+//
+// @heal is the exception in that family: it's
+// PlayerRemoteControls.ExecuteCommands rather than party-whitelist. The semantic
+// is "do something on my behalf" (cast a heal on the sender) rather than a
+// coordination signal, and a sender may legitimately need it even when the
+// receiver's auto-heal thresholds don't naturally pick them up (settings
+// mismatch between healer and target). Requires the receiver to have granted the
+// sender ExecuteCommands explicitly.
 public static class RemoteCommandCatalog
 {
-    /// <summary>
-    /// Canonical command → required category map. Keyed
-    /// case-insensitively. Sentinel <see cref="PlayerRemoteControls.None"/>
-    /// means "party-whitelist gated"; consult the catalog comment above
-    /// for the full list of party-whitelist commands.
-    /// </summary>
+    // Canonical command → required category map. Keyed case-insensitively.
+    // Sentinel PlayerRemoteControls.None means "party-whitelist gated"; consult
+    // the catalog comment above for the full list of party-whitelist commands.
     public static readonly IReadOnlyDictionary<string, PlayerRemoteControls> Map =
         new Dictionary<string, PlayerRemoteControls>(StringComparer.OrdinalIgnoreCase)
         {
@@ -144,11 +119,10 @@ public static class RemoteCommandCatalog
             ["@equip"]        = PlayerRemoteControls.ExecuteCommands,
 
             // ===== Movement / Loops =====
-            // @looponce / @roam from the upstream MegaMUD catalog don't
-            // exist in FujinTerm — there's no random-walk roam mode and
-            // loops always cycle. @lair is the FujinTerm-specific
-            // counterpart for the Auto-Lair scheduler. Handler lives in
-            // MovePlayerHandler.cs.
+            // @looponce / @roam from the upstream MegaMUD catalog aren't
+            // supported — there's no random-walk roam mode and loops always
+            // cycle. @lair is the counterpart for the Auto-Lair scheduler.
+            // Handler lives in MovePlayerHandler.cs.
             ["@goto"]         = PlayerRemoteControls.MovePlayer,
             ["@loop"]         = PlayerRemoteControls.MovePlayer,
             ["@lair"]         = PlayerRemoteControls.MovePlayer,
@@ -199,9 +173,9 @@ public static class RemoteCommandCatalog
             // grant can use the no-args form as a status query
             // ("are you solo / leading / following?"). The engine
             // ALSO applies an @party-specific party-member fallback
-            // in IsAuthorised so the Phase 6 "base @party always
-            // allowed inside an active party" rule still holds even
-            // when the sender has no per-player grant. The destructive
+            // in IsAuthorised so the "base @party always allowed
+            // inside an active party" rule still holds even when the
+            // sender has no per-player grant. The destructive
             // sub-command dispatch path (Local channel + args) lives
             // in PartyEssentialHandlers.OnParty and gates on
             // IsActivePartyMember + !DisallowPartyDirectives itself.
@@ -211,14 +185,11 @@ public static class RemoteCommandCatalog
             ["@share"]        = PlayerRemoteControls.None,
         };
 
-    /// <summary>
-    /// Look up the required category for a command. Returns <c>false</c>
-    /// for unknown commands so the caller can decide whether to register
-    /// the handler anyway (Phase 5 user-defined triggers, future
-    /// extension points). Lookup is case-insensitive; a trailing bang on
-    /// the wire form (e.g. an emphatic <c>@stop!</c>) is stripped so it
-    /// matches the bare command name.
-    /// </summary>
+    // Look up the required category for a command. Returns false for unknown
+    // commands so the caller can decide whether to register the handler anyway
+    // (user-defined triggers, future extension points). Lookup is
+    // case-insensitive; a trailing bang on the wire form (e.g. an emphatic
+    // @stop!) is stripped so it matches the bare command name.
     public static bool TryGetCategory(string command, out PlayerRemoteControls category)
     {
         if (string.IsNullOrEmpty(command)) { category = default; return false; }
@@ -229,9 +200,7 @@ public static class RemoteCommandCatalog
         return Map.TryGetValue(key, out category);
     }
 
-    /// <summary>
-    /// Total number of documented commands in the catalog. Useful for
-    /// tests that pin "every wiki command is mapped".
-    /// </summary>
+    // Total number of documented commands in the catalog. Useful for tests that
+    // pin "every wiki command is mapped".
     public static int Count => Map.Count;
 }

@@ -8,21 +8,12 @@ using FujinTerm.Views.Settings;
 
 namespace FujinTerm.ViewModels.Settings;
 
-/// <summary>
-/// "Cash" tab — per-currency Collect / Ignore / Discard policy plus the
-/// auto-deposit threshold + bank-room key. Persists as the
-/// <c>"Cash"</c> entry in <see cref="CharacterProfile.Settings"/>; read
-/// at runtime by <see cref="Game.Cash.CashManager"/>.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Stash-room rules ship in a separate editor (their own list-of-rooms
-/// shape doesn't fit a flat-fields tab). Encumbrance gates, cascade
-/// drop-smaller-for-larger, and the walker-driven auto-deposit reroute
-/// stay deferred — the stub fields they used to occupy aren't surfaced
-/// because clicking them today does nothing.
-/// </para>
-/// </remarks>
+// "Cash" tab — per-currency Collect / Ignore / Discard policy plus the
+// auto-deposit threshold + bank-room key. Persists as the "Cash" entry in
+// CharacterProfile.Settings; read at runtime by Game.Cash.CashManager.
+//
+// Stash-room rules ship in a separate editor (their own list-of-rooms shape
+// doesn't fit a flat-fields tab).
 public sealed partial class CashSectionViewModel : SettingsSectionViewModel
 {
     private const string TabKey = "Cash";
@@ -36,7 +27,7 @@ public sealed partial class CashSectionViewModel : SettingsSectionViewModel
     public override string Title => "Cash";
     public override bool IsDirty => _dirty;
 
-    /// <summary>True when a profile is loaded — editor is hidden otherwise.</summary>
+    // True when a profile is loaded — editor is hidden otherwise.
     public bool HasProfile => _profile.Current is not null;
 
     public override Control View => _view ??= new CashSectionView { DataContext = this };
@@ -64,9 +55,9 @@ public sealed partial class CashSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private long _autoDepositIfCoinsExceed;
     [ObservableProperty] private string _bankRoomKey = string.Empty;
 
-    /// <summary>Dropdown items for the Bank picker — banks from the
-    /// active game-data set's Shops.json (ShopType==7) plus the
-    /// user's stash rooms from <see cref="CharacterProfile.StashRooms"/>.</summary>
+    // Dropdown items for the Bank picker — banks from the active game-data set's
+    // Shops.json (ShopType==7) plus the user's stash rooms from
+    // CharacterProfile.StashRooms.
     public List<BankChoice> BankChoices { get; private set; } = new();
 
     [ObservableProperty] private BankChoice? _selectedBank;
@@ -89,8 +80,8 @@ public sealed partial class CashSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private bool _collectAfterCombatFinished;
     [ObservableProperty] private bool _dropSmallerForLarger;
 
-    /// <summary>Static list of policy choices for the per-currency
-    /// ComboBoxes. The view binds ItemsSource to this.</summary>
+    // Static list of policy choices for the per-currency ComboBoxes. The view
+    // binds ItemsSource to this.
     public IReadOnlyList<CashPolicy> PolicyChoices { get; } = new[]
     {
         CashPolicy.Collect, CashPolicy.Ignore, CashPolicy.Discard,
@@ -147,9 +138,8 @@ public sealed partial class CashSectionViewModel : SettingsSectionViewModel
         profile.Settings[TabKey] = JsonSerializer.SerializeToElement(dto);
         _profile.Save();
 
-        // Re-evaluate auto-deposit trigger immediately so a tighter
-        // threshold fires now instead of waiting for the next coin
-        // event. Mirrors MudProxy's OnSettingsChanged reapply pattern.
+        // Re-evaluate auto-deposit trigger immediately so a tighter threshold
+        // fires now instead of waiting for the next coin event.
         try { AppServices.Current.Cash.OnSettingsChanged(); }
         catch { /* AppServices may not be initialized in design-time / tests */ }
 
@@ -264,12 +254,11 @@ public sealed partial class CashSectionViewModel : SettingsSectionViewModel
     // gate stays user-editable; unchecking it re-enables the next gate
     // down (which remains checked, now the new strictest).
 
-    /// <summary>Medium gate editable only while the stricter Light gate
-    /// is unchecked; otherwise it's locked checked + disabled.</summary>
+    // Medium gate editable only while the stricter Light gate is unchecked;
+    // otherwise it's locked checked + disabled.
     public bool SkipMediumEnabled => !SkipCollectIfMakesLight;
 
-    /// <summary>Heavy gate editable only while both stricter gates
-    /// (Light, Medium) are unchecked.</summary>
+    // Heavy gate editable only while both stricter gates (Light, Medium) are unchecked.
     public bool SkipHeavyEnabled => !(SkipCollectIfMakesLight || SkipCollectIfMakesMedium);
 
     partial void OnSkipCollectIfMakesLightChanged(bool value)
@@ -296,16 +285,13 @@ public sealed partial class CashSectionViewModel : SettingsSectionViewModel
         MarkDirty();
     }
 
-    /// <summary>
-    /// Build the Bank ComboBox items. Two sources, in order:
-    /// (1) Shops table rows where ShopType == 7 (Bank) — each entry
-    ///     becomes "(map/room) RoomName - ShopName".
-    /// (2) Per-character stash rooms — each becomes "(map/room)
-    ///     RoomName - Stash" so the user can pick a marked stash
-    ///     as the deposit destination (treating it as an offline
-    ///     bank for personal caches).
-    /// Returns an empty list when no game-data set is loaded.
-    /// </summary>
+    // Build the Bank ComboBox items. Two sources, in order:
+    // (1) Shops table rows where ShopType == 7 (Bank) — each entry becomes
+    //     "(map/room) RoomName - ShopName".
+    // (2) Per-character stash rooms — each becomes "(map/room) RoomName - Stash" so
+    //     the user can pick a marked stash as the deposit destination (treating it
+    //     as an offline bank for personal caches).
+    // Returns an empty list when no game-data set is loaded.
     private void RebuildBankChoices()
     {
         List<BankChoice> choices = new();
@@ -392,9 +378,8 @@ public sealed partial class CashSectionViewModel : SettingsSectionViewModel
     }
 }
 
-/// <summary>One entry in the Bank picker — gold-equivalent location
-/// the auto-deposit flow will walk to. Value is the canonical
-/// "{map}/{room}" key persisted on
-/// <see cref="CashSettings.BankRoomKey"/>; Display is the
-/// human-readable label rendered in the ComboBox.</summary>
+// One entry in the Bank picker — gold-equivalent location the auto-deposit flow
+// will walk to. Value is the canonical "{map}/{room}" key persisted on
+// CashSettings.BankRoomKey; Display is the human-readable label rendered in the
+// ComboBox.
 public sealed record BankChoice(string Value, string Display);

@@ -5,18 +5,15 @@ using FujinTerm.Services;
 
 namespace FujinTerm.ViewModels;
 
-/// <summary>
-/// Game Data → "Manage Sets…". Two immediate-action sections over
-/// <see cref="GameDataSetManager"/>: copy / move a set's loop library
-/// to another set, and delete a set (tables + loops). No staged Save —
-/// each button performs its op and reports via <see cref="Status"/>.
-/// </summary>
-/// <remarks>
-/// All-windows-modeless rule (CLAUDE.md): the destructive delete can't
-/// pop a confirm dialog, so it arms in place — the first click flips the
-/// button to "Click again to confirm"; the second click commits. Picking
-/// a different set to delete disarms it.
-/// </remarks>
+// Game Data → "Manage Sets…". Two immediate-action sections over
+// GameDataSetManager: copy / move a set's loop library to another set, and
+// delete a set (tables + loops). No staged Save — each button performs its
+// op and reports via Status.
+//
+// All-windows-modeless rule: the destructive delete can't pop a confirm
+// dialog, so it arms in place — the first click flips the button to "Click
+// again to confirm"; the second click commits. Picking a different set to
+// delete disarms it.
 public sealed partial class GameDataManagerViewModel
     : ObservableObject, IDialogViewModel<bool>
 {
@@ -25,7 +22,7 @@ public sealed partial class GameDataManagerViewModel
     private readonly GameDataSetManager _manager;
     private readonly GameDataCache _cache;
 
-    /// <summary>Imported sets on disk, snapshotted on open and after each delete.</summary>
+    // Imported sets on disk, snapshotted on open and after each delete.
     public ObservableCollection<string> Sets { get; } = new();
 
     [ObservableProperty]
@@ -47,7 +44,7 @@ public sealed partial class GameDataManagerViewModel
     [NotifyPropertyChangedFor(nameof(DeleteButtonText))]
     private bool _confirmingDelete;
 
-    /// <summary>Enabled when both pickers hold a (different) set.</summary>
+    // Enabled when both pickers hold a (different) set.
     public bool CanCopyOrMove =>
         !string.IsNullOrWhiteSpace(SourceSet)
         && !string.IsNullOrWhiteSpace(DestSet)

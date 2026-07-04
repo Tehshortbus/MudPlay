@@ -1,11 +1,9 @@
 namespace FujinTerm.Game;
 
-/// <summary>
-/// Which mana-pool flavour the local character runs on. The status line
-/// emits one of these tags between brackets (<c>MA=...</c> for mana-using
-/// classes, <c>KAI=...</c> for monks); <see cref="None"/> covers classes
-/// with no mana pool (warriors, etc.) where the statline omits the tag.
-/// </summary>
+// Which mana-pool flavour the local character runs on. The status line emits
+// one of these tags between brackets (MA=... for mana-using classes, KAI=...
+// for monks); None covers classes with no mana pool (warriors, etc.) where the
+// statline omits the tag.
 public enum ManaType
 {
     None,

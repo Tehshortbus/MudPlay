@@ -4,12 +4,10 @@ using FujinTerm.Services;
 
 namespace FujinTerm.ViewModels;
 
-/// <summary>
-/// Generic "Are you sure?" dialog VM, used by every confirm-prompt path
-/// surfaced through <see cref="ConfirmService"/>. The caller supplies
-/// the dialog title and body text; the dialog returns <c>true</c> on
-/// Yes, <c>false</c> on No (or window-X / Esc — modeless cancel).
-/// </summary>
+// Generic "Are you sure?" dialog VM, used by every confirm-prompt path
+// surfaced through ConfirmService. The caller supplies the dialog title and
+// body text; the dialog returns true on Yes, false on No (or window-X / Esc
+// — modeless cancel).
 public sealed partial class ConfirmDialogViewModel : ObservableObject, IDialogViewModel<bool>
 {
     public event Action<bool>? CloseRequested;

@@ -5,33 +5,24 @@ using FujinTerm.Views.Settings;
 
 namespace FujinTerm.ViewModels.Settings;
 
-/// <summary>
-/// Base class for the 10 "stub" settings tabs (Health, Spells, Combat,
-/// Party, Cash, Talk, Auto-Lair, Sounds, Other, Events) that ship in
-/// Phase 4 PR 4.8 with disabled controls + per-field "wired in Phase X"
-/// tooltips. Persistence and the actual control behaviour land in the
-/// owning phase named by each tooltip.
-/// </summary>
-/// <remarks>
-/// Subclasses populate <see cref="Groups"/> and override
-/// <see cref="Id"/> / <see cref="Title"/>. Apply / Discard stay no-ops
-/// because every rendered control is <c>IsEnabled="False"</c>; there's
-/// nothing for the user to commit.
-/// </remarks>
+// Base class for the not-yet-wired "stub" settings tabs — disabled controls
+// with per-field tooltips describing what each will do. Persistence and control
+// behaviour land when the tab is wired.
+//
+// Subclasses populate Groups and override Id / Title. Apply / Discard stay
+// no-ops because every rendered control is IsEnabled="False"; there's nothing
+// for the user to commit.
 public abstract class StubSectionViewModel : SettingsSectionViewModel
 {
     private Control? _view;
 
-    /// <summary>Visually-grouped stub field rows the shared view renders.</summary>
+    // Visually-grouped stub field rows the shared view renders.
     public abstract IReadOnlyList<StubGroup> Groups { get; }
 
-    /// <summary>
-    /// Single phase tag shown at the top of the tab so the user sees
-    /// where this whole surface gets wired up.
-    /// </summary>
+    // Short tag shown at the top of the tab noting the surface isn't wired yet.
     public abstract string PhaseTag { get; }
 
-    /// <summary>One-line description shown under the tab header.</summary>
+    // One-line description shown under the tab header.
     public abstract string Description { get; }
 
     public override Control View => _view ??= new StubSectionView { DataContext = this };

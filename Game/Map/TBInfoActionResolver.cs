@@ -3,42 +3,30 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game.Map;
 
-/// <summary>
-/// Resolves a TBInfo CMD chain into the player-typed keywords for a
-/// <c>remoteaction</c> directive. Sibling to
-/// <see cref="TBInfoTeleportResolver"/> — same Action-string parse
-/// shape, different terminal directive.
-/// </summary>
-/// <remarks>
-/// <para>
-/// A <c>remoteaction</c> line looks like this (verified against the
-/// v1.11p data for map 9 / room 1012, CMD 1422):
-/// </para>
-/// <code>
-/// clear rubble:testskill strength 0 1423:remoteaction 1012 1840 0 0
-/// move rubble:testskill strength 0 1423:remoteaction 1012 1840 0 0
-/// push rubble:testskill strength 0 1423:remoteaction 1012 1840 0 0
-/// </code>
-/// <para>
-/// Each line's first colon-separated token is the keyword the player
-/// types. The middle <c>testskill</c> may gate success on a stat
-/// check; the final <c>remoteaction</c> describes what changes in
-/// the world when the check passes. For the hover tooltip we only
-/// care about surfacing the keyword candidates — the user wants to
-/// know what to type. The walker's prerequisite-action expander
-/// owns the full semantics (skill check + remote-action firing).
-/// </para>
-/// </remarks>
+// Resolves a TBInfo CMD chain into the player-typed keywords for a remoteaction
+// directive. Sibling to TBInfoTeleportResolver — same Action-string parse shape,
+// different terminal directive.
+//
+// A remoteaction line looks like this (verified against the v1.11p data for map
+// 9 / room 1012, CMD 1422):
+//
+//     clear rubble:testskill strength 0 1423:remoteaction 1012 1840 0 0
+//     move rubble:testskill strength 0 1423:remoteaction 1012 1840 0 0
+//     push rubble:testskill strength 0 1423:remoteaction 1012 1840 0 0
+//
+// Each line's first colon-separated token is the keyword the player types. The
+// middle testskill may gate success on a stat check; the final remoteaction
+// describes what changes in the world when the check passes. For the hover
+// tooltip we only care about surfacing the keyword candidates — the user wants
+// to know what to type. The walker's prerequisite-action expander owns the full
+// semantics (skill check + remote-action firing).
 public static class TBInfoActionResolver
 {
-    /// <summary>
-    /// Yields the player-typed keyword from each line in the CMD's
-    /// Action chain that ends with a <c>remoteaction</c> directive.
-    /// Skips lines without such a directive (teleport / message-only
-    /// branches are not action prerequisites). Duplicates preserved
-    /// because the order in the Action chain may be meaningful to
-    /// the user (recognised verbs first, synonyms second).
-    /// </summary>
+    // Yields the player-typed keyword from each line in the CMD's Action chain
+    // that ends with a remoteaction directive. Skips lines without such a
+    // directive (teleport / message-only branches are not action
+    // prerequisites). Duplicates preserved because the order in the Action chain
+    // may be meaningful to the user (recognised verbs first, synonyms second).
     public static IEnumerable<string> EnumerateRemoteActionKeywords(TBInfoStore store, int roomCmd)
     {
         ArgumentNullException.ThrowIfNull(store);

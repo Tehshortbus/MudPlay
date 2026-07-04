@@ -3,53 +3,40 @@ using System.Text.RegularExpressions;
 
 namespace FujinTerm.Game.Spells;
 
-/// <summary>
-/// Compiles a game-data "caster message" template — the line YOU see when
-/// YOU cast a spell, e.g. <c>You cast {s} on {s}!</c> — into a regex and
-/// matches it against an observed server line, returning the ordered
-/// string captures.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Used by <see cref="CastingDirector"/> to confirm OUR successful cast on
-/// a party member before starting the buff-duration timer: when we send
-/// <c>bles raijin</c> and the bless record's caster line is
-/// <c>You cast {s} on {s}!</c>, the server echo <c>You cast bless on
-/// Raijin!</c> matches and yields the captures <c>["bless", "Raijin"]</c>.
-/// We already know who we targeted, so the caller correlates by comparing
-/// the captures to the pending target name rather than guessing which
-/// <c>{s}</c> is the target.
-/// </para>
-/// <para>
-/// Placeholder vocabulary. A <b>string</b> placeholder captures an arbitrary
-/// run of text, a <b>number</b> placeholder captures a numeric span. Some
-/// string tokens are <b>semantic</b> — they tag the capture with a role so a
-/// caller can pin the exact slot instead of guessing by position:
-/// <list type="bullet">
-/// <item><c>{spellname}</c> → the spell's full name (role: spell).</item>
-/// <item><c>{target}</c> → who the spell was used on (role: target).</item>
-/// <item><c>{source}</c> → who cast it; a player name or <c>"You"</c> for a
-/// self-cast (role: source).</item>
-/// <item><c>{s}</c> → a generic name (spell or actor), role-agnostic; surfaced
-/// in template order. The shipped seed uses this form.</item>
-/// <item><c>{d}</c>, <c>{dmg}</c>, <c>{damage}</c> → a numeric capture (e.g.
-/// damage a spell / proc dealt). The confirmation path (<see cref="TryMatch"/>)
-/// drops it — it never needs the value — but <see cref="TryMatchDamage"/>
-/// surfaces it for the damage-message recogniser.</item>
-/// </list>
-/// All string captures are surfaced in template order. When a template pins
-/// both a <c>{spellname}</c> and a <c>{target}</c> slot,
-/// <see cref="ConfirmsSpellTarget"/> matches those exact slots — so the
-/// <c>{source}</c> (which may be <c>"You"</c> or another player) can never be
-/// mistaken for the target. For legacy <c>{s}</c>-only templates it falls back
-/// to requiring the spell name and target each appear as distinct captures, so
-/// an unrelated cast on the same member (e.g. a buff landing on a poisoned
-/// ally) still can't falsely confirm a cure. Literal text between placeholders
-/// is matched verbatim (regex-escaped). The pattern is unanchored so leading /
-/// trailing noise (colour resets, prompt fragments) on the emitted line doesn't
-/// defeat the match.
-/// </para>
-/// </remarks>
+// Compiles a game-data "caster message" template — the line YOU see when YOU cast
+// a spell, e.g. You cast {s} on {s}! — into a regex and matches it against an
+// observed server line, returning the ordered string captures.
+//
+// Used by CastingDirector to confirm OUR successful cast on a party member before
+// starting the buff-duration timer: when we send bles raijin and the bless
+// record's caster line is You cast {s} on {s}!, the server echo You cast bless on
+// Raijin! matches and yields the captures ["bless", "Raijin"]. We already know who
+// we targeted, so the caller correlates by comparing the captures to the pending
+// target name rather than guessing which {s} is the target.
+//
+// Placeholder vocabulary: a string placeholder captures an arbitrary run of text,
+// a number placeholder captures a numeric span. Some string tokens are semantic —
+// they tag the capture with a role so a caller can pin the exact slot instead of
+// guessing by position:
+//   {spellname} → the spell's full name (role: spell).
+//   {target}    → who the spell was used on (role: target).
+//   {source}    → who cast it; a player name or "You" for a self-cast (role: source).
+//   {s}         → a generic name (spell or actor), role-agnostic; surfaced in
+//                 template order. The shipped seed uses this form.
+//   {d}, {dmg}, {damage} → a numeric capture (e.g. damage a spell / proc dealt).
+//                 The confirmation path (TryMatch) drops it — it never needs the
+//                 value — but TryMatchDamage surfaces it for the damage-message
+//                 recogniser.
+//
+// All string captures are surfaced in template order. When a template pins both a
+// {spellname} and a {target} slot, ConfirmsSpellTarget matches those exact slots —
+// so the {source} (which may be "You" or another player) can never be mistaken for
+// the target. For legacy {s}-only templates it falls back to requiring the spell
+// name and target each appear as distinct captures, so an unrelated cast on the
+// same member (e.g. a buff landing on a poisoned ally) still can't falsely confirm
+// a cure. Literal text between placeholders is matched verbatim (regex-escaped).
+// The pattern is unanchored so leading / trailing noise (colour resets, prompt
+// fragments) on the emitted line doesn't defeat the match.
 public sealed class CasterMessageMatcher
 {
     // Placeholder set: semantic string slots {spellname}/{target}/{source},
@@ -60,11 +47,9 @@ public sealed class CasterMessageMatcher
     private static readonly Regex TokenSplit =
         new(@"\{(?:spellname|target|source|damage|dmg|[sd])\}", RegexOptions.Compiled);
 
-    /// <summary>
-    /// User-facing token reference for the Game Data → Messages editor: each
-    /// placeholder paired with what it captures. Drives the editor's legend so
-    /// authors know which token pins which slot.
-    /// </summary>
+    // User-facing token reference for the Game Data → Messages editor: each
+    // placeholder paired with what it captures. Drives the editor's legend so
+    // authors know which token pins which slot.
     public static IReadOnlyList<MessagePlaceholder> Placeholders { get; } = new MessagePlaceholder[]
     {
         new("{spellname}", "The spell's full (long-form) name."),
@@ -82,7 +67,7 @@ public sealed class CasterMessageMatcher
     private readonly int[] _numberGroupIndexes;
     private readonly PlaceholderRole[] _stringRoles;
 
-    /// <summary>The template this matcher was built from (verbatim).</summary>
+    // The template this matcher was built from (verbatim).
     public string Template { get; }
 
     private CasterMessageMatcher(
@@ -96,16 +81,12 @@ public sealed class CasterMessageMatcher
         _stringRoles = stringRoles;
     }
 
-    /// <summary>
-    /// Build a matcher for <paramref name="template"/>, or <c>null</c> when
-    /// the template is blank or carries no placeholder at all. A string
-    /// placeholder is required for the confirmation helpers
-    /// (<see cref="ConfirmsTarget"/> / <see cref="ConfirmsSpellTarget"/>) to
-    /// have anything to match a name against; a numeric-only template (e.g.
-    /// <c>... bursts for {damage} damage!</c>) is still accepted so the
-    /// damage-message recogniser can compile it — the confirmation helpers
-    /// then simply find no capture and decline.
-    /// </summary>
+    // Build a matcher for the template, or null when the template is blank or
+    // carries no placeholder at all. A string placeholder is required for the
+    // confirmation helpers (ConfirmsTarget / ConfirmsSpellTarget) to have anything
+    // to match a name against; a numeric-only template (e.g. ... bursts for {damage}
+    // damage!) is still accepted so the damage-message recogniser can compile it —
+    // the confirmation helpers then simply find no capture and decline.
     public static CasterMessageMatcher? TryCreate(string? template)
     {
         if (string.IsNullOrWhiteSpace(template)) return null;
@@ -159,11 +140,8 @@ public sealed class CasterMessageMatcher
         _             => PlaceholderRole.Unknown, // {s}
     };
 
-    /// <summary>
-    /// Try to match <paramref name="line"/>. On success, populates
-    /// <paramref name="stringCaptures"/> with the <c>{s}</c> group values in
-    /// template order and returns <c>true</c>.
-    /// </summary>
+    // Try to match the line. On success, populates stringCaptures with the {s}
+    // group values in template order and returns true.
     public bool TryMatch(string? line, out IReadOnlyList<string> stringCaptures)
     {
         stringCaptures = System.Array.Empty<string>();
@@ -179,16 +157,12 @@ public sealed class CasterMessageMatcher
         return true;
     }
 
-    /// <summary>
-    /// Match <paramref name="line"/> and surface the first numeric
-    /// (<c>{d}</c> / <c>{dmg}</c> / <c>{damage}</c>) capture as
-    /// <paramref name="damage"/>. Returns <c>true</c> when the line matches the
-    /// template — even if the template has no numeric slot, in which case
-    /// <paramref name="damage"/> stays 0 (a recognised cast that simply did no
-    /// numeric damage); <c>false</c> only when the line doesn't match. This is
-    /// the value the confirmation-only <see cref="TryMatch"/> drops; the Phase
-    /// 11 damage recogniser uses it to tally proc / attack-spell rows.
-    /// </summary>
+    // Match the line and surface the first numeric ({d} / {dmg} / {damage}) capture
+    // as damage. Returns true when the line matches the template — even if the
+    // template has no numeric slot, in which case damage stays 0 (a recognised cast
+    // that simply did no numeric damage); false only when the line doesn't match.
+    // This is the value the confirmation-only TryMatch drops; the damage recogniser
+    // uses it to tally proc / attack-spell rows.
     public bool TryMatchDamage(string? line, out int damage)
     {
         damage = 0;
@@ -214,14 +188,11 @@ public sealed class CasterMessageMatcher
         return true;
     }
 
-    /// <summary>
-    /// True when <paramref name="line"/> matches AND a capture equals
-    /// <paramref name="target"/> (case-insensitive, trimmed). When the template
-    /// pins a <c>{target}</c> slot, only that slot is checked; otherwise any
-    /// capture may satisfy it. The caller passes the given-name it actually cast
-    /// on, so a stray line that happens to fit the template but names someone
-    /// else doesn't falsely confirm the pending cast.
-    /// </summary>
+    // True when the line matches AND a capture equals target (case-insensitive,
+    // trimmed). When the template pins a {target} slot, only that slot is checked;
+    // otherwise any capture may satisfy it. The caller passes the given-name it
+    // actually cast on, so a stray line that happens to fit the template but names
+    // someone else doesn't falsely confirm the pending cast.
     public bool ConfirmsTarget(string? line, string target)
     {
         if (string.IsNullOrWhiteSpace(target)) return false;
@@ -237,20 +208,15 @@ public sealed class CasterMessageMatcher
         return false;
     }
 
-    /// <summary>
-    /// True when <paramref name="line"/> matches AND it names both the spell and
-    /// the target. When the template pins both a <c>{spellname}</c> and a
-    /// <c>{target}</c> slot, those exact slots are matched — so the
-    /// <c>{source}</c> (which may be <c>"You"</c> or another player) can't be
-    /// mistaken for the target. Otherwise (legacy <c>{s}</c>-only templates)
-    /// <paramref name="spell"/> and <paramref name="target"/> must each equal a
-    /// string capture at a <i>distinct</i> position. Requiring the spell name —
-    /// not just the target — is what stops a different spell landing on the same
-    /// member from confirming: casting <c>bless</c> on a poisoned ally yields
-    /// <c>You cast bless on Forged!</c>, whose captures are
-    /// <c>["bless", "Forged"]</c>; matching the cure record for
-    /// <c>cure poison</c> fails because <c>cure poison</c> isn't a capture.
-    /// </summary>
+    // True when the line matches AND it names both the spell and the target. When
+    // the template pins both a {spellname} and a {target} slot, those exact slots
+    // are matched — so the {source} (which may be "You" or another player) can't be
+    // mistaken for the target. Otherwise (legacy {s}-only templates) spell and
+    // target must each equal a string capture at a distinct position. Requiring the
+    // spell name — not just the target — is what stops a different spell landing on
+    // the same member from confirming: casting bless on a poisoned ally yields You
+    // cast bless on Forged!, whose captures are ["bless", "Forged"]; matching the
+    // cure record for cure poison fails because cure poison isn't a capture.
     public bool ConfirmsSpellTarget(string? line, string spell, string target)
     {
         if (string.IsNullOrWhiteSpace(spell) || string.IsNullOrWhiteSpace(target))
@@ -275,8 +241,8 @@ public sealed class CasterMessageMatcher
         return false;
     }
 
-    // First capture carrying <paramref name="role"/>, or -1. Index aligns with
-    // the TryMatch capture array (both ordered by template position).
+    // First capture carrying the given role, or -1. Index aligns with the TryMatch
+    // capture array (both ordered by template position).
     private int IndexOfRole(PlaceholderRole role)
     {
         for (int i = 0; i < _stringRoles.Length; i++)

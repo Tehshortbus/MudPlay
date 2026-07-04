@@ -3,30 +3,23 @@ using System.Linq;
 
 namespace FujinTerm.Services;
 
-/// <summary>
-/// Game-data set lifecycle operations exposed by the Game Data →
-/// "Manage Sets…" dialog: copy or move a set's nav-library between sets,
-/// and delete a set outright. "Loops" here means the whole shared
-/// <see cref="AppPaths.GameDataSetLoopsFolder"/> tree — loop circuits,
-/// Auto-Lair setups, and the nav-folder subdirectories all live in it —
-/// so a copy/move drags the entire library, not just <c>.loop</c> files.
-/// </summary>
-/// <remarks>
-/// Reload + reference hygiene are folded into each op so the call site
-/// only has to render a result:
-/// <list type="bullet">
-///   <item>A copy/move into or out of the active set fires
-///     <c>reloadActiveLibrary</c> so the live <see cref="Game.Map.LoopManager"/>
-///     + <see cref="Game.Map.LairManager"/> caches pick up the change.</item>
-///   <item>Deleting the active set switches the cache to no-set first
-///     (so no <see cref="System.Text.Json.JsonDocument"/> handle pins the
-///     directory), then fires <c>onSetDeleted</c> so the caller can clear
-///     any profile / global reference that named the removed set.</item>
-/// </list>
-/// The manager itself only touches the filesystem + <see cref="GameDataCache"/>;
-/// settings/profile writes are the caller's job via the injected callbacks,
-/// which keeps it unit-testable against an isolated set folder.
-/// </remarks>
+// Game-data set lifecycle operations exposed by the Game Data → "Manage Sets…"
+// dialog: copy or move a set's nav-library between sets, and delete a set
+// outright. "Loops" here means the whole shared
+// AppPaths.GameDataSetLoopsFolder tree — loop circuits, Auto-Lair setups, and
+// the nav-folder subdirectories all live in it — so a copy/move drags the entire
+// library, not just .loop files.
+//
+// Reload + reference hygiene are folded into each op so the call site only has to
+// render a result:
+//   - A copy/move into or out of the active set fires reloadActiveLibrary so the
+//     live Game.Map.LoopManager + Game.Map.LairManager caches pick up the change.
+//   - Deleting the active set switches the cache to no-set first (so no
+//     JsonDocument handle pins the directory), then fires onSetDeleted so the
+//     caller can clear any profile / global reference that named the removed set.
+// The manager itself only touches the filesystem + GameDataCache;
+// settings/profile writes are the caller's job via the injected callbacks, which
+// keeps it unit-testable against an isolated set folder.
 public sealed class GameDataSetManager
 {
     private readonly GameDataCache _cache;
@@ -49,14 +42,14 @@ public sealed class GameDataSetManager
         _log = log;
     }
 
-    /// <summary>Outcome of an op, ready to surface verbatim as dialog status text.</summary>
+    // Outcome of an op, ready to surface verbatim as dialog status text.
     public readonly record struct OpResult(bool Ok, string Message);
 
-    /// <summary>Copy <paramref name="sourceSet"/>'s loop library into <paramref name="destSet"/>.</summary>
+    // Copy sourceSet's loop library into destSet.
     public OpResult CopyLoops(string sourceSet, string destSet) =>
         CopyOrMove(sourceSet, destSet, move: false);
 
-    /// <summary>Move <paramref name="sourceSet"/>'s loop library into <paramref name="destSet"/> (source loops removed).</summary>
+    // Move sourceSet's loop library into destSet (source loops removed).
     public OpResult MoveLoops(string sourceSet, string destSet) =>
         CopyOrMove(sourceSet, destSet, move: true);
 
@@ -93,12 +86,9 @@ public sealed class GameDataSetManager
         return new OpResult(true, $"{done} {files} file(s) from '{sourceSet}' to '{destSet}'.");
     }
 
-    /// <summary>
-    /// Delete <paramref name="setName"/> from disk — its game-data tables
-    /// AND its loop library. Switches the cache off the set first when it
-    /// was active, then fires <c>onSetDeleted</c> so dangling profile /
-    /// global references can be cleared.
-    /// </summary>
+    // Delete setName from disk — its game-data tables AND its loop library.
+    // Switches the cache off the set first when it was active, then fires
+    // onSetDeleted so dangling profile / global references can be cleared.
     public OpResult DeleteSet(string setName)
     {
         if (string.IsNullOrWhiteSpace(setName))
@@ -139,12 +129,9 @@ public sealed class GameDataSetManager
     private static bool ContainsAnyFile(string dir) =>
         Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories).Any();
 
-    /// <summary>
-    /// Recursively copy <paramref name="src"/> into <paramref name="dst"/>,
-    /// creating <paramref name="dst"/> and any sub-directories. Existing
-    /// destination files are overwritten — the user explicitly chose to
-    /// push these loops over. Returns the number of files copied.
-    /// </summary>
+    // Recursively copy src into dst, creating dst and any sub-directories.
+    // Existing destination files are overwritten — the user explicitly chose to
+    // push these loops over. Returns the number of files copied.
     private static int CopyTree(string src, string dst)
     {
         Directory.CreateDirectory(dst);

@@ -1,11 +1,9 @@
 namespace FujinTerm.Terminal;
 
-/// <summary>
-/// The character grid that the emulator writes into and the renderer reads
-/// from. Stores cells in a flat row-major array (length = cols × rows) plus
-/// the cursor position and a monotonically-increasing revision counter the
-/// UI can use to detect "anything changed" cheaply.
-/// </summary>
+// The character grid that the emulator writes into and the renderer reads
+// from. Stores cells in a flat row-major array (length = cols × rows) plus the
+// cursor position and a monotonically-increasing revision counter the UI can
+// use to detect "anything changed" cheaply.
 public sealed class TerminalScreen
 {
     private Cell[] _cells;
@@ -14,24 +12,21 @@ public sealed class TerminalScreen
     public int Cols { get; private set; }
     public int Rows { get; private set; }
 
-    /// <summary>
-    /// Fixed-capacity ring of rows that have scrolled off the top. Rows are
-    /// pushed in <see cref="ScrollUp"/> whenever the scroll region starts at
-    /// the top of the screen (the BBS-typical case — partial-region scrolls
-    /// from vi-style apps don't lose anything to history). Default capacity
-    /// is <see cref="ScrollbackBuffer.DefaultCapacity"/>; Phase 4
-    /// Settings.Display will surface the knob.
-    /// </summary>
+    // Fixed-capacity ring of rows that have scrolled off the top. Rows are
+    // pushed in ScrollUp whenever the scroll region starts at the top of the
+    // screen (the BBS-typical case — partial-region scrolls from vi-style apps
+    // don't lose anything to history). Default capacity is
+    // ScrollbackBuffer.DefaultCapacity; Settings.Display surfaces the knob.
     public ScrollbackBuffer Scrollback { get; } = new();
 
-    /// <summary>Current cursor column (0-based).</summary>
+    // Current cursor column (0-based).
     public int CursorX { get; set; }
-    /// <summary>Current cursor row (0-based).</summary>
+    // Current cursor row (0-based).
     public int CursorY { get; set; }
-    /// <summary>Whether the cursor caret should be drawn.</summary>
+    // Whether the cursor caret should be drawn.
     public bool CursorVisible { get; set; } = true;
 
-    /// <summary>Bumped on every structural change; never wraps in practice.</summary>
+    // Bumped on every structural change; never wraps in practice.
     public uint Revision => _revision;
 
     public TerminalScreen(int cols, int rows)
@@ -42,19 +37,17 @@ public sealed class TerminalScreen
         Array.Fill(_cells, Cell.Blank);
     }
 
-    /// <summary>Read a cell at (x, y). Caller is responsible for bounds.</summary>
+    // Read a cell at (x, y). Caller is responsible for bounds.
     public Cell this[int x, int y] => _cells[y * Cols + x];
 
-    /// <summary>Get a row as a span — handy for renderers iterating left-to-right.</summary>
+    // Get a row as a span — handy for renderers iterating left-to-right.
     public ReadOnlySpan<Cell> Row(int y) => _cells.AsSpan(y * Cols, Cols);
 
-    /// <summary>
-    /// Resize the buffer. Growing rows adds blank lines at the bottom;
-    /// shrinking rows drops the top-most lines (so the newest server
-    /// content stays visible) and pushes them into <see cref="Scrollback"/>
-    /// so the user can still find them via the Backscroll window.
-    /// Columns always preserve the left edge.
-    /// </summary>
+    // Resize the buffer. Growing rows adds blank lines at the bottom;
+    // shrinking rows drops the top-most lines (so the newest server content
+    // stays visible) and pushes them into Scrollback so the user can still
+    // find them via the Backscroll window. Columns always preserve the left
+    // edge.
     public void Resize(int cols, int rows)
     {
         if (cols == Cols && rows == Rows) return;
@@ -86,23 +79,22 @@ public sealed class TerminalScreen
         Bump();
     }
 
-    /// <summary>Write a cell, ignoring out-of-bounds writes.</summary>
+    // Write a cell, ignoring out-of-bounds writes.
     public void Put(int x, int y, Cell c)
     {
         if ((uint)x >= (uint)Cols || (uint)y >= (uint)Rows) return;
         _cells[y * Cols + x] = c;
     }
 
-    /// <summary>Clear the entire screen to a blank cell with the given attributes.</summary>
-    /// <remarks>
-    /// Rows are captured into <see cref="Scrollback"/> before the clear so
-    /// screen redraws (CSI 2J / BBS welcome banners / paged "Who's Online"
-    /// lists / room re-renders) survive in the backscroll export. Without
-    /// this, anything painted via absolute cursor positioning and wiped by
-    /// ED 2 is gone forever — natural LF-at-bottom scrolling is the only
-    /// other path into scrollback. Trailing rows below the last row of
-    /// content are dropped (they're unused screen, not server output).
-    /// </remarks>
+    // Clear the entire screen to a blank cell with the given attributes.
+    //
+    // Rows are captured into Scrollback before the clear so screen redraws
+    // (CSI 2J / BBS welcome banners / paged "Who's Online" lists / room
+    // re-renders) survive in the backscroll export. Without this, anything
+    // painted via absolute cursor positioning and wiped by ED 2 is gone
+    // forever — natural LF-at-bottom scrolling is the only other path into
+    // scrollback. Trailing rows below the last row of content are dropped
+    // (they're unused screen, not server output).
     public void ClearAll(CellAttributes attr)
     {
         CaptureUpToLastNonBlank(0, Rows - 1);
@@ -111,14 +103,13 @@ public sealed class TerminalScreen
         Bump();
     }
 
-    /// <summary>Clear part of a single row [fromCol, toColInclusive].</summary>
-    /// <remarks>
-    /// Intentionally does NOT capture into <see cref="Scrollback"/> — single-row
-    /// clears are dominated by cursor-positioning artefacts (user echo,
-    /// statline rewrites, backspace overstrike) that would over-capture noise.
-    /// Multi-row clears via <see cref="ClearRowsInclusive"/> and <see cref="ClearAll"/>
-    /// do capture, since those are the redraw-related paths.
-    /// </remarks>
+    // Clear part of a single row [fromCol, toColInclusive].
+    //
+    // Intentionally does NOT capture into Scrollback — single-row clears are
+    // dominated by cursor-positioning artefacts (user echo, statline rewrites,
+    // backspace overstrike) that would over-capture noise. Multi-row clears
+    // via ClearRowsInclusive and ClearAll do capture, since those are the
+    // redraw-related paths.
     public void ClearRow(int y, int fromCol, int toColInclusive, CellAttributes attr)
     {
         if ((uint)y >= (uint)Rows) return;
@@ -129,8 +120,8 @@ public sealed class TerminalScreen
             _cells[y * Cols + x] = blank;
     }
 
-    /// <summary>Clear a contiguous block of rows [fromRow, toRow] inclusive.</summary>
-    /// <remarks>Captures rows up to the last non-blank row into <see cref="Scrollback"/> first — see <see cref="ClearAll"/>.</remarks>
+    // Clear a contiguous block of rows [fromRow, toRow] inclusive. Captures
+    // rows up to the last non-blank row into Scrollback first — see ClearAll.
     public void ClearRowsInclusive(int fromRow, int toRow, CellAttributes attr)
     {
         fromRow = Math.Clamp(fromRow, 0, Rows - 1);
@@ -166,12 +157,9 @@ public sealed class TerminalScreen
         return true;
     }
 
-    /// <summary>
-    /// Scroll the rectangle rows [top..bottom] up by <paramref name="n"/>
-    /// rows; the bottom <paramref name="n"/> rows are filled with blanks
-    /// using <paramref name="attr"/>. Used both for normal LF-at-bottom
-    /// scrolling and for explicit CSI S sequences.
-    /// </summary>
+    // Scroll the rectangle rows [top..bottom] up by n rows; the bottom n rows
+    // are filled with blanks using attr. Used both for normal LF-at-bottom
+    // scrolling and for explicit CSI S sequences.
     public void ScrollUp(int top, int bottom, int n, CellAttributes attr)
     {
         top = Math.Clamp(top, 0, Rows - 1);
@@ -203,7 +191,7 @@ public sealed class TerminalScreen
                 _cells[y * Cols + x] = blank;
     }
 
-    /// <summary>Inverse of <see cref="ScrollUp"/> — opens a gap at the top.</summary>
+    // Inverse of ScrollUp — opens a gap at the top.
     public void ScrollDown(int top, int bottom, int n, CellAttributes attr)
     {
         top = Math.Clamp(top, 0, Rows - 1);
@@ -219,6 +207,6 @@ public sealed class TerminalScreen
                 _cells[y * Cols + x] = blank;
     }
 
-    /// <summary>Mark the screen as dirty so observers know to redraw.</summary>
+    // Mark the screen as dirty so observers know to redraw.
     public void Bump() => _revision++;
 }

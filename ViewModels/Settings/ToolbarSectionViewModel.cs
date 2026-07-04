@@ -9,14 +9,11 @@ using FujinTerm.Views.Settings;
 
 namespace FujinTerm.ViewModels.Settings;
 
-/// <summary>
-/// "Toolbar" tab — list editor for the per-character toolbar layout.
-/// Top-to-bottom here ≡ left-to-right on the live toolbar. Each row is
-/// either a button (resolved through <see cref="ToolbarItemCatalogue"/>)
-/// or a separator. Apply persists the layout to the loaded profile and
-/// re-hydrates the live <see cref="ToolbarConfig"/> through the standard
-/// <see cref="ProfileService.NotifyMutated"/> path.
-/// </summary>
+// "Toolbar" tab — list editor for the per-character toolbar layout.
+// Top-to-bottom here maps to left-to-right on the live toolbar. Each row is
+// either a button (resolved through ToolbarItemCatalogue) or a separator. Apply
+// persists the layout to the loaded profile and re-hydrates the live
+// ToolbarConfig through the standard ProfileService.NotifyMutated path.
 public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
 {
     private const string TabKey = "Toolbar";
@@ -40,10 +37,10 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
 
     public override Control View => _view ??= new ToolbarSectionView { DataContext = this };
 
-    /// <summary>True when any character profile is loaded.</summary>
+    // True when any character profile is loaded.
     public bool HasProfile => _profile.Current is not null;
 
-    /// <summary>Editable per-row view-models for the layout.</summary>
+    // Editable per-row view-models for the layout.
     public ObservableCollection<ToolbarRowViewModel> Rows { get; } = new();
 
     // ----- Visibility + position ------------------------------------------
@@ -53,10 +50,10 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
     // All four share one group and stay live only while ShowToolbar is on;
     // when it's off the toolbar is hidden and the position choice greys out.
 
-    /// <summary>Master visibility toggle (Show toolbar).</summary>
+    // Master visibility toggle (Show toolbar).
     [ObservableProperty] private bool _showToolbar = true;
 
-    /// <summary>Edge the toolbar docks to; ignored while <see cref="ShowToolbar"/> = false.</summary>
+    // Edge the toolbar docks to; ignored while ShowToolbar = false.
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsTop))]
     [NotifyPropertyChangedFor(nameof(IsBottom))]
@@ -64,38 +61,36 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
     [NotifyPropertyChangedFor(nameof(IsRight))]
     private ToolbarPosition _position = ToolbarPosition.Top;
 
-    /// <summary>Top radio bound here — two-way mirror of <see cref="Position"/>.</summary>
+    // Top radio bound here — two-way mirror of Position.
     public bool IsTop
     {
         get => Position == ToolbarPosition.Top;
         set { if (value) Position = ToolbarPosition.Top; }
     }
 
-    /// <summary>Bottom radio bound here — two-way mirror of <see cref="Position"/>.</summary>
+    // Bottom radio bound here — two-way mirror of Position.
     public bool IsBottom
     {
         get => Position == ToolbarPosition.Bottom;
         set { if (value) Position = ToolbarPosition.Bottom; }
     }
 
-    /// <summary>Left radio bound here — two-way mirror of <see cref="Position"/>.</summary>
+    // Left radio bound here — two-way mirror of Position.
     public bool IsLeft
     {
         get => Position == ToolbarPosition.Left;
         set { if (value) Position = ToolbarPosition.Left; }
     }
 
-    /// <summary>Right radio bound here — two-way mirror of <see cref="Position"/>.</summary>
+    // Right radio bound here — two-way mirror of Position.
     public bool IsRight
     {
         get => Position == ToolbarPosition.Right;
         set { if (value) Position = ToolbarPosition.Right; }
     }
 
-    /// <summary>
-    /// Currently-selected row in the toolbar list — the Move / Remove /
-    /// keybind commands for the toolbar section act on this one.
-    /// </summary>
+    // Currently-selected row in the toolbar list — the Move / Remove / keybind
+    // commands for the toolbar section act on this one.
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(MoveUpCommand))]
     [NotifyCanExecuteChangedFor(nameof(MoveDownCommand))]
@@ -103,26 +98,21 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
     [NotifyCanExecuteChangedFor(nameof(ChangeToolbarKeybindCommand))]
     private ToolbarRowViewModel? _selectedRow;
 
-    /// <summary>
-    /// Actions not currently on the toolbar, rendered as the lower
-    /// "Shortcuts" list. Each is still keybindable — an action can own a
-    /// shortcut whether or not it has a toolbar button. Promoting one
-    /// (Add to toolbar) moves it up into <see cref="Rows"/>; removing a
-    /// toolbar button drops it back here.
-    /// </summary>
+    // Actions not currently on the toolbar, rendered as the lower "Shortcuts"
+    // list. Each is still keybindable — an action can own a shortcut whether or
+    // not it has a toolbar button. Promoting one (Add to toolbar) moves it up
+    // into Rows; removing a toolbar button drops it back here.
     public ObservableCollection<ToolbarRowViewModel> ShortcutRows { get; } = new();
 
-    /// <summary>Currently-selected row in the Shortcuts list.</summary>
+    // Currently-selected row in the Shortcuts list.
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(AddToToolbarCommand))]
     [NotifyCanExecuteChangedFor(nameof(ChangeShortcutKeybindCommand))]
     private ToolbarRowViewModel? _selectedShortcutRow;
 
-    /// <summary>
-    /// Inline result notice for the most recent "Copy from profile" run —
-    /// surfaced in the tab (never as a system toast). Lists keybinds that
-    /// were skipped because they clash with this profile's macros.
-    /// </summary>
+    // Inline result notice for the most recent "Copy from profile" run —
+    // surfaced in the tab (never as a system toast). Lists keybinds that were
+    // skipped because they clash with this profile's macros.
     [ObservableProperty] private string? _copyStatus;
 
     public ToolbarSectionViewModel(
@@ -240,7 +230,8 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
     private ToolbarSettings ReadDtoOrDefault()
         => _profile.Current is { } profile ? ReadDtoFrom(profile) : new ToolbarSettings();
 
-    /// <summary>Pull the Toolbar settings DTO out of any profile, defaulting on absence / malformed JSON.</summary>
+    // Pull the Toolbar settings DTO out of any profile, defaulting on absence /
+    // malformed JSON.
     private static ToolbarSettings ReadDtoFrom(CharacterProfile profile)
     {
         if (profile.Settings is null) return new ToolbarSettings();
@@ -255,13 +246,11 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
         }
     }
 
-    /// <summary>
-    /// Rebuild the lower "Shortcuts" list: every catalogue action whose
-    /// button isn't currently placed on the toolbar. These stay
-    /// keybindable even with no toolbar button — that's the whole point
-    /// of the unified pool. Preserves the current selection by action id
-    /// so a rebuild (after add/remove) doesn't clear the highlight.
-    /// </summary>
+    // Rebuild the lower "Shortcuts" list: every catalogue action whose button
+    // isn't currently placed on the toolbar. These stay keybindable even with
+    // no toolbar button — that's the whole point of the unified pool. Preserves
+    // the current selection by action id so a rebuild (after add/remove) doesn't
+    // clear the highlight.
     private void RefreshShortcutRows()
     {
         HashSet<string> placed = new(
@@ -286,7 +275,7 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
 
     // ----- Commands -----
 
-    /// <summary>Promote the selected Shortcuts-list action to a toolbar button.</summary>
+    // Promote the selected Shortcuts-list action to a toolbar button.
     [RelayCommand(CanExecute = nameof(CanAddToToolbar))]
     private void AddToToolbar()
     {
@@ -302,7 +291,7 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
 
     private bool CanAddToToolbar() => SelectedShortcutRow is not null;
 
-    /// <summary>Append a separator to the toolbar (separators are toolbar-only).</summary>
+    // Append a separator to the toolbar (separators are toolbar-only).
     [RelayCommand]
     private void AddSeparator()
     {
@@ -311,12 +300,10 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
         Dirty();
     }
 
-    /// <summary>
-    /// Remove the selected toolbar row. A button drops back into the
-    /// Shortcuts list (still keybindable); a separator is just deleted.
-    /// No confirm prompt — the move is non-destructive and revertible via
-    /// the section's Cancel/Discard.
-    /// </summary>
+    // Remove the selected toolbar row. A button drops back into the Shortcuts
+    // list (still keybindable); a separator is just deleted. No confirm prompt —
+    // the move is non-destructive and revertible via the section's
+    // Cancel/Discard.
     [RelayCommand(CanExecute = nameof(CanRemoveFromToolbar))]
     private void RemoveFromToolbar()
     {
@@ -380,13 +367,10 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
         Dirty();
     }
 
-    /// <summary>
-    /// Open the keybind editor for <paramref name="row"/>. The dialog
-    /// handles both rebinding and clearing — conflict detection inside
-    /// it blocks Save when the chosen combo collides with another
-    /// built-in action or any user macro. No-ops for rows whose action
-    /// isn't rebindable (separators, or any non-<see cref="BuiltInAction"/>).
-    /// </summary>
+    // Open the keybind editor for row. The dialog handles both rebinding and
+    // clearing — conflict detection inside it blocks Save when the chosen combo
+    // collides with another built-in action or any user macro. No-ops for rows
+    // whose action isn't rebindable (separators, or any non-BuiltInAction).
     private async Task ChangeKeybindForRowAsync(ToolbarRowViewModel? row)
     {
         if (row?.BoundAction is not BuiltInAction action) return;
@@ -409,25 +393,20 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
 
     private bool CanChangeShortcutKeybind() => SelectedShortcutRow?.BoundAction is not null;
 
-    /// <summary>
-    /// Reset every built-in chord — across both the toolbar and shortcuts
-    /// lists — back to its default in one shot. Drives the "Reset Keybinds
-    /// to Default" button; per-row keybind resets fold into this single
-    /// affordance (no separate per-row reset button).
-    /// </summary>
+    // Reset every built-in chord — across both the toolbar and shortcuts lists —
+    // back to its default in one shot. Drives the "Reset Keybinds to Default"
+    // button; per-row keybind resets fold into this single affordance (no
+    // separate per-row reset button).
     [RelayCommand]
     private void ResetAllKeybinds() => _keybindings.ResetAllToDefaults();
 
-    /// <summary>
-    /// Copy another character's toolbar layout + keybinds wholesale.
-    /// Per the staged-layout / live-keybind split: the source's layout
-    /// loads into the pending <see cref="Rows"/> (committed on Apply,
-    /// reverted on Cancel), while its keybinds apply immediately through
-    /// <see cref="KeybindingStore.Rebind"/> — mirroring the per-row Change
-    /// keybind path. Chords that clash with one of THIS profile's macros
-    /// are skipped (a keybind can never share a chord with a macro) and
-    /// reported inline via <see cref="CopyStatus"/>.
-    /// </summary>
+    // Copy another character's toolbar layout + keybinds wholesale. Per the
+    // staged-layout / live-keybind split: the source's layout loads into the
+    // pending Rows (committed on Apply, reverted on Cancel), while its keybinds
+    // apply immediately through KeybindingStore.Rebind — mirroring the per-row
+    // Change keybind path. Chords that clash with one of THIS profile's macros
+    // are skipped (a keybind can never share a chord with a macro) and reported
+    // inline via CopyStatus.
     [RelayCommand(CanExecute = nameof(HasProfile))]
     private async Task CopyFromProfileAsync()
     {
@@ -480,7 +459,8 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
               + $"profile's macros: {string.Join(", ", skipped)}. Apply to keep the layout.";
     }
 
-    /// <summary>Load the source profile's toolbar layout + orientation into the pending <see cref="Rows"/>.</summary>
+    // Load the source profile's toolbar layout + orientation into the pending
+    // Rows.
     private void ApplyCopiedLayout(CharacterProfile source)
     {
         ToolbarSettings dto = ReadDtoFrom(source);
@@ -501,13 +481,10 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
         Dirty();
     }
 
-    /// <summary>
-    /// Rebind every built-in action to the source profile's effective chord
-    /// (its sparse override, else the seed default). Skips — and reports —
-    /// any chord already owned by one of this profile's macros. Internal
-    /// built-in conflicts can't arise: the source set was already
-    /// conflict-free when authored.
-    /// </summary>
+    // Rebind every built-in action to the source profile's effective chord (its
+    // sparse override, else the seed default). Skips — and reports — any chord
+    // already owned by one of this profile's macros. Internal built-in conflicts
+    // can't arise: the source set was already conflict-free when authored.
     private void ApplyCopiedKeybinds(CharacterProfile source, out List<string> skipped)
     {
         skipped = new();
@@ -556,24 +533,18 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
     }
 }
 
-/// <summary>
-/// One row in <see cref="ToolbarSectionViewModel.Rows"/>. Exposes the
-/// catalogue-resolved label + icon resource key + shortcut so the
-/// editor row template can render <c>[icon] [label] [(shortcut)]</c>
-/// without doing the lookup in XAML.
-/// </summary>
+// One row in ToolbarSectionViewModel.Rows. Exposes the catalogue-resolved
+// label + icon resource key + shortcut so the editor row template can render
+// [icon] [label] [(shortcut)] without doing the lookup in XAML.
 public sealed partial class ToolbarRowViewModel : ObservableObject
 {
     public ToolbarItemKind Kind { get; }
     public string? ActionId { get; }
 
-    /// <summary>
-    /// The <see cref="BuiltInAction"/> this row binds to, when the
-    /// action id parses as one of the rebindable enum members. Non-
-    /// rebindable rows (separators, ToggleCapture, ActionGetAll, …)
-    /// return <c>null</c>; the editor uses this to gate the Change /
-    /// Reset keybind commands.
-    /// </summary>
+    // The BuiltInAction this row binds to, when the action id parses as one of
+    // the rebindable enum members. Non-rebindable rows (separators,
+    // ToggleCapture, ActionGetAll, …) return null; the editor uses this to gate
+    // the Change / Reset keybind commands.
     public BuiltInAction? BoundAction { get; }
 
     public bool IsButton => Kind == ToolbarItemKind.Button;
@@ -611,7 +582,7 @@ public sealed partial class ToolbarRowViewModel : ObservableObject
         }
     }
 
-    /// <summary>Push the live keybind label into the row (or clear when unbound).</summary>
+    // Push the live keybind label into the row (or clear when unbound).
     public void RefreshShortcutHint(KeyChord chord)
         => ShortcutHint = chord.IsEmpty ? null : $"({chord.Label})";
 

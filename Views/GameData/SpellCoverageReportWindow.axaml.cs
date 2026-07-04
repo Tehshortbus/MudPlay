@@ -31,13 +31,10 @@ public partial class SpellCoverageReportWindow : Window
         if (DataContext is SpellCoverageReportViewModel vm) vm.Detach();
     }
 
-    /// <summary>
-    /// Walk up the visual tree from the tapped point looking for a
-    /// row whose DataContext is an <see cref="UnanchoredSpell"/>;
-    /// dispatch via the VM's CreateMessageForSpell command when
-    /// found. A double-tap on the header / scroll bar / empty area
-    /// falls through to no-op.
-    /// </summary>
+    // Walk up the visual tree from the tapped point looking for a row whose
+    // DataContext is an UnanchoredSpell; dispatch via the VM's
+    // CreateMessageForSpell command when found. A double-tap on the header /
+    // scroll bar / empty area falls through to no-op.
     private void OnRowDoubleTapped(object? sender, RoutedEventArgs e)
     {
         if (e.Source is not Visual src) return;

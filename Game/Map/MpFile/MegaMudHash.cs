@@ -2,27 +2,15 @@ using System.Collections.Generic;
 
 namespace FujinTerm.Game.Map.MpFile;
 
-/// <summary>
-/// Ports the MegaMUD <c>rooms.md</c> hash + exits encoding used by
-/// every <c>.mp</c> path/loop file. Each step row in a <c>.mp</c> file
-/// starts with an 8-char <c>hashExits</c> token: a 3-char name hash
-/// followed by a 5-char exit signature.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Source of truth: the JS in the user's MegaMUD Path Maker V4 + Room
-/// Definer V7.1 tools (<c>calcMegaMUDRoomHash</c> +
-/// <c>calcMegaMUDExitsCode</c>). Translated here without behaviour
-/// change so a known room name + exit set produces the exact same
-/// 8-char token MegaMUD wrote into its <c>rooms.md</c> entries.
-/// </para>
-/// <para>
-/// Used by the <c>MpFileImporter</c> to (a) decode a recorded step's
-/// hashExits into a <c>(nameHash, exitSet)</c> candidate filter and
-/// (b) verify our graph's room produces the same hashExits when
-/// walking a candidate path (per-leg integrity check).
-/// </para>
-/// </remarks>
+// Reproduces the MegaMUD rooms.md hash + exits encoding used by every .mp
+// path/loop file. Each step row in a .mp file starts with an 8-char hashExits
+// token: a 3-char name hash followed by a 5-char exit signature. Encoded here
+// without behaviour change so a known room name + exit set produces the exact
+// same 8-char token MegaMUD wrote into its rooms.md entries.
+//
+// Used by MpFileImporter to (a) decode a recorded step's hashExits into a
+// (nameHash, exitSet) candidate filter and (b) verify our graph's room produces
+// the same hashExits when walking a candidate path (per-leg integrity check).
 public static class MegaMudHash
 {
     // Direction ordering matches MegaMUD's: N, S, E, W, NE, NW, SE, SW, U, D.
@@ -46,12 +34,9 @@ public static class MegaMudHash
     // that each exit contributes to.
     private static readonly int[] ExitPosition = { 5, 5, 4, 4, 3, 3, 2, 2, 1, 1 };
 
-    /// <summary>
-    /// Compute the 3-char MegaMUD name hash for <paramref name="roomName"/>.
-    /// Mirrors <c>calcMegaMUDRoomHash</c>: sum of (1-based position ×
-    /// charCode), low 12 bits, hex-encoded, padded to 3 chars. Empty
-    /// name yields <c>"FFF"</c> (the JS sentinel for null/empty input).
-    /// </summary>
+    // Compute the 3-char MegaMUD name hash for roomName: sum of (1-based position
+    // × charCode), low 12 bits, hex-encoded, padded to 3 chars. Empty name yields
+    // "FFF" (MegaMUD's sentinel for null/empty input).
     public static string ComputeNameHash(string? roomName)
     {
         if (string.IsNullOrEmpty(roomName)) return "FFF";
@@ -70,29 +55,21 @@ public static class MegaMudHash
         return hash.ToUpperInvariant();
     }
 
-    /// <summary>
-    /// Encode an exit set into the 5-char MegaMUD exits code without
-    /// door / hidden awareness. Use the <see cref="EncodeExits(Room)"/>
-    /// overload when computing against an actual graph room — that
-    /// one weights doors ×2 (matching MegaMUD's <c>calcMegaMUDExitsCode</c>)
-    /// and excludes hidden exits.
-    /// </summary>
+    // Encode an exit set into the 5-char MegaMUD exits code without door / hidden
+    // awareness. Use the EncodeExits(Room) overload when computing against an
+    // actual graph room — that one weights doors ×2 (matching MegaMUD) and
+    // excludes hidden exits.
     public static string EncodeExits(IReadOnlySet<Direction> exits)
     {
         ArgumentNullException.ThrowIfNull(exits);
         return EncodeExitsInternal(exits, doors: null);
     }
 
-    /// <summary>
-    /// Encode <paramref name="room"/>'s exits into the 5-char MegaMUD
-    /// exits code, replicating the V4 generator + V7.1 Room Definer
-    /// rules: door / key-locked / toll-gate exits weight ×2; hidden
-    /// (incl. <see cref="RoomExitHint.SearchableHidden"/> and
-    /// <see cref="RoomExitHint.MultiActionHidden"/>) exits are
-    /// excluded entirely; everything else weights ×1. Required for
-    /// the importer's per-step hash compare to match rooms.md
-    /// exactly when the source room has any door / hidden exit.
-    /// </summary>
+    // Encode room's exits into the 5-char MegaMUD exits code, replicating
+    // MegaMUD's rules: door / key-locked / toll-gate exits weight ×2; hidden (incl.
+    // SearchableHidden and MultiActionHidden) exits are excluded entirely;
+    // everything else weights ×1. Required for the importer's per-step hash compare
+    // to match rooms.md exactly when the source room has any door / hidden exit.
     public static string EncodeExits(Room room)
     {
         ArgumentNullException.ThrowIfNull(room);
@@ -107,20 +84,14 @@ public static class MegaMudHash
         return EncodeExitsInternal(visible, doors);
     }
 
-    /// <summary>
-    /// Compute the full 8-char <c>hashExits</c> token from a room name
-    /// and its exit set. Door-naive — use the
-    /// <see cref="ComputeHashExits(Room)"/> overload against a graph
-    /// room so doors / hidden exits get their MegaMUD-correct
-    /// weighting.
-    /// </summary>
+    // Compute the full 8-char hashExits token from a room name and its exit set.
+    // Door-naive — use the ComputeHashExits(Room) overload against a graph room so
+    // doors / hidden exits get their MegaMUD-correct weighting.
     public static string ComputeHashExits(string? roomName, IReadOnlySet<Direction> exits)
         => ComputeNameHash(roomName) + EncodeExits(exits);
 
-    /// <summary>
-    /// Compute the 8-char <c>hashExits</c> token for <paramref name="room"/>
-    /// using its name and door-/hidden-aware exit encoding.
-    /// </summary>
+    // Compute the 8-char hashExits token for room using its name and
+    // door-/hidden-aware exit encoding.
     public static string ComputeHashExits(Room room)
     {
         ArgumentNullException.ThrowIfNull(room);
@@ -136,8 +107,7 @@ public static class MegaMudHash
             if (!exits.Contains(dir)) continue;
             int pos = ExitPosition[i];
             int weight = ExitVal[i];
-            // MegaMUD doubles the weight for door/gate/key-locked
-            // exits per calcMegaMUDExitsCode's `isDoor ? 2 : 1`.
+            // MegaMUD doubles the weight for door/gate/key-locked exits.
             if (doors is not null && doors.Contains(dir)) weight *= 2;
             buckets[pos] += weight;
         }
@@ -146,31 +116,23 @@ public static class MegaMudHash
         return new string(code);
     }
 
-    /// <summary>
-    /// Returns true when <paramref name="hint"/> classifies as a
-    /// "door" per the V7.1 Room Definer's <c>mapCsvExitToMode</c>
-    /// ("door", "gate", or "key" in the cell text). Toll counts
-    /// because toll-gate text typically reads "(Gate, N gold)".
-    /// </summary>
+    // Returns true when hint classifies as a "door" for MegaMUD exit-code purposes
+    // ("door", "gate", or "key"). Toll counts because toll-gate text typically
+    // reads "(Gate, N gold)".
     public static bool IsDoorLike(RoomExitHint hint)
         => hint is RoomExitHint.Door
                 or RoomExitHint.KeyLocked
                 or RoomExitHint.Toll;
 
-    /// <summary>
-    /// Returns true when <paramref name="hint"/> classifies as a
-    /// "hidden" exit per V7.1 ("hidden" or "secret"). These don't
-    /// contribute to the MegaMUD exits code at all.
-    /// </summary>
+    // Returns true when hint classifies as a "hidden" exit ("hidden" or "secret").
+    // These don't contribute to the MegaMUD exits code at all.
     public static bool IsHidden(RoomExitHint hint)
         => hint is RoomExitHint.SearchableHidden
                 or RoomExitHint.MultiActionHidden;
 
-    /// <summary>
-    /// Split an 8-char hashExits into its <c>(nameHash, exitsCode)</c>
-    /// parts. Returns <c>(null, null)</c> when the input is the wrong
-    /// length or contains non-hex characters.
-    /// </summary>
+    // Split an 8-char hashExits into its (nameHash, exitsCode) parts. Returns
+    // (null, null) when the input is the wrong length or contains non-hex
+    // characters.
     public static (string? NameHash, string? ExitsCode) Split(string? hashExits)
     {
         if (string.IsNullOrWhiteSpace(hashExits)) return (null, null);
@@ -180,32 +142,24 @@ public static class MegaMudHash
         return (h[..3].ToUpperInvariant(), h[3..].ToUpperInvariant());
     }
 
-    /// <summary>
-    /// Decode a 5-char exits code into the set of <see cref="Direction"/>
-    /// values that produces it. When an exits digit could be satisfied
-    /// by multiple combinations of doors/normals (which doesn't
-    /// distinguish here because we ignore the door bit), the smallest
-    /// "any-on" interpretation wins. Returns null when the code is
-    /// malformed.
-    /// </summary>
-    /// <remarks>
-    /// Decoding the digit means inferring which of the 1-or-2 exits
-    /// contributing to that digit are present. Per the
-    /// <see cref="ExitPosition"/> table digits 1–5 each receive
-    /// contributions from a single pair of exits:
-    /// <list type="bullet">
-    ///   <item>digit 1 (rightmost) ← U, D</item>
-    ///   <item>digit 2 ← SE, SW</item>
-    ///   <item>digit 3 ← NE, NW</item>
-    ///   <item>digit 4 ← E, W</item>
-    ///   <item>digit 5 ← N, S</item>
-    /// </list>
-    /// Each pair has weights 1 + 4 (see <see cref="ExitVal"/>), so the
-    /// digit's value identifies which combination of the two is on:
-    /// <c>0=neither, 1=first, 4=second, 5=both</c>. Doors double those
-    /// weights (2 / 8 / A) but we collapse those back to "exit present"
-    /// since the door bit isn't carried in our graph.
-    /// </remarks>
+    // Decode a 5-char exits code into the set of Direction values that produces it.
+    // When an exits digit could be satisfied by multiple combinations of
+    // doors/normals (which doesn't distinguish here because we ignore the door
+    // bit), the smallest "any-on" interpretation wins. Returns null when the code
+    // is malformed.
+    //
+    // Decoding the digit means inferring which of the 1-or-2 exits contributing to
+    // that digit are present. Per the ExitPosition table digits 1–5 each receive
+    // contributions from a single pair of exits:
+    //   - digit 1 (rightmost) ← U, D
+    //   - digit 2 ← SE, SW
+    //   - digit 3 ← NE, NW
+    //   - digit 4 ← E, W
+    //   - digit 5 ← N, S
+    // Each pair has weights 1 + 4 (see ExitVal), so the digit's value identifies
+    // which combination of the two is on: 0=neither, 1=first, 4=second, 5=both.
+    // Doors double those weights (2 / 8 / A) but we collapse those back to "exit
+    // present" since the door bit isn't carried in our graph.
     public static IReadOnlySet<Direction>? DecodeExits(string? exitsCode)
     {
         if (string.IsNullOrWhiteSpace(exitsCode)) return null;

@@ -4,35 +4,27 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game;
 
-/// <summary>
-/// Master kill-switch for every wired auto-engine. One press flips all
-/// currently-engaged engines off (after snapshotting which were on); the
-/// next press restores that snapshot. Shared by the "Auto-All" toolbar
-/// button / Action-menu item and the <c>@auto-all</c> remote command so
-/// both drive the exact same session-only snapshot.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Operates over every auto-engine that actually has runtime wiring, so a
-/// kill / restore never strands a flag the runtime can't honour.
-/// </para>
-/// <para>
-/// The snapshot is per-session and per-character: it is captured on the
-/// kill press and cleared on profile load (a freshly loaded character
-/// must not inherit the previous one's remembered state). Profile-load
-/// seeding of AutoMode from Settings → General is owned elsewhere; this
-/// controller never applies General defaults — restore always replays the
-/// remembered snapshot (no snapshot → no-op).
-/// </para>
-/// </remarks>
+// Master kill-switch for every wired auto-engine. One press flips all
+// currently-engaged engines off (after snapshotting which were on); the next
+// press restores that snapshot. Shared by the "Auto-All" toolbar button /
+// Action-menu item and the `@auto-all` remote command so both drive the exact
+// same session-only snapshot.
+//
+// Operates over every auto-engine that actually has runtime wiring, so a kill /
+// restore never strands a flag the runtime can't honour.
+//
+// The snapshot is per-session and per-character: it is captured on the kill
+// press and cleared on profile load (a freshly loaded character must not
+// inherit the previous one's remembered state). Profile-load seeding of
+// AutoMode from Settings → General is owned elsewhere; this controller never
+// applies General defaults — restore always replays the remembered snapshot
+// (no snapshot → no-op).
 public sealed class AutoModeController
 {
     private const string TabKey = "General";
     private const string LogCategory = "AutoMode";
 
-    /// <summary>
-    /// The wired engines, in stable order.
-    /// </summary>
+    // The wired engines, in stable order.
     private static readonly (Func<AutoActionDefaults, bool> Get,
                              Action<AutoActionDefaults, bool> Set)[] Wired =
     {
@@ -51,19 +43,14 @@ public sealed class AutoModeController
     private readonly ProfileService _profile;
     private readonly LogService? _log;
 
-    /// <summary>
-    /// Remembered on/off state of the wired engines captured by the last
-    /// kill press. <c>null</c> when nothing has been killed yet this
-    /// session (so a restore would be a no-op).
-    /// </summary>
+    // Remembered on/off state of the wired engines captured by the last kill
+    // press. null when nothing has been killed yet this session (so a restore
+    // would be a no-op).
     private bool[]? _snapshot;
 
-    /// <summary>
-    /// True while the kill switch is actively engaged — engines were
-    /// snapshotted off by a kill press and not yet restored. Backs
-    /// <see cref="KillSwitchEngaged"/>; cleared on restore and on profile
-    /// load.
-    /// </summary>
+    // True while the kill switch is actively engaged — engines were
+    // snapshotted off by a kill press and not yet restored. Backs
+    // KillSwitchEngaged; cleared on restore and on profile load.
     private bool _killEngaged;
 
     public AutoModeController(ProfileService profile, LogService? log = null)
@@ -73,7 +60,7 @@ public sealed class AutoModeController
         _log = log;
     }
 
-    /// <summary>True when every wired engine is currently off.</summary>
+    // True when every wired engine is currently off.
     public bool AllWiredOff
     {
         get
@@ -86,37 +73,28 @@ public sealed class AutoModeController
         }
     }
 
-    /// <summary>
-    /// True while the Auto-All kill switch is actively engaged — the user
-    /// (or an <c>@auto-all off</c>) pressed it while engines were on and
-    /// has not restored them yet. Deliberately distinct from
-    /// <see cref="AllWiredOff"/>: a character who simply never enabled any
-    /// auto-engine has everything off WITHOUT the kill switch engaged.
-    /// Consumers that mean "did the user actively silence automation"
-    /// (e.g. the main-menu auto-entry suppression) must read this, not
-    /// <see cref="AllWiredOff"/>, so a manual-play character still
-    /// auto-enters the realm.
-    /// </summary>
+    // True while the Auto-All kill switch is actively engaged — the user (or an
+    // `@auto-all off`) pressed it while engines were on and has not restored
+    // them yet. Deliberately distinct from AllWiredOff: a character who simply
+    // never enabled any auto-engine has everything off WITHOUT the kill switch
+    // engaged. Consumers that mean "did the user actively silence automation"
+    // (e.g. the main-menu auto-entry suppression) must read this, not
+    // AllWiredOff, so a manual-play character still auto-enters the realm.
     public bool KillSwitchEngaged => _killEngaged;
 
-    /// <summary>
-    /// Drop the remembered snapshot and clear the kill-switch flag. Called
-    /// on profile load so a newly loaded character can't restore the
-    /// previous character's state or inherit its silenced-automation flag.
-    /// </summary>
+    // Drop the remembered snapshot and clear the kill-switch flag. Called on
+    // profile load so a newly loaded character can't restore the previous
+    // character's state or inherit its silenced-automation flag.
     public void ResetSnapshot()
     {
         _snapshot = null;
         _killEngaged = false;
     }
 
-    /// <summary>
-    /// Toggle the master switch. If any wired engine is on, snapshot the
-    /// current states and turn them all off. If all are already off,
-    /// restore the snapshot (no-op when none was captured). Returns the
-    /// resulting <see cref="AllWiredOff"/> value (true = everything is now
-    /// off).
-    /// </summary>
+    // Toggle the master switch. If any wired engine is on, snapshot the current
+    // states and turn them all off. If all are already off, restore the
+    // snapshot (no-op when none was captured). Returns the resulting AllWiredOff
+    // value (true = everything is now off).
     public bool ToggleAll()
     {
         if (_profile.Current is not { } profile) return true;

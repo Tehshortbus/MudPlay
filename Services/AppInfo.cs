@@ -2,30 +2,21 @@ using System.Reflection;
 
 namespace FujinTerm.Services;
 
-/// <summary>
-/// Compile-time facts about the running app — repo URL, external links, the
-/// kind of stuff every Help / About / Report-an-issue menu entry needs.
-/// </summary>
+// Compile-time facts about the running app — repo URL, external links, the
+// kind of stuff every Help / About / Report-an-issue menu entry needs.
 public static class AppInfo
 {
     public const string DisplayName = "FujinTerm";
 
-    /// <summary>
-    /// Version pulled from the compiled assembly's
-    /// <c>AssemblyInformationalVersion</c> attribute, which MSBuild
-    /// generates from the <c>&lt;Version&gt;</c> property in the
-    /// csproj. Single source of truth — bump the csproj, the @version
-    /// remote-command reply tracks automatically on the next build.
-    /// Falls back to <c>"unknown"</c> in the (impossible) case where
-    /// the attribute didn't land.
-    /// </summary>
+    // Version pulled from the compiled assembly's AssemblyInformationalVersion
+    // attribute, which MSBuild generates from the <Version> property in the
+    // csproj. Single source of truth — bump the csproj, the @version
+    // remote-command reply tracks automatically on the next build. Falls back
+    // to "unknown" in the (impossible) case where the attribute didn't land.
     public static string Version { get; } = ReadAssemblyVersion();
 
-    /// <summary>
-    /// <c>"FujinTerm 0.6.0"</c> — the form the <c>@version</c>
-    /// remote-command reply uses to match the format other clients
-    /// emit (MegaMUD: <c>"MegaMud 1.03u"</c>).
-    /// </summary>
+    // "FujinTerm 1.0.0" — the form the @version remote-command reply uses to
+    // match the format other clients emit (MegaMUD: "MegaMud 1.03u").
     public static string DisplayNameWithVersion { get; } = $"{DisplayName} {Version}";
 
     public const string RepoUrl    = "https://github.com/Tehshortbus/FujinTerm";

@@ -4,25 +4,21 @@ using FujinTerm.Services;
 
 namespace FujinTerm.ViewModels.Navigation;
 
-/// <summary>
-/// Small modeless dialog for editing a single loop waypoint's per-row
-/// action — a free-form Command to send at the waypoint and a Delay
-/// in milliseconds before the loop resumes walking. Spawned from the
-/// Loop editor's per-row ✎ button.
-/// </summary>
-/// <remarks>
-/// The dialog doesn't write to <see cref="LoopWaypointRowViewModel"/>
-/// directly — it bubbles the committed values up via
-/// <see cref="LairTimerEditDialogResult"/>-shaped result so the Loop
-/// editor can decide how to apply them (same shape both fields are
-/// nullable: Command empty = "no command", Delay 0 = "default
-/// per-step delay").
-/// </remarks>
+// Small modeless dialog for editing a single loop waypoint's per-row action
+// — a free-form Command to send at the waypoint and a Delay in milliseconds
+// before the loop resumes walking. Spawned from the Loop editor's per-row ✎
+// button.
+//
+// The dialog doesn't write to LoopWaypointRowViewModel directly — it bubbles
+// the committed values up via a LairTimerEditDialogResult-shaped result so
+// the Loop editor can decide how to apply them (same shape both fields are
+// nullable: Command empty = "no command", Delay 0 = "default per-step
+// delay").
 public sealed partial class WaypointActionEditDialogViewModel : ObservableObject, IDialogViewModel<WaypointActionEditResult?>
 {
     public event Action<WaypointActionEditResult?>? CloseRequested;
 
-    /// <summary>Header label so the dialog can name which waypoint is being edited.</summary>
+    // Header label so the dialog can name which waypoint is being edited.
     public string WaypointLabel { get; }
 
     [ObservableProperty] private string? _command;
@@ -51,5 +47,5 @@ public sealed partial class WaypointActionEditDialogViewModel : ObservableObject
     private void Cancel() => CloseRequested?.Invoke(null);
 }
 
-/// <summary>Committed payload — null Command means "no command attached".</summary>
+// Committed payload — null Command means "no command attached".
 public sealed record WaypointActionEditResult(string? Command, int DelayMs);

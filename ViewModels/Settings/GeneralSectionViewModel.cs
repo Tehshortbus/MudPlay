@@ -8,18 +8,14 @@ using FujinTerm.Views.Settings;
 
 namespace FujinTerm.ViewModels.Settings;
 
-/// <summary>
-/// "General" tab. Per-character: default startup task, auto-connect,
-/// and the boot-up state of every Action-menu auto-toggle in both
-/// Manual-Mode and Auto-Mode columns.
-/// </summary>
-/// <remarks>
-/// Loads from <see cref="CharacterProfile.Settings"/> on construction
-/// and after a <see cref="ProfileService.ProfileLoaded"/> event so the
-/// editor reflects whichever profile is currently active. Apply writes
-/// back into the same JSON dictionary and calls
-/// <see cref="ProfileService.Save"/>.
-/// </remarks>
+// "General" tab. Per-character: default startup task, auto-connect, and the
+// boot-up state of every Action-menu auto-toggle in both Manual-Mode and
+// Auto-Mode columns.
+//
+// Loads from CharacterProfile.Settings on construction and after a
+// ProfileService.ProfileLoaded event so the editor reflects whichever profile is
+// currently active. Apply writes back into the same JSON dictionary and calls
+// ProfileService.Save.
 public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
 {
     private const string TabKey = "General";
@@ -52,18 +48,16 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
 
     public override Control View => _view ??= new GeneralSectionView { DataContext = this };
 
-    /// <summary>True when a profile is loaded — editor is hidden otherwise.</summary>
+    // True when a profile is loaded — editor is hidden otherwise.
     public bool HasProfile => _profile.Current is not null;
 
-    /// <summary>
-    /// Resolved absolute path to the platform Data root (XDG on Linux,
-    /// %AppData% on Windows, ~/Library/Application Support on macOS).
-    /// Read-only display so the user can copy the path or open it in
-    /// the system file browser via the adjacent button.
-    /// </summary>
+    // Resolved absolute path to the platform Data root (XDG on Linux, %AppData% on
+    // Windows, ~/Library/Application Support on macOS). Read-only display so the
+    // user can copy the path or open it in the system file browser via the
+    // adjacent button.
     public string DataFilesPath => AppPaths.DataRoot;
 
-    /// <summary>Opens the Data root in the OS file browser.</summary>
+    // Opens the Data root in the OS file browser.
     [RelayCommand]
     private void OpenDataFolder()
     {
@@ -71,11 +65,9 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
             AppServices.Current.Log.Warn("ShellLaunch", $"Could not open {AppPaths.DataRoot}");
     }
 
-    /// <summary>
-    /// Opens the "Change data directory" modeless dialog. On confirm the
-    /// dialog runs <see cref="DataRootRelocator"/> and restarts the app at
-    /// the new location; this method's task completes only on Cancel.
-    /// </summary>
+    // Opens the "Change data directory" modeless dialog. On confirm the dialog runs
+    // DataRootRelocator and restarts the app at the new location; this method's
+    // task completes only on Cancel.
     [RelayCommand]
     private async Task ChangeDataFolderAsync()
     {
@@ -99,25 +91,19 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
     // GlobalSettings.PlayerCleanupDays remains the canonical store —
     // OtherSectionViewModel now owns the edit surface.
 
-    /// <summary>
-    /// Names of saved loop files available for the "Begin looping" picker.
-    /// Empty until Phase 7 LoopManager publishes the list; the dropdown
-    /// stays disabled while empty.
-    /// </summary>
+    // Names of saved loop files available for the "Begin looping" picker. The
+    // dropdown stays disabled while empty.
     public IReadOnlyList<string> LoopNames { get; } = Array.Empty<string>();
 
-    /// <summary>
-    /// Names of saved Auto-Lair files available for the "Begin Auto-Lair"
-    /// picker. Empty until Phase 7 publishes the list.
-    /// </summary>
+    // Names of saved Auto-Lair files available for the "Begin Auto-Lair" picker.
     public IReadOnlyList<string> AutoLairNames { get; } = Array.Empty<string>();
 
     // ----- Auto-engine master switches -----
-    // Each AmXxx bool is the master on/off for the matching Phase 9+
-    // engine. Persisted to GeneralSettings.AutoMode and read live by
-    // each engine's gating delegate in AppServices. The XAML wires
-    // each CheckBox's IsEnabled to the matching IsXxxWired flag so the
-    // user can see which engines are actually live vs surface-only.
+    // Each AmXxx bool is the master on/off for the matching engine. Persisted to
+    // GeneralSettings.AutoMode and read live by each engine's gating delegate in
+    // AppServices. The XAML wires each CheckBox's IsEnabled to the matching
+    // IsXxxWired flag so the user can see which engines are actually live vs
+    // surface-only.
     [ObservableProperty] private bool _amAutoCombat;
     [ObservableProperty] private bool _amAutoNuke;
     [ObservableProperty] private bool _amAutoHealRest;
@@ -151,20 +137,17 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private bool _reEnableAutoSearchOnReconnect;
 
     // ----- Wired-state flags ------------------------------------------
-    // Computed (return constants) — true when the matching engine is
-    // live, false when its skeleton hasn't landed yet. The view's
-    // CheckBox.IsEnabled binds to these so users see at a glance
-    // which toggles do anything. As later PRs wire each engine, flip
-    // the matching constant here.
-    public bool IsAutoCombatWired   => true;    // PR 9.A — CombatManager
-    public bool IsAutoHealRestWired => true;    // PR 9.B — HealthManager
+    // True when the matching engine is live. The view's CheckBox.IsEnabled binds
+    // to these so users see at a glance which toggles do anything.
+    public bool IsAutoCombatWired   => true;    // CombatManager
+    public bool IsAutoHealRestWired => true;    // HealthManager
     public bool IsAutoNukeWired     => true;    // CombatSpellChooser multi-attack + debuff gate
     public bool IsAutoBlessWired    => true;    // CastingDirector Buffing-category gate
-    public bool IsAutoLightWired    => true;    // PR 9.K — AutoLightManager
-    public bool IsAutoGetItemsWired => true;    // PR 9.L — AutoGetItemsManager
-    public bool IsAutoGetCashWired  => true;    // PR 9.E — CashManager + StashRoomManager (both gate here)
-    public bool IsAutoSneakWired    => true;    // PR 9.F Cluster 3 — StealthManager auto-sneak
-    public bool IsAutoHideWired     => true;    // PR 9.F Cluster 3 — StealthManager auto-hide
+    public bool IsAutoLightWired    => true;    // AutoLightManager
+    public bool IsAutoGetItemsWired => true;    // AutoGetItemsManager
+    public bool IsAutoGetCashWired  => true;    // CashManager + StashRoomManager (both gate here)
+    public bool IsAutoSneakWired    => true;    // StealthManager auto-sneak
+    public bool IsAutoHideWired     => true;    // StealthManager auto-hide
     public bool IsAutoSearchWired   => true;    // AutoSearchManager — bare `sea` on room entry
 
     public GeneralSectionViewModel(ProfileService profile)
@@ -348,12 +331,9 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
     partial void OnReEnableAutoHideOnReconnectChanged(bool value)     => Dirty();
     partial void OnReEnableAutoSearchOnReconnectChanged(bool value)   => Dirty();
 
-    /// <summary>
-    /// Belt + braces on top of RadioButton.GroupName — the View's
-    /// GroupName handles the click-time mutual-exclusion, this guarantees
-    /// programmatic state changes (Discard / ReloadAfterProfileSwap)
-    /// can't leave two task radios true at once.
-    /// </summary>
+    // Belt + braces on top of RadioButton.GroupName — the View's GroupName handles
+    // the click-time mutual-exclusion, this guarantees programmatic state changes
+    // (Discard / ReloadAfterProfileSwap) can't leave two task radios true at once.
     private void UncheckOtherTasks(int keep)
     {
         if (keep != 0 && IsTaskDoNothing)     IsTaskDoNothing = false;

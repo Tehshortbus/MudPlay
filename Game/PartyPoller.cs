@@ -5,52 +5,34 @@ using Avalonia.Threading;
 
 namespace FujinTerm.Game;
 
-/// <summary>
-/// Drives the two Phase 6 PR 6.4 cadences:
-/// </summary>
-/// <remarks>
-/// <list type="number">
-///   <item><b>On-join <c>@health</c> exchange.</b> When a fresh member
-///         lands in <see cref="PartyState.Members"/> (via
-///         <see cref="PartyManager"/>'s follows-you / par parsing), the
-///         poller telepaths <c>@health</c> to that member, parses the
-///         reply, and writes the absolute HP/MA into the matching
-///         <see cref="PartyMember"/>'s <see cref="PartyMember.BaselineHp"/>
-///         / <see cref="PartyMember.BaselineMp"/> through
-///         <see cref="PartyManager.SetMemberHealthSnapshot"/>.</item>
-///   <item><b><c>par</c> poll.</b> A <see cref="DispatcherTimer"/>
-///         ticks at <see cref="ParCadence"/> (5 s default per the
-///         Phase 6 spec; Settings.Party in PR 6.9 makes this
-///         user-configurable). Each tick sends <c>par</c> on the wire,
-///         which the server responds to with the multi-line table
-///         <see cref="PartyManager"/> already parses to update HP%/MA%/
-///         position for every member.</item>
-/// </list>
-/// <para>
-/// Reply-format match: the on-join replies come back as
-/// <c>"X telepaths: HP 690/720, MA 200/300 (Resting)"</c> — i.e. the
-/// other party member's <see cref="Remote.PartyEssentialHandlers.OnHealth"/>
-/// reply routed through their telepath. The poller subscribes to
-/// <see cref="ChatRouter.EntryClassified"/> and watches incoming
-/// telepaths whose body matches the canonical health-reply regex; the
-/// speaker field tells us which member to update.
-/// </para>
-/// <para>
-/// Self handling: <see cref="PartyMember.IsSelf"/> rows are skipped on
-/// the @health round-trip — our own HP/MA flows in through
-/// <see cref="PromptParser"/> on every statline observation, which is
-/// fresher than a self-sent telepath would be.
-/// </para>
-/// <para>
-/// Lifetime: poller is app-singleton like <see cref="PartyManager"/>;
-/// it's safe to keep the timer running even when not in a party —
-/// <see cref="DoParPoll"/> short-circuits on
-/// <see cref="PartyState.IsInParty"/> = false so we don't spam <c>par</c>
-/// at the wire while solo. It also short-circuits on
-/// <see cref="IsParPollEnabled"/> so the poll obeys the auto-heal/rest
-/// toggle (and, through it, the auto-all kill switch).
-/// </para>
-/// </remarks>
+// Drives the two party-health cadences:
+//
+//   1. On-join `@health` exchange. When a fresh member lands in
+//      PartyState.Members (via PartyManager's follows-you / par parsing), the
+//      poller telepaths `@health` to that member, parses the reply, and writes
+//      the absolute HP/MA into the matching PartyMember's BaselineHp /
+//      BaselineMp through PartyManager.SetMemberHealthSnapshot.
+//   2. `par` poll. A DispatcherTimer ticks at ParCadence (5 s default;
+//      Settings.Party makes this user-configurable). Each tick sends `par` on
+//      the wire, which the server responds to with the multi-line table
+//      PartyManager already parses to update HP%/MA%/position for every member.
+//
+// Reply-format match: the on-join replies come back as
+// "X telepaths: HP 690/720, MA 200/300 (Resting)" — i.e. the other party
+// member's PartyEssentialHandlers.OnHealth reply routed through their telepath.
+// The poller subscribes to ChatRouter.EntryClassified and watches incoming
+// telepaths whose body matches the canonical health-reply regex; the speaker
+// field tells us which member to update.
+//
+// Self handling: PartyMember.IsSelf rows are skipped on the @health round-trip
+// — our own HP/MA flows in through PromptParser on every statline observation,
+// which is fresher than a self-sent telepath would be.
+//
+// Lifetime: poller is app-singleton like PartyManager; it's safe to keep the
+// timer running even when not in a party — DoParPoll short-circuits on
+// PartyState.IsInParty = false so we don't spam `par` at the wire while solo.
+// It also short-circuits on IsParPollEnabled so the poll obeys the
+// auto-heal/rest toggle (and, through it, the auto-all kill switch).
 public sealed partial class PartyPoller : IDisposable
 {
     private readonly ChatRouter _chat;
@@ -61,18 +43,15 @@ public sealed partial class PartyPoller : IDisposable
     private Action<byte[]>? _wireSender;
     private bool _disposed;
 
-    /// <summary>How often to send <c>par</c> on the wire. Default 5 s per the Phase 6 spec.</summary>
+    // How often to send `par` on the wire. Default 5 s.
     public TimeSpan ParCadence { get; private set; } = TimeSpan.FromSeconds(5);
 
-    /// <summary>
-    /// Live gate for the timed <c>par</c> poll. <c>par</c>'s sole purpose
-    /// is reading party health, so it rides the same auto-heal/rest toggle
-    /// that governs every other automatic action — when that's off (and
-    /// because AutoModeController's kill-all zeroes the heal/rest flag, when
-    /// auto-all is off too) the timer must not put <c>par</c> on the wire.
-    /// Null = ungated (test / pre-wire default), matching the historical
-    /// always-on behaviour.
-    /// </summary>
+    // Live gate for the timed `par` poll. `par`'s sole purpose is reading party
+    // health, so it rides the same auto-heal/rest toggle that governs every
+    // other automatic action — when that's off (and because AutoModeController's
+    // kill-all zeroes the heal/rest flag, when auto-all is off too) the timer
+    // must not put `par` on the wire. Null = ungated (test / pre-wire default),
+    // matching the historical always-on behaviour.
     public Func<bool>? IsParPollEnabled { get; set; }
 
     // ----- @health nag escalation knobs (shared with @join nag) ----------
@@ -82,27 +61,25 @@ public sealed partial class PartyPoller : IDisposable
     // cadence because they share the user intent ("after asking for X,
     // wait this long, retry this often, give up after this window").
 
-    /// <summary>Wait this long after the initial <c>/given @health</c> before the first retry.</summary>
+    // Wait this long after the initial `/given @health` before the first retry.
     public TimeSpan HealthNagInitialDelay { get; set; } = TimeSpan.FromSeconds(5);
-    /// <summary>Cadence for subsequent <c>/given @health</c> resends.</summary>
+    // Cadence for subsequent `/given @health` resends.
     public TimeSpan HealthNagFrequency { get; set; } = TimeSpan.FromSeconds(10);
-    /// <summary>Hard cap on the total nag window measured from the initial send.</summary>
+    // Hard cap on the total nag window measured from the initial send.
     public TimeSpan HealthNagMaxTotal { get; set; } = TimeSpan.FromSeconds(55);
 
-    /// <summary>
-    /// Master enable for the on-join <c>@health</c> round-trip + retry nag.
-    /// When false, a newly joined member is never telepathed
-    /// <c>/given @health</c> and no nag is armed — read at fire time, so
-    /// toggling it off prevents new round-trips (matching
-    /// <see cref="AutoPartyManager.JoinNagEnabled"/>'s start-time gate).
-    /// Mirrors <see cref="Models.Profile.PartySettings.SendHealthToMembers"/>.
-    /// </summary>
+    // Master enable for the on-join `@health` round-trip + retry nag. When
+    // false, a newly joined member is never telepathed `/given @health` and no
+    // nag is armed — read at fire time, so toggling it off prevents new
+    // round-trips (matching AutoPartyManager.JoinNagEnabled's start-time gate).
+    // Mirrors PartySettings.SendHealthToMembers.
     public bool HealthNagEnabled { get; set; } = true;
 
-    /// <summary>Test seam — overrides <see cref="DateTime.UtcNow"/> for the nag tick clock.</summary>
+    // Test seam — overrides DateTime.UtcNow for the nag tick clock.
     public Func<DateTime> NowProvider { get; set; } = () => DateTime.UtcNow;
 
-    /// <summary>Per-given-name nag state. Created on the initial @health send; cleared on baseline arrival / member-leave / cap.</summary>
+    // Per-given-name nag state. Created on the initial @health send; cleared on
+    // baseline arrival / member-leave / cap.
     private readonly Dictionary<string, HealthNagState> _activeNags =
         new(StringComparer.OrdinalIgnoreCase);
 
@@ -114,16 +91,13 @@ public sealed partial class PartyPoller : IDisposable
         public int Sends { get; set; }
     }
 
-    /// <summary>
-    /// Canonical reply regex for the @health round-trip. Matches the
-    /// shape <see cref="Remote.PartyEssentialHandlers.OnHealth"/>
-    /// produces — <c>{HP=cur/max,MA=cur/max[, Resting|Meditating]}</c>.
-    /// The leading <c>{</c> + trailing <c>}</c> are the brace-wrap the
-    /// engine adds at SendReply time per the remote-command meta-line
-    /// convention. Mana group is optional (warriors reply HP-only);
-    /// position suffix is optional and ignored — we only need the
-    /// HP/MA numbers for baseline capture.
-    /// </summary>
+    // Canonical reply regex for the @health round-trip. Matches the shape
+    // PartyEssentialHandlers.OnHealth produces —
+    // {HP=cur/max,MA=cur/max[, Resting|Meditating]}. The leading { + trailing }
+    // are the brace-wrap the engine adds at SendReply time per the
+    // remote-command meta-line convention. Mana group is optional (warriors
+    // reply HP-only); position suffix is optional and ignored — we only need the
+    // HP/MA numbers for baseline capture.
     [GeneratedRegex(
         // `cur` halves accept an optional leading `-` because MajorMUD
         // lets HP go from 0 down to a BBS-set death threshold (the
@@ -137,10 +111,8 @@ public sealed partial class PartyPoller : IDisposable
         RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
     private static partial Regex HealthReply();
 
-    /// <summary>
-    /// Default constructor — wires the in-process <see cref="DispatcherTimer"/>.
-    /// Use the test-seam ctor (no timer) for unit tests.
-    /// </summary>
+    // Default constructor — wires the in-process DispatcherTimer. Use the
+    // test-seam ctor (no timer) for unit tests.
     public PartyPoller(ChatRouter chat, PartyState state, PartyManager manager)
         : this(chat, state, manager, useTimer: true) { }
 
@@ -167,21 +139,17 @@ public sealed partial class PartyPoller : IDisposable
         }
     }
 
-    /// <summary>
-    /// Bind the wire-sender. Same shape as other managers — main-window
-    /// VM supplies <c>SendUserInput</c>. Without it the poller still
-    /// observes party events but can't send anything.
-    /// </summary>
+    // Bind the wire-sender. Same shape as other managers — main-window VM
+    // supplies SendUserInput. Without it the poller still observes party events
+    // but can't send anything.
     public void SetWireSender(Action<byte[]> sender)
     {
         ArgumentNullException.ThrowIfNull(sender);
         _wireSender = sender;
     }
 
-    /// <summary>
-    /// Update the <c>par</c> poll cadence. PR 6.9's Settings.Party tab
-    /// calls this when the user edits the par-frequency field.
-    /// </summary>
+    // Update the `par` poll cadence. The Settings.Party tab calls this when the
+    // user edits the par-frequency field.
     public void SetParCadence(TimeSpan cadence)
     {
         if (cadence <= TimeSpan.Zero)
@@ -190,10 +158,11 @@ public sealed partial class PartyPoller : IDisposable
         if (_timer is not null) _timer.Interval = cadence;
     }
 
-    /// <summary>Test seam — drives one par poll without a real timer tick.</summary>
+    // Test seam — drives one par poll without a real timer tick.
     internal void DoParPollForTests() => DoParPoll();
 
-    /// <summary>Test seam — drives the @health round-trip request side without a CollectionChanged event.</summary>
+    // Test seam — drives the @health round-trip request side without a
+    // CollectionChanged event.
     internal void SendHealthRequestForTests(string memberName)
     {
         if (_wireSender is null) return;
@@ -243,16 +212,12 @@ public sealed partial class PartyPoller : IDisposable
         }
     }
 
-    /// <summary>
-    /// Per-row PropertyChanged handler — fires the on-join @health
-    /// round-trip when an existing row flips from IsInvited=true to
-    /// IsInvited=false (the acceptance path: PartyManager's
-    /// OnYouInvited adds the row, then OnFollowsYou clears the chip).
-    /// Without this hook the round-trip would only fire on
-    /// CollectionChanged.Add and an invitee who accepts would never
-    /// get their baseline captured until the user manually typed
-    /// <c>par</c>.
-    /// </summary>
+    // Per-row PropertyChanged handler — fires the on-join @health round-trip
+    // when an existing row flips from IsInvited=true to IsInvited=false (the
+    // acceptance path: PartyManager's OnYouInvited adds the row, then
+    // OnFollowsYou clears the chip). Without this hook the round-trip would only
+    // fire on CollectionChanged.Add and an invitee who accepts would never get
+    // their baseline captured until the user manually typed `par`.
     private void OnMemberPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         if (e.PropertyName != nameof(PartyMember.IsInvited)) return;
@@ -275,10 +240,9 @@ public sealed partial class PartyPoller : IDisposable
         if (m.IsSelf) return;
         if (m.IsInvited) return;
         if (string.IsNullOrEmpty(m.Name)) return;
-        // MajorMUD telepath syntax on Playpen BBS is `/<given> <msg>`
-        // (slash + given name, no space). Short forms `t` and `tel`
-        // are interpreted as `say`; addressing by full "Given Family"
-        // is also rejected — given name only.
+        // MajorMUD telepath syntax is `/<given> <msg>` (slash + given name, no
+        // space). Short forms `t` and `tel` are interpreted as `say`;
+        // addressing by full "Given Family" is also rejected — given name only.
         string given = GivenName(m.Name);
         SendHealthRequest(given);
         if (m.BaselineHp > 0) return;
@@ -355,7 +319,7 @@ public sealed partial class PartyPoller : IDisposable
         if (_activeNags.Count == 0) StopHealthNagTimer();
     }
 
-    /// <summary>Test seam — runs one pass of the @health nag loop without a real timer.</summary>
+    // Test seam — runs one pass of the @health nag loop without a real timer.
     internal void TickHealthNagsForTests() => TickHealthNags();
 
     private void TickHealthNags()

@@ -5,50 +5,37 @@ using FujinTerm.Terminal;
 
 namespace FujinTerm.Game.Combat;
 
-/// <summary>
-/// Phase 11 — aggregates the session's combat lines into the
-/// <see cref="CombatSessionStats"/> the Session Stats panel displays: the
-/// player's swing accuracy (hit / miss / crit), physical and backstab damage
-/// extents, incoming-attack defence (mob hits / misses / dodges), the per-round
-/// damage spread, and two game-data-driven rows the fixed regex patterns can't
-/// see — the configured attack <b>spell</b> cast and the equipped weapon's
-/// <b>proc</b>. Pure downstream subscriber — it never sends to the wire, only
-/// observes <see cref="MessageRouter"/> lines and
-/// <see cref="RoundDamageTracker.RoundComplete"/>.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Spell / proc recognition is keyed off the game-data caster message
-/// (<see cref="Game.Spells.CasterMessageMatcher"/>), resolved from the
-/// configured attack-spell slots and the worn weapon and refreshed on the data
-/// boundaries via <see cref="RefreshMatchers"/>. Both are observed on
-/// <see cref="MessageRouter.LineDispatched"/> (which runs before the fixed
-/// patterns) so a recognised line vetoes the physical-swing classifier in
-/// <c>OnUserHits</c> — a spell / proc is never double-counted as a melee swing,
-/// and never moves the hit / miss / crit denominators or the physical extent.
-/// Its damage still reaches the per-round total through
-/// <see cref="RoundDamageTracker"/>'s own subscription. A weapon proc only
-/// counts when the previous offensive line was a landed swing, matching the
-/// MajorMUD rule that a proc fires after a basic attack connects.
-/// </para>
-/// </remarks>
-/// <remarks>
-/// <para>
-/// Only the <i>local player's own</i> swings count toward the offensive
-/// figures, so <see cref="OnUserHits"/> requires the first-person "You" source
-/// (the same convention <c>conversation.local</c> uses to tell our own speech
-/// from another player's). Classification is keyword-driven on the raw line,
-/// per the MajorMUD line vocabulary: "surprise" ⇒ backstab, "critically" ⇒
-/// crit (physical only — bash / smash / backstab / spells never crit),
-/// otherwise a plain hit.
-/// </para>
-/// <para>
-/// Threading: every mutation runs on the router's marshalled (UI) dispatch
-/// thread, as does <see cref="RoundDamageTracker.RoundComplete"/>; the window
-/// VM reads <see cref="Snapshot"/> on the same thread. The counters are
-/// therefore lock-free, matching <see cref="RoundDamageTracker"/>.
-/// </para>
-/// </remarks>
+// Aggregates the session's combat lines into the CombatSessionStats the Session
+// Stats panel displays: the player's swing accuracy (hit / miss / crit),
+// physical and backstab damage extents, incoming-attack defence (mob hits /
+// misses / dodges), the per-round damage spread, and two game-data-driven rows
+// the fixed regex patterns can't see — the configured attack spell cast and the
+// equipped weapon's proc. Pure downstream subscriber — it never sends to the
+// wire, only observes MessageRouter lines and RoundDamageTracker.RoundComplete.
+//
+// Spell / proc recognition is keyed off the game-data caster message
+// (CasterMessageMatcher), resolved from the configured attack-spell slots and
+// the worn weapon and refreshed on the data boundaries via RefreshMatchers.
+// Both are observed on MessageRouter.LineDispatched (which runs before the fixed
+// patterns) so a recognised line vetoes the physical-swing classifier in
+// OnUserHits — a spell / proc is never double-counted as a melee swing, and
+// never moves the hit / miss / crit denominators or the physical extent. Its
+// damage still reaches the per-round total through RoundDamageTracker's own
+// subscription. A weapon proc only counts when the previous offensive line was
+// a landed swing, matching the MajorMUD rule that a proc fires after a basic
+// attack connects.
+//
+// Only the local player's own swings count toward the offensive figures, so
+// OnUserHits requires the first-person "You" source (the same convention
+// conversation.local uses to tell our own speech from another player's).
+// Classification is keyword-driven on the raw line, per the MajorMUD line
+// vocabulary: "surprise" ⇒ backstab, "critically" ⇒ crit (physical only — bash
+// / smash / backstab / spells never crit), otherwise a plain hit.
+//
+// Threading: every mutation runs on the router's marshalled (UI) dispatch
+// thread, as does RoundDamageTracker.RoundComplete; the window VM reads Snapshot
+// on the same thread. The counters are therefore lock-free, matching
+// RoundDamageTracker.
 public sealed class CombatSessionTracker : IDisposable
 {
     private readonly MessageRouter _router;
@@ -94,9 +81,9 @@ public sealed class CombatSessionTracker : IDisposable
     private bool _currentLineRecognized;
     private bool _disposed;
 
-    /// <summary>Raised after any observation updates the tallies, so the
-    /// Session Stats VM can refresh its bound figures. Fires on the dispatch
-    /// thread; debouncing (if wanted) is the subscriber's concern.</summary>
+    // Raised after any observation updates the tallies, so the Session Stats VM
+    // can refresh its bound figures. Fires on the dispatch thread; debouncing
+    // (if wanted) is the subscriber's concern.
     public event Action? Changed;
 
     public CombatSessionTracker(
@@ -127,21 +114,19 @@ public sealed class CombatSessionTracker : IDisposable
         RefreshMatchers();
     }
 
-    /// <summary>
-    /// Re-resolve the configured attack-spell and equipped-weapon-proc
-    /// matchers from live game data. Called on the boundaries that move them:
-    /// connect / character switch, a Combat-tab edit, a game-data set swap, and
-    /// a weapon swap. Cheap and idempotent — safe to call on a hot event.
-    /// </summary>
+    // Re-resolve the configured attack-spell and equipped-weapon-proc matchers
+    // from live game data. Called on the boundaries that move them: connect /
+    // character switch, a Combat-tab edit, a game-data set swap, and a weapon
+    // swap. Cheap and idempotent — safe to call on a hot event.
     public void RefreshMatchers()
     {
         _spellMatchers = _resolveSpellMatchers?.Invoke() ?? Array.Empty<CasterMessageMatcher>();
         _procMatcher = _resolveProcMatcher?.Invoke();
     }
 
-    /// <summary>Point-in-time copy of the session's combat figures. The
-    /// physical extent is the min/max across whichever swing categories have
-    /// landed; an empty category contributes nothing.</summary>
+    // Point-in-time copy of the session's combat figures. The physical extent is
+    // the min/max across whichever swing categories have landed; an empty
+    // category contributes nothing.
     public CombatSessionStats Snapshot()
         => new(
             Hits:                _hit.Count,
@@ -173,9 +158,8 @@ public sealed class CombatSessionTracker : IDisposable
             SpellMaxDamage:      _spell.Max,
             SpellTotalDamage:    _spell.Sum);
 
-    /// <summary>Zero every counter — called on the session boundary
-    /// (connect / character switch), matching
-    /// <see cref="RoundDamageTracker.Reset"/>.</summary>
+    // Zero every counter — called on the session boundary (connect / character
+    // switch), matching RoundDamageTracker.Reset.
     public void Reset()
     {
         _hit = default;

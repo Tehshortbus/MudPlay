@@ -5,27 +5,22 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game.Remote;
 
-/// <summary>
-/// Consumer of <see cref="RemoteCommandManager"/> for the <c>@reset</c>
-/// command — a party member zeroes our live session-stats trackers, the
-/// same wipe the Session Stats window's "Reset session" button performs.
-/// Matches the natural farming-loop rhythm: the leader fires <c>@reset</c>
-/// at the start of a lap so every member's kills/hour and combat
-/// observations re-anchor to the new circuit (see
-/// <c>LoopRunner.LoopEventKind.ReachedFirstWaypoint</c>).
-/// </summary>
-/// <remarks>
-/// Resets the session-stats trackers — <see cref="CombatSessionTracker"/>,
-/// <see cref="TimeAnalysisTracker"/>, <see cref="SessionActivityTracker"/>, and
-/// the <see cref="TransactionHistoryTracker"/> ledger — restarting their clocks
-/// and clearing their counters / entries, exactly as the window button and the
-/// connect / character-switch boundary do. Requires the
-/// <see cref="PlayerRemoteControls.AlterSettings"/> permission per the catalog
-/// (a "do something on my behalf" verb). The success ack is ungated; only
-/// failure replies obey <see cref="RemoteCommandManager.WarnOnDenial"/>, and
-/// once authorised this command can't fail. Like the other remote handlers it
-/// runs on the marshalled dispatch thread, so the lock-free trackers stay safe.
-/// </remarks>
+// Consumer of RemoteCommandManager for the @reset command — a party member
+// zeroes our live session-stats trackers, the same wipe the Session Stats
+// window's "Reset session" button performs. Matches the natural farming-loop
+// rhythm: the leader fires @reset at the start of a lap so every member's
+// kills/hour and combat observations re-anchor to the new circuit (see
+// LoopRunner.LoopEventKind.ReachedFirstWaypoint).
+//
+// Resets the session-stats trackers — CombatSessionTracker, TimeAnalysisTracker,
+// SessionActivityTracker, and the TransactionHistoryTracker ledger — restarting
+// their clocks and clearing their counters / entries, exactly as the window
+// button and the connect / character-switch boundary do. Requires the
+// PlayerRemoteControls.AlterSettings permission per the catalog (a "do something
+// on my behalf" verb). The success ack is ungated; only failure replies obey
+// RemoteCommandManager.WarnOnDenial, and once authorised this command can't
+// fail. Like the other remote handlers it runs on the marshalled dispatch
+// thread, so the lock-free trackers stay safe.
 public sealed class SessionResetHandler : IDisposable
 {
     private const string Command = "@reset";

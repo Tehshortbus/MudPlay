@@ -6,57 +6,44 @@ using FujinTerm.Models.GameData;
 
 namespace FujinTerm.Services;
 
-/// <summary>
-/// Background audit that flags player-facing spells in the active
-/// game-data set's <c>Spells.json</c> that have no corresponding
-/// <see cref="MessageRecord"/> anchor — i.e. spells the game can
-/// produce a line for, that we have no parser entry to recognise.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Fires on every <see cref="GameDataCache.ActiveSetChanged"/> + every
-/// <see cref="MessageStore.Messages"/> CollectionChanged so the
-/// summary stays live as the user edits the catalogue. The
-/// <see cref="ResultAvailable"/> event drives the report window;
-/// the same compute also writes a summary <see cref="LogEntry"/> to
-/// <see cref="LogService"/> tagged with <see cref="LogSource"/> so
-/// the LogPane's double-click handler can route into the report
-/// window via <see cref="LogService.TryInvokeDetailHandler"/>.
-/// </para>
-/// <para>
-/// Player-facing filter (kept conservative to avoid spamming on
-/// junk rows): row's Name is ≥3 chars and not all-digits AND at
-/// least one of <c>Learnable==1</c>, <c>Casted By</c> non-empty,
-/// <c>Learned From</c> non-empty. That matches the three ways a
-/// player will ever see the spell fire — they cast it, an NPC casts
-/// it at them, or an item procs it. Inverse direction (Spells/Items/
-/// Monsters that DON'T need messages) is implicitly ignored.
-/// </para>
-/// </remarks>
+// Background audit that flags player-facing spells in the active game-data
+// set's Spells.json that have no corresponding MessageRecord anchor — i.e.
+// spells the game can produce a line for, that we have no parser entry to
+// recognise.
+//
+// Fires on every GameDataCache.ActiveSetChanged + every MessageStore.Messages
+// CollectionChanged so the summary stays live as the user edits the catalogue.
+// The ResultAvailable event drives the report window; the same compute also
+// writes a summary LogEntry to LogService tagged with LogSource so the LogPane's
+// double-click handler can route into the report window via
+// LogService.TryInvokeDetailHandler.
+//
+// Player-facing filter (kept conservative to avoid spamming on junk rows): row's
+// Name is >=3 chars and not all-digits AND at least one of Learnable==1, Casted
+// By non-empty, Learned From non-empty. That matches the three ways a player
+// will ever see the spell fire — they cast it, an NPC casts it at them, or an
+// item procs it. Inverse direction (Spells/Items/Monsters that DON'T need
+// messages) is implicitly ignored.
 public sealed class SpellCoverageAuditor
 {
-    /// <summary>Tag every entry the auditor emits uses on <see cref="LogService"/>.</summary>
+    // Tag every entry the auditor emits uses on LogService.
     public const string LogSource = "GameData/Coverage";
 
     private readonly GameDataCache _cache;
     private readonly MessageStore _messages;
     private readonly LogService _log;
-    /// <summary>
-    /// Coalesce-flag for <see cref="QueueRun"/>: a set switch fires
-    /// <see cref="GameDataCache.ActiveSetChanged"/> AND triggers
-    /// <see cref="MessageStore.Load"/> which raises one
-    /// Clear-Reset + N Add CollectionChanged events; without
-    /// debouncing the audit would run N+2 times per swap and spam
-    /// the LogPane. Posting once to the dispatcher and clearing the
-    /// flag in the dispatched handler collapses the burst to a
-    /// single run on the current UI tick.
-    /// </summary>
+    // Coalesce-flag for QueueRun: a set switch fires
+    // GameDataCache.ActiveSetChanged AND triggers MessageStore.Load which raises
+    // one Clear-Reset + N Add CollectionChanged events; without debouncing the
+    // audit would run N+2 times per swap and spam the LogPane. Posting once to
+    // the dispatcher and clearing the flag in the dispatched handler collapses
+    // the burst to a single run on the current UI tick.
     private bool _runQueued;
 
-    /// <summary>The most recent result. <c>null</c> until the first audit runs (no set active).</summary>
+    // The most recent result. null until the first audit runs (no set active).
     public CoverageResult? Latest { get; private set; }
 
-    /// <summary>Fires after every audit run — populated <see cref="Latest"/> at fire time.</summary>
+    // Fires after every audit run — populated Latest at fire time.
     public event Action<CoverageResult>? ResultAvailable;
 
     public SpellCoverageAuditor(GameDataCache cache, MessageStore messages, LogService log)
@@ -74,13 +61,10 @@ public sealed class SpellCoverageAuditor
 
     private void OnMessagesChanged(object? sender, NotifyCollectionChangedEventArgs e) => QueueRun();
 
-    /// <summary>
-    /// Defer <see cref="Run"/> to the next dispatcher tick + collapse
-    /// any further queued requests onto the same tick. Set switches
-    /// always end up here; an MDB import lands here via the
-    /// ActiveSetChanged that <c>SwitchActiveGameDataSet</c> raises
-    /// after a successful import.
-    /// </summary>
+    // Defer Run to the next dispatcher tick + collapse any further queued
+    // requests onto the same tick. Set switches always end up here; an MDB
+    // import lands here via the ActiveSetChanged that SwitchActiveGameDataSet
+    // raises after a successful import.
     private void QueueRun()
     {
         if (_runQueued) return;
@@ -90,7 +74,8 @@ public sealed class SpellCoverageAuditor
             Avalonia.Threading.DispatcherPriority.Background);
     }
 
-    /// <summary>Explicit re-audit hook for the report window's "Refresh" button + future MDB-import callers.</summary>
+    // Explicit re-audit hook for the report window's "Refresh" button + future
+    // MDB-import callers.
     public CoverageResult? Run()
     {
         string? set = _cache.ActiveSet;
@@ -168,15 +153,12 @@ public sealed class SpellCoverageAuditor
         return Latest;
     }
 
-    /// <summary>
-    /// Filter: row is a player-facing spell candidate iff its Name is
-    /// non-junk (≥3 chars, not all-digits) AND at least one of
-    /// (Learnable==1, Casted By non-empty, Learned From non-empty)
-    /// holds. The three OR-paths cover player-cast, NPC-cast-at-player,
-    /// and item-proc respectively — everything else (test rows, internal
-    /// NPC-only effects with no monster reference, deprecated entries)
-    /// drops out and doesn't pollute the unanchored count.
-    /// </summary>
+    // Filter: row is a player-facing spell candidate iff its Name is non-junk
+    // (>=3 chars, not all-digits) AND at least one of (Learnable==1, Casted By
+    // non-empty, Learned From non-empty) holds. The three OR-paths cover
+    // player-cast, NPC-cast-at-player, and item-proc respectively — everything
+    // else (test rows, internal NPC-only effects with no monster reference,
+    // deprecated entries) drops out and doesn't pollute the unanchored count.
     private static bool IsPlayerFacing(JsonElement row, out string name, out int number)
     {
         name = string.Empty;
@@ -198,13 +180,10 @@ public sealed class SpellCoverageAuditor
         return learnable || castedBy || learnedFrom;
     }
 
-    /// <summary>
-    /// Plain-text content check that treats NULL-byte-only strings
-    /// (<c>"\0"</c>) as empty. The MdbImporter writes a literal
-    /// NUL char for empty Jet text columns instead of an empty string,
-    /// so <see cref="string.IsNullOrWhiteSpace"/> isn't enough on its
-    /// own — NUL isn't whitespace.
-    /// </summary>
+    // Plain-text content check that treats NULL-byte-only strings ("\0") as
+    // empty. The MdbImporter writes a literal NUL char for empty Jet text
+    // columns instead of an empty string, so string.IsNullOrWhiteSpace isn't
+    // enough on its own — NUL isn't whitespace.
     private static bool HasContent(string? s)
     {
         if (string.IsNullOrWhiteSpace(s)) return false;
@@ -223,16 +202,12 @@ public sealed class SpellCoverageAuditor
         return HasContent(raw) ? raw : null;
     }
 
-    /// <summary>
-    /// Translate every <c>"Monster #N"</c> / <c>"Item #N"</c> /
-    /// <c>"Spell #N"</c> reference in <paramref name="raw"/> to
-    /// <c>"Resolved Name {N}"</c> using the active set's tables.
-    /// References whose target row doesn't exist in the set are left
-    /// verbatim so the gap is still visible to the user (rather than
-    /// silently disappearing). <c>TextBlock</c> references are
-    /// passed through untouched per user direction — block IDs are
-    /// only meaningful when looked up directly.
-    /// </summary>
+    // Translate every "Monster #N" / "Item #N" / "Spell #N" reference in raw to
+    // "Resolved Name {N}" using the active set's tables. References whose target
+    // row doesn't exist in the set are left verbatim so the gap is still visible
+    // to the user (rather than silently disappearing). TextBlock references are
+    // passed through untouched per user direction — block IDs are only
+    // meaningful when looked up directly.
     private string ResolveRefs(string? raw)
     {
         if (string.IsNullOrEmpty(raw)) return raw ?? string.Empty;
@@ -258,53 +233,39 @@ public sealed class SpellCoverageAuditor
         });
     }
 
-    /// <summary>
-    /// Matches <c>"Monster #1234"</c> / <c>"NPC #251"</c> /
-    /// <c>"Item #56"</c> / <c>"Spell #9"</c> anywhere in a string.
-    /// Trailing-digit-greedy so multi-digit numbers don't get
-    /// truncated, and the word-boundary tail guards against gluing
-    /// into a longer identifier. NPCs share the Monsters table — the
-    /// MDB labels NPC-flagged rows differently in spell references
-    /// but the row data lives in <c>Monsters.json</c>.
-    /// </summary>
+    // Matches "Monster #1234" / "NPC #251" / "Item #56" / "Spell #9" anywhere in
+    // a string. Trailing-digit-greedy so multi-digit numbers don't get
+    // truncated, and the word-boundary tail guards against gluing into a longer
+    // identifier. NPCs share the Monsters table — the MDB labels NPC-flagged
+    // rows differently in spell references but the row data lives in
+    // Monsters.json.
     private static readonly System.Text.RegularExpressions.Regex RefPattern = new(
         @"\b(Monster|NPC|Item|Spell)\s*#\s*(\d+)\b",
         System.Text.RegularExpressions.RegexOptions.Compiled);
 
-    /// <summary>
-    /// Matches a single class-restriction token in a Spells.Classes
-    /// field — e.g. <c>"(*)"</c> (all), <c>"(3)"</c> (Class #3), or
-    /// multi-token strings like <c>"(11),(10)"</c>. Captured group 1
-    /// is either <c>*</c> or the class number.
-    /// </summary>
+    // Matches a single class-restriction token in a Spells.Classes field — e.g.
+    // "(*)" (all), "(3)" (Class #3), or multi-token strings like "(11),(10)".
+    // Captured group 1 is either * or the class number.
     private static readonly System.Text.RegularExpressions.Regex ClassPattern = new(
         @"\((\*|\d+)\)",
         System.Text.RegularExpressions.RegexOptions.Compiled);
 
-    /// <summary>
-    /// Resolve the spell's class-eligibility to a human-readable list
-    /// per the three-layer MajorMUD rules the user provided:
-    /// <list type="number">
-    ///   <item><b>Explicit class restriction overrides everything.</b>
-    ///     If <paramref name="raw"/> contains specific <c>(N)</c>
-    ///     tokens (not <c>(*)</c>), only those classes can cast —
-    ///     magery + learned-from are ignored.</item>
-    ///   <item><b>Player-path requires (*) OR a learned-from item.</b>
-    ///     Without explicit class tokens, a spell qualifies for the
-    ///     magery filter only when its Classes field is <c>(*)</c>
-    ///     (explicitly open to all) or its Learned From field has an
-    ///     item (the item teaches the spell, confirming player
-    ///     reach). Spells with empty Classes + empty Learned From
-    ///     are NPC-only even when the magery type/level happens to
-    ///     match a player class.</item>
-    ///   <item><b>Magery filter</b>: when the player path is
-    ///     confirmed (rule 2), a class can cast when
-    ///     <c>class.MageryType == spell.Magery</c> AND
-    ///     <c>class.MageryLVL &gt;= spell.MageryLVL</c>.</item>
-    /// </list>
-    /// Returns the resolved list (space-slash separated) or
-    /// <c>"(none)"</c> when no player class meets the rules.
-    /// </summary>
+    // Resolve the spell's class-eligibility to a human-readable list per the
+    // three-layer MajorMUD rules the user provided:
+    //   1. Explicit class restriction overrides everything. If raw contains
+    //      specific (N) tokens (not (*)), only those classes can cast — magery +
+    //      learned-from are ignored.
+    //   2. Player-path requires (*) OR a learned-from item. Without explicit
+    //      class tokens, a spell qualifies for the magery filter only when its
+    //      Classes field is (*) (explicitly open to all) or its Learned From
+    //      field has an item (the item teaches the spell, confirming player
+    //      reach). Spells with empty Classes + empty Learned From are NPC-only
+    //      even when the magery type/level happens to match a player class.
+    //   3. Magery filter: when the player path is confirmed (rule 2), a class
+    //      can cast when class.MageryType == spell.Magery AND
+    //      class.MageryLVL >= spell.MageryLVL.
+    // Returns the resolved list (space-slash separated) or "(none)" when no
+    // player class meets the rules.
     private string ResolveClasses(string? raw, int spellMagery, int spellMageryLvl, bool hasLearnedFrom)
     {
         List<string> explicitClassNames = new();
@@ -348,7 +309,7 @@ public sealed class SpellCoverageAuditor
         return mageryClassNames.Count == 0 ? "(none)" : string.Join(" / ", mageryClassNames);
     }
 
-    /// <summary>Small helper — reads an int property or returns 0 when missing / wrong-typed.</summary>
+    // Reads an int property or returns 0 when missing / wrong-typed.
     private static int ReadInt(System.Text.Json.JsonElement row, string property)
     {
         if (!row.TryGetProperty(property, out System.Text.Json.JsonElement el)) return 0;
@@ -356,14 +317,10 @@ public sealed class SpellCoverageAuditor
         return el.TryGetInt32(out int n) ? n : 0;
     }
 
-    /// <summary>
-    /// True when any Monster/Item ref in <paramref name="raw"/>
-    /// already has a Message anchor in
-    /// <paramref name="anchoredMonsters"/> /
-    /// <paramref name="anchoredItems"/>. Lets the audit treat a spell
-    /// as covered when the user has authored a message for one of
-    /// its casters even without a direct (Spells, N) link.
-    /// </summary>
+    // True when any Monster/Item ref in raw already has a Message anchor in
+    // anchoredMonsters / anchoredItems. Lets the audit treat a spell as covered
+    // when the user has authored a message for one of its casters even without a
+    // direct (Spells, N) link.
     private static bool AnyCasterAnchored(
         string? raw,
         HashSet<int> anchoredMonsters,
@@ -377,13 +334,10 @@ public sealed class SpellCoverageAuditor
         return false;
     }
 
-    /// <summary>
-    /// Parse every <c>"Monster #N"</c> / <c>"Item #N"</c> /
-    /// <c>"Spell #N"</c> reference in <paramref name="raw"/> into
-    /// structured <c>(Table, Number)</c> tuples. Used by the
-    /// coverage report's drilldown to seed Links on a fresh Message
-    /// record. Unknown / future reference types are skipped.
-    /// </summary>
+    // Parse every "Monster #N" / "Item #N" / "Spell #N" reference in raw into
+    // structured (Table, Number) tuples. Used by the coverage report's drilldown
+    // to seed Links on a fresh Message record. Unknown / future reference types
+    // are skipped.
     public static IEnumerable<(string Table, int Number)> ParseRefs(string? raw)
     {
         if (string.IsNullOrEmpty(raw)) yield break;
@@ -406,18 +360,18 @@ public sealed class SpellCoverageAuditor
     }
 }
 
-/// <summary>Snapshot returned from one <see cref="SpellCoverageAuditor"/> run.</summary>
-/// <param name="SetName">The active game-data set at audit time.</param>
-/// <param name="ConsideredCount">How many spell rows passed the player-facing filter.</param>
-/// <param name="UnanchoredCount">How many of those had no Message link pointing at them.</param>
-/// <param name="Unanchored">The full list (sorted by Name) of unanchored spells.</param>
+// Snapshot returned from one SpellCoverageAuditor run. SetName is the active
+// game-data set at audit time, ConsideredCount how many spell rows passed the
+// player-facing filter, UnanchoredCount how many of those had no Message link
+// pointing at them, Unanchored the full list (sorted by Name) of unanchored
+// spells.
 public sealed record CoverageResult(
     string                       SetName,
     int                          ConsideredCount,
     int                          UnanchoredCount,
     IReadOnlyList<UnanchoredSpell> Unanchored);
 
-/// <summary>One row in <see cref="CoverageResult.Unanchored"/>.</summary>
+// One row in CoverageResult.Unanchored.
 public sealed record UnanchoredSpell(
     int     Number,
     string  Name,

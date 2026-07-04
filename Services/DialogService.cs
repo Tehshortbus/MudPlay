@@ -4,68 +4,43 @@ using FujinTerm.Views;
 
 namespace FujinTerm.Services;
 
-/// <summary>
-/// Modeless-only window spawner. <see cref="OpenWindowAsync{TViewModel,TResult}"/>
-/// is the single API — uses <see cref="Window.Show(Window)"/> (not
-/// <c>ShowDialog</c>) plus a <see cref="TaskCompletionSource{TResult}"/> that
-/// completes when the VM raises <see cref="IDialogViewModel{TResult}.CloseRequested"/>
-/// or the user closes the window. No modal wrapper exists — modal-by-mistake
-/// is impossible (see CLAUDE.md "All windows are modeless").
-/// </summary>
-/// <remarks>
-/// <para>
-/// Each phase that ships a dialog calls <see cref="RegisterWindow{TViewModel,TWindow}"/>
-/// once at startup to map its ViewModel type to its Window type. The service
-/// news up the Window, sets its <c>DataContext</c> to the supplied VM, parents
-/// it to the main window, and shows it.
-/// </para>
-/// <para>
-/// Ownership: every dialog is owned by the main window
-/// (<see cref="SetMainWindow"/>) so closing main tears down all open dialogs.
-/// Avalonia handles owner tracking when <see cref="Window.Show(Window)"/> is
-/// called with an owner argument.
-/// </para>
-/// <para>
-/// Phase 0 ships the plumbing only — no dialogs are registered yet. Later
-/// phases register from their bootstrap code; Phase 4 will be the first
-/// consumer (settings window).
-/// </para>
-/// </remarks>
+// Modeless-only window spawner. OpenWindowAsync is the single API — uses
+// Window.Show(Window) (not ShowDialog) plus a TaskCompletionSource that
+// completes when the VM raises IDialogViewModel.CloseRequested or the user
+// closes the window. No modal wrapper exists — modal-by-mistake is impossible
+// (see CLAUDE.md "All windows are modeless").
+//
+// A dialog registers via RegisterWindow once at startup to map its ViewModel
+// type to its Window type. The service news up the Window, sets its DataContext
+// to the supplied VM, parents it to the main window, and shows it.
+//
+// Ownership: every dialog is owned by the main window (SetMainWindow) so closing
+// main tears down all open dialogs. Avalonia handles owner tracking when
+// Window.Show(Window) is called with an owner argument.
 public sealed class DialogService
 {
     private readonly Dictionary<Type, Func<Window>> _windowFactories = new();
     private Window? _mainWindow;
 
-    /// <summary>
-    /// Record the application's main window so dialogs can be owned by it.
-    /// Called once during app startup from <c>App.OnFrameworkInitializationCompleted</c>.
-    /// </summary>
+    // Record the application's main window so dialogs can be owned by it. Called
+    // once during app startup from App.OnFrameworkInitializationCompleted.
     public void SetMainWindow(Window mainWindow)
     {
         _mainWindow = mainWindow;
     }
 
-    /// <summary>
-    /// Register that <typeparamref name="TViewModel"/> dialogs are hosted by a
-    /// <typeparamref name="TWindow"/>. Each phase calls this once for its
-    /// dialogs (typically from <c>AppServices.Initialize</c> or a small phase
-    /// bootstrap method).
-    /// </summary>
+    // Register that TViewModel dialogs are hosted by a TWindow. Called once per
+    // dialog (typically from AppServices.Initialize or a small bootstrap method).
     public void RegisterWindow<TViewModel, TWindow>()
         where TWindow : Window, new()
     {
         _windowFactories[typeof(TViewModel)] = static () => new TWindow();
     }
 
-    /// <summary>
-    /// Open a modeless dialog for <paramref name="viewModel"/> and return a
-    /// task that completes when the VM signals close (commit returns the
-    /// payload; cancel / window-X returns <c>default</c>).
-    /// </summary>
-    /// <exception cref="InvalidOperationException">
-    /// No window type was registered for <typeparamref name="TViewModel"/>,
-    /// or <see cref="SetMainWindow"/> was never called.
-    /// </exception>
+    // Open a modeless dialog for viewModel and return a task that completes when
+    // the VM signals close (commit returns the payload; cancel / window-X
+    // returns default). Throws InvalidOperationException when no window type was
+    // registered for TViewModel, or SetMainWindow was never called.
     public Task<TResult?> OpenWindowAsync<TViewModel, TResult>(TViewModel viewModel)
         where TViewModel : IDialogViewModel<TResult>
     {
@@ -110,14 +85,12 @@ public sealed class DialogService
         return tcs.Task;
     }
 
-    /// <summary>
-    /// One-shot "show this text" affordance for ad-hoc notices (e.g.
-    /// "no associated Messages found" from a Spells double-click). Uses
-    /// the same <see cref="InfoDialog"/> as the About / License menu
-    /// entries but without the toggle-tracker — every call opens a
-    /// fresh window the user dismisses with Close. Returns silently
-    /// when the main window isn't set (matches the unit-test path).
-    /// </summary>
+    // One-shot "show this text" affordance for ad-hoc notices (e.g. "no
+    // associated Messages found" from a Spells double-click). Uses the same
+    // InfoDialog as the About / License menu entries but without the
+    // toggle-tracker — every call opens a fresh window the user dismisses with
+    // Close. Returns silently when the main window isn't set (matches the
+    // unit-test path).
     public void ShowInfo(string title, string body)
     {
         Dispatcher.UIThread.VerifyAccess();

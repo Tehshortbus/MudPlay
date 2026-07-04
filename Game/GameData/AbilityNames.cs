@@ -3,33 +3,20 @@ using System.Collections.Generic;
 
 namespace FujinTerm.Game.GameData;
 
-/// <summary>
-/// Static lookup for MajorMUD ability ids → human-readable names. The
-/// MDB-imported Items / Spells / Monsters tables encode ability
-/// effects as a sequence of <c>Abil-N</c> / <c>AbilVal-N</c> column
-/// pairs; consumers use this helper to render the codes into the
-/// names a player recognises ("AC", "Damage", "Heal", quest flags,
-/// etc.).
-/// </summary>
-/// <remarks>
-/// <para>
-/// Canonical names ported from MMUD Explorer's <c>GetAbilityName</c>
-/// (<c>modMMudFunc.bas</c> in <c>syntax53/MMUD-Explorer</c> on GitHub).
-/// Using MME's spelling keeps the labels familiar to anyone who's
-/// used that tool — e.g. <c>"Damage(-MR)"</c> rather than
-/// <c>"DamageWithMR"</c>, <c>"LearnSp"</c> rather than
-/// <c>"LearnSpell"</c>, <c>"CastsSp"</c> rather than
-/// <c>"CastSpell"</c>.
-/// </para>
-/// <para>
-/// A few codes are display-only message slots in MME (101 ConfuseMsg,
-/// 115 DescMsg, 120 StartMsg, 137 ShockMsg, 144 NonMagicalSpell, 155
-/// DeathText, 1116 AccountVerified). MME hides them by default; we
-/// surface them since the Monster / Items dialog's ability iteration
-/// shows every non-zero <c>Abil-N</c> — having a name beats showing
-/// the raw integer.
-/// </para>
-/// </remarks>
+// Static lookup for MajorMUD ability ids → human-readable names. The MDB-imported
+// Items / Spells / Monsters tables encode ability effects as a sequence of Abil-N /
+// AbilVal-N column pairs; consumers use this helper to render the codes into the
+// names a player recognises ("AC", "Damage", "Heal", quest flags, etc.).
+//
+// The spellings follow the community-standard MajorMUD ability labels, so they read
+// the way veteran players expect — e.g. "Damage(-MR)" rather than "DamageWithMR",
+// "LearnSp" rather than "LearnSpell", "CastsSp" rather than "CastSpell".
+//
+// A few codes are display-only message slots (101 ConfuseMsg, 115 DescMsg, 120
+// StartMsg, 137 ShockMsg, 144 NonMagicalSpell, 155 DeathText, 1116
+// AccountVerified). We surface them since the Monster / Items dialog's ability
+// iteration shows every non-zero Abil-N — having a name beats showing the raw
+// integer.
 public static class AbilityNames
 {
     private static readonly FrozenDictionary<int, string> _names = new Dictionary<int, string>
@@ -78,9 +65,9 @@ public static class AbilityNames
         { 107, "BlindUser" },           { 108, "AffectsLivingOnly" },  { 109, "NonLiving" },
         { 110, "NotGood" },             { 111, "NotEvil" },            { 112, "NeutralOnly" },
         { 113, "NotNeutral" },          { 114, "%Spell" },             { 115, "DescMsg" },
-        // 116 = BSAccu (MME's canonical name). The Items dialog's
-        // explicit BSable Yes/No row gates on the presence of this
-        // code; the value (when present) is the BS accuracy bonus.
+        // 116 = BSAccu. The Items dialog's explicit BSable Yes/No row gates on
+        // the presence of this code; the value (when present) is the BS accuracy
+        // bonus.
         { 116, "BSAccu" },
         { 117, "BsMinDmg" },            { 118, "BsMaxDmg" },           { 119, "Del@Maint" },
         { 120, "StartMsg" },            { 121, "Recharge" },           { 122, "RemovesSpell" },
@@ -125,8 +112,8 @@ public static class AbilityNames
         // 1001..1119 — Grants / GreaterMUD high-range extras
         { 1001, "GrantThievery" },      { 1002, "GrantTraps" },        { 1003, "GrantPicklocks" },
         { 1004, "GrantTracking" },      { 1100, "AntiMagicNotOK" },    { 1101, "MeetsReqToHit" },
-        // MME's source has a duplicate Case 1101 collision (UseSpell);
-        // taking MeetsReqToHit since it's the first definition.
+        // Code 1101 has two conflicting meanings in the wild (MeetsReqToHit and
+        // UseSpell); we take MeetsReqToHit as the canonical label.
         { 1103, "ShadowRest" },         { 1104, "AlterSpellHeal" },    { 1105, "AlterSpells" },
         { 1106, "AlterSpellBuffs" },    { 1107, "NoAutoLearn" },       { 1108, "NotForPVP" },
         { 1109, "Enchant" },            { 1110, "BSDR" },              { 1111, "Absorb" },
@@ -135,14 +122,10 @@ public static class AbilityNames
         { 1118, "NoRandomRegen" },      { 1119, "Del@Ganghouse" },
     }.ToFrozenDictionary();
 
-    /// <summary>
-    /// Return the canonical name for an ability id, or a sensible
-    /// generated label when the code is unmapped. Codes in the
-    /// unnamed quest-flag ranges (191..199, 219, 223..400) render as
-    /// <c>"QuestFlag{N}"</c> matching MME's <c>bForceAll</c> path.
-    /// Anything else falls back to <c>"Ability {N}"</c> so we never
-    /// surface a raw <c>"Abil{N}"</c> at the call site.
-    /// </summary>
+    // Return the canonical name for an ability id, or a sensible generated label
+    // when the code is unmapped. Codes in the unnamed quest-flag ranges (191..199,
+    // 219, 223..400) render as "QuestFlag{N}". Anything else falls back to
+    // "Ability {N}" so we never surface a raw "Abil{N}" at the call site.
     public static string? GetName(int abilityId)
     {
         if (_names.TryGetValue(abilityId, out string? name)) return name;
@@ -153,36 +136,25 @@ public static class AbilityNames
         return abilityId > 0 ? $"Ability {abilityId}" : null;
     }
 
-    /// <summary>
-    /// Render an ability id as a label. Unknown codes come back as
-    /// <c>"Unknown({id})"</c> instead of <c>null</c> so view bindings
-    /// always have something to display.
-    /// </summary>
+    // Render an ability id as a label. Unknown codes come back as "Unknown({id})"
+    // instead of null so view bindings always have something to display.
     public static string FormatId(int abilityId)
         => GetName(abilityId) ?? $"Unknown({abilityId})";
 
-    /// <summary>
-    /// Comma-joined summary of every non-zero <c>Abil-N</c> /
-    /// <c>AbilVal-N</c> pair on a JSON record. Used to surface a
-    /// human-readable rollup column for Race / Class rows in the
-    /// Game Data Browser (each row's awarded abilities at a glance).
-    /// </summary>
-    /// <param name="element">Source JSON object (Races / Classes / Items / etc. row).</param>
-    /// <param name="slots">Number of <c>Abil-N</c> slots to scan; defaults to 10.</param>
-    /// <param name="skipCodes">
-    /// Optional ability codes to omit from the rollup. Pass <c>{ 59 }</c>
-    /// for the Classes tab — code 59 (ClassOk) is meaningful as a
-    /// per-item class-restriction in the Items context but its value
-    /// on a class row itself is internal / inert data MME deliberately
-    /// hides (the only stock class with the entry is Druid with
-    /// <c>AbilVal=74</c>).
-    /// </param>
-    /// <returns>
-    /// <c>"Illu +80, RaceStealth, Crits +1, Accuracy3 +3"</c> — values
-    /// render signed when non-zero, name-only when the ability has no
-    /// magnitude (flag-style abilities). Empty string when no slots are
-    /// populated.
-    /// </returns>
+    // Comma-joined summary of every non-zero Abil-N / AbilVal-N pair on a JSON
+    // record. Used to surface a human-readable rollup column for Race / Class rows
+    // in the Game Data Browser (each row's awarded abilities at a glance).
+    //
+    // element is the source JSON object (Races / Classes / Items / etc. row); slots
+    // is the number of Abil-N slots to scan (defaults to 10). skipCodes optionally
+    // omits ability codes from the rollup — pass { 59 } for the Classes tab, where
+    // code 59 (ClassOk) is meaningful as a per-item class-restriction in the Items
+    // context but is internal / inert data on a class row itself (the only stock
+    // class with the entry is Druid with AbilVal=74).
+    //
+    // Returns e.g. "Illu +80, RaceStealth, Crits +1, Accuracy3 +3" — values render
+    // signed when non-zero, name-only when the ability has no magnitude (flag-style
+    // abilities). Empty string when no slots are populated.
     public static string SummarizeAbilities(
         System.Text.Json.JsonElement element,
         int slots = 10,
@@ -211,14 +183,11 @@ public static class AbilityNames
         return string.Join(", ", parts);
     }
 
-    /// <summary>
-    /// Comma-joined summary of a sequence of <c>(ability code, value)</c>
-    /// pairs — the in-memory counterpart to the <c>JsonElement</c> overload,
-    /// for callers that already hold decoded ability slots (e.g. the Spell
-    /// Book's per-spell effect rollup). Same formatting: signed magnitude when
-    /// non-zero, name-only for flag-style abilities; zero codes and any
-    /// <paramref name="skipCodes"/> are omitted.
-    /// </summary>
+    // Comma-joined summary of a sequence of (ability code, value) pairs — the
+    // in-memory counterpart to the JsonElement overload, for callers that already
+    // hold decoded ability slots (e.g. the Spell Book's per-spell effect rollup).
+    // Same formatting: signed magnitude when non-zero, name-only for flag-style
+    // abilities; zero codes and any skipCodes are omitted.
     public static string SummarizeAbilities(
         IEnumerable<(int Code, int Value)> abilities,
         IReadOnlyCollection<int>? skipCodes = null)
@@ -236,24 +205,18 @@ public static class AbilityNames
         return string.Join(", ", parts);
     }
 
-    /// <summary>
-    /// Ability codes that grant the in-game Traps skill — i.e. the
-    /// class / race can search for and disarm traps. In stock MajorMUD
-    /// data the grant is code <c>40</c> (FindTraps — the single "Traps"
-    /// skill governs both find and disarm); <c>41</c> (DisarmTraps) and
-    /// <c>1002</c> (GrantTraps) cover custom / ParaMUD sets that encode
-    /// the grant differently. A row carrying any of these can disarm.
-    /// </summary>
+    // Ability codes that grant the in-game Traps skill — i.e. the class / race can
+    // search for and disarm traps. In stock MajorMUD data the grant is code 40
+    // (FindTraps — the single "Traps" skill governs both find and disarm); 41
+    // (DisarmTraps) and 1002 (GrantTraps) cover custom / ParaMUD sets that encode
+    // the grant differently. A row carrying any of these can disarm.
     private static readonly System.Collections.Generic.HashSet<int> TrapGrantCodes = new() { 40, 41, 1002 };
 
-    /// <summary>
-    /// True when the JSON row (a Classes / Races record) carries any
-    /// trap-skill grant in its <c>Abil-0..9</c> slots — used by the
-    /// trap-delegation capability check to decide whether a party
-    /// member's class or race makes them worth firing <c>@trap</c> at.
-    /// </summary>
-    /// <param name="element">Source Classes / Races JSON object.</param>
-    /// <param name="slots">Number of <c>Abil-N</c> slots to scan; defaults to 10.</param>
+    // True when the JSON row (a Classes / Races record) carries any trap-skill grant
+    // in its Abil-0..9 slots — used by the trap-delegation capability check to decide
+    // whether a party member's class or race makes them worth firing @trap at.
+    // element is the source Classes / Races object; slots is the number of Abil-N
+    // slots to scan (defaults to 10).
     public static bool HasTrapAbility(System.Text.Json.JsonElement element, int slots = 10)
     {
         for (int i = 0; i < slots; i++)
@@ -265,8 +228,8 @@ public static class AbilityNames
         return false;
     }
 
-    /// <summary>Render one decoded ability slot — <c>"AC +10"</c>,
-    /// <c>"Slowness -5"</c>, or <c>"RaceStealth"</c> (name only, value 0).</summary>
+    // Render one decoded ability slot — "AC +10", "Slowness -5", or "RaceStealth"
+    // (name only, value 0).
     private static string FormatPart(string name, int value)
         => value == 0
             ? name

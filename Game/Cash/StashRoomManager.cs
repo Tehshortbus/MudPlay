@@ -6,59 +6,40 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game.Cash;
 
-/// <summary>
-/// Phase 9 PR 9.E follow-up — stash dispatch for user-marked stash
-/// rooms. Dispatches one <c>hide N &lt;coin&gt;</c> command per
-/// currency whose held amount exceeds its <see cref="CashSettings"/>
-/// <c>KeepXxxOnHand</c> floor, then one <c>hide &lt;item&gt;</c> per
-/// carried item flagged <see cref="Models.GameData.ItemOverlay.AutoStash"/>.
-/// </summary>
-/// <remarks>
-/// <para>
-/// <b>Two triggers.</b> A stash fires either as a step of an
-/// auto-deposit reroute (when the wealth / coin gate trips while a Loop
-/// or Auto-Lair is running and the configured destination is a stash
-/// room, <see cref="AutoDepositManager"/> walks the character there and
-/// calls <see cref="ExecuteStash"/> on arrival) OR when the character
-/// naturally passes through a stash room that sits on the active
-/// loop / lair route — a dedicated detour is only spent on a stash room
-/// that is off-route. A purely manual walk through a stash room while no
-/// engine is running never triggers a hide (per user direction).
-/// </para>
-/// <para>
-/// Room set lives on <see cref="CharacterProfile.StashRooms"/> — the
-/// same list <see cref="Services.MovementFilter"/> uses, populated
-/// by the right-click "Toggle: Stash room" on the Navigation map.
-/// Per-currency keep-on-hand lives on <see cref="CashSettings"/> so
-/// the rules apply uniformly across every stash room (per user
-/// direction — no per-room rules).
-/// </para>
-/// <para>
-/// Stash rooms hold cash <i>and</i> items (banks are cash-only): every
-/// carried, unworn item whose game-data <c>AutoStash</c> flag is set is
-/// hidden by its canonical name. The per-item opt-in comes from the
-/// injected resolver, which reads the 4-tier
-/// <see cref="Models.GameData.ItemOverlay"/> override.
-/// </para>
-/// <para>
-/// Master gate: <see cref="AutoActionDefaults.AutoGetCash"/> — same
-/// toggle as <see cref="CashManager"/>. Item stashing rides the same
-/// gate: a stash is one operation ("dump my excess cash and my
-/// auto-stash items"), not two independently toggled behaviours.
-/// </para>
-/// </remarks>
+// Stash dispatch for user-marked stash rooms. Dispatches one `hide N <coin>`
+// command per currency whose held amount exceeds its CashSettings KeepXxxOnHand
+// floor, then one `hide <item>` per carried item flagged ItemOverlay.AutoStash.
+//
+// Two triggers. A stash fires either as a step of an auto-deposit reroute (when
+// the wealth / coin gate trips while a Loop or Auto-Lair is running and the
+// configured destination is a stash room, AutoDepositManager walks the character
+// there and calls ExecuteStash on arrival) OR when the character naturally passes
+// through a stash room that sits on the active loop / lair route — a dedicated
+// detour is only spent on a stash room that is off-route. A purely manual walk
+// through a stash room while no engine is running never triggers a hide.
+//
+// Room set lives on CharacterProfile.StashRooms — the same list MovementFilter
+// uses, populated by the right-click "Toggle: Stash room" on the Navigation map.
+// Per-currency keep-on-hand lives on CashSettings so the rules apply uniformly
+// across every stash room (no per-room rules).
+//
+// Stash rooms hold cash and items (banks are cash-only): every carried, unworn
+// item whose game-data AutoStash flag is set is hidden by its canonical name. The
+// per-item opt-in comes from the injected resolver, which reads the 4-tier
+// ItemOverlay override.
+//
+// Master gate: AutoActionDefaults.AutoGetCash — same toggle as CashManager. Item
+// stashing rides the same gate: a stash is one operation ("dump my excess cash
+// and my auto-stash items"), not two independently toggled behaviours.
 public sealed class StashRoomManager : IDisposable
 {
-    /// <summary>LogService category — appears as <c>[StashRoom]</c>
-    /// rows per entry + dispatch.</summary>
+    // LogService category — appears as [StashRoom] rows per entry + dispatch.
     public const string LogCategory = "StashRoom";
 
-    /// <summary>
-    /// What a single stash dispatch put away: the room it happened in,
-    /// the currency amounts hidden, and the canonical names of the items
-    /// hidden. Either list may be empty (cash-only or items-only stash),
-    /// but the event only fires when at least one is non-empty.
-    /// </summary>
+    // What a single stash dispatch put away: the room it happened in, the
+    // currency amounts hidden, and the canonical names of the items hidden. Either
+    // list may be empty (cash-only or items-only stash), but the event only fires
+    // when at least one is non-empty.
     public sealed record StashDispatch(
         RoomKey Room,
         IReadOnlyList<(string Currency, long Amount)> Currencies,
@@ -74,9 +55,8 @@ public sealed class StashRoomManager : IDisposable
     private Action<byte[]>? _wireSender;
     private bool _disposed;
 
-    /// <summary>Fires after a successful stash dispatch. Carries the
-    /// room key, the (currency, amount) pairs, and the item names that
-    /// were sent.</summary>
+    // Fires after a successful stash dispatch. Carries the room key, the
+    // (currency, amount) pairs, and the item names that were sent.
     public event Action<StashDispatch>? StashExecuted;
 
     public StashRoomManager(
@@ -100,22 +80,19 @@ public sealed class StashRoomManager : IDisposable
         _log = log;
     }
 
-    /// <summary>Bind the wire sender — typically the gate-wrapped
-    /// engine pipeline from <c>MainWindowViewModel</c>.</summary>
+    // Bind the wire sender — typically the gate-wrapped engine pipeline from
+    // MainWindowViewModel.
     public void SetWireSender(Action<byte[]> sender)
     {
         ArgumentNullException.ThrowIfNull(sender);
         _wireSender = sender;
     }
 
-    /// <summary>
-    /// Called by <see cref="AutoDepositManager"/> on arrival at a stash
-    /// destination during an auto-deposit reroute. Dispatches one
-    /// <c>hide N &lt;coin&gt;</c> per currency whose held amount exceeds
-    /// its keep-on-hand floor. Guarded by the cash master toggle and a
-    /// defensive stash-room membership check (the caller only routes here
-    /// for stash destinations, but the guard keeps the contract local).
-    /// </summary>
+    // Called by AutoDepositManager on arrival at a stash destination during an
+    // auto-deposit reroute. Dispatches one `hide N <coin>` per currency whose held
+    // amount exceeds its keep-on-hand floor. Guarded by the cash master toggle and
+    // a defensive stash-room membership check (the caller only routes here for
+    // stash destinations, but the guard keeps the contract local).
     public void ExecuteStash(RoomKey enteredRoom)
     {
         if (!_isEnabled()) return;

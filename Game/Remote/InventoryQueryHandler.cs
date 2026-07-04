@@ -3,26 +3,18 @@ using FujinTerm.Models.GameData;
 
 namespace FujinTerm.Game.Remote;
 
-/// <summary>
-/// Read-only <see cref="RemoteCommandManager"/> consumer for the
-/// <see cref="PlayerRemoteControls.QueryInventory"/> commands that report
-/// held wealth / carry weight / possession / room loot without touching the
-/// wire:
-/// <list type="bullet">
-///   <item><c>@wealth</c> — coins on hand, broken down by denomination.</item>
-///   <item><c>@enc</c> — current / max carry weight, percentage, bracket.</item>
-///   <item><c>@have &lt;item&gt;</c> — yes + count, or no, for a name
-///         substring across carried and worn items.</item>
-///   <item><c>@what</c> — the items visible on the room floor, off the
-///         <see cref="GroundItemTracker"/>'s last "You notice" survey.</item>
-/// </list>
-/// The wealth / carry / have trio read the immutable
-/// <see cref="InventoryManager.Snapshot"/>, each replying a friendly "parse
-/// inventory first" line until the first full <c>i</c> dump lands
-/// (<see cref="InventoryManager.IsLoaded"/>); <c>@what</c> reads the
-/// room-scoped ground snapshot instead. The engine gates authorisation via
-/// <see cref="RemoteCommandCatalog"/> before the handler runs.
-/// </summary>
+// Read-only handler for the QueryInventory commands that report held wealth /
+// carry weight / possession / room loot without touching the wire:
+//   - @wealth — coins on hand, broken down by denomination.
+//   - @enc — current / max carry weight, percentage, bracket.
+//   - @have <item> — yes + count, or no, for a name substring across carried and
+//     worn items.
+//   - @what — the items visible on the room floor, off the GroundItemTracker's
+//     last "You notice" survey.
+// The wealth / carry / have trio read the immutable InventoryManager.Snapshot,
+// each replying a friendly "parse inventory first" line until the first full i
+// dump lands (IsLoaded); @what reads the room-scoped ground snapshot instead. The
+// engine gates authorisation via RemoteCommandCatalog before the handler runs.
 public sealed class InventoryQueryHandler : IDisposable
 {
     private static readonly string[] RegisteredCommands = { "@wealth", "@enc", "@have", "@what" };
@@ -63,10 +55,8 @@ public sealed class InventoryQueryHandler : IDisposable
         _engine.RegisterHandler(command, category, handler);
     }
 
-    /// <summary>
-    /// <c>@wealth</c> — non-zero denominations high→low, plus the
-    /// consolidated copper value the game's <c>Wealth:</c> line reports.
-    /// </summary>
+    // @wealth — non-zero denominations high→low, plus the consolidated copper
+    // value the game's Wealth: line reports.
     private void OnWealth(RemoteCommandContext ctx)
     {
         if (!_inventory.IsLoaded) { ctx.Reply("wealth unknown - parse inventory first (type i)"); return; }
@@ -79,7 +69,7 @@ public sealed class InventoryQueryHandler : IDisposable
         ctx.Reply(c.TotalCoinCount == 0 ? coins : $"{coins} (= {c.TotalCopperValue:N0} copper)");
     }
 
-    /// <summary><c>@enc</c> — "Encumbrance cur/max (pct%) - Bracket".</summary>
+    // @enc — "Encumbrance cur/max (pct%) - Bracket".
     private void OnEnc(RemoteCommandContext ctx)
     {
         if (!_inventory.IsLoaded) { ctx.Reply("encumbrance unknown - parse inventory first (type i)"); return; }
@@ -87,12 +77,10 @@ public sealed class InventoryQueryHandler : IDisposable
         ctx.Reply($"Encumbrance {e.CurrentWeight}/{e.MaxWeight} ({e.Percentage}%) - {e.Category}");
     }
 
-    /// <summary>
-    /// <c>@have &lt;item&gt;</c> — case-insensitive substring match across
-    /// carried AND worn items (wearing a piece still counts as having it),
-    /// replying yes + the match count or no. Substring rather than exact
-    /// so a sender can ask "@have dagger" against "a rusty dagger".
-    /// </summary>
+    // @have <item> — case-insensitive substring match across carried AND worn
+    // items (wearing a piece still counts as having it), replying yes + the match
+    // count or no. Substring rather than exact so a sender can ask "@have dagger"
+    // against "a rusty dagger".
     private void OnHave(RemoteCommandContext ctx)
     {
         string query = string.Join(' ', ctx.Args).Trim();
@@ -109,13 +97,11 @@ public sealed class InventoryQueryHandler : IDisposable
         ctx.Reply(count > 0 ? $"yes - {count}x matching '{query}'" : $"no - nothing matching '{query}'");
     }
 
-    /// <summary>
-    /// <c>@what</c> — the items on the room floor from the latest "You notice"
-    /// survey (cash excluded — that's <c>@wealth</c>'s domain). Reports the
-    /// verbatim item wording so the caller sees exactly what <c>@get-all</c>
-    /// would pick up. The snapshot is room-scoped and clears on movement, so
-    /// an empty list means the current room has no visible loot.
-    /// </summary>
+    // @what — the items on the room floor from the latest "You notice" survey
+    // (cash excluded — that's @wealth's domain). Reports the verbatim item wording
+    // so the caller sees exactly what @get-all would pick up. The snapshot is
+    // room-scoped and clears on movement, so an empty list means the current room
+    // has no visible loot.
     private void OnWhat(RemoteCommandContext ctx)
     {
         IReadOnlyList<string> items = _ground.Items;

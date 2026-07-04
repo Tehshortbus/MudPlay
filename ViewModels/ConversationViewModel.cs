@@ -9,12 +9,10 @@ using FujinTerm.Services;
 
 namespace FujinTerm.ViewModels;
 
-/// <summary>
-/// View-model behind the Phase 2 Conversation window. Mirrors entries from
-/// <see cref="ChatHistoryStore.Entries"/> through a channel + search filter
-/// into <see cref="Rows"/>, owns the per-channel show / hide toggles, and
-/// drives the bottom input field that sends typed text to the game.
-/// </summary>
+// View-model behind the Conversation window. Mirrors entries from
+// ChatHistoryStore.Entries through a channel + search filter into Rows, owns
+// the per-channel show / hide toggles, and drives the bottom input field
+// that sends typed text to the game.
 public sealed partial class ConversationViewModel : ObservableObject, IDisposable
 {
     private readonly ChatHistoryStore _history;
@@ -31,7 +29,7 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
 
     public ObservableCollection<ConversationRowViewModel> Rows { get; } = new();
 
-    /// <summary>Recent commands for the recall dropdown, newest first.</summary>
+    // Recent commands for the recall dropdown, newest first.
     public ObservableCollection<string> RecentCommands { get; } = new();
 
     // Per-channel filter toggles. Default true (everything visible).
@@ -50,10 +48,10 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
 
     [ObservableProperty] private string _inputText = string.Empty;
 
-    /// <summary>Drives the input box's recall-dropdown button (disabled when nothing's been sent yet).</summary>
+    // Drives the input box's recall-dropdown button (disabled when nothing's been sent yet).
     [ObservableProperty] private bool _hasRecentCommands;
 
-    /// <summary>Fired by the window's code-behind to scroll the newest row into view.</summary>
+    // Fired by the window's code-behind to scroll the newest row into view.
     public event Action<ConversationRowViewModel>? ScrollToRowRequested;
 
     public ConversationViewModel(ChatHistoryStore history, CommandHistory commands, Action<string> sendUserText, Application app)
@@ -120,11 +118,9 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
         ScrollToRowRequested?.Invoke(row);
     }
 
-    /// <summary>
-    /// Filter predicate: channel toggle + substring search across speaker
-    /// and message. Day separators always pass (they're visual breaks, not
-    /// content).
-    /// </summary>
+    // Filter predicate: channel toggle + substring search across speaker and
+    // message. Day separators always pass (they're visual breaks, not
+    // content).
     private bool Passes(ChatLogEntry entry)
     {
         if (entry.Channel == ChatChannel.DaySeparator) return true;
@@ -150,7 +146,7 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
     private IBrush ChannelBrush(ChatChannel c)
         => _channelBrushes.TryGetValue(c, out IBrush? brush) ? brush : Brushes.Gray;
 
-    /// <summary>Send <see cref="InputText"/> to the game and clear the field.</summary>
+    // Send InputText to the game and clear the field.
     [RelayCommand]
     private void SendInput()
     {
@@ -161,13 +157,13 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
         _nav.Reset();
     }
 
-    /// <summary>Up-arrow recall — replace the input with an older sent command.</summary>
+    // Up-arrow recall — replace the input with an older sent command.
     public void RecallPrevious()
     {
         if (_nav.Previous(InputText) is { } text) SetInputSuppressed(text);
     }
 
-    /// <summary>Down-arrow recall — step toward the newest command / the in-progress line.</summary>
+    // Down-arrow recall — step toward the newest command / the in-progress line.
     public void RecallNext()
     {
         if (_nav.Next() is { } text) SetInputSuppressed(text);

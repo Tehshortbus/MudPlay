@@ -10,14 +10,11 @@ using FujinTerm.ViewModels.GameData.Edit;
 
 namespace FujinTerm.ViewModels.GameData.Tables;
 
-/// <summary>
-/// Game Data Browser → Messages tab. Surfaces the active game-data
-/// set's Messages/Responses catalogue from <see cref="MessageStore"/>.
-/// Records are paired per set: seeded from the wcc-derived universal
-/// seed (<c>Data/Global/Messages.seed.json</c>), persisted per set at
-/// <c>Data/game data/{set}/messages.json</c> on first edit. Switching
-/// the active set swaps the catalogue in real time.
-/// </summary>
+// Game Data Browser → Messages tab. Surfaces the active game-data set's Messages/Responses
+// catalogue from MessageStore. Records are paired per set: seeded from the wcc-derived
+// universal seed (Data/Global/Messages.seed.json), persisted per set at
+// Data/game data/{set}/messages.json on first edit. Switching the active set swaps the
+// catalogue in real time.
 public sealed class MessagesSectionViewModel : GameDataTableSectionViewModel, IEditableTableSectionViewModel
 {
     private readonly MessageStore _store;
@@ -41,7 +38,7 @@ public sealed class MessagesSectionViewModel : GameDataTableSectionViewModel, IE
         "blinded", "poisoned", "paralyzed", "confused", "diseased", "regenerating",
     };
 
-    /// <summary>Open the per-record edit dialog for the row currently double-clicked.</summary>
+    // Open the per-record edit dialog for the row currently double-clicked.
     public IRelayCommand<GameDataRow?> OpenEditAsyncCommand { get; }
     public IRelayCommand AddAsyncCommand { get; }
     public IAsyncRelayCommand RemoveSelectedCommand { get; }
@@ -161,12 +158,9 @@ public sealed class MessagesSectionViewModel : GameDataTableSectionViewModel, IE
         _store.Save();
     }
 
-    /// <summary>
-    /// Add-button handler — opens the edit dialog with a fresh
-    /// blank record. Save through ApplyResult appends it to the
-    /// store; Cancel discards. <c>isNew: true</c> tells the dialog
-    /// to skip the self-duplicate-check exemption.
-    /// </summary>
+    // Add-button handler — opens the edit dialog with a fresh blank record. Save through
+    // ApplyResult appends it to the store; Cancel discards. isNew: true tells the dialog to
+    // skip the self-duplicate-check exemption.
     private async Task AddAsync()
     {
         if (_dialogs is null) return;
@@ -195,7 +189,7 @@ public sealed class MessagesSectionViewModel : GameDataTableSectionViewModel, IE
         ApplyResult(result);
     }
 
-    /// <summary>Remove the selected row's record from the store.</summary>
+    // Remove the selected row's record from the store.
     private async Task RemoveSelectedAsync()
     {
         // Snapshot the multi-selection (or fall back to the single

@@ -3,12 +3,9 @@ using FujinTerm.Models.Profile;
 
 namespace FujinTerm.ViewModels.Settings;
 
-/// <summary>
-/// Row view-model for one entry in the BBS section's "Menu nav after login"
-/// editor. Wraps a <see cref="MenuStep"/> with INotifyPropertyChanged so
-/// the table cells two-way bind cleanly, and any edit dirties the parent
-/// section via the <c>onDirty</c> callback.
-/// </summary>
+// Row view-model for one entry in the BBS section's "Menu nav after login"
+// editor. Wraps a MenuStep with INotifyPropertyChanged so the table cells two-way
+// bind cleanly, and any edit dirties the parent section via the onDirty callback.
 public sealed partial class MenuStepEditorViewModel : ObservableObject
 {
     private readonly Action _onDirty;

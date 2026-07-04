@@ -4,43 +4,27 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game.Map;
 
-/// <summary>
-/// Sniffs outbound user commands going to the wire and notifies
-/// <see cref="RoomTracker"/> when one of them affects movement
-/// semantics. Specifically:
-/// </summary>
-/// <list type="bullet">
-///   <item><b>Peek</b> — <c>look &lt;dir&gt;</c> / <c>l &lt;dir&gt;</c>
-///   commands are previews, not moves. The observer fires
-///   <see cref="RoomTracker.NoteLookSent"/> so the next room display is
-///   suppressed and doesn't desync the tracker.</item>
-///   <item><b>Text-exit movement</b> — verbs like <c>go path</c>,
-///   <c>enter portal</c>, <c>climb tree</c>, <c>swim river</c> move
-///   the player but don't map to a cardinal <see cref="Direction"/>.
-///   The observer fires the string-overload of
-///   <see cref="RoomTracker.NoteMoveSent(string, Direction?, DateTimeOffset?)"/>
-///   so the step is captured in
-///   <see cref="Models.Profile.CharacterProfile.RecentSteps"/> for
-///   replay.</item>
-/// </list>
-/// <remarks>
-/// <para>
-/// Bare cardinal directions (<c>n</c>, <c>north</c>, etc.) are
-/// deliberately NOT announced here. The walker / loop-runner already
-/// call <c>NoteMoveSent(Direction)</c> directly before they pump
-/// bytes; announcing again from this hook would double-enqueue the
-/// move in the tracker's pending queue. For manual cardinal typing,
-/// the existing observation path (1-of-1 candidate match) handles the
-/// landing correctly without needing a pre-announce.
-/// </para>
-/// <para>
-/// Hooked into the wire-send pipeline by
-/// <see cref="ViewModels.MainWindowViewModel.SendUserInput"/>. Same
-/// pattern as the trainer-menu / stat-parser / suicide-password
-/// observers — short payloads only (anything past ~64 bytes can't be
-/// a movement command).
-/// </para>
-/// </remarks>
+// Sniffs outbound user commands going to the wire and notifies RoomTracker
+// when one of them affects movement semantics. Specifically:
+//   - Peek — "look <dir>" / "l <dir>" commands are previews, not moves. The
+//     observer fires RoomTracker.NoteLookSent so the next room display is
+//     suppressed and doesn't desync the tracker.
+//   - Text-exit movement — verbs like "go path", "enter portal", "climb tree",
+//     "swim river" move the player but don't map to a cardinal Direction. The
+//     observer fires the string-overload of NoteMoveSent so the step is
+//     captured in CharacterProfile.RecentSteps for replay.
+//
+// Bare cardinal directions (n, north, etc.) are deliberately NOT announced
+// here. The walker / loop-runner already call NoteMoveSent(Direction) directly
+// before they pump bytes; announcing again from this hook would double-enqueue
+// the move in the tracker's pending queue. For manual cardinal typing, the
+// existing observation path (1-of-1 candidate match) handles the landing
+// correctly without needing a pre-announce.
+//
+// Hooked into the wire-send pipeline by MainWindowViewModel.SendUserInput.
+// Same pattern as the trainer-menu / stat-parser / suicide-password
+// observers — short payloads only (anything past ~64 bytes can't be a movement
+// command).
 public sealed partial class OutboundMovementObserver
 {
     private const int MaxBytes = 64;
@@ -111,23 +95,17 @@ public sealed partial class OutboundMovementObserver
         }
     }
 
-    /// <summary>
-    /// Peek-direction commands. Accepts <c>look</c>, <c>l</c>,
-    /// <c>peek</c>, <c>peer</c> followed by a target. The target is
-    /// usually a direction word but we don't gate on it — <c>look at
-    /// sign</c> isn't a peek either, but suppressing the next obs
-    /// when there's nothing to suppress is harmless (3-s auto-expire).
-    /// </summary>
+    // Peek-direction commands. Accepts look, l, peek, peer followed by a
+    // target. The target is usually a direction word but we don't gate on it —
+    // "look at sign" isn't a peek either, but suppressing the next obs when
+    // there's nothing to suppress is harmless (3-s auto-expire).
     [GeneratedRegex(
         @"^(l|look|peek|peer)\s+\S+",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex LookCommandPattern();
 
-    /// <summary>
-    /// Text-exit movement verbs. The follow-up token is the target
-    /// (the path / portal / tree / etc.). These move the player but
-    /// don't map to a cardinal.
-    /// </summary>
+    // Text-exit movement verbs. The follow-up token is the target (the path /
+    // portal / tree / etc.). These move the player but don't map to a cardinal.
     [GeneratedRegex(
         @"^(go|enter|climb|crawl|swim|fly|jump|leap|step|walk|run|ride|sail|board|disembark|embark|exit|leave|cross|descend|ascend)\s+\S+",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]

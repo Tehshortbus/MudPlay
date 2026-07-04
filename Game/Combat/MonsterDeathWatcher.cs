@@ -6,51 +6,38 @@ using FujinTerm.Terminal;
 
 namespace FujinTerm.Game.Combat;
 
-/// <summary>
-/// Phase 9 PR 9.A — recognises monster deaths from
-/// <see cref="MonsterMessageRecord.DeathLine"/> patterns. Builds a
-/// lookup index from <see cref="MonsterMessageStore"/> at startup +
-/// on set switch and matches every emitted line against it. On a
-/// match, fires <see cref="MonsterDied"/> — consumers
-/// (<see cref="RoomEntityClassifier"/> in particular) remove the dead
-/// mob from the live observation so the next arrival event or
-/// CombatManager pass picks the right next target instead of being
-/// blocked by a stale "still in the list" entry.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Fallback path: when no specific pattern matches (152 of 1100
-/// monsters in stock data ship with empty <c>DeathLine</c> lists,
-/// and some patterns have wording variants we haven't seen), the
-/// "<c>You gain N experience.</c> + <c>*Combat Off*</c>" sequence
-/// is a weaker but always-present signal. The watcher records the
-/// most recent experience-gain line and, when <c>*Combat Off*</c>
-/// fires within a short window, emits a fallback
-/// <see cref="MonsterDeathEvent"/> with <c>IsFallback = true</c> and
-/// no candidates. Consumers (e.g. CombatManager) attribute the death
-/// to whatever they were last attacking.
-/// </para>
-/// <para>
-/// Shared death lines: some patterns are reused across multiple
-/// monster records — the event's <see cref="MonsterDeathEvent.Candidates"/>
-/// carries every match so downstream consumers can decide how to
-/// disambiguate (typically by cross-checking the live entity list).
-/// </para>
-/// </remarks>
+// Recognises monster deaths from MonsterMessageRecord.DeathLine patterns. Builds
+// a lookup index from MonsterMessageStore at startup + on set switch and matches
+// every emitted line against it. On a match, fires MonsterDied — consumers
+// (RoomEntityClassifier in particular) remove the dead mob from the live
+// observation so the next arrival event or CombatManager pass picks the right
+// next target instead of being blocked by a stale "still in the list" entry.
+//
+// Fallback path: when no specific pattern matches (152 of 1100 monsters in stock
+// data ship with empty DeathLine lists, and some patterns have wording variants
+// we haven't seen), the "You gain N experience." + "*Combat Off*" sequence is a
+// weaker but always-present signal. The watcher records the most recent
+// experience-gain line and, when *Combat Off* fires within a short window, emits
+// a fallback MonsterDeathEvent with IsFallback = true and no candidates.
+// Consumers (e.g. CombatManager) attribute the death to whatever they were last
+// attacking.
+//
+// Shared death lines: some patterns are reused across multiple monster records —
+// the event's Candidates carries every match so downstream consumers can decide
+// how to disambiguate (typically by cross-checking the live entity list).
 public sealed class MonsterDeathWatcher : IDisposable
 {
-    /// <summary>LogService category — appears as <c>[MonsterDeath]</c>
-    /// rows per specific match + fallback fire.</summary>
+    // LogService category — appears as [MonsterDeath] rows per specific match +
+    // fallback fire.
     public const string LogCategory = "MonsterDeath";
 
-    /// <summary>Window after a <c>You gain N exp.</c> line within
-    /// which a <c>*Combat Off*</c> qualifies as a kill confirmation.</summary>
+    // Window after a "You gain N exp." line within which a *Combat Off*
+    // qualifies as a kill confirmation.
     private static readonly TimeSpan ExpToCombatOffWindow = TimeSpan.FromSeconds(5);
 
-    /// <summary>Window after a specific death line during which we
-    /// suppress the fallback path — the specific match has already
-    /// fired the event; we don't want to also fire the fallback for
-    /// the same physical death.</summary>
+    // Window after a specific death line during which we suppress the fallback
+    // path — the specific match has already fired the event; we don't want to
+    // also fire the fallback for the same physical death.
     private static readonly TimeSpan SpecificDeathSuppressionWindow = TimeSpan.FromSeconds(3);
 
     private readonly MonsterMessageStore _monsters;
@@ -68,10 +55,9 @@ public sealed class MonsterDeathWatcher : IDisposable
     private LineExtractor? _lines;
     private bool _disposed;
 
-    /// <summary>Fires once per observed death — specific or
-    /// fallback. Subscribers run on the line-emitting thread (the
-    /// classifier remove path posts via the standard
-    /// PropertyChanged / event mechanism downstream).</summary>
+    // Fires once per observed death — specific or fallback. Subscribers run on
+    // the line-emitting thread (the classifier remove path posts via the
+    // standard PropertyChanged / event mechanism downstream).
     public event Action<MonsterDeathEvent>? MonsterDied;
 
     public MonsterDeathWatcher(
@@ -91,12 +77,9 @@ public sealed class MonsterDeathWatcher : IDisposable
         _combatStatusSub = router.Subscribe(KnownPatterns.CombatStatus,        OnCombatStatus);
     }
 
-    /// <summary>
-    /// Bind to the per-session <see cref="LineExtractor"/> so we can
-    /// match raw lines against the death-pattern index. Idempotent —
-    /// re-attaching to the same extractor is a no-op. Called by
-    /// MainWindowViewModel during connection setup.
-    /// </summary>
+    // Bind to the per-session LineExtractor so we can match raw lines against the
+    // death-pattern index. Idempotent — re-attaching to the same extractor is a
+    // no-op. Called by MainWindowViewModel during connection setup.
     public void AttachLineExtractor(LineExtractor lines)
     {
         ArgumentNullException.ThrowIfNull(lines);

@@ -4,18 +4,14 @@ using FujinTerm.Game.Spells;
 
 namespace FujinTerm.ViewModels.Settings;
 
-/// <summary>
-/// Base for one section in the <see cref="SettingsWindowViewModel"/>'s
-/// sidebar. Every settings tab — including app-wide ones like Display
-/// and Toolbar — lives on the loaded character profile, so sections
-/// don't take a runtime scope; each one knows where its data lives.
-/// </summary>
-/// <remarks>
-/// Game-data record overrides use the four-tier (Defaults / Global /
-/// BBS / Char) hierarchy via <see cref="Services.SettingsResolver"/>;
-/// that lives in the Phase 5 Game Data Browser, not here. Settings-tab
-/// data has no tier picker.
-/// </remarks>
+// Base for one section in the SettingsWindowViewModel's sidebar. Every settings
+// tab — including app-wide ones like Display and Toolbar — lives on the loaded
+// character profile, so sections don't take a runtime scope; each one knows
+// where its data lives.
+//
+// Game-data record overrides use the four-tier (Defaults / Global / BBS / Char)
+// hierarchy via SettingsResolver, over in the Game Data Browser. Settings-tab
+// data has no tier picker.
 public abstract partial class SettingsSectionViewModel : ObservableObject, IDisposable
 {
     // Cleanup callbacks (typically event `-=`) registered by sections that hook
@@ -26,40 +22,34 @@ public abstract partial class SettingsSectionViewModel : ObservableObject, IDisp
     private readonly List<Action> _teardown = new();
     private bool _disposed;
 
-    /// <summary>Stable identifier — sidebar selection persists across reopens against this.</summary>
+    // Stable identifier — sidebar selection persists across reopens against this.
     public abstract string Id { get; }
 
-    /// <summary>Title shown in the sidebar.</summary>
+    // Title shown in the sidebar.
     public abstract string Title { get; }
 
-    /// <summary>True when this section has unapplied edits.</summary>
+    // True when this section has unapplied edits.
     public virtual bool IsDirty => false;
 
-    /// <summary>
-    /// Substring tokens fed to the shell's search box. Default: title only.
-    /// Tabs that wrap real fields override to include label text so the
-    /// search box jumps from "rest" → Health tab.
-    /// </summary>
+    // Substring tokens fed to the shell's search box. Default: title only. Tabs
+    // that wrap real fields override to include label text so the search box
+    // jumps from "rest" → Health tab.
     public virtual IEnumerable<string> SearchableLabels => new[] { Title };
 
-    /// <summary>
-    /// The editor UserControl rendered in the shell's content pane. Lazy —
-    /// constructed on first access so an unselected section pays no UI cost.
-    /// </summary>
+    // The editor UserControl rendered in the shell's content pane. Lazy —
+    // constructed on first access so an unselected section pays no UI cost.
     public abstract Control View { get; }
 
-    /// <summary>Persist this section's pending edits. Default no-op for placeholders.</summary>
+    // Persist this section's pending edits. Default no-op for placeholders.
     public virtual void Apply() { }
 
-    /// <summary>Drop pending edits and re-read from the underlying store.</summary>
+    // Drop pending edits and re-read from the underlying store.
     public virtual void Discard() { }
 
-    /// <summary>
-    /// Shared typeahead filter for the spell-picker boxes: matches the typed
-    /// text against either the 4-letter cast-code or the full spell name, so a
-    /// slot can be found by code or by name even though the box commits the
-    /// code. Bound as <c>ItemFilter</c> on each <c>AutoCompleteBox</c>.
-    /// </summary>
+    // Shared typeahead filter for the spell-picker boxes: matches the typed
+    // text against either the 4-letter cast-code or the full spell name, so a
+    // slot can be found by code or by name even though the box commits the code.
+    // Bound as ItemFilter on each AutoCompleteBox.
     public AutoCompleteFilterPredicate<object?> SpellSuggestionFilter { get; } =
         static (search, item) =>
             item is SpellPick pick &&
@@ -67,11 +57,10 @@ public abstract partial class SettingsSectionViewModel : ObservableObject, IDisp
              || pick.Short.Contains(search, StringComparison.OrdinalIgnoreCase)
              || pick.Name.Contains(search, StringComparison.OrdinalIgnoreCase));
 
-    /// <summary>
-    /// Register a cleanup callback (typically an event <c>-=</c>) to run when the
-    /// Settings window closes. Sections that subscribe to a singleton outliving the
-    /// window MUST unhook here, or the publisher pins the whole VM graph forever.
-    /// </summary>
+    // Register a cleanup callback (typically an event -=) to run when the
+    // Settings window closes. Sections that subscribe to a singleton outliving
+    // the window MUST unhook here, or the publisher pins the whole VM graph
+    // forever.
     protected void OnDispose(Action teardown)
     {
         ArgumentNullException.ThrowIfNull(teardown);

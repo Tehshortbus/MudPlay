@@ -4,11 +4,9 @@ using FujinTerm.ViewModels;
 
 namespace FujinTerm.Views;
 
-/// <summary>
-/// Modeless Spell Book window. Bound to <see cref="SpellBookViewModel"/>;
-/// code-behind only attaches the persisted window-layout, wires the
-/// global-hotkeys handler, and disposes the VM on close.
-/// </summary>
+// Modeless Spell Book window. Bound to SpellBookViewModel;
+// code-behind only attaches the persisted window-layout, wires the
+// global-hotkeys handler, and disposes the VM on close.
 public partial class SpellBookWindow : Window
 {
     public SpellBookWindow()

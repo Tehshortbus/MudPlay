@@ -2,32 +2,20 @@ using System.Text.RegularExpressions;
 
 namespace FujinTerm.Game.Map;
 
-/// <summary>
-/// Parses the <c>Rooms.Lair</c> cell into the structured fields the
-/// Auto-Lair scheduler needs. The MDB stores two shapes:
-/// </summary>
-/// <list type="bullet">
-///   <item><b>NMR 1.83+</b>:
-///   <c>[GROUP-INDEX][MAX-REGEN]Group(lair): MAP/ROOM</c> — the lair's
-///   spawn-rule group key (the table key into <c>Lairs.json</c>), the
-///   per-room max simultaneous spawn count, and a back-pointer to the
-///   "canonical" lair room in the group.</item>
-///   <item><b>Pre-1.83</b>: comma-separated monster ids
-///   (e.g. <c>"12, 34, 56"</c>). No group key; the scheduler falls
-///   back to the slowest <see cref="MonsterRespawnSeconds"/> across
-///   the listed ids.</item>
-/// </list>
-/// <remarks>
-/// Source: <c>docs/mdb-table-semantics.md § Lairs.GroupIndex</c>.
-/// </remarks>
+// Parses the Rooms.Lair cell into the structured fields the Auto-Lair
+// scheduler needs. The MDB stores two shapes:
+//   NMR 1.83+: [GROUP-INDEX][MAX-REGEN]Group(lair): MAP/ROOM — the lair's
+//     spawn-rule group key (the table key into Lairs.json), the per-room
+//     max simultaneous spawn count, and a back-pointer to the "canonical"
+//     lair room in the group.
+//   Pre-1.83: comma-separated monster ids (e.g. "12, 34, 56"). No group
+//     key; the scheduler falls back to the slowest respawn across the
+//     listed ids.
 public static partial class LairTagParser
 {
-    /// <summary>
-    /// Parse <paramref name="raw"/> (the <see cref="Room.RawLairTag"/>
-    /// content). Returns null when the input is empty, whitespace, or
-    /// doesn't match any known shape — the room is a lair, but we
-    /// can't extract structure from the tag alone.
-    /// </summary>
+    // Parse raw (the Room.RawLairTag content). Returns null when the input
+    // is empty, whitespace, or doesn't match any known shape — the room is
+    // a lair, but we can't extract structure from the tag alone.
     public static LairTagInfo? TryParse(string? raw)
     {
         if (string.IsNullOrWhiteSpace(raw)) return null;
@@ -63,7 +51,7 @@ public static partial class LairTagParser
         return null;
     }
 
-    // NMR 1.83+ shape — see mdb-table-semantics.md.
+    // NMR 1.83+ shape.
     [GeneratedRegex(@"^\[(?<group>[\d-]+)\]\[(?<regen>\d+)\]Group\(lair\):\s*(?<map>\d+)/(?<room>\d+)\s*$",
         RegexOptions.Compiled)]
     private static partial Regex GroupTagRegex();
@@ -73,17 +61,13 @@ public static partial class LairTagParser
     private static partial Regex MonsterListRegex();
 }
 
-/// <summary>
-/// Structured form of a <see cref="Room.RawLairTag"/>. Either
-/// <see cref="GroupIndex"/> is set (NMR 1.83+) OR
-/// <see cref="MonsterIds"/> is non-empty (pre-1.83) — never both, and
-/// never neither (in which case <see cref="LairTagParser.TryParse"/>
-/// returns null).
-/// </summary>
-/// <param name="GroupIndex">3-hyphenated-numbers spawn-rule group key, or null for pre-1.83.</param>
-/// <param name="MaxRegen">Per-room max simultaneous spawn count (NMR 1.83+ only).</param>
-/// <param name="ReferenceRoom">Back-pointer to the canonical lair room in the group (NMR 1.83+ only).</param>
-/// <param name="MonsterIds">Pre-1.83 monster id list; empty when the tag carries a GroupIndex instead.</param>
+// Structured form of a Room.RawLairTag. Either GroupIndex is set (NMR
+// 1.83+) OR MonsterIds is non-empty (pre-1.83) — never both, and never
+// neither (in which case LairTagParser.TryParse returns null).
+//   GroupIndex — 3-hyphenated-numbers spawn-rule group key, or null for pre-1.83.
+//   MaxRegen — per-room max simultaneous spawn count (NMR 1.83+ only).
+//   ReferenceRoom — back-pointer to the canonical lair room in the group (NMR 1.83+ only).
+//   MonsterIds — pre-1.83 monster id list; empty when the tag carries a GroupIndex instead.
 public sealed record LairTagInfo(
     string? GroupIndex,
     int MaxRegen,

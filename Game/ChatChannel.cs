@@ -1,42 +1,36 @@
 namespace FujinTerm.Game;
 
-/// <summary>
-/// Channels recognised by <see cref="ChatRouter"/>. Drives the Phase 2
-/// ConversationWindow filter toggles and the Phase 5 Trigger UI's "scope"
-/// dropdown (chat-only / specific channel).
-/// </summary>
+// Channels recognised by ChatRouter. Drives the ConversationWindow filter
+// toggles and the Trigger UI's "scope" dropdown (chat-only / specific channel).
 public enum ChatChannel
 {
-    /// <summary>"X gossips: …" — realm-wide gossip channel.</summary>
+    // "X gossips: …" — realm-wide gossip channel.
     Gossip,
 
-    /// <summary>"X says ..." in the current room.</summary>
+    // "X says ..." in the current room.
     Local,
 
-    /// <summary>Incoming telepath: "X telepaths: …".</summary>
+    // Incoming telepath: "X telepaths: …".
     TelepathIncoming,
 
-    /// <summary>Outgoing telepath echo: "--- Telepath sent to X ---".</summary>
+    // Outgoing telepath echo: "--- Telepath sent to X ---".
     TelepathOutgoing,
 
-    /// <summary>"X gangpaths: …" — gang/guild channel.</summary>
+    // "X gangpaths: …" — gang/guild channel.
     Gangpath,
 
-    /// <summary>"Broadcast from X …" — operator broadcasts.</summary>
+    // "Broadcast from X …" — operator broadcasts.
     Broadcast,
 
-    /// <summary>"X yells …" — room-shouted message, audible across nearby rooms.</summary>
+    // "X yells …" — room-shouted message, audible across nearby rooms.
     Yell,
 
-    /// <summary>Player entrance / exit / disconnect notices.</summary>
+    // Player entrance / exit / disconnect notices.
     RealmEvent,
 
-    /// <summary>
-    /// Synthetic separator inserted by <see cref="ChatHistoryStore"/> when
-    /// the wall-clock date rolls over mid-session. Not produced by
-    /// <see cref="ChatRouter"/>; the Conversation window renders these as a
-    /// horizontal rule. <see cref="ChatLogEntry.Message"/> carries the ISO
-    /// date string ("2026-05-08").
-    /// </summary>
+    // Synthetic separator inserted by ChatHistoryStore when the wall-clock date
+    // rolls over mid-session. Not produced by ChatRouter; the Conversation
+    // window renders these as a horizontal rule. ChatLogEntry.Message carries
+    // the ISO date string ("2026-05-08").
     DaySeparator,
 }

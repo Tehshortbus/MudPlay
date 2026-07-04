@@ -5,78 +5,74 @@ using CommunityToolkit.Mvvm.Input;
 
 namespace FujinTerm.ViewModels.CharacterWorkshop;
 
-/// <summary>
-/// One quest card in the Quest Status checklist. Collapsed it shows just the title,
-/// level gate, and a manual <see cref="IsComplete"/> checkbox; clicking the header
-/// (<see cref="ToggleExpandCommand"/>) reveals its detail — class-resolved bonus +
-/// award labels and a followable step checklist parsed from the quest's step markdown.
-/// Completion is one-way: the manual checkbox or ticking every step sets it; the
-/// section owns persistence and folds a complete quest's bonus into Character Info.
-/// Toggling the checkbox raises the supplied callback.
-/// </summary>
+// One quest card in the Quest Status checklist. Collapsed it shows just the title,
+// level gate, and a manual IsComplete checkbox; clicking the header
+// (ToggleExpandCommand) reveals its detail — class-resolved bonus + award labels
+// and a followable step checklist parsed from the quest's step markdown.
+// Completion is one-way: the manual checkbox or ticking every step sets it; the
+// section owns persistence and folds a complete quest's bonus into Character Info.
+// Toggling the checkbox raises the supplied callback.
 public sealed partial class QuestCardViewModel : ObservableObject
 {
     private readonly Action<QuestCardViewModel> _onCompletionChanged;
 
-    /// <summary>Quest-flag ability id — half of the persisted completion identity.</summary>
+    // Quest-flag ability id — half of the persisted completion identity.
     public int Flag { get; }
 
-    /// <summary>Band level for a multi-part quest; <c>0</c> for a single-part quest.</summary>
+    // Band level for a multi-part quest; 0 for a single-part quest.
     public int Step { get; }
 
-    /// <summary>Display name resolved from the quest store (or a flag-derived fallback).</summary>
+    // Display name resolved from the quest store (or a flag-derived fallback).
     public string Title { get; }
 
-    /// <summary>"Level 15" style gate, or empty when the quest imposes no level gate.</summary>
+    // "Level 15" style gate, or empty when the quest imposes no level gate.
     public string RequiredLevelText { get; }
 
-    /// <summary>Numeric required level used to order the card in the list; <c>0</c> when ungated.</summary>
+    // Numeric required level used to order the card in the list; 0 when ungated.
     public int RequiredLevel { get; }
 
-    /// <summary>Class-resolved permanent stat bonus summary; empty when the quest grants none.</summary>
+    // Class-resolved permanent stat bonus summary; empty when the quest grants none.
     public string BonusText { get; }
 
-    /// <summary>Keeper-item award summary; empty when the quest awards no keeper item.</summary>
+    // Keeper-item award summary; empty when the quest awards no keeper item.
     public string AwardText { get; }
 
-    /// <summary>Class / race restriction the crawl found; empty when the quest is open to all.</summary>
+    // Class / race restriction the crawl found; empty when the quest is open to all.
     public string RequirementsText { get; }
 
-    /// <summary>
-    /// True when the character's known class or race is excluded from this quest's crawled
-    /// restriction set — a hard "can't take it" the header surfaces as a "Cannot complete"
-    /// badge. False when the quest is open to the character, or their class/race is unknown
-    /// (we only flag a provable exclusion).
-    /// </summary>
+    // True when the character's known class or race is excluded from this quest's
+    // crawled restriction set — a hard "can't take it" the header surfaces as a
+    // "Cannot complete" badge. False when the quest is open to the character, or
+    // their class/race is unknown (we only flag a provable exclusion).
     public bool Ineligible { get; }
 
-    /// <summary>True when <see cref="BonusText"/> is non-empty.</summary>
+    // True when BonusText is non-empty.
     public bool HasBonus { get; }
 
-    /// <summary>True when <see cref="AwardText"/> is non-empty.</summary>
+    // True when AwardText is non-empty.
     public bool HasAward { get; }
 
-    /// <summary>True when <see cref="RequirementsText"/> is non-empty.</summary>
+    // True when RequirementsText is non-empty.
     public bool HasRequirements { get; }
 
-    /// <summary>Ordered followable step + label rows parsed from the quest's step markdown; empty when it drafts none.</summary>
+    // Ordered followable step + label rows parsed from the quest's step markdown; empty when it drafts none.
     public ObservableCollection<QuestStepRowViewModel> Steps { get; }
 
-    /// <summary>True when this card has a followable step checklist to show.</summary>
+    // True when this card has a followable step checklist to show.
     public bool HasSteps => Steps.Count > 0;
 
-    /// <summary>True when the card has any detail (requirements / bonus / award / steps) worth expanding to.</summary>
+    // True when the card has any detail (requirements / bonus / award / steps) worth expanding to.
     public bool CanExpand => HasRequirements || HasBonus || HasAward || HasSteps;
 
-    /// <summary>Whether the quest counts as done for this character — applies its bonus.</summary>
+    // Whether the quest counts as done for this character — applies its bonus.
     [ObservableProperty] private bool _isComplete;
 
-    /// <summary>Whether the detail pane (bonus / award / steps) is revealed below the header.</summary>
+    // Whether the detail pane (bonus / award / steps) is revealed below the header.
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ExpandGlyph))]
     private bool _isExpanded;
 
-    /// <summary>Disclosure chevron reflecting <see cref="IsExpanded"/>.</summary>
+    // Disclosure chevron reflecting IsExpanded.
     public string ExpandGlyph => IsExpanded ? "▾" : "▸";
 
     public QuestCardViewModel(

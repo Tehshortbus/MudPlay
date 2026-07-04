@@ -2,60 +2,33 @@ using System.ComponentModel;
 
 namespace FujinTerm.Game;
 
-/// <summary>
-/// Watches <see cref="PlayerState"/> and runs four independent regen
-/// cycles whose anchors and intervals reflect what the MajorMUD server
-/// actually does (per syntax53/MMUD-Explorer's <c>modExpPerHour.bas</c>):
-/// </summary>
-/// <list type="table">
-///   <listheader><term>Cycle</term><description>Behaviour</description></listheader>
-///   <item>
-///     <term><see cref="HpNatural"/></term>
-///     <description>30 s. Always running once anchored on the first
-///     observed HP uptick. Per-tick amount = <c>HPRegen / 3</c>.</description>
-///   </item>
-///   <item>
-///     <term><see cref="HpRest"/></term>
-///     <description>20 s. Starts the moment the user enters
-///     <see cref="PlayerPosition.Resting"/>, stops when they leave.
-///     Anchor is independent of the natural cycle. Per-tick amount =
-///     <c>HPRegen</c>.</description>
-///   </item>
-///   <item>
-///     <term><see cref="MpNatural"/></term>
-///     <description>30 s. Always running once anchored. Per-tick amount
-///     = <c>MPRegen</c>.</description>
-///   </item>
-///   <item>
-///     <term><see cref="MpMedi"/></term>
-///     <description>10 s. Starts on entering
-///     <see cref="PlayerPosition.Meditating"/>, stops on leaving.
-///     Per-tick amount = <c>MeditateRate</c>.</description>
-///   </item>
-/// </list>
-/// <remarks>
-/// <para>
-/// The natural cycle and the bonus cycle can be (and usually are)
-/// desynchronised — the natural anchors at first observation; the
-/// bonus anchors when the user types <c>rest</c> / <c>meditate</c>.
-/// The status bar shows them as parallel countdowns.
-/// </para>
-/// <para>
-/// The two natural cycles (HP + MA) fire on the same server pulse,
-/// however — empirically verified. Any observation that anchors one
-/// mirrors the anchor onto the other so a max-HP / max-MA character
-/// still has a live countdown driven by whichever stream is moving.
-/// </para>
-/// <para>
-/// The intervals quoted above are the <b>Stock</b> cadence. On ParaMud /
-/// Paradigm the server splits each cycle's amount into thirds on a faster
-/// grid, so the observable cadence differs — <see cref="SetRealm"/> re-seeds
-/// every cycle from the active <see cref="RealmRegenProfile"/> (wired to
-/// <see cref="Services.GameDataCache.ActiveSetChanged"/> in
-/// <c>AppServices</c>). Cycles default to the Stock profile until told
-/// otherwise.
-/// </para>
-/// </remarks>
+// Watches PlayerState and runs four independent regen cycles whose anchors
+// and intervals reflect what the MajorMUD server actually does:
+//
+//   HpNatural — 30 s. Always running once anchored on the first observed HP
+//     uptick. Per-tick amount = HPRegen / 3.
+//   HpRest    — 20 s. Starts the moment the user enters Resting, stops when
+//     they leave. Anchor is independent of the natural cycle. Per-tick
+//     amount = HPRegen.
+//   MpNatural — 30 s. Always running once anchored. Per-tick amount = MPRegen.
+//   MpMedi    — 10 s. Starts on entering Meditating, stops on leaving.
+//     Per-tick amount = MeditateRate.
+//
+// The natural cycle and the bonus cycle can be (and usually are)
+// desynchronised — the natural anchors at first observation; the bonus
+// anchors when the user types rest / meditate. The status bar shows them as
+// parallel countdowns.
+//
+// The two natural cycles (HP + MA) fire on the same server pulse, however —
+// empirically verified. Any observation that anchors one mirrors the anchor
+// onto the other so a max-HP / max-MA character still has a live countdown
+// driven by whichever stream is moving.
+//
+// The intervals quoted above are the Stock cadence. On ParaMud / Paradigm the
+// server splits each cycle's amount into thirds on a faster grid, so the
+// observable cadence differs — SetRealm re-seeds every cycle from the active
+// RealmRegenProfile (wired to GameDataCache.ActiveSetChanged in AppServices).
+// Cycles default to the Stock profile until told otherwise.
 public sealed class RegenTracker : IDisposable
 {
     private readonly PlayerState _state;
@@ -77,10 +50,10 @@ public sealed class RegenTracker : IDisposable
     public RegenCycle MpNatural { get; } = new("MP natural", RegenConstants.SeedStandingInterval);
     public RegenCycle MpMedi    { get; } = new("MP medi",    RegenConstants.SeedMeditatingInterval);
 
-    /// <summary>Fired after an observed HP uptick that passes the artifact filter.</summary>
+    // Fired after an observed HP uptick that passes the artifact filter.
     public event Action<RegenSample>? HpTickObserved;
 
-    /// <summary>Fired after an observed MA uptick that passes the artifact filter.</summary>
+    // Fired after an observed MA uptick that passes the artifact filter.
     public event Action<RegenSample>? MaTickObserved;
 
     public RegenTracker(PlayerState state, Func<DateTimeOffset>? clock = null)
@@ -91,24 +64,22 @@ public sealed class RegenTracker : IDisposable
         _state.PropertyChanged += OnPlayerStateChanged;
     }
 
-    /// <summary>Time-to-next HP natural tick, or <c>null</c> before first observation.</summary>
+    // Time-to-next HP natural tick, or null before first observation.
     public TimeSpan? GetTimeToNextHpNaturalTick() => HpNatural.GetTimeToNext(_clock());
 
-    /// <summary>Time-to-next HP rest tick, or <c>null</c> when not resting.</summary>
+    // Time-to-next HP rest tick, or null when not resting.
     public TimeSpan? GetTimeToNextHpRestTick() => HpRest.GetTimeToNext(_clock());
 
-    /// <summary>Time-to-next MP natural tick, or <c>null</c> before first observation.</summary>
+    // Time-to-next MP natural tick, or null before first observation.
     public TimeSpan? GetTimeToNextMpNaturalTick() => MpNatural.GetTimeToNext(_clock());
 
-    /// <summary>Time-to-next MP meditate tick, or <c>null</c> when not meditating.</summary>
+    // Time-to-next MP meditate tick, or null when not meditating.
     public TimeSpan? GetTimeToNextMpMediTick() => MpMedi.GetTimeToNext(_clock());
 
-    /// <summary>
-    /// Re-seed every cycle's tick cadence for the given realm family (see
-    /// <see cref="RealmRegenProfile"/>). Called once at wire-up and again on
-    /// every <see cref="Services.GameDataCache.ActiveSetChanged"/>. Idempotent
-    /// — re-applying the same realm just re-asserts the same intervals.
-    /// </summary>
+    // Re-seed every cycle's tick cadence for the given realm family (see
+    // RealmRegenProfile). Called once at wire-up and again on every
+    // GameDataCache.ActiveSetChanged. Idempotent — re-applying the same realm
+    // just re-asserts the same intervals.
     public void SetRealm(RealmType realm)
     {
         _profile = RealmRegenProfile.For(realm);
@@ -118,10 +89,12 @@ public sealed class RegenTracker : IDisposable
         MpMedi.Reseed(_profile.MeditatingInterval);
     }
 
-    /// <summary>Mark the moment as an artifact (heal / drink / etc.) so subsequent up-deltas drop.</summary>
+    // Mark the moment as an artifact (heal / drink / etc.) so subsequent
+    // up-deltas drop.
     public void RecordArtifact() => _lastArtifactAt = _clock();
 
-    /// <summary>Reset every cycle's amount stat + stop bonus cycles. Natural cycles keep their anchor.</summary>
+    // Reset every cycle's amount stat + stop bonus cycles. Natural cycles keep
+    // their anchor.
     public void ResetAll()
     {
         HpNatural.Stat.Reset();
@@ -214,11 +187,8 @@ public sealed class RegenTracker : IDisposable
         MaTickObserved?.Invoke(new RegenSample(now, delta, sinceLast, _state.Position));
     }
 
-    /// <summary>
-    /// If <paramref name="cycle"/> is active and the now-instant is at
-    /// or past its next-tick boundary (with a small grace), record the
-    /// observation and return true.
-    /// </summary>
+    // If cycle is active and the now-instant is at or past its next-tick
+    // boundary (with a small grace), record the observation and return true.
     private static bool ClaimIfDue(RegenCycle cycle, DateTimeOffset now, double delta)
     {
         if (cycle.Anchor is not { } anchor) return false;
@@ -229,13 +199,11 @@ public sealed class RegenTracker : IDisposable
         return true;
     }
 
-    /// <summary>
-    /// Start / stop the rest + medi bonus cycles on position transitions.
-    /// Leaving the position before the cycle's interval elapses cancels the
-    /// pending tick outright (no partial credit) — the server only fires
-    /// the rest / medi tick if the player stayed in the position for the
-    /// full interval. Re-entering re-anchors from the new transition.
-    /// </summary>
+    // Start / stop the rest + medi bonus cycles on position transitions.
+    // Leaving the position before the cycle's interval elapses cancels the
+    // pending tick outright (no partial credit) — the server only fires the
+    // rest / medi tick if the player stayed in the position for the full
+    // interval. Re-entering re-anchors from the new transition.
     private void ApplyPositionChange()
     {
         DateTimeOffset now = _clock();
@@ -269,13 +237,11 @@ public sealed class RegenTracker : IDisposable
     }
 }
 
-/// <summary>
-/// One observed regen sample — payload of the tick-observed events.
-/// <paramref name="IntervalSinceLast"/> is the wall-clock gap since the
-/// previous observed uptick of the <i>same</i> stream (HP or MA), or
-/// <see cref="TimeSpan.Zero"/> for the first sample. It carries the raw
-/// cadence a diagnostic can read a realm's real tick timing off of.
-/// </summary>
+// One observed regen sample — payload of the tick-observed events.
+// IntervalSinceLast is the wall-clock gap since the previous observed uptick
+// of the same stream (HP or MA), or TimeSpan.Zero for the first sample. It
+// carries the raw cadence a diagnostic can read a realm's real tick timing
+// off of.
 public readonly record struct RegenSample(
     DateTimeOffset Timestamp,
     int Delta,

@@ -7,21 +7,15 @@ using FujinTerm.ViewModels.GameData.Tables;
 
 namespace FujinTerm.Views.GameData.Tables;
 
-/// <summary>
-/// Code-behind for <see cref="GameDataTableSectionView"/>. Populates the
-/// <see cref="DataGrid"/>'s columns from the bound view-model's
-/// <see cref="GameDataTableSectionViewModel.Columns"/> list — each VM
-/// supplies a different ordered list, so the columns can't be authored
-/// in XAML and must be rebuilt when the DataContext is wired up.
-/// </summary>
-/// <remarks>
-/// No hand-written <c>InitializeComponent</c> here: the Avalonia name
-/// generator owns that method (per <c>AvaloniaNameGeneratorBehavior =
-/// InitializeComponent</c>) so the <c>x:Name="RowsGrid"</c> field gets
-/// populated. Overriding it manually short-circuits the generator and
-/// leaves x:Name fields null — which is how this view first shipped
-/// and crashed every section open with an NRE on <c>RowsGrid.Columns</c>.
-/// </remarks>
+// Populates the DataGrid's columns from the bound view-model's Columns list —
+// each VM supplies a different ordered list, so the columns can't be authored in
+// XAML and must be rebuilt when the DataContext is wired up.
+//
+// No hand-written InitializeComponent here: the Avalonia name generator owns
+// that method (per AvaloniaNameGeneratorBehavior = InitializeComponent) so the
+// x:Name="RowsGrid" field gets populated. Overriding it manually short-circuits
+// the generator and leaves x:Name fields null — which is how this view first
+// shipped and crashed every section open with an NRE on RowsGrid.Columns.
 public partial class GameDataTableSectionView : UserControl
 {
     private bool _columnsBuilt;
@@ -37,11 +31,9 @@ public partial class GameDataTableSectionView : UserControl
     // ItemsSource is swapped.
     private readonly List<DataGridSortDescription> _sortSnapshot = new();
 
-    /// <summary>
-    /// Subscribed to the bound VM's <see cref="GameDataTableSectionViewModel.ScrollToRowRequested"/>
-    /// so a cross-section navigation (Shops double-click → Rooms tab + room) actually
-    /// brings the target row on-screen. Tracked here so re-binding swaps cleanly.
-    /// </summary>
+    // Subscribed to the bound VM's ScrollToRowRequested so a cross-section
+    // navigation (Shops double-click → Rooms tab + room) actually brings the
+    // target row on-screen. Tracked here so re-binding swaps cleanly.
     private GameDataTableSectionViewModel? _scrollSubscriptionTarget;
 
     public GameDataTableSectionView()
@@ -98,7 +90,7 @@ public partial class GameDataTableSectionView : UserControl
         };
     }
 
-    /// <summary>Capture the grid's live sort so a reload can restore it.</summary>
+    // Capture the grid's live sort so a reload can restore it.
     private void SnapshotSort()
     {
         _sortSnapshot.Clear();
@@ -107,7 +99,7 @@ public partial class GameDataTableSectionView : UserControl
                 _sortSnapshot.Add(description);
     }
 
-    /// <summary>Reapply the snapshotted sort onto the freshly-built CollectionView after a reload.</summary>
+    // Reapply the snapshotted sort onto the freshly-built CollectionView after a reload.
     private void RestoreSort()
     {
         if (_sortSnapshot.Count == 0) return;
@@ -123,14 +115,11 @@ public partial class GameDataTableSectionView : UserControl
             view.SortDescriptions.Add(description);
     }
 
-    /// <summary>
-    /// Wire <see cref="GameDataTableSectionViewModel.ScrollToRowRequested"/>
-    /// to <see cref="DataGrid.ScrollIntoView"/>. Deferred via the dispatcher
-    /// so the call runs AFTER the DataGrid has materialised the row container
-    /// for the new SelectedItem — calling ScrollIntoView in the same frame
-    /// as the SelectedItem change can no-op when the container doesn't
-    /// exist yet (virtualised DataGrid).
-    /// </summary>
+    // Wire ScrollToRowRequested to DataGrid.ScrollIntoView. Deferred via the
+    // dispatcher so the call runs AFTER the DataGrid has materialised the row
+    // container for the new SelectedItem — calling ScrollIntoView in the same
+    // frame as the SelectedItem change can no-op when the container doesn't
+    // exist yet (virtualised DataGrid).
     private void WireScrollHook()
     {
         // Unhook the previous VM (if any) before binding the new one;
@@ -157,14 +146,12 @@ public partial class GameDataTableSectionView : UserControl
         }, DispatcherPriority.Background);
     }
 
-    /// <summary>
-    /// Conditionally surface the Add / Remove buttons next to the
-    /// search filter when the section exposes those commands. Sections
-    /// that don't (MDB-derived read-only tabs) leave both null and
-    /// the buttons stay hidden. Command wired imperatively rather
-    /// than via XAML binding because <see cref="IEditableTableSectionViewModel"/>'s
-    /// optional members aren't surfaced by compiled bindings.
-    /// </summary>
+    // Conditionally surface the Add / Remove buttons next to the search filter
+    // when the section exposes those commands. Sections that don't (MDB-derived
+    // read-only tabs) leave both null and the buttons stay hidden. Command wired
+    // imperatively rather than via XAML binding because
+    // IEditableTableSectionViewModel's optional members aren't surfaced by
+    // compiled bindings.
     private void WireAddRemoveButtons()
     {
         if (DataContext is not IEditableTableSectionViewModel editable) return;

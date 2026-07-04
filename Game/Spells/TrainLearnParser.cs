@@ -3,32 +3,24 @@ using FujinTerm.Terminal;
 
 namespace FujinTerm.Game.Spells;
 
-/// <summary>
-/// Marks powers obtained the moment they're learned at training. When a
-/// character trains to a new level the server lists any newly learned
-/// abilities under a header line; each following bare-name line is the full
-/// <c>Name</c> of a learned power, and the block is closed by the prompt.
-/// Each name is added incrementally to <see cref="SpellbookState"/>'s obtained
-/// set — the same effect as the learn-scroll line, NOT an authoritative
-/// snapshot, so it never clears existing entries.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Captured Kai (mystic) train output:
-/// </para>
-/// <code>
-/// You learn the following Kai abilities:
-/// way of the swan
-/// [HP=34/KAI=1]:
-/// </code>
-/// <para>
-/// The named power resolves against the class's learnable list by full Name
-/// (a subsequent <c>pow</c> poll lists the same <c>way of the swan</c> row),
-/// so it reuses <see cref="SpellbookState.MarkObtainedByName"/>. Only the
-/// Kai-ability wording is recognised — the parallel wording mana classes emit
-/// at training hasn't been captured, so it is intentionally not guessed.
-/// </para>
-/// </remarks>
+// Marks powers obtained the moment they're learned at training. When a
+// character trains to a new level the server lists any newly learned abilities
+// under a header line; each following bare-name line is the full Name of a
+// learned power, and the block is closed by the prompt. Each name is added
+// incrementally to SpellbookState's obtained set — the same effect as the
+// learn-scroll line, NOT an authoritative snapshot, so it never clears existing
+// entries.
+//
+// Captured Kai (mystic) train output:
+//   You learn the following Kai abilities:
+//   way of the swan
+//   [HP=34/KAI=1]:
+//
+// The named power resolves against the class's learnable list by full Name (a
+// subsequent pow poll lists the same "way of the swan" row), so it reuses
+// SpellbookState.MarkObtainedByName. Only the Kai-ability wording is recognised
+// — the parallel wording mana classes emit at training hasn't been captured, so
+// it is intentionally not guessed.
 public sealed class TrainLearnParser : IDisposable
 {
     private const string Category = "TrainLearnParser";
@@ -46,13 +38,10 @@ public sealed class TrainLearnParser : IDisposable
         _log = log;
     }
 
-    /// <summary>
-    /// Bind the per-session <see cref="LineExtractor"/>. Same shape as
-    /// <see cref="SpellListParser.AttachLineExtractor"/> — the extractor is
-    /// owned by the main-window VM (one per terminal session) while this
-    /// parser is app-level. Calling again with a new extractor unhooks the
-    /// previous.
-    /// </summary>
+    // Bind the per-session LineExtractor. Same shape as
+    // SpellListParser.AttachLineExtractor — the extractor is owned by the
+    // main-window VM (one per terminal session) while this parser is app-level.
+    // Calling again with a new extractor unhooks the previous.
     public void AttachLineExtractor(LineExtractor lines)
     {
         ArgumentNullException.ThrowIfNull(lines);
@@ -68,7 +57,7 @@ public sealed class TrainLearnParser : IDisposable
         if (_lines is not null) _lines.LineEmitted -= OnLineEmitted;
     }
 
-    /// <summary>Test hook — feed a single line, optionally flagged as the prompt.</summary>
+    // Test hook — feed a single line, optionally flagged as the prompt.
     internal void FeedTestLine(string text, bool isPromptLine = false) => HandleLine(text, isPromptLine);
 
     private void OnLineEmitted(LineExtractor.EmittedLine line) => HandleLine(line.Text, line.IsPromptLine);

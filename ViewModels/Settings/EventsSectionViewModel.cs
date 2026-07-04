@@ -15,37 +15,17 @@ using FujinTerm.Views.Settings;
 
 namespace FujinTerm.ViewModels.Settings;
 
-/// <summary>
-/// "Events" tab — bespoke section that surfaces the per-character
-/// scheduled / lifecycle events for editing. Promoted from a stub in
-/// Phase 8 PR 8.3.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Renders a table of every <see cref="ScheduledEvent"/> on the
-/// loaded profile (the events themselves are owned by
-/// <see cref="EventManager"/>), plus the master "Disable all events"
-/// switch that gates <see cref="EventManager.Fire"/> regardless of
-/// per-row state.
-/// </para>
-/// <para>
-/// New / Modify wire the
-/// <see cref="ScheduledEvent"/> editor dialog in PR 8.4 — here they
-/// either create a minimal placeholder event so the user can see the
-/// table populate (New) or surface a "wiring lands in PR 8.4" notice
-/// (Modify). Remove + master switch + the auto-disabled badge are
-/// fully wired so the engine + reconciler can be smoke-tested through
-/// the UI.
-/// </para>
-/// <para>
-/// Persistence model: the events list itself persists through
-/// <see cref="EventManager.Add"/> / <c>Replace</c> / <c>Remove</c>
-/// immediately on user action — no Apply / Discard cycle. The master
-/// "Disable all events" switch is per-character and persists on
-/// every toggle. Matches the user expectation "flip the switch and
-/// walk away".
-/// </para>
-/// </remarks>
+// "Events" tab — bespoke section that surfaces the per-character scheduled /
+// lifecycle events for editing.
+//
+// Renders a table of every ScheduledEvent on the loaded profile (the events
+// themselves are owned by EventManager), plus the master "Disable all events"
+// switch that gates EventManager.Fire regardless of per-row state.
+//
+// Persistence model: the events list itself persists through EventManager.Add /
+// Replace / Remove immediately on user action — no Apply / Discard cycle. The
+// master "Disable all events" switch is per-character and persists on every
+// toggle. Matches the user expectation "flip the switch and walk away".
 public sealed partial class EventsSectionViewModel : SettingsSectionViewModel
 {
     private readonly EventManager _events;
@@ -56,10 +36,10 @@ public sealed partial class EventsSectionViewModel : SettingsSectionViewModel
     public override string Id => "events";
     public override string Title => "Events";
 
-    /// <summary>True when a profile is loaded — editor is hidden otherwise.</summary>
+    // True when a profile is loaded — editor is hidden otherwise.
     public bool HasProfile => _profile.Current is not null;
 
-    /// <summary>The table rows. Mirrors <see cref="EventManager.Events"/> with display formatting per row.</summary>
+    // The table rows. Mirrors EventManager.Events with display formatting per row.
     public ObservableCollection<EventRowViewModel> Rows { get; } = new();
 
     [ObservableProperty]
@@ -67,11 +47,9 @@ public sealed partial class EventsSectionViewModel : SettingsSectionViewModel
     [NotifyCanExecuteChangedFor(nameof(RemoveCommand))]
     private EventRowViewModel? _selectedRow;
 
-    /// <summary>
-    /// Two-way bound to <see cref="CharacterProfile.EventsGloballyDisabled"/>.
-    /// Persists on every toggle so the user doesn't have to remember to
-    /// click an Apply button on the master switch.
-    /// </summary>
+    // Two-way bound to CharacterProfile.EventsGloballyDisabled. Persists on every
+    // toggle so the user doesn't have to remember to click an Apply button on the
+    // master switch.
     public bool IsGloballyDisabled
     {
         get => _profile.Current?.EventsGloballyDisabled ?? false;
@@ -121,12 +99,9 @@ public sealed partial class EventsSectionViewModel : SettingsSectionViewModel
         RebuildRows();
     }
 
-    /// <summary>
-    /// Open <see cref="EventEditDialogViewModel"/> with a blank event;
-    /// on Save (non-null result) the new event is appended via
-    /// <see cref="EventManager.Add"/>, which fires CollectionChanged
-    /// and selects the new row. Cancel discards.
-    /// </summary>
+    // Open EventEditDialogViewModel with a blank event; on Save (non-null result)
+    // the new event is appended via EventManager.Add, which fires CollectionChanged
+    // and selects the new row. Cancel discards.
     [RelayCommand(CanExecute = nameof(HasProfileForCommand))]
     private async Task NewAsync()
     {
@@ -146,12 +121,9 @@ public sealed partial class EventsSectionViewModel : SettingsSectionViewModel
         SelectedRow = Rows.FirstOrDefault(r => ReferenceEquals(r.Source, result));
     }
 
-    /// <summary>
-    /// Open <see cref="EventEditDialogViewModel"/> with the selected
-    /// row's event as the starting state. On Save (non-null result)
-    /// the original is replaced via <see cref="EventManager.Replace"/>.
-    /// Cancel discards.
-    /// </summary>
+    // Open EventEditDialogViewModel with the selected row's event as the starting
+    // state. On Save (non-null result) the original is replaced via
+    // EventManager.Replace. Cancel discards.
     [RelayCommand(CanExecute = nameof(CanModifyOrRemove))]
     private async Task ModifyAsync()
     {

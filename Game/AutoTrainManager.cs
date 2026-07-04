@@ -9,26 +9,23 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game;
 
-/// <summary>
-/// Drives MajorMUD's <c>train stats</c> screen to apply the character's saved CP
-/// plan. On <see cref="TrainNow"/> it sends <c>train stats</c>, waits for
-/// <see cref="TrainerMenuTracker.MenuEntered"/> (which also flips the terminal to
-/// character-mode), replays the Enter-driven keystroke sequence from
-/// <see cref="AutoTrainSequenceBuilder"/> with a short delay between strokes, and
-/// the form's SAVE-default Exit commits on the final Enter. Today it's driven by
-/// the CP Allocation tab's manual Train Now; the armed loop/auto-lair auto-fire
-/// (gated by the Settings → Auto-Trainer toggles + trainer allow-list) lands with
-/// the trainer-navigation engine.
-/// </summary>
-/// <remarks>
-/// The plan targets are recomputed against live unspent CP + race bounds via
-/// <see cref="CpPlanCalculator.ClampRowToBudget"/>, so the engine never tries to
-/// overspend, and only the current level's planned raises are typed (absolute
-/// values — self-correcting against the field's starting value). Sessions are
-/// id-tagged so a late timeout / exit-watchdog from a finished run can't disturb
-/// a newer one. The manager never touches Family Name / appearance fields, and
-/// the form's QUIT option means a misfire that bails leaves stats unchanged.
-/// </remarks>
+// Drives MajorMUD's `train stats` screen to apply the character's saved CP
+// plan. On TrainNow it sends `train stats`, waits for
+// TrainerMenuTracker.MenuEntered (which also flips the terminal to
+// character-mode), replays the Enter-driven keystroke sequence from
+// AutoTrainSequenceBuilder with a short delay between strokes, and the form's
+// SAVE-default Exit commits on the final Enter. Today it's driven by the CP
+// Allocation tab's manual Train Now; the armed loop/auto-lair auto-fire (gated
+// by the Settings → Auto-Trainer toggles + trainer allow-list) lands with the
+// trainer-navigation engine.
+//
+// The plan targets are recomputed against live unspent CP + race bounds via
+// CpPlanCalculator.ClampRowToBudget, so the engine never tries to overspend,
+// and only the current level's planned raises are typed (absolute values —
+// self-correcting against the field's starting value). Sessions are id-tagged
+// so a late timeout / exit-watchdog from a finished run can't disturb a newer
+// one. The manager never touches Family Name / appearance fields, and the
+// form's QUIT option means a misfire that bails leaves stats unchanged.
 public sealed class AutoTrainManager : IDisposable
 {
     private enum Phase { Idle, AwaitingMenu, Replaying }
@@ -46,24 +43,23 @@ public sealed class AutoTrainManager : IDisposable
     private int _lastLevel;
     private IReadOnlyList<string> _sequence = Array.Empty<string>();
 
-    /// <summary>Delay between keystrokes so the server's form redraw keeps pace.</summary>
+    // Delay between keystrokes so the server's form redraw keeps pace.
     public int KeystrokeDelayMs { get; } = 200;
-    /// <summary>How long to wait for the trainer screen after sending <c>train stats</c>.</summary>
+    // How long to wait for the trainer screen after sending `train stats`.
     public TimeSpan MenuEntryTimeout { get; } = TimeSpan.FromSeconds(6);
-    /// <summary>Grace after the final keystroke before force-releasing the latch if no exit prompt arrives.</summary>
+    // Grace after the final keystroke before force-releasing the latch if no
+    // exit prompt arrives.
     public TimeSpan ExitGrace { get; } = TimeSpan.FromSeconds(4);
 
-    /// <summary>Raised when <see cref="CanTrainNow"/> / <see cref="IsBusy"/> may have changed.</summary>
+    // Raised when CanTrainNow / IsBusy may have changed.
     public event Action? StateChanged;
 
-    /// <summary>
-    /// Raised once the CP keystroke replay has finished sending — the plan's
-    /// raises and the SAVE that commits them are on the wire. Fires before the
-    /// menu-exit prompt arrives and before the <see cref="ExitGrace"/> latch
-    /// releases, so subscribers that only need "the CP is committed" (e.g.
-    /// clearing fulfilled plan rows) can react immediately instead of waiting
-    /// for the server round-trip.
-    /// </summary>
+    // Raised once the CP keystroke replay has finished sending — the plan's
+    // raises and the SAVE that commits them are on the wire. Fires before the
+    // menu-exit prompt arrives and before the ExitGrace latch releases, so
+    // subscribers that only need "the CP is committed" (e.g. clearing fulfilled
+    // plan rows) can react immediately instead of waiting for the server
+    // round-trip.
     public event Action? PlanCommitted;
 
     public AutoTrainManager(PlayerStats stats, GameDataCache gameData, InventoryManager inventory,
@@ -90,17 +86,15 @@ public sealed class AutoTrainManager : IDisposable
     public void SetWireSender(Action<byte[]> sender) => _wire.Bind(sender);
     internal List<byte[]> LastSentForTests => _wire.LastSentForTests;
 
-    /// <summary>True while a train session (our send → exit) is in flight.</summary>
+    // True while a train session (our send → exit) is in flight.
     public bool IsBusy => _phase != Phase.Idle;
 
-    /// <summary>True when the current level has a planned, affordable raise to apply.</summary>
+    // True when the current level has a planned, affordable raise to apply.
     public bool CanTrainNow => TryResolveTargets(out _, out _);
 
-    /// <summary>
-    /// Begin a train run for the current level's plan. No-op when already busy, no
-    /// wire is bound, or there's nothing affordable to raise. Drives the screen
-    /// asynchronously; subscribe to <see cref="StateChanged"/> for progress.
-    /// </summary>
+    // Begin a train run for the current level's plan. No-op when already busy, no
+    // wire is bound, or there's nothing affordable to raise. Drives the screen
+    // asynchronously; subscribe to StateChanged for progress.
     public void TrainNow()
     {
         if (_phase != Phase.Idle || !_wire.IsBound) return;

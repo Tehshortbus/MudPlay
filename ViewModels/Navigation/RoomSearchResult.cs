@@ -2,40 +2,28 @@ using FujinTerm.Game.Map;
 
 namespace FujinTerm.ViewModels.Navigation;
 
-/// <summary>
-/// One entry in the Navigation right-rail search results list. Carries
-/// just enough to render a row (primary + secondary line + optional
-/// step distance) and the key the user-pick callback needs.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Two row shapes share this record because the dropdown renders them
-/// in a single uniform template:
-/// </para>
-/// <list type="bullet">
-/// <item><term>Plain room match</term><description>
-/// <see cref="MonsterTag"/> is null. <see cref="PrimaryLine"/> shows
-/// <c>"M/R - Name"</c>, <see cref="SecondaryLine"/> the step distance.
-/// </description></item>
-/// <item><term>Monster-room match</term><description>
-/// <see cref="MonsterTag"/> set (e.g. <c>"Goblin Warrior · regen 4h"</c>).
-/// <see cref="PrimaryLine"/> shows the monster header, <see cref="SecondaryLine"/>
-/// the room reference + step distance. Multiple rooms hosting the same
-/// monster surface as multiple entries — clicking one queues that
-/// specific room.
-/// </description></item>
-/// </list>
-/// </remarks>
+// One entry in the Navigation right-rail search results list. Carries just
+// enough to render a row (primary + secondary line + optional step distance)
+// and the key the user-pick callback needs.
+//
+// Two row shapes share this record because the dropdown renders them in a
+// single uniform template:
+//   - Plain room match: MonsterTag is null. PrimaryLine shows "M/R - Name",
+//     SecondaryLine the step distance.
+//   - Monster-room match: MonsterTag set (e.g. "Goblin Warrior · regen 4h").
+//     PrimaryLine shows the monster header, SecondaryLine the room reference
+//     + step distance. Multiple rooms hosting the same monster surface as
+//     multiple entries — clicking one queues that specific room.
 public sealed record RoomSearchResult(
     RoomKey Key,
     string Name,
     int? StepsFromCurrent,
     string? MonsterTag = null)
 {
-    /// <summary>Legacy alias for older bindings — same as <see cref="PrimaryLine"/>'s room form.</summary>
+    // Legacy alias for older bindings — same as PrimaryLine's room form.
     public string DisplayName => $"{Key.Map}/{Key.Room} - {Name}";
 
-    /// <summary>Legacy sublabel for older bindings.</summary>
+    // Legacy sublabel for older bindings.
     public string DisplayLocation => StepsFromCurrent switch
     {
         null => string.Empty,
@@ -44,18 +32,16 @@ public sealed record RoomSearchResult(
         _    => $"{StepsFromCurrent} steps",
     };
 
-    /// <summary>Top line in the dropdown row. Monster tag when present, otherwise the room reference.</summary>
+    // Top line in the dropdown row. Monster tag when present, otherwise the room reference.
     public string PrimaryLine => MonsterTag ?? $"{Key.Map}/{Key.Room} - {Name}";
 
-    /// <summary>
-    /// True when this row carries no walkable destination — used for
-    /// monster matches whose lair isn't recorded in game data (unique
-    /// bosses, wandering spawns). The click handler skips these so they
-    /// behave as informational labels in the dropdown.
-    /// </summary>
+    // True when this row carries no walkable destination — used for monster
+    // matches whose lair isn't recorded in game data (unique bosses,
+    // wandering spawns). The click handler skips these so they behave as
+    // informational labels in the dropdown.
     public bool IsInformational => Key.Map <= 0 || Key.Room <= 0;
 
-    /// <summary>Bottom line: when this is a monster match, the underlying room; otherwise the step distance.</summary>
+    // Bottom line: when this is a monster match, the underlying room; otherwise the step distance.
     public string SecondaryLine => MonsterTag is null
         ? DisplayLocation
         : (IsInformational

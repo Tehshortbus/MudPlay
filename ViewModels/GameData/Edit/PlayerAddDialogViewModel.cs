@@ -4,22 +4,16 @@ using FujinTerm.Services;
 
 namespace FujinTerm.ViewModels.GameData.Edit;
 
-/// <summary>
-/// Lightweight "Add Player" dialog for the Game Data Browser → Players
-/// tab. Collects only the two identifying fields — Given (required) and
-/// Family (optional) — and lets the caller create a minimal observation
-/// record. The user lands back on the Players tab with the new row and
-/// can double-click it to set the rich customization fields
-/// (RemoteControls flags, auto-party toggles, Notes, etc.) via the
-/// existing <see cref="PlayerEditDialogViewModel"/>.
-/// </summary>
-/// <remarks>
-/// Two-click split (Add → Edit) is deliberate. The full Player edit
-/// dialog is rich (12 RemoteControls checkboxes + behavior toggles +
-/// observed-fields read-only pane), and most of that would render
-/// empty in an "add" context. Keeping the create path narrow makes
-/// the action obvious: name a player so they're tracked, then refine.
-/// </remarks>
+// Lightweight "Add Player" dialog for the Game Data Browser → Players tab. Collects only
+// the two identifying fields — Given (required) and Family (optional) — and lets the
+// caller create a minimal observation record. The user lands back on the Players tab with
+// the new row and can double-click it to set the rich customization fields (RemoteControls
+// flags, auto-party toggles, Notes, etc.) via the existing PlayerEditDialogViewModel.
+//
+// Two-click split (Add → Edit) is deliberate. The full Player edit dialog is rich
+// (12 RemoteControls checkboxes + behavior toggles + observed-fields read-only pane), and
+// most of that would render empty in an "add" context. Keeping the create path narrow
+// makes the action obvious: name a player so they're tracked, then refine.
 public sealed partial class PlayerAddDialogViewModel : ObservableObject, IDialogViewModel<PlayerAddResult>
 {
     public event Action<PlayerAddResult?>? CloseRequested;
@@ -83,9 +77,6 @@ public sealed partial class PlayerAddDialogViewModel : ObservableObject, IDialog
     private void Cancel() => CloseRequested?.Invoke(null);
 }
 
-/// <summary>
-/// Result returned from <see cref="PlayerAddDialogViewModel"/> on Save.
-/// Carries the two name fields; the section VM then mints an
-/// observation with the current UTC time.
-/// </summary>
+// Result returned from PlayerAddDialogViewModel on Save. Carries the two name fields; the
+// section VM then mints an observation with the current UTC time.
 public sealed record PlayerAddResult(string GivenName, string FamilyName);

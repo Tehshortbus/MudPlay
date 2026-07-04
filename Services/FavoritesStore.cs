@@ -5,35 +5,25 @@ using FujinTerm.Models.Profile;
 
 namespace FujinTerm.Services;
 
-/// <summary>
-/// Per-character favourite-room bookmarks for the Navigation GOTO
-/// pane. Mirrors <see cref="MovementFilter"/>'s ProfileLoaded /
-/// ProfileClosed wiring — hydrates the in-memory cache from
-/// <see cref="CharacterProfile.Favorites"/> on profile load, writes
-/// back to the profile on every mutation. Persisted via
-/// <see cref="ProfileService.Save"/>.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Singleton in <see cref="AppServices"/>. Consumers (Navigation
-/// view-model) subscribe to <see cref="Changed"/> for refresh; the
-/// store doesn't push a sorted view itself — sort order is a UI
-/// concern.
-/// </para>
-/// <para>
-/// The label stored per entry is the user's chosen text from the
-/// "Add to favorites" prompt. When the label is null/empty, callers
-/// fall back to the room's graph display name (so the GOTO row still
-/// reads sensibly).
-/// </para>
-/// </remarks>
+// Per-character favourite-room bookmarks for the Navigation GOTO pane. Mirrors
+// MovementFilter's ProfileLoaded / ProfileClosed wiring — hydrates the in-memory
+// cache from CharacterProfile.Favorites on profile load, writes back to the
+// profile on every mutation. Persisted via ProfileService.Save.
+//
+// Singleton in AppServices. Consumers (Navigation view-model) subscribe to
+// Changed for refresh; the store doesn't push a sorted view itself — sort order
+// is a UI concern.
+//
+// The label stored per entry is the user's chosen text from the "Add to
+// favorites" prompt. When the label is null/empty, callers fall back to the
+// room's graph display name (so the GOTO row still reads sensibly).
 public sealed class FavoritesStore
 {
     private readonly ProfileService _profile;
     private readonly LogService? _log;
     private readonly Dictionary<RoomKey, FavoriteRoom> _favorites = new();
 
-    /// <summary>Empty folders the user created but hasn't filled yet (mirrors <see cref="CharacterProfile.FavoriteFolders"/>).</summary>
+    // Empty folders the user created but hasn't filled yet (mirrors CharacterProfile.FavoriteFolders).
     private readonly HashSet<string> _emptyFolders = new(StringComparer.OrdinalIgnoreCase);
 
     public FavoritesStore(ProfileService profile, LogService? log = null)
@@ -49,21 +39,19 @@ public sealed class FavoritesStore
         if (_profile.Current is { } current) OnProfileLoaded(current);
     }
 
-    /// <summary>Read-only snapshot of every favourite for the active character.</summary>
+    // Read-only snapshot of every favourite for the active character.
     public IReadOnlyCollection<FavoriteRoom> All => _favorites.Values;
 
-    /// <summary>True when <paramref name="key"/> is currently bookmarked.</summary>
+    // True when key is currently bookmarked.
     public bool IsFavorite(RoomKey key) => _favorites.ContainsKey(key);
 
-    /// <summary>Normalised folder path of <paramref name="key"/>, or <see cref="string.Empty"/> (root / not a favourite).</summary>
+    // Normalised folder path of key, or string.Empty (root / not a favourite).
     public string FolderOf(RoomKey key) =>
         _favorites.TryGetValue(key, out FavoriteRoom? f) ? NavFolders.Normalize(f.Folder) : string.Empty;
 
-    /// <summary>
-    /// Every folder node the GOTO tree must render — the ancestors of
-    /// each favourite's folder plus any remembered empty folders.
-    /// Excludes the root. Order is unspecified; the UI sorts.
-    /// </summary>
+    // Every folder node the GOTO tree must render — the ancestors of each
+    // favourite's folder plus any remembered empty folders. Excludes the root.
+    // Order is unspecified; the UI sorts.
     public IReadOnlyCollection<string> AllFolders
     {
         get
@@ -74,15 +62,12 @@ public sealed class FavoritesStore
         }
     }
 
-    /// <summary>Fires after every mutation (add / rename / remove / move / folder op / profile-swap).</summary>
+    // Fires after every mutation (add / rename / remove / move / folder op / profile-swap).
     public event Action? Changed;
 
-    /// <summary>
-    /// Bookmark <paramref name="key"/> with an optional user-typed
-    /// label and target <paramref name="folder"/>. No-op when the key is
-    /// already in the list (rename via <see cref="Rename"/> or remove +
-    /// add) or no profile is loaded. Persists immediately.
-    /// </summary>
+    // Bookmark key with an optional user-typed label and target folder. No-op
+    // when the key is already in the list (rename via Rename or remove + add) or
+    // no profile is loaded. Persists immediately.
     public void Add(RoomKey key, string? label = null, string? folder = null)
     {
         if (_profile.Current is not { } current) return;
@@ -100,7 +85,7 @@ public sealed class FavoritesStore
         Changed?.Invoke();
     }
 
-    /// <summary>Update an existing favourite's label. No-op when not bookmarked or no profile loaded.</summary>
+    // Update an existing favourite's label. No-op when not bookmarked or no profile loaded.
     public void Rename(RoomKey key, string? newLabel)
     {
         if (_profile.Current is not { } current) return;
@@ -112,7 +97,7 @@ public sealed class FavoritesStore
         Changed?.Invoke();
     }
 
-    /// <summary>Remove the favourite. No-op when not bookmarked or no profile loaded.</summary>
+    // Remove the favourite. No-op when not bookmarked or no profile loaded.
     public void Remove(RoomKey key)
     {
         if (_profile.Current is not { } current) return;
@@ -126,11 +111,8 @@ public sealed class FavoritesStore
         Changed?.Invoke();
     }
 
-    /// <summary>
-    /// Move a bookmarked room into <paramref name="folder"/> (empty =
-    /// root). No-op when not bookmarked, no profile loaded, or already
-    /// there. Persists immediately.
-    /// </summary>
+    // Move a bookmarked room into folder (empty = root). No-op when not
+    // bookmarked, no profile loaded, or already there. Persists immediately.
     public void MoveFavorite(RoomKey key, string? folder)
     {
         if (_profile.Current is not { } current) return;
@@ -147,11 +129,9 @@ public sealed class FavoritesStore
         Changed?.Invoke();
     }
 
-    /// <summary>
-    /// Create an empty folder so it shows in the tree before any
-    /// favourite is filed under it. No-op when no profile loaded or the
-    /// folder already exists (as an empty record or via a favourite).
-    /// </summary>
+    // Create an empty folder so it shows in the tree before any favourite is
+    // filed under it. No-op when no profile loaded or the folder already exists
+    // (as an empty record or via a favourite).
     public void AddFolder(string path)
     {
         if (_profile.Current is not { } current) return;
@@ -166,11 +146,8 @@ public sealed class FavoritesStore
         Changed?.Invoke();
     }
 
-    /// <summary>
-    /// Rename folder <paramref name="oldPath"/> (and every sub-folder /
-    /// favourite beneath it) to <paramref name="newPath"/>. No-op when
-    /// no profile loaded or the path is the root.
-    /// </summary>
+    // Rename folder oldPath (and every sub-folder / favourite beneath it) to
+    // newPath. No-op when no profile loaded or the path is the root.
     public void RenameFolder(string oldPath, string newPath)
     {
         if (_profile.Current is not { } current) return;
@@ -191,14 +168,11 @@ public sealed class FavoritesStore
         Changed?.Invoke();
     }
 
-    /// <summary>
-    /// Remove folder <paramref name="path"/>. When
-    /// <paramref name="moveContentsToParent"/> is true, favourites and
-    /// sub-folders beneath it are re-parented one level up; otherwise the
-    /// caller must have emptied it first (anything still inside is also
-    /// re-parented to keep favourites from being orphaned). No-op at the
-    /// root or with no profile loaded.
-    /// </summary>
+    // Remove folder path. When moveContentsToParent is true, favourites and
+    // sub-folders beneath it are re-parented one level up; otherwise the caller
+    // must have emptied it first (anything still inside is also re-parented to
+    // keep favourites from being orphaned). No-op at the root or with no profile
+    // loaded.
     public void RemoveFolder(string path, bool moveContentsToParent = true)
     {
         if (_profile.Current is not { } current) return;

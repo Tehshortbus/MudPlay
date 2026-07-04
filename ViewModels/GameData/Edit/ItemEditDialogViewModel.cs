@@ -7,22 +7,16 @@ using FujinTerm.Services;
 
 namespace FujinTerm.ViewModels.GameData.Edit;
 
-/// <summary>
-/// View-model for the Game Data Browser → Items tab's per-record edit
-/// dialog. Surfaces the editable overlay fields (Use-tier, Name, the
-/// 11 Options checkboxes, Min/Max carry policy, IfNeededDo action)
-/// alongside a read-only MDB info pane on the right.
-/// </summary>
-/// <remarks>
-/// The Details section mixes MDB-derived read-only fields (Weight,
-/// Price, Item type, Body location) with overlay-editable carry-policy
-/// fields; the read-only Bought/sold shop list lives in the right-pane
-/// "Other Info" with the rest of the non-assignable MDB data. MDB-
-/// canonical stats (ItemType, Worn slot,
-/// ArmourType, ArmourClass, etc.) are deliberately not user-overridable
-/// — every BBS supplies a concrete MDB so the MDB is the source of
-/// truth; only behaviour fields flow through the overlay.
-/// </remarks>
+// View-model for the Game Data Browser → Items tab's per-record edit dialog. Surfaces
+// the editable overlay fields (Use-tier, Name, the 11 Options checkboxes, Min/Max carry
+// policy, IfNeededDo action) alongside a read-only MDB info pane on the right.
+//
+// The Details section mixes MDB-derived read-only fields (Weight, Price, Item type, Body
+// location) with overlay-editable carry-policy fields; the read-only Bought/sold shop
+// list lives in the right-pane "Other Info" with the rest of the non-assignable MDB
+// data. MDB-canonical stats (ItemType, Worn slot, ArmourType, ArmourClass, etc.) are
+// deliberately not user-overridable — every BBS supplies a concrete MDB so the MDB is
+// the source of truth; only behaviour fields flow through the overlay.
 public sealed partial class ItemEditDialogViewModel : ObservableObject, IDialogViewModel<ItemEditResult>
 {
     public event Action<ItemEditResult?>? CloseRequested;
@@ -46,10 +40,10 @@ public sealed partial class ItemEditDialogViewModel : ObservableObject, IDialogV
 
     // ----- Carry policy (overlay-editable) -----
 
-    /// <summary>"None" sentinel for the MegaMUD-parity blank state.</summary>
+    // "None" sentinel for the MegaMUD-parity blank state.
     [ObservableProperty] private string _minToKeep = string.Empty;
 
-    /// <summary>"All" is a legit MegaMUD sentinel here, so stored as a free string.</summary>
+    // "All" is a legit MegaMUD sentinel here, so stored as a free string.
     [ObservableProperty] private string _maxToGet = string.Empty;
 
     // ----- Read-only MDB-derived display (Details section) -----
@@ -58,7 +52,7 @@ public sealed partial class ItemEditDialogViewModel : ObservableObject, IDialogV
     public string ItemTypeText { get; }
     public string BodyLocation { get; }
 
-    /// <summary>Right-pane "Other Info" key/value list (read-only MDB fields).</summary>
+    // Right-pane "Other Info" key/value list (read-only MDB fields).
     public IReadOnlyList<KeyValuePair<string, string>> MdbInfo { get; }
 
     public IReadOnlyList<SettingsTier> AvailableTiers { get; } =
@@ -128,10 +122,9 @@ public sealed partial class ItemEditDialogViewModel : ObservableObject, IDialogV
     private void Cancel() => CloseRequested?.Invoke(null);
 }
 
-/// <summary>Returned by <see cref="ItemEditDialogViewModel"/> on Save.</summary>
-/// <param name="WccNoStr">The item's WCC No as a string — primary key for the overlay write.</param>
-/// <param name="Overlay">The user's edited overlay payload (boolean flags written only when <c>true</c>).</param>
-/// <param name="Tier">The tier the overlay should be written at.</param>
+// Returned by ItemEditDialogViewModel on Save. WccNoStr is the item's WCC No as a string
+// — primary key for the overlay write; Overlay is the user's edited overlay payload
+// (boolean flags written only when true); Tier is the tier the overlay should be written at.
 public sealed record ItemEditResult(
     string       WccNoStr,
     ItemOverlay  Overlay,

@@ -4,21 +4,17 @@ using FujinTerm.Services.Patterns;
 
 namespace FujinTerm.Game.Map;
 
-/// <summary>
-/// Pitches in on a door the party leader is forcing. When we observe
-/// "You see &lt;name&gt; attempt to bash the door to the &lt;dir&gt;." and the
-/// actor is our current <see cref="PartyState.LeaderName"/>, send the same
-/// door verb at the same direction so two characters work the lock
-/// together. Verb is <c>pick &lt;dir&gt;</c> or <c>bash &lt;dir&gt;</c> per
-/// <see cref="OtherSettings.PicklocksOverBash"/>.
-/// </summary>
-/// <remarks>
-/// Gated on <see cref="PartySettings.HelpLeaderOpenDoors"/> (off by
-/// default) and an active party. The leader match implies we're a
-/// follower — the leader is someone other than us — so no explicit
-/// self-is-leader check is needed: if we were the leader, the observed
-/// actor would be a follower whose name wouldn't match LeaderName.
-/// </remarks>
+// Pitches in on a door the party leader is forcing. When we observe "You
+// see <name> attempt to bash the door to the <dir>." and the actor is our
+// current PartyState.LeaderName, send the same door verb at the same
+// direction so two characters work the lock together. Verb is pick <dir>
+// or bash <dir> per OtherSettings.PicklocksOverBash.
+//
+// Gated on PartySettings.HelpLeaderOpenDoors (off by default) and an
+// active party. The leader match implies we're a follower — the leader is
+// someone other than us — so no explicit self-is-leader check is needed:
+// if we were the leader, the observed actor would be a follower whose name
+// wouldn't match LeaderName.
 public sealed class LeaderDoorAssistManager : IDisposable
 {
     private readonly MessageRouter _router;
@@ -50,10 +46,10 @@ public sealed class LeaderDoorAssistManager : IDisposable
         _sub = _router.Subscribe(KnownPatterns.PlayerDoorBashAttempt, OnLeaderBashAttempt);
     }
 
-    /// <summary>Bind the gate-wrapped wire sender (MainWindowVM's <c>SendUserInput</c>).</summary>
+    // Bind the gate-wrapped wire sender (MainWindowVM's SendUserInput).
     public void SetWireSender(Action<byte[]> sender) => _wire.Bind(sender);
 
-    /// <summary>Test seam — bytes the manager asked to write to the wire.</summary>
+    // Test seam — bytes the manager asked to write to the wire.
     internal List<byte[]> LastSentForTests => _wire.LastSentForTests;
 
     public void Dispose()
@@ -92,7 +88,7 @@ public sealed class LeaderDoorAssistManager : IDisposable
         return space >= 0 ? name[..space] : name;
     }
 
-    /// <summary>Full direction word → MajorMUD short movement token.</summary>
+    // Full direction word → MajorMUD short movement token.
     private static string DirectionShort(string word) => word switch
     {
         "north"     => "n",

@@ -3,28 +3,21 @@ using System.ComponentModel;
 
 namespace FujinTerm.Game;
 
-/// <summary>
-/// Bridges the party leader's rest / meditate posture onto a callback so a
-/// follower's <see cref="Health.HealthManager"/> can opportunistically rest
-/// during the leader's downtime.
-/// </summary>
-/// <remarks>
-/// <para>
-/// <see cref="PartyManager"/> only flips the leader's
-/// <see cref="PartyMember.Resting"/> / <see cref="PartyMember.Meditating"/>
-/// flags on the 5-second <c>par</c> poll, and a standing-idle follower's own
-/// <see cref="PlayerState"/> may not change in between — so without this nudge
-/// the health engine wouldn't re-evaluate (and start resting) until its next
-/// prompt tick. Edge-triggered: the callback fires only when the leader's
-/// resting-or-meditating posture actually flips, so a non-leader member sitting
-/// down doesn't spuriously poke the engine.
-/// </para>
-/// <para>
-/// Read-only on party state — only subscribes to <see cref="PartyState.Members"/>
-/// collection changes and each member's property changes, never writing a
-/// <see cref="PartyMember"/> field, so PartyManager stays the single writer.
-/// </para>
-/// </remarks>
+// Bridges the party leader's rest / meditate posture onto a callback so a
+// follower's HealthManager can opportunistically rest during the leader's
+// downtime.
+//
+// PartyManager only flips the leader's Resting / Meditating flags on the
+// 5-second `par` poll, and a standing-idle follower's own PlayerState may not
+// change in between — so without this nudge the health engine wouldn't
+// re-evaluate (and start resting) until its next prompt tick. Edge-triggered:
+// the callback fires only when the leader's resting-or-meditating posture
+// actually flips, so a non-leader member sitting down doesn't spuriously poke
+// the engine.
+//
+// Read-only on party state — only subscribes to PartyState.Members collection
+// changes and each member's property changes, never writing a PartyMember
+// field, so PartyManager stays the single writer.
 public sealed class PartyLeaderRestWatcher : IDisposable
 {
     private readonly PartyState _party;
@@ -44,8 +37,8 @@ public sealed class PartyLeaderRestWatcher : IDisposable
         _leaderResting = LeaderResting();
     }
 
-    /// <summary>True when we're a follower and the party leader is currently
-    /// resting or meditating. Live read — recomputed on each access.</summary>
+    // True when we're a follower and the party leader is currently resting or
+    // meditating. Live read — recomputed on each access.
     public bool LeaderIsResting => LeaderResting();
 
     private void OnMembersChanged(object? sender, NotifyCollectionChangedEventArgs e)

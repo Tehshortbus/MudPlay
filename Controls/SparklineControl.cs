@@ -5,43 +5,38 @@ using Avalonia.Media;
 
 namespace FujinTerm.Controls;
 
-/// <summary>
-/// Phase 11 — a minimal hand-drawn line chart for the Session Stats panel's
-/// kills/hour readout. Takes a numeric series via <see cref="Samples"/> (oldest
-/// → newest, left → right) and draws it as a single polyline auto-scaled to the
-/// control's bounds, with an optional translucent area fill underneath.
-/// </summary>
-/// <remarks>
-/// Deliberately tiny and self-contained: no axes, labels, gridlines, or
-/// interaction — a sparkline, not a charting library. The series is normalised
-/// to its own min/max each render so it always fills the vertical space; a flat
-/// series pins to the centre line rather than dividing by zero. The data shape
-/// (a plain <see cref="IReadOnlyList{T}"/> of <see cref="double"/>) is generic
-/// on purpose — the window's VM owns "what's a kill rate"; this control only
-/// knows how to draw numbers. If the bound series implements
-/// <see cref="INotifyCollectionChanged"/> the control re-renders when it mutates,
-/// so a live <c>ObservableCollection&lt;double&gt;</c> animates as samples append
-/// (mirrors <see cref="TimestampGutter"/>); a re-assigned list is picked up via
-/// <see cref="AffectsRender{T}"/>.
-/// </remarks>
+// A minimal hand-drawn line chart for the Session Stats panel's kills/hour
+// readout. Takes a numeric series via Samples (oldest → newest, left → right)
+// and draws it as a single polyline auto-scaled to the control's bounds, with
+// an optional translucent area fill underneath.
+//
+// Deliberately tiny and self-contained: no axes, labels, gridlines, or
+// interaction — a sparkline, not a charting library. The series is normalised
+// to its own min/max each render so it always fills the vertical space; a flat
+// series pins to the centre line rather than dividing by zero. The data shape
+// (a plain IReadOnlyList<double>) is generic on purpose — the window's VM owns
+// "what's a kill rate"; this control only knows how to draw numbers. If the
+// bound series implements INotifyCollectionChanged the control re-renders when
+// it mutates, so a live ObservableCollection<double> animates as samples
+// append (mirrors TimestampGutter); a re-assigned list is picked up via
+// AffectsRender.
 public sealed class SparklineControl : Control
 {
-    /// <summary>The series to plot, oldest first. Fewer than two points draws
-    /// nothing.</summary>
+    // The series to plot, oldest first. Fewer than two points draws nothing.
     public static readonly StyledProperty<IReadOnlyList<double>?> SamplesProperty =
         AvaloniaProperty.Register<SparklineControl, IReadOnlyList<double>?>(nameof(Samples));
 
-    /// <summary>Colour of the plotted line.</summary>
+    // Colour of the plotted line.
     public static readonly StyledProperty<IBrush> StrokeProperty =
         AvaloniaProperty.Register<SparklineControl, IBrush>(
             nameof(Stroke), new SolidColorBrush(Color.Parse("#7AB870")));
 
-    /// <summary>Line thickness, in device-independent pixels.</summary>
+    // Line thickness, in device-independent pixels.
     public static readonly StyledProperty<double> StrokeThicknessProperty =
         AvaloniaProperty.Register<SparklineControl, double>(nameof(StrokeThickness), 1.5);
 
-    /// <summary>Optional brush for the area below the line. <c>null</c> (default)
-    /// leaves the area empty.</summary>
+    // Optional brush for the area below the line. null (default) leaves the
+    // area empty.
     public static readonly StyledProperty<IBrush?> FillProperty =
         AvaloniaProperty.Register<SparklineControl, IBrush?>(nameof(Fill));
 

@@ -6,37 +6,28 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game;
 
-/// <summary>
-/// Phase 9 — bridges party-member HP% observations onto the
-/// <see cref="MovementCoordinator.PartyVitalsGate"/>. While any other
-/// observed party member's HP% sits below the Party-tab
-/// <see cref="PartySettings.WaitIfMemberBelowPercent"/> threshold the
-/// gate is asserted so the active movement engine (loop / Auto-Lair /
-/// walk-to) holds, giving the hurt member time to rest or be healed
-/// before the group moves on. Clears once every observed member has
-/// recovered past the threshold.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Read-only on party state: the watcher only subscribes to
-/// <see cref="PartyState.Members"/> collection changes and each member's
-/// <see cref="PartyMember.HpPercent"/> property change. It never writes a
-/// <see cref="PartyMember"/> field — the single-writer invariant keeps
-/// PartyManager as the sole writer of HpPercent.
-/// </para>
-/// <para>
-/// Two guards keep the gate from false-tripping: (1) the self row is
-/// excluded — the local character's own HP gates are HealthManager's job;
-/// (2) members whose HP% hasn't been observed yet
-/// (<see cref="PartyMember.HpPercent"/> == 0, the just-joined / pre-@health
-/// state) don't count, so a fresh invite doesn't pause the group before we
-/// know its real vitals.
-/// </para>
-/// </remarks>
+// Bridges party-member HP% observations onto the
+// MovementCoordinator.PartyVitalsGate. While any other observed party
+// member's HP% sits below the Party-tab WaitIfMemberBelowPercent threshold
+// the gate is asserted so the active movement engine (loop / Auto-Lair /
+// walk-to) holds, giving the hurt member time to rest or be healed before
+// the group moves on. Clears once every observed member has recovered past
+// the threshold.
+//
+// Read-only on party state: the watcher only subscribes to
+// PartyState.Members collection changes and each member's HpPercent property
+// change. It never writes a PartyMember field — the single-writer invariant
+// keeps PartyManager as the sole writer of HpPercent.
+//
+// Two guards keep the gate from false-tripping: (1) the self row is
+// excluded — the local character's own HP gates are HealthManager's job;
+// (2) members whose HP% hasn't been observed yet (HpPercent == 0, the
+// just-joined / pre-@health state) don't count, so a fresh invite doesn't
+// pause the group before we know its real vitals.
 public sealed class PartyVitalsWatcher : IDisposable
 {
-    /// <summary>Identifier surfaced in <see cref="MovementCoordinator.History"/>
-    /// when the watcher flips the PartyVitals gate.</summary>
+    // Identifier surfaced in MovementCoordinator.History when the watcher
+    // flips the PartyVitals gate.
     public const string AsserterName = "PartyVitalsWatcher";
 
     private readonly PartyState _party;
@@ -92,11 +83,9 @@ public sealed class PartyVitalsWatcher : IDisposable
         if (e.PropertyName == nameof(PartyMember.HpPercent)) Evaluate();
     }
 
-    /// <summary>
-    /// Recompute whether any other observed member is below threshold and
-    /// assert / clear the gate accordingly. Idempotent — only touches the
-    /// coordinator when the asserted state actually changes.
-    /// </summary>
+    // Recompute whether any other observed member is below threshold and
+    // assert / clear the gate accordingly. Idempotent — only touches the
+    // coordinator when the asserted state actually changes.
     public void Evaluate()
     {
         int threshold = _readSettings().WaitIfMemberBelowPercent;

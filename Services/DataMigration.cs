@@ -3,36 +3,26 @@ using System.Linq;
 
 namespace FujinTerm.Services;
 
-/// <summary>
-/// One-shot migration that moves the legacy flat per-BBS settings file
-/// (<c>Data/BBS/{name}.json</c>) into the per-folder layout
-/// (<c>Data/BBS/{name}/bbs.json</c>). Runs at startup before any service
-/// touches the filesystem. Idempotent — re-running on an already-migrated
-/// tree is a no-op. Defensive — never deletes the source file unless the
-/// destination write succeeded.
-/// </summary>
-/// <remarks>
-/// Character profiles are NOT migrated automatically: they moved from a
-/// flat <c>Data/profiles/{char}/</c> layout to BBS-scoped
-/// <c>Data/BBS/{bbs}/profiles/{char}/</c>, and the correct destination BBS
-/// can't be inferred safely. Users relocate any pre-existing profiles by
-/// hand.
-/// </remarks>
-/// <remarks>
-/// The new layout exists so each tier can grow helper files alongside
-/// its primary settings JSON without forcing monolithic blobs (per-set
-/// override side-files, per-BBS favorites, per-character macros /
-/// triggers / events / death history / etc.). The migration just
-/// flattens-to-folders; no schema rewrites.
-/// </remarks>
+// One-shot migration that moves the legacy flat per-BBS settings file
+// (Data/BBS/{name}.json) into the per-folder layout (Data/BBS/{name}/bbs.json).
+// Runs at startup before any service touches the filesystem. Idempotent —
+// re-running on an already-migrated tree is a no-op. Defensive — never deletes
+// the source file unless the destination write succeeded.
+//
+// Character profiles are NOT migrated automatically: they moved from a flat
+// Data/profiles/{char}/ layout to BBS-scoped Data/BBS/{bbs}/profiles/{char}/,
+// and the correct destination BBS can't be inferred safely. Users relocate any
+// pre-existing profiles by hand.
+//
+// The new layout exists so each tier can grow helper files alongside its primary
+// settings JSON without forcing monolithic blobs (per-set override side-files,
+// per-BBS favorites, per-character macros / triggers / events / death history /
+// etc.). The migration just flattens-to-folders; no schema rewrites.
 public static class DataMigration
 {
-    /// <summary>
-    /// Walk the legacy paths and relocate any flat files into the new
-    /// per-name folders. Safe to call every startup — no-op when the
-    /// new layout already exists. Writes a single info line to
-    /// <paramref name="log"/> per file moved.
-    /// </summary>
+    // Walk the legacy paths and relocate any flat files into the new per-name
+    // folders. Safe to call every startup — no-op when the new layout already
+    // exists. Writes a single info line to log per file moved.
     public static void RunIfNeeded(LogService log)
     {
         ArgumentNullException.ThrowIfNull(log);

@@ -4,22 +4,17 @@ using System.Globalization;
 
 namespace FujinTerm.Game.GameData;
 
-/// <summary>
-/// Parses a Shops row's <c>Assigned To</c> free-text room list (e.g.
-/// <c>"Room 1/297, Room 6/1334"</c>) into <c>(map, room)</c> pairs. Mirrors
-/// MMUD Explorer's <c>GetShopRoomNames</c> shape: split on <c>','</c> and read
-/// each <c>"Room M/R"</c> token. Shared by the Game Data Browser's Shops tab and
-/// the auto-train trainer catalogue so the parse lives in one place.
-/// </summary>
+// Parses a Shops row's `Assigned To` free-text room list (e.g. "Room 1/297, Room
+// 6/1334") into (map, room) pairs: split on ',' and read each "Room M/R" token.
+// Shared by the Game Data Browser's Shops tab and the auto-train trainer catalogue
+// so the parse lives in one place.
 public static class ShopRoomParser
 {
-    /// <summary>
-    /// Parse EVERY <c>Room map/room</c> token of <paramref name="assignedTo"/>,
-    /// in order. Returns an empty list when the field is empty, unassigned
-    /// (<c>\x00</c>), or holds no parseable <c>"Room M/R"</c> tokens. A shop can
-    /// be assigned to more than one room (e.g. the universal Training Room sits in
-    /// both Silvermere and Newhaven), so each token becomes its own entry.
-    /// </summary>
+    // Parse EVERY `Room map/room` token of assignedTo, in order. Returns an empty
+    // list when the field is empty, unassigned (\x00), or holds no parseable "Room
+    // M/R" tokens. A shop can be assigned to more than one room (e.g. the universal
+    // Training Room sits in both Silvermere and Newhaven), so each token becomes its
+    // own entry.
     public static IReadOnlyList<(int Map, int Room)> ParseRooms(string? assignedTo)
     {
         var rooms = new List<(int Map, int Room)>();
@@ -42,11 +37,9 @@ public static class ShopRoomParser
         return rooms;
     }
 
-    /// <summary>
-    /// Parse the FIRST <c>Room map/room</c> token of <paramref name="assignedTo"/>.
-    /// Returns false (with map/room 0) when the field is empty, unassigned
-    /// (<c>\x00</c>), or doesn't start with <c>"Room "</c>.
-    /// </summary>
+    // Parse the FIRST `Room map/room` token of assignedTo. Returns false (with
+    // map/room 0) when the field is empty, unassigned (\x00), or doesn't start with
+    // "Room ".
     public static bool TryParseFirstRoom(string? assignedTo, out int map, out int room)
     {
         IReadOnlyList<(int Map, int Room)> rooms = ParseRooms(assignedTo);

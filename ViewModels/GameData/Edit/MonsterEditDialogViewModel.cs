@@ -7,29 +7,23 @@ using FujinTerm.Services;
 
 namespace FujinTerm.ViewModels.GameData.Edit;
 
-/// <summary>
-/// View-model for the Game Data Browser → Monsters tab's per-record
-/// edit dialog. Surfaces the editable overlay fields (Use-tier, Name,
-/// Relationship, Priority, override spell slots, NotHostile /
-/// DontBackstab) plus the per-monster combat-message bundle (9
-/// perspective lines + flavor prefixes) the combat manager will use
-/// to recognise lines this monster produces in play.
-/// </summary>
-/// <remarks>
-/// The Messages section binds to a <see cref="MonsterMessageRecord"/>
-/// looked up by monster Number. Each of the 9 line fields is a
-/// multi-line textbox where every non-empty line is one variant
-/// pattern (matches the wcc seed shape — e.g. guardsman has 2 hit
-/// variants "slash" + "all-out slash"; dragon has 4 body-part hit
-/// variants). FlavorPrefixes is a single comma-separated textbox
-/// where the literal token <c>(no prefix)</c> represents the
-/// <see cref="MonsterMessageRecord.AllowNoPrefix"/> flag.
-/// </remarks>
+// View-model for the Game Data Browser → Monsters tab's per-record edit dialog.
+// Surfaces the editable overlay fields (Use-tier, Name, Relationship, Priority, override
+// spell slots, NotHostile / DontBackstab) plus the per-monster combat-message bundle
+// (9 perspective lines + flavor prefixes) the combat manager will use to recognise lines
+// this monster produces in play.
+//
+// The Messages section binds to a MonsterMessageRecord looked up by monster Number. Each
+// of the 9 line fields is a multi-line textbox where every non-empty line is one variant
+// pattern (matches the wcc seed shape — e.g. guardsman has 2 hit variants "slash" +
+// "all-out slash"; dragon has 4 body-part hit variants). FlavorPrefixes is a single
+// comma-separated textbox where the literal token (no prefix) represents the
+// AllowNoPrefix flag.
 public sealed partial class MonsterEditDialogViewModel : ObservableObject, IDialogViewModel<MonsterEditResult>
 {
     public event Action<MonsterEditResult?>? CloseRequested;
 
-    /// <summary>Sentinel string used in the FlavorPrefixes CSV to represent the AllowNoPrefix flag.</summary>
+    // Sentinel string used in the FlavorPrefixes CSV to represent the AllowNoPrefix flag.
     public const string NoPrefixSentinel = "(no prefix)";
 
     public string WccNoStr { get; }
@@ -63,12 +57,9 @@ public sealed partial class MonsterEditDialogViewModel : ObservableObject, IDial
     [ObservableProperty] private string _missYouText          = string.Empty;
     [ObservableProperty] private string _missOtherText        = string.Empty;
 
-    /// <summary>
-    /// Comma-separated flavor list. Literal token <c>(no prefix)</c>
-    /// (case-insensitive) in the list represents the
-    /// <see cref="MonsterMessageRecord.AllowNoPrefix"/> flag — e.g.
-    /// giant rat renders as <c>"nasty, angry, large, fat, thin, big, small, (no prefix)"</c>.
-    /// </summary>
+    // Comma-separated flavor list. Literal token (no prefix) (case-insensitive) in the
+    // list represents the AllowNoPrefix flag — e.g. giant rat renders as
+    // "nasty, angry, large, fat, thin, big, small, (no prefix)".
     [ObservableProperty] private string _flavorPrefixesCsv = string.Empty;
 
     public IReadOnlyList<KeyValuePair<string, string>> MdbInfo { get; }
@@ -79,13 +70,10 @@ public sealed partial class MonsterEditDialogViewModel : ObservableObject, IDial
     public IReadOnlyList<MonsterAttackPriority> AvailablePriorities { get; } =
         Enum.GetValues<MonsterAttackPriority>().ToArray();
 
-    /// <summary>
-    /// Tiers the picker offers. Restricted to tiers the resolver can actually
-    /// write to in the current session (Global always; BBS only with an active
-    /// BBS; Character only with a loaded profile) so Save can't land on a tier
-    /// whose scope is unresolvable. Read-only Defaults is excluded — the MDB is
-    /// its source.
-    /// </summary>
+    // Tiers the picker offers. Restricted to tiers the resolver can actually write to in
+    // the current session (Global always; BBS only with an active BBS; Character only with
+    // a loaded profile) so Save can't land on a tier whose scope is unresolvable.
+    // Read-only Defaults is excluded — the MDB is its source.
     public IReadOnlyList<SettingsTier> AvailableTiers { get; }
 
     public string Title => $"Monster — {(Name.Length > 0 ? Name : $"#{WccNoStr}")}";
@@ -212,7 +200,7 @@ public sealed partial class MonsterEditDialogViewModel : ObservableObject, IDial
             Links:            new[] { new GameDataLink("Monsters", MonsterNumber) });
     }
 
-    /// <summary>SHA1 of all editable content joined; matches the offline generator's id rule.</summary>
+    // SHA1 of all editable content joined; matches the offline generator's id rule.
     private static string ComputeId(
         string name,
         IReadOnlyList<string> hitYou,    IReadOnlyList<string> hitOther,    IReadOnlyList<string> death,
@@ -236,7 +224,7 @@ public sealed partial class MonsterEditDialogViewModel : ObservableObject, IDial
         return sb.ToString();
     }
 
-    /// <summary>Multi-line text → list of non-empty trimmed lines.</summary>
+    // Multi-line text → list of non-empty trimmed lines.
     public static IReadOnlyList<string> SplitLines(string text)
     {
         if (string.IsNullOrWhiteSpace(text)) return Array.Empty<string>();
@@ -246,16 +234,13 @@ public sealed partial class MonsterEditDialogViewModel : ObservableObject, IDial
             .ToList();
     }
 
-    /// <summary>List of lines → newline-joined string for the textbox.</summary>
+    // List of lines → newline-joined string for the textbox.
     public static string JoinLines(IReadOnlyList<string> lines)
         => lines is { Count: > 0 } ? string.Join("\n", lines) : string.Empty;
 
-    /// <summary>
-    /// CSV "nasty, angry, (no prefix)" → (["nasty","angry"], true).
-    /// The <see cref="NoPrefixSentinel"/> token (case-insensitive)
-    /// sets the AllowNoPrefix flag and is dropped from the prefix
-    /// list. Empty entries skipped; duplicates removed (first-wins).
-    /// </summary>
+    // CSV "nasty, angry, (no prefix)" → (["nasty","angry"], true). The NoPrefixSentinel
+    // token (case-insensitive) sets the AllowNoPrefix flag and is dropped from the prefix
+    // list. Empty entries skipped; duplicates removed (first-wins).
     public static (IReadOnlyList<string> Prefixes, bool AllowNoPrefix) ParseFlavorCsv(string csv)
     {
         if (string.IsNullOrWhiteSpace(csv)) return (Array.Empty<string>(), false);
@@ -276,7 +261,7 @@ public sealed partial class MonsterEditDialogViewModel : ObservableObject, IDial
         return (prefixes, allowNoPrefix);
     }
 
-    /// <summary>List of prefixes + AllowNoPrefix flag → display CSV with the sentinel appended when the flag is set.</summary>
+    // List of prefixes + AllowNoPrefix flag → display CSV with the sentinel appended when the flag is set.
     public static string BuildFlavorCsv(IReadOnlyList<string> prefixes, bool allowNoPrefix)
     {
         IEnumerable<string> parts = prefixes ?? Array.Empty<string>();
@@ -288,22 +273,15 @@ public sealed partial class MonsterEditDialogViewModel : ObservableObject, IDial
         => int.TryParse(text, out int n) ? n : null;
 }
 
-/// <summary>Returned by <see cref="MonsterEditDialogViewModel"/> on Save.</summary>
-/// <param name="WccNoStr">The monster's WCC No as a string — primary key for the overlay write.</param>
-/// <param name="Overlay">The user's edited overlay payload.</param>
-/// <param name="Tier">The tier the overlay should be written at.</param>
-/// <param name="UpdatedMessages">
-/// The user's edited monster-message record, or <c>null</c> when the
-/// Messages section was entirely blank and no original record existed.
-/// Consumer upserts via <see cref="MonsterMessageStore.Replace(string, MonsterMessageRecord)"/>
-/// using <see cref="OriginalMessages"/>?.Id as the replace key.
-/// </param>
-/// <param name="OriginalMessages">
-/// The record loaded at dialog-open time, or <c>null</c> if no record
-/// existed for this monster. Carried in the result so the consumer
-/// can do an Id-keyed replace even when the user's edits flipped the
-/// projected Id.
-/// </param>
+// Returned by MonsterEditDialogViewModel on Save. WccNoStr is the monster's WCC No as a
+// string — primary key for the overlay write; Overlay is the user's edited overlay
+// payload; Tier is the tier the overlay should be written at. UpdatedMessages is the
+// user's edited monster-message record, or null when the Messages section was entirely
+// blank and no original record existed — the consumer upserts via
+// MonsterMessageStore.Replace using OriginalMessages?.Id as the replace key.
+// OriginalMessages is the record loaded at dialog-open time, or null if no record existed
+// for this monster; carried in the result so the consumer can do an Id-keyed replace even
+// when the user's edits flipped the projected Id.
 public sealed record MonsterEditResult(
     string                WccNoStr,
     MonsterOverlay        Overlay,

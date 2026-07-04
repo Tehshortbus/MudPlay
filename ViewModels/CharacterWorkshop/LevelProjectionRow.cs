@@ -3,30 +3,25 @@ using FujinTerm.Game.Calculators;
 
 namespace FujinTerm.ViewModels.CharacterWorkshop;
 
-/// <summary>
-/// One display row in the Level Projection grid — formats a
-/// <see cref="LevelProjection"/> into the grid's string columns and carries the
-/// <see cref="IsCurrentLevel"/> flag the view uses to highlight the live
-/// character's current level.
-/// </summary>
+// One display row in the Level Projection grid — formats a LevelProjection into
+// the grid's string columns and carries the IsCurrentLevel flag the view uses to
+// highlight the live character's current level.
 public sealed class LevelProjectionRow
 {
     public int Level { get; }
-    /// <summary>
-    /// Exp remaining to reach this level from the character's current exp
-    /// (<c>max(0, TotalXp − currentExp)</c>). 0 once you already hold enough —
-    /// equals <see cref="TotalXp"/> when current exp is 0.
-    /// </summary>
+    // Exp remaining to reach this level from the character's current exp
+    // (max(0, TotalXp − currentExp)). 0 once you already hold enough — equals
+    // TotalXp when current exp is 0.
     public string ExpToLevel { get; }
-    /// <summary>Cumulative exp threshold to reach this level (absolute).</summary>
+    // Cumulative exp threshold to reach this level (absolute).
     public string TotalXp { get; }
     public string HpRange { get; }
     public string HpRegen { get; }
-    /// <summary>Max mana (or Kai for Mystics); "—" for non-casters.</summary>
+    // Max mana (or Kai for Mystics); "—" for non-casters.
     public string Mana { get; }
-    /// <summary>Mana/Kai regen per tick; "—" for non-casters.</summary>
+    // Mana/Kai regen per tick; "—" for non-casters.
     public string MpRegen { get; }
-    /// <summary>True when this row is the live character's current level.</summary>
+    // True when this row is the live character's current level.
     public bool IsCurrentLevel { get; }
 
     public LevelProjectionRow(LevelProjection p, long currentExp, bool isCurrentLevel, bool isCaster)

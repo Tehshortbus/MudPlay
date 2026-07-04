@@ -10,18 +10,14 @@ using FujinTerm.Services;
 
 namespace FujinTerm.ViewModels.Navigation;
 
-/// <summary>
-/// Modeless editor for a saved <see cref="LairSetup"/> — rename, edit
-/// notes, remove markers, adjust per-marker respawn overrides. Adding
-/// a marker requires picking a room on the map; that's the rail's job
-/// (right-click → "Add to Auto-Lair"), not the editor's.
-/// </summary>
-/// <remarks>
-/// Save persists via <see cref="LairManager.Save"/>, which fires
-/// <see cref="LairManager.SetupsChanged"/> so the rail refreshes.
-/// Cancel / X discards every edit; the dialog works on its own row
-/// view-models until Save runs.
-/// </remarks>
+// Modeless editor for a saved LairSetup — rename, edit notes, remove
+// markers, adjust per-marker respawn overrides. Adding a marker requires
+// picking a room on the map; that's the rail's job (right-click → "Add to
+// Auto-Lair"), not the editor's.
+//
+// Save persists via LairManager.Save, which fires LairManager.SetupsChanged
+// so the rail refreshes. Cancel / X discards every edit; the dialog works
+// on its own row view-models until Save runs.
 public sealed partial class LairEditorDialogViewModel : ObservableObject, IDialogViewModel<LairSetup?>
 {
     public event Action<LairSetup?>? CloseRequested;
@@ -33,7 +29,7 @@ public sealed partial class LairEditorDialogViewModel : ObservableObject, IDialo
     private readonly ConfirmService? _confirm;
     private readonly bool _isNew;
 
-    /// <summary>Window title — "Create Setup" when new, "Edit Setup" otherwise.</summary>
+    // Window title — "Create Setup" when new, "Edit Setup" otherwise.
     public string DialogTitle => _isNew ? "Create Auto-Lair Setup" : "Edit Auto-Lair Setup";
 
     [ObservableProperty]
@@ -43,32 +39,27 @@ public sealed partial class LairEditorDialogViewModel : ObservableObject, IDialo
 
     [ObservableProperty] private string _notes = string.Empty;
 
-    /// <summary>Per-marker row, ordered by Map / Room for a stable display.</summary>
+    // Per-marker row, ordered by Map / Room for a stable display.
     public ObservableCollection<LairMarkerRowViewModel> Markers { get; } = new();
 
     // ----- Add-marker search box (mirrors LoopEditor's Add row) -----
 
-    /// <summary>
-    /// Text input for the add-marker row. Accepts the same dialects as
-    /// the Loop editor's add-room box: coordinate (<c>1/297</c>,
-    /// <c>1,297</c>, bare <c>297</c>) or substring against room names.
-    /// </summary>
+    // Text input for the add-marker row. Accepts the same dialects as the
+    // Loop editor's add-room box: coordinate (1/297, 1,297, bare 297) or
+    // substring against room names.
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasAddMarkerError))]
     private string _newMarkerQuery = string.Empty;
 
-    /// <summary>
-    /// Inline validation message for the add-marker row. Empty when
-    /// the input is valid OR not yet evaluated; set after a failed
-    /// Add attempt.
-    /// </summary>
+    // Inline validation message for the add-marker row. Empty when the
+    // input is valid OR not yet evaluated; set after a failed Add attempt.
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasAddMarkerError))]
     private string _addMarkerError = string.Empty;
 
     public bool HasAddMarkerError => !string.IsNullOrEmpty(AddMarkerError);
 
-    /// <summary>Live-search dropdown rows mirroring the Loop editor's.</summary>
+    // Live-search dropdown rows mirroring the Loop editor's.
     public ObservableCollection<RoomSearchResult> SearchResults { get; } = new();
 
     public bool HasSearchResults => SearchResults.Count > 0;
@@ -80,13 +71,13 @@ public sealed partial class LairEditorDialogViewModel : ObservableObject, IDialo
     private DispatcherTimer? _searchDebounce;
     private static readonly TimeSpan SearchDebounceDelay = TimeSpan.FromMilliseconds(120);
 
-    /// <summary>True when the name field is non-empty after trim.</summary>
+    // True when the name field is non-empty after trim.
     public bool HasName => !string.IsNullOrWhiteSpace(Name);
 
-    /// <summary>Inline-validation flag for the name TextBox.</summary>
+    // Inline-validation flag for the name TextBox.
     public bool HasNameError => !HasName;
 
-    /// <summary>Enabled-state for the Save button — name set + at least one marker.</summary>
+    // Enabled-state for the Save button — name set + at least one marker.
     public bool CanSave => HasName && Markers.Count > 0;
 
     public LairEditorDialogViewModel(
@@ -130,11 +121,9 @@ public sealed partial class LairEditorDialogViewModel : ObservableObject, IDialo
         Markers.Remove(row);
     }
 
-    /// <summary>
-    /// Add a marker resolved from the search box. Priority: highlighted
-    /// dropdown row → top dropdown row → literal query parsed as a key
-    /// or matched as a unique room name. Mirrors LoopEditor.AddWaypoint.
-    /// </summary>
+    // Add a marker resolved from the search box. Priority: highlighted
+    // dropdown row → top dropdown row → literal query parsed as a key or
+    // matched as a unique room name. Mirrors LoopEditor.AddWaypoint.
     [RelayCommand]
     private void AddMarker()
     {
@@ -183,12 +172,9 @@ public sealed partial class LairEditorDialogViewModel : ObservableObject, IDialo
         RebuildSearchResults(NewMarkerQuery);
     }
 
-    /// <summary>
-    /// Rebuild <see cref="SearchResults"/> from the supplied query.
-    /// Same two-dialect parser as the Loop editor: coordinate
-    /// (<c>1/297</c>, <c>1,297</c>, <c>1 297</c>, or bare <c>297</c>
-    /// across all maps) and room-name substring.
-    /// </summary>
+    // Rebuild SearchResults from the supplied query. Same two-dialect
+    // parser as the Loop editor: coordinate (1/297, 1,297, 1 297, or bare
+    // 297 across all maps) and room-name substring.
     private void RebuildSearchResults(string query)
     {
         SearchResults.Clear();
@@ -250,10 +236,8 @@ public sealed partial class LairEditorDialogViewModel : ObservableObject, IDialo
         return (null, null);
     }
 
-    /// <summary>
-    /// Last-resort literal resolution for an exact key or unique name
-    /// the user typed before the debounce fired.
-    /// </summary>
+    // Last-resort literal resolution for an exact key or unique name the
+    // user typed before the debounce fired.
     private RoomKey? ResolveLiteralQuery(string? query)
     {
         string q = (query ?? string.Empty).Trim();
@@ -332,33 +316,27 @@ public sealed partial class LairEditorDialogViewModel : ObservableObject, IDialo
     private void Cancel() => CloseRequested?.Invoke(null);
 }
 
-/// <summary>
-/// One row in the editor's marker grid: the room key + display name
-/// + game-data default respawn (read-only context) + user override
-/// (editable). The default hint stays visible even when an override
-/// is set so the user can always see what they're replacing.
-/// </summary>
+// One row in the editor's marker grid: the room key + display name +
+// game-data default respawn (read-only context) + user override (editable).
+// The default hint stays visible even when an override is set so the user
+// can always see what they're replacing.
 public sealed partial class LairMarkerRowViewModel : ObservableObject
 {
     public RoomKey Key { get; }
     public string RoomName { get; }
 
-    /// <summary>"5/100 — Sewer Lair" header for the row.</summary>
+    // "5/100 — Sewer Lair" header for the row.
     public string DisplayHeader => $"{Key.Map}/{Key.Room} — {RoomName}";
 
-    /// <summary>
-    /// Game-data default respawn in seconds, surfaced read-only so the
-    /// user can see what the override is replacing. <c>null</c> when no
-    /// default could be resolved (lookup missed or the room isn't
-    /// tagged as a lair in the active set).
-    /// </summary>
+    // Game-data default respawn in seconds, surfaced read-only so the user
+    // can see what the override is replacing. null when no default could be
+    // resolved (lookup missed or the room isn't tagged as a lair in the
+    // active set).
     public int? DefaultRespawnSeconds { get; }
 
-    /// <summary>
-    /// Sub-text shown below the room header — always visible, even
-    /// when the user has set an override. Format:
-    /// <c>"game default 270s"</c> / <c>"no game-data timer"</c>.
-    /// </summary>
+    // Sub-text shown below the room header — always visible, even when the
+    // user has set an override. Format: "game default 270s" / "no game-data
+    // timer".
     public string DefaultHint =>
         DefaultRespawnSeconds is int s
             ? $"game default {s}s"

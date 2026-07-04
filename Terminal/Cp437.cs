@@ -1,15 +1,13 @@
 namespace FujinTerm.Terminal;
 
-/// <summary>
-/// Lookup table that maps each of the 256 IBM PC code-page-437 byte values
-/// to its modern Unicode equivalent.
-///
-/// CP437 is the original IBM PC character set: ASCII in the 0x20–0x7E
-/// range plus a rich set of box-drawing, block, and accented characters in
-/// the upper half. BBSes and ANSI art rely on these specific glyphs, so
-/// raw 8-bit bytes from the wire need to be translated through this table
-/// before they can be rendered with a Unicode-aware font.
-/// </summary>
+// Lookup table that maps each of the 256 IBM PC code-page-437 byte values to
+// its modern Unicode equivalent.
+//
+// CP437 is the original IBM PC character set: ASCII in the 0x20–0x7E range
+// plus a rich set of box-drawing, block, and accented characters in the upper
+// half. BBSes and ANSI art rely on these specific glyphs, so raw 8-bit bytes
+// from the wire need to be translated through this table before they can be
+// rendered with a Unicode-aware font.
 public static class Cp437
 {
     // Index into this table = the raw byte value received.
@@ -47,6 +45,6 @@ public static class Cp437
         '°','∙','·','√','ⁿ','²','■',' ',
     };
 
-    /// <summary>Return the Unicode glyph that corresponds to a CP437 byte.</summary>
+    // Return the Unicode glyph that corresponds to a CP437 byte.
     public static char ToUnicode(byte b) => Table[b];
 }

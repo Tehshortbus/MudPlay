@@ -9,23 +9,19 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game.Inventory;
 
-/// <summary>
-/// One equippable item projected into the searchable columns the Item Finder lists —
-/// slot, type, the wear requirements (level / strength), and the worn-stat totals
-/// (HP / mana / regens / damage / accuracy / crits / hit-magic / backstab / AC / DR).
-/// The numbers come from the same aggregation Character Info uses
-/// (<see cref="CharacterCalculator.AggregateItemRow"/>), so a row's AC/DR/bonuses
-/// match what the item grants once worn. <see cref="Row"/> is retained so the finder's
-/// class / level / alignment filter can defer to <see cref="ItemEquipFilter.CanEquip"/>.
-/// </summary>
-/// <remarks>
-/// Build the whole catalog with <see cref="BuildCatalog"/> — it enumerates the active
-/// set's <c>Items</c> table once, keeps the rows that resolve to an
-/// <see cref="EquipmentSlot"/>, and returns them sorted by slot then name (the finder's
-/// default order). Two facts the aggregation summary doesn't surface — the
-/// <c>Abil-135</c> min-level wear gate and <c>Abil-116</c> backstab capability — are
-/// read in a single extra Abil pass per item.
-/// </remarks>
+// One equippable item projected into the searchable columns the Item Finder
+// lists — slot, type, the wear requirements (level / strength), and the
+// worn-stat totals (HP / mana / regens / damage / accuracy / crits / hit-magic /
+// backstab / AC / DR). The numbers come from the same aggregation Character Info
+// uses (CharacterCalculator.AggregateItemRow), so a row's AC/DR/bonuses match
+// what the item grants once worn. Row is retained so the finder's class / level
+// / alignment filter can defer to ItemEquipFilter.CanEquip.
+//
+// Build the whole catalog with BuildCatalog — it enumerates the active set's
+// Items table once, keeps the rows that resolve to an EquipmentSlot, and returns
+// them sorted by slot then name (the finder's default order). Two facts the
+// aggregation summary doesn't surface — the Abil-135 min-level wear gate and
+// Abil-116 backstab capability — are read in a single extra Abil pass per item.
 public sealed record ItemFinderEntry
 {
     // Items.ItemType codes the catalog keys on (weapons surface their base damage;
@@ -37,94 +33,92 @@ public sealed record ItemFinderEntry
     private const int MinLevelAbil = 135;   // AbilVal holds the level gate.
     private const int BackstabAbil = 116;   // presence ⇒ the weapon can backstab.
 
-    /// <summary>Item name — the catalog's secondary sort key and the grid's Name column.</summary>
+    // Item name — the catalog's secondary sort key and the grid's Name column.
     public required string Name { get; init; }
 
-    /// <summary>The slot the item occupies; the catalog's primary grouping / sort key.</summary>
+    // The slot the item occupies; the catalog's primary grouping / sort key.
     public required EquipmentSlot Slot { get; init; }
 
-    /// <summary>Short slot label for the grid (e.g. <c>"Off-Hand"</c>, <c>"Finger (1)"</c>).</summary>
+    // Short slot label for the grid (e.g. "Off-Hand", "Finger (1)").
     public required string SlotLabel { get; init; }
 
-    /// <summary>Numeric slot rank (<see cref="EquipmentSlot"/> order) for slot-column sorting.</summary>
+    // Numeric slot rank (EquipmentSlot order) for slot-column sorting.
     public int SlotOrder => (int)Slot;
 
-    /// <summary>Weapon-type label (<c>"1H Sharp"</c> …), or null when the item isn't a weapon.</summary>
+    // Weapon-type label ("1H Sharp" …), or null when the item isn't a weapon.
     public string? WeaponTypeLabel { get; init; }
 
-    /// <summary>Armour-type label (<c>"Platemail"</c> …), or null when the item isn't armour.</summary>
+    // Armour-type label ("Platemail" …), or null when the item isn't armour.
     public string? ArmourTypeLabel { get; init; }
 
-    /// <summary>Weapon-type code, or -1 when the item isn't a weapon.</summary>
+    // Weapon-type code, or -1 when the item isn't a weapon.
     public int WeaponType { get; init; }
 
-    /// <summary>Armour-type code, or -1 when the item isn't armour.</summary>
+    // Armour-type code, or -1 when the item isn't armour.
     public int ArmourType { get; init; }
 
-    /// <summary>The combined type label shown in the grid — weapon type, else armour type.</summary>
+    // The combined type label shown in the grid — weapon type, else armour type.
     public string TypeLabel => WeaponTypeLabel ?? ArmourTypeLabel ?? string.Empty;
 
-    /// <summary>Minimum character level to wear it (<c>Abil-135</c>), 0 when ungated.</summary>
+    // Minimum character level to wear it (Abil-135), 0 when ungated.
     public int LevelReq { get; init; }
 
-    /// <summary>Strength the item requires (weapon <c>StrReq</c>), 0 when none.</summary>
+    // Strength the item requires (weapon StrReq), 0 when none.
     public int StrReq { get; init; }
 
-    /// <summary>Weapon base minimum damage, 0 for non-weapons.</summary>
+    // Weapon base minimum damage, 0 for non-weapons.
     public int MinDmg { get; init; }
 
-    /// <summary>Weapon base maximum damage, 0 for non-weapons.</summary>
+    // Weapon base maximum damage, 0 for non-weapons.
     public int MaxDmg { get; init; }
 
-    /// <summary>Accuracy the item grants (base <c>Accy</c> + the <c>Abil-22/105/106</c> sum).</summary>
+    // Accuracy the item grants (base Accy + the Abil-22/105/106 sum).
     public int Accuracy { get; init; }
 
-    /// <summary>Critical-hit bonus (<c>Abil-58</c>).</summary>
+    // Critical-hit bonus (Abil-58).
     public int Crits { get; init; }
 
-    /// <summary>Hit-magic level (<c>Abil-28/142</c> sum).</summary>
+    // Hit-magic level (Abil-28/142 sum).
     public int HitMagic { get; init; }
 
-    /// <summary>True when the item carries a backstab-accuracy ability (<c>Abil-116</c>).</summary>
+    // True when the item carries a backstab-accuracy ability (Abil-116).
     public bool CanBackstab { get; init; }
 
-    /// <summary>Backstab accuracy bonus (<c>Abil-116</c>).</summary>
+    // Backstab accuracy bonus (Abil-116).
     public int BsAccuracy { get; init; }
 
-    /// <summary>Backstab minimum-damage bonus (<c>Abil-117</c>).</summary>
+    // Backstab minimum-damage bonus (Abil-117).
     public int BsMin { get; init; }
 
-    /// <summary>Backstab maximum-damage bonus (<c>Abil-118</c>).</summary>
+    // Backstab maximum-damage bonus (Abil-118).
     public int BsMax { get; init; }
 
-    /// <summary>Total armour class (base <c>ArmourClass</c>/10 + <c>Abil-2/10</c>).</summary>
+    // Total armour class (base ArmourClass/10 + Abil-2/10).
     public double Ac { get; init; }
 
-    /// <summary>Total damage resist (base <c>DamageResist</c>/10 + <c>Abil-7</c>/10).</summary>
+    // Total damage resist (base DamageResist/10 + Abil-7/10).
     public double Dr { get; init; }
 
-    /// <summary>Max-HP bonus (<c>Abil-88</c>).</summary>
+    // Max-HP bonus (Abil-88).
     public int Hp { get; init; }
 
-    /// <summary>HP-regen percent bonus (<c>Abil-123</c>).</summary>
+    // HP-regen percent bonus (Abil-123).
     public int HpRegen { get; init; }
 
-    /// <summary>Max-mana bonus (<c>Abil-69</c>).</summary>
+    // Max-mana bonus (Abil-69).
     public int Mana { get; init; }
 
-    /// <summary>Mana-regen percent bonus (<c>Abil-145</c>).</summary>
+    // Mana-regen percent bonus (Abil-145).
     public int ManaRegen { get; init; }
 
-    /// <summary>
-    /// The backing <c>Items</c> row — kept so the finder's character filter can call
-    /// <see cref="ItemEquipFilter.CanEquip"/> against the live class / level / alignment.
-    /// Valid for the lifetime of the cached <c>Items</c> <see cref="JsonDocument"/>.
-    /// </summary>
+    // The backing Items row — kept so the finder's character filter can call
+    // ItemEquipFilter.CanEquip against the live class / level / alignment. Valid
+    // for the lifetime of the cached Items JsonDocument.
     public required JsonElement Row { get; init; }
 
     // ----- grid display (blank-on-zero so the dense grid stays readable) -----
 
-    /// <summary>Weapon damage as <c>"min-max"</c>, blank for non-weapons.</summary>
+    // Weapon damage as "min-max", blank for non-weapons.
     public string DamageText => MinDmg != 0 || MaxDmg != 0 ? $"{MinDmg}-{MaxDmg}" : string.Empty;
     public string LevelReqText => Plain(LevelReq);
     public string StrReqText => Plain(StrReq);
@@ -144,11 +138,9 @@ public sealed record ItemFinderEntry
     private static string Signed(int v) => v != 0 ? v.ToString("+0;-0", CultureInfo.InvariantCulture) : string.Empty;
     private static string Decimal(double v) => v != 0 ? v.ToString("0.#", CultureInfo.InvariantCulture) : string.Empty;
 
-    /// <summary>
-    /// Project every equippable item in the active set's <c>Items</c> table into a
-    /// catalog, sorted by slot then name. Items with no resolvable slot (non-equip
-    /// types, <c>Worn 0</c>) are skipped. Empty when no <c>Items</c> table is loaded.
-    /// </summary>
+    // Project every equippable item in the active set's Items table into a
+    // catalog, sorted by slot then name. Items with no resolvable slot (non-equip
+    // types, Worn 0) are skipped. Empty when no Items table is loaded.
     public static IReadOnlyList<ItemFinderEntry> BuildCatalog(GameDataCache cache)
     {
         ArgumentNullException.ThrowIfNull(cache);

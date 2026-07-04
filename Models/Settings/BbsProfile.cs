@@ -2,93 +2,79 @@ using System.Text.Json;
 
 namespace FujinTerm.Models.Settings;
 
-/// <summary>
-/// Root DTO for <c>Data/BBS/{bbs-name}.json</c> — the BBS tier of the
-/// settings hierarchy. Connection info plus deltas the user pinned to "only
-/// for this BBS." Per-character credentials are stored separately under each
-/// <c>CharacterProfile</c>; this file describes the BBS itself.
-/// </summary>
+// Root DTO for Data/BBS/{bbs-name}.json — the BBS tier of the settings
+// hierarchy. Connection info plus deltas the user pinned to "only for this
+// BBS." Per-character credentials are stored separately under each
+// CharacterProfile; this file describes the BBS itself.
 public sealed class BbsProfile
 {
-    /// <summary>JSON schema version (see <c>GlobalSettings.SchemaVersion</c> for the contract).</summary>
+    // JSON schema version (see GlobalSettings.SchemaVersion for the contract).
     public int SchemaVersion { get; set; } = 1;
 
-    /// <summary>Display name + filename key for this BBS.</summary>
+    // Display name + filename key for this BBS.
     public string Name { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Imported game-data set folder this BBS uses by default. Tracked
-    /// at BBS scope (not per character) because every character on the
-    /// same realm shares the same MajorMUD MDB, and switching realms
-    /// almost always means switching BBSes. The folder name is one of
-    /// the subdirectories under <see cref="AppPaths.GameDataRoot"/>.
-    /// <c>null</c> falls back to <c>GlobalSettings.DefaultGameDataSet</c>.
-    /// Surfaced + writable via the File → Game Data → Active set menu.
-    /// </summary>
+    // Imported game-data set folder this BBS uses by default. Tracked at
+    // BBS scope (not per character) because every character on the same
+    // realm shares the same MajorMUD MDB, and switching realms almost
+    // always means switching BBSes. The folder name is one of the
+    // subdirectories under AppPaths.GameDataRoot. null falls back to
+    // GlobalSettings.DefaultGameDataSet. Surfaced + writable via the
+    // File → Game Data → Active set menu.
     public string? ActiveGameDataSet { get; set; }
 
-    /// <summary>Hostname or IP address the Telnet client connects to.</summary>
+    // Hostname or IP address the Telnet client connects to.
     public string Host { get; set; } = string.Empty;
 
-    /// <summary>TCP port; defaults to the Telnet well-known port.</summary>
+    // TCP port; defaults to the Telnet well-known port.
     public int Port { get; set; } = 23;
 
-    /// <summary>
-    /// Optional URL the user wants the Help → {BBS site} ↗ menu entry to open
-    /// (the BBS's web site, wiki, Discord — whatever the operator publishes).
-    /// <c>null</c> hides the link; the menu entry stays present but disabled.
-    /// </summary>
+    // Optional URL the user wants the Help → {BBS site} ↗ menu entry to
+    // open (the BBS's web site, wiki, Discord — whatever the operator
+    // publishes). null hides the link; the menu entry stays present but
+    // disabled.
     public string? WebsiteUrl { get; set; }
 
-    // ----- Connection / retry behaviour (Phase 4 PR 4.5) -----
+    // ----- Connection / retry behaviour -----
 
-    /// <summary>How many connect attempts (initial + retries) before giving up.</summary>
+    // How many connect attempts (initial + retries) before giving up.
     public int MaxRedials { get; set; } = 3;
 
-    /// <summary>Seconds to wait between connect attempts.</summary>
+    // Seconds to wait between connect attempts.
     public int RedialPauseSeconds { get; set; } = 5;
 
-    /// <summary>
-    /// Minutes the BBS is offline for its nightly auto-cleanup. Used by
-    /// the <see cref="ReconnectAfterCleanup"/> schedule: when the
-    /// CleanupWarningWatcher catches a "shutting down in N minutes"
-    /// announcement, the client arms a reconnect at
-    /// <c>warning_observed_at + N + CleanupPeriodMinutes</c>.
-    /// <c>0</c> means "dial back the moment shutdown_at is past."
-    /// </summary>
+    // Minutes the BBS is offline for its nightly auto-cleanup. Used by the
+    // ReconnectAfterCleanup schedule: when the CleanupWarningWatcher catches
+    // a "shutting down in N minutes" announcement, the client arms a
+    // reconnect at warning_observed_at + N + CleanupPeriodMinutes. 0 means
+    // "dial back the moment shutdown_at is past."
     public int CleanupPeriodMinutes { get; set; }
 
-    /// <summary>Reconnect automatically when the previous connect attempt failed.</summary>
+    // Reconnect automatically when the previous connect attempt failed.
     public bool ReconnectOnFailedConnect { get; set; }
 
-    /// <summary>Reconnect automatically after the carrier signal drops mid-session.</summary>
+    // Reconnect automatically after the carrier signal drops mid-session.
     public bool ReconnectOnCarrierLost { get; set; }
 
-    /// <summary>Reconnect automatically when the server stops responding to keep-alives.</summary>
+    // Reconnect automatically when the server stops responding to keep-alives.
     public bool ReconnectOnNoResponse { get; set; }
 
-    /// <summary>
-    /// Seconds of TCP-level idle before the OS starts probing the
-    /// connection with TCP keepalive packets. <c>0</c> disables
-    /// keepalive entirely (the OS default — typically ~2 hours idle —
-    /// is way too long for a BBS).
-    /// </summary>
-    /// <remarks>
-    /// We pair this with hardcoded probe interval = 10s and retry
-    /// count = 3, so once the idle elapses the OS declares the socket
-    /// dead within ~30s. The <see cref="ReconnectOnNoResponse"/>
-    /// toggle then decides whether to auto-dial back.
-    /// </remarks>
+    // Seconds of TCP-level idle before the OS starts probing the connection
+    // with TCP keepalive packets. 0 disables keepalive entirely (the OS
+    // default — typically ~2 hours idle — is way too long for a BBS).
+    //
+    // We pair this with hardcoded probe interval = 10s and retry count = 3,
+    // so once the idle elapses the OS declares the socket dead within ~30s.
+    // The ReconnectOnNoResponse toggle then decides whether to auto-dial
+    // back.
     public int NoResponseTimeoutSeconds { get; set; }
 
-    /// <summary>
-    /// Manage the whole nightly-cleanup cycle for this BBS. Two halves:
-    /// (1) <b>proactive log-off</b> — when a shutdown warning is observed, the
-    /// <see cref="Game.CleanupLogoutOrchestrator"/> waits for a safe room, exits
-    /// the realm to MajorMUD's main menu, and drops the carrier before the BBS
-    /// yanks us; (2) <b>auto-redial</b> — reconnect after the cleanup window
-    /// (see <see cref="CleanupPeriodMinutes"/>). One toggle governs both.
-    /// </summary>
+    // Manage the whole nightly-cleanup cycle for this BBS. Two halves:
+    // (1) proactive log-off — when a shutdown warning is observed, the
+    // CleanupLogoutOrchestrator waits for a safe room, exits the realm to
+    // MajorMUD's main menu, and drops the carrier before the BBS yanks us;
+    // (2) auto-redial — reconnect after the cleanup window (see
+    // CleanupPeriodMinutes). One toggle governs both.
     public bool ReconnectAfterCleanup { get; set; }
 
     // ----- Game-menu commands -----
@@ -99,49 +85,37 @@ public sealed class BbsProfile
     // uses the same picks. Defaults are the standard MajorMUD picks
     // ("E" = enter the realm, "=x" = log off from the main menu).
 
-    /// <summary>
-    /// Sent at the main menu to enter the realm. Default <c>"E"</c>.
-    /// Consumed by <see cref="Game.MainMenuEntryAutomation"/> when the
-    /// client detects the main menu after a (re)connect.
-    /// </summary>
+    // Sent at the main menu to enter the realm. Default "E". Consumed by
+    // MainMenuEntryAutomation when the client detects the main menu after a
+    // (re)connect.
     public string GameEntryCommand { get; set; } = "E";
 
-    /// <summary>
-    /// Sent at the main menu to log off. Default <c>"=x"</c>. Fired by
-    /// <see cref="Game.Remote.HangupHandler"/> on a permitted
-    /// <c>@hangup</c> and by the cleanup-warning logout flow.
-    /// </summary>
+    // Sent at the main menu to log off. Default "=x". Fired by
+    // HangupHandler on a permitted @hangup and by the cleanup-warning
+    // logout flow.
     public string GameExitCommand { get; set; } = "=x";
 
     // ----- Terminal dimensions (NAWS, RFC 1073) -----
 
-    /// <summary>
-    /// Terminal columns to advertise via Telnet NAWS at connect-time. Defaults
-    /// to 80 — MajorMUD's hard-coded rendering grid; non-game BBS doors that
-    /// reflow can push higher.
-    /// </summary>
+    // Terminal columns to advertise via Telnet NAWS at connect-time.
+    // Defaults to 80 — MajorMUD's hard-coded rendering grid; non-game BBS
+    // doors that reflow can push higher.
     public int TerminalCols { get; set; } = 80;
 
-    /// <summary>Terminal rows to advertise via Telnet NAWS. Defaults to 25.</summary>
+    // Terminal rows to advertise via Telnet NAWS. Defaults to 25.
     public int TerminalRows { get; set; } = 25;
 
-    /// <summary>
-    /// Terminal canvas font size in points. Per-BBS so a high-density door
-    /// game and a chatty BBS can each get their own legibility tuning.
-    /// </summary>
+    // Terminal canvas font size in points. Per-BBS so a high-density door
+    // game and a chatty BBS can each get their own legibility tuning.
     public double FontSize { get; set; } = 16.0;
 
-    /// <summary>
-    /// How many scrolled-off rows the backscroll ring retains.
-    /// Applies on next launch — in-place ring resize would need to copy /
-    /// drop rows and is intentionally deferred.
-    /// </summary>
+    // How many scrolled-off rows the backscroll ring retains. Applies on
+    // next launch — in-place ring resize would need to copy / drop rows and
+    // is intentionally deferred.
     public int ScrollbackLines { get; set; } = 4_000;
 
-    /// <summary>
-    /// Per-tab settings deltas at the BBS tier — same shape as
-    /// <see cref="GlobalSettings.Settings"/>. Holds anything the user pinned
-    /// to "only for this BBS."
-    /// </summary>
+    // Per-tab settings deltas at the BBS tier — same shape as
+    // GlobalSettings.Settings. Holds anything the user pinned to "only for
+    // this BBS."
     public Dictionary<string, JsonElement>? Settings { get; set; }
 }

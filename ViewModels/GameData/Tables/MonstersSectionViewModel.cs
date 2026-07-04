@@ -11,23 +11,15 @@ using FujinTerm.ViewModels.GameData.Edit;
 
 namespace FujinTerm.ViewModels.GameData.Tables;
 
-/// <summary>
-/// Game Data Browser → Monsters tab. Renders the imported MajorMUD
-/// <c>Monsters</c> table — the static MDB table that drives Auto-Lair
-/// respawn timers (via <c>RegenTime</c>), Phase 13 CombatManager's
-/// per-monster behaviour gating, and the Phase 9 Workshop COMBAT
-/// preview's damage projection.
-/// </summary>
-/// <remarks>
-/// Column names mirror the MajorMUD MDB schema verbatim (per
-/// <c>data-v1.11p.mdb</c>). <c>EXP</c> is the experience reward,
-/// <c>MagicRes</c> is the magic-resist score, <c>AvgDmg</c> is the
-/// average per-round outgoing damage, <c>RegenTime</c> is respawn
-/// cadence in ticks. <c>Type</c> and <c>Align</c> render via
-/// <see cref="LookupEnums"/> ("Solo" / "Lawful Good" / etc.) and
-/// <c>Undead</c> is a boolean from the MDB so it already arrives
-/// as <c>"true"</c> / <c>"false"</c>.
-/// </remarks>
+// Game Data Browser → Monsters tab. Renders the imported MajorMUD Monsters table — the static
+// MDB table that drives Auto-Lair respawn timers (via RegenTime), CombatManager's per-monster
+// behaviour gating, and the Workshop COMBAT preview's damage projection.
+//
+// Column names mirror the MajorMUD MDB schema verbatim (per data-v1.11p.mdb). EXP is the
+// experience reward, MagicRes is the magic-resist score, AvgDmg is the average per-round
+// outgoing damage, RegenTime is respawn cadence in ticks. Type and Align render via
+// LookupEnums ("Solo" / "Lawful Good" / etc.) and Undead is a boolean from the MDB so it
+// already arrives as "true" / "false".
 public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEditableTableSectionViewModel
 {
     private readonly GameDataCache _cache;
@@ -57,10 +49,8 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
         "Type",
     };
 
-    /// <summary>
-    /// Friendly grid headers — the columns above keep their raw MDB keys
-    /// (so binding / search / formatters work) but render compact labels.
-    /// </summary>
+    // Friendly grid headers — the columns above keep their raw MDB keys (so binding / search /
+    // formatters work) but render compact labels.
     public override IReadOnlyDictionary<string, string> ColumnHeaders { get; } =
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
@@ -79,13 +69,10 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
         Title, "monster", "mob", "enemy", "creature", "lair", "regen", "respawn",
     };
 
-    /// <summary>
-    /// MajorMUD's HP-regen tick: a monster heals its <c>HPRegen</c> amount
-    /// once every 90 seconds (18 combat rounds × 5 s). Shared by the
-    /// "HP Regen" grid column and the edit dialog's HP detail row so the
-    /// two never drift. (GreaterMUD's 30 s / 6 rounds would branch here
-    /// off a realm flag if/when that realm is supported.)
-    /// </summary>
+    // MajorMUD's HP-regen tick: a monster heals its HPRegen amount once every 90 seconds
+    // (18 combat rounds × 5 s). Shared by the "HP Regen" grid column and the edit dialog's HP
+    // detail row so the two never drift. (GreaterMUD's 30 s / 6 rounds would branch here off a
+    // realm flag if/when that realm is supported.)
     private const int RegenIntervalSeconds = 90;
 
     protected override IReadOnlyDictionary<string, Func<string?, string?>> ColumnFormatters { get; } =
@@ -96,11 +83,9 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
             ["HPRegen"] = FormatHpRegen,
         };
 
-    /// <summary>
-    /// "2hp@90s" — HP healed per regen tick @ the tick interval, so the
-    /// regen rate reads at a glance. Zero-regen mobs show a plain "0";
-    /// non-numeric / empty values pass through unchanged.
-    /// </summary>
+    // "2hp@90s" — HP healed per regen tick @ the tick interval, so the regen rate reads at a
+    // glance. Zero-regen mobs show a plain "0"; non-numeric / empty values pass through
+    // unchanged.
     internal static string? FormatHpRegen(string? raw)
     {
         if (string.IsNullOrWhiteSpace(raw)) return raw;
@@ -131,15 +116,11 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
         OpenEditAsyncCommand = new AsyncRelayCommand<GameDataRow?>(OpenEditAsync);
     }
 
-    /// <summary>
-    /// Synthesise the grid's "Accuracy" column — not a real MDB field.
-    /// Monsters store accuracy per attack (<c>AttAcc-N</c>); a mob with
-    /// several attacks shows each one's accuracy slash-joined in attack
-    /// order ("10/42/8"). Only physical attacks count (<c>AttType</c> 1/3
-    /// with a non-zero chance) — spell-attack slots stash a spell id in
-    /// <c>AttAcc</c>, not an accuracy. Falls back to slot 0 so spell-only
-    /// mobs still show something.
-    /// </summary>
+    // Synthesise the grid's "Accuracy" column — not a real MDB field. Monsters store accuracy
+    // per attack (AttAcc-N); a mob with several attacks shows each one's accuracy slash-joined
+    // in attack order ("10/42/8"). Only physical attacks count (AttType 1/3 with a non-zero
+    // chance) — spell-attack slots stash a spell id in AttAcc, not an accuracy. Falls back to
+    // slot 0 so spell-only mobs still show something.
     protected override IReadOnlyDictionary<string, string?>? ComputeRowCells(JsonElement element)
         => new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
         {
@@ -239,30 +220,22 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
         Reload();
     }
 
-    /// <summary>
-    /// Right-pane "Other Info" for the Monster edit dialog. Mirrors the
-    /// row order + transforms of MME's <c>PullMonsterDetail</c>
-    /// (<c>modMain.bas</c>):
-    /// <list type="number">
-    ///   <item>WCC No / Experience (with <c>ExpMulti</c> when &gt; 1)</item>
-    ///   <item>Regen Time / Game Limit (suffix "(no respawn)" when RegenTime = 0)</item>
-    ///   <item>Type / Alignment / Undead</item>
-    ///   <item>HP / HP Regen — kept on separate rows per user spec.</item>
-    ///   <item>AC/DR combined slash, MR, Follow %, Charm LVL</item>
-    ///   <item>Cash — raw R/P/G/S/C breakdown</item>
-    ///   <item>Weapon / Create Spell / Death Spell / Greet (cross-ref names)</item>
-    ///   <item>BS Defense (when &gt; 0)</item>
-    ///   <item>Abilities — friendly labels from <see cref="AbilityNames"/>;
-    ///         <c>Abil-N = 146</c> (Guarded by) split into its own row with
-    ///         monster-name cross-ref.</item>
-    ///   <item>Item Drops 0..9 / Attacks 0..4 / Mid Spells 0..4 — first row in
-    ///         each group carries the section label; subsequent rows have a
-    ///         blank key so they indent visually under the header.</item>
-    /// </list>
-    /// Per user spec we deliberately omit combat-sim outputs (predicted
-    /// damage etc. — Phase 9 Workshop COMBAT Preview territory) and the
-    /// alignment-derived <c>[Hostile]</c>/<c>[Not-Hostile]</c> tag.
-    /// </summary>
+    // Right-pane "Other Info" for the Monster edit dialog. Row order + transforms:
+    //   1. WCC No / Experience (with ExpMulti when > 1)
+    //   2. Regen Time / Game Limit (suffix "(no respawn)" when RegenTime = 0)
+    //   3. Type / Alignment / Undead
+    //   4. HP / HP Regen — kept on separate rows per user spec.
+    //   5. AC/DR combined slash, MR, Follow %, Charm LVL
+    //   6. Cash — raw R/P/G/S/C breakdown
+    //   7. Weapon / Create Spell / Death Spell / Greet (cross-ref names)
+    //   8. BS Defense (when > 0)
+    //   9. Abilities — friendly labels from AbilityNames; Abil-N = 146 (Guarded by) split into
+    //      its own row with monster-name cross-ref.
+    //  10. Item Drops 0..9 / Attacks 0..4 / Mid Spells 0..4 — first row in each group carries
+    //      the section label; subsequent rows have a blank key so they indent visually under
+    //      the header.
+    // Per user spec we deliberately omit combat-sim outputs (predicted damage etc. — Workshop
+    // COMBAT Preview territory) and the alignment-derived [Hostile]/[Not-Hostile] tag.
     private IReadOnlyList<KeyValuePair<string, string>> BuildMdbInfo(string wccNoStr)
     {
         List<KeyValuePair<string, string>> kv = new();
@@ -302,8 +275,8 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
 
             if (ReadInt(el, "Undead") == 1) AddRow(kv, "Undead", "Yes");
 
-            // HP + HP Regen combined into one row, matching MME's
-            // "7200 (Regens: 2000 HPs every 90 seconds [18 rounds])" form.
+            // HP + HP Regen combined into one row, in the form
+            // "7200 (Regens: 2000 HPs every 90 seconds [18 rounds])".
             // 90s / 18 rounds is the classic MajorMUD tick (5s per round
             // × 18 = 90s). If we add GreaterMUD support later, swap to
             // 30s / 6 rounds on that realm via a Settings.RealmType
@@ -352,7 +325,7 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
             // AbilityNames. Code 146 = "Guarded by" splits into its
             // own row with monster-name resolution. Values render
             // signed ("+5" / "-50") so resist-style abilities read
-            // unambiguously vs MME's display.
+            // unambiguously.
             List<string> abilities = new();
             List<int>    guards    = new();
             for (int i = 0; i < 10; i++)
@@ -395,7 +368,7 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
             // ----- Mob's Attacks (each AttType-N in 1..3 with Att%>0
             // gets its own header + sub-rows) -----
             //
-            // Format mirrors MME's PullMonsterDetail attack rendering:
+            // Attack rendering format:
             //
             //   Mob's Attacks         {Energy} energy/round
             //   (20%) claws           Min-Max: 50-90
@@ -413,7 +386,7 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
             //
             // Per-attack percent uses AttTrue% when present (the actual
             // probability) and falls back to Att% otherwise (the
-            // cumulative-threshold value MME uses).
+            // cumulative-threshold value).
             int monsterEnergy = ReadInt(el, "Energy");
             bool hasAttacks = false;
             for (int i = 0; i < 5; i++)
@@ -478,8 +451,8 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
             // ----- Between Rounds (formerly Mid Spells) -----
             // MidSpell% is stored as a cumulative threshold across the 5
             // slots (slot 0's value is its raw chance; slot N's is the
-            // running sum). Per MME, the display shows the DELTA so each
-            // row reads as the actual chance for that spell to fire.
+            // running sum). The display shows the DELTA so each row reads
+            // as the actual chance for that spell to fire.
             int cumulative = 0;
             for (int i = 0, shown = 0; i < 5; i++)
             {
@@ -555,13 +528,9 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
         return kv;
     }
 
-    /// <summary>
-    /// Rooms whose lair names <paramref name="wccNo"/>, sorted by
-    /// map then room. Reads the in-memory <see cref="RoomGraphManager"/>
-    /// (already parsed for the active set) so no 11 MB Rooms.json reload
-    /// is needed. Empty when the graph isn't wired or the monster lairs
-    /// nowhere.
-    /// </summary>
+    // Rooms whose lair names wccNo, sorted by map then room. Reads the in-memory
+    // RoomGraphManager (already parsed for the active set) so no 11 MB Rooms.json reload is
+    // needed. Empty when the graph isn't wired or the monster lairs nowhere.
     private IReadOnlyList<RoomKey> FindSpawnRooms(int wccNo)
     {
         if (_roomGraph is null) return Array.Empty<RoomKey>();
@@ -575,11 +544,8 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
         return rooms;
     }
 
-    /// <summary>
-    /// Rooms that "place" <paramref name="wccNo"/> via their NPC field
-    /// (fixed-spawn home room), sorted by map then room. Empty when the
-    /// graph isn't wired or the monster is laired-only / unplaced.
-    /// </summary>
+    // Rooms that "place" wccNo via their NPC field (fixed-spawn home room), sorted by map then
+    // room. Empty when the graph isn't wired or the monster is laired-only / unplaced.
     private IReadOnlyList<RoomKey> FindPlacedRooms(int wccNo)
     {
         if (_roomGraph is null) return Array.Empty<RoomKey>();
@@ -593,11 +559,8 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
         return rooms;
     }
 
-    /// <summary>
-    /// Spells (number + name) that summon <paramref name="wccNo"/>
-    /// (best-effort — see <see cref="SpellSummons"/>). Covers monsters
-    /// that aren't laired or placed but are conjured by a caster.
-    /// </summary>
+    // Spells (number + name) that summon wccNo (best-effort — see SpellSummons). Covers
+    // monsters that aren't laired or placed but are conjured by a caster.
     private List<(int Number, string Name)> FindSummonSpells(int wccNo)
     {
         List<(int, string)> spells = new();
@@ -613,11 +576,8 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
         return spells;
     }
 
-    /// <summary>
-    /// Rooms whose room-spell (<see cref="Room.Spell"/>, cast when a
-    /// player enters) is one of <paramref name="spellIds"/> — i.e. rooms
-    /// that summon the monster on entry. Sorted by map then room.
-    /// </summary>
+    // Rooms whose room-spell (Room.Spell, cast when a player enters) is one of spellIds — i.e.
+    // rooms that summon the monster on entry. Sorted by map then room.
     private IReadOnlyList<RoomKey> FindRoomSpellRooms(IReadOnlySet<int> spellIds)
     {
         if (_roomGraph is null) return Array.Empty<RoomKey>();
@@ -631,12 +591,9 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
         return rooms;
     }
 
-    /// <summary>
-    /// Monsters that cast one of <paramref name="spellIds"/>, each tagged
-    /// with how (combat / death / on spawn) — e.g. "Argak the Grey
-    /// (death)". Deduped by label; popular summon spells (cast by many
-    /// mobs) are capped by the caller.
-    /// </summary>
+    // Monsters that cast one of spellIds, each tagged with how (combat / death / on spawn) —
+    // e.g. "Argak the Grey (death)". Deduped by label; popular summon spells (cast by many
+    // mobs) are capped by the caller.
     private List<string> FindSummoningMonsters(IReadOnlySet<int> spellIds)
     {
         List<string> casters = new();
@@ -655,14 +612,10 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
         return casters;
     }
 
-    /// <summary>
-    /// Monsters this monster summons, each as
-    /// "&lt;name&gt; (&lt;how&gt;[, &lt;chance&gt;])" — the reverse of
-    /// <see cref="FindSummoningMonsters"/>. Walks the viewed monster's own
-    /// spell slots (create / death / spell-attack / hit-spell / between-
-    /// rounds), resolves each summon spell to its target monster, and
-    /// tags how + the % chance where the cast carries one.
-    /// </summary>
+    // Monsters this monster summons, each as "<name> (<how>[, <chance>])" — the reverse of
+    // FindSummoningMonsters. Walks the viewed monster's own spell slots (create / death /
+    // spell-attack / hit-spell / between-rounds), resolves each summon spell to its target
+    // monster, and tags how + the % chance where the cast carries one.
     private List<string> FindOutgoingSummons(JsonElement monster)
     {
         JsonDocument? spellsDoc = _cache.GetRawTable("Spells");
@@ -682,13 +635,9 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
             target => LookupMonsterName(target) ?? $"Monster #{target}");
     }
 
-    /// <summary>
-    /// Pure label-builder behind <see cref="FindOutgoingSummons"/> —
-    /// extracted so the context + chance logic is testable without a
-    /// loaded cache. <paramref name="summonTargetsOf"/> maps a spell id to
-    /// the monster(s) it summons (empty for non-summon spells);
-    /// <paramref name="nameOf"/> maps a monster number to its display name.
-    /// </summary>
+    // Pure label-builder behind FindOutgoingSummons — extracted so the context + chance logic
+    // is testable without a loaded cache. summonTargetsOf maps a spell id to the monster(s) it
+    // summons (empty for non-summon spells); nameOf maps a monster number to its display name.
     internal static List<string> BuildOutgoingSummonLabels(
         JsonElement monster,
         Func<int, IReadOnlyList<int>> summonTargetsOf,
@@ -741,14 +690,10 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
         return result;
     }
 
-    /// <summary>
-    /// How <paramref name="monster"/> casts a spell in
-    /// <paramref name="spellIds"/>, or <c>null</c> if it doesn't. Combat =
-    /// a spell-attack (<c>AttType</c> 2 whose <c>AttAcc</c> is the spell),
-    /// a per-hit spell (<c>AttHitSpell</c>), or a between-rounds spell
-    /// (<c>MidSpell</c>); plus the <c>DeathSpell</c> ("death") and
-    /// <c>CreateSpell</c> ("on spawn"). A monster can carry several.
-    /// </summary>
+    // How monster casts a spell in spellIds, or null if it doesn't. Combat = a spell-attack
+    // (AttType 2 whose AttAcc is the spell), a per-hit spell (AttHitSpell), or a between-rounds
+    // spell (MidSpell); plus the DeathSpell ("death") and CreateSpell ("on spawn"). A monster
+    // can carry several.
     internal static string? SummonContext(JsonElement monster, IReadOnlySet<int> spellIds)
     {
         bool combat = false;
@@ -770,27 +715,19 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
         return string.Join(", ", parts);
     }
 
-    /// <summary>
-    /// True when <paramref name="spell"/> summons monster
-    /// <paramref name="monsterNo"/>. Summon spells carry ability code 12;
-    /// the summoned monster number is inconsistently encoded, so this is
-    /// best-effort: a summon ability's own value (<c>AbilVal</c>) wins
-    /// when positive, and only when NO summon ability names a target do we
-    /// fall back to the spell's <c>MinBase</c> (e.g. "raptor summon" →
-    /// MinBase 509 = tetraraptor). Preferring the ability value avoids
-    /// mis-attributing odd data — e.g. "summon silver skull" has
-    /// <c>MinBase 1</c> (giant rat) but its summon value points elsewhere.
-    /// </summary>
+    // True when spell summons monster monsterNo. Summon spells carry ability code 12; the
+    // summoned monster number is inconsistently encoded, so this is best-effort: a summon
+    // ability's own value (AbilVal) wins when positive, and only when NO summon ability names a
+    // target do we fall back to the spell's MinBase (e.g. "raptor summon" → MinBase 509 =
+    // tetraraptor). Preferring the ability value avoids mis-attributing odd data — e.g.
+    // "summon silver skull" has MinBase 1 (giant rat) but its summon value points elsewhere.
     internal static bool SpellSummons(JsonElement spell, int monsterNo)
         => monsterNo > 0 && SummonTargets(spell).Contains(monsterNo);
 
-    /// <summary>
-    /// Monster number(s) <paramref name="spell"/> summons, or empty when
-    /// it isn't a summon spell. Encoding is inconsistent (see
-    /// <see cref="SpellSummons"/>): the summon abilities' own positive
-    /// values win, and only when none name a target does the spell's
-    /// <c>MinBase</c> stand in (e.g. "raptor summon" → 509 = tetraraptor).
-    /// </summary>
+    // Monster number(s) spell summons, or empty when it isn't a summon spell. Encoding is
+    // inconsistent (see SpellSummons): the summon abilities' own positive values win, and only
+    // when none name a target does the spell's MinBase stand in (e.g. "raptor summon" → 509 =
+    // tetraraptor).
     internal static IReadOnlyList<int> SummonTargets(JsonElement spell)
     {
         List<int> targets = new();
@@ -811,12 +748,9 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
         return targets;
     }
 
-    /// <summary>
-    /// Append a "<paramref name="label"/> (N)" row listing every room as a
-    /// map/room pair. Not truncated — the Other Info pane scrolls and a
-    /// truncated list has no expand affordance, so show them all. No-op
-    /// when <paramref name="rooms"/> is empty.
-    /// </summary>
+    // Append a "label (N)" row listing every room as a map/room pair. Not truncated — the
+    // Other Info pane scrolls and a truncated list has no expand affordance, so show them all.
+    // No-op when rooms is empty.
     private static void AddRoomList(List<KeyValuePair<string, string>> kv, string label, IReadOnlyList<RoomKey> rooms)
     {
         if (rooms.Count == 0) return;
@@ -824,13 +758,9 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
         AddRow(kv, $"{label} ({rooms.Count})", list);
     }
 
-    /// <summary>
-    /// True when a <see cref="Room.RawLairTag"/> lists
-    /// <paramref name="wccNo"/> as one of its spawn monsters. v1.11p tags
-    /// are <c>"(Max N): id,id,…,[group-index]"</c> — the monster ids
-    /// precede the bracketed group key; the <c>[..]</c> suffix is parsed
-    /// off so its digits aren't mistaken for monster ids.
-    /// </summary>
+    // True when a Room.RawLairTag lists wccNo as one of its spawn monsters. v1.11p tags are
+    // "(Max N): id,id,…,[group-index]" — the monster ids precede the bracketed group key; the
+    // [..] suffix is parsed off so its digits aren't mistaken for monster ids.
     internal static bool LairNamesMonster(string? rawLairTag, int wccNo)
     {
         if (string.IsNullOrEmpty(rawLairTag)) return false;
@@ -860,12 +790,12 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
         return v.ValueKind == JsonValueKind.Number && v.TryGetDouble(out double d) ? d : 0d;
     }
 
-    /// <summary>"+5" / "-50" / "0" — used by signed-value ability rows.</summary>
+    // "+5" / "-50" / "0" — used by signed-value ability rows.
     private static string FormatSigned(int n) => n > 0
         ? "+" + n.ToString(System.Globalization.CultureInfo.InvariantCulture)
         : n.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
-    /// <summary>"Energy: 250 (Max 4x/round)" — divides monster total by per-attack cost.</summary>
+    // "Energy: 250 (Max 4x/round)" — divides monster total by per-attack cost.
     private static string FormatEnergyRow(int attEnergy, int monsterEnergy)
     {
         if (attEnergy <= 0) return $"Energy: {attEnergy}";
@@ -899,7 +829,7 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
         if (value != 0) AddRow(kv, label, value.ToString(System.Globalization.CultureInfo.InvariantCulture));
     }
 
-    /// <summary>"2R/3P/5G/10S/2C" — only non-zero coins, slash-separated.</summary>
+    // "2R/3P/5G/10S/2C" — only non-zero coins, slash-separated.
     private static string BuildCashBreakdown(JsonElement el)
     {
         List<string> parts = new();
@@ -934,20 +864,14 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
         return string.IsNullOrEmpty(name) ? null : name;
     }
 
-    /// <summary>
-    /// "{spell name} (effect)" — spell name with a brief effect descriptor
-    /// when the spell's primary <c>Abil-N</c> entries surface a recognisable
-    /// effect (damage range, heal range, poison, fear, etc.). Falls back to
-    /// just the spell name when none of the primary effect codes are
-    /// present. Used by Hit Spell / Death Spell / Create Spell /
-    /// Between Rounds rows.
-    /// </summary>
-    /// <param name="castLevel">
-    /// Cast level for damage-range scaling. Pass 0 to use the spell's
-    /// raw <c>MinBase</c>/<c>MaxBase</c> (correct for monster hit / death /
-    /// create spells per MME — <c>PullSpellEQ(False, ...)</c>). For
-    /// Between Rounds spells pass <c>MidSpellLVL-N</c>.
-    /// </param>
+    // "{spell name} (effect)" — spell name with a brief effect descriptor when the spell's
+    // primary Abil-N entries surface a recognisable effect (damage range, heal range, poison,
+    // fear, etc.). Falls back to just the spell name when none of the primary effect codes are
+    // present. Used by Hit Spell / Death Spell / Create Spell / Between Rounds rows.
+    //
+    // castLevel is the cast level for damage-range scaling. Pass 0 to use the spell's raw
+    // MinBase/MaxBase (correct for monster hit / death / create spells). For Between Rounds
+    // spells pass MidSpellLVL-N.
     private string ResolveSpellWithEffect(int spellId, int castLevel = 0)
     {
         string name = LookupSpellName(spellId) ?? $"Spell #{spellId}";
@@ -955,7 +879,7 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
         return string.IsNullOrEmpty(effect) ? name : $"{name} ({effect})";
     }
 
-    /// <summary>Brief comma-joined effect descriptor from a spell's primary Abil-N codes.</summary>
+    // Brief comma-joined effect descriptor from a spell's primary Abil-N codes.
     private string ResolveSpellEffect(int spellId, int castLevel)
     {
         if (spellId <= 0) return string.Empty;
@@ -972,7 +896,7 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
         if (found is null) return string.Empty;
         JsonElement s = found.Value;
 
-        // Min/Max with optional level scaling (per MME GetCurrentSpellMinMax).
+        // Min/Max with optional level scaling.
         int minBase    = ReadInt(s, "MinBase");
         int maxBase    = ReadInt(s, "MaxBase");
         int minInc     = ReadInt(s, "MinInc");
@@ -994,7 +918,7 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
             }
         }
 
-        // Pick out the primary effect codes. Full PullSpellEQ recursion
+        // Pick out the primary effect codes. Full ability-chain recursion
         // (nested EndCast / Summon / Teleport / TextBlock descriptors) is
         // out of scope here — the Spells tab is the place to dig into the
         // full ability chain; the Monster dialog only surfaces the
@@ -1023,7 +947,7 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
         return string.Join(", ", effects);
     }
 
-    /// <summary>"dmg 10-30" / "dmg 10" / "" when both ends are zero.</summary>
+    // "dmg 10-30" / "dmg 10" / "" when both ends are zero.
     private static string FormatRange(string label, int min, int max)
     {
         if (min == 0 && max == 0) return string.Empty;

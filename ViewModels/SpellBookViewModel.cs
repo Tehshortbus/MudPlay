@@ -5,20 +5,16 @@ using FujinTerm.Game.Spells;
 
 namespace FujinTerm.ViewModels;
 
-/// <summary>
-/// Modeless Spell Book window VM. Renders the active class's full learnable
-/// list (<see cref="SpellbookState.Available"/>) with an obtained checkmark
-/// and level-scaled effect / mana figures, rebuilding whenever the book's
-/// class, level, or obtained set changes.
-/// </summary>
-/// <remarks>
-/// The book itself is the single source of truth (fed by the live
-/// <c>spells</c> / <c>pow</c> list and the learn-scroll signal); this VM is a
-/// pure projection. The class name shown in the header comes from an optional
-/// provider (the loaded profile's last <c>stat</c> snapshot in production,
-/// <c>null</c> in tests) — <see cref="SpellbookState"/> only knows the numeric
-/// class.
-/// </remarks>
+// Modeless Spell Book window VM. Renders the active class's full learnable
+// list (SpellbookState.Available) with an obtained checkmark and
+// level-scaled effect / mana figures, rebuilding whenever the book's class,
+// level, or obtained set changes.
+//
+// The book itself is the single source of truth (fed by the live spells /
+// pow list and the learn-scroll signal); this VM is a pure projection. The
+// class name shown in the header comes from an optional provider (the loaded
+// profile's last stat snapshot in production, null in tests) —
+// SpellbookState only knows the numeric class.
 public sealed partial class SpellBookViewModel : ObservableObject, IDisposable
 {
     private readonly SpellbookState _book;
@@ -36,37 +32,34 @@ public sealed partial class SpellBookViewModel : ObservableObject, IDisposable
         Rebuild();
     }
 
-    /// <summary>The rendered, filtered spell rows.</summary>
+    // The rendered, filtered spell rows.
     public ObservableCollection<SpellBookRowViewModel> Rows { get; } = new();
 
-    /// <summary>
-    /// The class's cast-on-use items (wands / scrolls / potions), filtered by
-    /// the search box. Rendered in a section below the spell grid. Empty for a
-    /// class with no usable cast items.
-    /// </summary>
+    // The class's cast-on-use items (wands / scrolls / potions), filtered by
+    // the search box. Rendered in a section below the spell grid. Empty for a
+    // class with no usable cast items.
     public ObservableCollection<SpellBookItemRowViewModel> CastItems { get; } = new();
 
-    /// <summary>True when the cast-item section has anything to show (drives its visibility).</summary>
+    // True when the cast-item section has anything to show (drives its visibility).
     public bool HasCastItems => CastItems.Count > 0;
 
-    /// <summary>Header for the cast-item section, with the shown count.</summary>
+    // Header for the cast-item section, with the shown count.
     public string CastItemsHeader => $"Cast-on-use items ({CastItems.Count})";
 
-    /// <summary>Free-text filter over Short code + Name (case-insensitive).</summary>
+    // Free-text filter over Short code + Name (case-insensitive).
     [ObservableProperty] private string _searchText = string.Empty;
 
-    /// <summary>When true, hide spells the character hasn't obtained yet.</summary>
+    // When true, hide spells the character hasn't obtained yet.
     [ObservableProperty] private bool _showObtainedOnly;
 
-    /// <summary>
-    /// When false (default), the list is level-gated — only spells the character
-    /// is high enough to have (<c>ReqLevel &lt;= Level</c>). When true, the full
-    /// class list shows regardless of level, so the Lvl column doubles as an
-    /// unlock-projection. The gate is skipped while the level is unknown (0).
-    /// </summary>
+    // When false (default), the list is level-gated — only spells the
+    // character is high enough to have (ReqLevel <= Level). When true, the
+    // full class list shows regardless of level, so the Lvl column doubles as
+    // an unlock-projection. The gate is skipped while the level is unknown
+    // (0).
     [ObservableProperty] private bool _showAllSpells;
 
-    /// <summary>Window title-strip header: class + level.</summary>
+    // Window title-strip header: class + level.
     public string HeaderText
     {
         get
@@ -79,7 +72,7 @@ public sealed partial class SpellBookViewModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>Footer summary: obtained-of-total + filtered count.</summary>
+    // Footer summary: obtained-of-total + filtered count.
     public string StatusText
     {
         get

@@ -10,34 +10,26 @@ using FujinTerm.Models.GameData;
 
 namespace FujinTerm.ViewModels.GameData.Edit;
 
-/// <summary>
-/// Per-record edit dialog for Game Data Browser → Triggers. Editable
-/// fields cover the full <see cref="Trigger"/> record: Name / Enabled /
-/// Scope / MatchType / Pattern / Response, plus an optional Sound
-/// sidecar.
-/// </summary>
-/// <remarks>
-/// Validation is live: name + pattern must be non-empty, and regex
-/// patterns must compile. The capture-hints panel parses the current
-/// pattern for <c>{name}</c> placeholders (Literal mode) or
-/// <c>(?&lt;name&gt;…)</c> named groups (Regex mode) and lists them so
-/// the user knows what's interpolable inside Response / Notify. Save
-/// returns the updated <see cref="Trigger"/>; Cancel returns
-/// <c>null</c>. Wiring to <see cref="Services.TriggerEngine"/> Add /
-/// Replace happens in the caller — this dialog only shapes the record.
-/// </remarks>
+// Per-record edit dialog for Game Data Browser → Triggers. Editable fields cover the full Trigger
+// record: Name / Enabled / Scope / MatchType / Pattern / Response, plus an optional Sound sidecar.
+//
+// Validation is live: name + pattern must be non-empty, and regex patterns must compile. The
+// capture-hints panel parses the current pattern for {name} placeholders (Literal mode) or
+// (?<name>…) named groups (Regex mode) and lists them so the user knows what's interpolable inside
+// Response / Notify. Save returns the updated Trigger; Cancel returns null. Wiring to
+// TriggerEngine Add / Replace happens in the caller — this dialog only shapes the record.
 public sealed partial class TriggerEditDialogViewModel : ObservableObject, Services.IDialogViewModel<Trigger>
 {
-    /// <summary>Regex matching <c>{name}</c> placeholders in a Literal pattern. Same syntax used for substitution.</summary>
+    // Regex matching {name} placeholders in a Literal pattern. Same syntax used for substitution.
     private static readonly Regex _literalPlaceholder = new(@"\{(?<name>[A-Za-z_][A-Za-z0-9_]*)\}", RegexOptions.Compiled);
 
-    /// <summary>Regex matching <c>(?&lt;name&gt;…)</c> named groups inside a Regex pattern.</summary>
+    // Regex matching (?<name>…) named groups inside a Regex pattern.
     private static readonly Regex _regexNamedGroup = new(@"\(\?<(?<name>[A-Za-z_][A-Za-z0-9_]*)>", RegexOptions.Compiled);
 
     public event Action<Trigger?>? CloseRequested;
 
     private readonly Trigger _original;
-    /// <summary>True for "Add new trigger" flows; false when editing an existing record. Drives the title.</summary>
+    // True for "Add new trigger" flows; false when editing an existing record. Drives the title.
     private readonly bool _isNew;
 
     [ObservableProperty]
@@ -58,10 +50,8 @@ public sealed partial class TriggerEditDialogViewModel : ObservableObject, Servi
 
     [ObservableProperty] private TriggerScope _scope = TriggerScope.GameMessages;
 
-    /// <summary>
-    /// Where the trigger persists on disk. Picked by the user in the
-    /// dialog; the engine routes the record to the right file on Save.
-    /// </summary>
+    // Where the trigger persists on disk. Picked by the user in the dialog; the engine routes the
+    // record to the right file on Save.
     [ObservableProperty] private TriggerLocation _location = TriggerLocation.GameData;
 
     [ObservableProperty]
@@ -74,7 +64,7 @@ public sealed partial class TriggerEditDialogViewModel : ObservableObject, Servi
     [ObservableProperty] private string _response = string.Empty;
     [ObservableProperty] private string _soundFile = string.Empty;
 
-    /// <summary>Available enum values for the Scope dropdown.</summary>
+    // Available enum values for the Scope dropdown.
     public IReadOnlyList<ScopeOption> ScopeOptions { get; } = new[]
     {
         new ScopeOption(TriggerScope.GameMessages,  "Game messages"),
@@ -88,14 +78,14 @@ public sealed partial class TriggerEditDialogViewModel : ObservableObject, Servi
         new ScopeOption(TriggerScope.SystemLog,     "System log"),
     };
 
-    /// <summary>Available enum values for the Match Type dropdown.</summary>
+    // Available enum values for the Match Type dropdown.
     public IReadOnlyList<MatchOption> MatchOptions { get; } = new[]
     {
         new MatchOption(TriggerMatchType.Literal, "Literal"),
         new MatchOption(TriggerMatchType.Regex,   "Regex"),
     };
 
-    /// <summary>Available enum values for the Location dropdown.</summary>
+    // Available enum values for the Location dropdown.
     public IReadOnlyList<LocationOption> LocationOptions { get; } = new[]
     {
         new LocationOption(TriggerLocation.GameData, "Game data — saves with the active set"),
@@ -104,7 +94,7 @@ public sealed partial class TriggerEditDialogViewModel : ObservableObject, Servi
 
     public string Title => _isNew ? "Trigger — (new)" : $"Trigger — {_original.Name}";
 
-    /// <summary>Context-sensitive hint under the Pattern field — changes with MatchType.</summary>
+    // Context-sensitive hint under the Pattern field — changes with MatchType.
     public string MatchHint => MatchType switch
     {
         TriggerMatchType.Literal =>
@@ -116,7 +106,7 @@ public sealed partial class TriggerEditDialogViewModel : ObservableObject, Servi
         _ => string.Empty,
     };
 
-    /// <summary>Comma-list of capture names parsed from the current pattern. Empty when none.</summary>
+    // Comma-list of capture names parsed from the current pattern. Empty when none.
     public string CaptureHints
     {
         get
@@ -165,7 +155,7 @@ public sealed partial class TriggerEditDialogViewModel : ObservableObject, Servi
         Location  = original.Location;
     }
 
-    /// <summary>Returns the first validation problem, or <c>null</c> when the record is savable.</summary>
+    // Returns the first validation problem, or null when the record is savable.
     private string? GetValidationError()
     {
         if (string.IsNullOrWhiteSpace(Name))    return "Name is required.";
@@ -219,12 +209,12 @@ public sealed partial class TriggerEditDialogViewModel : ObservableObject, Servi
     [RelayCommand]
     private void Cancel() => CloseRequested?.Invoke(null);
 
-    /// <summary>One scope dropdown row — pairs the enum value with its friendly label.</summary>
+    // One scope dropdown row — pairs the enum value with its friendly label.
     public sealed record ScopeOption(TriggerScope Value, string Label);
 
-    /// <summary>One location dropdown row — pairs the enum value with its friendly label.</summary>
+    // One location dropdown row — pairs the enum value with its friendly label.
     public sealed record LocationOption(TriggerLocation Value, string Label);
 
-    /// <summary>One match-type dropdown row — pairs the enum value with its friendly label.</summary>
+    // One match-type dropdown row — pairs the enum value with its friendly label.
     public sealed record MatchOption(TriggerMatchType Value, string Label);
 }

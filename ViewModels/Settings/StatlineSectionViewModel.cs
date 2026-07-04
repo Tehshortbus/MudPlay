@@ -10,16 +10,13 @@ using FujinTerm.Views.Settings;
 
 namespace FujinTerm.ViewModels.Settings;
 
-/// <summary>
-/// "Statline" tab — modelled on MegaMUD's Statline dialog: a read-only
-/// <b>Current Statline</b> preview, the editable <b>Statline Command</b>
-/// (default <c>full</c>), and a <b>Customize</b> dropdown that appends
-/// wildcard tokens to the command box. The saved command is the single
-/// source of truth — it's both what we send to the BBS
-/// (<c>set statline …</c>) and what the prompt parser is generated from,
-/// so the editor and the on-wire prompt can't drift. The grammar that
-/// interprets the command string lives in <see cref="StatlineSyntax"/>.
-/// </summary>
+// "Statline" tab — modelled on MegaMUD's Statline dialog: a read-only Current
+// Statline preview, the editable Statline Command (default full), and a
+// Customize dropdown that appends wildcard tokens to the command box. The saved
+// command is the single source of truth — it's both what we send to the BBS
+// (set statline …) and what the prompt parser is generated from, so the editor
+// and the on-wire prompt can't drift. The grammar that interprets the command
+// string lives in StatlineSyntax.
 public sealed partial class StatlineSectionViewModel : SettingsSectionViewModel
 {
     private const string TabKey = "Statline";
@@ -43,32 +40,27 @@ public sealed partial class StatlineSectionViewModel : SettingsSectionViewModel
 
     public override Control View => _view ??= new StatlineSectionView { DataContext = this };
 
-    /// <summary>True when any character profile is loaded.</summary>
+    // True when any character profile is loaded.
     public bool HasProfile => _profile.Current is not null;
 
-    /// <summary>
-    /// What goes on the wire after <c>set statline</c>. Default is
-    /// <c>full</c>; user can type a raw wildcard string or
-    /// <c>full custom &lt;wildcards&gt;</c>.
-    /// </summary>
+    // What goes on the wire after "set statline". Default is full; user can type
+    // a raw wildcard string or "full custom <wildcards>".
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CurrentStatlinePreview))]
     private string _command = StatlineSyntax.Default;
 
-    /// <summary>
-    /// Read-only preview that mirrors how the BBS will render the prompt
-    /// once <see cref="Command"/> is in effect. Synthesised from live
-    /// <see cref="PlayerState"/> values where available, falling back to
-    /// sample numbers so the editor stays useful pre-connect.
-    /// </summary>
+    // Read-only preview that mirrors how the BBS will render the prompt once
+    // Command is in effect. Synthesised from live PlayerState values where
+    // available, falling back to sample numbers so the editor stays useful
+    // pre-connect.
     public string CurrentStatlinePreview => RenderPreview(Command);
 
-    /// <summary>Picker selection driving the <c>Add</c> button.</summary>
+    // Picker selection driving the Add button.
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(AddWildcardCommand))]
     private WildcardItem? _selectedWildcard;
 
-    /// <summary>Catalogue of wildcards offered by the Customize dropdown.</summary>
+    // Catalogue of wildcards offered by the Customize dropdown.
     public IReadOnlyList<WildcardItem> AvailableWildcards { get; } = BuildCatalogue();
 
     public StatlineSectionViewModel(
@@ -132,7 +124,7 @@ public sealed partial class StatlineSectionViewModel : SettingsSectionViewModel
         ClearDirty();
     }
 
-    /// <summary>Append the selected wildcard token to the command box.</summary>
+    // Append the selected wildcard token to the command box.
     [RelayCommand(CanExecute = nameof(CanAddWildcard))]
     private void AddWildcard()
     {
@@ -153,7 +145,7 @@ public sealed partial class StatlineSectionViewModel : SettingsSectionViewModel
 
     private bool CanAddWildcard() => SelectedWildcard is not null;
 
-    /// <summary>Reset the command box to the class default (<c>full</c>).</summary>
+    // Reset the command box to the class default (full).
     [RelayCommand]
     private void ResetToDefault() => Command = StatlineSyntax.Default;
 
@@ -266,7 +258,7 @@ public sealed partial class StatlineSectionViewModel : SettingsSectionViewModel
 
     // ----- Customize catalogue ------------------------------------------
 
-    /// <summary>One entry in the Customize dropdown — label + wildcard code.</summary>
+    // One entry in the Customize dropdown — label + wildcard code.
     public sealed record WildcardItem(string Label, string Code)
     {
         // Pad to the widest label (18 chars: "Current Mana / Kai") + 4 for

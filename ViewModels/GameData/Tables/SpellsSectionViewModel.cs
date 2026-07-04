@@ -13,30 +13,18 @@ using FujinTerm.ViewModels.GameData.Edit;
 
 namespace FujinTerm.ViewModels.GameData.Tables;
 
-/// <summary>
-/// Game Data Browser → Spells tab. Renders the imported MajorMUD
-/// <c>Spells</c> table — fuel for the Phase 13 CastingDirector + the
-/// Settings → Spells / Party spell pickers + the Phase 9 Workshop
-/// Spell Book.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Column names mirror the MajorMUD MDB schema verbatim. <c>Short</c>
-/// is the cast-name shortcode (e.g. <c>"star"</c>), <c>ReqLevel</c> is
-/// the cast prerequisite, <c>Diff</c> is the cast-difficulty score.
-/// <c>Magery</c>, <c>AttType</c>, and <c>Targets</c> render via
-/// <see cref="LookupEnums"/> ("Mage" / "Cold" / "Full Area" / etc.).
-/// </para>
-/// <para>
-/// Double-click a row → opens every <see cref="MessageRecord"/> that
-/// links <c>Spells#N</c> for that row's spell number in its own
-/// modeless <see cref="MessageEditDialogViewModel"/>. Multi-message
-/// spells (e.g. apostrophe / wording variants of one effect line)
-/// stack as cascaded windows the user drags apart if needed. Zero
-/// matches surfaces a one-shot info dialog naming the spell so the
-/// user sees the gap rather than a silent no-op.
-/// </para>
-/// </remarks>
+// Game Data Browser → Spells tab. Renders the imported MajorMUD Spells table — fuel for the
+// CastingDirector + the Settings → Spells / Party spell pickers + the Workshop Spell Book.
+//
+// Column names mirror the MajorMUD MDB schema verbatim. Short is the cast-name shortcode (e.g.
+// "star"), ReqLevel is the cast prerequisite, Diff is the cast-difficulty score. Magery, AttType,
+// and Targets render via LookupEnums ("Mage" / "Cold" / "Full Area" / etc.).
+//
+// Double-click a row → opens every MessageRecord that links Spells#N for that row's spell number
+// in its own modeless MessageEditDialogViewModel. Multi-message spells (e.g. apostrophe / wording
+// variants of one effect line) stack as cascaded windows the user drags apart if needed. Zero
+// matches surfaces a one-shot info dialog naming the spell so the user sees the gap rather than a
+// silent no-op.
 public sealed class SpellsSectionViewModel : JsonTableSectionViewModel, IEditableTableSectionViewModel
 {
     private readonly GameDataCache _cache;
@@ -81,7 +69,7 @@ public sealed class SpellsSectionViewModel : JsonTableSectionViewModel, IEditabl
             ["Targets"] = LookupEnums.FormatSpellTargets,
         };
 
-    /// <summary>Double-click handler — opens every Message linked to this spell.</summary>
+    // Double-click handler — opens every Message linked to this spell.
     public IAsyncRelayCommand<GameDataRow?> OpenLinkedMessagesCommand { get; }
 
     ICommand IEditableTableSectionViewModel.OpenEditCommand => OpenLinkedMessagesCommand;
@@ -164,10 +152,8 @@ public sealed class SpellsSectionViewModel : JsonTableSectionViewModel, IEditabl
         ApplyResult(result);
     }
 
-    /// <summary>
-    /// Mirror of <c>MessagesSectionViewModel.ApplyResult</c> — Id-keyed
-    /// update-or-append into the store + persist.
-    /// </summary>
+    // Mirror of MessagesSectionViewModel.ApplyResult — Id-keyed update-or-append into the store +
+    // persist.
     private void ApplyResult(MessageEditResult result)
     {
         if (_messages is null) return;
@@ -192,23 +178,19 @@ public sealed class SpellsSectionViewModel : JsonTableSectionViewModel, IEditabl
         "Dur", "DurInc", "DurIncLVLs", "Cap",
     };
 
-    /// <summary>
-    /// The spell's full imported data for the dialog's Game Data tab. Enum
-    /// columns (attack-type / targets) format via the shared lookups; Magery and
-    /// MageryLVL collapse to one "Mage-1" row; the raw per-level scaling columns
-    /// collapse to a curated growth block (magnitude range, level cap, per-level
-    /// formula, at-cap duration) mirroring MMUD Explorer's spell browser; each
-    /// non-zero ability slot resolves to its name with any numeric reference
-    /// (CastsSp / Summon / EquipItem / …) translated to the real Spell / Monster
-    /// / Item name; and the "Learned From" / "Casted By" source lists resolve
-    /// their "Item #N" / "Monster #N" tokens to real names. Empty when the active
-    /// set has no Spells table or no matching row.
-    /// </summary>
-    /// <summary>Test seam — exercises <see cref="BuildSpellInfoRows"/> (the
-    /// dialog's Game Data tab content) without standing up a dialog.</summary>
+    // Test seam — exercises BuildSpellInfoRows (the dialog's Game Data tab content) without
+    // standing up a dialog.
     internal IReadOnlyList<GameDataInfoRow> BuildSpellInfoRowsForTests(int spellNumber)
         => BuildSpellInfoRows(spellNumber);
 
+    // The spell's full imported data for the dialog's Game Data tab. Enum columns (attack-type /
+    // targets) format via the shared lookups; Magery and MageryLVL collapse to one "Mage-1" row;
+    // the raw per-level scaling columns collapse to a curated growth block (magnitude range, level
+    // cap, per-level formula, at-cap duration); each non-zero ability slot resolves to its name
+    // with any numeric reference (CastsSp / Summon / EquipItem / …) translated to the real Spell /
+    // Monster / Item name; and the "Learned From" / "Casted By" source lists resolve their
+    // "Item #N" / "Monster #N" tokens to real names. Empty when the active set has no Spells table
+    // or no matching row.
     private IReadOnlyList<GameDataInfoRow> BuildSpellInfoRows(int spellNumber)
     {
         var rows = new List<GameDataInfoRow>();
@@ -368,10 +350,9 @@ public sealed class SpellsSectionViewModel : JsonTableSectionViewModel, IEditabl
         return lvl > 0 ? $"{school}-{lvl.ToString(CultureInfo.InvariantCulture)}" : school;
     }
 
-    // The curated growth block — magnitude range ("Damage(-MR): 18 to 68"),
-    // level cap, per-level growth formula ("Max: 24+(2*lvl)"), and at-cap
-    // duration. Mirrors MMUD Explorer's spell-browser "LVL Cap" / "LVL
-    // Increases" block, minus the deliberately-omitted "OOM in N rounds" line.
+    // The curated growth block — magnitude range ("Damage(-MR): 18 to 68"), level cap, per-level
+    // growth formula ("Max: 24+(2*lvl)"), and at-cap duration. "LVL Cap" / "LVL Increases", minus
+    // the deliberately-omitted "OOM in N rounds" line.
     private static void EmitGrowthBlock(List<GameDataInfoRow> rows, SpellFormulaInput? formula)
     {
         if (formula is not { } f) return;
@@ -520,7 +501,7 @@ public sealed class SpellsSectionViewModel : JsonTableSectionViewModel, IEditabl
         return _cache.FindNameByNumber(table, number) ?? token;
     }
 
-    /// <summary>Effects collected from walking a spell's TBInfo textblock chain.</summary>
+    // Effects collected from walking a spell's TBInfo textblock chain.
     private sealed class TextblockEffects
     {
         public readonly List<int> Summons = new();   // summon N (monster numbers)
@@ -528,23 +509,19 @@ public sealed class SpellsSectionViewModel : JsonTableSectionViewModel, IEditabl
         public readonly List<int> Avoided = new();   // failitem N (carrying avoids the effect)
         public readonly List<int> Required = new();  // checkitem N (required for the effect)
 
-        /// <summary>True once the chain actually does something harmful/active —
-        /// the item gates are only meaningful when they guard a cast or summon
-        /// (so a quest give-item textblock isn't mistaken for a damage gate).</summary>
+        // True once the chain actually does something harmful/active — the item gates are only
+        // meaningful when they guard a cast or summon (so a quest give-item textblock isn't
+        // mistaken for a damage gate).
         public bool HasEffect => Summons.Count > 0 || Casts.Count > 0;
 
         public static void AddUnique(List<int> list, int v) { if (!list.Contains(v)) list.Add(v); }
     }
 
-    /// <summary>
-    /// Walk a spell's TBInfo textblock action chain (bounded depth, cycle-
-    /// guarded) and collect what it does: monsters it <c>summon</c>s, spells it
-    /// <c>cast</c>s, and the <c>failitem</c> / <c>checkitem</c> item gates around
-    /// them. Chains follow <c>random N</c> branches and the <c>LinkTo</c>
-    /// pointer, so effects nested behind a roll (e.g. a forest room-spell whose
-    /// spawn sits two random-jumps deep) still surface. TBInfo is read via the
-    /// cache (small table) and indexed once.
-    /// </summary>
+    // Walk a spell's TBInfo textblock action chain (bounded depth, cycle-guarded) and collect what
+    // it does: monsters it summons, spells it casts, and the failitem / checkitem item gates
+    // around them. Chains follow random N branches and the LinkTo pointer, so effects nested
+    // behind a roll (e.g. a forest room-spell whose spawn sits two random-jumps deep) still
+    // surface. TBInfo is read via the cache (small table) and indexed once.
     private TextblockEffects WalkTextblockChain(int rootTextblock)
     {
         var fx = new TextblockEffects();
@@ -600,8 +577,7 @@ public sealed class SpellsSectionViewModel : JsonTableSectionViewModel, IEditabl
         return fx;
     }
 
-    // Resolve ids in <paramref name="table"/> to their Name (falling back to
-    // "<Table> #N"), comma-joined.
+    // Resolve ids in table to their Name (falling back to "<Table> #N"), comma-joined.
     private string JoinNames(string table, IReadOnlyList<int> ids)
     {
         var names = new List<string>(ids.Count);

@@ -9,24 +9,18 @@ using FujinTerm.Services;
 
 namespace FujinTerm.ViewModels;
 
-/// <summary>
-/// Modeless floating Party window VM. Binds directly to
-/// <see cref="PartyState"/>'s observable collection so member additions /
-/// removals / per-member HP/MA updates flow through to the UI without
-/// the VM having to maintain its own mirror.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Per-row surface: leader-star (IsLeader), rank-chip (IsSelf only — see
-/// <see cref="LocalRank"/>), name + class, HP bar + numeric, MA bar +
-/// numeric, status-flag chips, per-row Uninvite button.
-/// </para>
-/// <para>
-/// Uninvite: emits <c>uninvite &lt;name&gt;</c> on the wire when the
-/// local character is the party leader. Non-leader rows render the
-/// button disabled (in-game command would no-op anyway).
-/// </para>
-/// </remarks>
+// Modeless floating Party window VM. Binds directly to PartyState's
+// observable collection so member additions / removals / per-member HP/MA
+// updates flow through to the UI without the VM having to maintain its own
+// mirror.
+//
+// Per-row surface: leader-star (IsLeader), rank-chip (IsSelf only — see
+// LocalRank), name + class, HP bar + numeric, MA bar + numeric, status-flag
+// chips, per-row Uninvite button.
+//
+// Uninvite: emits uninvite <name> on the wire when the local character is
+// the party leader. Non-leader rows render the button disabled (in-game
+// command would no-op anyway).
 public sealed partial class PartyViewModel : ObservableObject, IDisposable
 {
     private readonly Action<byte[]>? _wireSender;
@@ -35,17 +29,14 @@ public sealed partial class PartyViewModel : ObservableObject, IDisposable
 
     public PartyState State { get; }
 
-    /// <summary>
-    /// Header text shown at the top of the PartyWindow. Mirrors the
-    /// skeleton design: when a leader is known, shows their given
-    /// name + current HP percent ("Fujin (94%)"); when there's no
-    /// leader yet (mid-formation, solo, or par hasn't disclosed who
-    /// leads), falls back to the legacy "Party (N)" count.
-    /// Recomputes on:
-    /// - Members.CollectionChanged (membership churn).
-    /// - State.PropertyChanged (LeaderName flip).
-    /// - Any member's HpPercent or IsLeader change (per-member sub).
-    /// </summary>
+    // Header text shown at the top of the PartyWindow. When a leader is
+    // known, shows their given name + current HP percent ("Fujin (94%)");
+    // when there's no leader yet (mid-formation, solo, or par hasn't
+    // disclosed who leads), falls back to the "Party (N)" count. Recomputes
+    // on:
+    // - Members.CollectionChanged (membership churn).
+    // - State.PropertyChanged (LeaderName flip).
+    // - Any member's HpPercent or IsLeader change (per-member sub).
     public string HeaderText
     {
         get
@@ -54,23 +45,21 @@ public sealed partial class PartyViewModel : ObservableObject, IDisposable
             PartyMember? leader = State.Members.FirstOrDefault(m => m.IsLeader);
             if (leader is null || string.IsNullOrEmpty(leader.Name))
                 return $"Party ({State.Members.Count})";
-            // Leader name to given only — matches the skeleton's
-            // single-word display and is the form MajorMUD itself uses
-            // when addressing the player at most prompts.
+            // Leader name to given only — matches the single-word display
+            // and is the form MajorMUD itself uses when addressing the
+            // player at most prompts.
             int space = leader.Name.IndexOf(' ');
             string given = space >= 0 ? leader.Name[..space] : leader.Name;
             return $"{given} ({leader.HpPercent}%)";
         }
     }
 
-    /// <summary>
-    /// Local character's persisted rank (Front / Mid / Back). Read from
-    /// the loaded profile's "Party" settings on construction and on every
-    /// <see cref="ProfileService.ProfileMutated"/> tick so the Settings →
-    /// Party Apply path reflects immediately in the PartyWindow. Drives
-    /// the rank-chip rendered on the local (IsSelf) row only — other
-    /// party members' rank isn't disclosed by par output.
-    /// </summary>
+    // Local character's persisted rank (Front / Mid / Back). Read from the
+    // loaded profile's "Party" settings on construction and on every
+    // ProfileService.ProfileMutated tick so the Settings → Party Apply path
+    // reflects immediately in the PartyWindow. Drives the rank-chip rendered
+    // on the local (IsSelf) row only — other party members' rank isn't
+    // disclosed by par output.
     [ObservableProperty] private PartyRank _localRank = PartyRank.Mid;
 
     public PartyViewModel(PartyState state, Action<byte[]>? wireSender = null)
@@ -78,15 +67,10 @@ public sealed partial class PartyViewModel : ObservableObject, IDisposable
     {
     }
 
-    /// <summary>
-    /// Full-control constructor. Pass <paramref name="profile"/> as
-    /// <c>null</c> from tests to skip the
-    /// <see cref="ProfileService.ProfileLoaded"/>/<see cref="ProfileService.ProfileMutated"/>
-    /// subscriptions — <see cref="LocalRank"/> then stays at its
-    /// <see cref="PartyRank.Mid"/> default. Production code uses the
-    /// two-arg overload above; that path grabs the live
-    /// <see cref="AppServices.Profile"/>.
-    /// </summary>
+    // Full-control constructor. Pass profile as null from tests to skip the
+    // ProfileService.ProfileLoaded / ProfileMutated subscriptions — LocalRank
+    // then stays at its PartyRank.Mid default. Production code uses the
+    // two-arg overload above; that path grabs the live AppServices.Profile.
     public PartyViewModel(PartyState state, Action<byte[]>? wireSender, ProfileService? profile)
     {
         ArgumentNullException.ThrowIfNull(state);
@@ -96,8 +80,7 @@ public sealed partial class PartyViewModel : ObservableObject, IDisposable
 
         // Membership churn → refresh HeaderText AND adjust per-member
         // PropertyChanged subscriptions so leader-HP changes refresh
-        // the header live (the skeleton-design header reads
-        // "{LeaderGiven} ({LeaderHpPercent}%)").
+        // the header live (header reads "{LeaderGiven} ({LeaderHpPercent}%)").
         State.Members.CollectionChanged += (_, e) =>
         {
             if (e.OldItems is not null)
@@ -176,13 +159,10 @@ public sealed partial class PartyViewModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>
-    /// Per-row Uninvite. Sends <c>uninvite X</c> on the wire when the
-    /// local character is the party leader — covers BOTH the
-    /// withdraw-pending-invite path (PartyManager flips SelfIsLeader
-    /// true the moment "You have invited X to follow you." fires) and
-    /// the existing kick-a-real-follower path.
-    /// </summary>
+    // Per-row Uninvite. Sends uninvite X on the wire when the local character
+    // is the party leader — covers BOTH the withdraw-pending-invite path
+    // (PartyManager flips SelfIsLeader true the moment "You have invited X to
+    // follow you." fires) and the existing kick-a-real-follower path.
     [RelayCommand]
     private void Uninvite(PartyMember? member)
     {

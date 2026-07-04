@@ -18,27 +18,22 @@ using FujinTerm.Views.CharacterWorkshop;
 
 namespace FujinTerm.ViewModels.CharacterWorkshop;
 
-/// <summary>
-/// CHARACTER INFO section — the live stat sheet:
-/// <list type="bullet">
-/// <item>Box A — Base Stats from the last <c>stat</c> snapshot
-/// (<see cref="PlayerStats"/>). Mana relabels to Kai for Mystic classes.</item>
-/// <item>Box C — Derived combat accuracy (Attack / Bash / Smash / Backstab)
-/// from <see cref="CombatCalculator"/>. The aggregate it consumes additionally
-/// folds in innate race + class ability bonuses <em>and</em> the permanent rewards
-/// of completed quests (published by the Quest Status tab via
-/// <see cref="QuestBonusState"/>); Smash shows only for smash-capable classes,
-/// Backstab only when the character has stealth.</item>
-/// <item>Quest Bonuses — a flat readout of every completed quest's permanent stat
-/// reward, aggregated by ability. Empty when no completed quest grants a bonus.</item>
-/// <item>Inventory — the full carry list harvested from the last <c>i</c> dump:
-/// every worn item (with its slot) and every carried-but-unworn item.</item>
-/// </list>
-/// Every readout recomputes live — base stats when the <c>stat</c> snapshot
-/// changes, encumbrance / currency / inventory when the <c>i</c> dump changes,
-/// alignment on a <c>who</c> refresh, quest bonuses when the completed-quest set
-/// changes. There is no manual refresh; the panel always mirrors the live state.
-/// </summary>
+// CHARACTER INFO section — the live stat sheet:
+//   Box A — Base Stats from the last `stat` snapshot (PlayerStats). Mana relabels
+//     to Kai for Mystic classes.
+//   Box C — Derived combat accuracy (Attack / Bash / Smash / Backstab) from
+//     CombatCalculator. The aggregate it consumes additionally folds in innate
+//     race + class ability bonuses and the permanent rewards of completed quests
+//     (published by the Quest Status tab via QuestBonusState); Smash shows only
+//     for smash-capable classes, Backstab only when the character has stealth.
+//   Quest Bonuses — a flat readout of every completed quest's permanent stat
+//     reward, aggregated by ability. Empty when no completed quest grants a bonus.
+//   Inventory — the full carry list harvested from the last `i` dump: every worn
+//     item (with its slot) and every carried-but-unworn item.
+// Every readout recomputes live — base stats when the `stat` snapshot changes,
+// encumbrance / currency / inventory when the `i` dump changes, alignment on a
+// `who` refresh, quest bonuses when the completed-quest set changes. There is no
+// manual refresh; the panel always mirrors the live state.
 public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewModel
 {
     private readonly PlayerStats _stats;
@@ -62,7 +57,7 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
     [ObservableProperty] private int _lives;
     [ObservableProperty] private int _cp;
     [ObservableProperty] private string _hits = "—";
-    /// <summary>"Mana" for casters, "Kai" for Mystic (magery type 5) classes.</summary>
+    // "Mana" for casters, "Kai" for Mystic (magery type 5) classes.
     [ObservableProperty] private string _manaLabel = "Mana";
     [ObservableProperty] private string _manaValue = "—";
     [ObservableProperty] private string _armourClass = "—";
@@ -85,9 +80,9 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
     [ObservableProperty] private int _spellcasting;
 
     // ----- Quest Bonuses: completed-quest permanent rewards --------------
-    /// <summary>One row per ability granted by a completed quest, summed across quests.</summary>
+    // One row per ability granted by a completed quest, summed across quests.
     public ObservableCollection<EquipBonusRow> QuestBonusRows { get; } = new();
-    /// <summary>False when no completed quest grants a bonus — drives the empty-state hint.</summary>
+    // False when no completed quest grants a bonus — drives the empty-state hint.
     [ObservableProperty] private bool _hasQuestBonuses;
 
     // ----- Box C: derived combat -----------------------------------------
@@ -95,17 +90,17 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
     [ObservableProperty] private string _bashAccuracy = "—";
     [ObservableProperty] private string _smashAccuracy = "—";
     [ObservableProperty] private string _backstabAccuracy = "—";
-    /// <summary>Normal-attack damage range ("min-max") for the equipped weapon; em-dash when unarmed.</summary>
+    // Normal-attack damage range ("min-max") for the equipped weapon; em-dash when unarmed.
     [ObservableProperty] private string _attackDamage = "—";
-    /// <summary>Bash damage range ("min-max") for the equipped weapon; em-dash when unarmed.</summary>
+    // Bash damage range ("min-max") for the equipped weapon; em-dash when unarmed.
     [ObservableProperty] private string _bashDamage = "—";
-    /// <summary>Smash damage range ("min-max") for the equipped weapon; em-dash when unarmed or not smash-capable.</summary>
+    // Smash damage range ("min-max") for the equipped weapon; em-dash when unarmed or not smash-capable.
     [ObservableProperty] private string _smashDamage = "—";
-    /// <summary>Backstab damage range ("min-max") for the equipped weapon; empty when not stealth-capable.</summary>
+    // Backstab damage range ("min-max") for the equipped weapon; empty when not stealth-capable.
     [ObservableProperty] private string _backstabDamage = string.Empty;
-    /// <summary>Smash row visible only for smash-capable classes.</summary>
+    // Smash row visible only for smash-capable classes.
     [ObservableProperty] private bool _showSmash;
-    /// <summary>Backstab row visible only when the character has innate (race or class) stealth.</summary>
+    // Backstab row visible only when the character has innate (race or class) stealth.
     [ObservableProperty] private bool _showBackstab;
 
     // Martial-arts attacks (Mystic). Punch / Kick / Jumpkick accuracy + damage.
@@ -115,7 +110,7 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
     [ObservableProperty] private string _kickDamage = "—";
     [ObservableProperty] private string _jumpKickAccuracy = "—";
     [ObservableProperty] private string _jumpKickDamage = "—";
-    /// <summary>Punch/Kick/Jumpkick rows visible only for Stock characters with a positive Martial Arts skill.</summary>
+    // Punch/Kick/Jumpkick rows visible only for Stock characters with a positive Martial Arts skill.
     [ObservableProperty] private bool _showMartialArts;
 
     // ----- Box A: alignment standing -------------------------------------
@@ -126,34 +121,32 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
     // so no fixed word ladder is hardcoded). Item alignment restrictions are a
     // richer flag set (good-only / no-good / neutral-only / evil-only / no-evil
     // / Abil-98 EP-range) handled by the Equipment Manager filter, not here.
-    /// <summary>Alignment title from our own <c>who</c> observation, or "—" when unseen.</summary>
+    // Alignment title from our own `who` observation, or "—" when unseen.
     [ObservableProperty] private string _alignment = "—";
-    /// <summary>
-    /// True after "A dark cloud passes over you" (alignment dropped) until the
-    /// next <c>who</c> refresh — drives the "(stale)" hint next to Alignment.
-    /// </summary>
+    // True after "A dark cloud passes over you" (alignment dropped) until the next
+    // `who` refresh — drives the "(stale)" hint next to Alignment.
     [ObservableProperty] private bool _alignmentStale;
 
     // ----- Box A: carry weight + carried currency ------------------------
     // Both are inventory-sourced (InventoryManager's snapshot), refreshed live
     // on every `i` dump or incremental coin line — no manual re-pull needed.
-    /// <summary>Current / max carry weight from the last inventory reading ("cur / max").</summary>
+    // Current / max carry weight from the last inventory reading ("cur / max").
     [ObservableProperty] private string _encumbrance = "—";
-    /// <summary>Per-denomination coins currently carried (nonzero only), or "none".</summary>
+    // Per-denomination coins currently carried (nonzero only), or "none".
     [ObservableProperty] private string _currencyHeld = "—";
-    /// <summary>Consolidated wealth in copper farthings (matches the game's <c>Wealth:</c> line).</summary>
+    // Consolidated wealth in copper farthings (matches the game's `Wealth:` line).
     [ObservableProperty] private string _totalWealth = "—";
 
     // ----- Inventory: the full carry list from the last `i` dump ---------
-    /// <summary>Worn items ("name (Slot)") harvested from the last inventory dump.</summary>
+    // Worn items ("name (Slot)") harvested from the last inventory dump.
     public ObservableCollection<string> EquippedItems { get; } = new();
-    /// <summary>Carried-but-unworn item names harvested from the last inventory dump.</summary>
+    // Carried-but-unworn item names harvested from the last inventory dump.
     public ObservableCollection<string> CarriedItems { get; } = new();
-    /// <summary>True once at least one worn item is known — gates the equipped list.</summary>
+    // True once at least one worn item is known — gates the equipped list.
     [ObservableProperty] private bool _hasEquipped;
-    /// <summary>True once at least one carried item is known — gates the carried list.</summary>
+    // True once at least one carried item is known — gates the carried list.
     [ObservableProperty] private bool _hasCarried;
-    /// <summary>False until the first <c>i</c> dump is parsed — drives the "type i to load" hint.</summary>
+    // False until the first `i` dump is parsed — drives the "type i to load" hint.
     [ObservableProperty] private bool _inventoryLoaded;
 
     public CharacterInfoSectionViewModel(PlayerStats stats, GameDataCache gameData, InventoryManager inventory, PlayerDatabase playerDb, AlignmentTracker alignmentTracker, QuestBonusState questBonuses)
@@ -360,7 +353,7 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
         if (showMa && level > 0 && nCombatLevel > 0)
         {
             // MA accuracy is the normal-attack accuracy with weapon-hand accy
-            // excluded — MME doesn't fold the wielded weapon's accy into a
+            // excluded — the wielded weapon's accy doesn't fold into a
             // martial-arts strike — plus the per-attack item accy bonus.
             int maWornAccy = t.TotalWornAccy - t.WeaponHandAccy - t.OffHandAccy;
             if (maWornAccy < 0) maWornAccy = 0;
@@ -378,11 +371,11 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
             KickAccuracy = (maBaseAccy + t.PlusKickAccy - kickAccyPenalty).ToString(CultureInfo.InvariantCulture);
             JumpKickAccuracy = (maBaseAccy + t.PlusJumpKickAccy - jumpKickAccyPenalty).ToString(CultureInfo.InvariantCulture);
 
-            // The damage formula takes MME's nMAPlusSkill — the item-granted
-            // per-attack MA +skill bonus, floored to 1 by its Calc-Combat toggle —
-            // NOT the Martial Arts skill stat (that stat drives accuracy above, and
-            // gates these rows on/off, but never the damage magnitude). No stock
-            // ability grants a +MA-skill bonus, so 1 is the value MME uses.
+            // The damage formula takes the MA +skill bonus — the item-granted
+            // per-attack MA +skill bonus, floored to 1 — NOT the Martial Arts skill
+            // stat (that stat drives accuracy above, and gates these rows on/off, but
+            // never the damage magnitude). No stock ability grants a +MA-skill bonus,
+            // so 1 is the value used.
             const int maPlusSkill = 1;
             PunchDamage = MARange(MudAttackType.Punch, realm, level, maPlusSkill, str, t.PlusMaxDamage, t.PlusPunchDmg);
             KickDamage = MARange(MudAttackType.Kick, realm, level, maPlusSkill, str, t.PlusMaxDamage, t.PlusKickDmg);

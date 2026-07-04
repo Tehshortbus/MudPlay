@@ -6,18 +6,14 @@ using FujinTerm.Models.Profile;
 
 namespace FujinTerm.Services;
 
-/// <summary>
-/// In-memory store of the loaded character's
-/// <see cref="Models.GameData.Macro"/> entries. Owns the merge / save
-/// path against <see cref="CharacterProfile.Macros"/> + exposes lookup
-/// + conflict-check helpers used by the edit dialog and the future
-/// Phase 10 <c>MacroManager</c> dispatch engine.
-/// </summary>
+// In-memory store of the loaded character's Macro entries. Owns the merge /
+// save path against CharacterProfile.Macros + exposes lookup + conflict-check
+// helpers used by the edit dialog and the runtime dispatch engine.
 public sealed class MacroStore
 {
     private readonly ProfileService? _profile;
 
-    /// <summary>The loaded character's macros — empty when no profile is active.</summary>
+    // The loaded character's macros — empty when no profile is active.
     public ObservableCollection<Macro> Macros { get; } = new();
 
     public MacroStore(ProfileService profile)
@@ -30,10 +26,10 @@ public sealed class MacroStore
         if (profile.Current is { } current) LoadFrom(current);
     }
 
-    /// <summary>Parameterless ctor for tests / in-memory scenarios — no profile persistence.</summary>
+    // Parameterless ctor for tests / in-memory scenarios — no profile persistence.
     public MacroStore() { }
 
-    /// <summary>Insert a new macro and persist. No duplicate-key check here — call <see cref="FindMatch"/> first.</summary>
+    // Insert a new macro and persist. No duplicate-key check here — call FindMatch first.
     public void Add(Macro macro)
     {
         ArgumentNullException.ThrowIfNull(macro);
@@ -41,10 +37,8 @@ public sealed class MacroStore
         _profile?.Save();
     }
 
-    /// <summary>
-    /// Replace an existing macro identified by reference. Persists. No-op
-    /// if the original isn't in the list.
-    /// </summary>
+    // Replace an existing macro identified by reference. Persists. No-op if
+    // the original isn't in the list.
     public bool Replace(Macro original, Macro updated)
     {
         ArgumentNullException.ThrowIfNull(original);
@@ -56,7 +50,7 @@ public sealed class MacroStore
         return true;
     }
 
-    /// <summary>Remove a macro by reference. Persists. <c>false</c> if not found.</summary>
+    // Remove a macro by reference. Persists. false if not found.
     public bool Remove(Macro macro)
     {
         ArgumentNullException.ThrowIfNull(macro);
@@ -65,11 +59,9 @@ public sealed class MacroStore
         return removed;
     }
 
-    /// <summary>
-    /// Find an enabled macro whose chord matches the supplied key combo.
-    /// Used by the runtime dispatch path (Phase 10) when a keystroke
-    /// fires on TerminalControl / ConversationWindow's input.
-    /// </summary>
+    // Find an enabled macro whose chord matches the supplied key combo. Used
+    // by the runtime dispatch path when a keystroke fires on TerminalControl
+    // / ConversationWindow's input.
     public Macro? FindMatch(string key, bool ctrl, bool shift, bool alt)
     {
         foreach (Macro m in Macros)
@@ -77,12 +69,10 @@ public sealed class MacroStore
         return null;
     }
 
-    /// <summary>
-    /// True when another macro already binds the supplied chord.
-    /// Optionally excludes a single macro from the check (so editing
-    /// an existing macro without changing its chord doesn't flag
-    /// itself as a duplicate of itself).
-    /// </summary>
+    // True when another macro already binds the supplied chord. Optionally
+    // excludes a single macro from the check (so editing an existing macro
+    // without changing its chord doesn't flag itself as a duplicate of
+    // itself).
     public bool IsDuplicate(string key, bool ctrl, bool shift, bool alt, Macro? excluding = null)
     {
         foreach (Macro m in Macros)
@@ -96,14 +86,11 @@ public sealed class MacroStore
         return false;
     }
 
-    /// <summary>
-    /// Split a macro's <see cref="Macro.Command"/> into the individual
-    /// lines it should send to the server — on either <c>^M</c>
-    /// (literal caret-M) or <c>;</c>. Same multi-step convention every
-    /// other place in the app uses (login automator, triggers,
-    /// aliases). Empty / whitespace-only fragments are dropped so a
-    /// trailing separator doesn't fire an empty line.
-    /// </summary>
+    // Split a macro's Command into the individual lines it should send to the
+    // server — on either ^M (literal caret-M) or ;. Same multi-step
+    // convention every other place in the app uses (login automator,
+    // triggers, aliases). Empty / whitespace-only fragments are dropped so a
+    // trailing separator doesn't fire an empty line.
     public static IReadOnlyList<string> SplitCommandSteps(string? command)
     {
         if (string.IsNullOrEmpty(command)) return Array.Empty<string>();
@@ -120,11 +107,9 @@ public sealed class MacroStore
         return steps;
     }
 
-    /// <summary>
-    /// Default numpad macros every new profile gets so the user can
-    /// walk around immediately. Adapted from MudProxyViewer +
-    /// megamind's hardcoded numpad → direction convention.
-    /// </summary>
+    // Default numpad macros every new profile gets so the user can walk
+    // around immediately — the conventional numpad → compass-direction layout
+    // (8 = north, 2 = south, 0 = up, decimal = down, corners = diagonals).
     public static IReadOnlyList<Macro> DefaultMacros() => new[]
     {
         new Macro(Key: "NumPad8", Ctrl: false, Shift: false, Alt: false, Command: "n",  Enabled: true),
@@ -158,7 +143,7 @@ public sealed class MacroStore
 
     private void Clear() => Macros.Clear();
 
-    /// <summary>Snapshot the live list onto the profile DTO right before save.</summary>
+    // Snapshot the live list onto the profile DTO right before save.
     private void SnapshotForSave(CharacterProfile profile)
     {
         profile.Macros = Macros.Count == 0 ? null : Macros.ToList();

@@ -6,61 +6,44 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game.Cash;
 
-/// <summary>
-/// Phase 9 PR 9.E follow-up — auto-deposit reroute. When
-/// <see cref="CashManager.AutoDepositRequested"/> fires (a wealth /
-/// coin-count gate crossed with a bank / stash location configured),
-/// this manager detours the running movement engine to the configured
-/// location, offloads the excess coin, walks back to where it left off,
-/// and restarts the captured engine.
-/// </summary>
-/// <remarks>
-/// <para>
-/// <b>Loop / Auto-Lair only.</b> A reroute only makes sense for an
-/// indefinitely-running engine the user wants to keep alive across the
-/// detour. A one-shot walk-to has a single fixed destination and no
-/// "resume" semantics, so an active <see cref="AutoWalkManager"/> (or an
-/// idle stack) is left alone — the gate fired but nothing reroutes.
-/// </para>
-/// <para>
-/// <b>Stop-and-restart, not gate-pause</b> — same reasoning as
-/// <see cref="Remote.PartyComebackManager"/>: a
-/// <see cref="MovementCoordinator"/> gate would block the detour walk
-/// itself. We snapshot the running engine, <c>Stop()</c> it, run the
-/// detour gate-clean, then re-<c>Start</c> it.
-/// </para>
-/// <para>
-/// <b>Bank vs. stash.</b> The configured
-/// <see cref="CashSettings.BankRoomKey"/> is classified against the
-/// character's <see cref="CharacterProfile.StashRooms"/>: a match is a
-/// stash room (on arrival, this manager calls
-/// <see cref="StashRoomManager.ExecuteStash"/> to fire the per-currency
-/// <c>hide</c> commands), anything else is a bank (this manager sends a
-/// single <c>dep &lt;value&gt;</c> for the held wealth above the
-/// keep-on-hand floors).
-/// </para>
-/// <para>
-/// <b>Pass-through vs. detour.</b> A dedicated detour is only worth
-/// spending on a store the running engine won't reach on its own. When
-/// the configured stash destination already sits on the active route —
-/// a resolved loop circuit room (<see cref="LoopRunner.ResolveLoopRoomKeys"/>)
-/// or a marked Auto-Lair room (<see cref="AutoLairManager.IsMarked"/>) —
-/// the gate crossing is a no-op: this manager subscribes to
-/// <see cref="RoomTracker.StateChanged"/> and stashes in passing every
-/// time the character naturally walks through a marked stash room while a
-/// loop / lair runs. Banks always detour (a bank is never a route
-/// waypoint), and an off-route stash room still detours. A purely manual
-/// walk with no engine running never triggers a pass-through stash.
-/// </para>
-/// <para>
-/// Everything runs on the UI thread (<see cref="AutoWalkManager.Event"/>
-/// and the <see cref="CashManager.AutoDepositRequested"/> event both fire
-/// there), so no marshalling is needed. Single-flight: a second gate
-/// crossing while a reroute is in progress is ignored (the
-/// <see cref="CashManager"/> single-fire guard already suppresses
-/// re-fires until both gates fall back below threshold).
-/// </para>
-/// </remarks>
+// Auto-deposit reroute. When CashManager.AutoDepositRequested fires (a wealth /
+// coin-count gate crossed with a bank / stash location configured), this manager
+// detours the running movement engine to the configured location, offloads the
+// excess coin, walks back to where it left off, and restarts the captured
+// engine.
+//
+// Loop / Auto-Lair only. A reroute only makes sense for an indefinitely-running
+// engine the user wants to keep alive across the detour. A one-shot walk-to has
+// a single fixed destination and no "resume" semantics, so an active
+// AutoWalkManager (or an idle stack) is left alone — the gate fired but nothing
+// reroutes.
+//
+// Stop-and-restart, not gate-pause — same reasoning as PartyComebackManager: a
+// MovementCoordinator gate would block the detour walk itself. We snapshot the
+// running engine, Stop() it, run the detour gate-clean, then re-Start it.
+//
+// Bank vs. stash. The configured BankRoomKey is classified against the
+// character's StashRooms: a match is a stash room (on arrival, this manager calls
+// StashRoomManager.ExecuteStash to fire the per-currency `hide` commands),
+// anything else is a bank (this manager sends a single `dep <value>` for the held
+// wealth above the keep-on-hand floors).
+//
+// Pass-through vs. detour. A dedicated detour is only worth spending on a store
+// the running engine won't reach on its own. When the configured stash
+// destination already sits on the active route — a resolved loop circuit room
+// (LoopRunner.ResolveLoopRoomKeys) or a marked Auto-Lair room
+// (AutoLairManager.IsMarked) — the gate crossing is a no-op: this manager
+// subscribes to RoomTracker.StateChanged and stashes in passing every time the
+// character naturally walks through a marked stash room while a loop / lair runs.
+// Banks always detour (a bank is never a route waypoint), and an off-route stash
+// room still detours. A purely manual walk with no engine running never triggers
+// a pass-through stash.
+//
+// Everything runs on the UI thread (AutoWalkManager.Event and
+// CashManager.AutoDepositRequested both fire there), so no marshalling is needed.
+// Single-flight: a second gate crossing while a reroute is in progress is ignored
+// (the CashManager single-fire guard already suppresses re-fires until both gates
+// fall back below threshold).
 public sealed class AutoDepositManager : IDisposable
 {
     private const string LogCategory = "AutoDeposit";
@@ -80,9 +63,9 @@ public sealed class AutoDepositManager : IDisposable
     private bool _disposed;
     private bool _busy;
 
-    /// <summary>Fires when a bank <c>dep</c> is dispatched on arrival, carrying
-    /// the deposited copper value. Lets the Session Stats tracker count
-    /// bank-deposited wealth alongside stash-room hides.</summary>
+    // Fires when a bank `dep` is dispatched on arrival, carrying the deposited
+    // copper value. Lets the Session Stats tracker count bank-deposited wealth
+    // alongside stash-room hides.
     public event Action<long>? Deposited;
     private DepositPhase _phase = DepositPhase.Idle;
     private ResumeTarget _resume;
@@ -127,10 +110,9 @@ public sealed class AutoDepositManager : IDisposable
         _tracker.StateChanged += OnRoomEntered;
     }
 
-    /// <summary>Bind the wire sender — typically the gate-wrapped engine
-    /// pipeline from <c>MainWindowViewModel</c>. The bank <c>dep</c>
-    /// command travels this path; the stash path uses
-    /// <see cref="StashRoomManager"/>'s own sender.</summary>
+    // Bind the wire sender — typically the gate-wrapped engine pipeline from
+    // MainWindowViewModel. The bank `dep` command travels this path; the stash
+    // path uses StashRoomManager's own sender.
     public void SetWireSender(Action<byte[]> sender)
     {
         ArgumentNullException.ThrowIfNull(sender);
@@ -203,13 +185,11 @@ public sealed class AutoDepositManager : IDisposable
         }
     }
 
-    /// <summary>
-    /// Pass-through stash trigger. Fires when the character walks into a
-    /// marked stash room while a loop / lair is running — stashes in
-    /// passing, no detour. Suppressed while a reroute is in flight
-    /// (<c>_busy</c>, where the arrival handler owns the stash) and when
-    /// no resumable engine is active (a purely manual walk never stashes).
-    /// </summary>
+    // Pass-through stash trigger. Fires when the character walks into a marked
+    // stash room while a loop / lair is running — stashes in passing, no detour.
+    // Suppressed while a reroute is in flight (_busy, where the arrival handler
+    // owns the stash) and when no resumable engine is active (a purely manual walk
+    // never stashes).
     private void OnRoomEntered(RoomTransition t)
     {
         if (_busy) return;
@@ -271,12 +251,10 @@ public sealed class AutoDepositManager : IDisposable
         }
     }
 
-    /// <summary>
-    /// Send a single <c>dep &lt;value&gt;</c> for the held wealth above
-    /// the per-currency keep-on-hand floors. Reads the snapshot fresh at
-    /// deposit time (holdings may have shifted during the walk), so the
-    /// amount reflects what's actually on hand at the bank.
-    /// </summary>
+    // Send a single `dep <value>` for the held wealth above the per-currency
+    // keep-on-hand floors. Reads the snapshot fresh at deposit time (holdings may
+    // have shifted during the walk), so the amount reflects what's actually on
+    // hand at the bank.
     private void DepositAtBank()
     {
         CashSettings cash = _readCash();
@@ -302,12 +280,9 @@ public sealed class AutoDepositManager : IDisposable
         return false;
     }
 
-    /// <summary>
-    /// Whether <paramref name="room"/> is a room the running engine will
-    /// reach on its own — a resolved loop-circuit room, or a marked
-    /// Auto-Lair room. Such a room needs no detour: the pass-through
-    /// handler stashes it when the engine walks through.
-    /// </summary>
+    // Whether room is one the running engine will reach on its own — a resolved
+    // loop-circuit room, or a marked Auto-Lair room. Such a room needs no detour:
+    // the pass-through handler stashes it when the engine walks through.
     private bool IsOnActiveRoute(RoomKey room, ResumeTarget resume, RoomKey current)
     {
         switch (resume.Kind)

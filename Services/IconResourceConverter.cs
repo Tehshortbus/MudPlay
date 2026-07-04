@@ -5,14 +5,11 @@ using Avalonia.Media;
 
 namespace FujinTerm.Services;
 
-/// <summary>
-/// XAML value converter — looks up a string resource key (e.g.
-/// <c>"IconPlug"</c>) in the application's resource dictionary and
-/// returns the matching <see cref="StreamGeometry"/>. Used by the
-/// dynamic toolbar and the Settings → Toolbar list editor so the icon
-/// data lives in a single place (<c>Themes/Icons.axaml</c>) while every
-/// row resolves its glyph by catalogue key.
-/// </summary>
+// XAML value converter — looks up a string resource key (e.g. "IconPlug") in the
+// application's resource dictionary and returns the matching StreamGeometry. Used
+// by the dynamic toolbar and the Settings → Toolbar list editor so the icon data
+// lives in a single place (Themes/Icons.axaml) while every row resolves its
+// glyph by catalogue key.
 public sealed class IconResourceConverter : IValueConverter
 {
     public static IconResourceConverter Instance { get; } = new();

@@ -10,30 +10,25 @@ using FujinTerm.ViewModels.Navigation;
 
 namespace FujinTerm.ViewModels;
 
-/// <summary>
-/// Right-click → "Center on…" prompt. Mirrors the Navigation
-/// window's room-search behaviour — coordinate input
-/// (<c>"1/297"</c>, <c>"1,297"</c>, bare <c>"297"</c>) or room-name
-/// substring — and shows a live results dropdown. On commit returns
-/// the chosen <see cref="RoomKey"/>; Cancel / X returns null.
-/// </summary>
+// Right-click → "Center on…" prompt. Mirrors the Navigation window's
+// room-search behaviour — coordinate input ("1/297", "1,297", bare "297") or
+// room-name substring — and shows a live results dropdown. On commit returns
+// the chosen RoomKey; Cancel / X returns null.
 public sealed partial class ManualCenterDialogViewModel : ObservableObject, IDialogViewModel<RoomKey?>
 {
     public event Action<RoomKey?>? CloseRequested;
 
     private readonly RoomGraphManager _graph;
 
-    /// <summary>
-    /// User-typed query — accepts the same input dialects as the
-    /// Navigation rail's search box (key, bare number, name
-    /// substring). Empty until the user types.
-    /// </summary>
+    // User-typed query — accepts the same input dialects as the Navigation
+    // rail's search box (key, bare number, name substring). Empty until the
+    // user types.
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasError))]
     [NotifyPropertyChangedFor(nameof(ErrorMessage))]
     private string _query = string.Empty;
 
-    /// <summary>Live-search dropdown rows. Rooms only (no monsters).</summary>
+    // Live-search dropdown rows. Rooms only (no monsters).
     public ObservableCollection<RoomSearchResult> SearchResults { get; } = new();
 
     public bool HasSearchResults => SearchResults.Count > 0;
@@ -56,7 +51,7 @@ public sealed partial class ManualCenterDialogViewModel : ObservableObject, IDia
         }
     }
 
-    /// <summary>Enabled when there's at least one resolvable target (dropdown row or literal parse).</summary>
+    // Enabled when there's at least one resolvable target (dropdown row or literal parse).
     public bool CanCommit
         => SelectedSearchResult is not null
         || SearchResults.Count > 0
@@ -159,12 +154,9 @@ public sealed partial class ManualCenterDialogViewModel : ObservableObject, IDia
         OnPropertyChanged(nameof(ErrorMessage));
     }
 
-    /// <summary>
-    /// Parse a coordinate token. Returns <c>(map, room)</c> when both
-    /// numbers were supplied (separator: <c>/</c>, <c>,</c>, or
-    /// whitespace), <c>(null, room)</c> for a bare single number, or
-    /// <c>(null, null)</c> for non-numeric input.
-    /// </summary>
+    // Parse a coordinate token. Returns (map, room) when both numbers were
+    // supplied (separator: /, ,, or whitespace), (null, room) for a bare
+    // single number, or (null, null) for non-numeric input.
     private static (int? Map, int? Room) TryParseCoordinate(string text)
     {
         string[] parts = text.Split(new[] { '/', ',', ' ', '\t' },
@@ -178,12 +170,10 @@ public sealed partial class ManualCenterDialogViewModel : ObservableObject, IDia
         return (null, null);
     }
 
-    /// <summary>
-    /// Last-resort literal resolution for the case where the user
-    /// typed something the debounced search hadn't rebuilt for yet
-    /// (e.g. typing the full coordinate and pressing Enter
-    /// immediately). Returns null when ambiguous.
-    /// </summary>
+    // Last-resort literal resolution for the case where the user typed
+    // something the debounced search hadn't rebuilt for yet (e.g. typing the
+    // full coordinate and pressing Enter immediately). Returns null when
+    // ambiguous.
     private RoomKey? ResolveLiteralQuery(string? query)
     {
         string q = (query ?? string.Empty).Trim();

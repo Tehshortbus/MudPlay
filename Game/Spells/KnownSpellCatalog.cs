@@ -6,42 +6,30 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game.Spells;
 
-/// <summary>
-/// Builds the per-class learnable-spell list from the active game-data
-/// set's <c>Spells</c> + <c>Classes</c> tables. The eligibility filter is
-/// a faithful port of MMUD Explorer's <c>SpellIsUsable</c>
-/// (<c>modMMudFunc.bas</c>) — the same getter <c>GetSpellByShort</c> uses
-/// to decide what a class can learn — so the Spell Book shows exactly the
-/// spells the game would let the character know.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Class identity flows in as the <c>stat</c>-reported class name; we
-/// resolve it to the MDB <c>Classes.Number</c> (and its
-/// <c>MageryType</c> / <c>MageryLVL</c>) before filtering, mirroring
-/// <c>GetClassMagery</c> / <c>GetClassMageryLVL</c>.
-/// </para>
-/// <para>
-/// Two realm-global flags from the VB source — <c>bDisableKaiAutolearn</c>
-/// (Kai classes auto-learn unless the realm disables it; maps to the
-/// game-data <c>Info.DisableKai</c> flag, wired in a follow-up) and
-/// <c>bGreaterMUD</c> — default to <c>false</c> here. The version gate
-/// <c>nNMRVer &gt;= 1.7</c> is treated as satisfied: modern MajorMUD /
-/// MegaMUD data is &gt;= 1.7, so the explicit-class-token check always
-/// applies.
-/// </para>
-/// </remarks>
+// Builds the per-class learnable-spell list from the active game-data set's
+// Spells + Classes tables. The eligibility filter applies MajorMUD's own
+// spell-learnability rules, so the Spell Book shows exactly the spells the game
+// would let the character know.
+//
+// Class identity flows in as the stat-reported class name; we resolve it to the
+// Classes.Number (and its MageryType / MageryLVL) before filtering.
+//
+// Two realm-global flags default to false here: Kai-autolearn disable (Kai
+// classes auto-learn unless the realm disables it; maps to the game-data
+// Info.DisableKai flag, wired in a follow-up) and GreaterMUD mode. The data-set
+// version is assumed >= 1.7 (modern MajorMUD / MegaMUD data), so the
+// explicit-class-token check always applies.
 public sealed class KnownSpellCatalog
 {
-    // enmMagicEnum (modMMudDatabase.bas): None=0, Mage=1, Priest=2,
-    // Druid=3, Bard=4, Kai=5. Class MageryType values are the same enum,
-    // so they compare directly against Spells.Magery.
+    // Magery enum: None=0, Mage=1, Priest=2, Druid=3, Bard=4, Kai=5. Class
+    // MageryType values are the same enum, so they compare directly against
+    // Spells.Magery.
     private const int MageryNone = 0;
     private const int MageryKai = 5;
 
     private readonly GameDataCache _cache;
 
-    // Realm-global flags from SpellIsUsable. Not yet wired to game data
+    // Realm-global learnability flags. Not yet wired to game data
     // (Info.DisableKai → DisableKaiAutolearn is a planned follow-up); both
     // default false, matching a stock realm. Non-const so the branches
     // that read them don't trip unreachable-code analysis.
@@ -54,11 +42,9 @@ public sealed class KnownSpellCatalog
         _cache = cache;
     }
 
-    /// <summary>
-    /// Resolve a <c>stat</c>-reported class name (e.g. "Mystic") to its
-    /// <c>Classes.Number</c>. Case-insensitive, trimmed. Returns
-    /// <c>null</c> when the active set has no class by that name.
-    /// </summary>
+    // Resolve a stat-reported class name (e.g. "Mystic") to its
+    // Classes.Number. Case-insensitive, trimmed. Returns null when the active
+    // set has no class by that name.
     public int? ResolveClassNumber(string className)
     {
         if (string.IsNullOrWhiteSpace(className)) return null;
@@ -75,13 +61,10 @@ public sealed class KnownSpellCatalog
         return null;
     }
 
-    /// <summary>
-    /// Reverse of <see cref="ResolveClassNumber"/>: resolve a
-    /// <c>Classes.Number</c> to its display <c>Name</c>. Returns <c>null</c>
-    /// when the active set has no class with that number. Used by the
-    /// party-bless picker to compare a slot's stored class numbers against a
-    /// <c>PartyMember.Class</c> name.
-    /// </summary>
+    // Reverse of ResolveClassNumber: resolve a Classes.Number to its display
+    // Name. Returns null when the active set has no class with that number.
+    // Used by the party-bless picker to compare a slot's stored class numbers
+    // against a PartyMember.Class name.
     public string? ResolveClassName(int classNumber)
     {
         if (classNumber < 1) return null;
@@ -94,12 +77,8 @@ public sealed class KnownSpellCatalog
         return null;
     }
 
-    /// <summary>
-    /// Mirror of <c>GetClassMagery</c> / <c>GetClassMageryLVL</c>: returns
-    /// the class's magery type (enmMagicEnum value) and emits its magery
-    /// level. A class number with no matching row resolves to
-    /// <c>None</c> / <c>0</c>.
-    /// </summary>
+    // Returns the class's magery type (the Magery enum value) and emits its
+    // magery level. A class number with no matching row resolves to None / 0.
     public int ResolveClassMagery(int classNumber, out int mageryLvl)
     {
         mageryLvl = 0;
@@ -116,13 +95,9 @@ public sealed class KnownSpellCatalog
         return MageryNone;
     }
 
-    /// <summary>
-    /// Every spell <paramref name="classNumber"/> can learn, gated to
-    /// <paramref name="level"/> (pass <c>0</c> for the full list ignoring
-    /// the level requirement). Sorted by <see cref="KnownSpell.ReqLevel"/>
-    /// then <see cref="KnownSpell.Name"/>. Empty for classes with no
-    /// magery (Warriors, Thieves, etc.).
-    /// </summary>
+    // Every spell classNumber can learn, gated to level (pass 0 for the full
+    // list ignoring the level requirement). Sorted by ReqLevel then Name. Empty
+    // for classes with no magery (Warriors, Thieves, etc.).
     public IReadOnlyList<KnownSpell> Query(int classNumber, int level, int charAlign = 0)
     {
         List<KnownSpell> results = new();
@@ -145,12 +120,9 @@ public sealed class KnownSpellCatalog
         return results;
     }
 
-    /// <summary>
-    /// Look up a single learnable spell by its <c>Short</c> cast-code for
-    /// the given class — the catalog equivalent of
-    /// <c>GetSpellByShort</c>. Returns <c>null</c> when no usable spell
-    /// matches. <paramref name="level"/> <c>0</c> ignores the level gate.
-    /// </summary>
+    // Look up a single learnable spell by its Short cast-code for the given
+    // class. Returns null when no usable spell matches. level 0 ignores the
+    // level gate.
     public KnownSpell? GetByShort(string shortCode, int classNumber, int level = 0, int charAlign = 0)
     {
         if (string.IsNullOrWhiteSpace(shortCode)) return null;
@@ -170,14 +142,11 @@ public sealed class KnownSpellCatalog
         return null;
     }
 
-    /// <summary>
-    /// Look up a single learnable spell by its full <c>Name</c> for the
-    /// given class. The <c>spells</c> / <c>pow</c> list rows and the
-    /// learn-scroll line ("…learn the spell <i>harm</i>.") both report the
-    /// spell's Name rather than its Short code, so the obtained-signal path
-    /// resolves through here. Returns <c>null</c> when no usable spell
-    /// matches. <paramref name="level"/> <c>0</c> ignores the level gate.
-    /// </summary>
+    // Look up a single learnable spell by its full Name for the given class.
+    // The spells / pow list rows and the learn-scroll line ("…learn the spell
+    // harm.") both report the spell's Name rather than its Short code, so the
+    // obtained-signal path resolves through here. Returns null when no usable
+    // spell matches. level 0 ignores the level gate.
     public KnownSpell? GetByName(string name, int classNumber, int level = 0, int charAlign = 0)
     {
         if (string.IsNullOrWhiteSpace(name)) return null;
@@ -197,14 +166,10 @@ public sealed class KnownSpellCatalog
         return null;
     }
 
-    /// <summary>
-    /// Resolve a <c>Spells.Number</c> to its full <c>Name</c> across the
-    /// entire Spells table (no class / magery / learnable filter) — the
-    /// catalog equivalent of MMUD Explorer's <c>GetSpellName</c>. Used to
-    /// render the <c>RemovesSpell</c> (Abil 122) target by name, which can
-    /// reference any spell, not just the active class's learnable list.
-    /// Returns <c>null</c> when no row has that number.
-    /// </summary>
+    // Resolve a Spells.Number to its full Name across the entire Spells table
+    // (no class / magery / learnable filter). Used to render the RemovesSpell
+    // (Abil 122) target by name, which can reference any spell, not just the
+    // active class's learnable list. Returns null when no row has that number.
     public string? GetSpellNameByNumber(int spellNumber)
     {
         if (spellNumber < 1) return null;
@@ -219,13 +184,10 @@ public sealed class KnownSpellCatalog
         return null;
     }
 
-    /// <summary>
-    /// Resolve a <c>Spells.Number</c> to its <see cref="SpellFormulaInput"/>
-    /// across the entire Spells table (no class / magery / learnable filter).
-    /// Used by the Game Data Items pane to render a weapon's use-cast / proc
-    /// spell effect without depending on a class spell book. Returns
-    /// <c>null</c> when no row has that number.
-    /// </summary>
+    // Resolve a Spells.Number to its SpellFormulaInput across the entire Spells
+    // table (no class / magery / learnable filter). Used by the Game Data Items
+    // pane to render a weapon's use-cast / proc spell effect without depending
+    // on a class spell book. Returns null when no row has that number.
     public SpellFormulaInput? GetFormulaByNumber(int spellNumber)
     {
         if (spellNumber < 1) return null;
@@ -240,17 +202,15 @@ public sealed class KnownSpellCatalog
         return null;
     }
 
-    /// <summary>
-    /// Build the reverse index from a <c>TBInfo</c> textblock number to every
-    /// spell that textblock casts, parsed from each spell row's denormalised
-    /// <c>Casted By</c> column (e.g. <c>"Textblock #2910, Textblock #2911"</c>).
-    /// The Spell Book uses it to expand an Abil-148 (TextBlock) reference into
-    /// the real effect(s) the textblock applies — duration + stat bonuses for
-    /// transform spells like <c>form of the dragon</c> — instead of an opaque
-    /// record number. General across data sets: any spell whose <c>Casted By</c>
-    /// names a textblock is linked, with no per-spell special-casing. Empty when
-    /// the active set has no Spells table.
-    /// </summary>
+    // Build the reverse index from a TBInfo textblock number to every spell
+    // that textblock casts, parsed from each spell row's denormalised
+    // "Casted By" column (e.g. "Textblock #2910, Textblock #2911"). The Spell
+    // Book uses it to expand an Abil-148 (TextBlock) reference into the real
+    // effect(s) the textblock applies — duration + stat bonuses for transform
+    // spells like "form of the dragon" — instead of an opaque record number.
+    // General across data sets: any spell whose "Casted By" names a textblock
+    // is linked, with no per-spell special-casing. Empty when the active set
+    // has no Spells table.
     public IReadOnlyDictionary<int, IReadOnlyList<KnownSpell>> BuildCastByTextblockIndex()
     {
         JsonDocument? doc = _cache.GetRawTable("Spells");
@@ -304,16 +264,13 @@ public sealed class KnownSpellCatalog
     private const int FirstWornSlot = 2;
     private const int LastWornSlot = 19;
 
-    /// <summary>
-    /// Every cast-on-use item the class can use — an Items row that both
-    /// (a) is usable by <paramref name="classNumber"/> via its
-    /// <c>ClassRest-0..9</c> restriction (no entries ⇒ universal) and
-    /// (b) carries a <c>CastsSp</c> ability (code 43) naming a spell. Each
-    /// result resolves the cast <c>Spells.Name</c> and the item's
-    /// <c>UseCount</c> charges (0 = unlimited). Sorted by item name then
-    /// spell name. Empty when no class is set, the set has no Items table, or
-    /// nothing matches.
-    /// </summary>
+    // Every cast-on-use item the class can use — an Items row that both
+    // (a) is usable by classNumber via its ClassRest-0..9 restriction (no
+    // entries => universal) and (b) carries a CastsSp ability (code 43) naming
+    // a spell. Each result resolves the cast Spells.Name and the item's
+    // UseCount charges (0 = unlimited). Sorted by item name then spell name.
+    // Empty when no class is set, the set has no Items table, or nothing
+    // matches.
     public IReadOnlyList<ClassCastItem> GetClassCastItems(int classNumber)
     {
         List<ClassCastItem> results = new();
@@ -364,11 +321,9 @@ public sealed class KnownSpellCatalog
         return results;
     }
 
-    /// <summary>
-    /// Item class-usability three-state mirroring MMUD Explorer's class walk:
-    /// an item with no non-zero <c>ClassRest-N</c> slot is universal (usable by
-    /// every class); otherwise it's restricted to the listed class numbers.
-    /// </summary>
+    // Item class-usability: an item with no non-zero ClassRest-N slot is
+    // universal (usable by every class); otherwise it's restricted to the
+    // listed class numbers.
     private static bool ItemUsableByClass(JsonElement row, int classNumber)
     {
         bool anyRestriction = false;
@@ -382,13 +337,11 @@ public sealed class KnownSpellCatalog
         return !anyRestriction;
     }
 
-    /// <summary>
-    /// True when an item can be equipped in one of the player's equipment slots,
-    /// the precondition for using it to cast: a weapon (readied into the Weapon
-    /// slot) or an item worn in a real body / Off-Hand / Worn slot. Excludes
-    /// non-equippable "use" items (potions, food, containers, scrolls,
-    /// projectiles, room Signs) that can't be readied to cast a buff.
-    /// </summary>
+    // True when an item can be equipped in one of the player's equipment slots,
+    // the precondition for using it to cast: a weapon (readied into the Weapon
+    // slot) or an item worn in a real body / Off-Hand / Worn slot. Excludes
+    // non-equippable "use" items (potions, food, containers, scrolls,
+    // projectiles, room Signs) that can't be readied to cast a buff.
     private static bool IsEquippableCastItem(JsonElement row)
     {
         if (ReadInt(row, "ItemType") == WeaponItemType) return true;
@@ -396,9 +349,9 @@ public sealed class KnownSpellCatalog
         return worn is >= FirstWornSlot and <= LastWornSlot;
     }
 
-    /// <summary>One-pass <c>Spells.Number</c> → (<c>Name</c>, <c>ManaCost</c>) map
-    /// for resolving cast-item spells (display name + whether using the item
-    /// draws mana) without a per-item table scan.</summary>
+    // One-pass Spells.Number → (Name, ManaCost) map for resolving cast-item
+    // spells (display name + whether using the item draws mana) without a
+    // per-item table scan.
     private Dictionary<int, (string Name, int ManaCost)> BuildSpellInfoMap()
     {
         Dictionary<int, (string Name, int ManaCost)> map = new();
@@ -419,18 +372,15 @@ public sealed class KnownSpellCatalog
     private static readonly Regex CastedByTextblock =
         new(@"Textblock\s*#(\d+)", RegexOptions.IgnoreCase);
 
-    /// <summary>
-    /// Faithful port of <c>SpellIsUsable(nSpell, nClass, nLevel,
-    /// nCharAlign, bAndLearnable)</c>. <paramref name="classMagery"/> /
-    /// <paramref name="classMageryLvl"/> are the pre-resolved
-    /// <c>GetClassMagery</c> / <c>GetClassMageryLVL</c> values for
-    /// <paramref name="classNumber"/>.
-    /// </summary>
+    // MajorMUD's spell-usability rule: can classNumber use this spell at level
+    // / charAlign, and (when andLearnable) is it actually learnable. classMagery
+    // / classMageryLvl are the pre-resolved magery type / level for
+    // classNumber.
     private bool IsUsable(
         JsonElement row, int classNumber, int classMagery, int classMageryLvl,
         int level, int charAlign, bool andLearnable)
     {
-        if (classNumber < 1) return true;       // VB: nClass < 1 → usable
+        if (classNumber < 1) return true;       // no class → treat as usable
         if (level < 0) level = 0;
         if (charAlign < 0) charAlign = 0;
 
@@ -441,9 +391,9 @@ public sealed class KnownSpellCatalog
         string? learnedFrom = ReadString(row, "Learned From");
         string? classes = ReadString(row, "Classes");
 
-        // bAndLearnable gate: a spell is learnable when Learnable==1, OR it
-        // has a LearnedFrom source (Len>=5), OR it's a Kai spell with
-        // autolearn enabled and a real level requirement.
+        // Learnable gate: a spell is learnable when Learnable==1, OR it has a
+        // LearnedFrom source (length >= 5), OR it's a Kai spell with autolearn
+        // enabled and a real level requirement.
         if (andLearnable)
         {
             bool notLearnable = learnable == 0
@@ -457,18 +407,17 @@ public sealed class KnownSpellCatalog
         if (spellMagery != 0)
         {
             if (classMagery == MageryNone) return false;
-            // The VB magery-mismatch exception requires Spells.Magery==0,
-            // which is impossible inside this branch — so a mismatch is
-            // always disqualifying.
+            // The magery-mismatch exception requires Spells.Magery==0, which is
+            // impossible inside this branch — so a mismatch is always
+            // disqualifying.
             if (classMagery != spellMagery) return false;
             if (classMageryLvl > 0 && classMageryLvl < spellMageryLvl) return false;
             if (classMagery != MageryKai && learnable == 0) return false;
             if (classMagery == MageryKai && _disableKaiAutolearn && learnable == 0) return false;
         }
 
-        // skip_magery_check: explicit class-token restriction (nNMRVer>=1.7
-        // assumed). A non-"(*)" Classes field limits the spell to the
-        // listed class numbers.
+        // Explicit class-token restriction (data version assumed >= 1.7). A
+        // non-"(*)" Classes field limits the spell to the listed class numbers.
         if (classes is not null && classes.Length > 2 && classes != "(*)")
         {
             if (!classes.Contains($"({classNumber})", StringComparison.OrdinalIgnoreCase)) return false;
@@ -502,7 +451,7 @@ public sealed class KnownSpellCatalog
         return true;
     }
 
-    /// <summary>Project a Spells row into a <see cref="KnownSpell"/> + its formula inputs.</summary>
+    // Project a Spells row into a KnownSpell + its formula inputs.
     private static KnownSpell ToKnownSpell(JsonElement row)
         => new(
             Number: ReadInt(row, "Number"),

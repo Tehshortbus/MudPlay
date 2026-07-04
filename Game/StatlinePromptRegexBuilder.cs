@@ -3,62 +3,48 @@ using System.Text.RegularExpressions;
 
 namespace FujinTerm.Game;
 
-/// <summary>
-/// Turns a statline command string (the Settings → Statline editor value)
-/// into the regex <see cref="Services.WirePromptScanner"/> matches the live
-/// prompt against. The editor string is the single source of truth: the same
-/// string is sent to the BBS (<c>set statline …</c>) and compiled here, so the
-/// parser can never drift from what the server actually prints.
-/// </summary>
-/// <remarks>
-/// <para>
-/// The produced regex exposes the named groups the scanner's decode loop
-/// reads — <c>hp</c>, <c>type</c>, <c>mana</c>, <c>statea</c> — so a custom
-/// statline flows through the exact same observation path as the default one.
-/// It is unanchored, matching the scanner's behaviour of catching every
-/// statline when the server chains several on one row.
-/// </para>
-/// <para>
-/// The default / blank / <c>full</c> command maps to <see cref="Default"/>:
-/// the permissive pattern that matches all three class-default shapes
-/// (HP-only / HP+MA / HP+KAI). Keeping that path on a fixed regex means
-/// default-statline users get byte-identical behaviour to before this builder
-/// existed — only authored custom statlines compile a bespoke pattern.
-/// </para>
-/// <para>
-/// Two deliberate constraints keep the single-writer invariant intact (only
-/// <see cref="PromptParser"/> writes HP / MA / position):
-/// <list type="bullet">
-/// <item><c>%H</c> / <c>%M</c> (max HP / max mana) emit <b>non-capturing</b>
-/// digit runs — they render on the wire but we don't capture them, so no
-/// second write path appears for the max fields (they keep ratcheting from
-/// observed values in <see cref="PromptParser"/>).</item>
-/// <item>The <c>MA</c> / <c>KAI</c> label that precedes <c>%m</c> in a custom
-/// statline is <b>literal</b> text, but the decode loop reads a <c>type</c>
-/// group off it to set <see cref="ManaType"/>. The builder special-cases the
-/// <c>&lt;label&gt;=%m</c> idiom to capture that literal label as the
-/// <c>type</c> group; without it <see cref="ManaType"/> would silently fall to
-/// <see cref="ManaType.None"/> and mana display would break.</item>
-/// </list>
-/// </para>
-/// </remarks>
+// Turns a statline command string (the Settings → Statline editor value)
+// into the regex WirePromptScanner matches the live prompt against. The
+// editor string is the single source of truth: the same string is sent to
+// the BBS (set statline …) and compiled here, so the parser can never drift
+// from what the server actually prints.
+//
+// The produced regex exposes the named groups the scanner's decode loop
+// reads — hp, type, mana, statea — so a custom statline flows through the
+// exact same observation path as the default one. It is unanchored, matching
+// the scanner's behaviour of catching every statline when the server chains
+// several on one row.
+//
+// The default / blank / full command maps to Default: the permissive pattern
+// that matches all three class-default shapes (HP-only / HP+MA / HP+KAI).
+// Keeping that path on a fixed regex means default-statline users get
+// byte-identical behaviour — only authored custom statlines compile a
+// bespoke pattern.
+//
+// Two deliberate constraints keep the single-writer invariant intact (only
+// PromptParser writes HP / MA / position):
+//  - %H / %M (max HP / max mana) emit non-capturing digit runs — they render
+//    on the wire but we don't capture them, so no second write path appears
+//    for the max fields (they keep ratcheting from observed values in
+//    PromptParser).
+//  - The MA / KAI label that precedes %m in a custom statline is literal
+//    text, but the decode loop reads a type group off it to set ManaType.
+//    The builder special-cases the <label>=%m idiom to capture that literal
+//    label as the type group; without it ManaType would silently fall to None
+//    and mana display would break.
 public static class StatlinePromptRegexBuilder
 {
-    /// <summary>
-    /// Permissive pattern for the class-default statline — matches HP-only,
-    /// HP+MA, and HP+KAI shapes, resting / meditating in either the in-bracket
-    /// or trailing position. Same body the scanner shipped before custom
-    /// statlines existed, so the default path is unchanged.
-    /// </summary>
+    // Permissive pattern for the class-default statline — matches HP-only,
+    // HP+MA, and HP+KAI shapes, resting / meditating in either the in-bracket
+    // or trailing position. Same body the scanner shipped before custom
+    // statlines existed, so the default path is unchanged.
     public static Regex Default { get; } = new(
         @"\[HP=(?<hp>\d{1,4})(?:\/(?<type>MA|KAI)=(?<mana>\d{1,3}))?(?:\s\((?<statea>Resting|Meditating)\)\s)?\]:(?:\s\((?<stateb>Resting|Meditating)\))?",
         RegexOptions.Compiled);
 
-    /// <summary>
-    /// Compile the scanner regex for <paramref name="command"/>. Default /
-    /// blank / <c>full</c> returns <see cref="Default"/>; any other command has
-    /// its wildcard template translated token-by-token into a matching pattern.
-    /// </summary>
+    // Compile the scanner regex for command. Default / blank / full returns
+    // Default; any other command has its wildcard template translated
+    // token-by-token into a matching pattern.
     public static Regex Build(string? command)
     {
         if (StatlineSyntax.IsDefault(command)) return Default;

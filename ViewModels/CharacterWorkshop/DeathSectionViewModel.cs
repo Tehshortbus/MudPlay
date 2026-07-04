@@ -10,13 +10,10 @@ using FujinTerm.Views.CharacterWorkshop;
 
 namespace FujinTerm.ViewModels.CharacterWorkshop;
 
-/// <summary>
-/// DEATH section — the Death Recovery surface. Binds to
-/// <see cref="DeathRecoveryManager"/> for the deathpile record grid, the
-/// Auto-Recover / Auto-Equip toggles, and the recovery actions (Walk to
-/// Room / Recover Now / Mark Recovered / Clear). Current lives are shown
-/// on the Character Info tab, not here.
-/// </summary>
+// DEATH section — the Death Recovery surface. Binds to DeathRecoveryManager for
+// the deathpile record grid, the Auto-Recover / Auto-Equip toggles, and the
+// recovery actions (Walk to Room / Recover Now / Mark Recovered / Clear). Current
+// lives are shown on the Character Info tab, not here.
 public sealed partial class DeathSectionViewModel : WorkshopSectionViewModel
 {
     private readonly DeathRecoveryManager _recovery;
@@ -46,25 +43,23 @@ public sealed partial class DeathSectionViewModel : WorkshopSectionViewModel
         Refresh();
     }
 
-    /// <summary>
-    /// Auto-grab a deathpile's lost items on re-entry. Two-way bound to
-    /// the manager's persisted per-character toggle. Inert on the actual
-    /// grab until inventory tracking lands.
-    /// </summary>
+    // Auto-grab a deathpile's lost items on re-entry. Two-way bound to the
+    // manager's persisted per-character toggle. Inert on the actual grab until
+    // inventory tracking lands.
     public bool AutoRecover
     {
         get => _recovery.AutoRecover;
         set { if (_recovery.AutoRecover != value) { _recovery.AutoRecover = value; OnPropertyChanged(); } }
     }
 
-    /// <summary>Re-equip items worn at death after recovery. Two-way bound to the manager.</summary>
+    // Re-equip items worn at death after recovery. Two-way bound to the manager.
     public bool AutoEquip
     {
         get => _recovery.AutoEquip;
         set { if (_recovery.AutoEquip != value) { _recovery.AutoEquip = value; OnPropertyChanged(); } }
     }
 
-    /// <summary>Re-pull observables + record list from the manager.</summary>
+    // Re-pull observables + record list from the manager.
     public void Refresh()
     {
         DeathRecord? prevSelected = SelectedRecord;

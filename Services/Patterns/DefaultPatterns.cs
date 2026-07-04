@@ -2,43 +2,23 @@ using System.Text.RegularExpressions;
 
 namespace FujinTerm.Services.Patterns;
 
-/// <summary>
-/// Registers the baseline MajorMUD pattern set against a
-/// <see cref="MessageRouter"/>. Categories follow Megamind's
-/// <c>classifier.js</c> taxonomy and the regex strings are ported verbatim
-/// from the upstream JS literals (with .NET-flavoured named-group syntax
-/// where it differs).
-/// </summary>
-/// <remarks>
-/// <para>
-/// Source: megamind-mud/megamind-client (MIT) —
-/// <c>src/main/routines/classifier.js</c>. Each pattern below carries a
-/// <c>// source</c> reference per the CLAUDE.md attribution rule.
-/// </para>
-/// <para>
-/// Multi-line "batch" patterns (<c>who-fantasy</c>, <c>who-technical</c>,
-/// <c>player-status</c>) are not represented here — <see cref="IMessagePattern"/>
-/// operates one line at a time. Their dedicated parsers land when the
-/// consuming phase ships (Phase 5 for <c>who</c>, Phase 9 for
-/// <c>player-status</c>).
-/// </para>
-/// <para>
-/// One exception: Megamind's <c>user-emote</c> regex keys off ANSI bytes
-/// (<c>[K[0;32m</c>) that the FujinTerm <see cref="LineExtractor"/>
-/// consumes before the line surfaces. The emote pattern is omitted here;
-/// emote detection needs attribute-aware matching (the row's foreground is
-/// green / the cell's flags include the right SGR state), which is its own
-/// follow-up.
-/// </para>
-/// </remarks>
+// Registers the baseline MajorMUD pattern set against a MessageRouter. Each
+// entry pairs a stable pattern id with the regex that recognises one shape of
+// game output.
+//
+// Multi-line "batch" patterns (the who list, player-status) are not represented
+// here — IMessagePattern operates one line at a time, so those have their own
+// dedicated parsers.
+//
+// The user-emote line is also omitted: it's distinguished purely by ANSI colour
+// bytes that the LineExtractor consumes before the line surfaces, so detecting
+// it needs attribute-aware matching (the row's foreground is green) rather than
+// a text regex.
 public static class DefaultPatterns
 {
-    /// <summary>
-    /// Populate <paramref name="router"/>'s known-patterns catalog. No
-    /// handlers are attached — each subsystem (ChatRouter, combat tracker,
-    /// etc.) registers its own handlers by id via
-    /// <see cref="MessageRouter.Subscribe(string, Action{MatchResult})"/>.
-    /// </summary>
+    // Populate router's known-patterns catalog. No handlers are attached — each
+    // subsystem (ChatRouter, combat tracker, etc.) registers its own handlers by
+    // id via MessageRouter.Subscribe.
     public static void Seed(MessageRouter router)
     {
         ArgumentNullException.ThrowIfNull(router);
@@ -48,36 +28,35 @@ public static class DefaultPatterns
         }
     }
 
-    /// <summary>
-    /// Enumerate every default pattern instance. Exposed so tests can
-    /// inspect the registry without having to wire a router.
-    /// </summary>
+    // Enumerate every default pattern instance. Exposed so tests can inspect the
+    // registry without having to wire a router.
     public static IEnumerable<IMessagePattern> BuildDefaultPatterns()
     {
-        // ----- Stealth --------------------------------------------------- (source: classifier.js stealth)
+        // ----- Stealth ---------------------------------------------------
         yield return new RegexPattern(KnownPatterns.UserSneaking,      @"^Sneaking\.\.\.");
         yield return new RegexPattern(KnownPatterns.UserNotSneaking,   @"^You make a sound as you enter the room!");
         yield return new RegexPattern(KnownPatterns.UserSneakFailed,   @"^Attempting to sneak\.\.\.You don't think you're sneaking\.");
         yield return new RegexPattern(KnownPatterns.UserSneakInitiate, @"^Attempting to sneak\.\.\.$");
         yield return new RegexPattern(KnownPatterns.UserCantSneak,     @"^You may not sneak right now!");
 
-        // ----- Room light ------------------------------------------------ (source: docs/auto-engine-orchestration.md — MMUD Explorer)
+        // ----- Room light ------------------------------------------------
         // Only the two "can't see" lines; prefix-anchored so trailing
         // punctuation / dash variants don't break the match.
         yield return new RegexPattern(KnownPatterns.RoomPitchBlack, @"^The room is pitch black");
         yield return new RegexPattern(KnownPatterns.RoomVeryDark,   @"^The room is very dark");
 
-        // ----- Movement -------------------------------------------------- (source: classifier.js movement)
-        // Megamind ships two regexes under direction-failed (no-exit + closed door/gate); combined via alternation.
+        // ----- Movement --------------------------------------------------
+        // Two forms folded into one alternation: the no-exit line and the
+        // closed door/gate line, both meaning "you didn't move".
         yield return new RegexPattern(KnownPatterns.DirectionFailed,
             @"^(?:There is no exit in that direction!|The (?:door|gate) is closed(?: in that direction)?!)");
         yield return new RegexPattern(KnownPatterns.BashFailed,
             @"^Your attempts to bash through fail!$");
         yield return new RegexPattern(KnownPatterns.HeardMovement,
             @"^You hear movement to the (?<direction>\w+)\.");
-        // Left-behind disambiguators (Phase 6 PR 6.2). "You can't seem to
-        // move anywhere!" fires when a prevents-movement gamedata flag
-        // blocks us; "...too heavy to move" fires when over-encumbered.
+        // Left-behind disambiguators. "You can't seem to move anywhere!" fires
+        // when a prevents-movement gamedata flag blocks us; "...too heavy to
+        // move" fires when over-encumbered.
         // The heavy form is anchored ^[^"]* so a quoted chat line (all
         // MajorMUD player chat is quoted) carrying the phrase can never
         // match — only the unquoted system line does.
@@ -86,12 +65,12 @@ public static class DefaultPatterns
         yield return new RegexPattern(KnownPatterns.MovementFailedHeavy,
             @"^[^""]*too heavy to move");
 
-        // ----- Failures -------------------------------------------------- (source: classifier.js failures)
+        // ----- Failures --------------------------------------------------
         yield return new RegexPattern(KnownPatterns.CommandNoEffect, @"^Your command had no effect\.$");
         yield return new RegexPattern(KnownPatterns.CommandIgnored,  @"^You are typing too quickly - command ignored");
         yield return new RegexPattern(KnownPatterns.SlowDown,        @"^Why don't you slow down for a few seconds\?");
 
-        // ----- Searching ------------------------------------------------- (source: classifier.js searching)
+        // ----- Searching -------------------------------------------------
         yield return new RegexPattern(KnownPatterns.UserSearchFailed,
             @"^You notice nothing different to the \w+");
         // Cardinal forms use "to the <dir>" ("north" / "northeast" / etc.);
@@ -101,24 +80,23 @@ public static class DefaultPatterns
         yield return new RegexPattern(KnownPatterns.UserSearchSucceeded,
             @"^You found an exit (?:to the )?(?<direction>\w+)!");
 
-        // ----- Combat ---------------------------------------------------- (source: classifier.js combat)
+        // ----- Combat ----------------------------------------------------
         yield return new RegexPattern(KnownPatterns.CombatStatus,
             @"^\*Combat (?<status>Engaged|Off)\*");
         yield return new RegexPattern(KnownPatterns.UserHits,
             @"^(?<source>[\w]+) (?:critically )?(?:\w+) (?<target>[\w- ]+) for (?<damage>\d+) damage!");
-        // Trailing punctuation varies per realm — Megamind's literal had
-        // \. but real output uses ".", "!", ",", and ";" depending on
-        // whether the miss line continues with a dodge / parry / "but
-        // misses!" follow-up. Use a word boundary after "you" so any
-        // non-letter delimiter classifies.
+        // Trailing punctuation varies per realm — real output uses ".", "!",
+        // ",", and ";" depending on whether the miss line continues with a
+        // dodge / parry / "but misses!" follow-up. Use a word boundary after
+        // "you" so any non-letter delimiter classifies.
         yield return new RegexPattern(KnownPatterns.MobMisses,
             @"^The (?<target>[\w -]+) \w+ at you\b");
         yield return new RegexPattern(KnownPatterns.MobHits,
             @"^The (?<target>[\w -]+) \w+ you for (?<damage>\d+) damage!");
         yield return new RegexPattern(KnownPatterns.UserGainExperience,
             @"^You gain (?<exp>\d+) experience\.");
-        // Phase 11 — the local player's own swing missing. On the live realm a
-        // whiff renders as the SAME first-person swing skeleton as a hit
+        // The local player's own swing missing. On the live realm a whiff
+        // renders as the SAME first-person swing skeleton as a hit
         // ("You punch acid slime!") but WITHOUT the "for N damage" tail — there
         // is no literal word "miss". So we match a "You <verb> <target>!" line
         // and exclude the hit form with a negative look-ahead for "for N damage"
@@ -130,31 +108,29 @@ public static class DefaultPatterns
         // engaged — see its CombatStatus gate.
         yield return new RegexPattern(KnownPatterns.UserMisses,
             @"^You (?![^\n]*\bfor \d+ damage\b)[^!]+!");
-        // Phase 11 — local player dodges an incoming mob attack. The dodge
-        // line ("The kobold thief lunges at you, but you dodge!") also
+        // Local player dodges an incoming mob attack. The dodge line ("The
+        // kobold thief lunges at you, but you dodge!") also
         // satisfies MobMisses, so CombatSessionTracker de-dupes by skipping
         // a MobMisses line that carries "dodge". Keyed on the "you dodge"
         // phrase, which is unique to a successful dodge.
         yield return new RegexPattern(KnownPatterns.UserDodges,
             @"^The (?<source>[\w -]+?) .*\byou dodge\b");
 
-        // Phase 9 PR 9.0d — local-player death. MajorMUD's canonical
-        // wording is "You have been slain by <killer>." — the killer
-        // is whatever last hit landed (monster name OR another player
-        // for PvP, even though FujinTerm scopes engines to PvE; we
-        // still observe the line so DeathRecoveryManager can fire).
-        // The trailing "." is captured tolerantly: some realms include
-        // a trailing "!" instead.
+        // Local-player death. MajorMUD's canonical wording is "You have been
+        // slain by <killer>." — the killer is whatever last hit landed (monster
+        // name OR another player for PvP, even though FujinTerm scopes engines
+        // to PvE; we still observe the line so DeathRecoveryManager can fire).
+        // The trailing "." is captured tolerantly: some realms include a
+        // trailing "!" instead.
         yield return new RegexPattern(KnownPatterns.UserSlain,
             @"^You have been slain by (?<killer>[\w '-]+?)[.!]\s*$");
 
-        // "You don't see <X> here!" — target-gone signal. Lifted from
-        // MudProxy CombatManager:1269. Trailing punctuation tolerant —
-        // "!" canonical but some realms emit ".".
+        // "You don't see <X> here!" — target-gone signal. Trailing punctuation
+        // tolerant — "!" canonical but some realms emit ".".
         yield return new RegexPattern(KnownPatterns.TargetNotHere,
             @"^You don't see (?<target>.+?) here[.!]\s*$");
 
-        // Weapon-no-effect signals. MudProxy CombatManager:384.
+        // Weapon-no-effect signals.
         yield return new RegexPattern(KnownPatterns.WeaponNoEffect,
             @"^Your weapon has no effect against this monster!");
         yield return new RegexPattern(KnownPatterns.FistsNoEffect,
@@ -162,9 +138,8 @@ public static class DefaultPatterns
 
         // ----- Spellcasting failures ------------------------------------
         // Cast outcomes that block further casts for the current round.
-        // CastCoordinator subscribes to flag the engine's _castBlocked
-        // latch; CastingDirector waits for the next CombatTick before
-        // retrying. Lifted from MudProxy CastCoordinator regex set.
+        // CastCoordinator subscribes to flag the engine's _castBlocked latch;
+        // CastingDirector waits for the next CombatTick before retrying.
         yield return new RegexPattern(KnownPatterns.CastFizzled,
             @"^You attempt to cast (?<spell>.+?), but fail\.");
         yield return new RegexPattern(KnownPatterns.CastNoMana,
@@ -174,10 +149,10 @@ public static class DefaultPatterns
         yield return new RegexPattern(KnownPatterns.CastInterrupted,
             @"^You lost your concentration on the spell!");
 
-        // Attack-spell immunity. MudProxy CombatManager:408. Non-greedy
-        // capture stops at the first period (no `$` — Multiline `$` won't
-        // match before `\r`). CombatManager marks the species attack-
-        // spell-immune so the chooser skips the primary attack spell.
+        // Attack-spell immunity. Non-greedy capture stops at the first period
+        // (no `$` — Multiline `$` won't match before `\r`). CombatManager marks
+        // the species attack-spell-immune so the chooser skips the primary
+        // attack spell.
         yield return new RegexPattern(KnownPatterns.SpellNoEffect,
             @"^Your spell has no effect on (?<target>.+?)\.");
 
@@ -212,15 +187,13 @@ public static class DefaultPatterns
         yield return new RegexPattern(KnownPatterns.YouNoticeRoom,
             @"^You notice (?<list>.+?) here\.\s*$");
 
-        // Phase 9 PR 9.A — party / room attack announce. Mirrors
-        // MudProxy's PartyAttackAnnouncementRegex (CombatManager.cs:226):
-        // tolerates the bracketed-prompt prefix ("[HP=100/MA=50]:")
-        // OR a bare colon prefix that some realms emit before the
-        // name. Captures the announcer's name + the target.
+        // Party / room attack announce. Tolerates the bracketed-prompt prefix
+        // ("[HP=100/MA=50]:") OR a bare colon prefix that some realms emit
+        // before the name. Captures the announcer's name + the target.
         yield return new RegexPattern(KnownPatterns.PartyAttackAnnounce,
             @"^(?:\[[^\]]*\]:|:)*(?<player>\w+) moves to attack (?<target>.+?)\.");
 
-        // Phase 9 PR 9.A — room-entry arrival. Anchored on "in… from <dir>"
+        // Room-entry arrival. Anchored on "in… from <dir>"
         // so a wide alternation of verbs (crawls, walks, slithers, lumbers,
         // teleports, materialises, …) is folded into a single \w+ capture.
         // Direction tolerates hyphens for "north-east" variants alongside the
@@ -237,11 +210,10 @@ public static class DefaultPatterns
         yield return new RegexPattern(KnownPatterns.RoomEntryArrival,
             @"^(?<name>.+?) \w+ in(?:to)?(?: the room)? from (?:the )?(?<direction>[\w-]+)[.!]\s*$");
 
-        // ----- Conversation --------------------------------------------- (source: classifier.js conversation)
-        // Auction lines share gossip's shape ("X auctions: ...") and the
-        // user wants them filtered under the same Gossip toggle in the
-        // Conversation window, so we classify both under one id via
-        // alternation on the verb. Megamind's classifier does the same.
+        // ----- Conversation ---------------------------------------------
+        // Auction lines share gossip's shape ("X auctions: ...") and the user
+        // wants them filtered under the same Gossip toggle in the Conversation
+        // window, so we classify both under one id via alternation on the verb.
         yield return new RegexPattern(KnownPatterns.ConversationGossip,
             @"^(?<player>\w+) (?:gossips|auctions): (?<message>.+)");
         yield return new RegexPattern(KnownPatterns.ConversationBroadcast,
@@ -251,9 +223,9 @@ public static class DefaultPatterns
         // Telepath: incoming + outgoing have different shapes — split into two ids.
         yield return new RegexPattern(KnownPatterns.ConversationTelepathIn,
             @"^(?<player>\w+) telepaths: (?<message>.+)");
-        // The verb's capitalization varies between BBSes — Megamind's
-        // literal is lowercase "sent" but some realms emit "Sent". Use
-        // IgnoreCase so both spellings classify; we don't assume a realm.
+        // The verb's capitalization varies between BBSes — some realms emit
+        // "Sent". Use IgnoreCase so both spellings classify; we don't assume a
+        // realm.
         yield return new RegexPattern(KnownPatterns.ConversationTelepathOut,
             @"^--- Telepath sent to (?<player>\w+) ---$",
             options: System.Text.RegularExpressions.RegexOptions.IgnoreCase);
@@ -268,11 +240,11 @@ public static class DefaultPatterns
         // character's own speech as an inbound @-command.
         yield return new RegexPattern(KnownPatterns.ConversationLocal,
             @"^(?:(?<player>\w+) says|You say) ""(?<message>.+)""");
-        // user-emote (Megamind's regex keys off ANSI bytes the LineExtractor
-        // strips). Omitted until attribute-aware matching ships — see remarks
-        // on this class.
+        // user-emote is distinguished purely by ANSI colour bytes the
+        // LineExtractor strips, so it's omitted until attribute-aware matching
+        // ships — see the class summary above.
 
-        // ----- Action / Items ------------------------------------------- (source: classifier.js action-items)
+        // ----- Action / Items -------------------------------------------
         yield return new RegexPattern(KnownPatterns.UserHides,
             @"^You hid (?<item>.*)\.");
         // PlayerGets: combined own + others via alternation.
@@ -293,15 +265,14 @@ public static class DefaultPatterns
         yield return new RegexPattern(KnownPatterns.UserBuys,
             @"^You just bought (?:(?<qty>\d+) )?(?<item>[\w ]+) for (?<price>\d+) copper farthings\.$");
 
-        // ----- Room ----------------------------------------------------- (source: classifier.js room)
-        // Phase 7 room-parser consumer: before splitting `exits` on comma,
-        // strip the [A-Z]\b. artifact Megamind's roomHandler.js handles —
-        // BBSes embed direction-shortcut overstrike that survives the
-        // emulator (megamind-client roomHandler.js updateRoomExits).
+        // ----- Room -----------------------------------------------------
+        // Room-parser consumer: before splitting `exits` on comma, strip the
+        // [A-Z]\b. artifact — BBSes embed direction-shortcut overstrike that
+        // survives the emulator.
         yield return new RegexPattern(KnownPatterns.RoomExits,
             @"^Obvious exits: [\w, ]+");
 
-        // ----- Status --------------------------------------------------- (source: classifier.js status)
+        // ----- Status ---------------------------------------------------
         yield return new RegexPattern(KnownPatterns.StatusLine,
             @"^\[HP=(?<hp>\d{1,4})(?:\/(?<type>MA|KAI)=(?<mana>\d{1,3}))?(?:\s\((?<statea>Resting|Meditating)\)\s)?\]:(?:\s\((?<stateb>Resting|Meditating)\))?");
         yield return new RegexPattern(KnownPatterns.UserExperience,
@@ -311,7 +282,7 @@ public static class DefaultPatterns
         yield return new RegexPattern(KnownPatterns.UserEncumbrance,
             @"^Encumbrance:\s+\d+");
 
-        // ----- Player presence ------------------------------------------ (source: classifier.js module)
+        // ----- Player presence ------------------------------------------
         yield return new RegexPattern(KnownPatterns.PlayerDisconnects,
             @"^(?<player>\w+) just disconnected!!!\.");
         // Clean logoff via the in-game hangup command. Distinct from the
@@ -352,9 +323,8 @@ public static class DefaultPatterns
         yield return new RegexPattern(KnownPatterns.PartyInviteReceived,
             @"^(?<player>\w+) has invited you to follow (?:him|her)\.?\s*$");
 
-        // ----- Party ---------------------------------------------------- (Phase 6 PR 6.1)
-        // Real-BBS-verified patterns (Playpen BBS observation, Phase 6
-        // post-PR-6.8). Two distinct follow-direction signals:
+        // ----- Party ----------------------------------------------------
+        // Real-BBS-verified patterns. Two distinct follow-direction signals:
         //   - "X started to follow you."     ⇒ X joined OUR party (we lead)
         //   - "You are now following X."     ⇒ WE joined X's party (X leads)
         // Stop-following alternation covers both observed wordings.
@@ -507,7 +477,7 @@ public static class DefaultPatterns
         yield return new RegexPattern(KnownPatterns.TrapDisarmedSuccess,
             @"^You successfully disarmed the trap to the (?<dir>\w+)\.?\s*$");
 
-        // ----- Door handling (Phase 7 DoorOpenManager) ----------------
+        // ----- Door handling --------------------------------------------
         // Single-shot match — DoorOpenManager runs one request at a time,
         // so we don't need direction capture in the match. Both "door"
         // and "gate" nouns covered.

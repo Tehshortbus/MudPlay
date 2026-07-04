@@ -4,27 +4,20 @@ using System.Text;
 
 namespace FujinTerm.Services;
 
-/// <summary>
-/// AES-GCM encrypt / decrypt for short secrets (BBS passwords).
-/// The ciphertext is stored <em>inline on the owning record</em> — e.g.
-/// <see cref="Models.Profile.BbsCredentials.EncryptedPassword"/> — so a
-/// character profile JSON is fully self-contained for backup / copy.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Key material lives in a single file at <c>Data/.credkey</c> — 32 random
-/// bytes, generated on first use, mode 0600 on Unix (NTFS already inherits
-/// user-private perms on Windows). The key file is the only piece a
-/// would-be reader needs in addition to the profile JSON to recover the
-/// plaintext, so backups / shares should exclude it.
-/// </para>
-/// <para>
-/// Not as strong as a real OS keychain (libsecret / DPAPI / macOS Keychain).
-/// Same shape can be swapped in behind this class without touching any
-/// caller, because the public surface is just <see cref="Protect"/> /
-/// <see cref="Unprotect"/>.
-/// </para>
-/// </remarks>
+// AES-GCM encrypt / decrypt for short secrets (BBS passwords). The ciphertext
+// is stored inline on the owning record — e.g.
+// Models.Profile.BbsCredentials.EncryptedPassword — so a character profile
+// JSON is fully self-contained for backup / copy.
+//
+// Key material lives in a single file at Data/.credkey — 32 random bytes,
+// generated on first use, mode 0600 on Unix (NTFS already inherits
+// user-private perms on Windows). The key file is the only piece a would-be
+// reader needs in addition to the profile JSON to recover the plaintext, so
+// backups / shares should exclude it.
+//
+// Not as strong as a real OS keychain (libsecret / DPAPI / macOS Keychain). A
+// real keychain can be swapped in behind this class without touching any
+// caller, because the public surface is just Protect / Unprotect.
 public sealed class PasswordProtector
 {
     private const int NonceSize = 12;
@@ -42,11 +35,8 @@ public sealed class PasswordProtector
         _keyPath = keyPath;
     }
 
-    /// <summary>
-    /// Encrypt <paramref name="plaintext"/> with the per-user key and
-    /// return the base64-encoded blob (nonce ‖ ciphertext ‖ tag) suitable
-    /// for stuffing into JSON.
-    /// </summary>
+    // Encrypt plaintext with the per-user key and return the base64-encoded
+    // blob (nonce ‖ ciphertext ‖ tag) suitable for stuffing into JSON.
     public string Protect(string plaintext)
     {
         ArgumentNullException.ThrowIfNull(plaintext);
@@ -69,11 +59,9 @@ public sealed class PasswordProtector
         return Convert.ToBase64String(combined);
     }
 
-    /// <summary>
-    /// Decrypt a blob previously produced by <see cref="Protect"/>.
-    /// Returns <c>null</c> when the blob is malformed, the tag fails to
-    /// verify, or the key file has been replaced since the blob was written.
-    /// </summary>
+    // Decrypt a blob previously produced by Protect. Returns null when the
+    // blob is malformed, the tag fails to verify, or the key file has been
+    // replaced since the blob was written.
     public string? Unprotect(string protectedBlob)
     {
         if (string.IsNullOrEmpty(protectedBlob)) return null;
@@ -126,7 +114,7 @@ public sealed class PasswordProtector
         }
     }
 
-    /// <summary>chmod 600 on Unix; no-op on Windows (NTFS inherits user perms).</summary>
+    // chmod 600 on Unix; no-op on Windows (NTFS inherits user perms).
     private static void RestrictPermissions(string path)
     {
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) return;

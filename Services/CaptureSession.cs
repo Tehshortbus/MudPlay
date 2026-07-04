@@ -2,29 +2,25 @@ using FujinTerm.Terminal;
 
 namespace FujinTerm.Services;
 
-/// <summary>
-/// Tee the live terminal transcript to a file. Each completed row (the
-/// same rows the Backscroll window sees) is appended as
-/// <c>[HH:mm:ss] &lt;ansi-encoded-text&gt;\n</c> so the file replays its
-/// colours through any ANSI-aware viewer (<c>less -R</c>, modern terminals,
-/// etc.). Replaces the old timed binary capture format — replay-into-the-
-/// emulator isn't a feature the app needs.
-/// </summary>
-/// <remarks>
-/// Thread-safety: <see cref="ScrollbackBuffer.RowAdded"/> fires on the
-/// emulator's UI-thread <c>Feed</c> path in production. <c>Start</c> and
-/// <c>Stop</c> are also UI-thread calls. No internal locking needed.
-/// </remarks>
+// Tee the live terminal transcript to a file. Each completed row (the same rows
+// the Backscroll window sees) is appended as [HH:mm:ss] <ansi-encoded-text>\n so
+// the file replays its colours through any ANSI-aware viewer (less -R, modern
+// terminals, etc.). Replaces the old timed binary capture format —
+// replay-into-the-emulator isn't a feature the app needs.
+//
+// Thread-safety: ScrollbackBuffer.RowAdded fires on the emulator's UI-thread
+// Feed path in production. Start and Stop are also UI-thread calls. No internal
+// locking needed.
 public sealed class CaptureSession : IAsyncDisposable
 {
     private readonly ScrollbackBuffer _source;
     private StreamWriter? _writer;
     private bool _subscribed;
 
-    /// <summary>Path of the currently-open file, or <c>null</c> if inactive.</summary>
+    // Path of the currently-open file, or null if inactive.
     public string? FilePath { get; private set; }
 
-    /// <summary><c>true</c> between <see cref="Start"/> and <see cref="Stop"/>.</summary>
+    // true between Start and Stop.
     public bool IsActive => _writer is not null;
 
     public CaptureSession(ScrollbackBuffer source)
@@ -33,11 +29,9 @@ public sealed class CaptureSession : IAsyncDisposable
         _source = source;
     }
 
-    /// <summary>
-    /// Begin appending captured rows to <paramref name="path"/>. Overwrites
-    /// any existing file with the same name. Idempotent: starting again
-    /// while active rotates to the new path.
-    /// </summary>
+    // Begin appending captured rows to path. Overwrites any existing file with
+    // the same name. Idempotent: starting again while active rotates to the new
+    // path.
     public void Start(string path)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
@@ -54,7 +48,7 @@ public sealed class CaptureSession : IAsyncDisposable
         _writer.WriteLine($"# FujinTerm capture — started {DateTimeOffset.Now:O}");
     }
 
-    /// <summary>Stop the capture and close the file. No-op when inactive.</summary>
+    // Stop the capture and close the file. No-op when inactive.
     public void Stop()
     {
         if (_subscribed)

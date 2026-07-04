@@ -12,29 +12,19 @@ using FujinTerm.ViewModels.Navigation;
 
 namespace FujinTerm.ViewModels.Settings;
 
-/// <summary>
-/// Modeless editor for one <see cref="ScheduledEvent"/>. Phase 8 PR
-/// 8.4 — WHEN (trigger) and WHAT (action) split into two separate
-/// radio groups so the user isn't picking from a single mixed list
-/// the way MegaMUD's dialog forces.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Edit semantics: the VM works on its own field set; the original
-/// <see cref="ScheduledEvent"/> isn't touched until Save. Save returns
-/// the materialised event (either fresh-constructed for a new event,
-/// or with the original's mutations applied for a modify). Cancel
-/// returns <c>null</c>. The caller decides whether the result goes
-/// into <see cref="EventManager.Add"/> (new) or
-/// <see cref="EventManager.Replace"/> (modify).
-/// </para>
-/// <para>
-/// Walk-to / Loop / Auto-lair pickers bind to the live
-/// <see cref="LoopManager"/> / <see cref="LairManager"/> collections
-/// + <see cref="RoomSearchService"/> so the user sees the same names
-/// + room references the rest of the app uses.
-/// </para>
-/// </remarks>
+// Modeless editor for one ScheduledEvent. WHEN (trigger) and WHAT (action) split
+// into two separate radio groups so the user isn't picking from a single mixed
+// list the way MegaMUD's dialog forces.
+//
+// Edit semantics: the VM works on its own field set; the original ScheduledEvent
+// isn't touched until Save. Save returns the materialised event (either
+// fresh-constructed for a new event, or with the original's mutations applied for
+// a modify). Cancel returns null. The caller decides whether the result goes into
+// EventManager.Add (new) or EventManager.Replace (modify).
+//
+// Walk-to / Loop / Auto-lair pickers bind to the live LoopManager / LairManager
+// collections + RoomSearchService so the user sees the same names + room
+// references the rest of the app uses.
 public sealed partial class EventEditDialogViewModel : ObservableObject, IDialogViewModel<ScheduledEvent?>
 {
     public event Action<ScheduledEvent?>? CloseRequested;
@@ -125,7 +115,7 @@ public sealed partial class EventEditDialogViewModel : ObservableObject, IDialog
 
     [ObservableProperty] private EventTimeUnit _everyUnit = EventTimeUnit.Seconds;
 
-    /// <summary>Picker source for the EveryUnit ComboBox.</summary>
+    // Picker source for the EveryUnit ComboBox.
     public IReadOnlyList<EventTimeUnit> EveryUnits { get; } =
         new[] { EventTimeUnit.Seconds, EventTimeUnit.Minutes, EventTimeUnit.Hours };
 
@@ -143,26 +133,23 @@ public sealed partial class EventEditDialogViewModel : ObservableObject, IDialog
     [ObservableProperty] private bool _isActionLoop;
     [ObservableProperty] private string? _loopName;
 
-    /// <summary>Saved loops the user can pick from for the Loop action.</summary>
+    // Saved loops the user can pick from for the Loop action.
     public ObservableCollection<string> AvailableLoopNames { get; } = new();
 
     [ObservableProperty] private bool _isActionAutoLair;
     [ObservableProperty] private string? _autoLairSetupName;
 
-    /// <summary>Saved auto-lair setups for the AutoLair action.</summary>
+    // Saved auto-lair setups for the AutoLair action.
     public ObservableCollection<string> AvailableAutoLairNames { get; } = new();
 
     [ObservableProperty] private bool _isActionCommand;
     [ObservableProperty] private string _commandText = string.Empty;
 
-    /// <summary>
-    /// WHAT-side validation happens on Save (popup), not inline —
-    /// fewer red labels cluttering the form. WHEN-side format errors
-    /// stay inline because they're objectively wrong syntax the user
-    /// can see at a glance. Command never errors at edit time: an
-    /// empty CommandText is a valid event whose Fire sends a bare
-    /// carriage return.
-    /// </summary>
+    // WHAT-side validation happens on Save (popup), not inline — fewer red labels
+    // cluttering the form. WHEN-side format errors stay inline because they're
+    // objectively wrong syntax the user can see at a glance. Command never errors
+    // at edit time: an empty CommandText is a valid event whose Fire sends a bare
+    // carriage return.
     public bool HasAtTimeError => AtTimeError.Length > 0;
     public bool HasEveryError  => EveryError.Length  > 0;
 
@@ -232,10 +219,8 @@ public sealed partial class EventEditDialogViewModel : ObservableObject, IDialog
     [RelayCommand]
     private void Cancel() => CloseRequested?.Invoke(null);
 
-    /// <summary>
-    /// Internal so tests can poke the validation path without going
-    /// through a dispatcher / DialogService.
-    /// </summary>
+    // Internal so tests can poke the validation path without going through a
+    // dispatcher / DialogService.
     internal string? TryGetMissingTargetMessage()
     {
         if (IsActionWalkTo)
@@ -252,14 +237,11 @@ public sealed partial class EventEditDialogViewModel : ObservableObject, IDialog
         return null;
     }
 
-    /// <summary>
-    /// Toggle-source partials. The XAML radios enforce mutual
-    /// exclusion via <c>GroupName</c>, but tests + programmatic
-    /// callers don't go through the radios — so the partials also
-    /// clear sibling flags when a new one flips on. This way the VM
-    /// contract — "exactly one trigger, exactly one action" — holds
-    /// regardless of how the property was set.
-    /// </summary>
+    // Toggle-source partials. The XAML radios enforce mutual exclusion via
+    // GroupName, but tests + programmatic callers don't go through the radios — so
+    // the partials also clear sibling flags when a new one flips on. This way the
+    // VM contract — "exactly one trigger, exactly one action" — holds regardless of
+    // how the property was set.
     partial void OnIsTriggerLogonChanged(bool value)
     {
         if (value) { IsTriggerLogoff = IsTriggerRelog = IsTriggerAtTime = IsTriggerEvery = false; }
@@ -334,28 +316,21 @@ public sealed partial class EventEditDialogViewModel : ObservableObject, IDialog
         return EventActionType.WalkTo;
     }
 
-    /// <summary>
-    /// Three-state result of resolving <see cref="WalkToText"/>:
-    /// resolved (Map+Room set, no error), unresolved-with-reason
-    /// (ErrorMessage set — no match or ambiguous), or empty
-    /// (everything null — the validator supplies the default
-    /// "No walk-to target selected" message).
-    /// </summary>
+    // Three-state result of resolving WalkToText: resolved (Map+Room set, no
+    // error), unresolved-with-reason (ErrorMessage set — no match or ambiguous), or
+    // empty (everything null — the validator supplies the default "No walk-to
+    // target selected" message).
     internal readonly record struct WalkToResolution(int? Map, int? Room, string? ErrorMessage)
     {
         public bool Ok => Map is not null && Room is not null;
     }
 
-    /// <summary>
-    /// Resolve <see cref="WalkToText"/> via
-    /// <see cref="RoomSearchService"/>. Accepts coord (<c>1/297</c>,
-    /// <c>1 297</c>, <c>1,297</c>) directly; for names, requires
-    /// exactly one room-name match (room-tier only — monster matches
-    /// don't qualify here since walk-to means a destination, not a
-    /// mob). Distinguishes no-match vs ambiguous-match in the error
-    /// so the user-facing popup can say the right thing instead of
-    /// blanket "no target selected".
-    /// </summary>
+    // Resolve WalkToText via RoomSearchService. Accepts coord (1/297, 1 297,
+    // 1,297) directly; for names, requires exactly one room-name match (room-tier
+    // only — monster matches don't qualify here since walk-to means a destination,
+    // not a mob). Distinguishes no-match vs ambiguous-match in the error so the
+    // user-facing popup can say the right thing instead of blanket "no target
+    // selected".
     internal WalkToResolution ResolveWalkTo()
     {
         if (string.IsNullOrWhiteSpace(WalkToText)) return new(null, null, null);

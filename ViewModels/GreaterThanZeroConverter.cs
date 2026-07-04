@@ -3,12 +3,10 @@ using Avalonia.Data.Converters;
 
 namespace FujinTerm.ViewModels;
 
-/// <summary>
-/// XAML converter that returns <c>true</c> when the bound numeric is
-/// strictly greater than zero. Used to hide the MA bar / numeric on the
-/// PartyWindow's warrior rows where <c>BaselineMp</c> is 0 (no mana
-/// pool), keeping the row compact.
-/// </summary>
+// XAML converter that returns true when the bound numeric is strictly
+// greater than zero. Used to hide the MA bar / numeric on the PartyWindow's
+// warrior rows where BaselineMp is 0 (no mana pool), keeping the row
+// compact.
 public sealed class GreaterThanZeroConverter : IValueConverter
 {
     public static GreaterThanZeroConverter Instance { get; } = new();

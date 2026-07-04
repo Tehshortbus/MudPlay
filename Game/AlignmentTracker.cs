@@ -4,30 +4,26 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game;
 
-/// <summary>
-/// Tracks whether the local character's last-observed alignment is stale.
-/// MajorMUD prints "A dark cloud passes over you" whenever the character's
-/// alignment shifts toward evil (an evil-point gain) — but the alignment word
-/// the Character Workshop displays (parsed from <c>who</c>) only updates on the
-/// next <c>who</c>. This watcher flags the alignment stale on that line and
-/// clears the flag once our own row is re-observed in a <c>who</c> response.
-/// </summary>
-/// <remarks>
-/// Long-lived (app lifetime), so the dark-cloud line is caught even while the
-/// Character Workshop is closed; the Workshop's Character Info tab reads
-/// <see cref="IsStale"/> when it opens and tracks it live via
-/// <see cref="StaleChanged"/>.
-/// </remarks>
+// Tracks whether the local character's last-observed alignment is stale.
+// MajorMUD prints "A dark cloud passes over you" whenever the character's
+// alignment shifts toward evil (an evil-point gain) — but the alignment word
+// the Character Workshop displays (parsed from `who`) only updates on the next
+// `who`. This watcher flags the alignment stale on that line and clears the
+// flag once our own row is re-observed in a `who` response.
+//
+// Long-lived (app lifetime), so the dark-cloud line is caught even while the
+// Character Workshop is closed; the Workshop's Character Info tab reads IsStale
+// when it opens and tracks it live via StaleChanged.
 public sealed class AlignmentTracker : IDisposable
 {
     private readonly PlayerStats _stats;
     private readonly PlayerDatabase _players;
     private readonly IDisposable _darkCloudSub;
 
-    /// <summary>True when a dark-cloud line has fired since the last <c>who</c> refresh.</summary>
+    // True when a dark-cloud line has fired since the last `who` refresh.
     public bool IsStale { get; private set; }
 
-    /// <summary>Raised whenever <see cref="IsStale"/> changes.</summary>
+    // Raised whenever IsStale changes.
     public event Action? StaleChanged;
 
     public AlignmentTracker(MessageRouter router, PlayerStats stats, PlayerDatabase players)

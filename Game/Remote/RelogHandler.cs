@@ -4,33 +4,25 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game.Remote;
 
-/// <summary>
-/// Consumer of <see cref="RemoteCommandManager"/> for the
-/// <c>@relog</c> command (<c>HangupDisconnect</c> permission category).
-/// Performs a graceful relog: arms <see cref="RelogSignal"/> and then
-/// sends the configured <see cref="GameCommands.ExitCommand"/> (default
-/// <c>=x</c>) so the BBS logs the character out cleanly and drops the
-/// carrier. MainWindowViewModel's Disconnected handler sees the relog
-/// intent and forces an unconditional dial-back, at which point the
-/// normal login automation logs the character straight back in.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Sibling of <see cref="HangupHandler"/> — same category, same wire
-/// shape (exit command then carrier drop), opposite reconnect intent.
-/// @hangup suppresses the reactive reconnect AND the next entry
-/// automation (user reads the screen, types in manually). @relog forces
-/// the reconnect and lets the login automation run, so the whole
-/// round-trip is automatic. The graceful <c>=x</c> exit (rather than a
-/// hard socket drop) is deliberate: it logs the character out of the
-/// realm first, avoiding the in-world ghosting / "already playing"
-/// prompt a raw carrier-loss would risk on the immediate reconnect.
-/// </para>
-/// <para>
-/// No reply is sent — we're dropping the carrier, so a reply could not
-/// reach the sender anyway (matches <see cref="HangupHandler"/>).
-/// </para>
-/// </remarks>
+// Consumer of RemoteCommandManager for the @relog command (HangupDisconnect
+// permission category). Performs a graceful relog: arms RelogSignal and then
+// sends the configured GameCommands.ExitCommand (default =x) so the BBS logs
+// the character out cleanly and drops the carrier. MainWindowViewModel's
+// Disconnected handler sees the relog intent and forces an unconditional
+// dial-back, at which point the normal login automation logs the character
+// straight back in.
+//
+// Sibling of HangupHandler — same category, same wire shape (exit command then
+// carrier drop), opposite reconnect intent. @hangup suppresses the reactive
+// reconnect AND the next entry automation (user reads the screen, types in
+// manually). @relog forces the reconnect and lets the login automation run, so
+// the whole round-trip is automatic. The graceful =x exit (rather than a hard
+// socket drop) is deliberate: it logs the character out of the realm first,
+// avoiding the in-world ghosting / "already playing" prompt a raw carrier-loss
+// would risk on the immediate reconnect.
+//
+// No reply is sent — we're dropping the carrier, so a reply could not reach the
+// sender anyway (matches HangupHandler).
 public sealed class RelogHandler : IDisposable
 {
     private readonly RemoteCommandManager _engine;
@@ -54,26 +46,20 @@ public sealed class RelogHandler : IDisposable
         _engine.RegisterHandler("@relog", category, OnRelog);
     }
 
-    /// <summary>
-    /// Bind the wire-sender — same shape as <see cref="HangupHandler"/>.
-    /// MainWindowViewModel supplies <c>SendUserInput</c>. Without it the
-    /// handler still authorises the @relog AND raises the
-    /// <see cref="RelogSignal"/> intent, but produces no wire output —
-    /// useful for tests.
-    /// </summary>
+    // Bind the wire-sender — same shape as HangupHandler. MainWindowViewModel
+    // supplies SendUserInput. Without it the handler still authorises the @relog
+    // AND raises the RelogSignal intent, but produces no wire output — useful for
+    // tests.
     public void SetWireSender(Action<byte[]> sender)
     {
         ArgumentNullException.ThrowIfNull(sender);
         _wireSender = sender;
     }
 
-    /// <summary>
-    /// Bind the master "Disable hangups" check. When it returns
-    /// <c>true</c>, <c>@relog</c> is a no-op — a relog is a carrier drop
-    /// followed by a forced reconnect, so it counts as an automatic
-    /// hangup the user has opted out of. Read live so a mid-session toggle
-    /// takes effect immediately.
-    /// </summary>
+    // Bind the master "Disable hangups" check. When it returns true, @relog is a
+    // no-op — a relog is a carrier drop followed by a forced reconnect, so it
+    // counts as an automatic hangup the user has opted out of. Read live so a
+    // mid-session toggle takes effect immediately.
     public void SetHangupsDisabledCheck(Func<bool> disabled)
     {
         ArgumentNullException.ThrowIfNull(disabled);

@@ -9,33 +9,23 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game.Remote;
 
-/// <summary>
-/// Keeps the party's level bounds warm for path planning. When this
-/// character leads a party and the "avoid party-impassable level gates"
-/// toggle is on, the tracker fires an <c>@level</c> probe whenever the
-/// roster changes (debounced by a roster signature) so
-/// <see cref="PlayerDatabase"/> holds each member's exact level, and
-/// exposes the synchronous <see cref="Bounds"/> that
-/// <see cref="MovementFilter.PartyLevelBoundsProvider"/> reads at BFS time
-/// to route the party around gates a member can't clear.
-/// </summary>
-/// <remarks>
-/// <para>
-/// The async probe and the synchronous gate check are decoupled through
-/// <see cref="PlayerDatabase"/>: the probe (persisting via
-/// <see cref="PlayerDatabase.RecordLevel"/>) refreshes the cache in the
-/// background; <see cref="Bounds"/> only ever reads it. A member not yet
-/// probed contributes their title-derived band — or nothing, when even the
-/// title is unknown — so planning degrades gracefully until the reply
-/// lands instead of blocking on a round-trip.
-/// </para>
-/// <para>
-/// Read-only on party state: subscribes to
-/// <see cref="PartyState.Members"/> collection changes and the
-/// <see cref="PartyState.IsInParty"/> / <see cref="PartyState.SelfIsLeader"/>
-/// property changes; never writes a party field.
-/// </para>
-/// </remarks>
+// Keeps the party's level bounds warm for path planning. When this character
+// leads a party and the "avoid party-impassable level gates" toggle is on, the
+// tracker fires an @level probe whenever the roster changes (debounced by a
+// roster signature) so PlayerDatabase holds each member's exact level, and
+// exposes the synchronous Bounds that MovementFilter.PartyLevelBoundsProvider
+// reads at BFS time to route the party around gates a member can't clear.
+//
+// The async probe and the synchronous gate check are decoupled through
+// PlayerDatabase: the probe (persisting via PlayerDatabase.RecordLevel)
+// refreshes the cache in the background; Bounds only ever reads it. A member
+// not yet probed contributes their title-derived band — or nothing, when even
+// the title is unknown — so planning degrades gracefully until the reply lands
+// instead of blocking on a round-trip.
+//
+// Read-only on party state: subscribes to PartyState.Members collection changes
+// and the PartyState.IsInParty / PartyState.SelfIsLeader property changes; never
+// writes a party field.
 public sealed class PartyLevelTracker : IDisposable
 {
     private readonly PartyState _party;
@@ -71,13 +61,11 @@ public sealed class PartyLevelTracker : IDisposable
         MaybeProbe();
     }
 
-    /// <summary>
-    /// The party's most-constraining <c>(Low, High)</c> level window, or
-    /// <c>null</c> when the feature is off, we're not leading a party, or
-    /// nobody's level is known. Synchronous — reads only the
-    /// <see cref="PlayerDatabase"/> cache the probe keeps warm; each member
-    /// contributes their exact level when probed, else their title band.
-    /// </summary>
+    // The party's most-constraining (Low, High) level window, or null when the
+    // feature is off, we're not leading a party, or nobody's level is known.
+    // Synchronous — reads only the PlayerDatabase cache the probe keeps warm;
+    // each member contributes their exact level when probed, else their title
+    // band.
     public (int Low, int High)? Bounds()
     {
         if (!_isEnabled()) return null;
@@ -106,14 +94,11 @@ public sealed class PartyLevelTracker : IDisposable
             MaybeProbe();
     }
 
-    /// <summary>
-    /// Fire an <c>@level</c> probe when leading a party whose roster changed
-    /// since the last probe. The roster signature debounces unrelated
-    /// party-state churn (HP polls, leader-name refresh) down to one probe
-    /// per genuine membership change. Clears the signature whenever the
-    /// feature is off or we stop leading, so re-forming the same party
-    /// re-probes.
-    /// </summary>
+    // Fire an @level probe when leading a party whose roster changed since the
+    // last probe. The roster signature debounces unrelated party-state churn
+    // (HP polls, leader-name refresh) down to one probe per genuine membership
+    // change. Clears the signature whenever the feature is off or we stop
+    // leading, so re-forming the same party re-probes.
     private void MaybeProbe()
     {
         if (!_isEnabled() || !_party.IsInParty || !_party.SelfIsLeader)

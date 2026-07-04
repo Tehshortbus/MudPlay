@@ -8,43 +8,29 @@ using FujinTerm.ViewModels.Navigation;
 
 namespace FujinTerm.Services;
 
-/// <summary>
-/// Centralised room-search resolver. Consumed by the Navigation rail
-/// search box, the Loop / Lair editor "Add room" rows, the manual
-/// Center-on dialog, the @goto remote-command handler — anywhere the
-/// user types a free-form room reference and we have to find the
-/// matching <see cref="RoomKey"/>(s).
-/// </summary>
-/// <remarks>
-/// <para>
-/// Resolution tiers (results from each tier accumulate; first tier
-/// with a hit doesn't block later tiers from also surfacing matches):
-/// <list type="number">
-///   <item><b>Coordinate</b> — <c>1/297</c>, <c>1,297</c>,
-///     <c>1 297</c>; bare <c>297</c> across all maps.</item>
-///   <item><b>Acronym</b> (opt-in via <see cref="Search"/>'s
-///     <c>includeAcronyms</c> flag) — "Frozen Cavern, Cave Opening" →
-///     <c>FCCO</c>. First letter of each whitespace/punctuation-
-///     delimited word, uppercased.</item>
-///   <item><b>Room-name substring</b> — case-insensitive match
-///     against <see cref="Room.Name"/> + <see cref="Room.DisplayName"/>.
-///     Requires ≥ 2 chars to avoid flooding on a single keystroke.</item>
-///   <item><b>Monster-name substring</b> — limited to monsters with
-///     <c>RegenTime &gt; 0</c> (i.e. lair-respawning mobs). One
-///     <see cref="RoomSearchResult"/> per (monster, lair-room) pair;
-///     mobs whose spawn rooms aren't recorded surface as
-///     informational rows.</item>
-/// </list>
-/// </para>
-/// <para>
-/// Caches: the regen-monster list + monster→rooms index live on the
-/// service and invalidate on
-/// <see cref="GameDataCache.ActiveSetChanged"/> +
-/// <see cref="RoomGraphManager.GraphReloaded"/>. Each call to
-/// <see cref="Search"/> consults <see cref="BfsMapper"/> for per-
-/// result step distances; those are BfsMapper's own concern to cache.
-/// </para>
-/// </remarks>
+// Centralised room-search resolver. Consumed by the Navigation rail search box,
+// the Loop / Lair editor "Add room" rows, the manual Center-on dialog, the
+// @goto remote-command handler — anywhere the user types a free-form room
+// reference and we have to find the matching RoomKey(s).
+//
+// Resolution tiers (results from each tier accumulate; first tier with a hit
+// doesn't block later tiers from also surfacing matches):
+//   1. Coordinate — 1/297, 1,297, 1 297; bare 297 across all maps.
+//   2. Acronym (opt-in via Search's includeAcronyms flag) — "Frozen Cavern,
+//      Cave Opening" → FCCO. First letter of each whitespace/punctuation-
+//      delimited word, uppercased.
+//   3. Room-name substring — case-insensitive match against Room.Name +
+//      Room.DisplayName. Requires >= 2 chars to avoid flooding on a single
+//      keystroke.
+//   4. Monster-name substring — limited to monsters with RegenTime > 0 (i.e.
+//      lair-respawning mobs). One RoomSearchResult per (monster, lair-room)
+//      pair; mobs whose spawn rooms aren't recorded surface as informational
+//      rows.
+//
+// Caches: the regen-monster list + monster→rooms index live on the service and
+// invalidate on GameDataCache.ActiveSetChanged + RoomGraphManager.GraphReloaded.
+// Each call to Search consults BfsMapper for per-result step distances; those
+// are BfsMapper's own concern to cache.
 public sealed class RoomSearchService
 {
     private static readonly Regex SummonedRoomRegex
@@ -93,16 +79,12 @@ public sealed class RoomSearchService
         if (_movement is not null) _movement.AvoidedChanged += InvalidateDistanceCache;
     }
 
-    /// <summary>
-    /// Resolve <paramref name="query"/> against the active graph.
-    /// Each tier accumulates into the returned list, deduped on
-    /// <c>(Key, MonsterTag)</c>. Results are sorted by step distance
-    /// (closer first) then by primary line.
-    /// </summary>
-    /// <param name="query">The user-typed text.</param>
-    /// <param name="source">Player's current room for step distance; pass null to skip distance.</param>
-    /// <param name="cap">Soft cap on total matches. Tiers stop accumulating once reached.</param>
-    /// <param name="includeAcronyms">Run the acronym tier (only @goto uses this).</param>
+    // Resolve query against the active graph. Each tier accumulates into the
+    // returned list, deduped on (Key, MonsterTag). Results are sorted by step
+    // distance (closer first) then by primary line.
+    //   source — player's current room for step distance; pass null to skip.
+    //   cap — soft cap on total matches; tiers stop accumulating once reached.
+    //   includeAcronyms — run the acronym tier (only @goto uses this).
     public IReadOnlyList<RoomSearchResult> Search(
         string query,
         RoomKey? source = null,
@@ -204,11 +186,8 @@ public sealed class RoomSearchService
     // ----- Pure parsers (also re-exported as statics so handlers can
     //       reuse without instantiating a service) ---------------------
 
-    /// <summary>
-    /// Parse a coordinate token. <c>1/297</c> / <c>1,297</c> /
-    /// <c>1 297</c> → (1, 297); bare <c>297</c> → (null, 297);
-    /// non-numeric → (null, null).
-    /// </summary>
+    // Parse a coordinate token. 1/297 / 1,297 / 1 297 → (1, 297); bare 297 →
+    // (null, 297); non-numeric → (null, null).
     public static (int? Map, int? Room) TryParseCoordinate(string text)
     {
         string[] parts = (text ?? string.Empty).Split(new[] { '/', ',', ' ', '\t' },
@@ -222,11 +201,9 @@ public sealed class RoomSearchService
         return (null, null);
     }
 
-    /// <summary>
-    /// Parse a comma/semicolon-separated coordinate list — used by
-    /// @loop / @lair to consume <c>"1/224, 1/218, 1/245"</c>. Returns
-    /// null if any token fails so the caller falls back to name match.
-    /// </summary>
+    // Parse a comma/semicolon-separated coordinate list — used by @loop / @lair
+    // to consume "1/224, 1/218, 1/245". Returns null if any token fails so the
+    // caller falls back to name match.
     public static List<RoomKey>? TryParseCoordList(string text)
     {
         string[] tokens = (text ?? string.Empty).Split(new[] { ',', ';' },
@@ -243,10 +220,8 @@ public sealed class RoomSearchService
         return keys;
     }
 
-    /// <summary>
-    /// First letter of each whitespace-or-punctuation-delimited word,
-    /// uppercased. "Frozen Cavern, Cave Opening" → "FCCO".
-    /// </summary>
+    // First letter of each whitespace-or-punctuation-delimited word, uppercased.
+    // "Frozen Cavern, Cave Opening" → "FCCO".
     public static string ExtractAcronym(string text)
     {
         if (string.IsNullOrWhiteSpace(text)) return string.Empty;

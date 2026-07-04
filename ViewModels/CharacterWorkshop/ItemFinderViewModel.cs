@@ -15,19 +15,17 @@ using FujinTerm.Services;
 
 namespace FujinTerm.ViewModels.CharacterWorkshop;
 
-/// <summary>
-/// Modeless catalog browser opened from the Equipment Manager's "Item Finder" button.
-/// Lists every equippable item in the active game-data set — one combined list sorted
-/// by slot then name (MMUD-Explorer's separate Weapons / Armour tabs folded into one) —
-/// and narrows it with selectively-applied filters grouped for ease of use: a
-/// <b>Character</b> group (class / usable-at level / alignment, which defer to
-/// <see cref="ItemEquipFilter.CanEquip"/>), a <b>Slot &amp; type</b> group (slot,
-/// weapon type, armour type, backstab-capable), and a <b>Filter by stats</b> group —
-/// bonus thresholds (HP / mana / regens / damage / accuracy / crits / backstab / AC / DR)
-/// kept at-or-above the ticker, a hit-magic-level min/max range, and the strength /
-/// level requirement gates kept at-or-below the ticker. Read-only — the finder informs
-/// slot choices; it doesn't write the set.
-/// </summary>
+// Modeless catalog browser opened from the Equipment Manager's "Item Finder"
+// button. Lists every equippable item in the active game-data set — one combined
+// list sorted by slot then name (weapons and armour folded into one) — and
+// narrows it with selectively-applied filters grouped for ease of use: a
+// Character group (class / usable-at level / alignment, which defer to
+// ItemEquipFilter.CanEquip), a Slot & type group (slot, weapon type, armour type,
+// backstab-capable), and a Filter by stats group — bonus thresholds (HP / mana /
+// regens / damage / accuracy / crits / backstab / AC / DR) kept at-or-above the
+// ticker, a hit-magic-level min/max range, and the strength / level requirement
+// gates kept at-or-below the ticker. Read-only — the finder informs slot choices;
+// it doesn't write the set.
 public sealed partial class ItemFinderViewModel : ObservableObject, IDialogViewModel<bool>
 {
     private const string AnyClass = "(Any class)";
@@ -51,22 +49,22 @@ public sealed partial class ItemFinderViewModel : ObservableObject, IDialogViewM
     private string? _activeArmourType;
     private bool _filterSuspended = true;
 
-    /// <summary>The sorted, filterable item catalog the grid binds to.</summary>
+    // The sorted, filterable item catalog the grid binds to.
     public DataGridCollectionView RowsView { get; }
 
-    /// <summary>Class names from the active set, "(Any class)" first.</summary>
+    // Class names from the active set, "(Any class)" first.
     public ObservableCollection<string> ClassOptions { get; } = new();
 
-    /// <summary>Alignment buckets, "(Any)" first.</summary>
+    // Alignment buckets, "(Any)" first.
     public ObservableCollection<string> AlignmentOptions { get; } = new() { AnyAlign, "Good", "Neutral", "Evil" };
 
-    /// <summary>Slot labels present in the catalog, "(Any slot)" first.</summary>
+    // Slot labels present in the catalog, "(Any slot)" first.
     public ObservableCollection<string> SlotOptions { get; } = new();
 
-    /// <summary>Weapon-type labels present in the catalog, "(Any)" first.</summary>
+    // Weapon-type labels present in the catalog, "(Any)" first.
     public ObservableCollection<string> WeaponTypeOptions { get; } = new();
 
-    /// <summary>Armour-type labels present in the catalog, "(Any)" first.</summary>
+    // Armour-type labels present in the catalog, "(Any)" first.
     public ObservableCollection<string> ArmourTypeOptions { get; } = new();
 
     [ObservableProperty] private string _countText = string.Empty;
@@ -219,7 +217,7 @@ public sealed partial class ItemFinderViewModel : ObservableObject, IDialogViewM
         return true;
     }
 
-    /// <summary>Clear every filter back to "show everything".</summary>
+    // Clear every filter back to "show everything".
     [RelayCommand]
     private void Reset()
     {
@@ -240,7 +238,7 @@ public sealed partial class ItemFinderViewModel : ObservableObject, IDialogViewM
         ApplyFilter();
     }
 
-    /// <summary>Close the finder (read-only — no result to commit).</summary>
+    // Close the finder (read-only — no result to commit).
     [RelayCommand]
     private void Close() => CloseRequested?.Invoke(false);
 

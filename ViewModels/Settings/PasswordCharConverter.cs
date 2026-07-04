@@ -3,11 +3,9 @@ using Avalonia.Data.Converters;
 
 namespace FujinTerm.ViewModels.Settings;
 
-/// <summary>
-/// XAML converter for the Show-password ToggleButton — feeds the right
-/// <c>PasswordChar</c> into the TextBox: <c>'\0'</c> (no masking) when
-/// the toggle is on, <c>'•'</c> when it's off.
-/// </summary>
+// XAML converter for the Show-password ToggleButton — feeds the right
+// PasswordChar into the TextBox: '\0' (no masking) when the toggle is on,
+// '•' when it's off.
 public sealed class PasswordCharConverter : IValueConverter
 {
     public static readonly PasswordCharConverter Instance = new();

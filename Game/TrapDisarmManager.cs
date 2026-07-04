@@ -3,39 +3,24 @@ using FujinTerm.Services.Patterns;
 
 namespace FujinTerm.Game;
 
-/// <summary>
-/// State machine that drives the auto-disarm flow for
-/// <c>@trap &lt;direction&gt;</c> remote commands. Owns the per-request
-/// search → disarm loop, the queue of pending requests, and the
-/// telepath-the-sender-on-completion contract.
-/// </summary>
-/// <remarks>
-/// <para>
-/// One request is in flight at a time. The state machine cycles
-/// <c>Idle → Searching → DisarmPending → Done</c> per direction;
-/// subsequent <c>@trap &lt;dir&gt;</c> calls queue FIFO. A
-/// <c>@trap stop</c> aborts whatever's in flight, drains the queue,
-/// telepaths each queued sender that their trap was cancelled, and
-/// returns to <see cref="State.Idle"/>.
-/// </para>
-/// <para>
-/// The Stats-skill gate (<see cref="CanDisarm"/>) lives in this
-/// manager so the handler can interrogate it before deciding whether
-/// to enqueue or send a denial reply. The handler also owns the
-/// channel-aware silence (Say/Gangpath when no skill → silent;
-/// Telepath → reply) since the channel context lives at handler
-/// dispatch time.
-/// </para>
-/// <para>
-/// Damage-aware disarm abort is deferred to Phase 13 — once
-/// HealthManager wires the rest-if-below threshold + combat-line
-/// HP-delta tracking, the disarm retry loop will gate on
-/// <c>HP &gt; restThreshold</c> instead of just an attempt cap. For
-/// now the only stop conditions are the configurable attempt cap
-/// (<see cref="MaxDisarmAttempts"/>) and a successful disarm
-/// observation.
-/// </para>
-/// </remarks>
+// State machine that drives the auto-disarm flow for @trap <direction> remote
+// commands. Owns the per-request search → disarm loop, the queue of pending
+// requests, and the telepath-the-sender-on-completion contract.
+//
+// One request is in flight at a time. The state machine cycles
+// Idle → Searching → DisarmPending → Done per direction; subsequent
+// @trap <dir> calls queue FIFO. A @trap stop aborts whatever's in flight, drains
+// the queue, telepaths each queued sender that their trap was cancelled, and
+// returns to State.Idle.
+//
+// The Stats-skill gate (CanDisarm) lives in this manager so the handler can
+// interrogate it before deciding whether to enqueue or send a denial reply. The
+// handler also owns the channel-aware silence (Say/Gangpath when no skill →
+// silent; Telepath → reply) since the channel context lives at handler dispatch
+// time.
+//
+// The only stop conditions are the configurable attempt cap (MaxDisarmAttempts)
+// and a successful disarm observation.
 public sealed class TrapDisarmManager : IDisposable
 {
     private readonly MessageRouter _router;
@@ -47,38 +32,32 @@ public sealed class TrapDisarmManager : IDisposable
     private readonly WireSender _wire = new();
     private bool _disposed;
 
-    /// <summary>FIFO queue of pending trap requests (oldest at the front).</summary>
+    // FIFO queue of pending trap requests (oldest at the front).
     private readonly Queue<TrapRequest> _queue = new();
-    /// <summary>The currently-in-flight request, or null when idle.</summary>
+    // The currently-in-flight request, or null when idle.
     private TrapRequest? _current;
     private State _state = State.Idle;
     private int _searchAttempts;
     private int _disarmAttempts;
 
-    /// <summary>
-    /// Max <c>sea &lt;dir&gt;</c> attempts before giving up on the
-    /// current request. Default 20; pushed from
-    /// <see cref="Models.Profile.OtherSettings.MaxTrapSearchAttempts"/>.
-    /// </summary>
+    // Max sea <dir> attempts before giving up on the current request. Default 20;
+    // pushed from Models.Profile.OtherSettings.MaxTrapSearchAttempts.
     public int MaxSearchAttempts { get; set; } = 20;
 
-    /// <summary>
-    /// Max <c>disarm trap &lt;dir&gt;</c> attempts after a successful
-    /// search before giving up. Default 5; pushed from
-    /// <see cref="Models.Profile.OtherSettings.MaxTrapDisarmAttempts"/>.
-    /// </summary>
+    // Max disarm trap <dir> attempts after a successful search before giving up.
+    // Default 5; pushed from Models.Profile.OtherSettings.MaxTrapDisarmAttempts.
     public int MaxDisarmAttempts { get; set; } = 5;
 
-    /// <summary>True when the local character has the Traps skill (Stats.Traps > 0).</summary>
+    // True when the local character has the Traps skill (Stats.Traps > 0).
     public bool CanDisarm => _stats.Traps > 0;
 
-    /// <summary>Current state — exposed for tests + diagnostics.</summary>
+    // Current state — exposed for tests + diagnostics.
     public State CurrentState => _state;
 
-    /// <summary>Current request's direction, or null when idle.</summary>
+    // Current request's direction, or null when idle.
     public string? CurrentDirection => _current?.Direction;
 
-    /// <summary>Outstanding queue depth (excludes the in-flight request).</summary>
+    // Outstanding queue depth (excludes the in-flight request).
     public int QueueDepth => _queue.Count;
 
     public TrapDisarmManager(MessageRouter router, PlayerStats stats, LogService? log = null)
@@ -94,14 +73,11 @@ public sealed class TrapDisarmManager : IDisposable
         _disarmedSub = _router.Subscribe(KnownPatterns.TrapDisarmedSuccess, OnDisarmedSuccess);
     }
 
-    /// <summary>
-    /// Bind the wire-sender. Same shape as the rest of the engine-side
-    /// handlers — MainWindowVM supplies the gate-wrapped
-    /// <c>SendUserInput</c>.
-    /// </summary>
+    // Bind the wire-sender. Same shape as the rest of the engine-side handlers —
+    // MainWindowVM supplies the gate-wrapped SendUserInput.
     public void SetWireSender(Action<byte[]> sender) => _wire.Bind(sender);
 
-    /// <summary>Test seam — bytes the manager asked to write to the wire.</summary>
+    // Test seam — bytes the manager asked to write to the wire.
     internal List<byte[]> LastSentForTests => _wire.LastSentForTests;
 
     public void Dispose()
@@ -113,20 +89,14 @@ public sealed class TrapDisarmManager : IDisposable
         _disarmedSub.Dispose();
     }
 
-    /// <summary>
-    /// Queue a new <c>@trap &lt;direction&gt;</c> request.
-    /// <paramref name="direction"/> must already be normalised to the
-    /// short form (<c>"n"</c> / <c>"ne"</c> / <c>"u"</c> / etc.).
-    /// <paramref name="reply"/> is the per-request channel-bound
-    /// callback the handler captured at dispatch time; the manager
-    /// invokes it once on terminal state (success / max-attempts /
-    /// stop).
-    /// </summary>
-    /// <remarks>
-    /// Same-direction duplicate while already in-flight or queued is
-    /// silently ignored — we're already on it; sending a second
-    /// {Trap to the N disarmed.} would be misleading.
-    /// </remarks>
+    // Queue a new @trap <direction> request. direction must already be normalised
+    // to the short form ("n" / "ne" / "u" / etc.). reply is the per-request
+    // channel-bound callback the handler captured at dispatch time; the manager
+    // invokes it once on terminal state (success / max-attempts / stop).
+    //
+    // Same-direction duplicate while already in-flight or queued is silently
+    // ignored — we're already on it; sending a second {Trap to the N disarmed.}
+    // would be misleading.
     public void Enqueue(string direction, string sender, Action<string> reply)
     {
         if (string.IsNullOrEmpty(direction)) return;
@@ -156,12 +126,10 @@ public sealed class TrapDisarmManager : IDisposable
         TryStartNext();
     }
 
-    /// <summary>
-    /// Abort the current in-flight request (if any), drain the queue,
-    /// and telepath each pending sender that their trap was cancelled.
-    /// The stop sender does NOT receive a notification here — the
-    /// handler that called Stop sends its own {ok} ack to them.
-    /// </summary>
+    // Abort the current in-flight request (if any), drain the queue, and telepath
+    // each pending sender that their trap was cancelled. The stop sender does NOT
+    // receive a notification here — the handler that called Stop sends its own
+    // {ok} ack to them.
     public void StopAll()
     {
         if (_current is { } cur)
@@ -246,12 +214,9 @@ public sealed class TrapDisarmManager : IDisposable
         CompleteCurrent();
     }
 
-    /// <summary>
-    /// Compare the captured \w+ from a regex match against the
-    /// current request's direction. Both are normalised to short form
-    /// before compare — game prints "north" / "east" / "up" etc., we
-    /// store the short form we sent on the wire.
-    /// </summary>
+    // Compare the captured \w+ from a regex match against the current request's
+    // direction. Both are normalised to short form before compare — game prints
+    // "north" / "east" / "up" etc., we store the short form we sent on the wire.
     private bool MatchesCurrentDirection(MatchResult result)
     {
         if (_current is null) return false;
@@ -270,12 +235,10 @@ public sealed class TrapDisarmManager : IDisposable
         TryStartNext();
     }
 
-    /// <summary>
-    /// Normalise a direction token (long or short) to its canonical
-    /// short form. Returns null for unrecognised inputs so the
-    /// handler can deny with a clear "unknown direction" message
-    /// instead of queueing a request that will never resolve.
-    /// </summary>
+    // Normalise a direction token (long or short) to its canonical short form.
+    // Returns null for unrecognised inputs so the handler can deny with a clear
+    // "unknown direction" message instead of queueing a request that will never
+    // resolve.
     public static string? NormaliseDirection(string input)
     {
         if (string.IsNullOrWhiteSpace(input)) return null;
@@ -295,7 +258,7 @@ public sealed class TrapDisarmManager : IDisposable
         };
     }
 
-    /// <summary>Phases of one in-flight trap request.</summary>
+    // Phases of one in-flight trap request.
     public enum State
     {
         Idle,
@@ -303,12 +266,9 @@ public sealed class TrapDisarmManager : IDisposable
         DisarmPending,
     }
 
-    /// <summary>
-    /// One queued (or in-flight) trap request. <see cref="Reply"/> is
-    /// the channel-bound callback the handler captured from
-    /// RemoteCommandContext at dispatch time — invoking it later
-    /// telepaths / says-back to the original sender on the same
-    /// channel they used.
-    /// </summary>
+    // One queued (or in-flight) trap request. Reply is the channel-bound callback
+    // the handler captured from RemoteCommandContext at dispatch time — invoking
+    // it later telepaths / says-back to the original sender on the same channel
+    // they used.
     private sealed record TrapRequest(string Direction, string Sender, Action<string> Reply);
 }

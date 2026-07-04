@@ -9,13 +9,10 @@ using FujinTerm.ViewModels;
 
 namespace FujinTerm.Controls;
 
-/// <summary>
-/// Non-selectable left-rail companion to <see cref="SelectableTranscript"/>.
-/// Renders one timestamp per row in a muted grey, aligned line-by-line
-/// with the transcript by sharing its font + size + line metrics.
-/// Pulled out into its own control so the user's drag-select on the
-/// transcript can't include the timestamps.
-/// </summary>
+// Non-selectable left-rail companion to SelectableTranscript. Renders one
+// timestamp per row in a muted grey, aligned line-by-line with the transcript
+// by sharing its font + size + line metrics. Pulled out into its own control
+// so the user's drag-select on the transcript can't include the timestamps.
 public sealed class TimestampGutter : TextBlock
 {
     public static readonly StyledProperty<IList?> RowsProperty =

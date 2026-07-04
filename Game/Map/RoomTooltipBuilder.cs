@@ -7,39 +7,29 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game.Map;
 
-/// <summary>
-/// Builds the plain-text hover tooltip for a room on the Navigation
-/// map. Field order + phrasing match MMUD-Explorer
-/// (<c>frmMap.frm:MapMapExits</c>); Lair Exp/HP/Dmg-per-clear is
-/// intentionally omitted per the user's directive — those numbers
-/// need character-side calculations we don't track yet.
-/// </summary>
-/// <remarks>
-/// <para>
-/// <b>Field order</b> (blank-line separated where indicated):
-/// <list type="number">
-///   <item>Name (Map/Room)</item>
-///   <item>Also Here (NPC + lair monsters with Max-N)</item>
-///   <item>Light description ("pitch black" / "very dark" / "barely
-///         visible" / "dimly lit") — surfaced when the room's own
-///         Light is significantly negative.</item>
-///   <item><i>blank</i></item>
-///   <item>Shop: …</item>
-///   <item>Room Spell: …</item>
-///   <item><i>blank</i></item>
-///   <item>Obvious exits: per-direction list with destination room
-///         name + (map/room) + Door / Trap / gated annotation.</item>
-///   <item><i>blank</i></item>
-///   <item>Room Light: ±N</item>
-///   <item>Max Regen: N @ (Delay-1)m 30s</item>
-/// </list>
-/// </para>
-/// <para>
-/// Lair string format expected (per the MDB):
-/// <c>"(Max N): id,id,...,[group-index]"</c>. Older NMR &lt; 1.83
-/// imports may omit the trailing bracket; the parser tolerates both.
-/// </para>
-/// </remarks>
+// Builds the plain-text hover tooltip for a room on the Navigation map. Lair
+// Exp/HP/Dmg-per-clear is intentionally omitted — those numbers need
+// character-side calculations we don't track yet.
+//
+// Field order (blank-line separated where indicated):
+//   1. Name (Map/Room)
+//   2. Also Here (NPC + lair monsters with Max-N)
+//   3. Light description ("pitch black" / "very dark" / "barely visible" /
+//      "dimly lit") — surfaced when the room's own Light is significantly
+//      negative.
+//   4. blank
+//   5. Shop: …
+//   6. Room Spell: …
+//   7. blank
+//   8. Obvious exits: per-direction list with destination room name +
+//      (map/room) + Door / Trap / gated annotation.
+//   9. blank
+//   10. Room Light: ±N
+//   11. Max Regen: N @ (Delay-1)m 30s
+//
+// Lair string format expected (per the MDB): "(Max N): id,id,...,[group-index]".
+// Older NMR < 1.83 imports may omit the trailing bracket; the parser tolerates
+// both.
 public static class RoomTooltipBuilder
 {
     public static string Build(Room room, RoomGraphManager graph, GameDataCache? data,
@@ -162,8 +152,8 @@ public static class RoomTooltipBuilder
         // Visibility is a function of V = charIllu + roomLight: a lit lantern or
         // worn +illu gear lifts a dark room out of the "can't see" bands, so the
         // phrase reflects what the player actually sees, not the room's raw
-        // offset. Shares LightModel's MME band table so the tooltip and the
-        // route predictor never drift.
+        // offset. Shares LightModel's band table so the tooltip and the route
+        // predictor never drift.
         => LightModel.Describe(LightModel.Classify(charIllu, roomLight: light));
 
     // ----- Exits block ---------------------------------------------
@@ -223,14 +213,11 @@ public static class RoomTooltipBuilder
         return sb.ToString();
     }
 
-    /// <summary>
-    /// Per-step breakdown rendered beneath a MultiActionHidden exit:
-    /// one indented line per <see cref="ExitAction"/> with the trigger
-    /// room (when the action lives in another room) plus its
-    /// alternative commands. Mirrors the format the walker actually
-    /// executes — the user sees the same routing the path expander
-    /// would do.
-    /// </summary>
+    // Per-step breakdown rendered beneath a MultiActionHidden exit: one indented
+    // line per ExitAction with the trigger room (when the action lives in
+    // another room) plus its alternative commands. Mirrors the format the walker
+    // actually executes — the user sees the same routing the path expander would
+    // do.
     private static void AppendMultiActionDetail(
         StringBuilder sb, RoomKey hostRoom, MultiActionExitData ma, RoomGraphManager graph)
     {
@@ -261,15 +248,12 @@ public static class RoomTooltipBuilder
         }
     }
 
-    /// <summary>
-    /// TBInfo fallback for MultiActionHidden exits whose unlock lives
-    /// in a CMD chain rather than Action#N exit cells. Walks the
-    /// chain via <see cref="TBInfoActionResolver"/> and renders the
-    /// gathered keywords as a single indented "Try: kw1 / kw2 / …"
-    /// line. The keywords all run in the room being hovered (TBInfo
-    /// CMDs are local to their owning room), so no "here:" / "at X:"
-    /// prefix is needed.
-    /// </summary>
+    // TBInfo fallback for MultiActionHidden exits whose unlock lives in a CMD
+    // chain rather than Action#N exit cells. Walks the chain via
+    // TBInfoActionResolver and renders the gathered keywords as a single
+    // indented "Try: kw1 / kw2 / …" line. The keywords all run in the room being
+    // hovered (TBInfo CMDs are local to their owning room), so no "here:" /
+    // "at X:" prefix is needed.
     private static void AppendTbInfoActionFallback(
         StringBuilder sb, int roomCmd, TBInfoStore tbinfo)
     {
@@ -287,14 +271,11 @@ public static class RoomTooltipBuilder
         sb.Append('\n').Append("    Try: ").Append(string.Join(" / ", keywords));
     }
 
-    /// <summary>
-    /// Render the parenthetical exit qualifier, looking up the
-    /// underlying record name when a hint carries a structured id.
-    /// Item/Ticket → Items table. KeyLocked → Items table (the key is
-    /// itself an Item record per MDB convention). Falls back to the
-    /// raw hint string for unclassified modifiers so diagnostic info
-    /// still shows.
-    /// </summary>
+    // Render the parenthetical exit qualifier, looking up the underlying record
+    // name when a hint carries a structured id. Item/Ticket → Items table.
+    // KeyLocked → Items table (the key is itself an Item record per MDB
+    // convention). Falls back to the raw hint string for unclassified modifiers
+    // so diagnostic info still shows.
     private static string FormatExitHint(RoomExit exit, GameDataCache? data)
     {
         switch (exit.Hint)
@@ -455,12 +436,10 @@ public static class RoomTooltipBuilder
         return dest is not null ? $"{dest.DisplayName} ({key})" : key.ToString();
     }
 
-    /// <summary>
-    /// One cast-delivered teleport command (a keyword set + the rooms it
-    /// can drop the player into). Several synonyms casting the same
-    /// teleport spell share a group; <see cref="Random"/> is set when the
-    /// spell lands in a random room of a multi-room range.
-    /// </summary>
+    // One cast-delivered teleport command (a keyword set + the rooms it can drop
+    // the player into). Several synonyms casting the same teleport spell share a
+    // group; Random is set when the spell lands in a random room of a multi-room
+    // range.
     private sealed class CastTeleportGroup
     {
         public List<string> Keywords { get; } = new();
@@ -495,7 +474,7 @@ public static class RoomTooltipBuilder
 
     // ----- Lair tag parsing -----------------------------------------
 
-    /// <summary>Extracts just the Max-regen count, for the "Max Regen: N" line.</summary>
+    // Extracts just the Max-regen count, for the "Max Regen: N" line.
     public static bool TryParseLairMax(string? lairTag, out int max)
     {
         max = 0;
@@ -505,11 +484,8 @@ public static class RoomTooltipBuilder
         return int.TryParse(m.Groups["n"].Value, out max);
     }
 
-    /// <summary>
-    /// Pulls the Max-N + monster ID list out of a raw lair tag.
-    /// Tolerant of NMR &lt; 1.83 (no trailing bracket) and NMR ≥ 1.83
-    /// (trailing <c>[group-index]</c>).
-    /// </summary>
+    // Pulls the Max-N + monster ID list out of a raw lair tag. Tolerant of NMR
+    // < 1.83 (no trailing bracket) and NMR ≥ 1.83 (trailing [group-index]).
     public static void ParseLairTag(string lairTag, out int? max, out IReadOnlyList<int> monsterIds)
     {
         max = null;

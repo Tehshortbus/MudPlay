@@ -6,17 +6,12 @@ using FujinTerm.ViewModels.Navigation;
 
 namespace FujinTerm.Game.Remote;
 
-/// <summary>
-/// Phase 7 PR 7.23 — thin glue between the remote-command engine and
-/// the existing Navigation stack. Registers the five MovePlayer
-/// commands and routes each to the in-place services
-/// (<see cref="AutoWalkManager"/>, <see cref="LoopRunner"/>,
-/// <see cref="AutoLairManager"/>, <see cref="MovementCoordinator"/>).
-/// Resolution of free-form room references runs through the shared
-/// <see cref="RoomSearchService"/> so this handler matches the
-/// Navigation search box's behaviour 1:1 (coords / acronym / room name
-/// substring / monster name with regen timer).
-/// </summary>
+// Thin glue between the remote-command engine and the existing Navigation stack.
+// Registers the five MovePlayer commands and routes each to the in-place services
+// (AutoWalkManager, LoopRunner, AutoLairManager, MovementCoordinator). Resolution
+// of free-form room references runs through the shared RoomSearchService so this
+// handler matches the Navigation search box's behaviour 1:1 (coords / acronym /
+// room name substring / monster name with regen timer).
 public sealed class MovePlayerHandler : IDisposable
 {
     private static readonly string[] RegisteredCommands =
@@ -189,11 +184,9 @@ public sealed class MovePlayerHandler : IDisposable
             : $"{name} ({spawns.Count} lairs)";
     }
 
-    /// <summary>
-    /// Strip the regen suffix from the search result's MonsterTag.
-    /// Tag format from RoomSearchService: "Mayor of Godfrey · regen 4h"
-    /// — we want just the monster name for chat replies.
-    /// </summary>
+    // Strip the regen suffix from the search result's MonsterTag. Tag format from
+    // RoomSearchService: "Mayor of Godfrey · regen 4h" — we want just the monster
+    // name for chat replies.
     private static string ExtractMonsterName(string monsterTag)
     {
         int sep = monsterTag.IndexOf(" · ", StringComparison.Ordinal);
@@ -228,11 +221,9 @@ public sealed class MovePlayerHandler : IDisposable
             ctx.Reply($"no path to {match.Name}");
     }
 
-    /// <summary>
-    /// Pick any walkable neighbour of <paramref name="lair"/> so the
-    /// monster-search @goto can stop one room outside. First-found
-    /// wins; the walker handles BFS from current to that neighbour.
-    /// </summary>
+    // Pick any walkable neighbour of lair so the monster-search @goto can stop one
+    // room outside. First-found wins; the walker handles BFS from current to that
+    // neighbour.
     private RoomKey? PickNeighbour(RoomKey lair)
     {
         if (_graph.GetRoom(lair) is not { } room) return null;
@@ -294,23 +285,17 @@ public sealed class MovePlayerHandler : IDisposable
             : "auto-lair failed to start");
     }
 
-    /// <summary>
-    /// Pause-gate semantics:
-    /// <list type="bullet">
-    /// <item>Walker + LoopRunner pause off the coordinator's UserGate
-    /// (<see cref="AutoWalkManager.OnCoordinatorPauseChanged"/> +
-    /// <see cref="LoopRunner.OnPauseChanged"/>) — asserting the gate
-    /// directly is sufficient for those two.</item>
-    /// <item>AutoLair owns its own scheduler tick + entry / engage /
-    /// retry timers; asserting the gate alone halts the walker but
-    /// leaves the scheduler spinning every interval, re-dispatching
-    /// WalkTo into the paused gate and churning state. Route through
-    /// <see cref="AutoLairManager.Pause"/> so its internal timers stop
-    /// and the IsPaused flag flips for the UI.</item>
-    /// </list>
-    /// Idempotent: a second @stop while already paused replies
-    /// "already @stopped" so the sender knows the prior pause held.
-    /// </summary>
+    // Pause-gate semantics:
+    //   - Walker + LoopRunner pause off the coordinator's UserGate
+    //     (AutoWalkManager.OnCoordinatorPauseChanged + LoopRunner.OnPauseChanged)
+    //     — asserting the gate directly is sufficient for those two.
+    //   - AutoLair owns its own scheduler tick + entry / engage / retry timers;
+    //     asserting the gate alone halts the walker but leaves the scheduler
+    //     spinning every interval, re-dispatching WalkTo into the paused gate and
+    //     churning state. Route through AutoLairManager.Pause so its internal
+    //     timers stop and the IsPaused flag flips for the UI.
+    // Idempotent: a second @stop while already paused replies "already @stopped"
+    // so the sender knows the prior pause held.
     private void OnStop(RemoteCommandContext ctx)
     {
         if (_autoLair.IsActive && _autoLair.IsPaused)
@@ -332,16 +317,12 @@ public sealed class MovePlayerHandler : IDisposable
             : "movement paused");
     }
 
-    /// <summary>
-    /// Mirror of <see cref="OnStop"/>: route through
-    /// <see cref="AutoLairManager.Resume"/> when AutoLair holds the
-    /// pause, so its respawn-aware re-evaluation runs (in-game timers
-    /// kept ticking through the stop window — the original target may
-    /// no longer be the best pick). Otherwise just clear the gate.
-    /// If nothing is paused, reply with what we're already doing
-    /// (or "nothing to resume") so the sender doesn't assume the
-    /// command worked when it was a no-op.
-    /// </summary>
+    // Mirror of OnStop: route through AutoLairManager.Resume when AutoLair holds
+    // the pause, so its respawn-aware re-evaluation runs (in-game timers kept
+    // ticking through the stop window — the original target may no longer be the
+    // best pick). Otherwise just clear the gate. If nothing is paused, reply with
+    // what we're already doing (or "nothing to resume") so the sender doesn't
+    // assume the command worked when it was a no-op.
     private void OnRego(RemoteCommandContext ctx)
     {
         // Capture the "what's running" description BEFORE the resume
@@ -366,32 +347,24 @@ public sealed class MovePlayerHandler : IDisposable
         ctx.Reply(DescribeActivity() ?? "nothing to resume");
     }
 
-    /// <summary>
-    /// Render the tracker's current room as <c>"Room Name (m/r)"</c>
-    /// for inclusion in chat replies. Returns empty string when the
-    /// tracker has no settled room (Lost / Pending pre-arrival) so the
-    /// caller can fall back to a bare reply.
-    /// </summary>
+    // Render the tracker's current room as "Room Name (m/r)" for inclusion in chat
+    // replies. Returns empty string when the tracker has no settled room (Lost /
+    // Pending pre-arrival) so the caller can fall back to a bare reply.
     private string DescribeCurrentRoom()
     {
         if (_tracker.State.CurrentRoom is not { } here) return string.Empty;
         return $"{here.DisplayName} ({here.Key.Map}/{here.Key.Room})";
     }
 
-    /// <summary>
-    /// Reply phrase for an @rego that resumes a paused Auto-Lair.
-    /// Auto-Lair doesn't carry the originating setup name forward, so
-    /// fall back to the marker count.
-    /// </summary>
+    // Reply phrase for an @rego that resumes a paused Auto-Lair. Auto-Lair doesn't
+    // carry the originating setup name forward, so fall back to the marker count.
     private string DescribePausedAutoLair() =>
         $"auto-lair ({_autoLair.Marked.Count} lairs)";
 
-    /// <summary>
-    /// Reply phrase for an @rego that clears the coordinator gate. The
-    /// gate covers two engines — pick LoopRunner over Walker because a
-    /// loop owns the wire while the walker only handles its approach
-    /// leg, so "loop X" is the user-visible activity.
-    /// </summary>
+    // Reply phrase for an @rego that clears the coordinator gate. The gate covers
+    // two engines — pick LoopRunner over Walker because a loop owns the wire while
+    // the walker only handles its approach leg, so "loop X" is the user-visible
+    // activity.
     private string DescribePausedLoopOrWalker()
     {
         if (_loopRunner.State is LoopState.Paused
@@ -408,13 +381,10 @@ public sealed class MovePlayerHandler : IDisposable
         return "movement";
     }
 
-    /// <summary>
-    /// One-line description of the currently-running engine, in
-    /// precedence order AutoLair → LoopRunner → Walker (because the
-    /// upper engines drive the lower ones — describing "walking to X"
-    /// while a loop owns the wire is misleading). Returns null when
-    /// nothing is running.
-    /// </summary>
+    // One-line description of the currently-running engine, in precedence order
+    // AutoLair → LoopRunner → Walker (because the upper engines drive the lower
+    // ones — describing "walking to X" while a loop owns the wire is misleading).
+    // Returns null when nothing is running.
     private string? DescribeActivity()
     {
         if (_autoLair.IsActive)
@@ -436,17 +406,13 @@ public sealed class MovePlayerHandler : IDisposable
         return null;
     }
 
-    /// <summary>
-    /// Stop the engines that would collide with the new command.
-    /// Without this, a remote @goto issued during an active loop would
-    /// see the walker supersede its prior plan while LoopRunner kept
-    /// writing circle moves directly to the wire — both engines fight
-    /// for the command stream. AutoLair is the same: its scheduler
-    /// re-issues WalkTo on every tick, immediately overriding the new
-    /// goto. Mirrors the Navigation UI's pattern
-    /// (NavigationViewModel.cs:1192-1194) via the shared
-    /// <see cref="EngineSupersede"/> helper.
-    /// </summary>
+    // Stop the engines that would collide with the new command. Without this, a
+    // remote @goto issued during an active loop would see the walker supersede its
+    // prior plan while LoopRunner kept writing circle moves directly to the wire —
+    // both engines fight for the command stream. AutoLair is the same: its
+    // scheduler re-issues WalkTo on every tick, immediately overriding the new
+    // goto. Mirrors the Navigation UI's pattern via the shared EngineSupersede
+    // helper.
     private void StopConflictingEngines(string sender, SupersedeKeep keep)
         => EngineSupersede.StopOthers(
             _walker, _loopRunner, _autoLair,

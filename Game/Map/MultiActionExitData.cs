@@ -3,32 +3,24 @@ using System.Text.RegularExpressions;
 
 namespace FujinTerm.Game.Map;
 
-/// <summary>
-/// Parsed multi-action prerequisite data attached to a
-/// <see cref="RoomExitHint.MultiActionHidden"/> exit. Populated by
-/// <see cref="RoomGraphManager"/>'s second-pass action-data scan
-/// from the verbose <c>Action#N</c> entries in adjacent exit fields.
-/// </summary>
-/// <param name="RequiredActionCount">
-/// Number of actions the player must execute before the exit unlocks
-/// (from the modifier's "Needs N Actions" prefix).
-/// </param>
-/// <param name="RequiresSpecificOrder">
-/// <c>true</c> when the modifier reads "specific order" — actions
-/// must run StepNumber-ascending. <c>false</c> on "any order".
-/// </param>
-/// <param name="Actions">
-/// Sorted action list (StepNumber ascending). When the data is
-/// partial (count &lt; <see cref="RequiredActionCount"/>) the walker
-/// fails the exit at runtime — the data is malformed for our
-/// purposes.
-/// </param>
+// Parsed multi-action prerequisite data attached to a
+// RoomExitHint.MultiActionHidden exit. Populated by RoomGraphManager's
+// second-pass action-data scan from the verbose Action#N entries in adjacent
+// exit fields.
+//
+// RequiredActionCount is how many actions the player must execute before the
+// exit unlocks (from the modifier's "Needs N Actions" prefix).
+// RequiresSpecificOrder is true when the modifier reads "specific order" —
+// actions must run StepNumber-ascending — false on "any order". Actions is the
+// sorted action list (StepNumber ascending); when it's partial
+// (count < RequiredActionCount) the walker fails the exit at runtime, since
+// the data is malformed for our purposes.
 public sealed partial record MultiActionExitData(
     int RequiredActionCount,
     bool RequiresSpecificOrder,
     IReadOnlyList<ExitAction> Actions)
 {
-    /// <summary>Convenience: <c>true</c> when at least one action is remote (different room).</summary>
+    // True when at least one action is remote (different room).
     public bool HasRemoteActions
     {
         get
@@ -38,14 +30,10 @@ public sealed partial record MultiActionExitData(
         }
     }
 
-    /// <summary>
-    /// Parse the modifier text following the <c>Hidden</c> prefix —
-    /// e.g. <c>"Needs 2 Actions, any order"</c> or
-    /// <c>"Needs 1 Actions, specific order"</c>. Returns
-    /// <c>(count, specific)</c>; defaults to <c>(1, false)</c> when
-    /// the pattern doesn't match (data anomaly tolerance — MudProxy
-    /// hits this with at least one bad row in the v1.11p set).
-    /// </summary>
+    // Parse the modifier text following the Hidden prefix — e.g. "Needs 2
+    // Actions, any order" or "Needs 1 Actions, specific order". Returns
+    // (count, specific); defaults to (1, false) when the pattern doesn't match
+    // (data anomaly tolerance — at least one bad row exists in the v1.11p set).
     public static (int Count, bool SpecificOrder) ParseModifier(string raw)
     {
         Match m = NeedsActionsRegex().Match(raw);
@@ -57,10 +45,8 @@ public sealed partial record MultiActionExitData(
         return (count, specific);
     }
 
-    /// <summary>
-    /// Parse an <c>Action#N [on the {dir} exit of {this room | room M/R}]: cmd1, cmd2</c>
-    /// cell. Returns <c>null</c> when the shape doesn't match.
-    /// </summary>
+    // Parse an "Action#N [on the {dir} exit of {this room | room M/R}]: cmd1,
+    // cmd2" cell. Returns null when the shape doesn't match.
     public static ActionCell? ParseActionCell(string cell)
     {
         if (string.IsNullOrWhiteSpace(cell)) return null;
@@ -113,7 +99,7 @@ public sealed partial record MultiActionExitData(
         _ => null,
     };
 
-    /// <summary>Intermediate parse result from <see cref="ParseActionCell"/>.</summary>
+    // Intermediate parse result from ParseActionCell.
     public sealed record ActionCell(
         int StepNumber,
         Direction ExitDirection,

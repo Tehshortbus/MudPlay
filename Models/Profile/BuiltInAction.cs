@@ -1,12 +1,9 @@
 namespace FujinTerm.Models.Profile;
 
-/// <summary>
-/// Every keybindable built-in app action. One entry per command the
-/// menu or toolbar can invoke; <see cref="Services.KeybindingStore"/>
-/// maps each to a <see cref="KeyChord"/>. New built-in actions get
-/// added here once + seeded with a default chord in
-/// <see cref="Services.KeybindingStore.DefaultBindings"/>.
-/// </summary>
+// Every keybindable built-in app action. One entry per command the menu or
+// toolbar can invoke; KeybindingStore maps each to a KeyChord. New built-in
+// actions get added here once + seeded with a default chord in
+// KeybindingStore.DefaultBindings.
 public enum BuiltInAction
 {
     // ---- Window toggles (View menu + toolbar) ----

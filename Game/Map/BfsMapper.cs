@@ -3,58 +3,39 @@ using System.Linq;
 
 namespace FujinTerm.Game.Map;
 
-/// <summary>
-/// BFS over the active room graph. Two roles:
-/// <list type="bullet">
-///   <item><b>Pathfinding</b>: shortest-path step list between two
-///         rooms — consumed by <c>AutoWalkManager</c> (walk-to),
-///         <c>LoopManager</c> (gap-fill between user-clicked rooms),
-///         and <c>AutoLairScheduler</c> (wait-room selection).</item>
-///   <item><b>Layout</b>: planar (X, Y) assignment from an origin
-///         room — consumed by <c>MapControl</c> (PR 7.11) to draw the
-///         map. U/D exits are represented as
-///         <see cref="VerticalHint"/> flags on the room cell instead
-///         of contributing to the 2D layout.</item>
-/// </list>
-/// </summary>
-/// <remarks>
-/// <para>
-/// Inspired by MudProxy's <c>MapBfsMapper.cs</c> but written fresh —
-/// MudProxy bundles live-discovery + per-tile palette caching + a
-/// dialog-renderer compatibility layer that we don't need. We treat
-/// the imported <c>Rooms.json</c> as the authoritative graph (no live
-/// extension in Phase 7) so the mapper stays focused on its two jobs.
-/// </para>
-/// <para>
-/// Layout cache: <see cref="BuildLayout"/> results are memoized by
-/// origin. <see cref="OnGraphReloaded"/> drops the cache; AppServices
-/// subscribes that handler to
-/// <see cref="RoomGraphManager.GraphReloaded"/>.
-/// </para>
-/// </remarks>
+// BFS over the active room graph. Two roles:
+//   Pathfinding: shortest-path step list between two rooms — consumed by
+//     AutoWalkManager (walk-to), LoopManager (gap-fill between
+//     user-clicked rooms), and AutoLairScheduler (wait-room selection).
+//   Layout: planar (X, Y) assignment from an origin room — consumed by
+//     the map control to draw the map. U/D exits are represented as
+//     VerticalHint flags on the room cell instead of contributing to the
+//     2D layout.
+//
+// The imported Rooms.json is treated as the authoritative graph (no live
+// discovery / extension), so the mapper stays focused on its two jobs.
+//
+// Layout cache: BuildLayout results are memoized by origin.
+// OnGraphReloaded drops the cache; AppServices subscribes that handler
+// to RoomGraphManager.GraphReloaded.
 public sealed class BfsMapper
 {
     private readonly RoomGraphManager _graph;
     private readonly Dictionary<(RoomKey Origin, int Radius), RoomLayout> _layoutCache = new();
     private readonly object _cacheLock = new();
 
-    /// <summary>
-    /// Set of room keys to hide from the planar layout (BBS-tier
-    /// room blacklist). Blacklisted neighbours still get an EDGE
-    /// recorded so the renderer draws a dangling stub, but they
-    /// are NOT placed in <see cref="RoomLayout.CoordToRoom"/> and
-    /// NOT enqueued — they don't take up planar coords and the BFS
-    /// doesn't traverse through them. The origin is exempt: when
-    /// the player is currently inside a blacklisted room, the
-    /// layout starts there and stays visible until they exit.
-    /// </summary>
-    /// <remarks>
-    /// Set by <see cref="ConfigureBlacklist"/> at startup from
-    /// <see cref="Services.RoomBlacklistStore"/>. The store fires
-    /// <c>Changed</c> on Add/Remove and on BBS pin — consumers
-    /// (NavigationViewModel) react by calling <see cref="InvalidateCache"/>
-    /// + rebuilding the layout.
-    /// </remarks>
+    // Set of room keys to hide from the planar layout (BBS-tier room
+    // blacklist). Blacklisted neighbours still get an EDGE recorded so the
+    // renderer draws a dangling stub, but they are NOT placed in
+    // CoordToRoom and NOT enqueued — they don't take up planar coords and
+    // the BFS doesn't traverse through them. The origin is exempt: when
+    // the player is currently inside a blacklisted room, the layout starts
+    // there and stays visible until they exit.
+    //
+    // Set by ConfigureBlacklist at startup from RoomBlacklistStore. The
+    // store fires Changed on Add/Remove and on BBS pin — consumers
+    // (NavigationViewModel) react by calling InvalidateCache + rebuilding
+    // the layout.
     private Func<RoomKey, bool>? _isBlacklisted;
     private readonly Services.LogService? _log;
 
@@ -67,38 +48,35 @@ public sealed class BfsMapper
         _log = log;
     }
 
-    /// <summary>
-    /// Bind the blacklist predicate. Pass <c>null</c> to disable.
-    /// Cache is invalidated so the next layout build picks up the
-    /// new filter.
-    /// </summary>
+    // Bind the blacklist predicate. Pass null to disable. Cache is
+    // invalidated so the next layout build picks up the new filter.
     public void ConfigureBlacklist(Func<RoomKey, bool>? isBlacklisted)
     {
         _isBlacklisted = isBlacklisted;
         InvalidateCache();
     }
 
-    /// <summary>
-    /// Drop all cached layouts — called when the blacklist
-    /// contents change so the next render sees the updated filter.
-    /// </summary>
+    // Drop all cached layouts — called when the blacklist contents change
+    // so the next render sees the updated filter.
     public void InvalidateCache()
     {
         lock (_cacheLock) _layoutCache.Clear();
     }
 
-    /// <summary>
-    /// Shortest-path step list from <paramref name="source"/> to
-    /// <paramref name="destination"/>. Returns <c>null</c> when either
-    /// endpoint isn't in the active graph, when they're the same room
-    /// (empty path doesn't need to be walked), or when no path exists.
-    /// Returns an empty list only for the source==destination case if
-    /// the caller passed <paramref name="returnEmptyWhenAtDestination"/>
-    /// = true.
-    /// </summary>
-    /// <param name="filter">Optional avoided-rooms filter; null = no filtering. PR 7.6 supplies the profile-backed implementation.</param>
-    /// <param name="returnEmptyWhenAtDestination">When true, source==destination returns an empty list instead of null.</param>
-    /// <param name="ignoreExitGates">When true, exit movement restrictions (Form-A level gates via <see cref="IRoomFilter.IsExitBlocked"/>) are NOT applied — only the avoid filter still cuts nodes. The walker uses this to re-probe a failed walk and tell "all routes are level-gated" apart from "graph-disconnected".</param>
+    // Shortest-path step list from source to destination. Returns null
+    // when either endpoint isn't in the active graph, when they're the
+    // same room (empty path doesn't need to be walked), or when no path
+    // exists. Returns an empty list only for the source==destination case
+    // if the caller passed returnEmptyWhenAtDestination = true.
+    //
+    // filter: optional avoided-rooms filter; null = no filtering.
+    // returnEmptyWhenAtDestination: when true, source==destination
+    //   returns an empty list instead of null.
+    // ignoreExitGates: when true, exit movement restrictions (Form-A
+    //   level gates via IRoomFilter.IsExitBlocked) are NOT applied — only
+    //   the avoid filter still cuts nodes. The walker uses this to
+    //   re-probe a failed walk and tell "all routes are level-gated"
+    //   apart from "graph-disconnected".
     public IReadOnlyList<Direction>? FindPath(
         RoomKey source,
         RoomKey destination,
@@ -154,21 +132,18 @@ public sealed class BfsMapper
         return null;
     }
 
-    /// <summary>
-    /// Single-source shortest-path distances from <paramref name="source"/>
-    /// to every reachable room (one BFS, all destinations). Returns a
-    /// hop-count keyed by <see cref="RoomKey"/>; rooms not in the map
-    /// are unreachable under the supplied filter. The blacklist hook
-    /// is NOT consulted — render and pathing have always disagreed on
-    /// blacklisted rooms (the walker can still traverse), and the search
-    /// box wants distance to anywhere the player COULD walk.
-    /// </summary>
-    /// <remarks>
-    /// Cheaper than calling <see cref="DistanceBetween"/> in a loop:
-    /// O(rooms + edges) once vs O((rooms + edges) × matches). The
-    /// Navigation search box uses this to score 50+ matches per
-    /// keystroke without re-scanning the graph for each.
-    /// </remarks>
+    // Single-source shortest-path distances from source to every
+    // reachable room (one BFS, all destinations). Returns a hop-count
+    // keyed by RoomKey; rooms not in the map are unreachable under the
+    // supplied filter. The blacklist hook is NOT consulted — render and
+    // pathing have always disagreed on blacklisted rooms (the walker can
+    // still traverse), and the search box wants distance to anywhere the
+    // player COULD walk.
+    //
+    // Cheaper than calling DistanceBetween in a loop: O(rooms + edges)
+    // once vs O((rooms + edges) × matches). The Navigation search box uses
+    // this to score 50+ matches per keystroke without re-scanning the
+    // graph for each.
     public IReadOnlyDictionary<RoomKey, int> ComputeDistancesFrom(
         RoomKey source, IRoomFilter? filter = null)
     {
@@ -201,12 +176,9 @@ public sealed class BfsMapper
         return dist;
     }
 
-    /// <summary>
-    /// Hop count from source to destination, or <c>null</c> when no
-    /// path exists. Equivalent to <c>FindPath(...)?.Count</c> but
-    /// cheaper for the right-rail GOTO list's "X steps" badges since
-    /// we don't allocate the path array.
-    /// </summary>
+    // Hop count from source to destination, or null when no path exists.
+    // Equivalent to FindPath(...)?.Count but cheaper for the right-rail
+    // GOTO list's "X steps" badges since we don't allocate the path array.
     public int? DistanceBetween(RoomKey source, RoomKey destination, IRoomFilter? filter = null)
     {
         IReadOnlyList<Direction>? path = FindPath(source, destination, filter,
@@ -214,17 +186,13 @@ public sealed class BfsMapper
         return path?.Count;
     }
 
-    /// <summary>
-    /// BFS-planar layout from <paramref name="origin"/>. Caches the
-    /// result; <see cref="OnGraphReloaded"/> evicts. The origin sits
-    /// at (0, 0). Rooms whose grid position collides with an
-    /// already-placed room go into <see cref="RoomLayout.OffGrid"/>.
-    /// </summary>
-    /// <param name="maxRadius">
-    /// Cap on hop distance from origin. <see cref="int.MaxValue"/>
-    /// means "until queue drains". Map UIs typically pass a small
-    /// number (e.g. 25) to bound layout work on huge realms.
-    /// </param>
+    // BFS-planar layout from origin. Caches the result; OnGraphReloaded
+    // evicts. The origin sits at (0, 0). Rooms whose grid position
+    // collides with an already-placed room go into RoomLayout.OffGrid.
+    //
+    // maxRadius: cap on hop distance from origin. int.MaxValue means
+    //   "until queue drains". Map UIs typically pass a small number (e.g.
+    //   25) to bound layout work on huge realms.
     public RoomLayout BuildLayout(RoomKey origin, int maxRadius = int.MaxValue)
     {
         (RoomKey, int) cacheKey = (origin, maxRadius);
@@ -347,23 +315,19 @@ public sealed class BfsMapper
         return primary;
     }
 
-    /// <summary>
-    /// Nearest graph-reachable room to <paramref name="seed"/> (inclusive)
-    /// that the blacklist does not hide, by BFS hop distance. Returns
-    /// <paramref name="seed"/> unchanged when it isn't blacklisted (or no
-    /// blacklist is configured), and falls back to <paramref name="seed"/>
-    /// when every reachable room is hidden.
-    /// </summary>
-    /// <remarks>
-    /// <see cref="BuildLayout"/> exempts its origin from the blacklist so
-    /// the "you are here" marker always has an anchor. That exemption is
-    /// correct for the live current room but wrong for a fallback anchor
-    /// (the offline last-known room): blacklisting the parked room should
-    /// hide it at once, not keep it visible just because it happens to be
-    /// the layout origin. The map routes its non-live origin through here
-    /// so the layout never anchors on — and so never exempts — a hidden
-    /// room, mirroring the movement path's re-root off a blacklisted origin.
-    /// </remarks>
+    // Nearest graph-reachable room to seed (inclusive) that the blacklist
+    // does not hide, by BFS hop distance. Returns seed unchanged when it
+    // isn't blacklisted (or no blacklist is configured), and falls back to
+    // seed when every reachable room is hidden.
+    //
+    // BuildLayout exempts its origin from the blacklist so the "you are
+    // here" marker always has an anchor. That exemption is correct for the
+    // live current room but wrong for a fallback anchor (the offline
+    // last-known room): blacklisting the parked room should hide it at
+    // once, not keep it visible just because it happens to be the layout
+    // origin. The map routes its non-live origin through here so the
+    // layout never anchors on — and so never exempts — a hidden room,
+    // mirroring the movement path's re-root off a blacklisted origin.
     public RoomKey NearestVisibleRoom(RoomKey seed)
     {
         if (_isBlacklisted?.Invoke(seed) != true) return seed;
@@ -388,22 +352,18 @@ public sealed class BfsMapper
         return seed;
     }
 
-    /// <summary>
-    /// How many retry origins to try, ordered by stub count descending.
-    /// Each one costs another full BFS + refinement pass, so a small
-    /// cap keeps worst-case build cost bounded. The improvement loop
-    /// breaks early when a zero-stub layout is found.
-    /// </summary>
+    // How many retry origins to try, ordered by stub count descending.
+    // Each one costs another full BFS + refinement pass, so a small cap
+    // keeps worst-case build cost bounded. The improvement loop breaks
+    // early when a zero-stub layout is found.
     private const int RetryCandidateCount = 8;
 
-    /// <summary>
-    /// Maximum consecutive cells a single graphical crossing may tunnel
-    /// through (see the collision branch in <see cref="BuildLayoutCore"/>).
-    /// A bridge over a river is 1–3 cells wide; the cap is defensive
-    /// against a pathological structure that would otherwise hide a long
-    /// run of rooms. Matches the renderer's <c>BridgeMaxCells</c> gap
-    /// tolerance so what tunnels here can still draw a bridge connector.
-    /// </summary>
+    // Maximum consecutive cells a single graphical crossing may tunnel
+    // through (see the collision branch in BuildLayoutCore). A bridge over
+    // a river is 1–3 cells wide; the cap is defensive against a
+    // pathological structure that would otherwise hide a long run of
+    // rooms. Matches the renderer's BridgeMaxCells gap tolerance so what
+    // tunnels here can still draw a bridge connector.
     private const int TunnelMaxCells = 4;
 
     private RoomLayout BuildLayoutCore(RoomKey origin, int maxRadius)
@@ -434,11 +394,10 @@ public sealed class BfsMapper
 
         AnnotateVertical(_graph.GetRoom(origin)!, vertical);
 
-        // Planar-only BFS — modeled on MMUD-Explorer's MapActivateCell
-        // (Case 8/9 GoTo DontActivate). U/D destinations are NEVER
-        // visited or enqueued; the flat 2D map renders the current
-        // floor only. When the player traverses U/D, the navigation
-        // VM rebuilds the layout from the new origin.
+        // Planar-only BFS. U/D destinations are NEVER visited or
+        // enqueued; the flat 2D map renders the current floor only. When
+        // the player traverses U/D, the navigation VM rebuilds the layout
+        // from the new origin.
         //
         // Collisions: when a non-Euclidean exit produces a coord already
         // occupied by another room, the destination is normally dropped
@@ -590,9 +549,9 @@ public sealed class BfsMapper
             }
         }
 
-        // Deferred resolution pass — port of MMUD-Explorer's two-pass
-        // "delay contested rooms until the frontier settles" trick. By
-        // this point the BFS has committed a placement for every
+        // Deferred resolution pass — a two-pass "delay contested rooms
+        // until the frontier settles" trick. By this point the BFS has
+        // committed a placement for every
         // reachable room, but rooms reached early (when `positions`
         // was sparse) didn't have full reciprocal context to score
         // against. Walk the placement set again and, for each room,
@@ -647,30 +606,26 @@ public sealed class BfsMapper
         { LayoutRoot = origin };
     }
 
-    /// <summary>
-    /// Retry-acceptance rule for the score-and-retry pass: a candidate
-    /// layout replaces the current best when it places MORE rooms, or
-    /// places the same number with FEWER stubs. Coverage dominates
-    /// because a dropped room disappears from the map entirely (strictly
-    /// worse than a bent connector); stub count only breaks ties between
-    /// equal-coverage layouts. Extracted + internal so the ordering is
-    /// unit-testable without standing up a full graph — optimising on
-    /// stubs alone silently prefers layouts that drop whole clusters.
-    /// </summary>
+    // Retry-acceptance rule for the score-and-retry pass: a candidate
+    // layout replaces the current best when it places MORE rooms, or
+    // places the same number with FEWER stubs. Coverage dominates because
+    // a dropped room disappears from the map entirely (strictly worse than
+    // a bent connector); stub count only breaks ties between equal-
+    // coverage layouts. Extracted + internal so the ordering is
+    // unit-testable without standing up a full graph — optimising on stubs
+    // alone silently prefers layouts that drop whole clusters.
     internal static bool RetryImproves(
         int candidatePlaced, int candidateStubs,
         int bestPlaced, int bestStubs)
         => candidatePlaced > bestPlaced
         || (candidatePlaced == bestPlaced && candidateStubs < bestStubs);
 
-    /// <summary>
-    /// Count exit-direction edges that don't actually reach their
-    /// declared target room at the expected planar offset. A stub-heavy
-    /// layout indicates BFS reached a cluster via a path whose
-    /// tentative placement disagrees with the cluster's internal
-    /// geometry; the score-and-retry pass uses this signal to decide
-    /// whether to retry from a different origin.
-    /// </summary>
+    // Count exit-direction edges that don't actually reach their declared
+    // target room at the expected planar offset. A stub-heavy layout
+    // indicates BFS reached a cluster via a path whose tentative placement
+    // disagrees with the cluster's internal geometry; the score-and-retry
+    // pass uses this signal to decide whether to retry from a different
+    // origin.
     private int CountStubs(RoomLayout layout)
     {
         int stubs = 0;
@@ -692,40 +647,34 @@ public sealed class BfsMapper
         return stubs;
     }
 
-    /// <summary>
-    /// Up to <paramref name="count"/> retry-origin seeds for the
-    /// score-and-retry pass, in try order. Two pools:
-    /// <list type="number">
-    ///   <item><b>High-degree placed rooms</b> — the placed rooms with the
-    ///     most planar exits, which sit in the interior of the placed
-    ///     region. A layout's coverage is governed by how CENTRAL its
-    ///     origin is: a peripheral origin reaches a sub-area through its
-    ///     single doorway at a bent angle, collides on that doorway,
-    ///     drops it, and then never explores the whole block behind it.
-    ///     (The v1.11p sewers from 1/602 place only 567 of 571 rooms for
-    ///     exactly this reason — the map-1→map-11 doorway collides and the
-    ///     entire map-11 block vanishes behind a single stub.) Re-rooting
-    ///     BFS at a central, high-degree room reaches every sub-area
-    ///     symmetrically and recovers the dropped block: empirically every
-    ///     top-degree placed sewer room lays out all 571 rooms. Seeding
-    ///     from the dropped rooms themselves does NOT help — a dropped
-    ///     sub-area is typically reached through a one-way / vertical
-    ///     seam, so BFS from inside it can't even get back to the
-    ///     requested origin and the candidate is discarded. Ranked by
-    ///     planar degree descending.</item>
-    ///   <item><b>Placed-but-stubbed rooms</b> — rooms whose exits bend.
-    ///     Bend reduction once coverage is complete. Ranked by stub
-    ///     count.</item>
-    /// </list>
-    /// Both pools carry a deterministic (Map, Room) tiebreak: ties are
-    /// common (every grid room shares a degree / stub count) and
-    /// <see cref="List{T}.Sort"/> is an introsort — not stable — so
-    /// without a total order the tie ordering, and thus which seeds the
-    /// <c>Take</c> keeps, would be left to the runtime. Each seed is a
-    /// different BFS root yielding a wholesale-different layout, which is
-    /// how the same graph laid out differently on different machines. The
-    /// tiebreak makes the chosen layout a pure function of (graph, origin).
-    /// </summary>
+    // Up to count retry-origin seeds for the score-and-retry pass, in try
+    // order. Two pools:
+    //   1) High-degree placed rooms — the placed rooms with the most
+    //      planar exits, which sit in the interior of the placed region. A
+    //      layout's coverage is governed by how CENTRAL its origin is: a
+    //      peripheral origin reaches a sub-area through its single doorway
+    //      at a bent angle, collides on that doorway, drops it, and then
+    //      never explores the whole block behind it. (The v1.11p sewers
+    //      from 1/602 place only 567 of 571 rooms for exactly this reason
+    //      — the map-1→map-11 doorway collides and the entire map-11 block
+    //      vanishes behind a single stub.) Re-rooting BFS at a central,
+    //      high-degree room reaches every sub-area symmetrically and
+    //      recovers the dropped block: empirically every top-degree placed
+    //      sewer room lays out all 571 rooms. Seeding from the dropped
+    //      rooms themselves does NOT help — a dropped sub-area is typically
+    //      reached through a one-way / vertical seam, so BFS from inside it
+    //      can't even get back to the requested origin and the candidate
+    //      is discarded. Ranked by planar degree descending.
+    //   2) Placed-but-stubbed rooms — rooms whose exits bend. Bend
+    //      reduction once coverage is complete. Ranked by stub count.
+    // Both pools carry a deterministic (Map, Room) tiebreak: ties are
+    // common (every grid room shares a degree / stub count) and List.Sort
+    // is an introsort — not stable — so without a total order the tie
+    // ordering, and thus which seeds the Take keeps, would be left to the
+    // runtime. Each seed is a different BFS root yielding a wholesale-
+    // different layout, which is how the same graph laid out differently
+    // on different machines. The tiebreak makes the chosen layout a pure
+    // function of (graph, origin).
     private IEnumerable<RoomKey> PickRetryOrigins(RoomLayout layout, RoomKey origin, int count)
     {
         // Pool 1: placed rooms ranked by planar degree (centrality proxy).
@@ -788,13 +737,10 @@ public sealed class BfsMapper
             .Take(count);
     }
 
-    /// <summary>
-    /// Translate every coord in <paramref name="source"/> so that
-    /// <paramref name="newOrigin"/> lands at (0,0). Preserves the
-    /// retry layout's structural decisions (placements, edges,
-    /// vertical hints) while honouring the outer-method contract that
-    /// <c>BuildLayout(A).Origin == A</c>.
-    /// </summary>
+    // Translate every coord in source so that newOrigin lands at (0,0).
+    // Preserves the retry layout's structural decisions (placements,
+    // edges, vertical hints) while honouring the outer-method contract
+    // that BuildLayout(A).Origin == A.
     private static RoomLayout TranslateLayoutToNewOrigin(RoomLayout source, RoomKey newOrigin)
     {
         if (!source.Positions.TryGetValue(newOrigin, out (int X, int Y) anchor))
@@ -849,24 +795,18 @@ public sealed class BfsMapper
     private static bool IsPlanar(Direction d) =>
         d != Direction.U && d != Direction.D;
 
-    /// <summary>
-    /// Subscribed by <see cref="Services.AppServices"/> to
-    /// <see cref="RoomGraphManager.GraphReloaded"/> — flushes the
-    /// layout cache since per-room references are invalidated.
-    /// </summary>
+    // Subscribed by AppServices to RoomGraphManager.GraphReloaded —
+    // flushes the layout cache since per-room references are invalidated.
     public void OnGraphReloaded()
     {
         lock (_cacheLock) _layoutCache.Clear();
     }
 
-    /// <summary>
-    /// Eagerly build (and cache) the layout from the first room in
-    /// the active graph on a thread-pool task. Called by AppServices
-    /// after <see cref="OnGraphReloaded"/> so the Navigation window's
-    /// first render doesn't pay the BFS cost on the UI thread —
-    /// real realms have ~2000 rooms and the BFS allocates a few
-    /// hundred KB worth of dictionaries.
-    /// </summary>
+    // Eagerly build (and cache) the layout from the first room in the
+    // active graph on a thread-pool task. Called by AppServices after
+    // OnGraphReloaded so the Navigation window's first render doesn't pay
+    // the BFS cost on the UI thread — real realms have ~2000 rooms and the
+    // BFS allocates a few hundred KB worth of dictionaries.
     public void PrewarmAsync()
     {
         Room? first = null;
@@ -906,22 +846,18 @@ public sealed class BfsMapper
         return stack.ToArray();
     }
 
-    /// <summary>
-    /// MMUD-Explorer's two-pass deferred-resolution port. After the BFS
-    /// has committed an initial placement for every reachable room, walk
-    /// the placement set and try to move each room to a coord that
-    /// scores higher (satisfies more reciprocal exits) against the now-
-    /// fully-populated <paramref name="positions"/> map. The origin is
-    /// pinned because it anchors the layout — moving it would shift
-    /// everyone in lockstep with no net win.
-    /// </summary>
-    /// <remarks>
-    /// Convergence: every move strictly increases the global "matched
-    /// reciprocals" count (we only move when the new score is strictly
-    /// higher). The count is bounded by the total number of planar
-    /// exits in the graph, so the loop terminates. The iteration cap
-    /// is defensive — in practice the loop runs 1–3 passes.
-    /// </remarks>
+    // Two-pass deferred-resolution refinement. After the BFS has
+    // committed an initial placement for every reachable room, walk the
+    // placement set and try to move each room to a coord that scores
+    // higher (satisfies more reciprocal exits) against the now-fully-
+    // populated positions map. The origin is pinned because it anchors the
+    // layout — moving it would shift everyone in lockstep with no net win.
+    //
+    // Convergence: every move strictly increases the global "matched
+    // reciprocals" count (we only move when the new score is strictly
+    // higher). The count is bounded by the total number of planar exits in
+    // the graph, so the loop terminates. The iteration cap is defensive —
+    // in practice the loop runs 1–3 passes.
     private void RefineWithDeferredResolution(
         Dictionary<RoomKey, (int X, int Y)> positions,
         Dictionary<(int X, int Y), RoomKey> coordToRoom,
@@ -1019,18 +955,16 @@ public sealed class BfsMapper
         }
     }
 
-    /// <summary>
-    /// Decide whether a collided room is a <i>graphical crossing</i> that
-    /// should tunnel through rather than be dropped. True when the path
-    /// continues straight out the far side into territory we haven't drawn
-    /// yet, AND the blocking cell holds a structure this room has no
-    /// <i>two-way</i> connection to. The guards together pick out the
-    /// crossing cases — a river under a foreign bridge cell, and a one-way
-    /// bridge gap where the river room exits into a dock it can't return
-    /// from (so the two genuinely share a cell) — while leaving a true
-    /// non-Euclidean fold, which collides with one of its own reciprocal
-    /// neighbours, to drop-and-stub as before.
-    /// </summary>
+    // Decide whether a collided room is a graphical crossing that should
+    // tunnel through rather than be dropped. True when the path continues
+    // straight out the far side into territory we haven't drawn yet, AND
+    // the blocking cell holds a structure this room has no two-way
+    // connection to. The guards together pick out the crossing cases — a
+    // river under a foreign bridge cell, and a one-way bridge gap where
+    // the river room exits into a dock it can't return from (so the two
+    // genuinely share a cell) — while leaving a true non-Euclidean fold,
+    // which collides with one of its own reciprocal neighbours, to
+    // drop-and-stub as before.
     private bool ShouldTunnelThrough(
         Room collided,
         Direction entryDir,
@@ -1068,15 +1002,12 @@ public sealed class BfsMapper
         return true;
     }
 
-    /// <summary>
-    /// Pick the best free coord for <paramref name="candidate"/> among
-    /// the parent-edge offset (<paramref name="tentative"/>) and every
-    /// alternative implied by an already-placed reciprocal exit.
-    /// "Best" = highest count of reciprocal exits that would lie flat
-    /// at that coord; ties favour <paramref name="tentative"/> for the
-    /// least-surprising behaviour when nothing's better. Returns null
-    /// when every candidate coord is occupied by a different room.
-    /// </summary>
+    // Pick the best free coord for candidate among the parent-edge offset
+    // (tentative) and every alternative implied by an already-placed
+    // reciprocal exit. "Best" = highest count of reciprocal exits that
+    // would lie flat at that coord; ties favour tentative for the
+    // least-surprising behaviour when nothing's better. Returns null when
+    // every candidate coord is occupied by a different room.
     private static (int X, int Y)? ChooseBestPlacement(
         Room candidate,
         (int X, int Y) tentative,
@@ -1106,12 +1037,8 @@ public sealed class BfsMapper
         return best;
     }
 
-    /// <summary>
-    /// Number of planar exits on <paramref name="room"/> whose
-    /// reciprocal would land flat if <paramref name="room"/> sat at
-    /// <paramref name="coord"/>. Used by <see cref="ChooseBestPlacement"/>
-    /// to rank candidates.
-    /// </summary>
+    // Number of planar exits on room whose reciprocal would land flat if
+    // room sat at coord. Used by ChooseBestPlacement to rank candidates.
     private static int ScoreCoord(Room room, (int X, int Y) coord,
         Dictionary<RoomKey, (int X, int Y)> positions)
     {

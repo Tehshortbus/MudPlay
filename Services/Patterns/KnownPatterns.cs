@@ -1,18 +1,12 @@
 namespace FujinTerm.Services.Patterns;
 
-/// <summary>
-/// Stable identifiers for the default <see cref="MessageRouter"/> pattern
-/// seed. Later-phase subsystems subscribe by name —
-/// <c>router.Subscribe(KnownPatterns.UserHits, handler)</c> — instead of
-/// re-typing regex strings everywhere. Users can also reference these IDs
-/// from the Phase 5 Trigger UI when they want to react to a built-in
-/// pattern.
-/// </summary>
-/// <remarks>
-/// Naming convention: <c>category.action</c> in lower-kebab. Matches the
-/// rest of the codebase (<see cref="MenuCommandIds"/>) and the spec
-/// vocabulary lifted from Megamind's <c>classifier.js</c>.
-/// </remarks>
+// Stable identifiers for the default MessageRouter pattern seed. Subsystems
+// subscribe by name — router.Subscribe(KnownPatterns.UserHits, handler) —
+// instead of re-typing regex strings everywhere. Users can also reference these
+// IDs from the Trigger UI when they want to react to a built-in pattern.
+//
+// Naming convention: category.action in lower-kebab, matching the rest of the
+// codebase (MenuCommandIds).
 public static class KnownPatterns
 {
     // ----- Stealth -------------------------------------------------------
@@ -26,8 +20,8 @@ public static class KnownPatterns
     public const string DirectionFailed   = "movement.direction-failed";
     public const string BashFailed        = "movement.bash-failed";
     public const string HeardMovement     = "movement.heard-movement";
-    // Left-behind disambiguators (Phase 6 PR 6.2). When a party leader
-    // moves and we can't follow, the game prints one of these the instant
+    // Left-behind disambiguators. When a party leader moves and we can't
+    // follow, the game prints one of these the instant
     // before "You are no longer following X." — distinguishing a genuine
     // left-behind (auto-`@comeback`) from a deliberate uninvite/unfollow.
     public const string MovementFailedStuck = "movement.failed-stuck";   // "You can't seem to move anywhere!" — a prevents-movement gamedata flag blocked us
@@ -49,154 +43,122 @@ public static class KnownPatterns
     public const string MobHits              = "combat.mob-hits";
     public const string UserGainExperience   = "combat.user-gain-experience";
 
-    /// <summary>
-    /// The local player's own swing MISSING. On the live realm a whiff prints
-    /// the same first-person swing skeleton as a hit ("You punch acid slime!")
-    /// but WITHOUT the "for N damage" tail — there is no literal "miss" word —
-    /// so the pattern matches a "You &lt;verb&gt; &lt;target&gt;!" line and
-    /// excludes the hit form (owned by <see cref="UserHits"/>) via a look-ahead
-    /// for "for N damage". Distinct from <see cref="MobMisses"/> (an incoming
-    /// attack the mob whiffs): this is OUR offensive miss, the denominator for
-    /// the Phase 11 session hit/miss accuracy. The skeleton also matches
-    /// self-emotes ending in "!", so <see cref="Game.Combat.CombatSessionTracker"/>
-    /// only counts a match while combat is engaged.
-    /// </summary>
+    // The local player's own swing MISSING. On the live realm a whiff prints the
+    // same first-person swing skeleton as a hit ("You punch acid slime!") but
+    // WITHOUT the "for N damage" tail — there is no literal "miss" word — so the
+    // pattern matches a "You <verb> <target>!" line and excludes the hit form
+    // (owned by UserHits) via a look-ahead for "for N damage". Distinct from
+    // MobMisses (an incoming attack the mob whiffs): this is OUR offensive miss,
+    // the denominator for the session hit/miss accuracy. The skeleton also
+    // matches self-emotes ending in "!", so CombatSessionTracker only counts a
+    // match while combat is engaged.
     public const string UserMisses           = "combat.user-misses";
 
-    /// <summary>
-    /// The local player DODGING an incoming attack — "The &lt;mob&gt; … but
-    /// you dodge!". Carved out of <see cref="MobMisses"/> (whose broad
-    /// "&lt;mob&gt; … at you" shape also matches a dodge line) so Phase 11 can
-    /// count dodges separately for the dodge-rate denominator. Keys off the
-    /// canonical "you dodge" phrase, which only appears on a successful dodge.
-    /// </summary>
+    // The local player DODGING an incoming attack — "The <mob> … but you
+    // dodge!". Carved out of MobMisses (whose broad "<mob> … at you" shape also
+    // matches a dodge line) so dodges can be counted separately for the
+    // dodge-rate denominator. Keys off the canonical "you dodge" phrase, which
+    // only appears on a successful dodge.
     public const string UserDodges           = "combat.user-dodges";
 
-    /// <summary>
-    /// Local-player death — "You have been slain by &lt;killer&gt;." per
-    /// MajorMUD's canonical wording. <see cref="Game.Combat.DeathLineWatcher"/>
-    /// subscribes here and emits the PlayerDied event that
-    /// DeathRecoveryManager (PR 9.I) consumes for corpse-recovery.
-    /// </summary>
+    // Local-player death — "You have been slain by <killer>." per MajorMUD's
+    // canonical wording. DeathLineWatcher subscribes here and emits the
+    // PlayerDied event that DeathRecoveryManager consumes for corpse-recovery.
     public const string UserSlain            = "combat.user-slain";
 
-    /// <summary>
-    /// "X moves to attack Y." — emitted by the server for every
-    /// player's combat announce, including ours. Used by
-    /// <see cref="Game.Combat.CombatManager"/> to implement the
-    /// AttackTiming re-fire mechanism (AttackLastParty / AttackLastRoom
-    /// / AttackAfter). The pattern tolerates the bracketed-prompt
-    /// prefix ("[HP=100/MA=50]:X moves to attack Y.") plus a bare
-    /// colon prefix; the announcer name + target are positional
-    /// captures.
-    /// </summary>
+    // "X moves to attack Y." — emitted by the server for every player's combat
+    // announce, including ours. Used by CombatManager to implement the
+    // AttackTiming re-fire mechanism (AttackLastParty / AttackLastRoom /
+    // AttackAfter). The pattern tolerates the bracketed-prompt prefix
+    // ("[HP=100/MA=50]:X moves to attack Y.") plus a bare colon prefix; the
+    // announcer name + target are positional captures.
     public const string PartyAttackAnnounce  = "combat.party-attack-announce";
 
-    /// <summary>
-    /// "You don't see &lt;X&gt; here!" — server's response when our
-    /// <c>attack X</c> resolves against a target that left or died
-    /// between our send and the server's resolve (our death-line
-    /// match was missed, the mob fled, a partymate killed it first,
-    /// etc.). <see cref="Game.Combat.CombatManager"/> clears
-    /// <c>_currentTarget</c> and forces a room re-display.
-    /// </summary>
+    // "You don't see <X> here!" — server's response when our `attack X` resolves
+    // against a target that left or died between our send and the server's
+    // resolve (our death-line match was missed, the mob fled, a partymate killed
+    // it first, etc.). CombatManager clears _currentTarget and forces a room
+    // re-display.
     public const string TargetNotHere        = "combat.target-not-here";
 
-    /// <summary>"Your weapon has no effect against this monster!" —
-    /// server's signal that the currently-equipped weapon can't
-    /// damage the current target. CombatManager swaps to the
-    /// AlternateWeapon (or marks the monster unhittable if already
-    /// on alt) per CombatSettings.NoEffectFailureThreshold.</summary>
+    // "Your weapon has no effect against this monster!" — server's signal that
+    // the currently-equipped weapon can't damage the current target.
+    // CombatManager swaps to the AlternateWeapon (or marks the monster
+    // unhittable if already on alt) per CombatSettings.NoEffectFailureThreshold.
     public const string WeaponNoEffect       = "combat.weapon-no-effect";
 
-    /// <summary>"Your fists have no effect against this monster!" —
-    /// our weapon fell off (encumbrance, server quirk, missed
-    /// equip-confirm). CombatManager treats this as "re-equip from
-    /// scratch" and clears the shadow-equipped state.</summary>
+    // "Your fists have no effect against this monster!" — our weapon fell off
+    // (encumbrance, server quirk, missed equip-confirm). CombatManager treats
+    // this as "re-equip from scratch" and clears the shadow-equipped state.
     public const string FistsNoEffect        = "combat.fists-no-effect";
 
     // ----- Spellcasting -------------------------------------------------
-    /// <summary>"You attempt to cast &lt;spell&gt;, but fail." — failed
-    /// concentration / fizzle. Blocks further casts for the current
-    /// round.</summary>
+    // "You attempt to cast <spell>, but fail." — failed concentration / fizzle.
+    // Blocks further casts for the current round.
     public const string CastFizzled          = "spell.cast-fizzled";
 
-    /// <summary>"You do not have enough mana to cast that spell." —
-    /// blocks further casts until mana recovers.</summary>
+    // "You do not have enough mana to cast that spell." — blocks further casts
+    // until mana recovers.
     public const string CastNoMana           = "spell.cast-no-mana";
 
-    /// <summary>"You have already cast a spell this round!" — only one
-    /// cast per combat round; blocks until the next tick.</summary>
+    // "You have already cast a spell this round!" — only one cast per combat
+    // round; blocks until the next tick.
     public const string CastAlreadyThisRound = "spell.cast-already-this-round";
 
-    /// <summary>"You lost your concentration on the spell!" — mid-cast
-    /// interrupt (took damage during prep, broke stealth, etc.).</summary>
+    // "You lost your concentration on the spell!" — mid-cast interrupt (took
+    // damage during prep, broke stealth, etc.).
     public const string CastInterrupted      = "spell.cast-interrupted";
 
-    /// <summary>"Your spell has no effect on &lt;monster&gt;." — the
-    /// target is immune to the attack spell we just cast (priest
-    /// <c>harm</c> vs an acid slime, etc.). Group 0 captures the
-    /// monster name. CombatManager canonicalizes it to base species and
-    /// marks that species attack-spell-immune so the chooser skips the
-    /// primary attack spell to the alternate (then the weapon command)
-    /// for the rest of the room.</summary>
+    // "Your spell has no effect on <monster>." — the target is immune to the
+    // attack spell we just cast (priest `harm` vs an acid slime, etc.). Group 0
+    // captures the monster name. CombatManager canonicalizes it to base species
+    // and marks that species attack-spell-immune so the chooser skips the
+    // primary attack spell to the alternate (then the weapon command) for the
+    // rest of the room.
     public const string SpellNoEffect        = "spell.no-effect";
 
     // ----- Cash --------------------------------------------------------
-    /// <summary>"There are N &lt;coin&gt; pieces here." / singular
-    /// variant. Fired on room display when cash is on the ground.
-    /// CashManager subscribes to react per
-    /// <see cref="Models.Profile.CashSettings"/> policy.</summary>
+    // "There are N <coin> pieces here." / singular variant. Fired on room
+    // display when cash is on the ground. CashManager subscribes to react per
+    // CashSettings policy.
     public const string CashOnGround        = "cash.on-ground";
 
-    /// <summary>"You picked up N &lt;coin&gt; pieces." / singular
-    /// variant — confirmation that a get succeeded. CashManager
-    /// updates internal tallies + the auto-deposit trigger check.</summary>
+    // "You picked up N <coin> pieces." / singular variant — confirmation that a
+    // get succeeded. CashManager updates internal tallies + the auto-deposit
+    // trigger check.
     public const string CashPickedUp        = "cash.picked-up";
 
-    /// <summary>"You dropped N &lt;coin&gt; pieces." — discard
-    /// confirmation.</summary>
+    // "You dropped N <coin> pieces." — discard confirmation.
     public const string CashDropped         = "cash.dropped";
 
-    /// <summary>"You hid N &lt;coin&gt; pieces." — stash-room
-    /// confirmation. Wire shape distinct from <see cref="CashDropped"/>
-    /// because the <c>hide</c> command is the stash-room verb in stock
-    /// MajorMUD. Without this, the held-coin tally goes stale after a
-    /// stash and the auto-deposit threshold fires on phantom wealth.
-    /// Lifted from MudProxy <c>CombatSessionTracker.cs:503-505</c>.</summary>
+    // "You hid N <coin> pieces." — stash-room confirmation. Wire shape distinct
+    // from CashDropped because the `hide` command is the stash-room verb in stock
+    // MajorMUD. Without this, the held-coin tally goes stale after a stash and
+    // the auto-deposit threshold fires on phantom wealth.
     public const string CashHidden          = "cash.hidden";
 
-    /// <summary>
-    /// "N &lt;coin&gt; drop to the ground." — corpse-spawned cash
-    /// after a monster kill (combat-log shape, distinct from the
-    /// room-display <see cref="CashOnGround"/>). Currency word is the
-    /// short form ("silver", "gold", …) without the "pieces" suffix.
-    /// CashManager dispatches through the same per-currency policy as
-    /// CashOnGround so kill-loot follows the user's Collect / Discard
-    /// / Ignore choices.
-    /// </summary>
+    // "N <coin> drop to the ground." — corpse-spawned cash after a monster kill
+    // (combat-log shape, distinct from the room-display CashOnGround). Currency
+    // word is the short form ("silver", "gold", …) without the "pieces" suffix.
+    // CashManager dispatches through the same per-currency policy as CashOnGround
+    // so kill-loot follows the user's Collect / Discard / Ignore choices.
     public const string CashFromKill        = "cash.from-kill";
 
-    /// <summary>"You notice &lt;list&gt; here." — the realm-specific
-    /// room-survey line. Cash entries appear FIRST (server orders
-    /// runic → platinum → gold → copper → silver), followed by items.
-    /// Comma-separated, last entry ends with a period. Server wraps
-    /// at 80 cols mid-token so multi-line stitching is required.
-    /// CashManager parses each comma-separated entry and pulls
-    /// recognisable currency tokens for tally + collect dispatch.</summary>
+    // "You notice <list> here." — the realm-specific room-survey line. Cash
+    // entries appear FIRST (server orders runic → platinum → gold → copper →
+    // silver), followed by items. Comma-separated, last entry ends with a period.
+    // Server wraps at 80 cols mid-token so multi-line stitching is required.
+    // CashManager parses each comma-separated entry and pulls recognisable
+    // currency tokens for tally + collect dispatch.
     public const string YouNoticeRoom       = "cash.you-notice-room";
 
-    /// <summary>
-    /// Room-entry arrival — "&lt;name&gt; &lt;verb&gt; into the room
-    /// from &lt;direction&gt;." Fires when a monster spawns OR a
-    /// player walks in mid-room (no full re-display). The wire
-    /// colours the name segment yellow for monsters, red for players;
-    /// <see cref="Game.Combat.RoomEntryWatcher"/> reads the colour
-    /// off the line's attribute strip and uses it as a hint when the
-    /// name doesn't match the active game-data tables. Direction is
-    /// any cardinal / non-cardinal / up / down or the literal
-    /// <c>"nowhere"</c> (script-spawn).
-    /// </summary>
+    // Room-entry arrival — "<name> <verb> into the room from <direction>." Fires
+    // when a monster spawns OR a player walks in mid-room (no full re-display).
+    // The wire colours the name segment yellow for monsters, red for players;
+    // RoomEntryWatcher reads the colour off the line's attribute strip and uses
+    // it as a hint when the name doesn't match the active game-data tables.
+    // Direction is any cardinal / non-cardinal / up / down or the literal
+    // "nowhere" (script-spawn).
     public const string RoomEntryArrival     = "presence.room-entry-arrival";
 
     // ----- Conversation --------------------------------------------------
@@ -207,9 +169,9 @@ public static class KnownPatterns
     public const string ConversationTelepathOut = "conversation.telepath-out";   // outgoing "--- Telepath sent to X ---"
     public const string ConversationYell        = "conversation.yell";           // both "X yells" and "You yell"
     public const string ConversationLocal       = "conversation.local";
-    // UserEmote intentionally omitted — Megamind's emote regex keys off
-    // ANSI bytes the LineExtractor consumes. Re-add when attribute-aware
-    // matching ships.
+    // UserEmote intentionally omitted — the emote line is distinguished purely
+    // by ANSI colour bytes the LineExtractor consumes. Re-add when
+    // attribute-aware matching ships.
 
     // ----- Item actions --------------------------------------------------
     public const string UserHides         = "item.user-hides";
@@ -223,12 +185,10 @@ public static class KnownPatterns
     public const string UserBuys          = "item.user-buys";
 
     // ----- Room light ----------------------------------------------------
-    // The two "can't see" room-light lines drive auto-light (PR 9.K) to
-    // post a LightSource need. The penalized lines (barely visible / dimly
-    // lit) still render room contents and have no auto-action, so they're
-    // not seeded. Wording per docs/auto-engine-orchestration.md (MMUD
-    // Explorer reproduction); confirm against a live capture before
-    // relying on the exact phrasing.
+    // The two "can't see" room-light lines drive auto-light to post a
+    // LightSource need. The penalized lines (barely visible / dimly lit) still
+    // render room contents and have no auto-action, so they're not seeded.
+    // Confirm the exact wording against a live capture before relying on it.
     public const string RoomPitchBlack   = "light.room-pitch-black";   // "The room is pitch black"
     public const string RoomVeryDark     = "light.room-very-dark";     // "The room is very dark - you can't see anything"
 
@@ -268,37 +228,29 @@ public static class KnownPatterns
     public const string PartySelfRankChanged      = "party.self-rank-changed";      // "You have moved to the {front|middle|back} ranks of your group." — self's own rerank confirmation
 
     // ----- Alignment -----------------------------------------------------
-    /// <summary>
-    /// "A dark cloud passes over you" — MajorMUD's signal that the local
-    /// character's alignment just shifted toward evil (an evil-point gain).
-    /// The displayed alignment word doesn't update until the next <c>who</c>,
-    /// so <see cref="Game.AlignmentTracker"/> flags it stale on this line and
-    /// clears the flag once our own row is re-observed.
-    /// </summary>
+    // "A dark cloud passes over you" — MajorMUD's signal that the local
+    // character's alignment just shifted toward evil (an evil-point gain). The
+    // displayed alignment word doesn't update until the next `who`, so
+    // AlignmentTracker flags it stale on this line and clears the flag once our
+    // own row is re-observed.
     public const string AlignmentDarkCloud = "alignment.dark-cloud";
 
     // ----- Training ------------------------------------------------------
-    /// <summary>
-    /// "You hand over &lt;cost&gt; and you receive training to attain level N." —
-    /// the server's confirmation that a <c>train</c> levelled the character up.
-    /// Group 1 captures the attained level. Drives auto-train's level-up
-    /// detection and the Level Projection / CP-plan level sync.
-    /// </summary>
+    // "You hand over <cost> and you receive training to attain level N." — the
+    // server's confirmation that a `train` levelled the character up. Group 1
+    // captures the attained level. Drives auto-train's level-up detection and the
+    // Level Projection / CP-plan level sync.
     public const string TrainAttainLevel = "train.attain-level";
 
-    /// <summary>
-    /// "You have progressed too far to use the training provided here." — the
-    /// trainer rejecting a <c>train</c> because the character has out-levelled
-    /// this trainer's band. A hard stop for the <c>@train</c> multi-level loop:
-    /// no further levels can be trained at this location.
-    /// </summary>
+    // "You have progressed too far to use the training provided here." — the
+    // trainer rejecting a `train` because the character has out-levelled this
+    // trainer's band. A hard stop for the `@train` multi-level loop: no further
+    // levels can be trained at this location.
     public const string TrainProgressedTooFar = "train.progressed-too-far";
 
-    /// <summary>
-    /// "You do not have the money required for your training." — the trainer
-    /// rejecting a <c>train</c> for lack of coin. Also stops the <c>@train</c>
-    /// loop (no point re-sending until the purse is fixed).
-    /// </summary>
+    // "You do not have the money required for your training." — the trainer
+    // rejecting a `train` for lack of coin. Also stops the `@train` loop (no
+    // point re-sending until the purse is fixed).
     public const string TrainNoMoney = "train.no-money";
 
     // ----- Main menu -----------------------------------------------------
@@ -307,7 +259,7 @@ public static class KnownPatterns
     // The "Enter the Realm" row is the universal main-menu signature.
     public const string MainMenuEnterRealm = "menu.enter-realm";   // "[E] . Enter the Realm" — universal main-menu line
 
-    // ----- Trainer menu marker (Phase 6 follow-up) ----------------------
+    // ----- Trainer menu marker -------------------------------------------
     // The "train stats" trainer screen has a "Point Cost Chart" panel
     // header in the upper-right that doesn't appear in any other
     // game-mode output. Combined with outbound-`train stats` gating
@@ -315,7 +267,7 @@ public static class KnownPatterns
     // re-invite-after-trainer-menu flow.
     public const string MenuTrainerStatsMarker = "menu.trainer-stats-marker";
 
-    // ----- Suicide password flow (Phase 6 follow-up) ---------------------
+    // ----- Suicide password flow -----------------------------------------
     // Drives the SuicidePasswordTracker state machine and the engine-
     // send gate. The whole point of pattern-matching these is to
     // (a) detect when we've entered a password-entry prompt and lock
@@ -332,7 +284,7 @@ public static class KnownPatterns
     public const string Reroll                   = "reroll";               // "After a LONG thought, you take your own life" (successful suicide → character rerolled)
     public const string LearnSpell               = "spell.learn";          // "You read <scroll> and learn the spell <name>." (group 1 = spell Name)
 
-    // ----- Trap-disarm flow (Phase 6 @trap handler) ----------------------
+    // ----- Trap-disarm flow ----------------------------------------------
     // Drives TrapDisarmManager's search → disarm state machine. Failure
     // messages for the disarm phase are tracked in the per-realm
     // Messages catalogue today; once the canonical handler stabilises
@@ -341,10 +293,10 @@ public static class KnownPatterns
     public const string TrapNoneInSearch      = "trap.none-in-search";    // "You notice nothing different to the <dir>."
     public const string TrapDisarmedSuccess   = "trap.disarmed-success";  // "You successfully disarmed the trap to the <dir>."
 
-    // ----- Door open/bash/pick (Phase 7 DoorOpenManager) ----------------
-    // Drives the walker's door FSM. Phrasing ports from MudProxy's door
-    // handler — covers the door / gate noun pair (some realms render
-    // "gate" for the same lock state) and the bash / pick / open verbs.
+    // ----- Door open/bash/pick -------------------------------------------
+    // Drives the walker's door FSM — covers the door / gate noun pair (some
+    // realms render "gate" for the same lock state) and the bash / pick / open
+    // verbs.
     public const string DoorBashSuccess       = "door.bash.success";       // "you bashed the door open" / "bashed the gate open"
     public const string DoorBashFailure       = "door.bash.failure";       // "your attempts to bash through fail"
     public const string DoorPickSuccess       = "door.pick.success";       // "you successfully unlock the door"

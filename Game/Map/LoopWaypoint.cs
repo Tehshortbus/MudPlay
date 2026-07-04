@@ -2,49 +2,34 @@ using System.Text.Json.Serialization;
 
 namespace FujinTerm.Game.Map;
 
-/// <summary>
-/// One point in a saved <see cref="Loop"/>'s ordered cycle. Carries
-/// the room the user clicked plus an optional in-room command to send
-/// after arrival (with a delay before advancing to the next leg).
-/// Replaces v2's separate <c>UserWaypoints</c> + <c>Steps</c> +
-/// inline <c>CommandLoopStep</c> shape — every command attaches to
-/// the waypoint it logically belongs to, and the runtime move
-/// sequence is recomputed via BFS at run-time.
-/// </summary>
-/// <remarks>
-/// <para>
-/// <see cref="Room"/> is the wire-form <c>"{map}/{room}"</c> string
-/// (the same shape <see cref="RoomKey.ToString"/> emits) so saved
-/// loops are readable by hand. <see cref="Key"/> exposes the parsed
-/// form for code.
-/// </para>
-/// <para>
-/// Plain mutable POCO so <see cref="System.Text.Json"/> round-trips
-/// it without a converter; matches the rest of FujinTerm's per-file
-/// settings model.
-/// </para>
-/// </remarks>
+// One point in a saved Loop's ordered cycle. Carries the room the user
+// clicked plus an optional in-room command to send after arrival (with a
+// delay before advancing to the next leg). Replaces v2's separate
+// UserWaypoints + Steps + inline CommandLoopStep shape — every command
+// attaches to the waypoint it logically belongs to, and the runtime move
+// sequence is recomputed via BFS at run-time.
+//
+// Room is the wire-form "{map}/{room}" string (the same shape
+// RoomKey.ToString emits) so saved loops are readable by hand. Key exposes
+// the parsed form for code.
+//
+// Plain mutable POCO so System.Text.Json round-trips it without a
+// converter; matches the rest of the app's per-file settings model.
 public sealed class LoopWaypoint
 {
-    /// <summary>Wire form, e.g. <c>"1/5"</c>.</summary>
+    // Wire form, e.g. "1/5".
     public string Room { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Optional in-room command to send after arriving at this
-    /// waypoint. Null / empty = no command. Fires on every lap.
-    /// </summary>
+    // Optional in-room command to send after arriving at this waypoint.
+    // Null / empty = no command. Fires on every lap.
     public string? Command { get; set; }
 
-    /// <summary>
-    /// Delay in milliseconds after sending <see cref="Command"/>
-    /// before advancing to the next waypoint. Ignored when
-    /// <see cref="Command"/> is null / empty. <c>0</c> means
-    /// "advance on the next prompt" (same contract as v2
-    /// <c>CommandLoopStep.DelayMs == 0</c>).
-    /// </summary>
+    // Delay in milliseconds after sending Command before advancing to the
+    // next waypoint. Ignored when Command is null / empty. 0 means "advance
+    // on the next prompt" (same contract as v2 CommandLoopStep.DelayMs == 0).
     public int DelayMs { get; set; }
 
-    /// <summary>Parsed <see cref="RoomKey"/> from <see cref="Room"/>. Default when malformed.</summary>
+    // Parsed RoomKey from Room. Default when malformed.
     [JsonIgnore]
     public RoomKey Key => RoomKey.TryParseWire(Room, out RoomKey k) ? k : default;
 

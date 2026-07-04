@@ -1,13 +1,11 @@
 namespace FujinTerm.Game.Combat;
 
-/// <summary>
-/// Immutable snapshot of the session's activity counters, produced by
-/// <see cref="SessionActivityTracker.Snapshot"/> for the Phase 11 Session Stats
-/// panel's "Session Statistics" section: how long the session has run, how many
-/// monsters fell, how much experience was earned, and the copper-value currency
-/// picked up vs. stashed/deposited. The per-hour rates are derived so the window
-/// binds them directly off the same time base.
-/// </summary>
+// Immutable snapshot of the session's activity counters, produced by
+// SessionActivityTracker.Snapshot for the Session Stats panel's "Session
+// Statistics" section: how long the session has run, how many monsters fell, how
+// much experience was earned, and the copper-value currency picked up vs.
+// stashed/deposited. The per-hour rates are derived so the window binds them
+// directly off the same time base.
 public readonly record struct SessionActivityStats(
     TimeSpan TimeOnline,
     int MonstersKilled,
@@ -15,16 +13,16 @@ public readonly record struct SessionActivityStats(
     long CurrencyCollected,
     long CurrencyStashed)
 {
-    /// <summary>Monsters killed per hour across the whole session, 0 before any
-    /// time has elapsed.</summary>
+    // Monsters killed per hour across the whole session, 0 before any time has
+    // elapsed.
     public double KillsPerHour => Rate(MonstersKilled);
 
-    /// <summary>Experience earned per hour across the whole session, 0 before any
-    /// time has elapsed.</summary>
+    // Experience earned per hour across the whole session, 0 before any time has
+    // elapsed.
     public double ExperiencePerHour => Rate(ExperienceEarned);
 
-    /// <summary>Currency picked up per hour, in copper value, across the whole
-    /// session — 0 before any time has elapsed.</summary>
+    // Currency picked up per hour, in copper value, across the whole session — 0
+    // before any time has elapsed.
     public double CurrencyPerHour => Rate(CurrencyCollected);
 
     private double Rate(double total) =>

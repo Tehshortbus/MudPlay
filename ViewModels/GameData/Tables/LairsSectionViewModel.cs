@@ -3,18 +3,13 @@ using FujinTerm.Services;
 
 namespace FujinTerm.ViewModels.GameData.Tables;
 
-/// <summary>
-/// Game Data Browser → Lairs tab. Static MDB lair-aggregate table —
-/// one row per <c>GroupIndex</c> with the pre-computed averages
-/// (delay / walk / exp / dmg / HP / AC / DR / MR / dodge) across
-/// every room that spawns that monster group. Drives the Phase 7
-/// Auto-Lair scheduler's expected-throughput math.
-/// </summary>
-/// <remarks>
-/// Column names mirror the MajorMUD MDB schema verbatim. Joins room
-/// memberships via <c>GroupIndex</c> — the same key appears in
-/// <c>Rooms.Lair</c>'s tail token in NMR-1.83+ MDBs.
-/// </remarks>
+// Game Data Browser → Lairs tab. Static MDB lair-aggregate table — one row per GroupIndex
+// with the pre-computed averages (delay / walk / exp / dmg / HP / AC / DR / MR / dodge) across
+// every room that spawns that monster group. Drives the Auto-Lair scheduler's
+// expected-throughput math.
+//
+// Column names mirror the MajorMUD MDB schema verbatim. Joins room memberships via GroupIndex
+// — the same key appears in Rooms.Lair's tail token in NMR-1.83+ MDBs.
 public sealed class LairsSectionViewModel : JsonTableSectionViewModel
 {
     public override string Id => "lairs";

@@ -5,40 +5,25 @@ using FujinTerm.Terminal;
 
 namespace FujinTerm.Game.Map;
 
-/// <summary>
-/// Wire-side observation parser feeding <see cref="RoomTracker"/>.
-/// Subscribes to <see cref="LineExtractor.LineEmitted"/>, anchors on
-/// the <c>Obvious exits:</c> line that closes every room display, and
-/// walks back through a rolling line buffer to recover the room name.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Room-name detection runs in two passes over the most-recent block
-/// (delimited by a blank line, a movement transition, or a stray
-/// prompt-shaped line):
-/// </para>
-/// <list type="number">
-///   <item><description>
-///   <b>Colour-anchored</b>: prefer the first line whose non-space
-///   cells are all bright cyan — the canonical room-name styling in
-///   MajorMUD's display. SGR 96 (index 14) and SGR 1;36 (index 6 +
-///   Bold) both qualify.
-///   </description></item>
-///   <item><description>
-///   <b>Text fallback</b>: when colour data is absent (tests, replays
-///   without attributes) or the realm renders names without bright
-///   cyan, return the first non-blank line that doesn't look like a
-///   command echo (single letters, "look n", "sea sword", bare
-///   direction words, etc.).
-///   </description></item>
-/// </list>
-/// <para>
-/// Edge case — <c>Obvious exits: none.</c> emits a room observation
-/// with an empty exit set. The graph uniqueness index keyed on
-/// <c>(Name, ExitMask=0)</c> still works; the tracker either promotes
-/// (1-of-1 dead-end), reconciles, or lands in Lost — all fine.
-/// </para>
-/// </remarks>
+// Wire-side observation parser feeding RoomTracker. Subscribes to
+// LineExtractor.LineEmitted, anchors on the "Obvious exits:" line that closes
+// every room display, and walks back through a rolling line buffer to recover
+// the room name.
+//
+// Room-name detection runs in two passes over the most-recent block (delimited
+// by a blank line, a movement transition, or a stray prompt-shaped line):
+//   1. Colour-anchored: prefer the first line whose non-space cells are all
+//      bright cyan — the canonical room-name styling in MajorMUD's display.
+//      SGR 96 (index 14) and SGR 1;36 (index 6 + Bold) both qualify.
+//   2. Text fallback: when colour data is absent (tests, replays without
+//      attributes) or the realm renders names without bright cyan, return the
+//      first non-blank line that doesn't look like a command echo (single
+//      letters, "look n", "sea sword", bare direction words, etc.).
+//
+// Edge case — "Obvious exits: none." emits a room observation with an empty
+// exit set. The graph uniqueness index keyed on (Name, ExitMask=0) still works;
+// the tracker either promotes (1-of-1 dead-end), reconciles, or lands in Lost —
+// all fine.
 public sealed partial class RoomDisplayParser : IDisposable
 {
     private const int BufferCapacity = 12;
@@ -60,11 +45,9 @@ public sealed partial class RoomDisplayParser : IDisposable
 
     public void Dispose() => _lines.LineEmitted -= OnLineEmitted;
 
-    /// <summary>
-    /// Test seam — feed plain text lines without colour information.
-    /// Lines fall through to the text-heuristic path (echo filter +
-    /// first non-blank line in the block).
-    /// </summary>
+    // Test seam — feed plain text lines without colour information. Lines fall
+    // through to the text-heuristic path (echo filter + first non-blank line in
+    // the block).
     internal void FeedTestLines(IEnumerable<string> lines, DateTimeOffset? when = null)
     {
         DateTimeOffset stamp = when ?? DateTimeOffset.UtcNow;
@@ -72,10 +55,8 @@ public sealed partial class RoomDisplayParser : IDisposable
             HandleLine(new LineExtractor.EmittedLine(text, [], stamp, false));
     }
 
-    /// <summary>
-    /// Test seam — feed pre-built <see cref="LineExtractor.EmittedLine"/>s
-    /// so the colour-anchored detection path can be exercised.
-    /// </summary>
+    // Test seam — feed pre-built EmittedLines so the colour-anchored detection
+    // path can be exercised.
     internal void FeedTestEmittedLines(IEnumerable<LineExtractor.EmittedLine> lines)
     {
         foreach (LineExtractor.EmittedLine line in lines)
@@ -242,34 +223,33 @@ public sealed partial class RoomDisplayParser : IDisposable
         return result;
     }
 
-    /// <summary>Matches <c>"Obvious exits: north, south, east."</c> / variants. Captures the comma list.</summary>
+    // Matches "Obvious exits: north, south, east." / variants. Captures the
+    // comma list.
     [GeneratedRegex(
         @"^\s*Obvious\s+exits?\s*:\s*(?<list>.+?)\s*\.?\s*$",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex ObviousExitsPattern();
 
-    /// <summary>Movement-transition markers — used as block boundaries when scanning back for a room name.</summary>
+    // Movement-transition markers — used as block boundaries when scanning back
+    // for a room name.
     [GeneratedRegex(
         @"^\s*(You|He|She|It|They)\s+(walk|head|go|run|swim|fly|crawl|climb|step|move|wander)s?\s",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex MovementTransitionPattern();
 
-    /// <summary>Stray prompt segment — safety net if LineExtractor's split missed one.</summary>
+    // Stray prompt segment — safety net if LineExtractor's split missed one.
     [GeneratedRegex(@"^\s*\[HP=", RegexOptions.CultureInvariant)]
     private static partial Regex PromptLikePattern();
 
-    /// <summary>
-    /// Player typed something at the prompt and the server echoed it
-    /// back. Catches <c>"look n"</c>, <c>"sea sword"</c>, <c>"l e"</c>,
-    /// <c>"exa torch"</c>, etc.
-    /// </summary>
+    // Player typed something at the prompt and the server echoed it back.
+    // Catches "look n", "sea sword", "l e", "exa torch", etc.
     [GeneratedRegex(
         @"^\s*(l|look|exa|examine|sea|search|peer|peek)\s+\S+\s*$",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex CommandEchoPattern();
 
-    /// <summary>A bare direction word — <c>"north."</c>, <c>"northeast"</c>, etc.
-    /// alone on a line is almost always echo or a refusal tail.</summary>
+    // A bare direction word — "north.", "northeast", etc. alone on a line is
+    // almost always echo or a refusal tail.
     [GeneratedRegex(
         @"^\s*(north|south|east|west|northeast|northwest|southeast|southwest|up|down)\.?\s*$",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]

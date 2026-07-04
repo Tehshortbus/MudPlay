@@ -5,38 +5,29 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game.Light;
 
-/// <summary>
-/// The active auto-light engine. On each freshly-planned route (announced by
-/// <see cref="AutoWalkManager.SetRouteAnnouncer"/>) it scans the path for its
-/// darkest room, asks the pure <see cref="AutoLightPlanner"/> what to do, and —
-/// while the AutoLight master toggle is on — readies a carried light that clears
-/// the dark by sending <c>use &lt;light&gt;</c> (removing any different light
-/// that's currently lit first with <c>rem &lt;old&gt;</c>). Provisioning a light
-/// the pack doesn't hold (the planner's <see cref="AutoLightAction.Buy"/>
-/// verdict) is a shop detour that lands in a follow-up slice; here it's logged
-/// and left for the reactive <see cref="AutoLightManager"/> need-poster to
-/// surface meanwhile.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Gating: <em>every</em> action — readying now, buying later — sits behind the
-/// single AutoLight master toggle. There is deliberately no separate opt-in; a
-/// player who doesn't want the client touching their light simply leaves
-/// AutoLight off.
-/// </para>
-/// <para>
-/// The planner's "already covers" guard means a route re-announced mid-run (a
-/// loop crosses the same rooms each lap) is a no-op once a covering light is lit,
-/// so this engine doesn't re-issue <c>use</c> on every hop. A readied light lands
-/// in the snapshot only on the next <c>i</c> dump, though, so a local pending
-/// latch bridges the gap between sending <c>use</c> and the dump confirming it —
-/// a second walk-start on the same stale snapshot won't double-send, and a newer
-/// dump that lands without our light retires the latch so a failed send retries.
-/// </para>
-/// </remarks>
+// The active auto-light engine. On each freshly-planned route (announced by
+// AutoWalkManager.SetRouteAnnouncer) it scans the path for its darkest room, asks
+// the pure AutoLightPlanner what to do, and — while the AutoLight master toggle is
+// on — readies a carried light that clears the dark by sending use <light>
+// (removing any different light that's currently lit first with rem <old>).
+// Provisioning a light the pack doesn't hold (the planner's Buy verdict) is a shop
+// detour handed to AutoLightShopRouter; when no router is wired it's logged and
+// left for the reactive AutoLightManager need-poster to surface meanwhile.
+//
+// Gating: every action — readying now, buying later — sits behind the single
+// AutoLight master toggle. There is deliberately no separate opt-in; a player who
+// doesn't want the client touching their light simply leaves AutoLight off.
+//
+// The planner's "already covers" guard means a route re-announced mid-run (a loop
+// crosses the same rooms each lap) is a no-op once a covering light is lit, so
+// this engine doesn't re-issue use on every hop. A readied light lands in the
+// snapshot only on the next i dump, though, so a local pending latch bridges the
+// gap between sending use and the dump confirming it — a second walk-start on the
+// same stale snapshot won't double-send, and a newer dump that lands without our
+// light retires the latch so a failed send retries.
 public sealed class AutoLightProvisioner
 {
-    /// <summary>LogService category — <c>[AutoLight]</c> rows per ready / deferral.</summary>
+    // LogService category — [AutoLight] rows per ready / deferral.
     public const string LogCategory = "AutoLight";
 
     private readonly Func<bool> _isEnabled;
@@ -91,24 +82,20 @@ public sealed class AutoLightProvisioner
         _log = log;
     }
 
-    /// <summary>Bind the wire-sender — the gate-wrapped engine pipeline from
-    /// <c>MainWindowViewModel</c>.</summary>
+    // Bind the wire-sender — the gate-wrapped engine pipeline from
+    // MainWindowViewModel.
     public void SetWireSender(Action<byte[]> sender) => _wire.Bind(sender);
 
-    /// <summary>Bind the shop-detour hand-off — <see cref="AutoLightShopRouter"/>'s
-    /// <see cref="AutoLightShopRouter.OnBuyRequested"/>. Until bound, a Buy
-    /// verdict is logged and deferred to the reactive need-poster.</summary>
+    // Bind the shop-detour hand-off — AutoLightShopRouter.OnBuyRequested. Until
+    // bound, a Buy verdict is logged and deferred to the reactive need-poster.
     public void SetProvisioner(Action<AutoLightBuyRequest> provision) => _provision = provision;
 
-    /// <summary>Test seam — bytes the engine asked to write to the wire.</summary>
+    // Test seam — bytes the engine asked to write to the wire.
     internal List<byte[]> LastSentForTests => _wire.LastSentForTests;
 
-    /// <summary>
-    /// Route-planned handler bound to
-    /// <see cref="AutoWalkManager.SetRouteAnnouncer"/>. Scans the route, runs the
-    /// planner, and readies a covering light when one is called for. A no-op
-    /// unless the AutoLight master toggle is on.
-    /// </summary>
+    // Route-planned handler bound to AutoWalkManager.SetRouteAnnouncer. Scans the
+    // route, runs the planner, and readies a covering light when one is called
+    // for. A no-op unless the AutoLight master toggle is on.
     public void OnRoutePlanned(IReadOnlyList<RoomKey> route)
     {
         ArgumentNullException.ThrowIfNull(route);
@@ -154,14 +141,12 @@ public sealed class AutoLightProvisioner
         }
     }
 
-    /// <summary>
-    /// Reorder poll bound to <c>InventoryManager.Changed</c>. An `i` dump is the
-    /// only moment the readied light's charge refreshes, so this is where a
-    /// dwindling supply is caught: it re-runs the planner against an empty route
-    /// (the reorder verdict is route-independent) and hands a resulting restock to
-    /// the shop-detour router — at most once per readied-light instance. A no-op
-    /// unless the AutoLight master toggle is on.
-    /// </summary>
+    // Reorder poll bound to InventoryManager.Changed. An i dump is the only moment
+    // the readied light's charge refreshes, so this is where a dwindling supply is
+    // caught: it re-runs the planner against an empty route (the reorder verdict is
+    // route-independent) and hands a resulting restock to the shop-detour router —
+    // at most once per readied-light instance. A no-op unless the AutoLight master
+    // toggle is on.
     public void OnInventoryChanged()
     {
         if (!_isEnabled()) return;

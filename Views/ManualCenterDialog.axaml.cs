@@ -5,13 +5,11 @@ using FujinTerm.ViewModels.Navigation;
 
 namespace FujinTerm.Views;
 
-/// <summary>
-/// Modeless "Center on…" picker. Reuses the room-search behaviour
-/// from the Navigation rail's main search box — coordinate input
-/// OR substring match, live results dropdown, Enter on the textbox
-/// commits the highlighted (or top) row without dismissing the
-/// dialog through the default Center button.
-/// </summary>
+// Modeless "Center on…" picker. Reuses the room-search behaviour
+// from the Navigation rail's main search box — coordinate input
+// OR substring match, live results dropdown, Enter on the textbox
+// commits the highlighted (or top) row without dismissing the
+// dialog through the default Center button.
 public partial class ManualCenterDialog : Window
 {
     public ManualCenterDialog()

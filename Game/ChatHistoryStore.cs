@@ -3,37 +3,25 @@ using System.Text;
 
 namespace FujinTerm.Game;
 
-/// <summary>
-/// App-singleton chat / realm-event history. Subscribes to
-/// <see cref="ChatRouter.EntryClassified"/> and appends every classified
-/// entry into <see cref="Entries"/> for the Phase 2 ConversationWindow to
-/// bind to. Wall-clock date rollovers insert a synthetic
-/// <see cref="ChatChannel.DaySeparator"/> entry so multi-day sessions show
-/// a visible break (the typical case — the app runs for hours, the user
-/// keeps it open across midnight).
-/// </summary>
-/// <remarks>
-/// <para>
-/// Lifetime: app-scoped (not per-profile). Survives profile swap,
-/// connect / disconnect, character switch. Cleared only on
-/// <see cref="Clear"/> or app exit.
-/// </para>
-/// <para>
-/// No disk persistence — the spec is explicit: in-memory only by default.
-/// On-demand export via <see cref="ExportAsync"/> writes a plain-text file
-/// with the same chronological order, optionally filtered to a channel
-/// subset.
-/// </para>
-/// </remarks>
+// App-singleton chat / realm-event history. Subscribes to
+// ChatRouter.EntryClassified and appends every classified entry into Entries
+// for the ConversationWindow to bind to. Wall-clock date rollovers insert a
+// synthetic DaySeparator entry so multi-day sessions show a visible break (the
+// typical case — the app runs for hours, the user keeps it open across
+// midnight).
+//
+// Lifetime: app-scoped (not per-profile). Survives profile swap, connect /
+// disconnect, character switch. Cleared only on Clear or app exit.
+//
+// No disk persistence — in-memory only by default. On-demand export via
+// ExportAsync writes a plain-text file with the same chronological order,
+// optionally filtered to a channel subset.
 public sealed class ChatHistoryStore : IDisposable
 {
-    /// <summary>
-    /// Upper bound on retained entries. The store is in-memory and
-    /// app-lifetime, so an all-day session would otherwise grow the
-    /// collection without limit; past this many the oldest rows drop off
-    /// the front. Generous enough that the Conversation window's scrollback
-    /// never feels truncated in practice.
-    /// </summary>
+    // Upper bound on retained entries. The store is in-memory and app-lifetime,
+    // so an all-day session would otherwise grow the collection without limit;
+    // past this many the oldest rows drop off the front. Generous enough that
+    // the Conversation window's scrollback never feels truncated in practice.
     private const int MaxEntries = 5_000;
 
     private readonly ChatRouter _router;
@@ -41,7 +29,7 @@ public sealed class ChatHistoryStore : IDisposable
     private DateOnly _lastDate;
     private bool _disposed;
 
-    /// <summary>Read-only view for the Conversation window's binding.</summary>
+    // Read-only view for the Conversation window's binding.
     public ReadOnlyObservableCollection<ChatLogEntry> Entries { get; }
 
     public ChatHistoryStore(ChatRouter router)
@@ -81,24 +69,18 @@ public sealed class ChatHistoryStore : IDisposable
             _entries.RemoveAt(0);
     }
 
-    /// <summary>
-    /// Wipe every entry. The Phase 2 spec marks this as user-initiated only
-    /// (no automatic clear on profile swap); intended for the Conversation
-    /// window's right-click → Clear menu.
-    /// </summary>
+    // Wipe every entry. User-initiated only (no automatic clear on profile
+    // swap); intended for the Conversation window's right-click → Clear menu.
     public void Clear()
     {
         _entries.Clear();
         _lastDate = default;
     }
 
-    /// <summary>
-    /// Write the history to <paramref name="stream"/> as plain text. Each
-    /// row becomes <c>[HH:mm:ss] {channel}{speaker?}: {message}</c>; day
-    /// separators become <c>─── yyyy-MM-dd ───</c>. Optional
-    /// <paramref name="channelFilter"/> trims to the listed channels; pass
-    /// <c>null</c> to export everything.
-    /// </summary>
+    // Write the history to stream as plain text. Each row becomes
+    // `[HH:mm:ss] {channel}{speaker?}: {message}`; day separators become
+    // `─── yyyy-MM-dd ───`. Optional channelFilter trims to the listed channels;
+    // pass null to export everything.
     public async Task ExportAsync(Stream stream, IReadOnlySet<ChatChannel>? channelFilter = null)
     {
         ArgumentNullException.ThrowIfNull(stream);

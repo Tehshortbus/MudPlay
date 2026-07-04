@@ -10,20 +10,15 @@ using FujinTerm.Services;
 
 namespace FujinTerm.ViewModels.CharacterWorkshop;
 
-/// <summary>
-/// Presentation formatting shared by the Quest Status tab and the Quest editor
-/// window — turns crawled quest mechanics (<see cref="CrawledQuest"/> /
-/// <see cref="QuestStep"/>) into the human-readable labels both surfaces render.
-/// Pure functions over the active <see cref="GameDataCache"/>; no state.
-/// </summary>
+// Presentation formatting shared by the Quest Status tab and the Quest editor window —
+// turns crawled quest mechanics (CrawledQuest / QuestStep) into the human-readable
+// labels both surfaces render. Pure functions over the active GameDataCache; no state.
 internal static partial class QuestTextFormatter
 {
-    /// <summary>
-    /// Auto-draft title for a quest when the user hasn't named it: the flag's ability
-    /// name for a single-part quest; for a multi-part band, the flag's base name (its
-    /// trailing <c>"Quest"</c> dropped) plus the 1-based band number — e.g.
-    /// <c>"Good 1"</c> from the <c>GoodQuest</c> flag's first band.
-    /// </summary>
+    // Auto-draft title for a quest when the user hasn't named it: the flag's ability
+    // name for a single-part quest; for a multi-part band, the flag's base name (its
+    // trailing "Quest" dropped) plus the 1-based band number — e.g. "Good 1" from the
+    // GoodQuest flag's first band.
     public static string FallbackTitle(CrawledQuest q)
     {
         string flagName = AbilityNames.FormatId(q.Flag);
@@ -39,32 +34,28 @@ internal static partial class QuestTextFormatter
             ? name[..^5]
             : name;
 
-    /// <summary>Level-gate label (<c>"Level N"</c>), or empty when ungated.</summary>
+    // Level-gate label ("Level N"), or empty when ungated.
     public static string Level(int level) =>
         level > 0 ? string.Create(CultureInfo.InvariantCulture, $"Level {level}") : string.Empty;
 
-    /// <summary>Class-resolved permanent stat-bonus summary, or empty when the quest grants none.</summary>
+    // Class-resolved permanent stat-bonus summary, or empty when the quest grants none.
     public static string Bonuses(IReadOnlyList<QuestBonus> bonuses) =>
         bonuses.Count == 0 ? string.Empty
             : AbilityNames.SummarizeAbilities(bonuses.Select(b => (b.AbilityId, b.Value)));
 
-    /// <summary>
-    /// The quest's reward label: comma-joined keeper-item award names, or — when the
-    /// quest awards no item or stat but the ability it grants <em>is</em> the prize
-    /// (Smash, Meditate, SeeHidden) — the flag's ability name. Empty when neither.
-    /// </summary>
+    // The quest's reward label: comma-joined keeper-item award names, or — when the
+    // quest awards no item or stat but the ability it grants is the prize (Smash,
+    // Meditate, SeeHidden) — the flag's ability name. Empty when neither.
     public static string Awards(GameDataCache gameData, CrawledQuest q) =>
         q.AwardItems.Count > 0
             ? string.Join(", ", q.AwardItems.Select(id => ItemName(gameData, id)))
             : q.AwardsAbility ? AbilityNames.FormatId(q.Flag) : string.Empty;
 
-    /// <summary>
-    /// The class / race the crawl found this quest restricted to, as
-    /// <c>"Classes: Warrior, Cleric  ·  Races: Gaunt One"</c>; empty when the quest is
-    /// open to all (no restriction surfaced). Informational — the crawl reads guards off
-    /// the grant chains and can't see gating that lives upstream in the textblock flow, so
-    /// this is "what the crawl grabbed", not a hard eligibility verdict.
-    /// </summary>
+    // The class / race the crawl found this quest restricted to, as
+    // "Classes: Warrior, Cleric  ·  Races: Gaunt One"; empty when the quest is open to
+    // all (no restriction surfaced). Informational — the crawl reads guards off the
+    // grant chains and can't see gating that lives upstream in the textblock flow, so
+    // this is "what the crawl grabbed", not a hard eligibility verdict.
     public static string Requirements(GameDataCache gameData, CrawledQuest q)
     {
         var parts = new List<string>();
@@ -79,7 +70,7 @@ internal static partial class QuestTextFormatter
         gameData.FindNameByNumber(table, number)
         ?? string.Create(CultureInfo.InvariantCulture, $"#{number}");
 
-    /// <summary>One followable step rendered as <c>command · @ location · turn in … · need … · receive …</c>.</summary>
+    // One followable step rendered as "command · @ location · turn in … · need … · receive …".
     public static string Step(GameDataCache gameData, QuestStep s)
     {
         var parts = new List<string>();
@@ -93,20 +84,17 @@ internal static partial class QuestTextFormatter
             : string.Create(CultureInfo.InvariantCulture, $"Step {s.Order}");
     }
 
-    /// <summary>Item display name by id, falling back to <c>#id</c> when the active set has no such row.</summary>
+    // Item display name by id, falling back to #id when the active set has no such row.
     public static string ItemName(GameDataCache gameData, int id) =>
         gameData.FindNameByNumber("Items", id)
         ?? string.Create(CultureInfo.InvariantCulture, $"#{id}");
 
-    /// <summary>
-    /// The crawler's auto-draft followable steps for a quest, one markdown line per
-    /// give-step in order — each a checkbox line <c>"[] {flag}({order}) {step}"</c> so
-    /// the Quest Status tab renders it as a tickable item and the editor pre-fills it
-    /// verbatim. For a multi-part band only the give-steps inside the band's
-    /// <see cref="CrawledQuest.StepRangeStart"/>..<see cref="CrawledQuest.StepRangeEnd"/>
-    /// span are emitted; a single-part quest (range 0/0) emits every step. Empty when
-    /// the flag drafts no steps.
-    /// </summary>
+    // The crawler's auto-draft followable steps for a quest, one markdown line per
+    // give-step in order — each a checkbox line "[] {flag}({order}) {step}" so the Quest
+    // Status tab renders it as a tickable item and the editor pre-fills it verbatim. For
+    // a multi-part band only the give-steps inside the band's StepRangeStart..StepRangeEnd
+    // span are emitted; a single-part quest (range 0/0) emits every step. Empty when the
+    // flag drafts no steps.
     public static IReadOnlyList<string> StepLines(GameDataCache gameData, CrawledQuest q)
     {
         var lines = new List<string>();
@@ -123,12 +111,10 @@ internal static partial class QuestTextFormatter
         return lines;
     }
 
-    /// <summary>
-    /// Parse user-or-crawler step markdown into render rows. Each non-blank line is
-    /// one row: a leading <c>[]</c> / <c>[ ]</c> / <c>[x]</c> marker makes it a
-    /// tickable checkbox whose label is the text after the marker; a line with no
-    /// marker is a plain, non-tickable label. Blank lines are skipped.
-    /// </summary>
+    // Parse user-or-crawler step markdown into render rows. Each non-blank line is one
+    // row: a leading [] / [ ] / [x] marker makes it a tickable checkbox whose label is
+    // the text after the marker; a line with no marker is a plain, non-tickable label.
+    // Blank lines are skipped.
     public static IEnumerable<(bool Checkable, string Text)> ParseStepLines(string steps)
     {
         if (string.IsNullOrEmpty(steps)) yield break;
@@ -149,15 +135,12 @@ internal static partial class QuestTextFormatter
     [GeneratedRegex(@"^\[\s*[xX]?\s*\]")]
     private static partial Regex CheckboxMarker();
 
-    /// <summary>
-    /// Split a step label into render segments, isolating any <c>(map/room)</c>
-    /// coordinate token (e.g. <c>(5/297)</c>) into its own segment carrying the
-    /// parsed <see cref="RoomKey"/> so the view can render it as a clickable
-    /// walk-to link; the surrounding prose stays as plain segments (null room). A
-    /// coordinate whose numbers don't fit a positive <see cref="int"/> is left
-    /// folded into the prose. Returns a single plain segment when the label holds
-    /// no coordinate, and an empty list for empty input.
-    /// </summary>
+    // Split a step label into render segments, isolating any (map/room) coordinate token
+    // (e.g. (5/297)) into its own segment carrying the parsed RoomKey so the view can
+    // render it as a clickable walk-to link; the surrounding prose stays as plain
+    // segments (null room). A coordinate whose numbers don't fit a positive int is left
+    // folded into the prose. Returns a single plain segment when the label holds no
+    // coordinate, and an empty list for empty input.
     public static IReadOnlyList<(string Text, RoomKey? Room)> SplitRoomLinks(string text)
     {
         var segments = new List<(string Text, RoomKey? Room)>();

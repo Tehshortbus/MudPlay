@@ -4,39 +4,28 @@ using FujinTerm.Game.Map;
 
 namespace FujinTerm.Services;
 
-/// <summary>
-/// In-memory index of <c>TBInfo.json</c> for the active game-data
-/// set. Mirrors <see cref="Game.Map.RoomGraphManager"/>'s lifecycle:
-/// subscribes to <see cref="GameDataCache.ActiveSetChanged"/>, loads
-/// the raw JSON via <see cref="GameDataCache.GetRawTable"/>, evicts
-/// the document after typed conversion (memory-hygiene parity), and
-/// re-publishes <see cref="StoreReloaded"/> for consumers.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Commit 1 ships the load + lookup primitives. Commit 5 (teleport
-/// handler) parses each entry's <see cref="TBInfoEntry.Action"/>
-/// directive chain into the keyword → destination map the walker
-/// uses.
-/// </para>
-/// </remarks>
+// In-memory index of TBInfo.json for the active game-data set. Mirrors
+// RoomGraphManager's lifecycle: subscribes to GameDataCache.ActiveSetChanged,
+// loads the raw JSON via GameDataCache.GetRawTable, evicts the document after
+// typed conversion (memory-hygiene parity), and re-publishes StoreReloaded for
+// consumers. The teleport handler parses each entry's Action directive chain
+// into the keyword → destination map the walker uses.
 public sealed class TBInfoStore
 {
     private readonly GameDataCache _cache;
     private readonly LogService? _log;
     private readonly Dictionary<int, TBInfoEntry> _entries = new();
 
-    /// <summary>Active set the store was last loaded from, or <c>null</c> if empty.</summary>
+    // Active set the store was last loaded from, or null if empty.
     public string? ActiveSet { get; private set; }
 
-    /// <summary>Number of entries in the active store (<c>0</c> when no set is active or load failed).</summary>
+    // Number of entries in the active store (0 when no set is active or load
+    // failed).
     public int EntryCount => _entries.Count;
 
-    /// <summary>
-    /// Fires after every successful (re)load, including the
-    /// transition to no-set-active (empty store). Subscribers should
-    /// drop any cached TBInfo references and re-pull what they need.
-    /// </summary>
+    // Fires after every successful (re)load, including the transition to
+    // no-set-active (empty store). Subscribers should drop any cached TBInfo
+    // references and re-pull what they need.
     public event Action? StoreReloaded;
 
     public TBInfoStore(GameDataCache cache) : this(cache, log: null) { }
@@ -48,19 +37,16 @@ public sealed class TBInfoStore
         _log = log;
     }
 
-    /// <summary>Look up a single entry by its primary key. Returns <c>null</c> when absent.</summary>
+    // Look up a single entry by its primary key. Returns null when absent.
     public TBInfoEntry? GetEntry(int number)
         => _entries.TryGetValue(number, out TBInfoEntry? e) ? e : null;
 
-    /// <summary>Read-only snapshot of every entry in load order. Empty when no set is active.</summary>
+    // Read-only snapshot of every entry in load order. Empty when no set is
+    // active.
     public IEnumerable<TBInfoEntry> Entries => _entries.Values;
 
-    /// <summary>
-    /// Reload the store from <paramref name="setName"/>'s
-    /// <c>TBInfo.json</c>. Pass <c>null</c> to clear. Safe to call
-    /// repeatedly. Wired by <see cref="AppServices"/> to
-    /// <see cref="GameDataCache.ActiveSetChanged"/>.
-    /// </summary>
+    // Reload the store from setName's TBInfo.json. Pass null to clear. Safe to
+    // call repeatedly. Wired by AppServices to GameDataCache.ActiveSetChanged.
     public void OnActiveSetChanged(string? setName)
     {
         _entries.Clear();

@@ -6,15 +6,11 @@ using FujinTerm.ViewModels.CharacterWorkshop;
 
 namespace FujinTerm.Views.CharacterWorkshop;
 
-/// <summary>
-/// Attached behaviour that renders a quest step's
-/// <see cref="QuestStepSegmentViewModel"/> list into a <see cref="TextBlock"/>'s
-/// inline runs: plain segments become text <see cref="Run"/>s (so the line still
-/// wraps at word boundaries) and link segments become an inline, underlined
-/// hot-text button wired to the segment's walk-to command. Bind
-/// <see cref="SegmentsProperty"/> in XAML; the handler rebuilds the inlines
-/// whenever the bound list changes.
-/// </summary>
+// Attached behaviour that renders a quest step's QuestStepSegmentViewModel list
+// into a TextBlock's inline runs: plain segments become text Runs (so the line
+// still wraps at word boundaries) and link segments become an inline, underlined
+// hot-text button wired to the segment's walk-to command. Bind SegmentsProperty
+// in XAML; the handler rebuilds the inlines whenever the bound list changes.
 public static class QuestStepInlines
 {
     public static readonly AttachedProperty<IReadOnlyList<QuestStepSegmentViewModel>?> SegmentsProperty =

@@ -2,21 +2,15 @@ using System.Text;
 
 namespace FujinTerm.Terminal;
 
-/// <summary>
-/// Re-emits a <c>Cell[]</c> row as plain text plus inline ANSI SGR escapes,
-/// so a captured log file rendered through <c>less -R</c>, a modern
-/// terminal, or any ANSI-aware viewer shows the same colours the user saw
-/// live. Mirrors the run-batching <see cref="Controls.CellRowDisplay"/> does
-/// for on-screen rendering — same logical groupings, different output
-/// medium.
-/// </summary>
+// Re-emits a Cell[] row as plain text plus inline ANSI SGR escapes, so a
+// captured log file rendered through less -R, a modern terminal, or any
+// ANSI-aware viewer shows the same colours the user saw live. Mirrors the
+// run-batching Controls.CellRowDisplay does for on-screen rendering — same
+// logical groupings, different output medium.
 public static class AnsiEncoder
 {
-    /// <summary>
-    /// Encode <paramref name="cells"/> as ANSI text. Always ends with
-    /// <c>ESC [ 0 m</c> so the output doesn't bleed colour into whatever
-    /// follows it in the same file / pipe.
-    /// </summary>
+    // Encode cells as ANSI text. Always ends with ESC [ 0 m so the output
+    // doesn't bleed colour into whatever follows it in the same file / pipe.
     public static string EncodeRow(ReadOnlySpan<Cell> cells)
     {
         StringBuilder sb = new(cells.Length + 32);

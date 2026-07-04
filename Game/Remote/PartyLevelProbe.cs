@@ -6,55 +6,41 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game.Remote;
 
-/// <summary>
-/// On-demand party-level probe. Asks the whole party "what level are you?" by
-/// broadcasting <c>@level</c> to every non-self member and aggregating the
-/// replies into a single <see cref="PartyLevelResult"/>. Backs the leader-side
-/// level-gate check: when a leader's planned walk crosses a
-/// <c>(Level: MIN to MAX)</c> gate, <see cref="Game.Map.PartyLevelGate"/> probes
-/// the party and warns / prompts when a member's level falls outside the window
-/// (the walker's own <see cref="Game.Map.IRoomFilter"/> already guarantees the
-/// leader clears it, so only the followers need checking).
-/// </summary>
-/// <remarks>
-/// <para>
-/// The round-trip rides the same plumbing as <see cref="PartyInventoryProbe"/>:
-/// the query goes out through <see cref="PartyBroadcaster.Broadcast"/> (one
-/// <c>/&lt;given&gt; @level</c> per member) and each member's
-/// <see cref="ExperienceQueryHandler.OnLevel"/> replies
-/// <c>"Level N, X exp, Y to next level"</c> back over an incoming telepath. We
-/// subscribe to <see cref="ChatRouter.EntryClassified"/> and read the level off
-/// each reply.
-/// </para>
-/// <para>
-/// Unlike <c>@have</c> there is no per-query parameter to echo, so a level reply
-/// from a member satisfies every in-flight query still awaiting that member.
-/// Concurrent queries are rare (one per level-gated walk) and simply share
-/// replies — the same behaviour the item probe documents for two queries using
-/// the same item name. A member that answers <c>"level unknown …"</c> (hasn't
-/// parsed a stat screen) counts as replied but contributes no level, so the gate
-/// can't check them; a member who never answers falls off with the
-/// <see cref="QueryWindow"/>. With no one to ask the task completes synchronously
-/// with an empty result.
-/// </para>
-/// <para>
-/// Every parsed level is also the authoritative record of that player's level:
-/// the probe forwards it to the <c>recordLevel</c> seam (bound in production to
-/// <see cref="Services.PlayerDatabase.RecordLevel"/>), so the exact number
-/// supersedes the 5-level band the player's title otherwise implies. This is the
-/// one place the app learns a party member's precise level.
-/// </para>
-/// </remarks>
+// On-demand party-level probe. Asks the whole party "what level are you?" by
+// broadcasting @level to every non-self member and aggregating the replies into a
+// single PartyLevelResult. Backs the leader-side level-gate check: when a
+// leader's planned walk crosses a (Level: MIN to MAX) gate, PartyLevelGate probes
+// the party and warns / prompts when a member's level falls outside the window
+// (the walker's own IRoomFilter already guarantees the leader clears it, so only
+// the followers need checking).
+//
+// The round-trip rides the same plumbing as PartyInventoryProbe: the query goes
+// out through PartyBroadcaster.Broadcast (one /<given> @level per member) and each
+// member's ExperienceQueryHandler.OnLevel replies "Level N, X exp, Y to next
+// level" back over an incoming telepath. We subscribe to
+// ChatRouter.EntryClassified and read the level off each reply.
+//
+// Unlike @have there is no per-query parameter to echo, so a level reply from a
+// member satisfies every in-flight query still awaiting that member. Concurrent
+// queries are rare (one per level-gated walk) and simply share replies — the same
+// behaviour the item probe documents for two queries using the same item name. A
+// member that answers "level unknown …" (hasn't parsed a stat screen) counts as
+// replied but contributes no level, so the gate can't check them; a member who
+// never answers falls off with the QueryWindow. With no one to ask the task
+// completes synchronously with an empty result.
+//
+// Every parsed level is also the authoritative record of that player's level: the
+// probe forwards it to the recordLevel seam (bound in production to
+// PlayerDatabase.RecordLevel), so the exact number supersedes the 5-level band
+// the player's title otherwise implies. This is the one place the app learns a
+// party member's precise level.
 public sealed partial class PartyLevelProbe : IDisposable
 {
-    /// <summary>Aggregate outcome of one <c>@level</c> round-trip.</summary>
-    /// <param name="Expected">How many members the query was sent to.</param>
-    /// <param name="Replied">How many members answered before completion (incl. "level unknown").</param>
-    /// <param name="LevelsByMember">
-    /// Per-member level keyed by given name (case-insensitive). Only members
-    /// that reported a numeric level appear; a non-responder or a
-    /// "level unknown" reply is absent.
-    /// </param>
+    // Aggregate outcome of one @level round-trip. Replied counts members who
+    // answered before completion (incl. "level unknown"). LevelsByMember is the
+    // per-member level keyed by given name (case-insensitive); only members that
+    // reported a numeric level appear, a non-responder or "level unknown" reply is
+    // absent.
     public readonly record struct PartyLevelResult(
         int Expected,
         int Replied,
@@ -63,10 +49,10 @@ public sealed partial class PartyLevelProbe : IDisposable
         private static readonly IReadOnlyDictionary<string, int> NoLevels =
             new Dictionary<string, int>();
 
-        /// <summary>An empty result — no party members to ask, or the probe was disposed.</summary>
+        // An empty result — no party members to ask, or the probe was disposed.
         public static PartyLevelResult Empty => new(0, 0, NoLevels);
 
-        /// <summary>True when at least one member answered (with a level or "unknown").</summary>
+        // True when at least one member answered (with a level or "unknown").
         public bool AnyReplied => Replied > 0;
     }
 
@@ -89,11 +75,9 @@ public sealed partial class PartyLevelProbe : IDisposable
     private readonly List<PendingQuery> _pending = new();
     private bool _disposed;
 
-    /// <summary>
-    /// How long to wait for replies before completing with whatever arrived.
-    /// Short — the round-trip is a single telepath each way. 4 s tolerates a
-    /// laggy BBS without stalling the walk check.
-    /// </summary>
+    // How long to wait for replies before completing with whatever arrived.
+    // Short — the round-trip is a single telepath each way. 4 s tolerates a
+    // laggy BBS without stalling the walk check.
     public TimeSpan QueryWindow { get; set; } = TimeSpan.FromSeconds(4);
 
     // Require the full "Level N, X exp," shape (not just a leading "Level N")
@@ -128,11 +112,9 @@ public sealed partial class PartyLevelProbe : IDisposable
         _chat.EntryClassified += OnChatEntry;
     }
 
-    /// <summary>
-    /// Broadcast <c>@level</c> to the party and complete once every member
-    /// replies or <see cref="QueryWindow"/> elapses. Returns an empty result
-    /// immediately when the party has no one else to ask.
-    /// </summary>
+    // Broadcast @level to the party and complete once every member replies or
+    // QueryWindow elapses. Returns an empty result immediately when the party
+    // has no one else to ask.
     public Task<PartyLevelResult> QueryAsync()
     {
         if (_disposed) return Task.FromResult(PartyLevelResult.Empty);

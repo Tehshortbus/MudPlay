@@ -3,11 +3,9 @@ using FujinTerm.Terminal;
 
 namespace FujinTerm.Services.Patterns;
 
-/// <summary>
-/// Full <see cref="Regex"/> match against the line's text. The regex is
-/// compiled in the constructor; capture groups from index 1 onward are
-/// returned to the handler via <see cref="MatchResult.Groups"/>.
-/// </summary>
+// Full Regex match against the line's text. The regex is compiled in the
+// constructor; capture groups from index 1 onward are returned to the handler
+// via MatchResult.Groups.
 public sealed class RegexPattern : IMessagePattern
 {
     private readonly Regex _regex;
@@ -16,15 +14,10 @@ public sealed class RegexPattern : IMessagePattern
     public string Id { get; }
     public int Priority { get; }
 
-    /// <summary>
-    /// Construct with the pattern's stable <paramref name="id"/>, the regex
-    /// <paramref name="pattern"/> string, and an optional execution
-    /// <paramref name="priority"/> (higher fires first; default 0).
-    /// </summary>
-    /// <param name="options">
-    /// Extra <see cref="RegexOptions"/>. <see cref="RegexOptions.Compiled"/>
-    /// and <see cref="RegexOptions.CultureInvariant"/> are always applied.
-    /// </param>
+    // Construct with the pattern's stable id, the regex pattern string, and an
+    // optional execution priority (higher fires first; default 0). options
+    // supplies extra RegexOptions; Compiled and CultureInvariant are always
+    // applied.
     public RegexPattern(string id, string pattern, int priority = 0, RegexOptions options = RegexOptions.None)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(id);

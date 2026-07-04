@@ -1,17 +1,12 @@
 namespace FujinTerm.Game.Map;
 
-/// <summary>
-/// Cardinal exit direction off a room. Values match the order of the
-/// matching property names on a MajorMUD <c>Rooms</c> row
-/// (<c>N</c>/<c>S</c>/<c>E</c>/<c>W</c>/<c>NE</c>/<c>NW</c>/<c>SE</c>/<c>SW</c>/<c>U</c>/<c>D</c>)
-/// so a single <see cref="ExitMask"/> bit-field can be built from a
-/// direction set with <c>1u &lt;&lt; (int)dir</c>.
-/// </summary>
-/// <remarks>
-/// BFS layout in <see cref="BfsMapper"/> is planar — <see cref="U"/>
-/// and <see cref="D"/> are rendered as glyphs on the room cell instead
-/// of contributing to the 2D layout pass.
-/// </remarks>
+// Cardinal exit direction off a room. Values match the order of the
+// matching property names on a MajorMUD Rooms row
+// (N/S/E/W/NE/NW/SE/SW/U/D) so a single ExitMask bit-field can be built
+// from a direction set with 1u << (int)dir.
+//
+// BFS layout in BfsMapper is planar — U and D are rendered as glyphs on
+// the room cell instead of contributing to the 2D layout pass.
 public enum Direction
 {
     N  = 0,

@@ -18,30 +18,26 @@ using FujinTerm.Views.CharacterWorkshop;
 
 namespace FujinTerm.ViewModels.CharacterWorkshop;
 
-/// <summary>
-/// CALCULATORS section — combat what-if tools that sit apart from the live
-/// stat sheet:
-/// <list type="bullet">
-/// <item><b>Monster Matchup</b> — pick a monster by name and see the
-/// <em>You → Monster</em> projection (hit%, damage, swings, DPS) computed from
-/// your gear-derived offense, with an optional weapon picker to model a
-/// different weapon's damage against the monster's damage resist.</item>
-/// <item><b>Monster → You</b> — the return direction, made interactive:
-/// your AC and dodge seed from the live stat + gear values but are editable,
-/// and every physical attack the monster has is listed with its own editable
-/// accuracy, so you can dial either side and watch the hit chance move.</item>
-/// <item><b>Movement Speed</b> — the encumbrance / quickness / slowness solver
-/// against the one-second movement cap.</item>
-/// <item><b>Swing</b> — the MMUD-Explorer swing model (energy per swing and the
-/// 10-round carry-over breakdown) for the equipped or a picked weapon.</item>
-/// <item><b>Backstab</b> — the realm-aware backstab damage range for the
-/// backstab-set weapon (or a picked one), reading level / strength / stealth /
-/// class-stealth and the +BS ability bonuses from the live character.</item>
-/// </list>
-/// The player-side offense/defense numbers refresh live from the stat snapshot,
-/// inventory, and completed-quest bonuses; the editable inputs re-seed to the
-/// actuals on each refresh but are free to override in between.
-/// </summary>
+// CALCULATORS section — combat what-if tools that sit apart from the live
+// stat sheet:
+//   Monster Matchup — pick a monster by name and see the You → Monster
+//     projection (hit%, damage, swings, DPS) computed from your gear-derived
+//     offense, with an optional weapon picker to model a different weapon's
+//     damage against the monster's damage resist.
+//   Monster → You — the return direction, made interactive: your AC and dodge
+//     seed from the live stat + gear values but are editable, and every physical
+//     attack the monster has is listed with its own editable accuracy, so you can
+//     dial either side and watch the hit chance move.
+//   Movement Speed — the encumbrance / quickness / slowness solver against the
+//     one-second movement cap.
+//   Swing — the swing model (energy per swing and the 10-round carry-over
+//     breakdown) for the equipped or a picked weapon.
+//   Backstab — the realm-aware backstab damage range for the backstab-set weapon
+//     (or a picked one), reading level / strength / stealth / class-stealth and
+//     the +BS ability bonuses from the live character.
+// The player-side offense/defense numbers refresh live from the stat snapshot,
+// inventory, and completed-quest bonuses; the editable inputs re-seed to the
+// actuals on each refresh but are free to override in between.
 public sealed partial class CalculatorsSectionViewModel : WorkshopSectionViewModel
 {
     private readonly PlayerStats _stats;
@@ -56,40 +52,38 @@ public sealed partial class CalculatorsSectionViewModel : WorkshopSectionViewMod
     public override Control View => _view ??= new CalculatorsSectionView { DataContext = this };
 
     // ----- Monster typeahead ---------------------------------------------
-    /// <summary>Typeahead source: "&lt;name&gt; (#&lt;number&gt;)" per monster.</summary>
+    // Typeahead source: "<name> (#<number>)" per monster.
     public ObservableCollection<string> MonsterNames { get; } = new();
     private readonly Dictionary<string, int> _monsterNumberByLabel = new();
     [ObservableProperty] private string? _selectedMonsterName;
 
     // ----- Weapon picker (what-if offense) -------------------------------
-    /// <summary>Typeahead source: "&lt;name&gt; (#&lt;number&gt;)" per weapon item.</summary>
+    // Typeahead source: "<name> (#<number>)" per weapon item.
     public ObservableCollection<string> WeaponNames { get; } = new();
     private readonly Dictionary<string, int> _weaponNumberByLabel = new();
-    /// <summary>Selected what-if weapon — null / unmatched means the equipped weapon.</summary>
+    // Selected what-if weapon — null / unmatched means the equipped weapon.
     [ObservableProperty] private string? _selectedWeaponName;
 
     // ----- Monster values (editable, seeded by the name picker) -----------
-    /// <summary>Monster AC used by the You → Monster hit calc — seeded on pick, editable. May be negative.</summary>
+    // Monster AC used by the You → Monster hit calc — seeded on pick, editable. May be negative.
     [ObservableProperty] private int _monsterAc;
-    /// <summary>Monster damage resist — seeded on pick, editable; trims each of your hits.</summary>
+    // Monster damage resist — seeded on pick, editable; trims each of your hits.
     [ObservableProperty] private int _monsterDr;
-    /// <summary>Monster dodge (the Dodge ability, abil 34) — seeded on pick, editable; lowers your hit chance. 0 for most monsters.</summary>
+    // Monster dodge (the Dodge ability, abil 34) — seeded on pick, editable; lowers your hit chance. 0 for most monsters.
     [ObservableProperty] private int _monsterDodge;
 
     // ----- Your values (editable, seeded from the live actuals) -----------
-    /// <summary>Your attack accuracy — seeded from the gear-derived actual, editable.</summary>
+    // Your attack accuracy — seeded from the gear-derived actual, editable.
     [ObservableProperty] private int _playerAccuracy;
-    /// <summary>Your AC used in the incoming-hit calc — seeded from actuals, editable. May be negative.</summary>
+    // Your AC used in the incoming-hit calc — seeded from actuals, editable. May be negative.
     [ObservableProperty] private int _playerAc;
-    /// <summary>Your raw dodge used in the incoming-hit calc — seeded from actuals, editable. May be negative.</summary>
+    // Your raw dodge used in the incoming-hit calc — seeded from actuals, editable. May be negative.
     [ObservableProperty] private int _playerDodge;
 
     // ----- Monster → You (incoming) --------------------------------------
-    /// <summary>
-    /// One row per monster physical attack — or a single "Custom attack" row
-    /// when no monster is picked, so the incoming-hit calculator always works.
-    /// Each row's accuracy is editable and drives its own hit% vs your AC + dodge.
-    /// </summary>
+    // One row per monster physical attack — or a single "Custom attack" row when
+    // no monster is picked, so the incoming-hit calculator always works. Each
+    // row's accuracy is editable and drives its own hit% vs your AC + dodge.
     public ObservableCollection<MonsterAttackRowViewModel> MonsterAttacks { get; } = new();
 
     // ----- You → Monster (offense projection vs the picked monster) -------
@@ -97,31 +91,31 @@ public sealed partial class CalculatorsSectionViewModel : WorkshopSectionViewMod
     [ObservableProperty] private string _matchupPlayerDamage = "—";
     [ObservableProperty] private string _matchupSwings = "—";
     [ObservableProperty] private string _matchupDps = "—";
-    /// <summary>False when unarmed — gates the swings / DPS / rounds rows.</summary>
+    // False when unarmed — gates the swings / DPS / rounds rows.
     [ObservableProperty] private bool _matchupHasWeapon;
 
     // ----- Movement Speed calculator -------------------------------------
-    /// <summary>Encumbrance percentage feeding the movement calc — seeded live, editable.</summary>
+    // Encumbrance percentage feeding the movement calc — seeded live, editable.
     [ObservableProperty] private int _moveEncumbrance;
-    /// <summary>Total quickness feeding the movement calc — seeded from gear, editable.</summary>
+    // Total quickness feeding the movement calc — seeded from gear, editable.
     [ObservableProperty] private int _moveQuickness;
-    /// <summary>Modelled slowness effect — seeds to 0, editable.</summary>
+    // Modelled slowness effect — seeds to 0, editable.
     [ObservableProperty] private int _moveSlowness;
     [ObservableProperty] private string _moveSpeedText = "—";
     [ObservableProperty] private string _moveStatusText = "—";
     [ObservableProperty] private string _moveAdviceText = string.Empty;
 
     // ----- Swing calculator ----------------------------------------------
-    /// <summary>Selected swing weapon — null / unmatched means the equipped weapon.</summary>
+    // Selected swing weapon — null / unmatched means the equipped weapon.
     [ObservableProperty] private string? _selectedSwingWeaponName;
-    /// <summary>Character level feeding the swing calc — seeded live, editable.</summary>
+    // Character level feeding the swing calc — seeded live, editable.
     [ObservableProperty] private int _swingLevel;
-    /// <summary>Class combat level (1–5) — seeded from the class row, editable.</summary>
+    // Class combat level (1–5) — seeded from the class row, editable.
     [ObservableProperty] private int _swingCombatLevel;
     [ObservableProperty] private int _swingAgility;
     [ObservableProperty] private int _swingStrength;
     [ObservableProperty] private int _swingEncumbrance;
-    /// <summary>Speed-modifier label: "Normal (100)" / "Sped (85)" / "Slow (125)".</summary>
+    // Speed-modifier label: "Normal (100)" / "Sped (85)" / "Slow (125)".
     [ObservableProperty] private string _swingSpeedOption = "Normal (100)";
     [ObservableProperty] private bool _swingBashing;
     [ObservableProperty] private bool _swingSlowness;
@@ -130,21 +124,19 @@ public sealed partial class CalculatorsSectionViewModel : WorkshopSectionViewMod
     [ObservableProperty] private string _swingRawText = "—";
     [ObservableProperty] private string _swingEncumText = "—";
     [ObservableProperty] private string _swingQndText = "—";
-    /// <summary>False when no weapon (equipped or picked) — gates the swing outputs.</summary>
+    // False when no weapon (equipped or picked) — gates the swing outputs.
     [ObservableProperty] private bool _swingHasWeapon;
 
-    /// <summary>Fixed speed-modifier choices for the swing calc's combo box.</summary>
+    // Fixed speed-modifier choices for the swing calc's combo box.
     public string[] SwingSpeedOptions { get; } = { "Normal (100)", "Sped (85)", "Slow (125)" };
 
-    /// <summary>10-round swings / energy-carried breakdown for the picked setup.</summary>
+    // 10-round swings / energy-carried breakdown for the picked setup.
     public ObservableCollection<SwingRoundRow> SwingRounds { get; } = new();
 
     // ----- Backstab calculator -------------------------------------------
-    /// <summary>
-    /// Selected backstab weapon — the only editable input. Defaults to the
-    /// weapon on the Equipment Manager's Backstab set (empty when none is set);
-    /// picking a different weapon models its damage instead. Empty = no result.
-    /// </summary>
+    // Selected backstab weapon — the only editable input. Defaults to the weapon
+    // on the Equipment Manager's Backstab set (empty when none is set); picking a
+    // different weapon models its damage instead. Empty = no result.
     [ObservableProperty] private string? _selectedBackstabWeaponName;
 
     // Read-only context echoing what feeds the calc — pulled live from the
@@ -160,7 +152,7 @@ public sealed partial class CalculatorsSectionViewModel : WorkshopSectionViewMod
     [ObservableProperty] private string _backstabMinText = "—";
     [ObservableProperty] private string _backstabMaxText = "—";
     [ObservableProperty] private string _backstabAvgText = "—";
-    /// <summary>False until a backstab weapon is chosen — gates the damage rows.</summary>
+    // False until a backstab weapon is chosen — gates the damage rows.
     [ObservableProperty] private bool _backstabHasWeapon;
 
     // Captured player-side numbers (recomputed on every data refresh).
@@ -544,7 +536,7 @@ public sealed partial class CalculatorsSectionViewModel : WorkshopSectionViewMod
             MonsterAttacks[i].Label = string.Create(CultureInfo.InvariantCulture, $"Attack {i + 1}");
     }
 
-    /// <summary>Append a fresh editable attack row (custom what-if attack).</summary>
+    // Append a fresh editable attack row (custom what-if attack).
     [RelayCommand]
     private void AddAttack()
     {
@@ -630,7 +622,7 @@ public sealed partial class CalculatorsSectionViewModel : WorkshopSectionViewMod
         foreach (MonsterAttackRowViewModel row in MonsterAttacks) RecomputeRow(row);
     }
 
-    /// <summary>Discard manual weapon / accuracy / AC / dodge edits and re-seed from the live actuals.</summary>
+    // Discard manual weapon / accuracy / AC / dodge edits and re-seed from the live actuals.
     [RelayCommand]
     private void ResetDefenses()
     {
@@ -665,7 +657,7 @@ public sealed partial class CalculatorsSectionViewModel : WorkshopSectionViewMod
         };
     }
 
-    /// <summary>Discard manual movement edits and re-seed encumbrance / quickness from the live actuals.</summary>
+    // Discard manual movement edits and re-seed encumbrance / quickness from the live actuals.
     [RelayCommand]
     private void ResetMovement()
     {
@@ -747,7 +739,7 @@ public sealed partial class CalculatorsSectionViewModel : WorkshopSectionViewMod
             SwingRounds.Add(new SwingRoundRow(i + 1, res.SwingsPerRound[i], res.EnergyRemaining[i]));
     }
 
-    /// <summary>Discard manual swing edits and re-seed weapon / stats from the live actuals.</summary>
+    // Discard manual swing edits and re-seed weapon / stats from the live actuals.
     [RelayCommand]
     private void ResetSwing()
     {
@@ -819,7 +811,7 @@ public sealed partial class CalculatorsSectionViewModel : WorkshopSectionViewMod
         BackstabAvgText = res.AvgDamage.ToString("0.0", CultureInfo.InvariantCulture);
     }
 
-    /// <summary>Reset the backstab weapon back to the Equipment Manager's Backstab-set weapon.</summary>
+    // Reset the backstab weapon back to the Equipment Manager's Backstab-set weapon.
     [RelayCommand]
     private void ResetBackstab() => SelectedBackstabWeaponName = _backstabDefaultWeaponLabel;
 

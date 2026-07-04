@@ -4,19 +4,14 @@ using System.Text.RegularExpressions;
 
 namespace FujinTerm.Game.Map.MpFile;
 
-/// <summary>
-/// Pure structural parser for MegaMUD <c>.mp</c> loop files. Reads the
-/// text into an <see cref="MpLoopFile"/> with no graph resolution and
-/// no <see cref="RoomKey"/> assignment — that's
-/// <see cref="MpFileImporter"/>'s job. Path-style files (start != end
-/// hash) are rejected here so the importer doesn't have to.
-/// </summary>
+// Pure structural parser for MegaMUD .mp loop files. Reads the text into an
+// MpLoopFile with no graph resolution and no RoomKey assignment — that's
+// MpFileImporter's job. Path-style files (start != end hash) are rejected here so
+// the importer doesn't have to.
 public static partial class MpFileParser
 {
-    /// <summary>
-    /// Parse the file at <paramref name="path"/>. Throws
-    /// <see cref="MpFileFormatException"/> on any structural problem.
-    /// </summary>
+    // Parse the file at path. Throws MpFileFormatException on any structural
+    // problem.
     public static MpLoopFile ParseFile(string path)
     {
         ArgumentNullException.ThrowIfNull(path);
@@ -25,16 +20,13 @@ public static partial class MpFileParser
         return Parse(File.ReadAllText(path));
     }
 
-    /// <summary>
-    /// Parse <paramref name="text"/> as a <c>.mp</c> loop file. Same
-    /// error semantics as <see cref="ParseFile"/>.
-    /// </summary>
+    // Parse text as a .mp loop file. Same error semantics as ParseFile.
     public static MpLoopFile Parse(string text)
     {
         ArgumentNullException.ThrowIfNull(text);
 
-        // Pull non-empty lines preserving order. The V4 generator
-        // writes CRLF; in-the-wild files may also be plain LF.
+        // Pull non-empty lines preserving order. MegaMUD writes CRLF;
+        // in-the-wild files may also be plain LF.
         List<string> lines = new();
         foreach (string raw in text.Split('\n'))
         {
@@ -199,12 +191,10 @@ public static partial class MpFileParser
     private static partial Regex HeaderRoomRegex();
 }
 
-/// <summary>
-/// Raised for any structural error in a <c>.mp</c> file —
-/// path-style instead of loop, malformed line, step count mismatch,
-/// unknown direction token, etc. Importer surfaces the message
-/// directly to the user via the editor's SaveError-style banner.
-/// </summary>
+// Raised for any structural error in a .mp file — path-style instead of loop,
+// malformed line, step count mismatch, unknown direction token, etc. Importer
+// surfaces the message directly to the user via the editor's SaveError-style
+// banner.
 public sealed class MpFileFormatException : Exception
 {
     public MpFileFormatException(string message) : base(message) { }

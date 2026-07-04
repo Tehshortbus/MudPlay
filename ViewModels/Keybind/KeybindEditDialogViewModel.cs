@@ -7,17 +7,12 @@ using FujinTerm.Services;
 
 namespace FujinTerm.ViewModels.Keybind;
 
-/// <summary>
-/// Per-action rebind dialog for built-in app actions
-/// (<see cref="BuiltInAction"/>). Capture-UX mirror of
-/// <see cref="GameData.Edit.MacroEditDialogViewModel"/> — same
-/// click-Capture → press chord → KeyUp-commits state machine, lighter
-/// because there's no Command / Enabled / Name to manage. Conflict
-/// detection runs against BOTH stores: a chord can never bind to a
-/// built-in action AND a macro at the same time, so the dialog rejects
-/// macro collisions just as the macro dialog rejects built-in
-/// collisions.
-/// </summary>
+// Per-action rebind dialog for built-in app actions (BuiltInAction). Capture-UX
+// mirror of GameData.Edit.MacroEditDialogViewModel — same click-Capture → press
+// chord → KeyUp-commits state machine, lighter because there's no Command /
+// Enabled / Name to manage. Conflict detection runs against BOTH stores: a chord
+// can never bind to a built-in action AND a macro at the same time, so the dialog
+// rejects macro collisions just as the macro dialog rejects built-in collisions.
 public sealed partial class KeybindEditDialogViewModel : ObservableObject, IDialogViewModel<KeyChord>
 {
     public event Action<KeyChord>? CloseRequested;
@@ -152,16 +147,12 @@ public sealed partial class KeybindEditDialogViewModel : ObservableObject, IDial
     [RelayCommand]
     private void StartCapture() => IsCapturing = true;
 
-    /// <summary>Wipe the chord to <see cref="KeyChord.Empty"/> — leaves the action unbound on Save.</summary>
+    // Wipe the chord to KeyChord.Empty — leaves the action unbound on Save.
     [RelayCommand]
     private void Clear() => Hydrate(KeyChord.Empty);
 
-    /// <summary>
-    /// Mirror of <see cref="GameData.Edit.MacroEditDialogViewModel.ProcessCaptureKey"/>.
-    /// Called from the dialog code-behind on every KeyDown / KeyUp
-    /// while capture is active; commits on the first non-modifier
-    /// key release.
-    /// </summary>
+    // Called from the dialog code-behind on every KeyDown / KeyUp while capture is
+    // active; commits on the first non-modifier key release.
     public bool ProcessCaptureKey(Key key, KeyModifiers modifiers, bool isKeyDown)
     {
         if (!IsCapturing) return false;
@@ -202,13 +193,10 @@ public sealed partial class KeybindEditDialogViewModel : ObservableObject, IDial
     [RelayCommand]
     private void Cancel() => CloseRequested?.Invoke(_originalChord);
 
-    /// <summary>
-    /// OS / terminal reserved chords — duplicated from
-    /// <see cref="KeybindRegistry"/>'s private list because we need
-    /// the EXCLUDING semantics (the action being edited shouldn't
-    /// flag itself as a built-in collision, but Alt+F4 + Ctrl+C/V
-    /// stay forbidden regardless of context).
-    /// </summary>
+    // OS / terminal reserved chords — duplicated from KeybindRegistry's private
+    // list because we need the EXCLUDING semantics (the action being edited
+    // shouldn't flag itself as a built-in collision, but Alt+F4 + Ctrl+C/V stay
+    // forbidden regardless of context).
     private static bool IsSystemReserved(Key key, bool ctrl, bool shift, bool alt, out string? reason)
     {
         if (key == Key.F4  && alt && !ctrl && !shift) { reason = "Reserved by OS: Close window."; return true; }

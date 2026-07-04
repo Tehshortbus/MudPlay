@@ -3,45 +3,37 @@ using FujinTerm.Models.Profile;
 
 namespace FujinTerm.Game.Calculators;
 
-/// <summary>The six trainable character stats, in CP-grid column order.</summary>
+// The six trainable character stats, in CP-grid column order.
 public enum CpStat { Strength, Intellect, Willpower, Agility, Health, Charm }
 
-/// <summary>
-/// Per-row result of <see cref="CpPlanCalculator.Compute"/>: the (possibly
-/// clamped) target stats for the level plus its CP accounting.
-/// <see cref="CpEarnedTotal"/> is the cumulative CP available by this level
-/// (starting unspent CP + all CP gained through it); <see cref="CpLeft"/> is
-/// what remains after the plan's spending. Stats are clamped so CP Left never
-/// goes negative (floored at 0).
-/// </summary>
+// Per-row result of CpPlanCalculator.Compute: the (possibly clamped) target
+// stats for the level plus its CP accounting. CpEarnedTotal is the cumulative
+// CP available by this level (starting unspent CP + all CP gained through it);
+// CpLeft is what remains after the plan's spending. Stats are clamped so CP Left
+// never goes negative (floored at 0).
 public readonly record struct CpRowResult(
     int Level,
     int Strength, int Intellect, int Willpower, int Agility, int Health, int Charm,
     int CpEarnedTotal, int CpLeft);
 
-/// <summary>
-/// Pure CP-plan grid math for the Workshop CP Allocation tab. Walks the planned
-/// levels from a raw-base baseline, computing each level's CP spend and the
-/// running CP balance, with per-stat cost from <see cref="CharacterCalculator"/>.
-/// No UI / game-data reads — the caller resolves the baseline (live stats minus
-/// equipment), the race min/max, the realm, and the current unspent CP.
-/// </summary>
-/// <remarks>
-/// CP cost is cumulative: raising a stat costs more the further it is above the
-/// race minimum (<see cref="CharacterCalculator.CalcCpCostForStatPoint"/>), so a
-/// level's cost sums each stat's range from the previous level's value to this
-/// level's (<see cref="CharacterCalculator.CalcTotalCpCostForStatRange"/>). A
-/// target below the previous value (you can't untrain) clamps up to it; above
-/// the race max clamps down to it.
-/// <para>
-/// <b>Affordability</b>: a level can't spend more CP than it has (carryover +
-/// CP gained that level), so when a row's targets would overspend, the cell the
-/// user just edited (<paramref name="preferredTrim"/>) is reduced point-by-point
-/// until the row fits — falling back to the <i>most-raised</i> stat once the
-/// edited one is back at the previous level (or when no edit context is given).
-/// CP Left therefore never goes negative; it floors at 0.
-/// </para>
-/// </remarks>
+// Pure CP-plan grid math for the Workshop CP Allocation tab. Walks the planned
+// levels from a raw-base baseline, computing each level's CP spend and the
+// running CP balance, with per-stat cost from CharacterCalculator. No UI /
+// game-data reads — the caller resolves the baseline (live stats minus
+// equipment), the race min/max, the realm, and the current unspent CP.
+//
+// CP cost is cumulative: raising a stat costs more the further it is above the
+// race minimum (CalcCpCostForStatPoint), so a level's cost sums each stat's
+// range from the previous level's value to this level's
+// (CalcTotalCpCostForStatRange). A target below the previous value (you can't
+// untrain) clamps up to it; above the race max clamps down to it.
+//
+// Affordability: a level can't spend more CP than it has (carryover + CP gained
+// that level), so when a row's targets would overspend, the cell the user just
+// edited (preferredTrim) is reduced point-by-point until the row fits — falling
+// back to the most-raised stat once the edited one is back at the previous level
+// (or when no edit context is given). CP Left therefore never goes negative; it
+// floors at 0.
 public static class CpPlanCalculator
 {
     private const int StatCount = 6;
@@ -89,15 +81,12 @@ public static class CpPlanCalculator
         return results;
     }
 
-    /// <summary>
-    /// Clamp one level's <paramref name="rowTargets"/> to a spendable result: each
-    /// stat to <c>[prev, raceMax]</c> (can't untrain, can't exceed race max), then
-    /// trimmed point-by-point (edited cell first via <paramref name="preferredTrim"/>,
-    /// else the most-raised stat) until the row's CP cost fits
-    /// <paramref name="available"/>. <paramref name="used"/> returns the final cost.
-    /// Shared by <see cref="Compute"/> (per plan row) and the auto-train engine
-    /// (the current level's row, budgeted against live unspent CP).
-    /// </summary>
+    // Clamp one level's rowTargets to a spendable result: each stat to
+    // [prev, raceMax] (can't untrain, can't exceed race max), then trimmed
+    // point-by-point (edited cell first via preferredTrim, else the most-raised
+    // stat) until the row's CP cost fits available. used returns the final cost.
+    // Shared by Compute (per plan row) and the auto-train engine (the current
+    // level's row, budgeted against live unspent CP).
     internal static int[] ClampRowToBudget(
         int[] prev, int[] rowTargets, int[] min, int[] max,
         int available, RealmType realm, CpStat? preferredTrim, out int used)

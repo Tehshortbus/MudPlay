@@ -2,39 +2,27 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game.Map;
 
-/// <summary>
-/// Always-alive, headless control surface over the three movement
-/// engines (<see cref="AutoWalkManager"/>, <see cref="LoopRunner"/>,
-/// <see cref="AutoLairManager"/>) and their shared
-/// <see cref="MovementCoordinator"/>. Exposes a single coalesced
-/// run-state (<see cref="State"/>) plus Pause / Resume / Stop actions
-/// that pick the right engine automatically.
-/// </summary>
-/// <remarks>
-/// <para>
-/// <b>Why it exists.</b> The toolbar's Start / Pause / Stop buttons need
-/// an engine-control target that outlives the Navigation window —
-/// <c>NavigationViewModel</c> is window-scoped (created on open, disposed
-/// on close), so the toolbar can't delegate to it. This controller lives
-/// in <c>AppServices</c> for the whole app lifetime.
-/// </para>
-/// <para>
-/// <b>Two-way sync is free.</b> Both this controller and
-/// <c>NavigationViewModel</c> act on the same engine primitives and the
-/// same <see cref="MovementCoordinator"/> gate, and both subscribe to the
-/// engines' events. Whoever acts (toolbar or nav window), the engines
-/// fire their events, every subscriber recomputes, and the two surfaces
-/// stay in lock-step. No direct controller↔window wiring needed.
-/// </para>
-/// <para>
-/// <b>Pause routing.</b> Auto-Lair owns its own pause (it halts internal
-/// scheduler timers as well as gating the walker), so we call
-/// <see cref="AutoLairManager.Pause"/> / <see cref="AutoLairManager.Resume"/>
-/// for it. The walker and loop runner both pause purely via the
-/// <see cref="MovementCoordinator.UserGate"/>, so for those we assert /
-/// clear that gate directly.
-/// </para>
-/// </remarks>
+// Always-alive, headless control surface over the three movement engines
+// (AutoWalkManager, LoopRunner, AutoLairManager) and their shared
+// MovementCoordinator. Exposes a single coalesced run-state (State) plus
+// Pause / Resume / Stop actions that pick the right engine automatically.
+//
+// Why it exists. The toolbar's Start / Pause / Stop buttons need an
+// engine-control target that outlives the Navigation window —
+// NavigationViewModel is window-scoped (created on open, disposed on close),
+// so the toolbar can't delegate to it. This controller lives in AppServices
+// for the whole app lifetime.
+//
+// Two-way sync is free. Both this controller and NavigationViewModel act on
+// the same engine primitives and the same MovementCoordinator gate, and both
+// subscribe to the engines' events. Whoever acts (toolbar or nav window), the
+// engines fire their events, every subscriber recomputes, and the two
+// surfaces stay in lock-step. No direct controller↔window wiring needed.
+//
+// Pause routing. Auto-Lair owns its own pause (it halts internal scheduler
+// timers as well as gating the walker), so we call its Pause / Resume. The
+// walker and loop runner both pause purely via the UserGate, so for those we
+// assert / clear that gate directly.
 public sealed class MovementController : IDisposable
 {
     private readonly AutoWalkManager _walker;
@@ -43,7 +31,7 @@ public sealed class MovementController : IDisposable
     private readonly MovementCoordinator _coordinator;
     private bool _disposed;
 
-    /// <summary>Fires whenever <see cref="State"/> may have changed.</summary>
+    // Fires whenever State may have changed.
     public event Action? StateChanged;
 
     public MovementController(
@@ -68,11 +56,9 @@ public sealed class MovementController : IDisposable
         _coordinator.PauseStateChanged += OnCoordinatorPauseChanged;
     }
 
-    /// <summary>
-    /// Coalesced run-state across all three engines. Priority mirrors
-    /// <c>NavigationViewModel.RefreshEngineActionLabel</c>: Auto-Lair
-    /// (drives the walker internally) → Loop → Walker → Idle.
-    /// </summary>
+    // Coalesced run-state across all three engines. Priority mirrors
+    // NavigationViewModel.RefreshEngineActionLabel: Auto-Lair (drives the
+    // walker internally) → Loop → Walker → Idle.
     public MovementEngineState State
     {
         get
@@ -88,20 +74,18 @@ public sealed class MovementController : IDisposable
         }
     }
 
-    /// <summary>True when no engine is driving — toolbar shows Start.</summary>
+    // True when no engine is driving — toolbar shows Start.
     public bool IsIdle => State == MovementEngineState.Idle;
 
-    /// <summary>True when an engine is driving (running or paused).</summary>
+    // True when an engine is driving (running or paused).
     public bool IsActive => State != MovementEngineState.Idle;
 
-    /// <summary>True when the active engine is paused.</summary>
+    // True when the active engine is paused.
     public bool IsPaused => State == MovementEngineState.Paused;
 
-    /// <summary>
-    /// Suspend the active engine without tearing it down. Auto-Lair
-    /// pauses itself (also halting its scheduler); walker + loop pause
-    /// via the shared user gate. No-op when idle or already paused.
-    /// </summary>
+    // Suspend the active engine without tearing it down. Auto-Lair pauses
+    // itself (also halting its scheduler); walker + loop pause via the shared
+    // user gate. No-op when idle or already paused.
     public void Pause()
     {
         if (State != MovementEngineState.Running) return;
@@ -113,7 +97,7 @@ public sealed class MovementController : IDisposable
         _coordinator.AssertGate(MovementCoordinator.UserGate, nameof(MovementController));
     }
 
-    /// <summary>Inverse of <see cref="Pause"/>. No-op when not paused.</summary>
+    // Inverse of Pause. No-op when not paused.
     public void Resume()
     {
         if (State != MovementEngineState.Paused) return;
@@ -125,21 +109,17 @@ public sealed class MovementController : IDisposable
         _coordinator.ClearGate(MovementCoordinator.UserGate, nameof(MovementController));
     }
 
-    /// <summary>
-    /// Convenience: pause when running, resume when paused. Backs the
-    /// single toolbar Pause/Resume button.
-    /// </summary>
+    // Pause when running, resume when paused. Backs the single toolbar
+    // Pause/Resume button.
     public void TogglePause()
     {
         if (IsPaused) Resume();
         else if (State == MovementEngineState.Running) Pause();
     }
 
-    /// <summary>
-    /// Fully back out of whichever engine is running — same intent as the
-    /// per-mode Stop buttons in the Navigation window. Clears the user
-    /// gate afterwards so a stale pause can't strand the next run.
-    /// </summary>
+    // Fully back out of whichever engine is running — same intent as the
+    // per-mode Stop buttons in the Navigation window. Clears the user gate
+    // afterwards so a stale pause can't strand the next run.
     public void Stop()
     {
         if (_autoLair.IsActive) _autoLair.Stop("user stop from toolbar");
@@ -166,7 +146,7 @@ public sealed class MovementController : IDisposable
     }
 }
 
-/// <summary>Coalesced run-state across the movement engines.</summary>
+// Coalesced run-state across the movement engines.
 public enum MovementEngineState
 {
     Idle = 0,

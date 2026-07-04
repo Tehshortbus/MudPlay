@@ -3,35 +3,26 @@ using System.IO;
 
 namespace FujinTerm.Services;
 
-/// <summary>
-/// Moves the entire <see cref="AppPaths.DataRoot"/> tree to a user-chosen
-/// destination, then restarts the app at the new location. Used by the
-/// Settings → General "Change data directory" flow.
-/// </summary>
-/// <remarks>
-/// Sequence is deliberately copy-then-verify-then-delete:
-/// <list type="number">
-///   <item>Validate the destination (writable, not overlapping the source).</item>
-///   <item>Copy every file under the source to the destination, preserving
-///         relative paths.</item>
-///   <item>Verify the copy by file count + total byte size.</item>
-///   <item>Write the new path to <see cref="AppPaths.PointerFile"/>.</item>
-///   <item>Delete the source tree.</item>
-///   <item>Spawn a fresh app process and exit the current one.</item>
-/// </list>
-/// A failure at any step before the pointer-file write leaves both copies
-/// intact and the source untouched — the user can retry without data loss.
-/// A failure between pointer-write and source-delete leaves the source
-/// orphaned but the new location is canonical; the user can clean up the
-/// stale source folder by hand.
-/// </remarks>
+// Moves the entire AppPaths.DataRoot tree to a user-chosen destination, then
+// restarts the app at the new location. Used by the Settings → General "Change
+// data directory" flow.
+//
+// Sequence is deliberately copy-then-verify-then-delete:
+//   1. Validate the destination (writable, not overlapping the source).
+//   2. Copy every file under the source to the destination, preserving relative
+//      paths.
+//   3. Verify the copy by file count + total byte size.
+//   4. Write the new path to AppPaths.PointerFile.
+//   5. Delete the source tree.
+//   6. Spawn a fresh app process and exit the current one.
+// A failure at any step before the pointer-file write leaves both copies intact
+// and the source untouched — the user can retry without data loss. A failure
+// between pointer-write and source-delete leaves the source orphaned but the new
+// location is canonical; the user can clean up the stale source folder by hand.
 public static class DataRootRelocator
 {
-    /// <summary>
-    /// Reasons <see cref="Validate"/> can reject a destination, or
-    /// <see cref="Relocate"/> can fail mid-flight. The Settings UI maps
-    /// each value to a user-facing message.
-    /// </summary>
+    // Reasons Validate can reject a destination, or Relocate can fail
+    // mid-flight. The Settings UI maps each value to a user-facing message.
     public enum FailureReason
     {
         None,
@@ -45,12 +36,11 @@ public static class DataRootRelocator
         SourceDeletePartial,
     }
 
-    /// <summary>Outcome of <see cref="Plan"/> — describes the move before the user commits.</summary>
-    /// <param name="FileCount">Total files under <see cref="AppPaths.DataRoot"/>.</param>
-    /// <param name="TotalBytes">Total byte size of those files.</param>
+    // Outcome of Plan — describes the move before the user commits. FileCount is
+    // the total files under AppPaths.DataRoot; TotalBytes is their total size.
     public readonly record struct MovePlan(int FileCount, long TotalBytes);
 
-    /// <summary>Summary of <see cref="AppPaths.DataRoot"/> as it stands right now.</summary>
+    // Summary of AppPaths.DataRoot as it stands right now.
     public static MovePlan Plan()
     {
         if (!Directory.Exists(AppPaths.DataRoot)) return new MovePlan(0, 0);
@@ -66,12 +56,10 @@ public static class DataRootRelocator
         return new MovePlan(count, bytes);
     }
 
-    /// <summary>
-    /// Validate the destination *without* moving anything. Returns
-    /// <see cref="FailureReason.None"/> on success. Same checks as
-    /// <see cref="Relocate"/> runs internally, but cheap and side-effect-free
-    /// so the Settings UI can light up the OK button live as the user picks.
-    /// </summary>
+    // Validate the destination without moving anything. Returns
+    // FailureReason.None on success. Same checks as Relocate runs internally, but
+    // cheap and side-effect-free so the Settings UI can light up the OK button
+    // live as the user picks.
     public static FailureReason Validate(string destination)
     {
         string src = Path.GetFullPath(AppPaths.DataRoot);
@@ -99,14 +87,11 @@ public static class DataRootRelocator
         return FailureReason.None;
     }
 
-    /// <summary>
-    /// Execute the relocation. Returns <see cref="FailureReason.None"/> on
-    /// success (caller should then call <see cref="RestartApp"/>). On any
-    /// other return value, the source folder is still authoritative — the
-    /// pointer file has NOT been written.
-    /// </summary>
-    /// <param name="destination">Absolute path of the new data root.</param>
-    /// <param name="log">Receives Info / Warn / Error breadcrumbs.</param>
+    // Execute the relocation. Returns FailureReason.None on success (caller
+    // should then call RestartApp). On any other return value, the source folder
+    // is still authoritative — the pointer file has NOT been written.
+    // destination is the absolute path of the new data root; log receives Info /
+    // Warn / Error breadcrumbs.
     public static FailureReason Relocate(string destination, LogService log)
     {
         ArgumentNullException.ThrowIfNull(log);
@@ -172,13 +157,10 @@ public static class DataRootRelocator
         }
     }
 
-    /// <summary>
-    /// Spawn a fresh app process at <see cref="Environment.ProcessPath"/>
-    /// and terminate the current one. The new process re-enters
-    /// <see cref="AppPaths"/> static-init, reads the freshly-written
-    /// pointer file, and resolves <see cref="AppPaths.DataRoot"/> to the
-    /// new location.
-    /// </summary>
+    // Spawn a fresh app process at Environment.ProcessPath and terminate the
+    // current one. The new process re-enters AppPaths static-init, reads the
+    // freshly-written pointer file, and resolves AppPaths.DataRoot to the new
+    // location.
     public static void RestartApp()
     {
         string? exe = Environment.ProcessPath;

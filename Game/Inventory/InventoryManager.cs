@@ -5,53 +5,35 @@ using FujinTerm.Terminal;
 
 namespace FujinTerm.Game.Inventory;
 
-/// <summary>
-/// Tracks the player's currency and carry-weight by watching the terminal
-/// line stream: a full <c>i</c> dump re-bases the snapshot, and incremental
-/// coin pickups / drops / bank deposits / withdrawals patch it between dumps.
-/// Publishes an immutable <see cref="InventorySnapshot"/> the cash engine
-/// reads instead of tracking coin lines itself.
-/// </summary>
-/// <remarks>
-/// <para>
-/// This is the cash-hardening slice of Phase 9 PR 9.1 — it models currency
-/// (per-denomination counts + consolidated wealth) and the numeric
-/// encumbrance reading (current / max / percentage / bracket). The item and
-/// equipment-slot model is a follow-up slice; the cash engine doesn't need
-/// it.
-/// </para>
-/// <para>
-/// <b>Currency ratios</b> are MajorMUD-faithful in copper farthings:
-/// 1 silver = 10, 1 gold = 100, 1 platinum = 10000, 1 runic = 1000000 — the
-/// same ladder MudProxy's InventoryManager uses so wealth + encumbrance math
-/// stays in step with the game.
-/// </para>
-/// <para>
-/// <b>Coin weight</b> follows the game's rule: 3 coins of any denomination =
-/// 1 encumbrance unit, integer-truncated. Picking up 1–2 coins when the prior
-/// total was a multiple of 3 moves weight by 0, matching the stat readout.
-/// </para>
-/// <para>
-/// <b>Realm</b>: FujinTerm has no RealmType setting yet (Phase 12), so the
-/// derived encumbrance bracket between full parses uses Stock boundaries
-/// (None ≤ 16%). A full <c>i</c> parse always overrides the derived bracket
-/// with the game's literal word, so any drift self-corrects on the next dump.
-/// When RealmType lands, thread it into <see cref="DeriveCategory"/>.
-/// </para>
-/// <para>
-/// <b>Single-writer</b>: this manager keeps its own snapshot and never writes
-/// <see cref="PlayerState.Encumbrance"/> — that field's sole writer is
-/// <see cref="EncumbranceParser"/>. The two observe the same line
-/// independently.
-/// </para>
-/// </remarks>
+// Tracks the player's currency and carry-weight by watching the terminal
+// line stream: a full 'i' dump re-bases the snapshot, and incremental coin
+// pickups / drops / bank deposits / withdrawals patch it between dumps.
+// Publishes an immutable InventorySnapshot the cash engine reads instead of
+// tracking coin lines itself. It also models the numeric encumbrance reading
+// (current / max / percentage / bracket).
+//
+// Currency ratios are MajorMUD-faithful in copper farthings: 1 silver = 10,
+// 1 gold = 100, 1 platinum = 10000, 1 runic = 1000000, so wealth +
+// encumbrance math stays in step with the game.
+//
+// Coin weight follows the game's rule: 3 coins of any denomination = 1
+// encumbrance unit, integer-truncated. Picking up 1–2 coins when the prior
+// total was a multiple of 3 moves weight by 0, matching the stat readout.
+//
+// Encumbrance bracket: between full parses the derived bracket uses Stock
+// boundaries (None ≤ 16%). A full 'i' parse always overrides the derived
+// bracket with the game's literal word, so any drift self-corrects on the
+// next dump.
+//
+// Single-writer: this manager keeps its own snapshot and never writes
+// PlayerState.Encumbrance — that field's sole writer is EncumbranceParser.
+// The two observe the same line independently.
 public sealed partial class InventoryManager : IDisposable
 {
-    /// <summary>LogService category — <c>[Inventory]</c> rows per parse / patch.</summary>
+    // LogService category — [Inventory] rows per parse / patch.
     public const string LogCategory = "Inventory";
 
-    // Stock None/Light encumbrance boundary (percent). ParaMUD puts it at 15;
-    // wire RealmType through DeriveCategory when Phase 12 adds the setting.
+    // Stock None/Light encumbrance boundary (percent).
     private const int StockNoneCeiling = 16;
 
     private const int MaxCaptureLines = 50;
@@ -114,16 +96,16 @@ public sealed partial class InventoryManager : IDisposable
         _slotResolver = slotResolver;
     }
 
-    /// <summary>Fired (outside the lock) whenever the snapshot changes.</summary>
+    // Fired (outside the lock) whenever the snapshot changes.
     public event Action? Changed;
 
-    /// <summary>True after at least one successful full <c>i</c> parse.</summary>
+    // True after at least one successful full 'i' parse.
     public bool IsLoaded
     {
         get { lock (_lock) return _loaded; }
     }
 
-    /// <summary>Immutable point-in-time copy of the currency + encumbrance state.</summary>
+    // Immutable point-in-time copy of the currency + encumbrance state.
     public InventorySnapshot Snapshot
     {
         get
@@ -141,11 +123,9 @@ public sealed partial class InventoryManager : IDisposable
         }
     }
 
-    /// <summary>
-    /// Bind the per-session <see cref="LineExtractor"/> so the manager can
-    /// watch the line stream. Idempotent for the same instance; swapping
-    /// extractors detaches the old one first.
-    /// </summary>
+    // Bind the per-session LineExtractor so the manager can watch the line
+    // stream. Idempotent for the same instance; swapping extractors detaches
+    // the old one first.
     public void AttachLineExtractor(LineExtractor lines)
     {
         ArgumentNullException.ThrowIfNull(lines);
@@ -155,11 +135,9 @@ public sealed partial class InventoryManager : IDisposable
         _lines.LineEmitted += OnLine;
     }
 
-    /// <summary>
-    /// Mark the snapshot stale (e.g. after death / disconnect) without
-    /// clearing the data. Drops any half-captured wrap-merge fragment so a
-    /// mid-transaction cut doesn't poison the next session's first line.
-    /// </summary>
+    // Mark the snapshot stale (e.g. after death / disconnect) without clearing
+    // the data. Drops any half-captured wrap-merge fragment so a mid-transaction
+    // cut doesn't poison the next session's first line.
     public void MarkStale()
     {
         lock (_lock) _loaded = false;
@@ -818,7 +796,7 @@ public sealed partial class InventoryManager : IDisposable
         }
     }
 
-    // Stock boundaries (None ≤ 16%). Thread RealmType through here in Phase 12.
+    // Stock boundaries (None ≤ 16%).
     private static EncumbranceLevel DeriveCategory(int percentage)
     {
         if (percentage <= StockNoneCeiling) return EncumbranceLevel.None;
@@ -833,11 +811,9 @@ public sealed partial class InventoryManager : IDisposable
     private static string NormalizeSlot(string slot) =>
         slot.Equals("Two handed", StringComparison.Ordinal) ? "Weapon Hand" : slot;
 
-    /// <summary>
-    /// True when <paramref name="token"/> is exactly one currency entry
-    /// (e.g. "30 platinum pieces"). The match must span the whole token so an
-    /// item name that merely contains a coin word doesn't read as currency.
-    /// </summary>
+    // True when token is exactly one currency entry (e.g. "30 platinum
+    // pieces"). The match must span the whole token so an item name that merely
+    // contains a coin word doesn't read as currency.
     private static bool TryParseCurrency(string token, out int count, out string denom)
     {
         count = 0;
@@ -856,10 +832,8 @@ public sealed partial class InventoryManager : IDisposable
         return true;
     }
 
-    /// <summary>
-    /// Sum a price tail ("26 gold crowns, 1 silver noble, 16 copper farthings"
-    /// or "nothing") into copper farthings using the standard ratios.
-    /// </summary>
+    // Sum a price tail ("26 gold crowns, 1 silver noble, 16 copper farthings"
+    // or "nothing") into copper farthings using the standard ratios.
     private static long ParsePriceToCopper(string priceTail)
     {
         if (string.IsNullOrEmpty(priceTail)) return 0;
@@ -881,11 +855,9 @@ public sealed partial class InventoryManager : IDisposable
         return total;
     }
 
-    /// <summary>
-    /// Same price-tail input as <see cref="ParsePriceToCopper"/>, but returns
-    /// the per-denomination coin counts so the buy handler can tell an
-    /// exact-denomination payment (no change broken) from a forced-break one.
-    /// </summary>
+    // Same price-tail input as ParsePriceToCopper, but returns the
+    // per-denomination coin counts so the buy handler can tell an
+    // exact-denomination payment (no change broken) from a forced-break one.
     private static (int Copper, int Silver, int Gold, int Platinum, int Runic) ParsePriceBreakdown(string priceTail)
     {
         int c = 0, s = 0, g = 0, p = 0, r = 0;

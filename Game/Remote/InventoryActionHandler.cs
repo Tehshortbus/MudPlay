@@ -5,35 +5,28 @@ using FujinTerm.Models.Profile;
 
 namespace FujinTerm.Game.Remote;
 
-/// <summary>
-/// Write-side <see cref="RemoteCommandManager"/> consumer for the three
-/// inventory / cash action commands. Unlike the read-only
-/// <see cref="InventoryQueryHandler"/>, these emit wire commands, so a
-/// wire-sender is bound (<see cref="SetWireSender"/>):
-/// <list type="bullet">
-///   <item><c>@get-all</c> — <c>get &lt;item&gt;</c> for every item on the
-///         room floor the <see cref="GroundItemTracker"/> last surveyed
-///         (cash is left for the cash policy engine).</item>
-///   <item><c>@drop-all</c> — <c>drop &lt;item&gt;</c> for every
-///         carried-but-unworn item (equipped gear is left worn).</item>
-///   <item><c>@deposit-all</c> — bank the wealth above the per-denomination
-///         keep-on-hand floors, or withdraw up to them when the character is
-///         below. Amount is the copper-farthing total the game consolidates
-///         to the highest denomination on <c>dep</c> / <c>with</c>.</item>
-///   <item><c>@share</c> — split held coin evenly, per denomination, across
-///         the whole party (self keeps a share plus the remainder); a
-///         party-whitelist command, so any active party member can call it.</item>
-/// </list>
-/// <c>@drop-all</c> / <c>@deposit-all</c> / <c>@share</c> read the immutable
-/// <see cref="InventoryManager.Snapshot"/> and gate on
-/// <see cref="InventoryManager.IsLoaded"/> — a full <c>i</c> dump has to have
-/// landed before we know what to drop / bank / share. <c>@get-all</c> reads
-/// the room-scoped <see cref="GroundItemTracker"/> instead (the last "You
-/// notice" survey). The engine gates authorisation via
-/// <see cref="RemoteCommandCatalog"/> before the handler runs. Wire replies
-/// ride the Latin1/CP437 BBS wire, so every reply is ASCII-only (no em-dash /
-/// approx glyphs).
-/// </summary>
+// Write-side handler for the inventory / cash action commands. Unlike the
+// read-only InventoryQueryHandler, these emit wire commands, so a wire-sender is
+// bound (SetWireSender):
+//   - @get-all — get <item> for every item on the room floor the
+//     GroundItemTracker last surveyed (cash is left for the cash policy engine).
+//   - @drop-all — drop <item> for every carried-but-unworn item (equipped gear
+//     is left worn).
+//   - @deposit-all — bank the wealth above the per-denomination keep-on-hand
+//     floors, or withdraw up to them when the character is below. Amount is the
+//     copper-farthing total the game consolidates to the highest denomination on
+//     dep / with.
+//   - @share — split held coin evenly, per denomination, across the whole party
+//     (self keeps a share plus the remainder); a party-whitelist command, so any
+//     active party member can call it.
+//
+// @drop-all / @deposit-all / @share read the immutable InventoryManager.Snapshot
+// and gate on IsLoaded — a full i dump has to have landed before we know what to
+// drop / bank / share. @get-all reads the room-scoped GroundItemTracker instead
+// (the last "You notice" survey). The engine gates authorisation via
+// RemoteCommandCatalog before the handler runs. Wire replies ride the
+// Latin1/CP437 BBS wire, so every reply is ASCII-only (no em-dash / approx
+// glyphs).
 public sealed class InventoryActionHandler : IDisposable
 {
     private static readonly string[] RegisteredCommands =
@@ -71,12 +64,10 @@ public sealed class InventoryActionHandler : IDisposable
         Register("@get-all", OnGetAll);
     }
 
-    /// <summary>
-    /// Bind the wire-sender — the gate-wrapped <c>SendUserInput</c> pipeline
-    /// from <c>MainWindowViewModel</c>, same shape the cash / divert handlers
-    /// use. Without it the commands still authorise and reply, but no
-    /// <c>drop</c> / <c>dep</c> / <c>give</c> reaches the game.
-    /// </summary>
+    // Bind the wire-sender — the gate-wrapped SendUserInput pipeline from
+    // MainWindowViewModel, same shape the cash / divert handlers use. Without it
+    // the commands still authorise and reply, but no drop / dep / give reaches the
+    // game.
     public void SetWireSender(Action<byte[]> sender)
     {
         ArgumentNullException.ThrowIfNull(sender);
@@ -98,24 +89,19 @@ public sealed class InventoryActionHandler : IDisposable
         _engine.RegisterHandler(command, category, handler);
     }
 
-    /// <summary>
-    /// <c>@get-all</c> — <c>get &lt;item&gt;</c> for every item on the room
-    /// floor from the latest "You notice" survey. Cash is excluded by the
-    /// <see cref="GroundItemTracker"/> (the cash-policy engine owns coin), and
-    /// the leading article is stripped so the wire verb matches the item's
-    /// noun phrase. There is no bulk "get all" verb in MajorMUD, so this
-    /// paces one <c>get</c> per item. Encumbrance is left to the game to
-    /// enforce — the server refuses a pickup that would overload us, same as
-    /// the auto-get engine.
-    /// </summary>
+    // @get-all — get <item> for every item on the room floor from the latest
+    // "You notice" survey. Cash is excluded by the GroundItemTracker (the
+    // cash-policy engine owns coin), and the leading article is stripped so the
+    // wire verb matches the item's noun phrase. There is no bulk "get all" verb in
+    // MajorMUD, so this paces one get per item. Encumbrance is left to the game to
+    // enforce — the server refuses a pickup that would overload us, same as the
+    // auto-get engine.
     private void OnGetAll(RemoteCommandContext ctx) => ctx.Reply(GetAll());
 
-    /// <summary>
-    /// Run the get-all sweep and return the status line. Shared by the
-    /// <c>@get-all</c> remote handler (which replies it on the party channel)
-    /// and the local Action-menu / toolbar "Get All" (which logs it). Emits the
-    /// paced <c>get</c> commands as a side effect.
-    /// </summary>
+    // Run the get-all sweep and return the status line. Shared by the @get-all
+    // remote handler (which replies it on the party channel) and the local
+    // Action-menu / toolbar "Get All" (which logs it). Emits the paced get
+    // commands as a side effect.
     public string GetAll()
     {
         IReadOnlyList<string> ground = _ground.Items;
@@ -132,21 +118,16 @@ public sealed class InventoryActionHandler : IDisposable
         return $"getting {sent} ground item{(sent == 1 ? "" : "s")}";
     }
 
-    /// <summary>
-    /// <c>@drop-all</c> — <c>drop &lt;item&gt;</c> for every carried-but-unworn
-    /// item. <see cref="InventorySnapshot.CarriedItems"/> already excludes worn
-    /// gear (slot-suffixed lines land in <see cref="InventorySnapshot.EquippedItems"/>)
-    /// and currency tokens, so worn equipment and coin are never dropped. The
-    /// leading article is stripped so the wire verb matches on the item's noun
-    /// phrase ("a rusty dagger" → <c>drop rusty dagger</c>).
-    /// </summary>
+    // @drop-all — drop <item> for every carried-but-unworn item.
+    // InventorySnapshot.CarriedItems already excludes worn gear (slot-suffixed
+    // lines land in EquippedItems) and currency tokens, so worn equipment and coin
+    // are never dropped. The leading article is stripped so the wire verb matches
+    // on the item's noun phrase ("a rusty dagger" → drop rusty dagger).
     private void OnDropAll(RemoteCommandContext ctx) => ctx.Reply(DropAll());
 
-    /// <summary>
-    /// Run the drop-all sweep and return the status line. Shared by the
-    /// <c>@drop-all</c> remote handler and the local "Drop All" action. Emits a
-    /// <c>drop</c> per carried-but-unworn item as a side effect.
-    /// </summary>
+    // Run the drop-all sweep and return the status line. Shared by the @drop-all
+    // remote handler and the local "Drop All" action. Emits a drop per
+    // carried-but-unworn item as a side effect.
     public string DropAll()
     {
         if (!_inventory.IsLoaded) return "inventory not parsed yet (type i)";
@@ -162,21 +143,17 @@ public sealed class InventoryActionHandler : IDisposable
         return $"dropping {carried.Count} carried item{(carried.Count == 1 ? "" : "s")}";
     }
 
-    /// <summary>
-    /// <c>@deposit-all</c> — level the character's wealth to the per-denomination
-    /// keep-on-hand floors. Over the floor → <c>dep &lt;excess&gt;</c>; under it
-    /// → <c>with &lt;shortfall&gt;</c>; exactly on it → no-op reply. The amount
-    /// is the consolidated copper-farthing value (same figure <c>@wealth</c>
-    /// reports); the game re-consolidates held coin to the highest denomination
-    /// after the transaction, so we never have to name individual coins.
-    /// </summary>
+    // @deposit-all — level the character's wealth to the per-denomination
+    // keep-on-hand floors. Over the floor → dep <excess>; under it →
+    // with <shortfall>; exactly on it → no-op reply. The amount is the
+    // consolidated copper-farthing value (same figure @wealth reports); the game
+    // re-consolidates held coin to the highest denomination after the transaction,
+    // so we never have to name individual coins.
     private void OnDepositAll(RemoteCommandContext ctx) => ctx.Reply(DepositAll());
 
-    /// <summary>
-    /// Level held coin to the keep-on-hand floor and return the status line.
-    /// Shared by the <c>@deposit-all</c> remote handler and the local "Deposit
-    /// All" action. Emits a <c>dep</c> / <c>with</c> as a side effect.
-    /// </summary>
+    // Level held coin to the keep-on-hand floor and return the status line. Shared
+    // by the @deposit-all remote handler and the local "Deposit All" action. Emits
+    // a dep / with as a side effect.
     public string DepositAll()
     {
         if (!_inventory.IsLoaded) return "wealth unknown - parse inventory first (type i)";
@@ -197,15 +174,12 @@ public sealed class InventoryActionHandler : IDisposable
         return $"already at keep-on-hand ({keep:N0} copper)";
     }
 
-    /// <summary>
-    /// <c>@share</c> — split held coin evenly across the whole party. For each
-    /// denomination, the per-head share is <c>count / partySize</c> (integer
-    /// division, party size counting self); every non-self member is
-    /// <c>give &lt;share&gt; &lt;denom&gt; to &lt;member&gt;</c>'d that amount,
-    /// so self keeps one share plus any indivisible remainder. Party-whitelist
-    /// gated (catalog category <see cref="PlayerRemoteControls.None"/>), so the
-    /// engine only reaches here for an active party member.
-    /// </summary>
+    // @share — split held coin evenly across the whole party. For each
+    // denomination, the per-head share is count / partySize (integer division,
+    // party size counting self); every non-self member is
+    // give <share> <denom> to <member>'d that amount, so self keeps one share plus
+    // any indivisible remainder. Party-whitelist gated (catalog category None), so
+    // the engine only reaches here for an active party member.
     private void OnShare(RemoteCommandContext ctx)
     {
         if (!_inventory.IsLoaded) { ctx.Reply("wealth unknown - parse inventory first (type i)"); return; }
@@ -254,9 +228,9 @@ public sealed class InventoryActionHandler : IDisposable
         _wireSender(Encoding.Latin1.GetBytes(text + "\r"));
     }
 
-    /// <summary>Drop a leading indefinite / definite article so the wire item
-    /// name is the bare noun phrase MajorMUD matches ("a rusty dagger" →
-    /// "rusty dagger"). Leaves the name untouched when it carries no article.</summary>
+    // Drop a leading indefinite / definite article so the wire item name is the
+    // bare noun phrase MajorMUD matches ("a rusty dagger" → "rusty dagger").
+    // Leaves the name untouched when it carries no article.
     private static string StripArticle(string name)
     {
         if (name.StartsWith("a ", StringComparison.OrdinalIgnoreCase)) return name[2..];

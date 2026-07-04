@@ -7,31 +7,23 @@ using FujinTerm.ViewModels.GameData.Tables;
 
 namespace FujinTerm.ViewModels.GameData;
 
-/// <summary>
-/// Shell view-model for the Game Data Browser window. Holds two
-/// sidebar groups (engine-backed tabs on top, MDB-derived JSON tables
-/// below — see <see cref="EngineSections"/> and
-/// <see cref="TableSections"/>), a search box, and the currently
-/// selected section (whose <see cref="GameDataSectionViewModel.View"/>
-/// renders in the content pane).
-/// </summary>
+// Shell view-model for the Game Data Browser window. Holds two sidebar groups
+// (engine-backed tabs on top in EngineSections, MDB-derived JSON tables below in
+// TableSections), a search box, and the currently selected section (whose View renders
+// in the content pane).
 public sealed partial class GameDataBrowserViewModel : ObservableObject, IDisposable
 {
     private readonly GameDataCache _gameData;
 
-    /// <summary>Full section catalog — drives the search filter.</summary>
+    // Full section catalog — drives the search filter.
     public ObservableCollection<GameDataSectionViewModel> Sections { get; } = new();
 
-    /// <summary>
-    /// Top sidebar group — engine-backed tabs that don't come from a
-    /// MajorMUD MDB (Players / Macros / Triggers / Aliases / Messages).
-    /// </summary>
+    // Top sidebar group — engine-backed tabs that don't come from a MajorMUD MDB
+    // (Players / Macros / Triggers / Aliases / Messages).
     public ObservableCollection<GameDataSectionViewModel> EngineSections { get; } = new();
 
-    /// <summary>
-    /// Bottom sidebar group — MDB-derived JSON tables (Monsters / Items
-    /// / Spells / Rooms / Shops / Races / Classes / TextBlocks).
-    /// </summary>
+    // Bottom sidebar group — MDB-derived JSON tables (Monsters / Items / Spells / Rooms
+    // / Shops / Races / Classes / TextBlocks).
     public ObservableCollection<GameDataSectionViewModel> TableSections { get; } = new();
 
     [ObservableProperty]
@@ -41,11 +33,8 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject, IDispos
     [ObservableProperty]
     private string _searchText = string.Empty;
 
-    /// <summary>
-    /// Footer status line — shows the active section name and the
-    /// active game-data set. Empty set name renders as "(no set)" so
-    /// users notice when no data is loaded.
-    /// </summary>
+    // Footer status line — shows the active section name and the active game-data set.
+    // Empty set name renders as "(no set)" so users notice when no data is loaded.
     public string StatusText
     {
         get
@@ -118,15 +107,10 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject, IDispos
 
     private void OnActiveSetChanged(string? set) => OnPropertyChanged(nameof(StatusText));
 
-    /// <summary>
-    /// Detach from <see cref="GameDataCache.ActiveSetChanged"/> and
-    /// dispose every section in <see cref="Sections"/>. The browser
-    /// window calls this from its <c>Closed</c> handler — without it
-    /// each open leaks the entire VM tree (sections subscribe to
-    /// long-lived service events that pin their <see cref="AllRows"/>
-    /// / <see cref="FilteredRows"/> / cached <see cref="GameDataSectionViewModel.View"/>
-    /// instances forever, growing the heap on every reopen).
-    /// </summary>
+    // Detach from GameDataCache.ActiveSetChanged and dispose every section in Sections.
+    // The browser window calls this from its Closed handler — without it each open leaks
+    // the entire VM tree (sections subscribe to long-lived service events that pin their
+    // cached rows and View instances forever, growing the heap on every reopen).
     public void Dispose()
     {
         _gameData.ActiveSetChanged -= OnActiveSetChanged;
@@ -136,18 +120,14 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject, IDispos
 
     partial void OnSearchTextChanged(string value) => RebuildVisibleSections();
 
-    /// <summary>
-    /// Drive each section's lazy-load on first selection AND break the
-    /// dual-ListBox feedback loop. The sidebar splits the section list
-    /// into two ListBoxes (engine-backed / MDB-derived); both bind
-    /// SelectedItem TwoWay to <see cref="SelectedSection"/>. When the
-    /// user picks an item in one, the other ListBox sees a SelectedSection
-    /// value not in its ItemsSource and writes back null — which would
-    /// blow away the real selection. Restore the previous value whenever
-    /// we receive a null from that feedback path. Sections shouldn't be
-    /// "no selection" anyway; clicking empty space in a ListBox isn't a
-    /// meaningful "clear" gesture for this browser.
-    /// </summary>
+    // Drive each section's lazy-load on first selection AND break the dual-ListBox
+    // feedback loop. The sidebar splits the section list into two ListBoxes
+    // (engine-backed / MDB-derived); both bind SelectedItem TwoWay to SelectedSection.
+    // When the user picks an item in one, the other ListBox sees a SelectedSection value
+    // not in its ItemsSource and writes back null — which would blow away the real
+    // selection. Restore the previous value whenever we receive a null from that feedback
+    // path. Sections shouldn't be "no selection" anyway; clicking empty space in a
+    // ListBox isn't a meaningful "clear" gesture for this browser.
     partial void OnSelectedSectionChanged(GameDataSectionViewModel? oldValue, GameDataSectionViewModel? newValue)
     {
         if (newValue is null && oldValue is not null)
@@ -181,14 +161,11 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject, IDispos
         }
     }
 
-    /// <summary>
-    /// Seed the sidebar in the order the user expects: engine-backed
-    /// tabs (Players → Macros → Triggers → Aliases → Messages) first,
-    /// then MDB-derived tables (Monsters / Items / Spells / Rooms /
-    /// Shops / Races / Classes / TextBlocks). Placeholder fallbacks
-    /// kick in for the engine-backed tabs when the corresponding
-    /// service wasn't passed to the ctor (e.g. tests).
-    /// </summary>
+    // Seed the sidebar in the order the user expects: engine-backed tabs (Players →
+    // Macros → Triggers → Aliases → Messages) first, then MDB-derived tables (Monsters /
+    // Items / Spells / Rooms / Shops / Races / Classes / TextBlocks). Placeholder
+    // fallbacks kick in for the engine-backed tabs when the corresponding service wasn't
+    // passed to the ctor (e.g. tests).
     private void SeedSections()
     {
         // ----- Engine-backed (top group) ----------------------------------
@@ -248,23 +225,17 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject, IDispos
             => Sections.Add(new PlaceholderGameDataSectionViewModel(id, title, phase, description));
     }
 
-    /// <summary>
-    /// Route a section's <see cref="GameDataSectionViewModel.NavigationRequested"/>
-    /// event to the named target: activate the target tab, then defer
-    /// the row-selection one dispatcher tick so the DataGrid has a chance
-    /// to swap views before we touch SelectedItem. The target's
-    /// <see cref="Tables.GameDataTableSectionViewModel.SelectRowMatching"/>
-    /// queues the predicate when called before the rows materialise.
-    /// </summary>
-    /// <remarks>
-    /// Switching the visible section first matters for a re-selection in
-    /// the warm-load path: setting <c>SelectedRow</c> while the target
-    /// tab is still hidden lets the DataGrid skip applying the new
-    /// selection visual when the tab eventually shows (Avalonia's
-    /// virtualised DataGrid doesn't always realise a row container for
-    /// the new SelectedItem if the previous SelectedItem was already
-    /// in view from a prior navigation).
-    /// </remarks>
+    // Route a section's NavigationRequested event to the named target: activate the
+    // target tab, then defer the row-selection one dispatcher tick so the DataGrid has a
+    // chance to swap views before we touch SelectedItem. The target's SelectRowMatching
+    // queues the predicate when called before the rows materialise.
+    //
+    // Switching the visible section first matters for a re-selection in the warm-load
+    // path: setting SelectedRow while the target tab is still hidden lets the DataGrid
+    // skip applying the new selection visual when the tab eventually shows (Avalonia's
+    // virtualised DataGrid doesn't always realise a row container for the new
+    // SelectedItem if the previous SelectedItem was already in view from a prior
+    // navigation).
     private void OnNavigationRequested(NavigationRequest req)
     {
         GameDataSectionViewModel? target =

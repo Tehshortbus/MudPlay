@@ -1,44 +1,30 @@
 namespace FujinTerm.Models.GameData;
 
-/// <summary>
-/// User-defined incoming-text pattern → response. Per-character;
-/// persisted on <see cref="Profile.CharacterProfile"/>. Loaded into
-/// <see cref="Services.TriggerEngine"/> on profile load; the engine
-/// subscribes to <see cref="Terminal.LineExtractor"/>,
-/// <see cref="Game.ChatRouter"/>, and <see cref="Services.LogService"/>
-/// — filtering each emitted line by <see cref="Scope"/>, matching with
-/// <see cref="MatchType"/> + <see cref="Pattern"/>, capturing
-/// <c>{name}</c> placeholders into <see cref="Services.TriggerEngine.Variables"/>,
-/// then dispatching <see cref="Response"/> + the optional
-/// <see cref="SoundFile"/>.
-/// </summary>
-/// <param name="Name">Display name shown in the Triggers tab.</param>
-/// <param name="Enabled">Master per-trigger on / off — toggleable without deleting.</param>
-/// <param name="Scope">Which subset of incoming lines this trigger considers.</param>
-/// <param name="MatchType">Literal (with <c>*</c> wildcards and <c>{name}</c> captures) vs full regex.</param>
-/// <param name="Pattern">The pattern in the syntax indicated by <see cref="MatchType"/>.</param>
-/// <param name="Response">
-/// Sent to the game on match. Variable substitution via <c>{name}</c>
-/// is applied first. Multi-step via <c>^M</c> or <c>;</c> (same syntax
-/// as macros). Blank string is valid — sends a bare carriage return.
-/// </param>
-/// <param name="SoundFile">Optional path to a sound file fired on match. Phase 13 plays it; today it's a no-op + log.</param>
-/// <param name="Location">
-/// Where this trigger persists on disk:
-/// <list type="bullet">
-///   <item><see cref="TriggerLocation.GameData"/> (default) — saved
-///     into <c>Data/game data/{set}/triggers.json</c> next to the
-///     MDB tables. Travels with the set; every character on the
-///     same realm sees it. Right choice for chase / trap / NPC-event
-///     patterns that anchor to game-data records.</item>
-///   <item><see cref="TriggerLocation.Profile"/> — saved on
-///     <see cref="Profile.CharacterProfile.Triggers"/>. Follows the
-///     character across realms. Right choice for personal alerts
-///     (your name was mentioned, a specific friend logged on, etc.).</item>
-/// </list>
-/// The runtime dispatch is location-agnostic — both buckets merge into
-/// the live <see cref="Services.TriggerEngine.Triggers"/> collection.
-/// </param>
+// User-defined incoming-text pattern → response. Per-character; persisted
+// on CharacterProfile. Loaded into TriggerEngine on profile load; the
+// engine subscribes to LineExtractor, ChatRouter, and LogService —
+// filtering each emitted line by Scope, matching with MatchType + Pattern,
+// capturing {name} placeholders into TriggerEngine.Variables, then
+// dispatching Response + the optional SoundFile.
+//
+// Scope selects which subset of incoming lines this trigger considers.
+// MatchType is Literal (with * wildcards and {name} captures) or full
+// regex; Pattern is in the syntax MatchType indicates. Response is sent to
+// the game on match — variable substitution via {name} is applied first,
+// multi-step via ^M or ; (same syntax as macros); a blank string is valid
+// and sends a bare carriage return. SoundFile is an optional path fired on
+// match (currently a no-op + log until sound playback lands).
+//
+// Location is where this trigger persists on disk:
+//   GameData (default) — saved into Data/game data/{set}/triggers.json next
+//     to the MDB tables. Travels with the set; every character on the same
+//     realm sees it. Right choice for chase / trap / NPC-event patterns
+//     that anchor to game-data records.
+//   Profile — saved on CharacterProfile.Triggers. Follows the character
+//     across realms. Right choice for personal alerts (your name was
+//     mentioned, a specific friend logged on, etc.).
+// The runtime dispatch is location-agnostic — both buckets merge into the
+// live TriggerEngine.Triggers collection.
 public sealed record Trigger(
     string Name,
     bool Enabled,
@@ -49,57 +35,50 @@ public sealed record Trigger(
     string? SoundFile = null,
     TriggerLocation Location = TriggerLocation.GameData);
 
-/// <summary>What syntax <see cref="Trigger.Pattern"/> uses.</summary>
+// What syntax Trigger.Pattern uses.
 public enum TriggerMatchType
 {
-    /// <summary>
-    /// Substring / wildcard match. <c>*</c> matches any run of characters
-    /// (no capture). <c>{name}</c> matches a run of characters and binds
-    /// it to <c>name</c> in the shared variable cache.
-    /// </summary>
+    // Substring / wildcard match. * matches any run of characters (no
+    // capture). {name} matches a run of characters and binds it to name in
+    // the shared variable cache.
     Literal,
-    /// <summary>
-    /// Full PCRE-flavoured regex (.NET). Named groups <c>(?&lt;name&gt;…)</c>
-    /// populate <c>{name}</c> in the shared variable cache.
-    /// </summary>
+    // Full PCRE-flavoured regex (.NET). Named groups (?<name>…) populate
+    // {name} in the shared variable cache.
     Regex,
 }
 
-/// <summary>
-/// Which on-disk file a <see cref="Trigger"/> persists into.
-/// Triggers tab shows the value as a "Location" column; the edit
-/// dialog exposes a dropdown so the user can move triggers between
-/// buckets at edit time. Default is
-/// <see cref="GameData"/> — most of the seeded defaults are
-/// chase / trap / NPC-event patterns that belong with the set.
-/// </summary>
+// Which on-disk file a Trigger persists into. Triggers tab shows the value
+// as a "Location" column; the edit dialog exposes a dropdown so the user
+// can move triggers between buckets at edit time. Default is GameData —
+// most of the seeded defaults are chase / trap / NPC-event patterns that
+// belong with the set.
 public enum TriggerLocation
 {
-    /// <summary>Saved at <c>Data/game data/{set}/triggers.json</c> — travels with the set.</summary>
+    // Saved at Data/game data/{set}/triggers.json — travels with the set.
     GameData,
-    /// <summary>Saved on <see cref="Profile.CharacterProfile.Triggers"/> — travels with the character.</summary>
+    // Saved on CharacterProfile.Triggers — travels with the character.
     Profile,
 }
 
-/// <summary>Which subset of incoming lines a trigger considers.</summary>
+// Which subset of incoming lines a trigger considers.
 public enum TriggerScope
 {
-    /// <summary>Game-emitted lines that <see cref="Game.ChatRouter"/> does not classify as chat.</summary>
+    // Game-emitted lines that ChatRouter does not classify as chat.
     GameMessages,
-    /// <summary>Any chat line — catch-all for every chat channel.</summary>
+    // Any chat line — catch-all for every chat channel.
     ChatAny,
-    /// <summary>Specific chat channel — Say (local-room talk).</summary>
+    // Specific chat channel — Say (local-room talk).
     ChatSay,
-    /// <summary>Specific chat channel — Yell.</summary>
+    // Specific chat channel — Yell.
     ChatYell,
-    /// <summary>Specific chat channel — Gossip.</summary>
+    // Specific chat channel — Gossip.
     ChatGossip,
-    /// <summary>Specific chat channel — Telepath.</summary>
+    // Specific chat channel — Telepath.
     ChatTelepath,
-    /// <summary>Specific chat channel — Gangpath.</summary>
+    // Specific chat channel — Gangpath.
     ChatGangpath,
-    /// <summary>Specific chat channel — Broadcast.</summary>
+    // Specific chat channel — Broadcast.
     ChatBroadcast,
-    /// <summary>FujinTerm's own <see cref="Services.LogService"/> emissions.</summary>
+    // FujinTerm's own LogService emissions.
     SystemLog,
 }

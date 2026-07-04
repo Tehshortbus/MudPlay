@@ -8,17 +8,12 @@ using FujinTerm.Services;
 
 namespace FujinTerm.ViewModels.GameData.Edit;
 
-/// <summary>
-/// Per-record edit dialog for Game Data Browser → Macros. Editable
-/// fields: Name, the (Key + 3 modifier) chord, Command string (with
-/// <c>^M</c> / <c>;</c> multi-step split semantics), Enabled flag.
-/// Save returns the updated <see cref="Macro"/> via the dialog
-/// service's <c>TResult</c>; Cancel returns <c>null</c>. Conflict
-/// detection runs live as the user changes the chord:
-/// <see cref="StatusMessage"/> + <see cref="HasError"/> flag the row
-/// when the chord is forbidden by <see cref="KeybindRegistry"/> or
-/// already bound by another macro.
-/// </summary>
+// Per-record edit dialog for Game Data Browser → Macros. Editable fields: Name, the
+// (Key + 3 modifier) chord, Command string (with ^M / ; multi-step split semantics),
+// Enabled flag. Save returns the updated Macro via the dialog service's TResult; Cancel
+// returns null. Conflict detection runs live as the user changes the chord: StatusMessage
+// + HasError flag the row when the chord is forbidden by KeybindRegistry or already bound
+// by another macro.
 public sealed partial class MacroEditDialogViewModel : ObservableObject, IDialogViewModel<Macro>
 {
     public event Action<Macro?>? CloseRequested;
@@ -67,10 +62,10 @@ public sealed partial class MacroEditDialogViewModel : ObservableObject, IDialog
 
     public string Title => $"Macro — {(_original.Command.Length > 0 ? _original.Command : "(new)")}";
 
-    /// <summary>Capture button label — flips to "Press key…" while in capture mode.</summary>
+    // Capture button label — flips to "Press key…" while in capture mode.
     public string CaptureButtonText => IsCapturing ? "Press key…" : "Capture";
 
-    /// <summary>The chord shown in the read-only key display. Empty until the user picks one.</summary>
+    // The chord shown in the read-only key display. Empty until the user picks one.
     public string KeyDisplay
     {
         get
@@ -82,7 +77,7 @@ public sealed partial class MacroEditDialogViewModel : ObservableObject, IDialog
         }
     }
 
-    /// <summary>Inline status line under the chord row. Red on error, muted preview on success.</summary>
+    // Inline status line under the chord row. Red on error, muted preview on success.
     public string StatusMessage
     {
         get
@@ -126,20 +121,16 @@ public sealed partial class MacroEditDialogViewModel : ObservableObject, IDialog
             SelectedKey = parsed;
     }
 
-    /// <summary>Toggle into capture mode — the code-behind handles the actual key events.</summary>
+    // Toggle into capture mode — the code-behind handles the actual key events.
     [RelayCommand]
     private void StartCapture() => IsCapturing = true;
 
-    /// <summary>
-    /// Called from the dialog's code-behind on every KeyDown / KeyUp
-    /// while capture is active. Tracks modifiers as the user holds
-    /// them; commits the chord on the first non-modifier key release.
-    /// Escape cancels.
-    /// </summary>
-    /// <param name="key">The key just pressed or released.</param>
-    /// <param name="modifiers">Current modifier state (live, from the event).</param>
-    /// <param name="isKeyDown"><c>true</c> for KeyDown, <c>false</c> for KeyUp.</param>
-    /// <returns><c>true</c> when capture mode handled the event and the caller should mark it handled.</returns>
+    // Called from the dialog's code-behind on every KeyDown / KeyUp while capture is
+    // active. Tracks modifiers as the user holds them; commits the chord on the first
+    // non-modifier key release. Escape cancels. key is the key just pressed or released,
+    // modifiers is the live modifier state from the event, isKeyDown is true for KeyDown
+    // and false for KeyUp. Returns true when capture mode handled the event and the caller
+    // should mark it handled.
     public bool ProcessCaptureKey(Key key, KeyModifiers modifiers, bool isKeyDown)
     {
         if (!IsCapturing) return false;

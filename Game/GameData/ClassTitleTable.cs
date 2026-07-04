@@ -1,34 +1,26 @@
 namespace FujinTerm.Game.GameData;
 
-/// <summary>
-/// MajorMUD class titles indexed by level. Adapted verbatim from
-/// <see href="https://github.com/megamind-mud/megamind-client/blob/master/src/main/entities/realmData.js"/>
-/// — the same lookup powers the megamind client's "infer class + level
-/// from <c>who</c> output" logic.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Each class has ~110 entries, one per character level (index 0 = level 1).
-/// Many adjacent levels share the same title (5-level title bands are
-/// the norm). Gender-split titles appear as <c>"Male|Female"</c> entries
-/// — <see cref="MatchesTitle"/> accepts either side. Looking up a
-/// shared title (e.g. <c>"Apprentice"</c>, granted to every class at
-/// level 1) returns multiple classes from <see cref="LookupClasses"/>;
-/// the caller can then choose between "Multiple" / "Inferred" /
-/// "(needs <c>@health</c>)" UX.
-/// </para>
-/// <para>
-/// Treated as fallback / read-only data — every realm uses the same
-/// title progression in MajorMUD vanilla, and custom realms can ship
-/// per-realm overrides via game-data records once the editor lands.
-/// </para>
-/// </remarks>
+// MajorMUD class titles indexed by level — the lookup behind "infer class + level
+// from who output".
+//
+// Each class has ~110 entries, one per character level (index 0 = level 1). Many
+// adjacent levels share the same title (5-level title bands are the norm).
+// Gender-split titles appear as "Male|Female" entries — MatchesTitle accepts either
+// side. Looking up a shared title (e.g. "Apprentice", granted to every class at
+// level 1) returns multiple classes from LookupClasses; the caller can then choose
+// between "Multiple" / "Inferred" / "(needs @health)" UX.
+//
+// Treated as fallback / read-only data — every realm uses the same title
+// progression in MajorMUD vanilla, and custom realms can ship per-realm overrides
+// via game-data records once the editor lands.
 public static class ClassTitleTable
 {
-    /// <summary>Total number of distinct classes in the table — drives "universally shared title" detection in callers.</summary>
+    // Total number of distinct classes in the table — drives "universally shared
+    // title" detection in callers.
     public static int ClassCount => _titles.Count;
 
-    /// <summary>Range of levels that share <paramref name="title"/>, across all matching classes. <c>null</c> when no class matches.</summary>
+    // Range of levels that share title, across all matching classes. null when no
+    // class matches.
     public static (int MinLevel, int MaxLevel)? LookupLevelRange(string? title)
     {
         if (string.IsNullOrWhiteSpace(title)) return null;
@@ -49,7 +41,7 @@ public static class ClassTitleTable
         return max < 0 ? null : (min, max);
     }
 
-    /// <summary>Classes whose title list contains <paramref name="title"/>. Empty when no class matches.</summary>
+    // Classes whose title list contains title. Empty when no class matches.
     public static IReadOnlyList<string> LookupClasses(string? title)
     {
         if (string.IsNullOrWhiteSpace(title)) return Array.Empty<string>();
@@ -68,7 +60,7 @@ public static class ClassTitleTable
         return hits;
     }
 
-    /// <summary>True when <paramref name="entry"/> (a single table cell) matches <paramref name="title"/> on either gender split.</summary>
+    // True when entry (a single table cell) matches title on either gender split.
     private static bool MatchesTitle(string entry, string title)
     {
         int pipe = entry.IndexOf('|');
@@ -80,13 +72,13 @@ public static class ClassTitleTable
             || string.Equals(female, title, StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>Format a level range as <c>"7"</c> when a single level or <c>"7-10"</c> when a band.</summary>
+    // Format a level range as "7" when a single level or "7-10" when a band.
     public static string FormatLevelRange((int Min, int Max) range)
         => range.Min == range.Max ? range.Min.ToString() : $"{range.Min}-{range.Max}";
 
     // ─────────────────────────────────────────────────────────────────
-    // Title data — verbatim from megamind realmData.js (MajorMUD default).
-    // Index 0 = level 1. Gender-split entries use "Male|Female" form.
+    // Title data — MajorMUD default title progression. Index 0 = level 1.
+    // Gender-split entries use "Male|Female" form.
     // ─────────────────────────────────────────────────────────────────
     private static readonly Dictionary<string, string[]> _titles = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -104,12 +96,11 @@ public static class ClassTitleTable
 
         ["Ninja"] = new[] { "Apprentice", "Ninja Novice", "Ninja Novice", "Ninja Novice", "Menace", "Menace", "Menace", "Menace", "Menace", "Cutthroat", "Cutthroat", "Cutthroat", "Cutthroat", "Cutthroat", "Stalker", "Stalker", "Stalker", "Stalker", "Stalker", "Killer", "Killer", "Killer", "Killer", "Killer", "Nightstalker", "Nightstalker", "Nightstalker", "Nightstalker", "Nightstalker", "Murderer", "Murderer", "Murderer", "Murderer", "Murderer", "Manhunter", "Manhunter", "Manhunter", "Manhunter", "Manhunter", "Nightblade", "Nightblade", "Nightblade", "Nightblade", "Nightblade", "Assassin", "Assassin", "Assassin", "Assassin", "Assassin", "Executioner", "Executioner", "Executioner", "Executioner", "Executioner", "Revenant", "Revenant", "Revenant", "Revenant", "Revenant", "Master Assassin", "Master Assassin", "Master Assassin", "Master Assassin", "Master Assassin", "Shadow Master|Shadow Mistress", "Shadow Master|Shadow Mistress", "Shadow Master|Shadow Mistress", "Shadow Master|Shadow Mistress", "Shadow Master|Shadow Mistress", "Hand of the Unseen", "Hand of the Unseen", "Hand of the Unseen", "Hand of the Unseen", "Hand of the Unseen", "Shadow's Embrace", "Shadow's Embrace", "Shadow's Embrace", "Shadow's Embrace", "Shadow's Embrace", "Whisper of Death", "Whisper of Death", "Whisper of Death", "Whisper of Death", "Whisper of Death", "Death's Hand", "Death's Hand", "Death's Hand", "Death's Hand", "Death's Hand", "Death Incarnate", "Death Incarnate", "Death Incarnate", "Death Incarnate", "Death Incarnate", "Shadowlord", "Shadowlord", "Shadowlord", "Shadowlord", "Shadowlord", "Shinobi", "Shinobi", "Shinobi", "Shinobi", "Shinobi", "Shinobi", "Shinobi", "Shinobi", "Shinobi", "Shinobi", "Shinobi" },
 
-        // NOTE: Thief levels 51-55 in megamind's source ship as separate
-        // "Master" / "Rogue" tokens due to a CSV-style parsing artefact;
-        // canonical MajorMUD has "Master Rogue" as a single title in
-        // that band. Preserved verbatim here to stay byte-for-byte
-        // identical to the upstream source — users editing this realm
-        // file are free to repair it.
+        // NOTE: Thief levels 51-55 ship as separate "Master" / "Rogue"
+        // tokens due to a CSV-style parsing artefact in the seed data;
+        // canonical MajorMUD has "Master Rogue" as a single title in that
+        // band. Preserved verbatim to stay byte-for-byte identical to the
+        // seed source — users editing this realm file are free to repair it.
         ["Thief"] = new[] { "Apprentice", "Thief Novice", "Thief Novice", "Thief Novice", "Rascal", "Rascal", "Rascal", "Rascal", "Rascal", "Footpad", "Footpad", "Footpad", "Footpad", "Footpad", "Pilferer", "Pilferer", "Pilferer", "Pilferer", "Pilferer", "Pickpocket", "Pickpocket", "Pickpocket", "Pickpocket", "Pickpocket", "Cutpurse", "Cutpurse", "Cutpurse", "Cutpurse", "Cutpurse", "Bandit", "Bandit", "Bandit", "Bandit", "Bandit", "Burglar", "Burglar", "Burglar", "Burglar", "Burglar", "Rogue", "Rogue", "Rogue", "Rogue", "Rogue", "Sharper", "Sharper", "Sharper", "Sharper", "Sharper", "Magsman", "Magsman", "Magsman", "Magsman", "Magsman", "Master", "Rogue", "Master", "Rogue", "Master", "Rogue", "Master", "Rogue", "Master", "Rogue", "Rogue Prince|Rogue Princess", "Rogue Prince|Rogue Princess", "Rogue Prince|Rogue Princess", "Rogue Prince|Rogue Princess", "Rogue Prince|Rogue Princess", "Underlord", "Underlord", "Underlord", "Underlord", "Underlord", "The Hand", "The Hand", "The Hand", "The Hand", "The Hand", "Deceiver", "Deceiver", "Deceiver", "Deceiver", "Deceiver", "Pillager", "Pillager", "Pillager", "Pillager", "Pillager", "Mastermind", "Mastermind", "Mastermind", "Mastermind", "Mastermind", "Con Artist", "Con Artist", "Con Artist", "Con Artist", "Con Artist", "Crime Lord", "Crime Lord", "Crime Lord", "Crime Lord", "Crime Lord", "Kingpin", "Kingpin", "Kingpin", "Kingpin", "Kingpin", "Kingpin", "Kingpin", "Kingpin", "Kingpin", "Kingpin", "Kingpin", "Kingpin" },
 
         ["Bard"] = new[] { "Apprentice", "Bard Novice", "Bard Novice", "Bard Novice", "Jester", "Jester", "Jester", "Jester", "Jester", "Lyricist", "Lyricist", "Lyricist", "Lyricist", "Lyricist", "Entertainer", "Entertainer", "Entertainer", "Entertainer", "Entertainer", "Sonnateer", "Sonnateer", "Sonnateer", "Sonnateer", "Sonnateer", "Skald", "Skald", "Skald", "Skald", "Skald", "Troubadour", "Troubadour", "Troubadour", "Troubadour", "Troubadour", "Musician", "Musician", "Musician", "Musician", "Musician", "Minstrel", "Minstrel", "Minstrel", "Minstrel", "Minstrel", "Swashbuckler", "Swashbuckler", "Swashbuckler", "Swashbuckler", "Swashbuckler", "Songweaver", "Songweaver", "Songweaver", "Songweaver", "Songweaver", "Chanteur|Chanteuse", "Chanteur|Chanteuse", "Chanteur|Chanteuse", "Chanteur|Chanteuse", "Chanteur|Chanteuse", "Virtuoso", "Virtuoso", "Virtuoso", "Virtuoso", "Virtuoso", "Artiste", "Artiste", "Artiste", "Artiste", "Artiste", "Maestro", "Maestro", "Maestro", "Maestro", "Maestro", "Celebrity", "Celebrity", "Celebrity", "Celebrity", "Celebrity", "Royal Entertainer", "Royal Entertainer", "Royal Entertainer", "Royal Entertainer", "Royal Entertainer", "High Spellsong", "High Spellsong", "High Spellsong", "High Spellsong", "High Spellsong", "Prodigy", "Prodigy", "Prodigy", "Prodigy", "Prodigy", "Famous Dandy", "Famous Dandy", "Famous Dandy", "Famous Dandy", "Famous Dandy", "Playboy|Playgirl", "Playboy|Playgirl", "Playboy|Playgirl", "Playboy|Playgirl", "Playboy|Playgirl", "Playboy|Playgirl", "Playboy|Playgirl", "Playboy|Playgirl", "Playboy|Playgirl", "Playboy|Playgirl", "Playboy|Playgirl" },

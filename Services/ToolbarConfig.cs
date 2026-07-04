@@ -4,29 +4,19 @@ using FujinTerm.Models.Profile;
 
 namespace FujinTerm.Services;
 
-/// <summary>
-/// Live observable mirror of the active character profile's toolbar
-/// layout + visibility / position. The main window's toolbar
-/// borders bind to the derived <see cref="ShowTop"/> /
-/// <see cref="ShowBottom"/> / <see cref="ShowLeft"/> /
-/// <see cref="ShowRight"/> flags so the right border lights up
-/// automatically when the user toggles Settings → Toolbar's Show /
-/// Position controls.
-/// <see cref="AppServices"/> hydrates on every
-/// <see cref="ProfileService.ProfileLoaded"/> /
-/// <see cref="ProfileService.ProfileMutated"/> tick and resets to
-/// defaults on <see cref="ProfileService.ProfileClosed"/>.
-/// </summary>
+// Live observable mirror of the active character profile's toolbar layout +
+// visibility / position. The main window's toolbar borders bind to the derived
+// ShowTop / ShowBottom / ShowLeft / ShowRight flags so the right border lights
+// up automatically when the user toggles Settings → Toolbar's Show / Position
+// controls. AppServices hydrates on every ProfileService.ProfileLoaded /
+// ProfileMutated tick and resets to defaults on ProfileClosed.
 public sealed partial class ToolbarConfig : ObservableObject
 {
-    /// <summary>
-    /// Ordered toolbar items. Top-to-bottom in the editor ≡
-    /// left-to-right on the rendered horizontal toolbar (top-to-bottom
-    /// when vertical).
-    /// </summary>
+    // Ordered toolbar items. Top-to-bottom in the editor is left-to-right on
+    // the rendered horizontal toolbar (top-to-bottom when vertical).
     public ObservableCollection<ToolbarItem> Layout { get; } = new();
 
-    /// <summary>Master visibility — false hides the toolbar on every edge.</summary>
+    // Master visibility — false hides the toolbar on every edge.
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowTop))]
     [NotifyPropertyChangedFor(nameof(ShowBottom))]
@@ -34,7 +24,7 @@ public sealed partial class ToolbarConfig : ObservableObject
     [NotifyPropertyChangedFor(nameof(ShowRight))]
     private bool _visible = true;
 
-    /// <summary>Edge the toolbar docks to when visible.</summary>
+    // Edge the toolbar docks to when visible.
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowTop))]
     [NotifyPropertyChangedFor(nameof(ShowBottom))]
@@ -42,16 +32,16 @@ public sealed partial class ToolbarConfig : ObservableObject
     [NotifyPropertyChangedFor(nameof(ShowRight))]
     private ToolbarPosition _position = ToolbarPosition.Top;
 
-    /// <summary>True when the horizontal-top toolbar border should render.</summary>
+    // True when the horizontal-top toolbar border should render.
     public bool ShowTop    => Visible && Position == ToolbarPosition.Top;
-    /// <summary>True when the horizontal-bottom toolbar border should render.</summary>
+    // True when the horizontal-bottom toolbar border should render.
     public bool ShowBottom => Visible && Position == ToolbarPosition.Bottom;
-    /// <summary>True when the vertical-left toolbar border should render.</summary>
+    // True when the vertical-left toolbar border should render.
     public bool ShowLeft   => Visible && Position == ToolbarPosition.Left;
-    /// <summary>True when the vertical-right toolbar border should render.</summary>
+    // True when the vertical-right toolbar border should render.
     public bool ShowRight  => Visible && Position == ToolbarPosition.Right;
 
-    /// <summary>Replace the live layout + visibility / position with values from <paramref name="dto"/>.</summary>
+    // Replace the live layout + visibility / position with values from dto.
     public void ApplyFrom(ToolbarSettings dto)
     {
         ArgumentNullException.ThrowIfNull(dto);
@@ -60,7 +50,7 @@ public sealed partial class ToolbarConfig : ObservableObject
         Position = dto.Position;
     }
 
-    /// <summary>Capture the live state into a fresh DTO for serialisation.</summary>
+    // Capture the live state into a fresh DTO for serialisation.
     public ToolbarSettings Snapshot()
     {
         List<ToolbarItem> copy = new(Layout.Count);

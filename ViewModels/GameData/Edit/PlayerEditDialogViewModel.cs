@@ -8,14 +8,11 @@ using FujinTerm.Services;
 
 namespace FujinTerm.ViewModels.GameData.Edit;
 
-/// <summary>
-/// Per-record edit dialog for the Game Data Browser → Players tab.
-/// Surfaces the engine-observed fields (Given / Family name + Last Seen
-/// timestamp displayed read-only) plus the user-editable behavior toggles
-/// and the 12 MegaMUD-grouped Allowed Remote Control checkboxes. Save
-/// produces a fresh <see cref="PlayerRecord"/> the caller writes back
-/// through <see cref="PlayerDatabase.EditRecord"/>.
-/// </summary>
+// Per-record edit dialog for the Game Data Browser → Players tab. Surfaces the
+// engine-observed fields (Given / Family name + Last Seen timestamp displayed read-only)
+// plus the user-editable behavior toggles and the 12 MegaMUD-grouped Allowed Remote
+// Control checkboxes. Save produces a fresh PlayerRecord the caller writes back through
+// PlayerDatabase.EditRecord.
 public sealed partial class PlayerEditDialogViewModel : ObservableObject, IDialogViewModel<PlayerEditResult>
 {
     public event Action<PlayerEditResult?>? CloseRequested;
@@ -41,7 +38,7 @@ public sealed partial class PlayerEditDialogViewModel : ObservableObject, IDialo
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(AllowsAll))] private bool _rcDivertConversations;
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(AllowsAll))] private bool _rcSysopCommands;
 
-    /// <summary>True when every remote-control checkbox is checked — drives the master toggle's IsChecked.</summary>
+    // True when every remote-control checkbox is checked — drives the master toggle's IsChecked.
     public bool AllowsAll =>
         RcQueryVersion && RcQueryExperience && RcQueryHealthStatus && RcQueryLocation &&
         RcQueryInventory && RcRequestInvite && RcMovePlayer && RcExecuteCommands &&
@@ -67,14 +64,11 @@ public sealed partial class PlayerEditDialogViewModel : ObservableObject, IDialo
     public string RcDivertConversationsTip { get; } = BuildTip(PlayerRemoteControls.DivertConversations);
     public string RcSysopCommandsTip       { get; } = BuildTip(PlayerRemoteControls.SysopCommands);
 
-    /// <summary>
-    /// Build the per-category tooltip text. Lists every @-command the
-    /// catalog maps to <paramref name="category"/>, sorted, with a clear
-    /// "ticked → grants / unticked → denies" framing so the user knows
-    /// which side of the box does what. Empty-category fallback is a
-    /// (no commands) placeholder so a future enum value that isn't yet
-    /// in the catalog renders something instead of throwing.
-    /// </summary>
+    // Build the per-category tooltip text. Lists every @-command the catalog maps to
+    // category, sorted, with a clear "ticked → grants / unticked → denies" framing so the
+    // user knows which side of the box does what. Empty-category fallback is a (no commands)
+    // placeholder so a future enum value that isn't yet in the catalog renders something
+    // instead of throwing.
     private static string BuildTip(PlayerRemoteControls category)
     {
         string[] cmds = RemoteCommandCatalog.Map
@@ -87,28 +81,24 @@ public sealed partial class PlayerEditDialogViewModel : ObservableObject, IDialo
              + $"Unticked denies the same.";
     }
 
-    /// <summary>Window title — shows the player's current display name.</summary>
+    // Window title — shows the player's current display name.
     public string Title => $"Player — {(_original.DisplayName.Length > 0 ? _original.DisplayName : "(new)")}";
 
-    /// <summary>Read-only display strings for the observation footer.</summary>
+    // Read-only display strings for the observation footer.
     public string FirstSeenText => _original.FirstSeenUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
     public string LastSeenText  => _original.LastSeenUtc .ToLocalTime().ToString("yyyy-MM-dd HH:mm");
     public string? Race           => _original.Race;
     public string? Alignment      => _original.Alignment;
-    /// <summary>In-game class title (renamed to avoid colliding with the Window-bound <see cref="Title"/>).</summary>
+    // In-game class title (renamed to avoid colliding with the Window-bound Title).
     public string? ObservedTitle  => _original.Title;
     public string? Gang           => _original.Gang;
 
-    /// <summary>
-    /// Display value for the Class row. Falls through in this order:
-    /// (1) an explicitly-recorded <see cref="PlayerRecord.Class"/>
-    /// (from a future <c>@health</c> / <c>@stat</c> parser), (2) class
-    /// inferred from the in-game title via <see cref="ClassTitleTable"/>.
-    /// Single match shows the class with a "(by title)" hint;
-    /// a universally-shared title (every class has it — Apprentice at
-    /// level 1) shows "Unknown" rather than spamming every class name;
-    /// a partial multi-match (rare) lists the candidates.
-    /// </summary>
+    // Display value for the Class row. Falls through in this order: (1) an
+    // explicitly-recorded PlayerRecord.Class (from a future @health / @stat parser),
+    // (2) class inferred from the in-game title via ClassTitleTable. Single match shows the
+    // class with a "(by title)" hint; a universally-shared title (every class has it —
+    // Apprentice at level 1) shows "Unknown" rather than spamming every class name; a
+    // partial multi-match (rare) lists the candidates.
     public string? ClassText
     {
         get
@@ -122,13 +112,9 @@ public sealed partial class PlayerEditDialogViewModel : ObservableObject, IDialo
         }
     }
 
-    /// <summary>
-    /// Display value for the Level row. Prefers the exact level learned
-    /// from an <c>@level</c> probe reply (<see cref="PlayerRecord.Level"/>);
-    /// falls back to the title-derived range from
-    /// <see cref="ClassTitleTable"/> when the player has never answered one.
-    /// <c>null</c> when neither is known.
-    /// </summary>
+    // Display value for the Level row. Prefers the exact level learned from an @level probe
+    // reply (PlayerRecord.Level); falls back to the title-derived range from ClassTitleTable
+    // when the player has never answered one. null when neither is known.
     public string? LevelText
     {
         get
@@ -139,14 +125,11 @@ public sealed partial class PlayerEditDialogViewModel : ObservableObject, IDialo
         }
     }
 
-    /// <summary>
-    /// Equipment slot summary for the Observed pane — one per slot,
-    /// formatted as <c>"item name (Slot)"</c> to mirror exactly what
-    /// the game prints in the <c>look &lt;player&gt;</c> response.
-    /// Empty list ("Nothing") reports as a single "(none)" placeholder
-    /// so the user can tell "explicitly naked" apart from "never looked
-    /// at" (which shows "—" because <see cref="HasEquipment"/> is false).
-    /// </summary>
+    // Equipment slot summary for the Observed pane — one per slot, formatted as
+    // "item name (Slot)" to mirror exactly what the game prints in the look <player>
+    // response. Empty list ("Nothing") reports as a single "(none)" placeholder so the user
+    // can tell "explicitly naked" apart from "never looked at" (which shows "—" because
+    // HasEquipment is false).
     public IReadOnlyList<string> EquipmentLines
     {
         get
@@ -158,7 +141,7 @@ public sealed partial class PlayerEditDialogViewModel : ObservableObject, IDialo
         }
     }
 
-    /// <summary>True when a <c>look</c> observation has populated equipment (empty list still counts).</summary>
+    // True when a look observation has populated equipment (empty list still counts).
     public bool HasEquipment => _original.Equipment is not null;
 
     public string? Role           => _original.Role switch
@@ -169,12 +152,9 @@ public sealed partial class PlayerEditDialogViewModel : ObservableObject, IDialo
                                           _   => null,   // Regular players hide the row entirely.
                                       };
 
-    /// <summary>
-    /// True only when <see cref="Role"/> has a non-Regular value to
-    /// show. Most players are Regular, so the row would be noise
-    /// otherwise — the Observed pane collapses the row to zero height
-    /// via IsVisible on both the label and value cells.
-    /// </summary>
+    // True only when Role has a non-Regular value to show. Most players are Regular, so the
+    // row would be noise otherwise — the Observed pane collapses the row to zero height via
+    // IsVisible on both the label and value cells.
     public bool HasRole => Role is not null;
 
     public PlayerEditDialogViewModel(PlayerRecord original)
@@ -199,7 +179,7 @@ public sealed partial class PlayerEditDialogViewModel : ObservableObject, IDialo
         RcSysopCommands       = rc.HasFlag(PlayerRemoteControls.SysopCommands);
     }
 
-    /// <summary>Toggle every remote-control checkbox in one shot (the "All" button).</summary>
+    // Toggle every remote-control checkbox in one shot (the "All" button).
     [RelayCommand]
     private void ToggleAll()
     {
@@ -242,10 +222,7 @@ public sealed partial class PlayerEditDialogViewModel : ObservableObject, IDialo
     private void Cancel() => CloseRequested?.Invoke(null);
 }
 
-/// <summary>
-/// Result returned from <see cref="PlayerEditDialogViewModel"/> on Save.
-/// Carries the original display name (so <see cref="PlayerDatabase.EditRecord"/>
-/// can locate the right record even if the user renamed) plus the
-/// updated record.
-/// </summary>
+// Result returned from PlayerEditDialogViewModel on Save. Carries the original display name
+// (so PlayerDatabase.EditRecord can locate the right record even if the user renamed) plus
+// the updated record.
 public sealed record PlayerEditResult(string OriginalDisplayName, PlayerRecord Updated);

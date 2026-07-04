@@ -4,39 +4,27 @@ using FujinTerm.Terminal;
 
 namespace FujinTerm.Game.Spells;
 
-/// <summary>
-/// Parses the <c>spells</c> / <c>pow</c> command output into the obtained
-/// set of <see cref="SpellbookState"/>. A small state machine batches the
-/// table rows — the list arrives across many lines and a single row is only
-/// distinguishable from chat once the header has been seen.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Format + matching are a faithful port of MMUD Explorer's
-/// <c>PasteSpells</c> (<c>frmMain.frm</c>). The block opens on any of the
-/// header lines (case-insensitive, anchored at line start):
-/// </para>
-/// <list type="bullet">
-///   <item><c>You have the following spells:</c></item>
-///   <item><c>You have the following powers:</c></item>
-///   <item><c>Level Mana Short Spell Name</c> (mana classes)</item>
-///   <item><c>Level Kai  Short Spell Name</c> (Kai / monk classes)</item>
-/// </list>
-/// <para>
-/// Each data row is <c>Level Mana Short Spell Name…</c>; MMUD Explorer
-/// collapses runs of spaces, splits on space, requires the first token
-/// numeric &gt; 0 and the second token <c>"0"</c> or numeric &gt; 0, then
-/// <b>discards the Level / Mana / Short columns and keeps the remaining
-/// Spell Name</b> — so obtained spells resolve by full Name, not Short. The
-/// accumulated names are committed as an authoritative snapshot
-/// (<see cref="SpellbookState.SetObtainedByNames"/>) when the block ends
-/// (prompt, blank line after rows, or a non-row line).
-/// </para>
-/// <para>
-/// <c>You have no spells.</c> / <c>You have no powers.</c> clears the
-/// obtained set outright.
-/// </para>
-/// </remarks>
+// Parses the spells / pow command output into the obtained set of
+// SpellbookState. A small state machine batches the table rows — the list
+// arrives across many lines and a single row is only distinguishable from chat
+// once the header has been seen.
+//
+// The block opens on any of the header lines (case-insensitive, anchored at line
+// start):
+//   - "You have the following spells:"
+//   - "You have the following powers:"
+//   - "Level Mana Short Spell Name" (mana classes)
+//   - "Level Kai  Short Spell Name" (Kai / monk classes)
+//
+// Each data row is "Level Mana Short Spell Name…": collapse runs of spaces,
+// split on space, require the first token numeric > 0 and the second token "0"
+// or numeric > 0, then discard the Level / Mana / Short columns and keep the
+// remaining Spell Name — so obtained spells resolve by full Name, not Short. The
+// accumulated names are committed as an authoritative snapshot
+// (SetObtainedByNames) when the block ends (prompt, blank line after rows, or a
+// non-row line).
+//
+// "You have no spells." / "You have no powers." clears the obtained set outright.
 public sealed class SpellListParser : IDisposable
 {
     private readonly SpellbookState _book;
@@ -54,12 +42,10 @@ public sealed class SpellListParser : IDisposable
         _log = log;
     }
 
-    /// <summary>
-    /// Bind the per-session <see cref="LineExtractor"/>. Same shape as
-    /// <see cref="StatParser.AttachLineExtractor"/> — the extractor is owned
-    /// by the main-window VM (one per terminal session) while this parser is
-    /// app-level. Calling again with a new extractor unhooks the previous.
-    /// </summary>
+    // Bind the per-session LineExtractor. Same shape as
+    // StatParser.AttachLineExtractor — the extractor is owned by the main-window
+    // VM (one per terminal session) while this parser is app-level. Calling again
+    // with a new extractor unhooks the previous.
     public void AttachLineExtractor(LineExtractor lines)
     {
         ArgumentNullException.ThrowIfNull(lines);
@@ -75,17 +61,15 @@ public sealed class SpellListParser : IDisposable
         if (_lines is not null) _lines.LineEmitted -= OnLineEmitted;
     }
 
-    /// <summary>
-    /// Test hook — drive a sequence of non-prompt text lines through the
-    /// parser without a real <see cref="LineExtractor"/>. Use
-    /// <see cref="FeedTestLine"/> to feed a line flagged as the prompt.
-    /// </summary>
+    // Test hook — drive a sequence of non-prompt text lines through the parser
+    // without a real LineExtractor. Use FeedTestLine to feed a line flagged as
+    // the prompt.
     internal void FeedTestLines(IEnumerable<string> lines)
     {
         foreach (string text in lines) HandleLine(text, isPromptLine: false);
     }
 
-    /// <summary>Test hook — feed a single line, optionally flagged as the prompt.</summary>
+    // Test hook — feed a single line, optionally flagged as the prompt.
     internal void FeedTestLine(string text, bool isPromptLine = false) => HandleLine(text, isPromptLine);
 
     private void OnLineEmitted(LineExtractor.EmittedLine line) => HandleLine(line.Text, line.IsPromptLine);
@@ -152,10 +136,10 @@ public sealed class SpellListParser : IDisposable
         _state = State.Idle;
     }
 
-    /// <summary>Number of rows parsed in the most recent / in-progress block. Test/debug aid.</summary>
+    // Number of rows parsed in the most recent / in-progress block. Test/debug aid.
     internal int LastBlockRowCount => _namesThisBlock.Count;
 
-    // ----- line classification (verbatim from MMUD Explorer PasteSpells) -
+    // ----- line classification -----------------------------------------
 
     private static bool IsHeaderLine(string lower)
         => lower.StartsWith("you have the following spells:", StringComparison.Ordinal)
@@ -167,12 +151,10 @@ public sealed class SpellListParser : IDisposable
         => lower.StartsWith("you have no spell", StringComparison.Ordinal)
         || lower.StartsWith("you have no power", StringComparison.Ordinal);
 
-    /// <summary>
-    /// Parse one <c>Level Mana Short Spell Name…</c> row. Collapses spaces,
-    /// splits, and requires the first token numeric &gt; 0 and the second
-    /// <c>"0"</c> or numeric &gt; 0 (Level + Mana/Kai columns); the spell
-    /// Name is everything past the Short column.
-    /// </summary>
+    // Parse one "Level Mana Short Spell Name…" row. Collapses spaces, splits, and
+    // requires the first token numeric > 0 and the second "0" or numeric > 0
+    // (Level + Mana/Kai columns); the spell Name is everything past the Short
+    // column.
     private static bool TryParseRow(string trimmed, out string name)
     {
         name = string.Empty;

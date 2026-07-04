@@ -4,21 +4,19 @@ using CommunityToolkit.Mvvm.Input;
 
 namespace FujinTerm.ViewModels;
 
-/// <summary>
-/// One entry in the File → Game Data → Active set submenu. Carries the
-/// set name + a checkbox-style <see cref="IsActive"/> flag (the
-/// currently-selected set's row gets the checkmark) + the command
-/// that switches the active set when the user clicks the row.
-/// </summary>
+// One entry in the File → Game Data → Active set submenu. Carries the set
+// name + a checkbox-style IsActive flag (the currently-selected set's row
+// gets the checkmark) + the command that switches the active set when the
+// user clicks the row.
 public sealed partial class GameDataSetMenuItem : ObservableObject
 {
-    /// <summary>On-disk folder name under <c>Data/game data/</c>.</summary>
+    // On-disk folder name under Data/game data/.
     public string Name { get; }
 
-    /// <summary>True when this entry matches the cache's current <c>ActiveSet</c>.</summary>
+    // True when this entry matches the cache's current ActiveSet.
     [ObservableProperty] private bool _isActive;
 
-    /// <summary>Invoked when the user clicks this entry. Switches the cache and writes the active profile.</summary>
+    // Invoked when the user clicks this entry. Switches the cache and writes the active profile.
     public ICommand SwitchCommand { get; }
 
     public GameDataSetMenuItem(string name, bool isActive, ICommand switchCommand)

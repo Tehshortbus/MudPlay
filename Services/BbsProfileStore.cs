@@ -4,31 +4,23 @@ using FujinTerm.Models.Settings;
 
 namespace FujinTerm.Services;
 
-/// <summary>
-/// Owns <c>Data/BBS/{name}/</c> — one folder per BBS, containing the
-/// primary <c>bbs.json</c> (connection info + BBS-tier settings deltas)
-/// plus any per-set override side-files (<c>monster_overrides.{set}.json</c>,
-/// <c>message_overrides.{set}.json</c>, …) and future per-BBS helper
-/// files (favorites, character roster, …).
-/// </summary>
+// Owns Data/BBS/{name}/ — one folder per BBS, containing the primary bbs.json
+// (connection info + BBS-tier settings deltas) plus any per-set override
+// side-files (monster_overrides.{set}.json, message_overrides.{set}.json, …)
+// and future per-BBS helper files (favorites, character roster, …).
 public sealed class BbsProfileStore
 {
-    /// <summary>
-    /// Load a single BBS profile by name. Returns <c>null</c> if no
-    /// <c>bbs.json</c> exists for that name. The folder may exist with
-    /// only side-files (e.g. mid-migration) — that still counts as
-    /// "no BBS profile".
-    /// </summary>
+    // Load a single BBS profile by name. Returns null if no bbs.json exists for
+    // that name. The folder may exist with only side-files (e.g. mid-migration)
+    // — that still counts as "no BBS profile".
     public BbsProfile? Get(string bbsName)
     {
         if (string.IsNullOrWhiteSpace(bbsName)) return null;
         return JsonStore.Load<BbsProfile>(AppPaths.BbsProfileFile(bbsName));
     }
 
-    /// <summary>
-    /// Persist a BBS profile to <c>Data/BBS/{Name}/bbs.json</c>,
-    /// creating the folder on first save.
-    /// </summary>
+    // Persist a BBS profile to Data/BBS/{Name}/bbs.json, creating the folder on
+    // first save.
     public void Save(BbsProfile profile)
     {
         if (profile is null) throw new ArgumentNullException(nameof(profile));
@@ -39,11 +31,8 @@ public sealed class BbsProfileStore
         JsonStore.Save(AppPaths.BbsProfileFile(profile.Name), profile);
     }
 
-    /// <summary>
-    /// Delete a BBS — removes the entire <c>Data/BBS/{name}/</c>
-    /// folder (primary file + all side-files). No-op if the folder
-    /// doesn't exist.
-    /// </summary>
+    // Delete a BBS — removes the entire Data/BBS/{name}/ folder (primary file +
+    // all side-files). No-op if the folder doesn't exist.
     public void Delete(string bbsName)
     {
         if (string.IsNullOrWhiteSpace(bbsName)) return;
@@ -52,12 +41,9 @@ public sealed class BbsProfileStore
             Directory.Delete(folder, recursive: true);
     }
 
-    /// <summary>
-    /// Enumerate every BBS that has a primary <c>bbs.json</c> on disk.
-    /// The folder name (= BBS name) is yielded, alphabetical order
-    /// optional at the caller. Folders missing a <c>bbs.json</c>
-    /// are skipped — they aren't fully initialised yet.
-    /// </summary>
+    // Enumerate every BBS that has a primary bbs.json on disk. The folder name
+    // (= BBS name) is yielded, alphabetical order optional at the caller.
+    // Folders missing a bbs.json are skipped — they aren't fully initialised yet.
     public IEnumerable<string> ListNames()
     {
         if (!Directory.Exists(AppPaths.BbsDir)) yield break;

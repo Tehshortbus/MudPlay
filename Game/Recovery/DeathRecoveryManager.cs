@@ -11,33 +11,24 @@ using FujinTerm.Terminal;
 
 namespace FujinTerm.Game.Recovery;
 
-/// <summary>
-/// Phase 9 PR 9.I — death observation aggregator. Composes
-/// <see cref="DeathLineWatcher.PlayerDied"/> and the per-character
-/// <see cref="CharacterProfile.DeathHistory"/> into a live observable
-/// shape that the Workshop DEATH section binds to.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Surfaces the loaded profile's <see cref="Records"/> (the deathpile
-/// grid), the persisted <see cref="AutoRecover"/> / <see cref="AutoEquip"/>
-/// toggles, and the recovery actions. The recovery state machine drives
-/// each record's Active → Partial → Recovered transition off observed
-/// room re-entry and <c>You pick up …</c> confirmations. Current lives
-/// are surfaced separately on the Character Info tab (from
-/// <c>PlayerStats.Lives</c>), not here.
-/// </para>
-/// <para>
-/// The <c>@comeback</c> remote command is a separate party-pickup
-/// flow (stranded-follower → leader) owned by
-/// <see cref="Remote.PartyComebackManager"/>, not this aggregator —
-/// it has nothing to do with death recovery.
-/// </para>
-/// </remarks>
+// Death observation aggregator. Composes DeathLineWatcher.PlayerDied and the
+// per-character CharacterProfile.DeathHistory into a live observable shape that
+// the Workshop DEATH section binds to.
+//
+// Surfaces the loaded profile's Records (the deathpile grid), the persisted
+// AutoRecover / AutoEquip toggles, and the recovery actions. The recovery state
+// machine drives each record's Active → Partial → Recovered transition off
+// observed room re-entry and "You pick up …" confirmations. Current lives are
+// surfaced separately on the Character Info tab (from PlayerStats.Lives), not
+// here.
+//
+// The @comeback remote command is a separate party-pickup flow (stranded-
+// follower → leader) owned by PartyComebackManager, not this aggregator — it has
+// nothing to do with death recovery.
 public sealed partial class DeathRecoveryManager : ObservableObject, IDisposable
 {
-    /// <summary>LogService category — appears as <c>[DeathRecovery]</c>
-    /// rows per observation + comeback request.</summary>
+    // LogService category — appears as [DeathRecovery] rows per observation +
+    // comeback request.
     public const string LogCategory = "DeathRecovery";
 
     private readonly DeathLineWatcher _deathWatcher;
@@ -90,32 +81,23 @@ public sealed partial class DeathRecoveryManager : ObservableObject, IDisposable
         OnPropertyChanged(nameof(Records));
     }
 
-    /// <summary>
-    /// Wire the walker used by <see cref="WalkToDeathRoom"/> /
-    /// <see cref="RecoverNow"/>. Set post-construction because the
-    /// <see cref="AutoWalkManager"/> is built after this manager in
-    /// <see cref="AppServices"/>.
-    /// </summary>
+    // Wire the walker used by WalkToDeathRoom / RecoverNow. Set post-construction
+    // because the AutoWalkManager is built after this manager in AppServices.
     public void AttachWalker(AutoWalkManager walker) => _walker = walker;
 
-    /// <summary>
-    /// Bind the gate-wrapped wire sender so auto-recover can send
-    /// <c>get</c> / <c>wear</c> / <c>hold</c> commands. Bound by
-    /// <c>MainWindowViewModel</c> on connect; unbound, the grab + re-equip
-    /// are no-ops (status transitions still follow observed pickups).
-    /// </summary>
+    // Bind the gate-wrapped wire sender so auto-recover can send get / wear /
+    // hold commands. Bound by MainWindowViewModel on connect; unbound, the grab +
+    // re-equip are no-ops (status transitions still follow observed pickups).
     public void SetWireSender(Action<byte[]> sender)
     {
         ArgumentNullException.ThrowIfNull(sender);
         _wireSender = sender;
     }
 
-    /// <summary>
-    /// Bind the per-session <see cref="LineExtractor"/> so the manager can
-    /// watch for <c>You pick up ...</c> confirmations that drive the
-    /// Partial → Recovered transition (and the per-item re-equip). Bound by
-    /// <c>MainWindowViewModel</c> on connect.
-    /// </summary>
+    // Bind the per-session LineExtractor so the manager can watch for
+    // "You pick up ..." confirmations that drive the Partial → Recovered
+    // transition (and the per-item re-equip). Bound by MainWindowViewModel on
+    // connect.
     public void AttachLineExtractor(LineExtractor lines)
     {
         ArgumentNullException.ThrowIfNull(lines);
@@ -125,31 +107,25 @@ public sealed partial class DeathRecoveryManager : ObservableObject, IDisposable
         _lines.LineEmitted += OnLine;
     }
 
-    /// <summary>
-    /// Bind the live inventory snapshot provider so <see cref="SimulateDeath"/>
-    /// captures a realistic deathpile. Real deaths capture via
-    /// <see cref="RoomTracker.NoteDeath"/>; this is only for the test button.
-    /// </summary>
+    // Bind the live inventory snapshot provider so SimulateDeath captures a
+    // realistic deathpile. Real deaths capture via RoomTracker.NoteDeath; this is
+    // only for the test button.
     public void AttachInventorySnapshot(Func<InventorySnapshot> provider)
     {
         ArgumentNullException.ThrowIfNull(provider);
         _inventorySnapshot = provider;
     }
 
-    /// <summary>
-    /// The loaded profile's death history (oldest → newest). Empty when
-    /// no profile is loaded or the lucky character has never died. The
-    /// DEATH grid sorts this newest-first for display.
-    /// </summary>
+    // The loaded profile's death history (oldest → newest). Empty when no profile
+    // is loaded or the lucky character has never died. The DEATH grid sorts this
+    // newest-first for display.
     public IReadOnlyList<DeathRecord> Records =>
         _profile.Current?.DeathHistory is { } list ? list : Array.Empty<DeathRecord>();
 
-    /// <summary>
-    /// Auto-grab a deathpile's lost items (ignoring per-item auto-get
-    /// policy) when re-entering the death room. Persisted per-character.
-    /// The grab itself is inert until inventory tracking records lost
-    /// items; the preference is stored now.
-    /// </summary>
+    // Auto-grab a deathpile's lost items (ignoring per-item auto-get policy) when
+    // re-entering the death room. Persisted per-character. The grab itself is
+    // inert until inventory tracking records lost items; the preference is stored
+    // now.
     public bool AutoRecover
     {
         get => _profile.Current?.DeathAutoRecover ?? false;
@@ -162,11 +138,9 @@ public sealed partial class DeathRecoveryManager : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>
-    /// Re-equip items that were worn at death after recovering them.
-    /// Persisted per-character; inert until inventory tracking records
-    /// what was equipped at death.
-    /// </summary>
+    // Re-equip items that were worn at death after recovering them. Persisted
+    // per-character; inert until inventory tracking records what was equipped at
+    // death.
     public bool AutoEquip
     {
         get => _profile.Current?.DeathAutoEquip ?? false;
@@ -179,11 +153,8 @@ public sealed partial class DeathRecoveryManager : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>
-    /// Manually flag a record as fully recovered (user pressed "Mark
-    /// Recovered"). Sets <see cref="DeathRecoveryStatus.Recovered"/>,
-    /// persists, and notifies binders.
-    /// </summary>
+    // Manually flag a record as fully recovered (user pressed "Mark Recovered").
+    // Sets Recovered, persists, and notifies binders.
     public void MarkRecovered(DeathRecord record)
     {
         ArgumentNullException.ThrowIfNull(record);
@@ -194,7 +165,7 @@ public sealed partial class DeathRecoveryManager : ObservableObject, IDisposable
         OnPropertyChanged(nameof(Records));
     }
 
-    /// <summary>Remove a single record from the history.</summary>
+    // Remove a single record from the history.
     public void ClearSelected(DeathRecord record)
     {
         ArgumentNullException.ThrowIfNull(record);
@@ -203,7 +174,7 @@ public sealed partial class DeathRecoveryManager : ObservableObject, IDisposable
         OnPropertyChanged(nameof(Records));
     }
 
-    /// <summary>Remove every record whose status is Recovered.</summary>
+    // Remove every record whose status is Recovered.
     public void ClearAllRecovered()
     {
         if (_profile.Current?.DeathHistory is not { } list) return;
@@ -212,10 +183,8 @@ public sealed partial class DeathRecoveryManager : ObservableObject, IDisposable
         OnPropertyChanged(nameof(Records));
     }
 
-    /// <summary>
-    /// Walk to the room a death occurred in. Returns false when no
-    /// walker is attached or the record has no recorded room.
-    /// </summary>
+    // Walk to the room a death occurred in. Returns false when no walker is
+    // attached or the record has no recorded room.
     public bool WalkToDeathRoom(DeathRecord record)
     {
         ArgumentNullException.ThrowIfNull(record);
@@ -223,13 +192,11 @@ public sealed partial class DeathRecoveryManager : ObservableObject, IDisposable
         return _walker.WalkTo(new RoomKey(r.Map, r.Room));
     }
 
-    /// <summary>
-    /// Demand signal to recover a deathpile. If we're already standing in
-    /// the death room, grab every recorded pile item in place (and re-equip
-    /// the worn ones when Auto-Equip is on); otherwise start walking there
-    /// and grab on arrival. The grab is forced regardless of the Auto-Recover
-    /// toggle — the user asked for it explicitly.
-    /// </summary>
+    // Demand signal to recover a deathpile. If we're already standing in the
+    // death room, grab every recorded pile item in place (and re-equip the worn
+    // ones when Auto-Equip is on); otherwise start walking there and grab on
+    // arrival. The grab is forced regardless of the Auto-Recover toggle — the
+    // user asked for it explicitly.
     public bool RecoverNow(DeathRecord record)
     {
         ArgumentNullException.ThrowIfNull(record);
@@ -259,12 +226,10 @@ public sealed partial class DeathRecoveryManager : ObservableObject, IDisposable
 
     // ----- recovery state machine -------------------------------------
 
-    /// <summary>
-    /// Fires on every room transition. On entering (Confirmed) a room that
-    /// holds an un-recovered deathpile, begin recovery; on leaving the pile
-    /// we were recovering, drop the in-progress tracker (the record stays
-    /// Partial until we return and finish).
-    /// </summary>
+    // Fires on every room transition. On entering (Confirmed) a room that holds
+    // an un-recovered deathpile, begin recovery; on leaving the pile we were
+    // recovering, drop the in-progress tracker (the record stays Partial until we
+    // return and finish).
     private void OnRoomChanged(RoomTransition t)
     {
         Room? room = t.NewRoom;
@@ -286,7 +251,7 @@ public sealed partial class DeathRecoveryManager : ObservableObject, IDisposable
         BeginRecovery(rec, autoGrab: AutoRecover || force);
     }
 
-    /// <summary>Newest un-recovered record whose death room matches <paramref name="key"/>.</summary>
+    // Newest un-recovered record whose death room matches key.
     private DeathRecord? FindRecoverableAt(RoomKey key)
     {
         if (_profile.Current?.DeathHistory is not { } list) return null;
@@ -300,13 +265,10 @@ public sealed partial class DeathRecoveryManager : ObservableObject, IDisposable
         return best;
     }
 
-    /// <summary>
-    /// Start (or restart) recovering a deathpile: mark the record Partial,
-    /// arm the per-item tracker, and — when <paramref name="autoGrab"/> — send
-    /// a <c>get</c> for every pile item. Active → Partial → Recovered then
-    /// follows observed <c>You pick up ...</c> lines. A known-empty pile
-    /// (nothing was lost) jumps straight to Recovered.
-    /// </summary>
+    // Start (or restart) recovering a deathpile: mark the record Partial, arm the
+    // per-item tracker, and — when autoGrab — send a get for every pile item.
+    // Active → Partial → Recovered then follows observed "You pick up ..." lines.
+    // A known-empty pile (nothing was lost) jumps straight to Recovered.
     private void BeginRecovery(DeathRecord record, bool autoGrab)
     {
         _activeRecovery = record;
@@ -333,12 +295,10 @@ public sealed partial class DeathRecoveryManager : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>
-    /// Watch for <c>You pick up &lt;item&gt;.</c> confirmations while a
-    /// recovery is in progress. Each matched pile item is cleared from the
-    /// remaining set (and re-equipped when Auto-Equip is on and it was worn
-    /// at death); the record flips to Recovered once the set empties.
-    /// </summary>
+    // Watch for "You pick up <item>." confirmations while a recovery is in
+    // progress. Each matched pile item is cleared from the remaining set (and
+    // re-equipped when Auto-Equip is on and it was worn at death); the record
+    // flips to Recovered once the set empties.
     private void OnLine(LineExtractor.EmittedLine line)
     {
         if (line.IsPromptLine || _activeRecovery is null || _remaining.Count == 0) return;
@@ -370,14 +330,11 @@ public sealed partial class DeathRecoveryManager : ObservableObject, IDisposable
             FinalizeRecovered(record, $"Recovered {_recoveryTotal} item(s).");
     }
 
-    /// <summary>
-    /// Whole-word containment (case-insensitive): true when
-    /// <paramref name="needle"/> appears in <paramref name="haystack"/> not
-    /// flanked by word characters on either side. Lookarounds rather than
-    /// <c>\b</c> so a needle that starts / ends with a non-word char (e.g. a
-    /// "+2"-suffixed item) still matches. Prevents a recorded "war" matching a
-    /// picked-up "warhammer" that a plain substring check would.
-    /// </summary>
+    // Whole-word containment (case-insensitive): true when needle appears in
+    // haystack not flanked by word characters on either side. Lookarounds rather
+    // than \b so a needle that starts / ends with a non-word char (e.g. a
+    // "+2"-suffixed item) still matches. Prevents a recorded "war" matching a
+    // picked-up "warhammer" that a plain substring check would.
     private static bool ContainsWord(string haystack, string needle)
     {
         if (string.IsNullOrEmpty(needle)) return false;
@@ -425,15 +382,13 @@ public sealed partial class DeathRecoveryManager : ObservableObject, IDisposable
         _wireSender(Encoding.Latin1.GetBytes(text + "\r"));
     }
 
-    /// <summary>Test seam — feed a plain inbound line to the pickup parser.</summary>
+    // Test seam — feed a plain inbound line to the pickup parser.
     internal void FeedTestLine(string text, DateTimeOffset? when = null)
         => OnLine(new LineExtractor.EmittedLine(text, [], when ?? DateTimeOffset.UtcNow, false));
 
-    /// <summary>
-    /// Append a synthetic death record (the "Simulate Death" button) so
-    /// the DEATH grid + recovery flow can be exercised without dying in
-    /// game. Decrements the displayed lives by one, floored at zero.
-    /// </summary>
+    // Append a synthetic death record (the "Simulate Death" button) so the DEATH
+    // grid + recovery flow can be exercised without dying in game. Decrements the
+    // displayed lives by one, floored at zero.
     public void SimulateDeath()
     {
         if (_profile.Current is not { } p) return;

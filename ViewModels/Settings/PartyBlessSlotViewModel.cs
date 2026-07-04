@@ -6,33 +6,31 @@ using FujinTerm.Models.Profile;
 
 namespace FujinTerm.ViewModels.Settings;
 
-/// <summary>
-/// One editable party-bless row in the Settings → Party tab: a spell
-/// short-code picker plus a checkbox per loaded class. A party member
-/// receives the buff only when their class checkbox is ticked. Row order
-/// is priority order; the bless engine walks slots top-to-bottom.
-/// </summary>
+// One editable party-bless row in the Settings → Party tab: a spell
+// short-code picker plus a checkbox per loaded class. A party member receives
+// the buff only when their class checkbox is ticked. Row order is priority
+// order; the bless engine walks slots top-to-bottom.
 public sealed partial class PartyBlessSlotViewModel : ObservableObject
 {
     private readonly Action _onChanged;
     private bool _suppress;
 
-    /// <summary>Tracks whether the slot's spell was blank before the latest
-    /// edit, so a blank→filled transition can auto-tick every class.</summary>
+    // Tracks whether the slot's spell was blank before the latest edit, so a
+    // blank→filled transition can auto-tick every class.
     private bool _spellWasEmpty;
 
-    /// <summary>1-based row number, surfaced as the "Bless N" label.</summary>
+    // 1-based row number, surfaced as the "Bless N" label.
     public int Index { get; }
 
-    /// <summary>Display label, e.g. <c>Bless 1</c>.</summary>
+    // Display label, e.g. Bless 1.
     public string Label => $"Bless {Index}";
 
-    /// <summary>Committed 4-letter spell short-code, or blank for an
-    /// unused slot. Bound to the row's AutoCompleteBox.</summary>
+    // Committed 4-letter spell short-code, or blank for an unused slot. Bound
+    // to the row's AutoCompleteBox.
     [ObservableProperty] private string? _spell;
 
-    /// <summary>One toggle per loaded class — ticking it adds that class
-    /// number to the slot's target set.</summary>
+    // One toggle per loaded class — ticking it adds that class number to the
+    // slot's target set.
     public IReadOnlyList<PartyBlessClassToggle> Classes { get; }
 
     public PartyBlessSlotViewModel(
@@ -57,7 +55,7 @@ public sealed partial class PartyBlessSlotViewModel : ObservableObject
             .ToList();
     }
 
-    /// <summary>Snapshot this row back into a persistable DTO.</summary>
+    // Snapshot this row back into a persistable DTO.
     public PartyBlessSlot ToDto() => new()
     {
         Spell = string.IsNullOrWhiteSpace(Spell) ? null : Spell.Trim(),
@@ -82,23 +80,21 @@ public sealed partial class PartyBlessSlotViewModel : ObservableObject
     }
 }
 
-/// <summary>
-/// A single class checkbox inside a <see cref="PartyBlessSlotViewModel"/>.
-/// Carries the gamedata <c>Classes.Number</c> + display name and reports
-/// edits back to the owning section for dirty tracking.
-/// </summary>
+// A single class checkbox inside a PartyBlessSlotViewModel. Carries the
+// gamedata Classes.Number + display name and reports edits back to the owning
+// section for dirty tracking.
 public sealed partial class PartyBlessClassToggle : ObservableObject
 {
     private readonly Action _onChanged;
     private readonly bool _ready;
 
-    /// <summary>Gamedata <c>Classes.Number</c> this toggle represents.</summary>
+    // Gamedata Classes.Number this toggle represents.
     public int Number { get; }
 
-    /// <summary>Class display name shown next to the checkbox.</summary>
+    // Class display name shown next to the checkbox.
     public string Name { get; }
 
-    /// <summary>Whether members of this class receive the slot's buff.</summary>
+    // Whether members of this class receive the slot's buff.
     [ObservableProperty] private bool _isChecked;
 
     public PartyBlessClassToggle(int number, string name, bool isChecked, Action onChanged)

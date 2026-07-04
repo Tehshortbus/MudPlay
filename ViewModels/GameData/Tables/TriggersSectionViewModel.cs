@@ -10,24 +10,17 @@ using FujinTerm.ViewModels.GameData.Edit;
 
 namespace FujinTerm.ViewModels.GameData.Tables;
 
-/// <summary>
-/// Game Data Browser → Triggers tab. Surfaces the active character's
-/// user-defined triggers from <see cref="TriggerEngine"/>. Editable —
-/// double-click a row opens the <see cref="TriggerEditDialogViewModel"/>;
-/// save routes through <see cref="TriggerEngine.Replace"/>.
-/// </summary>
+// Game Data Browser → Triggers tab. Surfaces the active character's user-defined triggers from
+// TriggerEngine. Editable — double-click a row opens the TriggerEditDialogViewModel; save routes
+// through TriggerEngine.Replace.
 public sealed class TriggersSectionViewModel : GameDataTableSectionViewModel, IEditableTableSectionViewModel
 {
     private readonly TriggerEngine _engine;
     private readonly DialogService? _dialogs;
 
-    /// <summary>
-    /// Per-rebuild side table mapping the displayed <see cref="GameDataRow"/>
-    /// back to the engine's live <see cref="Trigger"/> instance. The
-    /// engine has no natural key (Name isn't constrained unique), and
-    /// post-filter row indices don't map to engine indices, so we
-    /// remember the reference at populate time.
-    /// </summary>
+    // Per-rebuild side table mapping the displayed GameDataRow back to the engine's live Trigger
+    // instance. The engine has no natural key (Name isn't constrained unique), and post-filter
+    // row indices don't map to engine indices, so we remember the reference at populate time.
     private readonly Dictionary<GameDataRow, Trigger> _rowToTrigger = new();
 
     public override string Id => "triggers";
@@ -40,7 +33,8 @@ public sealed class TriggersSectionViewModel : GameDataTableSectionViewModel, IE
 
     public override string SearchKeyColumn => "Name";
 
-    /// <summary>Engine-backed table — every row lives only at the Char tier, so the "Use" badge would always read the same value.</summary>
+    // Engine-backed table — every row lives only at the Char tier, so the "Use" badge would
+    // always read the same value.
     public override bool ShowUseColumn => false;
 
     public override IEnumerable<string> SearchableLabels => new[]
@@ -152,11 +146,8 @@ public sealed class TriggersSectionViewModel : GameDataTableSectionViewModel, IE
         _engine.Replace(original, updated);
     }
 
-    /// <summary>
-    /// Friendly column label for the scope enum — the underlying values
-    /// are PascalCase (<c>GameMessages</c>, <c>ChatTelepath</c>) which
-    /// reads awkwardly in a table.
-    /// </summary>
+    // Friendly column label for the scope enum — the underlying values are PascalCase
+    // (GameMessages, ChatTelepath) which reads awkwardly in a table.
     private static string FormatScope(TriggerScope scope) => scope switch
     {
         TriggerScope.GameMessages  => "Game messages",
@@ -171,7 +162,7 @@ public sealed class TriggersSectionViewModel : GameDataTableSectionViewModel, IE
         _                          => scope.ToString(),
     };
 
-    /// <summary>Friendly column label for the storage-location enum.</summary>
+    // Friendly column label for the storage-location enum.
     private static string FormatLocation(TriggerLocation loc) => loc switch
     {
         TriggerLocation.GameData => "Game data",

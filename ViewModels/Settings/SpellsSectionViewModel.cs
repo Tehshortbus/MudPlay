@@ -10,23 +10,18 @@ using FujinTerm.Views.Settings;
 
 namespace FujinTerm.ViewModels.Settings;
 
-/// <summary>
-/// "Spells" tab — self-cast picks per role. Top section orders the
-/// between-round casting categories (Minor / Major party heal, Minor /
-/// Major self heal, Curing, Buffing, Debuffing). Middle sections name the
-/// heal / regen / cure spells. Bottom section holds the bless slots (10 on
-/// a Stock realm, 15 on ParaMud, sized live from
-/// <see cref="GameDataCache.ActiveRealm"/>) that cover every class's
-/// stacked-buff playstyle. Persists as the <c>"Spells"</c> entry in
-/// <see cref="CharacterProfile.Settings"/>.
-/// </summary>
-/// <remarks>
-/// Wires DTO storage only — <c>CastingDirector</c> (the between-round
-/// cast engine) lands in a later phase and subscribes to
-/// <see cref="ProfileService.ProfileLoaded"/> to re-read the DTO.
-/// Heal-trigger thresholds (HP / MA percentages) live on
-/// <see cref="HealthSettings"/> — this tab only owns the spell names.
-/// </remarks>
+// "Spells" tab — self-cast picks per role. Top section orders the between-round
+// casting categories (Minor / Major party heal, Minor / Major self heal,
+// Curing, Buffing, Debuffing). Middle sections name the heal / regen / cure
+// spells. Bottom section holds the bless slots (10 on a Stock realm, 15 on
+// ParaMud, sized live from GameDataCache.ActiveRealm) that cover every class's
+// stacked-buff playstyle. Persists as the "Spells" entry in
+// CharacterProfile.Settings.
+//
+// This tab wires DTO storage only — CastingDirector (the between-round cast
+// engine) subscribes to ProfileService.ProfileLoaded to re-read the DTO.
+// Heal-trigger thresholds (HP / MA percentages) live on HealthSettings — this
+// tab only owns the spell names.
 public sealed partial class SpellsSectionViewModel : SettingsSectionViewModel
 {
     private const string TabKey = "Spells";
@@ -38,10 +33,10 @@ public sealed partial class SpellsSectionViewModel : SettingsSectionViewModel
     private bool _suppressDirty;
     private bool _dirty;
 
-    /// <summary>Bless picks whose slot index exceeds the current realm's
-    /// visible count (e.g. a ParaMud profile's slots 11–15 viewed on a 10-slot
-    /// Stock realm). Held aside so they persist untouched across the narrower
-    /// realm and re-surface when a wider one is loaded.</summary>
+    // Bless picks whose slot index exceeds the current realm's visible count
+    // (e.g. a ParaMud profile's slots 11–15 viewed on a 10-slot Stock realm).
+    // Held aside so they persist untouched across the narrower realm and
+    // re-surface when a wider one is loaded.
     private readonly Dictionary<int, string> _overflowBlessSlots = new();
 
     public override string Id => "spells";
@@ -50,13 +45,11 @@ public sealed partial class SpellsSectionViewModel : SettingsSectionViewModel
 
     public bool HasProfile => _profile.Current is not null;
 
-    /// <summary>Known-spell suggestions for every spell-picker typeahead on
-    /// this tab — the current class's learnable list (level gate ignored),
-    /// ordered by name + distinct by cast-code, from
-    /// <see cref="Game.Spells.SpellbookState.AvailablePicks"/>. Each box commits
-    /// the 4-letter <see cref="Game.Spells.SpellPick.Short"/> cast-code (what
-    /// the game recognises). Refreshes when the spellbook rebuilds
-    /// (class swap / reroll).</summary>
+    // Known-spell suggestions for every spell-picker typeahead on this tab —
+    // the current class's learnable list (level gate ignored), ordered by name +
+    // distinct by cast-code, from SpellbookState.AvailablePicks. Each box commits
+    // the 4-letter SpellPick.Short cast-code (what the game recognises).
+    // Refreshes when the spellbook rebuilds (class swap / reroll).
     public IReadOnlyList<Game.Spells.SpellPick> SpellSuggestions => _spellbook.AvailablePicks;
 
     public override Control View => _view ??= new SpellsSectionView { DataContext = this };
@@ -85,8 +78,8 @@ public sealed partial class SpellsSectionViewModel : SettingsSectionViewModel
 
     // ----- Category priority (1-7) ----------------------------------
 
-    /// <summary>The seven between-round casting categories in fixed key
-    /// order; the ranking VM reorders them and reports each one's rank.</summary>
+    // The seven between-round casting categories in fixed key order; the
+    // ranking VM reorders them and reports each one's rank.
     private static readonly (string Key, string Label, string? Tip)[] _priorityDefs =
     {
         ("MinorPartyHeal", "Minor party heal (single + party)",
@@ -105,8 +98,8 @@ public sealed partial class SpellsSectionViewModel : SettingsSectionViewModel
             "Priority slot for between-round debuffs (CombatSettings' debuff slots)."),
     };
 
-    /// <summary>Reorderable between-round casting order. Row position is the
-    /// rank, so the seven categories always form a clean 1..7 permutation.</summary>
+    // Reorderable between-round casting order. Row position is the rank, so the
+    // seven categories always form a clean 1..7 permutation.
     public PriorityRankingViewModel Priority { get; }
 
     // ----- Healing / regen ------------------------------------------
@@ -124,11 +117,11 @@ public sealed partial class SpellsSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private int? _manaRegenRerollThreshold;
     [ObservableProperty] private int _manaRegenRerollCap = 3;
 
-    /// <summary>Plain-language state of the mana-regen reroll for the current
-    /// <see cref="MaRegenSpell"/> pick — the level-scaled roll range when it
-    /// resolves to a Paradigm roll spell (nature tap / mana flux, ability code
-    /// 145), otherwise why rerolling doesn't apply. Recomputed when the pick or
-    /// the spellbook (class / level) changes.</summary>
+    // Plain-language state of the mana-regen reroll for the current MaRegenSpell
+    // pick — the level-scaled roll range when it resolves to a Paradigm roll
+    // spell (nature tap / mana flux, ability code 145), otherwise why rerolling
+    // doesn't apply. Recomputed when the pick or the spellbook (class / level)
+    // changes.
     public string ManaRegenRerollHint => BuildManaRegenRerollHint();
 
     // ----- Cures + utility ------------------------------------------
@@ -141,9 +134,9 @@ public sealed partial class SpellsSectionViewModel : SettingsSectionViewModel
 
     // ----- Bless slots (realm-sized: Stock 10 / ParaMud 15) ---------
 
-    /// <summary>Self-bless rows for the active realm, in priority order.
-    /// Rebuilt from the sparse map on load and whenever the game-data set
-    /// (hence realm) changes. Bound one-to-one to the tab's ItemsControl.</summary>
+    // Self-bless rows for the active realm, in priority order. Rebuilt from the
+    // sparse map on load and whenever the game-data set (hence realm) changes.
+    // Bound one-to-one to the tab's ItemsControl.
     public ObservableCollection<SelfBlessSlotViewModel> BlessSlots { get; } = new();
 
     // ----- Ailment handling / coordination --------------------------

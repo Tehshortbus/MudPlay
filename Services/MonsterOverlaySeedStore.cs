@@ -4,55 +4,41 @@ using FujinTerm.Models.GameData;
 
 namespace FujinTerm.Services;
 
-/// <summary>
-/// In-memory cache of the active game-data set's MonsterOverlay seed —
-/// the Defaults-tier baseline for per-monster automation behavior
-/// (relationship / priority / NotHostile / DontBackstab) before any
-/// user Global / BBS / Character override is applied.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Seeds are <b>realm-flavored</b>. Each realm family (stock MajorMUD,
-/// Paradigm, …) ships its own decoded-from-<c>Monsters.md</c> seed
-/// file under <see cref="AppPaths.BundledMonsterOverlaySeedFile"/>;
-/// the active set's <c>Info.json[0].Legit</c> field picks which
-/// realm's seed to load:
-/// </para>
-/// <list type="bullet">
-///   <item><c>Legit = 0</c> or <c>1</c> → <b>stock</b> seed.</item>
-///   <item><c>Legit = 2</c> → <b>paradigm</b> seed.</item>
-///   <item>Anything else → fall back to <b>stock</b> (safest default).</item>
-/// </list>
-/// <para>
-/// Wiring: <see cref="AppServices"/> subscribes the store to
-/// <see cref="GameDataCache.ActiveSetChanged"/> — every set switch
-/// rereads the new set's Info.json, picks the realm, and reloads
-/// the matching seed file. Consumers call
-/// <see cref="GetOverlay(int)"/> to retrieve the seed baseline for
-/// a specific monster Number; that overlay is then passed to
-/// <see cref="SettingsResolver.ResolveGameData{T}"/> as the
-/// Defaults-tier record over which higher-tier deltas are merged.
-/// </para>
-/// <para>
-/// The seed file itself is never written by the app. To reset a
-/// seed, delete the user-writable copy at
-/// <see cref="AppPaths.MonsterOverlaySeedFile"/> and relaunch —
-/// <see cref="AppPaths.EnsureGlobalSeedsBootstrapped"/> re-copies
-/// it from the bundled source.
-/// </para>
-/// </remarks>
+// In-memory cache of the active game-data set's MonsterOverlay seed — the
+// Defaults-tier baseline for per-monster automation behavior (relationship /
+// priority / NotHostile / DontBackstab) before any user Global / BBS /
+// Character override is applied.
+//
+// Seeds are realm-flavored. Each realm family (stock MajorMUD, Paradigm, …)
+// ships its own decoded-from-Monsters.md seed file under
+// AppPaths.BundledMonsterOverlaySeedFile; the active set's Info.json[0].Legit
+// field picks which realm's seed to load:
+//   Legit = 0 or 1 → stock seed.
+//   Legit = 2      → paradigm seed.
+//   Anything else  → fall back to stock (safest default).
+//
+// Wiring: AppServices subscribes the store to
+// GameDataCache.ActiveSetChanged — every set switch rereads the new set's
+// Info.json, picks the realm, and reloads the matching seed file. Consumers
+// call GetOverlay to retrieve the seed baseline for a specific monster
+// Number; that overlay is then passed to SettingsResolver.ResolveGameData as
+// the Defaults-tier record over which higher-tier deltas are merged.
+//
+// The seed file itself is never written by the app. To reset a seed, delete
+// the user-writable copy at AppPaths.MonsterOverlaySeedFile and relaunch —
+// AppPaths.EnsureGlobalSeedsBootstrapped re-copies it from the bundled
+// source.
 public sealed class MonsterOverlaySeedStore
 {
     private readonly LogService? _log;
     private readonly Dictionary<int, MonsterOverlay> _byNumber = new();
 
-    /// <summary>Realm flavor currently sourcing the cache, or <c>null</c> when none loaded.</summary>
+    // Realm flavor currently sourcing the cache, or null when none loaded.
     public string? ActiveRealm { get; private set; }
 
-    /// <summary>Set name currently sourcing the cache, or <c>null</c> when none active.</summary>
+    // Set name currently sourcing the cache, or null when none active.
     public string? ActiveSet { get; private set; }
 
-    /// <summary>Number of records in the loaded seed (post-deserialization).</summary>
     public int Count => _byNumber.Count;
 
     public MonsterOverlaySeedStore() { }
@@ -63,14 +49,11 @@ public sealed class MonsterOverlaySeedStore
         _log = log;
     }
 
-    /// <summary>
-    /// Switch the cache to whichever realm-seed matches
-    /// <paramref name="setName"/>'s <c>Info.json[0].Legit</c>. Pass
-    /// <c>null</c> to clear (no set active). Errors loading
-    /// <c>Info.json</c> or the seed file produce an empty cache and a
-    /// warning log entry — the resolver then falls back to its own
-    /// <c>new MonsterOverlay()</c> defaults.
-    /// </summary>
+    // Switch the cache to whichever realm-seed matches setName's
+    // Info.json[0].Legit. Pass null to clear (no set active). Errors loading
+    // Info.json or the seed file produce an empty cache and a warning log
+    // entry — the resolver then falls back to its own new MonsterOverlay()
+    // defaults.
     public void Load(string? setName)
     {
         _byNumber.Clear();
@@ -124,18 +107,15 @@ public sealed class MonsterOverlaySeedStore
         }
     }
 
-    /// <summary>
-    /// Defaults-tier overlay for <paramref name="monsterNumber"/>. Returns
-    /// a blank <see cref="MonsterOverlay"/> when the seed has no record
-    /// for that monster (i.e. the monster's stock values match the
-    /// runtime defaults already — Enemy / Normal / no flags).
-    /// </summary>
+    // Defaults-tier overlay for monsterNumber. Returns a blank MonsterOverlay
+    // when the seed has no record for that monster (i.e. the monster's stock
+    // values match the runtime defaults already — Enemy / Normal / no flags).
     public MonsterOverlay GetOverlay(int monsterNumber) =>
         _byNumber.TryGetValue(monsterNumber, out MonsterOverlay? overlay)
             ? overlay
             : new MonsterOverlay();
 
-    /// <summary>Reads <c>Info.json[0].Legit</c> from the set's folder and maps to a realm name.</summary>
+    // Reads Info.json[0].Legit from the set's folder and maps to a realm name.
     private string ResolveRealm(string setName)
     {
         string infoPath = Path.Combine(AppPaths.GameDataSetDir(setName), "Info.json");
@@ -170,11 +150,9 @@ public sealed class MonsterOverlaySeedStore
         return "stock";
     }
 
-    /// <summary>
-    /// Wire shape on disk. Mirrors <c>Defaults/MonsterOverlay.{realm}.seed.json</c>'s
-    /// JSON layout — Number + Name + the four overridable fields. Name is
-    /// kept on the wire for human inspection but discarded on load.
-    /// </summary>
+    // Wire shape on disk. Mirrors Defaults/MonsterOverlay.{realm}.seed.json's
+    // JSON layout — Number + Name + the four overridable fields. Name is kept
+    // on the wire for human inspection but discarded on load.
     private sealed record SeedRecord
     {
         public int                    Number       { get; init; }

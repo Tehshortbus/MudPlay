@@ -1,38 +1,33 @@
 namespace FujinTerm.Services;
 
-/// <summary>
-/// Fixed-capacity byte ring that retains the tail of the cleaned display
-/// stream from the live <see cref="Net.TelnetClient"/>. Drives the
-/// Wire Inspector window (Phase 0 PR 0.12) and is the obvious shared
-/// source for any future "show me what the server just sent" diagnostic.
-/// </summary>
-/// <remarks>
-/// Thread-safe: a single internal lock guards the ring. <see cref="Append"/>
-/// is safe to call from the Telnet read loop; <see cref="Snapshot"/>
-/// allocates a fresh array per call, so the UI's render tick can safely take
-/// a stable copy.
-/// </remarks>
+// Fixed-capacity byte ring that retains the tail of the cleaned display stream
+// from the live Net.TelnetClient. Drives the Wire Inspector window and is the
+// obvious shared source for any "show me what the server just sent" diagnostic.
+//
+// Thread-safe: a single internal lock guards the ring. Append is safe to call
+// from the Telnet read loop; Snapshot allocates a fresh array per call, so the
+// UI's render tick can safely take a stable copy.
 public sealed class WireBuffer
 {
-    /// <summary>64 KB default. Older bytes scroll out automatically.</summary>
+    // 64 KB default. Older bytes scroll out automatically.
     public const int DefaultCapacity = 64 * 1024;
 
     private readonly object _gate = new();
     private readonly byte[] _ring;
     private int _head;       // next write slot
-    private int _count;      // bytes alive in the ring (≤ Capacity)
+    private int _count;      // bytes alive in the ring (<= Capacity)
     private long _totalBytes;
 
-    /// <summary>Ring capacity in bytes.</summary>
+    // Ring capacity in bytes.
     public int Capacity { get; }
 
-    /// <summary>Total bytes ever <see cref="Append"/>ed since construction.</summary>
+    // Total bytes ever Appended since construction.
     public long TotalBytes
     {
         get { lock (_gate) { return _totalBytes; } }
     }
 
-    /// <summary>Fired after each <see cref="Append"/> on the producer's thread.</summary>
+    // Fired after each Append on the producer's thread.
     public event Action? BufferChanged;
 
     public WireBuffer(int capacity = DefaultCapacity)
@@ -42,7 +37,7 @@ public sealed class WireBuffer
         _ring = new byte[capacity];
     }
 
-    /// <summary>Append <paramref name="data"/>; oldest bytes drop off when full.</summary>
+    // Append data; oldest bytes drop off when full.
     public void Append(ReadOnlySpan<byte> data)
     {
         if (data.IsEmpty) return;
@@ -76,7 +71,7 @@ public sealed class WireBuffer
         BufferChanged?.Invoke();
     }
 
-    /// <summary>Copy out the live bytes oldest → newest as a fresh array.</summary>
+    // Copy out the live bytes oldest → newest as a fresh array.
     public byte[] Snapshot()
     {
         lock (_gate)
@@ -95,7 +90,7 @@ public sealed class WireBuffer
         }
     }
 
-    /// <summary>Drop every byte. Does not reset <see cref="TotalBytes"/>.</summary>
+    // Drop every byte. Does not reset TotalBytes.
     public void Clear()
     {
         lock (_gate)

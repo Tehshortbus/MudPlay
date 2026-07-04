@@ -1,18 +1,16 @@
 namespace FujinTerm.Game.Calculators;
 
-/// <summary>
-/// Which per-level HP roll to assume when estimating max HP. MajorMUD rolls
-/// a random HP gain in <c>[0, range]</c> each level; the projection picks one
-/// of these to bracket the unknown rolls.
-/// </summary>
+// Which per-level HP roll to assume when estimating max HP. MajorMUD rolls a
+// random HP gain in [0, range] each level; the projection picks one of these to
+// bracket the unknown rolls.
 public enum HpRollMode
 {
-    /// <summary>Level-1 max roll, then all-zero rolls after (lower bound).</summary>
+    // Level-1 max roll, then all-zero rolls after (lower bound).
     Min,
 
-    /// <summary>Level-1 max roll, then average rolls thereafter (expected value).</summary>
+    // Level-1 max roll, then average rolls thereafter (expected value).
     Average,
 
-    /// <summary>Max roll every level (upper bound).</summary>
+    // Max roll every level (upper bound).
     Max,
 }

@@ -4,27 +4,19 @@ using FujinTerm.Models.Profile;
 
 namespace FujinTerm.Services;
 
-/// <summary>
-/// Per-character window position + size memory. Each top-level window
-/// calls <see cref="AttachWindow"/> once during construction with a
-/// stable id ("main", "backscroll", etc.); the store wires the Opened /
-/// Closing handlers so the window restores its prior bounds on Opened
-/// and captures the current ones on Closing.
-/// </summary>
-/// <remarks>
-/// <para>
-/// The dictionary is hydrated from <see cref="CharacterProfile.WindowBounds"/>
-/// on <see cref="ProfileService.ProfileLoaded"/> and snapshotted back on
-/// <see cref="ProfileService.ProfileSaving"/>. A window that the user has
-/// never moved / resized has no entry, so opening it uses whatever
-/// position + size the XAML declared.
-/// </para>
-/// <para>
-/// Tiny windows (under 80×60) and zero-sized windows are rejected on
-/// capture — those are usually transient measurements during the
-/// teardown sequence, not the user's "where I last left it" state.
-/// </para>
-/// </remarks>
+// Per-character window position + size memory. Each top-level window calls
+// AttachWindow once during construction with a stable id ("main", "backscroll",
+// etc.); the store wires the Opened / Closing handlers so the window restores
+// its prior bounds on Opened and captures the current ones on Closing.
+//
+// The dictionary is hydrated from CharacterProfile.WindowBounds on
+// ProfileService.ProfileLoaded and snapshotted back on
+// ProfileService.ProfileSaving. A window that the user has never moved / resized
+// has no entry, so opening it uses whatever position + size the XAML declared.
+//
+// Tiny windows (under 80×60) and zero-sized windows are rejected on capture —
+// those are usually transient measurements during the teardown sequence, not
+// the user's "where I last left it" state.
 public sealed class WindowLayoutStore
 {
     private const double MinPersistedWidth = 80;
@@ -41,12 +33,9 @@ public sealed class WindowLayoutStore
         profile.ProfileSaving += p => p.WindowBounds = Snapshot();
     }
 
-    /// <summary>
-    /// Wire <paramref name="window"/>'s Opened / Closing handlers to the
-    /// per-profile bounds store. Idempotent: calling twice with the same
-    /// id and window is a no-op (handlers register once per Window
-    /// instance).
-    /// </summary>
+    // Wire window's Opened / Closing handlers to the per-profile bounds store.
+    // Idempotent: calling twice with the same id and window is a no-op (handlers
+    // register once per Window instance).
     public void AttachWindow(Window window, string id)
     {
         ArgumentNullException.ThrowIfNull(window);
@@ -56,11 +45,11 @@ public sealed class WindowLayoutStore
         window.Closing += (_, _) => CaptureFrom(window, id);
     }
 
-    /// <summary>Take a snapshot of every known window's bounds — used by ProfileSaving.</summary>
+    // Take a snapshot of every known window's bounds — used by ProfileSaving.
     public Dictionary<string, WindowBounds> Snapshot()
         => new(_bounds, StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>Replace the in-memory map with whatever a freshly-loaded profile carries.</summary>
+    // Replace the in-memory map with whatever a freshly-loaded profile carries.
     public void ApplyFromProfile(IReadOnlyDictionary<string, WindowBounds>? incoming)
     {
         _bounds.Clear();

@@ -10,14 +10,10 @@ using FujinTerm.ViewModels.GameData.Edit;
 
 namespace FujinTerm.ViewModels.GameData.Tables;
 
-/// <summary>
-/// Game Data Browser → Players tab. Surfaces the rows held by
-/// <see cref="PlayerDatabase"/>. Engine-backed; reloads on every
-/// <see cref="System.Collections.ObjectModel.ObservableCollection{T}.CollectionChanged"/>
-/// from the database so the grid mirrors live observations. Double-click
-/// a row to open <see cref="PlayerEditDialogViewModel"/> for the
-/// behavior toggles + 12-category remote-control bitmask.
-/// </summary>
+// Game Data Browser → Players tab. Surfaces the rows held by PlayerDatabase. Engine-backed;
+// reloads on every CollectionChanged from the database so the grid mirrors live observations.
+// Double-click a row to open PlayerEditDialogViewModel for the behavior toggles + 12-category
+// remote-control bitmask.
 public sealed class PlayersSectionViewModel : GameDataTableSectionViewModel, IEditableTableSectionViewModel
 {
     private readonly PlayerDatabase _db;
@@ -34,7 +30,8 @@ public sealed class PlayersSectionViewModel : GameDataTableSectionViewModel, IEd
 
     public override string SearchKeyColumn => "Given Name";
 
-    /// <summary>Engine-backed (BBS-tier observations + Char-tier customisations) — see <see cref="GameDataTableSectionViewModel.ShowUseColumn"/>.</summary>
+    // Engine-backed (BBS-tier observations + Char-tier customisations) — see
+    // GameDataTableSectionViewModel.ShowUseColumn.
     public override bool ShowUseColumn => false;
 
     public override IEnumerable<string> SearchableLabels => new[]
@@ -131,12 +128,9 @@ public sealed class PlayersSectionViewModel : GameDataTableSectionViewModel, IEd
         }
     }
 
-    /// <summary>
-    /// First whitespace-delimited token of a display name, lower-cased
-    /// for the comparer. <c>null</c> when the input is null or
-    /// whitespace-only — caller uses that sentinel to mean "no
-    /// self-filter".
-    /// </summary>
+    // First whitespace-delimited token of a display name, lower-cased for the comparer. null
+    // when the input is null or whitespace-only — caller uses that sentinel to mean "no
+    // self-filter".
     private static string? ExtractGiven(string? displayName)
     {
         if (string.IsNullOrWhiteSpace(displayName)) return null;
@@ -144,7 +138,7 @@ public sealed class PlayersSectionViewModel : GameDataTableSectionViewModel, IEd
         return space >= 0 ? displayName[..space] : displayName;
     }
 
-    /// <summary>"None" / "Some" / "All" summary of the remote-control bitmask for the table cell.</summary>
+    // "None" / "Some" / "All" summary of the remote-control bitmask for the table cell.
     private static string RemoteControlsLabel(PlayerRemoteControls rc)
     {
         if (rc == PlayerRemoteControls.None) return "None";

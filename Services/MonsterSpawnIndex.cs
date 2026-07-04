@@ -5,33 +5,23 @@ using FujinTerm.Game.Map;
 
 namespace FujinTerm.Services;
 
-/// <summary>
-/// Reverse index of <c>RoomKey → monster ids whose Monsters.json
-/// <c>Summoned By</c> field references that room</c>. Builds once on
-/// the active game-data set and rebuilds on
-/// <see cref="GameDataCache.ActiveSetChanged"/>.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Bosses and other script-spawned monsters carry their spawn site on
-/// the monster record rather than the room's <see cref="Room.RawLairTag"/>.
-/// The room search reads this via
-/// <c>NavigationViewModel.RoomsByMonsterId</c>; the room tooltip needs
-/// the inverse — given a room, which monsters does it host? Without
-/// the index a tooltip's <c>Also Here</c> line silently omits any
-/// boss whose presence lives only on the monster record (live repro:
-/// 1/1678 Darkwood Forest, Webbed Clearing had no giant spider in
-/// its tooltip even though Monster 52's <c>Summoned By</c> reads
-/// "Room 1/1678").
-/// </para>
-/// <para>
-/// Cache rebuild costs O(monsters) once per active-set switch;
-/// per-tooltip lookups are O(1). All <c>(map)/(room)</c> tokens in
-/// the field are matched (the search-side parser uses the same regex
-/// — Lairs.json GroupIndex tokens use '-' between numbers so a
-/// digits/digits regex catches only room references).
-/// </para>
-/// </remarks>
+// Reverse index of RoomKey → monster ids whose Monsters.json Summoned By
+// field references that room. Builds once on the active game-data set and
+// rebuilds on GameDataCache.ActiveSetChanged.
+//
+// Bosses and other script-spawned monsters carry their spawn site on the
+// monster record rather than the room's Room.RawLairTag. The room search
+// reads this via NavigationViewModel.RoomsByMonsterId; the room tooltip needs
+// the inverse — given a room, which monsters does it host? Without the index
+// a tooltip's Also Here line silently omits any boss whose presence lives
+// only on the monster record (live repro: 1/1678 Darkwood Forest, Webbed
+// Clearing had no giant spider in its tooltip even though Monster 52's
+// Summoned By reads "Room 1/1678").
+//
+// Cache rebuild costs O(monsters) once per active-set switch; per-tooltip
+// lookups are O(1). All (map)/(room) tokens in the field are matched (the
+// search-side parser uses the same regex — Lairs.json GroupIndex tokens use
+// '-' between numbers so a digits/digits regex catches only room references).
 public sealed class MonsterSpawnIndex
 {
     private readonly GameDataCache _cache;
@@ -50,12 +40,9 @@ public sealed class MonsterSpawnIndex
         _cache.ActiveSetChanged += _ => Invalidate();
     }
 
-    /// <summary>
-    /// Monster ids whose <c>Summoned By</c> references the given room.
-    /// Empty list when nothing spawns at the room (or no Monsters
-    /// table is loaded). Builds the index lazily on first call after
-    /// a set change.
-    /// </summary>
+    // Monster ids whose Summoned By references the given room. Empty list
+    // when nothing spawns at the room (or no Monsters table is loaded). Builds
+    // the index lazily on first call after a set change.
     public IReadOnlyList<int> MonsterIdsSummonedAt(RoomKey key)
     {
         EnsureBuilt();
@@ -64,7 +51,7 @@ public sealed class MonsterSpawnIndex
             : Array.Empty<int>();
     }
 
-    /// <summary>Drops the cached index — the next lookup re-scans Monsters.json.</summary>
+    // Drops the cached index — the next lookup re-scans Monsters.json.
     public void Invalidate()
     {
         _summonedAt.Clear();

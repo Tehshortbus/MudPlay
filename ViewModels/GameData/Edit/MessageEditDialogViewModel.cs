@@ -7,23 +7,16 @@ using FujinTerm.Services;
 
 namespace FujinTerm.ViewModels.GameData.Edit;
 
-/// <summary>
-/// View-model for the Game Data Browser → Messages tab's per-record
-/// edit dialog. Edits one <see cref="MessageRecord"/> end-to-end:
-/// Name / Use-tier / four perspective line slots (Caster / Target /
-/// Witness / Applied + AppliedEndsWith) / Action / Effects flags /
-/// Response / Links. Commits on Save (Defaults tier
-/// writes back to <see cref="MessageStore"/>; other tiers are stubbed
-/// for the future <see cref="SettingsResolver.WriteGameDataAt"/>
-/// path) or discards on Cancel.
-/// </summary>
-/// <remarks>
-/// Validation runs live — <see cref="StatusMessage"/> + <see cref="HasError"/>
-/// flag the dialog when Name is blank, when no perspective line has any text
-/// (record would carry no matchable content), or when the projected Id
-/// would collide with another existing record's identity tuple. Save is
-/// gated on no errors.
-/// </remarks>
+// View-model for the Game Data Browser → Messages tab's per-record edit dialog. Edits
+// one MessageRecord end-to-end: Name / Use-tier / four perspective line slots (Caster /
+// Target / Witness / Applied + AppliedEndsWith) / Action / Effects flags / Response /
+// Links. Commits on Save (Defaults tier writes back to MessageStore; other tiers are
+// stubbed for the future SettingsResolver.WriteGameDataAt path) or discards on Cancel.
+//
+// Validation runs live — StatusMessage + HasError flag the dialog when Name is blank,
+// when no perspective line has any text (record would carry no matchable content), or
+// when the projected Id would collide with another existing record's identity tuple.
+// Save is gated on no errors.
 public sealed partial class MessageEditDialogViewModel : ObservableObject, IDialogViewModel<MessageEditResult>
 {
     public event Action<MessageEditResult?>? CloseRequested;
@@ -72,12 +65,9 @@ public sealed partial class MessageEditDialogViewModel : ObservableObject, IDial
     [NotifyPropertyChangedFor(nameof(CanSave))]
     private string _appliedEndsWith = string.Empty;
 
-    /// <summary>
-    /// Verbatim response field — stored exactly as MegaMUD's UI would
-    /// display it, including literal <c>^M</c> separators. No splitting
-    /// happens here; the runtime consumer (Phase 13) interprets
-    /// <c>^M</c> / CR as multi-step boundaries when actually sending.
-    /// </summary>
+    // Verbatim response field — stored exactly as MegaMUD's UI would display it, including
+    // literal ^M separators. No splitting happens here; the runtime consumer interprets
+    // ^M / CR as multi-step boundaries when actually sending.
     [ObservableProperty] private string _response = string.Empty;
     [ObservableProperty] private MessageAction _action = MessageAction.Ignore;
 
@@ -108,7 +98,7 @@ public sealed partial class MessageEditDialogViewModel : ObservableObject, IDial
         new TierOption(SettingsTier.Character, "Character"),
     };
 
-    /// <summary>Editable Links list — see <see cref="LinkRow"/> for shape.</summary>
+    // Editable Links list — see LinkRow for shape.
     public System.Collections.ObjectModel.ObservableCollection<LinkRow> LinkRows { get; } = new();
 
     public IReadOnlyList<string> LinkTables { get; } = new[] { "Spells", "Items", "Monsters" };
@@ -134,44 +124,34 @@ public sealed partial class MessageEditDialogViewModel : ObservableObject, IDial
 
     private readonly GameDataCache? _cache;
 
-    /// <summary>
-    /// Optional read-only "Game Data" tab content — the source row's imported
-    /// fields (label / value), shown alongside the editable message when the
-    /// dialog is opened for a game-data row (e.g. a spell). Empty for the plain
-    /// Messages-tab edit, which hides the tab.
-    /// </summary>
+    // Optional read-only "Game Data" tab content — the source row's imported fields
+    // (label / value), shown alongside the editable message when the dialog is opened for
+    // a game-data row (e.g. a spell). Empty for the plain Messages-tab edit, which hides
+    // the tab.
     public IReadOnlyList<GameDataInfoRow> GameDataInfo { get; }
 
-    /// <summary>True when the Game Data tab has content to show.</summary>
+    // True when the Game Data tab has content to show.
     public bool HasGameData => GameDataInfo.Count > 0;
 
-    /// <summary>
-    /// Tab the dialog opens on (0 = User Definitions, 1 = Game Data). A
-    /// spell the player can cast already has an authored cast message, so
-    /// it opens on User Definitions where the user's editable content
-    /// lives. A spell with no message — cast by a room / item / monster
-    /// (e.g. a river's damage-on-entry spell) — opens on Game Data, the
-    /// only meaningful info for it. Plain Messages-tab edits (no Game Data
-    /// tab) always stay on tab 0.
-    /// </summary>
+    // Tab the dialog opens on (0 = User Definitions, 1 = Game Data). A spell the player
+    // can cast already has an authored cast message, so it opens on User Definitions where
+    // the user's editable content lives. A spell with no message — cast by a room / item /
+    // monster (e.g. a river's damage-on-entry spell) — opens on Game Data, the only
+    // meaningful info for it. Plain Messages-tab edits (no Game Data tab) always stay on
+    // tab 0.
     public int InitialTabIndex => (HasGameData && _isNew) ? 1 : 0;
 
     public string Title => _isNew ? "Message — (new)" : $"Message — {_original.Name}";
 
-    /// <summary>
-    /// Placeholder-token legend shown under the Response field so an author
-    /// editing a message line can see which bracket pins which capture slot
-    /// (the meaning surfaces on hover). Sourced from the matcher itself so
-    /// the editor and the runtime interpreter never drift.
-    /// </summary>
+    // Placeholder-token legend shown under the Response field so an author editing a
+    // message line can see which bracket pins which capture slot (the meaning surfaces on
+    // hover). Sourced from the matcher itself so the editor and the runtime interpreter
+    // never drift.
     public IReadOnlyList<Game.Spells.MessagePlaceholder> Placeholders =>
         Game.Spells.CasterMessageMatcher.Placeholders;
 
-    /// <summary>
-    /// The Id the record would have at save time given the current Name +
-    /// all five line slots. Used internally for duplicate detection; not
-    /// surfaced in the UI.
-    /// </summary>
+    // The Id the record would have at save time given the current Name + all five line
+    // slots. Used internally for duplicate detection; not surfaced in the UI.
     public string ProjectedId
         => MessageRecord.ComputeId(
             Name            ?? string.Empty,
@@ -209,11 +189,9 @@ public sealed partial class MessageEditDialogViewModel : ObservableObject, IDial
     public bool HasError => GetValidationError() is not null;
     public bool CanSave  => !HasError;
 
-    /// <summary>
-    /// Validation error to surface (red) under the header, or empty when the
-    /// record is valid — in the valid case the placeholder legend takes this
-    /// slot instead. The projected Id is no longer shown here.
-    /// </summary>
+    // Validation error to surface (red) under the header, or empty when the record is
+    // valid — in the valid case the placeholder legend takes this slot instead. The
+    // projected Id is no longer shown here.
     public string StatusMessage => GetValidationError() ?? string.Empty;
 
     public MessageEditDialogViewModel(
@@ -335,34 +313,27 @@ public sealed partial class MessageEditDialogViewModel : ObservableObject, IDial
         return f;
     }
 
-    /// <summary>
-    /// Single bit preserved across save — the reserved 0x0800 the legacy
-    /// MegaMUD format defines but doesn't otherwise use. Anything outside
-    /// the typed-flag mask is stripped on save.
-    /// </summary>
+    // Single bit preserved across save — the reserved 0x0800 the legacy MegaMUD format
+    // defines but doesn't otherwise use. Anything outside the typed-flag mask is stripped
+    // on save.
     private const ushort ReservedBitsMask = 0x0800;
 }
 
-/// <summary>
-/// Result returned from <see cref="MessageEditDialogViewModel"/> on Save.
-/// </summary>
+// Result returned from MessageEditDialogViewModel on Save.
 public sealed record MessageEditResult(
     MessageRecord Original,
     MessageRecord Updated,
     SettingsTier  Tier);
 
-/// <summary>One Use-dropdown row — friendly label for a <see cref="SettingsTier"/>.</summary>
+// One Use-dropdown row — friendly label for a SettingsTier.
 public sealed record TierOption(SettingsTier Value, string Label);
 
-/// <summary>One row on the dialog's read-only Game Data tab — a field label and
-/// its rendered value from the source game-data row.</summary>
+// One row on the dialog's read-only Game Data tab — a field label and its rendered value
+// from the source game-data row.
 public sealed record GameDataInfoRow(string Label, string Value);
 
-/// <summary>
-/// One row in <see cref="MessageEditDialogViewModel.LinkRows"/> —
-/// pairs the back-reference's raw <c>(Table, Number)</c> with the
-/// game-data row's display Name resolved at dialog-open time.
-/// </summary>
+// One row in MessageEditDialogViewModel.LinkRows — pairs the back-reference's raw
+// (Table, Number) with the game-data row's display Name resolved at dialog-open time.
 public sealed record LinkRow(string Table, int Number, string? DisplayName)
 {
     public string Label => DisplayName is null

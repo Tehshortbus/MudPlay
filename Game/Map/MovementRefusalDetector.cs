@@ -5,18 +5,11 @@ using FujinTerm.Terminal;
 
 namespace FujinTerm.Game.Map;
 
-/// <summary>
-/// Watches for the canonical MajorMUD "your move didn't happen" lines
-/// and notifies <see cref="RoomTracker"/> so a Pending move reverts
-/// to Located at the previous room.
-/// </summary>
-/// <remarks>
-/// PR 7.1b ships a conservative initial pattern set drawn from the
-/// realms we have access to (Paradigm, Euphoria-Stock-ish). The list
-/// is extended as new refusal phrasings are observed in real sessions
-/// — keep the patterns anchored (<c>^…$</c>) so chat lines that quote
-/// these phrases don't false-trigger.
-/// </remarks>
+// Watches for the canonical MajorMUD "your move didn't happen" lines and
+// notifies RoomTracker so a Pending move reverts to Located at the previous
+// room. The pattern set is extended as new refusal phrasings turn up in real
+// sessions — keep the patterns anchored (^…$) so chat lines that quote these
+// phrases don't false-trigger.
 public sealed partial class MovementRefusalDetector : IDisposable
 {
     private readonly LineExtractor _lines;
@@ -52,11 +45,8 @@ public sealed partial class MovementRefusalDetector : IDisposable
         _log?.Info("MoveRefusal", $"blocked: {text.Trim()}");
     }
 
-    /// <summary>
-    /// Refusal patterns. Anchored to the whole line so quoted chat
-    /// doesn't false-trigger. Add new variants here as we observe
-    /// them in real sessions.
-    /// </summary>
+    // Refusal patterns. Anchored to the whole line so quoted chat doesn't
+    // false-trigger. Add new variants here as we observe them in real sessions.
     private static readonly Regex[] Patterns =
     {
         CantMoveDirection(),
@@ -83,7 +73,7 @@ public sealed partial class MovementRefusalDetector : IDisposable
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex NoExitThatDirection();
 
-    /// <summary>Paralyzed / confused / stunned variants — "You are too &lt;state&gt; to move."</summary>
+    // Paralyzed / confused / stunned variants — "You are too <state> to move."
     [GeneratedRegex(
         @"^\s*You are too (paralyzed|confused|stunned|dazed) to move\.?\s*$",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
@@ -99,7 +89,8 @@ public sealed partial class MovementRefusalDetector : IDisposable
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex TooEncumberedToMove();
 
-    /// <summary>Door blocking — server returns this when the user issues a direction whose exit has a closed door.</summary>
+    // Door blocking — server returns this when the user issues a direction
+    // whose exit has a closed door.
     [GeneratedRegex(
         @"^\s*The door is closed\.?\s*$",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]

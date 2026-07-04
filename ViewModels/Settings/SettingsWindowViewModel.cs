@@ -5,23 +5,18 @@ using FujinTerm.Services;
 
 namespace FujinTerm.ViewModels.Settings;
 
-/// <summary>
-/// Shell view-model for the Settings window. Owns the section catalog,
-/// the search-box filter, and the OK / Apply / Cancel commit lifecycle.
-/// Every settings tab persists on the loaded character profile — there
-/// is no scope picker in this window. The Defaults / Global / BBS / Char
-/// hierarchy is reserved for game-data record overrides (Phase 5).
-/// </summary>
-/// <remarks>
-/// Commit model:
-/// <list type="bullet">
-///   <item><description><b>OK</b> = apply dirty sections, close.</description></item>
-///   <item><description><b>Apply</b> = apply dirty sections, stay open.</description></item>
-///   <item><description><b>Cancel / title-bar X</b> = drop pending edits, close.</description></item>
-///   <item><description><b>Settings hotkey / menu re-press while open</b> = Save path
-///       (calls <see cref="ApplyAndClose"/>), per CLAUDE.md's edit-window toggle policy.</description></item>
-/// </list>
-/// </remarks>
+// Shell view-model for the Settings window. Owns the section catalog, the
+// search-box filter, and the OK / Apply / Cancel commit lifecycle. Every
+// settings tab persists on the loaded character profile — there is no scope
+// picker in this window. The Defaults / Global / BBS / Char hierarchy is
+// reserved for game-data record overrides.
+//
+// Commit model:
+//   OK     = apply dirty sections, close.
+//   Apply  = apply dirty sections, stay open.
+//   Cancel / title-bar X = drop pending edits, close.
+//   Settings hotkey / menu re-press while open = Save path (ApplyAndClose),
+//     per CLAUDE.md's edit-window toggle policy.
 public sealed partial class SettingsWindowViewModel : ObservableObject, IDisposable
 {
     private readonly ProfileService _profile;
@@ -29,13 +24,13 @@ public sealed partial class SettingsWindowViewModel : ObservableObject, IDisposa
     private readonly Func<string, Task<bool>>? _sendText;
     private bool _suppressSelectionSideEffects;
 
-    /// <summary>Raised when the shell wants the host window to close.</summary>
+    // Raised when the shell wants the host window to close.
     public event Action? CloseRequested;
 
-    /// <summary>Full section catalog — drives the search filter and the sidebar order.</summary>
+    // Full section catalog — drives the search filter and the sidebar order.
     public ObservableCollection<SettingsSectionViewModel> Sections { get; } = new();
 
-    /// <summary>Filtered view the sidebar binds against. Recomputed on search-text change.</summary>
+    // Filtered view the sidebar binds against. Recomputed on search-text change.
     public ObservableCollection<SettingsSectionViewModel> VisibleSections { get; } = new();
 
     [ObservableProperty]
@@ -44,7 +39,7 @@ public sealed partial class SettingsWindowViewModel : ObservableObject, IDisposa
 
     [ObservableProperty] private string _searchText = string.Empty;
 
-    /// <summary>Footer status line — shows the active section name.</summary>
+    // Footer status line — shows the active section name.
     public string StatusText => SelectedSection is null
         ? "Pick a section from the sidebar."
         : SelectedSection.Title;
@@ -70,32 +65,26 @@ public sealed partial class SettingsWindowViewModel : ObservableObject, IDisposa
             : Sections.FirstOrDefault();
     }
 
-    /// <summary>
-    /// Tears down every section so the singletons they hooked (ProfileService,
-    /// GameDataCache, PlayerState, spellbook, keybindings) release their
-    /// references. Called by the host window's <c>Closed</c> handler; without
-    /// it each reopen of Settings leaks its entire VM graph for the app's life.
-    /// </summary>
+    // Tears down every section so the singletons they hooked (ProfileService,
+    // GameDataCache, PlayerState, spellbook, keybindings) release their
+    // references. Called by the host window's Closed handler; without it each
+    // reopen of Settings leaks its entire VM graph for the app's life.
     public void Dispose()
     {
         foreach (SettingsSectionViewModel section in Sections)
             section.Dispose();
     }
 
-    /// <summary>
-    /// True once the user has chosen a commit path (OK / Apply-and-close
-    /// or Cancel). Lets the host window's Closing handler distinguish
-    /// "X / Alt-F4 with no explicit decision" from "we already discarded
-    /// / saved" and route the no-decision close through <see cref="DiscardChanges"/>.
-    /// </summary>
+    // True once the user has chosen a commit path (OK / Apply-and-close or
+    // Cancel). Lets the host window's Closing handler distinguish "X / Alt-F4
+    // with no explicit decision" from "we already discarded / saved" and route
+    // the no-decision close through DiscardChanges.
     public bool IsCommitted { get; private set; }
 
-    /// <summary>
-    /// Save path — apply every dirty section, then ask the host window to
-    /// close. Called by the OK button AND by the MainWindow toggle-hotkey
-    /// re-press path (per CLAUDE.md). When Confirm save settings is on,
-    /// "No" returns to the editor with no save and no close.
-    /// </summary>
+    // Save path — apply every dirty section, then ask the host window to close.
+    // Called by the OK button AND by the MainWindow toggle-hotkey re-press path
+    // (per CLAUDE.md). When Confirm save settings is on, "No" returns to the
+    // editor with no save and no close.
     public async void ApplyAndClose()
     {
         if (!await Services.AppServices.Current.Confirm.ConfirmSaveAsync()) return;
@@ -104,10 +93,8 @@ public sealed partial class SettingsWindowViewModel : ObservableObject, IDisposa
         CloseRequested?.Invoke();
     }
 
-    /// <summary>
-    /// Discard path — drop pending edits without writing, then close.
-    /// Called by the Cancel button.
-    /// </summary>
+    // Discard path — drop pending edits without writing, then close. Called by
+    // the Cancel button.
     public void DiscardAndClose()
     {
         DiscardChanges();
@@ -115,11 +102,9 @@ public sealed partial class SettingsWindowViewModel : ObservableObject, IDisposa
         CloseRequested?.Invoke();
     }
 
-    /// <summary>
-    /// Drop pending edits but don't close the window. Used by the host
-    /// window's Closing handler to route X / Alt-F4 through the same
-    /// rollback logic as Cancel without re-entering Close.
-    /// </summary>
+    // Drop pending edits but don't close the window. Used by the host window's
+    // Closing handler to route X / Alt-F4 through the same rollback logic as
+    // Cancel without re-entering Close.
     public void DiscardChanges()
     {
         foreach (SettingsSectionViewModel s in Sections) s.Discard();
@@ -158,16 +143,12 @@ public sealed partial class SettingsWindowViewModel : ObservableObject, IDisposa
 
     partial void OnSearchTextChanged(string value) => RebuildVisibleSections();
 
-    /// <summary>
-    /// Clear the search box whenever the user lands on a section so the
-    /// filter doesn't persist after the click that resolved it. Setting
-    /// <see cref="SearchText"/> here triggers
-    /// <see cref="OnSearchTextChanged"/> which rebuilds the sidebar back
-    /// to the full list. Suppressed during <see cref="RebuildVisibleSections"/>
-    /// because the Clear / Add cycle briefly empties the ListBox, which
-    /// nulls the bound SelectedItem and would otherwise wipe the filter
-    /// the user just typed.
-    /// </summary>
+    // Clear the search box whenever the user lands on a section so the filter
+    // doesn't persist after the click that resolved it. Setting SearchText here
+    // triggers OnSearchTextChanged which rebuilds the sidebar back to the full
+    // list. Suppressed during RebuildVisibleSections because the Clear / Add
+    // cycle briefly empties the ListBox, which nulls the bound SelectedItem and
+    // would otherwise wipe the filter the user just typed.
     partial void OnSelectedSectionChanged(SettingsSectionViewModel? value)
     {
         if (_suppressSelectionSideEffects) return;
@@ -219,11 +200,8 @@ public sealed partial class SettingsWindowViewModel : ObservableObject, IDisposa
         return false;
     }
 
-    /// <summary>
-    /// Populate the sidebar with placeholders for every tab. Real section
-    /// VMs land in subsequent PRs — for now each placeholder advertises
-    /// the phase that will wire it. Order follows the UI design spec.
-    /// </summary>
+    // Populate the sidebar with a section VM per tab, in UI-design-spec order.
+    // Tabs not yet wired render as stub placeholders (see StubSectionViewModel).
     private void SeedSections()
     {
         Sections.Add(new GeneralSectionViewModel(_profile));
@@ -240,9 +218,6 @@ public sealed partial class SettingsWindowViewModel : ObservableObject, IDisposa
             AppServices.Current.Display,
             AppServices.Current.Settings));
 
-        // Phase 4 PR 4.8 stub tabs — disabled controls with per-field tooltips
-        // showing the owning PR. Real persistence + wiring lands per the
-        // tooltip on each row.
         Sections.Add(new HealthSectionViewModel());
         Sections.Add(new SpellsSectionViewModel());
         Sections.Add(new CombatSectionViewModel());

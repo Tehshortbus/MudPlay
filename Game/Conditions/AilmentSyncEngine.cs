@@ -6,64 +6,46 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game.Conditions;
 
-/// <summary>
-/// Outbound ailment-sync: when the local character catches a curable
-/// ailment (poison / blindness / confusion / disease) or is held
-/// (movement-prevented), this engine (1) announces it on the say channel —
-/// <c>.@poisoned</c> / <c>.@blind</c> / <c>.@confused</c> /
-/// <c>.@diseased</c> / <c>.@held</c> — so other FujinTerm clients in the
-/// room can mirror our state on their party window (and a member with a
-/// cure-holds spell can free us), and (2) for the four curable ailments
-/// telepaths an <c>@wait</c> to the party leader so the party pauses while
-/// we're afflicted. On clear it telepaths the matching <c>@ok</c> (only
-/// when the last wait reason releases — see <see cref="PartyRestSync"/>).
-/// No clear-side say announce.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Transitions are read off <see cref="ConditionTracker.ActiveFlags"/>
-/// directly — we diff the added / removed bits per change rather than
-/// subscribing to <see cref="ConditionTracker.ConditionApplied"/> /
-/// <c>ConditionEnded</c>. A single inbound line that toggles two
-/// ailments at once still produces one decision per flag, and the engine
-/// stays decoupled from individual <see cref="MessageRecord"/>s.
-/// </para>
-/// <para>
-/// The say-announce only fires when we're <b>in a party</b> AND we have
-/// <b>no cure spell configured</b> for that ailment — if we can self-cure
-/// we just clear our own condition silently, and out of a party there's no
-/// one to tell. On top of that the per-ailment <c>DoNotAnnounce&lt;X&gt;</c>
-/// gate (<see cref="SpellsSettings"/>, Char tier) suppresses the curable
-/// four; the <c>Ignore&lt;X&gt;</c> gate independently suppresses their
-/// <c>@wait</c>. Held has no settings gate — only the in-party / no-cure
-/// rule applies.
-/// </para>
-/// <para>
-/// Held is special: it never telepaths an <c>@wait</c>. The leader is
-/// paused by the inbound <c>.@held</c> say (which doubles as a "cure my
-/// hold" identifier), so the affliction registers a silent
-/// <see cref="WaitReason.Held"/> purely so the balanced <c>@ok</c> on
-/// last-clear releases the leader once every reason clears.
-/// </para>
-/// <para>
-/// The say wire format prefixes the token with a period — MajorMUD's
-/// say-channel prefix — so <c>.@poisoned</c> is what lands on the wire.
-/// </para>
-/// </remarks>
+// Outbound ailment-sync: when the local character catches a curable ailment
+// (poison / blindness / confusion / disease) or is held (movement-prevented),
+// this engine (1) announces it on the say channel — .@poisoned / .@blind /
+// .@confused / .@diseased / .@held — so other clients in the room can mirror our
+// state on their party window (and a member with a cure-holds spell can free
+// us), and (2) for the four curable ailments telepaths an @wait to the party
+// leader so the party pauses while we're afflicted. On clear it telepaths the
+// matching @ok (only when the last wait reason releases — see PartyRestSync). No
+// clear-side say announce.
+//
+// Transitions are read off ConditionTracker.ActiveFlags directly — we diff the
+// added / removed bits per change rather than subscribing to
+// ConditionTracker.ConditionApplied / ConditionEnded. A single inbound line that
+// toggles two ailments at once still produces one decision per flag, and the
+// engine stays decoupled from individual MessageRecords.
+//
+// The say-announce only fires when we're in a party AND we have no cure spell
+// configured for that ailment — if we can self-cure we just clear our own
+// condition silently, and out of a party there's no one to tell. On top of that
+// the per-ailment DoNotAnnounce<X> gate (SpellsSettings, Char tier) suppresses
+// the curable four; the Ignore<X> gate independently suppresses their @wait.
+// Held has no settings gate — only the in-party / no-cure rule applies.
+//
+// Held is special: it never telepaths an @wait. The leader is paused by the
+// inbound .@held say (which doubles as a "cure my hold" identifier), so the
+// affliction registers a silent WaitReason.Held purely so the balanced @ok on
+// last-clear releases the leader once every reason clears.
+//
+// The say wire format prefixes the token with a period — MajorMUD's say-channel
+// prefix — so .@poisoned is what lands on the wire.
 public sealed class AilmentSyncEngine : IDisposable
 {
-    /// <summary>LogService category — appears as <c>[Ailment]</c> rows.</summary>
+    // LogService category — appears as [Ailment] rows.
     public const string LogCategory = "Ailment";
 
-    /// <summary>
-    /// The ailments we sync, with their say token, the
-    /// <see cref="WaitReason"/> they hold on the leader, and whether they
-    /// telepath an <c>@wait</c> on top of the say-announce. Confusion is
-    /// included even though no realm cure exists for it (stock / paramud) —
-    /// the announce still lets the party react. Held (<c>TelepathWait</c>
-    /// false) never sends <c>@wait</c>: its leader-pause rides the
-    /// <c>.@held</c> say.
-    /// </summary>
+    // The ailments we sync, with their say token, the WaitReason they hold on the
+    // leader, and whether they telepath an @wait on top of the say-announce.
+    // Confusion is included even though no realm cure exists for it (stock /
+    // paramud) — the announce still lets the party react. Held (TelepathWait
+    // false) never sends @wait: its leader-pause rides the .@held say.
     private static readonly (MessageFlags Flag, string SayToken, WaitReason Reason, bool TelepathWait)[] Ailments =
     {
         (MessageFlags.Poisoned, "@poisoned", WaitReason.Poison,    true),
@@ -108,12 +90,9 @@ public sealed class AilmentSyncEngine : IDisposable
         _conditions.PropertyChanged += OnConditionsChanged;
     }
 
-    /// <summary>
-    /// Bind the say wire-sender. Without it the say-announce is a silent
-    /// no-op (the @wait still routes through <see cref="PartyRestSync"/>'s
-    /// own sender). MainWindowViewModel supplies the wrapped engine
-    /// sender alongside the other Phase 6 hookups.
-    /// </summary>
+    // Bind the say wire-sender. Without it the say-announce is a silent no-op (the
+    // @wait still routes through PartyRestSync's own sender). MainWindowViewModel
+    // supplies the wrapped engine sender alongside the other engine hookups.
     public void SetWireSender(Action<byte[]> sender)
     {
         ArgumentNullException.ThrowIfNull(sender);
@@ -166,14 +145,11 @@ public sealed class AilmentSyncEngine : IDisposable
         }
     }
 
-    /// <summary>
-    /// Whether to say-announce <paramref name="flag"/>. Two cross-cutting
-    /// gates apply to every ailment: we must be <b>in a party</b> (no one to
-    /// tell otherwise) and have <b>no cure spell configured</b> for it (if we
-    /// can self-cure, we clear it silently). The per-ailment
-    /// <c>DoNotAnnounce&lt;X&gt;</c> setting suppresses the curable four on top
-    /// of that; held has no such setting.
-    /// </summary>
+    // Whether to say-announce flag. Two cross-cutting gates apply to every
+    // ailment: we must be in a party (no one to tell otherwise) and have no cure
+    // spell configured for it (if we can self-cure, we clear it silently). The
+    // per-ailment DoNotAnnounce<X> setting suppresses the curable four on top of
+    // that; held has no such setting.
     private bool ShouldAnnounce(MessageFlags flag, SpellsSettings s, bool inParty)
     {
         if (!inParty) return false;

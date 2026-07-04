@@ -9,41 +9,39 @@ using FujinTerm.Services;
 
 namespace FujinTerm.ViewModels.CharacterWorkshop;
 
-/// <summary>
-/// Modeless editor for the active set's quest overlay (<c>{set}/quests.json</c>):
-/// per quest the user sets a display name, show/hide visibility, and amplifying
-/// step markdown over the crawler's auto-draft. Every crawled quest is listed —
-/// hidden ones included, so they can be un-hidden. The user can also <b>Add</b> a
-/// custom quest the crawl never finds (a self-contained manual row in the reserved
-/// <see cref="QuestDefinition.ManualFlagBase"/> range — <b>Delete</b> removes it) and
-/// <b>Block</b> a crawled quest a set surfaces spuriously (a journal-suppressing flag
-/// that keeps the row here so it can be un-blocked). <b>Save</b> writes the overlay
-/// as a delta (untouched seed/default rows aren't frozen in, manual rows verbatim) via
-/// <see cref="QuestStore.Save"/>; <b>Cancel</b> / title-bar X discard. Standard
-/// edit-window contract (CLAUDE.md): Save commits, X / Cancel discards.
-/// </summary>
+// Modeless editor for the active set's quest overlay ({set}/quests.json): per
+// quest the user sets a display name, show/hide visibility, and amplifying step
+// markdown over the crawler's auto-draft. Every crawled quest is listed — hidden
+// ones included, so they can be un-hidden. The user can also Add a custom quest
+// the crawl never finds (a self-contained manual row in the reserved
+// QuestDefinition.ManualFlagBase range — Delete removes it) and Block a crawled
+// quest a set surfaces spuriously (a journal-suppressing flag that keeps the row
+// here so it can be un-blocked). Save writes the overlay as a delta (untouched
+// seed/default rows aren't frozen in, manual rows verbatim) via QuestStore.Save;
+// Cancel / title-bar X discard. Standard edit-window contract: Save commits,
+// X / Cancel discards.
 public sealed partial class QuestEditorViewModel : ObservableObject, IDialogViewModel<bool>
 {
     public event Action<bool>? CloseRequested;
 
     private readonly QuestStore _quests;
 
-    /// <summary>Every crawled quest in crawl order (flag, then band level), editable.</summary>
+    // Every crawled quest in crawl order (flag, then band level), editable.
     public ObservableCollection<QuestEditRowViewModel> Quests { get; } = new();
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasSelection))]
     private QuestEditRowViewModel? _selectedQuest;
 
-    /// <summary>False when the active set crawls no quests — drives the empty-state hint.</summary>
+    // False when the active set crawls no quests — drives the empty-state hint.
     public bool HasQuests => Quests.Count > 0;
 
-    /// <summary>True when a quest is selected — gates the detail pane.</summary>
+    // True when a quest is selected — gates the detail pane.
     public bool HasSelection => SelectedQuest is not null;
 
-    /// <param name="gameData">Active set, source of the crawl + item names.</param>
-    /// <param name="quests">Overlay store the edits persist to.</param>
-    /// <param name="classId">Character class number for class-resolved bonus labels, or <c>null</c> for the no-class default.</param>
+    // gameData: active set, source of the crawl + item names. quests: overlay store
+    // the edits persist to. classId: character class number for class-resolved
+    // bonus labels, or null for the no-class default.
     public QuestEditorViewModel(GameDataCache gameData, QuestStore quests, int? classId)
     {
         ArgumentNullException.ThrowIfNull(gameData);

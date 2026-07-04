@@ -4,21 +4,14 @@ using FujinTerm.Models.GameData;
 
 namespace FujinTerm.Game.Remote;
 
-/// <summary>
-/// Consumer of <see cref="RemoteCommandManager"/> for
-/// <c>@equip-&lt;setname&gt;</c> — a permitted party member asks us to swap to
-/// one of our saved gear sets. The set keyword is the suffix after
-/// <c>@equip-</c> (e.g. <c>@equip-fighting</c>); the engine's prefix router
-/// folds it in as <see cref="RemoteCommandContext.Args"/>[0]. Resolves the set
-/// by keyword (then name) and drives <see cref="EquipmentManager.ApplyByKeyword"/>.
-/// </summary>
-/// <remarks>
-/// <see cref="PlayerRemoteControls.ExecuteCommands"/>-gated per the catalog —
-/// it's a "do something on my behalf" action, like <c>@do</c> / <c>@train</c>.
-/// Failure replies (unknown set, busy) obey
-/// <see cref="RemoteCommandManager.WarnOnDenial"/>; the success acknowledgement
-/// is sent unconditionally.
-/// </remarks>
+// @equip-<setname> — a permitted party member asks us to swap to one of our
+// saved gear sets. The set keyword is the suffix after @equip- (e.g.
+// @equip-fighting); the engine's prefix router folds it in as Args[0]. Resolves
+// the set by keyword (then name) and drives EquipmentManager.ApplyByKeyword.
+//
+// ExecuteCommands-gated per the catalog — a "do something on my behalf" action,
+// like @do / @train. Failure replies (unknown set, busy) obey WarnOnDenial; the
+// success acknowledgement is sent unconditionally.
 public sealed class EquipHandler : IDisposable
 {
     // Bare key the catalog/@help/tooltips show; Prefix is the wire-match form.

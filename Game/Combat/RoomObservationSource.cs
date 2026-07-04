@@ -1,29 +1,24 @@
 namespace FujinTerm.Game.Combat;
 
-/// <summary>
-/// Which code path produced a <see cref="RoomEntitiesObservation"/>.
-/// Carried so consumers (and the LogPane) can tell a real room display
-/// apart from a synthetic re-fire. Critical for the "wasted re-attack
-/// mid-combat" diagnosis: a target-clearing empty observation can come
-/// from a genuine room change, a death-line removal, or an empty
-/// Also-Here parse — and the fix differs per source.
-/// </summary>
+// Which code path produced a RoomEntitiesObservation. Carried so consumers (and
+// the LogPane) can tell a real room display apart from a synthetic re-fire.
+// Critical for the "wasted re-attack mid-combat" diagnosis: a target-clearing
+// empty observation can come from a genuine room change, a death-line removal,
+// or an empty Also-Here parse — and the fix differs per source.
 public enum RoomObservationSource
 {
-    /// <summary>Parsed from an <c>Also here:</c> wire line (single- or
-    /// multi-line stitched).</summary>
+    // Parsed from an "Also here:" wire line (single- or multi-line stitched).
     AlsoHere,
 
-    /// <summary>A single entity appended on a "&lt;name&gt; walks in"
-    /// arrival line (<see cref="RoomEntityClassifier.AppendArrivalEntity"/>).</summary>
+    // A single entity appended on a "<name> walks in" arrival line
+    // (RoomEntityClassifier.AppendArrivalEntity).
     Arrival,
 
-    /// <summary>One entity removed on a death line
-    /// (<see cref="RoomEntityClassifier.RemoveDeadEntity"/>). May leave
-    /// the list empty when the last monster dies.</summary>
+    // One entity removed on a death line (RoomEntityClassifier.RemoveDeadEntity).
+    // May leave the list empty when the last monster dies.
     Death,
 
-    /// <summary>Synthetic empty wipe on a confirmed room change
-    /// (<see cref="RoomEntityClassifier.NoteRoomChanged"/>).</summary>
+    // Synthetic empty wipe on a confirmed room change
+    // (RoomEntityClassifier.NoteRoomChanged).
     RoomChange,
 }

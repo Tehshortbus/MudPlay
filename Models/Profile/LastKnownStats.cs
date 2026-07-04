@@ -1,35 +1,23 @@
 namespace FujinTerm.Models.Profile;
 
-/// <summary>
-/// Persisted snapshot of the most recent
-/// <see cref="Game.PlayerStats"/> capture — written by
-/// <see cref="Game.StatParser"/> each time it closes a successful
-/// scan window, rehydrated into <see cref="Game.PlayerStats"/> on
-/// <see cref="Services.ProfileService.ProfileLoaded"/>. The point is
-/// that when the user closes the client and reconnects, the live
-/// state surfaces start with the last-observed values instead of
-/// zeros — the next <c>stat</c> / <c>exp</c> just verifies / updates
-/// rather than establishing-from-scratch.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Mirrors every field on <see cref="Game.PlayerStats"/> 1:1.
-/// Whenever a field is added there, this DTO and the snapshot /
-/// hydrate paths in <see cref="Game.StatParser"/> need to grow with
-/// it. (A test pins the field-count parity so a future addition
-/// can't silently drift.)
-/// </para>
-/// <para>
-/// Stored on <see cref="CharacterProfile.LastKnownStats"/>, which
-/// the app's save-on-close hook
-/// (<c>MainWindow.Closing</c>) flushes to disk for any loaded named
-/// profile. A draft profile (no name) doesn't persist — same rule
-/// as the rest of the profile DTO.
-/// </para>
-/// </remarks>
+// Persisted snapshot of the most recent Game.PlayerStats capture — written by
+// Game.StatParser each time it closes a successful scan window, rehydrated into
+// Game.PlayerStats on ProfileService.ProfileLoaded. The point is that when the
+// user closes the client and reconnects, the live state surfaces start with the
+// last-observed values instead of zeros — the next stat / exp just verifies /
+// updates rather than establishing-from-scratch.
+//
+// Mirrors every field on Game.PlayerStats 1:1. Whenever a field is added there,
+// this DTO and the snapshot / hydrate paths in Game.StatParser need to grow with
+// it. (A test pins the field-count parity so a future addition can't silently
+// drift.)
+//
+// Stored on CharacterProfile.LastKnownStats, which the app's save-on-close hook
+// (MainWindow.Closing) flushes to disk for any loaded named profile. A draft
+// profile (no name) doesn't persist — same rule as the rest of the profile DTO.
 public sealed class LastKnownStats
 {
-    /// <summary>JSON schema version for forward-compat migrations.</summary>
+    // JSON schema version for forward-compat migrations.
     public int SchemaVersion { get; set; } = 1;
 
     // ----- Identity ------------------------------------------------------

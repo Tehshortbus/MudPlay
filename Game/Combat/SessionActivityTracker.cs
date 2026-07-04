@@ -1,36 +1,28 @@
 namespace FujinTerm.Game.Combat;
 
-/// <summary>
-/// Phase 11 — counts the session's monster kills, experience earned, and
-/// currency picked up vs. stashed/deposited for the Session Stats panel's
-/// "Session Statistics" section, and keeps a short rolling history of kill /
-/// experience events so the panel can draw kills/hour and exp/hour sparklines.
-/// Produces a <see cref="SessionActivityStats"/> snapshot plus bucketed series
-/// via <see cref="KillsPerHourSeries"/> and <see cref="ExperiencePerHourSeries"/>.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Owns no source subscriptions — kills arrive from
-/// <c>MonsterDeathWatcher.MonsterDied</c> and experience from a
-/// <c>MessageRouter</c> pattern — so inputs are pushed in via the <c>Note*</c>
-/// forwarders and <c>AppServices</c> wires the sources. This mirrors
-/// <see cref="TimeAnalysisTracker"/> and keeps the tracker dependency-free behind
-/// an injectable clock for unit tests. Every <c>Note*</c> call and
-/// <see cref="Snapshot"/> runs on the marshalled dispatch thread (the sources all
-/// fire there), so the counters are lock-free.
-/// </para>
-/// <para>
-/// The headline <see cref="SessionActivityStats.MonstersKilled"/> /
-/// <see cref="SessionActivityStats.ExperienceEarned"/> totals are plain running
-/// counts that never decay. The kill / exp timestamp histories are separate and
-/// pruned to <see cref="RateWindow"/> on every write, since they only feed the
-/// rolling sparklines — old events leave the charts but stay in the totals.
-/// </para>
-/// </remarks>
+// Counts the session's monster kills, experience earned, and currency picked up
+// vs. stashed/deposited for the Session Stats panel's "Session Statistics"
+// section, and keeps a short rolling history of kill / experience events so the
+// panel can draw kills/hour and exp/hour sparklines. Produces a
+// SessionActivityStats snapshot plus bucketed series via KillsPerHourSeries and
+// ExperiencePerHourSeries.
+//
+// Owns no source subscriptions — kills arrive from
+// MonsterDeathWatcher.MonsterDied and experience from a MessageRouter pattern —
+// so inputs are pushed in via the Note* forwarders and AppServices wires the
+// sources. This mirrors TimeAnalysisTracker and keeps the tracker
+// dependency-free behind an injectable clock for unit tests. Every Note* call
+// and Snapshot runs on the marshalled dispatch thread (the sources all fire
+// there), so the counters are lock-free.
+//
+// The headline MonstersKilled / ExperienceEarned totals are plain running counts
+// that never decay. The kill / exp timestamp histories are separate and pruned
+// to RateWindow on every write, since they only feed the rolling sparklines —
+// old events leave the charts but stay in the totals.
 public sealed class SessionActivityTracker
 {
-    /// <summary>How far back the kills/hour and exp/hour sparklines look. Event
-    /// timestamps older than this are pruned from the rolling histories.</summary>
+    // How far back the kills/hour and exp/hour sparklines look. Event timestamps
+    // older than this are pruned from the rolling histories.
     public static readonly TimeSpan RateWindow = TimeSpan.FromMinutes(60);
 
     private readonly Func<DateTimeOffset> _clock;
@@ -51,8 +43,8 @@ public sealed class SessionActivityTracker
     // exp/hour sparkline reflects how much was earned, not just how often.
     private readonly List<(DateTimeOffset At, long Amount)> _recentExp = new();
 
-    /// <summary>Raised after any input updates the counters, so the Session Stats
-    /// VM can refresh. Fires on the dispatch thread.</summary>
+    // Raised after any input updates the counters, so the Session Stats VM can
+    // refresh. Fires on the dispatch thread.
     public event Action? Changed;
 
     public SessionActivityTracker(Func<DateTimeOffset>? clock = null)
@@ -61,7 +53,7 @@ public sealed class SessionActivityTracker
         _sessionStart = _clock();
     }
 
-    /// <summary>Record one monster kill (from <c>MonsterDeathWatcher.MonsterDied</c>).</summary>
+    // Record one monster kill (from MonsterDeathWatcher.MonsterDied).
     public void NoteKill()
     {
         DateTimeOffset now = _clock();
@@ -71,8 +63,8 @@ public sealed class SessionActivityTracker
         Changed?.Invoke();
     }
 
-    /// <summary>Add an experience gain (from the <c>UserGainExperience</c> line).
-    /// Non-positive amounts are ignored.</summary>
+    // Add an experience gain (from the UserGainExperience line). Non-positive
+    // amounts are ignored.
     public void NoteExperience(int amount)
     {
         if (amount <= 0) return;
@@ -83,8 +75,8 @@ public sealed class SessionActivityTracker
         Changed?.Invoke();
     }
 
-    /// <summary>Add currency picked up, as a copper value (auto-collected or
-    /// manually <c>get</c>'d). Non-positive amounts are ignored.</summary>
+    // Add currency picked up, as a copper value (auto-collected or manually
+    // get'd). Non-positive amounts are ignored.
     public void NoteCurrencyCollected(long copper)
     {
         if (copper <= 0) return;
@@ -92,9 +84,8 @@ public sealed class SessionActivityTracker
         Changed?.Invoke();
     }
 
-    /// <summary>Add currency removed from the player this session — stash-room
-    /// <c>hide</c>s and bank <c>dep</c>osits alike — as a copper value.
-    /// Non-positive amounts are ignored.</summary>
+    // Add currency removed from the player this session — stash-room hides and
+    // bank deposits alike — as a copper value. Non-positive amounts are ignored.
     public void NoteCurrencyStashed(long copper)
     {
         if (copper <= 0) return;
@@ -102,7 +93,7 @@ public sealed class SessionActivityTracker
         Changed?.Invoke();
     }
 
-    /// <summary>Point-in-time copy of the session's activity counters.</summary>
+    // Point-in-time copy of the session's activity counters.
     public SessionActivityStats Snapshot() =>
         new(TimeOnline:        _clock() - _sessionStart,
             MonstersKilled:    _monstersKilled,
@@ -110,29 +101,23 @@ public sealed class SessionActivityTracker
             CurrencyCollected: _currencyCollected,
             CurrencyStashed:   _currencyStashed);
 
-    /// <summary>
-    /// Kills/hour as a <paramref name="buckets"/>-point running-average curve
-    /// across the rolling window — oldest point first, ready to feed
-    /// <c>SparklineControl</c>. The window spans the last <see cref="RateWindow"/>,
-    /// clamped to the session start so a young session fills the chart rather than
-    /// trailing a long empty lead-in. Each point is the <i>cumulative</i> rate up
-    /// to that slice's end (kills so far ÷ time so far), so the curve reads as the
-    /// running kills/hour and its right-most point equals the headline
-    /// <see cref="SessionActivityStats.KillsPerHour"/> the panel prints — the two
-    /// are the same figure, not unrelated. (Per-slice instantaneous rates would
-    /// spike to hundreds/hour off a single kill in a few-second slice, which is
-    /// why we average cumulatively instead.)
-    /// </summary>
+    // Kills/hour as a buckets-point running-average curve across the rolling
+    // window — oldest point first, ready to feed SparklineControl. The window
+    // spans the last RateWindow, clamped to the session start so a young session
+    // fills the chart rather than trailing a long empty lead-in. Each point is
+    // the cumulative rate up to that slice's end (kills so far ÷ time so far), so
+    // the curve reads as the running kills/hour and its right-most point equals
+    // the headline KillsPerHour the panel prints — the two are the same figure,
+    // not unrelated. (Per-slice instantaneous rates would spike to hundreds/hour
+    // off a single kill in a few-second slice, which is why we average
+    // cumulatively instead.)
     public IReadOnlyList<double> KillsPerHourSeries(int buckets) =>
         CumulativePerHour(buckets, _recentKills, static t => t, static _ => 1.0);
 
-    /// <summary>
-    /// Experience/hour as a running-average curve, shaped exactly like
-    /// <see cref="KillsPerHourSeries"/> but weighted by the experience amount of
-    /// each gain rather than a flat count — so the curve tracks the running
-    /// exp/hour and its right-most point matches the headline
-    /// <see cref="SessionActivityStats.ExperiencePerHour"/>.
-    /// </summary>
+    // Experience/hour as a running-average curve, shaped exactly like
+    // KillsPerHourSeries but weighted by the experience amount of each gain
+    // rather than a flat count — so the curve tracks the running exp/hour and its
+    // right-most point matches the headline ExperiencePerHour.
     public IReadOnlyList<double> ExperiencePerHourSeries(int buckets) =>
         CumulativePerHour(buckets, _recentExp, static e => e.At, static e => e.Amount);
 
@@ -180,8 +165,8 @@ public sealed class SessionActivityTracker
         return series;
     }
 
-    /// <summary>Zero every counter and restart the session clock — called on the
-    /// connect / character-switch boundary, matching the other Phase 11 trackers.</summary>
+    // Zero every counter and restart the session clock — called on the connect /
+    // character-switch boundary, matching the other session trackers.
     public void Reset()
     {
         _sessionStart = _clock();
