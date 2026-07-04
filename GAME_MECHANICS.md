@@ -33,8 +33,11 @@ it isn't here and you're unsure, ask.
 **Other**
 - **[CONFIRMED]** A weapon equip / swap prints a **single** line — `You are now holding <new>.`.
   Swapping into an occupied weapon hand emits **no** removal line for the old weapon; the
-  displaced weapon returns to the pack silently. (Armor differs: a swap into an occupied armor
-  slot prints `You have removed <old>.` first, then `You are now wearing <new>.`.)
+  displaced weapon returns to the pack silently.
+- **[CONFIRMED]** An armor swap into an occupied slot prints **two separate lines**, in order:
+  `You have removed <old>.` then `You are now wearing <new>.`. (This is the split from a weapon
+  swap: armor names the displaced piece with an explicit removal line, a weapon does not.) The
+  two lines arrive back-to-back but are distinct — the client matches each on its own.
 - **[CONFIRMED]** No effect in the game force-unequips gear (no disarm / removal effects).
   Worn state changes *only* from commands the player or the client issues.
 - **[OBSERVED]** A two-handed weapon needs both hands free; the game rejects the wield while an
