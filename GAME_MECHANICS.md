@@ -108,28 +108,129 @@ conflate them. (Worked examples use the 1.11p data set.)
 
 **2. Spell targeting restriction (e.g. living-only)** *([CONFIRMED])*
 - A spell can carry a targeting tag that disqualifies whole classes of monster. The priest
-  **harm** spell is tagged **living only**, so a monster flagged **NonLiving** takes no damage
-  from it — this is the `Your spell has no effect on <monster>.` case (e.g. `harm` on an acid
-  slime).
+  **harm** spell carries `AffectsLivingOnly` (ability code 108), so a monster flagged
+  **NonLiving** (code 109) takes no damage from it — this is the
+  `Your spell has no effect on <monster>.` case (e.g. `harm` on an acid slime). A spell with **no**
+  targeting tag hits everything: `magic missile` carries no such tag, so it damages living,
+  nonliving, **and** undead alike.
 - This is **not** a resistance and **not** a level gate — it's a hard eligibility mismatch
   between a spell attribute and a monster attribute. Currently caught only **reactively**, off
   the `no effect` line: `OnSpellNoEffect` marks the species + spell immune for the rest of the
   room and gates that spell down the attack cascade (primary → alternate → weapon).
+- The full tag/flag taxonomy (living / nonliving / undead / animal, and the charm family) is in
+  **Spell targeting: monster type tags** below.
 
-**3. Percentage resistance per damage type** *([CONFIRMED])*
-- A monster's `Resist-<type> +N` ability is a **flat N% reduction** of that damage type.
-  Example: #184 has `Resist-Fire +50`, so fire spells deal **half** damage to it.
-- At **100%** the type does **0 damage**; **above 100%** the damage goes **negative** and the
+**3. Damage-type resistance** *([CONFIRMED])*
+
+A spell's damage type is its Spells-table `AttType` column (the same values `LookupEnums`
+labels for the Browser). How resistance applies depends on which type it is — **do not treat all
+three flavors alike**, because only the first supports a pre-emptive skip.
+
+*3a. Elemental resistance — flat, deterministic, pre-emptable.* The five elemental `AttType`s
+map one-to-one onto a monster `Resist-<type>` ability:
+
+| `AttType` | Element | Monster resist ability (code) |
+|---|---|---|
+| 0 | Cold | `Resist-Cold` (3) |
+| 1 | Fire | `Resist-Fire` (5) |
+| 2 | Stone | `Resist-Stone` (65) |
+| 3 | Lightning | `Resist-Lightning` (66) |
+| 5 | Water | `Resist-Water` (147) |
+
+- For these five, `Resist-<type> +N` is a **flat N% reduction** of that element. Example: #184
+  (adolescent red dragon) has `Resist-Fire +50`, so fire spells deal **half** damage. At
+  **100%** the element does **0 damage**; **above 100%** the damage goes **negative** and the
   spell **heals** the monster instead of harming it.
-- There is **no dedicated message**: every spell's verbose hit text differs, so the only tell is
-  the **damage number** in that spell's own hit line — **0 or negative is the resist signal.**
-  Detecting it means reading the per-spell damage value, not matching one string.
-- Not modeled or detected today: a resisted 0 / heal cast produces no `no effect` line, so
-  nothing currently stops the engine from re-casting a spell that heals the monster — "full
-  resist" must never be treated as equivalent to the immunity above.
-- Damage-type resist ability codes in the data: Resist-Cold (3), Resist-Fire (5),
-  Resist-Stone (65), Resist-Lightning (66), Resist-Water (147), Magic Resist (36). Ability
-  code 17 is "damage ignoring magic resistance" — a spell that bypasses the Magic-Resist cut.
+- Because the curve is flat and deterministic, a ≥100% elemental resist is the **only**
+  resistance the engine can safely **pre-empt** — skip the spell before casting when the target
+  resists its element ≥100%.
+- There is **no dedicated message**: every spell's verbose hit text differs, so the only
+  runtime tell is the **damage number** in that spell's own hit line — **0 or negative is the
+  resist signal.** Not modeled today: a resisted 0 / heal cast produces no `no effect` line, so
+  nothing currently stops the engine from re-casting a spell that heals the monster.
+
+*3b. Magic Resist (M.R., code 36) — probabilistic, NOT pre-emptable.* `AttType 4` "Normal" spells
+(mage `magic missile`, priest `harm`) are **not** elemental, so the elemental Select-Case above
+explicitly **skips** them (it skips `AttType 4` Normal and `AttType 6` Poison). Their only
+damage-type mitigation is the monster's `M.R.` ability, **not** a `Resist-<type>` — and M.R.
+never nulls a spell deterministically from its value alone. It works through **two independent
+effects, each separately gated** (equations below are the reference client's own combat math):
+
+- **Partial damage reduction** — gated by the spell's *damage ability code*. Applies only to code
+  **1** `Damage`; code **17** `Damage(-MR)` **bypasses** it. `baseline M.R. is 50` (the no-change
+  point): for M.R. ≥ 50 the reduction is `(M.R. − 50) / 200`, climbing to a hard **cap of 50%** at
+  M.R. 150 and stopping (the target's own AntiMagic raises the cap to **75%**, via `M.R. / 200`).
+  Below M.R. 50 the term goes negative — low M.R. *amplifies* damage taken. So even an enormous
+  M.R. only ever **halves** (or, under AntiMagic, three-quarters) the damage — it can't reach 0.
+- **Full-resist chance** — gated by the spell's `TypeOfResists` (below). A separate per-cast roll
+  can negate the spell entirely, with probability `M.R. / 2` percent (M.R. 100 → 50% chance,
+  capped at 98% for M.R. ≥ 196) — a *chance*, never a certainty short of the cap.
+- Net: **100 M.R. never means 0 damage**, so M.R. must **never** feed a ≥100%→skip guard. Both
+  example spells actually carry code **17** (bypass the partial cut), which shows how the two
+  gates combine: `magic missile` (code 17 + `TypeOfResists 0`) takes **neither** effect — it
+  always lands full, the reliable nuker; `harm` (code 17 + `TypeOfResists 2`) takes no partial
+  cut but *can* be fully-resist-rolled; a code-**1** Normal spell would eat the capped partial cut
+  on top. In every case a high-M.R. monster can still take Normal-spell damage.
+
+*3b-note. `TypeOfResists` — the full-resist eligibility flag.* The Spells-table `TypeOfResists`
+column (values 0/1/2) gates whether the full-resist roll above can fire, independent of the
+damage type: **0 = never** (no full-resist roll — the spell always lands its post-reduction
+damage), **1 = only when the target has AntiMagic**, **2 = always eligible**. Elemental attack
+spells are typically `TypeOfResists 0` (fireball / frost jet / lightning bolt / acid jet all 0),
+so their only mitigation is the deterministic elemental cut in 3a — which is exactly why a ≥100%
+elemental resist is safely pre-emptable. Among Normal spells, `magic missile` is `TypeOfResists 0`
+(never rolled-resisted) while `harm` is `TypeOfResists 2`.
+
+*3c. Poison (`AttType 6`) — not resistible, binary immunity.* Poison has **no** resist value and
+**no** `Resist-Poison` code — a target is either affected or immune, never "partially resisted."
+- Immunity is sourced from **race / items**, not a resist stat: the **Kang** race is
+  poison-immune, the **golden headdress** item grants poison immunity, and **swamp boots** /
+  **snakeskin boots** negate certain room-cast "swamp poison" effects — snakeskin also grants
+  immunity to certain poisons, varying by game-data set.
+
+## Spell targeting: monster type tags
+
+A spell's eligibility against a monster is a match between a **spell-side targeting tag** and a
+**monster-side type flag**. A spell with no targeting tag affects every monster; a tagged spell
+only affects monsters carrying the matching flag (or, for `living-only`, *lacking* the NonLiving
+flag). These are hard eligibility gates, independent of resistance and level immunity above.
+
+**Monster-side type flags** *([CONFIRMED] — verified against 1.11p)*
+- **NonLiving** — the `NonLiving` ability (code 109). Its **absence** means the monster is living;
+  there is no separate "living" flag.
+- **Undead** — a **dedicated `Undead` column** on the Monsters row, *separate* from NonLiving. It
+  is a **byte-boolean**: **0 = not undead, any non-zero = undead.** The MDB stores the Boolean
+  `True` as `-1`, so across 1.11p the column holds `0` (986 rows), `1` (107 rows), **and `255`**
+  (8 rows — `-1` as a byte); all non-zero values mean undead. **Test `Undead != 0`, never
+  `== 1`.**
+- **Animal** — the `Animal` ability (code 78). Gates the animal-charm spells below.
+- These are independent axes: a monster can be NonLiving without being Undead. Worked examples:
+
+  | Monster | NonLiving (109) | Undead (col) | Animal (78) | Net |
+  |---|---|---|---|---|
+  | thug (#10) | — | 0 | — | living |
+  | lashworm (#2) | — | 0 | ✓ | living animal |
+  | acid slime (#5) | ✓ | 0 | — | nonliving, **not** undead |
+  | skeleton (#11) | ✓ | 1 | — | nonliving **and** undead |
+
+**Spell-side targeting tags** *([CONFIRMED])*
+- `AffectsLivingOnly` (code 108) — only affects monsters **without** the NonLiving flag (e.g.
+  `harm`, `enslave`).
+- `AffectsUndeadOnly` (code 23) — only affects monsters with `Undead != 0`.
+- `AffectsAnimalsOnly` (code 80) — only affects monsters with the Animal flag (e.g. `charm
+  animal`).
+- No tag — affects all monster types (e.g. `magic missile`).
+
+**Charm / enslave family** *([CONFIRMED] except where noted)*
+- All charm-type control spells share the same base ability, `Enslave` (code 6); they differ
+  **only** by their targeting tag. `enslave` (#55) is `Enslave` + `AffectsLivingOnly` (any living
+  target); `charm animal` (#92) is `Enslave` + `AffectsAnimalsOnly` (needs the Animal flag);
+  `song of charming` (#49, bard) is `Enslave` + `AffectsLivingOnly`.
+- **[NEEDS CONFIRMATION]** A "charm level" is believed to cap what these can affect (possibly the
+  caster's minimum level for the spell to take). This could **not** be verified: the reference
+  client only *displays* these tags — it does not model charm success, and no "charm level" column
+  exists on the Spells row (only `ReqLevel` / `MageryLVL` / `Cap`, which are learn/scaling params).
+  Ask before building on a charm-level rule.
 
 ## Items & acquisition
 
