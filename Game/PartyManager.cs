@@ -383,8 +383,7 @@ public sealed partial class PartyManager : IDisposable
         State.SelfIsLeader = true;
         State.LeaderName ??= LocalCharacterName;
         AddSelfIfKnown(isLeader: true);
-        PartyMember row = AddOrTouchMember(name);
-        row.IsInvited = true;
+        AddOrTouchMember(name, isInvited: true);
     }
 
     // "You are now following X." — WE joined X's party, so X leads. Add X with
@@ -837,9 +836,8 @@ public sealed partial class PartyManager : IDisposable
                 ? invited.Groups["class"].Value.Trim()
                 : string.Empty;
             _parBlockNames.Add(inviteeName);
-            PartyMember row = AddOrTouchMember(inviteeName);
+            PartyMember row = AddOrTouchMember(inviteeName, isInvited: true);
             if (inviteeClass.Length > 0) row.Class = inviteeClass;
-            row.IsInvited = true;
             // Sending an invite implies leadership-in-the-making —
             // mirrors what OnYouInvited does when the outbound echo
             // fires, so the X-uninvite button is enabled even if the
@@ -980,7 +978,7 @@ public sealed partial class PartyManager : IDisposable
     // character's row for the first time would race the IsSelf assignment and
     // PartyPoller would telepath /Fujin @health to ourselves — the server
     // replies "Why are you telepathing to yourself?" and the noise lands in chat.
-    private PartyMember AddOrTouchMember(string name, bool isSelf = false)
+    private PartyMember AddOrTouchMember(string name, bool isSelf = false, bool isInvited = false)
     {
         string given = GivenNameOf(name);
         foreach (PartyMember m in State.Members)
@@ -991,10 +989,20 @@ public sealed partial class PartyManager : IDisposable
                 if (name.Length > m.Name.Length) m.Name = name;
                 // Upgrade IsSelf if a later observation establishes it.
                 if (isSelf && !m.IsSelf) m.IsSelf = true;
+                // Re-seed the invite chip on an existing row (double-invite echo
+                // or a par re-observation). A join never clears it here — the
+                // accept paths own IsInvited=false.
+                if (isInvited && !m.IsInvited) m.IsInvited = true;
                 return m;
             }
         }
-        PartyMember created = new() { Name = name, IsSelf = isSelf };
+        // IsInvited must be set BEFORE the row enters the collection: Members.Add
+        // fires CollectionChanged.Add synchronously, and PartyPoller's on-join
+        // @health round-trip subscribes to that add. If the flag were set after
+        // the add (as it once was), the subscriber would see a still-false
+        // IsInvited and fire @health at a pending invitee — the request must wait
+        // for the invitee to actually join. See PartyMember._isInvited.
+        PartyMember created = new() { Name = name, IsSelf = isSelf, IsInvited = isInvited };
         State.Members.Add(created);
         return created;
     }
