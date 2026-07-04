@@ -11,15 +11,20 @@ namespace FujinTerm.Game.Map;
 //     suppressed and doesn't desync the tracker.
 //   - Text-exit movement — verbs like "go path", "enter portal", "climb tree",
 //     "swim river" move the player but don't map to a cardinal Direction. The
-//     observer fires the string-overload of NoteMoveSent so the step is
-//     captured in CharacterProfile.RecentSteps for replay.
+//     observer fires the debounced string-overload of NoteMoveSent so a
+//     manually-typed step is captured in CharacterProfile.RecentSteps for replay.
+//   - Bare cardinal movement — the observer fires the debounced Direction
+//     overload so manually-typed cardinals still update the tracker (needed to
+//     walk a chain of same-named rooms, e.g. Stone Street corridors, where
+//     ReconcileFromConfirmed would otherwise read the redisplay as "no move").
 //
-// Bare cardinal directions (n, north, etc.) are deliberately NOT announced
-// here. The walker / loop-runner already call NoteMoveSent(Direction) directly
-// before they pump bytes; announcing again from this hook would double-enqueue
-// the move in the tracker's pending queue. For manual cardinal typing, the
-// existing observation path (1-of-1 candidate match) handles the landing
-// correctly without needing a pre-announce.
+// Both movement paths route through the tracker's echo-debounce
+// (NoteMoveSentByObserver). The walker / loop-runner already call NoteMoveSent
+// directly before they pump bytes; those bytes then flow back here, so a raw
+// re-announce would double-enqueue the step in the tracker's pending queue —
+// which for text exits strands a phantom cardinal-less move that stalls the
+// walk. The debounce (matching command / direction within 100 ms) drops the
+// engine's own echo while letting genuine manual typing through.
 //
 // Hooked into the wire-send pipeline by MainWindowViewModel.SendUserInput.
 // Same pattern as the trainer-menu / stat-parser / suicide-password
@@ -56,7 +61,12 @@ public sealed partial class OutboundMovementObserver
 
         if (TextMovementPattern().IsMatch(cmd))
         {
-            _tracker.NoteMoveSent(cmd);
+            // Debounced overload: the walker / loop-runner (SpecialExitDispatch)
+            // already announced this text exit WITH its cardinal before pumping
+            // the bytes that land here. Announcing again would double-enqueue the
+            // step and stall the walk. Manual text typing (no engine pre-announce)
+            // still lands as a real move.
+            _tracker.NoteMoveSentByObserver(cmd);
             _log?.Info("OutboundMovement", $"Text-exit move announced: '{cmd}'.");
             return;
         }

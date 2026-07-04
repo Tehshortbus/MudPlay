@@ -198,6 +198,29 @@ public sealed class OutboundMovementObserverTests : IDisposable
         Assert.Equal(new RoomKey(1, 2), tracker.State.CurrentRoom!.Key);
     }
 
+    [Fact]
+    public void TextExit_RapidDuplicate_DebouncedByTracker()
+    {
+        // Real text-exit flow: SpecialExitDispatch (walker / loop-runner)
+        // announces the text exit WITH its resolved cardinal, then pumps the
+        // bytes — which flow back here through SendUserInput. Without the
+        // debounce the observer's cardinal-less echo double-enqueues the step,
+        // leaving a phantom pending move that holds the tracker in Pending after
+        // the walker has already landed (the reported movement stall). Proves the
+        // queue has one entry: the predicted-neighbour match lands Confirmed, not
+        // "move confirmed, queue not empty" Pending.
+        (RoomTracker tracker, OutboundMovementObserver observer) = NewObserver();
+        tracker.SetLocated(new RoomKey(1, 1));
+
+        tracker.NoteMoveSent("go path", cardinal: Direction.N);
+        observer.ObserveOutbound(Cmd("go path"));
+
+        tracker.NoteRoomObserved(Obs("North Square", Direction.S));
+
+        Assert.Equal(RoomConfidence.Confirmed, tracker.State.Confidence);
+        Assert.Equal(new RoomKey(1, 2), tracker.State.CurrentRoom!.Key);
+    }
+
     // ----- safety guards ---------------------------------------------
 
     [Fact]
