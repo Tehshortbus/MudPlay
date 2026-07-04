@@ -12,6 +12,9 @@ Pre-emptive elemental-resistance guard for attack spells.
 **Changed**
 - `GAME_MECHANICS.md` mechanism 3a now records that an elemental resist is **signed**: a negative `Resist-<type>` is a *vulnerability* (the element deals extra damage). The full curve runs vulnerability (negative) → normal (0) → immunity (100) → healing (> 100), and only the ≥ 100% end is safely pre-emptable.
 
+**Fixed**
+- **Undead monsters stored as `255` were shown as *not* undead in the Game Data browser.** The Monsters detail pane tested the `Undead` byte-boolean with `== 1`, but the MDB stores Boolean `True` as `-1`, which arrives as **`255`** for 8 of 1.11p's undead (banshee, zombie cat, skeletal steed, …). The test is now `!= 0`, so every undead flag renders regardless of whether the source stored `1` or `255`.
+
 ## 1.2.3
 
 Corrects how damage-type resistance splits into three unlike flavors, and records the spell-targeting monster-type taxonomy.
