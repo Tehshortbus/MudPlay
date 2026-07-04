@@ -1246,6 +1246,42 @@ public sealed class CastingDirectorTests
     }
 
     [Fact]
+    public void PartyHeal_SelfIsLowest_CastsBareCode_NotOwnParName()
+    {
+        // Live bug: the minor party-heal picked the self member and cast
+        // "mihe Raijin Par" — appending our own par-row "Given Family"
+        // name. MajorMUD self-casts take the bare code; the trailing name
+        // makes the server reject the cast. Fix: MemberTarget(self) → null.
+        using PartyHarness h = new();
+        h.PartySettings.MinorPartyHealSpell = "mihe";
+        h.PartySettings.MinorHealMemberThresholdPercent = 70;
+        PartyMember self = h.AddMember("Raijin Par", hpPercent: 55);
+        self.IsSelf = true;
+
+        h.Director.Evaluate();
+
+        Assert.Single(h.CastsSent);
+        Assert.Equal("mihe", h.CastsSent[0]);
+    }
+
+    [Fact]
+    public void PartyHeal_OtherMemberWithFamilyName_TargetsGivenNameOnly()
+    {
+        // A member's par-row name is "Given Family" ("Raijin Par").
+        // MajorMUD targets a cast by first-name token, so the family word
+        // is stripped — cast "mihe Raijin", not "mihe Raijin Par".
+        using PartyHarness h = new();
+        h.PartySettings.MinorPartyHealSpell = "mihe";
+        h.PartySettings.MinorHealMemberThresholdPercent = 70;
+        h.AddMember("Raijin Par", hpPercent: 55);
+
+        h.Director.Evaluate();
+
+        Assert.Single(h.CastsSent);
+        Assert.Equal("mihe Raijin", h.CastsSent[0]);
+    }
+
+    [Fact]
     public void PartyHeal_TwoMembersBelow_FiresAoe()
     {
         using PartyHarness h = new();

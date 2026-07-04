@@ -696,6 +696,22 @@ public sealed class AutoWalkManager : IRecoverableEngine
         // Settings.Other.MaxHiddenSearchAttempts.
         if (exit.Hint == RoomExitHint.SearchableHidden && _hiddenSearchEnqueuer is not null)
         {
+            // Pre-check: the latest room observation may already list this
+            // direction as an obvious exit — a prior `sea` uncovered it, or
+            // it simply isn't hidden in this room instance. Searching again is
+            // wasted round-trips (mirrors the open-door pre-check above). Send
+            // the cardinal move directly.
+            if (_tracker.State.ObservedExitDirections is { } observedExits
+                && observedExits.Contains(step.Direction))
+            {
+                _log?.Info("Walker",
+                    $"step {_index + 1}/{_path!.Count}: hidden exit {step.Direction} already revealed — skipping search.");
+                _tracker.NoteMoveSent(step.Direction);
+                _recovery?.NoteEngineStepSent(step.Direction);
+                byte[] revealedBytes = EncodeMove(step.Direction);
+                EmitMoveBytes(revealedBytes, $"move {step.Direction} (hidden already revealed)");
+                return;
+            }
             _awaitingHiddenReveal = true;
             _log?.Info("Walker",
                 $"step {_index + 1}/{_path!.Count}: revealing hidden exit {step.Direction}");

@@ -145,6 +145,29 @@ public sealed class AilmentSyncEngine : IDisposable
         }
     }
 
+    // Reconcile the @wait state of the curable ailments against the CURRENT
+    // settings. Called when the user toggles an Ignore<X> gate mid-affliction:
+    // the onset-time decision is latched (OnConditionsChanged only fires on a
+    // flag transition), so without this a "turn IgnorePoison on while poisoned"
+    // leaves the @wait we already telepathed standing and the party never
+    // resumes. Flipping the gate ON releases the wait (@ok); flipping it OFF
+    // while still afflicted (re)places it (@wait). Idempotent — PartyRestSync
+    // dedupes reasons, so an unchanged reason is a no-op on the wire. Held is
+    // excluded (no Ignore setting; its wait rides the .@held say lifecycle).
+    public void ReevaluateWaits()
+    {
+        MessageFlags active = _conditions.ActiveFlags;
+        SpellsSettings spells = _readSpells();
+        foreach ((MessageFlags flag, _, WaitReason reason, bool telepathWait) in Ailments)
+        {
+            if (!telepathWait) continue;
+            if (active.HasFlag(flag) && !IsWaitSuppressed(flag, spells))
+                _restSync.RequestWait(reason);
+            else
+                _restSync.RequestOk(reason);
+        }
+    }
+
     // Whether to say-announce flag. Two cross-cutting gates apply to every
     // ailment: we must be in a party (no one to tell otherwise) and have no cure
     // spell configured for it (if we can self-cure, we clear it silently). The

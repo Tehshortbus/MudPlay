@@ -867,6 +867,58 @@ public sealed class RemoteCommandManagerTests
         // No assertion needed — the test passes if no exception escapes.
     }
 
+    // ===== Ignored announce tokens =====
+    //
+    // Party ailment-sync announces (@poisoned, @blind, …) arrive on the same
+    // chat channels as remote commands but are consumed by PartyAilmentTracker's
+    // own subscription. RegisterIgnored reserves each token so the engine
+    // swallows it silently — no handler dispatch, no denial reply — even with
+    // WarnOnDenial on. Regression guard for the live report where a party member
+    // bounced "{command invalid or not allowed}" back at every @poisoned announce.
+
+    [Fact]
+    public void IgnoredToken_SwallowedSilently_EvenWithWarnOnDenialAndFailureMessage()
+    {
+        var (engine, _, _) = Setup();
+        engine.WarnOnDenial = true;
+        engine.FailureMessage = "denied";
+        engine.RegisterIgnored("@poisoned");
+
+        engine.DispatchForTests(Telepath("Buddy", "@poisoned"));
+
+        Assert.Empty(engine.LastSentForTests);
+    }
+
+    [Fact]
+    public void IgnoredToken_MatchedCaseInsensitively()
+    {
+        var (engine, _, _) = Setup();
+        engine.WarnOnDenial = true;
+        engine.FailureMessage = "denied";
+        engine.RegisterIgnored("@poisoned");
+
+        engine.DispatchForTests(Telepath("Buddy", "@POISONED"));
+
+        Assert.Empty(engine.LastSentForTests);
+    }
+
+    [Fact]
+    public void UnregisteredToken_StillReplies_ProvingIgnoreIsTargeted()
+    {
+        // Sanity companion: an @-command that ISN'T reserved still hits the
+        // unknown-command denial path — proves the swallow is scoped to the
+        // registered token, not a blanket mute.
+        var (engine, _, _) = Setup();
+        engine.WarnOnDenial = true;
+        engine.FailureMessage = "denied";
+        engine.RegisterIgnored("@poisoned");
+
+        engine.DispatchForTests(Telepath("Buddy", "@blind"));
+
+        byte[] sent = Assert.Single(engine.LastSentForTests);
+        Assert.Equal("/Buddy {denied}\r", Encoding.Latin1.GetString(sent));
+    }
+
     // ===== Settings.Talk knobs =====
     //
     // The TalkSectionViewModel pushes the loaded character's TalkSettings

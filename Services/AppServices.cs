@@ -1300,6 +1300,12 @@ public sealed class AppServices
         // Engine only — other subsystems register additional
         // handlers without touching the engine.
         RemoteCommands = new Game.Remote.RemoteCommandManager(Chat, PartyState, Players, Log);
+        // Reserve the party ailment-sync announces (@poisoned / @blind / @held …)
+        // so the engine swallows them instead of bouncing a "{command invalid}"
+        // reply at the member who announced — PartyAilmentTracker consumes them on
+        // its own ChatRouter subscription.
+        foreach (string token in Game.Conditions.PartyAilmentTracker.AnnounceTokens)
+            RemoteCommands.RegisterIgnored(token);
         // Stat-screen parser ahead of LivesProvider hookup below so
         // both the engine's @suicide hard-block and the @lives reply
         // path share the same "unknown until first stat poll" source.

@@ -18,8 +18,7 @@ namespace FujinTerm.Controls;
 // "what's a kill rate"; this control only knows how to draw numbers. If the
 // bound series implements INotifyCollectionChanged the control re-renders when
 // it mutates, so a live ObservableCollection<double> animates as samples
-// append (mirrors TimestampGutter); a re-assigned list is picked up via
-// AffectsRender.
+// append; a re-assigned list is picked up via AffectsRender.
 public sealed class SparklineControl : Control
 {
     // The series to plot, oldest first. Fewer than two points draws nothing.
