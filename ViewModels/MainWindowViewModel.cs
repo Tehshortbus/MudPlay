@@ -2494,35 +2494,20 @@ public partial class MainWindowViewModel : ObservableObject
     private BackscrollWindow? _backscroll;
 
     [RelayCommand]
-    private void OpenBackscroll() => OpenBackscrollInternal(focusSearch: false);
-
-    /// <summary>
-    /// Terminal context menu → Edit → Find in scrollback. Opens the backscroll
-    /// window (or activates it if already open) and lands focus on the search
-    /// box so the user can type immediately.
-    /// </summary>
-    [RelayCommand]
-    private void FindInScrollback() => OpenBackscrollInternal(focusSearch: true);
-
-    private void OpenBackscrollInternal(bool focusSearch)
+    private void OpenBackscroll()
     {
         if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
             return;
 
-        // Toggle convention — see OpenPlaceholder. Find-in-scrollback is
-        // the same toggle: hitting it while Backscroll is already open
-        // closes the window. Opening freshly with focusSearch=true lands
-        // focus on the search box.
+        // Toggle convention — see OpenPlaceholder: pressing the command while
+        // Backscroll is already open closes the window.
         if (_backscroll is { } existing)
         {
             existing.Close();
             return;
         }
 
-        BackscrollViewModel vm = new(Emulator)
-        {
-            FocusSearchOnOpen = focusSearch,
-        };
+        BackscrollViewModel vm = new(Emulator);
         BackscrollWindow window = new() { DataContext = vm };
         window.Closed += (_, _) => _backscroll = null;
         _backscroll = window;

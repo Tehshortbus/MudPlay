@@ -52,11 +52,6 @@ public partial class BackscrollWindow : Window
             // tail — otherwise heights are still zero and the ScrollViewer
             // would no-op.
             Dispatcher.UIThread.Post(OnGoToLive, DispatcherPriority.Background);
-
-            if (vm.FocusSearchOnOpen)
-            {
-                this.FindControl<TextBox>("SearchBox")?.Focus();
-            }
         }
     }
 

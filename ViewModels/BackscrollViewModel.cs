@@ -80,8 +80,6 @@ public sealed partial class BackscrollViewModel : ObservableObject, IDisposable
     /// <summary>Fired when the user requests Go to live (scroll to bottom).</summary>
     public event Action? GoToLiveRequested;
 
-    public bool FocusSearchOnOpen { get; set; }
-
     public BackscrollViewModel(TerminalEmulator emulator)
     {
         _emulator = emulator;
