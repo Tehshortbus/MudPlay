@@ -54,6 +54,18 @@ public sealed partial class PartyPoller : IDisposable
     // matching the historical always-on behaviour.
     public Func<bool>? IsParPollEnabled { get; set; }
 
+    // Live gate — true while the character is parked in the full-screen trainer
+    // stats menu. Both timer cadences here (par poll + @health nag) fire on a
+    // wall clock rather than off the in-game prompt, so unlike prompt-driven
+    // automation they don't naturally pause when the trainer screen suppresses
+    // the statline. Left ungated they leak `par` / telepaths into the menu,
+    // where they're swallowed as stray keystrokes. The auto-trainer's own CP
+    // replay is unaffected — it sends through its own wire path, not this poller.
+    // Null = never suppressed (test / pre-wire default).
+    public Func<bool>? IsInTrainerMenu { get; set; }
+
+    private bool InTrainerMenu => IsInTrainerMenu is { } gate && gate();
+
     // ----- @health nag escalation knobs (shared with @join nag) ----------
     // Pushed in by AppServices.ApplyPartyFromActiveProfile from the same
     // Settings.Party JoinNag* fields AutoPartyManager reads. The label in
@@ -231,6 +243,10 @@ public sealed partial class PartyPoller : IDisposable
         // Master gate — when the user turns off "send @health nags to party
         // members", skip both the initial round-trip and the retry nag.
         if (!HealthNagEnabled) return;
+        // Don't telepath into the trainer menu — the request would land as
+        // stray keystrokes and no baseline reply can arrive while the statline
+        // is suppressed anyway.
+        if (InTrainerMenu) return;
         if (_wireSender is null) return;
         // Skip self — our own HP/MA flows in through PromptParser on
         // every statline. Skip missing names. Skip pending invitees
@@ -325,6 +341,9 @@ public sealed partial class PartyPoller : IDisposable
     private void TickHealthNags()
     {
         if (_activeNags.Count == 0) { StopHealthNagTimer(); return; }
+        // Pause resends while in the trainer menu — keep the timer and the
+        // pending nag state alive so the retry cadence resumes on menu exit.
+        if (InTrainerMenu) return;
         DateTime now = NowProvider();
 
         foreach (string given in _activeNags.Keys.ToArray())
@@ -381,6 +400,7 @@ public sealed partial class PartyPoller : IDisposable
     {
         if (_wireSender is null) return;
         if (!_state.IsInParty) return;
+        if (InTrainerMenu) return;
         if (IsParPollEnabled is { } gate && !gate()) return;
         _wireSender(Encoding.Latin1.GetBytes("par\r"));
     }

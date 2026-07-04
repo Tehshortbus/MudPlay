@@ -1381,6 +1381,10 @@ public sealed class AppServices
         // menu entry and back to line-mode on exit.
         TrainerMenu.MenuEntered += () => InputBuffer.CharacterMode = true;
         TrainerMenu.MenuExited  += () => InputBuffer.CharacterMode = false;
+        // Silence the poller's wall-clock cadences (par poll + @health nag)
+        // while parked in the trainer stats menu; the auto-trainer drives its
+        // own wire, so its CP replay is unaffected.
+        PartyPoller.IsInTrainerMenu = () => TrainerMenu.IsInTrainerMenu;
         AutoParty = new Game.AutoPartyManager(Router, Players, PartyState, TrainerMenu, Log);
         // Suicide-password observer + engine-gate consumer. Drives
         // EngineGate.IsLocked during password-entry prompts so

@@ -92,6 +92,82 @@ public sealed class PartyPollerTests
         Assert.Equal("par\r", LastWire(wire));
     }
 
+    // ===== trainer-menu suppression =====
+    //
+    // The trainer stats screen is a full-screen ANSI menu that suppresses the
+    // in-game statline, so the poller's wall-clock cadences don't naturally
+    // pause the way prompt-driven automation does. A live gate silences par +
+    // @health while in the menu; the auto-trainer's own CP replay is untouched
+    // because it sends through a separate wire path, not this poller.
+
+    [Fact]
+    public void ParPoll_WhileInTrainerMenu_SendsNothing()
+    {
+        var (poller, _, state, _, _, wire) = Setup();
+        state.Members.Add(new PartyMember { Name = "Forged" });
+        state.IsInParty = true;
+        poller.IsParPollEnabled = () => true;
+        poller.IsInTrainerMenu = () => true;
+        wire.Clear();   // drop the on-join @health send; isolate the par poll
+
+        poller.DoParPollForTests();
+
+        Assert.Empty(wire);
+    }
+
+    [Fact]
+    public void ParPoll_AfterTrainerMenuExit_ResumesPar()
+    {
+        bool inMenu = true;
+        var (poller, _, state, _, _, wire) = Setup();
+        state.Members.Add(new PartyMember { Name = "Forged" });
+        state.IsInParty = true;
+        poller.IsParPollEnabled = () => true;
+        poller.IsInTrainerMenu = () => inMenu;
+
+        poller.DoParPollForTests();
+        Assert.DoesNotContain(wire, b => Encoding.Latin1.GetString(b) == "par\r");
+
+        inMenu = false;   // menu exited — the next poll must send par again
+        poller.DoParPollForTests();
+        Assert.Equal("par\r", LastWire(wire));
+    }
+
+    [Fact]
+    public void OnJoinHealth_WhileInTrainerMenu_DoesNotTelepath()
+    {
+        var (poller, _, state, _, _, wire) = Setup();
+        poller.IsInTrainerMenu = () => true;
+
+        state.Members.Add(new PartyMember { Name = "Helper" });
+
+        Assert.Empty(wire);
+    }
+
+    [Fact]
+    public void HealthNag_WhileInTrainerMenu_PausesThenResumesAfterExit()
+    {
+        bool inMenu = false;
+        var (poller, _, state, _, _, wire, _, advance) = SetupWithClock();
+        poller.IsInTrainerMenu = () => inMenu;
+
+        // Arm the nag while out of the menu (initial @health fires here).
+        state.Members.Add(new PartyMember { Name = "Helper" });
+        wire.Clear();
+
+        // Enter the menu — a due retry must not go on the wire.
+        inMenu = true;
+        advance(TimeSpan.FromSeconds(6));
+        poller.TickHealthNagsForTests();
+        Assert.Empty(wire);
+
+        // Exit — the pending nag resumes on the next tick.
+        inMenu = false;
+        poller.TickHealthNagsForTests();
+        Assert.Single(wire);
+        Assert.Equal("/Helper @health\r", Encoding.Latin1.GetString(wire[0]));
+    }
+
     // ===== Settings.Party par-cadence setter =====
 
     [Fact]
