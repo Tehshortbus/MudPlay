@@ -40,7 +40,10 @@ public sealed partial class SpellsSectionViewModel : SettingsSectionViewModel
     private readonly Dictionary<int, string> _overflowBlessSlots = new();
 
     public override string Id => "spells";
-    public override string Title => "Spells";
+    // Display header only — the persistence key stays "Spells" (TabKey / Id)
+    // so renaming the tab never orphans saved settings. The tab owns the
+    // ailment-handling + coordination toggles as well as the spell picks.
+    public override string Title => "Spells + Ailments";
     public override bool IsDirty => _dirty;
 
     public bool HasProfile => _profile.Current is not null;
