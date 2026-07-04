@@ -1,34 +1,18 @@
 namespace FujinTerm.Models.Profile;
 
-/// <summary>
-/// Per-character "Other" settings — the misc bucket. Stored as the
-/// <c>"Other"</c> entry in <see cref="CharacterProfile.Settings"/>.
-/// </summary>
-/// <remarks>
-/// Phase 6 wires one field — the suicide-lives threshold. The rest of
-/// the Other tab (lock / trap / hangup / ignore-ailment / auto-engage
-/// toggles) ships its consumers in Phases 7 / 11 / 13 and adds fields
-/// here as those engines land. The tab still renders the full stub
-/// catalog underneath the wired group so the user sees the surface
-/// from day one.
-/// </remarks>
+// Per-character "Other" settings — the misc bucket. Stored as the "Other" entry
+// in CharacterProfile.Settings.
 public sealed class OtherSettings
 {
-    /// <summary>
-    /// Block <c>@do suicide</c> / <c>@party suicide</c> when remaining
-    /// lives are at or below this threshold. Default 5 — protects players
-    /// who haven't yet built up a comfortable lives buffer. Setting to
-    /// <c>0</c> allows forced suicide through all lives. Max lives in
-    /// MajorMUD is 9, so the UI clamps this to 0..9. Pushed into
-    /// <see cref="Game.Remote.RemoteCommandManager.MaxSuicideLivesThreshold"/>.
-    /// </summary>
-    /// <remarks>
-    /// The engine still hard-blocks suicide commands when the live
-    /// lives count is unknown (no <c>LivesProvider</c> bound) — the
-    /// conservative default until the Phase 9 DEATH section wires
-    /// up live-lives tracking. This setting only takes effect once
-    /// that lives source is connected.
-    /// </remarks>
+    // Block @do suicide / @party suicide when remaining lives are at or below
+    // this threshold. Default 5 — protects players who haven't yet built up a
+    // comfortable lives buffer. Setting to 0 allows forced suicide through all
+    // lives. Max lives in MajorMUD is 9, so the UI clamps this to 0..9. Pushed
+    // into Game.Remote.RemoteCommandManager.MaxSuicideLivesThreshold.
+    //
+    // The engine still hard-blocks suicide commands when the live lives count is
+    // unknown (no LivesProvider bound) — the conservative default. This setting
+    // only takes effect once that lives source is connected.
     public int MaxSuicideLivesThreshold { get; set; } = 5;
 
     // Note: the ailment-handling toggles (the four "Ignore X" @wait gates
@@ -36,204 +20,151 @@ public sealed class OtherSettings
     // SpellsSettings — they sit on the Spells tab next to the cure-spell
     // picks they coordinate with. AilmentSyncEngine reads them from there.
 
-    /// <summary>
-    /// Master gate for walker trap-disarming. When <c>true</c> (default)
-    /// the walker routes a trapped exit through the disarm machinery
-    /// before stepping through — but only when a disarm is actually
-    /// possible (the local character has the Traps skill, or — once the
-    /// party-delegation path lands — a party member does). When
-    /// <c>false</c> the walker walks straight through trapped exits with
-    /// no disarm attempt. Labeled "Utilize disarm traps if able" in
-    /// Settings → Other because the "if able" capability check rides on
-    /// top of this on/off switch.
-    /// </summary>
+    // Master gate for walker trap-disarming. When true (default) the walker
+    // routes a trapped exit through the disarm machinery before stepping through
+    // — but only when a disarm is actually possible (the local character has the
+    // Traps skill, or — once the party-delegation path lands — a party member
+    // does). When false the walker walks straight through trapped exits with no
+    // disarm attempt. Labeled "Utilize disarm traps if able" in Settings → Other
+    // because the "if able" capability check rides on top of this on/off switch.
     public bool UtilizeDisarmTrapsIfAble { get; set; } = true;
 
-    /// <summary>
-    /// Caps the search loop in the @trap handler — how many
-    /// <c>sea &lt;dir&gt;</c> attempts we'll make before giving up and
-    /// telepathing the sender that we couldn't find a trap. Default
-    /// 20, range 1..100. Surfaced above the disarm-attempts row in
-    /// Settings → Other.
-    /// </summary>
+    // Caps the search loop in the @trap handler — how many sea <dir> attempts
+    // we'll make before giving up and telepathing the sender that we couldn't
+    // find a trap. Default 20, range 1..100. Surfaced above the disarm-attempts
+    // row in Settings → Other.
     public int MaxTrapSearchAttempts { get; set; } = 20;
 
-    /// <summary>
-    /// Caps the disarm-retry loop in the @trap handler — how many
-    /// <c>disarm trap &lt;dir&gt;</c> attempts we'll make after the
-    /// trap has been spotted before giving up. Default 5, range
-    /// 1..50. Damage-aware abort (stop early if the trap fires and
-    /// we lose HP) ships with the Phase 13 HealthManager wiring.
-    /// </summary>
+    // Caps the disarm-retry loop in the @trap handler — how many disarm trap
+    // <dir> attempts we'll make after the trap has been spotted before giving
+    // up. Default 5, range 1..50. Damage-aware abort (stop early if the trap
+    // fires and we lose HP) ships with the HealthManager wiring.
     public int MaxTrapDisarmAttempts { get; set; } = 5;
 
     // ----- Door / lock handling --------------------------------------
 
-    /// <summary>
-    /// Walker's max <c>bash &lt;dir&gt;</c> retries before giving up
-    /// on a single door. Hits when the player's strength is below
-    /// the door's requirement and the server keeps replying with
-    /// <c>"attempts to bash through fail"</c>. Default 10 per user
-    /// direction.
-    /// </summary>
+    // Walker's max bash <dir> retries before giving up on a single door. Hits
+    // when the player's strength is below the door's requirement and the server
+    // keeps replying with "attempts to bash through fail". Default 10 per user
+    // direction.
     public int MaxBashAttempts { get; set; } = 10;
 
-    /// <summary>
-    /// Walker's max <c>pick &lt;dir&gt;</c> retries before giving up
-    /// on a single door. Picking is probabilistic — the skill can
-    /// fail even when the value meets the door requirement. Default
-    /// 10 per user direction.
-    /// </summary>
+    // Walker's max pick <dir> retries before giving up on a single door. Picking
+    // is probabilistic — the skill can fail even when the value meets the door
+    // requirement. Default 10 per user direction.
     public int MaxPickAttempts { get; set; } = 10;
 
-    /// <summary>
-    /// When <c>true</c>, the walker prefers <c>pick &lt;dir&gt;</c>
-    /// over <c>bash &lt;dir&gt;</c> on doors where both verbs are
-    /// viable. Bash is louder and breaks stealth; thieves typically
-    /// flip this on. Default <c>false</c> (bash-first).
-    /// </summary>
+    // When true, the walker prefers pick <dir> over bash <dir> on doors where
+    // both verbs are viable. Bash is louder and breaks stealth; thieves
+    // typically flip this on. Default false (bash-first).
     public bool PicklocksOverBash { get; set; }
 
-    /// <summary>
-    /// Walker max <c>sea &lt;dir&gt;</c> retries when revealing a
-    /// hidden exit (<c>(Hidden)</c> modifier) along the path. Default
-    /// 20 — mirrors the trap-search cap since it's the same verb,
-    /// kept separate so the user can tune them independently.
-    /// </summary>
+    // Walker max sea <dir> retries when revealing a hidden exit ((Hidden)
+    // modifier) along the path. Default 20 — mirrors the trap-search cap since
+    // it's the same verb, kept separate so the user can tune them independently.
     public int MaxHiddenSearchAttempts { get; set; } = 20;
 
-    /// <summary>
-    /// When <c>true</c>, arm auto-search on demand: while the walker is
-    /// travelling a route that crosses an <c>(Item: N)</c> / <c>(Ticket: N)</c>
-    /// exit whose item the character isn't carrying (e.g. a boat for the
-    /// Silver River, a rope-and-grapple for a climb),
-    /// <see cref="Game.Map.AutoSearchManager"/> issues a bare <c>sea</c> on
-    /// every room entry to hunt the missing item until it's found — even
-    /// when the persisted Auto-Search master toggle is off. Read live by
-    /// <see cref="Game.Map.PathItemDemandTracker"/> through the resolver.
-    /// Default <c>false</c> (opt-in). Char-tier; surfaced in Settings → Other.
-    /// </summary>
+    // When true, arm auto-search on demand: while the walker is travelling a
+    // route that crosses an (Item: N) / (Ticket: N) exit whose item the
+    // character isn't carrying (e.g. a boat for the Silver River, a
+    // rope-and-grapple for a climb), Game.Map.AutoSearchManager issues a bare
+    // sea on every room entry to hunt the missing item until it's found — even
+    // when the persisted Auto-Search master toggle is off. Read live by
+    // Game.Map.PathItemDemandTracker through the resolver. Default false
+    // (opt-in). Char-tier; surfaced in Settings → Other.
     public bool SearchRoomsIfItemNeeded { get; set; }
 
-    /// <summary>
-    /// When <c>true</c>, actively source a missing route item from a shop:
-    /// on a one-shot walk-to that crosses an <c>(Item: N)</c> /
-    /// <c>(Ticket: N)</c> exit whose item we're not carrying, if any shop in
-    /// the active set stocks that item,
-    /// <see cref="Game.Map.PathItemShopRouter"/> detours to the shop adding
-    /// the fewest steps (<c>dist(cur,shop)+dist(shop,dest)</c>), issues
-    /// <c>buy &lt;item&gt;</c>, then resumes to the original destination. If
-    /// the item turns up first (e.g. via demand-driven search) the detour is
-    /// abandoned; a failed buy or unreachable shop falls back to search.
-    /// Only plain walk-to's detour — loop / auto-lair runs don't. Independent
-    /// of the Auto-Search master toggle. Read live by the router through the
-    /// resolver. Default <c>false</c> (opt-in). Char-tier; surfaced in
-    /// Settings → Other.
-    /// </summary>
+    // When true, actively source a missing route item from a shop: on a one-shot
+    // walk-to that crosses an (Item: N) / (Ticket: N) exit whose item we're not
+    // carrying, if any shop in the active set stocks that item,
+    // Game.Map.PathItemShopRouter detours to the shop adding the fewest steps
+    // (dist(cur,shop)+dist(shop,dest)), issues buy <item>, then resumes to the
+    // original destination. If the item turns up first (e.g. via demand-driven
+    // search) the detour is abandoned; a failed buy or unreachable shop falls
+    // back to search. Only plain walk-to's detour — loop / auto-lair runs don't.
+    // Independent of the Auto-Search master toggle. Read live by the router
+    // through the resolver. Default false (opt-in). Char-tier; surfaced in
+    // Settings → Other.
     public bool BuyNeededPathItems { get; set; }
 
-    /// <summary>
-    /// When <c>true</c>, source a missing route item no shop sells by
-    /// hunting for it: on a one-shot walk-to that crosses an <c>(Item: N)</c>
-    /// / <c>(Ticket: N)</c> exit whose item we're not carrying and which no
-    /// shop stocks, if some monster drops it,
-    /// <see cref="Game.Map.MonsterDropRouter"/> prompts (via
-    /// <see cref="Services.ConfirmService"/>) to reroute to the nearest room
-    /// that monster spawns in; on confirmation it walks there, waits for the
-    /// drop, then resumes to the original destination. Declining leaves the
-    /// need to demand-driven search. Complements
-    /// <see cref="BuyNeededPathItems"/> (which handles shop-sold items) —
-    /// this covers only what no shop sells. Only plain walk-to's reroute —
-    /// loop / auto-lair runs don't. Read live by the router through the
-    /// resolver. Default <c>false</c> (opt-in). Char-tier; surfaced in
-    /// Settings → Other.
-    /// </summary>
+    // When true, source a missing route item no shop sells by hunting for it: on
+    // a one-shot walk-to that crosses an (Item: N) / (Ticket: N) exit whose item
+    // we're not carrying and which no shop stocks, if some monster drops it,
+    // Game.Map.MonsterDropRouter prompts (via Services.ConfirmService) to
+    // reroute to the nearest room that monster spawns in; on confirmation it
+    // walks there, waits for the drop, then resumes to the original destination.
+    // Declining leaves the need to demand-driven search. Complements
+    // BuyNeededPathItems (which handles shop-sold items) — this covers only what
+    // no shop sells. Only plain walk-to's reroute — loop / auto-lair runs don't.
+    // Read live by the router through the resolver. Default false (opt-in).
+    // Char-tier; surfaced in Settings → Other.
     public bool HuntNeededPathItems { get; set; }
 
-    /// <summary>
-    /// When <c>true</c>, consult the party for a missing route item before
-    /// searching / buying / hunting for it: on a walk-to that crosses an
-    /// <c>(Item: N)</c> / <c>(Ticket: N)</c> exit whose per-member item is in
-    /// play, <see cref="Game.Map.PartyPathItemGate"/> broadcasts <c>@have</c>
-    /// and acts on the reply. <b>As leader</b> it treats the party (self +
-    /// everyone who answered) as one pool needing one copy each: members keep
-    /// what they hold; only the net shortfall goes to the demand pipeline
-    /// (search / shop / hunt, per the toggles below — auto-search stays armed
-    /// until the pool is whole), then the leader coordinates the hand-off so
-    /// each member ends with exactly one (<c>give</c> for our own spares,
-    /// <c>/&lt;holder&gt; @do give</c> to direct others'). <b>As a follower</b>
-    /// doing its own walk, it borrows a single spare (holder count ≥ 2) to
-    /// itself instead of posting a need. A genuine shortfall falls through to
-    /// the demand pipeline; no-op when solo. Complements the search / buy /
-    /// hunt sources (it runs ahead of them). Read live by the gate through the
-    /// resolver. Default <c>false</c> (opt-in). Char-tier; surfaced in
-    /// Settings → Other.
-    /// </summary>
+    // When true, consult the party for a missing route item before searching /
+    // buying / hunting for it: on a walk-to that crosses an (Item: N) /
+    // (Ticket: N) exit whose per-member item is in play,
+    // Game.Map.PartyPathItemGate broadcasts @have and acts on the reply. As
+    // leader it treats the party (self + everyone who answered) as one pool
+    // needing one copy each: members keep what they hold; only the net shortfall
+    // goes to the demand pipeline (search / shop / hunt, per the toggles below —
+    // auto-search stays armed until the pool is whole), then the leader
+    // coordinates the hand-off so each member ends with exactly one (give for
+    // our own spares, /<holder> @do give to direct others'). As a follower doing
+    // its own walk, it borrows a single spare (holder count ≥ 2) to itself
+    // instead of posting a need. A genuine shortfall falls through to the demand
+    // pipeline; no-op when solo. Complements the search / buy / hunt sources (it
+    // runs ahead of them). Read live by the gate through the resolver. Default
+    // false (opt-in). Char-tier; surfaced in Settings → Other.
     public bool DeferToPartyInventory { get; set; }
 
-    /// <summary>
-    /// When <c>true</c> and leading a party, route <b>around</b>
-    /// <c>(Level: MIN to MAX)</c> gates the whole party can't clear rather
-    /// than walking the leader through and leaving a member behind. BFS
-    /// treats such a gate as non-traversable via
-    /// <see cref="Services.MovementFilter.PartyLevelBoundsProvider"/>, which
-    /// <see cref="Game.Remote.PartyLevelTracker"/> feeds from each member's
-    /// exact level (learned by an <c>@level</c> probe) or, until probed,
-    /// their title-derived level band. When the only safe way needs a gate
-    /// (all routes level-blocked), the walker's existing gates-ignored
-    /// re-probe still tells "level-gated" apart from "disconnected" so the
-    /// destination stays reachable. Read live by the filter through the
-    /// tracker. Default <c>false</c> (opt-in). Char-tier; surfaced in
-    /// Settings → Other.
-    /// </summary>
+    // When true and leading a party, route around (Level: MIN to MAX) gates the
+    // whole party can't clear rather than walking the leader through and leaving
+    // a member behind. BFS treats such a gate as non-traversable via
+    // Services.MovementFilter.PartyLevelBoundsProvider, which
+    // Game.Remote.PartyLevelTracker feeds from each member's exact level
+    // (learned by an @level probe) or, until probed, their title-derived level
+    // band. When the only safe way needs a gate (all routes level-blocked), the
+    // walker's existing gates-ignored re-probe still tells "level-gated" apart
+    // from "disconnected" so the destination stays reachable. Read live by the
+    // filter through the tracker. Default false (opt-in). Char-tier; surfaced in
+    // Settings → Other.
     public bool AvoidPartyImpassableLevelGates { get; set; }
 
-    /// <summary>
-    /// When <c>true</c>, <see cref="Game.HopTimingCalibrator"/> logs
-    /// one Info line per observed hop with the wall-clock time + the
-    /// current <see cref="Game.EncumbranceLevel"/>. Used to calibrate
-    /// the Settings → Auto-Lair tab's per-encumbrance seconds-per-hop
-    /// defaults against in-game truth. Off by default — it's a
-    /// developer / data-collection knob, not a normal-play affordance.
-    /// </summary>
+    // When true, Game.HopTimingCalibrator logs one Info line per observed hop
+    // with the wall-clock time + the current Game.EncumbranceLevel. Used to
+    // calibrate the Settings → Auto-Lair tab's per-encumbrance seconds-per-hop
+    // defaults against in-game truth. Off by default — it's a developer /
+    // data-collection knob, not a normal-play affordance.
     public bool LogMovementHopTiming { get; set; }
 
-    /// <summary>
-    /// Leader-side <c>@comeback</c> backtrack budget — when a stranded
-    /// follower sends a bare <c>@comeback</c> (no target room), the
-    /// leader pauses its active movement engine and walks backwards
-    /// along the path just taken, room by room, up to this many rooms
-    /// looking for the follower. If not recovered within the budget the
-    /// leader gives up and goes idle to let the player handle it.
-    /// Default 10, range 1..50. Ignored when the follower supplies an
-    /// explicit room (<c>@comeback 9/1012</c>) — that path walks
-    /// straight to the named room instead. Surfaced in Settings → Other.
-    /// </summary>
+    // Leader-side @comeback backtrack budget — when a stranded follower sends a
+    // bare @comeback (no target room), the leader pauses its active movement
+    // engine and walks backwards along the path just taken, room by room, up to
+    // this many rooms looking for the follower. If not recovered within the
+    // budget the leader gives up and goes idle to let the player handle it.
+    // Default 10, range 1..50. Ignored when the follower supplies an explicit
+    // room (@comeback 9/1012) — that path walks straight to the named room
+    // instead. Surfaced in Settings → Other.
     public int MaxComebackBacktrackRooms { get; set; } = 10;
 
-    /// <summary>
-    /// Follower-side auto-<c>@comeback</c>. When <c>true</c> (default) and
-    /// a movement-blocking condition (prevents-movement gamedata flag or
-    /// over-encumbrance) leaves us behind as the party leader walks off,
-    /// we automatically telepath <c>@comeback &lt;room&gt;</c> to the
-    /// leader so their party-recovery walk picks us up. When <c>false</c>,
-    /// the left-behind is still detected but no request is sent — the
-    /// player handles it manually. Defaults on: the request is a single
-    /// telepath that moves nothing on our side, so being stranded silently
-    /// is strictly the worse outcome. Char-tier setting; surfaced in
-    /// Settings → Other.
-    /// </summary>
+    // Follower-side auto-@comeback. When true (default) and a movement-blocking
+    // condition (prevents-movement gamedata flag or over-encumbrance) leaves us
+    // behind as the party leader walks off, we automatically telepath @comeback
+    // <room> to the leader so their party-recovery walk picks us up. When false,
+    // the left-behind is still detected but no request is sent — the player
+    // handles it manually. Defaults on: the request is a single telepath that
+    // moves nothing on our side, so being stranded silently is strictly the
+    // worse outcome. Char-tier setting; surfaced in Settings → Other.
     public bool AutoRequestComebackWhenLeftBehind { get; set; } = true;
 
-    // Note: the former Phase 9 per-character verbose toggles
-    // (VerboseCombat / VerboseRoomClassifier / VerboseCasting /
-    // VerboseCash / VerboseStealth) + WriteCombatRoundTrace lived
-    // here briefly. They moved to the Log pane menu as a single
-    // "Combat diagnostics" umbrella switch (session-only, not
-    // persisted) — see Services/LogDiagnosticState.cs. Verbose tracing
-    // is a "while I'm debugging right now" affordance, not a per-
-    // character preference, and keeping it off the profile saves it
-    // from leaking on between sessions.
+    // Note: the former per-character verbose toggles (VerboseCombat /
+    // VerboseRoomClassifier / VerboseCasting / VerboseCash / VerboseStealth) +
+    // WriteCombatRoundTrace lived here briefly. They moved to the Log pane menu
+    // as a single "Combat diagnostics" umbrella switch (session-only, not
+    // persisted) — see Services/LogDiagnosticState.cs. Verbose tracing is a
+    // "while I'm debugging right now" affordance, not a per-character
+    // preference, and keeping it off the profile saves it from leaking on
+    // between sessions.
 
     // Note: the run-away (flee) knobs (RunDirection / BreakBeforeFleeing)
     // graduated to CombatSettings — they sit on the Combat tab next to the

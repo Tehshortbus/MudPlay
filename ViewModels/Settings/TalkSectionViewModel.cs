@@ -7,15 +7,11 @@ using FujinTerm.Views.Settings;
 
 namespace FujinTerm.ViewModels.Settings;
 
-/// <summary>
-/// "Talk" tab — engine-level policy for the Phase 6
-/// <see cref="Game.Remote.RemoteCommandManager"/>. Mirrors the
-/// PartySectionViewModel pattern: Apply / Discard against an in-memory
-/// edit set, persist as the <c>"Talk"</c> entry in
-/// <see cref="CharacterProfile.Settings"/>, and push the resulting DTO
-/// into the live engine via <see cref="ApplyToServices"/> so changes
-/// take effect without a profile reload.
-/// </summary>
+// "Talk" tab — engine-level policy for RemoteCommandManager. Follows the
+// PartySectionViewModel pattern: Apply / Discard against an in-memory edit set,
+// persist as the "Talk" entry in CharacterProfile.Settings, and push the
+// resulting DTO into the live engine via ApplyToServices so changes take effect
+// without a profile reload.
 public sealed partial class TalkSectionViewModel : SettingsSectionViewModel
 {
     private const string TabKey = "Talk";
@@ -29,7 +25,7 @@ public sealed partial class TalkSectionViewModel : SettingsSectionViewModel
     public override string Title => "Talk";
     public override bool IsDirty => _dirty;
 
-    /// <summary>True when a profile is loaded — editor is hidden otherwise.</summary>
+    // True when a profile is loaded — editor is hidden otherwise.
     public bool HasProfile => _profile.Current is not null;
 
     public string PhaseTag => "Phase 6 (RemoteCommandManager)";
@@ -49,7 +45,7 @@ public sealed partial class TalkSectionViewModel : SettingsSectionViewModel
         "failure message", "party commands", "kill switch", "greet",
     };
 
-    // ----- Wired knobs (Phase 6) -----
+    // ----- Wired knobs -----
 
     [ObservableProperty] private bool _disallowAllRemoteCommands;
 
@@ -65,7 +61,7 @@ public sealed partial class TalkSectionViewModel : SettingsSectionViewModel
 
     [ObservableProperty] private string _remoteCommandFailureMessage = "command invalid or not allowed";
 
-    /// <summary>Settings → Talk "Greet players when first met". Char-tier; default off.</summary>
+    // Settings → Talk "Greet players when first met". Char-tier; default off.
     [ObservableProperty] private bool _greetPlayersWhenFirstMet;
 
     public TalkSectionViewModel() : this(AppServices.Current.Profile) { }

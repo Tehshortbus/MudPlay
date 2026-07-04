@@ -5,42 +5,33 @@ using FujinTerm.Models.Import;
 
 namespace FujinTerm.ViewModels.Import;
 
-/// <summary>
-/// One row in the import-conflict dialog's left rail. Wraps a single
-/// <see cref="ImportConflict"/> with the per-row mutable state (chosen
-/// action, rename text) and a pre-computed list of field diffs the
-/// right-pane detail view binds to.
-/// </summary>
+// One row in the import-conflict dialog's left rail. Wraps a single ImportConflict
+// with the per-row mutable state (chosen action, rename text) and a pre-computed list
+// of field diffs the right-pane detail view binds to.
 public sealed partial class ImportConflictRowViewModel : ObservableObject
 {
-    /// <summary>The original conflict; passed back unchanged in the resolution.</summary>
+    // The original conflict; passed back unchanged in the resolution.
     public ImportConflict Conflict { get; }
 
     public string Category   => Conflict.Category;
     public string Identifier => Conflict.Identifier;
 
-    /// <summary>
-    /// Pre-computed row-level diff — every field that appears in either
-    /// the existing or the incoming record gets a
-    /// <see cref="FieldDiff"/>, sorted by field name. Bindings render
-    /// changed fields differently from unchanged ones.
-    /// </summary>
+    // Pre-computed row-level diff — every field that appears in either the existing or
+    // the incoming record gets a FieldDiff, sorted by field name. Bindings render
+    // changed fields differently from unchanged ones.
     public IReadOnlyList<FieldDiff> FieldDiffs { get; }
 
-    /// <summary>Selected resolution for this row. Defaults to Skip — the safe non-destructive choice.</summary>
+    // Selected resolution for this row. Defaults to Skip — the safe non-destructive choice.
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsRenameSelected))]
     private ImportAction _action = ImportAction.Skip;
 
-    /// <summary>
-    /// New identifier for <see cref="ImportAction.Rename"/>. Empty until
-    /// the user picks Rename and starts typing; the dialog's OK gate
-    /// requires non-empty values when Rename is the chosen action.
-    /// </summary>
+    // New identifier for the Rename action. Empty until the user picks Rename and starts
+    // typing; the dialog's OK gate requires non-empty values when Rename is the chosen action.
     [ObservableProperty]
     private string _renameTo = string.Empty;
 
-    /// <summary>Convenience for view bindings — shows the rename textbox only when the action is Rename.</summary>
+    // Convenience for view bindings — shows the rename textbox only when the action is Rename.
     public bool IsRenameSelected => Action == ImportAction.Rename;
 
     public ImportConflictRowViewModel(ImportConflict conflict)
@@ -50,7 +41,7 @@ public sealed partial class ImportConflictRowViewModel : ObservableObject
         FieldDiffs = BuildDiffs(conflict.Existing, conflict.Incoming);
     }
 
-    /// <summary>Project this row's mutable state into a <see cref="ImportResolution"/> for the result payload.</summary>
+    // Project this row's mutable state into an ImportResolution for the result payload.
     public ImportResolution ToResolution()
     {
         string? rename = Action == ImportAction.Rename
@@ -80,15 +71,12 @@ public sealed partial class ImportConflictRowViewModel : ObservableObject
     }
 }
 
-/// <summary>
-/// One field's existing-vs-incoming pair for the dialog's detail view.
-/// Pre-computed by <see cref="ImportConflictRowViewModel"/> so the
-/// XAML can render each row with a single template binding.
-/// </summary>
-/// <param name="FieldName">Column / property name.</param>
-/// <param name="ExistingValue">Value in the store. <c>null</c> rendered as muted "(empty)".</param>
-/// <param name="IncomingValue">Value in the import. <c>null</c> rendered as muted "(empty)".</param>
-/// <param name="Changed"><c>true</c> when the two differ — the view template highlights changed rows.</param>
+// One field's existing-vs-incoming pair for the dialog's detail view. Pre-computed by
+// ImportConflictRowViewModel so the XAML can render each row with a single template
+// binding. FieldName is the column / property name; ExistingValue is the value in the
+// store and IncomingValue the value in the import (a null either side renders as a
+// muted "(empty)"); Changed is true when the two differ — the view template highlights
+// changed rows.
 public sealed record FieldDiff(
     string FieldName,
     string? ExistingValue,

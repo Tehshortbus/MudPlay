@@ -5,13 +5,11 @@ using FujinTerm.Services;
 
 namespace FujinTerm.ViewModels;
 
-/// <summary>
-/// Yes/No prompt that fires when the room tracker learns a real name
-/// for a previously-unnamed room (typical of map-15 ganghouse rooms
-/// in 1.x MDB exports). On <b>Save</b> the name persists back to the
-/// active set's <c>Rooms.json</c>; on <b>Skip</b> the in-memory
-/// rename is kept for the session but nothing is written.
-/// </summary>
+// Yes/No prompt that fires when the room tracker learns a real name for a
+// previously-unnamed room (typical of map-15 ganghouse rooms in 1.x MDB
+// exports). On Save the name persists back to the active set's Rooms.json;
+// on Skip the in-memory rename is kept for the session but nothing is
+// written.
 public sealed partial class RoomNameLearnedDialogViewModel
     : ObservableObject, IDialogViewModel<bool>
 {
@@ -26,7 +24,7 @@ public sealed partial class RoomNameLearnedDialogViewModel
         ObservedName = observedName;
     }
 
-    /// <summary>Header line — "Overwrite room name in game data for {map/room}?"</summary>
+    // Header line — "Overwrite room name in game data for {map/room}?"
     public string HeaderText =>
         $"Overwrite room name in game data for {Key}?";
 

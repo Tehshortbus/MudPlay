@@ -4,13 +4,10 @@ using FujinTerm.Services;
 
 namespace FujinTerm.ViewModels.Settings;
 
-/// <summary>
-/// Confirm-and-execute dialog for the Settings → General "Change data
-/// directory" flow. Summarises what's about to happen (file count, total
-/// size, source → destination paths), validates the destination live, and
-/// — on user confirm — kicks off <see cref="DataRootRelocator.Relocate"/>
-/// followed by an app restart.
-/// </summary>
+// Confirm-and-execute dialog for the Settings → General "Change data directory"
+// flow. Summarises what's about to happen (file count, total size, source →
+// destination paths), validates the destination live, and — on user confirm —
+// kicks off DataRootRelocator.Relocate followed by an app restart.
 public sealed partial class DataDirectoryRelocateDialogViewModel : ObservableObject, IDialogViewModel<bool>
 {
     public event Action<bool>? CloseRequested;
@@ -62,11 +59,9 @@ public sealed partial class DataDirectoryRelocateDialogViewModel : ObservableObj
         _plan       = plan;
     }
 
-    /// <summary>
-    /// Called from the View after the user picks a destination via the
-    /// platform folder picker. The View owns the picker because that API
-    /// lives off the Window class — the VM stays platform-clean.
-    /// </summary>
+    // Called from the View after the user picks a destination via the platform
+    // folder picker. The View owns the picker because that API lives off the
+    // Window class — the VM stays platform-clean.
     public void SetDestination(string path)
     {
         DestinationPath = path;

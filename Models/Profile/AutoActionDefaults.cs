@@ -1,18 +1,14 @@
 namespace FujinTerm.Models.Profile;
 
-/// <summary>
-/// Initial state for every Action-menu auto-toggle when the character
-/// logs in. Lives on <see cref="GeneralSettings"/> twice — once per
-/// Manual-Mode column and once per Auto-Mode column — so the user can
-/// pick which engines come up engaged depending on the play mode.
-/// The engines themselves wire in Phase 13 and read these flags as
-/// their boot-up state.
-/// </summary>
-/// <remarks>
-/// Field set mirrors the Action menu's auto-toggle group exactly
-/// (Combat / Nuke / Heal-Rest / Bless / Light / Get-Items / Get-Cash /
-/// Sneak / Hide / Search).
-/// </remarks>
+// Initial state for every Action-menu auto-toggle when the character
+// logs in. Lives on GeneralSettings twice — once per Manual-Mode column
+// and once per Auto-Mode column — so the user can pick which engines come
+// up engaged depending on the play mode. The engines read these flags as
+// their boot-up state.
+//
+// Field set mirrors the Action menu's auto-toggle group exactly
+// (Combat / Nuke / Heal-Rest / Bless / Light / Get-Items / Get-Cash /
+// Sneak / Hide / Search).
 public sealed class AutoActionDefaults
 {
     public bool AutoCombat   { get; set; } = true;

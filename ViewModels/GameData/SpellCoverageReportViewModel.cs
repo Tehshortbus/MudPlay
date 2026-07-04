@@ -14,25 +14,19 @@ using FujinTerm.ViewModels.GameData.Edit;
 
 namespace FujinTerm.ViewModels.GameData;
 
-/// <summary>
-/// Modeless detail surface for the <see cref="SpellCoverageAuditor"/>
-/// — opened from a LogPane double-click on the auditor's summary
-/// entry. Shows the active set's full list of player-facing spells
-/// with no Message anchor, with a Refresh button that re-runs the
-/// audit on demand.
-/// </summary>
+// Modeless detail surface for the SpellCoverageAuditor — opened from a LogPane
+// double-click on the auditor's summary entry. Shows the active set's full list of
+// player-facing spells with no Message anchor, with a Refresh button that re-runs the
+// audit on demand.
 public sealed partial class SpellCoverageReportViewModel : ObservableObject
 {
     private readonly SpellCoverageAuditor _auditor;
 
     public ObservableCollection<UnanchoredSpell> Rows { get; } = new();
 
-    /// <summary>
-    /// Sortable view wrapper Avalonia's DataGrid needs to honor column-header
-    /// clicks. <see cref="ObservableCollection{T}"/> alone is not sortable by
-    /// the grid; wrapping in <see cref="DataGridCollectionView"/> hooks up the
-    /// SortMemberPath-driven comparer the grid expects.
-    /// </summary>
+    // Sortable view wrapper Avalonia's DataGrid needs to honor column-header clicks. An
+    // ObservableCollection alone is not sortable by the grid; wrapping in
+    // DataGridCollectionView hooks up the SortMemberPath-driven comparer the grid expects.
     public DataGridCollectionView RowsView { get; }
 
     [ObservableProperty] private string _summaryText = "(no audit run yet)";
@@ -60,17 +54,14 @@ public sealed partial class SpellCoverageReportViewModel : ObservableObject
         });
     }
 
-    /// <summary>Force a fresh audit run. Useful when the user just edited the messages tab.</summary>
+    // Force a fresh audit run. Useful when the user just edited the messages tab.
     [RelayCommand]
     private void Refresh() => _auditor.Run();
 
-    /// <summary>
-    /// Save the currently-listed missing spells to a tab-separated text
-    /// file via the user's file picker. One row per spell with columns
-    /// # / Name / Classes / Casted By / Learned From — opens cleanly in
-    /// any text editor or spreadsheet. A leading comment line records
-    /// the source set + counts.
-    /// </summary>
+    // Save the currently-listed missing spells to a tab-separated text file via the
+    // user's file picker. One row per spell with columns # / Name / Classes / Casted By /
+    // Learned From — opens cleanly in any text editor or spreadsheet. A leading comment
+    // line records the source set + counts.
     [RelayCommand]
     private async Task ExportAsync()
     {
@@ -116,14 +107,11 @@ public sealed partial class SpellCoverageReportViewModel : ObservableObject
         await writer.WriteAsync(sb.ToString()).ConfigureAwait(false);
     }
 
-    /// <summary>
-    /// Double-click drilldown — opens the Message edit dialog with a
-    /// fresh record whose Name is the spell's Name and whose Links
-    /// point at <c>(Spells, spell.Number)</c>. The user fills in the
-    /// 5 perspective line slots (caster / target / witness / applied
-    /// / stat-line), flags, and Action; on save the audit fires and
-    /// the spell drops off the unanchored list on the next refresh.
-    /// </summary>
+    // Double-click drilldown — opens the Message edit dialog with a fresh record whose
+    // Name is the spell's Name and whose Links point at (Spells, spell.Number). The user
+    // fills in the 5 perspective line slots (caster / target / witness / applied /
+    // stat-line), flags, and Action; on save the audit fires and the spell drops off the
+    // unanchored list on the next refresh.
     [RelayCommand]
     private async Task CreateMessageForSpellAsync(UnanchoredSpell? spell)
     {
@@ -175,7 +163,7 @@ public sealed partial class SpellCoverageReportViewModel : ObservableObject
         store.Save();
     }
 
-    /// <summary>Unsubscribe when the window closes so we don't pin the VM in the auditor's event chain.</summary>
+    // Unsubscribe when the window closes so we don't pin the VM in the auditor's event chain.
     public void Detach()
     {
         _auditor.ResultAvailable -= OnResultAvailable;

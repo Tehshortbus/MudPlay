@@ -9,18 +9,14 @@ using FujinTerm.Views.Settings;
 
 namespace FujinTerm.ViewModels.Settings;
 
-/// <summary>
-/// "Auto-Lair" tab — per-character scheduler tuning. Marked-room
-/// catalogue lives BBS-side in <see cref="LairManager"/>; the heuristic
-/// + weighting + per-encumbrance hop-time table live here.
-/// </summary>
-/// <remarks>
-/// Apply pushes the live settings into <see cref="AppServices.AutoLair"/>
-/// (heuristic / penalty / engage timeout) AND replaces
-/// <see cref="AutoLairManager.TravelCostModel"/> with the right impl —
-/// flat vs encumbrance-gated — built from the section's current
-/// values. The scheduler picks up the new estimates on its next tick.
-/// </remarks>
+// "Auto-Lair" tab — per-character scheduler tuning. Marked-room catalogue lives
+// BBS-side in LairManager; the heuristic + weighting + per-encumbrance hop-time
+// table live here.
+//
+// Apply pushes the live settings into AppServices.AutoLair (heuristic / penalty /
+// engage timeout) AND replaces AutoLairManager.TravelCostModel with the right
+// impl — flat vs encumbrance-gated — built from the section's current values. The
+// scheduler picks up the new estimates on its next tick.
 public sealed partial class AutoLairSectionViewModel : SettingsSectionViewModel
 {
     private const string TabKey = "AutoLair";
@@ -67,7 +63,7 @@ public sealed partial class AutoLairSectionViewModel : SettingsSectionViewModel
 
     // ----- Routing heuristic ----------------------------------------
 
-    /// <summary>Backing enum value bound to the radio group via two booleans below.</summary>
+    // Backing enum value bound to the radio group via two booleans below.
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsDefaultHeuristic))]
     [NotifyPropertyChangedFor(nameof(IsThroughputHeuristic))]
@@ -216,13 +212,10 @@ public sealed partial class AutoLairSectionViewModel : SettingsSectionViewModel
         }
     }
 
-    /// <summary>
-    /// Push the DTO into the live <see cref="AutoLairManager"/> — both
-    /// the scalar knobs (heuristic / idle penalty / engage timeout)
-    /// AND the travel-cost model selection. The replacement is atomic
-    /// from the scheduler's perspective; the next tick (≤ 1 s away)
-    /// sees the new estimate.
-    /// </summary>
+    // Push the DTO into the live AutoLairManager — both the scalar knobs
+    // (heuristic / idle penalty / engage timeout) AND the travel-cost model
+    // selection. The replacement is atomic from the scheduler's perspective; the
+    // next tick (≤ 1 s away) sees the new estimate.
     private static void ApplyToServices(AutoLairSettings dto)
     {
         AppServices svcs = AppServices.Current;

@@ -19,26 +19,22 @@ using FujinTerm.Views.CharacterWorkshop;
 
 namespace FujinTerm.ViewModels.CharacterWorkshop;
 
-/// <summary>
-/// EQUIPMENT MANAGER section — one unified view. The left list holds the four
-/// fixed trigger-purposed gear sets (Default / Backstab / Pre-rest HP / Pre-rest
-/// Mana); Enable / Disable arm the selected set for automation. Selecting a set
-/// shows its slot grid on the right: one row per equippable slot (plus the two
-/// virtual Alt Weapon / Alt Off-Hand rows), each a search box whose suggestions
-/// are the game-data items that fit the slot <i>and</i> that the live character
-/// (level / class / alignment) can wear. A slot left blank is <c>{no change}</c> —
-/// skipped on apply. Every edit auto-persists to
-/// <see cref="CharacterProfile.Equipment"/>; there is no Save button.
-/// </summary>
-/// <remarks>
-/// The set list is fixed, not user-managed: <see cref="EnsureSets"/> seeds /
-/// normalizes exactly one set per <see cref="EquipTriggerType"/> on load. The
-/// per-row suggestion lists re-filter live as the character's level / class /
-/// alignment change (via <see cref="PlayerStats"/> and
-/// <see cref="PlayerDatabase.ObservationRecorded"/>). Apply Now hands the set to
-/// <see cref="EquipmentManager.ApplyBySetId"/>; the auto-fire side (resting /
-/// combat moments) lives in <see cref="AutoEquipCoordinator"/>.
-/// </remarks>
+// EQUIPMENT MANAGER section — one unified view. The left list holds the four
+// fixed trigger-purposed gear sets (Default / Backstab / Pre-rest HP / Pre-rest
+// Mana); Enable / Disable arm the selected set for automation. Selecting a set
+// shows its slot grid on the right: one row per equippable slot (plus the two
+// virtual Alt Weapon / Alt Off-Hand rows), each a search box whose suggestions
+// are the game-data items that fit the slot and that the live character (level /
+// class / alignment) can wear. A slot left blank is {no change} — skipped on
+// apply. Every edit auto-persists to CharacterProfile.Equipment; there is no Save
+// button.
+//
+// The set list is fixed, not user-managed: EnsureSets seeds / normalizes exactly
+// one set per EquipTriggerType on load. The per-row suggestion lists re-filter
+// live as the character's level / class / alignment change (via PlayerStats and
+// PlayerDatabase.ObservationRecorded). Apply Now hands the set to
+// EquipmentManager.ApplyBySetId; the auto-fire side (resting / combat moments)
+// lives in AutoEquipCoordinator.
 public sealed partial class EquipmentSectionViewModel : WorkshopSectionViewModel
 {
     // The fixed set roster, in left-list display order: trigger → seeded name +
@@ -69,22 +65,22 @@ public sealed partial class EquipmentSectionViewModel : WorkshopSectionViewModel
     public override string Title => "Equipment Manager";
     public override Control View => _view ??= new EquipmentSectionView { DataContext = this };
 
-    /// <summary>The four fixed trigger-purposed sets plus the synthetic Inventory
-    /// row, in roster order.</summary>
+    // The four fixed trigger-purposed sets plus the synthetic Inventory row, in
+    // roster order.
     public ObservableCollection<EquipmentSetRowViewModel> SetRows { get; } = new();
 
-    /// <summary>The slot rows, in <see cref="EquipmentSlotMap.DisplayOrder"/>.</summary>
+    // The slot rows, in EquipmentSlotMap.DisplayOrder.
     public ObservableCollection<EquipmentSlotRowViewModel> Rows { get; } = new();
 
-    /// <summary>Carried-item rows shown when the Inventory row is selected — one per
-    /// distinct pack item, with its weight and the loot-automation toggles.</summary>
+    // Carried-item rows shown when the Inventory row is selected — one per distinct
+    // pack item, with its weight and the loot-automation toggles.
     public ObservableCollection<InventoryItemRowViewModel> InventoryRows { get; } = new();
 
-    /// <summary>Aggregate bonuses of the selected set's physical-slot items, one
-    /// row per non-zero stat with a per-item hover breakdown.</summary>
+    // Aggregate bonuses of the selected set's physical-slot items, one row per
+    // non-zero stat with a per-item hover breakdown.
     public ObservableCollection<EquipBonusRow> BonusRows { get; } = new();
 
-    /// <summary>The row being viewed; null when no character is loaded.</summary>
+    // The row being viewed; null when no character is loaded.
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasSet))]
     [NotifyPropertyChangedFor(nameof(IsInventory))]
@@ -95,31 +91,31 @@ public sealed partial class EquipmentSectionViewModel : WorkshopSectionViewModel
     [NotifyCanExecuteChangedFor(nameof(ApplyNowCommand))]
     private EquipmentSetRowViewModel? _selectedSetRow;
 
-    /// <summary>Transient one-line result of the last Apply Now press.</summary>
+    // Transient one-line result of the last Apply Now press.
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasApplyStatus))]
     private string _applyStatus = string.Empty;
 
-    /// <summary>False with no character loaded — gates the set list and the empty state.</summary>
+    // False with no character loaded — gates the set list and the empty state.
     [ObservableProperty] private bool _hasProfile;
 
-    /// <summary>True when the bonuses panel has at least one non-zero stat row.</summary>
+    // True when the bonuses panel has at least one non-zero stat row.
     [ObservableProperty] private bool _hasBonuses;
 
-    /// <summary>True when the Inventory row holds at least one carried item.</summary>
+    // True when the Inventory row holds at least one carried item.
     [ObservableProperty] private bool _hasInventoryItems;
 
-    /// <summary>True when a gear set is selected — gates the slot grid and per-set
-    /// actions. False for the Inventory row.</summary>
+    // True when a gear set is selected — gates the slot grid and per-set actions.
+    // False for the Inventory row.
     public bool HasSet => SelectedSetRow is { IsInventory: false };
 
-    /// <summary>True when the Inventory row is selected — gates the carried-item view.</summary>
+    // True when the Inventory row is selected — gates the carried-item view.
     public bool IsInventory => SelectedSetRow is { IsInventory: true };
 
-    /// <summary>True when nothing is selected (no character loaded) — shows the empty prompt.</summary>
+    // True when nothing is selected (no character loaded) — shows the empty prompt.
     public bool ShowEmptyState => SelectedSetRow is null;
 
-    /// <summary>True while an Apply Now status line is showing.</summary>
+    // True while an Apply Now status line is showing.
     public bool HasApplyStatus => !string.IsNullOrEmpty(ApplyStatus);
 
     private EquipmentSet? SelectedSet => SelectedSetRow?.Set;
@@ -162,11 +158,11 @@ public sealed partial class EquipmentSectionViewModel : WorkshopSectionViewModel
 
     // ----- enable / disable / apply ---------------------------------------
 
-    /// <summary>Arm the selected set so automation may equip it at its trigger.</summary>
+    // Arm the selected set so automation may equip it at its trigger.
     [RelayCommand(CanExecute = nameof(CanEnable))]
     private void Enable() => SetEnabled(true);
 
-    /// <summary>Disarm the selected set — automation leaves it alone.</summary>
+    // Disarm the selected set — automation leaves it alone.
     [RelayCommand(CanExecute = nameof(CanDisable))]
     private void Disable() => SetEnabled(false);
 
@@ -183,7 +179,7 @@ public sealed partial class EquipmentSectionViewModel : WorkshopSectionViewModel
         DisableCommand.NotifyCanExecuteChanged();
     }
 
-    /// <summary>Hand the selected set to the engine to walk the character into it.</summary>
+    // Hand the selected set to the engine to walk the character into it.
     [RelayCommand(CanExecute = nameof(HasSet))]
     private void ApplyNow()
     {
@@ -197,12 +193,10 @@ public sealed partial class EquipmentSectionViewModel : WorkshopSectionViewModel
         };
     }
 
-    /// <summary>
-    /// Open the read-only Item Finder — the full equippable-item catalog with grouped
-    /// class / level / alignment / stat filters. A browse aid for picking slot items;
-    /// it doesn't write the set. Concurrent opens are blocked by the async command, so
-    /// the button can't stack multiple finder windows.
-    /// </summary>
+    // Open the read-only Item Finder — the full equippable-item catalog with
+    // grouped class / level / alignment / stat filters. A browse aid for picking
+    // slot items; it doesn't write the set. Concurrent opens are blocked by the
+    // async command, so the button can't stack multiple finder windows.
     [RelayCommand]
     private async Task OpenItemFinder()
     {
@@ -211,7 +205,7 @@ public sealed partial class EquipmentSectionViewModel : WorkshopSectionViewModel
             .OpenWindowAsync<ItemFinderViewModel, bool>(finder);
     }
 
-    /// <summary>Seed the physical slots from the live worn loadout.</summary>
+    // Seed the physical slots from the live worn loadout.
     [RelayCommand(CanExecute = nameof(HasSet))]
     private void SnapshotCurrent()
     {

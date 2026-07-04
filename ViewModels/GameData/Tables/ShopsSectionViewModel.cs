@@ -7,26 +7,18 @@ using FujinTerm.Services;
 
 namespace FujinTerm.ViewModels.GameData.Tables;
 
-/// <summary>
-/// Game Data Browser → Shops tab. Static MDB shop definitions — the
-/// Phase 13 CashManager reads <c>ShopType == "Bank"</c> rows as the
-/// auto-deposit destinations; the Phase 7 Navigation window references
-/// shop ids when surfacing per-room actions.
-/// </summary>
-/// <remarks>
-/// Column names mirror the MajorMUD MDB schema verbatim. <c>Markup%</c>
-/// is the buy/sell multiplier, <c>ClassRest</c> is a class-bitmask
-/// restriction, <c>MinLVL</c> / <c>MaxLVL</c> are the customer-level
-/// gates. <c>ShopType</c> renders via <see cref="LookupEnums"/>
-/// ("Weapons" / "Armour" / "Bank" / "Tavern" / etc.).
-///
-/// Double-click hops to the Rooms tab and selects the room this shop
-/// is attached to (read from the row's <c>Assigned To</c> field,
-/// formatted as <c>"Room {map}/{room}"</c>). There's no per-shop edit
-/// dialog — the MDB is the source of truth for shops; if you want to
-/// look at the room a shop sits in, the Rooms tab is where the rest of
-/// the geography lives.
-/// </remarks>
+// Game Data Browser → Shops tab. Static MDB shop definitions — the CashManager reads
+// ShopType == "Bank" rows as the auto-deposit destinations; the Navigation window references
+// shop ids when surfacing per-room actions.
+//
+// Column names mirror the MajorMUD MDB schema verbatim. Markup% is the buy/sell multiplier,
+// ClassRest is a class-bitmask restriction, MinLVL / MaxLVL are the customer-level gates.
+// ShopType renders via LookupEnums ("Weapons" / "Armour" / "Bank" / "Tavern" / etc.).
+//
+// Double-click hops to the Rooms tab and selects the room this shop is attached to (read from
+// the row's Assigned To field, formatted as "Room {map}/{room}"). There's no per-shop edit
+// dialog — the MDB is the source of truth for shops; if you want to look at the room a shop
+// sits in, the Rooms tab is where the rest of the geography lives.
 public sealed class ShopsSectionViewModel : JsonTableSectionViewModel, IEditableTableSectionViewModel
 {
     private readonly GameDataCache _cache;
@@ -70,13 +62,9 @@ public sealed class ShopsSectionViewModel : JsonTableSectionViewModel, IEditable
         OpenEditAsyncCommand = new RelayCommand<GameDataRow?>(JumpToRoom);
     }
 
-    /// <summary>
-    /// Resolve the shop's host room from <c>Assigned To = "Room {map}/{room}"</c>
-    /// and ask the browser to switch to the Rooms tab + highlight the
-    /// matching entry. No-op when the shop has no <c>Assigned To</c>
-    /// (a stockless bank, an unbound merchant, etc.) or the map/room
-    /// pair can't be parsed.
-    /// </summary>
+    // Resolve the shop's host room from Assigned To = "Room {map}/{room}" and ask the browser to
+    // switch to the Rooms tab + highlight the matching entry. No-op when the shop has no Assigned
+    // To (a stockless bank, an unbound merchant, etc.) or the map/room pair can't be parsed.
     private void JumpToRoom(GameDataRow? row)
     {
         if (row is null) return;
@@ -97,19 +85,13 @@ public sealed class ShopsSectionViewModel : JsonTableSectionViewModel, IEditable
               && string.Equals(r.Get("Room Number"), roomStr, StringComparison.Ordinal));
     }
 
-    /// <summary>
-    /// Look up the shop in the active set's Shops.json and parse the
-    /// FIRST <c>Room {map}/{room}</c> token in its <c>Assigned To</c>
-    /// field. Returns (0,0) on any miss — including when the field is
-    /// <c>\x00</c> (unassigned, e.g. an Inn) or doesn't start with
-    /// <c>"Room "</c>.
-    /// </summary>
-    /// <remarks>
-    /// Some shops (Bank of Godfrey, multi-branch chains) carry a
-    /// comma-separated list of rooms — <c>"Room 1/297, Room 6/1334"</c>.
-    /// We take the first token; the dialog only jumps to one room
-    /// anyway, and the rest are accessible via the Rooms tab's search.
-    /// </remarks>
+    // Look up the shop in the active set's Shops.json and parse the FIRST "Room {map}/{room}"
+    // token in its Assigned To field. Returns (0,0) on any miss — including when the field is
+    // \x00 (unassigned, e.g. an Inn) or doesn't start with "Room ".
+    //
+    // Some shops (Bank of Godfrey, multi-branch chains) carry a comma-separated list of rooms —
+    // "Room 1/297, Room 6/1334". We take the first token; the dialog only jumps to one room
+    // anyway, and the rest are accessible via the Rooms tab's search.
     private (int Map, int Room) ReadAssignedRoom(int shopNumber)
     {
         JsonDocument? doc = _cache.GetRawTable("Shops");

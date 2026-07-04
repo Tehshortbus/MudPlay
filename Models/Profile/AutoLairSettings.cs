@@ -1,103 +1,70 @@
 namespace FujinTerm.Models.Profile;
 
-/// <summary>
-/// Per-character "Auto-Lair" settings — the scheduler's tuning surface.
-/// Stored as the <c>"AutoLair"</c> entry in <see cref="CharacterProfile.Settings"/>.
-/// </summary>
-/// <remarks>
-/// <para>
-/// The marker set itself is BBS-scoped — saved
-/// <see cref="LairSetup"/>s live under <c>Data/BBS/{bbs}/Lairs/</c>
-/// because lair locations are game-data facts (every character on the
-/// same BBS sees the same rooms). The knobs here are per-character
-/// because they describe the player's playstyle and class capabilities
-/// (a thief on light boots walks at a different pace than a wizard
-/// dragging full plate).
-/// </para>
-/// <para>
-/// All fields ship with sensible defaults the user can run on day one
-/// without touching the tab. The encumbrance-gated travel-cost table
-/// is seeded from a single-character run-without-encumbrance measurement
-/// (1.5 s / hop), then refined per bucket once
-/// <see cref="OtherSettings.LogMovementHopTiming"/> has produced data
-/// for the user to enter.
-/// </para>
-/// </remarks>
+// Per-character "Auto-Lair" settings — the scheduler's tuning surface.
+// Stored as the "AutoLair" entry in CharacterProfile.Settings.
+//
+// The marker set itself is BBS-scoped — saved LairSetups live under
+// Data/BBS/{bbs}/Lairs/ because lair locations are game-data facts (every
+// character on the same BBS sees the same rooms). The knobs here are
+// per-character because they describe the player's playstyle and class
+// capabilities (a thief on light boots walks at a different pace than a
+// wizard dragging full plate).
+//
+// All fields ship with sensible defaults the user can run on day one
+// without touching the tab. The encumbrance-gated travel-cost table is
+// seeded from a single-character run-without-encumbrance measurement
+// (1.5 s / hop), then refined per bucket once
+// OtherSettings.LogMovementHopTiming has produced data for the user to enter.
 public sealed class AutoLairSettings
 {
     // ----- Routing heuristic ----------------------------------------
 
-    /// <summary>
-    /// Scoring heuristic the scheduler uses to rank candidate lairs.
-    /// Maps 1:1 onto <see cref="Game.Map.AutoLairHeuristic"/>:
-    /// <list type="bullet">
-    ///   <item><see cref="Game.Map.AutoLairHeuristic.Default"/> — balance
-    ///   wasted-respawn vs idle-wait under <see cref="IdlePenalty"/>.</item>
-    ///   <item><see cref="Game.Map.AutoLairHeuristic.Throughput"/> —
-    ///   minimise wasted respawn only; idle wait is free.</item>
-    /// </list>
-    /// </summary>
+    // Scoring heuristic the scheduler uses to rank candidate lairs.
+    // Maps 1:1 onto Game.Map.AutoLairHeuristic:
+    //   Default — balance wasted-respawn vs idle-wait under IdlePenalty.
+    //   Throughput — minimise wasted respawn only; idle wait is free.
     public Game.Map.AutoLairHeuristic Heuristic { get; set; } = Game.Map.AutoLairHeuristic.Default;
 
-    /// <summary>
-    /// Weight on idle-wait time under the
-    /// <see cref="Game.Map.AutoLairHeuristic.Default"/> heuristic.
-    /// 0 = ignore idle (= Throughput); 1 = treat idle and wasted equally
-    /// (default); higher = prefer ready-now lairs over standing around.
-    /// </summary>
+    // Weight on idle-wait time under the Default heuristic.
+    // 0 = ignore idle (= Throughput); 1 = treat idle and wasted equally
+    // (default); higher = prefer ready-now lairs over standing around.
     public double IdlePenalty { get; set; } = 1.0;
 
-    /// <summary>
-    /// How long (in seconds) the scheduler stays in
-    /// <see cref="Game.Map.AutoLairPhase.Engaging"/> after entering a
-    /// lair before re-evaluating. Stop-gap until Phase 13's
-    /// CombatManager exposes a combat-ended signal. Default 30 s.
-    /// </summary>
+    // How long (in seconds) the scheduler stays in the Engaging phase after
+    // entering a lair before re-evaluating. Default 30 s.
     public int EngageTimeoutSeconds { get; set; } = 30;
 
     // ----- Travel cost model ----------------------------------------
 
-    /// <summary>
-    /// Picks which <see cref="Game.Map.ITravelCostModel"/> the scheduler
-    /// uses for hop → duration conversion.
-    /// </summary>
+    // Picks which Game.Map.ITravelCostModel the scheduler uses for
+    // hop → duration conversion.
     public AutoLairTravelCostMode TravelCostMode { get; set; } = AutoLairTravelCostMode.Flat;
 
-    /// <summary>
-    /// Seconds per hop for <see cref="AutoLairTravelCostMode.Flat"/>.
-    /// Default 1.5 s — a single-character run-without-encumbrance
-    /// observation. Tune with <see cref="OtherSettings.LogMovementHopTiming"/>.
-    /// </summary>
+    // Seconds per hop for the Flat cost mode. Default 1.5 s — a
+    // single-character run-without-encumbrance observation. Tune with
+    // OtherSettings.LogMovementHopTiming.
     public double FlatSecondsPerHop { get; set; } = 1.5;
 
-    /// <summary>
-    /// Encumbrance bucket → seconds per hop, used when
-    /// <see cref="TravelCostMode"/> is
-    /// <see cref="AutoLairTravelCostMode.EncumbranceGated"/>. Defaults
-    /// scale with bucket — None is the fastest, Encumbered the slowest.
-    /// </summary>
+    // Encumbrance bucket → seconds per hop, used when TravelCostMode is
+    // EncumbranceGated. Defaults scale with bucket — None is the fastest,
+    // Encumbered the slowest.
     public EncumbranceHopTimes HopTimesByEncumbrance { get; set; } = new();
 }
 
-/// <summary>
-/// Which travel-cost model <see cref="AutoLairSettings"/> hands the
-/// scheduler at <see cref="Services.AppServices"/> wire-up.
-/// </summary>
+// Which travel-cost model AutoLairSettings hands the scheduler at
+// AppServices wire-up.
 public enum AutoLairTravelCostMode
 {
-    /// <summary>Single flat seconds-per-hop, regardless of encumbrance.</summary>
+    // Single flat seconds-per-hop, regardless of encumbrance.
     Flat = 0,
-    /// <summary>Per-bucket seconds-per-hop (None / Light / Medium / Heavy / Encumbered).</summary>
+    // Per-bucket seconds-per-hop (None / Light / Medium / Heavy / Encumbered).
     EncumbranceGated = 1,
 }
 
-/// <summary>
-/// Per-encumbrance seconds-per-hop lookup. Plain POCO so
-/// <see cref="System.Text.Json"/> round-trips it without a converter.
-/// Defaults are scaled from the flat 1.5 s baseline; the
-/// <see cref="HopTimingCalibrator"/> feeds real numbers once the user
-/// runs a calibration session.
-/// </summary>
+// Per-encumbrance seconds-per-hop lookup. Plain POCO so System.Text.Json
+// round-trips it without a converter. Defaults are scaled from the flat
+// 1.5 s baseline; the HopTimingCalibrator feeds real numbers once the user
+// runs a calibration session.
 public sealed class EncumbranceHopTimes
 {
     public double None       { get; set; } = 1.0;
@@ -106,7 +73,7 @@ public sealed class EncumbranceHopTimes
     public double Heavy      { get; set; } = 4.0;
     public double Encumbered { get; set; } = 6.0;
 
-    /// <summary>Lookup helper for the encumbrance-gated travel-cost model.</summary>
+    // Lookup helper for the encumbrance-gated travel-cost model.
     public double For(Game.EncumbranceLevel level) => level switch
     {
         Game.EncumbranceLevel.None       => None,

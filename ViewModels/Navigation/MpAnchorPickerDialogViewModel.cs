@@ -8,13 +8,10 @@ using FujinTerm.Services;
 
 namespace FujinTerm.ViewModels.Navigation;
 
-/// <summary>
-/// Multi-candidate disambiguation prompt for the <c>.mp</c> importer.
-/// Fires when <see cref="MpFileImporter.Resolve"/> finds two or more
-/// rooms that hash-match the file's start AND produce a closed loop
-/// from the recorded steps. User picks one; result is the chosen
-/// anchor's <see cref="RoomKey"/>, or null on cancel.
-/// </summary>
+// Multi-candidate disambiguation prompt for the .mp importer. Fires when
+// MpFileImporter.Resolve finds two or more rooms that hash-match the file's
+// start AND produce a closed loop from the recorded steps. User picks one;
+// result is the chosen anchor's RoomKey, or null on cancel.
 public sealed partial class MpAnchorPickerDialogViewModel
     : ObservableObject, IDialogViewModel<RoomKey?>
 {
@@ -67,5 +64,5 @@ public sealed partial class MpAnchorPickerDialogViewModel
     private void Cancel() => CloseRequested?.Invoke(null);
 }
 
-/// <summary>One displayable candidate row in the picker dialog.</summary>
+// One displayable candidate row in the picker dialog.
 public sealed record MpAnchorRow(RoomKey Key, string Label, string Tag);

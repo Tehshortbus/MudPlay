@@ -12,26 +12,21 @@ using FujinTerm.Views.Settings;
 
 namespace FujinTerm.ViewModels.Settings;
 
-/// <summary>
-/// "Auto-Light" tab — provisioning knobs for the auto-light engine: how many
-/// hours of lit time to carry into a dark route, which light source to buy /
-/// ready, and when a dwindling supply triggers a resupply run. Persists as the
-/// <c>"AutoLight"</c> entry in <see cref="CharacterProfile.Settings"/>.
-/// </summary>
-/// <remarks>
-/// The light dropdown is fed from the active set's <see cref="LightItemIndex"/>
-/// so it only offers real light items; the leading
-/// <see cref="AutoPickLabel"/> entry stores as <c>null</c> and lets the engine
-/// choose per route. These values only bite once the
-/// <see cref="AutoActionDefaults.AutoLight"/> master flag (Settings → General)
-/// is on.
-/// </remarks>
+// "Auto-Light" tab — provisioning knobs for the auto-light engine: how many
+// hours of lit time to carry into a dark route, which light source to buy /
+// ready, and when a dwindling supply triggers a resupply run. Persists as the
+// "AutoLight" entry in CharacterProfile.Settings.
+//
+// The light dropdown is fed from the active set's LightItemIndex so it only
+// offers real light items; the leading AutoPickLabel entry stores as null and
+// lets the engine choose per route. These values only bite once the
+// AutoActionDefaults.AutoLight master flag (Settings → General) is on.
 public sealed partial class AutoLightSectionViewModel : SettingsSectionViewModel
 {
     private const string TabKey = "AutoLight";
 
-    /// <summary>Dropdown sentinel for "let the engine pick" — persists as a
-    /// <c>null</c> <see cref="AutoLightSettings.PreferredLightName"/>.</summary>
+    // Dropdown sentinel for "let the engine pick" — persists as a null
+    // AutoLightSettings.PreferredLightName.
     public const string AutoPickLabel = "Automatic (per route)";
 
     private readonly ProfileService _profile;
@@ -45,7 +40,7 @@ public sealed partial class AutoLightSectionViewModel : SettingsSectionViewModel
     public override string Title => "Auto-Light";
     public override bool IsDirty => _dirty;
 
-    /// <summary>True when a profile is loaded — editor is hidden otherwise.</summary>
+    // True when a profile is loaded — editor is hidden otherwise.
     public bool HasProfile => _profile.Current is not null;
 
     public override Control View => _view ??= new AutoLightSectionView { DataContext = this };
@@ -56,8 +51,8 @@ public sealed partial class AutoLightSectionViewModel : SettingsSectionViewModel
         "Carry hours", "Reorder threshold", "Preferred light", "Provisioning",
     };
 
-    /// <summary>Light names offered in the dropdown: the auto sentinel followed
-    /// by every light in the active set, in MDB order.</summary>
+    // Light names offered in the dropdown: the auto sentinel followed by every
+    // light in the active set, in MDB order.
     public ObservableCollection<string> AvailableLights { get; } = new();
 
     [ObservableProperty] private int _carryHours = 6;
@@ -99,11 +94,9 @@ public sealed partial class AutoLightSectionViewModel : SettingsSectionViewModel
         try { return AppServices.Current.GameData; } catch { return null; } // design-time
     }
 
-    /// <summary>
-    /// Human-readable summary of what <see cref="CarryHours"/> buys for the
-    /// chosen light — mirrors the user's "12 hours → 6 lanterns" mental model.
-    /// Auto / provisioning-off / unknown-light cases each read plainly.
-    /// </summary>
+    // Human-readable summary of what CarryHours buys for the chosen light —
+    // mirrors the user's "12 hours → 6 lanterns" mental model. Auto /
+    // provisioning-off / unknown-light cases each read plainly.
     public string CarryReadout
     {
         get

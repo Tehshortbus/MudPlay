@@ -10,25 +10,17 @@ using FujinTerm.ViewModels.GameData.Edit;
 
 namespace FujinTerm.ViewModels.GameData.Tables;
 
-/// <summary>
-/// Game Data Browser → Aliases tab. Surfaces the active character's
-/// user-defined aliases from <see cref="AliasEngine"/> — the
-/// outgoing-text mirror of the Triggers tab. Editable — double-click
-/// a row opens the <see cref="AliasEditDialogViewModel"/>; save
-/// routes through <see cref="AliasEngine.Replace"/>.
-/// </summary>
+// Game Data Browser → Aliases tab. Surfaces the active character's user-defined aliases from
+// AliasEngine — the outgoing-text mirror of the Triggers tab. Editable — double-click a row
+// opens the AliasEditDialogViewModel; save routes through AliasEngine.Replace.
 public sealed class AliasesSectionViewModel : GameDataTableSectionViewModel, IEditableTableSectionViewModel
 {
     private readonly AliasEngine _engine;
     private readonly DialogService? _dialogs;
 
-    /// <summary>
-    /// Per-rebuild side table mapping the displayed <see cref="GameDataRow"/>
-    /// back to the engine's live <see cref="Alias"/> instance. Same
-    /// trick the Triggers tab uses — first-word is unique at save time
-    /// but FilteredRows indices skew under search, so we remember the
-    /// reference at populate time.
-    /// </summary>
+    // Per-rebuild side table mapping the displayed GameDataRow back to the engine's live Alias
+    // instance. Same trick the Triggers tab uses — first-word is unique at save time but
+    // FilteredRows indices skew under search, so we remember the reference at populate time.
     private readonly Dictionary<GameDataRow, Alias> _rowToAlias = new();
 
     public override string Id => "aliases";
@@ -41,16 +33,13 @@ public sealed class AliasesSectionViewModel : GameDataTableSectionViewModel, IEd
 
     public override string SearchKeyColumn => "Name";
 
-    /// <summary>Engine-backed table — see <see cref="GameDataTableSectionViewModel.ShowUseColumn"/>.</summary>
+    // Engine-backed table — see GameDataTableSectionViewModel.ShowUseColumn.
     public override bool ShowUseColumn => false;
 
-    /// <summary>
-    /// Surfaced banner — tells the user that aliases only expand from
-    /// the Conversation window's input field today, not from the
-    /// terminal canvas. The canvas would need client-side line-mode
-    /// (local echo + telnet ECHO negotiation) to participate; that
-    /// work is intentionally deferred until usage demand justifies it.
-    /// </summary>
+    // Surfaced banner — tells the user that aliases only expand from the Conversation window's
+    // input field today, not from the terminal canvas. The canvas would need client-side
+    // line-mode (local echo + telnet ECHO negotiation) to participate; that work is
+    // intentionally deferred until usage demand justifies it.
     public override string? BannerText =>
         "Aliases fire only when you press Enter in the Conversation window's input field. " +
         "Typing in the main terminal sends each keystroke directly to the game and bypasses alias expansion.";

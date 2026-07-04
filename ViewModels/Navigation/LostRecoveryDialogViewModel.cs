@@ -4,24 +4,19 @@ using FujinTerm.Services;
 
 namespace FujinTerm.ViewModels.Navigation;
 
-/// <summary>
-/// Modeless info dialog the
-/// <see cref="Game.Map.EngineRecoveryGate"/> pops when tier-3 backtrack
-/// exhausts without identifying the room uniquely. Single OK button —
-/// no candidate picker, no automatic recovery. Tells the user to use
-/// the map's right-click "I am here" affordance to locate manually.
-/// </summary>
+// Modeless info dialog the EngineRecoveryGate pops when tier-3 backtrack
+// exhausts without identifying the room uniquely. Single OK button — no
+// candidate picker, no automatic recovery. Tells the user to use the map's
+// right-click "I am here" affordance to locate manually.
 public sealed partial class LostRecoveryDialogViewModel : ObservableObject, IDialogViewModel<bool>
 {
     public event Action<bool>? CloseRequested;
 
-    /// <summary>Headline shown above the body text.</summary>
+    // Headline shown above the body text.
     public string Header => "Lost — couldn't recover";
 
-    /// <summary>
-    /// Body text. Carries the engine name + the gate's terminal reason
-    /// so the user has context for why automation gave up.
-    /// </summary>
+    // Body text. Carries the engine name + the gate's terminal reason so the
+    // user has context for why automation gave up.
     public string Body { get; }
 
     public LostRecoveryDialogViewModel(string engineName, string detail)

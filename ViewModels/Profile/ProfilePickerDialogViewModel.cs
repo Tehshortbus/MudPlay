@@ -8,37 +8,30 @@ using FujinTerm.Services;
 
 namespace FujinTerm.ViewModels.Profile;
 
-/// <summary>
-/// Picker over the saved character profiles on disk, each a
-/// <see cref="ProfileRef"/> (bbs, char) pair — profiles are BBS-scoped now,
-/// so the bare character name is no longer a unique key. Selecting + the
-/// confirm button — or double-clicking a row — commits the chosen ref;
-/// Cancel / title-bar X returns <c>null</c>. Serves File → Open profile
-/// (default wording) and any other "pick a profile" flow (e.g. Settings →
-/// Toolbar + Shortcuts "Copy from profile") via the overridable
-/// title / prompt / confirm-label strings.
-/// </summary>
+// Picker over the saved character profiles on disk, each a ProfileRef (bbs, char) pair
+// — profiles are BBS-scoped now, so the bare character name is no longer a unique key.
+// Selecting + the confirm button — or double-clicking a row — commits the chosen ref;
+// Cancel / title-bar X returns null. Serves File → Open profile (default wording) and
+// any other "pick a profile" flow (e.g. Settings → Toolbar + Shortcuts "Copy from
+// profile") via the overridable title / prompt / confirm-label strings.
 public sealed partial class ProfilePickerDialogViewModel : ObservableObject, IDialogViewModel<ProfileRef>
 {
     public event Action<ProfileRef?>? CloseRequested;
 
     public ObservableCollection<ProfileRef> Profiles { get; } = new();
 
-    /// <summary>
-    /// Window title — the caller's base wording plus the absolute folder the
-    /// list is read from (<see cref="AppPaths.BbsDir"/>), e.g.
-    /// <c>"Open profile - C:\Users\…\FujinTerm\Data\BBS"</c>, so it's obvious at
-    /// a glance which data directory the app is actually using.
-    /// </summary>
+    // Window title — the caller's base wording plus the absolute folder the list is read
+    // from (AppPaths.BbsDir), e.g. "Open profile - C:\Users\…\FujinTerm\Data\BBS", so
+    // it's obvious at a glance which data directory the app is actually using.
     public string WindowTitle { get; }
 
-    /// <summary>Prompt line above the list — defaults to the Open-profile wording.</summary>
+    // Prompt line above the list — defaults to the Open-profile wording.
     public string Prompt { get; }
 
-    /// <summary>Confirm-button caption — defaults to "Open".</summary>
+    // Confirm-button caption — defaults to "Open".
     public string ConfirmLabel { get; }
 
-    /// <summary>Empty-state message shown when no profiles are available.</summary>
+    // Empty-state message shown when no profiles are available.
     public string EmptyMessage { get; }
 
     [ObservableProperty]

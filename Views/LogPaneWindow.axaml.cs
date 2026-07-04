@@ -10,12 +10,10 @@ using FujinTerm.ViewModels;
 
 namespace FujinTerm.Views;
 
-/// <summary>
-/// Modeless system-event log pane. Bound to <see cref="LogPaneViewModel"/>;
-/// code-behind handles two concerns XAML can't express cleanly: scrolling
-/// the newest row into view when AutoScroll is on, and disposing the VM
-/// on close.
-/// </summary>
+// Modeless system-event log pane. Bound to LogPaneViewModel;
+// code-behind handles two concerns XAML can't express cleanly: scrolling
+// the newest row into view when AutoScroll is on, and disposing the VM
+// on close.
 public partial class LogPaneWindow : Window
 {
     private ListBox? _rowsList;
@@ -84,22 +82,17 @@ public partial class LogPaneWindow : Window
             () => _rowsList?.ScrollIntoView(newest));
     }
 
-    /// <summary>
-    /// Find the LogPaneRowViewModel under the tapped point (walks up
-    /// the visual tree from the event source) and react:
-    /// <list type="number">
-    /// <item>If the entry carries a <see cref="FujinTerm.Services.LogEntry.Context"/>
-    /// payload (Phase 9 RoomClassifier emits these on Unknown rows with
-    /// the raw "Also Here" line), copy the context to the clipboard so
-    /// the user can immediately paste into a fix dialog. The transient
-    /// confirmation goes to the LogService at Info severity.</item>
-    /// <item>Dispatch via
-    /// <see cref="FujinTerm.Services.LogService.TryInvokeDetailHandler"/>
-    /// — opens the source-specific detail window when one is registered
-    /// (e.g. SpellCoverageAuditor, Phase 9 sub-G fix dialog).</item>
-    /// </list>
-    /// Either path can no-op without affecting the other.
-    /// </summary>
+    // Find the LogPaneRowViewModel under the tapped point (walks up the
+    // visual tree from the event source) and react:
+    //  1. If the entry carries a LogEntry.Context payload (RoomClassifier
+    //     emits these on Unknown rows with the raw "Also Here" line), copy
+    //     the context to the clipboard so the user can immediately paste
+    //     into a fix dialog. The transient confirmation goes to the
+    //     LogService at Info severity.
+    //  2. Dispatch via LogService.TryInvokeDetailHandler — opens the
+    //     source-specific detail window when one is registered (e.g.
+    //     SpellCoverageAuditor, the room fix dialog).
+    // Either path can no-op without affecting the other.
     private void OnRowDoubleTapped(object? sender, RoutedEventArgs e)
     {
         if (e.Source is not Visual src) return;
@@ -112,7 +105,7 @@ public partial class LogPaneWindow : Window
                 if (row.Entry.Context is { Length: > 0 } ctx)
                     CopyContextToClipboard(ctx);
                 // Both registration styles fire when both are present —
-                // SpellCoverageAuditor's no-arg handler + the Phase 9
+                // SpellCoverageAuditor's no-arg handler + the
                 // RoomClassifier's entry-aware handler use different
                 // sources today, but a future producer could register
                 // both for the same Source without losing either.
@@ -126,14 +119,11 @@ public partial class LogPaneWindow : Window
         }
     }
 
-    /// <summary>
-    /// Push <paramref name="text"/> to the top-level window's clipboard
-    /// asynchronously and surface a one-line Info-severity confirmation
-    /// in the LogPane so the user sees the copy happened. Clipboard
-    /// failures are surfaced as Warn — usually a sandboxed environment
-    /// or a missing top-level (the latter shouldn't happen since we're
-    /// running inside one).
-    /// </summary>
+    // Push text to the top-level window's clipboard asynchronously and
+    // surface a one-line Info-severity confirmation in the LogPane so the
+    // user sees the copy happened. Clipboard failures are surfaced as
+    // Warn — usually a sandboxed environment or a missing top-level (the
+    // latter shouldn't happen since we're running inside one).
     private void CopyContextToClipboard(string text)
     {
         TopLevel? top = TopLevel.GetTopLevel(this);

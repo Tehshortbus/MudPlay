@@ -5,27 +5,24 @@ using FujinTerm.Game.Cash;
 
 namespace FujinTerm.ViewModels;
 
-/// <summary>
-/// Modeless Transaction history window VM — a pure projection over
-/// <see cref="TransactionHistoryTracker"/>. Rebuilds <see cref="Rows"/> on the
-/// tracker's <c>Changed</c> signal (marshalled to the dispatcher) in
-/// newest-first order so the latest deposit / stash sits at the top. The
-/// tracker owns all the state and the session-reset boundary, so this VM never
-/// mutates anything.
-/// </summary>
+// Modeless Transaction history window VM — a pure projection over
+// TransactionHistoryTracker. Rebuilds Rows on the tracker's Changed signal
+// (marshalled to the dispatcher) in newest-first order so the latest deposit
+// / stash sits at the top. The tracker owns all the state and the
+// session-reset boundary, so this VM never mutates anything.
 public sealed partial class TransactionHistoryViewModel : ObservableObject, IDisposable
 {
     private readonly TransactionHistoryTracker _tracker;
     private bool _disposed;
 
-    /// <summary>The session's recorded transactions, newest first.</summary>
+    // The session's recorded transactions, newest first.
     public ObservableCollection<TransactionEntry> Rows { get; } = new();
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsEmpty))]
     private int _count;
 
-    /// <summary>Drives the "no transactions yet" placeholder.</summary>
+    // Drives the "no transactions yet" placeholder.
     public bool IsEmpty => Count == 0;
 
     public TransactionHistoryViewModel(TransactionHistoryTracker tracker)

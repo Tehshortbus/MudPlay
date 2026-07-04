@@ -4,31 +4,28 @@ using FujinTerm.Models.Profile;
 
 namespace FujinTerm.ViewModels.CharacterWorkshop;
 
-/// <summary>
-/// Live CP-plan state shared between the CP Allocation tab (writer) and the
-/// Level Projection tab (reader), so projected HP / HP-regen / MP-regen reflect
-/// the stats the user plans to train at each level. The CP Allocation VM pushes
-/// its raw-base baseline + clamped plan rows on every recalc; the Level
-/// Projection VM reads <see cref="StatsAtLevel"/> and recomputes on
-/// <see cref="Changed"/>.
-/// </summary>
+// Live CP-plan state shared between the CP Allocation tab (writer) and the Level
+// Projection tab (reader), so projected HP / HP-regen / MP-regen reflect the
+// stats the user plans to train at each level. The CP Allocation VM pushes its
+// raw-base baseline + clamped plan rows on every recalc; the Level Projection VM
+// reads StatsAtLevel and recomputes on Changed.
 public sealed class CpPlanState
 {
-    /// <summary>Raised whenever the plan or baseline changes.</summary>
+    // Raised whenever the plan or baseline changes.
     public event Action? Changed;
 
-    /// <summary>True once the CP Allocation tab has populated the baseline.</summary>
+    // True once the CP Allocation tab has populated the baseline.
     public bool HasData { get; private set; }
 
-    /// <summary>The character's current level (the baseline's level).</summary>
+    // The character's current level (the baseline's level).
     public int CurrentLevel { get; private set; }
 
-    /// <summary>Raw-base stats at the current level (the plan's row 0).</summary>
+    // Raw-base stats at the current level (the plan's row 0).
     public CpPlanEntry Baseline { get; private set; } = new();
 
     private List<CpPlanEntry> _rows = new();
 
-    /// <summary>Replace the plan + baseline and notify readers.</summary>
+    // Replace the plan + baseline and notify readers.
     public void Update(CpPlanEntry baseline, int currentLevel, IReadOnlyList<CpPlanEntry> rows)
     {
         ArgumentNullException.ThrowIfNull(baseline);
@@ -40,11 +37,9 @@ public sealed class CpPlanState
         Changed?.Invoke();
     }
 
-    /// <summary>
-    /// The planned stats in effect at <paramref name="level"/>: the latest plan
-    /// row at or below it, or the baseline when none applies (so levels at/below
-    /// the current one return the baseline).
-    /// </summary>
+    // The planned stats in effect at the given level: the latest plan row at or
+    // below it, or the baseline when none applies (so levels at/below the current
+    // one return the baseline).
     public CpPlanEntry StatsAtLevel(int level)
     {
         CpPlanEntry best = Baseline;

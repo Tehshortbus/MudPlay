@@ -2,12 +2,9 @@ using System.Collections.Generic;
 
 namespace FujinTerm.ViewModels.Settings;
 
-/// <summary>
-/// "Sounds" tab stub — master volume + per-event sound assignments.
-/// The audio backend (LibVLCSharp / NAudio / ManagedBass) is picked
-/// when Phase 13 actually needs to play a file; the surface is here
-/// from day one so users see what knobs will land.
-/// </summary>
+// "Sounds" tab stub — master volume + per-event sound assignments. The audio
+// backend (LibVLCSharp / NAudio / ManagedBass) is picked when the first feature
+// that actually plays a file lands; the surface is here so users see the knobs.
 public sealed class SoundsSectionViewModel : StubSectionViewModel
 {
     public override string Id => "sounds";

@@ -11,22 +11,15 @@ using FujinTerm.ViewModels.GameData.Edit;
 
 namespace FujinTerm.ViewModels.GameData.Tables;
 
-/// <summary>
-/// Game Data Browser → Items tab. Renders the imported MajorMUD
-/// <c>Items</c> table — drives equipment validation on the Phase 9
-/// Workshop EQUIP grid, shop-price lookups for the Phase 13 Cash
-/// auto-deposit math, and ability-effect tooltips throughout.
-/// </summary>
-/// <remarks>
-/// Column names mirror the MajorMUD MDB schema verbatim (per
-/// <c>data-v1.11p.mdb</c>): <c>Number</c> is the canonical item ID,
-/// <c>Encum</c> is encumbrance, <c>Accy</c> is to-hit modifier,
-/// <c>StrReq</c> is strength prerequisite. Numeric enum cells
-/// (<c>ItemType</c>, <c>Worn</c>, <c>WeaponType</c>, <c>ArmourType</c>,
-/// <c>Currency</c>) are formatted via <see cref="LookupEnums"/> so the
-/// grid shows "Weapon" / "Feet" / "1H Sharp" / "Gold" rather than the
-/// raw integers.
-/// </remarks>
+// Game Data Browser → Items tab. Renders the imported MajorMUD Items table — drives equipment
+// validation on the Workshop EQUIP grid, shop-price lookups for the Cash auto-deposit math,
+// and ability-effect tooltips throughout.
+//
+// Column names mirror the MajorMUD MDB schema verbatim (per data-v1.11p.mdb): Number is the
+// canonical item ID, Encum is encumbrance, Accy is to-hit modifier, StrReq is strength
+// prerequisite. Numeric enum cells (ItemType, Worn, WeaponType, ArmourType, Currency) are
+// formatted via LookupEnums so the grid shows "Weapon" / "Feet" / "1H Sharp" / "Gold" rather
+// than the raw integers.
 public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditableTableSectionViewModel
 {
     private readonly GameDataCache _cache;
@@ -139,37 +132,28 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
         Reload();
     }
 
-    /// <summary>
-    /// Builds the read-only views the dialog needs from the active set's
-    /// <c>Items.json</c> row: a curated "Other Info" key/value list for
-    /// the right pane plus the Details-section derived strings (weight,
-    /// price, type label, slot label, bought/sold cross-reference).
-    /// </summary>
-    /// <remarks>
-    /// "Other Info" mirrors MegaMUD's Game Item Details right-pane ordering
-    /// (verified against stock items 172 / 203 / 283 / 304 / 438 / 741 /
-    /// 784). Layout — anything unset is suppressed unless MegaMUD shows
-    /// the row even when empty (in which case we render "None"):
-    /// <list type="number">
-    ///   <item>WCC No</item>
-    ///   <item>Game Max (from <c>Limit</c>) — when &gt; 0</item>
-    ///   <item>Uses Per Day (from <c>UseCount</c>) — when &gt; 0 (-1 / 0 suppressed)</item>
-    ///   <item>Weapon block (<c>ItemType==Weapon</c>): Weapon Type, Weapon Damage, Weapon Speed</item>
-    ///   <item>Armour block (<c>ItemType==Armour</c>): Armour Type</item>
-    ///   <item>Accuracy Bonus / AC Bonus / Required Strength — always</item>
-    ///   <item>Also Used By — one row per non-zero <c>ClassRest-N</c></item>
-    ///   <item>Negates — one row per non-zero <c>NegateSpell-N</c> (resolved to Spells.Name)</item>
-    ///   <item>Ability rows — one per <c>Abil-N</c> with code &gt; 0, even when AbilVal is 0
-    ///         (so "Del@Maint: 0" surfaces). Stat-bonus codes render signed (+5);
-    ///         value/threshold codes render raw. <c>LearnSpell</c> + <c>CastSpell</c>
-    ///         resolve their values to Spells.Name.</item>
-    ///   <item>Dropped By — comma-joined Monsters parsed from <c>Obtained From</c>.</item>
-    /// </list>
-    /// AC Bonus follows MegaMUD's convention of <c>ArmourClass/10</c> + "/" +
-    /// <c>DamageResist/10</c> (stock stores ArmourClass=20 → "2/0").
-    /// Bought/sold (left pane) picks the FIRST shop reference from
-    /// <c>Obtained From</c> and resolves it to <c>Shop.Name</c>.
-    /// </remarks>
+    // Builds the read-only views the dialog needs from the active set's Items.json row: a
+    // curated "Other Info" key/value list for the right pane plus the Details-section derived
+    // strings (weight, price, type label, slot label, bought/sold cross-reference).
+    //
+    // "Other Info" mirrors MegaMUD's Game Item Details right-pane ordering (verified against
+    // stock items 172 / 203 / 283 / 304 / 438 / 741 / 784). Layout — anything unset is
+    // suppressed unless MegaMUD shows the row even when empty (in which case we render "None"):
+    //   1. WCC No
+    //   2. Game Max (from Limit) — when > 0
+    //   3. Uses Per Day (from UseCount) — when > 0 (-1 / 0 suppressed)
+    //   4. Weapon block (ItemType==Weapon): Weapon Type, Weapon Damage, Weapon Speed
+    //   5. Armour block (ItemType==Armour): Armour Type
+    //   6. Accuracy Bonus / AC Bonus / Required Strength — always
+    //   7. Also Used By — one row per non-zero ClassRest-N
+    //   8. Negates — one row per non-zero NegateSpell-N (resolved to Spells.Name)
+    //   9. Ability rows — one per Abil-N with code > 0, even when AbilVal is 0 (so
+    //      "Del@Maint: 0" surfaces). Stat-bonus codes render signed (+5); value/threshold
+    //      codes render raw. LearnSpell + CastSpell resolve their values to Spells.Name.
+    //  10. Dropped By — comma-joined Monsters parsed from Obtained From.
+    // AC Bonus follows MegaMUD's convention of ArmourClass/10 + "/" + DamageResist/10 (stock
+    // stores ArmourClass=20 → "2/0"). Bought/sold (left pane) picks the FIRST shop reference
+    // from Obtained From and resolves it to Shop.Name.
     private ItemMdbView BuildMdbView(string wccNoStr)
     {
         List<KeyValuePair<string, string>> otherInfo = new();
@@ -253,12 +237,10 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
                         ? s.ToString(System.Globalization.CultureInfo.InvariantCulture)
                         : string.Empty);
 
-                // BSable — explicit Yes/No row for weapons. Per MMUD
-                // Explorer's frmMain weapon filter (Case 116: bBSAble = True),
-                // a weapon is backstab-eligible iff any Abil-N slot holds
-                // code 116. Showing this unconditionally on weapons lets
-                // the user tell at a glance whether the item is BS-usable
-                // without scanning the abilities list.
+                // BSable — explicit Yes/No row for weapons. A weapon is backstab-eligible iff
+                // any Abil-N slot holds code 116. Showing this unconditionally on weapons lets
+                // the user tell at a glance whether the item is BS-usable without scanning the
+                // abilities list.
                 otherInfo.Add(new KeyValuePair<string, string>("BSable",
                     HasAbility(el, 116) ? "Yes" : "No"));
             }
@@ -308,9 +290,8 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
             // precedes it: a %Spell (114) folds in as a per-swing proc
             // ("Casts (25%/swing)"), a CastOnKill% (1114) as a kill proc
             // ("Casts (25%/kill)"). A 43 with no pending modifier is a
-            // command-activated cast ("Casts (on use)"). MME's weapon-damage
-            // loop does the same fold; the modifier codes (114 / 1114) are
-            // consumed silently and never emit their own rows.
+            // command-activated cast ("Casts (on use)"). The modifier codes
+            // (114 / 1114) are consumed silently and never emit their own rows.
             bool isWeapon = itemType == 1;
             int pendingPercent = 0;
             string? pendingTrigger = null;   // "swing" | "kill"
@@ -403,11 +384,9 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
 
     // ----- Ability-row formatting helpers -----
 
-    /// <summary>
-    /// Ability codes whose value is a stat bonus and should render signed
-    /// ("+5") rather than raw ("5"). The remainder render raw — they encode
-    /// thresholds, counts, ids, etc. where a sign would be misleading.
-    /// </summary>
+    // Ability codes whose value is a stat bonus and should render signed ("+5") rather than
+    // raw ("5"). The remainder render raw — they encode thresholds, counts, ids, etc. where a
+    // sign would be misleading.
     private static readonly HashSet<int> SignedAbilityCodes = new()
     {
         1, 2, 3, 4, 5, 7, 8, 17, 18, 22, 27, 29, 30, 31, 32, 33,
@@ -427,11 +406,9 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
             : rawValue.ToString(System.Globalization.CultureInfo.InvariantCulture);
     }
 
-    /// <summary>
-    /// Resolve an ability value that is a record number in <paramref name="table"/>
-    /// to that row's Name. 0 → "None"; an absent row — or a table without a Name
-    /// column (e.g. TextBlocks) — falls back to the raw number.
-    /// </summary>
+    // Resolve an ability value that is a record number in table to that row's Name. 0 →
+    // "None"; an absent row — or a table without a Name column (e.g. TextBlocks) — falls back
+    // to the raw number.
     private string ResolveTableRef(string table, int value)
     {
         if (value == 0) return "None";
@@ -445,14 +422,12 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
         ? "+" + n.ToString(System.Globalization.CultureInfo.InvariantCulture)
         : n.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
-    /// <summary>Signed value, or empty when zero — used by the "skip when None" row helpers.</summary>
+    // Signed value, or empty when zero — used by the "skip when None" row helpers.
     private static string FormatSignedOrEmpty(int n) => n == 0 ? string.Empty : FormatSigned(n);
 
-    /// <summary>
-    /// MegaMUD's Weapon-Type labels use "2-Handed Sharp" not "2H Sharp".
-    /// Returns empty when the WeaponType code is 0 (i.e. not a weapon /
-    /// no weapon-class assigned) so the caller suppresses the row.
-    /// </summary>
+    // MegaMUD's Weapon-Type labels use "2-Handed Sharp" not "2H Sharp". Returns empty when the
+    // WeaponType code is 0 (i.e. not a weapon / no weapon-class assigned) so the caller
+    // suppresses the row.
     private static string FormatWeaponTypeOrEmpty(int code) => code switch
     {
         0 => string.Empty,
@@ -462,21 +437,18 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
         _ => LookupEnums.FormatWeaponType(code.ToString(System.Globalization.CultureInfo.InvariantCulture)) ?? string.Empty,
     };
 
-    /// <summary>
-    /// Armour-Type label, or empty when 0. Note the stock data has
-    /// ArmourType=0 mapping to "Natural" in <see cref="LookupEnums"/>; for
-    /// the dialog we treat 0 as "no armour type" → suppress the row,
-    /// matching the user's preference to hide None-valued requirements.
-    /// </summary>
+    // Armour-Type label, or empty when 0. Note the stock data has ArmourType=0 mapping to
+    // "Natural" in LookupEnums; for the dialog we treat 0 as "no armour type" → suppress the
+    // row, matching the user's preference to hide None-valued requirements.
     private static string FormatArmourTypeOrEmpty(int code) => code == 0
         ? string.Empty
         : LookupEnums.FormatArmourType(code.ToString(System.Globalization.CultureInfo.InvariantCulture)) ?? string.Empty;
 
-    /// <summary>"5-12" pair when either is non-zero, or empty when both are zero.</summary>
+    // "5-12" pair when either is non-zero, or empty when both are zero.
     private static string FormatRangeOrEmpty(int min, int max) =>
         (min == 0 && max == 0) ? string.Empty : $"{min}-{max}";
 
-    /// <summary>AC Bonus in MegaMUD's slash-pair form (ArmourClass ÷ 10), or empty when both are zero.</summary>
+    // AC Bonus in MegaMUD's slash-pair form (ArmourClass ÷ 10), or empty when both are zero.
     private static string FormatAcBonusOrEmpty(JsonElement el)
     {
         int ac = ReadInt(el, "ArmourClass");
@@ -485,7 +457,7 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
         return $"{ac / 10}/{dr / 10}";
     }
 
-    /// <summary>Add a (label, value) row only when value is non-empty. Centralises the None-suppression rule.</summary>
+    // Add a (label, value) row only when value is non-empty. Centralises the None-suppression rule.
     private static void AddIfPresent(List<KeyValuePair<string, string>> list, string label, string value)
     {
         if (!string.IsNullOrEmpty(value))
@@ -498,7 +470,7 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
         return v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out int n) ? n : 0;
     }
 
-    /// <summary>True when any <c>Abil-N</c> (N = 0..19) on the row equals <paramref name="code"/>.</summary>
+    // True when any Abil-N (N = 0..19) on the row equals code.
     private static bool HasAbility(JsonElement el, int code)
     {
         for (int i = 0; i < 20; i++)
@@ -506,7 +478,7 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
         return false;
     }
 
-    /// <summary>Look up a spell's Name by its Number; falls back to the raw id when absent.</summary>
+    // Look up a spell's Name by its Number; falls back to the raw id when absent.
     private string ResolveSpellName(int spellNumber)
     {
         if (spellNumber == 0) return "None";
@@ -531,7 +503,7 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
         };
     }
 
-    /// <summary>Renders "5 Silver" / "1 Gold" from the (Price, Currency) pair.</summary>
+    // Renders "5 Silver" / "1 Gold" from the (Price, Currency) pair.
     private static string FormatPrice(JsonElement el)
     {
         string price = ReadString(el, "Price");
@@ -540,20 +512,14 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
         return string.IsNullOrEmpty(currency) ? price : $"{price} {currency}";
     }
 
-    /// <summary>
-    /// Bought/sold: enumerate every <c>Shop #N</c> / <c>Shop(flag) #N</c>
-    /// reference in <c>Obtained From</c>, look each shop's host room up
-    /// via <c>Shops.AssignedTo</c> + <c>Rooms.json</c>, and render one
-    /// line per shop in the form:
-    /// <code>
-    ///   {RoomName}              - {map}/{room}
-    ///   {RoomName} (SELL)       - {map}/{room}      // for Shop(sell) #N
-    ///   {RoomName} (NO GEN)     - {map}/{room}      // for Shop(nogen) #N
-    /// </code>
-    /// Plain <c>Shop #N</c> (no flag) is normal buy + sell, no suffix.
-    /// Falls back to the raw shop token when the shop / room isn't in
-    /// the active set.
-    /// </summary>
+    // Bought/sold: enumerate every Shop #N / Shop(flag) #N reference in Obtained From, look
+    // each shop's host room up via Shops.AssignedTo + Rooms.json, and render one line per shop
+    // in the form:
+    //   {RoomName}              - {map}/{room}
+    //   {RoomName} (SELL)       - {map}/{room}      // for Shop(sell) #N
+    //   {RoomName} (NO GEN)     - {map}/{room}      // for Shop(nogen) #N
+    // Plain Shop #N (no flag) is normal buy + sell, no suffix. Falls back to the raw shop
+    // token when the shop / room isn't in the active set.
     private string ResolveBoughtSold(string obtainedFrom)
     {
         if (string.IsNullOrWhiteSpace(obtainedFrom)) return string.Empty;
@@ -586,7 +552,7 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
         return string.Join("\n", lines);
     }
 
-    /// <summary>"Shop" → null; "Shop(sell)" → "sell"; "Shop(nogen)" → "no gen".</summary>
+    // "Shop" → null; "Shop(sell)" → "sell"; "Shop(nogen)" → "no gen".
     private static string? ExtractShopFlag(string prefix)
     {
         int open = prefix.IndexOf('(');
@@ -603,11 +569,9 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
         };
     }
 
-    /// <summary>
-    /// Resolves a Shop.Number → (Room.Name, map, room) via the active set's
-    /// Shops.json (AssignedTo = "Room {map}/{room}") + Rooms.json. Returns
-    /// (null, 0, 0) when any lookup misses.
-    /// </summary>
+    // Resolves a Shop.Number → (Room.Name, map, room) via the active set's Shops.json
+    // (AssignedTo = "Room {map}/{room}") + Rooms.json. Returns (null, 0, 0) when any lookup
+    // misses.
     private (string? RoomName, int Map, int Room) LookupShopRoom(int shopId)
     {
         JsonDocument? shopsDoc = _cache.GetRawTable("Shops");
@@ -651,7 +615,7 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
         return (null, mapNo, roomNo);
     }
 
-    /// <summary>Comma-joined list of monster names parsed from Obtained From's "Monster #N(X%)" tokens.</summary>
+    // Comma-joined list of monster names parsed from Obtained From's "Monster #N(X%)" tokens.
     private string ResolveDroppedBy(string obtainedFrom)
     {
         if (string.IsNullOrWhiteSpace(obtainedFrom)) return string.Empty;
@@ -677,7 +641,7 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
         return string.IsNullOrEmpty(name) ? null : name;
     }
 
-    /// <summary>Classes.Number → Classes.Name; falls back to "Class N" when absent.</summary>
+    // Classes.Number → Classes.Name; falls back to "Class N" when absent.
     private string ResolveClassName(int classId)
     {
         if (classId == 0) return "None";
@@ -685,13 +649,13 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
         return string.IsNullOrEmpty(name) ? $"Class {classId}" : name;
     }
 
-    /// <summary>Test seam: the rendered "Other Info" rows for a given item
-    /// Number, so the use-cast effect / damage rendering can be pinned without
-    /// standing up a dialog. Mirrors what the edit dialog's read-only pane shows.</summary>
+    // Test seam: the rendered "Other Info" rows for a given item Number, so the use-cast
+    // effect / damage rendering can be pinned without standing up a dialog. Mirrors what the
+    // edit dialog's read-only pane shows.
     internal IReadOnlyList<KeyValuePair<string, string>> BuildOtherInfoForTests(string itemNumber)
         => BuildMdbView(itemNumber).OtherInfo;
 
-    /// <summary>Bundle returned by <see cref="BuildMdbView"/>.</summary>
+    // Bundle returned by BuildMdbView.
     private sealed record ItemMdbView(
         IReadOnlyList<KeyValuePair<string, string>> OtherInfo,
         string Weight,

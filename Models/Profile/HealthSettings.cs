@@ -1,118 +1,97 @@
 namespace FujinTerm.Models.Profile;
 
-/// <summary>
-/// Per-character "Health" settings — drives <see cref="Game.Health.HealthManager"/>
-/// (PR 9.B) passive HP / MA threshold behavior: rest, meditate, run, hang.
-/// Stored as the <c>"Health"</c> entry in <see cref="CharacterProfile.Settings"/>.
-/// </summary>
-/// <remarks>
-/// <para>
-/// HealthManager asserts <c>HealthRecovery</c> / <c>ManaRecovery</c> gates on
-/// <see cref="Game.Map.MovementCoordinator"/> when the live HP/MA crosses the
-/// configured trigger; clears the gate once recovery passes the "rest until"
-/// target. See <c>docs/10-phase-9-automation-engines.md</c> § Cross-cut 1.
-/// </para>
-/// <para>
-/// Spell decisions (which heal / bless / regen spell to cast) live on
-/// <see cref="SpellsSettings"/> — the routing CastingDirector (PR 9.D) reads
-/// HealthSettings for the trigger threshold and SpellsSettings for the spell
-/// name. The Health tab UI surfaces the threshold inputs; the spell pickers
-/// live on the Spells tab.
-/// </para>
-/// </remarks>
+// Per-character "Health" settings — drives Game.Health.HealthManager passive
+// HP / MA threshold behavior: rest, meditate, run, hang. Stored as the "Health"
+// entry in CharacterProfile.Settings.
+//
+// HealthManager asserts HealthRecovery / ManaRecovery gates on
+// Game.Map.MovementCoordinator when the live HP/MA crosses the configured
+// trigger; clears the gate once recovery passes the "rest until" target.
+//
+// Spell decisions (which heal / bless / regen spell to cast) live on
+// SpellsSettings — the routing CastingDirector reads HealthSettings for the
+// trigger threshold and SpellsSettings for the spell name. The Health tab UI
+// surfaces the threshold inputs; the spell pickers live on the Spells tab.
 public sealed class HealthSettings
 {
     // ----- HP -------------------------------------------------------
 
-    /// <summary>How <see cref="RestMaxHp"/> / <see cref="RestIfBelowHp"/> /
-    /// <see cref="RunIfBelowHp"/> / <see cref="HangIfBelowHp"/> are read at
-    /// engine time. Default <see cref="ThresholdMode.Percentage"/>.</summary>
+    // How RestMaxHp / RestIfBelowHp / RunIfBelowHp / HangIfBelowHp are read at
+    // engine time. Default Percentage.
     public ThresholdMode HpThresholdMode { get; set; } = ThresholdMode.Percentage;
 
-    /// <summary>Stop resting once HP reaches this value (per
-    /// <see cref="HpThresholdMode"/>). Default 95 (%).</summary>
+    // Stop resting once HP reaches this value (per HpThresholdMode). Default 95 (%).
     public int RestMaxHp { get; set; } = 95;
 
-    /// <summary>Assert <c>HealthRecovery</c> gate when HP falls below this
-    /// value. Default 60 (%).</summary>
+    // Assert HealthRecovery gate when HP falls below this value. Default 60 (%).
     public int RestIfBelowHp { get; set; } = 60;
 
-    /// <summary>Trigger flee behavior when HP falls below this value.
-    /// Default 20 (%).</summary>
+    // Trigger flee behavior when HP falls below this value. Default 20 (%).
     public int RunIfBelowHp { get; set; } = 20;
 
-    /// <summary>Drop the connection when HP falls below this emergency
-    /// threshold. Default 5 (%).</summary>
+    // Drop the connection when HP falls below this emergency threshold. Default 5 (%).
     public int HangIfBelowHp { get; set; } = 5;
 
     // ----- Heal-spell thresholds (CastingDirector triggers) ---------
 
-    /// <summary>Cast the rest-time heal spell (<see cref="SpellsSettings.MinorHealSpell"/>)
-    /// during a rest cycle when HP drops below this value. Default 80 (%).</summary>
+    // Cast the rest-time heal spell (SpellsSettings.MinorHealSpell) during a
+    // rest cycle when HP drops below this value. Default 80 (%).
     public int HealRestTrigger { get; set; } = 80;
 
-    /// <summary>Cast <see cref="SpellsSettings.MinorHealSpell"/> during combat
-    /// when HP drops below this value. Default 70 (%).</summary>
+    // Cast SpellsSettings.MinorHealSpell during combat when HP drops below this
+    // value. Default 70 (%).
     public int MinorHealCombatTrigger { get; set; } = 70;
 
-    /// <summary>Cast <see cref="SpellsSettings.MajorHealSpell"/> during combat
-    /// when HP drops below this value. Default 40 (%).</summary>
+    // Cast SpellsSettings.MajorHealSpell during combat when HP drops below this
+    // value. Default 40 (%).
     public int MajorHealCombatTrigger { get; set; } = 40;
 
     // ----- MA / Kai -------------------------------------------------
 
-    /// <summary>How <see cref="RestMaxMa"/> / <see cref="RestIfBelowMa"/> /
-    /// <see cref="RunIfBelowMa"/> / <see cref="BlessIfAboveMa"/> are read at
-    /// engine time. Default <see cref="ThresholdMode.Percentage"/>.</summary>
+    // How RestMaxMa / RestIfBelowMa / RunIfBelowMa / BlessIfAboveMa are read at
+    // engine time. Default Percentage.
     public ThresholdMode MaThresholdMode { get; set; } = ThresholdMode.Percentage;
 
-    /// <summary>Stop resting (caster pool) once MA reaches this value.
-    /// Default 95 (%).</summary>
+    // Stop resting (caster pool) once MA reaches this value. Default 95 (%).
     public int RestMaxMa { get; set; } = 95;
 
-    /// <summary>Assert <c>ManaRecovery</c> gate when MA falls below this
-    /// value. Default 30 (%).</summary>
+    // Assert ManaRecovery gate when MA falls below this value. Default 30 (%).
     public int RestIfBelowMa { get; set; } = 30;
 
-    /// <summary>Trigger flee behavior when the caster pool drops below this.
-    /// Default 10 (%).</summary>
+    // Trigger flee behavior when the caster pool drops below this. Default 10 (%).
     public int RunIfBelowMa { get; set; } = 10;
 
-    /// <summary>Re-cast party / self buffs once MA recovers past this value.
-    /// CastingDirector trigger. Default 70 (%).</summary>
+    // Re-cast party / self buffs once MA recovers past this value.
+    // CastingDirector trigger. Default 70 (%).
     public int BlessIfAboveMa { get; set; } = 70;
 
-    /// <summary>Mana-floor for heal spells while resting / idle (out of
-    /// combat): CastingDirector only casts a heal when the caster pool sits
-    /// at or above this value (per <see cref="MaThresholdMode"/>), so a low
-    /// pool regenerates instead of being drained on heals. 0 disables the
-    /// gate. Default 50 (%).</summary>
+    // Mana-floor for heal spells while resting / idle (out of combat):
+    // CastingDirector only casts a heal when the caster pool sits at or above
+    // this value (per MaThresholdMode), so a low pool regenerates instead of
+    // being drained on heals. 0 disables the gate. Default 50 (%).
     public int HealIfAboveMaResting { get; set; } = 50;
 
-    /// <summary>Mana-floor for heal spells while in combat — same meaning as
-    /// <see cref="HealIfAboveMaResting"/> but applied during combat, where
-    /// survival usually outweighs mana conservation. 0 disables the gate
-    /// (always heal). Default 0.</summary>
+    // Mana-floor for heal spells while in combat — same meaning as
+    // HealIfAboveMaResting but applied during combat, where survival usually
+    // outweighs mana conservation. 0 disables the gate (always heal). Default 0.
     public int HealIfAboveMaCombat { get; set; }
 
     // ----- Meditation -----------------------------------------------
 
-    /// <summary>Use the class-specific <c>meditate</c> command on classes that
-    /// have it. Default false.</summary>
+    // Use the class-specific meditate command on classes that have it. Default false.
     public bool UseMeditateAbility { get; set; }
 
-    /// <summary>Sit and meditate first when both HP and MA are low. Default
-    /// false (rest covers both).</summary>
+    // Sit and meditate first when both HP and MA are low. Default false (rest
+    // covers both).
     public bool MeditateBeforeResting { get; set; }
 
     // ----- Resting commands -----------------------------------------
 
-    /// <summary>Sent right before <c>rest</c> / <c>meditate</c>. <c>^M</c> and
-    /// <c>;</c> are both treated as carriage returns so multiple commands can
-    /// be chained. Default empty.</summary>
+    // Sent right before rest / meditate. ^M and ; are both treated as carriage
+    // returns so multiple commands can be chained. Default empty.
     public string PreRestCommand { get; set; } = string.Empty;
 
-    /// <summary>Sent right after standing up from rest / meditate. Same
-    /// chaining rules as <see cref="PreRestCommand"/>. Default empty.</summary>
+    // Sent right after standing up from rest / meditate. Same chaining rules as
+    // PreRestCommand. Default empty.
     public string PostRestCommand { get; set; } = string.Empty;
 }

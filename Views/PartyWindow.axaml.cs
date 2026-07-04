@@ -3,12 +3,10 @@ using Avalonia.Markup.Xaml;
 
 namespace FujinTerm.Views;
 
-/// <summary>
-/// Modeless Party window. Bound to <see cref="ViewModels.PartyViewModel"/>;
-/// code-behind only attaches the persisted window-layout and wires the
-/// global-hotkeys handler so chord forwards (Ctrl+G etc.) still work
-/// when the Party window has focus.
-/// </summary>
+// Modeless Party window. Bound to ViewModels.PartyViewModel;
+// code-behind only attaches the persisted window-layout and wires the
+// global-hotkeys handler so chord forwards (Ctrl+G etc.) still work
+// when the Party window has focus.
 public partial class PartyWindow : Window
 {
     public PartyWindow()

@@ -8,14 +8,9 @@ using FujinTerm.Views.Settings;
 
 namespace FujinTerm.ViewModels.Settings;
 
-/// <summary>
-/// "Other" tab — the misc bucket. Graduated from Phase-4 stub to wired
-/// section as soon as its first feature (suicide-lives threshold) was
-/// ready to plumb to the live engine. Future PRs add fields to
-/// <see cref="OtherSettings"/> and wire them through
-/// <see cref="ApplyToServices"/> the same way; the inline stub catalog
-/// (<see cref="StubGroups"/>) shrinks as each lands.
-/// </summary>
+// "Other" tab — the misc bucket. Fields land on OtherSettings and wire
+// through ApplyToServices; the inline stub catalog (StubGroups) holds the
+// not-yet-wired fields as disabled placeholders and shrinks as each lands.
 public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
 {
     private const string TabKey = "Other";
@@ -30,7 +25,7 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     public override string Title => "Other";
     public override bool IsDirty => _dirty;
 
-    /// <summary>True when a profile is loaded — editor is hidden otherwise.</summary>
+    // True when a profile is loaded — editor is hidden otherwise.
     public bool HasProfile => _profile.Current is not null;
 
     public string PhaseTag => "Phase 6 (suicide threshold) + Phases 7 / 11 / 13 (per-row tooltips)";
@@ -72,13 +67,10 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
         }
     }
 
-    // ----- Wired (PR 6.x) -----
+    // ----- Wired -----
 
-    /// <summary>
-    /// Block <c>@do suicide</c> / <c>@party suicide</c> when remaining
-    /// lives are ≤ this value. Range 0..20. Default 3 per the Phase 6
-    /// spec; pushed into the live engine on Apply + on profile load.
-    /// </summary>
+    // Block @do suicide / @party suicide when remaining lives are <= this
+    // value. Range 0..20. Pushed into the live engine on Apply + profile load.
     [ObservableProperty] private int _maxSuicideLivesThreshold = 5;
 
     // Note: the ailment Ignore* (@wait gates) and DoNotAnnounce* (say-
@@ -86,11 +78,10 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     // next to the cure-spell picks they coordinate with. AilmentSyncEngine
     // reads them from SpellsSettings now.
 
-    // ----- @trap auto-disarm attempt caps (wired) -----
-    // Both push into TrapDisarmManager on Apply via ApplyToServices,
-    // and via AppServices.ApplyOtherFromActiveProfile on ProfileLoaded /
-    // ProfileMutated. Search row sits above disarm in the rendered
-    // panel per user spec.
+    // ----- @trap auto-disarm attempt caps -----
+    // Both push into TrapDisarmManager on Apply via ApplyToServices, and via
+    // AppServices.ApplyOtherFromActiveProfile on ProfileLoaded / ProfileMutated.
+    // Search row sits above disarm in the rendered panel.
 
     // Master gate for walker trap-disarming. Read live by the walker's
     // trap-disarm gate (AppServices.SetTrapDisarmGate) which also AND-s
@@ -100,116 +91,81 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private int _maxTrapSearchAttempts = 20;
     [ObservableProperty] private int _maxTrapDisarmAttempts = 5;
 
-    // ----- Door open/bash/pick caps (wired) -----
-    // Graduated from Phase-4 stubs by commit 2. Read live by
-    // DoorOpenManager on each enqueue via providers in AppServices
-    // (no push needed — the manager reads through the resolver on
-    // every request).
+    // ----- Door open/bash/pick caps -----
+    // Read live by DoorOpenManager on each enqueue via providers in
+    // AppServices — no push needed, the manager reads through the resolver
+    // on every request.
 
-    /// <summary>
-    /// Walker max <c>bash &lt;dir&gt;</c> retries before falling back
-    /// to pick / failing. Default 10 per user direction.
-    /// </summary>
+    // Walker max bash <dir> retries before falling back to pick / failing.
     [ObservableProperty] private int _maxBashAttempts = 10;
 
-    /// <summary>
-    /// Walker max <c>pick &lt;dir&gt;</c> retries before falling back
-    /// to bash / failing. Default 10 per user direction.
-    /// </summary>
+    // Walker max pick <dir> retries before falling back to bash / failing.
     [ObservableProperty] private int _maxPickAttempts = 10;
 
-    /// <summary>
-    /// When checked, the walker prefers <c>pick &lt;dir&gt;</c> over
-    /// <c>bash &lt;dir&gt;</c> on doors where both verbs are viable.
-    /// Thieves typically flip this on.
-    /// </summary>
+    // When checked, the walker prefers pick <dir> over bash <dir> on doors
+    // where both verbs are viable. Thieves typically flip this on.
     [ObservableProperty] private bool _picklocksOverBash;
 
-    /// <summary>
-    /// When checked, auto-search arms on demand: travelling a route that
-    /// crosses an Item/Ticket exit whose item we're not carrying makes the
-    /// walker <c>sea</c> every room until the item turns up, even with the
-    /// Auto-Search master toggle off. Read live by
-    /// <see cref="Game.Map.PathItemDemandTracker"/>. Off by default.
-    /// </summary>
+    // When checked, auto-search arms on demand: travelling a route that
+    // crosses an Item/Ticket exit whose item we're not carrying makes the
+    // walker sea every room until the item turns up, even with the
+    // Auto-Search master toggle off. Read live by PathItemDemandTracker.
     [ObservableProperty] private bool _searchRoomsIfItemNeeded;
 
-    /// <summary>
-    /// When checked, actively buy a missing route item: a one-shot walk-to
-    /// that crosses an Item/Ticket exit whose item we lack detours to the
-    /// fewest-added-steps shop that stocks it, buys it, then resumes. Aborts
-    /// if the item turns up first; falls back to search on a failed buy.
-    /// Read live by <see cref="Game.Map.PathItemShopRouter"/>. Off by default.
-    /// </summary>
+    // When checked, actively buy a missing route item: a one-shot walk-to
+    // that crosses an Item/Ticket exit whose item we lack detours to the
+    // fewest-added-steps shop that stocks it, buys it, then resumes. Aborts
+    // if the item turns up first; falls back to search on a failed buy.
+    // Read live by PathItemShopRouter.
     [ObservableProperty] private bool _buyNeededPathItems;
 
-    /// <summary>
-    /// When checked, source a missing route item that no shop sells by
-    /// hunting: a one-shot walk-to that crosses an Item/Ticket exit whose
-    /// item we lack (and which no shop stocks) prompts to reroute to the
-    /// nearest room a monster that drops it spawns in, then resumes once the
-    /// drop lands. Complements "Buy item if needed" (shop-sold items). Read
-    /// live by <see cref="Game.Map.MonsterDropRouter"/>. Off by default.
-    /// </summary>
+    // When checked, source a missing route item that no shop sells: a one-shot
+    // walk-to that crosses an Item/Ticket exit whose item we lack (and which no
+    // shop stocks) reroutes to the nearest room a monster that drops it spawns
+    // in, then resumes once the drop lands. Complements "Buy item if needed"
+    // (shop-sold items). Read live by MonsterDropRouter.
     [ObservableProperty] private bool _huntNeededPathItems;
 
-    /// <summary>
-    /// When checked, ask the party before searching / buying / hunting a
-    /// missing route item: a walk-to that crosses an Item/Ticket exit whose
-    /// per-member item we lack broadcasts <c>@have</c>, and if a member has a
-    /// spare it's handed over (<c>give</c>) instead of posting a demand need.
-    /// Only a genuine shortfall falls through to the search / shop / hunt
-    /// sources. No-op when solo. Read live by
-    /// <see cref="Game.Map.PartyPathItemGate"/>. Off by default.
-    /// </summary>
+    // When checked, ask the party before searching / buying / hunting a
+    // missing route item: a walk-to that crosses an Item/Ticket exit whose
+    // per-member item we lack broadcasts @have, and if a member has a spare
+    // it's handed over (give) instead of posting a demand need. Only a genuine
+    // shortfall falls through to the search / shop / hunt sources. No-op when
+    // solo. Read live by PartyPathItemGate.
     [ObservableProperty] private bool _deferToPartyInventory;
 
-    /// <summary>
-    /// When checked and leading a party, route <b>around</b> level gates the
-    /// whole party can't clear instead of walking the leader through and
-    /// leaving a member behind. Each member's level comes from an
-    /// <c>@level</c> probe (exact) or, until probed, their title band. Read
-    /// live by <see cref="Services.MovementFilter"/> through
-    /// <see cref="Game.Remote.PartyLevelTracker"/>. Off by default.
-    /// </summary>
+    // When checked and leading a party, route around level gates the whole
+    // party can't clear instead of walking the leader through and leaving a
+    // member behind. Each member's level comes from an @level probe (exact)
+    // or, until probed, their title band. Read live by MovementFilter through
+    // PartyLevelTracker.
     [ObservableProperty] private bool _avoidPartyImpassableLevelGates;
 
-    /// <summary>
-    /// Off by default. When on, every observed Confirmed→Pending→Confirmed
-    /// transition logs one Info line with the measured wall-clock time +
-    /// the current encumbrance level. Use it for a data-collection session
-    /// when tuning the Auto-Lair travel-cost table; turn it off again for
-    /// normal play.
-    /// </summary>
+    // When on, every observed Confirmed→Pending→Confirmed transition logs one
+    // Info line with the measured wall-clock time + current encumbrance level.
+    // Use it for a data-collection session when tuning the Auto-Lair
+    // travel-cost table; turn it off again for normal play.
     [ObservableProperty] private bool _logMovementHopTiming;
 
-    /// <summary>
-    /// Leader-side <c>@comeback</c> backtrack budget — how many rooms the
-    /// leader walks backwards along the path just taken when a stranded
-    /// follower sends a bare <c>@comeback</c> (no target room) before
-    /// giving up and going idle. Range 1..50, default 10. Ignored when
-    /// the follower supplies an explicit room. Pushed into the live
-    /// <see cref="Game.Remote.PartyComebackManager"/> on Apply +
-    /// profile load.
-    /// </summary>
+    // Leader-side @comeback backtrack budget — how many rooms the leader walks
+    // backwards along the path just taken when a stranded follower sends a bare
+    // @comeback (no target room) before giving up and going idle. Range 1..50.
+    // Ignored when the follower supplies an explicit room. Pushed into the live
+    // PartyComebackManager on Apply + profile load.
     [ObservableProperty] private int _maxComebackBacktrackRooms = 10;
 
-    /// <summary>
-    /// Follower-side auto-<c>@comeback</c>. When on (default), being left
-    /// behind by the party leader (a movement-failure line just before
-    /// "You are no longer following X.") telepaths <c>@comeback</c> to the
-    /// leader automatically. When off, the strand is detected but no
-    /// request is sent. Pushed into the live
-    /// <see cref="Game.Remote.ComebackRequester"/> on Apply + profile load.
-    /// </summary>
+    // Follower-side auto-@comeback. When on, being left behind by the party
+    // leader (a movement-failure line just before "You are no longer following
+    // X.") telepaths @comeback to the leader automatically. When off, the
+    // strand is detected but no request is sent. Pushed into the live
+    // ComebackRequester on Apply + profile load.
     [ObservableProperty] private bool _autoRequestComebackWhenLeftBehind = true;
 
-    // Phase 9 per-category Verbose toggles + WriteCombatRoundTrace
-    // moved out of per-character settings into a session-only umbrella
-    // switch in the Log pane menu — see Services/LogDiagnosticState
-    // + LogPaneViewModel.CombatFilter. Verbose tracing isn't a
-    // per-character preference; it's "I'm debugging right now",
-    // and a session toggle in the LogPane is the right home.
+    // Per-category Verbose toggles + WriteCombatRoundTrace live in a
+    // session-only umbrella switch in the Log pane menu — see
+    // LogDiagnosticState + LogPaneViewModel.CombatFilter. Verbose tracing
+    // isn't a per-character preference; it's "I'm debugging right now", and
+    // a session toggle in the LogPane is the right home.
 
     // Note: the party-bless gates (Bless while resting / Bless during
     // combat) graduated to the Party tab — they sit next to the bless
@@ -220,70 +176,49 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     // next to the room thresholds + RunDistance they coordinate with.
     // HealthManager reads RunDirection / BreakBeforeFleeing from CombatSettings.
 
-    /// <summary>
-    /// Inactive-player auto-cleanup window in days. Moved here from the
-    /// General tab per user direction. Lives at the Global tier (one
-    /// threshold for the whole install) so Apply writes through to
-    /// <see cref="SettingsService"/>, not the per-character profile.
-    /// 0 disables auto-cleanup entirely; per-player Don't-auto-delete
-    /// opts records out individually.
-    /// </summary>
+    // Inactive-player auto-cleanup window in days. Lives at the Global tier
+    // (one threshold for the whole install) so Apply writes through to
+    // SettingsService, not the per-character profile. 0 disables auto-cleanup
+    // entirely; per-player Don't-auto-delete opts records out individually.
     [ObservableProperty] private int _playerCleanupDays = 90;
 
-    // ----- Inline stub catalog (un-wired Phase 7 / 11 / 13 fields) -----
+    // ----- Inline stub catalog (un-wired fields) -----
 
-    /// <summary>
-    /// The remaining un-wired Other-tab fields, rendered inline below
-    /// the wired group as disabled placeholders. Each entry's tooltip
-    /// names the owning phase; entries are removed from this list as
-    /// their consumer engines wire through <see cref="OtherSettings"/>.
-    /// </summary>
+    // The remaining un-wired Other-tab fields, rendered inline below the wired
+    // group as disabled placeholders. Entries are removed from this list as
+    // their consumer engines wire through OtherSettings.
     public IReadOnlyList<StubGroup> StubGroups { get; } = new[]
     {
         new StubGroup("Walker behaviour", new[]
         {
-            // Auto-train / Auto-train stats graduated to their own Settings →
+            // Auto-train / Auto-train stats live on their own Settings →
             // Auto-Trainer tab (toggles + the discovered-trainers allow table).
             new StubField("Teleport to avoid combat instead of hanging", StubFieldKind.Check,
                           "Phase 7 — when fleeing, use sys-goto (stock) or a town token (paradigm) instead of dropping the line."),
-            // "Allow hangup in all-off mode" graduated to a wired checkbox on
-            // the General tab (HealthManager runs only the emergency-hangup
-            // branch when every Auto-* engine is off and
+            // "Allow hangup in all-off mode" is a wired checkbox on the General
+            // tab (HealthManager runs only the emergency-hangup branch when
+            // every Auto-* engine is off and
             // GeneralSettings.AllowHangupInAllOffMode set).
-            // Removed per user direction: "Hangup if naked".
-            // "Search rooms if item needed" graduated to a wired checkbox
-            // below the door caps (PathItemDemandTracker arms auto-search
-            // while a route needs an item we lack).
-            // Removed per user direction: "Backwards if warning" (nonsense),
-            // "Provide light in dimly lit rooms" (handled elsewhere),
-            // "Don't move unless sneaking" (our movement engine always sneaks
-            // before moving — the toggle was a MegaMUD workaround for a
-            // message-parsing combat bug we don't share).
-            // "Go backwards if running" / "Break combat before running"
-            // graduated to wired checkboxes on the Combat tab (HealthManager
-            // reads CombatSettings.RunDirection / BreakBeforeFleeing).
-            // Lock / trap preference toggles moved down next to their
-            // matching retry-count pickers (see "Locks & traps" group).
+            // "Search rooms if item needed" is a wired checkbox below the door
+            // caps (PathItemDemandTracker arms auto-search while a route needs
+            // an item we lack).
+            // "Don't move unless sneaking" was dropped: our movement engine
+            // always sneaks before moving — the toggle was a MegaMUD workaround
+            // for a message-parsing combat bug we don't share.
+            // "Go backwards if running" / "Break combat before running" are
+            // wired checkboxes on the Combat tab (HealthManager reads
+            // CombatSettings.RunDirection / BreakBeforeFleeing).
+            // Lock / trap preference toggles live next to their matching
+            // retry-count pickers (see "Locks & traps" group).
         }),
-        // Ignored ailments group graduated to a real wired section above
-        // (rendered inline in OtherSectionView.axaml). Diseased added per
-        // user direction so the four ailment families are symmetric.
-        // "Auto-engage on connect" group graduated to a real wired section
-        // — the three mismatched stub fields became a 1-to-1 set of
-        // "re-enable on reconnect" checkboxes (one per AutoMode auto-action)
-        // rendered inline in OtherSectionView.axaml.
-        // "Locks & traps" group removed: Attempt-bash / Pick-locks-over-bash /
-        // Attempt-pick-lock graduated to wired fields by commit 2
-        // (DoorOpenManager); "Attempt to disarm traps" graduated to the wired
-        // "Utilize disarm traps if able" checkbox; "Attempt disarm" (retry
-        // cap) is the already-wired "@trap max disarms" picker above — no
-        // duplicate needed.
-        // Removed per user direction:
-        // - "Command splitter character" (^M and ; are hardwired)
-        // - "Backscroll buffer size" (lives on BBS + Display)
-        // - "Inactive player cleanup window" (graduated to wired field above)
-        // - "Debug log retention" (per-instance, doesn't persist)
-        // - "Game entry/exit command" (graduated to wired group above)
+        // Ignored ailments are a real wired section above (rendered inline in
+        // OtherSectionView.axaml). Auto-engage-on-connect is a 1-to-1 set of
+        // "re-enable on reconnect" checkboxes (one per AutoMode auto-action),
+        // also wired inline in OtherSectionView.axaml.
+        // Locks & traps: Attempt-bash / Pick-locks-over-bash / Attempt-pick-lock
+        // are wired fields (DoorOpenManager); "Attempt to disarm traps" is the
+        // wired "Utilize disarm traps if able" checkbox; "Attempt disarm" (retry
+        // cap) is the already-wired "@trap max disarms" picker above.
     };
 
     public OtherSectionViewModel()

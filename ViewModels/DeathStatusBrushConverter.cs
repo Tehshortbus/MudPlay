@@ -6,12 +6,9 @@ using FujinTerm.Models.Profile;
 
 namespace FujinTerm.ViewModels;
 
-/// <summary>
-/// XAML converter mapping a <see cref="DeathRecoveryStatus"/> to a
-/// stoplight brush for the Workshop DEATH grid: Active → red,
-/// Partial → amber, Recovered → green. Single static instance — no
-/// per-binding state.
-/// </summary>
+// XAML converter mapping a DeathRecoveryStatus to a stoplight brush for the
+// Workshop DEATH grid: Active → red, Partial → amber, Recovered → green.
+// Single static instance — no per-binding state.
 public sealed class DeathStatusBrushConverter : IValueConverter
 {
     public static DeathStatusBrushConverter Instance { get; } = new();

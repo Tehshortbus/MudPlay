@@ -3,13 +3,10 @@ using FujinTerm.Services;
 
 namespace FujinTerm.ViewModels.GameData.Tables;
 
-/// <summary>
-/// Game Data Browser → Info tab. Single-row realm metadata exposed
-/// by the MDB — version stamps, build date / time, custom-realm flag,
-/// the Legit / DisableKai gameplay-mode bits, and the update URL the
-/// MDB curator publishes. Read-only; users curious which dat-file
-/// version they're browsing can confirm it here.
-/// </summary>
+// Game Data Browser → Info tab. Single-row realm metadata exposed by the MDB — version
+// stamps, build date / time, custom-realm flag, the Legit / DisableKai gameplay-mode bits,
+// and the update URL the MDB curator publishes. Read-only; users curious which dat-file
+// version they're browsing can confirm it here.
 public sealed class InfoSectionViewModel : JsonTableSectionViewModel
 {
     public override string Id => "info";

@@ -1,353 +1,302 @@
 namespace FujinTerm.Models.Profile;
 
-/// <summary>
-/// Per-character "Combat" settings — drives <see cref="Game.Combat.CombatManager"/>
-/// (PR 9.A) target picking, weapon swap matrix, multi-attack spell gating, and
-/// re-fire timing. Stored as the <c>"Combat"</c> entry in
-/// <see cref="CharacterProfile.Settings"/>.
-/// </summary>
-/// <remarks>
-/// <para>
-/// CombatManager swings; <see cref="Game.Combat.CombatStateTracker"/> (PR 9.0b)
-/// asserts the <c>Combat</c> gate. The two read the same target list produced by
-/// <see cref="Game.Combat.RoomEntityClassifier"/> + <c>Monsters.json</c>
-/// <c>AttackPriority</c>. CombatSettings dictates HOW to dispatch the list;
-/// AttackPriority dictates WHO is in the list and in what order. See
-/// <c>docs/10-phase-9-automation-engines.md</c> § Cross-cut 2.
-/// </para>
-/// <para>
-/// Defaults are conservative: <see cref="MasterAutoAttackEnabled"/> off,
-/// <see cref="DoBackstab"/> off, <see cref="PoliteMode"/> off. New characters
-/// don't auto-engage anything until the user opts in.
-/// </para>
-/// </remarks>
+// Per-character "Combat" settings — drives Game.Combat.CombatManager target
+// picking, weapon swap matrix, multi-attack spell gating, and re-fire timing.
+// Stored as the "Combat" entry in CharacterProfile.Settings.
+//
+// CombatManager swings; Game.Combat.CombatStateTracker asserts the Combat gate.
+// The two read the same target list produced by Game.Combat.RoomEntityClassifier
+// + Monsters.json AttackPriority. CombatSettings dictates HOW to dispatch the
+// list; AttackPriority dictates WHO is in the list and in what order.
+//
+// Defaults are conservative: DoBackstab off, PoliteMode off. New characters
+// don't auto-engage anything until the user opts in.
 public sealed class CombatSettings
 {
     // ----- Wire command ---------------------------------------------
 
-    /// <summary>Wire command sent each round to swing — default <c>a</c>
-    /// (the canonical MajorMUD attack alias). The master on/off for
-    /// auto-attack lives on <c>GeneralSettings.AutoMode.AutoCombat</c>,
-    /// shared with the Settings → General checkbox and the toolbar
-    /// Toggle button.</summary>
+    // Wire command sent each round to swing — default a (the canonical MajorMUD
+    // attack alias). The master on/off for auto-attack lives on
+    // GeneralSettings.AutoMode.AutoCombat, shared with the Settings → General
+    // checkbox and the toolbar Toggle button.
     public string NormalAttackCommand { get; set; } = "a";
 
-    /// <summary>Wire verb sent when we're swung the alternate weapon —
-    /// some 2H alt weapons want <c>swing</c> while a 1H normal uses
-    /// <c>a</c>. Default <c>a</c> so a single-weapon character doesn't
-    /// have to configure both fields.</summary>
+    // Wire verb sent when we're swung the alternate weapon — some 2H alt weapons
+    // want swing while a 1H normal uses a. Default a so a single-weapon
+    // character doesn't have to configure both fields.
     public string AlternateAttackCommand { get; set; } = "a";
 
     // ----- Combat priority order ------------------------------------
 
-    /// <summary>
-    /// Per-round category order. The engine evaluates the four combat
-    /// categories in ascending priority value — lowest number fires first;
-    /// the first applicable category owns the round (one action per round).
-    /// <see cref="Game.Combat.CombatSpellChooser"/> resolves the order;
-    /// ties keep the canonical Backstab → Debuffing → Spells → Physical
-    /// fallback so duplicate numbers stay deterministic. Defaults
-    /// (1/2/3/4) reproduce the previously hard-coded order. Physical is the
-    /// terminal fallback (the weapon swing always applies), so placing it
-    /// above another category suppresses that category whenever a swing is
-    /// possible. Backstab only fires when ranked at priority 1 (and
-    /// <see cref="DoBackstab"/> is set + the opener is still eligible); at
-    /// any other rank it is ignored entirely.
-    /// </summary>
+    // Per-round category order. The engine evaluates the four combat categories
+    // in ascending priority value — lowest number fires first; the first
+    // applicable category owns the round (one action per round).
+    // Game.Combat.CombatSpellChooser resolves the order; ties keep the canonical
+    // Backstab → Debuffing → Spells → Physical fallback so duplicate numbers
+    // stay deterministic. Defaults (1/2/3/4) reproduce the previously hard-coded
+    // order. Physical is the terminal fallback (the weapon swing always
+    // applies), so placing it above another category suppresses that category
+    // whenever a swing is possible. Backstab only fires when ranked at priority
+    // 1 (and DoBackstab is set + the opener is still eligible); at any other
+    // rank it is ignored entirely.
     public int PriorityBackstab { get; set; } = 1;
 
-    /// <summary>Priority of the debuffing category (area / single-target
-    /// debuff). Labelled "Debuffing" in the UI to match the Spells tab's
-    /// spell-priority list. See <see cref="PriorityBackstab"/>.</summary>
+    // Priority of the debuffing category (area / single-target debuff). Labelled
+    // "Debuffing" in the UI to match the Spells tab's spell-priority list. See
+    // PriorityBackstab.
     public int PriorityDebuffing { get; set; } = 2;
 
-    /// <summary>Priority of the attack-spell category (multi / normal /
-    /// alternate). See <see cref="PriorityBackstab"/>.</summary>
+    // Priority of the attack-spell category (multi / normal / alternate). See
+    // PriorityBackstab.
     public int PrioritySpells { get; set; } = 3;
 
-    /// <summary>Priority of the physical weapon swing. Terminal category —
-    /// always applicable. See <see cref="PriorityBackstab"/>.</summary>
+    // Priority of the physical weapon swing. Terminal category — always
+    // applicable. See PriorityBackstab.
     public int PriorityPhysical { get; set; } = 4;
 
     // ----- Weapon slots ---------------------------------------------
 
-    /// <summary>Primary weapon item ref (display name from game data).
-    /// Null when not configured.</summary>
+    // Primary weapon item ref (display name from game data). Null when not
+    // configured.
     public string? NormalWeapon { get; set; }
 
-    /// <summary>Off-hand item ref paired with <see cref="NormalWeapon"/>.
-    /// Null when not configured.</summary>
+    // Off-hand item ref paired with NormalWeapon. Null when not configured.
     public string? NormalOffHand { get; set; }
 
-    /// <summary>Swap-target weapon item ref. Null when not configured.</summary>
+    // Swap-target weapon item ref. Null when not configured.
     public string? AlternateWeapon { get; set; }
 
-    /// <summary>Off-hand item ref paired with <see cref="AlternateWeapon"/>.
-    /// Null when not configured.</summary>
+    // Off-hand item ref paired with AlternateWeapon. Null when not configured.
     public string? AlternateOffHand { get; set; }
 
-    /// <summary>Item ref equipped for the BS attempt round. Null when not
-    /// configured.</summary>
+    // Item ref equipped for the BS attempt round. Null when not configured.
     public string? BackstabWeapon { get; set; }
 
-    /// <summary>Off-hand item ref paired with <see cref="BackstabWeapon"/>
-    /// (often a shield). Null when not configured.</summary>
+    // Off-hand item ref paired with BackstabWeapon (often a shield). Null when
+    // not configured.
     public string? BackstabOffHand { get; set; }
 
     // ----- Backstab options -----------------------------------------
 
-    /// <summary>Attempt backstab when entering a room with eligible targets.
-    /// Default false — explicit opt-in even on stealth-capable classes (per
-    /// the Phase 9 plan's safety rule).</summary>
+    // Attempt backstab when entering a room with eligible targets. Default false
+    // — explicit opt-in even on stealth-capable classes (a safety rule).
     public bool DoBackstab { get; set; }
 
-    /// <summary>Skip the BS attempt when the multi-attack room spell is
-    /// firing this round. Default true.</summary>
+    // Skip the BS attempt when the multi-attack room spell is firing this round.
+    // Default true.
     public bool SkipBackstabIfMultiAttack { get; set; } = true;
 
-    /// <summary>Trigger flee behavior on a failed BS roll. Default false.</summary>
+    // Trigger flee behavior on a failed BS roll. Default false.
     public bool RunIfBackstabFails { get; set; }
 
-    /// <summary>
-    /// Combat-off override for stealth runners. When sprinting a walk-to
-    /// route with combat OFF and AutoSneak ON (stealthing as much of the
-    /// route as possible), a room holding a <c>SeeHidden</c> monster
-    /// breaks sneak — running onward would drag and stack monsters across
-    /// rooms, a lethal mess when solo. With this on, the engine force-clears
-    /// every hostile in such a room (bypassing the Min/Max gate) so the
-    /// route can resume sneaking. Default false — combat-off means
-    /// combat-off unless the user opts in.
-    /// </summary>
+    // Combat-off override for stealth runners. When sprinting a walk-to route
+    // with combat OFF and AutoSneak ON (stealthing as much of the route as
+    // possible), a room holding a SeeHidden monster breaks sneak — running
+    // onward would drag and stack monsters across rooms, a lethal mess when
+    // solo. With this on, the engine force-clears every hostile in such a room
+    // (bypassing the Min/Max gate) so the route can resume sneaking. Default
+    // false — combat-off means combat-off unless the user opts in.
     public bool ClearHostilesWhenSeenHidden { get; set; }
 
     // ----- Targeting ------------------------------------------------
 
-    /// <summary>Which monster in our own priority-ranked list to swing at
-    /// when <see cref="TargetPriority"/> is <see cref="Profile.TargetPriority.Default"/>.</summary>
+    // Which monster in our own priority-ranked list to swing at when
+    // TargetPriority is Default.
     public TargetOrder TargetOrder { get; set; } = TargetOrder.Normal;
 
-    /// <summary>
-    /// WHO to target in a party — the coordination half of combat (paired
-    /// with <see cref="AttackTiming"/>, which owns WHEN). Default follows our
-    /// own game data (<see cref="TargetOrder"/> + per-monster AttackPriority);
-    /// the follow modes mirror the party leader / a named member's announced
-    /// monster. See <see cref="Profile.TargetPriority"/>.
-    /// </summary>
+    // WHO to target in a party — the coordination half of combat (paired with
+    // AttackTiming, which owns WHEN). Default follows our own game data
+    // (TargetOrder + per-monster AttackPriority); the follow modes mirror the
+    // party leader / a named member's announced monster.
     public TargetPriority TargetPriority { get; set; } = TargetPriority.Default;
 
-    /// <summary>Party member whose target we mirror when
-    /// <see cref="TargetPriority"/> is
-    /// <see cref="Profile.TargetPriority.FollowMember"/>. Null otherwise.
-    /// Separate from <see cref="AttackAfterPlayerName"/> so the "who" and
-    /// "when" knobs can name different players.</summary>
+    // Party member whose target we mirror when TargetPriority is FollowMember.
+    // Null otherwise. Separate from AttackAfterPlayerName so the "who" and
+    // "when" knobs can name different players.
     public string? TargetPriorityMemberName { get; set; }
 
-    /// <summary>Attack Order — WHEN to (re-)announce our swing relative to
-    /// others, to control initiative order. Pure timing: it re-fires our own
-    /// current target and never switches the monster (that's
-    /// <see cref="TargetPriority"/>'s job). See <see cref="AttackTiming"/> for
-    /// the four modes.</summary>
+    // Attack Order — WHEN to (re-)announce our swing relative to others, to
+    // control initiative order. Pure timing: it re-fires our own current target
+    // and never switches the monster (that's TargetPriority's job). See
+    // AttackTiming for the four modes.
     public AttackTiming AttackTiming { get; set; } = AttackTiming.Default;
 
-    /// <summary>Player name whose attack announce triggers our re-fire when
-    /// <see cref="AttackTiming"/> is <see cref="AttackTiming.AttackAfter"/>.
-    /// Null otherwise.</summary>
+    // Player name whose attack announce triggers our re-fire when AttackTiming
+    // is AttackAfter. Null otherwise.
     public string? AttackAfterPlayerName { get; set; }
 
-    /// <summary>Behavior when a non-party player is engaged with a monster we
-    /// would otherwise target. Default <see cref="PoliteMode.Off"/> — attack
-    /// regardless.</summary>
+    // Behavior when a non-party player is engaged with a monster we would
+    // otherwise target. Default Off — attack regardless.
     public PoliteMode PoliteMode { get; set; } = PoliteMode.Off;
 
     // ----- Room-skip thresholds -------------------------------------
 
-    /// <summary>Skip the room if fewer than this many hostiles are present.
-    /// Range 0–20. Default 0 (no minimum).</summary>
+    // Skip the room if fewer than this many hostiles are present. Range 0–20.
+    // Default 0 (no minimum).
     public int MinMonstersInRoom { get; set; }
 
-    /// <summary>Skip the room if more than this many hostiles are present.
-    /// Range 1–20 (rooms cap at 20 NPCs). Default 20.</summary>
+    // Skip the room if more than this many hostiles are present. Range 1–20
+    // (rooms cap at 20 NPCs). Default 20.
     public int MaxMonstersInRoom { get; set; } = 20;
 
-    /// <summary>Rooms to flee before re-evaluating. Range 1–100. Default 3.</summary>
+    // Rooms to flee before re-evaluating. Range 1–100. Default 3.
     public int RunDistance { get; set; } = 3;
 
-    /// <summary>Direction strategy when fleeing. Forward continues along the
-    /// active walker path (away from where we entered); Backward retraces the
-    /// steps we just came from. Default Backward — safer because we know what
-    /// rooms we passed through. Consumed by
-    /// <see cref="Game.Health.HealthManager"/>'s flee path alongside
-    /// <see cref="RunDistance"/>.</summary>
+    // Direction strategy when fleeing. Forward continues along the active walker
+    // path (away from where we entered); Backward retraces the steps we just
+    // came from. Default Backward — safer because we know what rooms we passed
+    // through. Consumed by Game.Health.HealthManager's flee path alongside
+    // RunDistance.
     public RunDirection RunDirection { get; set; } = RunDirection.Backward;
 
-    /// <summary>When true (default), HealthManager sends <c>break</c> before
-    /// the first flee move so the auto-attack disengages and the move can land
-    /// cleanly. When false the flee starts mid-fight and the server may reject
-    /// the first move because we're still engaged — fast option for users who'd
-    /// rather take the chance than waste a round on <c>break</c>.</summary>
+    // When true (default), HealthManager sends break before the first flee move
+    // so the auto-attack disengages and the move can land cleanly. When false
+    // the flee starts mid-fight and the server may reject the first move because
+    // we're still engaged — fast option for users who'd rather take the chance
+    // than waste a round on break.
     public bool BreakBeforeFleeing { get; set; } = true;
 
     // ----- Failure tracking -----------------------------------------
 
-    /// <summary>How many consecutive "no effect" lines move a target to the
-    /// room-scoped unhittable set. Default 1.</summary>
+    // How many consecutive "no effect" lines move a target to the room-scoped
+    // unhittable set. Default 1.
     public int NoEffectFailureThreshold { get; set; } = 1;
 
     // ----- Spell combat ---------------------------------------------
 
-    /// <summary>How <see cref="CombatSpellSlot.MinManaPerCast"/> values are
-    /// read across all five spell slots below. Default
-    /// <see cref="ThresholdMode.Percentage"/>.</summary>
+    // How CombatSpellSlot.MinManaPerCast values are read across all five spell
+    // slots below. Default Percentage.
     public ThresholdMode SpellManaThresholdMode { get; set; } = ThresholdMode.Percentage;
 
-    /// <summary>Multi-target room spell (e.g. <c>cast star</c>).</summary>
+    // Multi-target room spell (e.g. cast star).
     public CombatSpellSlot MultiAttackSpell { get; set; } = new();
 
-    /// <summary>Area-effect debuff (e.g. blind-room, curse-room).</summary>
+    // Area-effect debuff (e.g. blind-room, curse-room).
     public CombatSpellSlot AreaDebuffSpell { get; set; } = new();
 
-    /// <summary>Single-target debuff (e.g. weakness, slow). Ignores
-    /// <see cref="CombatSpellSlot.MinEnemies"/>.</summary>
+    // Single-target debuff (e.g. weakness, slow). Ignores MinEnemies.
     public CombatSpellSlot SingleTargetDebuffSpell { get; set; } = new();
 
-    /// <summary>Primary single-target damage spell. Ignores
-    /// <see cref="CombatSpellSlot.MinEnemies"/>.</summary>
+    // Primary single-target damage spell. Ignores MinEnemies.
     public CombatSpellSlot NormalAttackSpell { get; set; } = new();
 
-    /// <summary>Fallback single-target damage spell — used when the normal
-    /// pick can't fire. Ignores <see cref="CombatSpellSlot.MinEnemies"/>.</summary>
+    // Fallback single-target damage spell — used when the normal pick can't
+    // fire. Ignores MinEnemies.
     public CombatSpellSlot AlternateAttackSpell { get; set; } = new();
 
     // ----- Display --------------------------------------------------
 
-    /// <summary>Append the per-round damage roll-up to the terminal canvas
-    /// after each round. Default false.</summary>
+    // Append the per-round damage roll-up to the terminal canvas after each
+    // round. Default false.
     public bool ShowCombatRoundTotals { get; set; }
 }
 
-/// <summary>
-/// One spell-row entry in the Combat tab's Spell-combat section. Five of
-/// these live on <see cref="CombatSettings"/> (multi-attack / AOE debuff /
-/// single-target debuff / normal attack spell / alternate attack spell).
-/// Single-target rows ignore <see cref="MinEnemies"/>; the engine documents
-/// which rows honor it.
-/// </summary>
+// One spell-row entry in the Combat tab's Spell-combat section. Five of these
+// live on CombatSettings (multi-attack / AOE debuff / single-target debuff /
+// normal attack spell / alternate attack spell). Single-target rows ignore
+// MinEnemies; the engine documents which rows honor it.
 public sealed class CombatSpellSlot
 {
-    /// <summary>Spell name as it appears in game data. Null = slot unused.</summary>
+    // Spell name as it appears in game data. Null = slot unused.
     public string? SpellName { get; set; }
 
-    /// <summary>Only cast when at least this many hostiles are in the room.
-    /// 0 = no minimum. Ignored for single-target rows.</summary>
+    // Only cast when at least this many hostiles are in the room. 0 = no
+    // minimum. Ignored for single-target rows.
     public int MinEnemies { get; set; }
 
-    /// <summary>Cap on back-to-back fires within one room / engagement.
-    /// <c>null</c> (blank in the editor) = no limit — cast as often as the
-    /// slot's other gates allow; <c>0</c> = never cast (an explicit off
-    /// switch that keeps the spell name configured); <c>N &gt; 0</c> = at most
-    /// N casts per room.</summary>
+    // Cap on back-to-back fires within one room / engagement. null (blank in the
+    // editor) = no limit — cast as often as the slot's other gates allow; 0 =
+    // never cast (an explicit off switch that keeps the spell name configured);
+    // N > 0 = at most N casts per room.
     public int? MaxCastsPerRoom { get; set; }
 
-    /// <summary>Minimum mana required to cast — interpreted per
-    /// <see cref="CombatSettings.SpellManaThresholdMode"/>.</summary>
+    // Minimum mana required to cast — interpreted per
+    // CombatSettings.SpellManaThresholdMode.
     public int MinManaPerCast { get; set; }
 }
 
-/// <summary>Direction strategy for the auto-flee path.</summary>
+// Direction strategy for the auto-flee path.
 public enum RunDirection
 {
-    /// <summary>Retrace the path we just walked in on. Default —
-    /// safer because we know what rooms we passed through.</summary>
+    // Retrace the path we just walked in on. Default — safer because we know
+    // what rooms we passed through.
     Backward,
 
-    /// <summary>Continue along the active walker path away from
-    /// where we came in. Faster but moves into unscouted rooms.</summary>
+    // Continue along the active walker path away from where we came in. Faster
+    // but moves into unscouted rooms.
     Forward,
 }
 
-/// <summary>
-/// Which monster in our own priority-ranked target list to swing at when
-/// <see cref="CombatSettings.TargetPriority"/> is
-/// <see cref="TargetPriority.Default"/>. <see cref="Normal"/> picks the
-/// highest-priority entry; <see cref="Reverse"/> picks the lowest.
-/// Independent of <see cref="AttackTiming"/>.
-/// </summary>
+// Which monster in our own priority-ranked target list to swing at when
+// CombatSettings.TargetPriority is Default. Normal picks the highest-priority
+// entry; Reverse picks the lowest. Independent of AttackTiming.
 public enum TargetOrder
 {
     Normal,
     Reverse,
 }
 
-/// <summary>
-/// WHO to target in a party — the coordination half of combat. Pairs with
-/// <see cref="AttackTiming"/> (which owns WHEN to announce): together they
-/// decide the who and when of every round. The follow modes are reactive —
-/// they learn the leader / member's target from their "moves to attack X"
-/// announce. If our configured weapons + attack spells can't hit the followed
-/// target (proven un-actionable by game data), we fall back to our own next
-/// actionable target via the standard combat-fail path.
-/// </summary>
+// WHO to target in a party — the coordination half of combat. Pairs with
+// AttackTiming (which owns WHEN to announce): together they decide the who and
+// when of every round. The follow modes are reactive — they learn the leader /
+// member's target from their "moves to attack X" announce. If our configured
+// weapons + attack spells can't hit the followed target (proven un-actionable
+// by game data), we fall back to our own next actionable target via the
+// standard combat-fail path.
 public enum TargetPriority
 {
-    /// <summary>Pick our own target from game data
-    /// (<see cref="CombatSettings.TargetOrder"/> + per-monster
-    /// AttackPriority). No party mirroring.</summary>
+    // Pick our own target from game data (CombatSettings.TargetOrder +
+    // per-monster AttackPriority). No party mirroring.
     Default,
 
-    /// <summary>Mirror the party leader's announced target
-    /// (<see cref="Game.PartyState.LeaderName"/>).</summary>
+    // Mirror the party leader's announced target (Game.PartyState.LeaderName).
     FollowLeader,
 
-    /// <summary>Mirror the announced target of the member named in
-    /// <see cref="CombatSettings.TargetPriorityMemberName"/>.</summary>
+    // Mirror the announced target of the member named in
+    // CombatSettings.TargetPriorityMemberName.
     FollowMember,
 }
 
-/// <summary>
-/// Attack Order — WHEN to (re-)announce our swing to control initiative
-/// order. Pure timing: re-fires our own current target on someone else's
-/// announce so our announce lands last; it never switches the monster
-/// (<see cref="TargetPriority"/> owns the "who"). Wraps the standard MudProxy
-/// <c>PartyAttackOrder</c> behavior plus a FujinTerm-original
-/// <see cref="AttackLastRoom"/> mode that drops the party-membership filter.
-/// </summary>
+// Attack Order — WHEN to (re-)announce our swing to control initiative order.
+// Pure timing: re-fires our own current target on someone else's announce so
+// our announce lands last; it never switches the monster (TargetPriority owns
+// the "who"). Wraps the standard MegaMUD PartyAttackOrder behavior plus a
+// FujinTerm-original AttackLastRoom mode that drops the party-membership filter.
 public enum AttackTiming
 {
-    /// <summary>Own cadence; no re-fire coordination.</summary>
+    // Own cadence; no re-fire coordination.
     Default,
 
-    /// <summary>Re-fire our current target on every party member's
-    /// "moves to attack X" announcement, keeping our announce most recent.
-    /// Non-party announcements ignored.</summary>
+    // Re-fire our current target on every party member's "moves to attack X"
+    // announcement, keeping our announce most recent. Non-party announcements
+    // ignored.
     AttackLastParty,
 
-    /// <summary>Re-fire our current target on every "moves to attack X"
-    /// announcement regardless of party membership — our announce stays last
-    /// among everyone in the room, party or not.</summary>
+    // Re-fire our current target on every "moves to attack X" announcement
+    // regardless of party membership — our announce stays last among everyone
+    // in the room, party or not.
     AttackLastRoom,
 
-    /// <summary>Re-fire our current target only when
-    /// <see cref="CombatSettings.AttackAfterPlayerName"/> announces, keeping
-    /// our announce immediately after theirs.</summary>
+    // Re-fire our current target only when
+    // CombatSettings.AttackAfterPlayerName announces, keeping our announce
+    // immediately after theirs.
     AttackAfter,
 }
 
-/// <summary>
-/// Behavior when a non-party player is engaged with a monster we would
-/// otherwise target. FujinTerm-original — MudProxy has no equivalent.
-/// </summary>
+// Behavior when a non-party player is engaged with a monster we would otherwise
+// target. FujinTerm-original.
 public enum PoliteMode
 {
-    /// <summary>Engage regardless of who else is fighting. Default.</summary>
+    // Engage regardless of who else is fighting. Default.
     Off,
 
-    /// <summary>Pause until the other player disengages, then engage.</summary>
+    // Pause until the other player disengages, then engage.
     WaitForOthers,
 
-    /// <summary>Skip the entire room — walker continues to next room.</summary>
+    // Skip the entire room — walker continues to next room.
     SkipRoom,
 
-    /// <summary>Pick a different monster in the same room that no non-party
-    /// player is fighting.</summary>
+    // Pick a different monster in the same room that no non-party player is
+    // fighting.
     AttackDifferent,
 }

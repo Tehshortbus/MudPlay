@@ -11,24 +11,18 @@ using FujinTerm.Terminal;
 
 namespace FujinTerm.ViewModels;
 
-/// <summary>
-/// View-model behind <see cref="Views.BackscrollWindow"/>. Shows the
-/// <see cref="ScrollbackBuffer"/> contents (rows that physically scrolled
-/// off the top of the screen) followed by a live mirror of the
-/// currently-visible terminal screen — so the Backscroll is a true
-/// chronological transcript of everything the user has ever seen,
-/// including the active prompt row.
-/// </summary>
-/// <remarks>
-/// Rows are laid out as:
-/// <code>
-/// [ 0 .. _scrollbackCount )           historical rows (ScrollbackBuffer)
-/// [ _scrollbackCount .. end )         live mirror of current screen
-/// </code>
-/// On <see cref="ScrollbackBuffer.RowAdded"/> we insert at the boundary.
-/// On <see cref="TerminalEmulator.ScreenUpdated"/> we replace the tail with
-/// the current screen rows.
-/// </remarks>
+// View-model behind Views.BackscrollWindow. Shows the ScrollbackBuffer
+// contents (rows that physically scrolled off the top of the screen)
+// followed by a live mirror of the currently-visible terminal screen — so
+// the Backscroll is a true chronological transcript of everything the user
+// has ever seen, including the active prompt row.
+//
+// Rows are laid out as:
+//   [ 0 .. _scrollbackCount )      historical rows (ScrollbackBuffer)
+//   [ _scrollbackCount .. end )    live mirror of current screen
+// On ScrollbackBuffer.RowAdded we insert at the boundary. On
+// TerminalEmulator.ScreenUpdated we replace the tail with the current
+// screen rows.
 public sealed partial class BackscrollViewModel : ObservableObject, IDisposable
 {
     private readonly TerminalEmulator _emulator;
@@ -52,15 +46,13 @@ public sealed partial class BackscrollViewModel : ObservableObject, IDisposable
 
     [ObservableProperty] private string _searchText = string.Empty;
 
-    /// <summary>
-    /// Whether the live screen mirror tracks the terminal in real time.
-    /// Driven by <see cref="Views.BackscrollWindow"/>: true only while the
-    /// window is focused AND scrolled to the bottom. When false, live-tail
-    /// refreshes are deferred — mirroring the screen re-lays-out the whole
-    /// (potentially 10k-row) transcript, so doing it on every keystroke echo
-    /// while the user is reviewing history or typing in the main terminal
-    /// janks the shared UI thread.
-    /// </summary>
+    // Whether the live screen mirror tracks the terminal in real time.
+    // Driven by Views.BackscrollWindow: true only while the window is focused
+    // AND scrolled to the bottom. When false, live-tail refreshes are
+    // deferred — mirroring the screen re-lays-out the whole (potentially
+    // 10k-row) transcript, so doing it on every keystroke echo while the user
+    // is reviewing history or typing in the main terminal janks the shared
+    // UI thread.
     [ObservableProperty] private bool _autoFollow = true;
 
     [ObservableProperty]
@@ -70,14 +62,12 @@ public sealed partial class BackscrollViewModel : ObservableObject, IDisposable
     public string StatusText
         => $"{_scrollbackCount:N0} scrollback  •  {Rows.Count - _scrollbackCount:N0} live  •  {MatchCount:N0} matches";
 
-    /// <summary>
-    /// Fired when Find Next lands on a match. Payload: (rowIndex,
-    /// columnOffsetWithinRowText, matchLength). The window translates
-    /// this into a selection + scroll on the SelectableTranscript.
-    /// </summary>
+    // Fired when Find Next lands on a match. Payload: (rowIndex,
+    // columnOffsetWithinRowText, matchLength). The window translates this
+    // into a selection + scroll on the SelectableTranscript.
     public event Action<int, int, int>? FindMatchRequested;
 
-    /// <summary>Fired when the user requests Go to live (scroll to bottom).</summary>
+    // Fired when the user requests Go to live (scroll to bottom).
     public event Action? GoToLiveRequested;
 
     public BackscrollViewModel(TerminalEmulator emulator)
@@ -143,14 +133,12 @@ public sealed partial class BackscrollViewModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>
-    /// Replace the rows at indices <c>[_scrollbackCount..end)</c> with a
-    /// fresh snapshot of every screen row up to the last non-blank row.
-    /// Trailing blank rows below the content are dropped — they're just
-    /// unused screen padding (a freshly-launched terminal has 25 of them).
-    /// Mid-content blank rows are kept since the server may have intentionally
-    /// written them for spacing.
-    /// </summary>
+    // Replace the rows at indices [_scrollbackCount..end) with a fresh
+    // snapshot of every screen row up to the last non-blank row. Trailing
+    // blank rows below the content are dropped — they're just unused screen
+    // padding (a freshly-launched terminal has 25 of them). Mid-content blank
+    // rows are kept since the server may have intentionally written them for
+    // spacing.
     private void RefreshLiveTail()
     {
         TerminalScreen screen = _emulator.Screen;

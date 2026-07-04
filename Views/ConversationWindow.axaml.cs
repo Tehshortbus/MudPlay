@@ -5,11 +5,9 @@ using FujinTerm.ViewModels;
 
 namespace FujinTerm.Views;
 
-/// <summary>
-/// Modeless Conversation panel. Bound to <see cref="ConversationViewModel"/>;
-/// code-behind handles Enter-to-send in the input field and scroll-to-newest
-/// when AutoScroll is on.
-/// </summary>
+// Modeless Conversation panel. Bound to ConversationViewModel;
+// code-behind handles Enter-to-send in the input field and scroll-to-newest
+// when AutoScroll is on.
 public partial class ConversationWindow : Window
 {
     private ListBox? _rowsList;

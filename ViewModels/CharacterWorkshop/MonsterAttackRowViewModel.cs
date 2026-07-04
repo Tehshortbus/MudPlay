@@ -4,15 +4,13 @@ using CommunityToolkit.Mvvm.Input;
 
 namespace FujinTerm.ViewModels.CharacterWorkshop;
 
-/// <summary>
-/// One attack row in the Calculators tab's incoming-hit table. The accuracy is
-/// user-editable so the player can dial it up or down and watch the resulting
-/// hit chance change against their (also editable) AC + dodge;
-/// <see cref="HitPercent"/> is recomputed by the parent section whenever this
-/// row's accuracy or the shared AC/dodge inputs change. Rows can be added and
-/// removed to model any number of attacks, so <see cref="Label"/> is mutable
-/// (the parent renumbers on add/remove) and each row can remove itself.
-/// </summary>
+// One attack row in the Calculators tab's incoming-hit table. The accuracy is
+// user-editable so the player can dial it up or down and watch the resulting hit
+// chance change against their (also editable) AC + dodge; HitPercent is
+// recomputed by the parent section whenever this row's accuracy or the shared
+// AC/dodge inputs change. Rows can be added and removed to model any number of
+// attacks, so Label is mutable (the parent renumbers on add/remove) and each row
+// can remove itself.
 public sealed partial class MonsterAttackRowViewModel : ObservableObject
 {
     // Notify the parent so it can recompute this row's hit% against the shared
@@ -20,16 +18,16 @@ public sealed partial class MonsterAttackRowViewModel : ObservableObject
     private readonly Action<MonsterAttackRowViewModel> _onAccuracyChanged;
     private readonly Action<MonsterAttackRowViewModel> _onRemove;
 
-    /// <summary>Attack label, e.g. "Attack 1" — renumbered by the parent on add/remove.</summary>
+    // Attack label, e.g. "Attack 1" — renumbered by the parent on add/remove.
     [ObservableProperty] private string _label;
 
-    /// <summary>Raw min-max damage of this attack (before the player's DR), for reference.</summary>
+    // Raw min-max damage of this attack (before the player's DR), for reference.
     public string Damage { get; }
 
-    /// <summary>Attack accuracy — editable so the user can explore the hit curve.</summary>
+    // Attack accuracy — editable so the user can explore the hit curve.
     [ObservableProperty] private int _accuracy;
 
-    /// <summary>Resulting hit chance vs the player's current AC + dodge ("NN%").</summary>
+    // Resulting hit chance vs the player's current AC + dodge ("NN%").
     [ObservableProperty] private string _hitPercent = "—";
 
     public MonsterAttackRowViewModel(string label, string damage, int accuracy,

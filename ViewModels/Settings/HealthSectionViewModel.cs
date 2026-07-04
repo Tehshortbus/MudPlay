@@ -7,21 +7,14 @@ using FujinTerm.Views.Settings;
 
 namespace FujinTerm.ViewModels.Settings;
 
-/// <summary>
-/// "Health" tab — two-column layout (HP left, Mana / Kai right) with a
-/// Percentage / Value mode picker per column so the user can express a
-/// threshold either way. Persists as the <c>"Health"</c> entry in
-/// <see cref="CharacterProfile.Settings"/>.
-/// </summary>
-/// <remarks>
-/// Wires DTO storage only — the engines that read these values land in a
-/// later phase: <c>HealthManager</c> (rest / hang / run flow) and
-/// <c>CastingDirector</c> (heal-cast thresholds). No
-/// <c>ApplyToServices</c> call because those consumer services don't
-/// exist yet; they will subscribe to
-/// <see cref="ProfileService.ProfileLoaded"/> when they arrive and re-read
-/// the DTO from there.
-/// </remarks>
+// "Health" tab — two-column layout (HP left, Mana / Kai right) with a Percentage
+// / Value mode picker per column so the user can express a threshold either way.
+// Persists as the "Health" entry in CharacterProfile.Settings.
+//
+// Wires DTO storage only. There's no ApplyToServices call — the engines that read
+// these values, HealthManager (rest / hang / run flow) and CastingDirector
+// (heal-cast thresholds), subscribe to ProfileService.ProfileLoaded and re-read
+// the DTO from there.
 public sealed partial class HealthSectionViewModel : SettingsSectionViewModel
 {
     private const string TabKey = "Health";
@@ -35,7 +28,7 @@ public sealed partial class HealthSectionViewModel : SettingsSectionViewModel
     public override string Title => "Health";
     public override bool IsDirty => _dirty;
 
-    /// <summary>True when a profile is loaded — editor is hidden otherwise.</summary>
+    // True when a profile is loaded — editor is hidden otherwise.
     public bool HasProfile => _profile.Current is not null;
 
     public override Control View => _view ??= new HealthSectionView { DataContext = this };
@@ -118,12 +111,11 @@ public sealed partial class HealthSectionViewModel : SettingsSectionViewModel
 
     private readonly Game.PlayerState? _state;
 
-    /// <summary>Live MaxHp from <see cref="Game.PlayerState"/>.
-    /// 0 when no connection / no prompt observed yet — conversion
-    /// strings then render empty.</summary>
+    // Live MaxHp from Game.PlayerState. 0 when no connection / no prompt observed
+    // yet — conversion strings then render empty.
     public int LiveMaxHp => _state?.MaxHp ?? 0;
 
-    /// <summary>Live MaxMa from <see cref="Game.PlayerState"/>.</summary>
+    // Live MaxMa from Game.PlayerState.
     public int LiveMaxMa => _state?.MaxMa ?? 0;
 
     private void OnStateChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -151,13 +143,10 @@ public sealed partial class HealthSectionViewModel : SettingsSectionViewModel
         }
     }
 
-    /// <summary>
-    /// Render the live conversion of a threshold field against the
-    /// player's live max. Percentage mode shows the absolute equivalent
-    /// (<c>"= 120/200"</c>); Value mode shows the percentage
-    /// (<c>"= 60%"</c>). Empty string when no connection / no prompt
-    /// data yet so the layout doesn't render a misleading "= 0/0".
-    /// </summary>
+    // Render the live conversion of a threshold field against the player's live
+    // max. Percentage mode shows the absolute equivalent ("= 120/200"); Value mode
+    // shows the percentage ("= 60%"). Empty string when no connection / no prompt
+    // data yet so the layout doesn't render a misleading "= 0/0".
     private static string FormatConversion(int value, int max, bool isPercentageMode)
     {
         if (max <= 0) return string.Empty;
@@ -232,13 +221,10 @@ public sealed partial class HealthSectionViewModel : SettingsSectionViewModel
         ClearDirty();
     }
 
-    /// <summary>
-    /// Clamp threshold inputs to the realistic range. Percentage values
-    /// run 0..100; absolute values run 0..100,000 (same cap the stub
-    /// NumericUpDowns used — covers every realistic HP/MA pool). One
-    /// floor for both modes keeps the engine code from having to remember
-    /// which mode produced the number.
-    /// </summary>
+    // Clamp threshold inputs to the realistic range. Percentage values run 0..100;
+    // absolute values run 0..100,000 (covers every realistic HP/MA pool). One floor
+    // for both modes keeps the engine code from having to remember which mode
+    // produced the number.
     private static int Clamp(int value) => Math.Clamp(value, 0, 100_000);
 
     private void OnProfileChanged(CharacterProfile _) => ReloadAfterProfileSwap();

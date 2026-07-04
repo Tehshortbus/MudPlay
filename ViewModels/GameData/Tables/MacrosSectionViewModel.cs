@@ -9,12 +9,9 @@ using FujinTerm.ViewModels.GameData.Edit;
 
 namespace FujinTerm.ViewModels.GameData.Tables;
 
-/// <summary>
-/// Game Data Browser → Macros tab. Surfaces the loaded character's
-/// keybinds from <see cref="MacroStore"/>. Editable — double-click a
-/// row opens the <see cref="MacroEditDialogViewModel"/>; save routes
-/// through <see cref="MacroStore.Replace"/>.
-/// </summary>
+// Game Data Browser → Macros tab. Surfaces the loaded character's keybinds from MacroStore.
+// Editable — double-click a row opens the MacroEditDialogViewModel; save routes through
+// MacroStore.Replace.
 public sealed class MacrosSectionViewModel : GameDataTableSectionViewModel, IEditableTableSectionViewModel
 {
     private readonly MacroStore _store;
@@ -31,7 +28,8 @@ public sealed class MacrosSectionViewModel : GameDataTableSectionViewModel, IEdi
 
     public override string SearchKeyColumn => "Command";
 
-    /// <summary>Engine-backed table — every row lives only at the Char tier, so the "Use" badge would always read the same value and just adds noise.</summary>
+    // Engine-backed table — every row lives only at the Char tier, so the "Use" badge would
+    // always read the same value and just adds noise.
     public override bool ShowUseColumn => false;
 
     public override IEnumerable<string> SearchableLabels => new[]

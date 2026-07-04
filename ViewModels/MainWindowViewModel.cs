@@ -20,17 +20,14 @@ using FujinTerm.Views.Settings;
 
 namespace FujinTerm.ViewModels;
 
-/// <summary>
-/// View-model for the main window. Owns the terminal emulator and the
-/// active Telnet connection, and exposes the bindable state and commands
-/// the XAML uses (host, port, status text, Connect / Disconnect / Dump
-/// buttons).
-///
-/// CommunityToolkit.Mvvm source-generators expand each [ObservableProperty]
-/// backing field into a public property with INotifyPropertyChanged change
-/// notification, and each [RelayCommand] async method into an ICommand
-/// suitable for binding directly to a button.
-/// </summary>
+// View-model for the main window. Owns the terminal emulator and the active
+// Telnet connection, and exposes the bindable state and commands the XAML
+// uses (host, port, status text, Connect / Disconnect / Dump buttons).
+//
+// CommunityToolkit.Mvvm source-generators expand each [ObservableProperty]
+// backing field into a public property with INotifyPropertyChanged change
+// notification, and each [RelayCommand] async method into an ICommand
+// suitable for binding directly to a button.
 public partial class MainWindowViewModel : ObservableObject
 {
     private TelnetClient? _telnet;
@@ -65,99 +62,75 @@ public partial class MainWindowViewModel : ObservableObject
     // GC root for the look-on-player parser — sibling to the who-list
     // parser; populates race / class / equipment from `look <player>`.
     private readonly Game.LookParser _lookParser;
-    // GC root for the room-display + movement-refusal parsers (PR 7.1b).
-    // Both subscribe to LineExtractor in their ctors and stay alive
-    // with this view-model.
+    // GC root for the room-display + movement-refusal parsers. Both
+    // subscribe to LineExtractor in their ctors and stay alive with this
+    // view-model.
     private readonly Game.Map.RoomDisplayParser _roomDisplayParser;
     private readonly Game.Map.MovementRefusalDetector _movementRefusalDetector;
 
-    /// <summary>The screen buffer the UI renders. Lifetime spans the whole window.</summary>
+    // The screen buffer the UI renders. Lifetime spans the whole window.
     public TerminalEmulator Emulator { get; } = new(80, 25);
 
-    /// <summary>
-    /// Extracts completed lines from the emulator's screen stream. Foundation
-    /// for every later-phase "what did the server say" subsystem
-    /// (MessageRouter, ChatRouter, Triggers, prompt parser).
-    /// </summary>
+    // Extracts completed lines from the emulator's screen stream. Foundation
+    // for every "what did the server say" subsystem (MessageRouter,
+    // ChatRouter, Triggers, prompt parser).
     public LineExtractor Lines { get; }
 
-    /// <summary>
-    /// Terminal-canvas font size — forwarded from
-    /// <see cref="AppServices.Display"/> so the Settings → Display tab's
-    /// edits reach the live canvas without bouncing through a save cycle.
-    /// </summary>
+    // Terminal-canvas font size — forwarded from AppServices.Display so the
+    // Settings → Display tab's edits reach the live canvas without bouncing
+    // through a save cycle.
     public double TerminalFontSize => AppServices.Current.Display.FontSize;
 
-    /// <summary>
-    /// Live mirror of the Global-tier toolbar visibility settings.
-    /// Each toolbar Button in the XAML binds its <c>IsVisible</c> to a
-    /// property on this so edits in Settings → Toolbar apply
-    /// immediately on Apply / OK.
-    /// </summary>
+    // Live mirror of the Global-tier toolbar visibility settings. Each
+    // toolbar Button in the XAML binds its IsVisible to a property on this so
+    // edits in Settings → Toolbar apply immediately on Apply / OK.
     public Services.ToolbarConfig Toolbar => AppServices.Current.Toolbar;
 
-    /// <summary>
-    /// Render-ready view-models for the dynamic toolbar
-    /// <c>ItemsControl</c>. Mirrors <see cref="ToolbarConfig.Layout"/>;
-    /// each entry resolves through
-    /// <see cref="ToolbarItemCatalogue"/> and binds against the matching
-    /// command on this view-model. Rebuilt whenever <c>Layout</c>
-    /// changes (Settings → Toolbar Apply path).
-    /// </summary>
+    // Render-ready view-models for the dynamic toolbar ItemsControl. Mirrors
+    // ToolbarConfig.Layout; each entry resolves through ToolbarItemCatalogue
+    // and binds against the matching command on this view-model. Rebuilt
+    // whenever Layout changes (Settings → Toolbar Apply path).
     public ObservableCollection<ToolbarButtonItem> ToolbarItems { get; } = new();
 
-    /// <summary>
-    /// File → Quick Connect target. Wins over <see cref="ResolveActiveBbs"/>
-    /// once set; cleared when the user picks a (different) BBS via
-    /// Settings → BBS, or when a new profile loads.
-    /// </summary>
+    // File → Quick Connect target. Wins over ResolveActiveBbs once set;
+    // cleared when the user picks a (different) BBS via Settings → BBS, or
+    // when a new profile loads.
     private (string Host, int Port)? _quickConnectTarget;
 
-    /// <summary>
-    /// Tracks the BBS pin observed on the last profile-mutation event so we
-    /// can detect when the user actually changed BBS (vs. tweaked an
-    /// unrelated setting). Used to drop <see cref="_quickConnectTarget"/>.
-    /// </summary>
+    // Tracks the BBS pin observed on the last profile-mutation event so we
+    // can detect when the user actually changed BBS (vs. tweaked an unrelated
+    // setting). Used to drop _quickConnectTarget.
     private string? _lastSeenBbsName;
 
-    /// <summary>
-    /// Host the active connection target resolves to. Quick Connect wins
-    /// over the saved BBS pin when set; otherwise the user's BBS Host
-    /// stands in.
-    /// </summary>
+    // Host the active connection target resolves to. Quick Connect wins over
+    // the saved BBS pin when set; otherwise the user's BBS Host stands in.
     public string Host => _quickConnectTarget?.Host ?? ResolveActiveBbs()?.Host ?? string.Empty;
 
-    /// <summary>Port the active connection target resolves to. <c>0</c> when nothing is configured.</summary>
+    // Port the active connection target resolves to. 0 when nothing is configured.
     public int Port => _quickConnectTarget?.Port ?? ResolveActiveBbs()?.Port ?? 0;
 
-    /// <summary>
-    /// Name of the dial target — Quick Connect's <c>host:port</c> when
-    /// active, otherwise the active BBS's display name (or <c>null</c>).
-    /// Consumed by the title bar and the connect-status banner.
-    /// </summary>
+    // Name of the dial target — Quick Connect's host:port when active,
+    // otherwise the active BBS's display name (or null). Consumed by the
+    // title bar and the connect-status banner.
     public string? ActiveBbsName => _quickConnectTarget is { } qc
         ? $"Quick Connect: {qc.Host}:{qc.Port}"
         : ResolveActiveBbs()?.Name;
 
-    /// <summary>
-    /// Optional URL field on the active BBS's <see cref="BbsProfile.WebsiteUrl"/>.
-    /// Drives the Help → BBS site menu item's enable state + the actual launch.
-    /// Quick Connect targets have no website (Quick Connect bypasses the
-    /// BBS profile store entirely), so this is <c>null</c> in that case.
-    /// </summary>
+    // Optional URL field on the active BBS's BbsProfile.WebsiteUrl. Drives
+    // the Help → BBS site menu item's enable state + the actual launch. Quick
+    // Connect targets have no website (Quick Connect bypasses the BBS profile
+    // store entirely), so this is null in that case.
     public string? BbsWebsiteUrl => _quickConnectTarget is null
         ? ResolveActiveBbs()?.WebsiteUrl
         : null;
 
-    /// <summary>True when <see cref="BbsWebsiteUrl"/> looks launch-able — gates the Help menu item.</summary>
+    // True when BbsWebsiteUrl looks launch-able — gates the Help menu item.
     public bool HasBbsWebsite => !string.IsNullOrWhiteSpace(BbsWebsiteUrl);
 
-    /// <summary>
-    /// Window title — "FujinTerm — {profile} — {bbs}". When no profile
-    /// is loaded the placeholder <c>{default}</c> stands in; when no
-    /// BBS is selected <c>{No BBS}</c> stands in. Both slots always
-    /// render so the title bar shape stays consistent.
-    /// </summary>
+    // Window title — "FujinTerm — {profile} — {bbs}". When no profile is
+    // loaded the placeholder {default} stands in; when no BBS is selected
+    // {No BBS} stands in. Both slots always render so the title bar shape
+    // stays consistent.
     public string WindowTitle
     {
         get
@@ -168,7 +141,7 @@ public partial class MainWindowViewModel : ObservableObject
         }
     }
 
-    /// <summary>True when the connect button has somewhere to dial.</summary>
+    // True when the connect button has somewhere to dial.
     public bool CanConnect => !string.IsNullOrWhiteSpace(Host) && Port > 0;
 
     // Connection state is a small FSM: Idle → Connecting → Connected → Idle.
@@ -196,23 +169,20 @@ public partial class MainWindowViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(ConnectionStatusText))]
     private bool _isConnecting;
 
-    /// <summary>
-    /// True during the user-initiated disconnect path — between the
-    /// toolbar click and the wire actually closing. Drives the
-    /// "Disconnecting…" label + short-circuits the toggle command so
-    /// a fast double-click can't initiate a reconnect mid-disconnect.
-    /// </summary>
+    // True during the user-initiated disconnect path — between the toolbar
+    // click and the wire actually closing. Drives the "Disconnecting…" label
+    // + short-circuits the toggle command so a fast double-click can't
+    // initiate a reconnect mid-disconnect.
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ConnectionLabel))]
     [NotifyPropertyChangedFor(nameof(ConnectionStatusText))]
     private bool _isDisconnecting;
 
-    // Phase 9 — live auto-engine toggles. Each mirrors the matching
-    // GeneralSettings.AutoMode flag on the active profile; the toolbar
-    // Toggle buttons, the Action-menu check items, and the Settings →
-    // General checkboxes all write here. The partial OnXxxChanged
-    // handlers persist to the profile and refresh the toolbar IsActive
-    // badge.
+    // Live auto-engine toggles. Each mirrors the matching
+    // GeneralSettings.AutoMode flag on the active profile; the toolbar Toggle
+    // buttons, the Action-menu check items, and the Settings → General
+    // checkboxes all write here. The partial OnXxxChanged handlers persist to
+    // the profile and refresh the toolbar IsActive badge.
     [ObservableProperty][NotifyPropertyChangedFor(nameof(IsAllAutoOff))] private bool _isAutoCombatActive;
     [ObservableProperty][NotifyPropertyChangedFor(nameof(IsAllAutoOff))] private bool _isAutoNukeActive;
     [ObservableProperty][NotifyPropertyChangedFor(nameof(IsAllAutoOff))] private bool _isAutoHealRestActive;
@@ -224,23 +194,19 @@ public partial class MainWindowViewModel : ObservableObject
     [ObservableProperty][NotifyPropertyChangedFor(nameof(IsAllAutoOff))] private bool _isAutoHideActive;
     [ObservableProperty][NotifyPropertyChangedFor(nameof(IsAllAutoOff))] private bool _isAutoSearchActive;
 
-    /// <summary>
-    /// Master "Disable hangups" toggle. When on, every automatic disconnect
-    /// path (@hangup / @relog remote commands, low-HP emergency hangup,
-    /// nightly-cleanup log-off) is suppressed — the client drops the carrier
-    /// only on an explicit user action. Persisted in
-    /// <see cref="Models.Profile.GeneralSettings.DisableHangups"/> and
-    /// reseeded on profile load like the auto-mode toggles. Not part of
-    /// <see cref="IsAllAutoOff"/> — it gates disconnects, not auto-engines.
-    /// </summary>
+    // Master "Disable hangups" toggle. When on, every automatic disconnect
+    // path (@hangup / @relog remote commands, low-HP emergency hangup,
+    // nightly-cleanup log-off) is suppressed — the client drops the carrier
+    // only on an explicit user action. Persisted in
+    // Models.Profile.GeneralSettings.DisableHangups and reseeded on profile
+    // load like the auto-mode toggles. Not part of IsAllAutoOff — it gates
+    // disconnects, not auto-engines.
     [ObservableProperty] private bool _isDisableHangupsActive;
 
-    /// <summary>
-    /// True when every wired auto-engine is off — drives the "Auto-All"
-    /// master toggle's depressed/checked state. Mirrors
-    /// <see cref="Game.AutoModeController.AllWiredOff"/> but computed from
-    /// the live observables so the badge updates instantly.
-    /// </summary>
+    // True when every wired auto-engine is off — drives the "Auto-All" master
+    // toggle's depressed/checked state. Mirrors
+    // Game.AutoModeController.AllWiredOff but computed from the live
+    // observables so the badge updates instantly.
     public bool IsAllAutoOff =>
         !IsAutoCombatActive && !IsAutoNukeActive && !IsAutoHealRestActive
         && !IsAutoBlessActive && !IsAutoLightActive && !IsAutoGetItemsActive
@@ -249,24 +215,19 @@ public partial class MainWindowViewModel : ObservableObject
 
     public bool IsDisconnected => !IsConnected;
 
-    /// <summary>True when there is no active connection AND no connect attempt in flight.</summary>
+    // True when there is no active connection AND no connect attempt in flight.
     public bool IsIdle => !IsConnected && !IsConnecting;
 
-    /// <summary>
-    /// True when an auto-reconnect is armed but hasn't fired yet — covers
-    /// both the predictive cleanup scheduler and the reactive carrier-lost
-    /// path. Drives the toolbar / menu's Connect label so a re-press
-    /// cancels the pending redial instead of immediately dialling.
-    /// </summary>
+    // True when an auto-reconnect is armed but hasn't fired yet — covers both
+    // the predictive cleanup scheduler and the reactive carrier-lost path.
+    // Drives the toolbar / menu's Connect label so a re-press cancels the
+    // pending redial instead of immediately dialling.
     public bool IsReconnectPending
         => _cleanupReconnectCts is not null && !IsConnected && !IsConnecting;
 
-    /// <summary>
-    /// Header text for the single Connect ↔ Disconnect menu entry / button
-    /// tooltip. Four-state cycle: ReconnectPending → "Cancel reconnect" →
-    /// Idle → "Connect" → Connecting → "Cancel connect" → Connected →
-    /// "Disconnect".
-    /// </summary>
+    // Header text for the single Connect ↔ Disconnect menu entry / button
+    // tooltip. Four-state cycle: ReconnectPending → "Cancel reconnect" → Idle
+    // → "Connect" → Connecting → "Cancel connect" → Connected → "Disconnect".
     public string ConnectionLabel
         => IsDisconnecting ? "Disconnecting…"
          : IsConnected ? "Disconnect"
@@ -274,34 +235,29 @@ public partial class MainWindowViewModel : ObservableObject
          : IsReconnectPending ? "Cancel reconnect"
          : "Connect";
 
-    /// <summary>Status-bar stoplight label — pure state, no host / port detail.</summary>
+    // Status-bar stoplight label — pure state, no host / port detail.
     public string ConnectionStatusText
         => IsDisconnecting ? "Disconnecting…"
          : IsConnected ? "Connected"
          : IsConnecting ? "Connecting…"
          : "Disconnected";
 
-    /// <summary>
-    /// Live "dialing in 4m 23s" countdown text. Empty when no
-    /// reconnect is armed OR when the armed delay is too short to
-    /// warrant a status-bar countdown. Updated once per second by
-    /// <see cref="_reconnectCountdownTimer"/>.
-    /// </summary>
+    // Live "dialing in 4m 23s" countdown text. Empty when no reconnect is
+    // armed OR when the armed delay is too short to warrant a status-bar
+    // countdown. Updated once per second by _reconnectCountdownTimer.
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsReconnectCountdownVisible))]
     private string _reconnectCountdownText = string.Empty;
 
-    /// <summary>True when <see cref="ReconnectCountdownText"/> should render. Bound by the status bar.</summary>
+    // True when ReconnectCountdownText should render. Bound by the status bar.
     public bool IsReconnectCountdownVisible => !string.IsNullOrEmpty(ReconnectCountdownText);
 
     // ----- Status-bar location slot (mirrors NavigationViewModel) ----
 
-    /// <summary>
-    /// Text shown in the bottom status bar's location slot. Mirrors
-    /// the Navigation window's current-room label so the two stay in
-    /// sync — the bottom bar should never show "Unknown location"
-    /// while the Navigation strip knows where the player is.
-    /// </summary>
+    // Text shown in the bottom status bar's location slot. Mirrors the
+    // Navigation window's current-room label so the two stay in sync — the
+    // bottom bar should never show "Unknown location" while the Navigation
+    // strip knows where the player is.
     [ObservableProperty] private string _locationText = "Unknown location";
 
 
@@ -311,7 +267,7 @@ public partial class MainWindowViewModel : ObservableObject
     private bool               _loopRunning;
     private bool               _autoLairOn;
 
-    /// <summary>Label inside the chip — short upper-case state tag.</summary>
+    // Label inside the chip — short upper-case state tag.
     public string EngineActionBadge =>
         _autoLairOn                                     ? "AUTO-LAIR"
         : _loopRunning                                  ? "LOOPING"
@@ -366,60 +322,46 @@ public partial class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(EngineActionIsLair));
     }
 
-    /// <summary>
-    /// Cancels an in-flight connect attempt — covers both the socket-level
-    /// <see cref="TelnetClient.ConnectAsync"/> and the inter-attempt
-    /// <see cref="Task.Delay"/>. Cleared in the finally block.
-    /// </summary>
+    // Cancels an in-flight connect attempt — covers both the socket-level
+    // TelnetClient.ConnectAsync and the inter-attempt Task.Delay. Cleared in
+    // the finally block.
     private CancellationTokenSource? _connectCts;
 
-    /// <summary>
-    /// Per-attempt socket timeout. The OS default (~75s on Linux for
-    /// unreachable hosts) is far too long for a BBS client. Could be a
-    /// per-BBS knob in a future PR; constant for now since most BBSes
-    /// behave similarly on this dimension.
-    /// </summary>
+    // Per-attempt socket timeout. The OS default (~75s on Linux for
+    // unreachable hosts) is far too long for a BBS client. Constant for now
+    // since most BBSes behave similarly on this dimension.
     private static readonly TimeSpan ConnectAttemptTimeout = TimeSpan.FromSeconds(30);
 
-    /// <summary>
-    /// Why the most recent connection ended. Drives the reactive
-    /// reconnect decision (<see cref="BbsProfile.ReconnectOnFailedConnect"/> /
-    /// <see cref="BbsProfile.ReconnectOnCarrierLost"/>) and is reset on
-    /// every successful new connection.
-    /// </summary>
+    // Why the most recent connection ended. Drives the reactive reconnect
+    // decision (BbsProfile.ReconnectOnFailedConnect /
+    // BbsProfile.ReconnectOnCarrierLost) and is reset on every successful new
+    // connection.
     private enum DisconnectCause
     {
-        /// <summary>No disconnect this session (initial state or just reset).</summary>
+        // No disconnect this session (initial state or just reset).
         None,
-        /// <summary>User clicked Disconnect — never auto-retry.</summary>
+        // User clicked Disconnect — never auto-retry.
         UserInitiated,
-        /// <summary>Initial dial threw or timed out before reaching the BBS.</summary>
+        // Initial dial threw or timed out before reaching the BBS.
         FailedConnect,
-        /// <summary>Connected session ended without our initiation — server-side drop.</summary>
+        // Connected session ended without our initiation — server-side drop.
         CarrierLost,
-        /// <summary>Socket died after a long quiet stretch — TCP keepalive caught a hung server.</summary>
+        // Socket died after a long quiet stretch — TCP keepalive caught a hung server.
         NoResponse,
-        /// <summary>
-        /// Deliberate hangup originated client-side — remote
-        /// <c>@hangup</c> from a trusted player, or a future
-        /// hang-up-if-naked / hang-up-if-low-HP automation. Never
-        /// auto-retries (user is presumed to be in a dangerous spot
-        /// and needs to manually decide whether to come back). The
-        /// matching
-        /// <see cref="Game.MainMenuEntryAutomation.Arm"/> also skips
-        /// when this fired, so the user manually re-enters and the
-        /// post-entry stat/exp/i refresh doesn't spam the wire.
-        /// </summary>
+        // Deliberate hangup originated client-side — remote @hangup from a
+        // trusted player, or a future hang-up-if-naked / hang-up-if-low-HP
+        // automation. Never auto-retries (user is presumed to be in a
+        // dangerous spot and needs to manually decide whether to come back).
+        // The matching Game.MainMenuEntryAutomation.Arm also skips when this
+        // fired, so the user manually re-enters and the post-entry
+        // stat/exp/i refresh doesn't spam the wire.
         HangupInitiated,
-        /// <summary>
-        /// Deliberate relog originated client-side — remote
-        /// <c>@relog</c> from a trusted player. The character gracefully
-        /// exits (<see cref="Services.GameCommands.ExitCommand"/>) and we
-        /// force an unconditional dial-back (ignoring the per-BBS
-        /// reconnect toggles), then let the normal login automation log
-        /// back in. Unlike <see cref="HangupInitiated"/> the entry latch
-        /// is NOT suppressed — the whole round-trip is automatic.
-        /// </summary>
+        // Deliberate relog originated client-side — remote @relog from a
+        // trusted player. The character gracefully exits
+        // (Services.GameCommands.ExitCommand) and we force an unconditional
+        // dial-back (ignoring the per-BBS reconnect toggles), then let the
+        // normal login automation log back in. Unlike HangupInitiated the
+        // entry latch is NOT suppressed — the whole round-trip is automatic.
         RelogInitiated,
     }
 
@@ -434,18 +376,16 @@ public partial class MainWindowViewModel : ObservableObject
     [ObservableProperty] private string _hpTickText = "HP —";
     [ObservableProperty] private string _maTickText = "MA —";
 
-    /// <summary>
-    /// 500 ms repaint cadence for the three status-bar tick countdowns —
-    /// fast enough to look live without burning cycles. State sourced from
-    /// AppServices.Tick (combat) + AppServices.Regen (HP / MA).
-    /// </summary>
+    // 500 ms repaint cadence for the three status-bar tick countdowns — fast
+    // enough to look live without burning cycles. State sourced from
+    // AppServices.Tick (combat) + AppServices.Regen (HP / MA).
     private readonly DispatcherTimer _statusTickRefresh;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CaptureMenuLabel))]
     private bool _isDumping;
 
-    /// <summary>Label shown on the Tools menu's capture-toggle entry.</summary>
+    // Label shown on the Tools menu's capture-toggle entry.
     public string CaptureMenuLabel => IsDumping ? "Stop capture" : "Start capture";
 
     // Where session captures land when the user toggles capture. Stays under
@@ -453,13 +393,11 @@ public partial class MainWindowViewModel : ObservableObject
     // as DebugLogWriter output.
     private static string CaptureDirectory => AppPaths.LogsDir;
 
-    /// <summary>
-    /// Tees the live transcript to a .log file when the user clicks the
-    /// Capture toolbar button / menu entry. Subscribes to the same
-    /// ScrollbackBuffer the Backscroll window consumes, so the file is a
-    /// 1:1 record of what the user saw — with colours preserved via inline
-    /// ANSI SGR escapes.
-    /// </summary>
+    // Tees the live transcript to a .log file when the user clicks the
+    // Capture toolbar button / menu entry. Subscribes to the same
+    // ScrollbackBuffer the Backscroll window consumes, so the file is a 1:1
+    // record of what the user saw — with colours preserved via inline ANSI
+    // SGR escapes.
     public CaptureSession Capture { get; }
 
     public MainWindowViewModel()
@@ -512,7 +450,7 @@ public partial class MainWindowViewModel : ObservableObject
         AppServices.Current.Recovery.TierChanged    += OnRecoveryTierChanged;
         RefreshLocationSlot();
 
-        // PR 10.8 — Train Now's stuck-at-level-N reconcile: when there's no banked
+        // Train Now's stuck-at-level-N reconcile: when there's no banked
         // level left to train but the current level still has an affordable, unapplied
         // CP plan raise, the trainer-walk coordinator asks before spending CP. Wired
         // here (not in the per-connection wire-binding block) because it's a UI prompt,
@@ -614,9 +552,9 @@ public partial class MainWindowViewModel : ObservableObject
         _whoListParser = new Game.WhoListParser(Lines, AppServices.Current.Players, AppServices.Current.Log);
         _lookParser    = new Game.LookParser   (Lines, AppServices.Current.Players, AppServices.Current.Log);
 
-        // Phase 7 PR 7.1b — room-display + movement-refusal parsers
-        // feeding RoomTracker. Same per-session LineExtractor binding
-        // shape as the who/look parsers above.
+        // Room-display + movement-refusal parsers feeding RoomTracker.
+        // Same per-session LineExtractor binding shape as the who/look
+        // parsers above.
         _roomDisplayParser       = new Game.Map.RoomDisplayParser(Lines,
             AppServices.Current.RoomTracker, AppServices.Current.Log);
         _movementRefusalDetector = new Game.Map.MovementRefusalDetector(Lines,
@@ -646,15 +584,14 @@ public partial class MainWindowViewModel : ObservableObject
         // CharacterProfile.DeathHistory and transitions to
         // PendingRespawn ahead of the respawn-room display.
         AppServices.Current.Death.AttachLineExtractor(Lines);
-        // Phase 9 — MonsterDeathWatcher needs the raw line stream to
-        // match per-monster DeathLine patterns. Specific-match path
-        // removes the dead entity from RoomEntityClassifier so
-        // CombatManager re-picks correctly on the next arrival /
-        // re-display.
+        // MonsterDeathWatcher needs the raw line stream to match
+        // per-monster DeathLine patterns. Specific-match path removes
+        // the dead entity from RoomEntityClassifier so CombatManager
+        // re-picks correctly on the next arrival / re-display.
         AppServices.Current.MonsterDeath.AttachLineExtractor(Lines);
-        // Phase 9 PR 9.D — ConditionTracker scans inbound lines
-        // against every game-data Messages record's AppliedMessage /
-        // AppliedEndsWith pair to surface live ActiveFlags.
+        // ConditionTracker scans inbound lines against every game-data
+        // Messages record's AppliedMessage / AppliedEndsWith pair to
+        // surface live ActiveFlags.
         AppServices.Current.Conditions.AttachLineExtractor(Lines);
         // Party-buff confirmation — CastingDirector watches inbound lines
         // for OUR caster echo ("You cast bless on Raijin!") to confirm a
@@ -687,7 +624,7 @@ public partial class MainWindowViewModel : ObservableObject
         // Wealth, Encumbrance) so CashManager's gate has live carry
         // weight; it buffers the wrapped deposit echo too.
         AppServices.Current.Inventory.AttachLineExtractor(Lines);
-        // PR 10.5 — death-recovery watches for `You pick up ...` confirmations
+        // Death-recovery watches for `You pick up ...` confirmations
         // to drive the deathpile Partial → Recovered transition + re-equip.
         AppServices.Current.DeathRecovery.AttachLineExtractor(Lines);
         // Every engine wire-sender is routed through EngineGate's
@@ -701,9 +638,9 @@ public partial class MainWindowViewModel : ObservableObject
         // flush.
         Action<byte[]> engineSend = AppServices.Current.EngineGate.WrapEngineSender(SendUserInput);
 
-        // Phase 6 PR 6.5 — auto-invite on reconnect needs a wire-sender
-        // to send "invite <name>" when a disconnected member returns
-        // within the grace window AND we're the party leader.
+        // Auto-invite on reconnect needs a wire-sender to send
+        // "invite <name>" when a disconnected member returns within the
+        // grace window AND we're the party leader.
         AppServices.Current.Party.SetWireSender(engineSend);
 
         // Macro dispatcher needs a wire-send callback before it can fire.
@@ -712,9 +649,9 @@ public partial class MainWindowViewModel : ObservableObject
         // false and the keystroke falls through to normal handling.
         AppServices.Current.MacroDispatcher.SetSender(engineSend);
 
-        // Phase 8 PR 8.2 — bind the same gate-wrapped wire path to the
-        // EventManager so Command-action events route through
-        // SendUserInput like every other engine.
+        // Bind the same gate-wrapped wire path to the EventManager so
+        // Command-action events route through SendUserInput like every
+        // other engine.
         AppServices.Current.Events.SetWireSender(engineSend);
 
         // Trigger engine subscribes to the LineExtractor for game-message
@@ -726,26 +663,26 @@ public partial class MainWindowViewModel : ObservableObject
 
         // Remote-command engine borrows the same wire-sender so a handler's
         // ctx.Reply(text) routes through SendUserInput exactly like a
-        // typed command would. The Phase 6 PR 6.3 PartyEssentialHandlers
-        // also need their own copy for the @party <sub> → local-command
-        // relay (uses the wire-sender directly, bypassing ctx.Reply).
+        // typed command would. The PartyEssentialHandlers also need their
+        // own copy for the @party <sub> → local-command relay (uses the
+        // wire-sender directly, bypassing ctx.Reply).
         AppServices.Current.RemoteCommands.SetWireSender(engineSend);
         AppServices.Current.PartyEssentials.SetWireSender(engineSend);
         // Settings → Talk auto-greet — needs the wire-sender to emit
         // greet/look at newly-seen non-party players.
         AppServices.Current.Greet.SetWireSender(engineSend);
-        // Phase 6 PR 6.4 — poller needs the same wire-sender to send
-        // @health round-trip requests and the periodic par poll.
+        // Poller needs the same wire-sender to send @health round-trip
+        // requests and the periodic par poll.
         AppServices.Current.PartyPoller.SetWireSender(engineSend);
-        // Phase 6 PR 6.7 — emit @wait when we start resting and @ok
-        // when we finish, so the party leader's pause-gate can react.
+        // Emit @wait when we start resting and @ok when we finish, so
+        // the party leader's pause-gate can react.
         AppServices.Current.PartyRest.SetWireSender(engineSend);
         // Outbound ailment-sync — the say-announce (".@poisoned" etc.)
         // rides the same engine sender; the @wait/@ok side routes through
         // PartyRest's sender bound just above.
         AppServices.Current.AilmentSync.SetWireSender(engineSend);
-        // Phase 6 PR 6.8 — Auto-Exp-Reset + future panic / kill
-        // broadcasts go through PartyBroadcaster.
+        // Auto-Exp-Reset + panic / kill broadcasts go through
+        // PartyBroadcaster.
         AppServices.Current.PartyBroadcaster.SetWireSender(engineSend);
         // AutoPartyManager — consumes per-player InviteToPartyIfSeen
         // and JoinPartyIfInvited flags, sends `invite <given>` and
@@ -760,47 +697,47 @@ public partial class MainWindowViewModel : ObservableObject
         // DivertHandler — repeats incoming telepaths to a target while
         // @divert is active; rides the same gate-wrapped pipeline.
         AppServices.Current.Divert.SetWireSender(engineSend);
-        // PR 6.2 — follower-side @comeback. Telepaths @comeback to the
-        // leader when a movement-failure line strands us as the party
-        // walks off; rides the same gate-wrapped pipeline.
+        // Follower-side @comeback. Telepaths @comeback to the leader
+        // when a movement-failure line strands us as the party walks
+        // off; rides the same gate-wrapped pipeline.
         AppServices.Current.ComebackRequest.SetWireSender(engineSend);
-        // PR 10.5 — death-recovery auto-grab (`get`) + auto-equip (`wear` /
-        // `hold`) ride the same gate-wrapped pipeline as the other engines.
+        // Death-recovery auto-grab (`get`) + auto-equip (`wear` / `hold`)
+        // ride the same gate-wrapped pipeline as the other engines.
         AppServices.Current.DeathRecovery.SetWireSender(engineSend);
-        // PR 10.8 — auto-train drives the `train stats` screen (the command +
-        // each Enter-driven keystroke) through the same gate-wrapped pipeline;
+        // Auto-train drives the `train stats` screen (the command + each
+        // Enter-driven keystroke) through the same gate-wrapped pipeline;
         // the trainer-walk coordinator sends `train` / `stat` the same way.
         AppServices.Current.AutoTrain.SetWireSender(engineSend);
         AppServices.Current.TrainerWalk.SetWireSender(engineSend);
-        // PR 10.8 — level-up announcer broadcasts "I can now train to level: N" on
+        // Level-up announcer broadcasts "I can now train to level: N" on
         // the configured channel through the same gate-wrapped pipeline.
         AppServices.Current.LevelUp.SetWireSender(engineSend);
-        // Phase 9 PR 9.A — CombatManager sends `attack <target>` on
-        // target pick via the same engine-send pipeline; the gate-
-        // wrapped sender prevents the swing command from landing
-        // mid-password-entry on a stale combat round.
+        // CombatManager sends `attack <target>` on target pick via the
+        // same engine-send pipeline; the gate-wrapped sender prevents
+        // the swing command from landing mid-password-entry on a stale
+        // combat round.
         AppServices.Current.Combat.SetWireSender(engineSend);
-        // Phase 9 PR 9.B — HealthManager sends rest / stand / pre- /
-        // post-rest commands via the same gate-wrapped engine pipeline.
+        // HealthManager sends rest / stand / pre- / post-rest commands
+        // via the same gate-wrapped engine pipeline.
         AppServices.Current.Health.SetWireSender(engineSend);
-        // Phase 9 PR 9.C — CastCoordinator's `c <spell> [target]` emits
-        // ride the same gate-wrapped pipeline so spell commands respect
-        // the suicide-password / trainer-menu lockouts upstream.
+        // CastCoordinator's `c <spell> [target]` emits ride the same
+        // gate-wrapped pipeline so spell commands respect the
+        // suicide-password / trainer-menu lockouts upstream.
         AppServices.Current.Cast.SetWireSender(engineSend);
         // Mana-regen reroll engine's `abil 145` query + cooldown-bypassing
         // recast ride the same gate-wrapped pipeline as the cast engine.
         AppServices.Current.SetEngineWireSender(engineSend);
-        // PR 10.18 — item-cast buff sequencer's wield/use/wield commands ride
-        // the same gate-wrapped pipeline as the other engines.
+        // Item-cast buff sequencer's wield/use/wield commands ride the
+        // same gate-wrapped pipeline as the other engines.
         AppServices.Current.ItemCast.SetWireSender(engineSend);
-        // Phase 10 — EquipmentManager's paced `wear` commands ride the same
+        // EquipmentManager's paced `wear` commands ride the same
         // gate-wrapped pipeline (@equip-<set> set-apply).
         AppServices.Current.Equipment.SetWireSender(engineSend);
-        // Phase 9 PR 9.E — CashManager's `get all <coin>` commands
-        // ride the gate-wrapped pipeline like the other engines.
+        // CashManager's `get all <coin>` commands ride the gate-wrapped
+        // pipeline like the other engines.
         AppServices.Current.Cash.SetWireSender(engineSend);
-        // Phase 9 PR 9.L — AutoGetItemsManager's `get <name>` commands
-        // ride the same gate-wrapped pipeline.
+        // AutoGetItemsManager's `get <name>` commands ride the same
+        // gate-wrapped pipeline.
         AppServices.Current.AutoGetItems.SetWireSender(engineSend);
         // Base auto-search — the per-room `sea` rides the same gate-wrapped
         // pipeline so it can't land mid-password-prompt.
@@ -811,24 +748,24 @@ public partial class MainWindowViewModel : ObservableObject
         // Auto-light provisioning detour — the `buy <light>` at the shop rides
         // the same gate-wrapped pipeline.
         AppServices.Current.AutoLightShopRouter.SetWireSender(engineSend);
-        // Shop-source routing (PR C) — the `buy <item>` at the detour shop
+        // Shop-source routing — the `buy <item>` at the detour shop
         // rides the same gate-wrapped pipeline.
         AppServices.Current.PathItemShopRouter.SetWireSender(engineSend);
-        // Party-inventory deferral (PR E) — the `@party give` / `@do give`
+        // Party-inventory deferral — the `@party give` / `@do give`
         // hand-off rides the same gate-wrapped pipeline. The @have probe
         // itself broadcasts through the already-bound PartyBroadcaster.
         AppServices.Current.PartyPathItemGate.SetWireSender(engineSend);
-        // Phase 9 PR 9.E follow-up — StashRoomManager's `hide N <coin>`
-        // commands ride the same gate-wrapped pipeline.
+        // StashRoomManager's `hide N <coin>` commands ride the same
+        // gate-wrapped pipeline.
         AppServices.Current.Stash.SetWireSender(engineSend);
-        // Phase 9 PR 9.E follow-up — auto-deposit reroute's bank `dep`
-        // command rides the same gate-wrapped pipeline.
+        // Auto-deposit reroute's bank `dep` command rides the same
+        // gate-wrapped pipeline.
         AppServices.Current.AutoDeposit.SetWireSender(engineSend);
-        // Phase 12 — @drop-all / @deposit-all / @share emit drop / dep / with /
-        // give on the same gate-wrapped pipeline.
+        // @drop-all / @deposit-all / @share emit drop / dep / with / give
+        // on the same gate-wrapped pipeline.
         AppServices.Current.InventoryAction.SetWireSender(engineSend);
-        // Phase 12 — @heal receive side polls `par` so CastingDirector heals
-        // the requester off fresh party HP.
+        // @heal receive side polls `par` so CastingDirector heals the
+        // requester off fresh party HP.
         AppServices.Current.Heal.SetWireSender(engineSend);
         // Cluster 3 — StealthManager's auto-sneak / auto-hide commands.
         AppServices.Current.Stealth.SetWireSender(engineSend);
@@ -876,8 +813,8 @@ public partial class MainWindowViewModel : ObservableObject
         AppServices.Current.Walker.SetPartyLeaderCheck(isLeaderWithFollowers);
         AppServices.Current.LoopRunner.SetTeleportResolver(teleportResolver);
         AppServices.Current.LoopRunner.SetPartyLeaderCheck(isLeaderWithFollowers);
-        // Phase 7 walker + loop runner — gate-wrapped so a long walk
-        // doesn't blast moves through a password-entry prompt.
+        // Walker + loop runner — gate-wrapped so a long walk doesn't
+        // blast moves through a password-entry prompt.
         AppServices.Current.Walker.SetWireSender(engineSend);
         AppServices.Current.LoopRunner.SetWireSender(engineSend);
         // SuicideHandler — bypasses the engine gate because it OWNS
@@ -948,14 +885,11 @@ public partial class MainWindowViewModel : ObservableObject
         PropertyChanged += SyncToolbarStateFlags;
     }
 
-    /// <summary>
-    /// Walks <see cref="ToolbarConfig.Layout"/> and rebuilds
-    /// <see cref="ToolbarItems"/>. Each <c>Button</c> row is resolved
-    /// through <see cref="ToolbarItemCatalogue"/>; the command property
-    /// is fetched by reflection from the catalogue's
-    /// <c>CommandName</c> so adding a new toolbar action is a one-line
-    /// catalogue entry. Unknown action ids are skipped.
-    /// </summary>
+    // Walks ToolbarConfig.Layout and rebuilds ToolbarItems. Each Button
+    // row is resolved through ToolbarItemCatalogue; the command property
+    // is fetched by reflection from the catalogue's CommandName so adding
+    // a new toolbar action is a one-line catalogue entry. Unknown action
+    // ids are skipped.
     private void RebuildToolbarItems()
     {
         ToolbarItems.Clear();
@@ -1009,7 +943,7 @@ public partial class MainWindowViewModel : ObservableObject
         }
     }
 
-    /// <summary>Mirrors current connection / capture state onto matching toolbar rows.</summary>
+    // Mirrors current connection / capture state onto matching toolbar rows.
     private void SyncToolbarStateFlags(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         if (e.PropertyName != nameof(IsConnected)
@@ -1125,12 +1059,9 @@ public partial class MainWindowViewModel : ObservableObject
         }
     }
 
-    /// <summary>
-    /// Resize the live emulator screen and (if connected) re-advertise the
-    /// new dimensions to the BBS via Telnet NAWS. Reads from
-    /// <see cref="DisplayConfig"/> so any caller that wrote into it picks
-    /// up the same source of truth.
-    /// </summary>
+    // Resize the live emulator screen and (if connected) re-advertise the
+    // new dimensions to the BBS via Telnet NAWS. Reads from DisplayConfig
+    // so any caller that wrote into it picks up the same source of truth.
     private void ApplyTerminalSize()
     {
         int cols = AppServices.Current.Display.TerminalCols;
@@ -1146,14 +1077,12 @@ public partial class MainWindowViewModel : ObservableObject
         _ = _telnet?.SendWindowSizeAsync(cols, rows);
     }
 
-    /// <summary>
-    /// Repaint the status-bar tick countdowns. Source-of-truth:
-    /// <see cref="Game.TickEngine.TimeToNextCombatTick"/> for combat;
-    /// <see cref="Game.RegenTracker"/> for HP / MA. HP and MA show the
-    /// natural cycle by default and append the bonus cycle (rest / medi)
-    /// when the player is resting or meditating — the two cycles have
-    /// independent anchors and can be desynced.
-    /// </summary>
+    // Repaint the status-bar tick countdowns. Source-of-truth:
+    // Game.TickEngine.TimeToNextCombatTick for combat; Game.RegenTracker
+    // for HP / MA. HP and MA show the natural cycle by default and append
+    // the bonus cycle (rest / medi) when the player is resting or
+    // meditating — the two cycles have independent anchors and can be
+    // desynced.
     private void OnRoomTrackerStateChanged(Game.Map.RoomTransition _)
         => Avalonia.Threading.Dispatcher.UIThread.Post(RefreshLocationSlot);
 
@@ -1170,9 +1099,9 @@ public partial class MainWindowViewModel : ObservableObject
     private void OnRecoveryTierChanged(Game.Map.RecoveryTierChangedEvent _)
         => Avalonia.Threading.Dispatcher.UIThread.Post(RefreshRecoveryTierBools);
 
-    /// <summary>True when the engine-recovery gate is in tier 2 — engine chip border goes yellow.</summary>
+    // True when the engine-recovery gate is in tier 2 — engine chip border goes yellow.
     public bool IsTier2 => _isTier2;
-    /// <summary>True when the engine-recovery gate is in tier 3 — engine chip border goes red.</summary>
+    // True when the engine-recovery gate is in tier 3 — engine chip border goes red.
     public bool IsTier3 => _isTier3;
     private bool _isTier2;
     private bool _isTier3;
@@ -1194,11 +1123,9 @@ public partial class MainWindowViewModel : ObservableObject
         }
     }
 
-    /// <summary>
-    /// Rooms we've already prompted about this session. Prevents
-    /// asking the same yes/no twice when the player re-enters or the
-    /// tracker re-observes the same null-name room.
-    /// </summary>
+    // Rooms we've already prompted about this session. Prevents asking
+    // the same yes/no twice when the player re-enters or the tracker
+    // re-observes the same null-name room.
     private readonly HashSet<Game.Map.RoomKey> _nameLearnedPrompted = new();
 
     private void OnRoomNameLearned(Game.Map.NameLearnedEvent e)
@@ -1295,20 +1222,17 @@ public partial class MainWindowViewModel : ObservableObject
             : $"{label} {naturalText} / {bonus.Value.TotalSeconds:0.0}";
     }
 
-    /// <summary>
-    /// Single Connect ↔ Disconnect action. Click while idle starts a
-    /// connect attempt (with auto-retry on failure); click while a connect
-    /// is in flight cancels it; click while connected disconnects.
-    /// </summary>
-    /// <remarks>
-    /// <c>AllowConcurrentExecutions = true</c> matters: CommunityToolkit.Mvvm's
-    /// default <c>AsyncRelayCommand</c> behaviour is to disable the command
-    /// while the task is running, which would mean a second click during a
-    /// long-running connect attempt does nothing — the cancel path would be
-    /// unreachable. With concurrent executions allowed, the second click
-    /// re-enters this method and hits the <c>IsConnecting</c> branch, which
-    /// cancels the in-flight attempt.
-    /// </remarks>
+    // Single Connect ↔ Disconnect action. Click while idle starts a
+    // connect attempt (with auto-retry on failure); click while a connect
+    // is in flight cancels it; click while connected disconnects.
+    //
+    // AllowConcurrentExecutions = true matters: CommunityToolkit.Mvvm's
+    // default AsyncRelayCommand behaviour is to disable the command while
+    // the task is running, which would mean a second click during a
+    // long-running connect attempt does nothing — the cancel path would be
+    // unreachable. With concurrent executions allowed, the second click
+    // re-enters this method and hits the IsConnecting branch, which cancels
+    // the in-flight attempt.
     [RelayCommand(AllowConcurrentExecutions = true)]
     private async Task ToggleConnectionAsync()
     {
@@ -1496,13 +1420,11 @@ public partial class MainWindowViewModel : ObservableObject
         }
     }
 
-    /// <summary>
-    /// Looks up the matching <see cref="BbsProfile"/> by host, pulls the
-    /// loaded character's credentials for that BBS, and arms a
-    /// <see cref="LoginAutomator"/> against the live socket. No-op when no
-    /// BBS record matches, no profile is loaded, or the credentials are
-    /// missing — the user just gets the raw login prompt.
-    /// </summary>
+    // Looks up the matching BbsProfile by host, pulls the loaded
+    // character's credentials for that BBS, and arms a LoginAutomator
+    // against the live socket. No-op when no BBS record matches, no
+    // profile is loaded, or the credentials are missing — the user just
+    // gets the raw login prompt.
     private void ArmLoginAutomator(TelnetClient client)
     {
         DetachLoginKillSwitch();
@@ -1621,14 +1543,11 @@ public partial class MainWindowViewModel : ObservableObject
 
     // ----- Stable-connection counter reset -----------------------------
 
-    /// <summary>
-    /// Arm a one-shot 30s timer that resets
-    /// <see cref="_reactiveReconnectCount"/> only if the connection
-    /// stays alive for the full window. A flap inside the window
-    /// (BBS-in-cleanup connect → unavailable banner → drop)
-    /// cancels the timer and the counter keeps climbing toward
-    /// <see cref="BbsProfile.MaxRedials"/>.
-    /// </summary>
+    // Arm a one-shot 30s timer that resets _reactiveReconnectCount only
+    // if the connection stays alive for the full window. A flap inside
+    // the window (BBS-in-cleanup connect → unavailable banner → drop)
+    // cancels the timer and the counter keeps climbing toward
+    // BbsProfile.MaxRedials.
     private void ArmStableConnectionReset()
     {
         CancelStableConnectionReset();
@@ -1660,13 +1579,10 @@ public partial class MainWindowViewModel : ObservableObject
 
     // ----- Live reconnect countdown ------------------------------------
 
-    /// <summary>
-    /// Start (or restart) the status-bar countdown for an armed
-    /// reconnect that fires after <paramref name="delay"/>. Short
-    /// delays (&lt; <see cref="ReconnectCountdownThresholdSeconds"/>)
-    /// don't get a countdown — the status bar would just flash a
-    /// "5s, 4s, 3s…" indicator for a moment before the dial fires.
-    /// </summary>
+    // Start (or restart) the status-bar countdown for an armed reconnect
+    // that fires after delay. Short delays (< ReconnectCountdownThresholdSeconds)
+    // don't get a countdown — the status bar would just flash a
+    // "5s, 4s, 3s…" indicator for a moment before the dial fires.
     private void StartReconnectCountdown(TimeSpan delay)
     {
         if (delay.TotalSeconds < ReconnectCountdownThresholdSeconds)
@@ -1707,20 +1623,16 @@ public partial class MainWindowViewModel : ObservableObject
         ReconnectCountdownText = $"Reconnect in {FormatDelay(remaining)}";
     }
 
-    /// <summary>
-    /// On disconnect, if a cleanup warning was observed during this
-    /// session AND the active BBS has <see cref="BbsProfile.ReconnectAfterCleanup"/>
-    /// enabled, arm a one-shot reconnect at the moment we think the BBS
-    /// is back online. Formula:
-    /// <code>
-    /// shutdown_at = warning_observed_at + warning_minutes_remaining
-    /// reconnect_at = max(now, shutdown_at) + BBS.CleanupPeriodMinutes
-    /// </code>
-    /// Handles both the clean-quit-before-shutdown case (we take the
-    /// long path: full warning countdown + user-set cleanup duration)
-    /// and the dirty-shutdown case (the <c>max</c> collapses to
-    /// <c>now + cleanup</c>, since shutdown_at has already passed).
-    /// </summary>
+    // On disconnect, if a cleanup warning was observed during this session
+    // AND the active BBS has BbsProfile.ReconnectAfterCleanup enabled, arm
+    // a one-shot reconnect at the moment we think the BBS is back online.
+    // Formula:
+    //   shutdown_at = warning_observed_at + warning_minutes_remaining
+    //   reconnect_at = max(now, shutdown_at) + BBS.CleanupPeriodMinutes
+    // Handles both the clean-quit-before-shutdown case (we take the long
+    // path: full warning countdown + user-set cleanup duration) and the
+    // dirty-shutdown case (the max collapses to now + cleanup, since
+    // shutdown_at has already passed).
     private void TryScheduleCleanupReconnect()
     {
         CleanupWarning? maybeWarning = AppServices.Current.Cleanup.Latest;
@@ -1805,27 +1717,23 @@ public partial class MainWindowViewModel : ObservableObject
         }
     }
 
-    /// <summary>
-    /// Fires PropertyChanged for the bindings that depend on whether a
-    /// reconnect is armed. Called from every site that flips the CTS
-    /// between null and an instance so the toolbar / menu label updates.
-    /// </summary>
+    // Fires PropertyChanged for the bindings that depend on whether a
+    // reconnect is armed. Called from every site that flips the CTS
+    // between null and an instance so the toolbar / menu label updates.
     private void NotifyReconnectPendingChanged()
     {
         OnPropertyChanged(nameof(IsReconnectPending));
         OnPropertyChanged(nameof(ConnectionLabel));
     }
 
-    /// <summary>
-    /// Distinguish a server-side carrier drop from a TCP-keepalive
-    /// timeout. The connection was alive; now the socket died. If
-    /// keepalive was enabled on the active BBS AND the wire was silent
-    /// for longer than the configured idle window before the drop,
-    /// attribute to <see cref="DisconnectCause.NoResponse"/>; otherwise
-    /// <see cref="DisconnectCause.CarrierLost"/>. The threshold gets a
-    /// small grace (+5s) so a server that responded just before the
-    /// idle window closes doesn't get mis-classified as silent.
-    /// </summary>
+    // Distinguish a server-side carrier drop from a TCP-keepalive timeout.
+    // The connection was alive; now the socket died. If keepalive was
+    // enabled on the active BBS AND the wire was silent for longer than
+    // the configured idle window before the drop, attribute to
+    // DisconnectCause.NoResponse; otherwise DisconnectCause.CarrierLost.
+    // The threshold gets a small grace (+5s) so a server that responded
+    // just before the idle window closes doesn't get mis-classified as
+    // silent.
     private DisconnectCause ClassifyServerSideDrop()
     {
         BbsProfile? bbs = ResolveActiveBbs();
@@ -1843,17 +1751,14 @@ public partial class MainWindowViewModel : ObservableObject
 
     // ----- Reactive auto-reconnect (carrier-lost / failed-connect / no-response) ------
 
-    /// <summary>
-    /// Arm a reactive reconnect if the relevant <see cref="BbsProfile"/>
-    /// toggle matches <see cref="_lastDisconnectCause"/>. Shares
-    /// <see cref="_cleanupReconnectCts"/> with the predictive cleanup
-    /// scheduler so only one reconnect can be pending at a time. Never
-    /// fires for <see cref="DisconnectCause.UserInitiated"/> or
-    /// <see cref="DisconnectCause.HangupInitiated"/> regardless of any
-    /// toggle state — both are explicit "don't dial back" signals
-    /// (user clicked Disconnect, or an automation hung us up because
-    /// we were in a dangerous spot).
-    /// </summary>
+    // Arm a reactive reconnect if the relevant BbsProfile toggle matches
+    // _lastDisconnectCause. Shares _cleanupReconnectCts with the predictive
+    // cleanup scheduler so only one reconnect can be pending at a time.
+    // Never fires for DisconnectCause.UserInitiated or
+    // DisconnectCause.HangupInitiated regardless of any toggle state —
+    // both are explicit "don't dial back" signals (user clicked
+    // Disconnect, or an automation hung us up because we were in a
+    // dangerous spot).
     private void TryScheduleReactiveReconnect()
     {
         BbsProfile? bbs = ResolveActiveBbs();
@@ -1940,15 +1845,13 @@ public partial class MainWindowViewModel : ObservableObject
         }, TaskScheduler.Default);
     }
 
-    /// <summary>
-    /// Force an unconditional dial-back after a remote <c>@relog</c>.
-    /// Unlike <see cref="TryScheduleReactiveReconnect"/> this ignores the
-    /// per-BBS reconnect toggles — the sender explicitly asked to relog,
-    /// so we always complete the cycle. A short <c>RedialPauseSeconds</c>
-    /// delay lets the carrier fully drop before re-dialing; the normal
-    /// login automation runs on the reconnect (relog never suppresses the
-    /// entry latch), so the character ends up back in-game.
-    /// </summary>
+    // Force an unconditional dial-back after a remote @relog. Unlike
+    // TryScheduleReactiveReconnect this ignores the per-BBS reconnect
+    // toggles — the sender explicitly asked to relog, so we always
+    // complete the cycle. A short RedialPauseSeconds delay lets the
+    // carrier fully drop before re-dialing; the normal login automation
+    // runs on the reconnect (relog never suppresses the entry latch), so
+    // the character ends up back in-game.
     private void ScheduleRelogReconnect()
     {
         BbsProfile? bbs = ResolveActiveBbs();
@@ -1982,7 +1885,7 @@ public partial class MainWindowViewModel : ObservableObject
         }, TaskScheduler.Default);
     }
 
-    /// <summary>Human-friendly delay rendering for the auto-reconnect banner / log.</summary>
+    // Human-friendly delay rendering for the auto-reconnect banner / log.
     private static string FormatDelay(TimeSpan delay)
     {
         if (delay.TotalMinutes >= 1)
@@ -1994,18 +1897,14 @@ public partial class MainWindowViewModel : ObservableObject
         return $"{(int)delay.TotalSeconds}s";
     }
 
-    /// <summary>
-    /// Resolve which BBS the connect target reads off of. Preference order:
-    /// <list type="number">
-    ///   <item><description>The BBS the loaded character profile lives under
-    ///     (<c>ProfileService.CurrentBbsName</c>).</description></item>
-    ///   <item><description>The first BBS in the global list (alphabetical),
-    ///     so a user on a blank draft can still click Connect without
-    ///     opening Settings first.</description></item>
-    /// </list>
-    /// Returns <c>null</c> only when there's no profile, no pin AND zero
-    /// BBSes saved on disk.
-    /// </summary>
+    // Resolve which BBS the connect target reads off of. Preference order:
+    //   1. The BBS the loaded character profile lives under
+    //      (ProfileService.CurrentBbsName).
+    //   2. The first BBS in the global list (alphabetical), so a user on a
+    //      blank draft can still click Connect without opening Settings
+    //      first.
+    // Returns null only when there's no profile, no pin AND zero BBSes
+    // saved on disk.
     private static BbsProfile? ResolveActiveBbs()
         => AppServices.Current.ResolveActiveBbs();
 
@@ -2024,21 +1923,18 @@ public partial class MainWindowViewModel : ObservableObject
         ProcessTitle.Set(AppServices.Current.Profile.CurrentProfileName, ResolveActiveBbs()?.Name);
     }
 
-    /// <summary>
-    /// ProfileLoaded handler that wires in the Settings → General
-    /// "Auto-connect when profile loads" toggle. Runs the original
-    /// post-load refresh chain first, then — only when not already
-    /// connected/connecting, the loaded profile has a usable BBS pin,
-    /// and the GeneralSettings.AutoConnect flag is on — kicks off
-    /// <see cref="ConnectWithRetriesAsync"/>.
-    /// </summary>
-    /// <remarks>
-    /// async void is intentional: ProfileLoaded is an Action&lt;CharacterProfile&gt;
-    /// event and we want fire-and-forget on the connect attempt so the
-    /// caller (typically File → Open profile) doesn't block on the
-    /// retry loop. The connect path already self-marshals UI updates
-    /// and never throws to the caller.
-    /// </remarks>
+    // ProfileLoaded handler that wires in the Settings → General
+    // "Auto-connect when profile loads" toggle. Runs the original
+    // post-load refresh chain first, then — only when not already
+    // connected/connecting, the loaded profile has a usable BBS pin, and
+    // the GeneralSettings.AutoConnect flag is on — kicks off
+    // ConnectWithRetriesAsync.
+    //
+    // async void is intentional: ProfileLoaded is an Action<CharacterProfile>
+    // event and we want fire-and-forget on the connect attempt so the
+    // caller (typically File → Open profile) doesn't block on the retry
+    // loop. The connect path already self-marshals UI updates and never
+    // throws to the caller.
     private async void OnProfileLoadedForConnect(Models.Profile.CharacterProfile _)
     {
         ClearQuickConnect();
@@ -2061,12 +1957,10 @@ public partial class MainWindowViewModel : ObservableObject
         await ConnectWithRetriesAsync();
     }
 
-    /// <summary>
-    /// ProfileMutated runs for every settings tab's Apply. We only want
-    /// to drop the Quick Connect override when the BBS pin itself
-    /// changed — display / toolbar / statline edits shouldn't kick the
-    /// user off a quick-dialled target.
-    /// </summary>
+    // ProfileMutated runs for every settings tab's Apply. We only want to
+    // drop the Quick Connect override when the BBS pin itself changed —
+    // display / toolbar / statline edits shouldn't kick the user off a
+    // quick-dialled target.
     private void OnProfileMutatedForBbs()
     {
         string? current = ResolveActiveBbs()?.Name;
@@ -2078,10 +1972,8 @@ public partial class MainWindowViewModel : ObservableObject
         RefreshBbsBindings();
     }
 
-    /// <summary>
-    /// Drops the Quick Connect override and pushes the BBS-derived
-    /// bindings back into the title bar / connect button.
-    /// </summary>
+    // Drops the Quick Connect override and pushes the BBS-derived bindings
+    // back into the title bar / connect button.
     private void ClearQuickConnect()
     {
         if (_quickConnectTarget is null) return;
@@ -2141,9 +2033,9 @@ public partial class MainWindowViewModel : ObservableObject
                 AppServices.Current.CleanupLogout.Reset();
                 CancelCleanupReconnect("connected");
                 ArmStableConnectionReset();
-                // Phase 8 PR 8.2 — let the EventScheduler reset its
-                // "are we in-game?" latch. The actual Logon fire
-                // happens on the first PromptObserved, not here.
+                // Let the EventScheduler reset its "are we in-game?"
+                // latch. The actual Logon fire happens on the first
+                // PromptObserved, not here.
                 AppServices.Current.EventScheduler.NotifyConnected();
                 // Reconcile the statline to the editor on EVERY connect —
                 // unconditional, unlike the auto-login-gated engines. Resets
@@ -2176,14 +2068,14 @@ public partial class MainWindowViewModel : ObservableObject
                 // happened before the 30s threshold, so the connect
                 // didn't earn a counter reset.
                 CancelStableConnectionReset();
-                // Phase 8 PR 8.2 — stop the event scheduler's timers
-                // and latch the Re-log flag (only if we were in-game).
+                // Stop the event scheduler's timers and latch the Re-log
+                // flag (only if we were in-game).
                 AppServices.Current.EventScheduler.NotifyDisconnected();
                 // Stop statline reconciliation until the next connect re-arms.
                 AppServices.Current.StatlineReconcile.Disarm();
-                // Phase 11 — pause Time Analysis accrual: we're no longer
-                // in-game, so the offline span doesn't count. Totals freeze
-                // and resume on the next in-game prompt after reconnect.
+                // Pause Time Analysis accrual: we're no longer in-game, so
+                // the offline span doesn't count. Totals freeze and resume
+                // on the next in-game prompt after reconnect.
                 AppServices.Current.TimeAnalysis.Suspend();
 
                 // Drop per-session condition + buff-duration state so a
@@ -2250,12 +2142,10 @@ public partial class MainWindowViewModel : ObservableObject
 
     private enum TerminalStatusKind { Notice, Error }
 
-    /// <summary>
-    /// Write a single bracketed status line into the terminal canvas itself
-    /// (in addition to LogService). Mirrors the classic-BBS-client cadence
-    /// the user expects: "[CONNECTING TO: …]" / "[DISCONNECTED FROM: …]" /
-    /// etc. Coloured via inline ANSI SGR so the emulator does the painting.
-    /// </summary>
+    // Write a single bracketed status line into the terminal canvas itself
+    // (in addition to LogService). Mirrors the classic-BBS-client cadence
+    // the user expects: "[CONNECTING TO: …]" / "[DISCONNECTED FROM: …]" /
+    // etc. Coloured via inline ANSI SGR so the emulator does the painting.
     private void WriteTerminalStatus(string text, TerminalStatusKind kind)
     {
         string sgr = kind switch
@@ -2269,11 +2159,9 @@ public partial class MainWindowViewModel : ObservableObject
         Emulator.Feed(bytes);
     }
 
-    /// <summary>
-    /// Bridge for the Settings window's Statline tab: pushes a single
-    /// string to the BBS as Latin-1 bytes, returns whether the send
-    /// could even be attempted (i.e. we have a live socket).
-    /// </summary>
+    // Bridge for the Settings window's Statline tab: pushes a single
+    // string to the BBS as Latin-1 bytes, returns whether the send could
+    // even be attempted (i.e. we have a live socket).
     private async Task<bool> SendTextFromSettings(string text)
     {
         TelnetClient? t = _telnet;
@@ -2291,10 +2179,8 @@ public partial class MainWindowViewModel : ObservableObject
         }
     }
 
-    /// <summary>
-    /// Send raw key bytes from the terminal control to the server. Called
-    /// by the view's UserInput handler; no-op if not connected.
-    /// </summary>
+    // Send raw key bytes from the terminal control to the server. Called
+    // by the view's UserInput handler; no-op if not connected.
     public void SendUserInput(byte[] data)
     {
         // Observe outbound for the trainer-menu watcher — it gates on
@@ -2317,14 +2203,11 @@ public partial class MainWindowViewModel : ObservableObject
         if (t is not null) _ = t.SendAsync(data);
     }
 
-    /// <summary>
-    /// Convenience: encode a text line (Latin-1 + CRLF) and send it to the
-    /// server. Used by the Conversation window's input field — typing in
-    /// the chat panel feeds the game the same way as typing in the
-    /// terminal does. Also scans the typed verb for heal-shaped commands
-    /// so the regen tracker can gate any HP / MA upticks during the
-    /// artifact grace window.
-    /// </summary>
+    // Convenience: encode a text line (Latin-1 + CRLF) and send it to the
+    // server. Used by the Conversation window's input field — typing in
+    // the chat panel feeds the game the same way as typing in the terminal
+    // does. Also scans the typed verb for heal-shaped commands so the regen
+    // tracker can gate any HP / MA upticks during the artifact grace window.
     public void SendUserText(string text)
     {
         if (string.IsNullOrEmpty(text)) return;
@@ -2357,13 +2240,10 @@ public partial class MainWindowViewModel : ObservableObject
         SendUserInput(bytes);
     }
 
-    /// <summary>
-    /// Heuristic: does <paramref name="line"/> start with a verb that
-    /// usually moves HP or MA upward? Conservative — false positives just
-    /// waste a few seconds of regen samples; false negatives let a heal
-    /// pollute the running average, so be generous on the verb list.
-    /// Refined by Phase 5 spell-event patterns (issue #8).
-    /// </summary>
+    // Heuristic: does line start with a verb that usually moves HP or MA
+    // upward? Conservative — false positives just waste a few seconds of
+    // regen samples; false negatives let a heal pollute the running
+    // average, so be generous on the verb list.
     private static bool LooksLikeHealShapedCommand(string line)
     {
         ReadOnlySpan<char> verb = FirstWord(line);
@@ -2388,14 +2268,12 @@ public partial class MainWindowViewModel : ObservableObject
         return line.AsSpan(start, end - start);
     }
 
-    /// <summary>
-    /// Toggle session capture. The file lives at
-    /// <c>Data/Logs/capture-yyyyMMdd-HHmmss.log</c> and receives one line
-    /// per completed terminal row, prefixed with <c>[HH:mm:ss]</c> and
-    /// encoded with inline ANSI SGR escapes so colour is preserved when
-    /// the file is viewed through any ANSI-aware tool (<c>less -R</c>,
-    /// modern terminals, web log viewers).
-    /// </summary>
+    // Toggle session capture. The file lives at
+    // Data/Logs/capture-yyyyMMdd-HHmmss.log and receives one line per
+    // completed terminal row, prefixed with [HH:mm:ss] and encoded with
+    // inline ANSI SGR escapes so colour is preserved when the file is
+    // viewed through any ANSI-aware tool (less -R, modern terminals, web
+    // log viewers).
     [RelayCommand]
     private void ToggleDump()
     {
@@ -2423,7 +2301,7 @@ public partial class MainWindowViewModel : ObservableObject
         }
     }
 
-    /// <summary>Bound to File → Quit.</summary>
+    // Bound to File → Quit.
     [RelayCommand]
     private void Quit()
     {
@@ -2435,11 +2313,9 @@ public partial class MainWindowViewModel : ObservableObject
 
     // ----- Placeholder shell-window plumbing -----------------------------
 
-    /// <summary>
-    /// Tracks one open placeholder per panel id so re-opening a panel from
-    /// the menu / toolbar activates the existing window instead of stacking
-    /// duplicates. Cleared by each window's <c>Closed</c> handler.
-    /// </summary>
+    // Tracks one open placeholder per panel id so re-opening a panel from
+    // the menu / toolbar activates the existing window instead of stacking
+    // duplicates. Cleared by each window's Closed handler.
     private readonly Dictionary<string, PlaceholderShellWindow> _placeholders = new();
 
     private void OpenPlaceholder(string id, string panelName, string phaseTag, string headline, string description)
@@ -2514,14 +2390,12 @@ public partial class MainWindowViewModel : ObservableObject
         window.Show(main);
     }
 
-    /// <summary>
-    /// Terminal context menu → "Bug report…". Freezes the current client
-    /// state (recent scrollback, program-log tail, all gameplay settings,
-    /// engine + player state) at click time, prompts for a description, then
-    /// writes a Markdown report to the Desktop named after the realm and the
-    /// click timestamp. Capture happens before the dialog so the report
-    /// reflects the moment of the problem, not when the user finishes typing.
-    /// </summary>
+    // Terminal context menu → "Bug report…". Freezes the current client
+    // state (recent scrollback, program-log tail, all gameplay settings,
+    // engine + player state) at click time, prompts for a description, then
+    // writes a Markdown report to the Desktop named after the realm and the
+    // click timestamp. Capture happens before the dialog so the report
+    // reflects the moment of the problem, not when the user finishes typing.
     [RelayCommand]
     private async Task ReportBugAsync()
     {
@@ -2574,7 +2448,7 @@ public partial class MainWindowViewModel : ObservableObject
         window.Show(main);
     }
 
-    /// <summary>Singleton handle for the live PartyWindow — re-press toggles closed (CLAUDE.md window rule).</summary>
+    // Singleton handle for the live PartyWindow — re-press toggles closed.
     private PartyWindow? _partyWindow;
 
     [RelayCommand]
@@ -2598,14 +2472,11 @@ public partial class MainWindowViewModel : ObservableObject
 
     private SettingsWindow? _settings;
 
-    // ----- Profile file management (Phase 4 PR 4.5a) ----------------------
+    // ----- Profile file management ----------------------------------------
 
-    /// <summary>
-    /// Most-recent-first list of saved profile names. Drives the inline
-    /// File-menu recent entries (<see cref="Recent0"/>..<see cref="Recent4"/>).
-    /// Rebuilt from <c>GlobalSettings</c> on startup and after every
-    /// profile save.
-    /// </summary>
+    // Most-recent-first list of saved profile names. Drives the inline
+    // File-menu recent entries (Recent0..Recent4). Rebuilt from
+    // GlobalSettings on startup and after every profile save.
     public ObservableCollection<ProfileRef> RecentProfiles { get; } = new();
 
     // Indexed accessors so the File menu can lay out five fixed MenuItems
@@ -2640,10 +2511,10 @@ public partial class MainWindowViewModel : ObservableObject
         return string.IsNullOrEmpty(recent.Bbs) ? recent.Name : $"{recent.Name} - {recent.Bbs}";
     }
 
-    /// <summary>True when at least one recent profile is queued — gates the Separator.</summary>
+    // True when at least one recent profile is queued — gates the Separator.
     public bool HasRecents => RecentProfiles.Count > 0;
 
-    /// <summary>True when a named profile is loaded — gates File → Save profile.</summary>
+    // True when a named profile is loaded — gates File → Save profile.
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SaveProfileLabel))]
     private bool _hasNamedProfile;
@@ -2652,23 +2523,19 @@ public partial class MainWindowViewModel : ObservableObject
         ? $"_Save profile  ·  {AppServices.Current.Profile.CurrentProfileName}"
         : "_Save profile…";
 
-    /// <summary>
-    /// True while it's safe to swap the active profile — only when the wire
-    /// is down. Loading a different (or blank) profile mid-session would fire
-    /// ProfileLoaded and reload every per-character service against the new
-    /// scope while still connected to the old character's game, desyncing
-    /// settings / party / game-data state. Gates New / Open / Open-recent;
-    /// Save / Save-as don't swap the active profile, so they stay available.
-    /// </summary>
+    // True while it's safe to swap the active profile — only when the wire
+    // is down. Loading a different (or blank) profile mid-session would fire
+    // ProfileLoaded and reload every per-character service against the new
+    // scope while still connected to the old character's game, desyncing
+    // settings / party / game-data state. Gates New / Open / Open-recent;
+    // Save / Save-as don't swap the active profile, so they stay available.
     private bool CanSwapProfile => IsDisconnected;
 
-    /// <summary>
-    /// Blank-slate the running profile. The outgoing profile is auto-saved
-    /// first (handled inside ProfileService.LoadBlank), then Current is
-    /// replaced with a fresh in-memory draft. The user names + persists
-    /// it later via File → Save profile (which routes to Save As since
-    /// the draft has no name yet).
-    /// </summary>
+    // Blank-slate the running profile. The outgoing profile is auto-saved
+    // first (handled inside ProfileService.LoadBlank), then Current is
+    // replaced with a fresh in-memory draft. The user names + persists it
+    // later via File → Save profile (which routes to Save As since the
+    // draft has no name yet).
     [RelayCommand(CanExecute = nameof(CanSwapProfile))]
     private void NewProfile()
     {
@@ -2823,17 +2690,14 @@ public partial class MainWindowViewModel : ObservableObject
     [RelayCommand]
     private void OpenBbsSettings() => OpenSettingsAt("bbs");
 
-    /// <summary>
-    /// View → Events menu entry. Opens the Settings window deep-linked
-    /// to the Events tab (Phase 8 PR 8.5 — matches the
-    /// <see cref="MenuCommandIds.SettingsOpenEvents"/> reserved id).
-    /// </summary>
+    // View → Events menu entry. Opens the Settings window deep-linked to
+    // the Events tab (matches the MenuCommandIds.SettingsOpenEvents
+    // reserved id).
     [RelayCommand]
     private void OpenEvents() => OpenSettingsAt("events");
 
-    /// <summary>Singleton handle to the Player Workshop window for the
-    /// toggle convention (re-press closes; deep-link to a section
-    /// activates).</summary>
+    // Singleton handle to the Player Workshop window for the toggle
+    // convention (re-press closes; deep-link to a section activates).
     private Views.CharacterWorkshop.CharacterWorkshopWindow? _workshop;
 
     [RelayCommand]
@@ -2890,13 +2754,11 @@ public partial class MainWindowViewModel : ObservableObject
         window.Show(main);
     }
 
-    /// <summary>
-    /// Singleton-ish handle to the Quick Connect window so re-press of
-    /// the menu / hotkey toggles it closed (per CLAUDE.md).
-    /// </summary>
+    // Singleton-ish handle to the Quick Connect window so re-press of the
+    // menu / hotkey toggles it closed.
     private QuickConnectWindow? _quickConnect;
 
-    /// <summary>File → Quick Connect. Modeless dialog; on commit the host/port becomes the connect target.</summary>
+    // File → Quick Connect. Modeless dialog; on commit the host/port becomes the connect target.
     [RelayCommand]
     private async Task OpenQuickConnectAsync()
     {
@@ -2941,9 +2803,9 @@ public partial class MainWindowViewModel : ObservableObject
         // Toggle convention with edit-window save-on-toggle policy:
         // re-press of the same hotkey / menu while the window is open
         // routes through ApplyAndClose (Save path). Title-bar X / Cancel
-        // button discards. See CLAUDE.md "Architecture rules". For a
-        // deep-link (BBS list etc.) on a window that's already open, jump
-        // to the requested section instead of saving + closing.
+        // button discards. For a deep-link (BBS list etc.) on a window
+        // that's already open, jump to the requested section instead of
+        // saving + closing.
         if (_settings is { } existing)
         {
             if (existing.DataContext is SettingsWindowViewModel vm)
@@ -2982,10 +2844,8 @@ public partial class MainWindowViewModel : ObservableObject
         window.Show(main);
     }
 
-    /// <summary>
-    /// Singleton-ish handle to the Game Data Browser. Re-press of the
-    /// command / hotkey toggles it closed (per CLAUDE.md).
-    /// </summary>
+    // Singleton-ish handle to the Game Data Browser. Re-press of the
+    // command / hotkey toggles it closed.
     private FujinTerm.Views.GameData.GameDataBrowserWindow? _gameDataBrowser;
 
     [RelayCommand]
@@ -2996,11 +2856,9 @@ public partial class MainWindowViewModel : ObservableObject
     [RelayCommand] private void OpenGameDataTriggers() => ShowGameDataBrowser("triggers");
     [RelayCommand] private void OpenGameDataAliases()  => ShowGameDataBrowser("aliases");
 
-    /// <summary>
-    /// Game Data menu → "Modify Blacklist…". Staged editor over the
-    /// per-BBS room blacklist. Save commits + redraws the map;
-    /// Cancel discards.
-    /// </summary>
+    // Game Data menu → "Modify Blacklist…". Staged editor over the
+    // per-BBS room blacklist. Save commits + redraws the map; Cancel
+    // discards.
     [RelayCommand]
     private async Task OpenBlacklistEditorAsync()
     {
@@ -3010,12 +2868,10 @@ public partial class MainWindowViewModel : ObservableObject
             ViewModels.BlacklistEditorDialogViewModel, bool>(vm);
     }
 
-    /// <summary>
-    /// Game Data menu → "Manage Sets…". Immediate-action dialog: copy or
-    /// move a set's loop library into another set, or delete a set
-    /// (game-data tables + loops). A delete drops the set from the menu,
-    /// so rebuild the set list once the dialog closes.
-    /// </summary>
+    // Game Data menu → "Manage Sets…". Immediate-action dialog: copy or
+    // move a set's loop library into another set, or delete a set
+    // (game-data tables + loops). A delete drops the set from the menu, so
+    // rebuild the set list once the dialog closes.
     [RelayCommand]
     private async Task OpenGameDataManagerAsync()
     {
@@ -3026,21 +2882,17 @@ public partial class MainWindowViewModel : ObservableObject
         RebuildGameDataSetsMenu();
     }
 
-    /// <summary>
-    /// Open the Game Data Browser, optionally pre-selected to a named
-    /// section. Toggles per the standard window-command rule
-    /// (CLAUDE.md): when the browser is already open re-press behavior
-    /// depends on what was requested —
-    /// <list type="bullet">
-    ///   <item>no section requested (toolbar / Ctrl+G) → close it.</item>
-    ///   <item>section requested AND already showing → close it.</item>
-    ///   <item>section requested AND different from current → switch
-    ///     the existing window's section, activate, do not respawn.</item>
-    /// </list>
-    /// Switching in place beats closing-and-respawning because it
-    /// preserves search state, scroll position, and any per-section
-    /// VM caches the user has primed.
-    /// </summary>
+    // Open the Game Data Browser, optionally pre-selected to a named
+    // section. Toggles per the standard window-command rule: when the
+    // browser is already open re-press behavior depends on what was
+    // requested —
+    //   - no section requested (toolbar / Ctrl+G) → close it.
+    //   - section requested AND already showing → close it.
+    //   - section requested AND different from current → switch the
+    //     existing window's section, activate, do not respawn.
+    // Switching in place beats closing-and-respawning because it preserves
+    // search state, scroll position, and any per-section VM caches the
+    // user has primed.
     private void ShowGameDataBrowser(string? initialSectionId)
     {
         if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
@@ -3093,14 +2945,11 @@ public partial class MainWindowViewModel : ObservableObject
         window.Show(main);
     }
 
-    /// <summary>
-    /// Items bound to File → Game Data → Active set. Each entry has a
-    /// checkbox-style header (checked = currently active set) and a
-    /// command that flips <see cref="GameDataCache.ActiveSet"/> + writes
-    /// the resolved BBS's <see cref="BbsProfile.ActiveGameDataSet"/>
-    /// field (falling back to <c>GlobalSettings.DefaultGameDataSet</c>
-    /// when no BBS is pinned).
-    /// </summary>
+    // Items bound to File → Game Data → Active set. Each entry has a
+    // checkbox-style header (checked = currently active set) and a command
+    // that flips GameDataCache.ActiveSet + writes the resolved BBS's
+    // BbsProfile.ActiveGameDataSet field (falling back to
+    // GlobalSettings.DefaultGameDataSet when no BBS is pinned).
     public ObservableCollection<GameDataSetMenuItem> GameDataSets { get; } = new();
 
     private void RebuildGameDataSetsMenu()
@@ -3116,13 +2965,11 @@ public partial class MainWindowViewModel : ObservableObject
         }
     }
 
-    /// <summary>
-    /// Flip the active set and persist the user's choice. Active set is
-    /// a BBS-scoped setting (every character on the same realm shares
-    /// the same MajorMUD MDB); we write to the resolved BBS profile
-    /// when one is pinned, else fall through to global settings so the
-    /// menu still works before any BBS is configured.
-    /// </summary>
+    // Flip the active set and persist the user's choice. Active set is a
+    // BBS-scoped setting (every character on the same realm shares the same
+    // MajorMUD MDB); we write to the resolved BBS profile when one is
+    // pinned, else fall through to global settings so the menu still works
+    // before any BBS is configured.
     private void SwitchActiveGameDataSet(string setName)
     {
         AppServices.Current.GameData.SwitchSet(setName);
@@ -3142,11 +2989,8 @@ public partial class MainWindowViewModel : ObservableObject
         RebuildGameDataSetsMenu();
     }
 
-    /// <summary>
-    /// File → Game Data → Import .mdb… — picks an Access database,
-    /// runs the Phase 5 PR 5.1 importer, switches to the new set
-    /// on success.
-    /// </summary>
+    // File → Game Data → Import .mdb… — picks an Access database, runs the
+    // importer, switches to the new set on success.
     [RelayCommand]
     private async Task ImportMdbAsync()
     {
@@ -3188,13 +3032,11 @@ public partial class MainWindowViewModel : ObservableObject
         }
     }
 
-    /// <summary>
-    /// Compose the terminal-status line for a successful MDB import.
-    /// Carries entry + table totals plus a format-tag derived from the
-    /// MajorMUD MDB shape: 9 user tables = old realm format, 10 = new
-    /// format. Anything else (or any per-table skips) flips the line
-    /// red so the user notices the structural drift.
-    /// </summary>
+    // Compose the terminal-status line for a successful MDB import.
+    // Carries entry + table totals plus a format-tag derived from the
+    // MajorMUD MDB shape: 9 user tables = old realm format, 10 = new
+    // format. Anything else (or any per-table skips) flips the line red so
+    // the user notices the structural drift.
     private static string BuildMdbCompleteStatus(MdbImportResult r)
     {
         string entries = $"{r.RowsImported:N0} entries";
@@ -3223,15 +3065,13 @@ public partial class MainWindowViewModel : ObservableObject
            ? TerminalStatusKind.Error
            : TerminalStatusKind.Notice;
 
-    /// <summary>
-    /// File → Game Data → Import loops (MegaMUD .mp)… — runs the exact
-    /// same <c>.mp</c> loop import as the Navigation Manage window's
-    /// "Import .mp" button. We spin up a transient manager view-model
-    /// purely to reuse its <c>ImportMp</c> command (file picker → parse →
-    /// anchor-resolve → LoopEditor), then dispose it via its Close command
-    /// so the LoopsChanged / SetupsChanged subscriptions it wires in its
-    /// constructor don't leak onto the long-lived managers.
-    /// </summary>
+    // File → Game Data → Import loops (MegaMUD .mp)… — runs the exact same
+    // .mp loop import as the Navigation Manage window's "Import .mp"
+    // button. We spin up a transient manager view-model purely to reuse
+    // its ImportMp command (file picker → parse → anchor-resolve →
+    // LoopEditor), then dispose it via its Close command so the
+    // LoopsChanged / SetupsChanged subscriptions it wires in its
+    // constructor don't leak onto the long-lived managers.
     [RelayCommand]
     private async Task ImportMegaMudLoopsAsync()
     {
@@ -3258,7 +3098,7 @@ public partial class MainWindowViewModel : ObservableObject
         }
     }
 
-    /// <summary>Singleton handle for the live NavigationWindow — re-press toggles closed (CLAUDE.md window rule).</summary>
+    // Singleton handle for the live NavigationWindow — re-press toggles closed.
     private Views.Navigation.NavigationWindow? _navigationWindow;
 
     [RelayCommand]
@@ -3282,16 +3122,14 @@ public partial class MainWindowViewModel : ObservableObject
         window.Show(main);
     }
 
-    /// <summary>Guards against a second standalone Manage dialog opening while one is up.</summary>
+    // Guards against a second standalone Manage dialog opening while one is up.
     private bool _manageDialogOpen;
 
-    /// <summary>
-    /// Toolbar Start, which doubles as Resume. If a nav mode is paused,
-    /// resume it. If idle and a loop is staged via the Manage dialog's Load
-    /// action, run it straight away — "start the staged loop without
-    /// reopening the map". Otherwise (idle, nothing staged) open the Manage
-    /// dialog so the user can pick / load / run one.
-    /// </summary>
+    // Toolbar Start, which doubles as Resume. If a nav mode is paused,
+    // resume it. If idle and a loop is staged via the Manage dialog's Load
+    // action, run it straight away — "start the staged loop without
+    // reopening the map". Otherwise (idle, nothing staged) open the Manage
+    // dialog so the user can pick / load / run one.
     [RelayCommand]
     private async Task MovementStartAsync()
     {
@@ -3310,19 +3148,17 @@ public partial class MainWindowViewModel : ObservableObject
         await OpenManagerStandaloneAsync();
     }
 
-    /// <summary>Toolbar Pause — pauses the running engine (no-op if already paused / idle).</summary>
+    // Toolbar Pause — pauses the running engine (no-op if already paused / idle).
     [RelayCommand]
     private void MovementPause() => AppServices.Current.MovementControl.Pause();
 
-    /// <summary>Toolbar Stop — backs the running engine fully out to Idle.</summary>
+    // Toolbar Stop — backs the running engine fully out to Idle.
     [RelayCommand]
     private void MovementStop() => AppServices.Current.MovementControl.Stop();
 
-    /// <summary>
-    /// Open the Navigation Manage dialog on its own (no map window) so the
-    /// user can browse / load / run saved loops + lairs. Guarded so a
-    /// second press while it's up is a no-op rather than stacking dialogs.
-    /// </summary>
+    // Open the Navigation Manage dialog on its own (no map window) so the
+    // user can browse / load / run saved loops + lairs. Guarded so a
+    // second press while it's up is a no-op rather than stacking dialogs.
     private async Task OpenManagerStandaloneAsync()
     {
         if (_manageDialogOpen) return;
@@ -3353,7 +3189,7 @@ public partial class MainWindowViewModel : ObservableObject
         }
     }
 
-    /// <summary>Singleton handle for the live SpellBookWindow — re-press toggles closed (CLAUDE.md window rule).</summary>
+    // Singleton handle for the live SpellBookWindow — re-press toggles closed.
     private SpellBookWindow? _spellBook;
 
     [RelayCommand]
@@ -3375,7 +3211,7 @@ public partial class MainWindowViewModel : ObservableObject
         window.Show(main);
     }
 
-    /// <summary>Singleton handle for the live SessionStatsWindow — re-press toggles closed (CLAUDE.md window rule).</summary>
+    // Singleton handle for the live SessionStatsWindow — re-press toggles closed.
     private SessionStatsWindow? _sessionStats;
 
     [RelayCommand]
@@ -3401,7 +3237,7 @@ public partial class MainWindowViewModel : ObservableObject
         window.Show(main);
     }
 
-    /// <summary>Singleton handle for the live TransactionHistoryWindow — re-press toggles closed (CLAUDE.md window rule).</summary>
+    // Singleton handle for the live TransactionHistoryWindow — re-press toggles closed.
     private TransactionHistoryWindow? _transactionHistory;
 
     [RelayCommand]
@@ -3424,10 +3260,8 @@ public partial class MainWindowViewModel : ObservableObject
     [RelayCommand]
     private void OpenWorkshop() => OpenWorkshopAt(null);
 
-    /// <summary>
-    /// Tools → Wire Inspector. Singleton-ish: a second open activates the
-    /// existing window rather than spawning a duplicate.
-    /// </summary>
+    // Tools → Wire Inspector. Singleton-ish: a second open activates the
+    // existing window rather than spawning a duplicate.
     private WireInspectorWindow? _wireInspector;
 
     [RelayCommand]
@@ -3452,13 +3286,13 @@ public partial class MainWindowViewModel : ObservableObject
         window.Show(main);
     }
 
-    // ----- Polish commands (Phase 0 PR 0.11) -----------------------------
+    // ----- Polish commands -----------------------------------------------
 
-    /// <summary>View → Reset layout. Restores every panel to docked default.</summary>
+    // View → Reset layout. Restores every panel to docked default.
     [RelayCommand]
     private void ResetLayout() => AppServices.Current.Panels.ResetToDefault();
 
-    /// <summary>Tools → Open Logs folder… and Help → Open Logs folder…</summary>
+    // Tools → Open Logs folder… and Help → Open Logs folder…
     [RelayCommand]
     private void OpenLogsFolder()
     {
@@ -3466,12 +3300,10 @@ public partial class MainWindowViewModel : ObservableObject
             AppServices.Current.Log.Warn("ShellLaunch", $"Could not open {AppPaths.LogsDir}");
     }
 
-    /// <summary>
-    /// Tools → Clear chatlog. Wipes every entry from the app-singleton
-    /// ChatHistoryStore — the Conversation window's contents go with it
-    /// (it binds to the same store) and a fresh open shows an empty list.
-    /// Destructive; the spec doesn't ask for a confirm dialog yet.
-    /// </summary>
+    // Tools → Clear chatlog. Wipes every entry from the app-singleton
+    // ChatHistoryStore — the Conversation window's contents go with it
+    // (it binds to the same store) and a fresh open shows an empty list.
+    // Destructive; no confirm dialog.
     [RelayCommand]
     private void ClearChatlog()
     {
@@ -3479,11 +3311,9 @@ public partial class MainWindowViewModel : ObservableObject
         AppServices.Current.Log.Info("Chatlog", "Cleared chat history.");
     }
 
-    /// <summary>
-    /// Tools → Export chatlog… Saves the entire ChatHistoryStore (no
-    /// channel filter, no day-separator filter) to a plain-text file the
-    /// user picks.
-    /// </summary>
+    // Tools → Export chatlog… Saves the entire ChatHistoryStore (no
+    // channel filter, no day-separator filter) to a plain-text file the
+    // user picks.
     [RelayCommand]
     private async Task ExportChatlogAsync()
     {
@@ -3514,13 +3344,10 @@ public partial class MainWindowViewModel : ObservableObject
     [RelayCommand]
     private void OpenMudInfo() => ShellLaunch.OpenUrl(AppInfo.MudInfoUrl);
 
-    /// <summary>
-    /// Help → BBS site. Opens the active BBS's <see cref="BbsProfile.WebsiteUrl"/>
-    /// in the OS default browser. Silently no-ops when no URL is set —
-    /// the menu item's <see cref="HasBbsWebsite"/> binding keeps it
-    /// disabled in that state, but we guard here too in case the user
-    /// triggered it some other way.
-    /// </summary>
+    // Help → BBS site. Opens the active BBS's BbsProfile.WebsiteUrl in the
+    // OS default browser. Silently no-ops when no URL is set — the menu
+    // item's HasBbsWebsite binding keeps it disabled in that state, but we
+    // guard here too in case the user triggered it some other way.
     [RelayCommand]
     private void OpenBbsWebsite()
     {
@@ -3560,7 +3387,7 @@ public partial class MainWindowViewModel : ObservableObject
     private static string GetGesture(Models.Profile.BuiltInAction action)
         => AppServices.Current.Keybindings.Get(action).Label;
 
-    /// <summary>Fire PropertyChanged for every *Gesture label so menus refresh after a rebind.</summary>
+    // Fire PropertyChanged for every *Gesture label so menus refresh after a rebind.
     private void RefreshKeybindLabels()
     {
         OnPropertyChanged(nameof(ConversationGesture));
@@ -3581,7 +3408,7 @@ public partial class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(QuitGesture));
     }
 
-    /// <summary>Help → About FujinTerm.</summary>
+    // Help → About FujinTerm.
     [RelayCommand]
     private void OpenAbout()
         => ShowInfoDialog("About FujinTerm",
@@ -3600,71 +3427,66 @@ public partial class MainWindowViewModel : ObservableObject
             this build.
             """);
 
-    // ----- Phase 9 auto-engine toggle commands ------------------------
+    // ----- Auto-engine toggle commands --------------------------------
     // ToolbarItemCatalogue routes its ToggleAutoCombat / ToggleAutoHealRest
     // entries here by command-name reflection. The Settings → General
     // checkboxes write directly to GeneralSettings.AutoMode; both paths
     // converge on the same profile field.
 
-    /// <summary>Flip the live <see cref="IsAutoCombatActive"/> bit
-    /// (which the partial OnXxxChanged hook persists to
-    /// GeneralSettings.AutoMode.AutoCombat and refreshes the toolbar
-    /// IsActive badge). Bound from the toolbar ToggleAutoCombat button
-    /// + the menu hotkey.</summary>
+    // Flip the live IsAutoCombatActive bit (which the partial OnXxxChanged
+    // hook persists to GeneralSettings.AutoMode.AutoCombat and refreshes
+    // the toolbar IsActive badge). Bound from the toolbar ToggleAutoCombat
+    // button + the menu hotkey.
     [RelayCommand]
     private void ToggleAutoCombat() => IsAutoCombatActive = !IsAutoCombatActive;
 
-    /// <summary>Flip the live <see cref="IsAutoNukeActive"/> bit.</summary>
+    // Flip the live IsAutoNukeActive bit.
     [RelayCommand]
     private void ToggleAutoNuke() => IsAutoNukeActive = !IsAutoNukeActive;
 
-    /// <summary>Flip the live <see cref="IsAutoHealRestActive"/> bit.</summary>
+    // Flip the live IsAutoHealRestActive bit.
     [RelayCommand]
     private void ToggleAutoHealRest() => IsAutoHealRestActive = !IsAutoHealRestActive;
 
-    /// <summary>Flip the live <see cref="IsAutoBlessActive"/> bit.</summary>
+    // Flip the live IsAutoBlessActive bit.
     [RelayCommand]
     private void ToggleAutoBless() => IsAutoBlessActive = !IsAutoBlessActive;
 
-    /// <summary>Flip the live <see cref="IsAutoLightActive"/> bit.</summary>
+    // Flip the live IsAutoLightActive bit.
     [RelayCommand]
     private void ToggleAutoLight() => IsAutoLightActive = !IsAutoLightActive;
 
-    /// <summary>Flip the live <see cref="IsAutoGetItemsActive"/> bit.</summary>
+    // Flip the live IsAutoGetItemsActive bit.
     [RelayCommand]
     private void ToggleAutoGetItems() => IsAutoGetItemsActive = !IsAutoGetItemsActive;
 
-    /// <summary>Flip the live <see cref="IsAutoGetCashActive"/> bit.</summary>
+    // Flip the live IsAutoGetCashActive bit.
     [RelayCommand]
     private void ToggleAutoGetCash() => IsAutoGetCashActive = !IsAutoGetCashActive;
 
-    /// <summary>Flip the live <see cref="IsAutoSneakActive"/> bit.</summary>
+    // Flip the live IsAutoSneakActive bit.
     [RelayCommand]
     private void ToggleAutoSneak() => IsAutoSneakActive = !IsAutoSneakActive;
 
-    /// <summary>Flip the live <see cref="IsAutoHideActive"/> bit.</summary>
+    // Flip the live IsAutoHideActive bit.
     [RelayCommand]
     private void ToggleAutoHide() => IsAutoHideActive = !IsAutoHideActive;
 
-    /// <summary>Flip the live <see cref="IsAutoSearchActive"/> bit.</summary>
+    // Flip the live IsAutoSearchActive bit.
     [RelayCommand]
     private void ToggleAutoSearch() => IsAutoSearchActive = !IsAutoSearchActive;
 
-    /// <summary>Flip the live <see cref="IsDisableHangupsActive"/> bit
-    /// (the partial OnXxxChanged hook persists it to
-    /// GeneralSettings.DisableHangups and the toolbar IsActive badge
-    /// follows). Bound from the toolbar / Action-menu / hotkey.</summary>
+    // Flip the live IsDisableHangupsActive bit (the partial OnXxxChanged
+    // hook persists it to GeneralSettings.DisableHangups and the toolbar
+    // IsActive badge follows). Bound from the toolbar / Action-menu / hotkey.
     [RelayCommand]
     private void ToggleDisableHangups() => IsDisableHangupsActive = !IsDisableHangupsActive;
 
-    /// <summary>
-    /// Master "Auto-All" kill-switch. Delegates to the shared
-    /// <see cref="Game.AutoModeController"/> so the toolbar button, the
-    /// Action-menu item, and the <c>@auto-all</c> remote command all drive
-    /// one session snapshot. The controller's profile write fires
-    /// ProfileSaving, which reseeds the nine toggle observables (and
-    /// thereby <see cref="IsAllAutoOff"/>).
-    /// </summary>
+    // Master "Auto-All" kill-switch. Delegates to the shared
+    // Game.AutoModeController so the toolbar button, the Action-menu item,
+    // and the @auto-all remote command all drive one session snapshot. The
+    // controller's profile write fires ProfileSaving, which reseeds the
+    // nine toggle observables (and thereby IsAllAutoOff).
     [RelayCommand]
     private void AllAutoOff() => AppServices.Current.AutoModeController.ToggleAll();
 
@@ -3674,30 +3496,28 @@ public partial class MainWindowViewModel : ObservableObject
     // line the engine would reply on the party channel is surfaced in the
     // program log instead.
 
-    /// <summary>"Get All" — pick up every item on the room floor.</summary>
+    // "Get All" — pick up every item on the room floor.
     [RelayCommand]
     private void GetAll() => AppServices.Current.Log.Info(
         Game.Inventory.InventoryManager.LogCategory,
         AppServices.Current.InventoryAction.GetAll());
 
-    /// <summary>"Drop All" — drop every carried-but-unworn item.</summary>
+    // "Drop All" — drop every carried-but-unworn item.
     [RelayCommand]
     private void DropAll() => AppServices.Current.Log.Info(
         Game.Inventory.InventoryManager.LogCategory,
         AppServices.Current.InventoryAction.DropAll());
 
-    /// <summary>"Deposit All" — bank wealth down to the keep-on-hand floor.</summary>
+    // "Deposit All" — bank wealth down to the keep-on-hand floor.
     [RelayCommand]
     private void DepositAll() => AppServices.Current.Log.Info(
         Game.Inventory.InventoryManager.LogCategory,
         AppServices.Current.InventoryAction.DepositAll());
 
-    /// <summary>
-    /// "Equip All" — walk the character into the Default gear set. The
-    /// engine logs the apply and the wire shows the wears, so only the
-    /// no-wire outcomes (already worn / not configured / busy) get a
-    /// program-log note here.
-    /// </summary>
+    // "Equip All" — walk the character into the Default gear set. The
+    // engine logs the apply and the wire shows the wears, so only the
+    // no-wire outcomes (already worn / not configured / busy) get a
+    // program-log note here.
     [RelayCommand]
     private void EquipAll()
     {
@@ -3716,23 +3536,18 @@ public partial class MainWindowViewModel : ObservableObject
 
     private bool _suppressAutoEngineWriteback;
 
-    /// <summary>
-    /// Set true the first time a live connection drops in the current app
-    /// session. Gates <see cref="ReEnableAutoActionsOnReconnect"/> so the
-    /// re-enable only fires on an actual reconnect, never the first dial.
-    /// </summary>
+    // Set true the first time a live connection drops in the current app
+    // session. Gates ReEnableAutoActionsOnReconnect so the re-enable only
+    // fires on an actual reconnect, never the first dial.
     private bool _hadDisconnectThisSession;
 
-    /// <summary>
-    /// Re-enable each auto-action whose Settings → Other "re-enable on
-    /// reconnect" flag is ticked, by flipping its
-    /// <see cref="Models.Profile.AutoActionDefaults"/> bit back ON in the
-    /// active profile. Engines read AutoMode live (per-tick), so the
-    /// persisted flip alone revives them; the two surfaced toggles
-    /// (Combat / Heal-Rest) additionally get their observable reseeded so
-    /// the toolbar badge matches. No-op when no profile is loaded or no
-    /// flag is ticked.
-    /// </summary>
+    // Re-enable each auto-action whose Settings → Other "re-enable on
+    // reconnect" flag is ticked, by flipping its
+    // Models.Profile.AutoActionDefaults bit back ON in the active profile.
+    // Engines read AutoMode live (per-tick), so the persisted flip alone
+    // revives them; the two surfaced toggles (Combat / Heal-Rest)
+    // additionally get their observable reseeded so the toolbar badge
+    // matches. No-op when no profile is loaded or no flag is ticked.
     private void ReEnableAutoActionsOnReconnect()
     {
         Models.Profile.GeneralSettings general =
@@ -3828,12 +3643,10 @@ public partial class MainWindowViewModel : ObservableObject
         AppServices.Current.Profile.Save();
     }
 
-    /// <summary>
-    /// Persist a top-level <see cref="Models.Profile.GeneralSettings"/>
-    /// field (vs <see cref="PersistAutoModeFlag"/>'s nested AutoMode bits).
-    /// Same suppress guard so a profile-load reseed of the observable
-    /// doesn't re-persist what it just read.
-    /// </summary>
+    // Persist a top-level Models.Profile.GeneralSettings field (vs
+    // PersistAutoModeFlag's nested AutoMode bits). Same suppress guard so a
+    // profile-load reseed of the observable doesn't re-persist what it just
+    // read.
     private void PersistGeneralFlag(Action<Models.Profile.GeneralSettings> mutator)
     {
         if (_suppressAutoEngineWriteback) return;
@@ -3846,14 +3659,11 @@ public partial class MainWindowViewModel : ObservableObject
         AppServices.Current.Profile.Save();
     }
 
-    /// <summary>
-    /// On profile load (or close), reseed the toggle observables from
-    /// the persisted <see cref="Models.Profile.GeneralSettings.AutoMode"/>
-    /// so the toolbar IsActive badges match what the engines will
-    /// actually read. Suppress writeback during the reseed — otherwise
-    /// the partial OnXxxChanged hooks would re-persist what we just
-    /// read.
-    /// </summary>
+    // On profile load (or close), reseed the toggle observables from the
+    // persisted Models.Profile.GeneralSettings.AutoMode so the toolbar
+    // IsActive badges match what the engines will actually read. Suppress
+    // writeback during the reseed — otherwise the partial OnXxxChanged
+    // hooks would re-persist what we just read.
     private void SyncAutoEngineTogglesFromProfile()
     {
         _suppressAutoEngineWriteback = true;
@@ -3900,7 +3710,7 @@ public partial class MainWindowViewModel : ObservableObject
         }
     }
 
-    /// <summary>Open InfoDialogs are tracked per title so menu / hotkey re-press toggles them shut.</summary>
+    // Open InfoDialogs are tracked per title so menu / hotkey re-press toggles them shut.
     private readonly Dictionary<string, InfoDialog> _infoDialogs = new(StringComparer.Ordinal);
 
     private void ShowInfoDialog(string title, string body)

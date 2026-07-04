@@ -10,11 +10,9 @@ using FujinTerm.Services;
 
 namespace FujinTerm.ViewModels.Navigation;
 
-/// <summary>
-/// View-model for the <c>NavigationWindow</c> shell — owns the status
-/// strip + mode bar and hosts the per-section state for map / room tree
-/// / favourites / loop builder.
-/// </summary>
+// View-model for the NavigationWindow shell — owns the status strip + mode
+// bar and hosts the per-section state for map / room tree / favourites /
+// loop builder.
 public sealed partial class NavigationViewModel : ObservableObject, IDisposable
 {
     private readonly AppServices _services;
@@ -69,11 +67,9 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         RefreshTeleportRooms();
     }
 
-    /// <summary>
-    /// Per-second pump for CURRENT NAV lair countdowns. Cheap to leave
-    /// running, but explicitly gated so an idle Navigation window does
-    /// no work. See <see cref="EnsureLairTickRunning"/>.
-    /// </summary>
+    // Per-second pump for CURRENT NAV lair countdowns. Cheap to leave
+    // running, but explicitly gated so an idle Navigation window does no work.
+    // See EnsureLairTickRunning.
     private readonly DispatcherTimer _lairTick;
 
     public void Dispose()
@@ -163,13 +159,10 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         RefreshDerivedState();
     }
 
-    /// <summary>
-    /// Rebuild <see cref="AutoLairMarkedKeys"/> using the same
-    /// ordering as <see cref="PopulateLairRows"/> — active target
-    /// first when there is one, then sorted by Map / Room. Null when
-    /// no markers OR the user isn't in any Lair-related context (so
-    /// the map doesn't draw stale overlays).
-    /// </summary>
+    // Rebuild AutoLairMarkedKeys using the same ordering as PopulateLairRows
+    // — active target first when there is one, then sorted by Map / Room.
+    // Null when no markers OR the user isn't in any Lair-related context (so
+    // the map doesn't draw stale overlays).
     private void RefreshAutoLairMarkedKeys()
     {
         Game.Map.AutoLairManager mgr = _services.AutoLair;
@@ -191,13 +184,10 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         AutoLairMarkedKeys = ordered;
     }
 
-    /// <summary>
-    /// Flip the per-second pump (<see cref="_lairTick"/>) on / off
-    /// based on whether the user is currently looking at a CURRENT
-    /// NAV that has lair countdowns. Active = build mode with at
-    /// least one marker OR scheduler running. Anything else means
-    /// nothing on screen ticks once a second, so leave the timer off.
-    /// </summary>
+    // Flip the per-second pump (_lairTick) on / off based on whether the user
+    // is currently looking at a CURRENT NAV that has lair countdowns. Active =
+    // build mode with at least one marker OR scheduler running. Anything else
+    // means nothing on screen ticks once a second, so leave the timer off.
     private void EnsureLairTickRunning()
     {
         bool shouldRun =
@@ -207,25 +197,20 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         else if (!shouldRun && _lairTick.IsEnabled) _lairTick.Stop();
     }
 
-    /// <summary>
-    /// One-second tick — re-render the lair rows so the countdown
-    /// sub-labels stay current. Rebuilding the whole list isn't free,
-    /// but the list is short (typically &lt; 10 rows) and a once-a-
-    /// second refresh keeps the binding logic simple. If profile + UI
-    /// scale demand a finer touch later, move the sub-label out to a
-    /// per-row observable property.
-    /// </summary>
+    // One-second tick — re-render the lair rows so the countdown sub-labels
+    // stay current. Rebuilding the whole list isn't free, but the list is
+    // short (typically < 10 rows) and a once-a-second refresh keeps the
+    // binding logic simple. If profile + UI scale demand a finer touch later,
+    // move the sub-label out to a per-row observable property.
     private void OnLairTick()
     {
         RebuildCurrentNavRows();
         OnPropertyChanged(nameof(AutoLairStatusText));
     }
 
-    /// <summary>
-    /// Bottom-strip status for Auto-Lair build mode — counterpart of
-    /// the loop builder's room/step count line. Reads the live marker
-    /// count and explains how to commit (Run) vs discard (toggle Lair).
-    /// </summary>
+    // Bottom-strip status for Auto-Lair build mode — counterpart of the loop
+    // builder's room/step count line. Reads the live marker count and
+    // explains how to commit (Run) vs discard (toggle Lair).
     public string LairBuildStatusText
     {
         get
@@ -251,13 +236,10 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         RefreshAutoLairApproachPath();
     }
 
-    /// <summary>
-    /// Rebuild <see cref="AutoLairApproachPath"/> from the current
-    /// tracker position + scheduler target. Only populated during the
-    /// active-leg phases (Approaching, Waiting, Entering); Engaging
-    /// and Idle clear it so the line disappears when the walker
-    /// reaches the lair.
-    /// </summary>
+    // Rebuild AutoLairApproachPath from the current tracker position +
+    // scheduler target. Only populated during the active-leg phases
+    // (Approaching, Waiting, Entering); Engaging and Idle clear it so the
+    // line disappears when the walker reaches the lair.
     private void RefreshAutoLairApproachPath()
     {
         Game.Map.AutoLairManager mgr = _services.AutoLair;
@@ -316,13 +298,9 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(TopBarStatusText));
     }
 
-    /// <summary>
-    /// One-word label for the bottom-strip badge —
-    /// <c>"Approaching"</c> / <c>"Waiting"</c> / <c>"Entering"</c> /
-    /// <c>"Engaging"</c> / <c>"Idle"</c>. Surfaced as a separate
-    /// property so the badge can colour-code without recomputing the
-    /// full status line.
-    /// </summary>
+    // One-word label for the bottom-strip badge — "Approaching" / "Waiting" /
+    // "Entering" / "Engaging" / "Idle". Surfaced as a separate property so the
+    // badge can colour-code without recomputing the full status line.
     public string AutoLairPhaseLabel => _services.AutoLair.Phase switch
     {
         AutoLairPhase.Approaching => "Approaching",
@@ -332,12 +310,9 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         _                         => "Idle",
     };
 
-    /// <summary>
-    /// Bottom-strip status line for a running Auto-Lair session — e.g.
-    /// <c>"Sewer Lair via 5/99 — 0:42 to entry"</c>. Empty when the
-    /// scheduler isn't actively driving the walker (Idle / Engaging
-    /// without a target).
-    /// </summary>
+    // Bottom-strip status line for a running Auto-Lair session — e.g. "Sewer
+    // Lair via 5/99 — 0:42 to entry". Empty when the scheduler isn't actively
+    // driving the walker (Idle / Engaging without a target).
     public string AutoLairStatusText
     {
         get
@@ -371,14 +346,11 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         else _services.AutoLair.Start();
     }
 
-    /// <summary>
-    /// Right-click → "Add this room to Blacklist". Captures the
-    /// selected room's <see cref="Room.DisplayName"/> from the
-    /// active set's Rooms.json (NOT the player's current-room name)
-    /// so the Modify-Blacklist dialog later shows a human label.
-    /// Immediate persist + map redraw (the store fires Changed
-    /// which invalidates the BFS layout cache).
-    /// </summary>
+    // Right-click → "Add this room to Blacklist". Captures the selected
+    // room's DisplayName from the active set's Rooms.json (NOT the player's
+    // current-room name) so the Modify-Blacklist dialog later shows a human
+    // label. Immediate persist + map redraw (the store fires Changed which
+    // invalidates the BFS layout cache).
     [RelayCommand]
     private void AddContextRoomToBlacklist()
     {
@@ -487,7 +459,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string _currentRoomLabel = "—";
     [ObservableProperty] private bool _isPaused;
 
-    // ----- Highlight chips + legend (PR 7.17) -----------------------
+    // ----- Highlight chips + legend ---------------------------------
 
     [ObservableProperty] private bool _highlightLairs = true;
     [ObservableProperty] private bool _highlightShops = true;
@@ -503,14 +475,12 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
 
     [ObservableProperty] private RoomLayout? _layout;
 
-    /// <summary>
-    /// Emit a system-log line each time a fresh map draw is generated,
-    /// recording the diagnostic "seed" — the BFS root that fully
-    /// determines the drawn shape (<see cref="RoomLayout.LayoutRoot"/>) —
-    /// alongside the coverage (room/stub counts) and any re-root note
-    /// from the score-and-retry pass. Lets a sparse vs. fuller draw be
-    /// reported precisely without occupying header chrome.
-    /// </summary>
+    // Emit a system-log line each time a fresh map draw is generated,
+    // recording the diagnostic "seed" — the BFS root that fully determines
+    // the drawn shape (RoomLayout.LayoutRoot) — alongside the coverage
+    // (room/stub counts) and any re-root note from the score-and-retry
+    // pass. Lets a sparse vs. fuller draw be reported precisely without
+    // occupying header chrome.
     partial void OnLayoutChanged(RoomLayout? value)
     {
         if (value is not { } l) return;
@@ -525,70 +495,53 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     partial void OnCurrentRoomKeyChanged(RoomKey? value) => RefreshPreviewPath();
     [ObservableProperty] private RoomKey? _destinationRoomKey;
 
-    /// <summary>
-    /// Top-of-strip action label that replaces the redundant
-    /// status-badge + current-room label (current room lives in the
-    /// main UI's bottom status bar as the source-of-truth). Reads:
-    /// <c>"Idle"</c> when no engine is moving; <c>"Walking to {dest}"</c>
-    /// while the walker is active; <c>"Looping: {name}"</c> while
-    /// the loop runner is active; <c>"Auto-Lair"</c> while the
-    /// scheduler is driving.
-    /// </summary>
+    // Top-of-strip action label that replaces the redundant status-badge +
+    // current-room label (current room lives in the main UI's bottom status
+    // bar as the source-of-truth). Reads: "Idle" when no engine is moving;
+    // "Walking to {dest}" while the walker is active; "Looping: {name}" while
+    // the loop runner is active; "Auto-Lair" while the scheduler is driving.
     [ObservableProperty] private string _engineActionLabel = "Idle";
     [ObservableProperty] private RoomGraphManager? _graph;
     [ObservableProperty] private IReadOnlyList<RoomKey>? _walkPath;
     [ObservableProperty] private IReadOnlyList<RoomKey>? _loopPath;
 
-    /// <summary>
-    /// Dashed cyan preview polyline drawn under the active loop / walk
-    /// while the user is in the LoopBuilder strip. Pulled from
-    /// <see cref="LoopBuilderSessionViewModel.PreviewedRoomKeys"/>
-    /// whenever the builder changes.
-    /// </summary>
+    // Dashed cyan preview polyline drawn under the active loop / walk while
+    // the user is in the LoopBuilder strip. Pulled from
+    // LoopBuilderSessionViewModel.PreviewedRoomKeys whenever the builder
+    // changes.
     [ObservableProperty] private IReadOnlyList<RoomKey>? _loopBuilderPath;
 
-    /// <summary>
-    /// Ordered RoomKey list for the map's numbered builder-waypoint
-    /// markers. Mirrors <see cref="LoopBuilderSessionViewModel.WaypointKeys"/>.
-    /// </summary>
+    // Ordered RoomKey list for the map's numbered builder-waypoint markers.
+    // Mirrors LoopBuilderSessionViewModel.WaypointKeys.
     [ObservableProperty] private IReadOnlyList<RoomKey>? _loopBuilderWaypoints;
 
-    /// <summary>
-    /// Red preview polyline drawn during the walker-approach phase of
-    /// a loop run. Lets the user see the upcoming cycle alongside the
-    /// blue walk-to line that's actively driving them to the start
-    /// waypoint.
-    /// </summary>
+    // Red preview polyline drawn during the walker-approach phase of a loop
+    // run. Lets the user see the upcoming cycle alongside the blue walk-to
+    // line that's actively driving them to the start waypoint.
     [ObservableProperty] private IReadOnlyList<RoomKey>? _loopApproachPreviewPath;
     [ObservableProperty] private IReadOnlySet<RoomKey>? _avoidedRooms;
 
-    /// <summary>Rooms the user has flagged as stash drops. Bound to
-    /// the MapControl's StashRooms property — each room renders with
-    /// a gold outline. Refreshed on
-    /// <see cref="OnStashChanged"/>.</summary>
+    // Rooms the user has flagged as stash drops. Bound to the MapControl's
+    // StashRooms property — each room renders with a gold outline. Refreshed
+    // on OnStashChanged.
     [ObservableProperty] private IReadOnlySet<RoomKey>? _stashRooms;
 
     [ObservableProperty] private IReadOnlyDictionary<RoomKey, int>? _loopSequenceNumbers;
     [ObservableProperty] private IReadOnlySet<RoomKey>? _autoLairRooms;
 
-    /// <summary>
-    /// Ordered marker list driving the map's numbered amber overlay.
-    /// Same ordering rule as <see cref="PopulateLairRows"/>: active
-    /// target first (when the scheduler is running), then the rest
-    /// sorted by Map / Room. Visible whenever the user is in
-    /// AutoLair mode OR the scheduler is running; null when no
-    /// markers are placed.
-    /// </summary>
+    // Ordered marker list driving the map's numbered amber overlay. Same
+    // ordering rule as PopulateLairRows: active target first (when the
+    // scheduler is running), then the rest sorted by Map / Room. Visible
+    // whenever the user is in AutoLair mode OR the scheduler is running; null
+    // when no markers are placed.
     [ObservableProperty] private IReadOnlyList<RoomKey>? _autoLairMarkedKeys;
 
-    /// <summary>
-    /// Full projected route the walker will follow during the current
-    /// Auto-Lair leg: <c>current → wait-room → lair</c>. Held stable
-    /// across the Approaching → Waiting → Entering transitions so the
-    /// map line doesn't flicker every time the walker briefly goes
-    /// Idle between sub-legs. Null when no leg is active (Idle /
-    /// Engaging) or when the BFS can't resolve the route.
-    /// </summary>
+    // Full projected route the walker will follow during the current
+    // Auto-Lair leg: current → wait-room → lair. Held stable across the
+    // Approaching → Waiting → Entering transitions so the map line doesn't
+    // flicker every time the walker briefly goes Idle between sub-legs. Null
+    // when no leg is active (Idle / Engaging) or when the BFS can't resolve
+    // the route.
     [ObservableProperty] private IReadOnlyList<RoomKey>? _autoLairApproachPath;
     [ObservableProperty] private IReadOnlySet<RoomKey>? _teleportRooms;
     [ObservableProperty] private bool _isAutoLairing;
@@ -608,18 +561,16 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
 
     [ObservableProperty] private string _searchQuery = string.Empty;
 
-    /// <summary>Top 50 matches by name (case-insensitive substring), sorted by step distance then name.</summary>
+    // Top 50 matches by name (case-insensitive substring), sorted by step distance then name.
     public ObservableCollection<RoomSearchResult> SearchResults { get; } = new();
 
     public bool HasSearchResults => SearchResults.Count > 0;
 
-    /// <summary>
-    /// Destination armed for the Run button. Set by selecting a room from
-    /// the search dropdown (or clicking one in the room context menu's
-    /// "queue" command later); cleared on Run / Stop. When non-null, the
-    /// top-bar destination chip shows its display name + key and the Run
-    /// button is enabled.
-    /// </summary>
+    // Destination armed for the Run button. Set by selecting a room from the
+    // search dropdown (or clicking one in the room context menu's "queue"
+    // command later); cleared on Run / Stop. When non-null, the top-bar
+    // destination chip shows its display name + key and the Run button is
+    // enabled.
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(QueuedDestinationLabel))]
     [NotifyPropertyChangedFor(nameof(HasQueuedDestination))]
@@ -628,14 +579,11 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
 
     partial void OnQueuedDestinationChanged(RoomKey? value) => RefreshPreviewPath();
 
-    /// <summary>
-    /// Red preview line drawn on the map while a destination is queued
-    /// but not yet running. Bound to <c>MapControl.PreviewPath</c>.
-    /// Cleared when no destination is queued OR no path exists.
-    /// Recomputed on <see cref="QueuedDestination"/> change and on
-    /// <see cref="CurrentRoomKey"/> change (so the preview tracks the
-    /// player if they move while a target is armed).
-    /// </summary>
+    // Red preview line drawn on the map while a destination is queued but not
+    // yet running. Bound to MapControl.PreviewPath. Cleared when no
+    // destination is queued OR no path exists. Recomputed on QueuedDestination
+    // change and on CurrentRoomKey change (so the preview tracks the player if
+    // they move while a target is armed).
     [ObservableProperty] private IReadOnlyList<RoomKey>? _previewPath;
 
     private void RefreshPreviewPath()
@@ -663,7 +611,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         PreviewPath = keys.Count >= 2 ? keys : null;
     }
 
-    /// <summary>Click handler for the queued-destination chip — discards the queued target + clears the preview line.</summary>
+    // Click handler for the queued-destination chip — discards the queued target + clears the preview line.
     [RelayCommand]
     private void ClearQueuedDestination() => QueuedDestination = null;
 
@@ -677,7 +625,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
 
     public bool HasQueuedDestination => QueuedDestination is not null;
 
-    /// <summary>Display string for the top-bar chip: <c>"Name 1/123"</c> when set.</summary>
+    // Display string for the top-bar chip: "Name 1/123" when set.
     public string QueuedDestinationLabel
     {
         get
@@ -712,13 +660,10 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         RebuildSearchResults(SearchQuery);
     }
 
-    /// <summary>
-    /// Repopulate <see cref="SearchResults"/> from <paramref name="query"/>.
-    /// Resolution + monster lookup + step distance come from the shared
-    /// <see cref="RoomSearchService"/>; this method's only job is to
-    /// hand the cap-50 ordered list into the observable collection the
-    /// dropdown binds to.
-    /// </summary>
+    // Repopulate SearchResults from query. Resolution + monster lookup + step
+    // distance come from the shared RoomSearchService; this method's only job
+    // is to hand the cap-50 ordered list into the observable collection the
+    // dropdown binds to.
     private void RebuildSearchResults(string query)
     {
         SearchResults.Clear();
@@ -760,27 +705,23 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         SearchQuery = string.Empty;
     }
 
-    // ----- Loops + Auto-Lair setups (combined, PR 7.13 / 7.20) ------
+    // ----- Loops + Auto-Lair setups (combined) ----------------------
 
-    /// <summary>Loops in the active BBS (flat backing list).</summary>
+    // Loops in the active BBS (flat backing list).
     public ObservableCollection<LoopRowViewModel> Loops { get; } = new();
 
-    /// <summary>
-    /// Saved <see cref="Models.Profile.LairSetup"/>s for the active BBS
-    /// (flat backing list).
-    /// </summary>
+    // Saved Models.Profile.LairSetups for the active BBS (flat backing
+    // list).
     public ObservableCollection<LairSetupRowViewModel> Setups { get; } = new();
 
-    /// <summary>
-    /// Folder-grouped tree mixing <see cref="NavFolderNodeViewModel"/>
-    /// folders with both loop (<see cref="LoopRowViewModel"/>) and
-    /// Auto-Lair (<see cref="LairSetupRowViewModel"/>) leaves. Loops and
-    /// lairs share one on-disk Loops directory, so the rail renders them
-    /// together as a single combined list under one header.
-    /// </summary>
+    // Folder-grouped tree mixing NavFolderNodeViewModel folders with both
+    // loop (LoopRowViewModel) and Auto-Lair (LairSetupRowViewModel)
+    // leaves. Loops and lairs share one on-disk Loops directory, so the
+    // rail renders them together as a single combined list under one
+    // header.
     public ObservableCollection<object> NavTree { get; } = new();
 
-    /// <summary>True when the combined tree has any node (leaf or empty folder).</summary>
+    // True when the combined tree has any node (leaf or empty folder).
     public bool HasNavTree => NavTree.Count > 0;
 
     private void OnLoopsChanged() => RefreshLoopsAndLairs();
@@ -813,13 +754,10 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         _ => string.Empty,
     };
 
-    /// <summary>
-    /// Run a saved setup — wipes <see cref="AutoLairManager"/>'s current
-    /// markers, loads the setup's markers (with their per-marker
-    /// override timers + Skip flags), then calls <c>Start</c>. Stops
-    /// any in-flight loop / walk first so the scheduler has clean
-    /// ground.
-    /// </summary>
+    // Run a saved setup — wipes AutoLairManager's current markers, loads the
+    // setup's markers (with their per-marker override timers + Skip flags),
+    // then calls Start. Stops any in-flight loop / walk first so the scheduler
+    // has clean ground.
     [RelayCommand]
     private void RunSetup(LairSetupRowViewModel? row)
     {
@@ -828,11 +766,9 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         _services.AutoLair.Start();
     }
 
-    /// <summary>
-    /// Right-click → Load on a Setups row. Wipes current markers and
-    /// loads the setup's markers without starting the scheduler — lets
-    /// the user inspect / tweak before hitting Run.
-    /// </summary>
+    // Right-click → Load on a Setups row. Wipes current markers and loads the
+    // setup's markers without starting the scheduler — lets the user inspect
+    // / tweak before hitting Run.
     [RelayCommand]
     private void LoadSetup(LairSetupRowViewModel? row)
     {
@@ -852,9 +788,8 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         {
             RoomKey key = new(m.Map, m.Room);
             _services.AutoLair.Mark(key, m.OverrideRespawnSeconds);
-            // Skip flag — currently informational only at the marker
-            // level; the scheduler treats every marker as active.
-            // Phase 7 PR 7.24 wires Skip through the candidate filter.
+            // Skip flag — currently informational only at the marker level;
+            // the scheduler treats every marker as active.
         }
 
         // Transition the Navigation window into Lair build mode so the
@@ -870,12 +805,9 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
             CurrentMode = NavigationMode.AutoLair;
     }
 
-    /// <summary>
-    /// Right-click → Edit on a Setups row → opens
-    /// <see cref="LairEditorDialog"/>. Save persists via
-    /// <see cref="LairManager.Save"/> which fires SetupsChanged so the
-    /// rail refreshes.
-    /// </summary>
+    // Right-click → Edit on a Setups row → opens LairEditorDialog. Save
+    // persists via LairManager.Save which fires SetupsChanged so the rail
+    // refreshes.
     [RelayCommand]
     private async Task EditSetupAsync(LairSetupRowViewModel? row)
     {
@@ -887,12 +819,9 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
             .OpenWindowAsync<LairEditorDialogViewModel, Models.Profile.LairSetup?>(vm);
     }
 
-    /// <summary>
-    /// CURRENT NAV ✎ button on a marked-lair row → single-marker timer
-    /// override editor. Dialog mutates <see cref="AutoLairManager"/>
-    /// directly via SetOverride; the scheduler picks up the change on
-    /// its next tick.
-    /// </summary>
+    // CURRENT NAV ✎ button on a marked-lair row → single-marker timer
+    // override editor. Dialog mutates AutoLairManager directly via
+    // SetOverride; the scheduler picks up the change on its next tick.
     [RelayCommand]
     private async Task EditLairTimerAsync(CurrentNavRowViewModel? row)
     {
@@ -908,11 +837,9 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         // the CURRENT NAV rows; no manual refresh needed.
     }
 
-    /// <summary>
-    /// Right-click → Delete on a Setups row. Confirms via the shared
-    /// ConfirmService (which honours the user's "skip delete confirms"
-    /// setting), then removes the setup from disk + refreshes the rail.
-    /// </summary>
+    // Right-click → Delete on a Setups row. Confirms via the shared
+    // ConfirmService (which honours the user's "skip delete confirms"
+    // setting), then removes the setup from disk + refreshes the rail.
     [RelayCommand]
     private async Task DeleteSetupAsync(LairSetupRowViewModel? row)
     {
@@ -922,15 +849,12 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         _services.Lairs.Delete(row.Source.Name);
     }
 
-    /// <summary>
-    /// True when the top-bar Save chip should be active — covers the
-    /// four situations the user might want to persist what they've
-    /// built or are running: Loop build mode with savable clicks,
-    /// Loop running, Auto-Lair build mode with markers, Auto-Lair
-    /// running with markers. Drives the chip's visibility AND its
-    /// enabled state (we show the chip in all four situations and
-    /// disable it only when nothing is savable yet).
-    /// </summary>
+    // True when the top-bar Save chip should be active — covers the four
+    // situations the user might want to persist what they've built or are
+    // running: Loop build mode with savable clicks, Loop running, Auto-Lair
+    // build mode with markers, Auto-Lair running with markers. Drives the
+    // chip's visibility AND its enabled state (we show the chip in all four
+    // situations and disable it only when nothing is savable yet).
     public bool CanSaveCurrent
     {
         get
@@ -953,14 +877,11 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>
-    /// Dispatcher for the top-bar Save chip. Opens the right editor
-    /// dialog (Loop or Lair) pre-seeded with the current state — the
-    /// user reviews / renames / commits there. Mirrors the dispatch
-    /// in <see cref="RunStop"/> so the chip's behaviour stays
-    /// predictable regardless of which build / running combination
-    /// the user is in.
-    /// </summary>
+    // Dispatcher for the top-bar Save chip. Opens the right editor dialog
+    // (Loop or Lair) pre-seeded with the current state — the user reviews /
+    // renames / commits there. Mirrors the dispatch in RunStop so the chip's
+    // behaviour stays predictable regardless of which build / running
+    // combination the user is in.
     [RelayCommand]
     private async Task SaveCurrentAsync()
     {
@@ -1003,13 +924,10 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>
-    /// Save the live <see cref="AutoLairManager.Marked"/> set (plus the
-    /// per-marker overrides the user has set) as a new named setup.
-    /// Opens <see cref="LairEditorDialog"/> on a draft so the user can
-    /// pick a name + adjust overrides before committing. No-op when
-    /// no markers are placed.
-    /// </summary>
+    // Save the live AutoLairManager.Marked set (plus the per-marker overrides
+    // the user has set) as a new named setup. Opens LairEditorDialog on a
+    // draft so the user can pick a name + adjust overrides before committing.
+    // No-op when no markers are placed.
     [RelayCommand]
     private async Task SaveCurrentMarkersAsSetupAsync()
     {
@@ -1036,20 +954,23 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
             .OpenWindowAsync<LairEditorDialogViewModel, Models.Profile.LairSetup?>(vm);
     }
 
-    /// <summary>True when the user has at least one marker placed — gates the Save-as button.</summary>
+    // True when the user has at least one marker placed — gates the Save-as button.
     public bool HasLairMarkers => _services.AutoLair.Marked.Count > 0;
 
     // ----- GOTO / Favorites pane ------------------------------------
 
-    /// <summary>Per-character favourite-room bookmarks (flat backing list — source the folder tree is grouped from).</summary>
+    // Per-character favourite-room bookmarks (flat backing list — source
+    // the folder tree is grouped from).
     public ObservableCollection<FavoriteRowViewModel> Favorites { get; } = new();
 
-    /// <summary>Folder-grouped GOTO tree (mixed <see cref="NavFolderNodeViewModel"/> + <see cref="FavoriteRowViewModel"/>), bound by the rail's TreeView.</summary>
+    // Folder-grouped GOTO tree (mixed NavFolderNodeViewModel +
+    // FavoriteRowViewModel), bound by the rail's TreeView.
     public ObservableCollection<object> FavoriteTree { get; } = new();
 
     public bool HasFavorites => Favorites.Count > 0;
 
-    /// <summary>True when the GOTO tree has any node (favourite or empty folder) — drives tree-vs-placeholder visibility.</summary>
+    // True when the GOTO tree has any node (favourite or empty folder) —
+    // drives tree-vs-placeholder visibility.
     public bool HasFavoriteTree => FavoriteTree.Count > 0;
 
     private void OnFavoritesChanged() => RefreshFavorites();
@@ -1078,7 +999,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(HasFavoriteTree));
     }
 
-    /// <summary>Click a favourite → walk there (stops loop/lair first).</summary>
+    // Click a favourite → walk there (stops loop/lair first).
     [RelayCommand]
     private void GoToFavorite(FavoriteRowViewModel? row)
     {
@@ -1098,13 +1019,10 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         _services.Favorites.Remove(row.Key);
     }
 
-    /// <summary>
-    /// Open a small modeless rename dialog for the favourite. The
-    /// dialog returns the new label string on Save or null on Cancel;
-    /// non-null results route through
-    /// <see cref="FavoritesStore.Rename"/> which fires
-    /// <c>Changed</c> and refreshes the rail.
-    /// </summary>
+    // Open a small modeless rename dialog for the favourite. The dialog
+    // returns the new label string on Save or null on Cancel; non-null
+    // results route through FavoritesStore.Rename which fires Changed and
+    // refreshes the rail.
     [RelayCommand]
     private async Task RenameFavoriteAsync(FavoriteRowViewModel? row)
     {
@@ -1125,14 +1043,11 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         _services.LoopRunner.Start(row.Source);
     }
 
-    /// <summary>
-    /// Load a saved loop's waypoints into LoopBuild mode so the user
-    /// can preview it on the map (red polyline + numbered markers)
-    /// and optionally edit before hitting Run. Distinct from
-    /// <see cref="RunLoop"/> (which starts the runner immediately)
-    /// and from <see cref="PreviewLoop"/> (which just paints an
-    /// overlay without entering build mode).
-    /// </summary>
+    // Load a saved loop's waypoints into LoopBuild mode so the user can
+    // preview it on the map (red polyline + numbered markers) and
+    // optionally edit before hitting Run. Distinct from RunLoop (which
+    // starts the runner immediately) and from PreviewLoop (which just
+    // paints an overlay without entering build mode).
     [RelayCommand]
     private void LoadLoop(LoopRowViewModel? row)
     {
@@ -1182,12 +1097,9 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void StopLoop() => _services.LoopRunner.Stop();
 
-    /// <summary>
-    /// Right-click → Edit… on a Loops-pane row. Opens the modeless
-    /// loop editor dialog; the editor mutates the loop in place +
-    /// persists via LoopManager.Save which fires LoopsChanged so the
-    /// pane refreshes.
-    /// </summary>
+    // Right-click → Edit… on a Loops-pane row. Opens the modeless loop
+    // editor dialog; the editor mutates the loop in place + persists via
+    // LoopManager.Save which fires LoopsChanged so the pane refreshes.
     [RelayCommand]
     private async Task EditLoopAsync(LoopRowViewModel? row)
     {
@@ -1205,12 +1117,9 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
             .OpenWindowAsync<LoopEditorDialogViewModel, Loop?>(vm);
     }
 
-    /// <summary>
-    /// Right-click → Delete on a Loops-pane row. Confirms via the
-    /// shared ConfirmService (which honours the user's "skip
-    /// delete confirms" setting), then removes the loop from disk
-    /// and refreshes the pane.
-    /// </summary>
+    // Right-click → Delete on a Loops-pane row. Confirms via the shared
+    // ConfirmService (which honours the user's "skip delete confirms"
+    // setting), then removes the loop from disk and refreshes the pane.
     [RelayCommand]
     private async Task DeleteLoopAsync(LoopRowViewModel? row)
     {
@@ -1220,14 +1129,11 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         _services.Loops.Delete(row.Source.Name);
     }
 
-    /// <summary>
-    /// Right-click → Preview on a Loops-pane row. Lays the loop's
-    /// expanded room sequence onto the map's LoopPath polyline
-    /// without starting it. Clicking the same row again clears the
-    /// preview. While a loop is actually running the live LoopPath
-    /// wins (PR-7.16 RefreshLoopOverlays); previewing an idle loop
-    /// is the only path this overlay surfaces.
-    /// </summary>
+    // Right-click → Preview on a Loops-pane row. Lays the loop's expanded
+    // room sequence onto the map's LoopPath polyline without starting it.
+    // Clicking the same row again clears the preview. While a loop is
+    // actually running the live LoopPath wins; previewing an idle loop is
+    // the only path this overlay surfaces.
     [RelayCommand]
     private void PreviewLoop(LoopRowViewModel? row)
     {
@@ -1251,7 +1157,8 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     // on-disk Loops directory tree (NavFolderManager). The move commands
     // are per-section; folder CRUD is per-namespace.
 
-    /// <summary>New folder for Loops/Lairs (shared on-disk tree). Nested under <paramref name="parent"/> when invoked on a folder node, else at the root.</summary>
+    // New folder for Loops/Lairs (shared on-disk tree). Nested under
+    // parent when invoked on a folder node, else at the root.
     [RelayCommand]
     private async Task NewLoopFolderAsync(NavFolderNodeViewModel? parent)
     {
@@ -1262,7 +1169,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         _services.NavFolders.CreateFolder(full);
     }
 
-    /// <summary>Rename a Loops/Lairs folder (and everything beneath it).</summary>
+    // Rename a Loops/Lairs folder (and everything beneath it).
     [RelayCommand]
     private async Task RenameLoopFolderAsync(NavFolderNodeViewModel? node)
     {
@@ -1276,7 +1183,8 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         _services.NavFolders.RenameFolder(node.Path, target);
     }
 
-    /// <summary>Delete a Loops/Lairs folder — its loops / lairs / sub-folders re-parent one level up.</summary>
+    // Delete a Loops/Lairs folder — its loops / lairs / sub-folders
+    // re-parent one level up.
     [RelayCommand]
     private async Task DeleteLoopFolderAsync(NavFolderNodeViewModel? node)
     {
@@ -1287,7 +1195,8 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         _services.NavFolders.DeleteFolder(node.Path, moveContentsToParent: true);
     }
 
-    /// <summary>New GOTO folder (profile-backed). Nested under <paramref name="parent"/> when invoked on a folder node, else at the root.</summary>
+    // New GOTO folder (profile-backed). Nested under parent when invoked
+    // on a folder node, else at the root.
     [RelayCommand]
     private async Task NewGotoFolderAsync(NavFolderNodeViewModel? parent)
     {
@@ -1298,7 +1207,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         _services.Favorites.AddFolder(full);
     }
 
-    /// <summary>Rename a GOTO folder (and every favourite / sub-folder beneath it).</summary>
+    // Rename a GOTO folder (and every favourite / sub-folder beneath it).
     [RelayCommand]
     private async Task RenameGotoFolderAsync(NavFolderNodeViewModel? node)
     {
@@ -1312,7 +1221,8 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         _services.Favorites.RenameFolder(node.Path, target);
     }
 
-    /// <summary>Delete a GOTO folder — its favourites / sub-folders re-parent one level up.</summary>
+    // Delete a GOTO folder — its favourites / sub-folders re-parent one
+    // level up.
     [RelayCommand]
     private async Task DeleteGotoFolderAsync(NavFolderNodeViewModel? node)
     {
@@ -1323,28 +1233,30 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         _services.Favorites.RemoveFolder(node.Path, moveContentsToParent: true);
     }
 
-    /// <summary>Move a loop into <paramref name="folder"/> (empty = root). Used by drag-drop + context-menu move.</summary>
+    // Move a loop into folder (empty = root). Used by drag-drop +
+    // context-menu move.
     public void MoveLoopToFolder(LoopRowViewModel? row, string? folder)
     {
         if (row is null) return;
         _services.Loops.Move(row.Source.Name, NavFolders.Normalize(folder));
     }
 
-    /// <summary>Move an Auto-Lair setup into <paramref name="folder"/> (empty = root).</summary>
+    // Move an Auto-Lair setup into folder (empty = root).
     public void MoveSetupToFolder(LairSetupRowViewModel? row, string? folder)
     {
         if (row is null) return;
         _services.Lairs.Move(row.Source.Name, NavFolders.Normalize(folder));
     }
 
-    /// <summary>Move a GOTO favourite into <paramref name="folder"/> (empty = root).</summary>
+    // Move a GOTO favourite into folder (empty = root).
     public void MoveFavoriteToFolder(FavoriteRowViewModel? row, string? folder)
     {
         if (row is null) return;
         _services.Favorites.MoveFavorite(row.Key, NavFolders.Normalize(folder));
     }
 
-    /// <summary>Context-menu "Move to folder…" for a loop — prompts for a destination path.</summary>
+    // Context-menu "Move to folder…" for a loop — prompts for a
+    // destination path.
     [RelayCommand]
     private async Task MoveLoopToFolderPromptAsync(LoopRowViewModel? row)
     {
@@ -1355,7 +1267,8 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         MoveLoopToFolder(row, folder);
     }
 
-    /// <summary>Context-menu "Move to folder…" for an Auto-Lair setup — prompts for a destination path.</summary>
+    // Context-menu "Move to folder…" for an Auto-Lair setup — prompts for
+    // a destination path.
     [RelayCommand]
     private async Task MoveSetupToFolderPromptAsync(LairSetupRowViewModel? row)
     {
@@ -1366,7 +1279,8 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         MoveSetupToFolder(row, folder);
     }
 
-    /// <summary>Context-menu "Move to folder…" for a GOTO favourite — prompts for a destination path.</summary>
+    // Context-menu "Move to folder…" for a GOTO favourite — prompts for a
+    // destination path.
     [RelayCommand]
     private async Task MoveFavoriteToFolderPromptAsync(FavoriteRowViewModel? row)
     {
@@ -1400,12 +1314,13 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
 
     public bool IsLoopRunning => _services.LoopRunner.State != LoopState.Idle;
 
-    // ----- Room context menu (PR 7.14) -------------------------------
+    // ----- Room context menu -----------------------------------------
 
-    /// <summary>Room currently surfaced in the context menu (set by the map's right-click handler).</summary>
+    // Room currently surfaced in the context menu (set by the map's
+    // right-click handler).
     [ObservableProperty] private RoomKey? _contextRoomKey;
 
-    /// <summary>Name of the context room — empty when none is selected.</summary>
+    // Name of the context room — empty when none is selected.
     public string ContextRoomName =>
         ContextRoomKey is { } k && Graph?.GetRoom(k) is { } r ? r.Name : "(unknown)";
 
@@ -1436,18 +1351,16 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     private readonly TeleportDestinationItem?[] _teleportSlots =
         new TeleportDestinationItem?[MaxTeleportSlots];
 
-    /// <summary>True when the context room teleports to exactly one room — show the flat "Use Teleport" item.</summary>
+    // True when the context room teleports to exactly one room — show the
+    // flat "Use Teleport" item.
     public bool ContextTeleportSingle => _contextTeleportDests.Count == 1;
 
-    /// <summary>Indexed flat "Use Teleport → room" entries, populated only when the room has multiple distinct destinations.</summary>
+    // Indexed flat "Use Teleport → room" entries, populated only when the
+    // room has multiple distinct destinations.
     public TeleportDestinationItem? Teleport0 => _teleportSlots[0];
-    /// <inheritdoc cref="Teleport0"/>
     public TeleportDestinationItem? Teleport1 => _teleportSlots[1];
-    /// <inheritdoc cref="Teleport0"/>
     public TeleportDestinationItem? Teleport2 => _teleportSlots[2];
-    /// <inheritdoc cref="Teleport0"/>
     public TeleportDestinationItem? Teleport3 => _teleportSlots[3];
-    /// <inheritdoc cref="Teleport0"/>
     public TeleportDestinationItem? Teleport4 => _teleportSlots[4];
 
     private void RebuildContextTeleports(RoomKey? value)
@@ -1495,11 +1408,9 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(Teleport4));
     }
 
-    /// <summary>
-    /// Single-destination "Use Teleport": shift the map to the one room
-    /// the teleport leads to. Multi-destination rooms use the per-room
-    /// <see cref="Teleport0"/>..<see cref="Teleport4"/> entries instead.
-    /// </summary>
+    // Single-destination "Use Teleport": shift the map to the one room the
+    // teleport leads to. Multi-destination rooms use the per-room
+    // Teleport0..Teleport4 entries instead.
     [RelayCommand]
     private void UseTeleport()
     {
@@ -1537,12 +1448,9 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         if (ContextRoomKey is { } k) _services.RoomTracker.SetLocated(k);
     }
 
-    /// <summary>
-    /// Right-click → "Add to favorites" (or "Remove from favorites"
-    /// when already bookmarked). Persists via
-    /// <see cref="FavoritesStore"/>; the GOTO pane refreshes from
-    /// the store's Changed event.
-    /// </summary>
+    // Right-click → "Add to favorites" (or "Remove from favorites" when
+    // already bookmarked). Persists via FavoritesStore; the GOTO pane
+    // refreshes from the store's Changed event.
     [RelayCommand]
     private void ToggleContextRoomFavorite()
     {
@@ -1579,28 +1487,22 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(ContextIsStash));
     }
 
-    /// <summary>
-    /// Window listens and forwards to <c>MapControl.RecenterOnPlayer()</c>.
-    /// The VM can't call the control directly so we route through this
-    /// event — same pattern the right-click menu uses for other map-
-    /// only operations.
-    /// </summary>
+    // Window listens and forwards to MapControl.RecenterOnPlayer(). The VM
+    // can't call the control directly so we route through this event —
+    // same pattern the right-click menu uses for other map-only
+    // operations.
     public event Action? CenterOnPlayerRequested;
 
-    /// <summary>
-    /// Right-click → "Center on Player". Re-centres the map on the live
-    /// current room and clears the 10 s browse-suppression window so
-    /// subsequent live moves resume auto-centring. Same as the Home key.
-    /// </summary>
+    // Right-click → "Center on Player". Re-centres the map on the live
+    // current room and clears the 10 s browse-suppression window so
+    // subsequent live moves resume auto-centring. Same as the Home key.
     [RelayCommand]
     private void CenterOnPlayer() => CenterOnPlayerRequested?.Invoke();
 
-    /// <summary>
-    /// Right-click → "Center on…". Opens the two-int (map / room) input
-    /// dialog; on commit, routes through <see cref="OnFloorChangeRequested"/>
-    /// so the BFS layout rebuilds from the chosen room and the map
-    /// centres on it. Cancel / X dismisses without changing the view.
-    /// </summary>
+    // Right-click → "Center on…". Opens the two-int (map / room) input
+    // dialog; on commit, routes through OnFloorChangeRequested so the BFS
+    // layout rebuilds from the chosen room and the map centres on it.
+    // Cancel / X dismisses without changing the view.
     [RelayCommand]
     private async Task CenterOnSpecificAsync()
     {
@@ -1611,23 +1513,16 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     }
 
     // ----- Mode bar -------------------------------------------------
-    //
-    // PR 7.10 ships the visual toggles; the click handlers route
-    // through commands that PR 7.15 / 7.18 will hook up to the
-    // LoopBuilderSessionViewModel and AutoLairOverlayViewModel.
     [ObservableProperty] private NavigationMode _currentMode = NavigationMode.Idle;
 
     public bool IsLoopMode => CurrentMode == NavigationMode.LoopBuild;
     public bool IsLairMode => CurrentMode == NavigationMode.AutoLair;
 
-    /// <summary>
-    /// True while the user is in <see cref="NavigationMode.AutoLair"/>
-    /// AND the Auto-Lair scheduler isn't actively running. Drives the
-    /// bottom-strip "Building lair setup: N lair(s) marked" surface —
-    /// counterpart of <see cref="IsLoopBuilding"/> for loops. While
-    /// the scheduler is running, the engine phase strip
-    /// (<see cref="IsAutoLairing"/>) takes precedence.
-    /// </summary>
+    // True while the user is in NavigationMode.AutoLair AND the Auto-Lair
+    // scheduler isn't actively running. Drives the bottom-strip "Building
+    // lair setup: N lair(s) marked" surface — counterpart of
+    // IsLoopBuilding for loops. While the scheduler is running, the engine
+    // phase strip (IsAutoLairing) takes precedence.
     public bool IsLairBuilding =>
         CurrentMode == NavigationMode.AutoLair && !IsAutoLairing;
 
@@ -1649,7 +1544,8 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         RefreshDerivedState();
     }
 
-    /// <summary>Active loop-builder session when <see cref="CurrentMode"/> == LoopBuild; null otherwise.</summary>
+    // Active loop-builder session when CurrentMode == LoopBuild; null
+    // otherwise.
     public LoopBuilderSessionViewModel? LoopBuilder { get; private set; }
 
     public bool IsLoopBuilding => LoopBuilder is not null;
@@ -1733,23 +1629,15 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>
-    /// Called by the window when the map is left-clicked. Dispatched by
-    /// the active <see cref="CurrentMode"/>:
-    /// <list type="bullet">
-    ///   <item><see cref="NavigationMode.LoopBuild"/> — forward the
-    ///   click to the loop builder so the room joins the click
-    ///   sequence.</item>
-    ///   <item><see cref="NavigationMode.AutoLair"/> — toggle the room
-    ///   as a marker on <see cref="AutoLairManager"/>. Mirrors how
-    ///   loop-build mode accumulates waypoints; the user enters
-    ///   Lair mode from the top-right action chip, clicks rooms to
-    ///   add / remove, then commits via the rail's "Save lairs"
-    ///   button.</item>
-    ///   <item>Idle — no-op (the click already moved
-    ///   <see cref="SelectedRoomKey"/> upstream).</item>
-    /// </list>
-    /// </summary>
+    // Called by the window when the map is left-clicked. Dispatched by the
+    // active CurrentMode:
+    //   - LoopBuild — forward the click to the loop builder so the room
+    //     joins the click sequence.
+    //   - AutoLair — toggle the room as a marker on AutoLairManager.
+    //     Mirrors how loop-build mode accumulates waypoints; the user
+    //     enters Lair mode from the top-right action chip, clicks rooms to
+    //     add / remove, then commits via the rail's "Save lairs" button.
+    //   - Idle — no-op (the click already moved SelectedRoomKey upstream).
     public void OnRoomLeftClicked(RoomKey key)
     {
         switch (CurrentMode)
@@ -1763,11 +1651,9 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>
-    /// Called by the window when the map crawler hits an up/down
-    /// exit. Rebuilds the layout from the new room so the user can
-    /// continue crawling on the new floor.
-    /// </summary>
+    // Called by the window when the map crawler hits an up/down exit.
+    // Rebuilds the layout from the new room so the user can continue
+    // crawling on the new floor.
     public void OnFloorChangeRequested(RoomKey newOrigin)
     {
         if (_services.RoomGraph.GetRoom(newOrigin) is null) return;
@@ -1781,12 +1667,10 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         Layout = _services.Bfs.BuildLayout(newOrigin);
     }
 
-    /// <summary>
-    /// Open the Manage dialog — modeless surface for renaming /
-    /// deleting saved loops and unmarking Auto-Lair rooms. Per UX
-    /// direction this is where naming + lifecycle CRUD live; the
-    /// bottom build strip is a pure status display.
-    /// </summary>
+    // Open the Manage dialog — modeless surface for renaming / deleting
+    // saved loops and unmarking Auto-Lair rooms. This is where naming +
+    // lifecycle CRUD live; the bottom build strip is a pure status
+    // display.
     [RelayCommand]
     private async Task OpenManagerAsync()
     {
@@ -1822,22 +1706,17 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
             .OpenWindowAsync<NavigationManagerDialogViewModel, bool>(vm);
     }
 
-    /// <summary>
-    /// Toggle the Lair "build" mode (mirrors <see cref="ToggleLoopMode"/>).
-    /// Exiting build mode DISCARDS the in-progress marker set — matches
-    /// LoopBuilder's "exit discards clicks" semantics so the user has a
-    /// clean idle state. Markers loaded from a saved setup are equally
-    /// transient; persist them via the rail's "Save lairs" button before
-    /// toggling out.
-    /// </summary>
-    /// <remarks>
-    /// Exception: when the scheduler is actively running we keep the
-    /// markers in place — clearing them would yank the rug out from
-    /// under the live engine. The Lair-mode chip then shows "Stop"
-    /// instead of "Building" and routes through the
-    /// <c>LoopModeButtonCommand</c> dispatcher (per
-    /// <see cref="LairModeButtonIsStop"/>).
-    /// </remarks>
+    // Toggle the Lair "build" mode (mirrors ToggleLoopMode). Exiting build
+    // mode DISCARDS the in-progress marker set — matches LoopBuilder's
+    // "exit discards clicks" semantics so the user has a clean idle state.
+    // Markers loaded from a saved setup are equally transient; persist
+    // them via the rail's "Save lairs" button before toggling out.
+    //
+    // Exception: when the scheduler is actively running we keep the
+    // markers in place — clearing them would yank the rug out from under
+    // the live engine. The Lair-mode chip then shows "Stop" instead of
+    // "Building" and routes through the LoopModeButtonCommand dispatcher
+    // (per LairModeButtonIsStop).
     [RelayCommand]
     private void ToggleLairMode()
     {
@@ -1894,9 +1773,11 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
 
     private void OnRecoveryTierChanged(RecoveryTierChangedEvent _) => RefreshRecoveryTierBools();
 
-    /// <summary>True when the engine-recovery gate is in tier 2 — engine chip border goes yellow.</summary>
+    // True when the engine-recovery gate is in tier 2 — engine chip border
+    // goes yellow.
     public bool IsTier2 => _isTier2;
-    /// <summary>True when the engine-recovery gate is in tier 3 — engine chip border goes red.</summary>
+    // True when the engine-recovery gate is in tier 3 — engine chip border
+    // goes red.
     public bool IsTier3 => _isTier3;
     private bool _isTier2;
     private bool _isTier3;
@@ -1996,17 +1877,14 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         RefreshTeleportRooms();
     }
 
-    /// <summary>
-    /// Walk every room with a non-zero Cmd and ask TBInfo whether the
-    /// CMD's Action chain contains a teleport directive. Both literal
-    /// (<c>teleport &lt;room&gt; &lt;map&gt;</c>) and cast-delivered
-    /// (<c>cast &lt;spell&gt;</c> where the spell carries a teleport
-    /// ability) directives qualify — a random cast-teleport drops the
-    /// walker into the same room-uncertainty state a literal one does,
-    /// so it earns the same glyph. The resulting set drives the map's
-    /// diagonal hash-line overlay so the user can spot non-exit
-    /// movement spots at a glance.
-    /// </summary>
+    // Walk every room with a non-zero Cmd and ask TBInfo whether the CMD's
+    // Action chain contains a teleport directive. Both literal
+    // (teleport <room> <map>) and cast-delivered (cast <spell> where the
+    // spell carries a teleport ability) directives qualify — a random
+    // cast-teleport drops the walker into the same room-uncertainty state
+    // a literal one does, so it earns the same glyph. The resulting set
+    // drives the map's diagonal hash-line overlay so the user can spot
+    // non-exit movement spots at a glance.
     private void RefreshTeleportRooms()
     {
         if (Graph is null) { TeleportRooms = null; return; }
@@ -2026,11 +1904,9 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         TeleportRooms = set;
     }
 
-    /// <summary>
-    /// Blacklist Changed → rebuild the cached layout (BFS already
-    /// flushed its cache via AppServices wiring) and the room
-    /// search results in case a search is currently typed.
-    /// </summary>
+    // Blacklist Changed → rebuild the cached layout (BFS already flushed
+    // its cache via AppServices wiring) and the room search results in
+    // case a search is currently typed.
     private void OnBlacklistChanged()
     {
         RefreshLayout();
@@ -2127,37 +2003,31 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
 
     // ----- Run / Stop + mode-button state ---------------------------
 
-    /// <summary>
-    /// Which engine is currently driving — feeds top-bar status badge,
-    /// CURRENT NAV section rendering, and Run/Stop button behaviour.
-    /// </summary>
+    // Which engine is currently driving — feeds top-bar status badge,
+    // CURRENT NAV section rendering, and Run/Stop button behaviour.
     [ObservableProperty] private NavigationEngineKind _engineActionKind = NavigationEngineKind.Idle;
 
-    /// <summary>
-    /// Reason the last navigation attempt failed, surfaced in the
-    /// top-bar status text + CURRENT NAV header while the engine is
-    /// Idle. Null when there's nothing to report. Set by
-    /// <see cref="OnWalkerEvent"/> on a Failed event; cleared on any
-    /// Started / progress / Stopped event.
-    /// </summary>
+    // Reason the last navigation attempt failed, surfaced in the top-bar
+    // status text + CURRENT NAV header while the engine is Idle. Null when
+    // there's nothing to report. Set by OnWalkerEvent on a Failed event;
+    // cleared on any Started / progress / Stopped event.
     [ObservableProperty] private string? _engineError;
 
-    /// <summary>True when any movement engine is actively driving the player.</summary>
+    // True when any movement engine is actively driving the player.
     public bool IsAnyExecuting =>
         EngineActionKind != NavigationEngineKind.Idle;
 
-    /// <summary>Run button enabled when idle and something is queued, OR when active (then it acts as Stop).</summary>
+    // Run button enabled when idle and something is queued, OR when active
+    // (then it acts as Stop).
     public bool CanRun =>
         IsAnyExecuting
         || QueuedDestination is not null
         || (CurrentMode == NavigationMode.LoopBuild && LoopBuilder?.CanSave == true)
         || (CurrentMode == NavigationMode.AutoLair && _services.AutoLair.Marked.Count > 0);
 
-    /// <summary>
-    /// Primary action-chip face. Loops transform into Pause / Run for
-    /// pause-resume cycling (the user can edit the loop while paused);
-    /// walker + auto-lair stay as Run / Stop (one-shot engines).
-    /// </summary>
+    // Primary action-chip face. Loops transform into Pause / Run for
+    // pause-resume cycling (the user can edit the loop while paused);
+    // walker + auto-lair stay as Run / Stop (one-shot engines).
     public string RunStopLabel
     {
         get
@@ -2176,12 +2046,10 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     }
 
 
-    /// <summary>
-    /// Status text used by the top-bar status indicator. Idle →
-    /// <c>"Located: (M/R) - Name"</c>; active → walking with destination
-    /// formatted (M/R) - Name; looping with loop name; auto-lair with
-    /// marked-lair count.
-    /// </summary>
+    // Status text used by the top-bar status indicator. Idle →
+    // "Located: (M/R) - Name"; active → walking with destination formatted
+    // (M/R) - Name; looping with loop name; auto-lair with marked-lair
+    // count.
     public string TopBarStatusText
     {
         get
@@ -2235,14 +2103,12 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>
-    /// Shared row population for the AutoLair branch of
-    /// <see cref="RebuildCurrentNavRows"/> — runs both in Build mode
-    /// (pre-scheduler) and during an active run. The only behavioural
-    /// difference is the per-row status / sub-label, both keyed off
-    /// whether the scheduler has a <see cref="Game.Map.AutoLairManager.CurrentTarget"/>.
-    /// Order: target first, then the rest sorted by Map / Room.
-    /// </summary>
+    // Shared row population for the AutoLair branch of
+    // RebuildCurrentNavRows — runs both in Build mode (pre-scheduler) and
+    // during an active run. The only behavioural difference is the per-row
+    // status / sub-label, both keyed off whether the scheduler has a
+    // Game.Map.AutoLairManager.CurrentTarget. Order: target first, then
+    // the rest sorted by Map / Room.
     private void PopulateLairRows()
     {
         Game.Map.AutoLairManager mgr = _services.AutoLair;
@@ -2269,21 +2135,17 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>
-    /// Compose the CURRENT NAV sub-label for a marked lair row.
-    /// Behaviour by phase:
-    /// <list type="bullet">
-    ///   <item><b>Active target</b> — show the scheduler phase + the
-    ///   countdown to entry ("Waiting · 0:42 to entry").</item>
-    ///   <item><b>Visited this session</b> — show the per-room
-    ///   respawn countdown ("respawns in 12:34") or "ready" once
-    ///   <see cref="LairTimerStore.NextReadyAt"/> falls past now.</item>
-    ///   <item><b>Never visited</b> — show the game-data default
-    ///   respawn ("game default 30:00") so the user can see whether
-    ///   the room they marked actually carries a lair tag; rooms
-    ///   without a tag surface "no game-data timer" instead.</item>
-    /// </list>
-    /// </summary>
+    // Compose the CURRENT NAV sub-label for a marked lair row. Behaviour
+    // by phase:
+    //   - Active target — show the scheduler phase + the countdown to
+    //     entry ("Waiting · 0:42 to entry").
+    //   - Visited this session — show the per-room respawn countdown
+    //     ("respawns in 12:34") or "ready" once LairTimerStore.NextReadyAt
+    //     falls past now.
+    //   - Never visited — show the game-data default respawn ("game
+    //     default 30:00") so the user can see whether the room they marked
+    //     actually carries a lair tag; rooms without a tag surface "no
+    //     game-data timer" instead.
     private string BuildLairSubLabel(RoomKey key, bool isTarget)
     {
         Game.Map.AutoLairManager mgr = _services.AutoLair;
@@ -2324,14 +2186,11 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         return "no timer";
     }
 
-    /// <summary>
-    /// Format a lair-timer duration for the CURRENT NAV sub-labels.
-    /// Plain total seconds (e.g. <c>"270s"</c>) — per user direction
-    /// the rooms we mark in this surface only ever respawn in the
-    /// 30-300 s range, so a single number stays compact and scannable
-    /// without the user mentally converting <c>4:30</c> back into
-    /// seconds. Negative inputs clamp to 0.
-    /// </summary>
+    // Format a lair-timer duration for the CURRENT NAV sub-labels. Plain
+    // total seconds (e.g. "270s") — the rooms we mark in this surface only
+    // ever respawn in the 30-300 s range, so a single number stays compact
+    // and scannable without the user mentally converting 4:30 back into
+    // seconds. Negative inputs clamp to 0.
     private static string FormatMmSs(TimeSpan t)
     {
         if (t < TimeSpan.Zero) t = TimeSpan.Zero;
@@ -2339,19 +2198,18 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         return $"{totalSec}s";
     }
 
-    /// <summary>
-    /// Canonical room reference format used across the Navigation
-    /// surfaces — <c>"(map/room) - Name"</c>. Falls back to "(M/R) - ???"
-    /// when the graph doesn't know the room (typical of unimported
-    /// MDB sets or null-name ganghouse rooms).
-    /// </summary>
+    // Canonical room reference format used across the Navigation surfaces
+    // — "(map/room) - Name". Falls back to "(M/R) - ???" when the graph
+    // doesn't know the room (typical of unimported MDB sets or null-name
+    // ganghouse rooms).
     private string FormatRoomRef(RoomKey key)
     {
         string name = Graph?.GetRoom(key)?.DisplayName ?? "???";
         return $"({key.Map}/{key.Room}) - {name}";
     }
 
-    /// <summary>Engine-state tag the badge displays: WALKING / LOOPING / AUTO-LAIR / IDLE.</summary>
+    // Engine-state tag the badge displays: WALKING / LOOPING / AUTO-LAIR /
+    // IDLE.
     public string TopBarStatusBadge => EngineActionKind switch
     {
         NavigationEngineKind.Walking  => "WALKING",
@@ -2368,20 +2226,19 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     public bool EngineActionIsLooping => EngineActionKind == NavigationEngineKind.Looping;
     public bool EngineActionIsLair    => EngineActionKind == NavigationEngineKind.AutoLair;
 
-    /// <summary>Loop-mode button face: idle → "Loop mode"; mode-on → "Building"; running → "Stop".</summary>
+    // Loop-mode button face: idle → "Loop mode"; mode-on → "Building";
+    // running → "Stop".
     public string LoopModeButtonLabel => EngineActionKind == NavigationEngineKind.Looping
         ? "Stop"
         : (CurrentMode == NavigationMode.LoopBuild ? "Building" : "Loop mode");
 
     public bool LoopModeButtonIsStop => EngineActionKind == NavigationEngineKind.Looping;
 
-    /// <summary>
-    /// Dispatcher for the Loop-mode button: when looping (any state)
-    /// the button is a full Stop; otherwise it's the build-mode
-    /// toggle. Keeping one physical button keeps the action chip row
-    /// compact and matches the user's expectation that the Run chip
-    /// transforms to Pause while the Loop-mode chip carries the Stop.
-    /// </summary>
+    // Dispatcher for the Loop-mode button: when looping (any state) the
+    // button is a full Stop; otherwise it's the build-mode toggle. Keeping
+    // one physical button keeps the action chip row compact and matches
+    // the user's expectation that the Run chip transforms to Pause while
+    // the Loop-mode chip carries the Stop.
     [RelayCommand]
     private void LoopModeButton()
     {
@@ -2393,20 +2250,17 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         ToggleLoopMode();
     }
 
-    /// <summary>Lair-mode button face: idle → "Lair mode"; mode-on → "Building"; running → "Stop".</summary>
+    // Lair-mode button face: idle → "Lair mode"; mode-on → "Building";
+    // running → "Stop".
     public string LairModeButtonLabel => EngineActionKind == NavigationEngineKind.AutoLair
         ? "Stop"
         : (CurrentMode == NavigationMode.AutoLair ? "Building" : "Lair mode");
 
     public bool LairModeButtonIsStop => EngineActionKind == NavigationEngineKind.AutoLair;
 
-    /// <summary>
-    /// Dispatcher for the Lair-mode chip — symmetric with
-    /// <see cref="LoopModeButton"/>. When the scheduler is active
-    /// the button carries Stop semantics (routes through
-    /// <see cref="StopAll"/>); otherwise it's the build-mode
-    /// toggle.
-    /// </summary>
+    // Dispatcher for the Lair-mode chip — symmetric with LoopModeButton.
+    // When the scheduler is active the button carries Stop semantics
+    // (routes through StopAll); otherwise it's the build-mode toggle.
     [RelayCommand]
     private void LairModeButton()
     {
@@ -2443,15 +2297,11 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(CurrentNavSelectedRow));
     }
 
-    /// <summary>
-    /// Unified Run / Stop button. Behaviour by state:
-    /// <list type="bullet">
-    /// <item>Active (any engine) → stops it.</item>
-    /// <item>Loop builder open with savable session → save + run.</item>
-    /// <item>Auto-Lair mode with marked rooms → start the scheduler.</item>
-    /// <item>Otherwise, walk to the queued destination.</item>
-    /// </list>
-    /// </summary>
+    // Unified Run / Stop button. Behaviour by state:
+    //   - Active (any engine) → stops it.
+    //   - Loop builder open with savable session → save + run.
+    //   - Auto-Lair mode with marked rooms → start the scheduler.
+    //   - Otherwise, walk to the queued destination.
     [RelayCommand]
     private void RunStop()
     {
@@ -2551,20 +2401,16 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>
-    /// Set true when <see cref="OpenBuilderForRunningLoop"/> opened
-    /// build mode in response to user-pause so a subsequent Run / Stop
-    /// can decide whether to close it again.
-    /// </summary>
+    // Set true when OpenBuilderForRunningLoop opened build mode in
+    // response to user-pause so a subsequent Run / Stop can decide whether
+    // to close it again.
     private bool _loopBuilderOpenedByPause;
 
-    /// <summary>
-    /// True when the builder's click list no longer matches the loop
-    /// it was seeded from — used by the Pause → Edit → Run flow to
-    /// decide whether to resume the in-flight loop or stop and restart
-    /// with the new clicks. Compares 1:1 in order; renames + waypoint
-    /// reorders all count as edits.
-    /// </summary>
+    // True when the builder's click list no longer matches the loop it was
+    // seeded from — used by the Pause → Edit → Run flow to decide whether
+    // to resume the in-flight loop or stop and restart with the new
+    // clicks. Compares 1:1 in order; renames + waypoint reorders all count
+    // as edits.
     private static bool BuilderClicksDifferFrom(LoopBuilderSessionViewModel builder, Game.Map.Loop loop)
     {
         if (builder.Clicks.Count != loop.Waypoints.Count) return true;
@@ -2576,11 +2422,9 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         return false;
     }
 
-    /// <summary>
-    /// Pause flow: stop the runner via the user gate, then re-open the
-    /// builder pre-seeded with the running loop's name + notes + click
-    /// list so the user can edit before hitting Run again.
-    /// </summary>
+    // Pause flow: stop the runner via the user gate, then re-open the
+    // builder pre-seeded with the running loop's name + notes + click list
+    // so the user can edit before hitting Run again.
     private void OpenBuilderForRunningLoop()
     {
         Game.Map.LoopRunner runner = _services.LoopRunner;
@@ -2613,11 +2457,9 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         RefreshLoopOverlays();
     }
 
-    /// <summary>
-    /// Full-stop action. Always returns the user to the idle map
-    /// view — engines stopped, builder closed, user gate cleared so
-    /// the next Run isn't accidentally held paused.
-    /// </summary>
+    // Full-stop action. Always returns the user to the idle map view —
+    // engines stopped, builder closed, user gate cleared so the next Run
+    // isn't accidentally held paused.
     [RelayCommand]
     private void StopAll()
     {
@@ -2653,16 +2495,15 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
 
     // ----- CURRENT NAV row list -------------------------------------
 
-    /// <summary>Rows shown under CURRENT NAV — steps when walking/looping, marked lairs when auto-lairing.</summary>
+    // Rows shown under CURRENT NAV — steps when walking/looping, marked
+    // lairs when auto-lairing.
     public ObservableCollection<CurrentNavRowViewModel> CurrentNavRows { get; } = new();
 
-    /// <summary>
-    /// Row the CURRENT NAV ListBox should keep in view — the active
-    /// step while walking, the next-ready lair while auto-lairing. The
-    /// window code-behind subscribes to property-change and calls
-    /// <c>ListBox.ScrollIntoView</c> so a long path scrolls along with
-    /// progress instead of forcing the entire rail to grow.
-    /// </summary>
+    // Row the CURRENT NAV ListBox should keep in view — the active step
+    // while walking, the next-ready lair while auto-lairing. The window
+    // code-behind subscribes to property-change and calls
+    // ListBox.ScrollIntoView so a long path scrolls along with progress
+    // instead of forcing the entire rail to grow.
     public CurrentNavRowViewModel? CurrentNavSelectedRow
     {
         get
@@ -2673,7 +2514,8 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>Header sentence under the section title: <c>"3 of 6 steps to (M/R) - Name"</c> / <c>"Cycling marked lairs"</c>.</summary>
+    // Header sentence under the section title: "3 of 6 steps to
+    // (M/R) - Name" / "Cycling marked lairs".
     public string CurrentNavHeader
     {
         get
@@ -2758,7 +2600,8 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         return $"{t.Seconds}s";
     }
 
-    /// <summary>Progress as a 0..1 fraction for the small inline bar; null when no progress meter applies (e.g. Auto-Lair).</summary>
+    // Progress as a 0..1 fraction for the small inline bar; null when no
+    // progress meter applies (e.g. Auto-Lair).
     public double? CurrentNavProgress
     {
         get
@@ -2872,28 +2715,25 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         if (key is { } k) _services.AutoLair.Toggle(k);
     }
 
-    /// <summary>
-    /// Building Loop row click — remove the click at the given
-    /// 1-based index (Clicks renderer's Index field). Called from the
-    /// builder ListBox's row PointerPressed handler.
-    /// </summary>
+    // Building Loop row click — remove the click at the given 1-based
+    // index (Clicks renderer's Index field). Called from the builder
+    // ListBox's row PointerPressed handler.
     public void RemoveBuilderClickAt(int oneBasedIndex)
     {
         if (LoopBuilder is null) return;
         LoopBuilder.RemoveClickAt(oneBasedIndex - 1);
     }
 
-    /// <summary>
-    /// Building Loop drag-reorder — move the row at
-    /// <paramref name="fromOneBased"/> to <paramref name="toOneBased"/>.
-    /// </summary>
+    // Building Loop drag-reorder — move the row at fromOneBased to
+    // toOneBased.
     public void MoveBuilderClick(int fromOneBased, int toOneBased)
     {
         if (LoopBuilder is null) return;
         LoopBuilder.MoveClick(fromOneBased - 1, toOneBased - 1);
     }
 
-    /// <summary>Up-arrow click on a builder row — moves it one place earlier in the click order.</summary>
+    // Up-arrow click on a builder row — moves it one place earlier in the
+    // click order.
     [RelayCommand]
     private void MoveBuilderClickUp(LoopBuilderRow? row)
     {
@@ -2901,7 +2741,8 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         MoveBuilderClick(row.Index, row.Index - 1);
     }
 
-    /// <summary>Down-arrow click on a builder row — moves it one place later in the click order.</summary>
+    // Down-arrow click on a builder row — moves it one place later in the
+    // click order.
     [RelayCommand]
     private void MoveBuilderClickDown(LoopBuilderRow? row)
     {
@@ -2910,7 +2751,8 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     }
 }
 
-/// <summary>Which engine is currently moving the player — gates Run/Stop, status badge, CURRENT NAV rendering.</summary>
+// Which engine is currently moving the player — gates Run/Stop, status
+// badge, CURRENT NAV rendering.
 public enum NavigationEngineKind
 {
     Idle     = 0,
@@ -2919,7 +2761,7 @@ public enum NavigationEngineKind
     AutoLair = 3,
 }
 
-/// <summary>One of the four explicit modes the Navigation window can be in.</summary>
+// One of the four explicit modes the Navigation window can be in.
 public enum NavigationMode
 {
     Idle = 0,

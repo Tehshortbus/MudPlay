@@ -3,38 +3,34 @@ using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace FujinTerm.ViewModels.CharacterWorkshop;
 
-/// <summary>
-/// One row in the Equipment Manager's Inventory view: a carried item, its
-/// per-unit carry weight, and the three loot-automation toggles
-/// (auto-stash / auto-collect / auto-discard) that map onto the item's game-data
-/// <see cref="Models.GameData.ItemOverlay"/>. Flipping a toggle invokes the
-/// supplied callback so the section writes the overlay through the settings
-/// resolver; finer carry policy is left to the Game Data browser.
-/// </summary>
+// One row in the Equipment Manager's Inventory view: a carried item, its per-unit
+// carry weight, and the three loot-automation toggles (auto-stash / auto-collect /
+// auto-discard) that map onto the item's game-data ItemOverlay. Flipping a toggle
+// invokes the supplied callback so the section writes the overlay through the
+// settings resolver; finer carry policy is left to the Game Data browser.
 public sealed partial class InventoryItemRowViewModel : ObservableObject
 {
     private readonly Action<InventoryItemRowViewModel> _onEdited;
 
-    /// <summary>Item <c>Number</c> (MDB / WCC No) — the overlay write key. Zero when
-    /// the name couldn't be resolved against the active item table.</summary>
+    // Item Number (MDB / WCC No) — the overlay write key. Zero when the name
+    // couldn't be resolved against the active item table.
     public int Number { get; }
 
-    /// <summary>Item display name, e.g. <c>"a torch"</c>.</summary>
+    // Item display name, e.g. "a torch".
     public string Name { get; }
 
-    /// <summary>How many of this item the pack holds — identical names are grouped
-    /// into one row (the overlay is keyed by item type, not instance).</summary>
+    // How many of this item the pack holds — identical names are grouped into one
+    // row (the overlay is keyed by item type, not instance).
     public int Count { get; }
 
-    /// <summary>Multiplicity badge — <c>"×3"</c> when stacked, empty for a single.</summary>
+    // Multiplicity badge — "×3" when stacked, empty for a single.
     public string CountText => Count > 1 ? $"×{Count}" : string.Empty;
 
-    /// <summary>Per-unit carry weight (MDB <c>Encum</c>), or <c>"—"</c> when unknown.</summary>
+    // Per-unit carry weight (MDB Encum), or "—" when unknown.
     public string Weight { get; }
 
-    /// <summary>Whether the item is known to the active game data — an unresolved
-    /// name (<see cref="Number"/> == 0) can't target an overlay, so its toggles stay
-    /// disabled.</summary>
+    // Whether the item is known to the active game data — an unresolved name
+    // (Number == 0) can't target an overlay, so its toggles stay disabled.
     public bool CanToggle => Number > 0;
 
     [ObservableProperty] private bool _autoStash;

@@ -11,14 +11,11 @@ using FujinTerm.Views.Settings;
 
 namespace FujinTerm.ViewModels.Settings;
 
-/// <summary>
-/// "Party" tab — bespoke layout. PR 6.9 wires the knobs that map onto
-/// live Phase 6 services (par poll cadence, auto-invite reconnecting
-/// member, reset statistics on loop start); the party-heal pickers +
-/// thresholds + AOE-member count, and the 10 party-bless slots, feed
-/// <c>CastingDirector</c>'s party-cast path. Persists per character as the
-/// <c>"Party"</c> entry in <see cref="CharacterProfile.Settings"/>.
-/// </summary>
+// "Party" tab — bespoke layout. Knobs that map onto live services (par poll
+// cadence, auto-invite reconnecting member, reset statistics on loop start);
+// the party-heal pickers + thresholds + AOE-member count, and the 10
+// party-bless slots, feed CastingDirector's party-cast path. Persists per
+// character as the "Party" entry in CharacterProfile.Settings.
 public sealed partial class PartySectionViewModel : SettingsSectionViewModel
 {
     private const string TabKey = "Party";
@@ -34,15 +31,14 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
     public override string Title => "Party";
     public override bool IsDirty => _dirty;
 
-    /// <summary>True when a profile is loaded — editor is hidden otherwise.</summary>
+    // True when a profile is loaded — editor is hidden otherwise.
     public bool HasProfile => _profile.Current is not null;
 
-    /// <summary>Known-spell suggestions for the party heal / bless typeahead
-    /// boxes — the current class's learnable list (level gate ignored), ordered
-    /// by name + distinct by cast-code, from
-    /// <see cref="Game.Spells.SpellbookState.AvailablePicks"/>. Each box commits
-    /// the 4-letter <see cref="Game.Spells.SpellPick.Short"/> cast-code.
-    /// Refreshes when the spellbook rebuilds (class swap / reroll).</summary>
+    // Known-spell suggestions for the party heal / bless typeahead boxes — the
+    // current class's learnable list (level gate ignored), ordered by name +
+    // distinct by cast-code, from SpellbookState.AvailablePicks. Each box commits
+    // the 4-letter SpellPick.Short cast-code. Refreshes when the spellbook
+    // rebuilds (class swap / reroll).
     public IReadOnlyList<Game.Spells.SpellPick> SpellSuggestions => _spellbook.AvailablePicks;
 
     public override Control View => _view ??= new PartySectionView { DataContext = this };
@@ -58,39 +54,40 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
         "Wait for members", "Max monsters",
     };
 
-    // ----- Wired knobs (PR 6.9) -----
+    // ----- Wired knobs -----
 
-    /// <summary>par poll cadence in seconds; range 1..60. Default 5.</summary>
+    // par poll cadence in seconds; range 1..60. Default 5.
     [ObservableProperty] private int _parPollFrequencySec = 5;
 
     [ObservableProperty] private bool _autoInviteReconnecting = true;
 
     [ObservableProperty] private bool _resetStatisticsOnLoopStart = true;
 
-    /// <summary>Rank radio bound as three mutually-exclusive booleans (matches the existing AXAML RadioButton pattern).</summary>
+    // Rank radio bound as three mutually-exclusive booleans (matches the
+    // existing AXAML RadioButton pattern).
     [ObservableProperty] private bool _rankFront;
     [ObservableProperty] private bool _rankMid = true;
     [ObservableProperty] private bool _rankBack;
 
-    // ----- @join nag escalation (wired Phase 6) -----
-    /// <summary>Delay after the initial <c>invite</c> before the first <c>@join</c>. Range 1..60, default 5.</summary>
+    // ----- @join nag escalation -----
+    // Delay after the initial invite before the first @join. Range 1..60.
     [ObservableProperty] private int _joinNagInitialDelaySec = 5;
-    /// <summary>Cadence for subsequent <c>@join</c> resends. Range 1..60, default 10.</summary>
+    // Cadence for subsequent @join resends. Range 1..60.
     [ObservableProperty] private int _joinNagFrequencySec = 10;
-    /// <summary>Hard cap on the total nag window. Range 5..600, default 55.</summary>
+    // Hard cap on the total nag window. Range 5..600.
     [ObservableProperty] private int _joinNagMaxTotalSec = 55;
-    /// <summary>Master enable for the <c>@join</c> follow-up nag. Default on.</summary>
+    // Master enable for the @join follow-up nag. Default on.
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(NagInitialDelayEditable))]
     private bool _sendJoinToInvited = true;
-    /// <summary>Master enable for the on-join <c>@health</c> round-trip nag. Default on.</summary>
+    // Master enable for the on-join @health round-trip nag. Default on.
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(NagInitialDelayEditable))]
     private bool _sendHealthToMembers = true;
 
-    /// <summary>The shared initial-delay spinner (in Options, next to the
-    /// <c>@join</c> toggle) edits the value both nag flows use, so it's
-    /// editable whenever either nag is enabled.</summary>
+    // The shared initial-delay spinner (in Options, next to the @join toggle)
+    // edits the value both nag flows use, so it's editable whenever either nag
+    // is enabled.
     public bool NagInitialDelayEditable => SendJoinToInvited || SendHealthToMembers;
 
     // ----- "If leading, wait only" — disconnect grace window in seconds.
@@ -111,23 +108,23 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private int _aoeMinMembers = 2;
 
     // ----- Capacity (consumed by CombatManager) ----------------------
-    /// <summary>Party-scoped max-monsters cap; overrides the Combat-tab
-    /// upper bound while in an active party. 1..20.</summary>
+    // Party-scoped max-monsters cap; overrides the Combat-tab upper bound while
+    // in an active party. 1..20.
     [ObservableProperty] private int _maxMonstersWhenPartying = 20;
 
     // ----- Vitals gate (consumed by PartyVitalsWatcher) --------------
-    /// <summary>Hold the party action loop while any other member's HP%
-    /// is below this value. 0 disables. 0..100.</summary>
+    // Hold the party action loop while any other member's HP% is below this
+    // value. 0 disables. 0..100.
     [ObservableProperty] private int _waitIfMemberBelowPercent;
 
     // ----- Leader behaviour (consumed by PartyEssentialHandlers) -----
-    /// <summary>When leading, drop incoming <c>@wait</c> broadcasts so the
-    /// leader's automation keeps running.</summary>
+    // When leading, drop incoming @wait broadcasts so the leader's automation
+    // keeps running.
     [ObservableProperty] private bool _ignoreWaitWhenLeading;
 
-    /// <summary>Pitch in when the party leader fails to bash a door we can
-    /// see — bashes / picks the same door per the Other-tab preference.
-    /// Consumed by <see cref="Game.Map.LeaderDoorAssistManager"/>.</summary>
+    // Pitch in when the party leader fails to bash a door we can see — bashes /
+    // picks the same door per the Other-tab preference. Consumed by
+    // LeaderDoorAssistManager.
     [ObservableProperty] private bool _helpLeaderOpenDoors;
 
     // ----- Party bless gating (consumed by CastingDirector) ----------
@@ -142,8 +139,8 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
     // load + ActiveSetChanged so the per-class checkboxes track whatever
     // classes the imported gamedata defines.
 
-    /// <summary>The 10 editable party-bless rows. Always 10 entries so
-    /// the UI binds one-to-one with the persisted slots.</summary>
+    // The 10 editable party-bless rows. Always 10 entries so the UI binds
+    // one-to-one with the persisted slots.
     public ObservableCollection<PartyBlessSlotViewModel> BlessSlots { get; } = new();
 
     public PartySectionViewModel() : this(AppServices.Current.Profile) { }
@@ -286,17 +283,16 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
 
     // ----- Bless-slot rebuild / snapshot -----------------------------
 
-    /// <summary>Snapshot the current bless rows to persistable DTOs.
-    /// Always 10 entries — falls back to fresh empties before any row
-    /// VM has been built (e.g. when Apply runs with no profile UI).</summary>
+    // Snapshot the current bless rows to persistable DTOs. Always 10 entries —
+    // falls back to fresh empties before any row VM has been built (e.g. when
+    // Apply runs with no profile UI).
     private List<PartyBlessSlot> SnapshotBlessSlots() =>
         BlessSlots.Count == 0
             ? PartySettings.NewBlessSlots()
             : BlessSlots.Select(s => s.ToDto()).ToList();
 
-    /// <summary>Pad / trim a deserialized slot list to exactly 10 entries
-    /// so the UI always renders the full set even if an older profile
-    /// stored fewer.</summary>
+    // Pad / trim a deserialized slot list to exactly 10 entries so the UI always
+    // renders the full set even if an older profile stored fewer.
     private static List<PartyBlessSlot> NormalizeSlots(List<PartyBlessSlot>? slots)
     {
         List<PartyBlessSlot> result = new(PartySettings.PartyBlessSlotCount);
@@ -305,10 +301,9 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
         return result;
     }
 
-    /// <summary>Rebuild the 10 row VMs against the active set's class
-    /// roster, seeding each from <paramref name="slots"/>. Suppresses
-    /// dirty during the swap so a profile load / set swap doesn't mark
-    /// the tab dirty.</summary>
+    // Rebuild the 10 row VMs against the active set's class roster, seeding each
+    // from slots. Suppresses dirty during the swap so a profile load / set swap
+    // doesn't mark the tab dirty.
     private void RebuildBlessSlots(List<PartyBlessSlot> slots)
     {
         bool wasSuppressed = _suppressDirty;
@@ -326,9 +321,9 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
         }
     }
 
-    /// <summary>Read the active set's <c>Classes</c> table as
-    /// (Number, Name) pairs, ordered by Number. Empty when no set is
-    /// loaded — the bless rows then render with no class checkboxes.</summary>
+    // Read the active set's Classes table as (Number, Name) pairs, ordered by
+    // Number. Empty when no set is loaded — the bless rows then render with no
+    // class checkboxes.
     private IReadOnlyList<(int Number, string Name)> ReadClasses()
     {
         List<(int Number, string Name)> classes = new();

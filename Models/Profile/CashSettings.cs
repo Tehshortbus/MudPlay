@@ -1,61 +1,40 @@
 namespace FujinTerm.Models.Profile;
 
-/// <summary>
-/// Per-character "Cash" settings — drives
-/// <see cref="Game.Cash.CashManager"/>'s per-currency pickup /
-/// discard behaviour and auto-deposit trigger. Stored as the
-/// <c>"Cash"</c> entry in <see cref="CharacterProfile.Settings"/>.
-/// </summary>
-/// <remarks>
-/// <para>
-/// v1 ships per-currency <see cref="Policy"/> + a single
-/// <see cref="AutoDepositIfWealthExceeds"/> threshold. Encumbrance
-/// gates, cascade drop-smaller-for-larger, and the walker-driven
-/// auto-deposit reroute land as follow-up PRs on this engine — the
-/// foundation here lets the user smoke-test the per-currency pickup
-/// path end-to-end.
-/// </para>
-/// </remarks>
+// Per-character "Cash" settings — drives Game.Cash.CashManager's per-currency
+// pickup / discard behaviour and auto-deposit trigger. Stored as the "Cash"
+// entry in CharacterProfile.Settings.
+//
+// v1 ships per-currency Policy + a single AutoDepositIfWealthExceeds threshold.
+// Encumbrance gates, cascade drop-smaller-for-larger, and the walker-driven
+// auto-deposit reroute land as follow-up work on this engine — the foundation
+// here lets the user smoke-test the per-currency pickup path end-to-end.
 public sealed class CashSettings
 {
-    /// <summary>Per-currency pickup behavior.</summary>
+    // Per-currency pickup behavior.
     public CashPolicy CopperPolicy { get; set; } = CashPolicy.Ignore;
-    /// <inheritdoc cref="CopperPolicy"/>
     public CashPolicy SilverPolicy { get; set; } = CashPolicy.Collect;
-    /// <inheritdoc cref="CopperPolicy"/>
     public CashPolicy GoldPolicy { get; set; } = CashPolicy.Collect;
-    /// <inheritdoc cref="CopperPolicy"/>
     public CashPolicy PlatinumPolicy { get; set; } = CashPolicy.Collect;
-    /// <inheritdoc cref="CopperPolicy"/>
     public CashPolicy RunicPolicy { get; set; } = CashPolicy.Collect;
 
-    /// <summary>
-    /// Auto-deposit trigger — fire when total held wealth (in the
-    /// realm's canonical unit, typically gold-equivalent) exceeds
-    /// this value. <c>0</c> disables the trigger. v1 fires the
-    /// <see cref="Game.Cash.CashManager.AutoDepositRequested"/>
-    /// event; subscribers wire the walker reroute themselves until
-    /// the full snapshot-pause-walk-deposit-resume flow ships.
-    /// </summary>
+    // Auto-deposit trigger — fire when total held wealth (in the realm's
+    // canonical unit, typically gold-equivalent) exceeds this value. 0 disables
+    // the trigger. v1 fires the CashManager.AutoDepositRequested event;
+    // subscribers wire the walker reroute themselves until the full
+    // snapshot-pause-walk-deposit-resume flow ships.
     public long AutoDepositIfWealthExceeds { get; set; }
 
-    /// <summary>
-    /// Auto-deposit trigger — fire when the total number of physical
-    /// coins held (summed across every denomination, regardless of
-    /// each coin's value) exceeds this count. <c>0</c> disables the
-    /// trigger. Independent of <see cref="AutoDepositIfWealthExceeds"/>:
-    /// either gate firing triggers the deposit (OR logic), and the
-    /// single-fire guard re-arms only once BOTH gates fall back below
-    /// their thresholds.
-    /// </summary>
+    // Auto-deposit trigger — fire when the total number of physical coins held
+    // (summed across every denomination, regardless of each coin's value)
+    // exceeds this count. 0 disables the trigger. Independent of
+    // AutoDepositIfWealthExceeds: either gate firing triggers the deposit
+    // (OR logic), and the single-fire guard re-arms only once BOTH gates fall
+    // back below their thresholds.
     public long AutoDepositIfCoinsExceed { get; set; }
 
-    /// <summary>
-    /// Bank room key — used by the (follow-up) auto-deposit walker
-    /// reroute to know where to walk. Sourced from the Phase 5 Shops
-    /// table where <c>ShopType == 7</c> (bank). v1 just stores it;
-    /// the reroute itself is unwired.
-    /// </summary>
+    // Bank room key — used by the (follow-up) auto-deposit walker reroute to
+    // know where to walk. Sourced from the Shops table where ShopType == 7
+    // (bank). v1 just stores it; the reroute itself is unwired.
     public string BankRoomKey { get; set; } = string.Empty;
 
     // ----- Per-currency minimum to keep on hand ---------------------
@@ -65,34 +44,27 @@ public sealed class CashSettings
     // amount dumped via `hide N <coin>`; the auto-deposit reroute uses
     // the same floor for `deposit`. Defaults all 0 = offload everything.
 
-    /// <summary>Copper to keep on hand when depositing / stashing.
-    /// Default 0 — offload all.</summary>
+    // Copper to keep on hand when depositing / stashing. Default 0 — offload all.
     public long KeepCopperOnHand { get; set; }
 
-    /// <summary>Silver to keep on hand when depositing / stashing.
-    /// Default 0 — offload all.</summary>
+    // Silver to keep on hand when depositing / stashing. Default 0 — offload all.
     public long KeepSilverOnHand { get; set; }
 
-    /// <summary>Gold to keep on hand when depositing / stashing.
-    /// Default 0 — offload all.</summary>
+    // Gold to keep on hand when depositing / stashing. Default 0 — offload all.
     public long KeepGoldOnHand { get; set; }
 
-    /// <summary>Platinum to keep on hand when depositing / stashing.
-    /// Default 0 — offload all.</summary>
+    // Platinum to keep on hand when depositing / stashing. Default 0 — offload all.
     public long KeepPlatinumOnHand { get; set; }
 
-    /// <summary>Runic to keep on hand when depositing / stashing.
-    /// Default 0 — offload all.</summary>
+    // Runic to keep on hand when depositing / stashing. Default 0 — offload all.
     public long KeepRunicOnHand { get; set; }
 
-    /// <summary>
-    /// Total copper-farthing value of the per-denomination keep-on-hand
-    /// floors — the slice of wealth the character keeps after offloading
-    /// coin. Uses the MajorMUD ratio ladder (silver = 10, gold = 100,
-    /// platinum = 10 000, runic = 1 000 000 copper). Shared by the
-    /// auto-deposit reroute (the bank <c>dep</c> amount) and the
-    /// <c>@deposit-all</c> remote command (the deposit / withdraw target).
-    /// </summary>
+    // Total copper-farthing value of the per-denomination keep-on-hand floors —
+    // the slice of wealth the character keeps after offloading coin. Uses the
+    // MajorMUD ratio ladder (silver = 10, gold = 100, platinum = 10 000,
+    // runic = 1 000 000 copper). Shared by the auto-deposit reroute (the bank
+    // dep amount) and the @deposit-all remote command (the deposit / withdraw
+    // target).
     public long KeepOnHandCopper() =>
         KeepCopperOnHand
         + KeepSilverOnHand * 10
@@ -101,44 +73,39 @@ public sealed class CashSettings
         + KeepRunicOnHand * 1_000_000;
 
     // ----- Encumbrance + cascade (persisted; engines deferred) -------
-    // These knobs are visible in the Settings → Cash tab for MudProxy
-    // parity but their engines haven't shipped yet (the original
-    // CashManager audit deferred them). When the engines land they
-    // pick these up from the DTO with no schema change.
+    // These knobs are visible in the Settings → Cash tab but their engines
+    // haven't shipped yet (the original CashManager audit deferred them). When
+    // the engines land they pick these up from the DTO with no schema change.
 
-    /// <summary>Skip a pickup that would push the character into the
-    /// Light encumbrance bracket. Engine deferred.</summary>
+    // Skip a pickup that would push the character into the Light encumbrance
+    // bracket. Engine deferred.
     public bool SkipCollectIfMakesLight { get; set; }
 
-    /// <summary>Skip a pickup that would push past Light → Medium.
-    /// Engine deferred.</summary>
+    // Skip a pickup that would push past Light → Medium. Engine deferred.
     public bool SkipCollectIfMakesMedium { get; set; }
 
-    /// <summary>Skip a pickup that would push past Medium → Heavy.
-    /// Engine deferred.</summary>
+    // Skip a pickup that would push past Medium → Heavy. Engine deferred.
     public bool SkipCollectIfMakesHeavy { get; set; }
 
-    /// <summary>Defer pickups until the current combat round ends so
-    /// the pre-attack roll isn't lost. Engine deferred.</summary>
+    // Defer pickups until the current combat round ends so the pre-attack roll
+    // isn't lost. Engine deferred.
     public bool CollectAfterCombatFinished { get; set; }
 
-    /// <summary>When a Collect-flagged currency would push past an
-    /// encumbrance gate, drop just enough lower-value Collect-flagged
-    /// held coin to make room. Never sacrifices Ignore-flagged coin.
-    /// Engine deferred.</summary>
+    // When a Collect-flagged currency would push past an encumbrance gate, drop
+    // just enough lower-value Collect-flagged held coin to make room. Never
+    // sacrifices Ignore-flagged coin. Engine deferred.
     public bool DropSmallerForLarger { get; set; }
 }
 
-/// <summary>Per-currency pickup decision.</summary>
+// Per-currency pickup decision.
 public enum CashPolicy
 {
-    /// <summary>Don't touch — leave on the ground.</summary>
+    // Don't touch — leave on the ground.
     Ignore,
 
-    /// <summary>Pick up via <c>get all &lt;coin&gt;</c>.</summary>
+    // Pick up via get all <coin>.
     Collect,
 
-    /// <summary>If we already hold any of this currency, drop it.
-    /// Doesn't pick up new piles.</summary>
+    // If we already hold any of this currency, drop it. Doesn't pick up new piles.
     Discard,
 }

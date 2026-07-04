@@ -1,16 +1,12 @@
 namespace FujinTerm.Models.Profile;
 
-/// <summary>
-/// The 21 equipment slots an <see cref="EquipmentSet"/> can control, in the
-/// Workshop's display order. <see cref="AlternateWeapon"/> /
-/// <see cref="AlternateOffHand"/> are <i>virtual</i> — applying a set never
-/// sends a wire <c>wear</c> for them; instead it writes the matching
-/// <see cref="CombatSettings.AlternateWeapon"/> /
-/// <see cref="CombatSettings.AlternateOffHand"/> so the combat weapon-swap
-/// matrix picks them up. The remaining slots map to real worn-item placements
-/// (see <see cref="Game.Inventory.EquipmentSlotMap"/> for the MajorMUD worn-id
-/// behind each).
-/// </summary>
+// The 21 equipment slots an EquipmentSet can control, in the Workshop's display
+// order. AlternateWeapon / AlternateOffHand are virtual — applying a set never
+// sends a wire wear for them; instead it writes the matching
+// CombatSettings.AlternateWeapon / CombatSettings.AlternateOffHand so the combat
+// weapon-swap matrix picks them up. The remaining slots map to real worn-item
+// placements (see Game.Inventory.EquipmentSlotMap for the MajorMUD worn-id
+// behind each).
 public enum EquipmentSlot
 {
     Weapon,

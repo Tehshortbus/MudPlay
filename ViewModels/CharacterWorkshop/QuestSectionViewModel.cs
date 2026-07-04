@@ -16,21 +16,17 @@ using FujinTerm.Views.CharacterWorkshop;
 
 namespace FujinTerm.ViewModels.CharacterWorkshop;
 
-/// <summary>
-/// QUEST STATUS section — the per-character quest checklist. Crawls every quest in
-/// the active set (<see cref="QuestCrawler"/>), resolves each to the character's
-/// class for class-branched bonuses, and lists the visible ones
-/// (<see cref="QuestStore"/> owns names + show/hide). Each card carries the quest's
-/// level gate, class-resolved bonus + award labels, a manual Complete checkbox, and
-/// a followable step checklist parsed from the quest's step markdown — the user's
-/// edited override (<see cref="QuestStore"/>) when present, else the crawler's
-/// auto-draft (<see cref="QuestStepGraph"/>, band-filtered per the crawl). Completion
-/// is one-way: ticking the checkbox, or ticking every step, marks the quest done;
-/// both states persist per character in
-/// <see cref="CharacterProfile.QuestLog"/>. The union of every completed quest's
-/// bonus is published to the shared <see cref="QuestBonusState"/>, which the
-/// Character Info tab folds into its derived combat + a Quest Bonuses readout.
-/// </summary>
+// QUEST STATUS section — the per-character quest checklist. Crawls every quest in
+// the active set (QuestCrawler), resolves each to the character's class for
+// class-branched bonuses, and lists the visible ones (QuestStore owns names +
+// show/hide). Each card carries the quest's level gate, class-resolved bonus + award
+// labels, a manual Complete checkbox, and a followable step checklist parsed from the
+// quest's step markdown — the user's edited override (QuestStore) when present, else
+// the crawler's auto-draft (QuestStepGraph, band-filtered per the crawl). Completion
+// is one-way: ticking the checkbox, or ticking every step, marks the quest done; both
+// states persist per character in CharacterProfile.QuestLog. The union of every
+// completed quest's bonus is published to the shared QuestBonusState, which the
+// Character Info tab folds into its derived combat + a Quest Bonuses readout.
 public sealed partial class QuestSectionViewModel : WorkshopSectionViewModel
 {
     private readonly PlayerStats _stats;
@@ -56,10 +52,11 @@ public sealed partial class QuestSectionViewModel : WorkshopSectionViewModel
     public override string Title => "Quest Status";
     public override Control View => _view ??= new QuestSectionView { DataContext = this };
 
-    /// <summary>Visible, class-resolved quest cards: incomplete first, completed at the bottom; within each group ordered by required level (low→high), then quest name.</summary>
+    // Visible, class-resolved quest cards: incomplete first, completed at the bottom;
+    // within each group ordered by required level (low→high), then quest name.
     public ObservableCollection<QuestCardViewModel> Quests { get; } = new();
 
-    /// <summary>False when no visible quest resolves (no set / no character) — drives the empty-state hint.</summary>
+    // False when no visible quest resolves (no set / no character) — drives the empty-state hint.
     [ObservableProperty] private bool _hasQuests;
 
     public QuestSectionViewModel(PlayerStats stats, GameDataCache gameData,

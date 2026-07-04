@@ -3,12 +3,9 @@ using FujinTerm.Game;
 
 namespace FujinTerm.ViewModels;
 
-/// <summary>
-/// One displayed row in the <see cref="ConversationViewModel"/>'s filtered
-/// list. Wraps a <see cref="ChatLogEntry"/> with the channel-color brush +
-/// timestamp / channel-tag / speaker / message display strings the XAML
-/// binds to.
-/// </summary>
+// One displayed row in the ConversationViewModel's filtered list. Wraps a
+// ChatLogEntry with the channel-color brush + timestamp / channel-tag /
+// speaker / message display strings the XAML binds to.
 public sealed class ConversationRowViewModel
 {
     public ChatLogEntry Entry { get; }

@@ -7,29 +7,25 @@ using FujinTerm.Services;
 
 namespace FujinTerm.ViewModels;
 
-/// <summary>
-/// Modeless Session Stats window VM. A pure projection over the three Phase 11
-/// trackers — <see cref="CombatSessionTracker"/> (Player Statistics),
-/// <see cref="TimeAnalysisTracker"/> (Time Analysis), and
-/// <see cref="SessionActivityTracker"/> (Session Statistics + kills/hour
-/// sparkline). It snapshots each on their <c>Changed</c> signal and exposes the
-/// figures for binding; the trackers own all the state and the session-reset
-/// boundary, so this VM never mutates game data.
-/// </summary>
-/// <remarks>
-/// Combat <c>Changed</c> can fire many times a round, so refreshes are coalesced
-/// onto a single dispatcher tick rather than re-snapshotting per event. The
-/// snapshots are held as record-struct properties and the window binds their
-/// fields directly (with <c>StringFormat</c> for plain numbers / percentages);
-/// durations and damage ranges get formatted getters here since
-/// <c>StringFormat</c> can't express "hours past 24" or a min–max pair. A 1-second
-/// <see cref="DispatcherTimer"/> also re-snapshots on the wall clock so the
-/// durations and per-hour rates tick up live while the window is open, instead of
-/// only advancing when a tracker input changes.
-/// </remarks>
+// Modeless Session Stats window VM. A pure projection over the three session
+// trackers — CombatSessionTracker (Player Statistics), TimeAnalysisTracker
+// (Time Analysis), and SessionActivityTracker (Session Statistics +
+// kills/hour sparkline). It snapshots each on their Changed signal and
+// exposes the figures for binding; the trackers own all the state and the
+// session-reset boundary, so this VM never mutates game data.
+//
+// Combat Changed can fire many times a round, so refreshes are coalesced
+// onto a single dispatcher tick rather than re-snapshotting per event. The
+// snapshots are held as record-struct properties and the window binds their
+// fields directly (with StringFormat for plain numbers / percentages);
+// durations and damage ranges get formatted getters here since StringFormat
+// can't express "hours past 24" or a min–max pair. A 1-second
+// DispatcherTimer also re-snapshots on the wall clock so the durations and
+// per-hour rates tick up live while the window is open, instead of only
+// advancing when a tracker input changes.
 public sealed partial class SessionStatsViewModel : ObservableObject, IDisposable
 {
-    /// <summary>Bucket count for the kills/hour sparkline across the rolling window.</summary>
+    // Bucket count for the kills/hour sparkline across the rolling window.
     private const int SparklineBuckets = 30;
 
     private readonly CombatSessionTracker _combatTracker;
@@ -38,14 +34,14 @@ public sealed partial class SessionStatsViewModel : ObservableObject, IDisposabl
     private readonly TransactionHistoryTracker _transactionTracker;
     private readonly SessionStatsLayoutStore _layoutStore;
 
-    /// <summary>Opens the Transaction history window. Routed back to
-    /// <c>MainWindowViewModel</c> so the window follows the modeless
-    /// toggle-window contract (re-press closes) rather than being spawned here.</summary>
+    // Opens the Transaction history window. Routed back to
+    // MainWindowViewModel so the window follows the modeless toggle-window
+    // contract (re-press closes) rather than being spawned here.
     private readonly Action _openTransactionHistory;
 
-    /// <summary>Drives the live wall-clock ticking of durations / rates: the
-    /// time-derived figures advance with real time even when no tracker input
-    /// fires, so the user sees the session clock move.</summary>
+    // Drives the live wall-clock ticking of durations / rates: the
+    // time-derived figures advance with real time even when no tracker input
+    // fires, so the user sees the session clock move.
     private readonly DispatcherTimer _liveTick;
 
     private bool _refreshScheduled;
@@ -67,21 +63,21 @@ public sealed partial class SessionStatsViewModel : ObservableObject, IDisposabl
     [ObservableProperty]
     private SessionActivityStats _activity;
 
-    /// <summary>Kills/hour series feeding the kills sparkline; reassigned each refresh.</summary>
+    // Kills/hour series feeding the kills sparkline; reassigned each refresh.
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(KillsPeakText), nameof(KillsFloorText))]
     private IReadOnlyList<double> _killsPerHour = Array.Empty<double>();
 
-    /// <summary>Experience/hour series feeding the exp sparkline; reassigned each refresh.</summary>
+    // Experience/hour series feeding the exp sparkline; reassigned each refresh.
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ExpPeakText), nameof(ExpFloorText))]
     private IReadOnlyList<double> _experiencePerHour = Array.Empty<double>();
 
-    /// <summary>Per-panel visibility toggles — each of the five panels (the two
-    /// rate graphs and the three stat sections) can be shown or hidden via the
-    /// window's context menu. Each change is written through to the per-character
-    /// layout via <see cref="PersistLayout"/>; <see cref="_loadingLayout"/> gates
-    /// the write so applying a saved layout doesn't echo straight back to disk.</summary>
+    // Per-panel visibility toggles — each of the five panels (the two rate
+    // graphs and the three stat sections) can be shown or hidden via the
+    // window's context menu. Each change is written through to the
+    // per-character layout via PersistLayout; _loadingLayout gates the write
+    // so applying a saved layout doesn't echo straight back to disk.
     [ObservableProperty]
     private bool _isKillsGraphVisible = true;
 
@@ -97,14 +93,14 @@ public sealed partial class SessionStatsViewModel : ObservableObject, IDisposabl
     [ObservableProperty]
     private bool _isSessionStatsVisible = true;
 
-    /// <summary>Panel ids in their resolved top-to-bottom order — the window reads
-    /// this on open to reorder its panel host, and pushes drag-reorders back via
-    /// <see cref="SaveOrder"/>.</summary>
+    // Panel ids in their resolved top-to-bottom order — the window reads this
+    // on open to reorder its panel host, and pushes drag-reorders back via
+    // SaveOrder.
     private List<string> _panelOrder = new();
 
-    /// <summary>Suppresses <see cref="PersistLayout"/> while
-    /// <see cref="LoadLayout"/> seeds the visibility toggles from a saved layout,
-    /// so hydration doesn't immediately write the same values back.</summary>
+    // Suppresses PersistLayout while LoadLayout seeds the visibility toggles
+    // from a saved layout, so hydration doesn't immediately write the same
+    // values back.
     private bool _loadingLayout;
 
     public SessionStatsViewModel(
@@ -143,11 +139,11 @@ public sealed partial class SessionStatsViewModel : ObservableObject, IDisposabl
 
     // ----- Panel layout (order + visibility) ---------------------------
 
-    /// <summary>The resolved panel order the window applies on open.</summary>
+    // The resolved panel order the window applies on open.
     public IReadOnlyList<string> PanelOrder => _panelOrder;
 
-    /// <summary>Hydrate the order + visibility toggles from the per-character
-    /// layout store. Guarded so the toggle assignments don't write straight back.</summary>
+    // Hydrate the order + visibility toggles from the per-character layout
+    // store. Guarded so the toggle assignments don't write straight back.
     private void LoadLayout()
     {
         _loadingLayout = true;
@@ -158,15 +154,15 @@ public sealed partial class SessionStatsViewModel : ObservableObject, IDisposabl
         _loadingLayout = false;
     }
 
-    /// <summary>Push a new panel order (from a drag-reorder) through to the store,
-    /// keeping the current hidden set.</summary>
+    // Push a new panel order (from a drag-reorder) through to the store,
+    // keeping the current hidden set.
     public void SaveOrder(IEnumerable<string> ids)
     {
         _panelOrder = ids.ToList();
         PersistLayout();
     }
 
-    /// <summary>Snapshot the live order + hidden set into the per-character store.</summary>
+    // Snapshot the live order + hidden set into the per-character store.
     private void PersistLayout()
     {
         if (_loadingLayout) return;
@@ -221,11 +217,11 @@ public sealed partial class SessionStatsViewModel : ObservableObject, IDisposabl
     public string ProcRangeText     => Range(Combat.ProcMinDamage, Combat.ProcMaxDamage);
     public string SpellRangeText    => Range(Combat.SpellMinDamage, Combat.SpellMaxDamage);
 
-    /// <summary>Drives the proc row's visibility — hidden until a weapon procs.</summary>
+    // Drives the proc row's visibility — hidden until a weapon procs.
     public bool HasProcs => Combat.ProcHits > 0;
 
-    /// <summary>Drives the spell row's visibility — hidden until a configured
-    /// attack spell lands.</summary>
+    // Drives the spell row's visibility — hidden until a configured attack
+    // spell lands.
     public bool HasSpells => Combat.SpellHits > 0;
 
     // ----- Rate-graph scales -------------------------------------------
@@ -256,9 +252,9 @@ public sealed partial class SessionStatsViewModel : ObservableObject, IDisposabl
 
     // ----- Commands ----------------------------------------------------
 
-    /// <summary>Manual "Reset session" — wipes every session tracker's counters
-    /// and restarts their clocks, and clears the transaction ledger. The resets
-    /// raise <c>Changed</c>, which refreshes the bound figures.</summary>
+    // Manual "Reset session" — wipes every session tracker's counters and
+    // restarts their clocks, and clears the transaction ledger. The resets
+    // raise Changed, which refreshes the bound figures.
     [RelayCommand]
     private void Reset()
     {
@@ -268,8 +264,8 @@ public sealed partial class SessionStatsViewModel : ObservableObject, IDisposabl
         _transactionTracker.Reset();
     }
 
-    /// <summary>"Transaction history" button — opens the modeless ledger window
-    /// (bank deposits + stash-room hides recorded this session).</summary>
+    // "Transaction history" button — opens the modeless ledger window (bank
+    // deposits + stash-room hides recorded this session).
     [RelayCommand]
     private void OpenTransactionHistory() => _openTransactionHistory();
 

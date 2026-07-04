@@ -6,15 +6,11 @@ using FujinTerm.Services;
 
 namespace FujinTerm.ViewModels.Navigation;
 
-/// <summary>
-/// Ephemeral session for the Navigation window's Loop mode. Tracks
-/// the user's clicked rooms and uses
-/// <see cref="LoopManager.ExpandWaypoints"/> to BFS-gap-fill the
-/// path between them so the saved loop is ready to run. On Save the
-/// click list becomes the loop's <see cref="Loop.Waypoints"/> (each
-/// click → one <see cref="LoopWaypoint"/> with no command attached);
-/// commands and delays are added later via the loop editor.
-/// </summary>
+// Ephemeral session for the Navigation window's Loop mode. Tracks the user's
+// clicked rooms and uses LoopManager.ExpandWaypoints to BFS-gap-fill the path
+// between them so the saved loop is ready to run. On Save the click list
+// becomes the loop's Waypoints (each click → one LoopWaypoint with no command
+// attached); commands and delays are added later via the loop editor.
 public sealed partial class LoopBuilderSessionViewModel : ObservableObject
 {
     private readonly LoopManager _loops;
@@ -32,7 +28,7 @@ public sealed partial class LoopBuilderSessionViewModel : ObservableObject
         ProposedName = $"Loop {DateTime.Now:HH-mm}";
     }
 
-    /// <summary>Click sequence rendered in the bottom strip — read-only externally.</summary>
+    // Click sequence rendered in the bottom strip — read-only externally.
     public ObservableCollection<LoopBuilderRow> Clicks { get; } = new();
 
     [ObservableProperty] private string _proposedName = "";
@@ -40,20 +36,15 @@ public sealed partial class LoopBuilderSessionViewModel : ObservableObject
     [ObservableProperty] private int _expandedStepCount;
     [ObservableProperty] private string _unreachableSummary = string.Empty;
 
-    /// <summary>
-    /// Flattened RoomKey sequence for the map's loop-builder polyline:
-    /// every click + every BFS-filled intermediate room + the closing
-    /// leg back to click 0. Null when fewer than two clicks. Refreshed
-    /// alongside <see cref="ExpandedStepCount"/> on every click change.
-    /// </summary>
+    // Flattened RoomKey sequence for the map's loop-builder polyline: every
+    // click + every BFS-filled intermediate room + the closing leg back to
+    // click 0. Null when fewer than two clicks. Refreshed alongside
+    // ExpandedStepCount on every click change.
     [ObservableProperty] private IReadOnlyList<RoomKey>? _previewedRoomKeys;
 
-    /// <summary>
-    /// Just the clicks the user laid down, in order — used by the map's
-    /// numbered waypoint markers. Distinct from
-    /// <see cref="PreviewedRoomKeys"/> which carries every BFS-filled
-    /// intermediate.
-    /// </summary>
+    // Just the clicks the user laid down, in order — used by the map's
+    // numbered waypoint markers. Distinct from PreviewedRoomKeys which
+    // carries every BFS-filled intermediate.
     [ObservableProperty] private IReadOnlyList<RoomKey>? _waypointKeys;
 
     public bool HasClicks => Clicks.Count > 0;
@@ -83,10 +74,8 @@ public sealed partial class LoopBuilderSessionViewModel : ObservableObject
         Reexpand();
     }
 
-    /// <summary>
-    /// Remove the click at <paramref name="index"/> (CURRENT NAV row
-    /// click → remove). No-op when index is out of range.
-    /// </summary>
+    // Remove the click at index (CURRENT NAV row click → remove). No-op when
+    // index is out of range.
     public void RemoveClickAt(int index)
     {
         if (index < 0 || index >= _clicks.Count) return;
@@ -97,11 +86,8 @@ public sealed partial class LoopBuilderSessionViewModel : ObservableObject
         Reexpand();
     }
 
-    /// <summary>
-    /// Move the click at <paramref name="fromIndex"/> to
-    /// <paramref name="toIndex"/> (CURRENT NAV drag-reorder). No-op
-    /// when indices match or either is out of range.
-    /// </summary>
+    // Move the click at fromIndex to toIndex (CURRENT NAV drag-reorder).
+    // No-op when indices match or either is out of range.
     public void MoveClick(int fromIndex, int toIndex)
     {
         if (fromIndex == toIndex) return;
@@ -136,11 +122,8 @@ public sealed partial class LoopBuilderSessionViewModel : ObservableObject
         OnPropertyChanged(nameof(CanSave));
     }
 
-    /// <summary>
-    /// Persist the current loop under <see cref="ProposedName"/>.
-    /// Returns the saved <see cref="Loop"/>, or null when the session
-    /// isn't ready to save.
-    /// </summary>
+    // Persist the current loop under ProposedName. Returns the saved Loop, or
+    // null when the session isn't ready to save.
     public Loop? Save()
     {
         if (!CanSave) return null;
@@ -151,15 +134,12 @@ public sealed partial class LoopBuilderSessionViewModel : ObservableObject
         return loop;
     }
 
-    /// <summary>
-    /// Build a <see cref="Loop"/> from the current clicks WITHOUT
-    /// writing it to disk. Used by the Run button so transient
-    /// "try this loop" runs don't pollute the saved-loops list — the
-    /// user persists explicitly via the Manage dialog. Returns null
-    /// when the session isn't ready (fewer than 2 clicks, gap-fill
-    /// unreachable). The build session is left intact so the user can
-    /// still Save it from Manage later.
-    /// </summary>
+    // Build a Loop from the current clicks WITHOUT writing it to disk. Used
+    // by the Run button so transient "try this loop" runs don't pollute the
+    // saved-loops list — the user persists explicitly via the Manage dialog.
+    // Returns null when the session isn't ready (fewer than 2 clicks,
+    // gap-fill unreachable). The build session is left intact so the user can
+    // still Save it from Manage later.
     public Loop? BuildTransient()
     {
         if (!CanSave) return null;
@@ -205,13 +185,11 @@ public sealed partial class LoopBuilderSessionViewModel : ObservableObject
         OnPropertyChanged(nameof(CanSave));
     }
 
-    /// <summary>
-    /// Walk the expanded direction list from <paramref name="start"/>
-    /// and accumulate every room the cycle visits. Returns null if
-    /// any intermediate exit doesn't resolve (graph mutation between
-    /// expansion and walking — shouldn't happen in normal use but the
-    /// null guard keeps the renderer from drawing a partial polyline).
-    /// </summary>
+    // Walk the expanded direction list from start and accumulate every room
+    // the cycle visits. Returns null if any intermediate exit doesn't resolve
+    // (graph mutation between expansion and walking — shouldn't happen in
+    // normal use but the null guard keeps the renderer from drawing a partial
+    // polyline).
     private IReadOnlyList<RoomKey>? BuildRoomKeySequence(RoomKey start, IReadOnlyList<LoopStep> steps)
     {
         var sequence = new List<RoomKey>(steps.Count + 1) { start };
@@ -228,5 +206,5 @@ public sealed partial class LoopBuilderSessionViewModel : ObservableObject
     }
 }
 
-/// <summary>Single click row shown in the bottom strip — index + room label.</summary>
+// Single click row shown in the bottom strip — index + room label.
 public sealed record LoopBuilderRow(int Index, RoomKey Key, string Name);

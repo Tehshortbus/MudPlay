@@ -4,13 +4,10 @@ using FujinTerm.Services;
 
 namespace FujinTerm.ViewModels.Profile;
 
-/// <summary>
-/// File → Save profile as dialog. Prompts the user for a profile name
-/// (which becomes the per-character folder under <c>Data/profiles/</c>).
-/// Inline validates the name against filesystem-unsafe characters and
-/// surfaces an overwrite warning when a folder with that name already
-/// exists; Save commits on Enter / button, Cancel / X returns <c>null</c>.
-/// </summary>
+// File → Save profile as dialog. Prompts the user for a profile name (which becomes the
+// per-character folder under Data/profiles/). Inline validates the name against
+// filesystem-unsafe characters and surfaces an overwrite warning when a folder with
+// that name already exists; Save commits on Enter / button, Cancel / X returns null.
 public sealed partial class ProfileNameInputDialogViewModel : ObservableObject, IDialogViewModel<string>
 {
     public event Action<string?>? CloseRequested;
@@ -27,12 +24,12 @@ public sealed partial class ProfileNameInputDialogViewModel : ObservableObject, 
 
     public string NormalizedName => (Name ?? string.Empty).Trim();
 
-    /// <summary>Filesystem-invalid character names trip this; rendered red below the input.</summary>
+    // Filesystem-invalid character names trip this; rendered red below the input.
     public bool HasError => !string.IsNullOrEmpty(ValidateName(NormalizedName));
 
     public string ErrorMessage => ValidateName(NormalizedName) ?? string.Empty;
 
-    /// <summary>True when the entered name already exists on disk — surfaces an inline "will overwrite" warning.</summary>
+    // True when the entered name already exists on disk — surfaces an inline "will overwrite" warning.
     public bool WillOverwrite => !HasError && NormalizedName.Length > 0 && _exists(NormalizedName);
 
     public bool CanSave => !HasError && NormalizedName.Length > 0;

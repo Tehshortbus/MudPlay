@@ -5,42 +5,38 @@ using FujinTerm.Models.Profile;
 
 namespace FujinTerm.ViewModels.CharacterWorkshop;
 
-/// <summary>
-/// One row in the Equipment Manager's slot grid: a slot's wanted
-/// <see cref="ItemName"/> (empty = <c>{no change}</c>, the slot is skipped on
-/// apply) and the live-filtered <see cref="AvailableItems"/> suggestion list for
-/// the slot. Editing the item name invokes the supplied callback so the section
-/// re-persists the set and refreshes the equipment-bonuses panel.
-/// </summary>
+// One row in the Equipment Manager's slot grid: a slot's wanted ItemName (empty =
+// {no change}, the slot is skipped on apply) and the live-filtered AvailableItems
+// suggestion list for the slot. Editing the item name invokes the supplied
+// callback so the section re-persists the set and refreshes the equipment-bonuses
+// panel.
 public sealed partial class EquipmentSlotRowViewModel : ObservableObject
 {
     private readonly Action<EquipmentSlotRowViewModel> _onEdited;
     private bool _suppress;
 
-    /// <summary>The slot this row configures.</summary>
+    // The slot this row configures.
     public EquipmentSlot Slot { get; }
 
-    /// <summary>Display label, e.g. <c>"Alt Off-Hand"</c>.</summary>
+    // Display label, e.g. "Alt Off-Hand".
     public string Label { get; }
 
-    /// <summary>True for the two virtual (Alt Weapon / Off-Hand) rows — no wire wear on apply.</summary>
+    // True for the two virtual (Alt Weapon / Off-Hand) rows — no wire wear on apply.
     public bool IsVirtual { get; }
 
-    /// <summary>Game-data item names that can occupy this slot — the field's
-    /// suggestions, filtered by the character's level / class / alignment. Updated
-    /// live when those change.</summary>
+    // Game-data item names that can occupy this slot — the field's suggestions,
+    // filtered by the character's level / class / alignment. Updated live when
+    // those change.
     [ObservableProperty] private IReadOnlyList<string> _availableItems;
 
-    /// <summary>Item the set wants here; null / empty = <c>{no change}</c>.</summary>
+    // Item the set wants here; null / empty = {no change}.
     [ObservableProperty] private string? _itemName;
 
-    /// <summary>
-    /// Whether this row applies to the currently-selected set (drives its
-    /// visibility). The section hides the virtual Alt rows for every set except
-    /// Default — the alternate-weapon swap only happens during normal weapon
-    /// combat (backstab fires on the opening round; pre-rest sets trigger out of
-    /// combat). Defaults true; recomputed on each set switch.
-    /// </summary>
+    // Whether this row applies to the currently-selected set (drives its
+    // visibility). The section hides the virtual Alt rows for every set except
+    // Default — the alternate-weapon swap only happens during normal weapon combat
+    // (backstab fires on the opening round; pre-rest sets trigger out of combat).
+    // Defaults true; recomputed on each set switch.
     [ObservableProperty] private bool _applies = true;
 
     public EquipmentSlotRowViewModel(
@@ -56,7 +52,7 @@ public sealed partial class EquipmentSlotRowViewModel : ObservableObject
         _onEdited = onEdited;
     }
 
-    /// <summary>Seed the row's item without firing the edit callback.</summary>
+    // Seed the row's item without firing the edit callback.
     public void Load(string? itemName)
     {
         _suppress = true;
@@ -64,15 +60,15 @@ public sealed partial class EquipmentSlotRowViewModel : ObservableObject
         finally { _suppress = false; }
     }
 
-    /// <summary>Replace the suggestion list (a level/class/alignment re-filter).</summary>
+    // Replace the suggestion list (a level/class/alignment re-filter).
     public void SetAvailableItems(IReadOnlyList<string> items)
     {
         ArgumentNullException.ThrowIfNull(items);
         AvailableItems = items;
     }
 
-    /// <summary>Snapshot this row as a persistable set entry, or null when
-    /// <c>{no change}</c> (no item) — the section persists only item-bearing slots.</summary>
+    // Snapshot this row as a persistable set entry, or null when {no change} (no
+    // item) — the section persists only item-bearing slots.
     public EquipmentSlotEntry? ToEntry() =>
         string.IsNullOrWhiteSpace(ItemName) ? null : new EquipmentSlotEntry(Slot, ItemName!.Trim());
 

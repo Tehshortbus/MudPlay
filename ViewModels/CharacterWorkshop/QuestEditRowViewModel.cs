@@ -4,50 +4,47 @@ using FujinTerm.Models.Profile;
 
 namespace FujinTerm.ViewModels.CharacterWorkshop;
 
-/// <summary>
-/// One editable quest in the <see cref="QuestEditorViewModel"/> master list. Holds
-/// the user-owned overlay fields — <see cref="Name"/>, <see cref="Visible"/>,
-/// <see cref="Steps"/> — as live two-way state, both pre-filled from the crawl
-/// baseline (<see cref="FallbackLabel"/> / <see cref="AutoSteps"/>) so the boxes show
-/// the auto-draft the moment the editor opens. <see cref="ToDefinition"/> diffs back
-/// against that baseline so an untouched prefill is never frozen into the overlay.
-/// Identity is the (<see cref="Flag"/>, <see cref="Step"/>) pair.
-/// </summary>
+// One editable quest in the QuestEditorViewModel master list. Holds the user-owned
+// overlay fields — Name, Visible, Steps — as live two-way state, both pre-filled
+// from the crawl baseline (FallbackLabel / AutoSteps) so the boxes show the
+// auto-draft the moment the editor opens. ToDefinition diffs back against that
+// baseline so an untouched prefill is never frozen into the overlay. Identity is
+// the (Flag, Step) pair.
 public sealed partial class QuestEditRowViewModel : ObservableObject
 {
-    /// <summary>Quest-flag ability id (the overlay key's flag half).</summary>
+    // Quest-flag ability id (the overlay key's flag half).
     public int Flag { get; }
 
-    /// <summary>Band level for a multi-part quest; <c>0</c> for a single-part one.</summary>
+    // Band level for a multi-part quest; 0 for a single-part one.
     public int Step { get; }
 
-    /// <summary>True when this is a user-added quest (no crawl backing) — fields persist verbatim and the row can be deleted.</summary>
+    // True when this is a user-added quest (no crawl backing) — fields persist verbatim and the row can be deleted.
     public bool IsManual => QuestDefinition.IsManual(Flag);
 
-    /// <summary>True for a crawled quest — eligible for blocking rather than deletion.</summary>
+    // True for a crawled quest — eligible for blocking rather than deletion.
     public bool IsCrawled => !IsManual;
 
-    /// <summary>Auto-draft title — pre-fills <see cref="Name"/> and is the delta baseline for it.</summary>
+    // Auto-draft title — pre-fills Name and is the delta baseline for it.
     public string FallbackLabel { get; }
 
-    /// <summary>The crawler's drafted steps — pre-fills <see cref="Steps"/> and is its delta baseline.</summary>
+    // The crawler's drafted steps — pre-fills Steps and is its delta baseline.
     public string AutoSteps { get; }
 
-    /// <summary>The crawler's inferred award label — pre-fills <see cref="Rewards"/> and is its delta baseline.</summary>
+    // The crawler's inferred award label — pre-fills Rewards and is its delta baseline.
     public string AutoRewards { get; }
 
-    /// <summary>Class-resolved permanent bonus summary; empty when the quest grants none.</summary>
+    // Class-resolved permanent bonus summary; empty when the quest grants none.
     public string BonusText { get; }
     public bool HasBonus => BonusText.Length > 0;
 
-    /// <summary>Level-gate label; empty when ungated.</summary>
+    // Level-gate label; empty when ungated.
     public string LevelText { get; }
     public bool HasLevel => LevelText.Length > 0;
 
-    /// <summary>The crawler's inferred level gate — pre-fills <see cref="RequiredLevelInput"/> and is its delta baseline (0 when ungated / not found).</summary>
+    // The crawler's inferred level gate — pre-fills RequiredLevelInput and is its delta baseline (0 when ungated / not found).
     public int AutoRequiredLevel { get; }
 
-    /// <summary>Class / race restriction the crawl found; empty when the quest is open to all.</summary>
+    // Class / race restriction the crawl found; empty when the quest is open to all.
     public string RequirementsText { get; }
     public bool HasRequirements => RequirementsText.Length > 0;
 
@@ -59,11 +56,9 @@ public sealed partial class QuestEditRowViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(ListLabel))]
     private bool _visible;
 
-    /// <summary>
-    /// Live block flag bound to the editor's "Block" toggle (crawled quests only). When
-    /// set the quest is suppressed from the journal entirely as a false positive; the row
-    /// stays in the editor so it can be un-blocked.
-    /// </summary>
+    // Live block flag bound to the editor's "Block" toggle (crawled quests only). When
+    // set the quest is suppressed from the journal entirely as a false positive; the row
+    // stays in the editor so it can be un-blocked.
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ListLabel))]
     private bool _blocked;
@@ -72,11 +67,9 @@ public sealed partial class QuestEditRowViewModel : ObservableObject
 
     [ObservableProperty] private string _rewards;
 
-    /// <summary>
-    /// Live required-level override bound to the editor's spinner. <c>null</c> means
-    /// "no override" (the box is empty) and falls back to the crawled gate; any value
-    /// (including <c>0</c> to force ungated) persists as a user override.
-    /// </summary>
+    // Live required-level override bound to the editor's spinner. null means
+    // "no override" (the box is empty) and falls back to the crawled gate; any value
+    // (including 0 to force ungated) persists as a user override.
     [ObservableProperty] private int? _requiredLevelInput;
 
     public QuestEditRowViewModel(int flag, int step, string fallbackLabel,
@@ -105,7 +98,7 @@ public sealed partial class QuestEditRowViewModel : ObservableObject
         _requiredLevelInput = requiredLevel ?? (autoRequiredLevel > 0 ? autoRequiredLevel : null);
     }
 
-    /// <summary>Left-list label: the current name (or the auto-draft fallback), suffixed when blocked / hidden.</summary>
+    // Left-list label: the current name (or the auto-draft fallback), suffixed when blocked / hidden.
     public string ListLabel
     {
         get
@@ -116,13 +109,11 @@ public sealed partial class QuestEditRowViewModel : ObservableObject
         }
     }
 
-    /// <summary>
-    /// Materialize the current edits into a persistable definition, diffed against the
-    /// crawl baseline: a name still equal to the fallback, steps still equal to the
-    /// auto-draft, or rewards still equal to the inferred award, collapse to empty/null
-    /// so an untouched prefill isn't frozen into the overlay
-    /// (<see cref="QuestStore.Save"/> then drops the redundant row entirely).
-    /// </summary>
+    // Materialize the current edits into a persistable definition, diffed against the
+    // crawl baseline: a name still equal to the fallback, steps still equal to the
+    // auto-draft, or rewards still equal to the inferred award, collapse to empty/null
+    // so an untouched prefill isn't frozen into the overlay (QuestStore.Save then drops
+    // the redundant row entirely).
     public QuestDefinition ToDefinition()
     {
         // A manual quest has no crawl baseline to diff against — it's self-contained, so its

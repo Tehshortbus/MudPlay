@@ -15,19 +15,16 @@ using FujinTerm.Views.CharacterWorkshop;
 
 namespace FujinTerm.ViewModels.CharacterWorkshop;
 
-/// <summary>
-/// CP ALLOCATION section — the editable per-level character-point plan. The
-/// baseline is the live raw-base stats (current stats minus equipment bonuses);
-/// each grid row is a planned future level whose target STR/INT/WIL/AGL/HEA/CHM
-/// the user edits, with Total CP earned / CP Left recomputed live via
-/// <see cref="CpPlanCalculator"/> (race-min cost curve, race-max clamp,
-/// cumulative carryover). A target that would overspend is auto-trimmed at the
-/// just-edited cell so CP Left never goes negative. The clamped plan is published
-/// to the shared <see cref="CpPlanState"/> (so the Level Projection tab reflects
-/// the planned stat increases per level) and persists to the profile's
-/// <see cref="CharacterProfile.CharacterPlan"/>, driving auto-train + the
-/// <c>@train</c> remote command in later PRs.
-/// </summary>
+// CP ALLOCATION section — the editable per-level character-point plan. The
+// baseline is the live raw-base stats (current stats minus equipment bonuses);
+// each grid row is a planned future level whose target STR/INT/WIL/AGL/HEA/CHM
+// the user edits, with Total CP earned / CP Left recomputed live via
+// CpPlanCalculator (race-min cost curve, race-max clamp, cumulative carryover).
+// A target that would overspend is auto-trimmed at the just-edited cell so CP
+// Left never goes negative. The clamped plan is published to the shared
+// CpPlanState (so the Level Projection tab reflects the planned stat increases
+// per level) and persists to the profile's CharacterProfile.CharacterPlan,
+// driving auto-train and the @train remote command.
 public sealed partial class CpAllocationSectionViewModel : WorkshopSectionViewModel
 {
     private readonly PlayerStats _stats;
@@ -48,25 +45,25 @@ public sealed partial class CpAllocationSectionViewModel : WorkshopSectionViewMo
 
     public ObservableCollection<CpPlanRowViewModel> Rows { get; } = new();
 
-    /// <summary>Current unspent CP, seeded as the plan's starting balance (not displayed).</summary>
+    // Current unspent CP, seeded as the plan's starting balance (not displayed).
     [ObservableProperty] private int _unspentCp;
-    /// <summary>False when no race/class resolves (no character / game data) — gates the grid.</summary>
+    // False when no race/class resolves (no character / game data) — gates the grid.
     [ObservableProperty] private bool _hasCharacter;
 
-    /// <summary>The grid row the user has selected — drives <see cref="RemoveRowCommand"/>.</summary>
+    // The grid row the user has selected — drives RemoveRowCommand.
     [ObservableProperty] private CpPlanRowViewModel? _selectedRow;
-    /// <summary>Transient inline error (e.g. trying to remove a middle row); cleared on the next valid action.</summary>
+    // Transient inline error (e.g. trying to remove a middle row); cleared on the next valid action.
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasRemoveError))]
     private string? _removeError;
 
-    /// <summary>True when a <see cref="RemoveError"/> is showing — drives its visibility.</summary>
+    // True when a RemoveError is showing — drives its visibility.
     public bool HasRemoveError => !string.IsNullOrEmpty(RemoveError);
 
-    // ----- auto-train (PR 10.8) ------------------------------------------
-    /// <summary>True when the saved plan has an affordable raise to apply at the current level.</summary>
+    // ----- auto-train ----------------------------------------------------
+    // True when the saved plan has an affordable raise to apply at the current level.
     [ObservableProperty] private bool _canTrainNow;
-    /// <summary>True while a train run is in flight — disables the Train Now button.</summary>
+    // True while a train run is in flight — disables the Train Now button.
     [ObservableProperty] private bool _autoTrainBusy;
 
     // Captured on RefreshBaseline; inputs to the recalc.
@@ -114,7 +111,7 @@ public sealed partial class CpAllocationSectionViewModel : WorkshopSectionViewMo
 
     // ----- commands -------------------------------------------------------
 
-    /// <summary>Append the next level, seeded from the previous row (or baseline).</summary>
+    // Append the next level, seeded from the previous row (or baseline).
     [RelayCommand]
     private void AddLevel()
     {
@@ -127,11 +124,9 @@ public sealed partial class CpAllocationSectionViewModel : WorkshopSectionViewMo
         Persist();
     }
 
-    /// <summary>
-    /// Remove the selected row — but only the top or bottom one, so the plan
-    /// stays a contiguous level run (removing a middle level would orphan the
-    /// rows above/below it). A middle selection sets <see cref="RemoveError"/>.
-    /// </summary>
+    // Remove the selected row — but only the top or bottom one, so the plan stays
+    // a contiguous level run (removing a middle level would orphan the rows
+    // above/below it). A middle selection sets RemoveError.
     [RelayCommand(CanExecute = nameof(HasRows))]
     private void RemoveRow()
     {
@@ -154,7 +149,7 @@ public sealed partial class CpAllocationSectionViewModel : WorkshopSectionViewMo
         Persist();
     }
 
-    /// <summary>Clear the plan and persist the now-empty plan to the profile.</summary>
+    // Clear the plan and persist the now-empty plan to the profile.
     [RelayCommand(CanExecute = nameof(HasRows))]
     private void Reset()
     {
@@ -182,7 +177,7 @@ public sealed partial class CpAllocationSectionViewModel : WorkshopSectionViewMo
 
     private bool HasRows() => Rows.Count > 0;
 
-    /// <summary>Walk to the nearest allowed trainer and train + apply the plan.</summary>
+    // Walk to the nearest allowed trainer and train + apply the plan.
     [RelayCommand(CanExecute = nameof(CanRunTrain))]
     private void TrainNow() => _trainerWalk.TrainNow();
 

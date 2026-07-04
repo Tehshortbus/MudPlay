@@ -3,18 +3,14 @@ using FujinTerm.Services;
 
 namespace FujinTerm.ViewModels;
 
-/// <summary>
-/// One row in the <see cref="LogPaneViewModel"/>'s displayed list. Wraps a
-/// <see cref="LogEntry"/> with the formatted display strings the XAML binds
-/// to, plus the severity-coloured badge brush.
-/// </summary>
-/// <remarks>
-/// Why a class wrapping the struct rather than binding the struct directly:
-/// Avalonia's compiled bindings prefer reference types for list-item view
-/// models, and the small UI-only formatting (HH:mm:ss timestamp, severity
-/// abbreviation, badge brush lookup) is cleaner here than in XAML
-/// converters.
-/// </remarks>
+// One row in the LogPaneViewModel's displayed list. Wraps a LogEntry with
+// the formatted display strings the XAML binds to, plus the
+// severity-coloured badge brush.
+//
+// Why a class wrapping the struct rather than binding the struct directly:
+// Avalonia's compiled bindings prefer reference types for list-item view
+// models, and the small UI-only formatting (HH:mm:ss timestamp, severity
+// abbreviation, badge brush lookup) is cleaner here than in XAML converters.
 public sealed class LogPaneRowViewModel
 {
     public LogEntry Entry { get; }

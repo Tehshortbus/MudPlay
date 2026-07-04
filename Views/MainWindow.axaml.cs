@@ -8,15 +8,13 @@ using FujinTerm.ViewModels;
 
 namespace FujinTerm.Views;
 
-/// <summary>
-/// Code-behind for MainWindow.axaml. Wires the terminal control's user-input
-/// event to the view-model and re-focuses the terminal whenever a connection
-/// is established (so the user can start typing right away).
-/// </summary>
+// Wires the terminal control's user-input event to the view-model and
+// re-focuses the terminal whenever a connection is established (so the user
+// can start typing right away).
 public partial class MainWindow : Window
 {
     private TextBlock? _combatTickLabel;
-    /// <summary>Set once the user (or programmatic shutdown) has confirmed exit, so the second Close call sails through.</summary>
+    // Set once the user (or programmatic shutdown) has confirmed exit, so the second Close call sails through.
     private bool _exitConfirmed;
 
     public MainWindow()
@@ -102,11 +100,9 @@ public partial class MainWindow : Window
         };
     }
 
-    /// <summary>
-    /// Pulse the Tick status-bar label amber for a brief beat each time
-    /// TickEngine fires. Class is added immediately, removed after a 200 ms
-    /// dispatcher delay so the user gets a visual heartbeat.
-    /// </summary>
+    // Pulse the Tick status-bar label amber for a brief beat each time
+    // TickEngine fires. Class is added immediately, removed after a 200 ms
+    // dispatcher delay so the user gets a visual heartbeat.
     private void OnCombatTickElapsed()
     {
         if (_combatTickLabel is null) return;
@@ -135,14 +131,12 @@ public partial class MainWindow : Window
         if (DataContext is MainWindowViewModel vm) RebuildGameDataMenu(vm);
     }
 
-    /// <summary>
-    /// Compose the Game Data menu's items: every imported set on top
-    /// (each as a checkable MenuItem the user can click to activate),
-    /// a separator, then the static actions (Open Browser / Import .mdb
-    /// / Import loops). Avalonia's MenuItem can't mix ItemsSource-bound
-    /// dynamic children with inline static ones, so we assemble the
-    /// whole list in code on every change.
-    /// </summary>
+    // Compose the Game Data menu's items: every imported set on top
+    // (each as a checkable MenuItem the user can click to activate),
+    // a separator, then the static actions (Open Browser / Import .mdb
+    // / Import loops). Avalonia's MenuItem can't mix ItemsSource-bound
+    // dynamic children with inline static ones, so we assemble the
+    // whole list in code on every change.
     private void RebuildGameDataMenu(MainWindowViewModel vm)
     {
         GameDataMenu.Items.Clear();

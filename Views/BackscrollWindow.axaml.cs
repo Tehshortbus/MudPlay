@@ -6,12 +6,10 @@ using FujinTerm.ViewModels;
 
 namespace FujinTerm.Views;
 
-/// <summary>
-/// Modeless terminal-history window. Bound to <see cref="BackscrollViewModel"/>.
-/// Code-behind handles concerns XAML can't express cleanly: scrolling to a
-/// Find-next match, scrolling to the live tail, gating live mirroring on focus
-/// + scroll position, and disposing the VM on close.
-/// </summary>
+// Modeless terminal-history window. Bound to BackscrollViewModel.
+// Code-behind handles concerns XAML can't express cleanly: scrolling to a
+// Find-next match, scrolling to the live tail, gating live mirroring on focus
+// + scroll position, and disposing the VM on close.
 public partial class BackscrollWindow : Window
 {
     // Mx437 16pt cell height; rows are a fixed line-height in the transcript.
@@ -72,11 +70,9 @@ public partial class BackscrollWindow : Window
 
     private void OnActivationChanged(object? sender, EventArgs e) => UpdateAutoFollow();
 
-    /// <summary>
-    /// Mirror the live screen only while the user is actually watching the
-    /// tail — window focused AND scrolled to the bottom. Otherwise the VM
-    /// defers the (full-transcript) refresh, keeping the main terminal smooth.
-    /// </summary>
+    // Mirror the live screen only while the user is actually watching the
+    // tail — window focused AND scrolled to the bottom. Otherwise the VM
+    // defers the (full-transcript) refresh, keeping the main terminal smooth.
     private void UpdateAutoFollow()
     {
         if (_scroll is null || DataContext is not BackscrollViewModel vm) return;
@@ -87,10 +83,8 @@ public partial class BackscrollWindow : Window
         vm.AutoFollow = IsActive && atBottom;
     }
 
-    /// <summary>
-    /// Highlight a Find-next hit by setting the SelectableTextBlock's
-    /// selection at the matched span and scrolling to the row.
-    /// </summary>
+    // Highlight a Find-next hit by setting the SelectableTextBlock's
+    // selection at the matched span and scrolling to the row.
     private void OnFindMatch(int rowIndex, int columnOffset, int length)
     {
         if (_transcript is null || _scroll is null) return;

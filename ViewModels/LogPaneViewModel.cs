@@ -8,30 +8,22 @@ using FujinTerm.Services;
 
 namespace FujinTerm.ViewModels;
 
-/// <summary>
-/// Live view of <see cref="LogService"/>. Subscribes to
-/// <see cref="LogService.EntryAdded"/> on the producer's thread, marshals
-/// to the dispatcher, applies the current filter, and appends to the
-/// displayed list.
-/// </summary>
-/// <remarks>
-/// Filter changes (severity checkboxes / search text) trigger a full
-/// rebuild from <see cref="LogService.Snapshot"/>. The ring's 2000-entry
-/// cap keeps this cheap; if profiling shows the rebuild churning, switch
-/// to an in-place predicate update.
-/// </remarks>
+// Live view of LogService. Subscribes to LogService.EntryAdded on the
+// producer's thread, marshals to the dispatcher, applies the current filter,
+// and appends to the displayed list.
+//
+// Filter changes (severity checkboxes / search text) trigger a full rebuild
+// from LogService.Snapshot. The ring's 2000-entry cap keeps this cheap; if
+// profiling shows the rebuild churning, switch to an in-place predicate
+// update.
 public sealed partial class LogPaneViewModel : ObservableObject, IDisposable
 {
-    /// <summary>
-    /// Hard cap on <see cref="Rows"/>. Matches the underlying
-    /// <see cref="LogService"/> ring capacity — the displayed list can't
-    /// usefully hold more than the snapshot can ever serve. Without this
-    /// cap, the OC grew unbounded as new entries flowed in (the bind
-    /// path didn't recycle rows on Rebuild), and toggling a filter
-    /// cleared a 30k-row list then re-added a few thousand which
-    /// cascaded into a UI lockup via the auto-scroll handler running
-    /// per-Add.
-    /// </summary>
+    // Hard cap on Rows. Matches the underlying LogService ring capacity — the
+    // displayed list can't usefully hold more than the snapshot can ever
+    // serve. Without this cap, the OC grew unbounded as new entries flowed in
+    // (the bind path didn't recycle rows on Rebuild), and toggling a filter
+    // cleared a 30k-row list then re-added a few thousand which cascaded into
+    // a UI lockup via the auto-scroll handler running per-Add.
     public const int MaxRows = LogService.DefaultCapacity;
 
     private readonly LogService _log;
@@ -43,12 +35,9 @@ public sealed partial class LogPaneViewModel : ObservableObject, IDisposable
 
     public ObservableCollection<LogPaneRowViewModel> Rows { get; } = new();
 
-    /// <summary>
-    /// <c>true</c> while <see cref="Rebuild"/> is mid-execution. The
-    /// LogPaneWindow's per-Add ScrollIntoView handler uses this to skip
-    /// the cascading scrolls during a rebuild — one final scroll after
-    /// the rebuild ends is enough.
-    /// </summary>
+    // true while Rebuild is mid-execution. The LogPaneWindow's per-Add
+    // ScrollIntoView handler uses this to skip the cascading scrolls during a
+    // rebuild — one final scroll after the rebuild ends is enough.
     public bool IsBulkUpdating => _bulkUpdate;
 
     // Display-filter toggles for the always-on record levels — each defaults
@@ -61,30 +50,23 @@ public sealed partial class LogPaneViewModel : ObservableObject, IDisposable
 
     [ObservableProperty] private string _searchText = string.Empty;
 
-    /// <summary>
-    /// Generation toggle for the Debug channel. Mirrors
-    /// <see cref="LogDiagnosticState.DebugDiagnostics"/> — flipping it makes
-    /// every <c>_log?.Debug(...)</c> site across the engines start (or stop)
-    /// emitting, AND shows/hides the Debug rows already in the ring.
-    /// Persisted per-character via AppServices. Off by default — verbose
-    /// tracing is a troubleshooting affordance, not a per-session default.
-    /// </summary>
+    // Generation toggle for the Debug channel. Mirrors
+    // LogDiagnosticState.DebugDiagnostics — flipping it makes every
+    // _log?.Debug(...) site across the engines start (or stop) emitting, AND
+    // shows/hides the Debug rows already in the ring. Persisted per-character
+    // via AppServices. Off by default — verbose tracing is a troubleshooting
+    // affordance, not a per-session default.
     [ObservableProperty] private bool _debugDiagnostics;
 
-    /// <summary>
-    /// Generation toggle for the Combat channel. Mirrors
-    /// <see cref="LogDiagnosticState.CombatDiagnostics"/> — flipping it gates
-    /// the combat-decision trace channel AND
-    /// <see cref="Game.Combat.RoundDamageTracker"/>'s per-round trace file,
-    /// and shows/hides the Combat rows already in the ring. Persisted
-    /// per-character via AppServices. Off by default.
-    /// </summary>
+    // Generation toggle for the Combat channel. Mirrors
+    // LogDiagnosticState.CombatDiagnostics — flipping it gates the
+    // combat-decision trace channel AND Game.Combat.RoundDamageTracker's
+    // per-round trace file, and shows/hides the Combat rows already in the
+    // ring. Persisted per-character via AppServices. Off by default.
     [ObservableProperty] private bool _combatDiagnostics;
 
-    /// <summary>
-    /// When true, every appended row scrolls the list to the bottom. The
-    /// XAML hooks the actual scroll-into-view call; this flag gates it.
-    /// </summary>
+    // When true, every appended row scrolls the list to the bottom. The XAML
+    // hooks the actual scroll-into-view call; this flag gates it.
     [ObservableProperty] private bool _autoScroll = true;
 
     [ObservableProperty]
@@ -95,28 +77,21 @@ public sealed partial class LogPaneViewModel : ObservableObject, IDisposable
     [NotifyPropertyChangedFor(nameof(StatusText))]
     private int _logTotalCount;
 
-    /// <summary>
-    /// <c>"{matched:N0} / {total:N0} entries"</c>. Both counters are
-    /// pre-cached observable ints — reading <see cref="StatusText"/>
-    /// must NOT call <see cref="LogService.Snapshot"/>, which allocates
-    /// a fresh 2000-entry array. Update <see cref="LogTotalCount"/>
-    /// alongside any path that mutates the live ring count.
-    /// </summary>
+    // "{matched:N0} / {total:N0} entries". Both counters are pre-cached
+    // observable ints — reading StatusText must NOT call LogService.Snapshot,
+    // which allocates a fresh 2000-entry array. Update LogTotalCount
+    // alongside any path that mutates the live ring count.
     public string StatusText => $"{MatchCount:N0} / {LogTotalCount:N0} entries";
 
     public LogPaneViewModel(LogService log, Application app)
         : this(log, app, diagnostics: null) { }
 
-    /// <summary>
-    /// Overload that binds the pane to a session-shared
-    /// <see cref="LogDiagnosticState"/> so the
-    /// <see cref="CombatDiagnostics"/> toggle is the live umbrella for
-    /// combat-related verbose tracing (consumed by
-    /// <see cref="Game.Combat.RoundDamageTracker"/>). Without the
-    /// binding, the pane is purely a viewer and the toggle is local
-    /// to this window — fine for tests, but the running app should
-    /// always pass <see cref="AppServices.LogDiagnostics"/>.
-    /// </summary>
+    // Overload that binds the pane to a session-shared LogDiagnosticState so
+    // the CombatDiagnostics toggle is the live umbrella for combat-related
+    // verbose tracing (consumed by Game.Combat.RoundDamageTracker). Without
+    // the binding, the pane is purely a viewer and the toggle is local to
+    // this window — fine for tests, but the running app should always pass
+    // AppServices.LogDiagnostics.
     public LogPaneViewModel(LogService log, Application app, LogDiagnosticState? diagnostics)
     {
         _log = log;
@@ -195,13 +170,10 @@ public sealed partial class LogPaneViewModel : ObservableObject, IDisposable
         });
     }
 
-    /// <summary>
-    /// Append a row to <see cref="Rows"/>, evicting the oldest when
-    /// the list would exceed <see cref="MaxRows"/>. Stops the OC from
-    /// growing past the ring's capacity and avoids the multi-minute
-    /// session leak where Rows held 100k+ entries while the underlying
-    /// ring only retained the last 2k.
-    /// </summary>
+    // Append a row to Rows, evicting the oldest when the list would exceed
+    // MaxRows. Stops the OC from growing past the ring's capacity and avoids
+    // the multi-minute session leak where Rows held 100k+ entries while the
+    // underlying ring only retained the last 2k.
     private void AppendCapped(LogPaneRowViewModel row)
     {
         while (Rows.Count >= MaxRows) Rows.RemoveAt(0);
@@ -213,7 +185,7 @@ public sealed partial class LogPaneViewModel : ObservableObject, IDisposable
     partial void OnShowErrorChanged(bool value)    => Rebuild();
     partial void OnSearchTextChanged(string value) => Rebuild();
 
-    /// <summary>Recompute <see cref="Rows"/> from the live log snapshot.</summary>
+    // Recompute Rows from the live log snapshot.
     private void Rebuild()
     {
         // _bulkUpdate gates the per-row auto-scroll in the LogPaneWindow
@@ -244,11 +216,8 @@ public sealed partial class LogPaneViewModel : ObservableObject, IDisposable
         BulkUpdateCompleted?.Invoke();
     }
 
-    /// <summary>
-    /// Fires once at the end of every <see cref="Rebuild"/> so the host
-    /// window can do a single ScrollIntoView on the newest row instead
-    /// of the per-Add cascade.
-    /// </summary>
+    // Fires once at the end of every Rebuild so the host window can do a
+    // single ScrollIntoView on the newest row instead of the per-Add cascade.
     public event Action? BulkUpdateCompleted;
 
     private bool Passes(LogEntry entry)
@@ -277,7 +246,7 @@ public sealed partial class LogPaneViewModel : ObservableObject, IDisposable
     private IBrush SeverityBrush(LogSeverity s)
         => _severityBrushes.TryGetValue(s, out IBrush? brush) ? brush : Brushes.Gray;
 
-    /// <summary>Erase the displayed rows AND the underlying LogService ring.</summary>
+    // Erase the displayed rows AND the underlying LogService ring.
     [RelayCommand]
     private void Clear()
     {

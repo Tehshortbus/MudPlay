@@ -8,14 +8,12 @@ using FujinTerm.ViewModels;
 
 namespace FujinTerm.Views;
 
-/// <summary>
-/// Modeless Session Stats window. Bound to <see cref="SessionStatsViewModel"/>;
-/// code-behind attaches the persisted window-layout, wires the global-hotkeys
-/// handler, disposes the VM on close, and hosts the panel drag-reorder gesture.
-/// A panel is dragged by its title label; an insertion line previews where it
-/// will land, and the VM's saved order is applied on open and pushed back on drop
-/// via <see cref="SessionStatsViewModel.SaveOrder"/>.
-/// </summary>
+// Modeless Session Stats window. Bound to SessionStatsViewModel;
+// code-behind attaches the persisted window-layout, wires the global-hotkeys
+// handler, disposes the VM on close, and hosts the panel drag-reorder gesture.
+// A panel is dragged by its title label; an insertion line previews where it
+// will land, and the VM's saved order is applied on open and pushed back on drop
+// via SessionStatsViewModel.SaveOrder.
 public partial class SessionStatsWindow : Window
 {
     // In-process carrier for the dragged panel's Tag id. Avalonia 12's
@@ -192,7 +190,7 @@ public partial class SessionStatsWindow : Window
         vm.SaveOrder(ids);
     }
 
-    /// <summary>Reorder the panel host's children to match the VM's saved order.</summary>
+    // Reorder the panel host's children to match the VM's saved order.
     private void ApplySavedOrder()
     {
         if (DataContext is not SessionStatsViewModel vm) return;

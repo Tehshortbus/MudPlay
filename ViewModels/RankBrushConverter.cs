@@ -6,27 +6,17 @@ using FujinTerm.Models.Profile;
 
 namespace FujinTerm.ViewModels;
 
-/// <summary>
-/// XAML converter that returns a saturated accent brush tinted to the
-/// <see cref="PartyRank"/> value, so the PartyWindow's per-row rank
-/// chip can render Front / Mid / Back with distinct colours at a
-/// glance:
-/// </summary>
-/// <remarks>
-/// <list type="bullet">
-///   <item><b>Front</b> — bright red (puts them in melee range).</item>
-///   <item><b>Mid</b>   — bright amber (general baseline rank).</item>
-///   <item><b>Back</b>  — bright cyan (casters / archers, back-of-line).</item>
-/// </list>
-/// <para>
-/// Used as BOTH border and foreground on the rank chip (chip background
-/// is the dark <c>ChromeBgElevBrush</c>, matching the StatusChip strip
-/// on the same row). Bright accent on dark bg gives readable contrast
-/// regardless of which rank renders — the earlier "white text on amber
-/// fill" combination was unreadable.
-/// </para>
-/// Single static instance — no per-binding state.
-/// </remarks>
+// XAML converter that returns a saturated accent brush tinted to the
+// PartyRank value, so the PartyWindow's per-row rank chip can render Front /
+// Mid / Back with distinct colours at a glance:
+//   Front — bright red (puts them in melee range).
+//   Mid   — bright amber (general baseline rank).
+//   Back  — bright cyan (casters / archers, back-of-line).
+// Used as BOTH border and foreground on the rank chip (chip background is
+// the dark ChromeBgElevBrush, matching the StatusChip strip on the same
+// row). Bright accent on dark bg gives readable contrast regardless of which
+// rank renders — the earlier "white text on amber fill" combination was
+// unreadable. Single static instance — no per-binding state.
 public sealed class RankBrushConverter : IValueConverter
 {
     public static RankBrushConverter Instance { get; } = new();

@@ -10,12 +10,10 @@ using FujinTerm.ViewModels.Navigation;
 
 namespace FujinTerm.Views.Navigation;
 
-/// <summary>
-/// Modeless Navigation window. Bound to
-/// <see cref="ViewModels.Navigation.NavigationViewModel"/>: status strip
-/// + mode bar, the <see cref="Controls.MapControl"/> canvas, and the
-/// right-rail room tree / favourites / loop builder.
-/// </summary>
+// Modeless Navigation window. Bound to
+// ViewModels.Navigation.NavigationViewModel: status strip + mode bar, the
+// Controls.MapControl canvas, and the right-rail room tree / favourites / loop
+// builder.
 public partial class NavigationWindow : Window
 {
     public NavigationWindow()
@@ -24,10 +22,10 @@ public partial class NavigationWindow : Window
         GlobalHotkeys.Attach(this);
         FujinTerm.Services.AppServices.Current.WindowLayouts.AttachWindow(this, "navigation");
 
-        // PR 7.14 — route the map's right-click events into the VM so
-        // the context menu items target the clicked room. The
-        // ContextMenu itself is wired declaratively in AXAML; here we
-        // just update ContextRoomKey before it opens.
+        // Route the map's right-click events into the VM so the context menu
+        // items target the clicked room. The ContextMenu itself is wired
+        // declaratively in AXAML; here we just update ContextRoomKey before it
+        // opens.
         if (this.FindControl<MapControl>("MapHost") is { } map)
         {
             map.RoomRightClicked       += OnMapRoomRightClicked;
@@ -79,15 +77,12 @@ public partial class NavigationWindow : Window
             map.RecenterOnPlayer();
     }
 
-    /// <summary>
-    /// CURRENT NAV ListBox auto-scroll. The VM republishes
-    /// <see cref="NavigationViewModel.CurrentNavSelectedRow"/> on every
-    /// step advance / lair-state change; we mirror the row into the
-    /// ListBox's view via ScrollIntoView so a 60-step path doesn't
-    /// require the user to scroll the rail manually as the walker
-    /// progresses. Posted via the dispatcher so the call lands AFTER
-    /// the ItemsControl has materialised the new container.
-    /// </summary>
+    // CURRENT NAV ListBox auto-scroll. The VM republishes CurrentNavSelectedRow
+    // on every step advance / lair-state change; we mirror the row into the
+    // ListBox's view via ScrollIntoView so a 60-step path doesn't require the
+    // user to scroll the rail manually as the walker progresses. Posted via the
+    // dispatcher so the call lands AFTER the ItemsControl has materialised the
+    // new container.
     private void OnVmPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName != nameof(NavigationViewModel.CurrentNavSelectedRow)) return;
@@ -181,12 +176,10 @@ public partial class NavigationWindow : Window
 
     private void InitializeComponent() => AvaloniaXamlLoader.Load(this);
 
-    /// <summary>
-    /// Routes a search-result click back into the VM. We can't put a
-    /// command directly on the result row inside a ListBox.ItemTemplate
-    /// without an extra ICommand binding helper, so a code-behind
-    /// pointer handler keeps the wiring minimal.
-    /// </summary>
+    // Routes a search-result click back into the VM. We can't put a command
+    // directly on the result row inside a ListBox.ItemTemplate without an extra
+    // ICommand binding helper, so a code-behind pointer handler keeps the wiring
+    // minimal.
     private void OnSearchResultClicked(object? sender, PointerPressedEventArgs e)
     {
         if (sender is not Control { DataContext: RoomSearchResult result }) return;
@@ -229,11 +222,9 @@ public partial class NavigationWindow : Window
             vm.RemoveBuilderClickAt(row.Index);
     }
 
-    /// <summary>
-    /// Per-row "✕" button — removes the waypoint at the row's index.
-    /// Bound via Click rather than Command so it can pull the DataContext
-    /// off the button without the ListBox-ancestor binding ceremony.
-    /// </summary>
+    // Per-row "✕" button — removes the waypoint at the row's index. Bound via
+    // Click rather than Command so it can pull the DataContext off the button
+    // without the ListBox-ancestor binding ceremony.
     private void OnBuilderRowRemoveClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
         if (sender is not Button { DataContext: LoopBuilderRow row }) return;

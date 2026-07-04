@@ -4,16 +4,12 @@ using FujinTerm.ViewModels.GameData.Tables;
 
 namespace FujinTerm.Views.GameData.Tables;
 
-/// <summary>
-/// Per-column <see cref="IComparer"/> for the Game Data Browser
-/// <c>DataGrid</c>. Avalonia's <c>DataGridColumn.CustomSortComparer</c>
-/// receives full row items (<see cref="GameDataRow"/>) — this comparer
-/// pulls one column's cell value from each row and compares them
-/// numerically when both parse as numbers, else falls back to a
-/// case-insensitive string compare. Without this every column sorts
-/// lexicographically — clicking EXP would order rows as
-/// <c>0, 1, 10, 100, 11, 12, …</c>.
-/// </summary>
+// Per-column IComparer for the Game Data Browser DataGrid. Avalonia's
+// DataGridColumn.CustomSortComparer receives full row items (GameDataRow) — this
+// comparer pulls one column's cell value from each row and compares them
+// numerically when both parse as numbers, else falls back to a case-insensitive
+// string compare. Without this every column sorts lexicographically — clicking
+// EXP would order rows as 0, 1, 10, 100, 11, 12, ….
 internal sealed class NumericAwareCellComparer : IComparer
 {
     private readonly int _columnIndex;
@@ -58,7 +54,7 @@ internal sealed class NumericAwareCellComparer : IComparer
         return string.Compare(a, b, StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>Parse the leading run of digits (optionally signed) from a cell value.</summary>
+    // Parse the leading run of digits (optionally signed) from a cell value.
     private static bool TryLeadingNumber(string? s, out double value)
     {
         value = 0;

@@ -13,24 +13,19 @@ using FujinTerm.Views.CharacterWorkshop;
 
 namespace FujinTerm.ViewModels.CharacterWorkshop;
 
-/// <summary>
-/// LEVEL PROJECTION section — a per-level grid of XP-to-next / total XP, the
-/// HP roll bracket + per-tick HP regen, and (for casters) max Mana/Kai + MP
-/// regen, across a target level range. The Race / Class dropdowns follow the
-/// live character — they adopt the character's race/class on profile load and
-/// whenever an in-game <c>stat</c> changes them — while still allowing a
-/// momentary what-if pick. The realm is detected from the active game-data set
-/// (no picker), and the character's current level is highlighted in the grid.
-/// </summary>
-/// <remarks>
-/// Built on the PR 10.2 calculators via <see cref="LevelProjectionCalculator"/>.
-/// The what-if swaps the class/race table coefficients. HP / HP-regen / MP-regen
-/// reflect the CP Allocation plan: each level layers that level's planned stat
-/// increase (from the shared <see cref="CpPlanState"/>) on top of the live
-/// attributes, so rows at/below the current level match the character and rows
-/// above show the planned build. Quest HP/MP bonuses fold in once that tab ships
-/// (PR 10.10).
-/// </remarks>
+// LEVEL PROJECTION section — a per-level grid of XP-to-next / total XP, the HP
+// roll bracket + per-tick HP regen, and (for casters) max Mana/Kai + MP regen,
+// across a target level range. The Race / Class dropdowns follow the live
+// character — they adopt the character's race/class on profile load and whenever
+// an in-game `stat` changes them — while still allowing a momentary what-if pick.
+// The realm is detected from the active game-data set (no picker), and the
+// character's current level is highlighted in the grid.
+//
+// Built on the level calculators via LevelProjectionCalculator. The what-if swaps
+// the class/race table coefficients. HP / HP-regen / MP-regen reflect the CP
+// Allocation plan: each level layers that level's planned stat increase (from the
+// shared CpPlanState) on top of the live attributes, so rows at/below the current
+// level match the character and rows above show the planned build.
 public sealed partial class LevelProjectionSectionViewModel : WorkshopSectionViewModel
 {
     // Cap the projected span so a stray From/To range can't build a runaway grid.
@@ -61,7 +56,7 @@ public sealed partial class LevelProjectionSectionViewModel : WorkshopSectionVie
     [ObservableProperty] private int _toLevel = 15;
     [ObservableProperty] private string? _selectedRace;
     [ObservableProperty] private string? _selectedClass;
-    /// <summary>False when no class/race resolves — drives the empty-state hint.</summary>
+    // False when no class/race resolves — drives the empty-state hint.
     [ObservableProperty] private bool _hasProjection;
 
     public LevelProjectionSectionViewModel(PlayerStats stats, GameDataCache gameData, CpPlanState planState)
@@ -83,7 +78,7 @@ public sealed partial class LevelProjectionSectionViewModel : WorkshopSectionVie
     // HP / HP-regen / MP-regen reflect the planned stat increases.
     private void OnPlanChanged() => Rebuild();
 
-    /// <summary>Re-seed Race / Class + the level range from the live character.</summary>
+    // Re-seed Race / Class + the level range from the live character.
     [RelayCommand]
     public void ResetToCurrent() => SeedFromCurrent();
 

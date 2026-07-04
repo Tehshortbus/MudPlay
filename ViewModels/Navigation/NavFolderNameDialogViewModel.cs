@@ -4,14 +4,11 @@ using FujinTerm.Services;
 
 namespace FujinTerm.ViewModels.Navigation;
 
-/// <summary>
-/// Tiny single-text-box prompt for naming a navigation folder — shared
-/// by the "New folder" and "Rename folder" actions on both the Manage
-/// dialog (loops + lairs) and the rail (gotos). Returns the typed
-/// <c>/</c>-separated folder path on Save, <c>null</c> on Cancel. The
-/// caller normalises + applies the result via the relevant store /
-/// <see cref="Game.Map.NavFolderManager"/>.
-/// </summary>
+// Tiny single-text-box prompt for naming a navigation folder — shared by
+// the "New folder" and "Rename folder" actions on both the Manage dialog
+// (loops + lairs) and the rail (gotos). Returns the typed /-separated folder
+// path on Save, null on Cancel. The caller normalises + applies the result
+// via the relevant store / NavFolderManager.
 public sealed partial class NavFolderNameDialogViewModel : ObservableObject, IDialogViewModel<string?>
 {
     public event Action<string?>? CloseRequested;
@@ -23,13 +20,13 @@ public sealed partial class NavFolderNameDialogViewModel : ObservableObject, IDi
         _name = initial ?? string.Empty;
     }
 
-    /// <summary>Window title — e.g. "New folder" / "Rename folder".</summary>
+    // Window title — e.g. "New folder" / "Rename folder".
     public string Title { get; }
 
-    /// <summary>One-line instruction shown above the input box.</summary>
+    // One-line instruction shown above the input box.
     public string Prompt { get; }
 
-    /// <summary>The folder path being entered. <c>/</c>-separated; empty is rejected by the caller.</summary>
+    // The folder path being entered. /-separated; empty is rejected by the caller.
     [ObservableProperty] private string _name;
 
     [RelayCommand]

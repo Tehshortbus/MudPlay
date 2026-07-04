@@ -3,12 +3,9 @@ using Avalonia.Data.Converters;
 
 namespace FujinTerm.ViewModels.Settings;
 
-/// <summary>
-/// XAML converter that returns <c>true</c> when the bound
-/// <see cref="StubFieldKind"/> equals the instance's expected kind.
-/// One static instance per kind so the view can switch a row's visible
-/// control without a verbose multi-template selector.
-/// </summary>
+// XAML converter that returns true when the bound StubFieldKind equals the
+// instance's expected kind. One static instance per kind so the view can switch a
+// row's visible control without a verbose multi-template selector.
 public sealed class KindEqualsConverter : IValueConverter
 {
     private readonly StubFieldKind _expected;

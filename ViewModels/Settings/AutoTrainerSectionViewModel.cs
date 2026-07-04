@@ -13,15 +13,12 @@ using FujinTerm.Views.Settings;
 
 namespace FujinTerm.ViewModels.Settings;
 
-/// <summary>
-/// Settings → Auto-Trainer tab. Holds the master <see cref="AutoTrain"/> +
-/// cascading <see cref="AutoTrainStats"/> toggles, and a table of every
-/// training shop discovered in the active game-data set (via
-/// <see cref="TrainerCatalog"/>) — name, host map/room, served level range,
-/// and a per-trainer Allow toggle deciding whether auto-train may route to it.
-/// Trainers with the 999 <c>MaxLVL</c> sentinel (unreachable placeholders) are
-/// never listed. Persists to <see cref="AutoTrainerSettings"/>.
-/// </summary>
+// Settings → Auto-Trainer tab. Holds the master AutoTrain + cascading
+// AutoTrainStats toggles, and a table of every training shop discovered in the
+// active game-data set (via TrainerCatalog) — name, host map/room, served level
+// range, and a per-trainer Allow toggle deciding whether auto-train may route to
+// it. Trainers with the 999 MaxLVL sentinel (unreachable placeholders) are never
+// listed. Persists to AutoTrainerSettings.
 public sealed partial class AutoTrainerSectionViewModel : SettingsSectionViewModel
 {
     private const string TabKey = "AutoTrainer";
@@ -44,49 +41,46 @@ public sealed partial class AutoTrainerSectionViewModel : SettingsSectionViewMod
 
     public override Control View => _view ??= new AutoTrainerSectionView { DataContext = this };
 
-    /// <summary>True when a profile is loaded — editor is hidden otherwise.</summary>
+    // True when a profile is loaded — editor is hidden otherwise.
     public bool HasProfile => _profile.Current is not null;
 
-    /// <summary>False when the active set yields no trainers at all — drives the empty-state.</summary>
+    // False when the active set yields no trainers at all — drives the empty-state.
     public bool HasTrainers => _allRows.Count > 0;
 
-    /// <summary>True when the loaded profile has a saved CP allocation plan (needed for Auto-train stats).</summary>
+    // True when the loaded profile has a saved CP allocation plan (needed for Auto-train stats).
     private bool HasCpPlan => _profile.Current?.CharacterPlan is { Count: > 0 };
 
-    /// <summary>Master auto-train toggle (level-up at the trainer during loop/auto-lair).</summary>
+    // Master auto-train toggle (level-up at the trainer during loop/auto-lair).
     [ObservableProperty] private bool _autoTrain;
-    /// <summary>Cascading toggle — apply the CP plan via <c>train stats</c> after each train.</summary>
+    // Cascading toggle — apply the CP plan via `train stats` after each train.
     [ObservableProperty] private bool _autoTrainStats;
 
-    /// <summary>Trainable levels to always keep banked (0 = train everything).</summary>
+    // Trainable levels to always keep banked (0 = train everything).
     [ObservableProperty] private int _levelsToKeep;
 
-    /// <summary>Broadcast "I can now train to level: N" when a live exp gain makes a new level trainable.</summary>
+    // Broadcast "I can now train to level: N" when a live exp gain makes a new level trainable.
     [ObservableProperty] private bool _announceLevelUps;
-    /// <summary>Channel the level-up announce is sent on (enabled only with <see cref="AnnounceLevelUps"/>).</summary>
+    // Channel the level-up announce is sent on (enabled only with AnnounceLevelUps).
     [ObservableProperty] private AnnounceChannel _announceChannel;
 
-    /// <summary>Channel choices for the announce dropdown.</summary>
+    // Channel choices for the announce dropdown.
     public IReadOnlyList<AnnounceChannel> AnnounceChannels { get; } =
         (AnnounceChannel[])Enum.GetValues(typeof(AnnounceChannel));
 
     // View filter (not persisted). Off = show every discovered trainer; on =
     // only trainers whose level range serves the character's current level.
-    /// <summary>Show only trainers whose level range serves the character's current level.</summary>
     [ObservableProperty] private bool _onlyUsableLevel;
 
-    /// <summary>
-    /// Set when the user tries to enable Auto-train stats with no saved CP plan —
-    /// the checkbox reverts and this explains why. Null = hidden.
-    /// </summary>
+    // Set when the user tries to enable Auto-train stats with no saved CP plan —
+    // the checkbox reverts and this explains why. Null = hidden.
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasAutoTrainStatsWarning))]
     private string? _autoTrainStatsWarning;
 
-    /// <summary>Drives the Auto-train-stats warning's visibility.</summary>
+    // Drives the Auto-train-stats warning's visibility.
     public bool HasAutoTrainStatsWarning => !string.IsNullOrEmpty(AutoTrainStatsWarning);
 
-    /// <summary>Discovered trainers in the active set, ascending by level range.</summary>
+    // Discovered trainers in the active set, ascending by level range.
     public ObservableCollection<AutoTrainerRowViewModel> Trainers { get; } = new();
 
     public override IEnumerable<string> SearchableLabels => new[]

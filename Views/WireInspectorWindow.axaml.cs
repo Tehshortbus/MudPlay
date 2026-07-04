@@ -7,13 +7,11 @@ using FujinTerm.ViewModels;
 
 namespace FujinTerm.Views;
 
-/// <summary>
-/// Two-pane modeless debug window: Raw (with non-printables shown) on the
-/// left, Stripped (CSI sequences removed) on the right. Bound to
-/// <see cref="WireInspectorViewModel"/>. Code-behind handles ScrollViewer
-/// sync (XAML can't easily express two-way scroll-offset binding) and
-/// Find-next (a one-shot scroll-to-match — no live highlight in v1).
-/// </summary>
+// Two-pane modeless debug window: Raw (with non-printables shown) on the
+// left, Stripped (CSI sequences removed) on the right. Bound to
+// WireInspectorViewModel. Code-behind handles ScrollViewer sync (XAML can't
+// easily express two-way scroll-offset binding) and Find-next (a one-shot
+// scroll-to-match — no live highlight in v1).
 public partial class WireInspectorWindow : Window
 {
     private ScrollViewer? _rawScroll;
