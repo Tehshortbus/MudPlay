@@ -116,20 +116,50 @@ conflate them. (Worked examples use the 1.11p data set.)
   the `no effect` line: `OnSpellNoEffect` marks the species + spell immune for the rest of the
   room and gates that spell down the attack cascade (primary → alternate → weapon).
 
-**3. Percentage resistance per damage type** *([CONFIRMED])*
-- A monster's `Resist-<type> +N` ability is a **flat N% reduction** of that damage type.
-  Example: #184 has `Resist-Fire +50`, so fire spells deal **half** damage to it.
-- At **100%** the type does **0 damage**; **above 100%** the damage goes **negative** and the
+**3. Damage-type resistance** *([CONFIRMED])*
+
+A spell's damage type is its Spells-table `AttType` column (the same values `LookupEnums`
+labels for the Browser). How resistance applies depends on which type it is — **do not treat all
+three flavors alike**, because only the first supports a pre-emptive skip.
+
+*3a. Elemental resistance — flat, deterministic, pre-emptable.* The five elemental `AttType`s
+map one-to-one onto a monster `Resist-<type>` ability:
+
+| `AttType` | Element | Monster resist ability (code) |
+|---|---|---|
+| 0 | Cold | `Resist-Cold` (3) |
+| 1 | Fire | `Resist-Fire` (5) |
+| 2 | Stone | `Resist-Stone` (65) |
+| 3 | Lightning | `Resist-Lightning` (66) |
+| 5 | Water | `Resist-Water` (147) |
+
+- For these five, `Resist-<type> +N` is a **flat N% reduction** of that element. Example: #184
+  (adolescent red dragon) has `Resist-Fire +50`, so fire spells deal **half** damage. At
+  **100%** the element does **0 damage**; **above 100%** the damage goes **negative** and the
   spell **heals** the monster instead of harming it.
-- There is **no dedicated message**: every spell's verbose hit text differs, so the only tell is
-  the **damage number** in that spell's own hit line — **0 or negative is the resist signal.**
-  Detecting it means reading the per-spell damage value, not matching one string.
-- Not modeled or detected today: a resisted 0 / heal cast produces no `no effect` line, so
-  nothing currently stops the engine from re-casting a spell that heals the monster — "full
-  resist" must never be treated as equivalent to the immunity above.
-- Damage-type resist ability codes in the data: Resist-Cold (3), Resist-Fire (5),
-  Resist-Stone (65), Resist-Lightning (66), Resist-Water (147), Magic Resist (36). Ability
-  code 17 is "damage ignoring magic resistance" — a spell that bypasses the Magic-Resist cut.
+- Because the curve is flat and deterministic, a ≥100% elemental resist is the **only**
+  resistance the engine can safely **pre-empt** — skip the spell before casting when the target
+  resists its element ≥100%.
+- There is **no dedicated message**: every spell's verbose hit text differs, so the only
+  runtime tell is the **damage number** in that spell's own hit line — **0 or negative is the
+  resist signal.** Not modeled today: a resisted 0 / heal cast produces no `no effect` line, so
+  nothing currently stops the engine from re-casting a spell that heals the monster.
+
+*3b. Magic Resist (M.R., code 36) — probabilistic, NOT pre-emptable.* The `AttType 4` "Normal"
+spells (e.g. mage `magic missile`, priest `harm`) are **not** elemental and are cut by the
+monster's `M.R.` ability, **not** a `Resist-<type>`.
+- M.R. is **not** the flat elemental equation: a value of **100 does not mean 0 damage.** It
+  reduces the damage *and/or* raises the monster's chance to **fully resist** the cast — a
+  weaker, probabilistic effect. So M.R. must **never** feed a ≥100%→skip guard; a high-M.R.
+  monster can still take Normal-spell damage.
+- Ability code **17** `Damage(-MR)` is damage that **bypasses** the M.R. cut entirely.
+
+*3c. Poison (`AttType 6`) — not resistible, binary immunity.* Poison has **no** resist value and
+**no** `Resist-Poison` code — a target is either affected or immune, never "partially resisted."
+- Immunity is sourced from **race / items**, not a resist stat: the **Kang** race is
+  poison-immune, the **golden headdress** item grants poison immunity, and **swamp boots** /
+  **snakeskin boots** negate certain room-cast "swamp poison" effects — snakeskin also grants
+  immunity to certain poisons, varying by game-data set.
 
 ## Items & acquisition
 

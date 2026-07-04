@@ -2,6 +2,13 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0): **MAJOR** = whole-program refactor, **MINOR** = a large PR, **PATCH** = a small / bugfix PR.
 
+## 1.2.3
+
+Corrects how damage-type resistance splits into three unlike flavors.
+
+**Changed**
+- **Damage-type resistance split into its three real flavors.** `GAME_MECHANICS.md` previously lumped every `Resist-*` code — including Magic Resist — under one "flat N% cut, 100% = 0 damage, >100% = heal" rule. That's only true for the five *elemental* types (Cold/Fire/Stone/Lightning/Water, `AttType` 0/1/2/3/5 → resist codes 3/5/65/66/147), which is the one flavor deterministic enough to *pre-empt* (skip a spell whose element the target resists ≥100%). **Magic Resist** (M.R., code 36) — the cut on `AttType 4` "Normal" spells like `magic missile` and `harm` — is now recorded as a *different, probabilistic* equation: 100 M.R. is **not** 0 damage; it reduces damage and/or raises the monster's chance to fully resist, so it must never feed a ≥100%→skip guard (code 17 `Damage(-MR)` bypasses it). **Poison** (`AttType 6`) is now recorded as *not resistible at all* — a binary affected/immune with no resist value, where immunity comes from race/items (Kang race, golden headdress, swamp/snakeskin boots) rather than a stat. The section also adds the `AttType`→element→resist-code mapping table.
+
 ## 1.2.2
 
 Records how attack spells actually fail to damage a monster.
