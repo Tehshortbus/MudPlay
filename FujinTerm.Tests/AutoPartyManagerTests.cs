@@ -499,6 +499,38 @@ public sealed class AutoPartyManagerTests
     }
 
     [Fact]
+    public void ActiveNagSnapshot_ReflectsInFlightNagProgression()
+    {
+        // Backs the bug-report engine-state dump — the snapshot must mirror the
+        // live nag as it progresses (armed → first send → {Ok} ack).
+        var (engine, router, players, _) = Setup();
+        SeedPlayer(players, "Raijin", inviteOnSeen: true);
+        DateTime t0 = Now;
+        engine.NowProvider = () => t0;
+        engine.JoinNagInitialDelay = TimeSpan.FromSeconds(5);
+        engine.JoinNagFrequency    = TimeSpan.FromSeconds(10);
+        engine.JoinNagMaxTotal     = TimeSpan.FromSeconds(120);
+
+        Assert.Empty(engine.ActiveNagSnapshot());
+
+        Dispatch(router, "Also here: Raijin.");
+        AutoPartyManager.NagSnapshot armed = Assert.Single(engine.ActiveNagSnapshot());
+        Assert.Equal("Raijin", armed.Given);
+        Assert.Equal(0, armed.JoinSends);
+        Assert.Null(armed.LastJoinAt);
+        Assert.False(armed.Acknowledged);
+
+        engine.NowProvider = () => t0.AddSeconds(5);
+        engine.TickNagsForTests();          // first @join
+        Dispatch(router, "Raijin telepaths: {Ok}");
+
+        AutoPartyManager.NagSnapshot acked = Assert.Single(engine.ActiveNagSnapshot());
+        Assert.Equal(1, acked.JoinSends);
+        Assert.NotNull(acked.LastJoinAt);
+        Assert.True(acked.Acknowledged);
+    }
+
+    [Fact]
     public void JoinNag_TargetJoinsParty_CancelsNag()
     {
         var (engine, router, players, party) = Setup();

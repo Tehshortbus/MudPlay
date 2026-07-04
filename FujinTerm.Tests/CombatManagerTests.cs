@@ -1085,6 +1085,29 @@ public sealed class CombatManagerTests
     }
 
     [Fact]
+    public void Snapshot_ReflectsWeaponShadowAndTarget()
+    {
+        // Backs the bug-report engine-state dump. Before combat the shadow is
+        // clean (null weapon == "no equip sent yet" — the state that made the
+        // redundant first-round `eq` visible); after the first swing it mirrors
+        // what went out.
+        using Harness h = new();
+        CombatManager.DebugState pre = h.Combat.Snapshot();
+        Assert.Null(pre.CurrentTarget);
+        Assert.Null(pre.LastEquippedWeapon);
+        Assert.False(pre.UsingAlternateWeapon);
+
+        h.Settings.NormalWeapon = "longsword";
+        h.AddMonster(1, "giant rat", killable: true);
+        h.Feed("Also here: giant rat.");
+
+        CombatManager.DebugState post = h.Combat.Snapshot();
+        Assert.Equal("longsword", post.LastEquippedWeapon);
+        Assert.Equal("giant rat", post.CurrentTarget);
+        Assert.False(post.UsingAlternateWeapon);
+    }
+
+    [Fact]
     public void WeaponNoEffect_SwapsToAlternate_AndReSwings()
     {
         using Harness h = new();

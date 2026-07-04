@@ -268,6 +268,18 @@ public sealed partial class CombatManager : IDisposable
     // flight.
     public string? CurrentTarget => _currentTarget;
 
+    // Immutable view of the weapon-swap shadow + current target, for the
+    // bug-report engine-state dump. LastEquippedWeapon == null means no equip has
+    // gone out yet this session — the state that made a redundant first-round
+    // `eq` visible in a report.
+    public readonly record struct DebugState(
+        string? CurrentTarget, string? LastEquippedWeapon, string? LastEquippedOffHand,
+        bool UsingAlternateWeapon);
+
+    // UI-thread only (router handlers + the capture both run there), so no lock.
+    public DebugState Snapshot() =>
+        new(_currentTarget, _lastEquippedWeapon, _lastEquippedOffHand, _usingAlternateWeapon);
+
     // Wire the backstab gating delegates: isSneaking reports whether the
     // character is in the sneaking stealth state (StealthManager.IsSneaking) and
     // hasSeeHidden reports whether a given monster Number carries the SeeHidden
