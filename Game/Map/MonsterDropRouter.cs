@@ -5,68 +5,48 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game.Map;
 
-/// <summary>
-/// One candidate spawn site for a monster-dropped item: a room the
-/// dropping monster spawns in, tagged with the monster and its drop chance
-/// so the reroute prompt can name it.
-/// </summary>
-/// <param name="Room">A room the dropping monster spawns in.</param>
-/// <param name="MonsterId">The dropping monster's <c>Number</c>.</param>
-/// <param name="MonsterName">The dropping monster's display name.</param>
-/// <param name="DropPercent">The monster's drop chance for the item (0 = unknown).</param>
+// One candidate spawn site for a monster-dropped item: a room the
+// dropping monster spawns in, tagged with the monster and its drop chance
+// (0 = unknown) so the reroute prompt can name it.
 public readonly record struct MonsterDropSpawn(
     RoomKey Room, int MonsterId, string MonsterName, int DropPercent);
 
-/// <summary>
-/// Active fulfiller for <see cref="NeedKind.PathItem"/> needs that no shop
-/// can satisfy: when a one-shot <see cref="AutoWalkManager.WalkTo(RoomKey)">
-/// walk</see> crosses an <c>(Item: N)</c> / <c>(Ticket: N)</c> gate whose
-/// item we're not carrying and <b>no shop stocks it</b>, find which monster
-/// drops it, and — with the user's confirmation — reroute to the nearest
-/// room that monster spawns in so they can hunt it, then resume to the
-/// original destination. Backs the Settings → Other "hunt item if needed"
-/// affordance.
-/// </summary>
-/// <remarks>
-/// <para>
-/// <b>Division of labour with <see cref="PathItemShopRouter"/>.</b> Both
-/// react to the same <see cref="NeedsRegistry.NeedPosted"/> event and are
-/// mutually exclusive: the shop router acts when a shop sells the item;
-/// this router acts only when none does (<c>anyShopSells</c> false). A
-/// shop that sells the item but is unreachable stays the shop router's
-/// problem — it isn't re-sourced as a hunt.
-/// </para>
-/// <para>
-/// <b>Prompt, don't auto-detour.</b> Unlike a shop <c>buy</c> — cheap,
-/// deterministic, one command — a hunt is a real commitment: travel to a
-/// lair, fight, and hope for a percentage drop. So instead of silently
-/// rerouting, this asks via <see cref="ConfirmService"/> and only walks on
-/// a yes. A no leaves the need outstanding for demand-driven search.
-/// </para>
-/// <para>
-/// <b>Nearest spawn.</b> A common monster spawns in hundreds of rooms, so
-/// the target is chosen with a single forward BFS from the current room
-/// (<c>distancesFrom</c>) and an O(candidates) scan for the minimum
-/// distance — not the shop router's per-candidate round-trip metric, which
-/// would be prohibitive at this fan-out. Ties break on the higher drop
-/// chance, then room-key order, for determinism.
-/// </para>
-/// <para>
-/// <b>Resolution paths.</b> The item entering inventory
-/// (<see cref="OnInventoryChanged"/>) resumes the original walk from any
-/// active phase — covering the hunt paying off, a search revealing it en
-/// route (found-first abort), and a party hand-off. A walk that fails or a
-/// user redirect abandons the reroute gracefully. The need's own lifecycle
-/// (post / resolve) stays owned by <see cref="PathItemDemandTracker"/>;
-/// this router only reacts.
-/// </para>
-/// <para>
-/// Inventory / graph / walker / confirm are reached through delegates so
-/// the FSM stays unit-testable without a live line stream, room graph,
-/// dispatcher, and dialog. Each delegate has one production binding in
-/// <c>AppServices</c>.
-/// </para>
-/// </remarks>
+// Active fulfiller for NeedKind.PathItem needs that no shop can satisfy:
+// when a one-shot walk crosses an (Item: N) / (Ticket: N) gate whose item
+// we're not carrying and no shop stocks it, find which monster drops it,
+// and — with the user's confirmation — reroute to the nearest room that
+// monster spawns in so they can hunt it, then resume to the original
+// destination. Backs the Settings → Other "hunt item if needed" affordance.
+//
+// Division of labour with PathItemShopRouter. Both react to the same
+// NeedsRegistry.NeedPosted event and are mutually exclusive: the shop router
+// acts when a shop sells the item; this router acts only when none does. A
+// shop that sells the item but is unreachable stays the shop router's
+// problem — it isn't re-sourced as a hunt.
+//
+// Prompt, don't auto-detour. Unlike a shop buy — cheap, deterministic, one
+// command — a hunt is a real commitment: travel to a lair, fight, and hope
+// for a percentage drop. So instead of silently rerouting, this asks and
+// only walks on a yes. A no leaves the need outstanding for demand-driven
+// search.
+//
+// Nearest spawn. A common monster spawns in hundreds of rooms, so the target
+// is chosen with a single forward BFS from the current room and an
+// O(candidates) scan for the minimum distance — not the shop router's
+// per-candidate round-trip metric, which would be prohibitive at this
+// fan-out. Ties break on the higher drop chance, then room-key order, for
+// determinism.
+//
+// Resolution paths. The item entering inventory (OnInventoryChanged) resumes
+// the original walk from any active phase — covering the hunt paying off, a
+// search revealing it en route (found-first abort), and a party hand-off. A
+// walk that fails or a user redirect abandons the reroute gracefully. The
+// need's own lifecycle (post / resolve) stays owned by PathItemDemandTracker;
+// this router only reacts.
+//
+// Inventory / graph / walker / confirm are reached through delegates so the
+// FSM stays unit-testable without a live line stream, room graph, dispatcher,
+// and dialog. Each delegate has one production binding in AppServices.
 public sealed class MonsterDropRouter
 {
     private const string LogCategory = "AutoSearch";
@@ -140,15 +120,13 @@ public sealed class MonsterDropRouter
         _log = log;
     }
 
-    /// <summary>True while a reroute is pending confirmation or in progress.</summary>
+    // True while a reroute is pending confirmation or in progress.
     public bool DetourActive => _phase != Phase.Idle;
 
-    /// <summary>
-    /// New-need callback (wired to <see cref="NeedsRegistry.NeedPosted"/>).
-    /// When the item warrants a hunt — feature on, no engine walk, no shop
-    /// sells it, at least one dropper spawns in a reachable room — arms the
-    /// confirmation prompt toward the nearest such spawn. A no-op otherwise.
-    /// </summary>
+    // New-need callback (wired to NeedsRegistry.NeedPosted). When the item
+    // warrants a hunt — feature on, no engine walk, no shop sells it, at least
+    // one dropper spawns in a reachable room — arms the confirmation prompt
+    // toward the nearest such spawn. A no-op otherwise.
     public void OnNeedPosted(Need need)
     {
         if (need.Kind != NeedKind.PathItem) return;
@@ -190,11 +168,9 @@ public sealed class MonsterDropRouter
         _post(() => _ = PromptThenWalkAsync(title, body));
     }
 
-    /// <summary>
-    /// Walker-event callback (wired to <see cref="AutoWalkManager.Event"/>).
-    /// Arrival at the spawn starts the hunt; a failed walk resumes to the
-    /// destination; a user-driven walk abandons the reroute.
-    /// </summary>
+    // Walker-event callback (wired to AutoWalkManager.Event). Arrival at the
+    // spawn starts the hunt; a failed walk resumes to the destination; a
+    // user-driven walk abandons the reroute.
     public void OnWalkEvent(WalkEvent e)
     {
         switch (_phase)
@@ -228,13 +204,10 @@ public sealed class MonsterDropRouter
         }
     }
 
-    /// <summary>
-    /// Inventory-change callback (wired to <c>InventoryManager.Changed</c>).
-    /// When the item we rerouted for is now carried — dropped by the hunt,
-    /// revealed by search en route, or handed over — resume the original
-    /// walk. Doubles as the found-first abort for a pending prompt or an
-    /// in-flight spawn walk.
-    /// </summary>
+    // Inventory-change callback (wired to InventoryManager.Changed). When the
+    // item we rerouted for is now carried — dropped by the hunt, revealed by
+    // search en route, or handed over — resume the original walk. Doubles as
+    // the found-first abort for a pending prompt or an in-flight spawn walk.
     public void OnInventoryChanged()
     {
         if (_phase is not (Phase.AwaitingConfirm or Phase.WalkingToSpawn or Phase.Hunting))

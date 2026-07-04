@@ -3,30 +3,19 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game;
 
-/// <summary>
-/// Snapshot of the in-game <c>stat</c> screen. Updated by
-/// <see cref="StatParser"/>; consumed by feature engines that need
-/// data the live statline prompt doesn't carry — most prominently
-/// <see cref="Remote.RemoteCommandManager.LivesProvider"/> (drives
-/// the <c>@suicide</c> hard-block) and the future Phase 9 Character
-/// Workshop.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Distinct from <see cref="PlayerState"/>: <see cref="PlayerState"/>
-/// tracks the LIVE values that flow through every prompt
-/// (HP / MA / status); <see cref="PlayerStats"/> is the periodic
-/// snapshot the user gets by typing <c>stat</c>. HP / Mana overlap
-/// between the two but with different freshness — PromptParser
-/// updates per-prompt, StatParser updates per-stat-screen.
-/// </para>
-/// <para>
-/// Single-writer invariant: every field is tagged
-/// <see cref="OwnerAttribute"/> with <see cref="StatParser"/> as the
-/// owner. Consumers subscribe to <see cref="ObservableObject.PropertyChanged"/>
-/// or read directly; never write.
-/// </para>
-/// </remarks>
+// Snapshot of the in-game stat screen. Updated by StatParser; consumed by
+// feature engines that need data the live statline prompt doesn't carry —
+// most prominently RemoteCommandManager.LivesProvider (drives the @suicide
+// hard-block) and the Character Workshop.
+//
+// Distinct from PlayerState: PlayerState tracks the LIVE values that flow
+// through every prompt (HP / MA / status); PlayerStats is the periodic
+// snapshot the user gets by typing stat. HP / Mana overlap between the two
+// but with different freshness — PromptParser updates per-prompt, StatParser
+// updates per-stat-screen.
+//
+// Single-writer invariant: every field is tagged with StatParser as the
+// owner. Consumers subscribe to PropertyChanged or read directly; never write.
 public sealed partial class PlayerStats : ObservableObject
 {
     // ----- Identity ------------------------------------------------------
@@ -37,46 +26,39 @@ public sealed partial class PlayerStats : ObservableObject
     // ----- Progression ---------------------------------------------------
     [ObservableProperty] [field: Owner(typeof(StatParser))] private int _level;
     [ObservableProperty] [field: Owner(typeof(StatParser))] private int _exp;
-    /// <summary>Lives remaining — half of the <c>Lives/CP: N/M</c> field.</summary>
+    // Lives remaining — half of the Lives/CP: N/M field.
     [ObservableProperty] [field: Owner(typeof(StatParser))] private int _lives;
-    /// <summary>Character points available to spend — the other half of <c>Lives/CP: N/M</c>.</summary>
+    // Character points available to spend — the other half of Lives/CP: N/M.
     [ObservableProperty] [field: Owner(typeof(StatParser))] private int _cp;
 
-    /// <summary>
-    /// Exp still needed to hit the next level — the first <c>N</c>
-    /// in the <c>exp</c> command's output line
-    /// (<c>"Exp needed for next level: N (M) [P%]"</c>). Shrinks as
-    /// XP comes in; <b>clamped to 0</b> server-side when the
-    /// character already has enough exp to level (won't go
-    /// negative even if they've accumulated way past the
-    /// threshold).
-    /// </summary>
+    // Exp still needed to hit the next level — the first N in the exp
+    // command's output line ("Exp needed for next level: N (M) [P%]").
+    // Shrinks as XP comes in; clamped to 0 server-side when the character
+    // already has enough exp to level (won't go negative even if they've
+    // accumulated way past the threshold).
     [ObservableProperty] [field: Owner(typeof(StatParser))] private int _expToNext;
-    /// <summary>
-    /// Total exp required to span the current level — the
-    /// parenthesized <c>(M)</c> in the exp line. NOT the cumulative
-    /// threshold; the DELTA between the current-level floor and
-    /// the next-level floor. Constant for the current level; the
-    /// running progress is <c>M - ExpToNext</c>.
-    /// </summary>
+    // Total exp required to span the current level — the parenthesized (M)
+    // in the exp line. NOT the cumulative threshold; the DELTA between the
+    // current-level floor and the next-level floor. Constant for the current
+    // level; the running progress is M - ExpToNext.
     [ObservableProperty] [field: Owner(typeof(StatParser))] private int _levelExpSpan;
-    /// <summary>
-    /// Progress through the current level as a percent (0–100) —
-    /// the <c>[P%]</c> on the exp line. Computed server-side as
-    /// <c>(LevelExpSpan - ExpToNext) / LevelExpSpan × 100</c>.
-    /// </summary>
+    // Progress through the current level as a percent (0–100) — the [P%] on
+    // the exp line. Computed server-side as
+    // (LevelExpSpan - ExpToNext) / LevelExpSpan × 100.
     [ObservableProperty] [field: Owner(typeof(StatParser))] private int _levelPercent;
 
     // ----- Vitals (snapshot, not live) -----------------------------------
     [ObservableProperty] [field: Owner(typeof(StatParser))] private int _hits;
     [ObservableProperty] [field: Owner(typeof(StatParser))] private int _maxHits;
-    /// <summary>Mana — present for caster classes. Mutually exclusive with <see cref="Kai"/>; both stay 0 for Warriors.</summary>
+    // Mana — present for caster classes. Mutually exclusive with Kai; both
+    // stay 0 for Warriors.
     [ObservableProperty] [field: Owner(typeof(StatParser))] private int _mana;
     [ObservableProperty] [field: Owner(typeof(StatParser))] private int _maxMana;
-    /// <summary>Kai — present for Mystic / Monk-family classes. Mutually exclusive with <see cref="Mana"/>.</summary>
+    // Kai — present for Mystic / Monk-family classes. Mutually exclusive with Mana.
     [ObservableProperty] [field: Owner(typeof(StatParser))] private int _kai;
     [ObservableProperty] [field: Owner(typeof(StatParser))] private int _maxKai;
-    /// <summary>Current armour class — left half of <c>Armour Class: N/M</c> (current is reduced by damage to gear, etc.).</summary>
+    // Current armour class — left half of Armour Class: N/M (current is
+    // reduced by damage to gear, etc.).
     [ObservableProperty] [field: Owner(typeof(StatParser))] private int _armourClass;
     [ObservableProperty] [field: Owner(typeof(StatParser))] private int _maxArmourClass;
 
@@ -97,6 +79,6 @@ public sealed partial class PlayerStats : ObservableObject
     [ObservableProperty] [field: Owner(typeof(StatParser))] private int _tracking;
     [ObservableProperty] [field: Owner(typeof(StatParser))] private int _martialArts;
     [ObservableProperty] [field: Owner(typeof(StatParser))] private int _magicRes;
-    /// <summary>Spellcasting — present only on caster classes; 0 for warriors / thieves.</summary>
+    // Spellcasting — present only on caster classes; 0 for warriors / thieves.
     [ObservableProperty] [field: Owner(typeof(StatParser))] private int _spellcasting;
 }

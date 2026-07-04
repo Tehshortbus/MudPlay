@@ -4,66 +4,45 @@ using FujinTerm.Services.Patterns;
 
 namespace FujinTerm.Game.Stealth;
 
-/// <summary>
-/// Phase 9 PR 9.F — stealth state tracker. Owns
-/// <see cref="PlayerState.IsSneaking"/> and
-/// <see cref="PlayerState.IsHidden"/>. Other engines
-/// (<see cref="Game.Combat.CombatManager"/>'s pre-attack
-/// suppression, <see cref="Game.Spells.CastingDirector"/>'s buff
-/// gate) read those flags to protect the backstab window.
-/// </summary>
-/// <remarks>
-/// <para>
-/// FSM transitions are line-driven (no timers). The observed signals
-/// and their meanings, per the live MajorMUD sneak sequence:
-/// </para>
-/// <list type="bullet">
-/// <item><see cref="KnownPatterns.UserSneakInitiate"/>
-/// (clean <c>Attempting to sneak...</c> with no failure suffix) is the
-/// server ACK that the sneak attempt took — the character is armed and
-/// may now move. Establishes <see cref="StealthState.Sneaking"/> +
-/// <c>IsSneaking=true</c>.</item>
-/// <item><see cref="KnownPatterns.UserSneakFailed"/>
-/// (<c>Attempting to sneak...You don't think you're sneaking.</c>) is a
-/// soft rejection: the attempt didn't take and must be retried by
-/// resending <c>sn</c>. When auto-sneak owns the loop we resend (capped
-/// at <see cref="MaxSneakRetries"/>); otherwise we settle on
-/// <see cref="StealthState.Failed"/> for the caller to retry.</item>
-/// <item><see cref="KnownPatterns.UserSneaking"/>
-/// (<c>Sneaking...</c>, emitted on each room entry while sneak holds)
-/// is the post-move confirmation that we entered the new room unseen.
-/// Re-establishes <see cref="StealthState.Sneaking"/> and re-arms the
-/// silent-loss watchdog for the room.</item>
-/// <item><see cref="KnownPatterns.UserNotSneaking"/>
-/// (<c>You make a sound as you enter the room!</c>) →
-/// <see cref="StealthState.Idle"/> + <c>IsSneaking=false</c>. Loud
-/// loss.</item>
-/// <item><see cref="KnownPatterns.UserCantSneak"/>
-/// (<c>You may not sneak right now!</c>) →
-/// <see cref="StealthState.Failed"/>. Hard block — no auto-retry.</item>
-/// </list>
-/// <para>
-/// <b>Silent-loss detection</b>: in MajorMUD, sneak silently breaks
-/// when a move is observed (or a stealth-breaking action fires) without
-/// the <c>Sneaking...</c> line. The watchdog flag
-/// <c>_sneakConfirmedThisRoom</c> is set on every positive signal
-/// (clean initiate OR <c>Sneaking...</c>) and cleared on
-/// <see cref="NoteRoomChanged"/>. If we believed we were sneaking but
-/// the new room never re-confirmed, we treat that as a silent loss and
-/// drop the flag — preventing the engine from thinking we're still
-/// hidden when CombatManager is about to swing.
-/// </para>
-/// </remarks>
+// Stealth state tracker. Owns PlayerState.IsSneaking and PlayerState.IsHidden.
+// Other engines (CombatManager's pre-attack suppression, CastingDirector's buff
+// gate) read those flags to protect the backstab window.
+//
+// FSM transitions are line-driven (no timers). The observed signals and their
+// meanings, per the live MajorMUD sneak sequence:
+//   * UserSneakInitiate (clean "Attempting to sneak..." with no failure suffix)
+//     is the server ACK that the sneak attempt took — the character is armed and
+//     may now move. Establishes StealthState.Sneaking + IsSneaking=true.
+//   * UserSneakFailed ("Attempting to sneak...You don't think you're sneaking.")
+//     is a soft rejection: the attempt didn't take and must be retried by
+//     resending sn. When auto-sneak owns the loop we resend (capped at
+//     MaxSneakRetries); otherwise we settle on StealthState.Failed for the caller
+//     to retry.
+//   * UserSneaking ("Sneaking...", emitted on each room entry while sneak holds)
+//     is the post-move confirmation that we entered the new room unseen.
+//     Re-establishes StealthState.Sneaking and re-arms the silent-loss watchdog
+//     for the room.
+//   * UserNotSneaking ("You make a sound as you enter the room!") →
+//     StealthState.Idle + IsSneaking=false. Loud loss.
+//   * UserCantSneak ("You may not sneak right now!") → StealthState.Failed. Hard
+//     block — no auto-retry.
+//
+// Silent-loss detection: in MajorMUD, sneak silently breaks when a move is
+// observed (or a stealth-breaking action fires) without the "Sneaking..." line.
+// The watchdog flag _sneakConfirmedThisRoom is set on every positive signal
+// (clean initiate OR "Sneaking...") and cleared on NoteRoomChanged. If we
+// believed we were sneaking but the new room never re-confirmed, we treat that as
+// a silent loss and drop the flag — preventing the engine from thinking we're
+// still hidden when CombatManager is about to swing.
 public sealed class StealthManager : IDisposable
 {
-    /// <summary>LogService category — appears as <c>[Stealth]</c> rows
-    /// per FSM transition + silent-loss detection.</summary>
+    // LogService category — appears as [Stealth] rows per FSM transition +
+    // silent-loss detection.
     public const string LogCategory = "Stealth";
 
-    /// <summary>Max consecutive <c>sn</c> resends after a soft sneak
-    /// rejection (<c>You don't think you're sneaking.</c>) before the
-    /// auto-sneak loop gives up for this room. Matches MudProxy's retry
-    /// ceiling. Reset on every positive sneak signal + room change.</summary>
+    // Max consecutive sn resends after a soft sneak rejection ("You don't think
+    // you're sneaking.") before the auto-sneak loop gives up for this room. Reset
+    // on every positive sneak signal + room change.
     private const int MaxSneakRetries = 10;
 
     private readonly PlayerState _state;
@@ -84,20 +63,18 @@ public sealed class StealthManager : IDisposable
     private int _sneakRetries;
     private bool _disposed;
 
-    /// <summary>Current FSM state. Backed by
-    /// <see cref="PlayerState.IsSneaking"/> /
-    /// <see cref="PlayerState.IsHidden"/> for observables; the FSM
-    /// state itself is exposed via this property + the
-    /// <see cref="StateChanged"/> event.</summary>
+    // Current FSM state. Backed by PlayerState.IsSneaking / PlayerState.IsHidden
+    // for observables; the FSM state itself is exposed via this property + the
+    // StateChanged event.
     public StealthState State => _stateValue;
 
-    /// <summary>Fires after every confirmed FSM transition (including
-    /// silent-loss to Idle). Args: old state, new state.</summary>
+    // Fires after every confirmed FSM transition (including silent-loss to Idle).
+    // Args: old state, new state.
     public event Action<StealthState, StealthState>? StateChanged;
 
-    /// <summary>Fires when silent-loss is detected on room change —
-    /// we believed we were sneaking but the new room's emit didn't
-    /// carry the <c>Sneaking...</c> confirmation.</summary>
+    // Fires when silent-loss is detected on room change — we believed we were
+    // sneaking but the new room's emit didn't carry the "Sneaking..."
+    // confirmation.
     public event Action? SilentSneakLost;
 
     public StealthManager(
@@ -117,69 +94,54 @@ public sealed class StealthManager : IDisposable
         _cantSneakSub     = router.Subscribe(KnownPatterns.UserCantSneak,     OnCantSneak);
     }
 
-    /// <summary>Bind the wire sender for the auto-sneak / auto-hide
-    /// engines. Until set, the auto-engines log decisions but don't
-    /// send commands.</summary>
+    // Bind the wire sender for the auto-sneak / auto-hide engines. Until set, the
+    // auto-engines log decisions but don't send commands.
     public void SetWireSender(Action<byte[]> sender)
     {
         ArgumentNullException.ThrowIfNull(sender);
         _wireSender = sender;
     }
 
-    /// <summary>Wire the AutoSneak / AutoHide master switches —
-    /// typically <c>GeneralSettings.AutoMode.AutoSneak</c> /
-    /// <c>AutoHide</c>. When the funcs are null the auto-engines
-    /// stay dormant (passive tracker behavior).</summary>
+    // Wire the AutoSneak / AutoHide master switches — typically
+    // GeneralSettings.AutoMode.AutoSneak / AutoHide. When the funcs are null the
+    // auto-engines stay dormant (passive tracker behavior).
     public void SetAutoToggles(Func<bool> isAutoSneakEnabled, Func<bool> isAutoHideEnabled)
     {
         _isAutoSneakEnabled = isAutoSneakEnabled;
         _isAutoHideEnabled = isAutoHideEnabled;
     }
 
-    /// <summary>
-    /// Wire the "sneak blocked by a room occupant" predicate — true when
-    /// any NPC is in the current room (any NPC at all prevents sneak in
-    /// MajorMUD). AppServices binds this to
-    /// <c>CombatStateTracker.HasRoomNpc</c>. When the predicate returns
-    /// true, auto-sneak suppresses the doomed <c>sn</c> rather than
-    /// firing it into a guaranteed server rejection. When null, no
-    /// suppression occurs (sneak is attempted unconditionally).
-    /// </summary>
+    // Wire the "sneak blocked by a room occupant" predicate — true when any NPC is
+    // in the current room (any NPC at all prevents sneak in MajorMUD). AppServices
+    // binds this to CombatStateTracker.HasRoomNpc. When the predicate returns
+    // true, auto-sneak suppresses the doomed sn rather than firing it into a
+    // guaranteed server rejection. When null, no suppression occurs (sneak is
+    // attempted unconditionally).
     public void SetSneakBlockCheck(Func<bool> isSneakBlockedByRoom)
     {
         ArgumentNullException.ThrowIfNull(isSneakBlockedByRoom);
         _isSneakBlockedByRoom = isSneakBlockedByRoom;
     }
 
-    /// <summary>
-    /// True while we hold any active stealth (Sneaking or Hidden).
-    /// Read by <c>CastingDirector</c> to suppress buff casts that
-    /// would break stealth, and (future) by <c>CombatManager</c> to
-    /// pick backstab over normal attack.
-    /// </summary>
+    // True while we hold any active stealth (Sneaking or Hidden). Read by
+    // CastingDirector to suppress buff casts that would break stealth, and
+    // (future) by CombatManager to pick backstab over normal attack.
     public bool IsStealthed =>
         _stateValue == StealthState.Sneaking || _stateValue == StealthState.Hidden;
 
-    /// <summary>
-    /// True only while actively <see cref="StealthState.Sneaking"/>
-    /// (not Hidden). Backstab requires the sneaking state specifically —
-    /// you approach an unseen target while moving silently — so
-    /// <c>CombatManager</c> gates its opening <c>bs</c> on this rather
-    /// than <see cref="IsStealthed"/>.
-    /// </summary>
+    // True only while actively StealthState.Sneaking (not Hidden). Backstab
+    // requires the sneaking state specifically — you approach an unseen target
+    // while moving silently — so CombatManager gates its opening bs on this rather
+    // than IsStealthed.
     public bool IsSneaking => _stateValue == StealthState.Sneaking;
 
-    /// <summary>
-    /// Called by an external observer (RoomTracker via AppServices)
-    /// when the player's room changes. If we believed we were
-    /// sneaking but didn't observe the <c>Sneaking...</c> line in
-    /// the new room within a short window after the room display,
-    /// we treat it as a silent loss. Practically: callers invoke
-    /// this AFTER the new room's emit batch has been processed by
-    /// the router (RoomTracker's StateChanged fires after the room
-    /// display lands), so the <c>Sneaking...</c> emit (if any) has
-    /// already updated <see cref="_sneakConfirmedThisRoom"/>.
-    /// </summary>
+    // Called by an external observer (RoomTracker via AppServices) when the
+    // player's room changes. If we believed we were sneaking but didn't observe
+    // the "Sneaking..." line in the new room within a short window after the room
+    // display, we treat it as a silent loss. Practically: callers invoke this
+    // AFTER the new room's emit batch has been processed by the router
+    // (RoomTracker's StateChanged fires after the room display lands), so the
+    // "Sneaking..." emit (if any) has already updated _sneakConfirmedThisRoom.
     public void NoteRoomChanged()
     {
         if (_stateValue == StealthState.Sneaking && !_sneakConfirmedThisRoom)
@@ -195,36 +157,28 @@ public sealed class StealthManager : IDisposable
         // sneak immediately re-attempts. This is the reactive path —
         // covers room changes from manual movement the user types at the
         // terminal. Engine-driven moves get the proactive pre-move path
-        // (<see cref="RequestPreMoveStealth"/>) instead, so the move
-        // itself is sneaked rather than the room after it.
+        // (RequestPreMoveStealth) instead, so the move itself is sneaked
+        // rather than the room after it.
         TryBeginAutoSneak("room change + idle/failed + !combat");
     }
 
-    /// <summary>
-    /// Movement-engine pre-move hook — called by the walker / loop
-    /// runner immediately before a move's bytes go out (after any
-    /// door / trap / hidden / multi-action pre-steps) so the move
-    /// itself is performed under sneak. Non-blocking: fires <c>sn</c>
-    /// and returns at once; the move is NOT held waiting for the ACK
-    /// (sneak carries through the move and the new room's
-    /// <c>Sneaking...</c> line confirms it). No-op when auto-sneak is
-    /// off, we're already sneaking / hidden or mid-attempt, or we're in
-    /// combat (the walker is gated out of moving while a hostile holds
-    /// the Combat gate anyway).
-    /// </summary>
+    // Movement-engine pre-move hook — called by the walker / loop runner
+    // immediately before a move's bytes go out (after any door / trap / hidden /
+    // multi-action pre-steps) so the move itself is performed under sneak.
+    // Non-blocking: fires sn and returns at once; the move is NOT held waiting for
+    // the ACK (sneak carries through the move and the new room's "Sneaking..."
+    // line confirms it). No-op when auto-sneak is off, we're already sneaking /
+    // hidden or mid-attempt, or we're in combat (the walker is gated out of moving
+    // while a hostile holds the Combat gate anyway).
     public void RequestPreMoveStealth() => TryBeginAutoSneak("pre-move");
 
-    /// <summary>
-    /// Shared auto-sneak entry point. Sends <c>sn</c> exactly once from
-    /// a settled non-stealth state (<see cref="StealthState.Idle"/> /
-    /// <see cref="StealthState.Failed"/>) when auto-sneak is on and
-    /// we're not in combat, transitioning to
-    /// <see cref="StealthState.AttemptingSneak"/>. No-op when auto-sneak
-    /// is off, a sneak / hide is already established or in flight, or
-    /// we're in combat. The settled-state guard prevents a double-send
-    /// when the reactive room-change path and the pre-move path both
-    /// fire for the same move.
-    /// </summary>
+    // Shared auto-sneak entry point. Sends sn exactly once from a settled
+    // non-stealth state (StealthState.Idle / StealthState.Failed) when auto-sneak
+    // is on and we're not in combat, transitioning to
+    // StealthState.AttemptingSneak. No-op when auto-sneak is off, a sneak / hide
+    // is already established or in flight, or we're in combat. The settled-state
+    // guard prevents a double-send when the reactive room-change path and the
+    // pre-move path both fire for the same move.
     private bool TryBeginAutoSneak(string reason)
     {
         if (_isAutoSneakEnabled?.Invoke() != true) return false;
@@ -250,14 +204,11 @@ public sealed class StealthManager : IDisposable
         return true;
     }
 
-    /// <summary>
-    /// Called when the player goes idle (e.g. enters a safe room and
-    /// the walker stops). Drives the auto-hide engine. Wire from
-    /// <c>AppServices</c> on whatever "idle" signal is appropriate —
-    /// for v1, fire it from the same RoomTracker.StateChanged hook
-    /// as auto-sneak; hide is silent on failure and the server
-    /// rate-limits attempts.
-    /// </summary>
+    // Called when the player goes idle (e.g. enters a safe room and the walker
+    // stops). Drives the auto-hide engine. Wire from AppServices on whatever
+    // "idle" signal is appropriate — for v1, fire it from the same
+    // RoomTracker.StateChanged hook as auto-sneak; hide is silent on failure and
+    // the server rate-limits attempts.
     public void NoteIdleOpportunity()
     {
         if (_isAutoHideEnabled?.Invoke() != true) return;
@@ -273,24 +224,19 @@ public sealed class StealthManager : IDisposable
         _wireSender(System.Text.Encoding.Latin1.GetBytes(text + "\r"));
     }
 
-    /// <summary>
-    /// Mark hide as confirmed — invoked when the caller observes
-    /// the server's confirmation line for a successful
-    /// <c>hide</c>. Hide doesn't have the room-by-room re-confirm
-    /// that sneak has, so v1 keeps the watch surface narrow:
-    /// callers explicitly mark hide on/off. (Auto-hide engine
-    /// follow-up will wire the actual line parse.)
-    /// </summary>
+    // Mark hide as confirmed — invoked when the caller observes the server's
+    // confirmation line for a successful hide. Hide doesn't have the room-by-room
+    // re-confirm that sneak has, so v1 keeps the watch surface narrow: callers
+    // explicitly mark hide on/off. (Auto-hide engine follow-up will wire the
+    // actual line parse.)
     public void NoteHideConfirmed()
     {
         Transition(StealthState.Hidden);
         _state.IsHidden = true;
     }
 
-    /// <summary>
-    /// Clear hide — invoked when the caller observes a
-    /// hide-breaking event (move, attack, cast).
-    /// </summary>
+    // Clear hide — invoked when the caller observes a hide-breaking event (move,
+    // attack, cast).
     public void NoteHideBroken()
     {
         if (_stateValue == StealthState.Hidden)
@@ -315,9 +261,9 @@ public sealed class StealthManager : IDisposable
         EstablishSneaking();
     }
 
-    /// <summary>Shared positive-signal handler: marks sneak established
-    /// (clean initiate ACK or post-move <c>Sneaking...</c>), arms the
-    /// per-room watchdog, and clears the resend counter.</summary>
+    // Shared positive-signal handler: marks sneak established (clean initiate ACK
+    // or post-move Sneaking...), arms the per-room watchdog, and clears the resend
+    // counter.
     private void EstablishSneaking()
     {
         _sneakConfirmedThisRoom = true;

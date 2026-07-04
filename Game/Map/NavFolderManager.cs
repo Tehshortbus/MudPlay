@@ -4,31 +4,22 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game.Map;
 
-/// <summary>
-/// Folder CRUD over the shared per-set Loops directory
-/// (<see cref="AppPaths.GameDataSetLoopsFolder"/>), which holds BOTH navigation
-/// loops (<see cref="LoopManager"/>) and Auto-Lair setups
-/// (<see cref="LairManager"/>) as real on-disk subdirectories. Because
-/// the two catalogues share one directory tree, a folder create /
-/// rename / delete affects both — so the coordinator owns the
-/// filesystem operation once and reloads both managers afterwards,
-/// rather than each manager racing the same directory.
-/// </summary>
-/// <remarks>
-/// <para>
-/// The stored folder vocabulary is the same <c>/</c>-separated form
-/// used everywhere in navigation (see <see cref="NavFolders"/>);
-/// <see cref="NavFolders.ToDirectory"/> bridges it to real subdirectories.
-/// Empty folders are first-class — they exist as real (file-less)
-/// directories, so <see cref="AllFolders"/> finds them without any
-/// side record.
-/// </para>
-/// <para>
-/// Per-favourite (GOTO) folders live in the character profile, not the
-/// filesystem, so they are <b>not</b> managed here — see
-/// <see cref="FavoritesStore"/>. This coordinator is loops + lairs only.
-/// </para>
-/// </remarks>
+// Folder CRUD over the shared per-set Loops directory
+// (AppPaths.GameDataSetLoopsFolder), which holds BOTH navigation loops
+// (LoopManager) and Auto-Lair setups (LairManager) as real on-disk
+// subdirectories. Because the two catalogues share one directory tree, a
+// folder create / rename / delete affects both — so the coordinator owns the
+// filesystem operation once and reloads both managers afterwards, rather than
+// each manager racing the same directory.
+//
+// The stored folder vocabulary is the same /-separated form used everywhere in
+// navigation (see NavFolders); NavFolders.ToDirectory bridges it to real
+// subdirectories. Empty folders are first-class — they exist as real
+// (file-less) directories, so AllFolders finds them without any side record.
+//
+// Per-favourite (GOTO) folders live in the character profile, not the
+// filesystem, so they are NOT managed here — see FavoritesStore. This
+// coordinator is loops + lairs only.
 public sealed class NavFolderManager
 {
     private readonly LoopManager _loops;
@@ -44,22 +35,19 @@ public sealed class NavFolderManager
         _log = log;
     }
 
-    /// <summary>
-    /// Fires after any folder mutation (create / rename / delete). The
-    /// rail / Manage dialog refresh their folder tree on this — empty-
-    /// folder creation produces no loop/lair change, so the UI can't
-    /// rely on the managers' own events alone.
-    /// </summary>
+    // Fires after any folder mutation (create / rename / delete). The rail /
+    // Manage dialog refresh their folder tree on this — empty-folder creation
+    // produces no loop/lair change, so the UI can't rely on the managers' own
+    // events alone.
     public event Action? FoldersChanged;
 
-    /// <summary>The game-data set whose Loops directory we operate on. Sourced from <see cref="LoopManager"/>.</summary>
+    // The game-data set whose Loops directory we operate on. Sourced from
+    // LoopManager.
     private string? SetName => _loops.SetName;
 
-    /// <summary>
-    /// Every folder (in stored <c>/</c> form) that physically exists
-    /// under the Loops root, including empty ones. Excludes the root.
-    /// De-duplicated; order unspecified — the UI sorts.
-    /// </summary>
+    // Every folder (in stored / form) that physically exists under the Loops
+    // root, including empty ones. Excludes the root. De-duplicated; order
+    // unspecified — the UI sorts.
     public IReadOnlyCollection<string> AllFolders
     {
         get
@@ -77,12 +65,10 @@ public sealed class NavFolderManager
         }
     }
 
-    /// <summary>
-    /// Create an empty folder (and any missing ancestors) under the
-    /// Loops root so it shows in the tree before any loop / lair is
-    /// filed under it. No-op when no set is active, the path is the
-    /// root, or the directory already exists.
-    /// </summary>
+    // Create an empty folder (and any missing ancestors) under the Loops root
+    // so it shows in the tree before any loop / lair is filed under it. No-op
+    // when no set is active, the path is the root, or the directory already
+    // exists.
     public bool CreateFolder(string path)
     {
         if (SetName is not { } setName) return false;
@@ -96,13 +82,10 @@ public sealed class NavFolderManager
         return true;
     }
 
-    /// <summary>
-    /// Rename folder <paramref name="oldPath"/> (and everything beneath
-    /// it) to <paramref name="newPath"/>. Reloads both managers so
-    /// their in-memory <c>Folder</c> values pick up the move. No-op at
-    /// the root, when the source is missing, or the target already
-    /// exists (we don't merge — surfaced to the user as a no-op).
-    /// </summary>
+    // Rename folder oldPath (and everything beneath it) to newPath. Reloads
+    // both managers so their in-memory Folder values pick up the move. No-op at
+    // the root, when the source is missing, or the target already exists (we
+    // don't merge — surfaced to the user as a no-op).
     public bool RenameFolder(string oldPath, string newPath)
     {
         if (SetName is not { } setName) return false;
@@ -139,14 +122,11 @@ public sealed class NavFolderManager
         return true;
     }
 
-    /// <summary>
-    /// Remove folder <paramref name="path"/>. When
-    /// <paramref name="moveContentsToParent"/> is true, its immediate
-    /// children (loops, lairs, and sub-folders, each kept intact) are
-    /// re-parented one level up first; otherwise the directory is
-    /// deleted with everything inside. Reloads both managers. No-op at
-    /// the root or when the folder doesn't exist.
-    /// </summary>
+    // Remove folder path. When moveContentsToParent is true, its immediate
+    // children (loops, lairs, and sub-folders, each kept intact) are
+    // re-parented one level up first; otherwise the directory is deleted with
+    // everything inside. Reloads both managers. No-op at the root or when the
+    // folder doesn't exist.
     public bool DeleteFolder(string path, bool moveContentsToParent = true)
     {
         if (SetName is not { } setName) return false;

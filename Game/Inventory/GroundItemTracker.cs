@@ -3,32 +3,23 @@ using FujinTerm.Services.Patterns;
 
 namespace FujinTerm.Game.Inventory;
 
-/// <summary>
-/// Tracks the items lying on the current room's floor, parsed from the
-/// "You notice &lt;list&gt; here." survey line. Cash entries are filtered
-/// out (coin is the <see cref="Game.Cash.CashManager"/>'s domain), so the
-/// snapshot is item-only — the single source both <c>@what</c> (read the
-/// list back) and <c>@get-all</c> (send <c>get</c> per item) consume.
-/// </summary>
-/// <remarks>
-/// <para>
-/// The snapshot is per-room. A fresh survey rebuilds it wholesale (a new
-/// "You notice" supersedes the prior list), and a room change clears it via
-/// <see cref="OnRoomChanged"/> — the loot belonged to the room we left, and
-/// an empty room emits no survey line, so without the clear a stale list
-/// would linger. Item wording is preserved verbatim ("a rusty dagger"), so
-/// <c>get</c> can match on the noun phrase after the caller strips the
-/// article.
-/// </para>
-/// <para>
-/// There is no bulk "get all" verb in MajorMUD — <c>@get-all</c> walks this
-/// list and sends one <c>get</c> per entry. Cash recognition is stricter than
-/// <see cref="Game.Cash.CashManager"/>'s collect rule (see
-/// <see cref="IsCashEntry"/>): a denomination word used as a material
-/// adjective ("a silver ring") must stay an item, so only a counted coin or
-/// the canonical "a &lt;denom&gt; piece" singular is filtered.
-/// </para>
-/// </remarks>
+// Tracks the items lying on the current room's floor, parsed from the
+// "You notice <list> here." survey line. Cash entries are filtered out (coin is
+// the CashManager's domain), so the snapshot is item-only — the single source
+// both @what (read the list back) and @get-all (send get per item) consume.
+//
+// The snapshot is per-room. A fresh survey rebuilds it wholesale (a new "You
+// notice" supersedes the prior list), and a room change clears it via
+// OnRoomChanged — the loot belonged to the room we left, and an empty room emits
+// no survey line, so without the clear a stale list would linger. Item wording
+// is preserved verbatim ("a rusty dagger"), so get can match on the noun phrase
+// after the caller strips the article.
+//
+// There is no bulk "get all" verb in MajorMUD — @get-all walks this list and
+// sends one get per entry. Cash recognition is stricter than the CashManager's
+// collect rule (see IsCashEntry): a denomination word used as a material
+// adjective ("a silver ring") must stay an item, so only a counted coin or the
+// canonical "a <denom> piece" singular is filtered.
 public sealed class GroundItemTracker : IDisposable
 {
     private static readonly HashSet<string> CashDenominations =
@@ -50,16 +41,14 @@ public sealed class GroundItemTracker : IDisposable
         _noticeSub = router.Subscribe(KnownPatterns.YouNoticeRoom, OnYouNoticeRoom);
     }
 
-    /// <summary>Item names on the room floor from the latest survey, cash
-    /// excluded, wording preserved for a <c>get</c> match. Empty until a
-    /// "You notice" line lands; cleared on room change.</summary>
+    // Item names on the room floor from the latest survey, cash excluded,
+    // wording preserved for a get match. Empty until a "You notice" line lands;
+    // cleared on room change.
     public IReadOnlyList<string> Items => _items;
 
-    /// <summary>
-    /// Bind the per-session <see cref="Terminal.LineExtractor"/> so the
-    /// tracker can stitch a wrapped "You notice" survey back together —
-    /// same shape as <see cref="AutoGetItemsManager"/> / the CashManager.
-    /// </summary>
+    // Bind the per-session LineExtractor so the tracker can stitch a wrapped
+    // "You notice" survey back together — same shape as AutoGetItemsManager /
+    // the CashManager.
     public void AttachLineExtractor(Terminal.LineExtractor lines)
     {
         ArgumentNullException.ThrowIfNull(lines);
@@ -69,8 +58,8 @@ public sealed class GroundItemTracker : IDisposable
         _lines.LineEmitted += OnLine;
     }
 
-    /// <summary>Discard the snapshot on an actual room change — the floor
-    /// loot belonged to the room we just left.</summary>
+    // Discard the snapshot on an actual room change — the floor loot belonged to
+    // the room we just left.
     public void OnRoomChanged()
     {
         _noticeBuffer = null;
@@ -79,9 +68,8 @@ public sealed class GroundItemTracker : IDisposable
 
     // ----- notice parsing ----------------------------------------------
 
-    /// <summary>Single-line "You notice &lt;list&gt; here." — the pattern
-    /// subscription path. Multi-line wraps stitch through
-    /// <see cref="OnLine"/> and feed the same rebuild.</summary>
+    // Single-line "You notice <list> here." — the pattern subscription path.
+    // Multi-line wraps stitch through OnLine and feed the same rebuild.
     private void OnYouNoticeRoom(MatchResult m)
     {
         if (m.Groups.Count == 0) return;
@@ -130,8 +118,8 @@ public sealed class GroundItemTracker : IDisposable
         RebuildFrom(body);
     }
 
-    /// <summary>Rebuild the snapshot from a survey list — split into entries,
-    /// drop cash, keep item wording verbatim.</summary>
+    // Rebuild the snapshot from a survey list — split into entries, drop cash,
+    // keep item wording verbatim.
     private void RebuildFrom(string list)
     {
         _items.Clear();
@@ -142,10 +130,8 @@ public sealed class GroundItemTracker : IDisposable
         }
     }
 
-    /// <summary>
-    /// Split "a, b and c" survey wording into individual entries — commas
-    /// separate all but the final pair, which uses " and ".
-    /// </summary>
+    // Split "a, b and c" survey wording into individual entries — commas
+    // separate all but the final pair, which uses " and ".
     private static IEnumerable<string> SplitEntries(string list)
     {
         foreach (string comma in list.Split(',', StringSplitOptions.TrimEntries

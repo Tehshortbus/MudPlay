@@ -5,43 +5,25 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game.Map.MpFile;
 
-/// <summary>
-/// Resolves a parsed <see cref="MpLoopFile"/> against the active
-/// <see cref="RoomGraphManager"/> and produces a ready-to-save
-/// <see cref="Loop"/>. Heart of the .mp import flow described in the
-/// Phase 7 plan (PR 7.9).
-/// </summary>
-/// <remarks>
-/// <para>
-/// The <c>.mp</c> format doesn't carry <c>(map, room)</c>; it carries
-/// per-step <c>hashExits</c> tokens. Anchoring is therefore a two-stage
-/// process:
-/// </para>
-/// <list type="number">
-///   <item>
-///     <b>Candidate filter</b> — decode the start hashExits into a
-///     <c>(nameHash, exitSet)</c> and collect every room in the active
-///     graph that matches both. Multiple matches are common because
-///     the 3-char hash is lossy.
-///   </item>
-///   <item>
-///     <b>Closure walk + per-step scoring</b> — for each candidate,
-///     walk the recorded direction sequence through the graph,
-///     verifying the per-step hashExits matches what our graph
-///     produces for the room we're standing in (informational), and
-///     verifying the final position equals the start room (mandatory:
-///     a loop file must close). Candidates that fail to close are
-///     discarded.
-///   </item>
-/// </list>
-/// <para>
-/// Result: one <see cref="MpImportResolution"/> with the surviving
-/// candidates ranked by per-step mismatch count (fewer = better). The
-/// caller (UI) picks the unique best, prompts the user when several
-/// candidates tie for the best score, or surfaces the error reason
-/// when no candidate closes.
-/// </para>
-/// </remarks>
+// Resolves a parsed MpLoopFile against the active RoomGraphManager and produces a
+// ready-to-save Loop.
+//
+// The .mp format doesn't carry (map, room); it carries per-step hashExits tokens.
+// Anchoring is therefore a two-stage process:
+//   1. Candidate filter — decode the start hashExits into a (nameHash, exitSet)
+//      and collect every room in the active graph that matches both. Multiple
+//      matches are common because the 3-char hash is lossy.
+//   2. Closure walk + per-step scoring — for each candidate, walk the recorded
+//      direction sequence through the graph, verifying the per-step hashExits
+//      matches what our graph produces for the room we're standing in
+//      (informational), and verifying the final position equals the start room
+//      (mandatory: a loop file must close). Candidates that fail to close are
+//      discarded.
+//
+// Result: one MpImportResolution with the surviving candidates ranked by per-step
+// mismatch count (fewer = better). The caller (UI) picks the unique best, prompts
+// the user when several candidates tie for the best score, or surfaces the error
+// reason when no candidate closes.
 public sealed partial class MpFileImporter
 {
     private readonly RoomGraphManager _graph;
@@ -54,12 +36,9 @@ public sealed partial class MpFileImporter
         _log = log;
     }
 
-    /// <summary>
-    /// Run anchor resolution for <paramref name="file"/> against the
-    /// active graph. Doesn't mutate any state — the caller decides
-    /// what to do with the result (open the editor, pop a picker
-    /// dialog, surface an error).
-    /// </summary>
+    // Run anchor resolution for file against the active graph. Doesn't mutate any
+    // state — the caller decides what to do with the result (open the editor, pop a
+    // picker dialog, surface an error).
     public MpImportResolution Resolve(MpLoopFile file)
     {
         ArgumentNullException.ThrowIfNull(file);
@@ -146,13 +125,10 @@ public sealed partial class MpFileImporter
         return MpImportResolution.Success(file, best, scored.Count - best.Count);
     }
 
-    /// <summary>
-    /// Assemble the persisted <see cref="Loop"/> from a chosen
-    /// anchor + the parsed file. Strips the trailing
-    /// <c>-mapNum roomNum</c> hint from the label per the user's
-    /// convention. Returns null when the walk doesn't actually close
-    /// (defence in depth — the caller should already have filtered).
-    /// </summary>
+    // Assemble the persisted Loop from a chosen anchor + the parsed file. Strips
+    // the trailing "-mapNum roomNum" hint from the label per the common naming
+    // convention. Returns null when the walk doesn't actually close (defence in
+    // depth — the caller should already have filtered).
     public Loop? BuildLoop(MpLoopFile file, RoomKey anchor)
     {
         ArgumentNullException.ThrowIfNull(file);
@@ -180,16 +156,11 @@ public sealed partial class MpFileImporter
         return loop;
     }
 
-    /// <summary>
-    /// Walk <paramref name="file"/>'s step sequence from
-    /// <paramref name="start"/>, counting per-step hash mismatches.
-    /// Returns <c>(candidate, null)</c> when the walk closes; returns
-    /// <c>(null, reason)</c> with a human-readable step-level reason
-    /// when it doesn't — the importer surfaces this to the user when
-    /// every candidate fails so they can spot whether it was a
-    /// missing compass exit, an unresolvable "go X" target, or a
-    /// non-closure.
-    /// </summary>
+    // Walk file's step sequence from start, counting per-step hash mismatches.
+    // Returns (candidate, null) when the walk closes; returns (null, reason) with a
+    // human-readable step-level reason when it doesn't — the importer surfaces this
+    // to the user when every candidate fails so they can spot whether it was a
+    // missing compass exit, an unresolvable "go X" target, or a non-closure.
     private (MpImportCandidate? Candidate, string? FailureReason)
         WalkCandidate(MpLoopFile file, RoomKey start)
     {
@@ -325,22 +296,12 @@ public sealed partial class MpFileImporter
         return (new MpImportCandidate(start, visited, mismatches), null);
     }
 
-    /// <summary>
-    /// Strip a trailing <c>-mapNum roomNum</c> (or similar all-digit)
-    /// suffix that the user's Room Definer V7.1 convention appends to
-    /// labels and room names. Leaves the head alone when no suffix is
-    /// present.
-    /// </summary>
-    /// <summary>
-    /// Log every outgoing exit on <paramref name="room"/> with its
-    /// target's computed hashExits so a user staring at a failed
-    /// non-compass step can compare their graph against what
-    /// MegaMUD's .mp expects. Logged at Info (not Debug) because
-    /// it's the one diagnostic that actually fingers the data
-    /// gap — without it the user can't tell whether the room is
-    /// missing the action exit entirely OR has it pointed at a
-    /// different room than MegaMUD's record.
-    /// </summary>
+    // Log every outgoing exit on room with its target's computed hashExits so a
+    // user staring at a failed non-compass step can compare their graph against
+    // what MegaMUD's .mp expects. Logged at Info (not Debug) because it's the one
+    // diagnostic that actually fingers the data gap — without it the user can't
+    // tell whether the room is missing the action exit entirely OR has it pointed
+    // at a different room than MegaMUD's record.
     private void LogNeighbourSnapshot(RoomKey from, Room room, string expectedHash, MpStep step)
     {
         if (_log is null) return;
@@ -364,6 +325,9 @@ public sealed partial class MpFileImporter
         }
     }
 
+    // Strip a trailing "-mapNum roomNum" (or similar all-digit) suffix that the
+    // common room-naming convention appends to labels and room names. Leaves the
+    // head alone when no suffix is present.
     internal static string StripMapRoomSuffix(string? raw)
     {
         if (string.IsNullOrWhiteSpace(raw)) return string.Empty;
@@ -380,25 +344,18 @@ public sealed partial class MpFileImporter
     private static partial Regex SuffixRegex();
 }
 
-/// <summary>
-/// One survivable anchor for an .mp loop import: the chosen start
-/// room, the full ordered list of rooms walked from there, and the
-/// count of per-step hash mismatches discovered along the way (a soft
-/// "graph drift" signal — lower is better).
-/// </summary>
-/// <param name="AnchorKey">The candidate's start room.</param>
-/// <param name="Visited">Every distinct room visited in order, length == file step count.</param>
-/// <param name="HashMismatches">Per-step hash compares that didn't agree (0 = exact match throughout).</param>
+// One survivable anchor for an .mp loop import: the chosen start room (AnchorKey),
+// the full ordered list of rooms walked from there (Visited, length == file step
+// count), and the count of per-step hash mismatches discovered along the way
+// (HashMismatches — a soft "graph drift" signal, 0 = exact match throughout, lower
+// is better).
 public sealed record MpImportCandidate(
     RoomKey AnchorKey,
     IReadOnlyList<RoomKey> Visited,
     int HashMismatches);
 
-/// <summary>
-/// Result envelope from <see cref="MpFileImporter.Resolve"/>. Either
-/// carries one-or-more candidates the UI can act on or an error
-/// reason to surface to the user.
-/// </summary>
+// Result envelope from MpFileImporter.Resolve. Either carries one-or-more
+// candidates the UI can act on or an error reason to surface to the user.
 public sealed class MpImportResolution
 {
     private MpImportResolution(MpLoopFile? file, IReadOnlyList<MpImportCandidate>? best,
@@ -410,24 +367,19 @@ public sealed class MpImportResolution
         Error = error;
     }
 
-    /// <summary>Parsed input file. Null when the resolution failed before walking.</summary>
+    // Parsed input file. Null when the resolution failed before walking.
     public MpLoopFile? File { get; }
 
-    /// <summary>
-    /// Candidates that closed AND tied for the lowest per-step
-    /// mismatch count. Singleton when the importer found a unique
-    /// best; multi-element when the UI must prompt the user.
-    /// </summary>
+    // Candidates that closed AND tied for the lowest per-step mismatch count.
+    // Singleton when the importer found a unique best; multi-element when the UI
+    // must prompt the user.
     public IReadOnlyList<MpImportCandidate> BestCandidates { get; }
 
-    /// <summary>
-    /// Candidates that closed but lost on per-step score (i.e. the
-    /// importer found a uniquely better match elsewhere). Exposed
-    /// for diagnostics.
-    /// </summary>
+    // Candidates that closed but lost on per-step score (i.e. the importer found a
+    // uniquely better match elsewhere). Exposed for diagnostics.
     public int DroppedCandidateCount { get; }
 
-    /// <summary>Human-readable reason when <see cref="BestCandidates"/> is empty.</summary>
+    // Human-readable reason when BestCandidates is empty.
     public string? Error { get; }
 
     public bool HasUniqueBest => Error is null && BestCandidates.Count == 1;

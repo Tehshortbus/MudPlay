@@ -3,70 +3,48 @@ using System.Text;
 
 namespace FujinTerm.Game.Map;
 
-/// <summary>
-/// Outcome of <see cref="SpecialExitDispatch.TrySendSynchronous"/>.
-/// </summary>
+// Outcome of SpecialExitDispatch.TrySendSynchronous.
 internal enum SpecialExitSend
 {
-    /// <summary>
-    /// The exit isn't a synchronous special exit. The caller handles it
-    /// itself — async door/hidden FSMs, or a plain cardinal move.
-    /// </summary>
+    // The exit isn't a synchronous special exit. The caller handles it itself —
+    // async door/hidden FSMs, or a plain cardinal move.
     NotHandled,
 
-    /// <summary>
-    /// The helper emitted the crossing bytes and notified the tracker /
-    /// recovery gate. The caller does nothing further for this step.
-    /// </summary>
+    // The helper emitted the crossing bytes and notified the tracker / recovery
+    // gate. The caller does nothing further for this step.
     Sent,
 
-    /// <summary>
-    /// The exit is a special exit but its game-data is invalid (see the
-    /// out reason). The caller should fail its walk / loop.
-    /// </summary>
+    // The exit is a special exit but its game-data is invalid (see the out
+    // reason). The caller should fail its walk / loop.
     Failed,
 }
 
-/// <summary>
-/// Shared emission logic for the <b>synchronous</b> special exits —
-/// <see cref="RoomExitHint.Text"/>, <see cref="RoomExitHint.Teleport"/>,
-/// and same-room <see cref="RoomExitHint.MultiActionHidden"/>. Both
-/// <see cref="AutoWalkManager"/> (one-shot walks) and
-/// <see cref="LoopRunner"/> (loop circuits) cross these exits the same
-/// way, so the byte construction + tracker bookkeeping lives here once
-/// rather than being duplicated per engine.
-/// </summary>
-/// <remarks>
-/// The two <b>asynchronous</b> special exits — door-open and hidden-exit
-/// reveal — are deliberately excluded: their FSMs (await the server's
-/// reply, then continue) differ per engine and stay owned by the caller.
-/// This helper only covers the cases that complete in a single send.
-/// </remarks>
+// Shared emission logic for the synchronous special exits — Text, Teleport, and
+// same-room MultiActionHidden. Both AutoWalkManager (one-shot walks) and
+// LoopRunner (loop circuits) cross these exits the same way, so the byte
+// construction + tracker bookkeeping lives here once rather than being
+// duplicated per engine.
+//
+// The two asynchronous special exits — door-open and hidden-exit reveal — are
+// deliberately excluded: their FSMs (await the server's reply, then continue)
+// differ per engine and stay owned by the caller. This helper only covers the
+// cases that complete in a single send.
 internal static class SpecialExitDispatch
 {
-    /// <summary>
-    /// Cross <paramref name="exit"/> in <paramref name="direction"/> when
-    /// it is a synchronous special exit. Returns <see cref="SpecialExitSend.NotHandled"/>
-    /// for ordinary passages and for the async door/hidden hints so the
-    /// caller can fall through to its own handling.
-    /// </summary>
-    /// <param name="exit">The resolved exit being crossed.</param>
-    /// <param name="direction">The cardinal the path assigned to this exit.</param>
-    /// <param name="sourceRoom">Current room — needed to resolve teleport keywords.</param>
-    /// <param name="tracker">Shared room tracker (notified of the move).</param>
-    /// <param name="recovery">Shared recovery gate (notified of the engine step), or null.</param>
-    /// <param name="emitMove">
-    /// Sends the move-<i>completing</i> bytes (the Text/Teleport command, or
-    /// the post-multi-action cardinal). Callers fire their pre-move hook
-    /// here so stealth lands on the actual move, mirroring the walker.
-    /// </param>
-    /// <param name="writeAux">
-    /// Sends fire-and-forget prerequisite bytes (multi-action commands, the
-    /// teleport party-relay) — no pre-move hook.
-    /// </param>
-    /// <param name="teleportResolver">(source, dest) → keyword, or null when unwired.</param>
-    /// <param name="isLeaderWithFollowers">True when the local character should relay the teleport keyword to followers.</param>
-    /// <param name="failReason">Populated when the return value is <see cref="SpecialExitSend.Failed"/>.</param>
+    // Cross exit in direction when it is a synchronous special exit. Returns
+    // NotHandled for ordinary passages and for the async door/hidden hints so
+    // the caller can fall through to its own handling.
+    //
+    // sourceRoom is the current room (needed to resolve teleport keywords);
+    // tracker and recovery are notified of the move / engine step (recovery may
+    // be null). emitMove sends the move-completing bytes (the Text/Teleport
+    // command, or the post-multi-action cardinal); callers fire their pre-move
+    // hook here so stealth lands on the actual move, mirroring the walker.
+    // writeAux sends fire-and-forget prerequisite bytes (multi-action commands,
+    // the teleport party-relay) — no pre-move hook. teleportResolver maps
+    // (source, dest) → keyword, or null when unwired. isLeaderWithFollowers is
+    // true when the local character should relay the teleport keyword to
+    // followers. failReason is populated when the return value is Failed.
     public static SpecialExitSend TrySendSynchronous(
         RoomExit exit,
         Direction direction,

@@ -1,19 +1,16 @@
 namespace FujinTerm.Game;
 
-/// <summary>
-/// Trust level the UI / automation can place in a
-/// <see cref="RegenStat"/>'s estimate. Thresholds are empirical — pin
-/// them here so consumers (status-bar tinting, HealthManager projections)
-/// all share one definition.
-/// </summary>
+// Trust level the UI / automation can place in a RegenStat's estimate.
+// Thresholds are empirical — pin them here so consumers (status-bar tinting,
+// HealthManager projections) all share one definition.
 public enum RegenConfidence
 {
-    /// <summary>0–2 observed samples — UI shows the seed value, dimmed.</summary>
+    // 0–2 observed samples — UI shows the seed value, dimmed.
     Low,
 
-    /// <summary>3–9 observed samples — usable, no UI badge.</summary>
+    // 3–9 observed samples — usable, no UI badge.
     Medium,
 
-    /// <summary>10+ observed samples — trusted, full-opacity display.</summary>
+    // 10+ observed samples — trusted, full-opacity display.
     High,
 }

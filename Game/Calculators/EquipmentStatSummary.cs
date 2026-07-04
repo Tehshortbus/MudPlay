@@ -1,12 +1,10 @@
 namespace FujinTerm.Game.Calculators;
 
-/// <summary>
-/// Aggregated equipment stat bonuses summed across every equipped item (and any
-/// race / class / quest ability bonuses folded in). Field-to-ability-ID mapping
-/// is documented inline; <see cref="Calculators.CharacterCalculator.MapAbilityToStat"/>
-/// owns the dispatch. This is a mutable accumulator — built up by the aggregator,
-/// then read by the Workshop's Equipment Bonuses panel and the combat formulas.
-/// </summary>
+// Aggregated equipment stat bonuses summed across every equipped item (and any
+// race / class / quest ability bonuses folded in). Field-to-ability-ID mapping
+// is documented inline; CharacterCalculator.MapAbilityToStat owns the dispatch.
+// This is a mutable accumulator — built up by the aggregator, then read by the
+// Workshop's Equipment Bonuses panel and the combat formulas.
 public sealed class EquipmentStatSummary
 {
     // AC / DR (item base ArmourClass + Abil 2 + Abil 10 [Blur]; item base DamageResist + Abil 7).

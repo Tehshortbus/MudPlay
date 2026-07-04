@@ -5,30 +5,25 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game.Inventory;
 
-/// <summary>
-/// Decides whether a character can equip an <c>Items</c> row given their level,
-/// class, and alignment — the gate behind the Equipment Manager's per-slot item
-/// search (a Druid shouldn't see a Mage-only staff; a Saint shouldn't see an
-/// evil-only blade; a Mystic shouldn't see a longsword; a level-3 character
-/// shouldn't see a level-40 helm). The slot match itself stays with
-/// <see cref="EquipmentSlotMap"/>; this owns the "can this character use it"
-/// predicate.
-/// </summary>
-/// <remarks>
-/// This is a faithful port of MMUD-Explorer's <c>ItemIsUsableByChar</c>. The order
-/// matters: level / alignment first (off the item's <c>Abil-0..19</c> codes), then —
-/// only when the class is known — anti-magic, then the class allow-list, then
-/// weapon / armour <i>type</i> gating. A class grant (an item <c>Abil-59</c> ClassOk
-/// for this class, or a <c>ClassRest-0..9</c> entry naming it) <b>bypasses</b> the
-/// type gating entirely; anti-magic (the class's own <c>Abil-51</c>, e.g.
-/// Witchunter) blocks a magical item (<c>Abil-28</c>) even when class-granted.
-///
-/// All three player dimensions degrade gracefully: an unknown level / class /
-/// alignment (the character hasn't been <c>stat</c>'d or <c>who</c>'d yet) skips that
-/// filter rather than hiding gear. Restriction codes are the MMUD-Explorer ability
-/// codes (135 MinLevel, 136 MaxLevel, 59 ClassOk, 28 Magical, 97 GoodOnly …
-/// 113 NotNeutral) read off the item's <c>Abil-N</c> / <c>AbilVal-N</c> pairs.
-/// </remarks>
+// Decides whether a character can equip an Items row given their level, class,
+// and alignment — the gate behind the Equipment Manager's per-slot item search
+// (a Druid shouldn't see a Mage-only staff; a Saint shouldn't see an evil-only
+// blade; a Mystic shouldn't see a longsword; a level-3 character shouldn't see a
+// level-40 helm). The slot match itself stays with EquipmentSlotMap; this owns
+// the "can this character use it" predicate.
+//
+// The order matters: level / alignment first (off the item's Abil-0..19 codes),
+// then — only when the class is known — anti-magic, then the class allow-list,
+// then weapon / armour type gating. A class grant (an item Abil-59 ClassOk for
+// this class, or a ClassRest-0..9 entry naming it) bypasses the type gating
+// entirely; anti-magic (the class's own Abil-51, e.g. Witchunter) blocks a
+// magical item (Abil-28) even when class-granted.
+//
+// All three player dimensions degrade gracefully: an unknown level / class /
+// alignment (the character hasn't been stat'd or who'd yet) skips that filter
+// rather than hiding gear. Restriction codes are the MajorMUD item ability codes
+// (135 MinLevel, 136 MaxLevel, 59 ClassOk, 28 Magical, 97 GoodOnly …
+// 113 NotNeutral) read off the item's Abil-N / AbilVal-N pairs.
 public static class ItemEquipFilter
 {
     private const int ItemAbilSlots = 20;
@@ -57,20 +52,17 @@ public static class ItemEquipFilter
     // classes unless the item is class-granted.
     private const int ShieldWornCode = 12;
 
-    // The only two weapons a Staff (WeaponType 9) class may hold without a grant —
-    // hardcoded the same way MME hardcodes them from the engine dll.
+    // The only two weapons a Staff (WeaponType 9) class may hold without a grant.
     private const int StaffDaggerNumber = 68;
     private const int StaffQuarterstaffNumber = 100;
 
     private enum ClassRestResult { None, Granted, Blocked }
 
-    /// <summary>
-    /// Collapse a MajorMUD <c>who</c> alignment title to a
-    /// <see cref="AlignmentBucket"/>, or <c>null</c> when the word is unknown /
-    /// unseen so the caller skips alignment filtering. Matches the canonical ladder
-    /// (Saint / Lawful / Good → Good; Neutral → Neutral; Seedy / Outlaw / Criminal /
-    /// Villain / Fiend → Evil), case-insensitively.
-    /// </summary>
+    // Collapse a MajorMUD who alignment title to an AlignmentBucket, or null when
+    // the word is unknown / unseen so the caller skips alignment filtering.
+    // Matches the canonical ladder (Saint / Lawful / Good → Good; Neutral →
+    // Neutral; Seedy / Outlaw / Criminal / Villain / Fiend → Evil),
+    // case-insensitively.
     public static AlignmentBucket? BucketForWord(string? whoWord)
     {
         if (string.IsNullOrWhiteSpace(whoWord)) return null;
@@ -83,13 +75,10 @@ public static class ItemEquipFilter
         };
     }
 
-    /// <summary>
-    /// Resolve a class <i>name</i> (as <see cref="PlayerStats.Class"/> carries it) to
-    /// the <see cref="ClassEquipProfile"/> the predicate needs — its
-    /// <c>Classes.Number</c>, <c>WeaponType</c>, <c>ArmourType</c>, and anti-magic
-    /// flag. Returns <see cref="ClassEquipProfile.Unknown"/> when the name is blank
-    /// or unmatched, which disables all class-dependent gating.
-    /// </summary>
+    // Resolve a class name (as PlayerStats.Class carries it) to the
+    // ClassEquipProfile the predicate needs — its Classes.Number, WeaponType,
+    // ArmourType, and anti-magic flag. Returns Unknown when the name is blank or
+    // unmatched, which disables all class-dependent gating.
     public static ClassEquipProfile ResolveClassProfile(GameDataCache cache, string? className)
     {
         ArgumentNullException.ThrowIfNull(cache);
@@ -108,12 +97,9 @@ public static class ItemEquipFilter
         return new ClassEquipProfile(number, GetInt(r, "WeaponType"), GetInt(r, "ArmourType"), antiMagic);
     }
 
-    /// <summary>
-    /// True when a character of <paramref name="level"/> / <paramref name="cls"/> /
-    /// <paramref name="alignment"/> can equip <paramref name="itemRow"/>. A
-    /// non-positive level, a <see cref="ClassEquipProfile.Unknown"/> class, or a null
-    /// alignment bucket disables that dimension's filter.
-    /// </summary>
+    // True when a character of the given level / class / alignment can equip
+    // itemRow. A non-positive level, an unknown class profile, or a null
+    // alignment bucket disables that dimension's filter.
     public static bool CanEquip(JsonElement itemRow, int level, ClassEquipProfile cls, AlignmentBucket? alignment)
     {
         if (itemRow.ValueKind != JsonValueKind.Object) return false;
@@ -158,7 +144,7 @@ public static class ItemEquipFilter
 
         // ClassRest is an allow-list. A match grants (bypassing type gating); entries
         // present with no match hard-block; no entries leaves type gating to decide.
-        // Skipped when Abil-59 already granted, mirroring MME.
+        // Skipped when Abil-59 already granted.
         if (!classOk)
         {
             switch (EvalClassRest(itemRow, cls.ClassNumber))
@@ -174,7 +160,7 @@ public static class ItemEquipFilter
         return PassesItemType(itemRow, cls);
     }
 
-    // 135/136 are MME's MinLevel/MaxLevel codes — the wear band. A 0 bound (or
+    // 135/136 are the MinLevel/MaxLevel codes — the wear band. A 0 bound (or
     // unknown player level) means "no constraint on that end".
     private static bool PassesLevel(int level, int minLevel, int maxLevel)
     {

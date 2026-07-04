@@ -3,32 +3,22 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game.Remote;
 
-/// <summary>
-/// Consumer of <see cref="RemoteCommandManager"/> for the
-/// <c>@kill &lt;target&gt;</c> command — a party member asks us to engage a
-/// named monster on their behalf. It simply retargets our combat engine: the
-/// named monster becomes our current target and we engage it this round, with
-/// <see cref="Game.Combat.CombatManager"/> determining the attack type
-/// (weapon swap / attack spell / backstab) exactly as it would for any single
-/// target. The retarget fires even when master auto-attack is off — an
-/// explicit-engage request bypasses the master switch.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Requires <see cref="PlayerRemoteControls.ExecuteCommands"/> per the catalog
-/// ("do something on my behalf" tier) — an action request, not a party
-/// coordination signal, so it's per-player flag-gated like <c>@do</c> /
-/// <c>@heal</c> rather than party-whitelisted. Authorisation is enforced by
-/// the engine before this handler runs.
-/// </para>
-/// <para>
-/// Success is silent — a retarget produces no reply, mirroring how the local
-/// engine retargets without chatter. A missing target name is a generic
-/// failure: it falls through to <see cref="RemoteCommandManager.FailureMessage"/>,
-/// gated by <see cref="RemoteCommandManager.WarnOnDenial"/> (suppressed when
-/// the user has muted denial replies).
-/// </para>
-/// </remarks>
+// The @kill <target> command — a party member asks us to engage a named monster
+// on their behalf. It simply retargets our combat engine: the named monster
+// becomes our current target and we engage it this round, with CombatManager
+// determining the attack type (weapon swap / attack spell / backstab) exactly as
+// it would for any single target. The retarget fires even when master
+// auto-attack is off — an explicit-engage request bypasses the master switch.
+//
+// Requires ExecuteCommands per the catalog ("do something on my behalf" tier) —
+// an action request, not a party coordination signal, so it's per-player
+// flag-gated like @do / @heal rather than party-whitelisted. Authorisation is
+// enforced by the engine before this handler runs.
+//
+// Success is silent — a retarget produces no reply, mirroring how the local
+// engine retargets without chatter. A missing target name is a generic failure:
+// it falls through to FailureMessage, gated by WarnOnDenial (suppressed when the
+// user has muted denial replies).
 public sealed class KillHandler : IDisposable
 {
     private const string LogCategory = "RemoteCmd";

@@ -9,43 +9,28 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game.Events;
 
-/// <summary>
-/// In-memory store + dispatcher for the loaded character's
-/// <see cref="ScheduledEvent"/> entries. Owns the merge / save path
-/// against <see cref="CharacterProfile.Events"/>, exposes CRUD for the
-/// settings editor, reconciles saved-target references against
-/// <see cref="LoopManager"/> + <see cref="LairManager"/>, and dispatches
-/// fired actions into the existing movement / command stack.
-/// </summary>
-/// <remarks>
-/// <para>
-/// PR 8.1 scope: the dispatcher is end-to-end executable —
-/// <see cref="Fire"/> can be called and the four action types route
-/// correctly into <see cref="AutoWalkManager"/>, <see cref="LoopRunner"/>,
-/// <see cref="AutoLairManager"/>, and the bound wire sender. The
-/// triggers themselves (At time / Every / Logon / Logoff / Re-log) are
-/// wired in PR 8.2 by subscribing the appropriate sources to call
-/// <see cref="Fire"/>.
-/// </para>
-/// <para>
-/// Saved-target reconciliation: subscribes to
-/// <see cref="LoopManager.LoopsChanged"/> +
-/// <see cref="LairManager.SetupsChanged"/>. On either, walks every
-/// event whose <see cref="ScheduledEvent.ActionType"/> is
-/// <see cref="EventActionType.Loop"/> or
-/// <see cref="EventActionType.AutoLair"/> and auto-disables any whose
-/// referenced name is no longer in the corresponding manager's
-/// collection. Auto-disable is sticky: re-creating a same-named
-/// target later doesn't auto-restore — the user re-enables manually
-/// after confirming the new target matches their intent.
-/// </para>
-/// <para>
-/// Threading: profile lifecycle + manager-change events fire on the UI
-/// thread (the producers marshal upstream). <see cref="Fire"/> is
-/// called from the PR 8.2 trigger sources on the UI thread too, so no
-/// internal locking is needed on the events list.
-/// </para>
-/// </remarks>
+// In-memory store + dispatcher for the loaded character's ScheduledEvent
+// entries. Owns the merge / save path against CharacterProfile.Events, exposes
+// CRUD for the settings editor, reconciles saved-target references against
+// LoopManager + LairManager, and dispatches fired actions into the existing
+// movement / command stack.
+//
+// The dispatcher is end-to-end executable — Fire can be called and the four
+// action types route correctly into AutoWalkManager, LoopRunner,
+// AutoLairManager, and the bound wire sender. The trigger sources (At time /
+// Every / Logon / Logoff / Re-log) subscribe the appropriate sources to call
+// Fire.
+//
+// Saved-target reconciliation: subscribes to LoopManager.LoopsChanged +
+// LairManager.SetupsChanged. On either, walks every event whose ActionType is
+// Loop or AutoLair and auto-disables any whose referenced name is no longer in
+// the corresponding manager's collection. Auto-disable is sticky: re-creating a
+// same-named target later doesn't auto-restore — the user re-enables manually
+// after confirming the new target matches their intent.
+//
+// Threading: profile lifecycle + manager-change events fire on the UI thread
+// (the producers marshal upstream). Fire is called from the trigger sources on
+// the UI thread too, so no internal locking is needed on the events list.
 public sealed class EventManager : IDisposable
 {
     private readonly ProfileService? _profile;
@@ -57,22 +42,15 @@ public sealed class EventManager : IDisposable
     private readonly LogService? _log;
     private readonly WireSender _wire = new();
 
-    /// <summary>
-    /// Tracks which events the reconciler auto-disabled (vs the user
-    /// manually flipping Disabled). The Settings.Events row badge
-    /// (PR 8.3) renders "↻ target missing" only for keys in this set.
-    /// Cleared on profile load.
-    /// </summary>
+    // Tracks which events the reconciler auto-disabled (vs the user manually
+    // flipping Disabled). The Settings.Events row badge renders "↻ target missing"
+    // only for keys in this set. Cleared on profile load.
     private readonly HashSet<ScheduledEvent> _autoDisabled = new();
 
-    /// <summary>
-    /// Snapshot of "what was happening" when an event-walk took over.
-    /// Set in <see cref="ExecuteWalkTo"/>, consumed in
-    /// <see cref="OnResumeWalkEvent"/> when the walker reaches the
-    /// event's target. Null when no resume is queued. Internal-set so
-    /// tests can assert on it; production callers use the public
-    /// surface.
-    /// </summary>
+    // Snapshot of "what was happening" when an event-walk took over. Set in
+    // ExecuteWalkTo, consumed in OnResumeWalkEvent when the walker reaches the
+    // event's target. Null when no resume is queued. Internal-set so tests can
+    // assert on it; production callers use the public surface.
     internal EventResumePlan? PendingResumeForTests
     {
         get => _pendingResume;
@@ -80,27 +58,19 @@ public sealed class EventManager : IDisposable
     }
     private EventResumePlan? _pendingResume;
 
-    /// <summary>
-    /// Live delegate reference so we can unsubscribe symmetrically.
-    /// Null when no resume watcher is attached.
-    /// </summary>
+    // Live delegate reference so we can unsubscribe symmetrically. Null when no
+    // resume watcher is attached.
     private Action<WalkEvent>? _resumeWatcher;
 
-    /// <summary>The loaded character's events — empty when no profile is active.</summary>
+    // The loaded character's events — empty when no profile is active.
     public ObservableCollection<ScheduledEvent> Events { get; } = new();
 
-    /// <summary>
-    /// Returns true when the reconciler — not the user — flipped this
-    /// event's <see cref="ScheduledEvent.Disabled"/> flag on. Drives
-    /// the PR 8.3 row badge.
-    /// </summary>
+    // Returns true when the reconciler — not the user — flipped this event's
+    // Disabled flag on. Drives the row badge.
     public bool IsAutoDisabled(ScheduledEvent e) => _autoDisabled.Contains(e);
 
-    /// <summary>
-    /// Fires after the reconciler auto-disables one or more events.
-    /// PR 8.3 listens for row-badge refresh; here so the engine
-    /// surface stays observable.
-    /// </summary>
+    // Fires after the reconciler auto-disables one or more events. The row-badge
+    // refresh listens for this; here so the engine surface stays observable.
     public event Action? AutoDisabledChanged;
 
     public EventManager(
@@ -134,17 +104,14 @@ public sealed class EventManager : IDisposable
         if (profile.Current is { } current) LoadFrom(current);
     }
 
-    /// <summary>Parameterless ctor for tests / in-memory scenarios — no profile, no engines.</summary>
+    // Parameterless ctor for tests / in-memory scenarios — no profile, no engines.
     public EventManager() { }
 
-    /// <summary>
-    /// Symmetric tear-down for the five ProfileService /
-    /// LoopManager / LairManager subscriptions wired in the
-    /// engine-bound ctor. Today AppServices keeps EventManager alive
-    /// for the app's lifetime so this is mostly hygiene — but it
-    /// keeps the rule explicit in case a future refactor scopes
-    /// EventManager per-character. Idempotent.
-    /// </summary>
+    // Symmetric tear-down for the five ProfileService / LoopManager / LairManager
+    // subscriptions wired in the engine-bound ctor. Today AppServices keeps
+    // EventManager alive for the app's lifetime so this is mostly hygiene — but it
+    // keeps the rule explicit in case a future refactor scopes EventManager
+    // per-character. Idempotent.
     public void Dispose()
     {
         if (_disposed) return;
@@ -161,19 +128,17 @@ public sealed class EventManager : IDisposable
     }
     private bool _disposed;
 
-    /// <summary>
-    /// Bind the wire sender for <see cref="EventActionType.Command"/>
-    /// dispatch. Same shape as the other automation engines — the main
-    /// window VM supplies the gate-wrapped <c>SendUserInput</c>.
-    /// </summary>
+    // Bind the wire sender for EventActionType.Command dispatch. Same shape as the
+    // other automation engines — the main window VM supplies the gate-wrapped
+    // SendUserInput.
     public void SetWireSender(Action<byte[]> sender) => _wire.Bind(sender);
 
-    /// <summary>Test seam — bytes the engine asked to write to the wire.</summary>
+    // Test seam — bytes the engine asked to write to the wire.
     internal List<byte[]> LastSentForTests => _wire.LastSentForTests;
 
     // ----- CRUD ------------------------------------------------------
 
-    /// <summary>Append a new event and persist. No duplicate check.</summary>
+    // Append a new event and persist. No duplicate check.
     public void Add(ScheduledEvent e)
     {
         ArgumentNullException.ThrowIfNull(e);
@@ -182,10 +147,8 @@ public sealed class EventManager : IDisposable
         _profile?.Save();
     }
 
-    /// <summary>
-    /// Replace an existing event by reference. Persists. No-op when
-    /// <paramref name="original"/> isn't in the list.
-    /// </summary>
+    // Replace an existing event by reference. Persists. No-op when original isn't
+    // in the list.
     public bool Replace(ScheduledEvent original, ScheduledEvent updated)
     {
         ArgumentNullException.ThrowIfNull(original);
@@ -199,7 +162,7 @@ public sealed class EventManager : IDisposable
         return true;
     }
 
-    /// <summary>Remove an event by reference. Persists. No-op when not in the list.</summary>
+    // Remove an event by reference. Persists. No-op when not in the list.
     public bool Remove(ScheduledEvent e)
     {
         ArgumentNullException.ThrowIfNull(e);
@@ -211,15 +174,11 @@ public sealed class EventManager : IDisposable
 
     // ----- Dispatch --------------------------------------------------
 
-    /// <summary>
-    /// Execute the event's action. Skips when
-    /// <see cref="ScheduledEvent.Disabled"/> is true OR when the
-    /// fire-time safety net detects a missing saved target (Loop /
-    /// AutoLair name no longer in the manager's collection). The
-    /// safety net mirrors what <see cref="ReconcileTargets"/> does on
-    /// LoopsChanged / SetupsChanged — defense in depth for races and
-    /// direct-disk profile edits.
-    /// </summary>
+    // Execute the event's action. Skips when Disabled is true OR when the
+    // fire-time safety net detects a missing saved target (Loop / AutoLair name no
+    // longer in the manager's collection). The safety net mirrors what
+    // ReconcileTargets does on LoopsChanged / SetupsChanged — defense in depth for
+    // races and direct-disk profile edits.
     public void Fire(ScheduledEvent e)
     {
         ArgumentNullException.ThrowIfNull(e);
@@ -239,18 +198,14 @@ public sealed class EventManager : IDisposable
         }
     }
 
-    /// <summary>
-    /// Synchronously fires every <see cref="EventTriggerType.Logoff"/>
-    /// event in the list. Called from the user-initiated disconnect
-    /// path BEFORE the wire closes (and BEFORE the dropped-connection
-    /// auto-reconnect kicks in for dropped paths — those skip Logoff
-    /// entirely because nobody calls this method on a server-side
-    /// drop). Caller is responsible for the bounded flush window
-    /// between this call and the actual <c>DisposeAsync</c> so the
-    /// wire writes have time to drain. Returns the number of events
-    /// actually dispatched so the caller can skip the flush wait
-    /// when nothing fired.
-    /// </summary>
+    // Synchronously fires every EventTriggerType.Logoff event in the list. Called
+    // from the user-initiated disconnect path BEFORE the wire closes (and BEFORE
+    // the dropped-connection auto-reconnect kicks in for dropped paths — those
+    // skip Logoff entirely because nobody calls this method on a server-side
+    // drop). Caller is responsible for the bounded flush window between this call
+    // and the actual DisposeAsync so the wire writes have time to drain. Returns
+    // the number of events actually dispatched so the caller can skip the flush
+    // wait when nothing fired.
     public int FireLogoffEvents()
     {
         // Snapshot to a list so an event action that adds / removes
@@ -370,17 +325,11 @@ public sealed class EventManager : IDisposable
         }
     }
 
-    /// <summary>
-    /// Split a Command action's text on <c>^M</c> AND <c>;</c>
-    /// boundaries — both characters denote a CR break (matching the
-    /// existing Macro / Trigger / Alias multi-step splitter). An
-    /// empty chunk between two consecutive separators is dropped so
-    /// <c>"look;;sit"</c> sends two lines rather than three.
-    /// </summary>
-    /// <remarks>
-    /// Internal so tests can assert the splitter contract without
-    /// firing a real event end-to-end.
-    /// </remarks>
+    // Split a Command action's text on ^M AND ';' boundaries — both denote a CR
+    // break (matching the existing Macro / Trigger / Alias multi-step splitter).
+    // An empty chunk between two consecutive separators is dropped so "look;;sit"
+    // sends two lines rather than three. Internal so tests can assert the splitter
+    // contract without firing a real event end-to-end.
     internal static IEnumerable<string> SplitCommand(string text)
     {
         if (string.IsNullOrEmpty(text)) yield break;
@@ -397,13 +346,10 @@ public sealed class EventManager : IDisposable
 
     // ----- Reconciliation -------------------------------------------
 
-    /// <summary>
-    /// Walk every Loop / AutoLair-action event and auto-disable any
-    /// whose referenced saved name is no longer in the manager's
-    /// collection. Idempotent — already-disabled events are left
-    /// alone. Re-runs on profile load + every LoopsChanged /
-    /// SetupsChanged event.
-    /// </summary>
+    // Walk every Loop / AutoLair-action event and auto-disable any whose
+    // referenced saved name is no longer in the manager's collection. Idempotent —
+    // already-disabled events are left alone. Re-runs on profile load + every
+    // LoopsChanged / SetupsChanged event.
     private void ReconcileTargets()
     {
         bool anyChanged = false;
@@ -437,12 +383,9 @@ public sealed class EventManager : IDisposable
         }
     }
 
-    /// <summary>
-    /// Fire-time auto-disable. Differs from
-    /// <see cref="AutoDisableInternal"/> in that it persists +
-    /// notifies immediately (since the caller isn't part of a bulk
-    /// reconciliation pass).
-    /// </summary>
+    // Fire-time auto-disable. Differs from AutoDisableInternal in that it persists
+    // + notifies immediately (since the caller isn't part of a bulk
+    // reconciliation pass).
     private void AutoDisable(ScheduledEvent e, string reason)
     {
         AutoDisableInternal(e, reason);
@@ -498,14 +441,11 @@ public sealed class EventManager : IDisposable
 
     // ----- Walk-to auto-resume ---------------------------------------
 
-    /// <summary>
-    /// Snapshot the engine that was actively driving movement before an
-    /// event-walk takes over. Precedence — AutoLair beats LoopRunner
-    /// beats the one-shot walker, because the higher engines drive the
-    /// lower ones (a Loop's approach walk is "really" the loop). Returns
-    /// null when nothing was running, in which case the event-walk
-    /// just runs and ends — no resume.
-    /// </summary>
+    // Snapshot the engine that was actively driving movement before an event-walk
+    // takes over. Precedence — AutoLair beats LoopRunner beats the one-shot
+    // walker, because the higher engines drive the lower ones (a Loop's approach
+    // walk is "really" the loop). Returns null when nothing was running, in which
+    // case the event-walk just runs and ends — no resume.
     internal EventResumePlan? SnapshotCurrentActivity()
     {
         if (_autoLair is { IsActive: true } al && al.Marked.Count > 0)
@@ -542,12 +482,10 @@ public sealed class EventManager : IDisposable
         _resumeWatcher = null;
     }
 
-    /// <summary>
-    /// Watch the walker for the outcome of an in-flight event-walk.
-    /// Finished → execute the resume plan. Failed / Stopped → drop
-    /// the plan (user can intervene). Pause / Resume / Started are
-    /// not interesting — the walk is still in progress.
-    /// </summary>
+    // Watch the walker for the outcome of an in-flight event-walk. Finished →
+    // execute the resume plan. Failed / Stopped → drop the plan (user can
+    // intervene). Pause / Resume / Started are not interesting — the walk is still
+    // in progress.
     internal void OnResumeWalkEvent(WalkEvent e)
     {
         switch (e.Kind)
@@ -568,12 +506,10 @@ public sealed class EventManager : IDisposable
         }
     }
 
-    /// <summary>
-    /// Re-dispatch the activity that was running before the event-walk
-    /// took over. Stops nothing first — the walker is Idle by now (we
-    /// just hit Finished), and the other engines were stopped at the
-    /// start of the event-walk so they're already inactive.
-    /// </summary>
+    // Re-dispatch the activity that was running before the event-walk took over.
+    // Stops nothing first — the walker is Idle by now (we just hit Finished), and
+    // the other engines were stopped at the start of the event-walk so they're
+    // already inactive.
     private void ExecuteResume(EventResumePlan plan)
     {
         switch (plan)
@@ -599,11 +535,9 @@ public sealed class EventManager : IDisposable
         }
     }
 
-    /// <summary>
-    /// What to do after the event-walk reaches its target. Discriminated
-    /// across the three engine types <see cref="SnapshotCurrentActivity"/>
-    /// distinguishes. Internal so tests can pattern-match the snapshot.
-    /// </summary>
+    // What to do after the event-walk reaches its target. Discriminated across the
+    // three engine types SnapshotCurrentActivity distinguishes. Internal so tests
+    // can pattern-match the snapshot.
     internal abstract record EventResumePlan
     {
         public abstract string Describe();

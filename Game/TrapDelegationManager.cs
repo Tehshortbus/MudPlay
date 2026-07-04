@@ -6,42 +6,31 @@ using FujinTerm.Services.Patterns;
 
 namespace FujinTerm.Game;
 
-/// <summary>
-/// Party-member trap delegation. When the walker hits a trapped exit and
-/// the LOCAL character can't disarm it, but a party member can, this
-/// manager broadcasts <c>@trap &lt;dir&gt;</c> on the say channel and
-/// resumes the walk when that member's FujinTerm client replies on say
-/// with the existing trap-disarm reply string ("Trap to the {dir}
-/// disarmed." on success; the failure / stop strings otherwise).
-/// </summary>
-/// <remarks>
-/// <para>
-/// Signal separation (architectural guardrail): the LOCAL self-disarm
-/// path keys exclusively on the game's own first-person disarm signals
-/// via <see cref="TrapDisarmManager"/> — it never watches say replies.
-/// This manager is the ONLY consumer of remote say replies, and only for
-/// the delegation branch. The two paths converge on the walker's single
-/// signal-agnostic <c>OnTrapReply</c> callback but their signal SOURCES
-/// stay distinct.
-/// </para>
-/// <para>
-/// Capability check (per the trap-capability ability codes in
-/// <see cref="AbilityNames.HasTrapAbility"/>): a member's CLASS is the
-/// main gate — its Classes row is scanned for a trap-skill grant. RACE
-/// is secondary, consulted only when we actually know the member's race
-/// (a "shadowy figure" look leaves it unknown, so we don't assume).
-/// Race for a joined member comes from the <see cref="PlayerDatabase"/>;
-/// if it's missing we <c>look</c> at them once on join to capture it
-/// (<see cref="GreetManager"/> skips party members, so the look has to
-/// originate here).
-/// </para>
-/// <para>
-/// No automatic timeout — symmetric with the local path, which relies on
-/// the game's guaranteed reply. A capable FujinTerm party member always
-/// replies; if the user wants out they stop the walk, which cancels the
-/// pending delegation via <see cref="Cancel"/>.
-/// </para>
-/// </remarks>
+// Party-member trap delegation. When the walker hits a trapped exit and the
+// LOCAL character can't disarm it, but a party member can, this manager
+// broadcasts @trap <dir> on the say channel and resumes the walk when that
+// member's client replies on say with the existing trap-disarm reply string
+// ("Trap to the {dir} disarmed." on success; the failure / stop strings
+// otherwise).
+//
+// Signal separation (architectural guardrail): the LOCAL self-disarm path keys
+// exclusively on the game's own first-person disarm signals via
+// TrapDisarmManager — it never watches say replies. This manager is the ONLY
+// consumer of remote say replies, and only for the delegation branch. The two
+// paths converge on the walker's single signal-agnostic OnTrapReply callback
+// but their signal SOURCES stay distinct.
+//
+// Capability check (per the trap-capability ability codes in
+// AbilityNames.HasTrapAbility): a member's CLASS is the main gate — its Classes
+// row is scanned for a trap-skill grant. RACE is secondary, consulted only when
+// we actually know the member's race (a "shadowy figure" look leaves it unknown,
+// so we don't assume). Race for a joined member comes from the PlayerDatabase;
+// if it's missing we look at them once on join to capture it (GreetManager skips
+// party members, so the look has to originate here).
+//
+// No automatic timeout — symmetric with the local path, which relies on the
+// game's guaranteed reply. A capable party member always replies; if the user
+// wants out they stop the walk, which cancels the pending delegation via Cancel.
 public sealed class TrapDelegationManager : System.IDisposable
 {
     private const string LogCategory = "TrapDelegate";
@@ -54,7 +43,7 @@ public sealed class TrapDelegationManager : System.IDisposable
     private readonly System.IDisposable _localSaySub;
     private bool _disposed;
 
-    /// <summary>The walker's resume callback for the in-flight delegation, or null when idle.</summary>
+    // The walker's resume callback for the in-flight delegation, or null when idle.
     private System.Action<string>? _pendingReply;
 
     public TrapDelegationManager(
@@ -77,14 +66,11 @@ public sealed class TrapDelegationManager : System.IDisposable
         _localSaySub = router.Subscribe(KnownPatterns.ConversationLocal, OnLocalSay);
     }
 
-    /// <summary>
-    /// Bind the wire-sender. Same shape as the rest of the engine-side
-    /// handlers — used for both the <c>look &lt;name&gt;</c> race probe
-    /// and the <c>@trap &lt;dir&gt;</c> say broadcast.
-    /// </summary>
+    // Bind the wire-sender. Same shape as the rest of the engine-side handlers —
+    // used for both the look <name> race probe and the @trap <dir> say broadcast.
     public void SetWireSender(System.Action<byte[]> sender) => _wire.Bind(sender);
 
-    /// <summary>Test seam — bytes the manager asked to write to the wire.</summary>
+    // Test seam — bytes the manager asked to write to the wire.
     internal System.Collections.Generic.List<byte[]> LastSentForTests => _wire.LastSentForTests;
 
     public void Dispose()
@@ -97,11 +83,9 @@ public sealed class TrapDelegationManager : System.IDisposable
 
     // ----- Capability -----------------------------------------------------
 
-    /// <summary>
-    /// True when at least one joined party member (excluding the local
-    /// character and not-yet-joined invitees) can disarm traps — class
-    /// main gate, race secondary. Used by the walker's delegation gate.
-    /// </summary>
+    // True when at least one joined party member (excluding the local character
+    // and not-yet-joined invitees) can disarm traps — class main gate, race
+    // secondary. Used by the walker's delegation gate.
     public bool AnyPartyMemberCanDisarm()
     {
         foreach (PartyMember m in _party.State.Members)
@@ -161,13 +145,10 @@ public sealed class TrapDelegationManager : System.IDisposable
 
     // ----- Delegation -----------------------------------------------------
 
-    /// <summary>
-    /// Broadcast <c>@trap &lt;dir&gt;</c> on say and arm the resume-watch.
-    /// <paramref name="onReply"/> is the walker's signal-agnostic
-    /// <c>OnTrapReply</c> — invoked once when a capable party member's say
-    /// reply lands (success / failure / stop), at which point the walker
-    /// resumes or aborts.
-    /// </summary>
+    // Broadcast @trap <dir> on say and arm the resume-watch. onReply is the
+    // walker's signal-agnostic OnTrapReply — invoked once when a capable party
+    // member's say reply lands (success / failure / stop), at which point the
+    // walker resumes or aborts.
     public void Delegate(string dirWord, System.Action<string> onReply)
     {
         System.ArgumentNullException.ThrowIfNull(onReply);
@@ -176,11 +157,9 @@ public sealed class TrapDelegationManager : System.IDisposable
         _log?.Info(LogCategory, $"delegated trap {dirWord} to party on say");
     }
 
-    /// <summary>
-    /// Drop the in-flight delegation watch without resuming the walk.
-    /// Called when the walk is stopped / superseded mid-delegation so a
-    /// later stray say reply can't resume a dead walk.
-    /// </summary>
+    // Drop the in-flight delegation watch without resuming the walk. Called when
+    // the walk is stopped / superseded mid-delegation so a later stray say reply
+    // can't resume a dead walk.
     public void Cancel() => _pendingReply = null;
 
     private void OnLocalSay(MatchResult result)

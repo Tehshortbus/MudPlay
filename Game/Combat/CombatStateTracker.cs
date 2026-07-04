@@ -5,53 +5,32 @@ using FujinTerm.Services.Patterns;
 
 namespace FujinTerm.Game.Combat;
 
-/// <summary>
-/// Phase 9 PR 9.0b — owns <see cref="PlayerState.InCombat"/> and the
-/// <c>Combat</c> gate on <see cref="MovementCoordinator"/>. Subscribes
-/// to <see cref="RoomEntityClassifier.EntitiesObserved"/> for the
-/// gate's room-clear logic and to combat-line patterns for the
-/// <see cref="PlayerState.InCombat"/> flag.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Gate semantics per docs/10-phase-9 § Cross-cut 1: the
-/// <see cref="MovementCoordinator.CombatGate"/> is held while the
-/// current room contains at least one classified
-/// <see cref="EntityKind.Monster"/> the user is configured to engage.
-/// Until per-monster <c>AttackPriority</c> wires through Phase 9
-/// PR 9.A, "engageable" = monster has a populated
-/// <see cref="MonsterMessageRecord.DeathLine"/> (i.e. it's killable —
-/// shopkeepers and quest-givers carry empty DeathLine lists and don't
-/// hold the gate).
-/// </para>
-/// <para>
-/// Plus a master switch: <c>isAutoAttackEnabled</c> short-circuits the
-/// gate to never-assert when off, so a fresh character (default
-/// <c>CombatSettings.MasterAutoAttackEnabled = false</c>) walks
-/// through every room unimpeded until the user opts in.
-/// </para>
-/// <para>
-/// <see cref="PlayerState.InCombat"/> flips:
-/// <list type="bullet">
-/// <item><b>True</b> on <see cref="KnownPatterns.CombatStatus"/>
-/// <c>Engaged</c> OR <see cref="KnownPatterns.UserHits"/> OR
-/// <see cref="KnownPatterns.MobHits"/> OR <see cref="KnownPatterns.MobMisses"/>.</item>
-/// <item><b>False</b> on <see cref="KnownPatterns.CombatStatus"/>
-/// <c>Off</c>.</item>
-/// </list>
-/// Damage-line-driven decay (no damage for 5s = InCombat false) lands
-/// in PR 9.0c with <see cref="RoundDamageTracker"/>.
-/// </para>
-/// </remarks>
+// Owns PlayerState.InCombat and the Combat gate on MovementCoordinator.
+// Subscribes to RoomEntityClassifier.EntitiesObserved for the gate's room-clear
+// logic and to combat-line patterns for the PlayerState.InCombat flag.
+//
+// Gate semantics: the MovementCoordinator.CombatGate is held while the current
+// room contains at least one classified monster the user is configured to
+// engage. "Engageable" is resolved from the monster's overlay relationship (see
+// IsEngageable) — shopkeepers and quest-givers are marked Friend / Neutral and
+// don't hold the gate.
+//
+// Plus a master switch: isAutoAttackEnabled short-circuits the gate to
+// never-assert when off, so a fresh character (default
+// CombatSettings.MasterAutoAttackEnabled = false) walks through every room
+// unimpeded until the user opts in.
+//
+// PlayerState.InCombat flips true on CombatStatus Engaged OR UserHits OR MobHits
+// OR MobMisses. It does NOT flip false on CombatStatus Off — see
+// OnCombatStatus. The authoritative end-of-combat signal is the room going clear
+// of engageable monsters (OnEntitiesObserved's "room cleared" branch).
 public sealed class CombatStateTracker : IDisposable
 {
-    /// <summary>Identifier this tracker uses when asserting / clearing
-    /// the Combat gate. Surfaces in
-    /// <see cref="MovementCoordinator.History"/> +
-    /// <c>[Gate]</c> log lines.</summary>
+    // Identifier this tracker uses when asserting / clearing the Combat gate.
+    // Surfaces in MovementCoordinator.History + [Gate] log lines.
     public const string AsserterName = "CombatStateTracker";
 
-    /// <summary>LogService category for tracker-emitted rows.</summary>
+    // LogService category for tracker-emitted rows.
     public const string LogCategory = "CombatGate";
 
     private readonly MovementCoordinator _coordinator;
@@ -77,39 +56,31 @@ public sealed class CombatStateTracker : IDisposable
     private Func<int, bool>? _canEngage;
     private bool _seeHiddenClearLatch;
 
-    /// <summary>
-    /// True while the room currently contains at least one engageable
-    /// (Enemy-relationship, killable) monster. Drives the
-    /// <see cref="MovementCoordinator.CombatGate"/> + lets HealthManager
-    /// gate the rest decision so we don't try to rest while a mob is
-    /// here — every combat round would otherwise break rest and we'd
-    /// never actually recover. Clears authoritatively when an Also-Here
-    /// observation shows no engageable monsters (room cleared).
-    /// </summary>
+    // True while the room currently contains at least one engageable
+    // (Enemy-relationship, killable) monster. Drives the
+    // MovementCoordinator.CombatGate + lets HealthManager gate the rest decision
+    // so we don't try to rest while a mob is here — every combat round would
+    // otherwise break rest and we'd never actually recover. Clears
+    // authoritatively when an Also-Here observation shows no engageable monsters
+    // (room cleared).
     public bool HasEngageableHostiles => _gateAsserted;
 
-    /// <summary>
-    /// True while the current room contains at least one NPC / monster
-    /// of any relationship (Enemy, Friend, Neutral — shopkeepers and
-    /// quest-givers included). Sneak cannot be established while any NPC
-    /// is present, so the StealthManager pre-move hook consults this to
-    /// suppress a doomed <c>sn</c>. Updated on every Also-Here
-    /// observation, independent of the auto-attack gate (which only
-    /// reacts to <em>engageable</em> hostiles).
-    /// </summary>
+    // True while the current room contains at least one NPC / monster of any
+    // relationship (Enemy, Friend, Neutral — shopkeepers and quest-givers
+    // included). Sneak cannot be established while any NPC is present, so the
+    // StealthManager pre-move hook consults this to suppress a doomed sn. Updated
+    // on every Also-Here observation, independent of the auto-attack gate (which
+    // only reacts to engageable hostiles).
     public bool HasRoomNpc => _anyNpcPresent;
 
-    /// <summary>
-    /// True while a combat-off "clear hostiles when seen Hidden" force-clear
-    /// is latched for the current room. A stealth runner (AutoSneak on)
-    /// sprinting a route with combat OFF that hits a room holding a
-    /// <c>SeeHidden</c> monster can't re-sneak there; running onward would
-    /// drag and stack monsters across rooms, lethal when solo. When
-    /// <see cref="CombatSettings.ClearHostilesWhenSeenHidden"/> is on, this
-    /// latches on entry to such a room — holding the Combat gate (so the
-    /// walker actually stops) until every engageable hostile is gone.
-    /// <see cref="CombatManager"/> reads this to engage despite combat-off.
-    /// </summary>
+    // True while a combat-off "clear hostiles when seen Hidden" force-clear is
+    // latched for the current room. A stealth runner (AutoSneak on) sprinting a
+    // route with combat OFF that hits a room holding a SeeHidden monster can't
+    // re-sneak there; running onward would drag and stack monsters across rooms,
+    // lethal when solo. When CombatSettings.ClearHostilesWhenSeenHidden is on,
+    // this latches on entry to such a room — holding the Combat gate (so the
+    // walker actually stops) until every engageable hostile is gone.
+    // CombatManager reads this to engage despite combat-off.
     public bool SeeHiddenClearActive => _seeHiddenClearLatch;
 
     public CombatStateTracker(
@@ -123,15 +94,12 @@ public sealed class CombatStateTracker : IDisposable
         : this(router, coordinator, classifier, monsters, state,
                isAutoAttackEnabled, resolveOverlay: null, log) { }
 
-    /// <summary>
-    /// Construct with a per-monster overlay resolver so the engageable
-    /// predicate matches CombatManager (Relationship-based). Without
-    /// it, the tracker falls back to "every monster engageable" which
-    /// can spuriously assert the Combat gate against shopkeepers
-    /// (CombatManager would skip them but the walker would still
-    /// pause). AppServices wires the same delegate it gives
-    /// CombatManager so the two stay in sync.
-    /// </summary>
+    // Construct with a per-monster overlay resolver so the engageable predicate
+    // matches CombatManager (Relationship-based). Without it, the tracker falls
+    // back to "every monster engageable" which can spuriously assert the Combat
+    // gate against shopkeepers (CombatManager would skip them but the walker
+    // would still pause). AppServices wires the same delegate it gives
+    // CombatManager so the two stay in sync.
     public CombatStateTracker(
         MessageRouter router,
         MovementCoordinator coordinator,
@@ -164,18 +132,14 @@ public sealed class CombatStateTracker : IDisposable
         _combatStatusSub  = router.Subscribe(KnownPatterns.CombatStatus, OnCombatStatus);
     }
 
-    /// <summary>
-    /// Wire the combat-off "clear hostiles when seen Hidden" override:
-    /// <paramref name="clearWhenSeenHidden"/> reads
-    /// <see cref="CombatSettings.ClearHostilesWhenSeenHidden"/>,
-    /// <paramref name="isAutoSneakEnabled"/> reports whether the character
-    /// is stealthing its route (AutoSneak auto-mode on), and
-    /// <paramref name="hasSeeHidden"/> reports whether a monster Number
-    /// carries SeeHidden (<see cref="SeeHiddenIndex"/>). With all wired,
-    /// entering a room that breaks a stealth runner's sneak latches a
-    /// force-clear (see <see cref="SeeHiddenClearActive"/>). Until set, the
-    /// override stays dormant and the gate behaves exactly as before.
-    /// </summary>
+    // Wire the combat-off "clear hostiles when seen Hidden" override:
+    // clearWhenSeenHidden reads CombatSettings.ClearHostilesWhenSeenHidden,
+    // isAutoSneakEnabled reports whether the character is stealthing its route
+    // (AutoSneak auto-mode on), and hasSeeHidden reports whether a monster Number
+    // carries SeeHidden (SeeHiddenIndex). With all wired, entering a room that
+    // breaks a stealth runner's sneak latches a force-clear (see
+    // SeeHiddenClearActive). Until set, the override stays dormant and the gate
+    // behaves exactly as before.
     public void SetSeeHiddenClearGate(
         Func<bool> clearWhenSeenHidden,
         Func<bool> isAutoSneakEnabled,
@@ -189,17 +153,14 @@ public sealed class CombatStateTracker : IDisposable
         _hasSeeHidden = hasSeeHidden;
     }
 
-    /// <summary>
-    /// Wire the actionability gate: <paramref name="canEngage"/> reports
-    /// whether a monster Number is one we can actually kill (a weapon can hit
-    /// it OR an eligible attack spell can land — see
-    /// <see cref="CombatManager.CanEngageMonster"/>). With it wired, the
-    /// walker gate is held only while at least one engageable hostile is
-    /// <em>actionable</em>; a room whose remaining hostiles are all
-    /// un-actionable releases the gate so the walker moves past instead of
-    /// standing there unable to win. Until set, every engageable hostile
-    /// counts as actionable (fail-open — the gate behaves exactly as before).
-    /// </summary>
+    // Wire the actionability gate: canEngage reports whether a monster Number is
+    // one we can actually kill (a weapon can hit it OR an eligible attack spell
+    // can land — see CombatManager.CanEngageMonster). With it wired, the walker
+    // gate is held only while at least one engageable hostile is actionable; a
+    // room whose remaining hostiles are all un-actionable releases the gate so
+    // the walker moves past instead of standing there unable to win. Until set,
+    // every engageable hostile counts as actionable (fail-open — the gate behaves
+    // exactly as before).
     public void SetActionabilityGate(Func<int, bool> canEngage)
     {
         ArgumentNullException.ThrowIfNull(canEngage);
@@ -299,15 +260,12 @@ public sealed class CombatStateTracker : IDisposable
         }
     }
 
-    /// <summary>
-    /// Engageable = MonsterOverlay.Relationship is Enemy (or null,
-    /// which defaults to Enemy). Shopkeepers / quest-givers / friendly
-    /// NPCs are marked Friend / Neutral / Hangup explicitly in the
-    /// overlay seed; un-tagged monsters are treated as fightable so
-    /// the engine doesn't sit through a respawn just because the data
-    /// table is missing a DeathLine (152 of 1100 monsters in stock
-    /// data ship with empty DeathLine — acid slime, etc.).
-    /// </summary>
+    // Engageable = MonsterOverlay.Relationship is Enemy (or null, which defaults
+    // to Enemy). Shopkeepers / quest-givers / friendly NPCs are marked Friend /
+    // Neutral / Hangup explicitly in the overlay seed; un-tagged monsters are
+    // treated as fightable so the engine doesn't sit through a respawn just
+    // because the data table is missing a DeathLine (152 of 1100 monsters in
+    // stock data ship with empty DeathLine — acid slime, etc.).
     private bool IsEngageable(RoomEntity e)
     {
         if (e.MonsterNumber is not int n) return true;
@@ -318,14 +276,11 @@ public sealed class CombatStateTracker : IDisposable
         return (overlay.Relationship ?? MonsterRelationship.Enemy) == MonsterRelationship.Enemy;
     }
 
-    /// <summary>
-    /// Actionable = we can actually kill it (a weapon can hit it OR an
-    /// eligible attack spell can land). Fail-open: an unwired gate, an
-    /// unknown monster Number, or a resolver exception all count as
-    /// actionable so a thin data set never strands the walker. The caller
-    /// only invokes this for entities that already passed
-    /// <see cref="IsEngageable"/>.
-    /// </summary>
+    // Actionable = we can actually kill it (a weapon can hit it OR an eligible
+    // attack spell can land). Fail-open: an unwired gate, an unknown monster
+    // Number, or a resolver exception all count as actionable so a thin data set
+    // never strands the walker. The caller only invokes this for entities that
+    // already passed IsEngageable.
     private bool IsActionable(RoomEntity e)
     {
         if (_canEngage is null) return true;             // unwired → fail open

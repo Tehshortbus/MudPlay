@@ -1,28 +1,21 @@
 namespace FujinTerm.Game.Calculators;
 
-/// <summary>
-/// Experience-curve formulas ported from MMUD Explorer VB6. Produces the
-/// per-class/race exp chart percentage and the cumulative exp required to
-/// reach a level, with separate Stock and ParaMUD progressions that match the
-/// game's own overflow handling. All methods are pure.
-/// </summary>
+// MajorMUD experience-curve formulas. Produces the per-class/race exp chart
+// percentage and the cumulative exp required to reach a level, with separate
+// Stock and ParaMUD progressions that match the game's own overflow handling.
+// All methods are pure.
 public static class ExperienceTableCalculator
 {
-    /// <summary>
-    /// Experience chart percentage from a class + race exp-table value:
-    /// <c>(classExpTable + 100) + raceExpTable</c>.
-    /// </summary>
+    // Experience chart percentage from a class + race exp-table value:
+    // (classExpTable + 100) + raceExpTable.
     public static int CalcExpChart(int classExpTable, int raceExpTable)
     {
         return (classExpTable + 100) + raceExpTable;
     }
 
-    /// <summary>
-    /// Cumulative exp needed to reach <paramref name="level"/> for a character
-    /// whose exp chart is <paramref name="chart"/>. Dispatches to the Stock or
-    /// ParaMUD progression. Saturates at <see cref="long.MaxValue"/> rather
-    /// than overflowing.
-    /// </summary>
+    // Cumulative exp needed to reach the given level for a character whose exp
+    // chart is chart. Dispatches to the Stock or ParaMUD progression. Saturates
+    // at long.MaxValue rather than overflowing.
     public static long CalcExpNeeded(int level, int chart, RealmType realmType)
     {
         return realmType == RealmType.ParaMud
@@ -30,11 +23,9 @@ public static class ExperienceTableCalculator
             : CalcExpNeeded_Stock(level, chart);
     }
 
-    /// <summary>
-    /// Estimate time to reach a target level given a current exp total and an
-    /// exp-per-hour rate. Returns <c>null</c> when the rate is non-positive
-    /// (no data), or <see cref="System.TimeSpan.Zero"/> when already there.
-    /// </summary>
+    // Estimate time to reach a target level given a current exp total and an
+    // exp-per-hour rate. Returns null when the rate is non-positive (no data), or
+    // TimeSpan.Zero when already there.
     public static System.TimeSpan? CalcTimeToLevel(long expNeeded, long currentExp, long expPerHour)
     {
         if (expPerHour <= 0) return null;
@@ -47,7 +38,7 @@ public static class ExperienceTableCalculator
 
     private static long CalcExpNeeded_ParaMud(int level, int chart)
     {
-        // VB6: nRes = IDiv((nChart * 1000), 100) = chart * 10
+        // nRes = IDiv((nChart * 1000), 100) = chart * 10
         double nRes = chart * 10.0;
 
         int nIters = level - 1;
@@ -77,7 +68,8 @@ public static class ExperienceTableCalculator
                 scaleDiv = 100.0;
             }
 
-            // Overflow-safe multiplication matching VB6's CanI64Mul/IDiv pattern.
+            // Overflow-safe multiplication matching the game's own 64-bit
+            // multiply / integer-divide overflow handling.
             double prod = nRes * scaleMul;
             if (prod <= 9.2e18)
             {
@@ -111,8 +103,9 @@ public static class ExperienceTableCalculator
 
     private static long CalcExpNeeded_Stock(int level, int chart)
     {
-        // VB6 uses UINT rollover handling + a billions tabulator for very large
-        // values; we use double to match VB6 Currency intermediate precision.
+        // The game uses UINT rollover handling + a billions tabulator for very
+        // large values; we use double to match its fixed-point intermediate
+        // precision.
         double runningExp = 0;
         double billionsTabulator = 0;
         const double MAX_UINT = 4294967295.0;
@@ -131,9 +124,9 @@ public static class ExperienceTableCalculator
             {
                 double expMul, expDiv;
 
-                // VB6 source boundary is `If i <= 27` — level 27 takes the
-                // GetExpModifiers "Case Else" 23/20 step (value-equivalent to
-                // the 115/100 bracket, but kept exact to the source).
+                // The boundary is `i <= 27` — level 27 takes the modifier
+                // "else" 23/20 step (value-equivalent to the 115/100 bracket,
+                // but kept exact to the game's progression).
                 if (i <= 27)
                 {
                     (expMul, expDiv) = GetExpModifiers_Stock(i);

@@ -7,58 +7,42 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game.Events;
 
-/// <summary>
-/// Phase 8 PR 8.2 — connection-aware lifecycle + timers that decide
-/// when each <see cref="ScheduledEvent"/> fires. <see cref="EventManager"/>
-/// owns storage + dispatch; this class owns the trigger sources.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Lifecycle (per spec):
-/// </para>
-/// <list type="bullet">
-///   <item><b>Logon</b> fires on every game entry — the first
-///   <see cref="WirePromptScanner.PromptObserved"/> after
-///   <see cref="NotifyConnected"/>. Connect, Login automation,
-///   menu-entry automation all happen before this point; the prompt
-///   is the canonical "we're in MajorMUD" signal.</item>
-///   <item><b>Re-log</b> fires alongside Logon, but only when the
-///   game entry is a reconnect (a prior in-session disconnect
-///   happened). Never on the first connect of a profile session. The
-///   <see cref="_hadInSessionDisconnect"/> latch tracks this and
-///   resets on profile load.</item>
-///   <item><b>Logoff</b> is NOT fired here — it's the caller's
-///   responsibility. <see cref="EventManager.FireLogoffEvents"/> gets
-///   called from the user-initiated disconnect path BEFORE the wire
-///   closes. Dropped connections skip it entirely.</item>
-///   <item><b>AtTime</b> events check on a 30 s ticker; an event
-///   matching the current HH:mm wall-clock local fires (deduped via
-///   <see cref="_atTimeFiredAt"/> so a single matched minute fires
-///   each event at most once). Only fires while in-game.</item>
-///   <item><b>Every</b> events get a dedicated
-///   <see cref="DispatcherTimer"/> per event. Timers start fresh at
-///   each first-prompt-after-connect (per spec — no anchor
-///   preservation across disconnect). Stop on disconnect.</item>
-/// </list>
-/// <para>
-/// TelnetClient lifecycle plumbing: the client is per-connection
-/// (owned by MainWindowViewModel) so this scheduler doesn't subscribe
-/// directly. Instead MainWindowVM calls
-/// <see cref="NotifyConnected"/> / <see cref="NotifyDisconnected"/>
-/// when its <see cref="TelnetClient"/> raises the corresponding
-/// events. <see cref="WirePromptScanner"/> IS a stable singleton on
-/// <see cref="AppServices"/>, so the prompt signal wires directly.
-/// </para>
-/// <para>
-/// Threading: <see cref="DispatcherTimer"/> already callbacks on the
-/// UI dispatcher. The notify methods are called from MainWindowVM
-/// which is on the UI thread. All <see cref="EventManager.Fire"/>
-/// calls land on the UI thread.
-/// </para>
-/// </remarks>
+// Connection-aware lifecycle + timers that decide when each ScheduledEvent
+// fires. EventManager owns storage + dispatch; this class owns the trigger
+// sources.
+//
+// Lifecycle:
+//   * Logon fires on every game entry — the first
+//     WirePromptScanner.PromptObserved after NotifyConnected. Connect, Login
+//     automation, menu-entry automation all happen before this point; the prompt
+//     is the canonical "we're in MajorMUD" signal.
+//   * Re-log fires alongside Logon, but only when the game entry is a reconnect
+//     (a prior in-session disconnect happened). Never on the first connect of a
+//     profile session. The _hadInSessionDisconnect latch tracks this and resets
+//     on profile load.
+//   * Logoff is NOT fired here — it's the caller's responsibility.
+//     EventManager.FireLogoffEvents gets called from the user-initiated
+//     disconnect path BEFORE the wire closes. Dropped connections skip it
+//     entirely.
+//   * AtTime events check on a 30 s ticker; an event matching the current HH:mm
+//     wall-clock local fires (deduped via _atTimeFiredAt so a single matched
+//     minute fires each event at most once). Only fires while in-game.
+//   * Every events get a dedicated DispatcherTimer per event. Timers start fresh
+//     at each first-prompt-after-connect (no anchor preservation across
+//     disconnect). Stop on disconnect.
+//
+// TelnetClient lifecycle plumbing: the client is per-connection (owned by
+// MainWindowViewModel) so this scheduler doesn't subscribe directly. Instead
+// MainWindowVM calls NotifyConnected / NotifyDisconnected when its TelnetClient
+// raises the corresponding events. WirePromptScanner IS a stable singleton on
+// AppServices, so the prompt signal wires directly.
+//
+// Threading: DispatcherTimer already callbacks on the UI dispatcher. The notify
+// methods are called from MainWindowVM which is on the UI thread. All
+// EventManager.Fire calls land on the UI thread.
 public sealed class EventScheduler : IDisposable
 {
-    /// <summary>How often the AtTime ticker re-evaluates the wall clock.</summary>
+    // How often the AtTime ticker re-evaluates the wall clock.
     private static readonly TimeSpan AtTimeTickInterval = TimeSpan.FromSeconds(30);
 
     private readonly EventManager _events;
@@ -69,18 +53,17 @@ public sealed class EventScheduler : IDisposable
 
     private readonly DispatcherTimer _atTimeTicker;
     private readonly Dictionary<ScheduledEvent, DispatcherTimer> _everyTimers = new();
-    /// <summary>(event → minute string we last fired at) so AtTime doesn't double-fire within the same minute.</summary>
+    // (event → minute string we last fired at) so AtTime doesn't double-fire
+    // within the same minute.
     private readonly Dictionary<ScheduledEvent, string> _atTimeFiredAt = new();
 
     private bool _isInGame;
     private bool _hadInSessionDisconnect;
-    /// <summary>
-    /// Latched true after the first cleanup-warning observation fires
-    /// Logoff events. The BBS warns repeatedly during a cleanup cycle
-    /// ("5 min", "4 min", "3 min", …); without this latch every
-    /// Logoff action would fire on every warning. Reset on the next
-    /// fresh TCP connect so a future cleanup gets a clean shot.
-    /// </summary>
+    // Latched true after the first cleanup-warning observation fires Logoff
+    // events. The BBS warns repeatedly during a cleanup cycle ("5 min", "4 min",
+    // "3 min", …); without this latch every Logoff action would fire on every
+    // warning. Reset on the next fresh TCP connect so a future cleanup gets a
+    // clean shot.
     private bool _logoffFiredThisSession;
     private bool _disposed;
 
@@ -141,26 +124,20 @@ public sealed class EventScheduler : IDisposable
 
     // ----- Telnet-driven notifications -------------------------------
 
-    /// <summary>
-    /// Called by MainWindowVM right after its
-    /// <see cref="TelnetClient.Connected"/> handler runs. Resets the
-    /// "are we in-game?" latch — the first prompt observation will
-    /// flip it to true and fire Logon (+ optionally Re-log) events.
-    /// Also resets the once-per-session Logoff-fire latch so a future
-    /// cleanup-warning cycle can dispatch Logoff events again.
-    /// </summary>
+    // Called by MainWindowVM right after its TelnetClient.Connected handler runs.
+    // Resets the "are we in-game?" latch — the first prompt observation will flip
+    // it to true and fire Logon (+ optionally Re-log) events. Also resets the
+    // once-per-session Logoff-fire latch so a future cleanup-warning cycle can
+    // dispatch Logoff events again.
     public void NotifyConnected()
     {
         _isInGame = false;
         _logoffFiredThisSession = false;
     }
 
-    /// <summary>
-    /// Called by MainWindowVM when its
-    /// <see cref="TelnetClient.Disconnected"/> handler runs. Latches
-    /// the Re-log flag (so the next reconnect's Logon also fires
-    /// Re-log) and stops all timers.
-    /// </summary>
+    // Called by MainWindowVM when its TelnetClient.Disconnected handler runs.
+    // Latches the Re-log flag (so the next reconnect's Logon also fires Re-log)
+    // and stops all timers.
     public void NotifyDisconnected()
     {
         // Only set the Re-log latch when we actually made it in-game
@@ -172,15 +149,12 @@ public sealed class EventScheduler : IDisposable
         StopAllEveryTimers();
     }
 
-    /// <summary>
-    /// BBS announced upcoming shutdown — fire user-configured Logoff
-    /// events ONCE per session so cleanup commands (bank, store gear,
-    /// etc.) hit the wire while we still have a connection. The
-    /// watcher fires per warning-line observation and the BBS warns
-    /// repeatedly during a cleanup cycle (5 / 4 / 3 / 2 / 1 min); the
-    /// <see cref="_logoffFiredThisSession"/> latch prevents the same
-    /// Logoff event from running 5+ times.
-    /// </summary>
+    // BBS announced upcoming shutdown — fire user-configured Logoff events ONCE
+    // per session so cleanup commands (bank, store gear, etc.) hit the wire while
+    // we still have a connection. The watcher fires per warning-line observation
+    // and the BBS warns repeatedly during a cleanup cycle (5 / 4 / 3 / 2 / 1 min);
+    // the _logoffFiredThisSession latch prevents the same Logoff event from
+    // running 5+ times.
     private void OnCleanupWarningObserved(Services.CleanupWarning _)
     {
         if (!_isInGame) return;            // not in-game means no commands would land anyway.

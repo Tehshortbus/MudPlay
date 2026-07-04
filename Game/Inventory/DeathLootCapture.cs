@@ -2,21 +2,17 @@ using FujinTerm.Models.Profile;
 
 namespace FujinTerm.Game.Inventory;
 
-/// <summary>
-/// Splits an <see cref="InventorySnapshot"/> into the two halves a deathpile is
-/// recorded as: items worn at death (re-equippable) and carried-but-unworn
-/// items ("inventory lost"). Shared by <see cref="Map.RoomTracker.NoteDeath"/>
-/// (real deaths) and <see cref="Recovery.DeathRecoveryManager.SimulateDeath"/>
-/// (the test button) so both capture identically.
-/// </summary>
+// Splits an InventorySnapshot into the two halves a deathpile is recorded as:
+// items worn at death (re-equippable) and carried-but-unworn items ("inventory
+// lost"). Shared by RoomTracker.NoteDeath (real deaths) and
+// DeathRecoveryManager.SimulateDeath (the test button) so both capture
+// identically.
 public static class DeathLootCapture
 {
-    /// <summary>
-    /// Map a snapshot to <c>(equipped, lost)</c>. A worn item that also lingers
-    /// in the carried list — possible between full <c>i</c> dumps, since the worn
-    /// set is patched live on equip/remove but the carried set isn't — is shown
-    /// only under <c>equipped</c>, never double-counted as lost.
-    /// </summary>
+    // Map a snapshot to (equipped, lost). A worn item that also lingers in the
+    // carried list — possible between full 'i' dumps, since the worn set is
+    // patched live on equip/remove but the carried set isn't — is shown only
+    // under equipped, never double-counted as lost.
     public static (List<DeathItem> Equipped, List<DeathItem> Lost) FromSnapshot(InventorySnapshot snapshot)
     {
         var equipped = new List<DeathItem>(snapshot.EquippedItems.Count);

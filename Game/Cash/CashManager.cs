@@ -6,72 +6,47 @@ using FujinTerm.Services.Patterns;
 
 namespace FujinTerm.Game.Cash;
 
-/// <summary>
-/// Phase 9 PR 9.E — per-currency cash pickup / discard engine.
-/// Subscribes to <see cref="KnownPatterns.CashOnGround"/>,
-/// <see cref="KnownPatterns.CashPickedUp"/>,
-/// <see cref="KnownPatterns.CashDropped"/>, and
-/// <see cref="KnownPatterns.CashFromKill"/> (corpse loot after a
-/// monster dies). Dispatches based on <see cref="CashSettings"/>
-/// per-currency <see cref="CashPolicy"/>.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Scope:
-/// </para>
-/// <list type="bullet">
-/// <item><b>CashOnGround → policy dispatch</b>. Collect →
-/// <c>get &lt;count&gt; &lt;coin&gt;</c> with the exact observed
-/// count (specific amounts keep encumbrance / weight tracking
-/// deterministic). Discard / Ignore → no action.</item>
-/// <item><b>Encumbrance gates</b>. With a
-/// <see cref="CashSettings.SkipCollectIfMakesLight"/> / Medium /
-/// Heavy flag set and a parsed <see cref="InventorySnapshot"/>,
-/// pickups are clamped to the headroom below the configured
-/// bracket. <see cref="CashSettings.DropSmallerForLarger"/> trades
-/// held lower-value coin 1:1 to make room for the higher-value
-/// pickup. A per-currency in-flight delta (60s timeout) projects
-/// pickups already dispatched but not yet confirmed so multi-coin
-/// batches and quick re-displays can't over-collect.</item>
-/// <item><b>CashPickedUp / CashDropped → tally update</b>. Held
-/// per-currency counts exposed via <see cref="HeldCoin"/> feed the
-/// stash-room and discard paths.</item>
-/// <item><b>AutoDeposit trigger</b>. The gates read the authoritative
-/// <see cref="InventorySnapshot.Currency"/> (the <c>i</c>-seeded,
-/// delta-tracked holdings — not the local pickup tally): wealth gate
-/// against <see cref="CurrencyHoldings.TotalCopperValue"/> (the
-/// game's <c>Wealth:</c> line), coin gate against
-/// <see cref="CurrencyHoldings.TotalCoinCount"/>. Either crossing
-/// fires <see cref="AutoDepositRequested"/> once per crossing, but
-/// only when a bank / stash location (<see cref="CashSettings.BankRoomKey"/>)
-/// is configured — no location, no reroute destination, no fire.
-/// Re-evaluated on <see cref="OnInventoryChanged"/> so buy / sell
-/// wealth swings (which the CashManager's own patterns don't observe)
-/// still arm the gate. Subscribers (the walker reroute) decide what
-/// to do — this layer only signals.</item>
-/// </list>
-/// <para>
-/// <b>Deferred to follow-ups</b>:
-/// </para>
-/// <list type="bullet">
-/// <item>Walker-driven auto-deposit reroute (snapshot activity →
-/// pause → walk to bank → deposit → walk back → resume).</item>
-/// <item>Per-realm currency naming (runic in particular varies by
-/// BBS — v1 hardcodes the stock set; per-realm renames live on
-/// the Phase 4 Settings → BBS tab).</item>
-/// <item>RealmType-resolved bracket percentages — gate currently
-/// hardcodes the Stock 17 / 34 / 67 starts (Phase 12).</item>
-/// </list>
-/// <para>
-/// Master switch: <see cref="AutoActionDefaults.AutoGetCash"/>
-/// (shared with the Settings → General toggle and the toolbar
-/// Toggle command).
-/// </para>
-/// </remarks>
+// Per-currency cash pickup / discard engine. Subscribes to CashOnGround,
+// CashPickedUp, CashDropped, and CashFromKill (corpse loot after a monster
+// dies), and dispatches based on the per-currency CashPolicy in CashSettings.
+//
+// Scope:
+//   - CashOnGround → policy dispatch. Collect → "get <count> <coin>" with the
+//     exact observed count (specific amounts keep encumbrance / weight tracking
+//     deterministic). Discard / Ignore → no action.
+//   - Encumbrance gates. With a SkipCollectIfMakesLight / Medium / Heavy flag
+//     set and a parsed InventorySnapshot, pickups are clamped to the headroom
+//     below the configured bracket. DropSmallerForLarger trades held lower-value
+//     coin 1:1 to make room for the higher-value pickup. A per-currency
+//     in-flight delta (60s timeout) projects pickups already dispatched but not
+//     yet confirmed so multi-coin batches and quick re-displays can't
+//     over-collect.
+//   - CashPickedUp / CashDropped → tally update. Held per-currency counts
+//     exposed via HeldCoin feed the stash-room and discard paths.
+//   - AutoDeposit trigger. The gates read the authoritative
+//     InventorySnapshot.Currency (the 'i'-seeded, delta-tracked holdings — not
+//     the local pickup tally): wealth gate against TotalCopperValue (the game's
+//     Wealth: line), coin gate against TotalCoinCount. Either crossing fires
+//     AutoDepositRequested once per crossing, but only when a bank / stash
+//     location (BankRoomKey) is configured — no location, no reroute
+//     destination, no fire. Re-evaluated on OnInventoryChanged so buy / sell
+//     wealth swings (which this engine's own patterns don't observe) still arm
+//     the gate. Subscribers (the walker reroute) decide what to do — this layer
+//     only signals.
+//
+// Not yet handled:
+//   - Walker-driven auto-deposit reroute (snapshot activity → pause → walk to
+//     bank → deposit → walk back → resume).
+//   - Per-realm currency naming (runic in particular varies by BBS — the stock
+//     set is hardcoded here; per-realm renames live on the Settings → BBS tab).
+//   - Realm-resolved bracket percentages — the gate currently hardcodes the
+//     Stock 17 / 34 / 67 starts.
+//
+// Master switch: AutoActionDefaults.AutoGetCash (shared with the Settings →
+// General toggle and the toolbar Toggle command).
 public sealed class CashManager : IDisposable
 {
-    /// <summary>LogService category — appears as <c>[Cash]</c> rows
-    /// per dispatch + threshold fire.</summary>
+    // LogService category — appears as [Cash] rows per dispatch + threshold fire.
     public const string LogCategory = "Cash";
 
     private readonly Func<CashSettings> _readSettings;
@@ -88,10 +63,8 @@ public sealed class CashManager : IDisposable
     private string? _noticeBuffer;       // multi-line continuation
     private string? _noticeRawFirst;     // raw first row that started the buffer
 
-    /// <summary>Recognised cash denomination words (case-insensitive).
-    /// User's screenshot showed "silver nobles" / "copper farthings";
-    /// expand by adding more entries here when realms use unique
-    /// denomination words.</summary>
+    // Recognised cash denomination words (case-insensitive). Expand by adding
+    // more entries here when realms use unique denomination words.
     private static readonly HashSet<string> CashDenominations =
         new(StringComparer.OrdinalIgnoreCase)
         {
@@ -104,7 +77,7 @@ public sealed class CashManager : IDisposable
     private bool _autoDepositFiredThisCrossing;
     private bool _disposed;
 
-    // ----- Encumbrance-gated collection (ported from MudProxy) ----------
+    // ----- Encumbrance-gated collection --------------------------------
     // Per-currency in-flight projection, slot 0=copper..4=runic. A `get`
     // bumps the matching slot up, a `drop` down; the confirming
     // CashPickedUp / CashDropped line decays it back toward zero. While a
@@ -120,37 +93,33 @@ public sealed class CashManager : IDisposable
     private const int InFlightDeltaTimeoutMs = 60000;
 
     // Stock encumbrance bracket start percentages: None→Light at 17%,
-    // Light→Medium at 34%, Medium→Heavy at 67%. FujinTerm has no RealmType
-    // yet (Phase 12); these match InventoryManager's Stock assumption and
-    // become realm-resolved when RealmType lands.
+    // Light→Medium at 34%, Medium→Heavy at 67%. These are the current fixed
+    // values and match InventoryManager's Stock assumption.
     private const int StockLightStartPct = 17;
     private const int StockMediumStartPct = 34;
     private const int StockHeavyStartPct = 67;
 
-    /// <summary>Single-word currency names for the get / drop wire shape,
-    /// indexed by slot (0=copper..4=runic) — same vocabulary the v1 collect
-    /// path already sends.</summary>
+    // Single-word currency names for the get / drop wire shape, indexed by slot
+    // (0=copper..4=runic) — same vocabulary the collect path already sends.
     private static readonly string[] SlotCurrencyNames =
         { "copper", "silver", "gold", "platinum", "runic" };
 
-    /// <summary>Fires whenever a CashOnGround line resolves the
-    /// per-currency policy decision. Args: currency, count, decided
-    /// action.</summary>
+    // Fires whenever a CashOnGround line resolves the per-currency policy
+    // decision. Args: currency, count, decided action.
     public event Action<string, int, CashPolicy>? CashDispatched;
 
-    /// <summary>Fires once when the authoritative held wealth crosses
-    /// <see cref="CashSettings.AutoDepositIfWealthExceeds"/> or the held
-    /// coin count crosses <see cref="CashSettings.AutoDepositIfCoinsExceed"/>
-    /// — provided a bank / stash location is configured. Payload is the
-    /// current wealth value (the game's <c>Wealth:</c> figure). Single-shot
-    /// per crossing — re-arms only once BOTH gates fall back below their
-    /// thresholds.</summary>
+    // Fires once when the authoritative held wealth crosses
+    // AutoDepositIfWealthExceeds or the held coin count crosses
+    // AutoDepositIfCoinsExceed — provided a bank / stash location is configured.
+    // Payload is the current wealth value (the game's Wealth: figure).
+    // Single-shot per crossing — re-arms only once BOTH gates fall back below
+    // their thresholds.
     public event Action<long>? AutoDepositRequested;
 
-    /// <summary>Fires when the server confirms the player picked up coin
-    /// (a <c>CashPickedUp</c> line) — auto-collected or manually <c>get</c>'d
-    /// alike. Args: currency word, coin count. Lets the Session Stats tracker
-    /// tally how much was gathered without re-parsing the wire.</summary>
+    // Fires when the server confirms the player picked up coin (a CashPickedUp
+    // line) — auto-collected or manually get'd alike. Args: currency word, coin
+    // count. Lets the Session Stats tracker tally how much was gathered without
+    // re-parsing the wire.
     public event Action<string, int>? CoinCollected;
 
     public CashManager(
@@ -166,7 +135,7 @@ public sealed class CashManager : IDisposable
         _readSettings = readSettings;
         _isEnabled = isEnabled;
         // No snapshot bound (or before an `i` parse) → the encumbrance gate
-        // is inert and collection runs the v1 full-pickup path.
+        // is inert and collection runs the full-pickup path.
         _getSnapshot = getSnapshot ?? (static () => InventorySnapshot.Empty);
         _log = log;
 
@@ -185,39 +154,36 @@ public sealed class CashManager : IDisposable
         _killDropSub = router.Subscribe(KnownPatterns.CashFromKill,  OnCashFromKill);
     }
 
-    /// <summary>Bind the wire sender — typically the gate-wrapped
-    /// engine pipeline from <c>MainWindowViewModel</c>.</summary>
+    // Bind the wire sender — typically the gate-wrapped engine pipeline from
+    // MainWindowViewModel.
     public void SetWireSender(Action<byte[]> sender)
     {
         ArgumentNullException.ThrowIfNull(sender);
         _wireSender = sender;
     }
 
-    /// <summary>Bind the shared <see cref="Game.Inventory.AcquisitionGate"/>
-    /// so collecting cash holds the walker until get-clear (the same gate
-    /// the item engine feeds). Optional — when unbound the engine behaves
-    /// exactly as v1 (no movement gate). Only the Collect path asserts;
-    /// Discard/Ignore don't gate movement.</summary>
+    // Bind the shared AcquisitionGate so collecting cash holds the walker until
+    // get-clear (the same gate the item engine feeds). Optional — when unbound
+    // the engine doesn't gate movement. Only the Collect path asserts;
+    // Discard/Ignore don't gate movement.
     public void SetAcquisitionGate(Game.Inventory.AcquisitionGate gate)
     {
         ArgumentNullException.ThrowIfNull(gate);
         _gate = gate;
     }
 
-    /// <summary>Current held count of <paramref name="currency"/> as
-    /// observed via CashPickedUp / CashDropped lines since engine
-    /// start. Resets on app close; not persisted (the wealth display
-    /// is authoritative; we track here for the auto-deposit
-    /// threshold).</summary>
+    // Current held count of currency as observed via CashPickedUp / CashDropped
+    // lines since engine start. Resets on app close; not persisted (the wealth
+    // display is authoritative; tracked here for the auto-deposit threshold).
     public long HeldCoin(string currency)
     {
         return _held.TryGetValue(currency, out long count) ? count : 0;
     }
 
-    /// <summary>Reset held counts (called on profile load to drop
-    /// the prior character's tallies). Also clears the in-flight coin
-    /// projection so a pending get/drop from the prior session can't
-    /// skew the new character's first gate evaluation.</summary>
+    // Reset held counts (called on profile load to drop the prior character's
+    // tallies). Also clears the in-flight coin projection so a pending get/drop
+    // from the prior session can't skew the new character's first gate
+    // evaluation.
     public void ResetTallies()
     {
         _held.Clear();
@@ -226,14 +192,10 @@ public sealed class CashManager : IDisposable
         Array.Clear(_inFlightCoinDeltaSetAt, 0, _inFlightCoinDeltaSetAt.Length);
     }
 
-    /// <summary>
-    /// Re-evaluate state after a settings edit. Call this when the
-    /// user changes a per-currency policy (e.g. flips Collect to
-    /// Discard) or the auto-deposit threshold so the engine reacts
-    /// immediately instead of waiting for the next CashPickedUp /
-    /// CashOnGround line. Mirrors MudProxy's
-    /// <c>CashManager.OnSettingsChanged</c> (CashManager.cs:479-497).
-    /// </summary>
+    // Re-evaluate state after a settings edit. Call this when the user changes a
+    // per-currency policy (e.g. flips Collect to Discard) or the auto-deposit
+    // threshold so the engine reacts immediately instead of waiting for the next
+    // CashPickedUp / CashOnGround line.
     public void OnSettingsChanged()
     {
         _log?.Debug(LogCategory, "settings changed — re-evaluating auto-deposit + discard");
@@ -241,14 +203,11 @@ public sealed class CashManager : IDisposable
         AuditHeldForDiscard();
     }
 
-    /// <summary>
-    /// Walk held tallies; for any currency whose policy is Discard
-    /// AND we hold &gt; 0, emit <c>drop &lt;amount&gt; &lt;type&gt;</c>
-    /// (the confirmed MajorMUD syntax for currency drops). The
-    /// CashDropped subscription decrements <c>_held</c> when the
-    /// server confirms; we don't optimistically decrement so the
-    /// audit retries on the next firing if the drop fails.
-    /// </summary>
+    // Walk held tallies; for any currency whose policy is Discard AND we hold
+    // > 0, emit "drop <amount> <type>" (the MajorMUD syntax for currency drops).
+    // The CashDropped subscription decrements _held when the server confirms; we
+    // don't optimistically decrement so the audit retries on the next firing if
+    // the drop fails.
     private void AuditHeldForDiscard()
     {
         if (!_isEnabled()) return;
@@ -296,13 +255,10 @@ public sealed class CashManager : IDisposable
         }
     }
 
-    /// <summary>
-    /// Corpse-loot handler — "N &lt;currency&gt; drop to the ground."
-    /// fires from <see cref="KnownPatterns.CashFromKill"/> after a
-    /// monster dies. Funnels into the same per-currency policy
-    /// dispatch as room-display cash so kill-loot honours the user's
-    /// Collect / Discard / Ignore choices.
-    /// </summary>
+    // Corpse-loot handler — "N <currency> drop to the ground." fires from
+    // CashFromKill after a monster dies. Funnels into the same per-currency
+    // policy dispatch as room-display cash so kill-loot honours the user's
+    // Collect / Discard / Ignore choices.
     private void OnCashFromKill(MatchResult m)
     {
         if (!_isEnabled()) return;
@@ -354,12 +310,9 @@ public sealed class CashManager : IDisposable
         CheckAutoDeposit();
     }
 
-    /// <summary>
-    /// Stash-room confirmation handler — tally identically to drop.
-    /// The <c>hide</c> wire shape is what stash-room visits use to
-    /// dump excess coin / items; without this the auto-deposit
-    /// threshold drifts stale after a stash run.
-    /// </summary>
+    // Stash-room confirmation handler — tally identically to drop. The hide wire
+    // shape is what stash-room visits use to dump excess coin / items; without
+    // this the auto-deposit threshold drifts stale after a stash run.
     private void OnCashHidden(MatchResult m)
     {
         (string? currency, int count) = ParseCashLine(m);
@@ -371,26 +324,19 @@ public sealed class CashManager : IDisposable
         CheckAutoDeposit();
     }
 
-    /// <summary>
-    /// Single-line "You notice <list> here." — splits the list and
-    /// dispatches each recognised cash entry through the same
-    /// per-currency policy path as <see cref="OnCashOnGround"/>.
-    /// The multi-line wrap variant joins through the LineExtractor
-    /// buffer (see <see cref="OnLine"/>) and feeds the same parse.
-    /// </summary>
+    // Single-line "You notice <list> here." — splits the list and dispatches
+    // each recognised cash entry through the same per-currency policy path as
+    // OnCashOnGround. The multi-line wrap variant joins through the LineExtractor
+    // buffer (see OnLine) and feeds the same parse.
     private void OnYouNoticeRoom(MatchResult m)
     {
         if (m.Groups.Count == 0) return;
         DispatchYouNoticeList(m.Groups[0]);
     }
 
-    /// <summary>
-    /// Bind the per-session <see cref="Terminal.LineExtractor"/> so
-    /// the manager can stitch wrapped "You notice" lines back
-    /// together — same shape as the
-    /// <see cref="Game.Combat.RoomEntityClassifier"/> fix for
-    /// "Also here:".
-    /// </summary>
+    // Bind the per-session LineExtractor so the manager can stitch wrapped
+    // "You notice" lines back together — the same "Also here:" wrap problem
+    // the room-entity classifier solves for its own list.
     public void AttachLineExtractor(Terminal.LineExtractor lines)
     {
         ArgumentNullException.ThrowIfNull(lines);
@@ -446,13 +392,10 @@ public sealed class CashManager : IDisposable
         DispatchYouNoticeList(body);
     }
 
-    /// <summary>
-    /// Split "X gold sovereigns, Y silver nobles, an item, ..."
-    /// into entries; for each, decide if it's cash (count +
-    /// recognised denomination) and dispatch through the
-    /// per-currency policy. Non-cash entries are item references —
-    /// silently skipped until an items subsystem ships.
-    /// </summary>
+    // Split "X gold sovereigns, Y silver nobles, an item, ..." into entries;
+    // for each, decide if it's cash (count + recognised denomination) and
+    // dispatch through the per-currency policy. Non-cash entries are item
+    // references — silently skipped, the item engine handles those.
     private void DispatchYouNoticeList(string list)
     {
         if (!_isEnabled()) return;
@@ -473,26 +416,20 @@ public sealed class CashManager : IDisposable
         }
     }
 
-    /// <summary>
-    /// Encumbrance-gated Collect dispatch for one ground currency, holding
-    /// the walker via the shared <see cref="Game.Inventory.AcquisitionGate"/>
-    /// until get-clear. Single funnel for all three collect sites (room
-    /// display, corpse drop, "You notice" list) so the gate + acquisition
-    /// note can't be missed.
-    /// </summary>
-    /// <remarks>
-    /// With no <see cref="CashSettings.SkipCollectIfMakesLight"/> / Medium /
-    /// Heavy flag set — or before an <c>i</c> parse populates encumbrance —
-    /// this sends the full <c>get count currency</c> exactly as v1. When a
-    /// gate flag is set and the <see cref="InventorySnapshot"/> has a known
-    /// max weight, the pickup is clamped to the headroom below the
-    /// configured bracket; with <see cref="CashSettings.DropSmallerForLarger"/>
-    /// on, lower-value held coin is dropped 1:1 to free room for the
-    /// higher-value pickup (encumbrance-neutral by construction). The
-    /// in-flight projection threads multi-currency batches and quick
-    /// re-displays so the budget reflects pickups already dispatched but not
-    /// yet confirmed.
-    /// </remarks>
+    // Encumbrance-gated Collect dispatch for one ground currency, holding the
+    // walker via the shared AcquisitionGate until get-clear. Single funnel for
+    // all three collect sites (room display, corpse drop, "You notice" list) so
+    // the gate + acquisition note can't be missed.
+    //
+    // With no SkipCollectIfMakesLight / Medium / Heavy flag set — or before an
+    // `i` parse populates encumbrance — this sends the full `get count currency`
+    // ungated. When a gate flag is set and the InventorySnapshot has a known max
+    // weight, the pickup is clamped to the headroom below the configured
+    // bracket; with DropSmallerForLarger on, lower-value held coin is dropped 1:1
+    // to free room for the higher-value pickup (encumbrance-neutral by
+    // construction). The in-flight projection threads multi-currency batches and
+    // quick re-displays so the budget reflects pickups already dispatched but not
+    // yet confirmed.
     private void CollectCoins(int count, string currency)
     {
         CashSettings settings = _readSettings();
@@ -508,7 +445,7 @@ public sealed class CashManager : IDisposable
 
         if (!gateActive)
         {
-            // v1 path — nothing to gate against, collect the full amount.
+            // Ungated path — nothing to gate against, collect the full amount.
             _gate?.NoteGetSent();
             Send($"get {count} {currency}");
             return;
@@ -584,8 +521,8 @@ public sealed class CashManager : IDisposable
         _inFlightCoinDeltaSetAt[slot] = now;
     }
 
-    /// <summary>Slot index (0=copper..4=runic) for a single-word currency,
-    /// or -1 for an unrecognised denomination.</summary>
+    // Slot index (0=copper..4=runic) for a single-word currency, or -1 for an
+    // unrecognised denomination.
     private static int SlotForCurrency(string currency) =>
         currency.ToLowerInvariant() switch
         {
@@ -597,12 +534,10 @@ public sealed class CashManager : IDisposable
             _          => -1,
         };
 
-    /// <summary>
-    /// Tightest encumbrance cap weight across the enabled gate flags. Each
-    /// gate caps collection at the highest weight that still displays one
-    /// bracket below it (so a Light gate keeps the character in None). No
-    /// flags set → full <see cref="EncumbranceReading.MaxWeight"/>.
-    /// </summary>
+    // Tightest encumbrance cap weight across the enabled gate flags. Each gate
+    // caps collection at the highest weight that still displays one bracket below
+    // it (so a Light gate keeps the character in None). No flags set → full
+    // MaxWeight.
     private static long ComputeCapWeight(CashSettings s, EncumbranceReading enc)
     {
         long cap = enc.MaxWeight;
@@ -615,23 +550,19 @@ public sealed class CashManager : IDisposable
         return cap;
     }
 
-    /// <summary>
-    /// Largest weight whose displayed percent (<c>floor(weight*100/max)</c>)
-    /// stays strictly below <paramref name="thresholdPercent"/> — i.e. the
-    /// most a character can carry without tipping into the next bracket.
-    /// Integer inverse of the game's rounding: <c>(pct*max - 1) / 100</c>.
-    /// </summary>
+    // Largest weight whose displayed percent (floor(weight*100/max)) stays
+    // strictly below thresholdPercent — i.e. the most a character can carry
+    // without tipping into the next bracket. Integer inverse of the game's
+    // rounding: (pct*max - 1) / 100.
     private static long GateBoundaryCap(long maxWeight, long thresholdPercent) =>
         Math.Max(0, (thresholdPercent * maxWeight - 1) / 100);
 
-    /// <summary>
-    /// Drain the matching in-flight delta toward zero by an observed coin
-    /// change that agrees with the delta's sign (a confirmed pickup against
-    /// a pending get, or a confirmed drop against a pending drop). A
-    /// sign-disagreeing change (a manual get/give while the opposite command
-    /// was in flight) means the projection is no longer trustworthy — zero
-    /// the slot and fall back to the parser's snapshot.
-    /// </summary>
+    // Drain the matching in-flight delta toward zero by an observed coin change
+    // that agrees with the delta's sign (a confirmed pickup against a pending
+    // get, or a confirmed drop against a pending drop). A sign-disagreeing change
+    // (a manual get/give while the opposite command was in flight) means the
+    // projection is no longer trustworthy — zero the slot and fall back to the
+    // parser's snapshot.
     private void DecayInFlight(string currency, int observedDelta)
     {
         int slot = SlotForCurrency(currency);
@@ -650,9 +581,9 @@ public sealed class CashManager : IDisposable
             _inFlightCoinDeltaSetAt[slot] = default;
     }
 
-    /// <summary>Reset any in-flight delta whose confirming line never
-    /// arrived within <see cref="InFlightDeltaTimeoutMs"/> so the projection
-    /// can't pin the budget against a phantom pending command.</summary>
+    // Reset any in-flight delta whose confirming line never arrived within
+    // InFlightDeltaTimeoutMs so the projection can't pin the budget against a
+    // phantom pending command.
     private void SweepStaleInFlight()
     {
         DateTime now = DateTime.UtcNow;
@@ -668,10 +599,9 @@ public sealed class CashManager : IDisposable
         }
     }
 
-    /// <summary>Recognise <c>"N {denomination} ..."</c> as cash —
-    /// requires a leading integer + the second word being a
-    /// <see cref="CashDenominations"/> entry. Singular form
-    /// <c>"a gold piece"</c> is also tolerated (count = 1).</summary>
+    // Recognise "N {denomination} ..." as cash — requires a leading integer + the
+    // second word being a CashDenominations entry. Singular form "a gold piece"
+    // is also tolerated (count = 1).
     private static bool TryParseCashEntry(string raw, out string? currency, out int count)
     {
         currency = null;
@@ -700,9 +630,8 @@ public sealed class CashManager : IDisposable
         return false;
     }
 
-    /// <summary>Parse (count, currency) from a cash line match.
-    /// Returns count=1 for singular form ("a gold piece") and the
-    /// captured digit for plural form.</summary>
+    // Parse (count, currency) from a cash line match. Returns count=1 for
+    // singular form ("a gold piece") and the captured digit for plural form.
     private static (string? Currency, int Count) ParseCashLine(MatchResult m)
     {
         // Singular branch: groups[0]="currency" populated, groups[1]+ empty.
@@ -749,15 +678,11 @@ public sealed class CashManager : IDisposable
         _held[currency] = next;
     }
 
-    /// <summary>
-    /// Re-evaluate the auto-deposit gates against the latest authoritative
-    /// <see cref="InventorySnapshot"/>. Wired to
-    /// <c>InventoryManager.Changed</c> so a wealth swing the CashManager's
-    /// own patterns never observe — a buy or sell — still arms the gate, and
-    /// so a get / drop the snapshot processes after our pattern handler
-    /// (subscription-order dependent) is re-checked once the snapshot is
-    /// fresh.
-    /// </summary>
+    // Re-evaluate the auto-deposit gates against the latest authoritative
+    // InventorySnapshot. Wired to InventoryManager.Changed so a wealth swing the
+    // CashManager's own patterns never observe — a buy or sell — still arms the
+    // gate, and so a get / drop the snapshot processes after our pattern handler
+    // (subscription-order dependent) is re-checked once the snapshot is fresh.
     public void OnInventoryChanged() => CheckAutoDeposit();
 
     private void CheckAutoDeposit()

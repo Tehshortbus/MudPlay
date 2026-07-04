@@ -4,65 +4,45 @@ using FujinTerm.Services.Patterns;
 
 namespace FujinTerm.Game.Spells;
 
-/// <summary>
-/// Phase 9 PR 9.C — low-level spell-send layer. Builds the
-/// <c>&lt;cast-code&gt; [target]</c> wire command (the 4-letter cast-code
-/// is typed directly — NOT prefixed with the <c>c</c> cast verb), gates on a recent-
-/// cast cooldown + a "block until next combat tick" latch (set by
-/// server failure messages), and emits
-/// <see cref="CastSent"/> / <see cref="CastFailed"/> events so
-/// <c>CastingDirector</c> (PR 9.D) can sequence decisions on top.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Three gates compose the "can I cast right now?" check:
-/// </para>
-/// <list type="bullet">
-/// <item><b>Recent-cast cooldown</b> — one cast per combat round
-/// (5.5s default, matches MajorMUD's between-round cap). Cleared by
-/// <see cref="OnCombatTick"/> so the very next round can cast
-/// immediately.</item>
-/// <item><b>Cast-blocked latch</b> — set on server failure lines
-/// (<see cref="KnownPatterns.CastFizzled"/>,
-/// <see cref="KnownPatterns.CastNoMana"/>,
-/// <see cref="KnownPatterns.CastAlreadyThisRound"/>,
-/// <see cref="KnownPatterns.CastInterrupted"/>). Cleared by
-/// <see cref="OnCombatTick"/> OR by the
-/// <see cref="CastBlockExpiry"/> timeout (safety net: out of combat
-/// no tick will fire, so we'd be stuck otherwise).</item>
-/// <item><b>Min recast interval</b> — short sub-cooldown between
-/// two consecutive <see cref="TryCast"/> attempts (500ms) to absorb
-/// burst calls when CastingDirector evaluates multiple candidates in
-/// the same frame.</item>
-/// </list>
-/// <para>
-/// This is a foundation layer — it does NOT decide what to cast;
-/// CastingDirector picks the spell and target and calls
-/// <see cref="TryCast"/>. External engines that cast spells outside
-/// the director (CombatManager's pre-attack chain, for example) must
-/// call <see cref="NotifyExternalCastSent"/> so the cooldown is
-/// honoured.
-/// </para>
-/// </remarks>
+// Low-level spell-send layer. Builds the <cast-code> [target] wire command (the
+// 4-letter cast-code is typed directly — NOT prefixed with the c cast verb), gates
+// on a recent-cast cooldown + a "block until next combat tick" latch (set by
+// server failure messages), and emits CastSent / CastFailed events so
+// CastingDirector can sequence decisions on top.
+//
+// Three gates compose the "can I cast right now?" check:
+//   - Recent-cast cooldown — one cast per combat round (5.5s default, matches
+//     MajorMUD's between-round cap). Cleared by OnCombatTick so the very next round
+//     can cast immediately.
+//   - Cast-blocked latch — set on server failure lines (fizzle, no-mana,
+//     already-cast-this-round, interrupted). Cleared by OnCombatTick OR by the
+//     CastBlockExpiry timeout (safety net: out of combat no tick will fire, so we'd
+//     be stuck otherwise).
+//   - Min recast interval — short sub-cooldown between two consecutive TryCast
+//     attempts (500ms) to absorb burst calls when CastingDirector evaluates
+//     multiple candidates in the same frame.
+//
+// This is a foundation layer — it does NOT decide what to cast; CastingDirector
+// picks the spell and target and calls TryCast. External engines that cast spells
+// outside the director (CombatManager's pre-attack chain, for example) must call
+// NotifyExternalCastSent so the cooldown is honoured.
 public sealed class CastCoordinator : IDisposable
 {
-    /// <summary>LogService category — appears as <c>[Cast]</c> rows per
-    /// send + failure detection + block-expire.</summary>
+    // LogService category — appears as [Cast] rows per send + failure detection +
+    // block-expire.
     public const string LogCategory = "Cast";
 
-    /// <summary>One cast per combat round (5.5s — slightly longer than
-    /// the 5s tick to account for server-side rounding). Reset by
-    /// <see cref="OnCombatTick"/>.</summary>
+    // One cast per combat round (5.5s — slightly longer than the 5s tick to
+    // account for server-side rounding). Reset by OnCombatTick.
     public static readonly TimeSpan CastCommandCooldown = TimeSpan.FromMilliseconds(5500);
 
-    /// <summary>Burst-absorb gap between two <see cref="TryCast"/>
-    /// attempts. Keeps a single decision frame from queuing two casts
-    /// when only the first should land.</summary>
+    // Burst-absorb gap between two TryCast attempts. Keeps a single decision frame
+    // from queuing two casts when only the first should land.
     public static readonly TimeSpan MinRecastInterval = TimeSpan.FromMilliseconds(500);
 
-    /// <summary>How long the cast-blocked latch lives without a combat
-    /// tick clearing it. Out of combat the tick never fires, so the
-    /// latch must auto-expire or buffs would never recast.</summary>
+    // How long the cast-blocked latch lives without a combat tick clearing it. Out
+    // of combat the tick never fires, so the latch must auto-expire or buffs would
+    // never recast.
     public static readonly TimeSpan CastBlockExpiry = TimeSpan.FromSeconds(3);
 
     private readonly LogService? _log;
@@ -77,14 +57,14 @@ public sealed class CastCoordinator : IDisposable
     private bool _castBlocked;
     private bool _disposed;
 
-    /// <summary>Fires after a cast command was successfully written to
-    /// the wire. Carries the literal command line (no trailing CR).</summary>
+    // Fires after a cast command was successfully written to the wire. Carries the
+    // literal command line (no trailing CR).
     public event Action<string>? CastSent;
 
-    /// <summary>Fires whenever a cast attempt was rejected — either by
-    /// our local gates or by a server failure line. Reason carries the
-    /// classification; the second arg is a free-text detail (spell name
-    /// from the fizzle regex, "cooldown" for local gating, etc.).</summary>
+    // Fires whenever a cast attempt was rejected — either by our local gates or by
+    // a server failure line. Reason carries the classification; the second arg is a
+    // free-text detail (spell name from the fizzle regex, "cooldown" for local
+    // gating, etc.).
     public event Action<CastFailureReason, string>? CastFailed;
 
     public CastCoordinator(MessageRouter router, LogService? log = null)
@@ -97,19 +77,17 @@ public sealed class CastCoordinator : IDisposable
         _interruptSub = router.Subscribe(KnownPatterns.CastInterrupted,      OnInterrupted);
     }
 
-    /// <summary>Bind the wire sender — typically the <c>TelnetClient.SendAsync</c>
-    /// wrapper exposed by <c>MainWindowViewModel</c>. Until set,
-    /// <see cref="TryCast"/> short-circuits to false.</summary>
+    // Bind the wire sender — typically the TelnetClient.SendAsync wrapper exposed
+    // by MainWindowViewModel. Until set, TryCast short-circuits to false.
     public void SetWireSender(Action<byte[]> sender)
     {
         ArgumentNullException.ThrowIfNull(sender);
         _wireSender = sender;
     }
 
-    /// <summary>True while any of the three gates would reject a cast
-    /// (block latch, recent-cast cooldown, or min recast interval).
-    /// Auto-clears the block latch on read once
-    /// <see cref="CastBlockExpiry"/> elapses.</summary>
+    // True while any of the three gates would reject a cast (block latch,
+    // recent-cast cooldown, or min recast interval). Auto-clears the block latch on
+    // read once CastBlockExpiry elapses.
     public bool IsCastBlocked
     {
         get
@@ -125,20 +103,13 @@ public sealed class CastCoordinator : IDisposable
         }
     }
 
-    /// <summary>
-    /// Attempt to send <c>&lt;cast-code&gt; [target]</c> (the configured
-    /// 4-letter cast-code typed directly — not prefixed with <c>c</c>).
-    /// Returns <c>true</c> only if the command actually went to the wire.
-    /// Burst-absorbs back-to-back attempts via
-    /// <see cref="MinRecastInterval"/> + checks
-    /// <see cref="IsCastBlocked"/>.
-    /// </summary>
-    /// <param name="spellName">The spell command-name the user
-    /// configured (e.g. "heal", "freedom"). Whitespace-only is a
-    /// no-op false return.</param>
-    /// <param name="target">Optional explicit target — "self", a party
-    /// member's name, or a monster name. Omit for self-cast spells
-    /// where the server defaults the target to the caster.</param>
+    // Attempt to send <cast-code> [target] (the configured 4-letter cast-code typed
+    // directly — not prefixed with c). Returns true only if the command actually
+    // went to the wire. Burst-absorbs back-to-back attempts via MinRecastInterval +
+    // checks IsCastBlocked. spellName is the configured spell command-name (e.g.
+    // "heal", "freedom"); whitespace-only is a no-op false return. target is an
+    // optional explicit target — "self", a party member's name, or a monster name;
+    // omit for self-cast spells where the server defaults the target to the caster.
     public bool TryCast(string spellName, string? target = null)
     {
         if (string.IsNullOrWhiteSpace(spellName)) return false;
@@ -183,24 +154,19 @@ public sealed class CastCoordinator : IDisposable
         return true;
     }
 
-    /// <summary>
-    /// External-cast notification. Engines that issue spell commands
-    /// outside the coordinator (CombatManager's pre-attack debuff, a
-    /// user-typed `c X` line, etc.) must call this so the cooldown
-    /// blocks subsequent <see cref="TryCast"/> attempts for this round.
-    /// </summary>
+    // External-cast notification. Engines that issue spell commands outside the
+    // coordinator (CombatManager's pre-attack debuff, a user-typed `c X` line, etc.)
+    // must call this so the cooldown blocks subsequent TryCast attempts for this
+    // round.
     public void NotifyExternalCastSent()
     {
         _lastCastSentAt = DateTimeOffset.Now;
         _log?.Debug(LogCategory, "external cast noted — cooldown started");
     }
 
-    /// <summary>
-    /// Hook the combat-tick boundary. Clears the block latch + resets
-    /// the recent-cast cooldown so the next round can cast immediately.
-    /// Subscribe by wiring <see cref="TickEngine.CombatTickElapsed"/>
-    /// to this method in <c>AppServices</c>.
-    /// </summary>
+    // Hook the combat-tick boundary. Clears the block latch + resets the
+    // recent-cast cooldown so the next round can cast immediately. Subscribe by
+    // wiring TickEngine.CombatTickElapsed to this method in AppServices.
     public void OnCombatTick()
     {
         if (_castBlocked)

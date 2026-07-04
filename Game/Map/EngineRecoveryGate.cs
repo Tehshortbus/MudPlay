@@ -2,58 +2,43 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game.Map;
 
-/// <summary>
-/// Shared tier-1/2/3 location-recovery service for the walker, loop
-/// runner, and (forthcoming) auto-lair scheduler. Owns the strict-1-of-1
-/// anchor, the rolling executed-steps history since that anchor, and
-/// the tier-2/3 escalation logic. Engines plug in via
-/// <see cref="IRecoverableEngine"/>; the gate calls back into them for
-/// backtrack sends + pause / resume / abort.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Singleton in <see cref="Services.AppServices"/>; only one engine is
-/// attached at a time (which matches reality — the wire serialises
-/// movement). Engines call <see cref="Attach"/> on Start and
-/// <see cref="Detach"/> on Stop / Reset.
-/// </para>
-/// <para>
-/// Tier definitions:
-/// </para>
-/// <list type="bullet">
-///   <item><b>Tier 1</b> — engine executing planned path; anchor refreshes
-///         every time the tracker lands at a true 1-of-1 graph match.</item>
-///   <item><b>Tier 2</b> — observation came in that didn't match the engine's
-///         expected next room (or was a re-display); engine keeps executing
-///         the planned path while the gate watches for a 1-of-1 recovery
-///         in ≤ <see cref="Tier2StepBudget"/> further moves. Escalates to
-///         tier 3 either at the step ceiling OR when the engine's
-///         <see cref="IRecoverableEngine.PeekNextPlannedDirection"/> isn't
-///         available on the current observed room.</item>
-///   <item><b>Tier 3</b> — gate takes over: pauses the engine, sends
-///         reverse-of-executed moves one at a time, accumulates a
-///         <c>(direction, observation)</c> footprint, and uses
-///         <see cref="FootprintMatcher"/> to narrow seeds from the current
-///         observation's <c>FindCandidates</c>. Converges to 1 → engine
-///         resumes from the recovered anchor; exhausted to 0 OR all
-///         executed steps reversed without convergence → engine aborted
-///         and <see cref="RecoveryFailed"/> fires (caller pops the
-///         "Lost — use the map to set location" info dialog).</item>
-/// </list>
-/// </remarks>
+// Shared tier-1/2/3 location-recovery service for the walker, loop runner,
+// and auto-lair scheduler. Owns the strict-1-of-1 anchor, the rolling
+// executed-steps history since that anchor, and the tier-2/3 escalation
+// logic. Engines plug in via IRecoverableEngine; the gate calls back into
+// them for backtrack sends + pause / resume / abort.
+//
+// Singleton in AppServices; only one engine is attached at a time (which
+// matches reality — the wire serialises movement). Engines call Attach on
+// Start and Detach on Stop / Reset.
+//
+// Tier definitions:
+//   Tier 1 — engine executing planned path; anchor refreshes every time
+//     the tracker lands at a true 1-of-1 graph match.
+//   Tier 2 — observation came in that didn't match the engine's expected
+//     next room (or was a re-display); engine keeps executing the planned
+//     path while the gate watches for a 1-of-1 recovery in ≤
+//     Tier2StepBudget further moves. Escalates to tier 3 either at the step
+//     ceiling OR when the engine's PeekNextPlannedDirection isn't available
+//     on the current observed room.
+//   Tier 3 — gate takes over: pauses the engine, sends reverse-of-executed
+//     moves one at a time, accumulates a (direction, observation)
+//     footprint, and uses FootprintMatcher to narrow seeds from the
+//     current observation's FindCandidates. Converges to 1 → engine
+//     resumes from the recovered anchor; exhausted to 0 OR all executed
+//     steps reversed without convergence → engine aborted and
+//     RecoveryFailed fires (caller pops the "Lost — use the map to set
+//     location" info dialog).
 public sealed class EngineRecoveryGate
 {
     private const string LogSource = "RecoveryGate";
 
-    /// <summary>Tier-2 step ceiling per design (15 from anchor).</summary>
+    // Tier-2 step ceiling: 15 moves from the anchor.
     public const int Tier2StepBudget = 15;
 
-    /// <summary>
-    /// FootprintMatcher depth ceiling for tier-3 backtrack. We never
-    /// backtrack further than the executed-steps history, but this
-    /// keeps the matcher honest if a future change ever pumped extra
-    /// steps in.
-    /// </summary>
+    // FootprintMatcher depth ceiling for tier-3 backtrack. We never
+    // backtrack further than the executed-steps history, but this keeps the
+    // matcher honest if a future change ever pumped extra steps in.
     private const int Tier3DepthCeiling = 64;
 
     private readonly RoomGraphManager _graph;
@@ -66,25 +51,25 @@ public sealed class EngineRecoveryGate
     private readonly FootprintMatcher _tier3;
     private bool _tier3Backtracking;
 
-    /// <summary>Currently active engine, or null when nothing is attached.</summary>
+    // Currently active engine, or null when nothing is attached.
     public IRecoverableEngine? AttachedEngine => _engine;
 
-    /// <summary>Live tier the gate is in. Always 1 when no engine attached.</summary>
+    // Live tier the gate is in. Always 1 when no engine attached.
     public TierLevel CurrentTier { get; private set; } = TierLevel.Tier1;
 
-    /// <summary>Most recent strict-1-of-1 anchor while attached. Null until first 1-of-1.</summary>
+    // Most recent strict-1-of-1 anchor while attached. Null until first 1-of-1.
     public RoomKey? Anchor => _anchor;
 
-    /// <summary>Read-only view of the executed-steps history since the current anchor.</summary>
+    // Read-only view of the executed-steps history since the current anchor.
     public IReadOnlyList<Direction> ExecutedSinceAnchor => _executedSinceAnchor;
 
-    /// <summary>Fires whenever <see cref="CurrentTier"/> changes. Payload carries previous/new + a reason.</summary>
+    // Fires whenever CurrentTier changes. Payload carries previous/new + a reason.
     public event Action<RecoveryTierChangedEvent>? TierChanged;
 
-    /// <summary>Fires when tier-3 recovery converges. Payload is the recovered anchor.</summary>
+    // Fires when tier-3 recovery converges. Payload is the recovered anchor.
     public event Action<RoomKey>? Recovered;
 
-    /// <summary>Fires when tier-3 recovery fails terminally. Caller surfaces the modeless info dialog.</summary>
+    // Fires when tier-3 recovery fails terminally. Caller surfaces the modeless info dialog.
     public event Action<RecoveryFailedEvent>? RecoveryFailed;
 
     public EngineRecoveryGate(RoomGraphManager graph, RoomTracker tracker, LogService? log = null)
@@ -105,12 +90,10 @@ public sealed class EngineRecoveryGate
 
     // ----- attach / detach -------------------------------------------
 
-    /// <summary>
-    /// Bind an engine to the gate. Seeds <see cref="Anchor"/> from the
-    /// tracker's current room if it's a true 1-of-1 match, else
-    /// from the persisted <c>CharacterProfile.LastKnownRoom</c> if
-    /// hydrated. Replaces any currently-attached engine.
-    /// </summary>
+    // Bind an engine to the gate. Seeds Anchor from the tracker's current
+    // room if it's a true 1-of-1 match, else from the persisted
+    // CharacterProfile.LastKnownRoom if hydrated. Replaces any
+    // currently-attached engine.
     public void Attach(IRecoverableEngine engine)
     {
         ArgumentNullException.ThrowIfNull(engine);
@@ -134,7 +117,7 @@ public sealed class EngineRecoveryGate
             $"Tier1.attach engine={engine.Name} anchor={(_anchor?.ToString() ?? "(none)")} confidence={_tracker.State.Confidence}");
     }
 
-    /// <summary>Detach the current engine; clears all gate state.</summary>
+    // Detach the current engine; clears all gate state.
     public void Detach()
     {
         if (_engine is null) return;
@@ -147,11 +130,9 @@ public sealed class EngineRecoveryGate
         SetTier(TierLevel.Tier1, "detach");
     }
 
-    /// <summary>
-    /// The engine just sent a planned move. The gate appends it to the
-    /// executed-steps history (used as the reverse-walk source if
-    /// tier 3 is later triggered).
-    /// </summary>
+    // The engine just sent a planned move. The gate appends it to the
+    // executed-steps history (used as the reverse-walk source if tier 3 is
+    // later triggered).
     public void NoteEngineStepSent(Direction direction)
     {
         if (_engine is null) return;
@@ -214,13 +195,11 @@ public sealed class EngineRecoveryGate
 
     // ----- tier-2 + tier-3 triggers ----------------------------------
 
-    /// <summary>
-    /// The engine's per-step reconcile logic noticed the observation
-    /// didn't match its expected next room (OR looked like a re-display).
-    /// Caller is responsible for deciding the SHAPE of the mismatch —
-    /// the gate just escalates to tier 2 and starts watching for either
-    /// recovery or further escalation.
-    /// </summary>
+    // The engine's per-step reconcile logic noticed the observation didn't
+    // match its expected next room (OR looked like a re-display). Caller is
+    // responsible for deciding the SHAPE of the mismatch — the gate just
+    // escalates to tier 2 and starts watching for either recovery or
+    // further escalation.
     public void NoteSuspectedMismatch(string reason)
     {
         if (_engine is null) return;
@@ -242,13 +221,10 @@ public sealed class EngineRecoveryGate
         }
     }
 
-    /// <summary>
-    /// Check before sending the engine's next planned step. Returns
-    /// <c>true</c> when the gate is OK with the send. Returns
-    /// <c>false</c> when the gate has escalated to tier 3 — engine
-    /// must stop and surrender control until <see cref="Recovered"/>
-    /// fires (or <see cref="RecoveryFailed"/>).
-    /// </summary>
+    // Check before sending the engine's next planned step. Returns true
+    // when the gate is OK with the send. Returns false when the gate has
+    // escalated to tier 3 — engine must stop and surrender control until
+    // Recovered fires (or RecoveryFailed).
     public bool MayProceedWithPlannedStep()
     {
         if (_engine is null) return true;
@@ -450,7 +426,7 @@ public sealed class EngineRecoveryGate
     };
 }
 
-/// <summary>Three tiers the gate cycles through.</summary>
+// Three tiers the gate cycles through.
 public enum TierLevel
 {
     Tier1 = 1,
@@ -458,8 +434,8 @@ public enum TierLevel
     Tier3 = 3,
 }
 
-/// <summary>Payload of <see cref="EngineRecoveryGate.TierChanged"/>.</summary>
+// Payload of EngineRecoveryGate.TierChanged.
 public readonly record struct RecoveryTierChangedEvent(TierLevel Previous, TierLevel Current, string Reason);
 
-/// <summary>Payload of <see cref="EngineRecoveryGate.RecoveryFailed"/>.</summary>
+// Payload of EngineRecoveryGate.RecoveryFailed.
 public readonly record struct RecoveryFailedEvent(string EngineName, string Detail);

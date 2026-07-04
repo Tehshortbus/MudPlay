@@ -6,67 +6,58 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game.Quests;
 
-/// <summary>
-/// Discovers quests and their permanent rewards straight from the active set's
-/// <c>TBInfo</c> table — the mechanical underlay <c>QuestStore</c> hangs user names
-/// / visibility off of. Stateless and recomputed per call (cheap at the workshop's
-/// button-press cadence, never stale across a set switch), mirroring
-/// <c>ClassCapabilities</c>'s scan pattern.
-/// <para>
-/// Discovery is data-driven, not a hardcoded id list: <em>every</em> flag that a
-/// <c>giveability &lt;flag&gt; &lt;step&gt;</c> grants in a TBInfo chain is a quest,
-/// because that is how an NPC/textblock hands the player something — a quest flag,
-/// a skill (Smash, Meditate), an alignment tier. Realms reuse and extend the flag
-/// space, so the set is read from the data each crawl rather than enumerated here.
-/// </para>
-/// <para>
-/// A <c>giveability</c> target is the quest's identity; an <c>addability</c> target
-/// is a stat <em>reward</em> only when it is <em>not</em> itself a discovered quest
-/// flag (a quest-flag <c>addability</c> is a progress marker). A quest is
-/// <em>multi-part</em> — re-run once per level tier — when its progress gates form a
-/// strict per-level staircase: across the <c>giveability</c> / <c>testability</c> /
-/// <c>checkability</c> segments that carry a <c>minlevel</c>, the lowest gate step
-/// climbs every time the level does (the five-tier alignment flags are the canonical
-/// case, and only the combined give+test+check gates reveal all five tiers — the
-/// giveability gates alone undercount them). Per-class <c>minlevel</c> variants of the
-/// <em>same</em> step (Smash, Meditate, Perfect Stealth) share one step so they never
-/// form a staircase and stay one quest. Rewards branch by
-/// <c>class N</c> with a no-class default, resolved here to the requested class
-/// (matching MudProxy's <c>GetBonusesForClass</c>).
-/// </para>
-/// <para>
-/// A flag is multi-part on a second axis when it climbs by <em>ability value</em>
-/// rather than give-step order: granted once at value 1 and advanced through 2, 3, 4…
-/// by relative <c>addability &lt;flag&gt;</c> increments (MageBane is the canonical
-/// case). The give-step staircase can't see this — the lone giveability sits at value
-/// 1 and the later tiers carry no giveability of their own — so such a flag is detected
-/// by its addability-into-the-granted-set advance (see <c>DiscoverValueLadders</c> /
-/// <c>CrawlValueLadder</c>). It is then banded by the distinct <c>minlevel</c> gates its
-/// value axis carries (one tier per level the climb pauses to turn in at, not one per
-/// value), so MageBane lands two tiers: the value-1 sword at level 15 and the value-4
-/// finish at level 50, folding the ungated intermediate values up into the next gated
-/// tier. A <c>checkability &lt;flag&gt; 0</c> "have the flag at all" gate (a class-only
-/// turn-in proxy) folds into the entry band rather than forming a tier of its own.
-/// </para>
-/// <para>
-/// A quest's prize comes at the very end of its chain: the keeper items it awards are
-/// those handed at the <em>final</em> give-step (per tier for a multi-part band), so
-/// earlier <c>giveitem</c>s — the quartz rod, the cloth pouch — are quest-use items the
-/// player consumes mid-chain, not rewards, and are dropped. A reward handed at a tier's
-/// own gate step caps the tier just <em>completed</em> (strictly-less banding), which is
-/// what lands the alignment ladder's ring/stats/chest/tabard/weapon on tiers 1–5 in
-/// order. A single-part quest that grants neither keeper nor stat bonus awards the
-/// ability itself — the skill it teaches is the prize (Smash, Meditate, SeeHidden).
-/// </para>
-/// </summary>
+// Discovers quests and their permanent rewards straight from the active set's
+// TBInfo table — the mechanical underlay QuestStore hangs user names / visibility
+// off of. Stateless and recomputed per call (cheap at the workshop's button-press
+// cadence, never stale across a set switch), matching ClassCapabilities's scan
+// pattern.
+//
+// Discovery is data-driven, not a hardcoded id list: every flag that a
+// `giveability <flag> <step>` grants in a TBInfo chain is a quest, because that is
+// how an NPC/textblock hands the player something — a quest flag, a skill (Smash,
+// Meditate), an alignment tier. Realms reuse and extend the flag space, so the set
+// is read from the data each crawl rather than enumerated here.
+//
+// A giveability target is the quest's identity; an addability target is a stat
+// reward only when it is not itself a discovered quest flag (a quest-flag
+// addability is a progress marker). A quest is multi-part — re-run once per level
+// tier — when its progress gates form a strict per-level staircase: across the
+// giveability / testability / checkability segments that carry a minlevel, the
+// lowest gate step climbs every time the level does (the five-tier alignment flags
+// are the canonical case, and only the combined give+test+check gates reveal all
+// five tiers — the giveability gates alone undercount them). Per-class minlevel
+// variants of the same step (Smash, Meditate, Perfect Stealth) share one step so
+// they never form a staircase and stay one quest. Rewards branch by `class N` with
+// a no-class default, resolved here to the requested class.
+//
+// A flag is multi-part on a second axis when it climbs by ability value rather
+// than give-step order: granted once at value 1 and advanced through 2, 3, 4… by
+// relative `addability <flag>` increments (MageBane is the canonical case). The
+// give-step staircase can't see this — the lone giveability sits at value 1 and
+// the later tiers carry no giveability of their own — so such a flag is detected
+// by its addability-into-the-granted-set advance (see DiscoverValueLadders /
+// CrawlValueLadder). It is then banded by the distinct minlevel gates its value
+// axis carries (one tier per level the climb pauses to turn in at, not one per
+// value), so MageBane lands two tiers: the value-1 sword at level 15 and the
+// value-4 finish at level 50, folding the ungated intermediate values up into the
+// next gated tier. A `checkability <flag> 0` "have the flag at all" gate (a
+// class-only turn-in proxy) folds into the entry band rather than forming a tier
+// of its own.
+//
+// A quest's prize comes at the very end of its chain: the keeper items it awards
+// are those handed at the final give-step (per tier for a multi-part band), so
+// earlier giveitems — the quartz rod, the cloth pouch — are quest-use items the
+// player consumes mid-chain, not rewards, and are dropped. A reward handed at a
+// tier's own gate step caps the tier just completed (strictly-less banding), which
+// is what lands the alignment ladder's ring/stats/chest/tabard/weapon on tiers 1–5
+// in order. A single-part quest that grants neither keeper nor stat bonus awards
+// the ability itself — the skill it teaches is the prize (Smash, Meditate,
+// SeeHidden).
 public static class QuestCrawler
 {
-    /// <summary>
-    /// Crawl every quest in the active set, resolving reward bonuses to
-    /// <paramref name="classId"/> (Classes-table <c>Number</c>); pass <c>null</c>
-    /// for the no-class default. Returns ordered by flag, then band level.
-    /// Empty when no set is active or <c>TBInfo</c> is missing.
-    /// </summary>
+    // Crawl every quest in the active set, resolving reward bonuses to classId
+    // (Classes-table Number); pass null for the no-class default. Returns ordered
+    // by flag, then band level. Empty when no set is active or TBInfo is missing.
     public static IReadOnlyList<CrawledQuest> Crawl(GameDataCache cache, int? classId)
     {
         ArgumentNullException.ThrowIfNull(cache);
@@ -285,8 +276,8 @@ public static class QuestCrawler
     // content/turn-in step that only gates on a value without advancing it — that gate
     // value N itself. Returns 0 for a "have the flag at all" gate (`checkability <flag> 0`,
     // the witchunter-only turn-in MageBane uses at its level-35 step); the caller folds
-    // that into the entry band. Shared with <see cref="QuestStepGraph"/> so the crawl's
-    // banding and the followable-step draft agree on which tier a chain belongs to.
+    // that into the entry band. Shared with QuestStepGraph so the crawl's banding and
+    // the followable-step draft agree on which tier a chain belongs to.
     internal static int AbilityValueOf(string rawChain, int flag)
     {
         int? giveValue = null;
@@ -619,7 +610,7 @@ public static class QuestCrawler
 
     // Parse one chain into its quest-relevant directives. Returns null when the
     // chain grants no quest flag. "Last giveability wins" matches the game's
-    // terminal-grant semantics (and MudProxy's parser).
+    // terminal-grant semantics.
     private static ParsedChain? ParseChain(string raw, HashSet<int> grantedFlags)
     {
         int? flag = null;

@@ -1,14 +1,14 @@
 namespace FujinTerm.Game.Calculators;
 
-/// <summary>Where a movement speed sits relative to the 1-second (1000 ms) cap.</summary>
+// Where a movement speed sits relative to the 1-second (1000 ms) cap.
 public enum MovementCapState
 {
-    /// <summary>Faster than the cap — quickness to spare.</summary>
+    // Faster than the cap — quickness to spare.
     AboveCap,
 
-    /// <summary>Exactly at the 1-second cap.</summary>
+    // Exactly at the 1-second cap.
     AtCap,
 
-    /// <summary>Slower than the cap — needs more quickness.</summary>
+    // Slower than the cap — needs more quickness.
     TooSlow,
 }

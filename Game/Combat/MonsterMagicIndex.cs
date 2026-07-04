@@ -3,43 +3,33 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game.Combat;
 
-/// <summary>
-/// Fast lookup of a monster's magic-hit requirement (<c>Magical</c>,
-/// MajorMUD ability code 28) and spell immunity (<c>SpellImmu</c>, code
-/// 139) by monster Number in the active game-data set.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Both values gate combat eligibility deterministically from game data:
-/// </para>
-/// <list type="bullet">
-/// <item><b>Magical N</b> — a physical weapon hits this monster only when
-/// the weapon's <c>HitMagic</c> (<see cref="ItemMagicIndex"/>) is ≥ N.
-/// A monster with no Magical ability is level 0, so any weapon hits.</item>
-/// <item><b>SpellImmu N</b> — a spell affects this monster only when its
-/// <c>ReqLevel</c> (<see cref="SpellReqLevelIndex"/>) is ≥ N. Applies to
-/// both attack spells and debuffs. No SpellImmu = 0, so any spell is
-/// allowed.</item>
-/// </list>
-/// <para>
-/// Mirrors <see cref="SeeHiddenIndex"/>: the map is built lazily by
-/// scanning the raw <c>Monsters</c> table's paired <c>Abil-0..9</c> /
-/// <c>AbilVal-0..9</c> columns, cached, and dropped on game-data set
-/// switch so the next query rebuilds against the new set. Unlike
-/// SeeHidden we read the <c>AbilVal</c> too, because the level value (not
-/// mere presence) is what gates the comparison.
-/// </para>
-/// </remarks>
+// Fast lookup of a monster's magic-hit requirement (Magical, MajorMUD ability
+// code 28) and spell immunity (SpellImmu, code 139) by monster Number in the
+// active game-data set.
+//
+// Both values gate combat eligibility deterministically from game data:
+// - Magical N — a physical weapon hits this monster only when the weapon's
+//   HitMagic (ItemMagicIndex) is ≥ N. A monster with no Magical ability is level
+//   0, so any weapon hits.
+// - SpellImmu N — a spell affects this monster only when its ReqLevel
+//   (SpellReqLevelIndex) is ≥ N. Applies to both attack spells and debuffs. No
+//   SpellImmu = 0, so any spell is allowed.
+//
+// Mirrors SeeHiddenIndex: the map is built lazily by scanning the raw Monsters
+// table's paired Abil-0..9 / AbilVal-0..9 columns, cached, and dropped on
+// game-data set switch so the next query rebuilds against the new set. Unlike
+// SeeHidden we read the AbilVal too, because the level value (not mere presence)
+// is what gates the comparison.
 public sealed class MonsterMagicIndex
 {
-    /// <summary>MajorMUD ability code for the magic-hit requirement
-    /// (per <see cref="GameData.AbilityNames"/>).</summary>
+    // MajorMUD ability code for the magic-hit requirement (per
+    // GameData.AbilityNames).
     private const int MagicalAbilityCode = 28;
 
-    /// <summary>MajorMUD ability code for spell immunity.</summary>
+    // MajorMUD ability code for spell immunity.
     private const int SpellImmuneAbilityCode = 139;
 
-    /// <summary>Number of <c>Abil-N</c> slots on a Monsters row.</summary>
+    // Number of Abil-N slots on a Monsters row.
     private const int AbilitySlots = 10;
 
     private readonly GameDataCache _cache;
@@ -52,13 +42,13 @@ public sealed class MonsterMagicIndex
         _cache.ActiveSetChanged += _ => _byNumber = null;
     }
 
-    /// <summary>The monster's magic-hit requirement (0 when it carries no
-    /// <c>Magical</c> ability — any weapon hits).</summary>
+    // The monster's magic-hit requirement (0 when it carries no Magical ability —
+    // any weapon hits).
     public int MagicalLevel(int monsterNumber) =>
         Build().TryGetValue(monsterNumber, out MonsterMagic m) ? m.Magical : 0;
 
-    /// <summary>The monster's spell immunity (0 when it carries no
-    /// <c>SpellImmu</c> ability — any spell is allowed).</summary>
+    // The monster's spell immunity (0 when it carries no SpellImmu ability — any
+    // spell is allowed).
     public int SpellImmunity(int monsterNumber) =>
         Build().TryGetValue(monsterNumber, out MonsterMagic m) ? m.SpellImmu : 0;
 
@@ -102,6 +92,6 @@ public sealed class MonsterMagicIndex
         return map;
     }
 
-    /// <summary>A monster's paired magic-hit requirement + spell immunity.</summary>
+    // A monster's paired magic-hit requirement + spell immunity.
     private readonly record struct MonsterMagic(int Magical, int SpellImmu);
 }

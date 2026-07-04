@@ -6,60 +6,45 @@ using FujinTerm.Terminal;
 
 namespace FujinTerm.Game.Conditions;
 
-/// <summary>
-/// Tracks active conditions on the local character by matching
-/// inbound lines against <see cref="MessageRecord.AppliedMessage"/> /
-/// <see cref="MessageRecord.AppliedEndsWith"/> pairs in the active
-/// <see cref="MessageStore"/>. Exposes the resulting
-/// <see cref="MessageFlags"/> bitfield as an observable so engines
-/// (<see cref="Spells.CastingDirector"/>'s Tier-2 cure path,
-/// <see cref="Health.HealthManager"/>'s rest gating, etc.) can read
-/// it without re-scanning text.
-/// </summary>
-/// <remarks>
-/// <para>
-/// User-extensible by design: the user defines what lines map to
-/// what condition effects via the Game Data Browser → Messages tab.
-/// No hardcoded ailment names live in this class — every flag bit
-/// comes from a record's <see cref="MessageRecord.Flags"/> value,
-/// which means a realm with a unique status effect "Cursed" just
-/// needs a Messages-tab entry, not engine code.
-/// </para>
-/// <para>
-/// Matching is case-sensitive substring containment — verbatim text
-/// from the record. <see cref="MessageRecord.AppliedMessage"/> empty
-/// skips the record entirely; an empty
-/// <see cref="MessageRecord.AppliedEndsWith"/> means "no auto-clear"
-/// (caller must explicitly clear via <see cref="ClearAll"/> on
-/// disconnect / death).
-/// </para>
-/// <para>
-/// Index rebuild fires on every <see cref="MessageStore.Messages"/>
-/// collection change so the user's live edits in the Messages tab
-/// take effect immediately without a session restart.
-/// </para>
-/// </remarks>
+// Tracks active conditions on the local character by matching inbound lines
+// against MessageRecord.AppliedMessage / MessageRecord.AppliedEndsWith pairs in
+// the active MessageStore. Exposes the resulting MessageFlags bitfield as an
+// observable so engines (CastingDirector's Tier-2 cure path, HealthManager's
+// rest gating, etc.) can read it without re-scanning text.
+//
+// User-extensible by design: the user defines what lines map to what condition
+// effects via the Game Data Browser → Messages tab. No hardcoded ailment names
+// live in this class — every flag bit comes from a record's Flags value, which
+// means a realm with a unique status effect "Cursed" just needs a Messages-tab
+// entry, not engine code.
+//
+// Matching is case-sensitive substring containment — verbatim text from the
+// record. An empty AppliedMessage skips the record entirely; an empty
+// AppliedEndsWith means "no auto-clear" (caller must explicitly clear via
+// ClearAll on disconnect / death).
+//
+// Index rebuild fires on every MessageStore.Messages collection change so the
+// user's live edits in the Messages tab take effect immediately without a
+// session restart.
 public sealed partial class ConditionTracker : ObservableObject, IDisposable
 {
-    /// <summary>LogService category — appears as <c>[Condition]</c>
-    /// rows per applied + ended.</summary>
+    // LogService category — appears as [Condition] rows per applied + ended.
     public const string LogCategory = "Condition";
 
     private readonly MessageStore _messages;
     private readonly LogService? _log;
 
-    /// <summary>Records keyed by ID currently active on us (their
-    /// AppliedMessage fired and the matching EndsWith hasn't).</summary>
+    // Records keyed by ID currently active on us (their AppliedMessage fired and
+    // the matching EndsWith hasn't).
     private readonly HashSet<string> _active = new(StringComparer.Ordinal);
 
-    /// <summary>Built from MessageStore on every CollectionChanged.
-    /// Maps an applied-message string to the records that carry it
-    /// (multiple records can share text — realm variants).</summary>
+    // Built from MessageStore on every CollectionChanged. Maps an applied-message
+    // string to the records that carry it (multiple records can share text —
+    // realm variants).
     private List<(string Pattern, MessageRecord Record)> _appliedIndex = new();
 
-    /// <summary>Built from MessageStore on every CollectionChanged.
-    /// Maps an ends-with string to records — only records whose
-    /// EndsWith is non-empty get indexed.</summary>
+    // Built from MessageStore on every CollectionChanged. Maps an ends-with
+    // string to records — only records whose EndsWith is non-empty get indexed.
     private List<(string Pattern, MessageRecord Record)> _endsIndex = new();
 
     private LineExtractor? _lines;
@@ -82,14 +67,12 @@ public sealed partial class ConditionTracker : ObservableObject, IDisposable
     public bool IsHpRegenerating     => ActiveFlags.HasFlag(MessageFlags.HpRegenerating);
     public bool IsManaRegenerating   => ActiveFlags.HasFlag(MessageFlags.ManaRegenerating);
 
-    /// <summary>Fires when a record's AppliedMessage matches and the
-    /// record wasn't already active. Carries the record itself so
-    /// downstream engines can read its <see cref="MessageRecord.Action"/>
-    /// and dispatch (RestHp, Run, Hangup, etc.).</summary>
+    // Fires when a record's AppliedMessage matches and the record wasn't already
+    // active. Carries the record itself so downstream engines can read its Action
+    // and dispatch (RestHp, Run, Hangup, etc.).
     public event Action<MessageRecord>? ConditionApplied;
 
-    /// <summary>Fires when a previously-active record's AppliedEndsWith
-    /// matches.</summary>
+    // Fires when a previously-active record's AppliedEndsWith matches.
     public event Action<MessageRecord>? ConditionEnded;
 
     public ConditionTracker(MessageStore messages, LogService? log = null)
@@ -102,9 +85,8 @@ public sealed partial class ConditionTracker : ObservableObject, IDisposable
         _messages.Messages.CollectionChanged += OnMessagesChanged;
     }
 
-    /// <summary>Bind to the per-session <see cref="LineExtractor"/> so
-    /// every inbound line is scanned. Idempotent — re-attaching to the
-    /// same extractor is a no-op.</summary>
+    // Bind to the per-session LineExtractor so every inbound line is scanned.
+    // Idempotent — re-attaching to the same extractor is a no-op.
     public void AttachLineExtractor(LineExtractor lines)
     {
         ArgumentNullException.ThrowIfNull(lines);
@@ -114,19 +96,15 @@ public sealed partial class ConditionTracker : ObservableObject, IDisposable
         _lines.LineEmitted += OnLine;
     }
 
-    /// <summary>True when the given record is currently active on us
-    /// (its applied message fired without a matching ends-with).</summary>
+    // True when the given record is currently active on us (its applied message
+    // fired without a matching ends-with).
     public bool IsActive(MessageRecord r) => _active.Contains(r.Id);
 
-    /// <summary>
-    /// True when any currently-active record's <see cref="MessageRecord.Name"/>
-    /// matches <paramref name="name"/> (case-insensitive). Lets
-    /// <c>CastingDirector</c> ask "is the 'bless' buff still on me?"
-    /// without holding a record reference. Matches by name rather
-    /// than by content-hash Id because the user may have multiple
-    /// realm variants of the same spell + the name is what the
-    /// Spells settings tab stores.
-    /// </summary>
+    // True when any currently-active record's Name matches name
+    // (case-insensitive). Lets CastingDirector ask "is the 'bless' buff still on
+    // me?" without holding a record reference. Matches by name rather than by
+    // content-hash Id because the user may have multiple realm variants of the
+    // same spell + the name is what the Spells settings tab stores.
     public bool IsActiveByName(string name)
     {
         if (string.IsNullOrWhiteSpace(name)) return false;
@@ -139,9 +117,8 @@ public sealed partial class ConditionTracker : ObservableObject, IDisposable
         return false;
     }
 
-    /// <summary>Force-clear all conditions. Wire on disconnect / death /
-    /// session reset — server state changes resets the truth, our
-    /// observation log is stale.</summary>
+    // Force-clear all conditions. Wire on disconnect / death / session reset —
+    // server state changes reset the truth, our observation log is stale.
     public void ClearAll()
     {
         if (_active.Count == 0) return;

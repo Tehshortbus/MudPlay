@@ -1,24 +1,18 @@
 namespace FujinTerm.Game.Calculators;
 
-/// <summary>
-/// Assembles the per-level rows the Workshop Level Projection grid (Tab 3)
-/// shows, composing <see cref="ExperienceTableCalculator"/> and
-/// <see cref="CharacterCalculator"/> for a given race / class / realm. Pure —
-/// no UI and no game-data reads: the caller resolves the class/race fields
-/// (<c>ExpTable</c>, <c>MinHits</c>/<c>MaxHits</c>, <c>HPPerLVL</c>,
-/// <c>MageryType</c>/<c>MageryLVL</c>) and passes them in.
-/// </summary>
-/// <remarks>
-/// The projection is gear-independent (base race/class progression), so the
-/// equipment <c>+MaxHP</c> / regen-% inputs are passed as 0 and the HP/MP regens
-/// are the non-resting, non-meditating per-tick base. Each call projects a single
-/// level from the stats supplied for it, so the caller varies HEA/INT/WIL/CHM per
-/// level to layer in the CP Allocation plan. Quest HP/MP bonuses fold in once the
-/// Quest Status tab ships (PR 10.10).
-/// </remarks>
+// Assembles the per-level rows the Workshop Level Projection grid shows,
+// composing ExperienceTableCalculator and CharacterCalculator for a given race /
+// class / realm. Pure — no UI and no game-data reads: the caller resolves the
+// class/race fields (ExpTable, MinHits/MaxHits, HPPerLVL, MageryType/MageryLVL)
+// and passes them in.
+// The projection is gear-independent (base race/class progression), so the
+// equipment +MaxHP / regen-% inputs are passed as 0 and the HP/MP regens are the
+// non-resting, non-meditating per-tick base. Each call projects a single level
+// from the stats supplied for it, so the caller varies HEA/INT/WIL/CHM per level
+// to layer in the CP Allocation plan.
 public static class LevelProjectionCalculator
 {
-    /// <summary>Project a single level's numbers.</summary>
+    // Project a single level's numbers.
     public static LevelProjection ProjectLevel(
         int level, int chart,
         int health, int intellect, int willpower, int charm,

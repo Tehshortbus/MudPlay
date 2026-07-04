@@ -3,45 +3,31 @@ using FujinTerm.Services.Patterns;
 
 namespace FujinTerm.Game.Light;
 
-/// <summary>
-/// Phase 9 PR 9.K — auto-light need poster. When the server prints a
-/// "can't see" room-light line (<c>The room is pitch black</c> /
-/// <c>The room is very dark - you can't see anything</c>) this posts a
-/// <see cref="NeedKind.LightSource"/> need to the
-/// <see cref="NeedsRegistry"/>; auto-get (PR 9.L) fulfils it by grabbing
-/// a torch / lantern (or, once a light-spell / +illu-gear path exists,
-/// equipping / casting). Darkness never halts movement — the walker
-/// proceeds with the accuracy penalty; this engine only requests the
-/// light source.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Scope note: the predictive <c>V = charIllu + roomLight</c> model from
-/// <c>docs/auto-engine-orchestration.md</c> is deferred — no parser yet
-/// produces the character's current illumination, so the exact illu gap
-/// can't be computed. The live-observed path posts a coarse "need any
-/// light source" descriptor (<see cref="AnyLightDescriptor"/>); the
-/// precise <c>illu&gt;=N</c> gap lands when a charIllu source exists.
-/// </para>
-/// <para>
-/// Only the two "can't see" lines drive a post. The penalized lines
-/// (<c>barely visible</c> / <c>dimly lit</c>) still render room contents
-/// and have no auto-light action without a top-up path, so they aren't
-/// matched here.
-/// </para>
-/// </remarks>
+// Auto-light need poster. When the server prints a "can't see" room-light line
+// (The room is pitch black / The room is very dark - you can't see anything)
+// this posts a LightSource need to the NeedsRegistry; auto-get fulfils it by
+// grabbing a torch / lantern (or, once a light-spell / +illu-gear path exists,
+// equipping / casting). Darkness never halts movement — the walker proceeds with
+// the accuracy penalty; this engine only requests the light source.
+//
+// The predictive V = charIllu + roomLight model is deferred — no parser yet
+// produces the character's current illumination, so the exact illu gap can't be
+// computed. The live-observed path posts a coarse "need any light source"
+// descriptor (AnyLightDescriptor); the precise illu>=N gap lands when a charIllu
+// source exists.
+//
+// Only the two "can't see" lines drive a post. The penalized lines
+// (barely visible / dimly lit) still render room contents and have no auto-light
+// action without a top-up path, so they aren't matched here.
 public sealed class AutoLightManager : IDisposable
 {
-    /// <summary>LogService category — <c>[AutoLight]</c> rows on each
-    /// genuinely-new need post.</summary>
+    // LogService category — [AutoLight] rows on each genuinely-new need post.
     public const string LogCategory = "AutoLight";
 
-    /// <summary>
-    /// Coarse need descriptor posted on a live "can't see" line. Means
-    /// "need any illumination source" — used until a charIllu parser lets
-    /// us compute the precise <c>illu&gt;=N</c> gap. All dark-room posts
-    /// dedupe to this single need (you need one light source, period).
-    /// </summary>
+    // Coarse need descriptor posted on a live "can't see" line. Means "need any
+    // illumination source" — used until a charIllu parser lets us compute the
+    // precise illu>=N gap. All dark-room posts dedupe to this single need (you
+    // need one light source, period).
     public const string AnyLightDescriptor = "illu>=1";
 
     private readonly NeedsRegistry _needs;
@@ -63,12 +49,9 @@ public sealed class AutoLightManager : IDisposable
         _veryDarkSub   = router.Subscribe(KnownPatterns.RoomVeryDark,   OnCantSee);
     }
 
-    /// <summary>
-    /// Wire the AutoLight master switch (typically
-    /// <c>GeneralSettings.AutoMode.AutoLight</c>). When the func is null
-    /// the engine stays dormant — darkness lines are observed but no need
-    /// is posted.
-    /// </summary>
+    // Wire the AutoLight master switch (typically
+    // GeneralSettings.AutoMode.AutoLight). When the func is null the engine stays
+    // dormant — darkness lines are observed but no need is posted.
     public void SetEnabledToggle(Func<bool> isEnabled)
     {
         ArgumentNullException.ThrowIfNull(isEnabled);

@@ -6,41 +6,30 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game.Remote;
 
-/// <summary>
-/// Consumer of <see cref="RemoteCommandManager"/> for the two attack-targeting
-/// settings commands: <c>@atkprio</c> (Target Priority — the "who") and
-/// <c>@atkorder</c> (Attack Order — the "when"). Both mirror the Combat tab's
-/// dropdowns — a bare command reports the current selection plus the numbered
-/// option list; a numbered arg selects that option; the name-requiring option
-/// (atkprio 3 / atkorder 4) takes a second arg naming the player to follow.
-/// Anything else replies "command failed" with the usage list.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Both require <see cref="PlayerRemoteControls.AlterSettings"/> per the
-/// catalog — this is a "change a setting on my behalf" tier. The numbered
-/// options are tied 1:1 to the Combat tab's ComboBox rows
-/// (<see cref="ViewModels.Settings.CombatSectionViewModel"/>'s
-/// <c>TargetPriorityOptions</c> / <c>AttackTimingOptions</c>) so a remote
-/// caller and the local UI share one vocabulary.
-/// </para>
-/// <para>
-/// Writes persist via <see cref="ProfileService.Save"/> exactly like the
-/// Settings tab's Apply — the running <see cref="Game.Combat.CombatManager"/>
-/// re-reads <c>CombatSettings</c> on the resulting profile-mutated tick.
-/// </para>
-/// </remarks>
+// The two attack-targeting settings commands: @atkprio (Target Priority — the
+// "who") and @atkorder (Attack Order — the "when"). Both mirror the Combat tab's
+// dropdowns — a bare command reports the current selection plus the numbered
+// option list; a numbered arg selects that option; the name-requiring option
+// (atkprio 3 / atkorder 4) takes a second arg naming the player to follow.
+// Anything else replies "command failed" with the usage list.
+//
+// Both require PlayerRemoteControls.AlterSettings per the catalog — a "change a
+// setting on my behalf" tier. The numbered options are tied 1:1 to the Combat
+// tab's ComboBox rows (CombatSectionViewModel's TargetPriorityOptions /
+// AttackTimingOptions) so a remote caller and the local UI share one vocabulary.
+//
+// Writes persist via ProfileService.Save exactly like the Settings tab's Apply —
+// the running CombatManager re-reads CombatSettings on the profile-mutated tick.
 public sealed class AttackTargetingRemoteHandler : IDisposable
 {
     private const string TabKey = "Combat";
     private const string LogCategory = "RemoteCmd";
 
-    /// <summary>One selectable option — its wire number, the Combat-tab label
-    /// it maps to, and whether picking it requires a trailing player name.</summary>
+    // One selectable option — its wire number, the Combat-tab label it maps to,
+    // and whether picking it requires a trailing player name.
     private readonly record struct Option(int Num, string Label, bool NeedsName);
 
-    /// <summary><c>@atkprio</c> options — tied to
-    /// <c>CombatSectionViewModel.TargetPriorityOptions</c>.</summary>
+    // @atkprio options — tied to CombatSectionViewModel.TargetPriorityOptions.
     private static readonly Option[] PrioOptions =
     {
         new(1, "Default", false),
@@ -48,8 +37,7 @@ public sealed class AttackTargetingRemoteHandler : IDisposable
         new(3, "Attack what player attacks", true),
     };
 
-    /// <summary><c>@atkorder</c> options — tied to
-    /// <c>CombatSectionViewModel.AttackTimingOptions</c>.</summary>
+    // @atkorder options — tied to CombatSectionViewModel.AttackTimingOptions.
     private static readonly Option[] OrderOptions =
     {
         new(1, "Default", false),
@@ -154,13 +142,10 @@ public sealed class AttackTargetingRemoteHandler : IDisposable
 
     // ----- Shared parsing / formatting ------------------------------------
 
-    /// <summary>
-    /// Parse the args of a set request. <paramref name="args"/>[0] must be a
-    /// listed option number. No-name options accept exactly that one token;
-    /// name options require exactly a second token (the player name). Any
-    /// other shape — non-numeric, unknown number, missing/extra tokens — is a
-    /// syntax error (returns false).
-    /// </summary>
+    // Parse the args of a set request. args[0] must be a listed option number.
+    // No-name options accept exactly that one token; name options require exactly
+    // a second token (the player name). Any other shape — non-numeric, unknown
+    // number, missing/extra tokens — is a syntax error (returns false).
     private static bool TryParseOption(IReadOnlyList<string> args, Option[] options,
                                        out Option opt, out string? name)
     {
@@ -183,7 +168,7 @@ public sealed class AttackTargetingRemoteHandler : IDisposable
         return false;
     }
 
-    /// <summary>Bare-command reply: current selection + the numbered options.</summary>
+    // Bare-command reply: current selection + the numbered options.
     private static string Query(string cmd, int currentNum, string? currentName, Option[] options)
     {
         Option cur = options.First(o => o.Num == currentNum);
@@ -193,14 +178,14 @@ public sealed class AttackTargetingRemoteHandler : IDisposable
         return $"{cmd}: {current}. Options: {OptionsList(options)}";
     }
 
-    /// <summary>Successful-set reply: the option just applied.</summary>
+    // Successful-set reply: the option just applied.
     private static string SetReply(string cmd, Option opt, string? name) =>
         opt.NeedsName && !string.IsNullOrWhiteSpace(name)
             ? $"{cmd}: {opt.Num} {opt.Label} ({name})"
             : $"{cmd}: {opt.Num} {opt.Label}";
 
-    /// <summary>Syntax-error reply — gated by the engine's WarnOnDenial master
-    /// switch so a muted client stays silent.</summary>
+    // Syntax-error reply — gated by the engine's WarnOnDenial master switch so a
+    // muted client stays silent.
     private void Fail(string cmd, Option[] options, RemoteCommandContext ctx)
     {
         if (_engine.WarnOnDenial)

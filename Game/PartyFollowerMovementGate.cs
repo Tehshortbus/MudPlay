@@ -4,36 +4,28 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game;
 
-/// <summary>
-/// Suppresses this client's own automated movement while it is a party
-/// <em>follower</em>. In MajorMUD movement is leader-driven — the leader walks
-/// and the game drags followers along — so a follower that also drove its own
-/// walk / loop / auto-lair would fight the leader's drag and desync the map.
-/// While <see cref="PartyState.IsInParty"/> is true and
-/// <see cref="PartyState.SelfIsLeader"/> is false this asserts
-/// <see cref="MovementCoordinator.FollowerGate"/>, holding every movement
-/// engine silently; the gate clears the moment we lead the party or leave it,
-/// so a queued walk / loop / auto-lair resumes on its own.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Read-only on party state (mirrors <see cref="PartyVitalsWatcher"/>): it only
-/// subscribes to <see cref="PartyState"/> property changes and never writes a
-/// party field, so <c>PartyManager</c> stays the sole writer.
-/// </para>
-/// <para>
-/// The suppression is unconditional — leader-driven movement is a hard game
-/// constraint, not a user preference — so there is no settings toggle behind
-/// it. Because it rides the shared <see cref="MovementCoordinator"/> it composes
-/// with every other pause source: leaving follower state clears only this gate,
-/// and movement stays held if anything else (combat, health, user pause) is
-/// still asserting.
-/// </para>
-/// </remarks>
+// Suppresses this client's own automated movement while it is a party
+// follower. In MajorMUD movement is leader-driven — the leader walks and the
+// game drags followers along — so a follower that also drove its own walk /
+// loop / auto-lair would fight the leader's drag and desync the map. While
+// PartyState.IsInParty is true and SelfIsLeader is false this asserts
+// MovementCoordinator.FollowerGate, holding every movement engine silently; the
+// gate clears the moment we lead the party or leave it, so a queued walk / loop
+// / auto-lair resumes on its own.
+//
+// Read-only on party state (mirrors PartyVitalsWatcher): it only subscribes to
+// PartyState property changes and never writes a party field, so PartyManager
+// stays the sole writer.
+//
+// The suppression is unconditional — leader-driven movement is a hard game
+// constraint, not a user preference — so there is no settings toggle behind it.
+// Because it rides the shared MovementCoordinator it composes with every other
+// pause source: leaving follower state clears only this gate, and movement
+// stays held if anything else (combat, health, user pause) is still asserting.
 public sealed class PartyFollowerMovementGate : IDisposable
 {
-    /// <summary>Identifier surfaced in <see cref="MovementCoordinator.History"/>
-    /// when the gate flips the Follower gate.</summary>
+    // Identifier surfaced in MovementCoordinator.History when the gate flips the
+    // Follower gate.
     public const string AsserterName = "PartyFollowerMovementGate";
 
     private readonly PartyState _party;
@@ -60,10 +52,8 @@ public sealed class PartyFollowerMovementGate : IDisposable
             Evaluate();
     }
 
-    /// <summary>
-    /// Assert / clear the Follower gate from the current party role.
-    /// Idempotent — only touches the coordinator when the held state flips.
-    /// </summary>
+    // Assert / clear the Follower gate from the current party role. Idempotent —
+    // only touches the coordinator when the held state flips.
     public void Evaluate()
     {
         bool shouldHold = _party.IsInParty && !_party.SelfIsLeader;

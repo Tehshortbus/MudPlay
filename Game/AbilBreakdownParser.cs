@@ -6,32 +6,26 @@ using FujinTerm.Terminal;
 
 namespace FujinTerm.Game;
 
-/// <summary>One source slice of an <c>abil &lt;code&gt;</c> breakdown — where a
-/// portion of an ability's current total comes from and how much that source
-/// contributes. Sources seen in GreaterMUD/Paradigm output:
-/// <c>granted</c> (quest awards), <c>worn</c> (equipment), <c>spells</c> (live
-/// spell affects), <c>race</c> (racial bonus). The server only prints the
-/// sources that actually affect the character, so a breakdown carries a
-/// variable subset.</summary>
+// One source slice of an `abil <code>` breakdown — where a portion of an
+// ability's current total comes from and how much that source contributes.
+// Sources: granted (quest awards), worn (equipment), spells (live spell
+// affects), race (racial bonus). The server only prints the sources that
+// actually affect the character, so a breakdown carries a variable subset.
 public readonly record struct AbilContribution(string Source, int Value);
 
-/// <summary>
-/// Parsed result of a GreaterMUD/Paradigm <c>abil &lt;code&gt;</c> query — the
-/// per-source breakdown of one ability's current total. The
-/// <see cref="Spells"/> slice is the live-rolled spell contribution (e.g. a
-/// nature-tap / mana-flux mana-regen roll under code 145), which the
-/// regen-buff automation reads to decide whether a roll landed below the
-/// reroll threshold.
-/// </summary>
+// Parsed result of an `abil <code>` query — the per-source breakdown of one
+// ability's current total. The Spells slice is the live-rolled spell
+// contribution (e.g. a nature-tap / mana-flux mana-regen roll under code 145),
+// which the regen-buff automation reads to decide whether a roll landed below
+// the reroll threshold.
 public sealed record AbilBreakdown(
     int Code,
     string Label,
     IReadOnlyList<AbilContribution> Contributions,
     int? ReportedTotal)
 {
-    /// <summary>Sum of every per-source contribution. When the server printed a
-    /// <c>total:</c> line this equals <see cref="ReportedTotal"/>; otherwise it
-    /// is the client's own roll-up.</summary>
+    // Sum of every per-source contribution. When the server printed a `total:`
+    // line this equals ReportedTotal; otherwise it is the client's own roll-up.
     public int Total
     {
         get
@@ -42,9 +36,9 @@ public sealed record AbilBreakdown(
         }
     }
 
-    /// <summary>Contribution from a named source (case-insensitive), or 0 when
-    /// that source didn't appear — the server omits unaffected sources, so a
-    /// missing line means no contribution.</summary>
+    // Contribution from a named source (case-insensitive), or 0 when that
+    // source didn't appear — the server omits unaffected sources, so a missing
+    // line means no contribution.
     public int From(string source)
     {
         foreach (AbilContribution c in Contributions)
@@ -53,47 +47,40 @@ public sealed record AbilBreakdown(
         return 0;
     }
 
-    /// <summary>Quest-awarded contribution (<c>granted:</c> line).</summary>
+    // Quest-awarded contribution (`granted:` line).
     public int Granted => From("granted");
 
-    /// <summary>Equipment contribution (<c>worn:</c> line).</summary>
+    // Equipment contribution (`worn:` line).
     public int Worn => From("worn");
 
-    /// <summary>Live spell contribution (<c>spells:</c> line) — the rolled
-    /// value of a code-145 mana-regen buff (nature tap / mana flux), positive
-    /// or negative.</summary>
+    // Live spell contribution (`spells:` line) — the rolled value of a code-145
+    // mana-regen buff (nature tap / mana flux), positive or negative.
     public int Spells => From("spells");
 
-    /// <summary>Racial contribution (<c>race:</c> line).</summary>
+    // Racial contribution (`race:` line).
     public int Race => From("race");
 }
 
-/// <summary>
-/// Stateful parser for GreaterMUD/Paradigm <c>abil &lt;code&gt;</c> output. The
-/// command lists, per source, how much of a single ability's total comes from
-/// each place:
-/// <code>
-/// [HP=899/MA=573]: (Resting) abil 145
-/// granted:  ManaRegen(145)              0005
-/// worn:     ManaRegen(145)              0185
-/// spells:   ManaRegen(145)              0011
-/// race:     ManaRegen(145)              0010
-/// </code>
-/// Only the sources that actually affect the character are printed, so the row
-/// set is variable and there is no header to key on — the parser detects the
-/// block purely by the distinctive <c>source: Name(code) value</c> row shape
-/// and closes it on the first non-matching line or prompt. Each block yields
-/// one <see cref="AbilBreakdown"/> via <see cref="BreakdownParsed"/>.
-/// </summary>
-/// <remarks>
-/// The source label text (<c>ManaRegen</c>) is GreaterMUD's spelling and can
-/// differ from <see cref="GameData.AbilityNames"/>' canonical name
-/// (<c>ManaRgn</c> for 145), so the ability is keyed off the numeric
-/// <c>(code)</c> in each row, never the name text. A <c>total:</c> row is kept
-/// out of <see cref="AbilBreakdown.Contributions"/> and surfaced as
-/// <see cref="AbilBreakdown.ReportedTotal"/> so the summed contributions stay a
-/// clean granted+worn+spells+race roll-up.
-/// </remarks>
+// Stateful parser for `abil <code>` output. The command lists, per source, how
+// much of a single ability's total comes from each place:
+//
+//   [HP=899/MA=573]: (Resting) abil 145
+//   granted:  ManaRegen(145)              0005
+//   worn:     ManaRegen(145)              0185
+//   spells:   ManaRegen(145)              0011
+//   race:     ManaRegen(145)              0010
+//
+// Only the sources that actually affect the character are printed, so the row
+// set is variable and there is no header to key on — the parser detects the
+// block purely by the distinctive `source: Name(code) value` row shape and
+// closes it on the first non-matching line or prompt. Each block yields one
+// AbilBreakdown via BreakdownParsed.
+//
+// The source label text (ManaRegen) is the server's spelling and can differ
+// from GameData.AbilityNames' canonical name (ManaRgn for 145), so the ability
+// is keyed off the numeric (code) in each row, never the name text. A `total:`
+// row is kept out of Contributions and surfaced as ReportedTotal so the summed
+// contributions stay a clean granted+worn+spells+race roll-up.
 public sealed partial class AbilBreakdownParser : IDisposable
 {
     private LineExtractor? _lines;
@@ -104,13 +91,13 @@ public sealed partial class AbilBreakdownParser : IDisposable
     private int? _pendingTotal;
     private readonly List<AbilContribution> _pending = new();
 
-    /// <summary>Fires once per completed <c>abil</c> block.</summary>
+    // Fires once per completed `abil` block.
     public event Action<AbilBreakdown>? BreakdownParsed;
 
     public AbilBreakdownParser(LogService? log = null) => _log = log;
 
-    /// <summary>Bind to the current session's line stream, re-binding across
-    /// session swaps (same shape as the other line-fed parsers).</summary>
+    // Bind to the current session's line stream, re-binding across session
+    // swaps (same shape as the other line-fed parsers).
     public void AttachLineExtractor(LineExtractor lines)
     {
         ArgumentNullException.ThrowIfNull(lines);
@@ -124,15 +111,15 @@ public sealed partial class AbilBreakdownParser : IDisposable
         if (_lines is not null) _lines.LineEmitted -= OnLineEmitted;
     }
 
-    /// <summary>Test hook — drive one line through the parser without a live
-    /// <see cref="LineExtractor"/>. Pass <paramref name="isPromptLine"/> to
-    /// replay the prompt row that flushes a block.</summary>
+    // Test hook — drive one line through the parser without a live
+    // LineExtractor. Pass isPromptLine to replay the prompt row that flushes a
+    // block.
     internal void FeedTestLine(string text, bool isPromptLine = false)
         => HandleLine(text, isPromptLine);
 
-    /// <summary>Test hook — drive several non-prompt content lines. Does not
-    /// flush; feed a prompt or a non-matching line afterwards to close the
-    /// block, exercising the real terminator paths.</summary>
+    // Test hook — drive several non-prompt content lines. Does not flush; feed
+    // a prompt or a non-matching line afterwards to close the block, exercising
+    // the real terminator paths.
     internal void FeedTestLines(IEnumerable<string> lines)
     {
         foreach (string text in lines) HandleLine(text, isPromptLine: false);

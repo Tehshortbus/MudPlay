@@ -3,43 +3,32 @@ using FujinTerm.Services.Patterns;
 
 namespace FujinTerm.Game;
 
-/// <summary>
-/// First <see cref="MessageRouter"/> consumer. Subscribes to the chat /
-/// realm-event patterns in <see cref="KnownPatterns"/>, classifies each
-/// match into a <see cref="ChatChannel"/>, and emits
-/// <see cref="ChatLogEntry"/> events. The Phase 2 ChatHistoryStore (PR 2.4)
-/// and ConversationWindow (PR 2.5) subscribe to <see cref="EntryClassified"/>.
-/// </summary>
-/// <remarks>
-/// <para>
-/// One pattern-id maps to one channel; the same line never fires twice on
-/// this router (fan-out within MessageRouter still applies — other
-/// subscribers can also see the line). Speaker / message extraction comes
-/// from each pattern's named capture groups.
-/// </para>
-/// <para>
-/// Lifetime: subscriptions live for the router's lifetime. The router is
-/// app-singleton, so <see cref="IDisposable"/> isn't strictly necessary;
-/// it's implemented anyway to support tests that build / tear down a
-/// router per case.
-/// </para>
-/// </remarks>
+// A MessageRouter consumer. Subscribes to the chat / realm-event patterns in
+// KnownPatterns, classifies each match into a ChatChannel, and emits
+// ChatLogEntry events. ChatHistoryStore and ConversationWindow subscribe to
+// EntryClassified.
+//
+// One pattern-id maps to one channel; the same line never fires twice on this
+// router (fan-out within MessageRouter still applies — other subscribers can
+// also see the line). Speaker / message extraction comes from each pattern's
+// named capture groups.
+//
+// Lifetime: subscriptions live for the router's lifetime. The router is
+// app-singleton, so IDisposable isn't strictly necessary; it's implemented
+// anyway to support tests that build / tear down a router per case.
 public sealed class ChatRouter : IDisposable
 {
     private readonly MessageRouter _router;
     private readonly List<IDisposable> _subs = new();
     private bool _disposed;
 
-    /// <summary>
-    /// Most recent <c>/recipient message</c> line the user typed. Outgoing
-    /// telepath confirmations from the server don't echo the message text,
-    /// so we have to correlate with the typed command on the line above.
-    /// Cleared after each consume so we don't re-attribute it to a later
-    /// telepath.
-    /// </summary>
+    // Most recent `/recipient message` line the user typed. Outgoing telepath
+    // confirmations from the server don't echo the message text, so we have to
+    // correlate with the typed command on the line above. Cleared after each
+    // consume so we don't re-attribute it to a later telepath.
     private string? _pendingTelepathMessage;
 
-    /// <summary>Fired once per classified line.</summary>
+    // Fired once per classified line.
     public event Action<ChatLogEntry>? EntryClassified;
 
     public ChatRouter(MessageRouter router)

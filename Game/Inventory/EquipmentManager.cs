@@ -7,34 +7,20 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game.Inventory;
 
-/// <summary>
-/// Applies saved gear sets (<see cref="EquipmentSet"/>) — the engine half of the
-/// Workshop's Equipment tab. Given a set, it diffs the desired controlled-slot
-/// items against the live worn loadout (<see cref="InventoryManager.Snapshot"/>)
-/// and walks the character into that set: physical slots get spaced
-/// <c>wear &lt;item&gt;</c> commands (the game auto-removes whatever occupied the
-/// slot), while the two <i>virtual</i> slots (Alternate Weapon / Off-Hand) never
-/// hit the wire — they write <see cref="CombatSettings.AlternateWeapon"/> /
-/// <see cref="CombatSettings.AlternateOffHand"/> so the combat weapon-swap matrix
-/// picks them up.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Settings are read live each call through the injected delegates (the same
-/// pattern the Phase-9 engines use), so a set edited in the UI or a profile swap
-/// is reflected without re-subscription.
-/// </para>
-/// <para>
-/// This engine ships the apply core plus the two entry points that drive it:
-/// <see cref="ApplyByKeyword"/> (the <c>@equip-&lt;set&gt;</c> remote command) and
-/// <see cref="ApplyBySetId"/> (the auto-equip trigger coordinator). Per-slot item
-/// filtering / "find best" (the Workshop's find-items view) lands in a later
-/// Phase-10 PR that consumes this engine.
-/// </para>
-/// </remarks>
+// Applies saved gear sets (EquipmentSet) — the engine half of the Workshop's
+// Equipment tab. Given a set, it diffs the desired controlled-slot items against
+// the live worn loadout (InventoryManager.Snapshot) and walks the character into
+// that set: physical slots get spaced "wear <item>" commands (the game
+// auto-removes whatever occupied the slot), while the two virtual slots
+// (Alternate Weapon / Off-Hand) never hit the wire — they write
+// CombatSettings.AlternateWeapon / AlternateOffHand so the combat weapon-swap
+// matrix picks them up.
+//
+// Settings are read live each call through the injected delegates, so a set
+// edited in the UI or a profile swap is reflected without re-subscription.
 public sealed class EquipmentManager
 {
-    /// <summary>LogService category — <c>[Equipment]</c> rows per apply.</summary>
+    // LogService category — [Equipment] rows per apply.
     public const string LogCategory = "Equipment";
 
     // Spacing between successive wear commands. The game's flood / spam guards
@@ -70,19 +56,17 @@ public sealed class EquipmentManager
         _log = log;
     }
 
-    /// <summary>Bind the wire sink. Idempotent; later binds replace earlier ones.</summary>
+    // Bind the wire sink. Idempotent; later binds replace earlier ones.
     public void SetWireSender(Action<byte[]> send) => _wire.Bind(send);
 
-    /// <summary>Every buffer the engine has pushed to the wire, for tests.</summary>
+    // Every buffer the engine has pushed to the wire, for tests.
     internal IReadOnlyList<byte[]> LastSentForTests => _wire.LastSentForTests;
 
     // ----- @equip-<set> ---------------------------------------------------
 
-    /// <summary>
-    /// Resolve a gear set by <see cref="EquipmentSet.Keyword"/> (case-insensitive,
-    /// set <see cref="EquipmentSet.Name"/> as a fallback) and apply it. Declines
-    /// while an apply is already in flight.
-    /// </summary>
+    // Resolve a gear set by EquipmentSet.Keyword (case-insensitive, the set's
+    // Name as a fallback) and apply it. Declines while an apply is already in
+    // flight.
     public EquipResult ApplyByKeyword(string keyword)
     {
         if (string.IsNullOrWhiteSpace(keyword)) return EquipResult.NotFound;
@@ -92,13 +76,11 @@ public sealed class EquipmentManager
         return ApplySet(set) ? EquipResult.Applied : EquipResult.NoChange;
     }
 
-    /// <summary>
-    /// Resolve a gear set by its stable <see cref="EquipmentSet.Id"/> and apply it.
-    /// Auto-equip triggers reference their target set by Id (it survives renames),
-    /// so this is the trigger coordinator's entry point. Declines while an apply is
-    /// already in flight; reports <see cref="EquipResult.NotFound"/> for an empty or
-    /// unresolved id (e.g. a trigger pointing at a since-deleted set).
-    /// </summary>
+    // Resolve a gear set by its stable EquipmentSet.Id and apply it. Auto-equip
+    // triggers reference their target set by Id (it survives renames), so this
+    // is the trigger coordinator's entry point. Declines while an apply is
+    // already in flight; reports NotFound for an empty or unresolved id (e.g. a
+    // trigger pointing at a since-deleted set).
     public EquipResult ApplyBySetId(string setId)
     {
         if (string.IsNullOrWhiteSpace(setId)) return EquipResult.NotFound;
@@ -109,13 +91,10 @@ public sealed class EquipmentManager
         return ApplySet(set) ? EquipResult.Applied : EquipResult.NoChange;
     }
 
-    /// <summary>
-    /// Resolve the gear set whose <see cref="EquipmentSet.Trigger"/> matches and
-    /// apply it. The local Action-menu / toolbar "Equip All" drives this with
-    /// <see cref="EquipTriggerType.Default"/> — the baseline loadout. Declines
-    /// while an apply is in flight; <see cref="EquipResult.NotFound"/> when no
-    /// set is configured for the trigger.
-    /// </summary>
+    // Resolve the gear set whose Trigger matches and apply it. The local
+    // Action-menu / toolbar "Equip All" drives this with Default — the baseline
+    // loadout. Declines while an apply is in flight; NotFound when no set is
+    // configured for the trigger.
     public EquipResult ApplyByTrigger(EquipTriggerType trigger)
     {
         if (_isEquipping) return EquipResult.Busy;
@@ -167,14 +146,12 @@ public sealed class EquipmentManager
 
     // ----- pure apply logic (unit-tested directly) ------------------------
 
-    /// <summary>
-    /// The ordered <c>wear</c> commands for a set's physical slots whose item
-    /// isn't already worn. Virtual slots are excluded (handled by
-    /// <see cref="ApplyVirtualSlots"/>); <c>{no change}</c> (empty item) slots are
-    /// skipped; an already-worn item is skipped so re-applying a set issues no
-    /// redundant wears. The game auto-removes whatever occupies a slot when the new
-    /// item is worn, so no explicit <c>remove</c> is needed for a full-loadout swap.
-    /// </summary>
+    // The ordered wear commands for a set's physical slots whose item isn't
+    // already worn. Virtual slots are excluded (handled by ApplyVirtualSlots);
+    // {no change} (empty item) slots are skipped; an already-worn item is
+    // skipped so re-applying a set issues no redundant wears. The game
+    // auto-removes whatever occupies a slot when the new item is worn, so no
+    // explicit remove is needed for a full-loadout swap.
     internal static List<string> BuildWearCommands(EquipmentSet set, ISet<string> wornNames)
     {
         var cmds = new List<string>();
@@ -189,13 +166,10 @@ public sealed class EquipmentManager
         return cmds;
     }
 
-    /// <summary>
-    /// Fold a set's virtual-slot items into <paramref name="combat"/>
-    /// (Alternate Weapon → <see cref="CombatSettings.AlternateWeapon"/>, Alternate
-    /// Off-Hand → <see cref="CombatSettings.AlternateOffHand"/>) and report whether
-    /// anything changed. An empty virtual item leaves the field untouched, per the
-    /// <see cref="EquipmentSlotEntry"/> contract.
-    /// </summary>
+    // Fold a set's virtual-slot items into combat (Alternate Weapon →
+    // CombatSettings.AlternateWeapon, Alternate Off-Hand → AlternateOffHand) and
+    // report whether anything changed. An empty virtual item leaves the field
+    // untouched, per the EquipmentSlotEntry contract.
     internal static bool ApplyVirtualSlots(EquipmentSet set, CombatSettings combat)
     {
         bool changed = false;

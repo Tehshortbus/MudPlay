@@ -4,49 +4,34 @@ using FujinTerm.Terminal;
 
 namespace FujinTerm.Game.Combat;
 
-/// <summary>
-/// Phase 9 PR 9.A — observes mid-room arrival lines and appends the
-/// new entity to <see cref="RoomEntityClassifier.Current"/>.
-/// "&lt;name&gt; &lt;verb&gt; into the room from &lt;dir&gt;." fires
-/// when a monster spawns (server-driven respawn or script spawn) OR
-/// when a player walks into our room without us triggering a full
-/// room re-display.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Critical for combat / health gating: without this watcher,
-/// <see cref="CombatStateTracker"/> only re-evaluates the Combat
-/// gate on Also-Here observations. A mob spawning into our room
-/// mid-walk would NOT pause the walker until the next move's room
-/// re-display — too late, we'd already be hit. Appending the
-/// arrival to <see cref="RoomEntityClassifier.Current"/> + re-firing
-/// <see cref="RoomEntityClassifier.EntitiesObserved"/> drives the
-/// tracker's gate decision immediately.
-/// </para>
-/// <para>
-/// Classification: the wire colours the arrival name yellow for
-/// monsters, red for players. Watcher reads the first non-space
-/// cell's foreground colour off
-/// <see cref="LineExtractor.EmittedLine.Attributes"/> as a hint
-/// when the name doesn't match the active game-data tables. When
-/// both a name lookup and the colour hint agree, the lookup wins
-/// (gives us the monster number → priority for ordering). When they
-/// disagree, the colour wins (server is authoritative on the
-/// "what kind of thing arrived" question) but we log a Warn so the
-/// user knows their data is stale.
-/// </para>
-/// <para>
-/// Article-stripping: arrival lines lead with "A ", "An ", or "The "
-/// for monsters ("A fierce lashworm…"). Also-Here lines don't carry
-/// the article, so the classifier's prefix-strip alone wouldn't
-/// match. Watcher peels the article before classification.
-/// </para>
-/// </remarks>
+// Observes mid-room arrival lines and appends the new entity to
+// RoomEntityClassifier.Current. "<name> <verb> into the room from <dir>." fires
+// when a monster spawns (server-driven respawn or script spawn) OR when a player
+// walks into our room without us triggering a full room re-display.
+//
+// Critical for combat / health gating: without this watcher, CombatStateTracker
+// only re-evaluates the Combat gate on Also-Here observations. A mob spawning
+// into our room mid-walk would NOT pause the walker until the next move's room
+// re-display — too late, we'd already be hit. Appending the arrival to
+// RoomEntityClassifier.Current + re-firing its EntitiesObserved drives the
+// tracker's gate decision immediately.
+//
+// Classification: the wire colours the arrival name yellow for monsters, red for
+// players. Watcher reads the first non-space cell's foreground colour off the
+// line's Attributes as a hint when the name doesn't match the active game-data
+// tables. When both a name lookup and the colour hint agree, the lookup wins
+// (gives us the monster number → priority for ordering). When they disagree, the
+// colour wins (server is authoritative on the "what kind of thing arrived"
+// question) but we log a Warn so the user knows their data is stale.
+//
+// Article-stripping: arrival lines lead with "A ", "An ", or "The " for monsters
+// ("A fierce lashworm…"). Also-Here lines don't carry the article, so the
+// classifier's prefix-strip alone wouldn't match. Watcher peels the article
+// before classification.
 public sealed class RoomEntryWatcher : IDisposable
 {
-    /// <summary>LogService category — appears as
-    /// <c>[RoomEntry]</c> rows per observed arrival + classification
-    /// mismatches.</summary>
+    // LogService category — appears as [RoomEntry] rows per observed arrival +
+    // classification mismatches.
     public const string LogCategory = "RoomEntry";
 
     private static readonly string[] LeadingArticles =
@@ -57,11 +42,10 @@ public sealed class RoomEntryWatcher : IDisposable
     private readonly IDisposable _arrivalSub;
     private bool _disposed;
 
-    /// <summary>Fires after each arrival is parsed + classified +
-    /// appended to the classifier. Independent of
-    /// <see cref="RoomEntityClassifier.EntitiesObserved"/> — consumers
-    /// that only care about per-arrival deltas (e.g. spawn counters)
-    /// subscribe here instead of folding observation diffs.</summary>
+    // Fires after each arrival is parsed + classified + appended to the
+    // classifier. Independent of RoomEntityClassifier.EntitiesObserved —
+    // consumers that only care about per-arrival deltas (e.g. spawn counters)
+    // subscribe here instead of folding observation diffs.
     public event Action<RoomEntryArrivalEvent>? ArrivalObserved;
 
     public RoomEntryWatcher(
@@ -158,13 +142,10 @@ public sealed class RoomEntryWatcher : IDisposable
             Name: name, Kind: finalKind, Direction: direction, At: DateTimeOffset.Now));
     }
 
-    /// <summary>
-    /// Read the foreground of the first non-space cell off the
-    /// line's attribute strip. Returns Monster for yellow (indexed
-    /// 3 or 11), Player for red (indexed 1 or 9), Unknown for
-    /// anything else (including default-colour / RGB / out-of-range
-    /// palette indices).
-    /// </summary>
+    // Read the foreground of the first non-space cell off the line's attribute
+    // strip. Returns Monster for yellow (indexed 3 or 11), Player for red
+    // (indexed 1 or 9), Unknown for anything else (including default-colour / RGB
+    // / out-of-range palette indices).
     private static EntityKind ResolveColorHint(LineExtractor.EmittedLine line)
     {
         if (line.Attributes.Length == 0) return EntityKind.Unknown;

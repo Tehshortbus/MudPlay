@@ -5,42 +5,30 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game.Remote;
 
-/// <summary>
-/// Phase 9 Cluster 5d — consumer of <see cref="RemoteCommandManager"/>
-/// for the <c>@auto-*</c> family. A party member's <c>@auto-combat off</c>
-/// flips our <see cref="AutoActionDefaults.AutoCombat"/> flag, persists
-/// the profile, and replies with the new state.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Per-engine grammar: each <c>@auto-X</c> takes an optional first arg of
-/// <c>on</c> / <c>off</c> which sets that state explicitly. With no arg
-/// the flag is toggled. Either way the reply echoes the resulting state.
-/// Any other arg is rejected with a "?" reply (gated on
-/// <see cref="RemoteCommandManager.WarnOnDenial"/>).
-/// </para>
-/// <para>
-/// <c>@auto-rest</c> is an alias for <c>@auto-heal</c> — both drive
-/// <see cref="AutoActionDefaults.AutoHealRest"/>.
-/// </para>
-/// <para>
-/// <c>@auto-all</c> drives the shared <see cref="AutoModeController"/>
-/// master kill-switch (same session snapshot as the toolbar / Action-menu
-/// "Auto-All" button). No arg toggles (kill → restore); explicit
-/// <c>off</c> ensures every engine is off, <c>on</c> restores the
-/// snapshot. Reply reports whether everything is now off.
-/// </para>
-/// <para>
-/// All commands require <see cref="PlayerRemoteControls.AlterSettings"/>
-/// per the catalog — this is a "do something on my behalf" tier.
-/// </para>
-/// </remarks>
+// The @auto-* family. A party member's @auto-combat off flips our
+// AutoActionDefaults.AutoCombat flag, persists the profile, and replies with the
+// new state.
+//
+// Per-engine grammar: each @auto-X takes an optional first arg of on / off which
+// sets that state explicitly. With no arg the flag is toggled. Either way the
+// reply echoes the resulting state. Any other arg is rejected with a "?" reply
+// (gated on WarnOnDenial).
+//
+// @auto-rest is an alias for @auto-heal — both drive AutoActionDefaults.AutoHealRest.
+//
+// @auto-all drives the shared AutoModeController master kill-switch (same session
+// snapshot as the toolbar / Action-menu "Auto-All" button). No arg toggles
+// (kill → restore); explicit off ensures every engine is off, on restores the
+// snapshot. Reply reports whether everything is now off.
+//
+// All commands require PlayerRemoteControls.AlterSettings per the catalog — a
+// "do something on my behalf" tier.
 public sealed class AutoModeRemoteHandler : IDisposable
 {
     private const string TabKey = "General";
     private const string LogCategory = "RemoteCmd";
 
-    /// <summary>Mapping from @-command name → flag accessor.</summary>
+    // Mapping from @-command name to flag accessor.
     private static readonly (string Cmd, Func<AutoActionDefaults, bool> Get,
                              Action<AutoActionDefaults, bool> Set)[] Mapping =
     {
@@ -184,7 +172,7 @@ public sealed class AutoModeRemoteHandler : IDisposable
         ctx.Reply(string.Join(", ", parts));
     }
 
-    /// <summary>"@auto-combat" → "Auto-Combat" for the @settings report.</summary>
+    // "@auto-combat" → "Auto-Combat" for the @settings report.
     private static string Label(string cmd)
     {
         string[] words = cmd.TrimStart('@').Split('-');

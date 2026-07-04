@@ -6,66 +6,52 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game.GameData;
 
-/// <summary>One training-shop room discovered in the active set's Shops table.</summary>
-/// <param name="Number">Shops.Number.</param>
-/// <param name="Name">Shop name (usually the guild / role label, e.g. "Training Room").</param>
-/// <param name="Map">Host map, from <c>Assigned To</c> (0 when unresolved).</param>
-/// <param name="Room">Host room, from <c>Assigned To</c> (0 when unresolved).</param>
-/// <param name="RoomName">Host room's display name (from Rooms), empty when unresolved.</param>
-/// <param name="MinLevel">Lowest level the trainer serves (<c>MinLVL</c>).</param>
-/// <param name="MaxLevel">Exclusive upper level (<c>MaxLVL</c>).</param>
-/// <param name="ClassRest">Class restriction (0 = universal, like the Training Room).</param>
+// One training-shop room discovered in the active set's Shops table. Number is
+// Shops.Number; Name is the shop name (usually the guild / role label, e.g.
+// "Training Room"); Map / Room come from Assigned To (0 when unresolved);
+// RoomName is the host room's display name from Rooms (empty when unresolved);
+// MinLevel / MaxLevel are MinLVL / MaxLVL; ClassRest is the class restriction
+// (0 = universal, like the Training Room).
 public readonly record struct TrainerShop(
     int Number, string Name, int Map, int Room, string RoomName, int MinLevel, int MaxLevel, int ClassRest)
 {
-    /// <summary>True when a host room resolved from the shop's <c>Assigned To</c>.</summary>
+    // True when a host room resolved from the shop's Assigned To.
     public bool HasRoom => Map > 0 && Room > 0;
 
-    /// <summary>
-    /// Stable per-row identity (shop + host room) for the allow/disallow set. A
-    /// multi-room shop yields one row per room, so the disabled set keys on the
-    /// physical trainer location, not just the shop number — enabling Newhaven's
-    /// Training Room while disabling Silvermere's works because they're distinct.
-    /// </summary>
+    // Stable per-row identity (shop + host room) for the allow/disallow set. A
+    // multi-room shop yields one row per room, so the disabled set keys on the
+    // physical trainer location, not just the shop number — enabling Newhaven's
+    // Training Room while disabling Silvermere's works because they're distinct.
     public string RowKey => string.Create(CultureInfo.InvariantCulture, $"{Number}/{Map}/{Room}");
 
-    /// <summary>
-    /// True when this trainer serves a character at <paramref name="level"/>,
-    /// using MMUD's exact gate (<c>frmMain.frm</c>): served when
-    /// <c>!(MinLVL &gt; level+1 || MaxLVL &lt;= level)</c>.
-    /// </summary>
+    // True when this trainer serves a character at level, using MajorMUD's exact
+    // gate: served when !(MinLVL > level+1 || MaxLVL <= level).
     public bool ServesLevel(int level) => !(MinLevel > level + 1 || MaxLevel <= level);
 
-    /// <summary>
-    /// True when this trainer serves <paramref name="classNumber"/>: the universal
-    /// Training Room (<c>ClassRest == 0</c>) serves every class; a guild trainer
-    /// serves only its own class number.
-    /// </summary>
+    // True when this trainer serves classNumber: the universal Training Room
+    // (ClassRest == 0) serves every class; a guild trainer serves only its own
+    // class number.
     public bool ServesClass(int classNumber) => ClassRest == 0 || ClassRest == classNumber;
 }
 
-/// <summary>
-/// Enumerates the training shops (<c>ShopType == 8</c>) in the active game-data
-/// set, resolving each one's host room(s) from <c>Assigned To</c>. A shop
-/// assigned to several rooms yields one <see cref="TrainerShop"/> per room (so the
-/// universal Training Room appears once for Silvermere and once for Newhaven).
-/// Trainers whose <c>MaxLVL</c> is the 999 sentinel (e.g. the unreachable "Sysop
-/// Trainer", shop 39) are skipped, as are shops with no parseable room (nothing to
-/// route to).
-/// </summary>
-/// <remarks>
-/// Drives the Settings → Auto-Trainer table (the discovered-trainers list) and the
-/// navigation engine's "which trainer for this level/class" resolution. Level
-/// ranges + rooms come straight from the data, so the in-game town progression
-/// (Newhaven → Silvermere → Aldreth → Aged Titan …) falls out without any
-/// hardcoding.
-/// </remarks>
+// Enumerates the training shops (ShopType == 8) in the active game-data set,
+// resolving each one's host room(s) from Assigned To. A shop assigned to several
+// rooms yields one TrainerShop per room (so the universal Training Room appears
+// once for Silvermere and once for Newhaven). Trainers whose MaxLVL is the 999
+// sentinel (e.g. the unreachable "Sysop Trainer", shop 39) are skipped, as are
+// shops with no parseable room (nothing to route to).
+//
+// Drives the Settings → Auto-Trainer table (the discovered-trainers list) and the
+// navigation engine's "which trainer for this level/class" resolution. Level
+// ranges + rooms come straight from the data, so the in-game town progression
+// (Newhaven → Silvermere → Aldreth → Aged Titan …) falls out without any
+// hardcoding.
 public static class TrainerCatalog
 {
-    /// <summary><c>Shops.ShopType</c> value for a training shop.</summary>
+    // Shops.ShopType value for a training shop.
     public const int TrainingShopType = 8;
 
-    /// <summary><c>MaxLVL</c> sentinel marking a non-reachable / placeholder trainer to ignore.</summary>
+    // MaxLVL sentinel marking a non-reachable / placeholder trainer to ignore.
     public const int IgnoredMaxLevel = 999;
 
     public static IReadOnlyList<TrainerShop> Enumerate(GameDataCache gameData)
@@ -98,16 +84,12 @@ public static class TrainerCatalog
         return trainers;
     }
 
-    /// <summary>
-    /// Pick the nearest trainer that can serve the character: serves
-    /// <paramref name="level"/>, is universal or matches
-    /// <paramref name="classNumber"/>, isn't in <paramref name="disabled"/> (keyed
-    /// by <see cref="TrainerShop.RowKey"/>), has a resolvable room, and is
-    /// reachable per <paramref name="distance"/> (which returns the path length to a
-    /// trainer's room, or null when unreachable). Returns null when nothing
-    /// qualifies — e.g. a quest-gated level with no matching trainer. Pure: the
-    /// caller supplies the distance metric (BFS).
-    /// </summary>
+    // Pick the nearest trainer that can serve the character: serves level, is
+    // universal or matches classNumber, isn't in disabled (keyed by
+    // TrainerShop.RowKey), has a resolvable room, and is reachable per distance
+    // (which returns the path length to a trainer's room, or null when
+    // unreachable). Returns null when nothing qualifies — e.g. a quest-gated level
+    // with no matching trainer. Pure: the caller supplies the distance metric (BFS).
     public static TrainerShop? SelectNearest(
         IReadOnlyList<TrainerShop> trainers, int level, int classNumber,
         IReadOnlyCollection<string> disabled, Func<TrainerShop, int?> distance)

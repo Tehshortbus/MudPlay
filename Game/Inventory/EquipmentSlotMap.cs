@@ -8,21 +8,16 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game.Inventory;
 
-/// <summary>
-/// Translation layer between the Workshop's <see cref="EquipmentSlot"/> enum and
-/// MajorMUD's worn-id model. Owns the display labels, the virtual-slot test, the
-/// <c>Items.Worn</c> codes each slot accepts (so the slot editor can list the
-/// items that fit it), and the reverse map from <see cref="EquippedItem.Slot"/>
-/// strings (as <see cref="InventoryManager"/> emits them) back to an
-/// <see cref="EquipmentSlot"/> for "Snapshot Current".
-/// </summary>
-/// <remarks>
-/// The <c>Items.Worn</c> code ladder is the one <see cref="GameData.LookupEnums"/>
-/// publishes (Head=2 … Worn=16, Off-Hand=12). Weapons aren't worn — they're
-/// resolved by <c>ItemType == 1</c> instead. Finger and Wrist each have two
-/// physical slots that share the same pair of worn codes, so both map members
-/// list both codes.
-/// </remarks>
+// Translation layer between the Workshop's EquipmentSlot enum and MajorMUD's
+// worn-id model. Owns the display labels, the virtual-slot test, the Items.Worn
+// codes each slot accepts (so the slot editor can list the items that fit it),
+// and the reverse map from EquippedItem.Slot strings (as InventoryManager emits
+// them) back to an EquipmentSlot for "Snapshot Current".
+//
+// The Items.Worn code ladder is the one LookupEnums publishes (Head=2 …
+// Worn=16, Off-Hand=12). Weapons aren't worn — they're resolved by ItemType == 1
+// instead. Finger and Wrist each have two physical slots that share the same
+// pair of worn codes, so both map members list both codes.
 public static class EquipmentSlotMap
 {
     // Items.ItemType code for a weapon (the Weapon / Alt-Weapon slots filter on
@@ -113,39 +108,32 @@ public static class EquipmentSlotMap
     private static readonly IReadOnlyDictionary<EquipmentSlot, string> ToWornString =
         FromWorn.ToDictionary(kv => kv.Value, kv => kv.Key);
 
-    /// <summary>Every slot in the Workshop's display order.</summary>
+    // Every slot in the Workshop's display order.
     public static IReadOnlyList<EquipmentSlot> DisplayOrder { get; } =
         Enum.GetValues<EquipmentSlot>();
 
-    /// <summary>The short label shown in the slot grid (e.g. <c>"Alt Off-Hand"</c>).</summary>
+    // The short label shown in the slot grid (e.g. "Alt Off-Hand").
     public static string Label(EquipmentSlot slot) =>
         Labels.TryGetValue(slot, out string? l) ? l : slot.ToString();
 
-    /// <summary>
-    /// True for the two virtual slots (<see cref="EquipmentSlot.AlternateWeapon"/> /
-    /// <see cref="EquipmentSlot.AlternateOffHand"/>) — they never send a wire
-    /// <c>wear</c>; applying a set writes <see cref="CombatSettings"/> instead.
-    /// </summary>
+    // True for the two virtual slots (AlternateWeapon / AlternateOffHand) — they
+    // never send a wire wear; applying a set writes CombatSettings instead.
     public static bool IsVirtual(EquipmentSlot slot) =>
         slot is EquipmentSlot.AlternateWeapon or EquipmentSlot.AlternateOffHand;
 
-    /// <summary>
-    /// Resolve an <see cref="InventoryManager"/> worn-slot string to its
-    /// <see cref="EquipmentSlot"/>, or null when unrecognised. "Finger" / "Wrist"
-    /// map to slot 1 — callers wanting the paired slot fall through themselves.
-    /// </summary>
+    // Resolve an InventoryManager worn-slot string to its EquipmentSlot, or null
+    // when unrecognised. "Finger" / "Wrist" map to slot 1 — callers wanting the
+    // paired slot fall through themselves.
     public static EquipmentSlot? FromWornString(string? slot) =>
         !string.IsNullOrEmpty(slot) && FromWorn.TryGetValue(slot, out EquipmentSlot s) ? s : null;
 
-    /// <summary>
-    /// The InventoryManager location string an item's <c>Items.Worn</c> code fills
-    /// (e.g. code 11 → <c>"Torso"</c>), or <c>null</c> when the code isn't a
-    /// wearable slot. Lets the incremental "You are now wearing X." path label a
-    /// freshly-worn piece with its true slot instead of a generic placeholder, so
-    /// "Snapshot Current" files it correctly. Finger / Wrist codes resolve to the
-    /// shared <c>"Finger"</c> / <c>"Wrist"</c> string; the off-hand code resolves to
-    /// <c>"Off-Hand"</c> (though off-hand items take the held path, not this one).
-    /// </summary>
+    // The InventoryManager location string an item's Items.Worn code fills
+    // (e.g. code 11 → "Torso"), or null when the code isn't a wearable slot.
+    // Lets the incremental "You are now wearing X." path label a freshly-worn
+    // piece with its true slot instead of a generic placeholder, so "Snapshot
+    // Current" files it correctly. Finger / Wrist codes resolve to the shared
+    // "Finger" / "Wrist" string; the off-hand code resolves to "Off-Hand"
+    // (though off-hand items take the held path, not this one).
     public static string? InventorySlotForWornCode(int worn)
     {
         foreach (EquipmentSlot slot in DisplayOrder)
@@ -155,18 +143,15 @@ public static class EquipmentSlotMap
         return null;
     }
 
-    /// <summary>
-    /// The game-data item names that can occupy <paramref name="slot"/> <i>and</i>
-    /// that a character of <paramref name="level"/> / <paramref name="classProfile"/>
-    /// / <paramref name="alignment"/> can equip — sorted, de-duplicated; the
-    /// suggestion list for the slot's item field. Weapon slots list every
-    /// <c>ItemType == 1</c> item; physical slots list items whose <c>Worn</c> code
-    /// matches. Each candidate then passes through <see cref="ItemEquipFilter"/>, so
-    /// a Mystic-barred longsword or an evil-only blade never reaches the wrong
-    /// character. A non-positive level, an <see cref="ClassEquipProfile.Unknown"/>
-    /// class, or a null alignment bucket disables that dimension's filter. Returns
-    /// empty when no <c>Items</c> table is loaded.
-    /// </summary>
+    // The game-data item names that can occupy slot and that a character of the
+    // given level / classProfile / alignment can equip — sorted, de-duplicated;
+    // the suggestion list for the slot's item field. Weapon slots list every
+    // ItemType == 1 item; physical slots list items whose Worn code matches.
+    // Each candidate then passes through ItemEquipFilter, so a Mystic-barred
+    // longsword or an evil-only blade never reaches the wrong character. A
+    // non-positive level, an unknown class profile, or a null alignment bucket
+    // disables that dimension's filter. Returns empty when no Items table is
+    // loaded.
     public static IReadOnlyList<string> GetItemsForSlot(
         GameDataCache cache, EquipmentSlot slot,
         int level, ClassEquipProfile classProfile, AlignmentBucket? alignment)
@@ -186,15 +171,12 @@ public static class EquipmentSlotMap
         return names.ToList();
     }
 
-    /// <summary>
-    /// The primary <see cref="EquipmentSlot"/> an <c>Items</c> row occupies — a weapon
-    /// (<c>ItemType == 1</c>) resolves to <see cref="EquipmentSlot.Weapon"/>, every
-    /// other equippable row maps from its <c>Worn</c> code. Returns <c>null</c> for an
-    /// item the realm can't wear (<c>Worn 0</c> / a non-equip <c>ItemType</c>). The
-    /// paired Finger / Wrist codes resolve to slot 1 — the Item Finder groups by slot
-    /// family, not physical position — and the off-hand code resolves to
-    /// <see cref="EquipmentSlot.OffHand"/> over its Alt twin (both share code 12).
-    /// </summary>
+    // The primary EquipmentSlot an Items row occupies — a weapon (ItemType == 1)
+    // resolves to Weapon, every other equippable row maps from its Worn code.
+    // Returns null for an item the realm can't wear (Worn 0 / a non-equip
+    // ItemType). The paired Finger / Wrist codes resolve to slot 1 — the Item
+    // Finder groups by slot family, not physical position — and the off-hand
+    // code resolves to OffHand over its Alt twin (both share code 12).
     public static EquipmentSlot? SlotForItem(JsonElement row)
     {
         if (GetInt(row, "ItemType") == WeaponItemType) return EquipmentSlot.Weapon;
@@ -207,14 +189,12 @@ public static class EquipmentSlotMap
         return null;
     }
 
-    /// <summary>
-    /// True when the loaded <c>Items</c> table holds at least one named item that can
-    /// occupy <paramref name="slot"/> — a weapon (<c>ItemType == 1</c>) for the weapon
-    /// slots, or a matching <c>Worn</c> code for a physical slot. Independent of any
-    /// character filter: it answers "does this game-data set have gear for the slot at
-    /// all", so the Equipment Manager can drop a slot the realm never fills (e.g. an
-    /// Eyes / Face slot with no items). False when no <c>Items</c> table is loaded.
-    /// </summary>
+    // True when the loaded Items table holds at least one named item that can
+    // occupy slot — a weapon (ItemType == 1) for the weapon slots, or a matching
+    // Worn code for a physical slot. Independent of any character filter: it
+    // answers "does this game-data set have gear for the slot at all", so the
+    // Equipment Manager can drop a slot the realm never fills (e.g. an Eyes /
+    // Face slot with no items). False when no Items table is loaded.
     public static bool SlotHasItems(GameDataCache cache, EquipmentSlot slot)
     {
         ArgumentNullException.ThrowIfNull(cache);

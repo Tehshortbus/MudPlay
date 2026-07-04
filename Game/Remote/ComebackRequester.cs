@@ -5,42 +5,32 @@ using FujinTerm.Services.Patterns;
 
 namespace FujinTerm.Game.Remote;
 
-/// <summary>
-/// Follower-side <c>@comeback</c> sender. When the party leader walks off
-/// and a movement-blocking condition leaves us behind, this telepaths
-/// <c>@comeback &lt;map&gt;/&lt;room&gt;</c> (or a bare <c>@comeback</c>)
-/// to the leader so their <see cref="PartyComebackManager"/> recovers us.
-/// </summary>
-/// <remarks>
-/// <para>
-/// <b>Disambiguating "left behind" from a deliberate unfollow.</b> The
-/// game prints <c>"You are no longer following X."</c> for three distinct
-/// situations: the leader uninvited us, we issued our own <c>unfollow</c>,
-/// or we genuinely couldn't keep up. Only the third warrants an automatic
-/// <c>@comeback</c>. The tell is a movement-failure line fired the instant
-/// before — <c>"You can't seem to move anywhere!"</c> (a prevents-movement
-/// gamedata flag) or <c>"...too heavy to move"</c> (over-encumbered). If
-/// one of those landed inside <see cref="LeftBehindWindow"/> of the
-/// "no longer following" line, we were stranded; otherwise it was
-/// deliberate and we stay quiet.
-/// </para>
-/// <para>
-/// The leader's name comes from the <c>"no longer following"</c> line's
-/// capture group (already a given/first name — the <c>\w+</c> pattern
-/// never spans a space). The room comes from
-/// <see cref="RoomTracker"/> when its confidence is
-/// <see cref="RoomConfidence.Confirmed"/>; otherwise we send a bare
-/// <c>@comeback</c> and let the leader backtrack to find us.
-/// </para>
-/// </remarks>
+// Follower-side @comeback sender. When the party leader walks off and a
+// movement-blocking condition leaves us behind, this telepaths
+// @comeback <map>/<room> (or a bare @comeback) to the leader so their
+// PartyComebackManager recovers us.
+//
+// Disambiguating "left behind" from a deliberate unfollow. The game prints
+// "You are no longer following X." for three distinct situations: the leader
+// uninvited us, we issued our own unfollow, or we genuinely couldn't keep up.
+// Only the third warrants an automatic @comeback. The tell is a movement-failure
+// line fired the instant before — "You can't seem to move anywhere!" (a
+// prevents-movement gamedata flag) or "...too heavy to move" (over-encumbered).
+// If one of those landed inside LeftBehindWindow of the "no longer following"
+// line, we were stranded; otherwise it was deliberate and we stay quiet.
+//
+// The leader's name comes from the "no longer following" line's capture group
+// (already a given/first name — the \w+ pattern never spans a space). The room
+// comes from RoomTracker when its confidence is Confirmed; otherwise we send a
+// bare @comeback and let the leader backtrack to find us.
 public sealed class ComebackRequester : IDisposable
 {
     private const string LogCategory = "Comeback";
 
-    /// <summary>Maximum gap between a movement-failure line and the
-    /// following <c>"You are no longer following X."</c> for the pair to
-    /// count as a genuine left-behind. A deliberate uninvite/unfollow has
-    /// no preceding failure, so its gap is effectively infinite.</summary>
+    // Maximum gap between a movement-failure line and the following
+    // "You are no longer following X." for the pair to count as a genuine
+    // left-behind. A deliberate uninvite/unfollow has no preceding failure, so
+    // its gap is effectively infinite.
     private static readonly TimeSpan LeftBehindWindow = TimeSpan.FromSeconds(3);
 
     private readonly RoomTracker _tracker;
@@ -51,17 +41,14 @@ public sealed class ComebackRequester : IDisposable
     private DateTimeOffset _moveFailedAt = DateTimeOffset.MinValue;
     private bool _disposed;
 
-    /// <summary>Test seam for the clock so the
-    /// <see cref="LeftBehindWindow"/> gate is deterministic.</summary>
+    // Test seam for the clock so the LeftBehindWindow gate is deterministic.
     internal Func<DateTimeOffset> NowProvider { get; set; } = static () => DateTimeOffset.Now;
 
-    /// <summary>Mirrors
-    /// <see cref="Models.Profile.OtherSettings.AutoRequestComebackWhenLeftBehind"/>.
-    /// When false, left-behind detection still runs but no
-    /// <c>@comeback</c> is sent.</summary>
+    // Mirrors OtherSettings.AutoRequestComebackWhenLeftBehind. When false,
+    // left-behind detection still runs but no @comeback is sent.
     public bool Enabled { get; set; } = true;
 
-    /// <summary>Test-visible record of every wire payload sent.</summary>
+    // Test-visible record of every wire payload sent.
     internal List<byte[]> LastSentForTests { get; } = new();
 
     public ComebackRequester(MessageRouter router, RoomTracker tracker, LogService? log = null)
@@ -76,8 +63,8 @@ public sealed class ComebackRequester : IDisposable
         _subs.Add(router.Subscribe(KnownPatterns.PartyYouNoLongerFollowing, OnNoLongerFollowing));
     }
 
-    /// <summary>Bind the outbound wire — the same
-    /// <c>TelnetClient.SendAsync</c> wrapper the other engines use.</summary>
+    // Bind the outbound wire — the same TelnetClient.SendAsync wrapper the other
+    // engines use.
     public void SetWireSender(Action<byte[]> sender)
     {
         ArgumentNullException.ThrowIfNull(sender);

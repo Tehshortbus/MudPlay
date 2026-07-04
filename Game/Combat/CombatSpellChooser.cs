@@ -2,59 +2,40 @@ using FujinTerm.Models.Profile;
 
 namespace FujinTerm.Game.Combat;
 
-/// <summary>
-/// Phase 9 PR 9.A (spell extension) — per-round combat-spell decision unit.
-/// Pure decision + room-scoped cast bookkeeping; holds NO wire state. The
-/// owning <see cref="CombatManager"/> calls <see cref="Choose"/> once per
-/// attack decision, sends the resulting cast (or its weapon swing for
-/// <see cref="CombatSpellAction.WeaponAttack"/>), then calls
-/// <see cref="MarkCast"/> on a successful send so the per-room counters
-/// stay accurate vs what actually reached the server.
-/// <see cref="ResetForNewRoom"/> wipes the bookkeeping when the room
-/// clears.
-/// </summary>
-/// <remarks>
-/// <para>
-/// <see cref="Choose"/> resolves the round's <b>combat action</b> (the
-/// 1/round physical swing XOR attack spell — a spell IS the round's action,
-/// it does not stack with a swing). Debuffing is an <b>in-between action</b>
-/// (≤1/round), resolved separately by <see cref="ChooseDebuff"/> and cast
-/// through the shared in-between window, so it never appears in the
-/// combat-action walk below.
-/// </para>
-/// <list type="number">
-/// <item><b>Backstab gate</b> — only when ranked at
-/// <see cref="CombatSettings.PriorityBackstab"/> 1 AND a backstab is still
-/// pending (sneaking + <see cref="CombatSettings.DoBackstab"/>). The opener
-/// is the round's action or nothing — a mid-round BS attempt is a guaranteed
-/// fail, so at any other rank the category is ignored entirely. When it
-/// fires the chooser returns <see cref="CombatSpellAction.Backstab"/> so the
-/// engine's BS path owns the swing and no spell goes out.</item>
-/// <item><b>Attack</b> — <see cref="CombatSettings.MultiAttackSpell"/>
-/// while its conditions hold (room count ≥ MinEnemies, mana, cast cap);
-/// it stays selected round after round until a condition fails (mana
-/// runs out, cap reached, or the room thins below MinEnemies as mobs
-/// die). When multi-attack no longer qualifies, fall to
-/// <see cref="CombatSettings.NormalAttackSpell"/>, then
-/// <see cref="CombatSettings.AlternateAttackSpell"/>, then the engine's
-/// weapon attack command.</item>
-/// </list>
-/// <para>
-/// Mana gating reads <see cref="CombatSettings.SpellManaThresholdMode"/>:
-/// <see cref="ThresholdMode.Percentage"/> treats
-/// <see cref="CombatSpellSlot.MinManaPerCast"/> as a 0–100 share of max
-/// MA; <see cref="ThresholdMode.Absolute"/> treats it as raw points. A
-/// debuff that can't meet its mana gate this round is skipped (we fall
-/// through to the attack phase) rather than stalling the round.
-/// </para>
-/// <para>
-/// Damage-immunity fallback (priest <c>harm</c> vs an acid slime, etc.)
-/// is intentionally NOT handled here yet — it needs the server's
-/// spell-no-effect message wording, which isn't modelled. When that
-/// lands, the engine marks the target's primary attack spell as
-/// ineffective and the chooser skips it to the alternate.
-/// </para>
-/// </remarks>
+// Per-round combat-spell decision unit. Pure decision + room-scoped cast
+// bookkeeping; holds NO wire state. The owning CombatManager calls Choose once
+// per attack decision, sends the resulting cast (or its weapon swing for
+// WeaponAttack), then calls MarkCast on a successful send so the per-room
+// counters stay accurate vs what actually reached the server. ResetForNewRoom
+// wipes the bookkeeping when the room clears.
+//
+// Choose resolves the round's combat action (the 1/round physical swing XOR
+// attack spell — a spell IS the round's action, it does not stack with a
+// swing). Debuffing is an in-between action (≤1/round), resolved separately by
+// ChooseDebuff and cast through the shared in-between window, so it never
+// appears in the combat-action walk below.
+//
+// 1. Backstab gate — only when ranked at PriorityBackstab 1 AND a backstab is
+//    still pending (sneaking + DoBackstab). The opener is the round's action or
+//    nothing — a mid-round BS attempt is a guaranteed fail, so at any other rank
+//    the category is ignored entirely. When it fires the chooser returns
+//    Backstab so the engine's BS path owns the swing and no spell goes out.
+// 2. Attack — MultiAttackSpell while its conditions hold (room count ≥
+//    MinEnemies, mana, cast cap); it stays selected round after round until a
+//    condition fails (mana runs out, cap reached, or the room thins below
+//    MinEnemies as mobs die). When multi-attack no longer qualifies, fall to
+//    NormalAttackSpell, then AlternateAttackSpell, then the engine's weapon
+//    attack command.
+//
+// Mana gating reads SpellManaThresholdMode: Percentage treats MinManaPerCast as
+// a 0–100 share of max MA; Absolute treats it as raw points. A debuff that can't
+// meet its mana gate this round is skipped (we fall through to the attack phase)
+// rather than stalling the round.
+//
+// Damage-immunity fallback (priest harm vs an acid slime, etc.) is intentionally
+// NOT handled here yet — it needs the server's spell-no-effect message wording,
+// which isn't modelled. When that lands, the engine marks the target's primary
+// attack spell as ineffective and the chooser skips it to the alternate.
 public sealed class CombatSpellChooser
 {
     private bool _areaDebuffCast;
@@ -65,8 +46,8 @@ public sealed class CombatSpellChooser
     private readonly HashSet<string> _singleDebuffedTargets =
         new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>Reset all per-room cast bookkeeping. Call when the room
-    /// clears / the engine starts a fresh engagement.</summary>
+    // Reset all per-room cast bookkeeping. Call when the room clears / the engine
+    // starts a fresh engagement.
     public void ResetForNewRoom()
     {
         _areaDebuffCast = false;
@@ -77,10 +58,9 @@ public sealed class CombatSpellChooser
         _singleDebuffedTargets.Clear();
     }
 
-    /// <summary>The four combat categories in canonical order. Used as the
-    /// tie-break when two categories share a priority value, so duplicate
-    /// numbers resolve to the historical Backstab → Debuffing → Spells →
-    /// Physical fallback.</summary>
+    // The four combat categories in canonical order. Used as the tie-break when
+    // two categories share a priority value, so duplicate numbers resolve to the
+    // historical Backstab → Debuffing → Spells → Physical fallback.
     private static readonly CombatCategory[] Canonical =
     {
         CombatCategory.Backstab,
@@ -89,16 +69,12 @@ public sealed class CombatSpellChooser
         CombatCategory.Physical,
     };
 
-    /// <summary>
-    /// Pick the next combat action for the current round. Pure — does not
-    /// mutate counters; the caller commits the choice via
-    /// <see cref="MarkCast"/> only when the cast actually reaches the wire.
-    /// Walks the four categories in the user-configured priority order
-    /// (<see cref="CombatSettings.PriorityBackstab"/> etc.); the first
-    /// applicable category owns the round. Physical (the weapon swing) is
-    /// the terminal category — always applicable — so the loop always
-    /// resolves.
-    /// </summary>
+    // Pick the next combat action for the current round. Pure — does not mutate
+    // counters; the caller commits the choice via MarkCast only when the cast
+    // actually reaches the wire. Walks the four categories in the user-configured
+    // priority order (PriorityBackstab etc.); the first applicable category owns
+    // the round. Physical (the weapon swing) is the terminal category — always
+    // applicable — so the loop always resolves.
     public CombatSpellDecision Choose(CombatSettings settings, in CombatSpellContext ctx)
     {
         ArgumentNullException.ThrowIfNull(settings);
@@ -138,17 +114,14 @@ public sealed class CombatSpellChooser
         return CombatSpellDecision.Weapon;
     }
 
-    /// <summary>
-    /// Pick the in-between debuff for the current round, or <c>null</c> when
-    /// no debuff applies. Debuffing is an in-between action (≤1/round) in the
-    /// realm's round model — NOT a combat action — so it's resolved here,
-    /// separately from <see cref="Choose"/>, and cast through the shared
-    /// in-between window (<c>CastingDirector</c>) rather than the combat-action
-    /// path. Area debuff takes precedence and excludes single (once per room
-    /// when <see cref="CombatSpellSlot.MinEnemies"/> is met); otherwise the
-    /// single-target debuff fires once on every new target. Pure — the caller
-    /// commits via <see cref="MarkCast"/> only when the cast reaches the wire.
-    /// </summary>
+    // Pick the in-between debuff for the current round, or null when no debuff
+    // applies. Debuffing is an in-between action (≤1/round) in the realm's round
+    // model — NOT a combat action — so it's resolved here, separately from
+    // Choose, and cast through the shared in-between window (CastingDirector)
+    // rather than the combat-action path. Area debuff takes precedence and
+    // excludes single (once per room when MinEnemies is met); otherwise the
+    // single-target debuff fires once on every new target. Pure — the caller
+    // commits via MarkCast only when the cast reaches the wire.
     public CombatSpellDecision? ChooseDebuff(CombatSettings settings, in CombatSpellContext ctx)
     {
         ArgumentNullException.ThrowIfNull(settings);
@@ -156,9 +129,9 @@ public sealed class CombatSpellChooser
         return TryDebuffing(settings, ctx, settings.SpellManaThresholdMode);
     }
 
-    /// <summary>Debuffing phase. Area takes precedence and excludes
-    /// single (matches the historical behaviour). Returns <c>null</c> when
-    /// nothing in the category can fire this round.</summary>
+    // Debuffing phase. Area takes precedence and excludes single (matches the
+    // historical behaviour). Returns null when nothing in the category can fire
+    // this round.
     private CombatSpellDecision? TryDebuffing(
         CombatSettings settings, in CombatSpellContext ctx, ThresholdMode mode)
     {
@@ -187,9 +160,9 @@ public sealed class CombatSpellChooser
         return null;
     }
 
-    /// <summary>Attack-spell phase: multi-attack room spell while it
-    /// qualifies, then normal, then alternate single-target damage spells.
-    /// Returns <c>null</c> when none can fire this round.</summary>
+    // Attack-spell phase: multi-attack room spell while it qualifies, then
+    // normal, then alternate single-target damage spells. Returns null when none
+    // can fire this round.
     private CombatSpellDecision? TryAttackSpell(
         CombatSettings settings, in CombatSpellContext ctx, ThresholdMode mode)
     {
@@ -222,9 +195,9 @@ public sealed class CombatSpellChooser
         return null;
     }
 
-    /// <summary>In-place insertion sort of the four categories by configured
-    /// priority (ascending), tie-breaking on canonical index. Four elements,
-    /// so insertion sort is both the simplest and the fastest stable option.</summary>
+    // In-place insertion sort of the four categories by configured priority
+    // (ascending), tie-breaking on canonical index. Four elements, so insertion
+    // sort is both the simplest and the fastest stable option.
     private static void SortByPriority(Span<CombatCategory> order, CombatSettings settings)
     {
         for (int i = 1; i < order.Length; i++)
@@ -241,9 +214,8 @@ public sealed class CombatSpellChooser
         }
     }
 
-    /// <summary>True when category <paramref name="a"/> should sort AFTER
-    /// <paramref name="b"/> (i.e. <paramref name="b"/> fires first): higher
-    /// priority value, or equal value with a later canonical index.</summary>
+    // True when category a should sort AFTER b (i.e. b fires first): higher
+    // priority value, or equal value with a later canonical index.
     private static bool IsHigher(CombatCategory a, int aPri, CombatCategory b, int bPri) =>
         aPri > bPri || (aPri == bPri && CanonicalIndex(a) > CanonicalIndex(b));
 
@@ -265,14 +237,10 @@ public sealed class CombatSpellChooser
         _ => int.MaxValue,
     };
 
-    /// <summary>
-    /// Record that the engine successfully sent the cast for
-    /// <paramref name="decision"/> against <paramref name="targetRawName"/>.
-    /// No-op for <see cref="CombatSpellAction.WeaponAttack"/>. Keeps the
-    /// per-room counters in step with what actually went to the server, so
-    /// a cast blocked by <see cref="Spells.CastCoordinator"/>'s cooldown
-    /// isn't counted.
-    /// </summary>
+    // Record that the engine successfully sent the cast for decision against
+    // targetRawName. No-op for WeaponAttack. Keeps the per-room counters in step
+    // with what actually went to the server, so a cast blocked by
+    // CastCoordinator's cooldown isn't counted.
     public void MarkCast(in CombatSpellDecision decision, string targetRawName)
     {
         switch (decision.Action)
@@ -303,28 +271,25 @@ public sealed class CombatSpellChooser
     private static bool IsConfigured(CombatSpellSlot slot) =>
         !string.IsNullOrWhiteSpace(slot.SpellName);
 
-    /// <summary>The current target's species is immune to this single-target
-    /// attack spell (a prior "Your spell has no effect on X." landed). Only
-    /// the single-target attack slots are gated — multi-attack room spells
-    /// are never marked immune (one immune mob doesn't mean the spell isn't
-    /// damaging the rest of the room).</summary>
+    // The current target's species is immune to this single-target attack spell
+    // (a prior "Your spell has no effect on X." landed). Only the single-target
+    // attack slots are gated — multi-attack room spells are never marked immune
+    // (one immune mob doesn't mean the spell isn't damaging the rest of the
+    // room).
     private static bool IsImmune(in CombatSpellContext ctx, CombatSpellAction action) =>
         ctx.ImmuneAttackSpells is { } set && set.Contains(action);
 
-    /// <summary>The current target's <c>SpellImmu</c> level deterministically
-    /// blocks this single-target spell (its <c>ReqLevel</c> &lt; the monster's
-    /// immunity), per game data — distinct from the observed "no effect"
-    /// immunity in <see cref="IsImmune"/>. Only the single-target slots
-    /// (<see cref="CombatSpellAction.SingleDebuff"/> /
-    /// <see cref="CombatSpellAction.NormalAttackSpell"/> /
-    /// <see cref="CombatSpellAction.AlternateAttackSpell"/>) are level-gated;
-    /// area / multi room spells hit the whole room, so one immune occupant
-    /// doesn't disqualify them.</summary>
+    // The current target's SpellImmu level deterministically blocks this
+    // single-target spell (its ReqLevel < the monster's immunity), per game data
+    // — distinct from the observed "no effect" immunity in IsImmune. Only the
+    // single-target slots (SingleDebuff / NormalAttackSpell /
+    // AlternateAttackSpell) are level-gated; area / multi room spells hit the
+    // whole room, so one immune occupant doesn't disqualify them.
     private static bool IsLevelBlocked(in CombatSpellContext ctx, CombatSpellAction action) =>
         ctx.LevelBlockedActions is { } set && set.Contains(action);
 
-    /// <summary>Under the per-room cast cap. <c>null</c> = no limit;
-    /// <c>0</c> = never cast (explicit off); <c>N</c> = fire until N reached.</summary>
+    // Under the per-room cast cap. null = no limit; 0 = never cast (explicit
+    // off); N = fire until N reached.
     private static bool CastsOk(CombatSpellSlot slot, int castsSoFar) =>
         slot.MaxCastsPerRoom is not { } cap || castsSoFar < cap;
 
@@ -340,10 +305,9 @@ public sealed class CombatSpellChooser
     }
 }
 
-/// <summary>The combat action a <see cref="CombatSpellChooser"/> picks for
-/// a round. <see cref="WeaponAttack"/> means "no spell — fall through to
-/// the engine's weapon attack command"; <see cref="Backstab"/> means "send
-/// the backstab verb" (also no spell). Both carry a <c>null</c> spell.</summary>
+// The combat action a CombatSpellChooser picks for a round. WeaponAttack means
+// "no spell — fall through to the engine's weapon attack command"; Backstab
+// means "send the backstab verb" (also no spell). Both carry a null spell.
 public enum CombatSpellAction
 {
     WeaponAttack = 0,
@@ -355,9 +319,8 @@ public enum CombatSpellAction
     Backstab,
 }
 
-/// <summary>The four orderable combat categories. Each maps to a
-/// <see cref="CombatSettings"/> priority field; the chooser walks them in
-/// ascending priority order.</summary>
+// The four orderable combat categories. Each maps to a CombatSettings priority
+// field; the chooser walks them in ascending priority order.
 internal enum CombatCategory
 {
     Backstab,
@@ -366,42 +329,34 @@ internal enum CombatCategory
     Physical,
 }
 
-/// <summary>One round's chosen combat action plus the cast-code to send
-/// (<c>null</c> for <see cref="CombatSpellAction.WeaponAttack"/> and
-/// <see cref="CombatSpellAction.Backstab"/>).</summary>
+// One round's chosen combat action plus the cast-code to send (null for
+// WeaponAttack and Backstab).
 public readonly record struct CombatSpellDecision(CombatSpellAction Action, string? Spell)
 {
-    /// <summary>Shared "no spell, swing the weapon" result.</summary>
+    // Shared "no spell, swing the weapon" result.
     public static readonly CombatSpellDecision Weapon =
         new(CombatSpellAction.WeaponAttack, null);
 
-    /// <summary>Shared "no spell, send the backstab verb" result.</summary>
+    // Shared "no spell, send the backstab verb" result.
     public static readonly CombatSpellDecision Backstab =
         new(CombatSpellAction.Backstab, null);
 }
 
-/// <summary>Per-round inputs the <see cref="CombatSpellChooser"/> reads.
-/// <paramref name="EnemyCount"/> is the engageable-monster count in the
-/// room; <paramref name="TargetRawName"/> is the current pick's
-/// per-instance name (keys the once-per-target single-debuff set);
-/// <paramref name="Mana"/>/<paramref name="MaxMana"/> drive the
-/// per-cast mana gate; <paramref name="BackstabPending"/> is true while a
-/// sneak backstab still owes its opening round;
-/// <paramref name="ImmuneAttackSpells"/> is the set of single-target attack
-/// actions the current target's species has proven immune to this room
-/// (<c>null</c> when nothing is immune);
-/// <paramref name="SpellsAvailable"/> is false when the engine has no combat
-/// spell caster wired, so the Debuffing / Spells categories are skipped and
-/// the order collapses to Backstab vs Physical;
-/// <paramref name="LevelBlockedActions"/> is the set of single-target spell
-/// actions the current target's <c>SpellImmu</c> level deterministically
-/// blocks (their <c>ReqLevel</c> &lt; the monster's immunity), or <c>null</c>
-/// when nothing is level-blocked;
-/// <paramref name="AllowNukes"/> is the Auto-Nuke auto-engine gate — when
-/// false the chooser never offers the multi-target attack spell or either
-/// debuff (the single-target Normal / Alternate attack spells are NOT nukes
-/// and stay available). Defaults true so unwired callers / tests behave as
-/// before.</summary>
+// Per-round inputs the CombatSpellChooser reads. EnemyCount is the
+// engageable-monster count in the room; TargetRawName is the current pick's
+// per-instance name (keys the once-per-target single-debuff set); Mana/MaxMana
+// drive the per-cast mana gate; BackstabPending is true while a sneak backstab
+// still owes its opening round; ImmuneAttackSpells is the set of single-target
+// attack actions the current target's species has proven immune to this room
+// (null when nothing is immune); SpellsAvailable is false when the engine has no
+// combat spell caster wired, so the Debuffing / Spells categories are skipped
+// and the order collapses to Backstab vs Physical; LevelBlockedActions is the
+// set of single-target spell actions the current target's SpellImmu level
+// deterministically blocks (their ReqLevel < the monster's immunity), or null
+// when nothing is level-blocked; AllowNukes is the Auto-Nuke auto-engine gate —
+// when false the chooser never offers the multi-target attack spell or either
+// debuff (the single-target Normal / Alternate attack spells are NOT nukes and
+// stay available). Defaults true so unwired callers / tests behave as before.
 public readonly record struct CombatSpellContext(
     int EnemyCount,
     string TargetRawName,

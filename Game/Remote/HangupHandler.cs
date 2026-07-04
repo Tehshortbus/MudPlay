@@ -4,36 +4,23 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game.Remote;
 
-/// <summary>
-/// Consumer of <see cref="RemoteCommandManager"/> for the
-/// <c>HangupDisconnect</c> permission category. Currently registers
-/// only the <c>@hangup</c> handler — raises the
-/// <see cref="HangupSignal"/> "intentional hangup" intent and sends
-/// the configured <see cref="GameCommands.ExitCommand"/> (default
-/// <c>=x</c>) to the wire when an authorised sender requests it.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Sender authorisation is handled by the engine via
-/// <see cref="RemoteCommandCatalog"/> — only players whose
-/// <see cref="PlayerCustomization.RemoteControls"/> includes
-/// <see cref="PlayerRemoteControls.HangupDisconnect"/> can fire this
-/// handler. Default deny for unknown players.
-/// </para>
-/// <para>
-/// The <see cref="HangupSignal.SignalHangup"/> call raises both the
-/// disconnect-intent and entry-suppression flags BEFORE the wire
-/// command lands, so MainWindowViewModel's Disconnected handler
-/// classifies the drop as <c>HangupInitiated</c> (no reactive
-/// auto-reconnect) and MainMenuEntryAutomation skips arming the
-/// entry latch on the next manual reconnect — user reads what's on
-/// the screen and types their entry command themselves. The
-/// post-entry <c>stat</c>/<c>exp</c>/<c>i</c> refresh stays off the
-/// wire too, since it only fires alongside the auto-entry. Future
-/// hang-up-if-naked / hang-up-if-low-HP automation reuses the same
-/// signal pattern.
-/// </para>
-/// </remarks>
+// The HangupDisconnect permission category. Currently registers only the
+// @hangup handler — raises the HangupSignal "intentional hangup" intent and
+// sends the configured GameCommands.ExitCommand (default =x) to the wire when an
+// authorised sender requests it.
+//
+// Sender authorisation is handled by the engine via RemoteCommandCatalog — only
+// players whose RemoteControls includes HangupDisconnect can fire this handler.
+// Default deny for unknown players.
+//
+// The SignalHangup call raises both the disconnect-intent and entry-suppression
+// flags BEFORE the wire command lands, so MainWindowViewModel's Disconnected
+// handler classifies the drop as HangupInitiated (no reactive auto-reconnect)
+// and MainMenuEntryAutomation skips arming the entry latch on the next manual
+// reconnect — user reads what's on the screen and types their entry command
+// themselves. The post-entry stat/exp/i refresh stays off the wire too, since it
+// only fires alongside the auto-entry. Future hang-up-if-naked / hang-up-if-low-HP
+// automation reuses the same signal pattern.
 public sealed class HangupHandler : IDisposable
 {
     private static readonly string[] RegisteredCommands = { "@hangup" };
@@ -59,26 +46,20 @@ public sealed class HangupHandler : IDisposable
         _engine.RegisterHandler("@hangup", category, OnHangup);
     }
 
-    /// <summary>
-    /// Bind the wire-sender — same shape as PartyEssentialHandlers.
-    /// MainWindowViewModel supplies <c>SendUserInput</c>. Without it
-    /// the handler still authorises the @hangup AND raises the
-    /// HangupSignal intent flags, but produces no actual wire
-    /// output — useful for tests.
-    /// </summary>
+    // Bind the wire-sender — same shape as PartyEssentialHandlers.
+    // MainWindowViewModel supplies SendUserInput. Without it the handler still
+    // authorises the @hangup AND raises the HangupSignal intent flags, but
+    // produces no actual wire output — useful for tests.
     public void SetWireSender(Action<byte[]> sender)
     {
         ArgumentNullException.ThrowIfNull(sender);
         _wireSender = sender;
     }
 
-    /// <summary>
-    /// Bind the master "Disable hangups" check. When it returns
-    /// <c>true</c>, <c>@hangup</c> is a no-op — the user has declared the
-    /// client may only disconnect on an explicit local action, so a
-    /// remote sender can't drop the carrier. Read live so a mid-session
-    /// toggle takes effect immediately.
-    /// </summary>
+    // Bind the master "Disable hangups" check. When it returns true, @hangup is a
+    // no-op — the user has declared the client may only disconnect on an explicit
+    // local action, so a remote sender can't drop the carrier. Read live so a
+    // mid-session toggle takes effect immediately.
     public void SetHangupsDisabledCheck(Func<bool> disabled)
     {
         ArgumentNullException.ThrowIfNull(disabled);

@@ -7,38 +7,23 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game.Remote;
 
-/// <summary>
-/// First consumer of <see cref="RemoteCommandManager"/>. Registers the
-/// party-essential @-commands the Phase 6 spec ships:
-/// </summary>
-/// <remarks>
-/// <list type="bullet">
-///   <item><b>Query-tier</b> — <c>@version</c>, <c>@health</c>, <c>@status</c>,
-///         <c>@lives</c>, <c>@where</c>. Each replies via the channel
-///         the command arrived on with a short response derived from
-///         local state (<see cref="PlayerState"/>, <see cref="PartyState"/>,
-///         <see cref="PlayerStats"/>). <c>@where</c> ships a placeholder
-///         reply here — Phase 7's RoomTracker enriches it when room
-///         state is available.</item>
-///   <item><b>Party whitelist</b> — <c>@party &lt;sub&gt;</c>. Dispatches
-///         on the first arg token to translate the leader's directive
-///         (<c>attack</c> / <c>rest</c> / <c>meditate</c> / <c>go &lt;dir&gt;</c>
-///         / <c>stat</c> / <c>i</c> / <c>par</c>) into the corresponding
-///         local command sent via the engine's wire-sender.</item>
-///   <item><b>Receive-only signalling</b> — <c>@wait</c> / <c>@ok</c>.
-///         Recorded in <see cref="WaitingMembers"/> for PR 6.7 to consume
-///         when it wires the pause-gate registration. Until then the
-///         handlers just track who's currently asking the party to wait.</item>
-/// </list>
-/// <para>
-/// Lifetime: registered once at <see cref="AppServices"/> construction
-/// after the engine ships. Disposal unregisters every command so
-/// repeated AppServices builds in tests don't leak handler entries.
-/// </para>
-/// </remarks>
+// The party-essential @-commands:
+//   - Query-tier — @version, @health, @status, @lives, @where. Each replies via
+//     the channel the command arrived on with a short response derived from local
+//     state (PlayerState, PartyState, PlayerStats).
+//   - Party whitelist — @party <sub>. Dispatches on the first arg token to
+//     translate the leader's directive (attack / rest / meditate / go <dir> /
+//     stat / i / par) into the corresponding local command sent via the engine's
+//     wire-sender.
+//   - Receive-only signalling — @wait / @ok. Recorded in WaitingMembers, which
+//     the pause-gate reads to decide whether to hold automation.
+//
+// Lifetime: registered once at AppServices construction after the engine ships.
+// Disposal unregisters every command so repeated AppServices builds in tests
+// don't leak handler entries.
 public sealed class PartyEssentialHandlers : IDisposable
 {
-    /// <summary>Commands this consumer registers. Used by <see cref="Dispose"/> to clean up.</summary>
+    // Commands this consumer registers. Used by Dispose to clean up.
     private static readonly string[] RegisteredCommands =
     {
         "@version", "@health", "@status", "@where", "@who", "@path",
@@ -56,27 +41,19 @@ public sealed class PartyEssentialHandlers : IDisposable
     private Action<byte[]>? _wireSender;
     private bool _disposed;
 
-    /// <summary>
-    /// Player names currently asking the party to <c>@wait</c>. Removed
-    /// when the same player sends <c>@ok</c>. PR 6.7's pause-gate
-    /// registration reads this set to decide whether the auto-walker /
-    /// combat engine should hold off. Case-insensitive.
-    /// </summary>
+    // Player names currently asking the party to @wait. Removed when the same
+    // player sends @ok. The pause-gate reads this set to decide whether the
+    // auto-walker / combat engine should hold off. Case-insensitive.
     public HashSet<string> WaitingMembers { get; } = new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>
-    /// Pause-gate read consumed by Phase 12 automation engines (auto-walk,
-    /// auto-combat, etc.) — true whenever at least one party member has
-    /// asked us to <c>@wait</c> and hasn't yet sent <c>@ok</c>. Cheap to
-    /// poll; engines either check before each tick or subscribe to
-    /// <see cref="PauseGateChanged"/> for edge-triggered notification.
-    /// </summary>
+    // Pause-gate read consumed by automation engines (auto-walk, auto-combat,
+    // etc.) — true whenever at least one party member has asked us to @wait and
+    // hasn't yet sent @ok. Cheap to poll; engines either check before each tick or
+    // subscribe to PauseGateChanged for edge-triggered notification.
     public bool IsPaused => WaitingMembers.Count > 0;
 
-    /// <summary>
-    /// Fires on every transition of <see cref="IsPaused"/>. Lets the
-    /// pause-gate consumer drop a single subscription instead of polling.
-    /// </summary>
+    // Fires on every transition of IsPaused. Lets the pause-gate consumer drop a
+    // single subscription instead of polling.
     public event Action<bool>? PauseGateChanged;
 
     public PartyEssentialHandlers(
@@ -99,11 +76,10 @@ public sealed class PartyEssentialHandlers : IDisposable
         _readRoomEntities = readRoomEntities;
         _readMovement = readMovement;
 
-        // Categories sourced from RemoteCommandCatalog — single source
-        // of truth for every documented @-command's required permission
-        // category. Hardcoding the category per RegisterHandler call
-        // led to drift; routing through the catalog keeps Phase 6 and
-        // future Phase 7 / 12 handlers consistent with the wiki + the
+        // Categories sourced from RemoteCommandCatalog — single source of truth
+        // for every documented @-command's required permission category.
+        // Hardcoding the category per RegisterHandler call led to drift; routing
+        // through the catalog keeps every handler consistent with the
         // Players-tab 12-checkbox UI.
         Register("@version", OnVersion);
         Register("@health",  OnHealth);
@@ -119,12 +95,9 @@ public sealed class PartyEssentialHandlers : IDisposable
         Register("@join",    OnJoin);
     }
 
-    /// <summary>
-    /// Bind the wire-sender. Required for <see cref="OnParty"/> to forward
-    /// the party-leader's directive as a local command. Same signature
-    /// shape as <see cref="MacroDispatcher.SetSender"/>; the main-window
-    /// VM provides <c>SendUserInput</c>.
-    /// </summary>
+    // Bind the wire-sender. Required for OnParty to forward the party-leader's
+    // directive as a local command. Same signature shape as
+    // MacroDispatcher.SetSender; the main-window VM provides SendUserInput.
     public void SetWireSender(Action<byte[]> sender)
     {
         ArgumentNullException.ThrowIfNull(sender);
@@ -138,14 +111,10 @@ public sealed class PartyEssentialHandlers : IDisposable
         foreach (string cmd in RegisteredCommands) _engine.UnregisterHandler(cmd);
     }
 
-    /// <summary>
-    /// Wrapper around <see cref="RemoteCommandManager.RegisterHandler"/>
-    /// that pulls the required category from
-    /// <see cref="RemoteCommandCatalog"/>. Throws if the command isn't in
-    /// the catalog — Phase 6 handlers are catalog-backed by definition,
-    /// so a missing entry means the catalog needs updating, not the
-    /// handler.
-    /// </summary>
+    // Wrapper around RemoteCommandManager.RegisterHandler that pulls the required
+    // category from RemoteCommandCatalog. Throws if the command isn't in the
+    // catalog — these handlers are catalog-backed by definition, so a missing
+    // entry means the catalog needs updating, not the handler.
     private void Register(string command, Action<RemoteCommandContext> handler)
     {
         if (!RemoteCommandCatalog.TryGetCategory(command, out PlayerRemoteControls category))
@@ -157,9 +126,9 @@ public sealed class PartyEssentialHandlers : IDisposable
     // ----- Query handlers -------------------------------------------------
 
     private void OnVersion(RemoteCommandContext ctx) =>
-        // Matches the format other clients use for the same query
-        // (e.g. MegaMUD replies "{MegaMud 1.03u}"): "<name> <version>"
-        // bracketed by the engine's SendReply at wire time.
+        // Matches the format other clients use for the same query (e.g. MegaMUD
+        // replies "{MegaMud 1.03u}"): "<name> <version>" bracketed by the engine's
+        // SendReply at wire time.
         ctx.Reply(AppInfo.DisplayNameWithVersion);
 
     private void OnHealth(RemoteCommandContext ctx)
@@ -196,19 +165,14 @@ public sealed class PartyEssentialHandlers : IDisposable
         ctx.Reply(_player.Position.ToString());
     }
 
-    /// <summary>
-    /// Status form of <c>@party</c> (no args, or any channel other
-    /// than Local). Three exclusive outcomes:
-    /// <list type="bullet">
-    ///   <item>solo (no active party) → <c>no active party</c></item>
-    ///   <item>self is following → <c>I'm following &lt;leader-given&gt;</c></item>
-    ///   <item>self is leading → <c>I'm leading: &lt;follower-given&gt;, …</c></item>
-    /// </list>
-    /// Followers list is given-names only, in roster order, skipping
-    /// self + leader. Family names are omitted because MajorMUD
-    /// commands and the rest of the @-command layer only ever address
-    /// players by their given name.
-    /// </summary>
+    // Status form of @party (no args, or any channel other than Local). Three
+    // exclusive outcomes:
+    //   - solo (no active party) → no active party
+    //   - self is following → I'm following <leader-given>
+    //   - self is leading → I'm leading: <follower-given>, …
+    // Followers list is given-names only, in roster order, skipping self + leader.
+    // Family names are omitted because MajorMUD commands and the rest of the
+    // @-command layer only ever address players by their given name.
     private void OnPartyStatus(RemoteCommandContext ctx)
     {
         if (!_party.IsInParty || _party.Members.Count == 0)
@@ -238,14 +202,11 @@ public sealed class PartyEssentialHandlers : IDisposable
             : $"I'm leading: {string.Join(", ", followers)}");
     }
 
-    /// <summary>
-    /// <c>@where</c> — reply with the current room's name, exits, and
-    /// (Map, Room) key. Reads the live <see cref="RoomTracker"/> snapshot
-    /// through the injected <see cref="_readCurrentRoom"/> accessor; a
-    /// <c>null</c> room (tracker Unknown / Lost, or no game data loaded
-    /// yet) yields a "Location unknown" reply rather than an empty body.
-    /// The engine wraps the payload in <c>{ }</c> at SendReply time.
-    /// </summary>
+    // @where — reply with the current room's name, exits, and (Map, Room) key.
+    // Reads the live RoomTracker snapshot through the injected _readCurrentRoom
+    // accessor; a null room (tracker Unknown / Lost, or no game data loaded yet)
+    // yields a "Location unknown" reply rather than an empty body. The engine
+    // wraps the payload in { } at SendReply time.
     private void OnWhere(RemoteCommandContext ctx)
     {
         Room? room = _readCurrentRoom?.Invoke();
@@ -259,19 +220,15 @@ public sealed class PartyEssentialHandlers : IDisposable
         ctx.Reply($"{room.DisplayName} (map {room.Key.Map}, room {room.Key.Room}); exits: {exits}");
     }
 
-    /// <summary>
-    /// <c>@who</c> — reply with the other players and monsters sharing the
-    /// current room. Reads the live <see cref="RoomEntityClassifier"/>
-    /// occupant snapshot through the injected <see cref="_readRoomEntities"/>
-    /// accessor. The classifier's list is built from the wire's
-    /// <c>Also here:</c> line, which by game convention excludes the local
-    /// player — so no self-filtering is needed. An empty or null list
-    /// (room had no occupants, or none observed yet) replies "no one".
-    /// Each entity is named by its resolved (canonical) name: a player's
-    /// given name, a monster's base name without flavour prefix. The
-    /// engine wraps the payload in <c>{ }</c> at SendReply time, yielding
-    /// the spec's <c>{no one}</c> / <c>{Raijin, Susanoo, giant rat}</c>.
-    /// </summary>
+    // @who — reply with the other players and monsters sharing the current room.
+    // Reads the live RoomEntityClassifier occupant snapshot through the injected
+    // _readRoomEntities accessor. The classifier's list is built from the wire's
+    // "Also here:" line, which by game convention excludes the local player — so
+    // no self-filtering is needed. An empty or null list (room had no occupants,
+    // or none observed yet) replies "no one". Each entity is named by its resolved
+    // (canonical) name: a player's given name, a monster's base name without
+    // flavour prefix. The engine wraps the payload in { } at SendReply time,
+    // yielding {no one} / {Raijin, Susanoo, giant rat}.
     private void OnWho(RemoteCommandContext ctx)
     {
         IReadOnlyList<RoomEntity>? entities = _readRoomEntities?.Invoke();
@@ -279,15 +236,12 @@ public sealed class PartyEssentialHandlers : IDisposable
         ctx.Reply(string.Join(", ", entities.Select(e => e.ResolvedName)));
     }
 
-    /// <summary>
-    /// <c>@path</c> — reply with what movement engine is running (loop
-    /// name / auto-lair / walking-to-destination), the current room name +
-    /// (Map, Room) key, and the walker's step progress as <c>step X/Y</c>.
-    /// Reads the live engine snapshot through <see cref="_readMovement"/>
-    /// and the room through <see cref="_readCurrentRoom"/>. When no engine
-    /// is running the reply is "not moving"; the engine wraps it in
-    /// <c>{ }</c> at SendReply time.
-    /// </summary>
+    // @path — reply with what movement engine is running (loop name / auto-lair /
+    // walking-to-destination), the current room name + (Map, Room) key, and the
+    // walker's step progress as step X/Y. Reads the live engine snapshot through
+    // _readMovement and the room through _readCurrentRoom. When no engine is
+    // running the reply is "not moving"; the engine wraps it in { } at SendReply
+    // time.
     private void OnPath(RemoteCommandContext ctx)
     {
         MovementStatus mv = _readMovement?.Invoke() ?? default;
@@ -318,38 +272,25 @@ public sealed class PartyEssentialHandlers : IDisposable
 
     // ----- @party (channel-aware: status query or sub-command dispatch) --
 
-    /// <summary>
-    /// Channel-aware handler for <c>@party</c>:
-    /// <list type="bullet">
-    ///   <item><b>Telepath / Gangpath</b> — always reply with the
-    ///         status form (solo / leading / following); args are
-    ///         ignored. The destructive party sub-commands
-    ///         (attack / rest / etc.) are leader → party-room
-    ///         coordination, not back-channel whispers, so we refuse
-    ///         to honour them off-channel.</item>
-    ///   <item><b>Local (Say) with no args</b> — also status form.
-    ///         Lets the leader broadcast <c>@party</c> in the room
-    ///         and have every present follower call out their status
-    ///         without doing anything destructive.</item>
-    ///   <item><b>Local (Say) with args</b> — sub-command dispatch via
-    ///         <see cref="DispatchPartySubCommand"/>. Gated on
-    ///         <see cref="IsActivePartyMember"/> +
-    ///         <see cref="RemoteCommandManager.DisallowPartyDirectives"/>
-    ///         because the engine's authorize tier for <c>@party</c> is
-    ///         QueryHealthStatus (so a non-party caller with that
-    ///         grant reaches this handler for the status form too) —
-    ///         the destructive verb path needs its own party-member
-    ///         gate.</item>
-    /// </list>
-    /// Engine-level wiring: <c>@party</c> sits at QueryHealthStatus in
-    /// the catalog plus an <c>@party</c>-specific party-member fallback
-    /// in <see cref="RemoteCommandManager.IsAuthorised"/>, so this
-    /// handler fires for (a) any active party member regardless of
-    /// per-player grants and (b) any non-party caller with an explicit
-    /// QueryHealthStatus grant.
-    /// Hard-blocks for <c>@party suicide</c> / <c>@party reroll</c>
-    /// fire at engine level before this handler runs.
-    /// </summary>
+    // Channel-aware handler for @party:
+    //   - Telepath / Gangpath — always reply with the status form (solo / leading
+    //     / following); args are ignored. The destructive party sub-commands
+    //     (attack / rest / etc.) are leader → party-room coordination, not
+    //     back-channel whispers, so we refuse to honour them off-channel.
+    //   - Local (Say) with no args — also status form. Lets the leader broadcast
+    //     @party in the room and have every present follower call out their status
+    //     without doing anything destructive.
+    //   - Local (Say) with args — sub-command dispatch via DispatchPartySubCommand.
+    //     Gated on IsActivePartyMember + DisallowPartyDirectives because the
+    //     engine's authorize tier for @party is QueryHealthStatus (so a non-party
+    //     caller with that grant reaches this handler for the status form too) —
+    //     the destructive verb path needs its own party-member gate.
+    // Engine-level wiring: @party sits at QueryHealthStatus in the catalog plus an
+    // @party-specific party-member fallback in RemoteCommandManager.IsAuthorised,
+    // so this handler fires for (a) any active party member regardless of
+    // per-player grants and (b) any non-party caller with an explicit
+    // QueryHealthStatus grant. Hard-blocks for @party suicide / @party reroll fire
+    // at engine level before this handler runs.
     private void OnParty(RemoteCommandContext ctx)
     {
         if (ctx.Channel != RemoteChannel.Local || ctx.Args.Count == 0)
@@ -377,12 +318,9 @@ public sealed class PartyEssentialHandlers : IDisposable
         return false;
     }
 
-    /// <summary>
-    /// Map the leader's <c>@party &lt;sub&gt;</c> directive onto the local
-    /// command a follower would type to perform the action. Unknown
-    /// sub-commands are silently ignored — they're not party-essentials
-    /// and shouldn't trip the wire from a typo.
-    /// </summary>
+    // Map the leader's @party <sub> directive onto the local command a follower
+    // would type to perform the action. Unknown sub-commands are silently ignored
+    // — they're not party-essentials and shouldn't trip the wire from a typo.
     private void DispatchPartySubCommand(RemoteCommandContext ctx)
     {
         if (_wireSender is null) return;
@@ -406,14 +344,11 @@ public sealed class PartyEssentialHandlers : IDisposable
 
     // ----- Lives / invite / join -----------------------------------------
 
-    /// <summary>
-    /// Reply with the local character's remaining lives count via the
-    /// engine's <see cref="RemoteCommandManager.LivesProvider"/> —
-    /// same source the <c>@suicide</c> hard-block consults. Returns
-    /// <c>lives unknown</c> until the user has typed <c>stat</c> at
-    /// least once this session so we don't volunteer a possibly-stale
-    /// number to a caller deciding whether to send <c>@suicide</c>.
-    /// </summary>
+    // Reply with the local character's remaining lives count via the engine's
+    // LivesProvider — same source the @suicide hard-block consults. Returns "lives
+    // unknown" until the user has typed stat at least once this session so we
+    // don't volunteer a possibly-stale number to a caller deciding whether to send
+    // @suicide.
     private void OnLives(RemoteCommandContext ctx)
     {
         int? lives = _engine.LivesProvider?.Invoke();
@@ -421,25 +356,18 @@ public sealed class PartyEssentialHandlers : IDisposable
         ctx.Reply($"{lives} {(lives == 1 ? "life" : "lives")} remaining");
     }
 
-    /// <summary>
-    /// <c>@invite</c> — sender is asking us to invite them into our
-    /// party. Three exclusive outcomes:
-    /// <list type="bullet">
-    ///   <item>self is following → reply <c>I'm following X; denied.</c>
-    ///         to prevent leader-follower chains (per user spec).</item>
-    ///   <item>party full (6 members) → reply with the follower roster
-    ///         so the sender knows why and can pick a different party.</item>
-    ///   <item>otherwise → send <c>invite &lt;sender-given&gt;</c> on the
-    ///         wire. The invite itself IS the confirmation; no
-    ///         additional telepath reply.</item>
-    /// </list>
-    /// The follower-deny reply is gated on
-    /// <see cref="RemoteCommandManager.WarnOnDenial"/> per the same
-    /// remote-command reply policy that gates the suicide policy-block
-    /// reply — denials are user-suppressible noise. The full-party
-    /// reply is informational coordination, not a denial, and fires
-    /// regardless.
-    /// </summary>
+    // @invite — sender is asking us to invite them into our party. Three exclusive
+    // outcomes:
+    //   - self is following → reply "I'm following X; denied." to prevent
+    //     leader-follower chains.
+    //   - party full (6 members) → reply with the follower roster so the sender
+    //     knows why and can pick a different party.
+    //   - otherwise → send invite <sender-given> on the wire. The invite itself IS
+    //     the confirmation; no additional telepath reply.
+    // The follower-deny reply is gated on WarnOnDenial per the same remote-command
+    // reply policy that gates the suicide policy-block reply — denials are
+    // user-suppressible noise. The full-party reply is informational coordination,
+    // not a denial, and fires regardless.
     private void OnInvite(RemoteCommandContext ctx)
     {
         if (_party.IsInParty && !_party.SelfIsLeader)
@@ -471,13 +399,10 @@ public sealed class PartyEssentialHandlers : IDisposable
         _wireSender(bytes);
     }
 
-    /// <summary>
-    /// <c>@join</c> — sender wants us to type <c>join &lt;them&gt;</c>
-    /// to enter their party. Symmetric to <see cref="OnInvite"/>: deny
-    /// when we're already following someone (no chain mutation), else
-    /// send the join command. No confirmation reply — the join itself
-    /// is the answer.
-    /// </summary>
+    // @join — sender wants us to type join <them> to enter their party. Symmetric
+    // to OnInvite: deny when we're already following someone (no chain mutation),
+    // else send the join command. No confirmation reply — the join itself is the
+    // answer.
     private void OnJoin(RemoteCommandContext ctx)
     {
         if (_party.IsInParty && !_party.SelfIsLeader)
@@ -495,21 +420,16 @@ public sealed class PartyEssentialHandlers : IDisposable
         _wireSender(bytes);
     }
 
-    // ----- @wait / @ok receive (pause-gate consumes in PR 6.7) ----------
+    // ----- @wait / @ok receive -------------------------------------------
 
     private void OnWait(RemoteCommandContext ctx) => NotePause(ctx.Sender);
 
-    /// <summary>
-    /// Register <paramref name="member"/> as asking the party to pause and
-    /// raise the gate on the 0→1 transition. Shared by the <c>@wait</c>
-    /// telepath handler and the inbound <c>.@held</c> say path
-    /// (<see cref="Conditions.PartyAilmentTracker"/>): a held member's say
-    /// pauses the leader exactly as an explicit <c>@wait</c> would, and the
-    /// member's eventual <c>@ok</c> (sent by their own
-    /// <see cref="AilmentSyncEngine"/> on last-clear) releases it via
-    /// <see cref="OnOk"/>. Honours the leader-side
-    /// <see cref="PartySettings.IgnoreWaitWhenLeading"/> opt-out.
-    /// </summary>
+    // Register member as asking the party to pause and raise the gate on the 0→1
+    // transition. Shared by the @wait telepath handler and the inbound .@held say
+    // path (PartyAilmentTracker): a held member's say pauses the leader exactly as
+    // an explicit @wait would, and the member's eventual @ok (sent by their own
+    // AilmentSyncEngine on last-clear) releases it via OnOk. Honours the
+    // leader-side PartySettings.IgnoreWaitWhenLeading opt-out.
     public void NotePause(string member)
     {
         // Leader-side opt-out: when we're leading and the user has set
@@ -531,17 +451,13 @@ public sealed class PartyEssentialHandlers : IDisposable
         if (wasPaused && !IsPaused) PauseGateChanged?.Invoke(false);
     }
 
-    /// <summary>
-    /// Mirror the <see cref="WaitingMembers"/> set onto the matching
-    /// <see cref="PartyMember.IsWaiting"/> so the PartyWindow can render
-    /// a per-row WAIT chip without binding through the HashSet. Senders
-    /// are matched by given-name (first whitespace-delimited token) —
-    /// MajorMUD telepaths arrive with the given name only, while par's
-    /// member rows can be "Given Family", so we compare on the prefix.
-    /// Silent no-op when the sender isn't in the party (e.g. an
-    /// out-of-party stranger spamming @wait would still occupy the
-    /// IsPaused gate but has no member row to flag).
-    /// </summary>
+    // Mirror the WaitingMembers set onto the matching PartyMember.IsWaiting so the
+    // PartyWindow can render a per-row WAIT chip without binding through the
+    // HashSet. Senders are matched by given-name (first whitespace-delimited
+    // token) — MajorMUD telepaths arrive with the given name only, while par's
+    // member rows can be "Given Family", so we compare on the prefix. Silent no-op
+    // when the sender isn't in the party (e.g. an out-of-party stranger spamming
+    // @wait would still occupy the IsPaused gate but has no member row to flag).
     private void SetMemberWaitFlag(string sender, bool waiting)
     {
         string senderGiven = GivenName(sender);

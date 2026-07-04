@@ -3,39 +3,27 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game.Map;
 
-/// <summary>
-/// Resolves a teleport-style exit (room <see cref="Room.Cmd"/> &gt; 0
-/// + exit modifier <c>(Item: N)</c>) into the verbatim command the
-/// walker types to traverse it.
-/// </summary>
-/// <remarks>
-/// <para>
-/// TBInfo <see cref="TBInfoEntry.Action"/> chains are newline-separated
-/// lines; each line is colon-separated directives whose first token
-/// is the keyword the player types. The teleport target is encoded
-/// as a <c>teleport &lt;room&gt; &lt;map&gt;</c> directive somewhere
-/// in the chain. Example:
-/// </para>
-/// <code>
-/// go hole:message 767:teleport 487 2:message 768
-/// enter hole:message 767:teleport 487 2:message 768
-/// crawl hole:message 767:teleport 487 2:message 768
-/// </code>
-/// <para>
-/// All three lines lead to room 487 on map 2; the resolver returns
-/// the first matching keyword. Lines without a teleport directive
-/// (NPC services, gambling outcomes, etc.) are skipped.
-/// </para>
-/// </remarks>
+// Resolves a teleport-style exit (room Room.Cmd > 0 + exit modifier (Item: N))
+// into the verbatim command the walker types to traverse it.
+//
+// TBInfo Action chains are newline-separated lines; each line is colon-separated
+// directives whose first token is the keyword the player types. The teleport
+// target is encoded as a teleport <room> <map> directive somewhere in the
+// chain. Example:
+//
+//     go hole:message 767:teleport 487 2:message 768
+//     enter hole:message 767:teleport 487 2:message 768
+//     crawl hole:message 767:teleport 487 2:message 768
+//
+// All three lines lead to room 487 on map 2; the resolver returns the first
+// matching keyword. Lines without a teleport directive (NPC services, gambling
+// outcomes, etc.) are skipped.
 public static class TBInfoTeleportResolver
 {
-    /// <summary>
-    /// Find the first keyword in <paramref name="store"/>'s entry for
-    /// <paramref name="roomCmd"/> whose teleport directive matches
-    /// <paramref name="destination"/>. Returns <c>null</c> when:
-    /// the entry isn't in the store, the entry has no
-    /// <c>Action</c> chain, or no line teleports to the requested key.
-    /// </summary>
+    // Find the first keyword in store's entry for roomCmd whose teleport
+    // directive matches destination. Returns null when the entry isn't in the
+    // store, the entry has no Action chain, or no line teleports to the
+    // requested key.
     public static string? Resolve(TBInfoStore store, int roomCmd, RoomKey destination)
     {
         ArgumentNullException.ThrowIfNull(store);
@@ -48,20 +36,16 @@ public static class TBInfoTeleportResolver
         return null;
     }
 
-    /// <summary>
-    /// Walk every <c>teleport &lt;room&gt; &lt;map&gt;</c> directive in
-    /// the CMD's Action chain and yield <c>(keyword, destination,
-    /// minLevel)</c> for each one. Used by the room tooltip to surface
-    /// "use chime → 1/65" style commands (and any "Level 20+" gate) so
-    /// the user can see how to traverse a teleport-bypassed door
-    /// without opening the game data browser.
-    /// </summary>
-    /// <remarks>
-    /// A <c>minlevel N [failTB]</c> directive anywhere in the same line
-    /// gates the teleport: the player must be level ≥ N or the game
-    /// jumps to the fail textblock instead of teleporting. We surface
-    /// <c>N</c> (the fail textblock id is irrelevant to the walker).
-    /// </remarks>
+    // Walk every teleport <room> <map> directive in the CMD's Action chain and
+    // yield (keyword, destination, minLevel) for each one. Used by the room
+    // tooltip to surface "use chime → 1/65" style commands (and any "Level 20+"
+    // gate) so the user can see how to traverse a teleport-bypassed door without
+    // opening the game data browser.
+    //
+    // A "minlevel N [failTB]" directive anywhere in the same line gates the
+    // teleport: the player must be level ≥ N or the game jumps to the fail
+    // textblock instead of teleporting. We surface N (the fail textblock id is
+    // irrelevant to the walker).
     public static IEnumerable<(string Keyword, RoomKey Destination, int MinLevel)>
         EnumerateTeleports(TBInfoStore store, int roomCmd)
     {

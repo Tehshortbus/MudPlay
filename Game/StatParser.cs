@@ -5,39 +5,25 @@ using FujinTerm.Terminal;
 
 namespace FujinTerm.Game;
 
-/// <summary>
-/// Parses the in-game <c>stat</c> screen and writes every field onto
-/// <see cref="PlayerStats"/>. Drives
-/// <see cref="Remote.RemoteCommandManager.LivesProvider"/> so the
-/// <c>@suicide</c> hard-block has a real value to gate against.
-/// </summary>
-/// <remarks>
-/// <para>
-/// State machine mirrors <see cref="TrainerMenuTracker"/>'s shape:
-/// </para>
-/// <list type="number">
-///   <item>User sends <c>stat</c> outbound —
-///         <see cref="ObserveOutbound"/> arms
-///         <see cref="ExpectingScreenWindow"/> seconds of "expecting
-///         stat output" time.</item>
-///   <item>Within that window, every emitted line is scanned for
-///         label / value pairs (<c>Name:</c>, <c>Lives/CP:</c>,
-///         <c>Strength:</c>, etc.) — each match commits the value
-///         directly to <see cref="PlayerStats"/>. Lines unrelated
-///         to the stat screen pass through unchanged.</item>
-///   <item>Once the window expires, scanning stops. The outbound
-///         gate prevents chat-noise (e.g., a gossip line with
-///         <c>"Strength: 60"</c>) from updating our state outside
-///         the user-initiated stat poll.</item>
-/// </list>
-/// <para>
-/// Once any field has been parsed at least once,
-/// <see cref="HasParsed"/> flips true permanently for the session.
-/// <c>RemoteCommandManager.LivesProvider</c> uses that flag to decide
-/// whether to return <see cref="PlayerStats.Lives"/> or <c>null</c>
-/// (which the suicide hard-block treats as "unknown → blocked").
-/// </para>
-/// </remarks>
+// Parses the in-game stat screen and writes every field onto PlayerStats.
+// Drives RemoteCommandManager.LivesProvider so the @suicide hard-block has a
+// real value to gate against.
+//
+// State machine mirrors TrainerMenuTracker's shape:
+//   1. User sends stat outbound — ObserveOutbound arms ExpectingScreenWindow
+//      seconds of "expecting stat output" time.
+//   2. Within that window, every emitted line is scanned for label / value
+//      pairs (Name:, Lives/CP:, Strength:, etc.) — each match commits the
+//      value directly to PlayerStats. Lines unrelated to the stat screen pass
+//      through unchanged.
+//   3. Once the window expires, scanning stops. The outbound gate prevents
+//      chat-noise (e.g., a gossip line with "Strength: 60") from updating our
+//      state outside the user-initiated stat poll.
+//
+// Once any field has been parsed at least once, HasParsed flips true
+// permanently for the session. RemoteCommandManager.LivesProvider uses that
+// flag to decide whether to return PlayerStats.Lives or null (which the
+// suicide hard-block treats as "unknown → blocked").
 public sealed partial class StatParser : IDisposable
 {
     private LineExtractor? _lines;
@@ -46,22 +32,22 @@ public sealed partial class StatParser : IDisposable
 
     public PlayerStats Stats { get; }
 
-    /// <summary>Window after observing outbound <c>stat</c> during which incoming lines are scanned.</summary>
+    // Window after observing outbound stat during which incoming lines are
+    // scanned.
     public TimeSpan ExpectingScreenWindow { get; set; } = TimeSpan.FromSeconds(5);
 
-    /// <summary>Test seam.</summary>
+    // Test seam.
     public Func<DateTime> NowProvider { get; set; } = () => DateTime.UtcNow;
 
     private DateTime? _windowOpenedAt;
-    /// <summary>
-    /// Per-arm flag — flipped true the first time a field commits
-    /// within the current scan window, reset when the gate closes.
-    /// Lets us close the gate as soon as the in-game prompt returns
-    /// AFTER capture, instead of waiting for the full window timeout.
-    /// </summary>
+    // Per-arm flag — flipped true the first time a field commits within the
+    // current scan window, reset when the gate closes. Lets us close the gate
+    // as soon as the in-game prompt returns AFTER capture, instead of waiting
+    // for the full window timeout.
     private bool _capturedThisArm;
 
-    /// <summary>Per-arm counter of distinct field commits — surfaced in the gate-close summary log line.</summary>
+    // Per-arm counter of distinct field commits — surfaced in the gate-close
+    // summary log line.
     private int _fieldsCapturedThisArm;
 
     // Idle self-close. The reactive gate-close in OnLine only fires when a *further*
@@ -76,31 +62,25 @@ public sealed partial class StatParser : IDisposable
     private SynchronizationContext? _home;   // captured at arm — marshals the settle-close back onto the line-pipeline thread
     private int _settleSession;              // bumped on arm / restart / close so a stale settle timer no-ops
 
-    /// <summary>True once any stat-screen line has been parsed this session.</summary>
+    // True once any stat-screen line has been parsed this session.
     public bool HasParsed { get; private set; }
 
-    /// <summary>
-    /// Fires once per scan window AFTER one or more fields commit and
-    /// the gate closes (whatever the close reason — prompt, expiry,
-    /// etc.). Carries a fresh <see cref="LastKnownStats"/> snapshot
-    /// built from the current <see cref="Stats"/> values. AppServices
-    /// subscribes and writes the snapshot onto the loaded character
-    /// profile's <see cref="CharacterProfile.LastKnownStats"/> so the
-    /// next session starts hydrated instead of zeroed. Never fires for
-    /// no-capture windows (no point in churning the profile when
-    /// nothing changed).
-    /// </summary>
+    // Fires once per scan window AFTER one or more fields commit and the gate
+    // closes (whatever the close reason — prompt, expiry, etc.). Carries a
+    // fresh LastKnownStats snapshot built from the current Stats values.
+    // AppServices subscribes and writes the snapshot onto the loaded character
+    // profile's LastKnownStats so the next session starts hydrated instead of
+    // zeroed. Never fires for no-capture windows (no point in churning the
+    // profile when nothing changed).
     public event Action<Models.Profile.LastKnownStats>? ScreenParsed;
 
-    /// <summary>
-    /// Fires after a "You gain N experience." line accrues onto
-    /// <see cref="PlayerStats.Exp"/>, carrying the new running total. Distinct
-    /// from <see cref="ScreenParsed"/> (an authoritative stat/exp re-anchor): this
-    /// is the ONLY Exp change that signals a live combat gain — the only kind that
-    /// can newly cross a Level-Projection threshold mid-play.
-    /// <see cref="LevelUpAnnouncer"/> listens here so it announces a reachable level
-    /// only on a genuine gain, never on a login hydrate or a catch-up poll.
-    /// </summary>
+    // Fires after a "You gain N experience." line accrues onto Stats.Exp,
+    // carrying the new running total. Distinct from ScreenParsed (an
+    // authoritative stat/exp re-anchor): this is the ONLY Exp change that
+    // signals a live combat gain — the only kind that can newly cross a
+    // Level-Projection threshold mid-play. LevelUpAnnouncer listens here so it
+    // announces a reachable level only on a genuine gain, never on a login
+    // hydrate or a catch-up poll.
     public event Action<int>? ExperienceGained;
 
     public StatParser(PlayerStats stats, LogService? log = null)
@@ -110,18 +90,13 @@ public sealed partial class StatParser : IDisposable
         Stats  = stats;
     }
 
-    /// <summary>
-    /// Restore <see cref="Stats"/> from a persisted
-    /// <see cref="LastKnownStats"/> snapshot. Called by AppServices on
-    /// <see cref="ProfileService.ProfileLoaded"/> so the live state
-    /// surfaces start with the user's last-observed values instead of
-    /// zeros. StatParser owns these fields (per
-    /// <see cref="OwnerAttribute"/> + the single-writer IL test), so
-    /// hydration MUST route through this method rather than the caller
-    /// writing to <see cref="Stats"/> directly. A <c>null</c> snapshot
-    /// resets every field back to its default — used when the user
-    /// switches to a fresh profile that has never run <c>stat</c>.
-    /// </summary>
+    // Restore Stats from a persisted LastKnownStats snapshot. Called by
+    // AppServices on ProfileService.ProfileLoaded so the live state surfaces
+    // start with the user's last-observed values instead of zeros. StatParser
+    // owns these fields (per the single-writer IL test), so hydration MUST
+    // route through this method rather than the caller writing to Stats
+    // directly. A null snapshot resets every field back to its default — used
+    // when the user switches to a fresh profile that has never run stat.
     public void Hydrate(Models.Profile.LastKnownStats? snapshot)
     {
         if (snapshot is null)
@@ -205,13 +180,10 @@ public sealed partial class StatParser : IDisposable
         HasParsed = true;
     }
 
-    /// <summary>
-    /// Build a snapshot of the current <see cref="Stats"/> values
-    /// suitable for persisting to
-    /// <see cref="CharacterProfile.LastKnownStats"/>. Allocated each
-    /// call (cheap — flat DTO) so the recipient can store the
-    /// reference without worrying about subsequent mutations.
-    /// </summary>
+    // Build a snapshot of the current Stats values suitable for persisting to
+    // the profile's LastKnownStats. Allocated each call (cheap — flat DTO) so
+    // the recipient can store the reference without worrying about subsequent
+    // mutations.
     public Models.Profile.LastKnownStats Snapshot() => new()
     {
         Name = Stats.Name,
@@ -249,13 +221,11 @@ public sealed partial class StatParser : IDisposable
         Spellcasting = Stats.Spellcasting,
     };
 
-    /// <summary>
-    /// Bind the per-session <see cref="LineExtractor"/>. Same shape as
-    /// <see cref="PartyManager.AttachLineExtractor"/> — the extractor
-    /// is owned by the main-window VM (one per terminal session)
-    /// while this parser is app-level. Calling again with a new
-    /// extractor unhooks the previous one first.
-    /// </summary>
+    // Bind the per-session LineExtractor. Same shape as
+    // PartyManager.AttachLineExtractor — the extractor is owned by the
+    // main-window VM (one per terminal session) while this parser is
+    // app-level. Calling again with a new extractor unhooks the previous one
+    // first.
     public void AttachLineExtractor(LineExtractor lines)
     {
         ArgumentNullException.ThrowIfNull(lines);
@@ -272,14 +242,11 @@ public sealed partial class StatParser : IDisposable
         if (_lines is not null) _lines.LineEmitted -= OnLine;
     }
 
-    /// <summary>
-    /// Called by the wire-send path so we can spot the user's
-    /// outbound <c>stat</c> command. Arming gate is the same shape
-    /// <see cref="TrainerMenuTracker"/> uses — without an outbound
-    /// <c>stat</c> within the window, every <c>OnLine</c> call is a
-    /// no-op (protects against chat lines containing "Strength:" or
-    /// similar from updating our stats).
-    /// </summary>
+    // Called by the wire-send path so we can spot the user's outbound stat
+    // command. Arming gate is the same shape TrainerMenuTracker uses — without
+    // an outbound stat within the window, every OnLine call is a no-op
+    // (protects against chat lines containing "Strength:" or similar from
+    // updating our stats).
     public void ObserveOutbound(ReadOnlySpan<byte> bytes)
     {
         if (bytes.IsEmpty || bytes.Length > 16) return;
@@ -305,17 +272,15 @@ public sealed partial class StatParser : IDisposable
     }
 
     // ----- Test seam -----------------------------------------------------
-    /// <summary>Test seam — arm the scanner without going through the wire-observation path.</summary>
+    // Test seam — arm the scanner without going through the wire-observation
+    // path.
     internal void TestArm() => _windowOpenedAt = NowProvider();
 
-    /// <summary>
-    /// Test seam — pump a line through the full handler path without
-    /// a real <see cref="LineExtractor"/>. Mirrors <see cref="OnLine"/>
-    /// so tests exercise the always-on lives handler + the gated
-    /// scan together. <paramref name="isPromptLine"/> defaults to
-    /// false; set true for tests that want to exercise the
-    /// close-on-prompt-after-capture path.
-    /// </summary>
+    // Test seam — pump a line through the full handler path without a real
+    // LineExtractor. Mirrors OnLine so tests exercise the always-on lives
+    // handler + the gated scan together. isPromptLine defaults to false; set
+    // true for tests that want to exercise the close-on-prompt-after-capture
+    // path.
     internal void FeedTestLine(string text, bool isPromptLine = false)
     {
         OnLivesRemainingLine(text);
@@ -397,20 +362,17 @@ public sealed partial class StatParser : IDisposable
         }, null);
     }
 
-    /// <summary>Test seam — fire the idle settle-close immediately (no real delay).</summary>
+    // Test seam — fire the idle settle-close immediately (no real delay).
     internal void SettleNowForTests()
     {
         if (_windowOpenedAt is not null) CloseGate("settled (test)");
     }
 
-    /// <summary>
-    /// Single-line scan — apply every field regex and update the
-    /// corresponding <see cref="PlayerStats"/> property on a match.
-    /// Multiple labels can appear on one stat-screen row
-    /// (e.g., <c>"Race: Dark-Elf       Exp: 0          Perception: 50"</c>),
-    /// so we run every pattern against every line — at most one field
-    /// per pattern is updated per call.
-    /// </summary>
+    // Single-line scan — apply every field regex and update the corresponding
+    // PlayerStats property on a match. Multiple labels can appear on one
+    // stat-screen row (e.g., "Race: Dark-Elf       Exp: 0          Perception:
+    // 50"), so we run every pattern against every line — at most one field per
+    // pattern is updated per call.
     private void ScanLine(string text)
     {
         if (string.IsNullOrWhiteSpace(text)) return;
@@ -473,11 +435,9 @@ public sealed partial class StatParser : IDisposable
         TryExpLine(text);
     }
 
-    /// <summary>
-    /// Parse the one-line <c>exp</c>-command output:
-    /// <c>"Exp: N Level: M Exp needed for next level: P (Q) [R%]"</c>.
-    /// All five fields commit atomically on a successful match.
-    /// </summary>
+    // Parse the one-line exp-command output:
+    // "Exp: N Level: M Exp needed for next level: P (Q) [R%]". All five fields
+    // commit atomically on a successful match.
     private void TryExpLine(string text)
     {
         Match m = ExpLineRx().Match(text);
@@ -502,15 +462,11 @@ public sealed partial class StatParser : IDisposable
             $"Exp = {exp}  Level = {level}  ExpToNext = {toNext}  LevelExpSpan = {threshold}  LevelPercent = {percent}");
     }
 
-    /// <summary>
-    /// Always-on handler for the post-miracle-save line
-    /// <c>"You have N lives left."</c>. Updates
-    /// <see cref="PlayerStats.Lives"/> immediately so the
-    /// <c>@suicide</c> hard-block reflects the new count without
-    /// waiting for the next user-issued <c>stat</c>. Bypasses the
-    /// outbound-`stat` gate because this line is server-emitted as a
-    /// game event, not part of a stat block.
-    /// </summary>
+    // Always-on handler for the post-miracle-save line
+    // "You have N lives left.". Updates Stats.Lives immediately so the
+    // @suicide hard-block reflects the new count without waiting for the next
+    // user-issued stat. Bypasses the outbound-stat gate because this line is
+    // server-emitted as a game event, not part of a stat block.
     private void OnLivesRemainingLine(string text)
     {
         Match m = LivesRemainingRx().Match(text);
@@ -524,17 +480,13 @@ public sealed partial class StatParser : IDisposable
             $"Updated Lives → {lives} (post-suicide / miracle-save line).");
     }
 
-    /// <summary>
-    /// Always-on handler for the combat reward line
-    /// <c>"You gain N experience."</c>. Adds the gain onto the running
-    /// <see cref="PlayerStats.Exp"/> total so consumers (the Level
-    /// Projection tab, the auto-trainer's can-level check) stay current
-    /// between manual <c>exp</c> / <c>stat</c> polls — the user no longer
-    /// has to re-poll to refresh their banked experience. Bypasses the
-    /// stat-screen scan gate: it's a server-emitted game event, like the
-    /// miracle-save line. StatParser owns <see cref="PlayerStats.Exp"/>,
-    /// so this accrual lives here rather than in a consumer.
-    /// </summary>
+    // Always-on handler for the combat reward line "You gain N experience.".
+    // Adds the gain onto the running Stats.Exp total so consumers (the Level
+    // Projection tab, the auto-trainer's can-level check) stay current between
+    // manual exp / stat polls — the user no longer has to re-poll to refresh
+    // their banked experience. Bypasses the stat-screen scan gate: it's a
+    // server-emitted game event, like the miracle-save line. StatParser owns
+    // Stats.Exp, so this accrual lives here rather than in a consumer.
     private void OnExperienceGainLine(string text)
     {
         Match m = ExpGainRx().Match(text);
@@ -587,12 +539,10 @@ public sealed partial class StatParser : IDisposable
         _log?.Log(LogSeverity.Debug, "StatParser", $"{field} = {a}/{b}");
     }
 
-    /// <summary>
-    /// Close the scan gate + emit an INF summary of what we captured
-    /// this arm. <paramref name="reason"/> describes which terminator
-    /// fired ("prompt after capture", "window expired", etc.) so the
-    /// user can correlate with what they did on the wire.
-    /// </summary>
+    // Close the scan gate + emit an INF summary of what we captured this arm.
+    // reason describes which terminator fired ("prompt after capture",
+    // "window expired", etc.) so the user can correlate with what they did on
+    // the wire.
     private void CloseGate(string reason)
     {
         if (_windowOpenedAt is null) return;

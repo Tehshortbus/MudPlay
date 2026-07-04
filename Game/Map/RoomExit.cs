@@ -3,40 +3,26 @@ using System.Text.RegularExpressions;
 
 namespace FujinTerm.Game.Map;
 
-/// <summary>
-/// One outgoing exit from a room: the target <see cref="RoomKey"/>
-/// plus a parsed <see cref="RoomExitHint"/> and the raw parenthetical
-/// text from the MDB cell (preserved so an unknown hint can still be
-/// surfaced for diagnostics or rendered on the map legend).
-/// </summary>
-/// <remarks>
-/// <para>
-/// The optional integer / list fields encode the requirement detail
-/// the walker needs to act:
-/// </para>
-/// <list type="bullet">
-///   <item><see cref="StatRequirement"/> — picklock/bash skill needed
-///   for <see cref="RoomExitHint.Door"/> and <see cref="RoomExitHint.KeyLocked"/>
-///   exits. <c>0</c> means no stat requirement.</item>
-///   <item><see cref="CanBash"/> — <c>true</c> when the modifier
-///   reads "picklocks/strength" (both verbs work); <c>false</c> when
-///   it reads "picklocks" alone (pick-only, bash impossible).</item>
-///   <item><see cref="KeyItemId"/> — item id required for
-///   <see cref="RoomExitHint.KeyLocked"/>, <see cref="RoomExitHint.Item"/>,
-///   <see cref="RoomExitHint.Ticket"/> exits.</item>
-///   <item><see cref="TollGold"/> — gold cost on <see cref="RoomExitHint.Toll"/> exits.</item>
-///   <item><see cref="TextCommands"/> — comma-separated alternatives
-///   on <see cref="RoomExitHint.Text"/> exits. Any one of them moves
-///   the player.</item>
-///   <item><see cref="MinLevel"/> / <see cref="MaxLevel"/> — character
-///   level window on a level-gated exit ("(Level: 40 to 0)"). The exit
-///   is a plain cardinal step (<see cref="Hint"/> stays
-///   <see cref="RoomExitHint.None"/>); the window only constrains who
-///   may traverse it. <c>0</c> in either slot means "no bound on that
-///   side" (the MDB encodes both no-floor and no-cap as 0, and also
-///   uses 999 as a no-cap sentinel — normalised to 0 here).</item>
-/// </list>
-/// </remarks>
+// One outgoing exit from a room: the target RoomKey plus a parsed RoomExitHint
+// and the raw parenthetical text from the MDB cell (preserved so an unknown
+// hint can still be surfaced for diagnostics or rendered on the map legend).
+//
+// The optional integer / list fields encode the requirement detail the walker
+// needs to act:
+//   - StatRequirement — picklock/bash skill needed for Door and KeyLocked
+//     exits. 0 means no stat requirement.
+//   - CanBash — true when the modifier reads "picklocks/strength" (both verbs
+//     work); false when it reads "picklocks" alone (pick-only, bash
+//     impossible).
+//   - KeyItemId — item id required for KeyLocked, Item, Ticket exits.
+//   - TollGold — gold cost on Toll exits.
+//   - TextCommands — comma-separated alternatives on Text exits. Any one of
+//     them moves the player.
+//   - MinLevel / MaxLevel — character level window on a level-gated exit
+//     ("(Level: 40 to 0)"). The exit is a plain cardinal step (Hint stays
+//     None); the window only constrains who may traverse it. 0 in either slot
+//     means "no bound on that side" (the MDB encodes both no-floor and no-cap
+//     as 0, and also uses 999 as a no-cap sentinel — normalised to 0 here).
 public readonly partial record struct RoomExit(
     RoomKey Target,
     RoomExitHint Hint,
@@ -51,15 +37,13 @@ public readonly partial record struct RoomExit(
     int MinLevel = 0,
     int MaxLevel = 0)
 {
-    /// <summary><c>true</c> when this exit carries a character-level
-    /// window (either a floor, a cap, or both).</summary>
+    // True when this exit carries a character-level window (either a floor, a
+    // cap, or both).
     public bool HasLevelGate => MinLevel > 0 || MaxLevel > 0;
 
-    /// <summary>
-    /// Render a level window as a friendly label: "Level 40+" (floor
-    /// only), "Level ≤3" (cap only), "Level 10–25" (both). Returns the
-    /// empty string when neither bound is set.
-    /// </summary>
+    // Render a level window as a friendly label: "Level 40+" (floor only),
+    // "Level ≤3" (cap only), "Level 10–25" (both). Returns the empty string when
+    // neither bound is set.
     public static string FormatLevelGate(int min, int max)
     {
         if (min > 0 && max > 0) return $"Level {min}–{max}";
@@ -67,18 +51,11 @@ public readonly partial record struct RoomExit(
         if (max > 0)            return $"Level ≤{max}";
         return string.Empty;
     }
-    /// <summary>
-    /// Parse a single MDB exit cell. Returns <c>false</c> for the
-    /// <c>"0"</c> sentinel ("no exit"), for null/whitespace, and for
-    /// malformed cells.
-    /// </summary>
-    /// <remarks>
-    /// Hint vocabulary now covers the full set MudProxy classifies —
-    /// see <see cref="RoomExitHint"/> for the matrix. An
-    /// unrecognised parenthetical round-trips through
-    /// <see cref="RawHint"/> as a non-null string while
-    /// <see cref="Hint"/> stays <see cref="RoomExitHint.None"/>.
-    /// </remarks>
+    // Parse a single MDB exit cell. Returns false for the "0" sentinel
+    // ("no exit"), for null/whitespace, and for malformed cells. The hint
+    // vocabulary covers the full modifier set — see RoomExitHint for the matrix.
+    // An unrecognised parenthetical round-trips through RawHint as a non-null
+    // string while Hint stays None.
     public static bool TryParseWire(string? wire, out RoomExit exit)
     {
         exit = default;
@@ -277,11 +254,9 @@ public readonly partial record struct RoomExit(
         // concern); RawHint carries the detail forward.
     }
 
-    /// <summary>
-    /// Pull <c>N picklocks</c> / <c>N picklocks/strength</c> out of a
-    /// modifier string. Used by both Door and Key-with-alt branches.
-    /// Returns (0, true) when no clause is present.
-    /// </summary>
+    // Pull "N picklocks" / "N picklocks/strength" out of a modifier string. Used
+    // by both Door and Key-with-alt branches. Returns (0, true) when no clause
+    // is present.
     private static (int StatRequirement, bool CanBash) ParsePicklocksClause(string raw)
     {
         if (!raw.Contains("picklocks", StringComparison.OrdinalIgnoreCase))
@@ -295,19 +270,20 @@ public readonly partial record struct RoomExit(
         return (statReq, canBash);
     }
 
-    /// <summary>Matches the first decimal number after a colon in a modifier (key/item/ticket id, toll cost).</summary>
+    // Matches the first decimal number after a colon in a modifier
+    // (key/item/ticket id, toll cost).
     [GeneratedRegex(@":\s*(\d+)", RegexOptions.CultureInvariant)]
     private static partial Regex NumberAfterColon();
 
-    /// <summary>Matches the picklock skill number — "[N picklocks" or "or N picklocks".</summary>
+    // Matches the picklock skill number — "[N picklocks" or "or N picklocks".
     [GeneratedRegex(@"(?:\[|\bor\s+)(\d+)\s+picklocks", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex PicklockStatRx();
 
-    /// <summary>Matches a trap-damage figure inside the trap modifier — "Trap, 36 damage".</summary>
+    // Matches a trap-damage figure inside the trap modifier — "Trap, 36 damage".
     [GeneratedRegex(@"(\d+)\s+damage", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex TrapDamageRegex();
 
-    /// <summary>Matches the level window in a "Level: MIN to MAX" modifier.</summary>
+    // Matches the level window in a "Level: MIN to MAX" modifier.
     [GeneratedRegex(@"Level:\s*(\d+)\s+to\s+(\d+)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex LevelRangeRegex();
 }

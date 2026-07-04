@@ -6,87 +6,55 @@ using FujinTerm.Terminal;
 
 namespace FujinTerm.Game.Spells;
 
-/// <summary>
-/// Phase 9 PR 9.D — unified spell-decision engine. Subscribes to
-/// <see cref="PlayerState"/> + <see cref="TickEngine.CombatTickElapsed"/>,
-/// reads <see cref="Conditions.ConditionTracker.ActiveFlags"/>, and
-/// routes the chosen cast through <see cref="CastCoordinator"/>.
-/// </summary>
-/// <remarks>
-/// <para>
-/// One unified priority list lifted from
-/// <see cref="SpellsSettings"/>'s <c>PriorityXxxx</c> slots. Lower
-/// number = higher precedence. Default order is the MegaMUD-parity
-/// shape (Minor party heal → Major party heal → Minor self heal →
-/// Major self heal → Curing → Buffing → Debuffing); the user is
-/// free to re-order any of the seven via the Spells settings tab.
-/// </para>
-/// <para>
-/// Per-category meaning:
-/// </para>
-/// <list type="bullet">
-/// <item><b>Minor / Major party heal</b> — single-target party heal
-/// when a member is below threshold, group AOE party heal when
-/// multiple are. v1 unwired (party-cast lands with PartySettings
-/// extensions in a follow-up commit).</item>
-/// <item><b>Minor / Major self heal</b> — <see cref="SpellsSettings.MinorHealSpell"/>
-/// / <see cref="SpellsSettings.MajorHealSpell"/> against the local
-/// player. Thresholds: <see cref="HealthSettings.MinorHealCombatTrigger"/>
-/// / <see cref="HealthSettings.MajorHealCombatTrigger"/> while
-/// <see cref="PlayerState.InCombat"/>; <see cref="HealthSettings.HealRestTrigger"/>
-/// during rest. When an HP-regen HoT
-/// (<see cref="SpellsSettings.HpRegenSpell"/>) is configured, the minor path
-/// casts it FIRST — ahead of the single-target heal — whenever HP trips the
-/// minor trigger while still above the major (life-threat) trigger and the
-/// HoT isn't already ticking on us; a running HoT falls through to the
-/// instant single-target heal.</item>
-/// <item><b>Curing</b> — remove an active ailment. The actual
-/// ailment state comes from <see cref="Conditions.ConditionTracker"/>
-/// (game-data Messages tab owns the patterns). Per-ailment cure
-/// spells are <see cref="SpellsSettings.CureHoldsSpell"/> etc.
-/// Internal order inside the Curing slot: movement-prevented →
-/// poison → disease → blindness.</item>
-/// <item><b>Buffing</b> — recast player buffs (Bless1–10 slots).
-/// v1 unwired.</item>
-/// <item><b>Debuffing</b> — an in-between action sourced from the
-/// combat engine. The DECISION (config + once-per-room /
-/// once-per-target gating) is owned by
-/// <see cref="Combat.CombatManager"/> /
-/// <see cref="Combat.CombatSpellChooser"/>; this director only casts
-/// the debuff through the shared in-between window (wired via
-/// <see cref="SetCombatDebuffSource"/>) so it competes against the
-/// survival casts above by the user's
-/// <see cref="SpellsSettings.PriorityDebuffing"/> rank. No-op until
-/// wired.</item>
-/// </list>
-/// <para>
-/// Every evaluation walks the priority list and picks the first
-/// candidate that's actually ready to fire. The
-/// <see cref="CastCoordinator"/>'s recent-cast cooldown handles
-/// "one cast per round" naturally — if we evaluate mid-round the
-/// cooldown blocks; on the next tick it clears and the highest-
-/// priority candidate gets through.
-/// </para>
-/// <para>
-/// Master enable flag is
-/// <see cref="AutoActionDefaults.AutoHealRest"/> — shared with
-/// <see cref="Health.HealthManager"/> so the user has one toggle
-/// covering both passive rest + active heal-spell. When the spell
-/// pickers on the Spells tab are empty, the engine no-ops without
-/// further checks.
-/// </para>
-/// </remarks>
+// Unified spell-decision engine. Subscribes to PlayerState +
+// TickEngine.CombatTickElapsed, reads the ConditionTracker's active flags, and
+// routes the chosen cast through CastCoordinator.
+//
+// One unified priority list lifted from SpellsSettings's PriorityXxxx slots. Lower
+// number = higher precedence. Default order is the MegaMUD-parity shape (Minor
+// party heal → Major party heal → Minor self heal → Major self heal → Curing →
+// Buffing → Debuffing); the user is free to re-order any of the seven via the
+// Spells settings tab.
+//
+// Per-category meaning:
+//   - Minor / Major party heal — single-target party heal when a member is below
+//     threshold, group AOE party heal when multiple are.
+//   - Minor / Major self heal — MinorHealSpell / MajorHealSpell against the local
+//     player. Thresholds: MinorHealCombatTrigger / MajorHealCombatTrigger while in
+//     combat; HealRestTrigger during rest. When an HP-regen HoT (HpRegenSpell) is
+//     configured, the minor path casts it FIRST — ahead of the single-target heal —
+//     whenever HP trips the minor trigger while still above the major (life-threat)
+//     trigger and the HoT isn't already ticking on us; a running HoT falls through
+//     to the instant single-target heal.
+//   - Curing — remove an active ailment. The actual ailment state comes from
+//     ConditionTracker (game-data Messages tab owns the patterns). Per-ailment cure
+//     spells are CureHoldsSpell etc. Internal order inside the Curing slot:
+//     movement-prevented → poison → disease → blindness.
+//   - Buffing — recast player buffs (Bless1–10 slots).
+//   - Debuffing — an in-between action sourced from the combat engine. The DECISION
+//     (config + once-per-room / once-per-target gating) is owned by CombatManager /
+//     CombatSpellChooser; this director only casts the debuff through the shared
+//     in-between window (wired via SetCombatDebuffSource) so it competes against the
+//     survival casts above by the user's PriorityDebuffing rank. No-op until wired.
+//
+// Every evaluation walks the priority list and picks the first candidate that's
+// actually ready to fire. The CastCoordinator's recent-cast cooldown handles "one
+// cast per round" naturally — if we evaluate mid-round the cooldown blocks; on the
+// next tick it clears and the highest-priority candidate gets through.
+//
+// Master enable flag is AutoActionDefaults.AutoHealRest — shared with HealthManager
+// so the user has one toggle covering both passive rest + active heal-spell. When
+// the spell pickers on the Spells tab are empty, the engine no-ops without further
+// checks.
 public sealed class CastingDirector : IDisposable
 {
-    /// <summary>LogService category — appears as <c>[CastDirector]</c>
-    /// rows per evaluation + decision.</summary>
+    // LogService category — appears as [CastDirector] rows per evaluation +
+    // decision.
     public const string LogCategory = "CastDirector";
 
-    /// <summary>
-    /// Re-cast a buff once it's within this many seconds of expiry (or
-    /// already expired / never confirmed). Matches the user's
-    /// "15→0s-of-expiry recast window".
-    /// </summary>
+    // Re-cast a buff once it's within this many seconds of expiry (or already
+    // expired / never confirmed). Matches the user's "15→0s-of-expiry recast
+    // window".
     private const int RecastMarginSec = 15;
 
     private readonly PlayerState _state;
@@ -135,13 +103,9 @@ public sealed class CastingDirector : IDisposable
                readSpells, readHealth, readPartySettings: null,
                isEnabled, log) { }
 
-    /// <summary>
-    /// Constructor with optional <see cref="Conditions.ConditionTracker"/>
-    /// (for ailment cures) and <see cref="PartyState"/> +
-    /// <see cref="PartySettings"/> reader (for party-cast). Pass
-    /// <c>null</c> for tests / engines that don't need the dependencies;
-    /// the matching Pick* methods short-circuit.
-    /// </summary>
+    // Constructor with optional ConditionTracker (for ailment cures) and PartyState
+    // + PartySettings reader (for party-cast). Pass null for tests / engines that
+    // don't need the dependencies; the matching Pick* methods short-circuit.
     public CastingDirector(
         PlayerState state,
         CastCoordinator cast,
@@ -191,45 +155,33 @@ public sealed class CastingDirector : IDisposable
                readSpells, readHealth, readPartySettings: null,
                isEnabled, log) { }
 
-    /// <summary>Hook to <see cref="TickEngine.CombatTickElapsed"/> —
-    /// drives between-round evaluations.</summary>
+    // Hook to TickEngine.CombatTickElapsed — drives between-round evaluations.
     public void OnCombatTick() => Evaluate();
 
-    /// <summary>
-    /// Raised the instant a between-round cast (self-heal / cure / buff /
-    /// debuff) is sent to the server. The combat engine listens so it can
-    /// attribute the <c>*Combat Off*</c> the server fires in response to
-    /// THIS cast — and re-issue the weapon attack the moment that line
-    /// arrives, instead of waiting a full round. Without this signal a
-    /// bare <c>*Combat Off*</c> is ambiguous (a non-sustaining attack like
-    /// KAI pummel emits one after every strike), so the engine can't safely
-    /// resume on it alone.
-    /// </summary>
+    // Raised the instant a between-round cast (self-heal / cure / buff / debuff) is
+    // sent to the server. The combat engine listens so it can attribute the *Combat
+    // Off* the server fires in response to THIS cast — and re-issue the weapon
+    // attack the moment that line arrives, instead of waiting a full round. Without
+    // this signal a bare *Combat Off* is ambiguous (a non-sustaining attack like KAI
+    // pummel emits one after every strike), so the engine can't safely resume on it
+    // alone.
     public event Action? CastFired;
 
-    /// <summary>
-    /// Wire a stealth-state predicate so the Buff slot can skip
-    /// candidate casts that would break stealth. Typically pointed
-    /// at <c>StealthManager.IsStealthed</c>. Optional — when unset
-    /// the buff slot fires regardless of stealth (back-compat for
-    /// tests / pre-Cluster-3 callers).
-    /// </summary>
+    // Wire a stealth-state predicate so the Buff slot can skip candidate casts that
+    // would break stealth. Typically pointed at StealthManager.IsStealthed. Optional
+    // — when unset the buff slot fires regardless of stealth.
     public void SetStealthGate(Func<bool> isStealthed) =>
         _isStealthedFunc = isStealthed;
 
-    /// <summary>
-    /// Wire the combat engine's in-between debuff bridge. A debuff is an
-    /// in-between action (≤1/round) in the realm's round model, but the
-    /// DECISION — config + once-per-room / once-per-target gating — lives in
-    /// <see cref="Combat.CombatManager"/>. This director just rides the shared
-    /// in-between window so the debuff competes against survival casts by the
-    /// user's <see cref="SpellsSettings.PriorityDebuffing"/> rank (default
-    /// lowest, so heals win). <paramref name="source"/> answers "is there a
-    /// debuff to fire?" (spell code + target; null target ⇒ area/multi);
-    /// <paramref name="commit"/> is invoked only after the coordinator confirms
-    /// the cast, advancing the combat engine's per-room bookkeeping. Optional —
-    /// until wired the Debuffing slot is a no-op.
-    /// </summary>
+    // Wire the combat engine's in-between debuff bridge. A debuff is an in-between
+    // action (<=1/round) in the realm's round model, but the DECISION — config +
+    // once-per-room / once-per-target gating — lives in CombatManager. This director
+    // just rides the shared in-between window so the debuff competes against
+    // survival casts by the user's PriorityDebuffing rank (default lowest, so heals
+    // win). source answers "is there a debuff to fire?" (spell code + target; null
+    // target => area/multi); commit is invoked only after the coordinator confirms
+    // the cast, advancing the combat engine's per-room bookkeeping. Optional — until
+    // wired the Debuffing slot is a no-op.
     public void SetCombatDebuffSource(Func<(string Spell, string? Target)?> source, Action commit)
     {
         ArgumentNullException.ThrowIfNull(source);
@@ -238,48 +190,37 @@ public sealed class CastingDirector : IDisposable
         _combatDebuffCommit = commit;
     }
 
-    /// <summary>
-    /// Wire a cast-code → required-mana resolver (typically
-    /// <see cref="SpellbookState.ManaCostOf"/>) so the survival categories
-    /// (heals / cures / buffs / party heals) skip any cast the player can't pay
-    /// for. Returns the spell's per-round mana cost, or <c>null</c> when unknown
-    /// (no spellbook / unrecognised code) — an unknown cost never blocks, so the
-    /// engine behaves exactly as before until a real cost is resolvable. Combat
-    /// (offensive / debuff) casts are NOT gated here: the Combat settings tab
-    /// owns their mana threshold via <c>CombatSpellSlot.MinManaPerCast</c>.
-    /// Optional — until wired, no affordability check runs.
-    /// </summary>
+    // Wire a cast-code → required-mana resolver (typically SpellbookState.ManaCostOf)
+    // so the survival categories (heals / cures / buffs / party heals) skip any cast
+    // the player can't pay for. Returns the spell's per-round mana cost, or null when
+    // unknown (no spellbook / unrecognised code) — an unknown cost never blocks, so
+    // the engine behaves exactly as before until a real cost is resolvable. Combat
+    // (offensive / debuff) casts are NOT gated here: the Combat settings tab owns
+    // their mana threshold via CombatSpellSlot.MinManaPerCast. Optional — until
+    // wired, no affordability check runs.
     public void SetManaCostLookup(Func<string, int?> lookup)
     {
         ArgumentNullException.ThrowIfNull(lookup);
         _manaCostLookup = lookup;
     }
 
-    /// <summary>
-    /// Wire the Auto-Bless auto-engine gate. When the predicate returns false,
-    /// the Buffing category is suppressed entirely (no Bless / regen / when-full
-    /// buff fires). Until called, buffs fail open (always allowed) so
-    /// pre-wiring callers / tests behave as before. (Party-bless is not yet a
-    /// category here — it lands with the deferred party-buff pickers and will be
-    /// gated by the same flag at that time.)
-    /// </summary>
+    // Wire the Auto-Bless auto-engine gate. When the predicate returns false, the
+    // Buffing category is suppressed entirely (no Bless / regen / when-full buff
+    // fires). Until called, buffs fail open (always allowed).
     public void SetAutoBlessGate(Func<bool> isEnabled)
     {
         ArgumentNullException.ThrowIfNull(isEnabled);
         _autoBlessEnabled = isEnabled;
     }
 
-    /// <summary>
-    /// Wire the item-cast buff bridge. A Bless slot may hold an
-    /// <see cref="ItemCastToken"/> (<c>#&lt;item name&gt;</c>) instead of a
-    /// cast-code; when picked, the buff is produced by equipping + using an
-    /// item rather than a direct cast. <paramref name="durationOf"/> resolves a
-    /// token to the cast spell's effect duration in seconds (the recast clock),
-    /// returning <c>null</c> for an unresolvable token or a non-buff spell (no
-    /// duration) so it's never fired; <paramref name="execute"/> runs the
-    /// equip → use → re-equip sequence and returns whether the lines were sent.
-    /// Optional — until wired, an item-cast Bless slot is skipped.
-    /// </summary>
+    // Wire the item-cast buff bridge. A Bless slot may hold an ItemCastToken
+    // (#<item name>) instead of a cast-code; when picked, the buff is produced by
+    // equipping + using an item rather than a direct cast. durationOf resolves a
+    // token to the cast spell's effect duration in seconds (the recast clock),
+    // returning null for an unresolvable token or a non-buff spell (no duration) so
+    // it's never fired; execute runs the equip → use → re-equip sequence and returns
+    // whether the lines were sent. Optional — until wired, an item-cast Bless slot is
+    // skipped.
     public void SetItemCastSource(Func<string, long?> durationOf, Func<string, bool> execute)
     {
         ArgumentNullException.ThrowIfNull(durationOf);
@@ -288,39 +229,29 @@ public sealed class CastingDirector : IDisposable
         _executeItemCast = execute;
     }
 
-    /// <summary>
-    /// Wire the item-cast mana-cost resolver. Maps a Bless-slot
-    /// <see cref="ItemCastToken"/> to the cast spell's <c>Spells.ManaCost</c> —
-    /// the mana using the item draws. A <b>free</b> item-cast (most charge wands
-    /// / proc gear, cost 0) bypasses the buff mana-floor and recasts regardless;
-    /// a <b>paid</b> item-cast (e.g. a shimmering greatsword) is held until we
-    /// both clear the floor and can pay. Returns <c>null</c> for an unresolvable
-    /// token. Optional — until wired (or when it returns <c>null</c>), an
-    /// item-cast buff is treated as free and never mana-gated.
-    /// </summary>
+    // Wire the item-cast mana-cost resolver. Maps a Bless-slot ItemCastToken to the
+    // cast spell's Spells.ManaCost — the mana using the item draws. A free item-cast
+    // (most charge wands / proc gear, cost 0) bypasses the buff mana-floor and
+    // recasts regardless; a paid item-cast (e.g. a shimmering greatsword) is held
+    // until we both clear the floor and can pay. Returns null for an unresolvable
+    // token. Optional — until wired (or when it returns null), an item-cast buff is
+    // treated as free and never mana-gated.
     public void SetItemCastManaCost(Func<string, int?> manaCostOf)
     {
         ArgumentNullException.ThrowIfNull(manaCostOf);
         _itemCastManaCost = manaCostOf;
     }
 
-    /// <summary>
-    /// Wire the buff-duration sources used by the recast-window logic.
-    /// <paramref name="buffInfoByShort"/> maps a buff's 4-letter cast code to
-    /// its caster-confirmation template (the game-data
-    /// <see cref="MessageRecord.CasterMessage"/>, e.g. <c>You cast {s} on
-    /// {s}!</c>) plus its computed effect duration in seconds
-    /// (<see cref="SpellCalculator.Duration"/> at the live character level);
-    /// returns <c>null</c> for an unknown / message-less code.
-    /// <paramref name="shortFromAppliedRecord"/> maps a fired
-    /// <see cref="MessageRecord"/> (from
-    /// <see cref="Conditions.ConditionTracker.ConditionApplied"/> /
-    /// <see cref="Conditions.ConditionTracker.ConditionEnded"/>) back to the
-    /// buff cast code it represents, so a self-cast confirmed via its
-    /// AppliedMessage starts / clears its duration timer. Optional — until
-    /// wired, no duration tracking runs and the buff pickers fall back to the
-    /// always-eligible path.
-    /// </summary>
+    // Wire the buff-duration sources used by the recast-window logic. buffInfoByShort
+    // maps a buff's 4-letter cast code to its caster-confirmation template (the
+    // game-data CasterMessage, e.g. You cast {s} on {s}!) plus its computed effect
+    // duration in seconds (from SpellCalculator.Duration at the live character
+    // level); returns null for an unknown / message-less code.
+    // shortFromAppliedRecord maps a fired MessageRecord (from the ConditionTracker's
+    // ConditionApplied / ConditionEnded) back to the buff cast code it represents, so
+    // a self-cast confirmed via its AppliedMessage starts / clears its duration
+    // timer. Optional — until wired, no duration tracking runs and the buff pickers
+    // fall back to the always-eligible path.
     public void SetBuffDurationSources(
         Func<string, (string Caster, long DurationSec)?> buffInfoByShort,
         Func<MessageRecord, string?> shortFromAppliedRecord)
@@ -331,66 +262,53 @@ public sealed class CastingDirector : IDisposable
         _shortFromAppliedRecord = shortFromAppliedRecord;
     }
 
-    /// <summary>
-    /// Wire a class-number → class-name resolver (typically backed by
-    /// Classes.json) so party-bless slots — which store the set of class
-    /// numbers a buff applies to — can be matched against each
-    /// <see cref="PartyMember.Class"/> (a class name). Optional — until wired,
-    /// party-bless slots never match a member and the party-buff picker
-    /// no-ops.
-    /// </summary>
+    // Wire a class-number → class-name resolver (typically backed by Classes.json)
+    // so party-bless slots — which store the set of class numbers a buff applies to —
+    // can be matched against each PartyMember.Class (a class name). Optional — until
+    // wired, party-bless slots never match a member and the party-buff picker no-ops.
     public void SetClassResolver(Func<int, string?> classNameByNumber)
     {
         ArgumentNullException.ThrowIfNull(classNameByNumber);
         _classNameByNumber = classNameByNumber;
     }
 
-    /// <summary>
-    /// Wire a "is this buff party-wide?" check (typically backed by the
-    /// active set's <c>Spells.Targets</c> scope code). A party-wide buff
-    /// (Full / Divided Party Area) blankets the whole party in a single cast,
-    /// so the party-buff picker sends just the cast code with no target rather
-    /// than looping per member. Optional — until wired, every party-bless slot
-    /// is treated as single-target and cast per class-matched member.
-    /// </summary>
+    // Wire a "is this buff party-wide?" check (typically backed by the active set's
+    // Spells.Targets scope code). A party-wide buff (Full / Divided Party Area)
+    // blankets the whole party in a single cast, so the party-buff picker sends just
+    // the cast code with no target rather than looping per member. Optional — until
+    // wired, every party-bless slot is treated as single-target and cast per
+    // class-matched member.
     public void SetPartyWideBuffCheck(Func<string, bool> isPartyWideBuff)
     {
         ArgumentNullException.ThrowIfNull(isPartyWideBuff);
         _isPartyWideBuff = isPartyWideBuff;
     }
 
-    /// <summary>
-    /// Wire a sink notified with the 4-letter cast code every time one of OUR
-    /// self-buffs is confirmed to have landed (via the ConditionTracker
-    /// AppliedMessage path). The mana-regen reroll engine subscribes here to
-    /// learn when a code-145 roll spell (nature tap / mana flux) re-landed so it
-    /// can read <c>abil 145</c> and reroll a bad value; the sink itself owns the
-    /// spell / realm filtering. Optional — until wired, self-buff landings only
-    /// refresh the recast timer.
-    /// </summary>
+    // Wire a sink notified with the 4-letter cast code every time one of OUR
+    // self-buffs is confirmed to have landed (via the ConditionTracker AppliedMessage
+    // path). The mana-regen reroll engine subscribes here to learn when a code-145
+    // roll spell (nature tap / mana flux) re-landed so it can read abil 145 and
+    // reroll a bad value; the sink itself owns the spell / realm filtering. Optional
+    // — until wired, self-buff landings only refresh the recast timer.
     public void SetSelfBuffLandedSink(Action<string> sink)
     {
         ArgumentNullException.ThrowIfNull(sink);
         _selfBuffLandedSink = sink;
     }
 
-    /// <summary>
-    /// Override the clock used for buff-expiry math. Test seam — production
-    /// uses <see cref="DateTime.UtcNow"/>.
-    /// </summary>
+    // Override the clock used for buff-expiry math. Test seam — production uses
+    // DateTime.UtcNow.
     public void SetClock(Func<DateTime> now)
     {
         ArgumentNullException.ThrowIfNull(now);
         _now = now;
     }
 
-    /// <summary>
-    /// Subscribe to server lines so OUR party-buff casts can be confirmed
-    /// against the buff's <see cref="MessageRecord.CasterMessage"/> template
-    /// (capturing the target name) before the duration timer starts. Self-cast
-    /// confirmation goes through the ConditionTracker AppliedMessage path
-    /// instead, so this is only consulted while a party cast is pending.
-    /// </summary>
+    // Subscribe to server lines so OUR party-buff casts can be confirmed against the
+    // buff's CasterMessage template (capturing the target name) before the duration
+    // timer starts. Self-cast confirmation goes through the ConditionTracker
+    // AppliedMessage path instead, so this is only consulted while a party cast is
+    // pending.
     public void AttachLineExtractor(LineExtractor lines)
     {
         ArgumentNullException.ThrowIfNull(lines);
@@ -399,23 +317,17 @@ public sealed class CastingDirector : IDisposable
         _lines.LineEmitted += OnLine;
     }
 
-    /// <summary>
-    /// Clear all buff-duration state (active timers + any pending party-cast
-    /// confirmation). Call alongside
-    /// <see cref="Conditions.ConditionTracker.ClearAll"/> on disconnect / death
-    /// so stale durations don't suppress a fresh-session recast.
-    /// </summary>
+    // Clear all buff-duration state (active timers + any pending party-cast
+    // confirmation). Call alongside ConditionTracker.ClearAll on disconnect / death
+    // so stale durations don't suppress a fresh-session recast.
     public void ResetBuffTracking()
     {
         _activeUntil.Clear();
         _pendingPartyCast = null;
     }
 
-    /// <summary>
-    /// True when a buff on <paramref name="targetKey"/> (<c>""</c> = self) is
-    /// due to be (re)cast: either never confirmed-active, or within
-    /// <see cref="RecastMarginSec"/> seconds of expiry.
-    /// </summary>
+    // True when a buff on targetKey ("" = self) is due to be (re)cast: either never
+    // confirmed-active, or within RecastMarginSec seconds of expiry.
     private bool IsRecastDue(string targetKey, string spellShort)
     {
         if (!_activeUntil.TryGetValue((targetKey, spellShort), out DateTime until))
@@ -478,11 +390,9 @@ public sealed class CastingDirector : IDisposable
         }
     }
 
-    /// <summary>
-    /// Run one decision pass: walk the priority list and fire the
-    /// first ready candidate. Returns the spell that was cast (for
-    /// diagnostics / tests), or <c>null</c> if nothing matched.
-    /// </summary>
+    // Run one decision pass: walk the priority list and fire the first ready
+    // candidate. Returns the spell that was cast (for diagnostics / tests), or null
+    // if nothing matched.
     public string? Evaluate()
     {
         if (!_isEnabled()) return null;
@@ -566,15 +476,13 @@ public sealed class CastingDirector : IDisposable
     private static CastCandidate? Wrap(string? spell) =>
         string.IsNullOrWhiteSpace(spell) ? null : new CastCandidate(spell, Target: null);
 
-    /// <summary>
-    /// Fire an item-cast buff: resolve its recast duration, run the
-    /// equip → use → re-equip sequence, then start the round cooldown + the
-    /// token-keyed recast timer. Returns <c>false</c> (so a later category can
-    /// try) when the token doesn't resolve to a real buff or the sequence
-    /// didn't send. The timer is set proactively from the cast spell's
-    /// computed duration rather than awaiting an AppliedMessage, since the
-    /// landing buff confirms under the spell's own cast code, not the token.
-    /// </summary>
+    // Fire an item-cast buff: resolve its recast duration, run the equip → use →
+    // re-equip sequence, then start the round cooldown + the token-keyed recast
+    // timer. Returns false (so a later category can try) when the token doesn't
+    // resolve to a real buff or the sequence didn't send. The timer is set
+    // proactively from the cast spell's computed duration rather than awaiting an
+    // AppliedMessage, since the landing buff confirms under the spell's own cast
+    // code, not the token.
     private bool TryFireItemCast(string token)
     {
         if (_itemCastDuration is null || _executeItemCast is null) return false;
@@ -588,8 +496,8 @@ public sealed class CastingDirector : IDisposable
         return true;
     }
 
-    /// <summary>Categories in priority order (lowest int first, ties
-    /// broken by category enum order for determinism).</summary>
+    // Categories in priority order (lowest int first, ties broken by category enum
+    // order for determinism).
     private static IEnumerable<SpellCategory> PrioritisedCategories(SpellsSettings s)
     {
         (SpellCategory Cat, int Prio)[] order =
@@ -661,16 +569,13 @@ public sealed class CastingDirector : IDisposable
         return string.IsNullOrWhiteSpace(spells.MinorHealSpell) ? null : spells.MinorHealSpell;
     }
 
-    /// <summary>
-    /// Mana-floor gate for self heals: only cast a heal when the caster pool
-    /// sits at or above <see cref="HealthSettings.HealIfAboveMaCombat"/>
-    /// (in combat) or <see cref="HealthSettings.HealIfAboveMaResting"/>
-    /// (resting / idle), so a low pool regenerates instead of being drained
-    /// on heal spells. A floor of 0 disables the gate. The value is read per
-    /// <see cref="HealthSettings.MaThresholdMode"/> (percentage of MaxMa, or
-    /// absolute MA); an unknown pool (MaxMa 0, percentage mode) never blocks a
-    /// heal so the safety path isn't suppressed by missing prompt data.
-    /// </summary>
+    // Mana-floor gate for self heals: only cast a heal when the caster pool sits at
+    // or above HealIfAboveMaCombat (in combat) or HealIfAboveMaResting (resting /
+    // idle), so a low pool regenerates instead of being drained on heal spells. A
+    // floor of 0 disables the gate. The value is read per MaThresholdMode
+    // (percentage of MaxMa, or absolute MA); an unknown pool (MaxMa 0, percentage
+    // mode) never blocks a heal so the safety path isn't suppressed by missing
+    // prompt data.
     private bool ManaClearsHealFloor(HealthSettings health)
     {
         int floor = _state.InCombat
@@ -685,14 +590,11 @@ public sealed class CastingDirector : IDisposable
 
     // ----- Curing -----------------------------------------------------
 
-    /// <summary>
-    /// Pick the next cure to fire: self first (the caster can't help
-    /// anyone while movement-prevented or blind, and a self-cure is the
-    /// cheapest to confirm), then party. Both scopes draw on the same
-    /// <see cref="SpellsSettings"/> cure-spell config — a MajorMUD cure
-    /// spell targets self or another player, so the only difference is the
-    /// target string.
-    /// </summary>
+    // Pick the next cure to fire: self first (the caster can't help anyone while
+    // movement-prevented or blind, and a self-cure is the cheapest to confirm), then
+    // party. Both scopes draw on the same SpellsSettings cure-spell config — a
+    // MajorMUD cure spell targets self or another player, so the only difference is
+    // the target string.
     private CastCandidate? PickCure(SpellsSettings spells)
     {
         if (PickSelfCure(spells) is { } selfSpell)
@@ -700,13 +602,10 @@ public sealed class CastingDirector : IDisposable
         return PickPartyCure(spells);
     }
 
-    /// <summary>
-    /// Walk the cure-priority list and return the first configured
-    /// spell whose matching ailment is currently active on US.
-    /// MovementPrevented covers paralyze / hold / sleep — they all
-    /// render the same to a player (can't act); the user's
-    /// CureHoldsSpell is the catch-all.
-    /// </summary>
+    // Walk the cure-priority list and return the first configured spell whose
+    // matching ailment is currently active on US. MovementPrevented covers paralyze /
+    // hold / sleep — they all render the same to a player (can't act); the user's
+    // CureHoldsSpell is the catch-all.
     private string? PickSelfCure(SpellsSettings spells)
     {
         if (_conditions is null) return null;
@@ -734,17 +633,13 @@ public sealed class CastingDirector : IDisposable
         return null;
     }
 
-    /// <summary>
-    /// Walk live party members and cast the configured cure spell on the
-    /// first member whose ailment chip is set. The chip is mirrored from
-    /// the member's inbound <c>.@poisoned</c> / <c>.@diseased</c> /
-    /// <c>.@blind</c> announce by
-    /// <see cref="Conditions.PartyAilmentTracker"/>. Same cure-spell config
-    /// as self-cure; the target string routes the cast to the member.
-    /// Internal order mirrors self-cure (poison → disease → blindness).
-    /// Confusion has no cure spell — a <c>@confused</c> chip is never
-    /// picked up here (documented gap in <c>PartyAilmentTracker</c>).
-    /// </summary>
+    // Walk live party members and cast the configured cure spell on the first member
+    // whose ailment chip is set. The chip is mirrored from the member's inbound
+    // .@poisoned / .@diseased / .@blind announce by PartyAilmentTracker. Same
+    // cure-spell config as self-cure; the target string routes the cast to the
+    // member. Internal order mirrors self-cure (poison → disease → blindness).
+    // Confusion has no cure spell — a @confused chip is never picked up here (gap in
+    // PartyAilmentTracker).
     private CastCandidate? PickPartyCure(SpellsSettings spells)
     {
         if (_party is null) return null;
@@ -765,21 +660,17 @@ public sealed class CastingDirector : IDisposable
 
     // ----- Party heal -------------------------------------------------
 
-    /// <summary>
-    /// Walk live party members; cast the minor party heal on whoever
-    /// is below <see cref="PartySettings.MinorHealMemberThresholdPercent"/>.
-    /// When <see cref="PartySettings.AoeMinMembers"/> or more members are
-    /// below the threshold AND a group spell is configured, fire the
-    /// AOE variant instead (no target).
-    /// </summary>
+    // Walk live party members; cast the minor party heal on whoever is below
+    // MinorHealMemberThresholdPercent. When AoeMinMembers or more members are below
+    // the threshold AND a group spell is configured, fire the AOE variant instead
+    // (no target).
     private CastCandidate? PickMinorPartyHeal(PartySettings? settings) =>
         PickPartyHeal(settings,
             threshold: settings?.MinorHealMemberThresholdPercent ?? 70,
             singleSpell: settings?.MinorPartyHealSpell,
             aoeSpell:    settings?.MinorPartyHealAoeSpell);
 
-    /// <summary>Symmetric to <see cref="PickMinorPartyHeal"/> at the
-    /// major / critical threshold.</summary>
+    // Symmetric to PickMinorPartyHeal at the major / critical threshold.
     private CastCandidate? PickMajorPartyHeal(PartySettings? settings) =>
         PickPartyHeal(settings,
             threshold: settings?.MajorHealMemberThresholdPercent ?? 40,
@@ -828,30 +719,21 @@ public sealed class CastingDirector : IDisposable
 
     // ----- Buffing ----------------------------------------------------
 
-    /// <summary>
-    /// Pick the next buff to (re)cast. Self buffs (Bless1–10 + regen +
-    /// when-full slots) take precedence over party buffs; within each scope
-    /// the slot order is the priority order. Returns the first slot whose
-    /// buff is due to recast — never confirmed-active, or within the
-    /// <see cref="RecastMarginSec"/> expiry window.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// "Active" is duration-based: a buff's timer starts only when we observe
-    /// OUR successful cast (self via the ConditionTracker AppliedMessage,
-    /// party via the <see cref="MessageRecord.CasterMessage"/> matcher) and
-    /// runs for <see cref="SpellCalculator.Duration"/> seconds. No
-    /// confirmation ⇒ no timer ⇒ the next eligible pass re-attempts (the
-    /// <see cref="CastCoordinator"/> cooldown prevents spam). The
-    /// ConditionEnded wear-off line clears the timer early for dispels /
-    /// area-clears.
-    /// </para>
-    /// <para>
-    /// MA-floor gate: only consider buffs when MA is at or above
-    /// <see cref="HealthSettings.BlessIfAboveMa"/>. Mirrors MegaMUD's
-    /// "don't burn buff mana when we'll need it for heals soon" behaviour.
-    /// </para>
-    /// </remarks>
+    // Pick the next buff to (re)cast. Self buffs (Bless1–10 + regen + when-full
+    // slots) take precedence over party buffs; within each scope the slot order is
+    // the priority order. Returns the first slot whose buff is due to recast — never
+    // confirmed-active, or within the RecastMarginSec expiry window.
+    //
+    // "Active" is duration-based: a buff's timer starts only when we observe OUR
+    // successful cast (self via the ConditionTracker AppliedMessage, party via the
+    // CasterMessage matcher) and runs for SpellCalculator.Duration seconds. No
+    // confirmation => no timer => the next eligible pass re-attempts (the
+    // CastCoordinator cooldown prevents spam). The ConditionEnded wear-off line
+    // clears the timer early for dispels / area-clears.
+    //
+    // MA-floor gate: only consider buffs when MA is at or above BlessIfAboveMa.
+    // Mirrors MegaMUD's "don't burn buff mana when we'll need it for heals soon"
+    // behaviour.
     private CastCandidate? PickBuff(SpellsSettings spells, HealthSettings health, PartySettings? party)
     {
         // Stealth gate: any cast — or an item-cast's equip/use/re-equip — breaks
@@ -873,14 +755,12 @@ public sealed class CastingDirector : IDisposable
         return PickPartyBuff(party, manaBuffsAllowed);
     }
 
-    /// <summary>
-    /// Per-slot buff affordability for the buff pickers. A regular spell buff is
-    /// allowed only when mana-drawing buffs clear the <see cref="HealthSettings.BlessIfAboveMa"/>
-    /// floor (the specific cast's cost is re-checked at dispatch); an item-cast
-    /// token is allowed when its use-spell is free (cost 0 / unresolved — recast
-    /// regardless of mana) or, when it draws mana, only if we both clear the
-    /// floor and can pay the cost from the current pool.
-    /// </summary>
+    // Per-slot buff affordability for the buff pickers. A regular spell buff is
+    // allowed only when mana-drawing buffs clear the BlessIfAboveMa floor (the
+    // specific cast's cost is re-checked at dispatch); an item-cast token is allowed
+    // when its use-spell is free (cost 0 / unresolved — recast regardless of mana)
+    // or, when it draws mana, only if we both clear the floor and can pay the cost
+    // from the current pool.
     private bool IsBuffAffordable(string slot, bool manaBuffsAllowed)
     {
         if (!ItemCastToken.IsToken(slot)) return manaBuffsAllowed;
@@ -889,21 +769,17 @@ public sealed class CastingDirector : IDisposable
         return manaBuffsAllowed && _state.Ma >= cost.Value;
     }
 
-    /// <summary>
-    /// Walk the self-buff slots (the sparse Bless slots in slot-index order,
-    /// then MaRegen + WhenHpFull + WhenMaFull) and return the first configured
-    /// slot due to recast on us. Hard-gated to out-of-combat — self buffs are
-    /// expensive and shouldn't burn a combat round.
-    /// </summary>
-    /// <remarks>
-    /// <see cref="SpellsSettings.HpRegenSpell"/> deliberately does NOT live here:
-    /// an HP-regen HoT is treated as assisted healing, cast reactively by the
-    /// minor-self-heal path (<see cref="PickMinorSelfHeal"/>) when HP trips the
-    /// trigger — not maintained always-up like a buff. A user who wants a
-    /// constantly-refreshed regen buff puts that spell in a Bless slot instead.
-    /// <see cref="SpellsSettings.MaRegenSpell"/> stays a downtime buff — it tops
-    /// the mana pool (and feeds the reroll engine), it doesn't heal HP.
-    /// </remarks>
+    // Walk the self-buff slots (the sparse Bless slots in slot-index order, then
+    // MaRegen + WhenHpFull + WhenMaFull) and return the first configured slot due to
+    // recast on us. Hard-gated to out-of-combat — self buffs are expensive and
+    // shouldn't burn a combat round.
+    //
+    // HpRegenSpell deliberately does NOT live here: an HP-regen HoT is treated as
+    // assisted healing, cast reactively by the minor-self-heal path
+    // (PickMinorSelfHeal) when HP trips the trigger — not maintained always-up like a
+    // buff. A user who wants a constantly-refreshed regen buff puts that spell in a
+    // Bless slot instead. MaRegenSpell stays a downtime buff — it tops the mana pool
+    // (and feeds the reroll engine), it doesn't heal HP.
     private CastCandidate? PickSelfBuff(SpellsSettings spells, bool manaBuffsAllowed)
     {
         if (_state.InCombat) return null;
@@ -933,18 +809,14 @@ public sealed class CastingDirector : IDisposable
         return null;
     }
 
-    /// <summary>
-    /// Walk the party-bless slots in priority order and pick one buff to cast.
-    /// A <b>party-wide</b> buff (its <c>Spells.Targets</c> is Full / Divided
-    /// Party Area — e.g. a mage's shimmering mirage or a chant) blankets the
-    /// whole party in a single cast, so it's sent once with no target and no
-    /// class filter, keyed for recast like a self-buff (it lands on us too).
-    /// A <b>single-target</b> buff (e.g. a priest's bless) is cast on the first
-    /// class-matched member due to recast — a member matches when their
-    /// <see cref="PartyMember.Class"/> is in the slot's checked class set.
-    /// Gated by the Other-tab "bless party while resting" / "bless party during
-    /// combat" toggles (default open until wired).
-    /// </summary>
+    // Walk the party-bless slots in priority order and pick one buff to cast. A
+    // party-wide buff (its Spells.Targets is Full / Divided Party Area — e.g. a
+    // mage's shimmering mirage or a chant) blankets the whole party in a single cast,
+    // so it's sent once with no target and no class filter, keyed for recast like a
+    // self-buff (it lands on us too). A single-target buff (e.g. a priest's bless) is
+    // cast on the first class-matched member due to recast — a member matches when
+    // their PartyMember.Class is in the slot's checked class set. Gated by the
+    // Other-tab "bless party while resting" / "bless party during combat" toggles.
     private CastCandidate? PickPartyBuff(PartySettings? party, bool manaBuffsAllowed)
     {
         if (_party is null) return null;
@@ -984,11 +856,9 @@ public sealed class CastingDirector : IDisposable
         return null;
     }
 
-    /// <summary>
-    /// True when <paramref name="m"/>'s class name resolves to any of the
-    /// slot's checked class numbers (case-insensitive). Requires the
-    /// class-number → name resolver to be wired; no resolver ⇒ no match.
-    /// </summary>
+    // True when the member's class name resolves to any of the slot's checked class
+    // numbers (case-insensitive). Requires the class-number → name resolver to be
+    // wired; no resolver => no match.
     private bool MemberMatchesClasses(PartyMember m, IReadOnlyList<int> classNumbers)
     {
         if (_classNameByNumber is null) return false;
@@ -1004,14 +874,11 @@ public sealed class CastingDirector : IDisposable
         return false;
     }
 
-    /// <summary>
-    /// Arm the pending party-buff confirmation: resolve the buff's
-    /// CasterMessage template + duration and stash it so the next matching
-    /// server line starts the duration timer keyed to <paramref name="target"/>.
-    /// Clears any prior pending cast (CastCoordinator's cooldown guarantees
-    /// ≤1 in flight). No-op (clears pending) when the buff has no resolvable
-    /// caster template.
-    /// </summary>
+    // Arm the pending party-buff confirmation: resolve the buff's CasterMessage
+    // template + duration and stash it so the next matching server line starts the
+    // duration timer keyed to the target. Clears any prior pending cast
+    // (CastCoordinator's cooldown guarantees <=1 in flight). No-op (clears pending)
+    // when the buff has no resolvable caster template.
     private void ArmPartyBuffConfirm(string shortCode, string target)
     {
         _pendingPartyCast = null;
@@ -1048,14 +915,13 @@ public sealed class CastingDirector : IDisposable
     }
 }
 
-/// <summary>One picked cast — spell name + optional target string.
-/// Used internally by <see cref="CastingDirector"/> to thread through
-/// the unified Pick* → TryCast pipeline.</summary>
+// One picked cast — spell name + optional target string. Used internally by
+// CastingDirector to thread through the unified Pick* → TryCast pipeline.
 public readonly record struct CastCandidate(string Spell, string? Target);
 
-/// <summary>Spell-decision categories. Order matches the user-facing
-/// Spells settings tab; numeric position is just for deterministic
-/// tiebreak when two priority slots share the same int.</summary>
+// Spell-decision categories. Order matches the user-facing Spells settings tab;
+// numeric position is just for deterministic tiebreak when two priority slots share
+// the same int.
 public enum SpellCategory
 {
     MinorPartyHeal = 0,

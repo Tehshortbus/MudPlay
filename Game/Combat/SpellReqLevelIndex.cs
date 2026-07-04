@@ -3,31 +3,22 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game.Combat;
 
-/// <summary>
-/// Fast lookup of a spell's <c>ReqLevel</c> (its learn-level requirement) by
-/// the spell's <c>Short</c> cast-code in the active game-data set.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Spell immunity gates by level: a spell affects a monster only when its
-/// <c>ReqLevel</c> is ≥ the monster's <c>SpellImmu</c>
-/// (<see cref="MonsterMagicIndex"/>). This applies to both attack spells and
-/// debuffs.
-/// </para>
-/// <para>
-/// The key is the <c>Short</c> cast-code because the combat spell slots
-/// (<see cref="Models.Profile.CombatSpellSlot.SpellName"/>) store the
-/// cast-code that gets typed to the server, not the spell's display Name —
-/// see <see cref="Spells.CastCoordinator.TryCast"/>. <c>ReqLevel</c> is a
-/// top-level integer column on each Spells row.
-/// </para>
-/// <para>
-/// Mirrors <see cref="SeeHiddenIndex"/> / <see cref="MonsterMagicIndex"/>:
-/// built lazily by scanning the raw <c>Spells</c> table, cached, and dropped
-/// on game-data set switch. Unknown cast-code → <c>-1</c> (fail-open: the
-/// caller treats "no data" as "don't block the configured spell").
-/// </para>
-/// </remarks>
+// Fast lookup of a spell's ReqLevel (its learn-level requirement) by the spell's
+// Short cast-code in the active game-data set.
+//
+// Spell immunity gates by level: a spell affects a monster only when its
+// ReqLevel is ≥ the monster's SpellImmu (MonsterMagicIndex). This applies to
+// both attack spells and debuffs.
+//
+// The key is the Short cast-code because the combat spell slots
+// (CombatSpellSlot.SpellName) store the cast-code that gets typed to the server,
+// not the spell's display Name — see CastCoordinator.TryCast. ReqLevel is a
+// top-level integer column on each Spells row.
+//
+// Mirrors SeeHiddenIndex / MonsterMagicIndex: built lazily by scanning the raw
+// Spells table, cached, and dropped on game-data set switch. Unknown cast-code →
+// -1 (fail-open: the caller treats "no data" as "don't block the configured
+// spell").
 public sealed class SpellReqLevelIndex
 {
     private readonly GameDataCache _cache;
@@ -40,8 +31,8 @@ public sealed class SpellReqLevelIndex
         _cache.ActiveSetChanged += _ => _byShort = null;
     }
 
-    /// <summary>The spell's <c>ReqLevel</c>, or <c>-1</c> when the cast-code
-    /// is unknown (no Spells row with that <c>Short</c>) — fail-open.</summary>
+    // The spell's ReqLevel, or -1 when the cast-code is unknown (no Spells row
+    // with that Short) — fail-open.
     public int ReqLevel(string? castCode)
     {
         if (string.IsNullOrWhiteSpace(castCode)) return -1;

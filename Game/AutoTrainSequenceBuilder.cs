@@ -3,36 +3,31 @@ using System.Globalization;
 
 namespace FujinTerm.Game;
 
-/// <summary>
-/// Builds the ordered keystroke payloads that drive MajorMUD's <c>train stats</c>
-/// full-screen form to apply a CP plan. The form is navigated entirely with Enter
-/// (<c>\r</c>): pressing Enter on a field moves to the next one, and typing a
-/// number into a stat box replaces its value (confirmed against a live capture),
-/// so each payload here is either an empty string (bare Enter — skip / advance /
-/// save) or the target digits (type-then-Enter — set the stat + advance).
-/// </summary>
-/// <remarks>
-/// Field order top-to-bottom, focus starting on Family Name:
-/// Family Name, Strength, Intellect, Willpower, Agility, Health, Charm,
-/// Hair Length, Hair Colour, Eye Colour, Exit. We only touch the six stat boxes;
-/// every other field is advanced past untouched, and the final Enter lands on
-/// Exit (which defaults to SAVE) to commit and leave. Sending absolute target
-/// values is self-correcting — the field ends on the target regardless of its
-/// starting value — and a stat is only typed when its target exceeds the current
-/// value (you can't untrain), so unchanged stats cost no keystrokes and no CP.
-/// </remarks>
+// Builds the ordered keystroke payloads that drive MajorMUD's `train stats`
+// full-screen form to apply a CP plan. The form is navigated entirely with
+// Enter (\r): pressing Enter on a field moves to the next one, and typing a
+// number into a stat box replaces its value (confirmed against a live capture),
+// so each payload here is either an empty string (bare Enter — skip / advance /
+// save) or the target digits (type-then-Enter — set the stat + advance).
+//
+// Field order top-to-bottom, focus starting on Family Name: Family Name,
+// Strength, Intellect, Willpower, Agility, Health, Charm, Hair Length, Hair
+// Colour, Eye Colour, Exit. We only touch the six stat boxes; every other field
+// is advanced past untouched, and the final Enter lands on Exit (which defaults
+// to SAVE) to commit and leave. Sending absolute target values is
+// self-correcting — the field ends on the target regardless of its starting
+// value — and a stat is only typed when its target exceeds the current value
+// (you can't untrain), so unchanged stats cost no keystrokes and no CP.
 public static class AutoTrainSequenceBuilder
 {
-    /// <summary>Number of stat boxes (STR, INT, WIL, AGL, HEA, CHM).</summary>
+    // Number of stat boxes (STR, INT, WIL, AGL, HEA, CHM).
     public const int StatCount = 6;
 
-    /// <summary>
-    /// Produce the Enter-driven payload list for <paramref name="current"/> →
-    /// <paramref name="target"/> base stats (both length-6, order
-    /// STR/INT/WIL/AGL/HEA/CHM). The result is 11 payloads: skip Family Name, the
-    /// six stat boxes (target digits where it's a raise, else empty), skip the
-    /// three appearance boxes, and a final Enter to save + exit.
-    /// </summary>
+    // Produce the Enter-driven payload list for current → target base stats
+    // (both length-6, order STR/INT/WIL/AGL/HEA/CHM). The result is 11 payloads:
+    // skip Family Name, the six stat boxes (target digits where it's a raise,
+    // else empty), skip the three appearance boxes, and a final Enter to save +
+    // exit.
     public static IReadOnlyList<string> Build(IReadOnlyList<int> current, IReadOnlyList<int> target)
     {
         ArgumentNullException.ThrowIfNull(current);
@@ -55,8 +50,8 @@ public static class AutoTrainSequenceBuilder
         return seq;
     }
 
-    /// <summary>True when <paramref name="target"/> raises at least one stat above
-    /// <paramref name="current"/> — i.e. there's something worth training.</summary>
+    // True when target raises at least one stat above current — i.e. there's
+    // something worth training.
     public static bool HasRaise(IReadOnlyList<int> current, IReadOnlyList<int> target)
     {
         ArgumentNullException.ThrowIfNull(current);

@@ -6,17 +6,12 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game.Map;
 
-/// <summary>
-/// Executes a saved <see cref="Loop"/> against the wire. Sibling of
-/// <see cref="AutoWalkManager"/> — shares the same
-/// <see cref="MovementCoordinator"/> for pause gates, the same
-/// <see cref="RoomTracker"/> for move confirmation, and the same
-/// <see cref="EngineRecoveryGate"/> for tier-1/2/3 location recovery.
-/// Operates on <see cref="LoopStep"/>s (which include
-/// <see cref="CommandLoopStep.DelayMs"/> pauses the walker doesn't
-/// need) and supports circular loops that restart at the top after
-/// the last step.
-/// </summary>
+// Executes a saved Loop against the wire. Sibling of AutoWalkManager — shares the
+// same MovementCoordinator for pause gates, the same RoomTracker for move
+// confirmation, and the same EngineRecoveryGate for tier-1/2/3 location recovery.
+// Operates on LoopSteps (which include CommandLoopStep.DelayMs pauses the walker
+// doesn't need) and supports circular loops that restart at the top after the
+// last step.
 public sealed class LoopRunner : IRecoverableEngine
 {
     private readonly RoomTracker _tracker;
@@ -26,97 +21,70 @@ public sealed class LoopRunner : IRecoverableEngine
     private readonly EngineRecoveryGate? _recovery;
     private readonly BfsMapper? _bfs;
     private readonly AutoWalkManager? _walker;
-    /// <summary>
-    /// Path filter used by the runner's BFS calls (rotation +
-    /// closest-waypoint pick). When set this is typically
-    /// <c>AppServices.Movement</c>; changes to its avoided-rooms list
-    /// arrive via <see cref="NotifyAvoidedChanged"/>.
-    /// </summary>
+    // Path filter used by the runner's BFS calls (rotation + closest-waypoint
+    // pick). When set this is typically AppServices.Movement; changes to its
+    // avoided-rooms list arrive via NotifyAvoidedChanged.
     private readonly IRoomFilter? _filter;
     private Action<byte[]>? _wireSender;
     private Action? _preMoveHook;
 
-    /// <summary>
-    /// (source, dest) → teleport keyword resolver, mirroring the
-    /// walker's <see cref="AutoWalkManager.SetTeleportResolver"/>. Lets
-    /// the circuit cross a <see cref="RoomExitHint.Teleport"/> exit with
-    /// the same keyword the walker would use. Null until wired.
-    /// </summary>
+    // (source, dest) → teleport keyword resolver, mirroring the walker's
+    // AutoWalkManager.SetTeleportResolver. Lets the circuit cross a
+    // RoomExitHint.Teleport exit with the same keyword the walker would use. Null
+    // until wired.
     private Func<RoomKey, RoomKey, string?>? _teleportResolver;
 
-    /// <summary>
-    /// True when the local character should relay a teleport keyword to
-    /// party followers (`.@party &lt;kw&gt;`). Mirrors the walker's
-    /// <see cref="AutoWalkManager.SetPartyLeaderCheck"/>. Null until wired.
-    /// </summary>
+    // True when the local character should relay a teleport keyword to party
+    // followers (`.@party <kw>`). Mirrors the walker's
+    // AutoWalkManager.SetPartyLeaderCheck. Null until wired.
     private Func<bool>? _isLeaderWithFollowers;
 
     private Loop? _loop;
     private int _index;
 
-    /// <summary>
-    /// Runtime expansion of <see cref="_loop"/>'s waypoints into the
-    /// flat <see cref="LoopStep"/> sequence the runner executes.
-    /// Recomputed in <see cref="Start"/> after the rotation is
-    /// committed; rebuilt by <see cref="NotifyAvoidedChanged"/> when
-    /// the filter changes. Always non-null while a loop is active.
-    /// </summary>
+    // Runtime expansion of _loop's waypoints into the flat LoopStep sequence the
+    // runner executes. Recomputed in Start after the rotation is committed; rebuilt
+    // by NotifyAvoidedChanged when the filter changes. Always non-null while a loop
+    // is active.
     private List<LoopStep> _expandedSteps = new();
     private bool _stepInFlight;
     private bool _awaitingPromptForCommand;
     private RoomKey? _expectedMoveTarget;
 
-    /// <summary>
-    /// True when the runner flipped to <see cref="LoopState.Paused"/>
-    /// while still in the approach phase (the walker was driving us
-    /// toward the loop's entry waypoint). Tells the resume handler to
-    /// transition back to <see cref="LoopState.Approaching"/> instead
-    /// of trying to send the loop's first step before the walker has
-    /// actually finished.
-    /// </summary>
+    // True when the runner flipped to LoopState.Paused while still in the approach
+    // phase (the walker was driving us toward the loop's entry waypoint). Tells the
+    // resume handler to transition back to LoopState.Approaching instead of trying
+    // to send the loop's first step before the walker has actually finished.
     private bool _pausedFromApproach;
 
-    /// <summary>
-    /// Waypoint the walker is currently approaching during
-    /// <see cref="LoopState.Approaching"/>. Null when not approaching.
-    /// </summary>
+    // Waypoint the walker is currently approaching during LoopState.Approaching.
+    // Null when not approaching.
     private RoomKey? _approachTarget;
 
-    /// <summary>
-    /// Room the rotated circle begins (and ends) at. Set when the
-    /// runner picks the entry waypoint — either immediately in
-    /// <see cref="Start"/> for player-already-at-waypoint / approach
-    /// cases, or after the legacy / no-waypoints branch leaves it null.
-    /// Used by the Navigation overlay as the source for rendering the
-    /// full cycle so the visible polyline stays anchored to the cycle
-    /// itself instead of shifting under the player as they walk.
-    /// </summary>
+    // Room the rotated circle begins (and ends) at. Set when the runner picks the
+    // entry waypoint — either immediately in Start for player-already-at-waypoint /
+    // approach cases, or after the legacy / no-waypoints branch leaves it null.
+    // Used by the Navigation overlay as the source for rendering the full cycle so
+    // the visible polyline stays anchored to the cycle itself instead of shifting
+    // under the player as they walk.
     private RoomKey? _circleStartRoom;
 
-    /// <summary>
-    /// Set true the first time we begin the circle in a given Start
-    /// session so <see cref="LoopEventKind.ReachedFirstWaypoint"/>
-    /// only fires once per session (not on every wrap).
-    /// </summary>
+    // Set true the first time we begin the circle in a given Start session so
+    // LoopEventKind.ReachedFirstWaypoint only fires once per session (not on every
+    // wrap).
     private bool _firstWaypointReached;
 
-    /// <summary>
-    /// Wall-clock anchor for the current lap. Set on
-    /// <see cref="LoopReachedFirstWaypoint"/> and refreshed on every
-    /// wrap so <see cref="CurrentLapTime"/> reads correctly.
-    /// </summary>
+    // Wall-clock anchor for the current lap. Set on LoopReachedFirstWaypoint and
+    // refreshed on every wrap so CurrentLapTime reads correctly.
     private DateTimeOffset _lapStartedAt;
 
     private readonly List<TimeSpan> _lapDurations = new();
     private const int MaxLapHistory = 10;
 
-    /// <summary>
-    /// Custom-command delay timer state. <see cref="_delayTimer"/> is
-    /// lazily constructed on first delay use; <see cref="_delayRemaining"/>
-    /// tracks the time left when the timer is stopped by a pause so
-    /// resume continues from where it left off rather than restarting
-    /// the full duration.
-    /// </summary>
+    // Custom-command delay timer state. _delayTimer is lazily constructed on first
+    // delay use; _delayRemaining tracks the time left when the timer is stopped by
+    // a pause so resume continues from where it left off rather than restarting the
+    // full duration.
     private DispatcherTimer? _delayTimer;
     private TimeSpan _delayRemaining;
     private long _delayStartTimestamp;
@@ -126,53 +94,39 @@ public sealed class LoopRunner : IRecoverableEngine
     public Loop? CurrentLoop => _loop;
     public int CurrentIndex => _index;
 
-    /// <summary>
-    /// Loop the user has "loaded" (staged) but not yet started — the
-    /// Manage dialog's Load action records it here. Distinct from
-    /// <see cref="CurrentLoop"/> (which is only set while a run is live):
-    /// a staged loop sits idle until something begins it. The toolbar
-    /// Start button reads this to run the staged loop without reopening
-    /// the Manage window. Null until the user stages one.
-    /// </summary>
+    // Loop the user has "loaded" (staged) but not yet started — the Manage dialog's
+    // Load action records it here. Distinct from CurrentLoop (which is only set
+    // while a run is live): a staged loop sits idle until something begins it. The
+    // toolbar Start button reads this to run the staged loop without reopening the
+    // Manage window. Null until the user stages one.
     public Loop? StagedLoop { get; private set; }
 
-    /// <summary>
-    /// Remember <paramref name="loop"/> as the staged loop (see
-    /// <see cref="StagedLoop"/>) without starting movement. Idempotent —
-    /// re-staging simply replaces the remembered loop.
-    /// </summary>
+    // Remember loop as the staged loop (see StagedLoop) without starting movement.
+    // Idempotent — re-staging simply replaces the remembered loop.
     public void Stage(Loop loop)
     {
         ArgumentNullException.ThrowIfNull(loop);
         StagedLoop = loop;
     }
 
-    /// <summary>Waypoint the walker is approaching, or null when not in <see cref="LoopState.Approaching"/>.</summary>
+    // Waypoint the walker is approaching, or null when not in LoopState.Approaching.
     public RoomKey? ApproachTarget => _approachTarget;
 
-    /// <summary>
-    /// Room the running cycle begins + ends at (the rotation entry).
-    /// Stable from the moment the rotation is computed (during
-    /// <see cref="Start"/> for v2 loops with UserWaypoints) until the
-    /// runner resets. Null for legacy v1 loops where the cycle has no
-    /// canonical start anchor.
-    /// </summary>
+    // Room the running cycle begins + ends at (the rotation entry). Stable from the
+    // moment the rotation is computed (during Start for v2 loops with UserWaypoints)
+    // until the runner resets. Null for legacy v1 loops where the cycle has no
+    // canonical start anchor.
     public RoomKey? CircleStartRoom => _circleStartRoom;
 
-    /// <summary>Total steps in the rotated circle. 0 when no loop is active.</summary>
+    // Total steps in the rotated circle. 0 when no loop is active.
     public int StepCount => _expandedSteps.Count;
 
-    /// <summary>
-    /// Read-only view of the runtime-expanded step sequence. Used by
-    /// the CURRENT NAV pane to render per-step rows. Empty between
-    /// runs.
-    /// </summary>
+    // Read-only view of the runtime-expanded step sequence. Used by the CURRENT NAV
+    // pane to render per-step rows. Empty between runs.
     public IReadOnlyList<LoopStep> ExpandedSteps => _expandedSteps;
 
-    /// <summary>
-    /// Time elapsed in the current lap. Zero when not running. Computed
-    /// on each read so VM bindings can poll via a periodic tick.
-    /// </summary>
+    // Time elapsed in the current lap. Zero when not running. Computed on each read
+    // so VM bindings can poll via a periodic tick.
     public TimeSpan CurrentLapTime
     {
         get
@@ -183,10 +137,8 @@ public sealed class LoopRunner : IRecoverableEngine
         }
     }
 
-    /// <summary>
-    /// Mean of the last <see cref="MaxLapHistory"/> completed laps.
-    /// <see cref="TimeSpan.Zero"/> when no lap has completed yet.
-    /// </summary>
+    // Mean of the last MaxLapHistory completed laps. TimeSpan.Zero when no lap has
+    // completed yet.
     public TimeSpan AverageLapTime
     {
         get
@@ -198,7 +150,7 @@ public sealed class LoopRunner : IRecoverableEngine
         }
     }
 
-    /// <summary>Read-only window onto the rolling lap-time history (oldest first).</summary>
+    // Read-only window onto the rolling lap-time history (oldest first).
     public IReadOnlyList<TimeSpan> LapHistory => _lapDurations;
 
     private readonly RoomGraphManager? _graph;
@@ -270,12 +222,9 @@ public sealed class LoopRunner : IRecoverableEngine
 
     // ----- public surface --------------------------------------------
 
-    /// <summary>
-    /// Resolves the active loop's <see cref="MoveLoopStep"/>s into a
-    /// list of room keys starting at <paramref name="source"/>. Used
-    /// by the Navigation map renderer (loop-path overlay + sequence
-    /// numbers). Returns empty when no loop is active.
-    /// </summary>
+    // Resolves the active loop's MoveLoopSteps into a list of room keys starting at
+    // source. Used by the Navigation map renderer (loop-path overlay + sequence
+    // numbers). Returns empty when no loop is active.
     public IReadOnlyList<RoomKey> ResolveLoopRoomKeys(RoomKey source)
     {
         if (_loop is null || _graph is null) return Array.Empty<RoomKey>();
@@ -293,7 +242,7 @@ public sealed class LoopRunner : IRecoverableEngine
         return keys;
     }
 
-    /// <summary>Bytes sent by the runner — captured for tests when no wire is bound.</summary>
+    // Bytes sent by the runner — captured for tests when no wire is bound.
     public IReadOnlyList<byte[]> LastSentForTests => _sent;
     private readonly List<byte[]> _sent = new();
 
@@ -331,47 +280,35 @@ public sealed class LoopRunner : IRecoverableEngine
         _wireSender = sender;
     }
 
-    /// <summary>
-    /// Pre-move stealth hook (PR 4.b) — invoked immediately before each
-    /// loop move's bytes go out so <c>sn</c> is the last command before
-    /// the move and the circuit is walked under sneak. Mirrors
-    /// <see cref="AutoWalkManager.SetPreMoveHook"/>; AppServices binds
-    /// both to <see cref="Game.Stealth.StealthManager.RequestPreMoveStealth"/>.
-    /// </summary>
+    // Pre-move stealth hook — invoked immediately before each loop move's bytes go
+    // out so sn is the last command before the move and the circuit is walked under
+    // sneak. Mirrors AutoWalkManager.SetPreMoveHook; AppServices binds both to
+    // Game.Stealth.StealthManager.RequestPreMoveStealth.
     public void SetPreMoveHook(Action hook)
     {
         ArgumentNullException.ThrowIfNull(hook);
         _preMoveHook = hook;
     }
 
-    /// <summary>
-    /// Wire the teleport-keyword resolver so circuit steps can cross
-    /// <see cref="RoomExitHint.Teleport"/> exits. Mirrors
-    /// <see cref="AutoWalkManager.SetTeleportResolver"/>; AppServices
-    /// binds both to the same TBInfo-backed resolver.
-    /// </summary>
+    // Wire the teleport-keyword resolver so circuit steps can cross
+    // RoomExitHint.Teleport exits. Mirrors AutoWalkManager.SetTeleportResolver;
+    // AppServices binds both to the same TBInfo-backed resolver.
     public void SetTeleportResolver(Func<RoomKey, RoomKey, string?> resolver)
     {
         ArgumentNullException.ThrowIfNull(resolver);
         _teleportResolver = resolver;
     }
 
-    /// <summary>
-    /// Wire the party-leader check so a leading character relays the
-    /// teleport keyword to followers before crossing. Mirrors
-    /// <see cref="AutoWalkManager.SetPartyLeaderCheck"/>.
-    /// </summary>
+    // Wire the party-leader check so a leading character relays the teleport keyword
+    // to followers before crossing. Mirrors AutoWalkManager.SetPartyLeaderCheck.
     public void SetPartyLeaderCheck(Func<bool> isLeaderWithFollowers)
     {
         ArgumentNullException.ThrowIfNull(isLeaderWithFollowers);
         _isLeaderWithFollowers = isLeaderWithFollowers;
     }
 
-    /// <summary>
-    /// Start running <paramref name="loop"/>. If a loop is already
-    /// running, it is stopped first. Returns false when the loop is
-    /// empty.
-    /// </summary>
+    // Start running loop. If a loop is already running, it is stopped first. Returns
+    // false when the loop is empty.
     public bool Start(Loop loop)
     {
         ArgumentNullException.ThrowIfNull(loop);
@@ -478,12 +415,9 @@ public sealed class LoopRunner : IRecoverableEngine
         return true;
     }
 
-    /// <summary>
-    /// Pick the user-waypoint with the shortest BFS path from
-    /// <paramref name="from"/>. Returns null when no waypoint is
-    /// reachable (disconnected graph, all waypoints behind avoided
-    /// rooms, etc.).
-    /// </summary>
+    // Pick the user-waypoint with the shortest BFS path from from. Returns null when
+    // no waypoint is reachable (disconnected graph, all waypoints behind avoided
+    // rooms, etc.).
     private RoomKey? PickClosestWaypoint(RoomKey from, IReadOnlyList<LoopWaypoint> waypoints)
     {
         if (_bfs is null) return waypoints.Count > 0 ? waypoints[0].Key : null;
@@ -500,13 +434,9 @@ public sealed class LoopRunner : IRecoverableEngine
         return best;
     }
 
-    /// <summary>
-    /// Rotate the loop's <see cref="Loop.Waypoints"/> so the circle
-    /// begins at <paramref name="waypoint"/> instead of
-    /// <c>Waypoints[0]</c>. No-op when Waypoints is empty or the
-    /// target isn't in the list. The runtime step list is rebuilt
-    /// separately by <see cref="ExpandSteps"/>.
-    /// </summary>
+    // Rotate the loop's Waypoints so the circle begins at waypoint instead of
+    // Waypoints[0]. No-op when Waypoints is empty or the target isn't in the list.
+    // The runtime step list is rebuilt separately by ExpandSteps.
     private void RotateLoopTo(RoomKey waypoint)
     {
         if (_loop is null) return;
@@ -532,11 +462,8 @@ public sealed class LoopRunner : IRecoverableEngine
             $"rotated loop '{_loop.Name}' to start at waypoint {waypoint} (index {k})");
     }
 
-    /// <summary>
-    /// (Re)compute <see cref="_expandedSteps"/> from the loop's
-    /// current waypoint order + the active filter. Called after every
-    /// rotation and on every avoid-list change.
-    /// </summary>
+    // (Re)compute _expandedSteps from the loop's current waypoint order + the
+    // active filter. Called after every rotation and on every avoid-list change.
     private void ExpandSteps()
     {
         if (_loop is null || _bfs is null)
@@ -557,14 +484,10 @@ public sealed class LoopRunner : IRecoverableEngine
         }
     }
 
-    /// <summary>
-    /// Common entry into the circle phase — called either immediately
-    /// from <see cref="Start"/> (player already at waypoint / legacy
-    /// loop) or after walker-driven approach completes. Attaches the
-    /// recovery gate, fires
-    /// <see cref="LoopEventKind.ReachedFirstWaypoint"/> once per
-    /// session, anchors lap timing, and pushes the first step.
-    /// </summary>
+    // Common entry into the circle phase — called either immediately from Start
+    // (player already at waypoint / legacy loop) or after walker-driven approach
+    // completes. Attaches the recovery gate, fires ReachedFirstWaypoint once per
+    // session, anchors lap timing, and pushes the first step.
     private void BeginCircle()
     {
         if (_loop is null) return;
@@ -633,29 +556,20 @@ public sealed class LoopRunner : IRecoverableEngine
         Raise(new LoopEvent(LoopEventKind.Stopped, $"{name}: {reason}"));
     }
 
-    /// <summary>
-    /// Avoided-rooms list mutated mid-loop. Stop the current run and
-    /// re-Start with the same loop so the new filter applies to every
-    /// BFS call (closest-waypoint pick + rotation + walker approach).
-    /// The user effectively re-routes the loop without losing the
-    /// definition.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// No-op when the runner is idle. Loops without UserWaypoints
-    /// (legacy v1 loaded from disk) can't be re-expanded — those
-    /// retain their original cached steps, so this method only
-    /// triggers a re-Start when the loop has UserWaypoints to
-    /// rotate from.
-    /// </para>
-    /// <para>
-    /// Side effects of the Stop+Start cycle: the lap-history clears,
-    /// <see cref="LoopEventKind.ReachedFirstWaypoint"/> fires again
-    /// once the new approach (if any) settles. Same Stopped /
-    /// Started event sequence the UI already handles for a user
-    /// click on Stop + Run.
-    /// </para>
-    /// </remarks>
+    // Avoided-rooms list mutated mid-loop. Stop the current run and re-Start with
+    // the same loop so the new filter applies to every BFS call (closest-waypoint
+    // pick + rotation + walker approach). The user effectively re-routes the loop
+    // without losing the definition.
+    //
+    // No-op when the runner is idle. Loops without UserWaypoints (legacy v1 loaded
+    // from disk) can't be re-expanded — those retain their original cached steps,
+    // so this method only triggers a re-Start when the loop has UserWaypoints to
+    // rotate from.
+    //
+    // Side effects of the Stop+Start cycle: the lap-history clears,
+    // ReachedFirstWaypoint fires again once the new approach (if any) settles. Same
+    // Stopped / Started event sequence the UI already handles for a user click on
+    // Stop + Run.
     public void NotifyAvoidedChanged()
     {
         if (State == LoopState.Idle) return;
@@ -669,7 +583,7 @@ public sealed class LoopRunner : IRecoverableEngine
         Start(snapshot);
     }
 
-    /// <summary>Test seam — pretend the prompt scanner fired so command steps can advance.</summary>
+    // Test seam — pretend the prompt scanner fired so command steps can advance.
     internal void FirePromptForTests()
     {
         if (_awaitingPromptForCommand) OnPromptObservedCore();
@@ -778,12 +692,9 @@ public sealed class LoopRunner : IRecoverableEngine
         EmitCardinal(step.Direction, exit.Target, null);
     }
 
-    /// <summary>
-    /// Emit a plain cardinal move for the circuit, notifying the tracker
-    /// + recovery gate and firing the pre-move stealth hook. <paramref name="note"/>
-    /// annotates the wire reason (e.g. "door pre-open"); null for an
-    /// ordinary passage.
-    /// </summary>
+    // Emit a plain cardinal move for the circuit, notifying the tracker + recovery
+    // gate and firing the pre-move stealth hook. note annotates the wire reason
+    // (e.g. "door pre-open"); null for an ordinary passage.
     private void EmitCardinal(Direction direction, RoomKey target, string? note)
     {
         _tracker.NoteMoveSent(direction);
@@ -796,7 +707,7 @@ public sealed class LoopRunner : IRecoverableEngine
         Write(bytes, reason);
     }
 
-    /// <summary>Fail the active circuit with <paramref name="reason"/> and reset.</summary>
+    // Fail the active circuit with reason and reset.
     private void FailStep(string reason)
     {
         _log?.Warn("LoopRunner", $"SendMove fail at step {_index + 1}/{_expandedSteps.Count}: {reason}");
@@ -877,7 +788,7 @@ public sealed class LoopRunner : IRecoverableEngine
         AdvanceStep();
     }
 
-    /// <summary>Test seam — pretend the custom-command delay just elapsed.</summary>
+    // Test seam — pretend the custom-command delay just elapsed.
     internal void FireDelayForTests() => OnDelayElapsed();
 
     private void Write(byte[] bytes, string reason)
@@ -1074,12 +985,9 @@ public enum LoopState
     Idle = 0,
     Running = 1,
     Paused = 2,
-    /// <summary>
-    /// Walker is driving the player from their current room to the
-    /// loop's chosen starting waypoint. Loop runner has nothing on
-    /// the wire yet; transitions to <see cref="Running"/> when the
-    /// walker fires <c>Finished</c>.
-    /// </summary>
+    // Walker is driving the player from their current room to the loop's chosen
+    // starting waypoint. Loop runner has nothing on the wire yet; transitions to
+    // Running when the walker fires Finished.
     Approaching = 3,
 }
 
@@ -1095,15 +1003,11 @@ public enum LoopEventKind
     // 6 (Finished) retired in schema v2 — loops are circular by
     // definition and never end on their own; only Stop / Failed
     // remove them from running state.
-    /// <summary>
-    /// Fired once per loop session at the moment the runner begins
-    /// the circle (either immediately on Start if the player is
-    /// already at a waypoint, or after the walker-driven approach
-    /// completes). Consumers anchor lap stats, fire <c>@reset</c>
-    /// to the party, etc. on this event rather than on
-    /// <see cref="Started"/> so the timing reflects the actual loop
-    /// start, not the approach walk.
-    /// </summary>
+    // Fired once per loop session at the moment the runner begins the circle
+    // (either immediately on Start if the player is already at a waypoint, or after
+    // the walker-driven approach completes). Consumers anchor lap stats, fire
+    // @reset to the party, etc. on this event rather than on Started so the timing
+    // reflects the actual loop start, not the approach walk.
     ReachedFirstWaypoint = 8,
 }
 

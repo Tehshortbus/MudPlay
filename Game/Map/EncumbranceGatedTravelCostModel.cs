@@ -2,28 +2,22 @@ using FujinTerm.Models.Profile;
 
 namespace FujinTerm.Game.Map;
 
-/// <summary>
-/// <see cref="ITravelCostModel"/> driven by the live
-/// <see cref="PlayerState.Encumbrance"/> reading. Each query reads the
-/// player's current encumbrance bucket, looks up that bucket's
-/// seconds-per-hop in <see cref="EncumbranceHopTimes"/>, and converts
-/// the supplied hop count to a <see cref="TimeSpan"/>.
-/// </summary>
-/// <remarks>
-/// <para>
-/// The lookup table itself is a snapshot owned by the model — the
-/// caller (typically <see cref="Services.AppServices"/> applying
-/// <see cref="AutoLairSettings"/>) writes a fresh table when the user
-/// edits the Settings tab. The <see cref="PlayerState"/> reference is
-/// long-lived; we don't subscribe to it because the scheduler asks for
-/// fresh estimates on every tick, so polling on demand stays accurate.
-/// </para>
-/// </remarks>
+// ITravelCostModel driven by the live PlayerState.Encumbrance reading.
+// Each query reads the player's current encumbrance bucket, looks up that
+// bucket's seconds-per-hop in EncumbranceHopTimes, and converts the
+// supplied hop count to a TimeSpan.
+//
+// The lookup table itself is a snapshot owned by the model — the caller
+// (typically AppServices applying AutoLairSettings) writes a fresh table
+// when the user edits the Settings tab. The PlayerState reference is
+// long-lived; we don't subscribe to it because the scheduler asks for
+// fresh estimates on every tick, so polling on demand stays accurate.
 public sealed class EncumbranceGatedTravelCostModel : ITravelCostModel
 {
     private readonly PlayerState _state;
 
-    /// <summary>Per-bucket seconds-per-hop. Replace via the property to apply a settings edit live.</summary>
+    // Per-bucket seconds-per-hop. Replace via the property to apply a
+    // settings edit live.
     public EncumbranceHopTimes Times { get; set; }
 
     public EncumbranceGatedTravelCostModel(PlayerState state, EncumbranceHopTimes times)

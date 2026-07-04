@@ -4,35 +4,27 @@ using System.Text;
 
 namespace FujinTerm.Game.Map;
 
-/// <summary>
-/// Path helpers shared by the three navigation organisers that group
-/// their entries into folders: GOTO favourites
-/// (<see cref="Services.FavoritesStore"/>), saved loops
-/// (<see cref="LoopManager"/>), and Auto-Lair setups
-/// (<see cref="LairManager"/>). All three use the same <c>/</c>-separated
-/// folder vocabulary (e.g. <c>"Cities/Silvermere"</c>, <c>""</c> = root),
-/// so the split / join / ancestor logic lives here once rather than
-/// being re-implemented per store.
-/// </summary>
-/// <remarks>
-/// Normalisation is deliberately conservative: it trims each segment,
-/// drops empty segments (so <c>"a//b/"</c> → <c>"a/b"</c>), and never
-/// lets <c>.</c> / <c>..</c> through (path-traversal guard — folder
-/// paths feed real filesystem subdirectories for loops/lairs).
-/// </remarks>
+// Path helpers shared by the three navigation organisers that group their
+// entries into folders: GOTO favourites (FavoritesStore), saved loops
+// (LoopManager), and Auto-Lair setups (LairManager). All three use the same
+// /-separated folder vocabulary (e.g. "Cities/Silvermere", "" = root), so the
+// split / join / ancestor logic lives here once rather than being
+// re-implemented per store.
+//
+// Normalisation is deliberately conservative: it trims each segment, drops
+// empty segments (so "a//b/" → "a/b"), and never lets . / .. through
+// (path-traversal guard — folder paths feed real filesystem subdirectories for
+// loops/lairs).
 public static class NavFolders
 {
-    /// <summary>The folder separator. Always <c>/</c>, even on Windows — the
-    /// stored vocabulary is platform-independent; filesystem callers
-    /// translate to <see cref="System.IO.Path.DirectorySeparatorChar"/>.</summary>
+    // The folder separator. Always /, even on Windows — the stored vocabulary
+    // is platform-independent; filesystem callers translate to
+    // Path.DirectorySeparatorChar.
     public const char Separator = '/';
 
-    /// <summary>
-    /// Canonicalise a user- or disk-derived folder path to the stored
-    /// form: trimmed segments, no empties, no <c>.</c>/<c>..</c>, joined
-    /// by <see cref="Separator"/>. Returns <see cref="string.Empty"/>
-    /// for null / whitespace / root.
-    /// </summary>
+    // Canonicalise a user- or disk-derived folder path to the stored form:
+    // trimmed segments, no empties, no ./.., joined by Separator. Returns empty
+    // for null / whitespace / root.
     public static string Normalize(string? path)
     {
         if (string.IsNullOrWhiteSpace(path)) return string.Empty;
@@ -48,7 +40,7 @@ public static class NavFolders
         return sb.ToString();
     }
 
-    /// <summary>Split a normalised path into its segments. Empty path → empty array.</summary>
+    // Split a normalised path into its segments. Empty path → empty array.
     public static string[] Segments(string? path)
     {
         string norm = Normalize(path);
@@ -57,11 +49,8 @@ public static class NavFolders
             : norm.Split(Separator);
     }
 
-    /// <summary>
-    /// Append <paramref name="child"/> (a single segment or sub-path) to
-    /// <paramref name="parent"/>, normalising the result. Either side may
-    /// be empty.
-    /// </summary>
+    // Append child (a single segment or sub-path) to parent, normalising the
+    // result. Either side may be empty.
     public static string Combine(string? parent, string? child)
     {
         string p = Normalize(parent);
@@ -71,7 +60,7 @@ public static class NavFolders
         return p + Separator + c;
     }
 
-    /// <summary>Parent folder of <paramref name="path"/>, or <see cref="string.Empty"/> at the root.</summary>
+    // Parent folder of path, or empty at the root.
     public static string Parent(string? path)
     {
         string norm = Normalize(path);
@@ -79,7 +68,7 @@ public static class NavFolders
         return i < 0 ? string.Empty : norm[..i];
     }
 
-    /// <summary>Last segment (the folder's own display name), or <see cref="string.Empty"/> for the root.</summary>
+    // Last segment (the folder's own display name), or empty for the root.
     public static string LastSegment(string? path)
     {
         string norm = Normalize(path);
@@ -87,12 +76,9 @@ public static class NavFolders
         return i < 0 ? norm : norm[(i + 1)..];
     }
 
-    /// <summary>
-    /// True when <paramref name="path"/> equals <paramref name="ancestor"/>
-    /// or sits anywhere beneath it. Used by rename / delete to find every
-    /// entry in a folder subtree. Root (<c>""</c>) is an ancestor of
-    /// everything.
-    /// </summary>
+    // True when path equals ancestor or sits anywhere beneath it. Used by
+    // rename / delete to find every entry in a folder subtree. Root ("") is an
+    // ancestor of everything.
     public static bool IsSelfOrDescendant(string? ancestor, string? path)
     {
         string a = Normalize(ancestor);
@@ -103,12 +89,8 @@ public static class NavFolders
         return p.Length == a.Length || p[a.Length] == Separator;
     }
 
-    /// <summary>
-    /// Re-root <paramref name="path"/> from under <paramref name="oldRoot"/>
-    /// to under <paramref name="newRoot"/>. Caller guarantees
-    /// <paramref name="path"/> is a self-or-descendant of
-    /// <paramref name="oldRoot"/> (see <see cref="IsSelfOrDescendant"/>).
-    /// </summary>
+    // Re-root path from under oldRoot to under newRoot. Caller guarantees path
+    // is a self-or-descendant of oldRoot (see IsSelfOrDescendant).
     public static string Rebase(string oldRoot, string newRoot, string path)
     {
         string a = Normalize(oldRoot);
@@ -117,13 +99,10 @@ public static class NavFolders
         return Combine(newRoot, tail);
     }
 
-    /// <summary>
-    /// Folder (in stored <c>/</c> form) of <paramref name="filePath"/>
-    /// relative to <paramref name="rootDir"/>. Empty when the file sits
-    /// directly in the root. Bridges the filesystem (real subdirectories
-    /// under the BBS Loops folder) into the stored vocabulary used by
-    /// loops + lairs.
-    /// </summary>
+    // Folder (in stored / form) of filePath relative to rootDir. Empty when the
+    // file sits directly in the root. Bridges the filesystem (real
+    // subdirectories under the BBS Loops folder) into the stored vocabulary
+    // used by loops + lairs.
     public static string RelativeFolder(string rootDir, string filePath)
     {
         string? dir = Path.GetDirectoryName(filePath);
@@ -133,24 +112,17 @@ public static class NavFolders
         return Normalize(rel);
     }
 
-    /// <summary>
-    /// Absolute on-disk directory for stored folder
-    /// <paramref name="folder"/> under <paramref name="rootDir"/>,
-    /// translating <see cref="Separator"/> to the platform separator.
-    /// Returns <paramref name="rootDir"/> for the empty root.
-    /// </summary>
+    // Absolute on-disk directory for stored folder under rootDir, translating
+    // Separator to the platform separator. Returns rootDir for the empty root.
     public static string ToDirectory(string rootDir, string? folder)
     {
         string[] segs = Segments(folder);
         return segs.Length == 0 ? rootDir : Path.Combine(rootDir, Path.Combine(segs));
     }
 
-    /// <summary>
-    /// Every ancestor folder of the given paths, including the paths
-    /// themselves, as a de-duplicated set — the full set of nodes a tree
-    /// view must render so intermediate folders aren't missing. Excludes
-    /// the empty root.
-    /// </summary>
+    // Every ancestor folder of the given paths, including the paths themselves,
+    // as a de-duplicated set — the full set of nodes a tree view must render so
+    // intermediate folders aren't missing. Excludes the empty root.
     public static IReadOnlyCollection<string> ExpandAncestors(IEnumerable<string?> paths)
     {
         ArgumentNullException.ThrowIfNull(paths);

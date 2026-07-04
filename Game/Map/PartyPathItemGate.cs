@@ -5,59 +5,49 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game.Map;
 
-/// <summary>
-/// Party-first stage of the path-item demand pipeline. Sits between the
-/// walker's walk-start item announcer and
-/// <see cref="PathItemDemandTracker"/>: when a planned route crosses an
-/// <c>(Item: N)</c> / <c>(Ticket: N)</c> gate whose per-member item the party
-/// might lack, this consults the party (via <see cref="PartyInventoryProbe"/>)
-/// before spending a search / shop detour on it. Backs the Settings → Other
-/// "defer to party inventory" affordance.
-/// </summary>
-/// <remarks>
-/// <para>
-/// The behaviour splits on who's driving:
-/// </para>
-/// <para>
-/// <b>Leader — provision the whole party.</b> The leader is the one walking a
-/// party route (followers are held by the movement gate), so it owns getting
-/// everyone across the gate. For each gated item it probes the party for a
-/// count, then treats the party (self + everyone who replied) as one pool that
-/// needs exactly one copy each. Members keep whatever they're holding — nothing
-/// is redistributed early. If the pool already holds enough
-/// (<c>totalHeld &gt;= partySize</c>), the leader immediately coordinates the
-/// hand-off so every zero-holder ends up with one: it gives its own spares
-/// directly (<c>give &lt;item&gt; to &lt;R&gt;</c>) and directs other holders'
-/// spares with a targeted <c>/&lt;holder&gt; @do give &lt;item&gt; to
-/// &lt;R&gt;</c>. If the pool is short, the shortfall <em>count</em> — how many
-/// copies the leader's own bag must gain to reach one-per-member — is forwarded
-/// to the demand pipeline (search / shop, per the user's checked options), so a
-/// shop detour buys that many rather than a single copy; when "search rooms if
-/// item needed" is on, the slot is retained so <see cref="SearchDemandActive"/>
-/// keeps auto-search armed past the first copy and the redistribution fires (via
-/// <see cref="OnInventoryChanged"/>) the moment the pool becomes whole.
-/// </para>
-/// <para>
-/// <b>Non-leader — borrow a spare for self.</b> A grouped follower doing its
-/// own walk-to keeps the original E1 behaviour: if it lacks a gated item and a
-/// member holds a spare (count &gt;= 2, holder keeps one), it asks for a single
-/// hand-off to itself rather than posting a search / shop need.
-/// </para>
-/// <para>
-/// Both paths degrade to forwarding the announced list unchanged when the
-/// feature is off or we're solo, so PRs B / C / D behave exactly as before.
-/// The probe round-trip is async (a telepath each way), so the decision is
-/// deferred off the walker's <c>WalkTo</c> call stack through <see cref="_post"/>.
-/// </para>
-/// <para>
-/// Scope: multiple copies are acquired by the forwarded shortfall count — a
-/// shop detour buys that many, and auto-search stays armed (until the pool is
-/// whole) to reveal the rest off the floor. Monster-drop reroute remains
-/// single-copy best-effort. Non-responders are treated as outside the pool —
-/// the leader provisions only itself and the members that answered, leaving a
-/// silent member to its own per-member pipeline.
-/// </para>
-/// </remarks>
+// Party-first stage of the path-item demand pipeline. Sits between the walker's
+// walk-start item announcer and PathItemDemandTracker: when a planned route
+// crosses an (Item: N) / (Ticket: N) gate whose per-member item the party might
+// lack, this consults the party (via PartyInventoryProbe) before spending a
+// search / shop detour on it. Backs the Settings → Other "defer to party
+// inventory" affordance.
+//
+// The behaviour splits on who's driving:
+//
+// Leader — provision the whole party. The leader is the one walking a party
+// route (followers are held by the movement gate), so it owns getting everyone
+// across the gate. For each gated item it probes the party for a count, then
+// treats the party (self + everyone who replied) as one pool that needs exactly
+// one copy each. Members keep whatever they're holding — nothing is
+// redistributed early. If the pool already holds enough
+// (totalHeld >= partySize), the leader immediately coordinates the hand-off so
+// every zero-holder ends up with one: it gives its own spares directly
+// (give <item> to <R>) and directs other holders' spares with a targeted
+// /<holder> @do give <item> to <R>. If the pool is short, the shortfall count —
+// how many copies the leader's own bag must gain to reach one-per-member — is
+// forwarded to the demand pipeline (search / shop, per the user's checked
+// options), so a shop detour buys that many rather than a single copy; when
+// "search rooms if item needed" is on, the slot is retained so
+// SearchDemandActive keeps auto-search armed past the first copy and the
+// redistribution fires (via OnInventoryChanged) the moment the pool becomes
+// whole.
+//
+// Non-leader — borrow a spare for self. A grouped follower doing its own
+// walk-to: if it lacks a gated item and a member holds a spare (count >= 2,
+// holder keeps one), it asks for a single hand-off to itself rather than
+// posting a search / shop need.
+//
+// Both paths degrade to forwarding the announced list unchanged when the
+// feature is off or we're solo. The probe round-trip is async (a telepath each
+// way), so the decision is deferred off the walker's WalkTo call stack through
+// _post.
+//
+// Scope: multiple copies are acquired by the forwarded shortfall count — a shop
+// detour buys that many, and auto-search stays armed (until the pool is whole)
+// to reveal the rest off the floor. Monster-drop reroute remains single-copy
+// best-effort. Non-responders are treated as outside the pool — the leader
+// provisions only itself and the members that answered, leaving a silent member
+// to its own per-member pipeline.
 public sealed class PartyPathItemGate
 {
     private const string LogCategory = "AutoSearch";
@@ -65,8 +55,8 @@ public sealed class PartyPathItemGate
     private static readonly IReadOnlyDictionary<string, int> NoCounts =
         new Dictionary<string, int>();
 
-    /// <summary>A route item the leader is provisioning: its name and the
-    /// per-member counts captured from the probe (given name → copies held).</summary>
+    // A route item the leader is provisioning: its name and the per-member
+    // counts captured from the probe (given name → copies held).
     private sealed record Pending(int Id, string Name, IReadOnlyDictionary<string, int> Others);
 
     private readonly Func<int, bool> _isCarried;
@@ -124,20 +114,19 @@ public sealed class PartyPathItemGate
         _log = log;
     }
 
-    /// <summary>Bind the wire-sender for the give hand-off. MainWindowVM supplies the engine-gated <c>SendUserInput</c>.</summary>
+    // Bind the wire-sender for the give hand-off. MainWindowVM supplies the
+    // engine-gated SendUserInput.
     public void SetWireSender(Action<byte[]> sender)
     {
         ArgumentNullException.ThrowIfNull(sender);
         _wireSender = sender;
     }
 
-    /// <summary>
-    /// True while the leader is still acquiring copies to make the party whole
-    /// AND search is a chosen acquisition option — keeps
-    /// <see cref="AutoSearchManager"/> armed past the first copy (the shared
-    /// demand tracker resolves its need at copy one). OR'd into auto-search's
-    /// demand gate alongside <see cref="PathItemDemandTracker.SearchDemandActive"/>.
-    /// </summary>
+    // True while the leader is still acquiring copies to make the party whole
+    // AND search is a chosen acquisition option — keeps AutoSearchManager armed
+    // past the first copy (the shared demand tracker resolves its need at copy
+    // one). OR'd into auto-search's demand gate alongside
+    // PathItemDemandTracker.SearchDemandActive.
     public bool SearchDemandActive
     {
         get
@@ -147,13 +136,11 @@ public sealed class PartyPathItemGate
         }
     }
 
-    /// <summary>
-    /// Walk-start callback (re-points
-    /// <see cref="AutoWalkManager.SetPathItemAnnouncer"/> ahead of the demand
-    /// tracker): every item id gating an Item / Ticket exit along the planned
-    /// route. Off / solo forwards unchanged; the leader provisions the party per
-    /// distinct id, a follower borrows a spare for any it personally lacks.
-    /// </summary>
+    // Walk-start callback (re-points AutoWalkManager.SetPathItemAnnouncer ahead
+    // of the demand tracker): every item id gating an Item / Ticket exit along
+    // the planned route. Off / solo forwards unchanged; the leader provisions
+    // the party per distinct id, a follower borrows a spare for any it
+    // personally lacks.
     public void OnPathItemsRequired(IReadOnlyList<int> itemIds)
     {
         ArgumentNullException.ThrowIfNull(itemIds);
@@ -186,12 +173,9 @@ public sealed class PartyPathItemGate
         }
     }
 
-    /// <summary>
-    /// Inventory-change callback (wired to <c>InventoryManager.Changed</c>):
-    /// re-checks each in-flight provisioning and coordinates the hand-off the
-    /// moment the pool becomes whole. A no-op when the leader isn't provisioning
-    /// anything.
-    /// </summary>
+    // Inventory-change callback (wired to InventoryManager.Changed): re-checks
+    // each in-flight provisioning and coordinates the hand-off the moment the
+    // pool becomes whole. A no-op when the leader isn't provisioning anything.
     public void OnInventoryChanged()
     {
         int[] ids;
@@ -242,11 +226,9 @@ public sealed class PartyPathItemGate
         _forward(new[] { id }, target);
     }
 
-    /// <summary>
-    /// Redistributes if the pool (self + responders) now holds at least one per
-    /// member; returns true when the slot is settled (either handed out or
-    /// nothing to do), false while still short.
-    /// </summary>
+    // Redistributes if the pool (self + responders) now holds at least one per
+    // member; returns true when the slot is settled (either handed out or
+    // nothing to do), false while still short.
     private bool TryComplete(int id)
     {
         Pending? p;

@@ -4,44 +4,25 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game.Remote;
 
-/// <summary>
-/// Consumer of <see cref="RemoteCommandManager"/> for the
-/// <c>@do &lt;command&gt;</c> passthrough — the highest-trust verb in
-/// the @-command catalogue. The sender's args are joined back into
-/// the original command string and shipped on the wire as if the
-/// local user had typed them.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Sender authorisation is handled by the engine via
-/// <see cref="RemoteCommandCatalog"/> — <c>@do</c> requires
-/// <see cref="PlayerRemoteControls.ExecuteCommands"/>, which the
-/// Players-tab tooltip flags as "do something on my behalf". Default
-/// deny for any player without an explicit grant; recommend granting
-/// only to known trusted players (party leader, sysop-ranked
-/// teammates, etc.).
-/// </para>
-/// <para>
-/// Hard-blocks land at engine level before this handler runs:
-/// <list type="bullet">
-///   <item><c>@do reroll</c> is always denied (the reroll token
-///         match in <see cref="RemoteCommandManager.IsHardBlocked"/>
-///         catches command + args).</item>
-///   <item><c>@do suicide</c> is gated by
-///         <see cref="RemoteCommandManager.LivesProvider"/> through
-///         <see cref="RemoteCommandManager.GetSuicidePolicyBlockReply"/> —
-///         denied when remaining lives ≤
-///         <see cref="RemoteCommandManager.MaxSuicideLivesThreshold"/>.</item>
-/// </list>
-/// </para>
-/// <para>
-/// Wire-sender is bound to the gate-wrapped sender (same as the rest
-/// of the engine-side handlers) so a malicious caller can't slip
-/// bytes onto the wire while
-/// <see cref="EngineSendGate"/> is locked during a suicide-password
-/// entry prompt.
-/// </para>
-/// </remarks>
+// The @do <command> passthrough — the highest-trust verb in the @-command
+// catalogue. The sender's args are joined back into the original command string
+// and shipped on the wire as if the local user had typed them.
+//
+// Sender authorisation is handled by the engine via RemoteCommandCatalog — @do
+// requires PlayerRemoteControls.ExecuteCommands, which the Players-tab tooltip
+// flags as "do something on my behalf". Default deny for any player without an
+// explicit grant; recommend granting only to known trusted players (party leader,
+// sysop-ranked teammates, etc.).
+//
+// Hard-blocks land at engine level before this handler runs:
+//   - @do reroll is always denied (the reroll token match in IsHardBlocked
+//     catches command + args).
+//   - @do suicide is gated by LivesProvider through GetSuicidePolicyBlockReply —
+//     denied when remaining lives ≤ MaxSuicideLivesThreshold.
+//
+// Wire-sender is bound to the gate-wrapped sender (same as the rest of the
+// engine-side handlers) so a malicious caller can't slip bytes onto the wire
+// while EngineSendGate is locked during a suicide-password entry prompt.
 public sealed class DoHandler : IDisposable
 {
     private static readonly string[] RegisteredCommands = { "@do" };
@@ -62,17 +43,15 @@ public sealed class DoHandler : IDisposable
         _engine.RegisterHandler("@do", category, OnDo);
     }
 
-    /// <summary>
-    /// Bind the wire-sender — same shape as PartyEssentialHandlers.
-    /// MainWindowViewModel supplies the gate-wrapped <c>SendUserInput</c>.
-    /// </summary>
+    // Bind the wire-sender — same shape as PartyEssentialHandlers.
+    // MainWindowViewModel supplies the gate-wrapped SendUserInput.
     public void SetWireSender(Action<byte[]> sender)
     {
         ArgumentNullException.ThrowIfNull(sender);
         _wireSender = sender;
     }
 
-    /// <summary>Test seam — most recent bytes the handler asked to write.</summary>
+    // Test seam — most recent bytes the handler asked to write.
     internal List<byte[]> LastSentForTests { get; } = new();
 
     public void Dispose()

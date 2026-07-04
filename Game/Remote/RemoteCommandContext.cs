@@ -1,35 +1,28 @@
 namespace FujinTerm.Game.Remote;
 
-/// <summary>
-/// Per-invocation context handed to each <see cref="RemoteCommandManager"/>
-/// handler. Carries the sender / parsed args / channel + a
-/// <see cref="Reply"/> callback that routes back through the same channel
-/// the command arrived on (telepath in → telepath reply, etc.).
-/// </summary>
-/// <remarks>
-/// <para>
-/// Handlers never talk to <see cref="Net.TelnetClient"/> directly — they
-/// call <see cref="Reply"/> for chat-channel responses or any
-/// other service-mediated path. Keeping the handler ignorant of the wire
-/// lets the engine swap reply formatting per channel without every
-/// handler having to know the wire-syntax for each chat type.
-/// </para>
-/// <para>
-/// <see cref="Args"/> is the post-command tokens split on whitespace. For
-/// <c>@goto Newhaven Cabin</c> the args are <c>["Newhaven", "Cabin"]</c>;
-/// for <c>@party rest</c> the args are <c>["rest"]</c> and the
-/// <c>@party &lt;sub&gt;</c> handler inspects <c>args[0]</c> to route.
-/// </para>
-/// </remarks>
-/// <param name="Sender">Player name as classified by <see cref="ChatRouter"/>.</param>
-/// <param name="Command">The @-prefixed command verbatim (lowercased; e.g. <c>"@health"</c>).</param>
-/// <param name="Args">Post-command tokens split on whitespace; empty when the command stands alone.</param>
-/// <param name="OriginalMessage">The full chat-message text after the speaker prefix (e.g. <c>"@goto Newhaven Cabin"</c>).</param>
-/// <param name="Channel">Which channel the command arrived on; determines where <see cref="Reply"/> routes.</param>
-/// <param name="Reply">
-/// Routes <paramref name="Reply"/>(text) back through <see cref="Channel"/>.
-/// Engine-supplied — handlers shouldn't construct their own.
-/// </param>
+// Per-invocation context handed to each RemoteCommandManager handler. Carries
+// the sender / parsed args / channel + a Reply callback that routes back through
+// the same channel the command arrived on (telepath in → telepath reply, etc.).
+//
+// Handlers never talk to Net.TelnetClient directly — they call Reply for
+// chat-channel responses or any other service-mediated path. Keeping the handler
+// ignorant of the wire lets the engine swap reply formatting per channel without
+// every handler having to know the wire-syntax for each chat type.
+//
+// Args is the post-command tokens split on whitespace. For @goto Newhaven Cabin
+// the args are ["Newhaven", "Cabin"]; for @party rest the args are ["rest"] and
+// the @party <sub> handler inspects args[0] to route.
+//
+//   Sender          — player name as classified by ChatRouter.
+//   Command         — the @-prefixed command verbatim (lowercased; e.g. "@health").
+//   Args            — post-command tokens split on whitespace; empty when the
+//                     command stands alone.
+//   OriginalMessage — the full chat-message text after the speaker prefix (e.g.
+//                     "@goto Newhaven Cabin").
+//   Channel         — which channel the command arrived on; determines where
+//                     Reply routes.
+//   Reply           — routes Reply(text) back through Channel. Engine-supplied —
+//                     handlers shouldn't construct their own.
 public readonly record struct RemoteCommandContext(
     string Sender,
     string Command,

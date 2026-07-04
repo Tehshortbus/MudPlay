@@ -1,10 +1,8 @@
 namespace FujinTerm.Game.Calculators;
 
-/// <summary>
-/// Alignment / evil-points band, matching MMUD Explorer's <c>eEvilPoints</c>.
-/// Feeds the vile-ward adjustment in <see cref="CombatCalculator"/> — higher
-/// evil scales a defender's vile ward down before it counts toward defense.
-/// </summary>
+// MajorMUD alignment / evil-points band. Feeds the vile-ward adjustment in
+// CombatCalculator — higher evil scales a defender's vile ward down before it
+// counts toward defense.
 public enum EvilLevel
 {
     Saint = 0,

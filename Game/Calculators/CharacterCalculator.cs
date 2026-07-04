@@ -7,41 +7,29 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game.Calculators;
 
-/// <summary>
-/// Pure character-stat formulas (CP, HP, mana/kai regen) ported from the
-/// MMUD Explorer VB6 source. Most methods take primitive inputs and return a
-/// result — no UI, no manager dependencies. Realm-dependent formulas branch on
-/// <see cref="RealmType"/>; callers resolve the active realm from
-/// <see cref="Services.GameDataCache.ActiveRealm"/>.
-/// </summary>
-/// <remarks>
-/// Experience-curve math lives in <see cref="ExperienceTableCalculator"/>;
-/// combat math lives in <see cref="CombatCalculator"/>. The equipment-stat
-/// aggregation here (<see cref="AggregateEquipmentStats"/>) is the one method
-/// that reads game data — it resolves each worn item against
-/// <see cref="GameDataCache"/> to sum ability bonuses.
-/// </remarks>
+// Pure MajorMUD character-stat formulas (CP, HP, mana/kai regen). Most methods
+// take primitive inputs and return a result — no UI, no manager dependencies.
+// Realm-dependent formulas branch on RealmType; callers resolve the active realm
+// from GameDataCache.ActiveRealm.
+// Experience-curve math lives in ExperienceTableCalculator; combat math lives in
+// CombatCalculator. The equipment-stat aggregation here (AggregateEquipmentStats)
+// is the one method that reads game data — it resolves each worn item against
+// GameDataCache to sum ability bonuses.
 public static class CharacterCalculator
 {
     // ----- CP --------------------------------------------------------------
 
-    /// <summary>
-    /// CP gained when training to <paramref name="level"/>. VB6
-    /// <c>CalcCPLevel</c> step: <c>(Floor(level/10) * 5) + 10</c> — 10 CP per
-    /// level through 9, 15 through 19, 20 through 29, and so on. Returns 0
-    /// below level 1.
-    /// </summary>
+    // CP gained when training to the given level:
+    // (Floor(level/10) * 5) + 10 — 10 CP per level through 9, 15 through 19,
+    // 20 through 29, and so on. Returns 0 below level 1.
     public static int CalcCpGainedAtLevel(int level)
     {
         if (level < 1) return 0;
         return (level / 10) * 5 + 10;
     }
 
-    /// <summary>
-    /// Total CP accumulated from level 1 to <paramref name="targetLevel"/>
-    /// (exclusive upper step, matching VB6 <c>CalcCPLevel</c>'s
-    /// <c>i = 1..nLevel-1</c> loop), plus <paramref name="baseCP"/> from race.
-    /// </summary>
+    // Total CP accumulated from level 1 to targetLevel (exclusive upper step:
+    // the i = 1..targetLevel-1 loop), plus baseCP from race.
     public static int CalcTotalCpAtLevel(int targetLevel, int baseCP = 0)
     {
         int total = baseCP;
@@ -52,11 +40,9 @@ public static class CharacterCalculator
         return total;
     }
 
-    /// <summary>
-    /// CP cost to raise a stat by one point from <paramref name="currentStat"/>.
-    /// <c>cost = Floor((currentStat - raceMin) / 10) + 1</c>. ParaMUD has no
-    /// cap; Stock caps the per-point cost at 10.
-    /// </summary>
+    // CP cost to raise a stat by one point from currentStat:
+    // cost = Floor((currentStat - raceMin) / 10) + 1. ParaMUD has no cap; Stock
+    // caps the per-point cost at 10.
     public static int CalcCpCostForStatPoint(int raceMin, int currentStat, RealmType realmType = RealmType.ParaMud)
     {
         int delta = currentStat - raceMin;
@@ -67,11 +53,8 @@ public static class CharacterCalculator
         return cost;
     }
 
-    /// <summary>
-    /// Total CP cost to raise a stat from <paramref name="startVal"/> to
-    /// <paramref name="endVal"/>, summing <see cref="CalcCpCostForStatPoint"/>
-    /// over each point.
-    /// </summary>
+    // Total CP cost to raise a stat from startVal to endVal, summing the
+    // per-point cost over each point.
     public static int CalcTotalCpCostForStatRange(int raceMin, int startVal, int endVal, RealmType realmType = RealmType.ParaMud)
     {
         int total = 0;
@@ -84,13 +67,11 @@ public static class CharacterCalculator
 
     // ----- HP --------------------------------------------------------------
 
-    /// <summary>
-    /// Estimate max HP at a level. VB6 core:
-    /// <c>(HEA/2 + Level*MinHitsPerLevel) + ((HEA-50)*Level)/16 + Random</c>,
-    /// then <c>+ raceHpPerLevel*Level + plusMaxHp</c>. In game data
-    /// <c>MaxHits</c> is the random range (a delta, not an absolute), so the
-    /// random portion brackets to the chosen <paramref name="rollMode"/>.
-    /// </summary>
+    // Estimate max HP at a level. Core:
+    // (HEA/2 + Level*MinHitsPerLevel) + ((HEA-50)*Level)/16 + Random,
+    // then + raceHpPerLevel*Level + plusMaxHp. In game data MaxHits is the random
+    // range (a delta, not an absolute), so the random portion brackets to the
+    // chosen rollMode.
     public static int CalcMaxHp(int health, int level, int minHitsPerLevel, int maxHitsPerLevel,
                                 int raceHpPerLevel, int plusMaxHp, HpRollMode rollMode)
     {
@@ -111,11 +92,9 @@ public static class CharacterCalculator
         return baseHp + (raceHpPerLevel * level) + plusMaxHp;
     }
 
-    /// <summary>
-    /// HP regen per tick. Base <c>(level+20)*health/divisor</c> with divisor
-    /// 500 (ParaMUD) or 750 (Stock), floored at 1, tripled while resting, then
-    /// scaled by equipment <c>+HP-regen%</c>.
-    /// </summary>
+    // HP regen per tick. Base (level+20)*health/divisor with divisor 500
+    // (ParaMUD) or 750 (Stock), floored at 1, tripled while resting, then scaled
+    // by equipment +HP-regen%.
     public static int CalcHpRegen(int level, int health, int hpRegenPercent, bool isResting, RealmType realmType)
     {
         int divisor = realmType == RealmType.ParaMud ? 500 : 750;
@@ -128,35 +107,29 @@ public static class CharacterCalculator
 
     // ----- Mana / Kai ------------------------------------------------------
 
-    /// <summary>
-    /// Max mana: <c>(mageryLevel * level * 2) + 6 + plusMaxMana</c>. Returns 0
-    /// for non-casters (<paramref name="mageryLevel"/> ≤ 0).
-    /// </summary>
+    // Max mana: (mageryLevel * level * 2) + 6 + plusMaxMana. Returns 0 for
+    // non-casters (mageryLevel <= 0).
     public static int CalcMaxMana(int mageryLevel, int level, int plusMaxMana)
     {
         if (mageryLevel <= 0) return 0;
         return (mageryLevel * level * 2) + 6 + plusMaxMana;
     }
 
-    /// <summary>
-    /// Max Kai for Mystics (magery type 5). Kai is not mana — the mana formula
-    /// gives wildly wrong values for Mystics — it approximates to
-    /// <c>level - 1</c> (a level-82 Mystic has 81 Kai), with no equipment
-    /// contribution. Returns 0 below level 2.
-    /// </summary>
+    // Max Kai for Mystics (magery type 5). Kai is not mana — the mana formula
+    // gives wildly wrong values for Mystics — it approximates to level - 1 (a
+    // level-82 Mystic has 81 Kai), with no equipment contribution. Returns 0
+    // below level 2.
     public static int CalcMaxKai(int level)
     {
         if (level <= 1) return 0;
         return level - 1;
     }
 
-    /// <summary>
-    /// Mana regen per tick. Base stat depends on magery type
-    /// (1=INT, 2=WIL, 3=(INT+WIL)/2, 4=CHM, 5=Kai fixed-rate, 0=none); core
-    /// is <c>((level+20)*baseStat*(mageryLevel+2))/1650</c>. While meditating
-    /// the core value is returned before the equipment <c>+mana-regen%</c>
-    /// modifier, which itself differs by realm.
-    /// </summary>
+    // Mana regen per tick. Base stat depends on magery type
+    // (1=INT, 2=WIL, 3=(INT+WIL)/2, 4=CHM, 5=Kai fixed-rate, 0=none); core is
+    // ((level+20)*baseStat*(mageryLevel+2))/1650. While meditating the core value
+    // is returned before the equipment +mana-regen% modifier, which itself
+    // differs by realm.
     public static int CalcManaRegen(int level, int intellect, int willpower, int charm,
                                     int mageryType, int mageryLevel, int mpRegenPercent,
                                     bool isMeditating, RealmType realmType)
@@ -182,7 +155,7 @@ public static class CharacterCalculator
 
         int regen = ((level + 20) * baseStat * (mageryLevel + 2)) / 1650;
 
-        // Meditating exits before the equipment modifier (VB6 early-return).
+        // Meditating exits before the equipment modifier applies.
         if (isMeditating) return regen;
 
         if (realmType == RealmType.ParaMud)
@@ -204,14 +177,12 @@ public static class CharacterCalculator
     private const int MaxItemAbilSlots = 20;
     private const int MaxRecordAbilSlots = 10;
 
-    /// <summary>
-    /// Sum the equipment-stat bonuses of every worn item, resolving each one
-    /// against <paramref name="cache"/>'s <c>Items</c> table. Each item's base
-    /// AC/DR and its <c>Abil-0..Abil-19</c> slots are folded into an
-    /// <see cref="EquipmentStatBreakdown"/> (totals + per-stat item sources for
-    /// tooltips). Items not found in game data are skipped silently — a custom
-    /// realm may rename items the active set doesn't carry.
-    /// </summary>
+    // Sum the equipment-stat bonuses of every worn item, resolving each one
+    // against the cache's Items table. Each item's base AC/DR and its
+    // Abil-0..Abil-19 slots are folded into an EquipmentStatBreakdown (totals +
+    // per-stat item sources for tooltips). Items not found in game data are
+    // skipped silently — a custom realm may rename items the active set doesn't
+    // carry.
     public static EquipmentStatBreakdown AggregateEquipmentStats(
         IReadOnlyList<EquippedItem> equippedItems, GameDataCache cache)
     {
@@ -229,17 +200,13 @@ public static class CharacterCalculator
         return result;
     }
 
-    /// <summary>
-    /// Fold one already-resolved <c>Items</c> row into a fresh
-    /// <see cref="EquipmentStatBreakdown"/> — the per-item half of
-    /// <see cref="AggregateEquipmentStats"/>, exposed for callers that already hold
-    /// the JSON row. The Item Finder enumerates the whole <c>Items</c> table, so a
-    /// name round-trip through <see cref="GameDataCache.FindRowByName"/> per item
-    /// would be wasteful. <paramref name="slotTag"/> mirrors
-    /// <see cref="EquippedItem.Slot"/>: <c>"Weapon Hand"</c> surfaces the weapon-base
-    /// fields (Min / Max / StrReq / Type / Speed), <c>"Off-Hand"</c> the off-hand
-    /// accuracy, any other tag folds as generic worn gear.
-    /// </summary>
+    // Fold one already-resolved Items row into a fresh EquipmentStatBreakdown —
+    // the per-item half of AggregateEquipmentStats, exposed for callers that
+    // already hold the JSON row. The Item Finder enumerates the whole Items
+    // table, so a name round-trip through GameDataCache.FindRowByName per item
+    // would be wasteful. slotTag mirrors EquippedItem.Slot: "Weapon Hand"
+    // surfaces the weapon-base fields (Min / Max / StrReq / Type / Speed),
+    // "Off-Hand" the off-hand accuracy, any other tag folds as generic worn gear.
     public static EquipmentStatBreakdown AggregateItemRow(
         JsonElement itemRow, string itemName, string slotTag)
     {
@@ -319,12 +286,10 @@ public static class CharacterCalculator
         }
     }
 
-    /// <summary>
-    /// Fold a race or class record's <c>Abil-0..Abil-9</c> bonuses into an
-    /// existing <paramref name="breakdown"/>. These contribute to AC/DR and the
-    /// other derived stats exactly like item abilities, so the Workshop can show
-    /// innate racial / class bonuses alongside worn gear.
-    /// </summary>
+    // Fold a race or class record's Abil-0..Abil-9 bonuses into an existing
+    // breakdown. These contribute to AC/DR and the other derived stats exactly
+    // like item abilities, so the Workshop can show innate racial / class bonuses
+    // alongside worn gear.
     public static void ApplyAbilityBonuses(
         EquipmentStatBreakdown breakdown, JsonElement data, string sourceName)
     {
@@ -343,14 +308,12 @@ public static class CharacterCalculator
         }
     }
 
-    /// <summary>
-    /// Fold completed-quest stat rewards into an existing <paramref name="breakdown"/>.
-    /// Each <see cref="QuestBonus"/>'s ability id maps onto the same summary fields
-    /// equipment + race/class bonuses use, so a quest's permanent reward (e.g.
-    /// <c>addability 4</c> max-damage, <c>addability 34</c> dodge) feeds the derived
-    /// combat exactly as the game applies it. <paramref name="sourceName"/> labels the
-    /// per-stat contribution (e.g. the quest name) for the Character Info breakdown.
-    /// </summary>
+    // Fold completed-quest stat rewards into an existing breakdown. Each
+    // QuestBonus's ability id maps onto the same summary fields equipment +
+    // race/class bonuses use, so a quest's permanent reward (e.g. addability 4
+    // max-damage, addability 34 dodge) feeds the derived combat exactly as the
+    // game applies it. sourceName labels the per-stat contribution (e.g. the
+    // quest name) for the Character Info breakdown.
     public static void ApplyQuestBonuses(
         EquipmentStatBreakdown breakdown, IEnumerable<QuestBonus> bonuses, string sourceName)
     {
@@ -368,9 +331,8 @@ public static class CharacterCalculator
         }
     }
 
-    // Maps a single ability ID + value onto the matching summary field and
-    // records the per-item contribution. Ported from MMUD Explorer's
-    // GetAbilityStatSlot dispatch.
+    // Maps a single MajorMUD ability ID + value onto the matching summary field
+    // and records the per-item contribution.
     private static void MapAbilityToStat(EquipmentStatBreakdown result, EquipmentStatSummary totals,
                                          string itemName, int abilId, int abilVal)
     {

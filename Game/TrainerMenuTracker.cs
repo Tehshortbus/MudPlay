@@ -4,51 +4,35 @@ using FujinTerm.Services.Patterns;
 
 namespace FujinTerm.Game;
 
-/// <summary>
-/// Detects the brief excursion into the in-game trainer stats menu so
-/// downstream subscribers can react when the user returns to the realm —
-/// specifically, <see cref="AutoPartyManager"/> uses
-/// <see cref="MenuExited"/> to refresh any party members whose
-/// <c>[Invited]</c> slot is still open on our leader-side state but
-/// whose own party view was dissolved by the brief absence.
-/// </summary>
-/// <remarks>
-/// <para>
-/// State machine, leader-side only:
-/// </para>
-/// <list type="number">
-///   <item>User sends <c>train stats</c> (or just <c>train</c>) on the
-///         wire — <see cref="ObserveOutbound"/> arms
-///         <see cref="ExpectingMenuWindow"/> seconds of "expecting
-///         menu" time.</item>
-///   <item>Within that window, the anchored
-///         <see cref="KnownPatterns.MenuTrainerStatsMarker"/> line
-///         (<c>"Point Cost Chart"</c>) is observed — confirms we're
-///         in the menu, snapshots the current non-self roster, and
-///         flips <c>_inMenu = true</c>.</item>
-///   <item>While in the menu, the in-game prompt
-///         (<see cref="KnownPatterns.StatusLine"/>) doesn't fire
-///         because the trainer screen is a full-screen ANSI menu.</item>
-///   <item>When the user exits the menu, the next in-game prompt
-///         fires; that's our exit signal — fire
-///         <see cref="MenuExited"/> and reset.</item>
-/// </list>
-/// <para>
-/// The outbound-command gate guarantees no chat / gossip line containing
-/// <c>"Point Cost Chart"</c> can ever flip the state machine on its own —
-/// without an outbound <c>train stats</c> the marker is ignored entirely.
-/// </para>
-/// <para>
-/// Initial character creation is the one entry path with no outbound
-/// <c>train stats</c>: the game menu walks class → race → alignment →
-/// training on its own. That training screen still renders the same
-/// full-screen menu, and its top row carries the "MAJOR MUD Character
-/// Creation" box beside the "Point Cost Chart" panel. A marker line
-/// bearing BOTH phrases stands in for the outbound gate — a chat line
-/// can't carry both — so the state machine flips and downstream input
-/// switches to character mode just as it does for in-game training.
-/// </para>
-/// </remarks>
+// Detects the brief excursion into the in-game trainer stats menu so
+// downstream subscribers can react when the user returns to the realm —
+// specifically, AutoPartyManager uses MenuExited to refresh any party members
+// whose [Invited] slot is still open on our leader-side state but whose own
+// party view was dissolved by the brief absence.
+//
+// State machine, leader-side only:
+//   1. User sends train stats (or just train) on the wire — ObserveOutbound
+//      arms ExpectingMenuWindow seconds of "expecting menu" time.
+//   2. Within that window, the anchored MenuTrainerStatsMarker line ("Point
+//      Cost Chart") is observed — confirms we're in the menu, snapshots the
+//      current non-self roster, and flips _inMenu = true.
+//   3. While in the menu, the in-game prompt (StatusLine) doesn't fire because
+//      the trainer screen is a full-screen ANSI menu.
+//   4. When the user exits the menu, the next in-game prompt fires; that's our
+//      exit signal — fire MenuExited and reset.
+//
+// The outbound-command gate guarantees no chat / gossip line containing "Point
+// Cost Chart" can ever flip the state machine on its own — without an outbound
+// train stats the marker is ignored entirely.
+//
+// Initial character creation is the one entry path with no outbound train
+// stats: the game menu walks class → race → alignment → training on its own.
+// That training screen still renders the same full-screen menu, and its top
+// row carries the "MAJOR MUD Character Creation" box beside the "Point Cost
+// Chart" panel. A marker line bearing BOTH phrases stands in for the outbound
+// gate — a chat line can't carry both — so the state machine flips and
+// downstream input switches to character mode just as it does for in-game
+// training.
 public sealed class TrainerMenuTracker : IDisposable
 {
     private readonly PartyState _party;
@@ -57,49 +41,41 @@ public sealed class TrainerMenuTracker : IDisposable
     private readonly IDisposable _promptSub;
     private bool _disposed;
 
-    /// <summary>Window after observing outbound <c>train stats</c> during which a marker line confirms entry.</summary>
+    // Window after observing outbound train stats during which a marker line
+    // confirms entry.
     public TimeSpan ExpectingMenuWindow { get; set; } = TimeSpan.FromSeconds(5);
 
-    /// <summary>Test seam.</summary>
+    // Test seam.
     public Func<DateTime> NowProvider { get; set; } = () => DateTime.UtcNow;
 
-    /// <summary>
-    /// Substring unique to the initial character-creation training
-    /// screen — the "MAJOR MUD Character Creation" box shares the menu's
-    /// top terminal row with the "Point Cost Chart" panel. Its presence
-    /// on a marker line confirms menu entry <em>without</em> an outbound
-    /// <c>train stats</c>: character creation walks class → race →
-    /// alignment → training with no such command, so the outbound gate
-    /// never arms. A single line carrying BOTH this phrase and "Point
-    /// Cost Chart" is the full-screen menu, not chat noise.
-    /// </summary>
+    // Substring unique to the initial character-creation training screen — the
+    // "MAJOR MUD Character Creation" box shares the menu's top terminal row
+    // with the "Point Cost Chart" panel. Its presence on a marker line
+    // confirms menu entry without an outbound train stats: character creation
+    // walks class → race → alignment → training with no such command, so the
+    // outbound gate never arms. A single line carrying BOTH this phrase and
+    // "Point Cost Chart" is the full-screen menu, not chat noise.
     private const string CharacterCreationSignature = "Character Creation";
 
     private DateTime? _expectingMenuSince;
     private bool _inMenu;
     private List<string> _rosterSnapshot = new();
 
-    /// <summary>True while we believe the trainer-stats menu is the active screen.</summary>
+    // True while we believe the trainer-stats menu is the active screen.
     public bool IsInTrainerMenu => _inMenu;
 
-    /// <summary>
-    /// Snapshot of non-self party member names taken at the moment we
-    /// confirmed menu entry. Subscribers to <see cref="MenuExited"/>
-    /// inspect this to decide who to re-invite.
-    /// </summary>
+    // Snapshot of non-self party member names taken at the moment we confirmed
+    // menu entry. Subscribers to MenuExited inspect this to decide who to
+    // re-invite.
     public IReadOnlyList<string> RosterAtMenuEntry => _rosterSnapshot;
 
-    /// <summary>
-    /// Fires once when the trainer-stats marker confirms entry into the
-    /// full-screen menu. Lets subscribers (e.g. the terminal's
-    /// character-mode input switch) react to the excursion start.
-    /// </summary>
+    // Fires once when the trainer-stats marker confirms entry into the
+    // full-screen menu. Lets subscribers (e.g. the terminal's character-mode
+    // input switch) react to the excursion start.
     public event Action? MenuEntered;
 
-    /// <summary>
-    /// Fires once when the in-game prompt returns after an armed menu
-    /// session — the user has exited the trainer screen.
-    /// </summary>
+    // Fires once when the in-game prompt returns after an armed menu session —
+    // the user has exited the trainer screen.
     public event Action? MenuExited;
 
     public TrainerMenuTracker(MessageRouter router, PartyState party, LogService? log = null)
@@ -120,12 +96,10 @@ public sealed class TrainerMenuTracker : IDisposable
         _promptSub.Dispose();
     }
 
-    /// <summary>
-    /// Called by the wire-send path so we can spot the user's own
-    /// outbound <c>train stats</c> / <c>train</c> command. This is the
-    /// gate that prevents chat-noise false positives — without an
-    /// outbound train command the menu-marker handler is a no-op.
-    /// </summary>
+    // Called by the wire-send path so we can spot the user's own outbound
+    // train stats / train command. This is the gate that prevents chat-noise
+    // false positives — without an outbound train command the menu-marker
+    // handler is a no-op.
     public void ObserveOutbound(ReadOnlySpan<byte> bytes)
     {
         if (bytes.IsEmpty || bytes.Length > 32) return;

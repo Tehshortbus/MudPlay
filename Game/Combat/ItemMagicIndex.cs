@@ -3,36 +3,26 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game.Combat;
 
-/// <summary>
-/// Fast lookup of a weapon's magic-hit level (<c>HitMagic</c>, MajorMUD
-/// ability code 142) by item Name in the active game-data set.
-/// </summary>
-/// <remarks>
-/// <para>
-/// A physical weapon hits a monster only when its <c>HitMagic</c> is ≥ the
-/// monster's <c>Magical</c> level (<see cref="MonsterMagicIndex"/>). A
-/// weapon with no HitMagic ability is level 0 and so can only hit
-/// non-magical monsters (Magical 0).
-/// </para>
-/// <para>
-/// Mirrors <see cref="SeeHiddenIndex"/> / <see cref="MonsterMagicIndex"/>:
-/// the map is built lazily by scanning the raw <c>Items</c> table's paired
-/// <c>Abil-0..19</c> / <c>AbilVal-0..19</c> columns, cached, and dropped on
-/// game-data set switch so the next query rebuilds against the new set.
-/// Items carry 20 ability slots (vs 10 on Monsters). The key is the item
-/// <c>Name</c> because <see cref="Models.Profile.CombatSettings.NormalWeapon"/>
-/// and its siblings store the weapon by name. Unknown name → <c>-1</c>
-/// (fail-open: the caller treats "no data" as "don't second-guess the
-/// configured weapon").
-/// </para>
-/// </remarks>
+// Fast lookup of a weapon's magic-hit level (HitMagic, MajorMUD ability code
+// 142) by item Name in the active game-data set.
+//
+// A physical weapon hits a monster only when its HitMagic is ≥ the monster's
+// Magical level (MonsterMagicIndex). A weapon with no HitMagic ability is level
+// 0 and so can only hit non-magical monsters (Magical 0).
+//
+// Mirrors SeeHiddenIndex / MonsterMagicIndex: the map is built lazily by
+// scanning the raw Items table's paired Abil-0..19 / AbilVal-0..19 columns,
+// cached, and dropped on game-data set switch so the next query rebuilds against
+// the new set. Items carry 20 ability slots (vs 10 on Monsters). The key is the
+// item Name because CombatSettings.NormalWeapon and its siblings store the
+// weapon by name. Unknown name → -1 (fail-open: the caller treats "no data" as
+// "don't second-guess the configured weapon").
 public sealed class ItemMagicIndex
 {
-    /// <summary>MajorMUD ability code for the magic-hit level (per
-    /// <see cref="GameData.AbilityNames"/>).</summary>
+    // MajorMUD ability code for the magic-hit level (per GameData.AbilityNames).
     private const int HitMagicAbilityCode = 142;
 
-    /// <summary>Number of <c>Abil-N</c> slots on an Items row.</summary>
+    // Number of Abil-N slots on an Items row.
     private const int AbilitySlots = 20;
 
     private readonly GameDataCache _cache;
@@ -45,9 +35,8 @@ public sealed class ItemMagicIndex
         _cache.ActiveSetChanged += _ => _byName = null;
     }
 
-    /// <summary>The weapon's magic-hit level, or <c>-1</c> when the item is
-    /// unknown (no row with that name) — fail-open. A known weapon with no
-    /// <c>HitMagic</c> ability returns 0.</summary>
+    // The weapon's magic-hit level, or -1 when the item is unknown (no row with
+    // that name) — fail-open. A known weapon with no HitMagic ability returns 0.
     public int HitMagic(string? itemName)
     {
         if (string.IsNullOrWhiteSpace(itemName)) return -1;

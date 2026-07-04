@@ -4,60 +4,42 @@ using FujinTerm.Services.Patterns;
 
 namespace FujinTerm.Game.Inventory;
 
-/// <summary>
-/// Phase 9 PR 9.L — auto-get items engine. Parses the room
-/// "You notice &lt;list&gt; here." survey line, resolves each entry
-/// against game data, and sends <c>get &lt;item name&gt;</c> for any
-/// item flagged <see cref="Models.GameData.ItemOverlay.AutoCollect"/>.
-/// </summary>
-/// <remarks>
-/// <para>
-/// There is no bulk "get all" verb in MajorMUD — each item is
-/// collected individually by name. Every entry the survey line names
-/// is run through the injected resolver, which maps the loose room
-/// wording back to an item <c>Number</c> and reads its per-character
-/// <c>AutoCollect</c> override. Non-items (cash entries, scenery) and
-/// items not flagged for collection are skipped.
-/// </para>
-/// <para>
-/// <b>Collect-after-combat</b>: when
-/// <see cref="Models.Profile.CashSettings.CollectAfterCombatFinished"/>
-/// is set (the shared Cash + Items timing toggle) and the room still
-/// holds engageable hostiles, the gets are
-/// queued and flushed on <see cref="OnRoomObserved"/> once combat
-/// clears (no engageable hostiles remain). When the toggle is off, or
-/// no hostiles are present, the gets fire immediately. A room change
-/// (<see cref="OnRoomChanged"/>) discards any un-flushed queue — those
-/// items belong to a room we've left.
-/// </para>
-/// <para>
-/// <b>Movement gate</b>: collecting (or deferring) items asserts the
-/// shared <see cref="AcquisitionGate"/> so the walker holds until
-/// get-clear — deferred items hold the gate before
-/// <c>CombatStateTracker</c> clears the Combat gate, defeating the
-/// synchronous walker-resume race; immediate gets hold it through a
-/// settle window. Bound via <see cref="SetAcquisitionGate"/> (optional —
-/// unbound, the engine doesn't gate movement).
-/// </para>
-/// <para>
-/// Master switch: <see cref="Models.Profile.AutoActionDefaults.AutoGetItems"/>
-/// (shared with the Settings → General toggle and the toolbar Toggle
-/// command).
-/// </para>
-/// <para>
-/// <b>Deferred to follow-ups</b>: needs-fulfillment (grabbing a torch
-/// to satisfy a LightSource need), encumbrance gating, batching, and
-/// party provisioning.
-/// </para>
-/// </remarks>
+// Auto-get items engine. Parses the room "You notice <list> here." survey
+// line, resolves each entry against game data, and sends get <item name> for
+// any item flagged ItemOverlay.AutoCollect.
+//
+// There is no bulk "get all" verb in MajorMUD — each item is collected
+// individually by name. Every entry the survey line names is run through the
+// injected resolver, which maps the loose room wording back to an item Number
+// and reads its per-character AutoCollect override. Non-items (cash entries,
+// scenery) and items not flagged for collection are skipped.
+//
+// Collect-after-combat: when CashSettings.CollectAfterCombatFinished is set
+// (the shared Cash + Items timing toggle) and the room still holds engageable
+// hostiles, the gets are queued and flushed on OnRoomObserved once combat
+// clears (no engageable hostiles remain). When the toggle is off, or no
+// hostiles are present, the gets fire immediately. A room change (OnRoomChanged)
+// discards any un-flushed queue — those items belong to a room we've left.
+//
+// Movement gate: collecting (or deferring) items asserts the shared
+// AcquisitionGate so the walker holds until get-clear — deferred items hold the
+// gate before CombatStateTracker clears the Combat gate, defeating the
+// synchronous walker-resume race; immediate gets hold it through a settle
+// window. Bound via SetAcquisitionGate (optional — unbound, the engine doesn't
+// gate movement).
+//
+// Master switch: AutoActionDefaults.AutoGetItems (shared with the Settings →
+// General toggle and the toolbar Toggle command).
+//
+// Not yet handled: needs-fulfillment (grabbing a torch to satisfy a LightSource
+// need), encumbrance gating, batching, and party provisioning.
 public sealed class AutoGetItemsManager : IDisposable
 {
-    /// <summary>LogService category — <c>[AutoGet]</c> rows per
-    /// collected / deferred item.</summary>
+    // LogService category — [AutoGet] rows per collected / deferred item.
     public const string LogCategory = "AutoGet";
 
-    /// <summary>One resolved room entry: the canonical name to send to
-    /// the game and whether the user flagged it for auto-collection.</summary>
+    // One resolved room entry: the canonical name to send to the game and
+    // whether the user flagged it for auto-collection.
     public sealed record ResolvedItem(string Name, bool AutoCollect);
 
     private readonly Func<string, ResolvedItem?> _resolve;
@@ -100,28 +82,25 @@ public sealed class AutoGetItemsManager : IDisposable
         _noticeSub = router.Subscribe(KnownPatterns.YouNoticeRoom, OnYouNoticeRoom);
     }
 
-    /// <summary>Bind the wire sender — the gate-wrapped engine pipeline
-    /// from <c>MainWindowViewModel</c>.</summary>
+    // Bind the wire sender — the gate-wrapped engine pipeline from
+    // MainWindowViewModel.
     public void SetWireSender(Action<byte[]> sender)
     {
         ArgumentNullException.ThrowIfNull(sender);
         _wireSender = sender;
     }
 
-    /// <summary>Bind the shared <see cref="AcquisitionGate"/> so collecting
-    /// (or deferring) items holds the walker until get-clear. Optional —
-    /// when unbound the engine behaves exactly as v1 (no movement
-    /// gate).</summary>
+    // Bind the shared AcquisitionGate so collecting (or deferring) items holds
+    // the walker until get-clear. Optional — when unbound the engine doesn't
+    // gate movement.
     public void SetAcquisitionGate(AcquisitionGate gate)
     {
         ArgumentNullException.ThrowIfNull(gate);
         _gate = gate;
     }
 
-    /// <summary>
-    /// Bind the per-session <see cref="Terminal.LineExtractor"/> so the
-    /// manager can stitch a wrapped "You notice" survey back together.
-    /// </summary>
+    // Bind the per-session LineExtractor so the manager can stitch a wrapped
+    // "You notice" survey back together.
     public void AttachLineExtractor(Terminal.LineExtractor lines)
     {
         ArgumentNullException.ThrowIfNull(lines);
@@ -131,13 +110,9 @@ public sealed class AutoGetItemsManager : IDisposable
         _lines.LineEmitted += OnLine;
     }
 
-    /// <summary>
-    /// Called on each room-entity observation (wired to
-    /// <c>RoomEntityClassifier.EntitiesObserved</c> after the combat
-    /// tracker so the hostile check is current). Flushes the deferred
-    /// queue once no engageable hostiles remain — the "combat finished
-    /// for this room" signal.
-    /// </summary>
+    // Called on each room-entity observation (wired after the combat tracker so
+    // the hostile check is current). Flushes the deferred queue once no
+    // engageable hostiles remain — the "combat finished for this room" signal.
     public void OnRoomObserved()
     {
         if (_deferred.Count == 0) return;
@@ -145,10 +120,8 @@ public sealed class AutoGetItemsManager : IDisposable
         FlushDeferred();
     }
 
-    /// <summary>
-    /// Called on actual room change. Discards any un-flushed deferred
-    /// gets — the items belonged to the room we just left.
-    /// </summary>
+    // Called on actual room change. Discards any un-flushed deferred gets — the
+    // items belonged to the room we just left.
     public void OnRoomChanged()
     {
         if (_deferred.Count == 0) return;
@@ -159,9 +132,8 @@ public sealed class AutoGetItemsManager : IDisposable
 
     // ----- notice parsing ----------------------------------------------
 
-    /// <summary>Single-line "You notice &lt;list&gt; here." — the
-    /// pattern subscription path. Multi-line wraps stitch through
-    /// <see cref="OnLine"/> and feed the same dispatch.</summary>
+    // Single-line "You notice <list> here." — the pattern subscription path.
+    // Multi-line wraps stitch through OnLine and feed the same dispatch.
     private void OnYouNoticeRoom(MatchResult m)
     {
         if (m.Groups.Count == 0) return;
@@ -214,12 +186,10 @@ public sealed class AutoGetItemsManager : IDisposable
         DispatchList(body);
     }
 
-    /// <summary>
-    /// Split the survey list into entries, resolve each against game
-    /// data, and collect (or defer) those flagged for auto-collection.
-    /// The deferred queue is rebuilt per survey — a fresh "You notice"
-    /// supersedes the prior room snapshot.
-    /// </summary>
+    // Split the survey list into entries, resolve each against game data, and
+    // collect (or defer) those flagged for auto-collection. The deferred queue
+    // is rebuilt per survey — a fresh "You notice" supersedes the prior room
+    // snapshot.
     private void DispatchList(string list)
     {
         if (!_isEnabled()) return;
@@ -265,10 +235,8 @@ public sealed class AutoGetItemsManager : IDisposable
         _gate?.NoteDeferredCleared();
     }
 
-    /// <summary>
-    /// Split "a, b and c" survey wording into individual entries —
-    /// commas separate all but the final pair, which uses " and ".
-    /// </summary>
+    // Split "a, b and c" survey wording into individual entries — commas
+    // separate all but the final pair, which uses " and ".
     private static IEnumerable<string> SplitEntries(string list)
     {
         foreach (string comma in list.Split(',', StringSplitOptions.TrimEntries

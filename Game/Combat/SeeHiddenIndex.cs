@@ -3,27 +3,21 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game.Combat;
 
-/// <summary>
-/// Fast lookup of which monster Numbers carry the <c>SeeHidden</c>
-/// ability (MajorMUD ability code 57) in the active game-data set.
-/// </summary>
-/// <remarks>
-/// A monster with SeeHidden defeats sneak: walking into its room with a
-/// sneaking character reveals you to EVERY occupant, so the opening
-/// backstab is ruined. <see cref="CombatManager"/> consults this to skip
-/// the backstab (and fall through to a normal attack) when any monster
-/// in the room has the flag. The set is built lazily by scanning the
-/// raw <c>Monsters</c> table's <c>Abil-0..9</c> columns, cached, and
-/// dropped on game-data set switch so the next query rebuilds against
-/// the new set.
-/// </remarks>
+// Fast lookup of which monster Numbers carry the SeeHidden ability (MajorMUD
+// ability code 57) in the active game-data set.
+//
+// A monster with SeeHidden defeats sneak: walking into its room with a sneaking
+// character reveals you to EVERY occupant, so the opening backstab is ruined.
+// CombatManager consults this to skip the backstab (and fall through to a normal
+// attack) when any monster in the room has the flag. The set is built lazily by
+// scanning the raw Monsters table's Abil-0..9 columns, cached, and dropped on
+// game-data set switch so the next query rebuilds against the new set.
 public sealed class SeeHiddenIndex
 {
-    /// <summary>MajorMUD ability code for SeeHidden (per
-    /// <see cref="GameData.AbilityNames"/>).</summary>
+    // MajorMUD ability code for SeeHidden (per GameData.AbilityNames).
     private const int SeeHiddenAbilityCode = 57;
 
-    /// <summary>Number of <c>Abil-N</c> slots on a Monsters row.</summary>
+    // Number of Abil-N slots on a Monsters row.
     private const int AbilitySlots = 10;
 
     private readonly GameDataCache _cache;
@@ -36,8 +30,8 @@ public sealed class SeeHiddenIndex
         _cache.ActiveSetChanged += _ => _numbers = null;
     }
 
-    /// <summary>True when the monster with the given Number carries the
-    /// SeeHidden ability in the active set.</summary>
+    // True when the monster with the given Number carries the SeeHidden ability
+    // in the active set.
     public bool Has(int monsterNumber) => Build().Contains(monsterNumber);
 
     private HashSet<int> Build()

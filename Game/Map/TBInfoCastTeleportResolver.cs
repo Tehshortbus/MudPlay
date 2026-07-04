@@ -4,45 +4,29 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game.Map;
 
-/// <summary>
-/// Resolves a TBInfo CMD chain whose keyword fires a teleport <i>via a
-/// spell cast</i> (a <c>cast &lt;spell&gt;</c> directive) into the
-/// keyword plus the set of rooms the player can land in. Third sibling
-/// to <see cref="TBInfoTeleportResolver"/> (literal
-/// <c>teleport &lt;room&gt; &lt;map&gt;</c>) and
-/// <see cref="TBInfoActionResolver"/> (<c>remoteaction</c>).
-/// </summary>
-/// <remarks>
-/// <para>
-/// MajorMUD delivers some room teleports indirectly: the CMD chain
-/// casts a spell whose <c>TeleportRoom</c> (Abil 140) / <c>TeleportMap</c>
-/// (Abil 141) abilities move the caster. Example — v1.11p map 1 rooms
-/// 178-180, CMD 9115 → spell 923 "bridge jump":
-/// </para>
-/// <code>
-/// jump west:message 2664:cast 923
-/// jump east:message 2664:cast 923
-/// </code>
-/// <para>
-/// When the spell's <c>AbilVal-140</c> is a fixed room number the
-/// destination is that single room. When it's <c>0</c> the destination
-/// is a <b>random</b> room in the spell's <c>MinBase..MaxBase</c> range —
-/// "bridge jump" plops the player into one of 5 river rooms. The walker
-/// can't predict which, so the map surfaces every possibility (and the
-/// caller treats the post-jump position as uncertain).
-/// </para>
-/// <para>
-/// MMUD-Explorer never resolves this for its map view — its
-/// <c>GetTextblockCMDS</c> lists keywords only; only its spell pane
-/// (<c>PullSpellEQ</c>) expands the range. Surfacing it on the room
-/// tooltip is a deliberate FujinTerm improvement.
-/// </para>
-/// </remarks>
+// Resolves a TBInfo CMD chain whose keyword fires a teleport via a spell cast (a
+// cast <spell> directive) into the keyword plus the set of rooms the player can
+// land in. Third sibling to TBInfoTeleportResolver (literal
+// teleport <room> <map>) and TBInfoActionResolver (remoteaction).
+//
+// MajorMUD delivers some room teleports indirectly: the CMD chain casts a spell
+// whose TeleportRoom (Abil 140) / TeleportMap (Abil 141) abilities move the
+// caster. Example — v1.11p map 1 rooms 178-180, CMD 9115 → spell 923 "bridge
+// jump":
+//
+//     jump west:message 2664:cast 923
+//     jump east:message 2664:cast 923
+//
+// When the spell's AbilVal-140 is a fixed room number the destination is that
+// single room. When it's 0 the destination is a random room in the spell's
+// MinBase..MaxBase range — "bridge jump" plops the player into one of 5 river
+// rooms. The walker can't predict which, so the map surfaces every possibility
+// (and the caller treats the post-jump position as uncertain).
 public static class TBInfoCastTeleportResolver
 {
-    // MME ability codes (AbilityNames / modMMudDatabase.bas): the room
-    // and map a teleport spell moves the caster to. AbilVal-140 == 0
-    // means "random room in MinBase..MaxBase"; non-zero is a fixed room.
+    // Ability codes: the room and map a teleport spell moves the caster to.
+    // AbilVal-140 == 0 means "random room in MinBase..MaxBase"; non-zero is a
+    // fixed room.
     private const int TeleportRoomCode = 140;
     private const int TeleportMapCode  = 141;
 
@@ -52,15 +36,12 @@ public static class TBInfoCastTeleportResolver
     // the tooltip into hundreds of lines.
     private const int MaxRandomRange = 64;
 
-    /// <summary>
-    /// Walk every <c>cast &lt;spell&gt;</c> directive in the CMD's Action
-    /// chain whose spell teleports, and yield <c>(keyword, destinations,
-    /// random, minLevel)</c>. <paramref name="sourceMap"/> is the map of
-    /// the room the command is typed in — used as the destination map when
-    /// the spell carries no explicit <c>TeleportMap</c> (Abil 141) value.
-    /// <paramref name="catalog"/> resolves the spell number to its formula
-    /// + ability list. Lines whose cast spell isn't a teleport are skipped.
-    /// </summary>
+    // Walk every cast <spell> directive in the CMD's Action chain whose spell
+    // teleports, and yield (keyword, destinations, random, minLevel). sourceMap
+    // is the map of the room the command is typed in — used as the destination
+    // map when the spell carries no explicit TeleportMap (Abil 141) value.
+    // catalog resolves the spell number to its formula + ability list. Lines
+    // whose cast spell isn't a teleport are skipped.
     public static IEnumerable<(string Keyword, IReadOnlyList<RoomKey> Destinations, bool Random, int MinLevel)>
         EnumerateCastTeleports(TBInfoStore store, int roomCmd, int sourceMap, KnownSpellCatalog catalog)
     {

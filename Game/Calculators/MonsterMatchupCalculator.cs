@@ -1,25 +1,21 @@
 namespace FujinTerm.Game.Calculators;
 
-/// <summary>
-/// Composes a both-directions combat preview between the player and one
-/// monster, on top of <see cref="CombatCalculator.CalculateHitChance"/>:
-/// <list type="bullet">
-/// <item><b>Player → monster</b> — normal-attack hit chance vs the monster's
-/// AC and dodge (some monsters carry a Dodge ability; they have no alignment
-/// ward), per-hit damage after the monster's damage-resist, then DPS
-/// (<c>hit% × dmg/hit × swings</c>) and rounds-to-kill.</item>
-/// <item><b>Monster → player</b> — the monster's primary physical attack's
-/// hit chance vs our AC + dodge (+ our prot-evil / prot-good only when the
-/// monster is evil / good), and its per-hit damage after our damage-resist.
-/// Physical attacks reduce by DR; elemental / magic resist doesn't apply to
-/// the physical melee slot.</item>
-/// </list>
-/// Pure math — the caller extracts the monster row and current player profile
-/// and passes typed values in.
-/// </summary>
+// Composes a both-directions combat preview between the player and one monster,
+// on top of CombatCalculator.CalculateHitChance:
+//   Player → monster — normal-attack hit chance vs the monster's AC and dodge
+//     (some monsters carry a Dodge ability; they have no alignment ward),
+//     per-hit damage after the monster's damage-resist, then DPS
+//     (hit% * dmg/hit * swings) and rounds-to-kill.
+//   Monster → player — the monster's primary physical attack's hit chance vs
+//     our AC + dodge (+ our prot-evil / prot-good only when the monster is
+//     evil / good), and its per-hit damage after our damage-resist. Physical
+//     attacks reduce by DR; elemental / magic resist doesn't apply to the
+//     physical melee slot.
+// Pure math — the caller extracts the monster row and current player profile
+// and passes typed values in.
 public static class MonsterMatchupCalculator
 {
-    /// <summary>Run the matchup for the supplied player and monster profiles.</summary>
+    // Run the matchup for the supplied player and monster profiles.
     public static MonsterMatchupResult Compute(PlayerMatchupProfile player, MonsterMatchupProfile monster)
     {
         RealmType realm = player.Realm;
@@ -35,10 +31,10 @@ public static class MonsterMatchupCalculator
 
         int playerDmgPerHit = System.Math.Max(0, player.AvgWeaponDamage - monster.DamageResist);
 
-        // Fold critical hits into the per-swing average the same way MMUD's
-        // round-damage does: a crit averages 3× the normal max (its own DR is
+        // Fold critical hits into the per-swing average the same way MajorMUD's
+        // round-damage does: a crit averages 3x the normal max (its own DR is
         // subtracted), blended by the crit chance. The displayed dmg/hit stays
-        // the non-crit value (matching MME's "avg hit"); only DPS reflects crits.
+        // the non-crit value (the "avg hit"); only DPS reflects crits.
         int critPerHit = System.Math.Max(0, player.AvgCritDamage - monster.DamageResist);
         double critPct = System.Math.Clamp(player.CritChancePercent, 0, 100) / 100.0;
         double effectivePerHit = ((1.0 - critPct) * playerDmgPerHit) + (critPct * critPerHit);
@@ -79,23 +75,22 @@ public static class MonsterMatchupCalculator
     }
 }
 
-/// <summary>
-/// Player-side inputs to <see cref="MonsterMatchupCalculator.Compute"/> —
-/// the offensive numbers (normal-attack accuracy, average weapon damage,
-/// swings/round) and the defensive numbers (AC, dodge, prot wards, DR).
-/// </summary>
-/// <param name="Realm">Active realm — selects the Stock / ParaMUD hit formula.</param>
-/// <param name="NormalAccuracy">Computed normal-attack accuracy (the to-hit number).</param>
-/// <param name="AvgWeaponDamage">Average of the normal-attack min/max damage, before the monster's DR.</param>
-/// <param name="SwingsPerRound">Swings landed per round with the current weapon.</param>
-/// <param name="HasWeapon">False when unarmed — gates DPS / rounds-to-kill.</param>
-/// <param name="ArmourClass">Player AC, the monster swings against.</param>
-/// <param name="Dodge">Player raw dodge value (not a percentage).</param>
-/// <param name="ProtEvil">Prot-evil ward, applied only when the monster is evil.</param>
-/// <param name="ProtGood">Prot-good ward, applied only when the monster is good.</param>
-/// <param name="DamageResist">Player DR, subtracted from each monster hit.</param>
-/// <param name="CritChancePercent">Normal-attack critical-hit chance (0–100), gear/quest crit + Quick-and-Deadly. Folds into DPS, not the per-hit display.</param>
-/// <param name="AvgCritDamage">Average critical-hit damage before the monster's DR (MMUD: 3× the normal max).</param>
+// Player-side inputs to MonsterMatchupCalculator.Compute — the offensive numbers
+// (normal-attack accuracy, average weapon damage, swings/round) and the
+// defensive numbers (AC, dodge, prot wards, DR).
+//   Realm             — active realm, selects the Stock / ParaMUD hit formula.
+//   NormalAccuracy    — computed normal-attack accuracy (the to-hit number).
+//   AvgWeaponDamage   — avg of the normal-attack min/max damage, before monster DR.
+//   SwingsPerRound    — swings landed per round with the current weapon.
+//   HasWeapon         — false when unarmed, gates DPS / rounds-to-kill.
+//   ArmourClass       — player AC, the monster swings against.
+//   Dodge             — player raw dodge value (not a percentage).
+//   ProtEvil          — prot-evil ward, applied only when the monster is evil.
+//   ProtGood          — prot-good ward, applied only when the monster is good.
+//   DamageResist      — player DR, subtracted from each monster hit.
+//   CritChancePercent — normal-attack crit chance (0-100), gear/quest crit +
+//                       Quick-and-Deadly. Folds into DPS, not the per-hit display.
+//   AvgCritDamage     — avg crit damage before the monster's DR (3x the normal max).
 public readonly record struct PlayerMatchupProfile(
     RealmType Realm,
     int NormalAccuracy,
@@ -110,20 +105,18 @@ public readonly record struct PlayerMatchupProfile(
     int CritChancePercent = 0,
     int AvgCritDamage = 0);
 
-/// <summary>
-/// Monster-side inputs to <see cref="MonsterMatchupCalculator.Compute"/> —
-/// defense (AC / DR / HP) and the primary physical attack slot (accuracy +
-/// average damage), plus the evil / good flags that gate the player's wards.
-/// </summary>
-/// <param name="ArmourClass">Monster AC the player swings against.</param>
-/// <param name="DamageResist">Monster DR, subtracted from each player hit.</param>
-/// <param name="Hp">Monster max HP, the rounds-to-kill denominator.</param>
-/// <param name="Dodge">Monster raw dodge (the <c>Dodge</c> ability, abil 34), 0 for most monsters.</param>
-/// <param name="HasPhysicalAttack">True when the monster has a melee / rob slot to preview.</param>
-/// <param name="AttackAccuracy">Primary physical slot's to-hit accuracy.</param>
-/// <param name="AvgAttackDamage">Average of the primary physical slot's min/max damage, before player DR.</param>
-/// <param name="IsEvil">Monster is evil (Align ∈ {1,2,5,6}) — enables the player's prot-evil ward.</param>
-/// <param name="IsGood">Monster is good (Align ∈ {0,4}) — enables the player's prot-good ward.</param>
+// Monster-side inputs to MonsterMatchupCalculator.Compute — defense
+// (AC / DR / HP) and the primary physical attack slot (accuracy + average
+// damage), plus the evil / good flags that gate the player's wards.
+//   ArmourClass       — monster AC the player swings against.
+//   DamageResist      — monster DR, subtracted from each player hit.
+//   Hp                — monster max HP, the rounds-to-kill denominator.
+//   Dodge             — monster raw dodge (the Dodge ability, abil 34), 0 for most.
+//   HasPhysicalAttack — true when the monster has a melee / rob slot to preview.
+//   AttackAccuracy    — primary physical slot's to-hit accuracy.
+//   AvgAttackDamage   — avg of the primary physical slot's min/max, before player DR.
+//   IsEvil            — monster is evil (Align in {1,2,5,6}), enables prot-evil.
+//   IsGood            — monster is good (Align in {0,4}), enables prot-good.
 public readonly record struct MonsterMatchupProfile(
     int ArmourClass,
     int DamageResist,
@@ -135,19 +128,18 @@ public readonly record struct MonsterMatchupProfile(
     bool IsEvil,
     bool IsGood);
 
-/// <summary>
-/// Output of <see cref="MonsterMatchupCalculator.Compute"/> — both hit
-/// directions plus the player's DPS / rounds-to-kill projection.
-/// </summary>
-/// <param name="PlayerHitPercent">Player normal-attack hit chance vs the monster's AC + dodge.</param>
-/// <param name="PlayerDamagePerHit">Player average damage per landed hit, after the monster's DR.</param>
-/// <param name="PlayerSwingsPerRound">Swings/round used in the DPS projection (0 when unarmed).</param>
-/// <param name="PlayerDps">Projected damage per round: <c>hit% × dmg/hit × swings</c>.</param>
-/// <param name="RoundsToKill">Rounds to drop the monster at the projected DPS; 0 when not killable (no weapon / zero DPS).</param>
-/// <param name="HasWeapon">Whether the player had a weapon equipped (gates the DPS fields in the UI).</param>
-/// <param name="MonsterHasPhysicalAttack">Whether the monster has a physical slot to preview the return direction.</param>
-/// <param name="MonsterHitPercent">Monster's primary-physical hit chance vs the player, dodge-adjusted.</param>
-/// <param name="MonsterDamagePerHit">Monster average damage per landed hit, after the player's DR.</param>
+// Output of MonsterMatchupCalculator.Compute — both hit directions plus the
+// player's DPS / rounds-to-kill projection.
+//   PlayerHitPercent          — player normal-attack hit chance vs monster AC + dodge.
+//   PlayerDamagePerHit        — player avg damage per landed hit, after monster DR.
+//   PlayerSwingsPerRound      — swings/round used in the DPS projection (0 unarmed).
+//   PlayerDps                 — projected damage per round: hit% * dmg/hit * swings.
+//   RoundsToKill              — rounds to drop the monster at the projected DPS;
+//                               0 when not killable (no weapon / zero DPS).
+//   HasWeapon                 — whether the player had a weapon (gates DPS fields).
+//   MonsterHasPhysicalAttack  — whether the monster has a physical slot to preview.
+//   MonsterHitPercent         — monster's primary-physical hit chance vs player.
+//   MonsterDamagePerHit       — monster avg damage per landed hit, after player DR.
 public readonly record struct MonsterMatchupResult(
     int PlayerHitPercent,
     int PlayerDamagePerHit,

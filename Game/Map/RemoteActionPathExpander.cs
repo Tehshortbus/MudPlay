@@ -2,38 +2,26 @@ using System.Collections.Generic;
 
 namespace FujinTerm.Game.Map;
 
-/// <summary>
-/// Flattens a BFS shortest-path direction list into the linear
-/// <see cref="WalkStep"/> sequence the walker actually executes.
-/// Inserts <see cref="CommandStep"/> entries for in-room prerequisites
-/// (door opens today; lever pulls / button presses when game data
-/// describes them).
-/// </summary>
-/// <remarks>
-/// <para>
-/// <b>Game-data sourcing</b> (per the Phase 7 doc): prerequisite
-/// actions are read from the static <see cref="RoomExit.Hint"/>
-/// imported alongside each exit cell. If game data is silent about
-/// a remote action on a given exit, the expander treats it as a
-/// plain passage — there's no per-room hardcoding here.
-/// </para>
-/// <para>
-/// Door wording matches the MajorMUD verb form (<c>open door &lt;direction&gt;</c>).
-/// The direction is the full word (<c>north</c>, <c>east</c>, …) since
-/// that's the form the server accepts on the door verb; movements
-/// themselves use the abbreviated form (<c>n</c>, <c>e</c>, …) which
-/// <see cref="AutoWalkManager.EncodeMove"/> handles.
-/// </para>
-/// </remarks>
+// Flattens a BFS shortest-path direction list into the linear WalkStep
+// sequence the walker actually executes. Inserts CommandStep entries for
+// in-room prerequisites (door opens today; lever pulls / button presses when
+// game data describes them).
+//
+// Game-data sourcing: prerequisite actions are read from the static
+// RoomExit.Hint imported alongside each exit cell. If game data is silent about
+// a remote action on a given exit, the expander treats it as a plain passage —
+// there's no per-room hardcoding here.
+//
+// Door wording matches the MajorMUD verb form (open door <direction>). The
+// direction is the full word (north, east, …) since that's the form the server
+// accepts on the door verb; movements themselves use the abbreviated form
+// (n, e, …) which AutoWalkManager.EncodeMove handles.
 public static class RemoteActionPathExpander
 {
-    /// <summary>
-    /// Expand <paramref name="directions"/> against the actual exits
-    /// rooted at <paramref name="source"/>. Stops at the first step
-    /// whose source room or exit cell can't be resolved — the walker
-    /// will detect the truncation as a stale-path failure when it
-    /// runs out of steps before reaching the destination.
-    /// </summary>
+    // Expand directions against the actual exits rooted at source. Stops at the
+    // first step whose source room or exit cell can't be resolved — the walker
+    // will detect the truncation as a stale-path failure when it runs out of
+    // steps before reaching the destination.
     public static IReadOnlyList<WalkStep> Expand(
         RoomGraphManager graph,
         RoomKey source,
@@ -53,14 +41,12 @@ public static class RemoteActionPathExpander
             if (room is null) break;
             if (!room.Exits.TryGetValue(dir, out RoomExit exit)) break;
 
-            // Door + KeyLocked prerequisites are no longer encoded as
-            // CommandStep at expand-time. The walker checks
-            // exit.Hint at step-send time and routes through
-            // DoorOpenManager (commit 2) / the keyed-door FSM
-            // (commit 3) before letting the MoveStep bytes go out.
-            // The old `open door <dir>` synthesis was the source of
-            // the "Syntax: OPEN {Direction|Item}" failure — the real
-            // verb is `open <dir>` (no "door" word).
+            // Door + KeyLocked prerequisites are not encoded as CommandStep at
+            // expand-time. The walker checks exit.Hint at step-send time and
+            // routes through DoorOpenManager / the keyed-door FSM before letting
+            // the MoveStep bytes go out. The real door verb is `open <dir>` (no
+            // "door" word) — synthesising `open door <dir>` here triggered the
+            // "Syntax: OPEN {Direction|Item}" failure.
 
             // Text exits — `(Text: cmd1, cmd2, ...)` — are traversed by a
             // fixed command, never the cardinal. Pin the first alternative

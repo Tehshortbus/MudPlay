@@ -7,36 +7,28 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game.Quests;
 
-/// <summary>
-/// Drafts an ordered, followable step checklist for a single quest flag by walking
-/// the active set's <c>TBInfo</c> chains — the auto baseline behind
-/// <c>QuestDefinition.Steps</c> that a user then refines. Stateless and recomputed
-/// per call, mirroring <see cref="QuestCrawler"/>'s scan.
-/// <para>
-/// Every chain that terminally advances the flag (its last <c>giveability</c> names
-/// <paramref name="flag"/>) becomes one <see cref="QuestStep"/>, ordered by the
-/// chain's give-step — the quest's own progress counter. The crawl surfaces the
-/// player command, the location, and the items the step checks / takes / gives;
-/// identical steps (the same chain echoed from multiple rooms) collapse to one
-/// entry.
-/// </para>
-/// </summary>
+// Drafts an ordered, followable step checklist for a single quest flag by walking
+// the active set's TBInfo chains — the auto baseline behind QuestDefinition.Steps
+// that a user then refines. Stateless and recomputed per call, matching
+// QuestCrawler's scan.
+//
+// Every chain that terminally advances the flag (its last giveability names flag)
+// becomes one QuestStep, ordered by the chain's give-step — the quest's own progress
+// counter. The crawl surfaces the player command, the location, and the items the
+// step checks / takes / gives; identical steps (the same chain echoed from multiple
+// rooms) collapse to one entry.
 public static class QuestStepGraph
 {
-    /// <summary>
-    /// Build the ordered step draft for <paramref name="flag"/> in the active set.
-    /// Empty when no set is active, <c>TBInfo</c> is missing, or the flag has no
-    /// chains. Steps are de-duplicated and ordered by give-step, then location.
-    /// <para>
-    /// <paramref name="byAbilityValue"/> selects the progress axis. Default (<c>false</c>):
-    /// a chain is a step only when its terminal <c>giveability</c> advances the flag, and
-    /// the give-step orders it (single-part and give-step-laddered quests). <c>true</c>:
-    /// a chain is a step when it advances <em>or</em> gates the flag via any
-    /// give/add/check/test directive, ordered by the ability value it lands on — the shape
-    /// of an <c>addability</c>-advanced quest (MageBane) whose later tiers carry no
-    /// giveability of their own.
-    /// </para>
-    /// </summary>
+    // Build the ordered step draft for flag in the active set. Empty when no set is
+    // active, TBInfo is missing, or the flag has no chains. Steps are de-duplicated
+    // and ordered by give-step, then location.
+    //
+    // byAbilityValue selects the progress axis. Default (false): a chain is a step
+    // only when its terminal giveability advances the flag, and the give-step orders
+    // it (single-part and give-step-laddered quests). true: a chain is a step when it
+    // advances or gates the flag via any give/add/check/test directive, ordered by
+    // the ability value it lands on — the shape of an addability-advanced quest
+    // (MageBane) whose later tiers carry no giveability of their own.
     public static IReadOnlyList<QuestStep> Build(GameDataCache cache, int flag, bool byAbilityValue = false)
     {
         ArgumentNullException.ThrowIfNull(cache);

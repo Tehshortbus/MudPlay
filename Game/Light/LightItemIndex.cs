@@ -3,29 +3,24 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game.Light;
 
-/// <summary>
-/// Catalogue of every light-source item (<c>ItemType 6</c>) in the active
-/// game-data set, keyed by name, for the auto-light provisioning logic: it
-/// answers a light's projected illumination (ability code 54, <c>IlluTarget</c>)
-/// and its burn budget (<c>UseCount</c>) so the engine can pick a light strong
-/// enough for a route and compute how many to carry for a target duration.
-/// </summary>
-/// <remarks>
-/// Mirrors <see cref="Combat.ItemMagicIndex"/>: the catalogue is built lazily by
-/// scanning the raw <c>Items</c> table's paired <c>Abil-0..19</c> /
-/// <c>AbilVal-0..19</c> columns, cached, and dropped on a game-data set switch
-/// so the next query rebuilds against the new set.
-/// </remarks>
+// Catalogue of every light-source item (ItemType 6) in the active game-data set,
+// keyed by name, for the auto-light provisioning logic: it answers a light's
+// projected illumination (ability code 54, IlluTarget) and its burn budget
+// (UseCount) so the engine can pick a light strong enough for a route and compute
+// how many to carry for a target duration.
+//
+// Mirrors ItemMagicIndex: the catalogue is built lazily by scanning the raw Items
+// table's paired Abil-0..19 / AbilVal-0..19 columns, cached, and dropped on a
+// game-data set switch so the next query rebuilds against the new set.
 public sealed class LightItemIndex
 {
-    /// <summary>MDB <c>ItemType</c> for a light source.</summary>
+    // MDB ItemType for a light source.
     private const int LightItemType = 6;
 
-    /// <summary>Ability code for a readied light's projected illumination
-    /// (<c>IlluTarget</c>, per <see cref="GameData.AbilityNames"/>).</summary>
+    // Ability code for a readied light's projected illumination (IlluTarget).
     private const int IlluTargetAbilityCode = 54;
 
-    /// <summary>Number of <c>Abil-N</c> slots on an Items row.</summary>
+    // Number of Abil-N slots on an Items row.
     private const int AbilitySlots = 20;
 
     private readonly GameDataCache _cache;
@@ -39,16 +34,14 @@ public sealed class LightItemIndex
         _cache.ActiveSetChanged += _ => { _all = null; _byName = null; };
     }
 
-    /// <summary>Every light item in the active set, in MDB order. Empty when no
-    /// set is active or the set has no <c>Items.json</c>.</summary>
+    // Every light item in the active set, in MDB order. Empty when no set is active
+    // or the set has no Items.json.
     public IReadOnlyList<LightItem> All => _all ??= Build(out _byName);
 
-    /// <summary>
-    /// Resolve a light by its game name (case-insensitive, whitespace-trimmed),
-    /// or <c>null</c> when no light with that name exists in the active set.
-    /// Feeds off the same catalogue as <see cref="All"/>; used to look up a
-    /// readied light's strength / burn budget from its parsed name.
-    /// </summary>
+    // Resolve a light by its game name (case-insensitive, whitespace-trimmed), or
+    // null when no light with that name exists in the active set. Feeds off the
+    // same catalogue as All; used to look up a readied light's strength / burn
+    // budget from its parsed name.
     public LightItem? FindByName(string? name)
     {
         if (string.IsNullOrWhiteSpace(name)) return null;

@@ -7,28 +7,24 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game;
 
-/// <summary>
-/// Broadcasts "I can now train to level: N" on a chosen chat channel the moment a
-/// live experience gain pushes a Level-Projection row's "Exp to level" to 0 — the
-/// same cumulative-threshold test the projection grid (<see cref="Calculators.ExperienceTableCalculator.CalcExpNeeded"/>)
-/// and the auto-trainer use. Driven by the Settings → Auto-Trainer "Announce
-/// level-ups" toggle + channel.
-/// </summary>
-/// <remarks>
-/// <para><b>No login spam.</b> Banked levels already trainable when a character
-/// loads (or when a stat/exp poll re-anchors the total) are absorbed into a silent
-/// baseline: <see cref="StatParser.ScreenParsed"/> and
-/// <see cref="ProfileService.ProfileLoaded"/> move the high-water mark without
-/// announcing. Only <see cref="StatParser.ExperienceGained"/> — a genuine
-/// "You gain N experience." accrual — can announce, and only for levels strictly
-/// above the high-water mark. A gain that arrives before any baseline is itself
-/// treated as the silent seed.</para>
-/// <para>The high-water mark resets per character
-/// (<see cref="ProfileService.ProfileClosed"/>) so a profile swap never carries
-/// one character's announced levels into another. Disabled crossings still advance
-/// the high-water mark, so toggling the feature on mid-session announces future
-/// transitions only — never a backlog.</para>
-/// </remarks>
+// Broadcasts "I can now train to level: N" on a chosen chat channel the moment a
+// live experience gain pushes a Level-Projection row's "Exp to level" to 0 — the
+// same cumulative-threshold test the projection grid
+// (ExperienceTableCalculator.CalcExpNeeded) and the auto-trainer use. Driven by
+// the Settings → Auto-Trainer "Announce level-ups" toggle + channel.
+//
+// No login spam. Banked levels already trainable when a character loads (or when
+// a stat/exp poll re-anchors the total) are absorbed into a silent baseline:
+// StatParser.ScreenParsed and ProfileService.ProfileLoaded move the high-water
+// mark without announcing. Only StatParser.ExperienceGained — a genuine "You
+// gain N experience." accrual — can announce, and only for levels strictly above
+// the high-water mark. A gain that arrives before any baseline is itself treated
+// as the silent seed.
+//
+// The high-water mark resets per character (ProfileService.ProfileClosed) so a
+// profile swap never carries one character's announced levels into another.
+// Disabled crossings still advance the high-water mark, so toggling the feature
+// on mid-session announces future transitions only — never a backlog.
 public sealed class LevelUpAnnouncer : IDisposable
 {
     // Safety cap on the per-gain threshold scan — a single gain can bank several
@@ -70,10 +66,11 @@ public sealed class LevelUpAnnouncer : IDisposable
         SeedBaseline(_stats.Level, _stats.Exp, _stats.Class, _stats.Race);
     }
 
-    /// <summary>Bind the gate-wrapped wire sender (set in MainWindowViewModel after telnet connects).</summary>
+    // Bind the gate-wrapped wire sender (set in MainWindowViewModel after telnet
+    // connects).
     public void SetWireSender(Action<byte[]> sender) => _wire.Bind(sender);
 
-    /// <summary>Test seam — every buffer the announcer pushed to the wire, in order.</summary>
+    // Test seam — every buffer the announcer pushed to the wire, in order.
     internal List<byte[]> LastSentForTests => _wire.LastSentForTests;
 
     // A new character (or a profile close before a swap) — drop the baseline so the

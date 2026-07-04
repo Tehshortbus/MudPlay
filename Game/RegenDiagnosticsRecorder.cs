@@ -2,30 +2,23 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game;
 
-/// <summary>
-/// Debug-channel instrument that traces every observed HP / MA regen uptick
-/// to the program log — the gap since the previous tick of the same stream,
-/// the amount gained, the player's position, and the running total. Emission
-/// is gated at <see cref="LogService.Debug(string, string)"/>, so it stays
-/// silent unless the Log pane's Debug-diagnostics toggle is on.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Motivation: some realms (Paradigm is the known case) vary the per-tick
-/// <i>amount</i> within a cycle instead of the interval — e.g. splitting a
-/// natural / rest tick into thirds where the first ticks pay a fraction and
-/// a later one pays the balance. A single editable interval can't capture
-/// that shape. Standing still (natural) or resting / meditating with this on
-/// produces a raw tick-by-tick trace the amount pattern can be reverse-
-/// engineered from before it's modelled.
-/// </para>
-/// <para>
-/// This is the first producer on the otherwise-empty
-/// <see cref="LogSeverity.Debug"/> channel. It reads live values off
-/// <see cref="PlayerState"/> at event time — the tracker fires after the
-/// state property has already advanced, so the reported total is post-tick.
-/// </para>
-/// </remarks>
+// Debug-channel instrument that traces every observed HP / MA regen uptick
+// to the program log — the gap since the previous tick of the same stream,
+// the amount gained, the player's position, and the running total. Emission
+// is gated at LogService.Debug, so it stays silent unless the Log pane's
+// Debug-diagnostics toggle is on.
+//
+// Motivation: some realms (Paradigm is the known case) vary the per-tick
+// amount within a cycle instead of the interval — e.g. splitting a natural /
+// rest tick into thirds where the first ticks pay a fraction and a later one
+// pays the balance. A single editable interval can't capture that shape.
+// Standing still (natural) or resting / meditating with this on produces a
+// raw tick-by-tick trace the amount pattern can be reverse-engineered from
+// before it's modelled.
+//
+// This is the first producer on the otherwise-empty Debug channel. It reads
+// live values off PlayerState at event time — the tracker fires after the
+// state property has already advanced, so the reported total is post-tick.
 public sealed class RegenDiagnosticsRecorder : IDisposable
 {
     private const string Source = "Regen";

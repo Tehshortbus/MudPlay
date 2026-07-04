@@ -4,54 +4,42 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game.Light;
 
-/// <summary>
-/// Active provisioning detour for the auto-light engine — the shop-buying
-/// counterpart to <see cref="AutoLightProvisioner"/>'s ready-a-carried-light
-/// path. When the planner decides the route ahead runs dark and nothing in the
-/// pack covers it (<see cref="AutoLightAction.Buy"/>), the provisioner hands off
-/// an <see cref="AutoLightBuyRequest"/> here: detour to the shop that adds the
-/// fewest steps, <c>buy</c> the carry-duration batch, then resume to the
-/// original destination. The bought light is <em>lit</em> not here but by the
-/// provisioner's ready path when the resumed walk re-announces the still-dark
-/// route against a snapshot that now shows the light carried — so the
-/// <c>use</c> logic lives in exactly one place.
-/// </summary>
-/// <remarks>
-/// <para>
-/// <b>Gating.</b> Every provisioning action sits behind the single AutoLight
-/// master toggle — there is deliberately no separate "buy lights" opt-in (a
-/// player who doesn't want the client buying light simply leaves AutoLight
-/// off). The provisioner already gates the hand-off on that toggle; the
-/// router's own <c>isEnabled</c> guards its async walk / inventory callbacks.
-/// </para>
-/// <para>
-/// <b>Shop selection.</b> Mirrors <see cref="PathItemShopRouter"/>: among the
-/// rooms hosting a shop that stocks the light, pick the one minimising
-/// <c>dist(cur, shop) + dist(shop, dest)</c> — the fewest steps added to the
-/// trip — using the same movement filter the walker routes with. Ties break on
-/// the nearer shop then room-key order for determinism.
-/// </para>
-/// <para>
-/// <b>Scope.</b> Detours apply only to a plain walk-to. While a loop or
-/// auto-lair run is driving movement (<c>engineWalkActive</c>) provisioning is
-/// suppressed — hijacking a farm loop to shop would be surprising, and the
-/// intended flow provisions on the approach to a dark area, not mid-run. The
-/// reactive <see cref="AutoLightManager"/> LightSource need still surfaces
-/// meanwhile.
-/// </para>
-/// <para>
-/// <b>Resolution &amp; failure.</b> The first freshly-bought copy landing in
-/// inventory (<see cref="OnInventoryChanged"/>) resumes the original walk — the
-/// dark route need is met by one copy even while the rest of the batch is still
-/// buying. A shop we can't reach, or buys that don't land within
-/// <see cref="OnBuyTimeout">the buy window</see> (no gold, out of stock),
-/// resume to the destination and <em>suppress a re-detour to that same
-/// destination</em>: unlike a deduped <see cref="Need"/>, the provisioner's Buy
-/// verdict re-fires on the resumed walk's fresh route announcement, so without
-/// the suppression a failed buy would loop forever. The suppression lifts as
-/// soon as the destination changes or the light is acquired.
-/// </para>
-/// </remarks>
+// Active provisioning detour for the auto-light engine — the shop-buying
+// counterpart to AutoLightProvisioner's ready-a-carried-light path. When the
+// planner decides the route ahead runs dark and nothing in the pack covers it
+// (the Buy verdict), the provisioner hands off an AutoLightBuyRequest here: detour
+// to the shop that adds the fewest steps, buy the carry-duration batch, then
+// resume to the original destination. The bought light is lit not here but by the
+// provisioner's ready path when the resumed walk re-announces the still-dark route
+// against a snapshot that now shows the light carried — so the use logic lives in
+// exactly one place.
+//
+// Gating: every provisioning action sits behind the single AutoLight master
+// toggle — there is deliberately no separate "buy lights" opt-in (a player who
+// doesn't want the client buying light simply leaves AutoLight off). The
+// provisioner already gates the hand-off on that toggle; the router's own
+// isEnabled guards its async walk / inventory callbacks.
+//
+// Shop selection: mirrors PathItemShopRouter — among the rooms hosting a shop that
+// stocks the light, pick the one minimising dist(cur, shop) + dist(shop, dest) —
+// the fewest steps added to the trip — using the same movement filter the walker
+// routes with. Ties break on the nearer shop then room-key order for determinism.
+//
+// Scope: detours apply only to a plain walk-to. While a loop or auto-lair run is
+// driving movement (engineWalkActive) provisioning is suppressed — hijacking a
+// farm loop to shop would be surprising, and the intended flow provisions on the
+// approach to a dark area, not mid-run. The reactive AutoLightManager LightSource
+// need still surfaces meanwhile.
+//
+// Resolution & failure: the first freshly-bought copy landing in inventory
+// (OnInventoryChanged) resumes the original walk — the dark route need is met by
+// one copy even while the rest of the batch is still buying. A shop we can't
+// reach, or buys that don't land within the buy window (no gold, out of stock),
+// resume to the destination and suppress a re-detour to that same destination:
+// unlike a deduped need, the provisioner's Buy verdict re-fires on the resumed
+// walk's fresh route announcement, so without the suppression a failed buy would
+// loop forever. The suppression lifts as soon as the destination changes or the
+// light is acquired.
 public sealed class AutoLightShopRouter : IDisposable
 {
     private const string LogCategory = AutoLightProvisioner.LogCategory;
@@ -128,22 +116,20 @@ public sealed class AutoLightShopRouter : IDisposable
             Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
     }
 
-    /// <summary>Bind the wire sink used to issue the <c>buy</c> command.</summary>
+    // Bind the wire sink used to issue the buy command.
     public void SetWireSender(Action<byte[]> sender) => _wire.Bind(sender);
 
-    /// <summary>Every buffer this router pushed to the wire, in order (test seam).</summary>
+    // Every buffer this router pushed to the wire, in order (test seam).
     internal IReadOnlyList<byte[]> LastSentForTests => _wire.LastSentForTests;
 
-    /// <summary>True while a provisioning detour is in progress.</summary>
+    // True while a provisioning detour is in progress.
     public bool DetourActive => _phase != Phase.Idle;
 
-    /// <summary>
-    /// Provisioning hand-off (bound to <see cref="AutoLightProvisioner"/>'s Buy
-    /// verdict). Arms a detour toward the fewest-added-steps shop that stocks
-    /// the light. A no-op when the feature is off, an engine walk is driving, a
-    /// detour is already running, this destination's last buy already failed,
-    /// no reachable shop stocks it, or we can't compute a route.
-    /// </summary>
+    // Provisioning hand-off (bound to AutoLightProvisioner's Buy verdict). Arms a
+    // detour toward the fewest-added-steps shop that stocks the light. A no-op when
+    // the feature is off, an engine walk is driving, a detour is already running,
+    // this destination's last buy already failed, no reachable shop stocks it, or
+    // we can't compute a route.
     public void OnBuyRequested(AutoLightBuyRequest req)
     {
         if (_phase != Phase.Idle) return;
@@ -179,11 +165,8 @@ public sealed class AutoLightShopRouter : IDisposable
         _post(() => _walkTo(shopRoom));
     }
 
-    /// <summary>
-    /// Walker-event callback (wired to <see cref="AutoWalkManager.Event"/>).
-    /// Arrival at the shop starts the buy; a failed or user-redirected walk
-    /// abandons the detour.
-    /// </summary>
+    // Walker-event callback (wired to AutoWalkManager.Event). Arrival at the shop
+    // starts the buy; a failed or user-redirected walk abandons the detour.
     public void OnWalkEvent(WalkEvent e)
     {
         switch (_phase)
@@ -210,12 +193,10 @@ public sealed class AutoLightShopRouter : IDisposable
         }
     }
 
-    /// <summary>
-    /// Inventory-change callback (wired to <c>InventoryManager.Changed</c>).
-    /// The first freshly-bought copy landing resumes the original walk — one
-    /// copy covers the dark route even while the rest of the batch buys. Also
-    /// doubles as a found-first abort if the light turns up mid-walk-to-shop.
-    /// </summary>
+    // Inventory-change callback (wired to InventoryManager.Changed). The first
+    // freshly-bought copy landing resumes the original walk — one copy covers the
+    // dark route even while the rest of the batch buys. Also doubles as a
+    // found-first abort if the light turns up mid-walk-to-shop.
     public void OnInventoryChanged()
     {
         if (_phase is not (Phase.WalkingToShop or Phase.Buying)) return;
@@ -225,13 +206,10 @@ public sealed class AutoLightShopRouter : IDisposable
         ResumeToPath();
     }
 
-    /// <summary>
-    /// Buy-window elapsed. If no fresh copy landed the <c>buy</c> didn't take
-    /// (no gold, out of stock) — resume to the destination and suppress a
-    /// re-detour to it, leaving the reactive LightSource need for search.
-    /// Invoked on the UI thread via the injected post delegate; tests call it
-    /// directly.
-    /// </summary>
+    // Buy-window elapsed. If no fresh copy landed the buy didn't take (no gold, out
+    // of stock) — resume to the destination and suppress a re-detour to it, leaving
+    // the reactive LightSource need for search. Invoked on the UI thread via the
+    // injected post delegate; tests call it directly.
     public void OnBuyTimeout()
     {
         if (_phase != Phase.Buying) return;

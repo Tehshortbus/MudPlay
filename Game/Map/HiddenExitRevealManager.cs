@@ -3,25 +3,18 @@ using FujinTerm.Services.Patterns;
 
 namespace FujinTerm.Game.Map;
 
-/// <summary>
-/// Drives the walker's <c>sea &lt;dir&gt;</c> retry loop for
-/// <see cref="RoomExitHint.SearchableHidden"/> exits. Mirrors
-/// <see cref="DoorOpenManager"/>'s shape — one request in flight,
-/// FIFO queue, single terminal <see cref="HiddenSearchResult"/>
-/// callback per request — but with a different revelation signal:
-/// the watcher subscribes to <see cref="RoomTracker.StateChanged"/>
-/// and inspects the new current room's exit map for the searched
-/// direction. When the direction appears, the exit is "revealed"
-/// and the manager fires <see cref="HiddenSearchResult.Revealed"/>.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Per user direction this is the targeted reveal loop (separate
-/// from the future no-arg-<c>sea</c> auto-search-room feature). The
-/// attempt cap reads live from Settings.Other.MaxHiddenSearchAttempts
-/// on each retry so the user can tune mid-session.
-/// </para>
-/// </remarks>
+// Drives the walker's sea <dir> retry loop for searchable-hidden exits.
+// Mirrors DoorOpenManager's shape — one request in flight, FIFO queue,
+// single terminal HiddenSearchResult callback per request — but with a
+// different revelation signal: the watcher subscribes to
+// RoomTracker.StateChanged and inspects the new current room's exit map
+// for the searched direction. When the direction appears, the exit is
+// "revealed" and the manager fires Revealed.
+//
+// This is the targeted reveal loop, distinct from the no-arg-sea
+// auto-search-room feature. The attempt cap reads live from
+// Settings.Other.MaxHiddenSearchAttempts on each retry so the user can
+// tune mid-session.
 public sealed class HiddenExitRevealManager : IDisposable
 {
     private readonly RoomTracker _tracker;
@@ -37,15 +30,15 @@ public sealed class HiddenExitRevealManager : IDisposable
     private HiddenRequest? _current;
     private int _attempts;
 
-    /// <summary>Direction of the in-flight request, or null when idle.</summary>
+    // Direction of the in-flight request, or null when idle.
     public string? CurrentDirection => _current is { } cur
         ? DirectionShort(cur.Direction)
         : null;
 
-    /// <summary>Outstanding queue depth.</summary>
+    // Outstanding queue depth.
     public int QueueDepth => _queue.Count;
 
-    /// <summary>True when a search is in flight (sent sea, awaiting room obs).</summary>
+    // True when a search is in flight (sent sea, awaiting room obs).
     public bool IsBusy => _current is not null;
 
     public HiddenExitRevealManager(
@@ -78,10 +71,10 @@ public sealed class HiddenExitRevealManager : IDisposable
         }
     }
 
-    /// <summary>Bind the wire-sender — same shape as the rest of the engine-side handlers.</summary>
+    // Bind the wire-sender — same shape as the rest of the engine-side handlers.
     public void SetWireSender(Action<byte[]> sender) => _wire.Bind(sender);
 
-    /// <summary>Test seam — bytes the manager asked to write to the wire.</summary>
+    // Test seam — bytes the manager asked to write to the wire.
     internal List<byte[]> LastSentForTests => _wire.LastSentForTests;
 
     public void Dispose()
@@ -140,7 +133,7 @@ public sealed class HiddenExitRevealManager : IDisposable
         _ => null,
     };
 
-    /// <summary>Queue a hidden-reveal request. Callback fires once on terminal state.</summary>
+    // Queue a hidden-reveal request. Callback fires once on terminal state.
     public void Enqueue(
         Direction direction,
         string sender,
@@ -153,7 +146,7 @@ public sealed class HiddenExitRevealManager : IDisposable
         TryStartNext();
     }
 
-    /// <summary>Abort the in-flight request + drain the queue.</summary>
+    // Abort the in-flight request + drain the queue.
     public void StopAll()
     {
         if (_current is { } cur)

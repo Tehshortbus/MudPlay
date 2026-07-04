@@ -3,47 +3,35 @@ using FujinTerm.Services.Patterns;
 
 namespace FujinTerm.Game.Combat;
 
-/// <summary>
-/// Phase 9 PR 9.0c — aggregates combat-line observations into
-/// <see cref="RoundSummary"/> records on a ~5-second cadence. Keeps a
-/// ring buffer of the last 50 rounds and emits
-/// <see cref="RoundComplete"/> at each round boundary.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Round boundary = 5+ seconds since the current round started,
-/// observed at the next damage line. <c>*Combat Off*</c> closes the
-/// current round explicitly via <see cref="MarkCombatEnded"/>.
-/// Timer-free: a stale round (no damage lines after combat ends)
-/// closes on the next combat encounter, on an explicit
-/// <see cref="MarkCombatEnded"/>, or on <see cref="Reset"/>.
-/// </para>
-/// <para>
-/// Subscribers per docs/10-phase-9 plan: <c>CastingDirector</c>
-/// (PR 9.D) reads per-round HP/MA deltas to score routine heals;
-/// Phase 11 <c>CombatSessionTracker</c> aggregates into session
-/// observed-accuracy counters.
-/// </para>
-/// <para>
-/// The opt-in <c>combat-{sessionStart}.log</c> file (Settings.Other →
-/// <c>WriteCombatRoundTrace</c>) is wired here: when the
-/// <c>shouldWriteTrace</c> delegate returns true on round close, the
-/// tracker also emits a one-line summary to its
-/// <see cref="DebugLogWriter"/>. The delegate is queried per round so
-/// the user can toggle the setting mid-session and the next round
-/// reflects the new value.
-/// </para>
-/// </remarks>
+// Aggregates combat-line observations into RoundSummary records on a ~5-second
+// cadence. Keeps a ring buffer of the last 50 rounds and emits RoundComplete at
+// each round boundary.
+//
+// Round boundary = 5+ seconds since the current round started, observed at the
+// next damage line. *Combat Off* closes the current round explicitly via
+// MarkCombatEnded. Timer-free: a stale round (no damage lines after combat ends)
+// closes on the next combat encounter, on an explicit MarkCombatEnded, or on
+// Reset.
+//
+// Subscribers: CastingDirector reads per-round HP/MA deltas to score routine
+// heals; CombatSessionTracker aggregates into session observed-accuracy
+// counters.
+//
+// The opt-in combat-{sessionStart}.log file (Settings.Other →
+// WriteCombatRoundTrace) is wired here: when the shouldWriteTrace delegate
+// returns true on round close, the tracker also emits a one-line summary to its
+// DebugLogWriter. The delegate is queried per round so the user can toggle the
+// setting mid-session and the next round reflects the new value.
 public sealed class RoundDamageTracker : IDisposable
 {
-    /// <summary>LogService category — appears as <c>[Round]</c>
-    /// info-severity rows on each closed round.</summary>
+    // LogService category — appears as [Round] info-severity rows on each closed
+    // round.
     public const string LogCategory = "Round";
 
-    /// <summary>5-second canonical MajorMUD round length.</summary>
+    // 5-second canonical MajorMUD round length.
     public static readonly TimeSpan RoundDuration = TimeSpan.FromSeconds(5);
 
-    /// <summary>Capacity of the in-memory ring buffer of recent rounds.</summary>
+    // Capacity of the in-memory ring buffer of recent rounds.
     public const int RingCapacity = 50;
 
     private readonly PlayerState _state;
@@ -63,19 +51,17 @@ public sealed class RoundDamageTracker : IDisposable
     private int _roundCounter;
     private bool _disposed;
 
-    /// <summary>Fired after each round closes, with the summary
-    /// payload. Subscribers run on the MessageRouter's marshalled
-    /// thread.</summary>
+    // Fired after each round closes, with the summary payload. Subscribers run on
+    // the MessageRouter's marshalled thread.
     public event Action<RoundSummary>? RoundComplete;
 
-    /// <summary>Snapshot of the ring buffer, oldest first.</summary>
+    // Snapshot of the ring buffer, oldest first.
     public IReadOnlyList<RoundSummary> Recent
     {
         get { lock (_ringLock) { return _ring.ToArray(); } }
     }
 
-    /// <summary>Number of rounds closed since the last
-    /// <see cref="Reset"/>.</summary>
+    // Number of rounds closed since the last Reset.
     public int RoundCount => _roundCounter;
 
     public RoundDamageTracker(
@@ -132,11 +118,9 @@ public sealed class RoundDamageTracker : IDisposable
             MarkCombatEnded();
     }
 
-    /// <summary>
-    /// Append a damage observation to the current round, starting a
-    /// new round when none is open or when the current one has been
-    /// open for at least <see cref="RoundDuration"/>.
-    /// </summary>
+    // Append a damage observation to the current round, starting a new round when
+    // none is open or when the current one has been open for at least
+    // RoundDuration.
     private void StartOrAppend(int damageDealt, int damageTaken, bool miss)
     {
         DateTimeOffset now = DateTimeOffset.Now;
@@ -156,21 +140,19 @@ public sealed class RoundDamageTracker : IDisposable
         if (miss) _current.Misses++;
     }
 
-    /// <summary>
-    /// Explicitly close the current round (no-op when none is open) —
-    /// driven internally by <c>*Combat Off*</c> and exposed publicly so
-    /// other subsystems (e.g. a future death watcher) can mark the end
-    /// of a fight without waiting for the next round-tick.
-    /// </summary>
+    // Explicitly close the current round (no-op when none is open) — driven
+    // internally by *Combat Off* and exposed publicly so other subsystems (e.g. a
+    // death watcher) can mark the end of a fight without waiting for the next
+    // round-tick.
     public void MarkCombatEnded()
     {
         if (_current is null) return;
         CloseCurrent(DateTimeOffset.Now);
     }
 
-    /// <summary>Reset the ring buffer + round counter. Called on
-    /// connect to BBS / character switch — same boundary
-    /// <c>CombatSessionTracker</c> uses for its session aggregates.</summary>
+    // Reset the ring buffer + round counter. Called on connect to BBS / character
+    // switch — same boundary CombatSessionTracker uses for its session
+    // aggregates.
     public void Reset()
     {
         _current = null;
@@ -231,13 +213,10 @@ public sealed class RoundDamageTracker : IDisposable
         RoundComplete?.Invoke(summary);
     }
 
-    /// <summary>
-    /// Read an integer capture by positional index, defaulting to 0
-    /// when the group is missing or non-numeric. Matches the
-    /// MessageRouter's positional <see cref="MatchResult.Groups"/>
-    /// indexing convention — group 0 = first capture (the regex's
-    /// <c>(?&lt;source&gt;...)</c> for UserHits).
-    /// </summary>
+    // Read an integer capture by positional index, defaulting to 0 when the group
+    // is missing or non-numeric. Matches the MessageRouter's positional Groups
+    // indexing convention — group 0 = first capture (the regex's (?<source>...)
+    // for UserHits).
     private static int TryParseDamageGroup(MatchResult match, int groupIndex)
     {
         if (match.Groups.Count <= groupIndex) return 0;

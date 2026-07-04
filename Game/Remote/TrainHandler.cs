@@ -3,20 +3,16 @@ using FujinTerm.Models.GameData;
 
 namespace FujinTerm.Game.Remote;
 
-/// <summary>
-/// Consumer of <see cref="RemoteCommandManager"/> for <c>@train</c> — a
-/// permitted party member asks us to train. Unlike the local Train Now / armed
-/// auto-train, this never walks: it assumes we're already standing in a training
-/// room and just drives <see cref="TrainerWalkManager.TrainInPlace"/>, which
-/// sends <c>train</c> and (when Auto-train-stats is on + a plan row exists)
-/// applies the CP plan for the new level.
-/// </summary>
-/// <remarks>
-/// <see cref="PlayerRemoteControls.ExecuteCommands"/>-gated per the catalog —
-/// it's a "do something on my behalf" action, like <c>@do</c> / <c>@kill</c>.
-/// A request while a train run is already in flight is declined (reply gated on
-/// <see cref="RemoteCommandManager.WarnOnDenial"/>).
-/// </remarks>
+// Consumer of RemoteCommandManager for @train — a permitted party member asks us
+// to train. Unlike the local Train Now / armed auto-train, this never walks: it
+// assumes we're already standing in a training room and just drives
+// TrainerWalkManager.TrainInPlace, which sends train and (when Auto-train-stats
+// is on + a plan row exists) applies the CP plan for the new level.
+//
+// PlayerRemoteControls.ExecuteCommands-gated per the catalog — it's a "do
+// something on my behalf" action, like @do / @kill. A request while a train run
+// is already in flight is declined (reply gated on
+// RemoteCommandManager.WarnOnDenial).
 public sealed class TrainHandler : IDisposable
 {
     private readonly RemoteCommandManager _engine;

@@ -5,60 +5,53 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game.Map;
 
-/// <summary>
-/// Per-set ceiling for "what is the highest Strength any build can reach on this
-/// game-data set?" — the number the door FSM (<see cref="DoorPolicy"/>) uses to
-/// decide whether a strength-gated door is bashable by <em>anyone</em>, replacing
-/// the old hardcoded 200.
-/// </summary>
-/// <remarks>
-/// <para>
-/// The ceiling is <c>maxRacialStrength + bestGearBonus + heldBonus</c>:
-/// </para>
-/// <list type="bullet">
-///   <item>the strongest race's trainable Strength cap (<c>Races.xSTR</c>, plus any
-///   innate <c>Strength</c> ability — 0 in stock data, folded for completeness);</item>
-///   <item>the best per-slot <c>+Strength</c> gear (item ability code 46) obtainable by
-///   any one class — each wear slot contributes its single strongest wearable piece, and
-///   the two-ring / two-wrist slots contribute their best piece twice; and</item>
-///   <item>the best <c>+Strength</c> <em>held</em> item per Unique-Pool (item ability code
-///   188) — a "held" item (ParaMUD's floating spheres) grants its stats just by being
-///   carried, ungated by class or <c>StrReq</c>, but only one item may be held per pool, so
-///   a pool contributes its single strongest <c>+Strength</c> piece and distinct pools stack.</item>
-/// </list>
-/// <para>
-/// Race and class optimise independently: item eligibility (<see cref="ItemEquipFilter"/>)
-/// gates on class / weapon / armour type but never race, so the maximum is the strongest
-/// race paired with whichever class unlocks the richest <c>+Strength</c> gear — exactly
-/// the "highest-Strength race × every class × best item per slot" walk the issue asks
-/// for. Level and alignment filters are switched off (a ceiling weighs every band), and a
-/// candidate item is only admitted when its <c>StrReq</c> is one the strongest race can
-/// train to. The estimate is deliberately generous: a door wrongly ruled unbashable would
-/// hide a real path, whereas an over-high ceiling is still gated by the live player's own
-/// Strength before any bash is attempted.
-/// </para>
-/// <para>
-/// Mirrors <see cref="Light.LightItemIndex"/> — computed lazily, memoised, and dropped on
-/// a game-data set switch so the next read rebuilds against the new set. Falls back to
-/// <see cref="DoorPolicy.UnbashableStrengthThreshold"/> when the active set lacks the
-/// Races / Classes / Items tables the walk needs.
-/// </para>
-/// </remarks>
+// Per-set ceiling for "what is the highest Strength any build can reach on
+// this game-data set?" — the number the door FSM (DoorPolicy) uses to
+// decide whether a strength-gated door is bashable by anyone, replacing
+// the old hardcoded 200.
+//
+// The ceiling is maxRacialStrength + bestGearBonus + heldBonus:
+//   - the strongest race's trainable Strength cap (Races.xSTR, plus any
+//     innate Strength ability — 0 in stock data, folded for completeness);
+//   - the best per-slot +Strength gear (item ability code 46) obtainable
+//     by any one class — each wear slot contributes its single strongest
+//     wearable piece, and the two-ring / two-wrist slots contribute their
+//     best piece twice; and
+//   - the best +Strength held item per Unique-Pool (item ability code
+//     188) — a "held" item (ParaMUD's floating spheres) grants its stats
+//     just by being carried, ungated by class or StrReq, but only one item
+//     may be held per pool, so a pool contributes its single strongest
+//     +Strength piece and distinct pools stack.
+//
+// Race and class optimise independently: item eligibility (ItemEquipFilter)
+// gates on class / weapon / armour type but never race, so the maximum is
+// the strongest race paired with whichever class unlocks the richest
+// +Strength gear — a "highest-Strength race × every class × best item per
+// slot" walk. Level and alignment filters are switched off (a ceiling
+// weighs every band), and a candidate item is only admitted when its
+// StrReq is one the strongest race can train to. The estimate is
+// deliberately generous: a door wrongly ruled unbashable would hide a real
+// path, whereas an over-high ceiling is still gated by the live player's
+// own Strength before any bash is attempted.
+//
+// Mirrors LightItemIndex — computed lazily, memoised, and dropped on a
+// game-data set switch so the next read rebuilds against the new set.
+// Falls back to DoorPolicy.UnbashableStrengthThreshold when the active set
+// lacks the Races / Classes / Items tables the walk needs.
 public sealed class MaxStrengthIndex
 {
-    /// <summary>Race / item ability code for a flat <c>+Strength</c> bonus
-    /// (<see cref="GameData.AbilityNames"/> 46).</summary>
+    // Race / item ability code for a flat +Strength bonus (AbilityNames 46).
     private const int StrengthAbilityCode = 46;
 
-    /// <summary>Ability slots on a Races row (<c>Abil-0..9</c>).</summary>
+    // Ability slots on a Races row (Abil-0..9).
     private const int RaceAbilitySlots = 10;
 
-    /// <summary>Ability slots on an Items row (<c>Abil-0..19</c>).</summary>
+    // Ability slots on an Items row (Abil-0..19).
     private const int ItemAbilitySlots = 20;
 
-    /// <summary>Item ability code <c>188</c> (<see cref="GameData.AbilityNames"/>
-    /// "Unique Pool"): flags a "held" item whose stats apply just by being carried, and
-    /// whose <c>AbilVal</c> is the pool id — only one item may be held per pool.</summary>
+    // Item ability code 188 (AbilityNames "Unique Pool"): flags a "held"
+    // item whose stats apply just by being carried, and whose AbilVal is
+    // the pool id — only one item may be held per pool.
     private const int UniquePoolCode = 188;
 
     private readonly GameDataCache _cache;
@@ -71,12 +64,10 @@ public sealed class MaxStrengthIndex
         _cache.ActiveSetChanged += _ => _max = null;
     }
 
-    /// <summary>
-    /// The highest Strength any race + class + gear build can reach on the active set.
-    /// Built on first read, memoised until the set changes. Falls back to
-    /// <see cref="DoorPolicy.UnbashableStrengthThreshold"/> when the active set is
-    /// missing the tables the walk needs.
-    /// </summary>
+    // The highest Strength any race + class + gear build can reach on the
+    // active set. Built on first read, memoised until the set changes.
+    // Falls back to DoorPolicy.UnbashableStrengthThreshold when the active
+    // set is missing the tables the walk needs.
     public int MaxAchievableStrength => _max ??= Compute();
 
     private int Compute()

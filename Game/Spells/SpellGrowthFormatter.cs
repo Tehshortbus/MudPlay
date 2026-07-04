@@ -3,25 +3,20 @@ using FujinTerm.Game.GameData;
 
 namespace FujinTerm.Game.Spells;
 
-/// <summary>
-/// Human-readable, level-scaled summary of a spell's magnitude and per-level
-/// growth — the Game Data Browser's spell-detail equivalent of MMUD Explorer's
-/// spell-browser "LVL Cap" / "LVL Increases" block. Turns the raw per-level
-/// scaling columns (<c>MinInc</c> / <c>MinIncLVLs</c> / <c>MaxInc</c> / … ) into
-/// a single readable formula ("Max: 24+(2*lvl)") plus the at-cap range
-/// ("18 to 68"), so the player reads what a spell does at its ceiling and how it
-/// gets there rather than a wall of bare scaling numbers.
-/// </summary>
-/// <remarks>
-/// The magnitude range is the spell's <b>per-cast intrinsic</b> value
-/// (<see cref="SpellCalculator.AffectMagnitude"/>), <i>not</i> the per-round
-/// figure from <see cref="SpellCalculator.MinDamage"/> /
-/// <see cref="SpellCalculator.MaxDamage"/>: those fold in the 1000/EnergyCost
-/// multi-fire multiplier, which would inflate a "what one cast does" display for
-/// low-energy spells. (For the common 1000-energy spell the two coincide.) All
-/// scaling math routes through <see cref="SpellCalculator"/> so the numbers match
-/// the Spell Book and CastingDirector everywhere.
-/// </remarks>
+// Human-readable, level-scaled summary of a spell's magnitude and per-level
+// growth — the Game Data Browser's spell-detail "LVL Cap" / "LVL Increases"
+// block. Turns the raw per-level scaling columns (MinInc / MinIncLVLs / MaxInc /
+// …) into a single readable formula ("Max: 24+(2*lvl)") plus the at-cap range
+// ("18 to 68"), so the player reads what a spell does at its ceiling and how it
+// gets there rather than a wall of bare scaling numbers.
+//
+// The magnitude range is the spell's per-cast intrinsic value
+// (SpellCalculator.AffectMagnitude), NOT the per-round figure from
+// SpellCalculator.MinDamage / MaxDamage: those fold in the 1000/EnergyCost
+// multi-fire multiplier, which would inflate a "what one cast does" display for
+// low-energy spells. (For the common 1000-energy spell the two coincide.) All
+// scaling math routes through SpellCalculator so the numbers match the Spell
+// Book and CastingDirector everywhere.
 public static class SpellGrowthFormatter
 {
     // Damage-bearing ability codes whose stored Min/MaxBase form the spell's
@@ -32,19 +27,15 @@ public static class SpellGrowthFormatter
     private const int HealCode = 18;
     private const int NonMagicalSpellCode = 144;
 
-    /// <summary>
-    /// The level the at-cap figures are evaluated at: the spell's cap when it
-    /// has one, otherwise its obtain level (floored to 1 so an unleveled spell
-    /// still yields its base value rather than scaling to 0).
-    /// </summary>
+    // The level the at-cap figures are evaluated at: the spell's cap when it has
+    // one, otherwise its obtain level (floored to 1 so an unleveled spell still
+    // yields its base value rather than scaling to 0).
     public static int DisplayLevel(in SpellFormulaInput spell)
         => spell.Cap > 0 ? spell.Cap : Math.Max(spell.ReqLevel, 1);
 
-    /// <summary>
-    /// The spell's magnitude range at <see cref="DisplayLevel"/> — "18 to 68",
-    /// or a single value when min == max. <c>null</c> when the spell has no
-    /// stored magnitude (a pure flag / teleport / summon spell).
-    /// </summary>
+    // The spell's magnitude range at DisplayLevel — "18 to 68", or a single value
+    // when min == max. null when the spell has no stored magnitude (a pure flag /
+    // teleport / summon spell).
     public static string? MagnitudeRange(in SpellFormulaInput spell)
     {
         (long min, long max) = SpellCalculator.AffectMagnitude(spell, DisplayLevel(spell));
@@ -54,13 +45,10 @@ public static class SpellGrowthFormatter
             : $"{min.ToString(CultureInfo.InvariantCulture)} to {max.ToString(CultureInfo.InvariantCulture)}";
     }
 
-    /// <summary>
-    /// Label for the magnitude range — the spell's primary damage / heal
-    /// ability name ("Damage(-MR)", "Heal", "DrainLife"), with a
-    /// NonMagicalSpell (144) slot rewriting "Damage(-MR)" back to "Damage" the
-    /// way MME's post-pass does. Falls back to "Magnitude" for a stat-affect
-    /// spell whose range isn't a damage/heal figure.
-    /// </summary>
+    // Label for the magnitude range — the spell's primary damage / heal ability
+    // name ("Damage(-MR)", "Heal", "DrainLife"), with a NonMagicalSpell (144) slot
+    // rewriting "Damage(-MR)" back to "Damage". Falls back to "Magnitude" for a
+    // stat-affect spell whose range isn't a damage/heal figure.
     public static string MagnitudeLabel(in SpellFormulaInput spell)
     {
         int code = 0;
@@ -78,21 +66,16 @@ public static class SpellGrowthFormatter
         return name;
     }
 
-    /// <summary>
-    /// At-cap effect duration in seconds (<see cref="DisplayLevel"/> level), or
-    /// <c>0</c> when the spell has no duration. Stored ticks are 3 seconds each.
-    /// </summary>
+    // At-cap effect duration in seconds (at DisplayLevel), or 0 when the spell has
+    // no duration. Stored ticks are 3 seconds each.
     public static long DurationSeconds(in SpellFormulaInput spell)
         => SpellCalculator.Duration(spell, DisplayLevel(spell)) * SpellCalculator.SpellRoundSeconds;
 
-    /// <summary>
-    /// The per-level growth formula: one clause per scaling component
-    /// ("Min: …", "Max: 24+(2*lvl)", "Dur: …"), joined with ", ". A component
-    /// scales only when it has both a non-zero increment and a non-zero
-    /// per-level denominator — matching <see cref="SpellCalculator"/>'s
-    /// <c>incLvls == 0</c> no-scaling rule, so a spell whose IncLVLs is 0 (flat)
-    /// contributes no clause. <c>null</c> when nothing scales.
-    /// </summary>
+    // The per-level growth formula: one clause per scaling component ("Min: …",
+    // "Max: 24+(2*lvl)", "Dur: …"), joined with ", ". A component scales only when
+    // it has both a non-zero increment and a non-zero per-level denominator —
+    // matching SpellCalculator's incLvls == 0 no-scaling rule, so a spell whose
+    // IncLVLs is 0 (flat) contributes no clause. null when nothing scales.
     public static string? GrowthFormula(in SpellFormulaInput spell)
     {
         List<string> parts = new();

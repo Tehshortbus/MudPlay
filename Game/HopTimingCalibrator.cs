@@ -3,31 +3,23 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game;
 
-/// <summary>
-/// Debug instrumentation that records the wall-clock duration between
-/// "movement command sent" and "next room display Confirmed", tagged
-/// with the player's current <see cref="EncumbranceLevel"/>. The point
-/// is to give the user a stream of real per-hop times during a regular
-/// session so the Settings → Auto-Lair tab's per-encumbrance defaults
-/// can be calibrated against in-game truth instead of guessed.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Data source: <see cref="RoomTracker.StateChanged"/>. A move command
-/// pushes the tracker from <c>Confirmed → Pending</c>; the arrival
-/// observation pushes it back from <c>Pending → Confirmed</c>. The
-/// timestamps on those two transitions bracket the hop. Pipelined
-/// moves (multiple sends before any reply) collapse into a single
-/// timing measurement on the LAST send — that's noisy but the user
-/// will typically calibrate by typing single moves anyway.
-/// </para>
-/// <para>
-/// <b>Off by default</b>. Toggle on via
-/// <see cref="Models.Profile.OtherSettings.LogMovementHopTiming"/>; logs
-/// at Info severity so the Log pane's default filters surface it
-/// without DBG being checked.
-/// </para>
-/// </remarks>
+// Debug instrumentation that records the wall-clock duration between "movement
+// command sent" and "next room display Confirmed", tagged with the player's
+// current EncumbranceLevel. The point is to give the user a stream of real
+// per-hop times during a regular session so the Settings → Auto-Lair tab's
+// per-encumbrance defaults can be calibrated against in-game truth instead of
+// guessed.
+//
+// Data source: RoomTracker.StateChanged. A move command pushes the tracker from
+// Confirmed → Pending; the arrival observation pushes it back from Pending →
+// Confirmed. The timestamps on those two transitions bracket the hop. Pipelined
+// moves (multiple sends before any reply) collapse into a single timing
+// measurement on the LAST send — that's noisy but the user will typically
+// calibrate by typing single moves anyway.
+//
+// Off by default. Toggle on via OtherSettings.LogMovementHopTiming; logs at Info
+// severity so the Log pane's default filters surface it without DBG being
+// checked.
 public sealed class HopTimingCalibrator : IDisposable
 {
     private readonly RoomTracker _tracker;
@@ -37,11 +29,9 @@ public sealed class HopTimingCalibrator : IDisposable
     private DateTimeOffset? _lastSentAt;
     private RoomKey? _lastSentFrom;
 
-    /// <summary>
-    /// When true, every hop gets one Info log line. Flip via the
-    /// Settings tab. Cheap to leave off — the calibrator stays
-    /// subscribed but the handler returns immediately.
-    /// </summary>
+    // When true, every hop gets one Info log line. Flip via the Settings tab.
+    // Cheap to leave off — the calibrator stays subscribed but the handler
+    // returns immediately.
     public bool Enabled { get; set; }
 
     public HopTimingCalibrator(RoomTracker tracker, PlayerState state, LogService log)

@@ -4,25 +4,19 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game.Map;
 
-/// <summary>
-/// Per-session lair-arrival tracker + per-room respawn-timer resolver.
-/// Two responsibilities, kept in one service because they share the
-/// game-data lookup pipeline:
-/// </summary>
-/// <list type="number">
-///   <item><b>Default respawn lookup</b> — given a <see cref="RoomKey"/>,
-///   walk <c>Rooms.Lair → Lairs[GroupIndex].AvgDelay</c> (or, pre-1.83,
-///   the slowest <c>Monsters[id].RegenTime</c> across the listed monsters)
-///   and return the canonical respawn time in seconds. Lookups are
-///   cached; the cache invalidates on
-///   <see cref="GameDataCache.ActiveSetChanged"/>.</item>
-///   <item><b>In-session arrivals</b> — observes
-///   <see cref="RoomTracker.StateChanged"/>; whenever the player lands
-///   Confirmed in a known lair room, the arrival timestamp is stamped.
-///   The scheduler reads <c>LastEntered + RespawnSeconds</c> to compute
-///   "next-ready-at". Arrivals are session-only — they vanish on Stop
-///   and on profile swap (per the Phase 7 plan; no persistence).</item>
-/// </list>
+// Per-session lair-arrival tracker + per-room respawn-timer resolver. Two
+// responsibilities, kept in one service because they share the game-data
+// lookup pipeline:
+//   Default respawn lookup — given a RoomKey, walk
+//     Rooms.Lair → Lairs[GroupIndex].AvgDelay (or, pre-1.83, the slowest
+//     Monsters[id].RegenTime across the listed monsters) and return the
+//     canonical respawn time in seconds. Lookups are cached; the cache
+//     invalidates on GameDataCache.ActiveSetChanged.
+//   In-session arrivals — observes RoomTracker.StateChanged; whenever the
+//     player lands Confirmed in a known lair room, the arrival timestamp
+//     is stamped. The scheduler reads LastEntered + RespawnSeconds to
+//     compute "next-ready-at". Arrivals are session-only — they vanish on
+//     Stop and on profile swap; no persistence.
 public sealed class LairTimerStore : IDisposable
 {
     private readonly GameDataCache _cache;
@@ -36,9 +30,8 @@ public sealed class LairTimerStore : IDisposable
     private readonly Dictionary<RoomKey, DateTimeOffset> _lastEntered = new();
     private readonly object _arrivalLock = new();
 
-    // Time unit conversion for the AvgDelay field. Stock MajorMUD
-    // exports AvgDelay in minutes-per-respawn; Paradigm / GreaterMUD
-    // differs. PR 7.19 will read Info.Legit to pick the right factor.
+    // Time unit conversion for the AvgDelay field. Stock MajorMUD exports
+    // AvgDelay in minutes-per-respawn; Paradigm / GreaterMUD differs.
     // First-cut assumption: stock minutes.
     private const int AvgDelayUnitSeconds = 60;
 
@@ -66,11 +59,9 @@ public sealed class LairTimerStore : IDisposable
         _tracker.StateChanged   -= OnRoomTransition;
     }
 
-    /// <summary>
-    /// Default respawn time for <paramref name="key"/> in seconds.
-    /// Returns null when the room isn't a lair OR the lookup couldn't
-    /// resolve a delay (room not in graph, no <c>Lairs</c> table, etc.).
-    /// </summary>
+    // Default respawn time for key in seconds. Returns null when the room
+    // isn't a lair OR the lookup couldn't resolve a delay (room not in
+    // graph, no Lairs table, etc.).
     public int? DefaultRespawnSeconds(RoomKey key)
     {
         if (_respawnSecCache.TryGetValue(key, out int? cached)) return cached;
@@ -80,24 +71,19 @@ public sealed class LairTimerStore : IDisposable
         return computed;
     }
 
-    /// <summary>
-    /// Last time the player was observed entering <paramref name="key"/>
-    /// in the current session. Null when the player hasn't yet arrived
-    /// in that room since the store was created / profile swapped.
-    /// </summary>
+    // Last time the player was observed entering key in the current
+    // session. Null when the player hasn't yet arrived in that room since
+    // the store was created / profile swapped.
     public DateTimeOffset? LastEntered(RoomKey key)
     {
         lock (_arrivalLock)
             return _lastEntered.TryGetValue(key, out DateTimeOffset t) ? t : null;
     }
 
-    /// <summary>
-    /// Computed time when <paramref name="key"/>'s spawn will next be
-    /// ready, given its respawn timer + last arrival. Convenience for
-    /// the scheduler. Returns null when respawn time isn't known OR
-    /// the player has never entered this room (in which case the
-    /// scheduler should treat it as "ready now").
-    /// </summary>
+    // Computed time when key's spawn will next be ready, given its respawn
+    // timer + last arrival. Convenience for the scheduler. Returns null
+    // when respawn time isn't known OR the player has never entered this
+    // room (in which case the scheduler should treat it as "ready now").
     public DateTimeOffset? NextReadyAt(RoomKey key, int? overrideRespawnSeconds = null)
     {
         int? respawn = overrideRespawnSeconds ?? DefaultRespawnSeconds(key);
@@ -106,23 +92,20 @@ public sealed class LairTimerStore : IDisposable
         return last is null ? null : last.Value.AddSeconds(seconds);
     }
 
-    /// <summary>Force-clear per-room arrival history; used by the scheduler on Start.</summary>
+    // Force-clear per-room arrival history; used by the scheduler on Start.
     public void ResetArrivals()
     {
         lock (_arrivalLock) _lastEntered.Clear();
         _log?.Debug("LairTimerStore", "arrival history cleared.");
     }
 
-    /// <summary>
-    /// Drop the recorded arrival for the supplied subset of rooms,
-    /// leaving any others intact. Used by
-    /// <see cref="AutoLairManager.Start"/> so a Run begins with every
-    /// marked room treated as "ready" regardless of whether the
-    /// player happened to walk through it earlier in the session —
-    /// the in-game spawn check still fires on the next entry, but
-    /// from the scheduler's POV the countdown starts on THAT entry,
-    /// not on whatever stale wall-clock anchor the store had.
-    /// </summary>
+    // Drop the recorded arrival for the supplied subset of rooms, leaving
+    // any others intact. Used by AutoLairManager.Start so a Run begins with
+    // every marked room treated as "ready" regardless of whether the player
+    // happened to walk through it earlier in the session — the in-game
+    // spawn check still fires on the next entry, but from the scheduler's
+    // POV the countdown starts on THAT entry, not on whatever stale
+    // wall-clock anchor the store had.
     public void ResetArrivalsFor(IEnumerable<RoomKey> keys)
     {
         ArgumentNullException.ThrowIfNull(keys);

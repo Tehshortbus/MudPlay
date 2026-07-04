@@ -5,17 +5,14 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game.Calculators;
 
-/// <summary>
-/// Class / race capability lookups resolved from game data: which classes can
-/// learn Smash, and whether a class or race grants innate stealth. Ported from
-/// MMUD Explorer / MudProxy. The smash set is discovered by scanning the
-/// <c>TBInfo</c> quest/textblock table for chains that pair <c>giveability 32 1</c>
-/// (Smash, step 1) with a <c>class N</c> restriction; stealth is a direct
-/// <c>Abil-0..9</c> scan (race ability 102 = RaceStealth, class ability 103 =
-/// ClassStealth). All methods read through <see cref="GameDataCache"/> and are
-/// stateless — recomputed each call, which is fine for the button-press refresh
-/// cadence and avoids stale caches across a set switch.
-/// </summary>
+// Class / race capability lookups resolved from MajorMUD game data: which
+// classes can learn Smash, and whether a class or race grants innate stealth.
+// The smash set is discovered by scanning the TBInfo quest/textblock table for
+// chains that pair giveability 32 1 (Smash, step 1) with a class N restriction;
+// stealth is a direct Abil-0..9 scan (race ability 102 = RaceStealth, class
+// ability 103 = ClassStealth). All methods read through GameDataCache and are
+// stateless — recomputed each call, which is fine for the button-press refresh
+// cadence and avoids stale caches across a set switch.
 public static class ClassCapabilities
 {
     private const int SmashAbilityId = 32;
@@ -23,15 +20,12 @@ public static class ClassCapabilities
     private const int ClassStealthAbilityId = 103;
     private const int MaxRecordAbilSlots = 10;
 
-    /// <summary>
-    /// Class names that can learn Smash, or <c>null</c> meaning "assume every
-    /// class can" — no class-restricted smash chain exists in the active set, so
-    /// hiding the row would risk hiding it from a genuinely capable class. A
-    /// TBInfo <c>Action</c> chain qualifies when it contains
-    /// <c>giveability 32 1</c> AND one or more <c>class N</c> steps; those class
-    /// IDs map to names via the Classes table's <c>Number</c> → <c>Name</c>. Any
-    /// such chain makes the collected set authoritative.
-    /// </summary>
+    // Class names that can learn Smash, or null meaning "assume every class can"
+    // — no class-restricted smash chain exists in the active set, so hiding the
+    // row would risk hiding it from a genuinely capable class. A TBInfo Action
+    // chain qualifies when it contains giveability 32 1 AND one or more class N
+    // steps; those class IDs map to names via the Classes table's Number → Name.
+    // Any such chain makes the collected set authoritative.
     public static HashSet<string>? GetSmashCapableClasses(GameDataCache cache)
     {
         ArgumentNullException.ThrowIfNull(cache);
@@ -97,10 +91,10 @@ public static class ClassCapabilities
         return result.Count > 0 ? result : null;
     }
 
-    /// <summary>True if the race row grants innate stealth (<c>Abil-0..9 == 102</c>).</summary>
+    // True if the race row grants innate stealth (Abil-0..9 == 102).
     public static bool RaceHasStealth(JsonElement? raceRow) => HasAbility(raceRow, RaceStealthAbilityId);
 
-    /// <summary>True if the class row grants innate stealth (<c>Abil-0..9 == 103</c>).</summary>
+    // True if the class row grants innate stealth (Abil-0..9 == 103).
     public static bool ClassHasStealth(JsonElement? classRow) => HasAbility(classRow, ClassStealthAbilityId);
 
     private static bool HasAbility(JsonElement? row, int abilityId)

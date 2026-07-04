@@ -3,29 +3,23 @@ using FujinTerm.Models.Profile;
 
 namespace FujinTerm.Game.Light;
 
-/// <summary>
-/// Pure decision core for the auto-light engine. Given the darkness of the route
-/// ahead (<see cref="RouteLightScanner"/>), the character's worn illumination,
-/// the currently readied light, the lights carried in the pack, the buyable
-/// light catalogue, and the <see cref="AutoLightSettings"/> knobs, it answers
-/// <em>what to do right now</em> as an <see cref="AutoLightPlan"/> — ready a
-/// carried light, buy a provisioning batch, top up a dwindling supply, or
-/// nothing. It never touches the wire or the game state; the wiring layer turns
-/// the plan into <c>use</c> / <c>buy</c> commands.
-/// </summary>
-/// <remarks>
-/// Preferred vs. auto: a named <see cref="AutoLightSettings.PreferredLightName"/>
-/// is used as-is (the user's explicit pick, even if a stronger light would be
-/// needed to fully clear the darkest room); the auto sentinel (null name) lets
-/// the planner pick the weakest catalogue light that still reaches
-/// <see cref="LightModel.SeeThreshold"/> for the route's darkest room, avoiding
-/// overkill. Coverage is measured with
-/// <see cref="LightModel.IlluGapToSee(int,int)"/> against the worn-only illu, so
-/// the chosen light is the one that — once readied — covers the room on its own.
-/// </remarks>
+// Pure decision core for the auto-light engine. Given the darkness of the route
+// ahead (RouteLightScanner), the character's worn illumination, the currently
+// readied light, the lights carried in the pack, the buyable light catalogue, and
+// the AutoLightSettings knobs, it answers what to do right now as an
+// AutoLightPlan — ready a carried light, buy a provisioning batch, top up a
+// dwindling supply, or nothing. It never touches the wire or the game state; the
+// wiring layer turns the plan into use / buy commands.
+//
+// Preferred vs. auto: a named PreferredLightName is used as-is (the user's
+// explicit pick, even if a stronger light would be needed to fully clear the
+// darkest room); the auto sentinel (null name) lets the planner pick the weakest
+// catalogue light that still reaches the see threshold for the route's darkest
+// room, avoiding overkill. Coverage is measured against the worn-only illu, so
+// the chosen light is the one that — once readied — covers the room on its own.
 public static class AutoLightPlanner
 {
-    /// <summary>Global light tick: one <c>Readied/N</c> point drains every 30 s.</summary>
+    // Global light tick: one Readied/N point drains every 30 s.
     private const double SecondsPerReadiedPoint = 30.0;
 
     public static AutoLightPlan Plan(
@@ -98,13 +92,9 @@ public static class AutoLightPlanner
         return AutoLightPlan.Nothing("route lit");
     }
 
-    /// <summary>
-    /// Pick a light from <paramref name="from"/>: the user's
-    /// <paramref name="preferred"/> when set (and present in the list), otherwise
-    /// the weakest light that still reaches the darkest room
-    /// (<c>Strength &gt;= <paramref name="minStrength"/></c>). Null when nothing
-    /// qualifies.
-    /// </summary>
+    // Pick a light from the list: the user's preferred when set (and present in
+    // the list), otherwise the weakest light that still reaches the darkest room
+    // (Strength >= minStrength). Null when nothing qualifies.
     private static LightItem? Choose(IReadOnlyList<LightItem> from, int minStrength, LightItem? preferred)
     {
         if (preferred is { } p)
@@ -136,9 +126,8 @@ public static class AutoLightPlanner
         return null;
     }
 
-    /// <summary>How many of a light to buy to cover
-    /// <paramref name="carryHours"/> of lit time, rounding up. At least one when
-    /// provisioning; a light with no burn budget yields a single copy.</summary>
+    // How many of a light to buy to cover carryHours of lit time, rounding up. At
+    // least one when provisioning; a light with no burn budget yields a single copy.
     private static int CarryCount(int carryHours, TimeSpan burnTime)
     {
         if (burnTime.TotalHours <= 0) return 1;

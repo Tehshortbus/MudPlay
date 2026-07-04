@@ -6,66 +6,46 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game.Map;
 
-/// <summary>
-/// Trust-by-default room-tracking FSM. Maintains <see cref="RoomState"/>
-/// from the four signals every player session produces: outgoing move
-/// commands, observed room displays, observed move refusals, and the
-/// user's manual "I am here" override.
-/// </summary>
-/// <remarks>
-/// <para>
-/// State semantics:
-/// </para>
-/// <list type="bullet">
-///   <item><see cref="RoomConfidence.Unknown"/> — fresh tracker, no observation yet.</item>
-///   <item><see cref="RoomConfidence.Confirmed"/> — current room is trusted.</item>
-///   <item><see cref="RoomConfidence.Pending"/> — one or more moves sent, awaiting confirmation.</item>
-///   <item><see cref="RoomConfidence.Suspect"/> — observation didn't line up; current room preserved as best guess; counter incremented. Internal-only, no UI churn.</item>
-///   <item><see cref="RoomConfidence.Lost"/> — replay-from-last-Confirmed failed; user must manually pick or wait for a confirming observation.</item>
-/// </list>
-/// <para>
-/// Recovery: a single tier — replay the persisted
-/// <see cref="CharacterProfile.RecentSteps"/> from the last Confirmed
-/// room through the graph; if the endpoint matches the current
-/// observation, we Confirm there. No fuzzy footprint matching.
-/// </para>
-/// <para>
-/// Persistence: <see cref="CharacterProfile.LastKnownRoom"/> is
-/// written ONLY on strict-1-of-1 Confirmed transitions
-/// (<c>FindCandidates(name, exits).Count == 1</c>) and on the user's
-/// manual locate. Predicted-neighbour / null-name-learned /
-/// replay-recovery Confirmed transitions update in-memory state but
-/// don't overwrite the on-disk anchor — the existing anchor is a
-/// stronger trust signal than any deduction. This is the contract the
-/// engine-level <c>EngineRecoveryGate</c> relies on for tier-3
-/// backtrack: the persisted anchor is always something we KNEW, not
-/// something we deduced. Every
-/// <see cref="NoteMoveSent(Direction, DateTimeOffset?)"/> appends a
-/// step. The profile flushes to disk on the normal save cycle (app
-/// close, settings Apply, explicit save).
-/// </para>
-/// </remarks>
+// Trust-by-default room-tracking FSM. Maintains RoomState from the four signals
+// every player session produces: outgoing move commands, observed room
+// displays, observed move refusals, and the user's manual "I am here" override.
+//
+// State semantics:
+//   - Unknown — fresh tracker, no observation yet.
+//   - Confirmed — current room is trusted.
+//   - Pending — one or more moves sent, awaiting confirmation.
+//   - Suspect — observation didn't line up; current room preserved as best
+//     guess; counter incremented. Internal-only, no UI churn.
+//   - Lost — replay-from-last-Confirmed failed; user must manually pick or wait
+//     for a confirming observation.
+//
+// Recovery: a single tier — replay the persisted CharacterProfile.RecentSteps
+// from the last Confirmed room through the graph; if the endpoint matches the
+// current observation, we Confirm there. No fuzzy footprint matching.
+//
+// Persistence: CharacterProfile.LastKnownRoom is written ONLY on strict-1-of-1
+// Confirmed transitions (FindCandidates(name, exits).Count == 1) and on the
+// user's manual locate. Predicted-neighbour / null-name-learned /
+// replay-recovery Confirmed transitions update in-memory state but don't
+// overwrite the on-disk anchor — the existing anchor is a stronger trust signal
+// than any deduction. This is the contract the engine-level recovery gate
+// relies on for tier-3 backtrack: the persisted anchor is always something we
+// KNEW, not something we deduced. Every NoteMoveSent appends a step. The profile
+// flushes to disk on the normal save cycle (app close, settings Apply, explicit
+// save).
 public sealed class RoomTracker
 {
-    /// <summary>
-    /// Maximum back-to-back moves we'll track in flight. Anything beyond
-    /// this is dropped to keep the queue bounded — a sustained
-    /// observation drought past 15 moves is a parser problem, not a
-    /// tracking one.
-    /// </summary>
+    // Maximum back-to-back moves we'll track in flight. Anything beyond this is
+    // dropped to keep the queue bounded — a sustained observation drought past
+    // 15 moves is a parser problem, not a tracking one.
     private const int PendingQueueCap = 15;
 
-    /// <summary>
-    /// Confirmed-position rolling history retained for debugging /
-    /// future tier-2 recovery. Capped to keep memory bounded.
-    /// </summary>
+    // Confirmed-position rolling history retained for debugging / recovery.
+    // Capped to keep memory bounded.
     private const int HistoryCap = 50;
 
-    /// <summary>
-    /// Strike count at which the next mismatch triggers replay-recovery
-    /// instead of incrementing further. Matches the user's "3 strikes
-    /// before Lost" directive.
-    /// </summary>
+    // Strike count at which the next mismatch triggers replay-recovery instead
+    // of incrementing further.
     private const int SuspectStrikeLimit = 3;
 
     private readonly RoomGraphManager _graph;
@@ -74,64 +54,45 @@ public sealed class RoomTracker
     private readonly LinkedList<HistoryEntry> _history = new();
     private readonly List<DirectionDto> _recentSteps = new();
 
-    /// <summary>
-    /// Profile the tracker is currently writing into. Set by
-    /// <see cref="Hydrate"/>; cleared by <see cref="OnProfileClosed"/>.
-    /// When null, persistence operations are no-ops — the tracker still
-    /// runs in memory but doesn't touch any profile.
-    /// </summary>
+    // Profile the tracker is currently writing into. Set by Hydrate; cleared by
+    // OnProfileClosed. When null, persistence operations are no-ops — the
+    // tracker still runs in memory but doesn't touch any profile.
     private CharacterProfile? _profile;
 
-    /// <summary>
-    /// Optional live-inventory snapshot provider. When set,
-    /// <see cref="NoteDeath"/> records the deathpile contents (worn +
-    /// carried items) on the death record. Bound by <c>AppServices</c>
-    /// once the <c>InventoryManager</c> exists; null in tests / before
-    /// wiring, in which case death records simply carry no item lists.
-    /// </summary>
+    // Optional live-inventory snapshot provider. When set, NoteDeath records the
+    // deathpile contents (worn + carried items) on the death record. Bound by
+    // AppServices once the InventoryManager exists; null in tests / before
+    // wiring, in which case death records simply carry no item lists.
     private Func<InventorySnapshot>? _inventorySnapshot;
 
-    /// <summary>
-    /// Look-direction suppression deadline. While the wall clock is at
-    /// or before this timestamp, the next
-    /// <see cref="NoteRoomObserved"/> call is treated as a peek (room
-    /// preview from a <c>look &lt;dir&gt;</c> command) and discarded.
-    /// The 3-second window auto-clears even if no peek display arrives,
-    /// so the suppression can't eat a future genuine observation.
-    /// </summary>
+    // Look-direction suppression deadline. While the wall clock is at or before
+    // this timestamp, the next NoteRoomObserved call is treated as a peek (room
+    // preview from a look <dir> command) and discarded. The 3-second window
+    // auto-clears even if no peek display arrives, so the suppression can't eat
+    // a future genuine observation.
     private DateTimeOffset? _suppressObservationUntil;
     private const int LookSuppressWindowMs = 3000;
 
-    /// <summary>
-    /// Wall-clock time the most recent move command was enqueued, or
-    /// <c>null</c> before the first move this session. Lets observers
-    /// tell a post-move room display ("the room we just walked into")
-    /// apart from a pre-move stale observation — the
-    /// <see cref="RoomEntityClassifier"/> uses it to avoid wiping the
-    /// new room's freshly-parsed occupants on the move-confirming
-    /// transition (the occupants line arrives before the exits line
-    /// that confirms the move).
-    /// </summary>
+    // Wall-clock time the most recent move command was enqueued, or null before
+    // the first move this session. Lets observers tell a post-move room display
+    // ("the room we just walked into") apart from a pre-move stale observation —
+    // the RoomEntityClassifier uses it to avoid wiping the new room's
+    // freshly-parsed occupants on the move-confirming transition (the occupants
+    // line arrives before the exits line that confirms the move).
     public DateTimeOffset? LastMoveSentAt { get; private set; }
 
-    /// <summary>The state class itself — bound by the UI, mutated only by this tracker.</summary>
+    // The state class itself — bound by the UI, mutated only by this tracker.
     public RoomState State { get; } = new();
 
-    /// <summary>
-    /// Fires after every transition that changes
-    /// <see cref="RoomState.CurrentRoom"/> or
-    /// <see cref="RoomState.Confidence"/>. Carries the full state
-    /// snapshot so handlers can branch on both fields without racing.
-    /// </summary>
+    // Fires after every transition that changes RoomState.CurrentRoom or
+    // RoomState.Confidence. Carries the full state snapshot so handlers can
+    // branch on both fields without racing.
     public event Action<RoomTransition>? StateChanged;
 
-    /// <summary>
-    /// Fired the first time we learn a real name for a room that
-    /// shipped without one (typical of map-15 ganghouse rooms in the
-    /// 1.x MDB exports). Subscribers — the main window in particular
-    /// — prompt the user to write the learned name back to the
-    /// active game-data set's <c>Rooms.json</c>.
-    /// </summary>
+    // Fired the first time we learn a real name for a room that shipped without
+    // one (typical of map-15 ganghouse rooms in the 1.x MDB exports).
+    // Subscribers — the main window in particular — prompt the user to write the
+    // learned name back to the active game-data set's Rooms.json.
     public event Action<NameLearnedEvent>? NameLearned;
 
     public RoomTracker(RoomGraphManager graph) : this(graph, log: null) { }
@@ -144,14 +105,11 @@ public sealed class RoomTracker
         State.LastUpdatedAt = DateTimeOffset.UtcNow;
     }
 
-    /// <summary>
-    /// Snapshot of the rolling confirmed-position history, newest-first.
-    /// <c>[0]</c> is the most recently confirmed room (typically the
-    /// current room); <c>[1]</c> the one before it, and so on, capped at
-    /// the internal history window. Used by <c>PartyComebackManager</c>
-    /// to walk the leader backwards along the path just taken when a
-    /// stranded follower sends <c>@comeback</c> without a target room.
-    /// </summary>
+    // Snapshot of the rolling confirmed-position history, newest-first. [0] is
+    // the most recently confirmed room (typically the current room); [1] the one
+    // before it, and so on, capped at the internal history window. Used by
+    // PartyComebackManager to walk the leader backwards along the path just taken
+    // when a stranded follower sends @comeback without a target room.
     public IReadOnlyList<RoomKey> GetHistory()
     {
         List<RoomKey> snapshot = new(_history.Count);
@@ -160,23 +118,19 @@ public sealed class RoomTracker
         return snapshot;
     }
 
-    /// <summary>
-    /// Server reported "There is no exit in that direction!" for the
-    /// last attempted move. Strong signal that the tracker's model of
-    /// the current room may be wrong — if we were Confirmed, demote
-    /// to Suspect so the next room observation runs through
-    /// candidate search and re-anchors us if a unique match exists.
-    /// </summary>
-    /// <remarks>
-    /// The server doesn't tell us WHICH direction failed in the
-    /// message itself, only that the most recent attempt did. We
-    /// don't have a reliable "what direction did the user just type"
-    /// hook (the OutboundMovementObserver announces cardinal sends
-    /// but the failed direction may be one of several pending in
-    /// the queue). So we conservatively demote on any
-    /// direction-failed reply while Confirmed — the next observation
-    /// resolves cheaply via candidate search.
-    /// </remarks>
+    // Server reported "There is no exit in that direction!" for the last
+    // attempted move. Strong signal that the tracker's model of the current room
+    // may be wrong — if we were Confirmed, demote to Suspect so the next room
+    // observation runs through candidate search and re-anchors us if a unique
+    // match exists.
+    //
+    // The server doesn't tell us WHICH direction failed in the message itself,
+    // only that the most recent attempt did. We don't have a reliable "what
+    // direction did the user just type" hook (the OutboundMovementObserver
+    // announces cardinal sends but the failed direction may be one of several
+    // pending in the queue). So we conservatively demote on any direction-failed
+    // reply while Confirmed — the next observation resolves cheaply via
+    // candidate search.
     public void NoteDirectionFailed(DateTimeOffset? whenUtc = null)
     {
         DateTimeOffset when = whenUtc ?? DateTimeOffset.UtcNow;
@@ -190,23 +144,17 @@ public sealed class RoomTracker
 
     // ----- profile hydrate / save -------------------------------------
 
-    /// <summary>
-    /// Adopt the supplied profile as our persistence target and seed
-    /// state from its <see cref="CharacterProfile.LastKnownRoom"/> +
-    /// <see cref="CharacterProfile.RecentSteps"/>. Called by
-    /// <see cref="AppServices"/> on
-    /// <see cref="ProfileService.ProfileLoaded"/>. Idempotent — calling
-    /// twice with the same profile reuses the seed.
-    /// </summary>
-    /// <remarks>
-    /// Seeding strategy: if <c>LastKnownRoom</c> resolves to a room in
-    /// the active graph, we land Confirmed there and prime the
-    /// <c>_recentSteps</c> list with the persisted entries (so a
-    /// subsequent failed observation triggers replay). If the room
-    /// can't be resolved (stale profile, different game-data set,
-    /// graph not yet loaded), the tracker stays Unknown and the
-    /// next observation lands normally.
-    /// </remarks>
+    // Adopt the supplied profile as our persistence target and seed state from
+    // its CharacterProfile.LastKnownRoom + CharacterProfile.RecentSteps. Called
+    // by AppServices on ProfileService.ProfileLoaded. Idempotent — calling twice
+    // with the same profile reuses the seed.
+    //
+    // Seeding strategy: if LastKnownRoom resolves to a room in the active graph,
+    // we land Confirmed there and prime the _recentSteps list with the persisted
+    // entries (so a subsequent failed observation triggers replay). If the room
+    // can't be resolved (stale profile, different game-data set, graph not yet
+    // loaded), the tracker stays Unknown and the next observation lands
+    // normally.
     public void Hydrate(CharacterProfile profile)
     {
         ArgumentNullException.ThrowIfNull(profile);
@@ -239,18 +187,16 @@ public sealed class RoomTracker
         RaiseStateChanged(prevConf, RoomConfidence.Confirmed, prev, room);
     }
 
-    /// <summary>Called when the profile unloads. Detaches the persistence target.</summary>
+    // Called when the profile unloads. Detaches the persistence target.
     public void OnProfileClosed()
     {
         _profile = null;
     }
 
-    /// <summary>
-    /// Bind the live inventory snapshot provider so <see cref="NoteDeath"/>
-    /// can capture the deathpile contents onto the death record. Set by
-    /// <see cref="AppServices"/> once the <c>InventoryManager</c> is built;
-    /// optional — unbound, death records carry no item lists.
-    /// </summary>
+    // Bind the live inventory snapshot provider so NoteDeath can capture the
+    // deathpile contents onto the death record. Set by AppServices once the
+    // InventoryManager is built; optional — unbound, death records carry no item
+    // lists.
     public void AttachInventorySnapshot(Func<InventorySnapshot> provider)
     {
         ArgumentNullException.ThrowIfNull(provider);
@@ -259,11 +205,9 @@ public sealed class RoomTracker
 
     // ----- inputs -----------------------------------------------------
 
-    /// <summary>
-    /// The walker (or any other caller that just sent a move) reports
-    /// the direction. The tracker enqueues a pending move and prepares
-    /// to validate against the next observation.
-    /// </summary>
+    // The walker (or any other caller that just sent a move) reports the
+    // direction. The tracker enqueues a pending move and prepares to validate
+    // against the next observation.
     public void NoteMoveSent(Direction direction, DateTimeOffset? whenUtc = null)
     {
         DateTimeOffset when = whenUtc ?? DateTimeOffset.UtcNow;
@@ -281,15 +225,11 @@ public sealed class RoomTracker
         // hang the prediction on.
     }
 
-    /// <summary>
-    /// Echo-aware overload for <see cref="OutboundMovementObserver"/>.
-    /// The observer fires from <c>SendUserInput</c> right after the
-    /// walker / loop-runner already called
-    /// <see cref="NoteMoveSent(Direction, DateTimeOffset?)"/> directly
-    /// — drop the second announcement when the most-recent direction
-    /// matches within <see cref="CardinalDebounceWindow"/>. Manual
-    /// cardinal typing (no walker call) lands as a real announcement.
-    /// </summary>
+    // Echo-aware overload for OutboundMovementObserver. The observer fires from
+    // SendUserInput right after the walker / loop-runner already called
+    // NoteMoveSent directly — drop the second announcement when the most-recent
+    // direction matches within CardinalDebounceWindow. Manual cardinal typing
+    // (no walker call) lands as a real announcement.
     public void NoteMoveSentByObserver(Direction direction, DateTimeOffset? whenUtc = null)
     {
         DateTimeOffset when = whenUtc ?? DateTimeOffset.UtcNow;
@@ -307,11 +247,8 @@ public sealed class RoomTracker
     private (Direction Dir, DateTimeOffset At)? _lastCardinalAnnouncement;
     private static readonly TimeSpan CardinalDebounceWindow = TimeSpan.FromMilliseconds(100);
 
-    /// <summary>
-    /// Text-exit move (e.g. <c>"go path"</c>) — used by the
-    /// look-direction-interception work for arbitrary text commands
-    /// that don't map to a <see cref="Direction"/>.
-    /// </summary>
+    // Text-exit move (e.g. "go path") — used by the look-direction-interception
+    // work for arbitrary text commands that don't map to a Direction.
     public void NoteMoveSent(string command, Direction? cardinal = null, DateTimeOffset? whenUtc = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(command);
@@ -325,13 +262,10 @@ public sealed class RoomTracker
         }
     }
 
-    /// <summary>
-    /// The user typed a peek command (<c>look &lt;dir&gt;</c> or
-    /// equivalent). Arm the suppression flag so the next room display
-    /// is treated as a preview and dropped instead of being parsed as
-    /// a move outcome. The flag auto-clears after
-    /// <see cref="LookSuppressWindowMs"/>.
-    /// </summary>
+    // The user typed a peek command (look <dir> or equivalent). Arm the
+    // suppression flag so the next room display is treated as a preview and
+    // dropped instead of being parsed as a move outcome. The flag auto-clears
+    // after LookSuppressWindowMs.
     public void NoteLookSent(DateTimeOffset? whenUtc = null)
     {
         DateTimeOffset when = whenUtc ?? DateTimeOffset.UtcNow;
@@ -340,12 +274,9 @@ public sealed class RoomTracker
             "Look-direction sent — next observation will be ignored as a peek.");
     }
 
-    /// <summary>
-    /// The server-side observation parser reports the room it just
-    /// saw — name + the set of directions on the
-    /// <c>Obvious exits:</c> line. The tracker reconciles this against
-    /// the expected outcome of any pending move.
-    /// </summary>
+    // The server-side observation parser reports the room it just saw — name +
+    // the set of directions on the "Obvious exits:" line. The tracker reconciles
+    // this against the expected outcome of any pending move.
     public void NoteRoomObserved(RoomObservation observation, DateTimeOffset? whenUtc = null)
     {
         DateTimeOffset when = whenUtc ?? DateTimeOffset.UtcNow;
@@ -397,15 +328,12 @@ public sealed class RoomTracker
         }
     }
 
-    /// <summary>
-    /// The death-message detector saw the post-suicide / killed-in-combat
-    /// <c>You now have N lives remaining.</c> line. Capture a
-    /// <see cref="DeathRecord"/> on the loaded profile (room captured =
-    /// where we were when the death message fired), drain pending
-    /// state, and transition to <see cref="RoomConfidence.PendingRespawn"/>
-    /// so the next observation lands as the new authoritative position
-    /// without churning Suspect strikes.
-    /// </summary>
+    // The death-message detector saw the post-suicide / killed-in-combat "You
+    // now have N lives remaining." line. Capture a DeathRecord on the loaded
+    // profile (room captured = where we were when the death message fired),
+    // drain pending state, and transition to PendingRespawn so the next
+    // observation lands as the new authoritative position without churning
+    // Suspect strikes.
     public void NoteDeath(int livesRemaining, string? messageText = null, DateTimeOffset? whenUtc = null)
     {
         DateTimeOffset when = whenUtc ?? DateTimeOffset.UtcNow;
@@ -443,12 +371,10 @@ public sealed class RoomTracker
         SetRoom(room: null, RoomConfidence.PendingRespawn, when, "death recorded");
     }
 
-    /// <summary>
-    /// A movement-refusal line was seen (e.g. "You are too paralyzed
-    /// to move." / "You can't go that way."). Drains the most recently
-    /// queued pending move (since that's the one the server just
-    /// refused) and reverts toward Confirmed at the current room.
-    /// </summary>
+    // A movement-refusal line was seen (e.g. "You are too paralyzed to move." /
+    // "You can't go that way."). Drains the most recently queued pending move
+    // (since that's the one the server just refused) and reverts toward
+    // Confirmed at the current room.
     public void NoteMoveBlocked(DateTimeOffset? whenUtc = null)
     {
         DateTimeOffset when = whenUtc ?? DateTimeOffset.UtcNow;
@@ -466,11 +392,8 @@ public sealed class RoomTracker
         }
     }
 
-    /// <summary>
-    /// Tier-3 manual override — the user pointed at a room on the map
-    /// and said "I'm here". Hard sets the current room and promotes to
-    /// <see cref="RoomConfidence.Confirmed"/>.
-    /// </summary>
+    // Tier-3 manual override — the user pointed at a room on the map and said
+    // "I'm here". Hard sets the current room and promotes to Confirmed.
     public void SetLocated(RoomKey key, DateTimeOffset? whenUtc = null)
     {
         DateTimeOffset when = whenUtc ?? DateTimeOffset.UtcNow;
@@ -487,11 +410,8 @@ public sealed class RoomTracker
         SetRoom(room, RoomConfidence.Confirmed, when, "manual locate", isStrictAnchor: true);
     }
 
-    /// <summary>
-    /// Subscribed by <see cref="Services.AppServices"/> to
-    /// <see cref="RoomGraphManager.GraphReloaded"/>. The active set
-    /// just rebuilt — drop any per-set state and start over.
-    /// </summary>
+    // Subscribed by AppServices to RoomGraphManager.GraphReloaded. The active set
+    // just rebuilt — drop any per-set state and start over.
     public void OnGraphReloaded(DateTimeOffset? whenUtc = null)
     {
         DateTimeOffset when = whenUtc ?? DateTimeOffset.UtcNow;
@@ -706,13 +626,10 @@ public sealed class RoomTracker
         }
     }
 
-    /// <summary>
-    /// Walk <see cref="_recentSteps"/> through the graph starting at
-    /// the most-recent <see cref="HistoryEntry"/>. If the projected
-    /// endpoint matches <paramref name="observation"/>, land Confirmed
-    /// there. Returns <c>true</c> when recovery succeeded; the caller
-    /// proceeds to Lost on <c>false</c>.
-    /// </summary>
+    // Walk _recentSteps through the graph starting at the most-recent
+    // HistoryEntry. If the projected endpoint matches observation, land Confirmed
+    // there. Returns true when recovery succeeded; the caller proceeds to Lost on
+    // false.
     private bool TryReplayRecover(RoomObservation observation, DateTimeOffset when)
     {
         if (_history.First is null) return false;
@@ -756,12 +673,10 @@ public sealed class RoomTracker
         RaiseStateChanged(prev, RoomConfidence.Suspect, prevRoom, prevRoom);
     }
 
-    /// <summary>
-    /// Looser match: name match plus observed-exits-are-subset of
-    /// graph-exits. Tolerates "Obvious exits:" hiding closed doors /
-    /// searchable / conditional exits the graph still knows about.
-    /// Strict equality fired too often on real game data.
-    /// </summary>
+    // Looser match: name match plus observed-exits-are-subset of graph-exits.
+    // Tolerates "Obvious exits:" hiding closed doors / searchable / conditional
+    // exits the graph still knows about. Strict equality fired too often on real
+    // game data.
     private static bool MatchesPredicted(Room target, RoomObservation observation)
     {
         if (!string.Equals(target.Name, observation.Name, StringComparison.OrdinalIgnoreCase))
@@ -774,12 +689,9 @@ public sealed class RoomTracker
         return (observedMask & target.ExitMask) == observedMask;
     }
 
-    /// <summary>
-    /// Subset-only match against a null-name <paramref name="target"/>.
-    /// Used by the null-name learning path — we have no name to match
-    /// against, so the ExitMask is the only signal that the
-    /// observation is "this neighbour".
-    /// </summary>
+    // Subset-only match against a null-name target. Used by the null-name
+    // learning path — we have no name to match against, so the ExitMask is the
+    // only signal that the observation is "this neighbour".
     private static bool MatchesPredictedNameless(Room target, RoomObservation observation)
     {
         if (!target.HasUnknownName) return false;
@@ -788,15 +700,12 @@ public sealed class RoomTracker
         return (observedMask & target.ExitMask) == observedMask;
     }
 
-    /// <summary>
-    /// Search the source room's cardinal neighbours for a null-name
-    /// room whose ExitMask covers the observation. If exactly one
-    /// neighbour qualifies, learn the observed name into the in-memory
-    /// graph (via <see cref="RoomGraphManager.LearnRoomName"/>) and
-    /// return the updated <see cref="Room"/> for the FSM to land on.
-    /// Multiple matches are treated as ambiguous (no learn) — defer
-    /// to the standard Suspect path.
-    /// </summary>
+    // Search the source room's cardinal neighbours for a null-name room whose
+    // ExitMask covers the observation. If exactly one neighbour qualifies, learn
+    // the observed name into the in-memory graph (via
+    // RoomGraphManager.LearnRoomName) and return the updated Room for the FSM to
+    // land on. Multiple matches are treated as ambiguous (no learn) — defer to
+    // the standard Suspect path.
     private bool TryMatchNullNameNeighbour(
         Room source,
         RoomObservation observation,
@@ -954,16 +863,13 @@ public sealed class RoomTracker
     }
 }
 
-/// <summary>One entry in the rolling confirmed-position history buffer.</summary>
+// One entry in the rolling confirmed-position history buffer.
 internal readonly record struct HistoryEntry(RoomKey Room, DateTimeOffset ConfirmedAt);
 
-/// <summary>
-/// Payload of <see cref="RoomTracker.StateChanged"/>. Both
-/// <see cref="PreviousConfidence"/>/<see cref="NewConfidence"/> and
-/// <see cref="PreviousRoom"/>/<see cref="NewRoom"/> are surfaced so
-/// handlers can branch on what actually changed without re-querying
-/// <see cref="RoomState"/> (which would race with the next transition).
-/// </summary>
+// Payload of RoomTracker.StateChanged. Both PreviousConfidence/NewConfidence and
+// PreviousRoom/NewRoom are surfaced so handlers can branch on what actually
+// changed without re-querying RoomState (which would race with the next
+// transition).
 public readonly record struct RoomTransition(
     RoomConfidence PreviousConfidence,
     RoomConfidence NewConfidence,
@@ -971,10 +877,8 @@ public readonly record struct RoomTransition(
     Room? NewRoom,
     DateTimeOffset At);
 
-/// <summary>
-/// Payload of <see cref="RoomTracker.NameLearned"/>. Carries the room
-/// the tracker just adopted by ExitMask + the verbatim observed name
-/// it learned. The main window's prompt-handler decides whether to
-/// persist the new name back to the active set's <c>Rooms.json</c>.
-/// </summary>
+// Payload of RoomTracker.NameLearned. Carries the room the tracker just adopted
+// by ExitMask + the verbatim observed name it learned. The main window's
+// prompt-handler decides whether to persist the new name back to the active
+// set's Rooms.json.
 public readonly record struct NameLearnedEvent(RoomKey Key, string ObservedName);

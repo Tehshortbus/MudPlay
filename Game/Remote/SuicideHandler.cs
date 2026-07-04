@@ -5,47 +5,31 @@ using FujinTerm.Services.Patterns;
 
 namespace FujinTerm.Game.Remote;
 
-/// <summary>
-/// Consumer of <see cref="RemoteCommandManager"/> for the
-/// <c>@suicide</c> remote command. Authorised callers — players with
-/// the <see cref="PlayerRemoteControls.SysopCommands"/> ("Elevated
-/// Commands") flag — can request the local character commit suicide;
-/// the engine's lives-based policy block already protects against
-/// destructive misuse below <see cref="RemoteCommandManager.MaxSuicideLivesThreshold"/>.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Two wire flows, picked based on whether the loaded profile carries
-/// a stored encrypted suicide password:
-/// </para>
-/// <list type="bullet">
-///   <item><b>Have stored password</b> — send <c>suicide\r</c>, then
-///         the decrypted password as the next line. Realm prompts
-///         "Enter your suicide password:" and our second send
-///         consumes it. <c>Invalid password specified.</c> →
-///         telepath the sender so they know the stored value is
-///         stale.</item>
-///   <item><b>No stored password</b> — can't blindly send
-///         <c>suicide</c> because if the realm actually has a
-///         password set we'd hang at the prompt with no way to
-///         answer. Pre-check via <c>pro</c>: between sending pro
-///         and the NEXT statline prompt arriving, watch for
-///         <c>"You do not have a suicide password set."</c>. If
-///         observed, the realm has no password set — fire
-///         <c>suicide\r</c> (kills immediately, no prompt). If the
-///         next statline arrives without the line firing, the
-///         realm DOES have a password we don't have stored;
-///         telepath the sender with <c>{Suicide failed, password
-///         set in game but not stored.}</c> and log the
-///         profile/realm mismatch.</item>
-/// </list>
-/// <para>
-/// Bypasses <see cref="EngineSendGate"/> deliberately — we're the
-/// flow's initiator, not a victim of it. The wire-sender bound by
-/// MainWindowViewModel here is the RAW <c>SendUserInput</c>, not the
-/// gate-wrapped one every other engine receives.
-/// </para>
-/// </remarks>
+// Consumer of RemoteCommandManager for the @suicide remote command. Authorised
+// callers — players with the PlayerRemoteControls.SysopCommands ("Elevated
+// Commands") flag — can request the local character commit suicide; the engine's
+// lives-based policy block already protects against destructive misuse below
+// RemoteCommandManager.MaxSuicideLivesThreshold.
+//
+// Two wire flows, picked based on whether the loaded profile carries a stored
+// encrypted suicide password:
+//   - Have stored password — send suicide\r, then the decrypted password as the
+//     next line. Realm prompts "Enter your suicide password:" and our second
+//     send consumes it. "Invalid password specified." → telepath the sender so
+//     they know the stored value is stale.
+//   - No stored password — can't blindly send suicide because if the realm
+//     actually has a password set we'd hang at the prompt with no way to answer.
+//     Pre-check via pro: between sending pro and the NEXT statline prompt
+//     arriving, watch for "You do not have a suicide password set.". If observed,
+//     the realm has no password set — fire suicide\r (kills immediately, no
+//     prompt). If the next statline arrives without the line firing, the realm
+//     DOES have a password we don't have stored; telepath the sender with
+//     {Suicide failed, password set in game but not stored.} and log the
+//     profile/realm mismatch.
+//
+// Bypasses EngineSendGate deliberately — we're the flow's initiator, not a
+// victim of it. The wire-sender bound by MainWindowViewModel here is the RAW
+// SendUserInput, not the gate-wrapped one every other engine receives.
 public sealed class SuicideHandler : IDisposable
 {
     private static readonly string[] RegisteredCommands = { "@suicide" };
@@ -61,20 +45,15 @@ public sealed class SuicideHandler : IDisposable
     private Action<byte[]>? _wireSender;
     private bool _disposed;
 
-    /// <summary>
-    /// Reply callback for the last @suicide invocation that took the
-    /// have-stored-password branch, captured at dispatch time and
-    /// consumed by the invalid-password line if it fires.
-    /// </summary>
+    // Reply callback for the last @suicide invocation that took the
+    // have-stored-password branch, captured at dispatch time and consumed by the
+    // invalid-password line if it fires.
     private Action<string>? _pendingReply;
 
-    /// <summary>
-    /// Reply callback + window state for an in-flight no-stored-
-    /// password pro pre-check. <see cref="_seenNotSetInProWindow"/>
-    /// flips true when the canonical "not set" line fires during the
-    /// window; the next PromptObserved firing decides the outcome
-    /// based on that flag.
-    /// </summary>
+    // Reply callback + window state for an in-flight no-stored-password pro
+    // pre-check. _seenNotSetInProWindow flips true when the canonical "not set"
+    // line fires during the window; the next PromptObserved firing decides the
+    // outcome based on that flag.
     private Action<string>? _proPendingReply;
     private bool _seenNotSetInProWindow;
 
@@ -116,20 +95,18 @@ public sealed class SuicideHandler : IDisposable
         _promptScanner.PromptObserved += _promptHandler;
     }
 
-    /// <summary>
-    /// Bind the RAW wire-sender (NOT the gate-wrapped one). Every
-    /// other engine in the app uses the wrapped sender so the
-    /// SuicidePasswordTracker can pause them mid-flow; this handler
-    /// is the exception because it OWNS the flow and needs its sends
-    /// to land even while the gate is locked.
-    /// </summary>
+    // Bind the RAW wire-sender (NOT the gate-wrapped one). Every other engine in
+    // the app uses the wrapped sender so the SuicidePasswordTracker can pause them
+    // mid-flow; this handler is the exception because it OWNS the flow and needs
+    // its sends to land even while the gate is locked.
     public void SetWireSender(Action<byte[]> sender)
     {
         ArgumentNullException.ThrowIfNull(sender);
         _wireSender = sender;
     }
 
-    /// <summary>Test seam — fire the prompt-observation hook without feeding the scanner real bytes.</summary>
+    // Test seam — fire the prompt-observation hook without feeding the scanner
+    // real bytes.
     internal void FireNextPromptForTests() => OnPromptObserved(default);
 
     public void Dispose()
@@ -197,27 +174,21 @@ public sealed class SuicideHandler : IDisposable
         reply("invalid suicide password is stored, unable");
     }
 
-    /// <summary>
-    /// "You do not have a suicide password set." observed. While the
-    /// pro window is open we flag the observation; the
-    /// <see cref="OnPromptObserved"/> path then fires <c>suicide</c>
-    /// on the next statline arrival. We don't act immediately because
-    /// the line and the prompt arrive in the same wire chunk and we
-    /// want a single decision point per pro round-trip.
-    /// </summary>
+    // "You do not have a suicide password set." observed. While the pro window is
+    // open we flag the observation; the OnPromptObserved path then fires suicide
+    // on the next statline arrival. We don't act immediately because the line and
+    // the prompt arrive in the same wire chunk and we want a single decision
+    // point per pro round-trip.
     private void OnNotSetObserved()
     {
         if (_proPendingReply is null) return;
         _seenNotSetInProWindow = true;
     }
 
-    /// <summary>
-    /// Next statline arrived after we sent <c>pro</c> — pro round-trip
-    /// is complete. If <see cref="_seenNotSetInProWindow"/> is true
-    /// the realm confirmed no password set; send the unprompted
-    /// suicide. Otherwise the realm has a password set that we don't
-    /// have stored; log the mismatch + telepath the sender.
-    /// </summary>
+    // Next statline arrived after we sent pro — pro round-trip is complete. If
+    // _seenNotSetInProWindow is true the realm confirmed no password set; send
+    // the unprompted suicide. Otherwise the realm has a password set that we
+    // don't have stored; log the mismatch + telepath the sender.
     private void OnPromptObserved(PromptObservation _)
     {
         if (_proPendingReply is null) return;

@@ -5,57 +5,36 @@ using FujinTerm.Services.Patterns;
 
 namespace FujinTerm.Game;
 
-/// <summary>
-/// Passive observer for the in-game <c>set suicide</c> /
-/// <c>suicide</c> password flows. Drives an
-/// <see cref="EngineSendGate"/> to pause every engine while the
-/// user is in a password-entry prompt (so a stray <c>par</c> poll
-/// doesn't end up becoming the password), and captures the password
-/// the user types so we can store it encrypted on the
-/// <see cref="CharacterProfile"/> for the Phase 6 <c>@suicide</c>
-/// consumer to use.
-/// </summary>
-/// <remarks>
-/// <para>
-/// The user is described as manually typing the flow themselves; we
-/// don't run a wizard or send commands on their behalf. We just
-/// watch the server prompts, lock the gate, watch the user's
-/// outbound for the bytes that follow, and commit on the
-/// <c>Password Changed</c> success line.
-/// </para>
-/// <para>
-/// State machine (all transitions clear the gate + state if a
-/// terminator fires):
-/// </para>
-/// <list type="bullet">
-///   <item><b>Idle</b> — gate clear, no pending capture.</item>
-///   <item><b>AwaitingOldPassword</b> — server printed
-///         <c>"Enter the current password:"</c>; the next outbound
-///         line is the old password (we don't store it, just pass
-///         through). On <c>Invalid password specified.</c> the
-///         flow aborts (back to Idle without touching stored).
-///         Otherwise <c>Enter New Password:</c> follows and we
-///         transition to <c>AwaitingNewPassword</c>.</item>
-///   <item><b>AwaitingNewPassword</b> — server printed
-///         <c>"Enter New Password:"</c>; the next outbound line
-///         is the new password. We tentatively capture it,
-///         waiting for <c>Password Changed</c> to commit or
-///         <c>Password NOT changed</c> to discard.</item>
-///   <item><b>AwaitingUsePassword</b> — user typed <c>suicide</c>
-///         and server printed
-///         <c>"Enter your suicide password:"</c>. We just gate
-///         the engine here so auto-sends don't end up sent as the
-///         password attempt; no capture, no profile change.</item>
-/// </list>
-/// <para>
-/// The <c>pro</c>-command response line
-/// <c>"You do not have a suicide password set."</c> is treated as
-/// authoritative — we wipe the stored password regardless of state,
-/// since the realm's view differs from our cached one. The reroll line
-/// <c>"After a LONG thought, you take your own life"</c> (successful
-/// suicide) wipes it too — the old character is gone.
-/// </para>
-/// </remarks>
+// Passive observer for the in-game set suicide / suicide password flows.
+// Drives an EngineSendGate to pause every engine while the user is in a
+// password-entry prompt (so a stray par poll doesn't end up becoming the
+// password), and captures the password the user types so we can store it
+// encrypted on the CharacterProfile for the @suicide consumer to use.
+//
+// The user types the flow themselves; we don't run a wizard or send commands
+// on their behalf. We just watch the server prompts, lock the gate, watch the
+// user's outbound for the bytes that follow, and commit on the
+// Password Changed success line.
+//
+// State machine (all transitions clear the gate + state if a terminator fires):
+//   Idle — gate clear, no pending capture.
+//   AwaitingOldPassword — server printed "Enter the current password:"; the
+//     next outbound line is the old password (we don't store it, just pass
+//     through). On "Invalid password specified." the flow aborts (back to
+//     Idle without touching stored). Otherwise "Enter New Password:" follows
+//     and we transition to AwaitingNewPassword.
+//   AwaitingNewPassword — server printed "Enter New Password:"; the next
+//     outbound line is the new password. We tentatively capture it, waiting
+//     for Password Changed to commit or Password NOT changed to discard.
+//   AwaitingUsePassword — user typed suicide and server printed "Enter your
+//     suicide password:". We just gate the engine here so auto-sends don't end
+//     up sent as the password attempt; no capture, no profile change.
+//
+// The pro-command response line "You do not have a suicide password set." is
+// treated as authoritative — we wipe the stored password regardless of state,
+// since the realm's view differs from our cached one. The reroll line "After
+// a LONG thought, you take your own life" (successful suicide) wipes it too —
+// the old character is gone.
 public sealed class SuicidePasswordTracker : IDisposable
 {
     public enum FlowState
@@ -93,12 +72,13 @@ public sealed class SuicidePasswordTracker : IDisposable
     // shifted out by the sniffer's rolling-1-deep model). Disarm on
     // any flow terminator.
     private bool _captureArmed;
-    /// <summary>Char accumulator for the line currently being typed.</summary>
+    // Char accumulator for the line currently being typed.
     private readonly StringBuilder _currentOutLine = new();
-    /// <summary>Latest completed non-empty outbound line while armed — the new-password candidate at commit time.</summary>
+    // Latest completed non-empty outbound line while armed — the new-password
+    // candidate at commit time.
     private string? _latestArmedLine;
 
-    /// <summary>Current state of the flow — exposed for tests + diagnostics.</summary>
+    // Current state of the flow — exposed for tests + diagnostics.
     public FlowState State => _state;
 
     public SuicidePasswordTracker(
@@ -135,28 +115,20 @@ public sealed class SuicidePasswordTracker : IDisposable
         _subs.Clear();
     }
 
-    /// <summary>
-    /// Called by the wire-send path on every outbound byte so the
-    /// sniffer can track the user-typed lines that need to land as
-    /// the captured suicide password. Runs ALWAYS (not gated on the
-    /// state machine) because the inbound prompt acks can arrive in
-    /// a single burst AFTER the user has finished typing — gating on
-    /// state would silently miss every byte. The arming flag
-    /// (<see cref="_captureArmed"/>) decides whether the completed
-    /// line is the new-password candidate or unrelated traffic.
-    /// </summary>
-    /// <remarks>
-    /// Handles both wire-send modes transparently:
-    /// <list type="bullet">
-    ///   <item><b>Char-mode</b> (the real MajorMUD path — server uses
-    ///         Telnet ECHO suppression so each keystroke ships
-    ///         individually).</item>
-    ///   <item><b>Line-mode</b> (LocalInputBuffer flushes the entire
-    ///         line + CR in one call).</item>
-    /// </list>
-    /// Backspace bytes (<c>0x08</c> / <c>0x7F</c>) shrink the in-flight
-    /// line so a typo + correct produces the right captured value.
-    /// </remarks>
+    // Called by the wire-send path on every outbound byte so the sniffer can
+    // track the user-typed lines that need to land as the captured suicide
+    // password. Runs ALWAYS (not gated on the state machine) because the
+    // inbound prompt acks can arrive in a single burst AFTER the user has
+    // finished typing — gating on state would silently miss every byte. The
+    // arming flag (_captureArmed) decides whether the completed line is the
+    // new-password candidate or unrelated traffic.
+    //
+    // Handles both wire-send modes transparently:
+    //   Char-mode (the real MajorMUD path — server uses Telnet ECHO
+    //     suppression so each keystroke ships individually).
+    //   Line-mode (LocalInputBuffer flushes the entire line + CR in one call).
+    // Backspace bytes (0x08 / 0x7F) shrink the in-flight line so a typo +
+    // correct produces the right captured value.
     public void ObserveOutbound(ReadOnlySpan<byte> bytes)
     {
         if (bytes.IsEmpty) return;
@@ -182,17 +154,12 @@ public sealed class SuicidePasswordTracker : IDisposable
         }
     }
 
-    /// <summary>
-    /// Process a completed outbound line. When the line is the
-    /// <c>set suicide</c> arming trigger, flip
-    /// <see cref="_captureArmed"/>. While armed, every subsequent
-    /// non-empty completed line becomes the new
-    /// <see cref="_latestArmedLine"/> — the rolling 1-deep buffer
-    /// preserves the LATEST candidate so the old-password line
-    /// (which the user typed first) is overwritten by the
-    /// new-password line (which they typed second), and
-    /// <see cref="OnPasswordChanged"/> commits the right value.
-    /// </summary>
+    // Process a completed outbound line. When the line is the set suicide
+    // arming trigger, flip _captureArmed. While armed, every subsequent
+    // non-empty completed line becomes the new _latestArmedLine — the rolling
+    // 1-deep buffer preserves the LATEST candidate so the old-password line
+    // (which the user typed first) is overwritten by the new-password line
+    // (which they typed second), and OnPasswordChanged commits the right value.
     private void FinalizeOutboundLine()
     {
         string completed = _currentOutLine.ToString();

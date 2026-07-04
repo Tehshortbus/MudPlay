@@ -5,34 +5,23 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game.Map;
 
-/// <summary>
-/// Walk-to engine — drives the wire one step at a time, waits for
-/// the appropriate confirmation (room change for moves; next prompt
-/// for command steps), and gates on <see cref="MovementCoordinator"/>
-/// so any pause source halts the walk mid-route.
-/// </summary>
-/// <remarks>
-/// <para>
-/// PR 7.7 shipped the walk-to base with a direction-only path. PR 7.7b
-/// teaches the walker about <see cref="WalkStep"/> — moves AND inline
-/// command steps (door opens today; lever pulls / button presses when
-/// game data describes them). The path is expanded via
-/// <see cref="RemoteActionPathExpander"/> at <see cref="WalkTo"/> time.
-/// </para>
-/// <para>
-/// Confirmation:
-/// <list type="bullet">
-///   <item><see cref="MoveStep"/> — waits for
-///         <see cref="RoomTracker.StateChanged"/> with
-///         <c>NewConfidence == Located</c> at the predicted target.
-///         Blocked-at-source retries once.</item>
-///   <item><see cref="CommandStep"/> — waits for the next
-///         <c>WirePromptScanner.PromptObserved</c> firing after the
-///         command goes out. No retry; the next move step will detect
-///         a stuck door via its own blocked-retry path.</item>
-/// </list>
-/// </para>
-/// </remarks>
+// Walk-to engine — drives the wire one step at a time, waits for the
+// appropriate confirmation (room change for moves; next prompt for
+// command steps), and gates on MovementCoordinator so any pause source
+// halts the walk mid-route.
+//
+// A WalkStep is either a move OR an inline command step (door opens
+// today; lever pulls / button presses when game data describes them).
+// The path is expanded via RemoteActionPathExpander at WalkTo time.
+//
+// Confirmation:
+//   MoveStep    — waits for RoomTracker.StateChanged with the tracker
+//                 Confirmed at the predicted target. Blocked-at-source
+//                 retries once.
+//   CommandStep — waits for the next WirePromptScanner.PromptObserved
+//                 firing after the command goes out. No retry; the next
+//                 move step will detect a stuck door via its own
+//                 blocked-retry path.
 public sealed class AutoWalkManager : IRecoverableEngine
 {
     private readonly RoomGraphManager _graph;
@@ -71,13 +60,11 @@ public sealed class AutoWalkManager : IRecoverableEngine
     private int _retryCount;
     private const int MaxRetriesPerStep = 1;
 
-    /// <summary>
-    /// Counter for mid-walk re-plans triggered by tracker entering
-    /// Suspect/Lost mid-step (typically caused by the user manually
-    /// typing a movement at the terminal during a walk). Reset on
-    /// every Confirmed step advance; capped to prevent infinite
-    /// ping-pong when the user keeps interleaving typed movement.
-    /// </summary>
+    // Counter for mid-walk re-plans triggered by tracker entering
+    // Suspect/Lost mid-step (typically caused by the user manually typing
+    // a movement at the terminal during a walk). Reset on every Confirmed
+    // step advance; capped to prevent infinite ping-pong when the user
+    // keeps interleaving typed movement.
     private int _replanCount;
     private const int MaxReplansPerWalk = 2;
 
@@ -86,31 +73,26 @@ public sealed class AutoWalkManager : IRecoverableEngine
 
     public WalkState State { get; private set; } = WalkState.Idle;
 
-    /// <summary>Current walk's destination room (null when Idle).</summary>
+    // Current walk's destination room (null when Idle).
     public RoomKey? Destination => _destination;
 
-    /// <summary>Total steps in the current expanded path (0 when Idle).</summary>
+    // Total steps in the current expanded path (0 when Idle).
     public int StepCount => _path?.Count ?? 0;
 
-    /// <summary>Index of the next step to send (0..StepCount).</summary>
+    // Index of the next step to send (0..StepCount).
     public int CurrentStepIndex => _index;
 
-    /// <summary>
-    /// Read-only snapshot of the current path — used by the
-    /// Navigation right rail to render the step list (with the
-    /// current step highlighted and completed ones struck through).
-    /// </summary>
+    // Read-only snapshot of the current path — used by the Navigation
+    // right rail to render the step list (with the current step
+    // highlighted and completed ones struck through).
     public IReadOnlyList<WalkStep> Steps => _path is null
         ? (IReadOnlyList<WalkStep>)Array.Empty<WalkStep>()
         : _path;
 
-    /// <summary>
-    /// Remaining walk path as a sequence of room keys — current
-    /// room followed by each subsequent <see cref="MoveStep"/>'s
-    /// <see cref="MoveStep.ExpectedTarget"/>. The map renderer
-    /// (PR 7.x walk-path overlay) draws this as a blue polyline so
-    /// the user can see exactly where the walker is heading.
-    /// </summary>
+    // Remaining walk path as a sequence of room keys — current room
+    // followed by each subsequent MoveStep's ExpectedTarget. The map
+    // renderer draws this as a blue polyline so the user can see exactly
+    // where the walker is heading.
     public IReadOnlyList<RoomKey> RemainingRoomKeys
     {
         get
@@ -211,11 +193,9 @@ public sealed class AutoWalkManager : IRecoverableEngine
             _promptScanner.PromptObserved += OnPromptObserved;
     }
 
-    /// <summary>
-    /// Bind the wire sender after construction (PartyPoller /
-    /// AutoPartyManager pattern). MainWindowViewModel binds this once
-    /// the TelnetClient is up.
-    /// </summary>
+    // Bind the wire sender after construction (PartyPoller /
+    // AutoPartyManager pattern). MainWindowViewModel binds this once the
+    // TelnetClient is up.
     public void SetWireSender(Action<byte[]> sender)
     {
         ArgumentNullException.ThrowIfNull(sender);
@@ -224,219 +204,177 @@ public sealed class AutoWalkManager : IRecoverableEngine
 
     internal void SetWireSenderForTests(Action<byte[]> sender) => SetWireSender(sender);
 
-    /// <summary>
-    /// Bind the trap-disarm enqueuer (PR 7.22). Production wires this
-    /// to <see cref="Game.TrapDisarmManager.Enqueue"/> so trapped exits
-    /// route through the search-then-disarm flow before the move goes
-    /// out. Tests pass a capture-and-fire delegate.
-    /// </summary>
-    /// <remarks>
-    /// Signature: <c>(direction, sender, reply)</c>. The walker passes
-    /// the lowercase direction word, the literal string
-    /// <c>"walker"</c>, and a reply callback that resumes the walk on
-    /// success or aborts it on failure.
-    /// </remarks>
+    // Bind the trap-disarm enqueuer. Production wires this to
+    // TrapDisarmManager.Enqueue so trapped exits route through the
+    // search-then-disarm flow before the move goes out. Tests pass a
+    // capture-and-fire delegate.
+    //
+    // Signature: (direction, sender, reply). The walker passes the
+    // lowercase direction word, the literal string "walker", and a reply
+    // callback that resumes the walk on success or aborts it on failure.
     public void SetTrapEnqueuer(Action<string, string, Action<string>> enqueuer)
     {
         ArgumentNullException.ThrowIfNull(enqueuer);
         _trapEnqueuer = enqueuer;
     }
 
-    /// <summary>
-    /// Gate for trapped-exit handling. Returns <c>true</c> when the walker
-    /// should route a <see cref="RoomExitHint.Trap"/> exit through the trap
-    /// enqueuer — i.e. Settings → Other "Utilize disarm traps if able" is on
-    /// AND the local character has the Traps skill. Returns <c>false</c> to
-    /// walk straight through the trap without attempting a disarm. When left
-    /// unset the walker defaults to attempting the disarm (preserves the
-    /// pre-toggle behavior for any consumer that never wires a gate).
-    /// </summary>
+    // Gate for trapped-exit handling. Returns true when the walker should
+    // route a Trap exit through the trap enqueuer — i.e. Settings → Other
+    // "Utilize disarm traps if able" is on AND the local character has the
+    // Traps skill. Returns false to walk straight through the trap without
+    // attempting a disarm. When left unset the walker defaults to
+    // attempting the disarm.
     public void SetTrapDisarmGate(Func<bool> gate)
     {
         ArgumentNullException.ThrowIfNull(gate);
         _shouldDisarmTrap = gate;
     }
 
-    /// <summary>
-    /// Party-delegation enqueuer — the walker calls this when the local
-    /// character can't disarm a trap but a capable party member can. It
-    /// broadcasts <c>@trap &lt;dir&gt;</c> on say and resumes the walk on
-    /// the member's say reply via the same <see cref="OnTrapReply"/>
-    /// callback the local path uses. Bound to
-    /// <see cref="Game.TrapDelegationManager.Delegate"/>. The two paths
-    /// share the resume callback but keep their signal SOURCES distinct —
-    /// local keys on the game's first-person disarm signals, delegation on
-    /// the member's say reply.
-    /// </summary>
+    // Party-delegation enqueuer — the walker calls this when the local
+    // character can't disarm a trap but a capable party member can. It
+    // broadcasts @trap <dir> on say and resumes the walk on the member's
+    // say reply via the same OnTrapReply callback the local path uses.
+    // Bound to TrapDelegationManager.Delegate. The two paths share the
+    // resume callback but keep their signal SOURCES distinct — local keys
+    // on the game's first-person disarm signals, delegation on the
+    // member's say reply.
     public void SetTrapDelegator(Action<string, Action<string>> delegator)
     {
         ArgumentNullException.ThrowIfNull(delegator);
         _trapDelegator = delegator;
     }
 
-    /// <summary>
-    /// Gate for the party-delegation branch. Returns <c>true</c> when the
-    /// "Utilize disarm traps if able" toggle is on, the LOCAL character
-    /// can't disarm, AND at least one party member can — i.e. the "if
-    /// able" clause is satisfied by party ability rather than our own.
-    /// </summary>
+    // Gate for the party-delegation branch. Returns true when the
+    // "Utilize disarm traps if able" toggle is on, the LOCAL character
+    // can't disarm, AND at least one party member can — i.e. the "if
+    // able" clause is satisfied by party ability rather than our own.
     public void SetTrapDelegateGate(Func<bool> gate)
     {
         ArgumentNullException.ThrowIfNull(gate);
         _canDelegateTrap = gate;
     }
 
-    /// <summary>
-    /// Delegation teardown — bound to
-    /// <see cref="Game.TrapDelegationManager.Cancel"/>. Called from
-    /// <see cref="Reset"/> when a walk is superseded mid-delegation so a
-    /// later stray say reply can't resume a dead walk.
-    /// </summary>
+    // Delegation teardown — bound to TrapDelegationManager.Cancel. Called
+    // from Reset when a walk is superseded mid-delegation so a later stray
+    // say reply can't resume a dead walk.
     public void SetTrapDelegateStopper(Action stopAll)
     {
         ArgumentNullException.ThrowIfNull(stopAll);
         _trapDelegateStopAll = stopAll;
     }
 
-    /// <summary>
-    /// Door-open enqueuer — the walker calls this when stepping toward
-    /// a <see cref="RoomExitHint.Door"/> exit, passes the direction +
-    /// the door's stat requirement + bashable flag, and resumes the
-    /// move on the callback's terminal <see cref="DoorOpenResult"/>.
-    /// MainWindowVM binds this to <see cref="DoorOpenManager.Enqueue"/>.
-    /// </summary>
+    // Door-open enqueuer — the walker calls this when stepping toward a
+    // Door exit, passes the direction + the door's stat requirement +
+    // bashable flag, and resumes the move on the callback's terminal
+    // DoorOpenResult. MainWindowVM binds this to DoorOpenManager.Enqueue.
     public void SetDoorEnqueuer(Action<Direction, int, bool, int, string, Action<DoorOpenResult>> enqueuer)
     {
         ArgumentNullException.ThrowIfNull(enqueuer);
         _doorEnqueuer = enqueuer;
     }
 
-    /// <summary>
-    /// Door-FSM teardown — bound to <see cref="DoorOpenManager.StopAll"/>.
-    /// Called from <see cref="Reset"/> when a walk is superseded while
-    /// the walker is mid-door-FSM. Without this, the new walk's
-    /// follow-up <c>_doorEnqueuer</c> call sits in the door manager's
-    /// queue because <c>TryStartNext</c> bails on non-Idle state and
-    /// the walker stalls indefinitely.
-    /// </summary>
+    // Door-FSM teardown — bound to DoorOpenManager.StopAll. Called from
+    // Reset when a walk is superseded while the walker is mid-door-FSM.
+    // Without this, the new walk's follow-up _doorEnqueuer call sits in
+    // the door manager's queue because TryStartNext bails on non-Idle
+    // state and the walker stalls indefinitely.
     public void SetDoorStopper(Action stopAll)
     {
         ArgumentNullException.ThrowIfNull(stopAll);
         _doorStopAll = stopAll;
     }
 
-    /// <summary>
-    /// Hidden-exit reveal enqueuer — walker calls this for
-    /// <see cref="RoomExitHint.SearchableHidden"/> exits to fire the
-    /// <c>sea &lt;dir&gt;</c> retry loop until the exit appears on
-    /// the room display. MainWindowVM binds this to
-    /// <see cref="HiddenExitRevealManager.Enqueue"/>.
-    /// </summary>
+    // Hidden-exit reveal enqueuer — walker calls this for SearchableHidden
+    // exits to fire the sea <dir> retry loop until the exit appears on the
+    // room display. MainWindowVM binds this to
+    // HiddenExitRevealManager.Enqueue.
     public void SetHiddenSearchEnqueuer(Action<Direction, string, Action<HiddenSearchResult>> enqueuer)
     {
         ArgumentNullException.ThrowIfNull(enqueuer);
         _hiddenSearchEnqueuer = enqueuer;
     }
 
-    /// <summary>
-    /// Hidden-search teardown — bound to <see cref="HiddenExitRevealManager.StopAll"/>.
-    /// Same stale-state cleanup rationale as <see cref="SetDoorStopper"/>.
-    /// </summary>
+    // Hidden-search teardown — bound to HiddenExitRevealManager.StopAll.
+    // Same stale-state cleanup rationale as SetDoorStopper.
     public void SetHiddenSearchStopper(Action stopAll)
     {
         ArgumentNullException.ThrowIfNull(stopAll);
         _hiddenSearchStopAll = stopAll;
     }
 
-    /// <summary>
-    /// Teleport-keyword resolver — given (source room, destination
-    /// room) the walker calls this to look up the verbatim command
-    /// it should send (from the source room's CMD chain in
-    /// <see cref="Services.TBInfoStore"/>). Bound by MainWindowVM.
-    /// </summary>
+    // Teleport-keyword resolver — given (source room, destination room)
+    // the walker calls this to look up the verbatim command it should
+    // send (from the source room's CMD chain in TBInfoStore). Bound by
+    // MainWindowVM.
     public void SetTeleportResolver(Func<RoomKey, RoomKey, string?> resolver)
     {
         ArgumentNullException.ThrowIfNull(resolver);
         _teleportResolver = resolver;
     }
 
-    /// <summary>
-    /// Predicate the walker uses to decide whether to prefix a
-    /// teleport with <c>.@party &lt;cmd&gt;</c> so followers come
-    /// along. Returns <c>true</c> when the local character is party
-    /// leader AND there's at least one follower.
-    /// </summary>
+    // Predicate the walker uses to decide whether to prefix a teleport
+    // with .@party <cmd> so followers come along. Returns true when the
+    // local character is party leader AND there's at least one follower.
     public void SetPartyLeaderCheck(Func<bool> check)
     {
         ArgumentNullException.ThrowIfNull(check);
         _isLeaderWithFollowers = check;
     }
 
-    /// <summary>
-    /// Pre-move stealth hook (PR 4.b) — invoked by the walker
-    /// immediately before each move's bytes go out, AFTER any
-    /// door / trap / hidden / multi-action pre-steps, so <c>sn</c> is
-    /// the last command before the move and the move itself is sneaked.
-    /// MainWindowVM / AppServices binds this to
-    /// <see cref="Game.Stealth.StealthManager.RequestPreMoveStealth"/>.
-    /// Non-blocking: the hook fires and the move bytes follow without
-    /// waiting for the sneak ACK (sneak carries through the move).
-    /// </summary>
+    // Pre-move stealth hook — invoked by the walker immediately before
+    // each move's bytes go out, AFTER any door / trap / hidden /
+    // multi-action pre-steps, so sn is the last command before the move
+    // and the move itself is sneaked. MainWindowVM / AppServices binds
+    // this to StealthManager.RequestPreMoveStealth. Non-blocking: the
+    // hook fires and the move bytes follow without waiting for the sneak
+    // ACK (sneak carries through the move).
     public void SetPreMoveHook(Action hook)
     {
         ArgumentNullException.ThrowIfNull(hook);
         _preMoveHook = hook;
     }
 
-    /// <summary>
-    /// Planned-route item-requirement announcer (PR B). Invoked once at
-    /// walk-start with every item id gating an <c>(Item: N)</c> /
-    /// <c>(Ticket: N)</c> exit along the freshly-planned path — the items
-    /// the character must be carrying to complete the route. Bound to
-    /// <see cref="PathItemDemandTracker.OnPathItemsRequired"/>, which posts a
-    /// need for each one we lack so auto-search arms until it's found. Only
-    /// exits with a possession gate are reported; door / key / trap / hidden
-    /// exits have their own FSMs and aren't item-possession problems.
-    /// </summary>
+    // Planned-route item-requirement announcer. Invoked once at walk-start
+    // with every item id gating an (Item: N) / (Ticket: N) exit along the
+    // freshly-planned path — the items the character must be carrying to
+    // complete the route. Bound to PathItemDemandTracker.OnPathItemsRequired,
+    // which posts a need for each one we lack so auto-search arms until
+    // it's found. Only exits with a possession gate are reported; door /
+    // key / trap / hidden exits have their own FSMs and aren't
+    // item-possession problems.
     public void SetPathItemAnnouncer(Action<IReadOnlyList<int>> announcer)
     {
         ArgumentNullException.ThrowIfNull(announcer);
         _pathItemAnnouncer = announcer;
     }
 
-    /// <summary>
-    /// Planned-route room announcer. Invoked once at walk-start with the ordered
-    /// <see cref="RoomKey"/> sequence of the freshly-planned path (source first,
-    /// then each hop's target). Bound to the auto-light provisioner, which scans
-    /// the route for its darkest room and readies / provisions a light that
-    /// clears it before the character walks into the dark. Best-effort and
-    /// side-effect-free — skipped entirely when no announcer is bound.
-    /// </summary>
+    // Planned-route room announcer. Invoked once at walk-start with the
+    // ordered RoomKey sequence of the freshly-planned path (source first,
+    // then each hop's target). Bound to the auto-light provisioner, which
+    // scans the route for its darkest room and readies / provisions a
+    // light that clears it before the character walks into the dark.
+    // Best-effort and side-effect-free — skipped entirely when no
+    // announcer is bound.
     public void SetRouteAnnouncer(Action<IReadOnlyList<RoomKey>> announcer)
     {
         ArgumentNullException.ThrowIfNull(announcer);
         _routeAnnouncer = announcer;
     }
 
-    /// <summary>
-    /// Test seam — pretend the wire prompt scanner just fired, so the
-    /// pending command step can advance without a real telnet client.
-    /// No-op when no command step is in flight.
-    /// </summary>
+    // Test seam — pretend the wire prompt scanner just fired, so the
+    // pending command step can advance without a real telnet client.
+    // No-op when no command step is in flight.
     internal void FirePromptForTests()
     {
         if (_awaitingPromptForCommand) OnPromptObservedCore();
     }
 
-    /// <summary>
-    /// When non-null, the user requested a walk while the tracker still
-    /// had pipelined moves outstanding (Confidence == Pending). Planning
-    /// is deferred until the tracker reaches Confirmed; the next
-    /// confirmation in <see cref="OnTrackerStateChanged"/> picks this
-    /// up and runs <see cref="WalkToImmediate"/> against the actually-
-    /// settled current room. Cleared by <see cref="Reset"/> so a Stop
-    /// or supersede invalidates the deferral.
-    /// </summary>
+    // When non-null, the user requested a walk while the tracker still
+    // had pipelined moves outstanding (Confidence == Pending). Planning is
+    // deferred until the tracker reaches Confirmed; the next confirmation
+    // in OnTrackerStateChanged picks this up and runs WalkToImmediate
+    // against the actually-settled current room. Cleared by Reset so a
+    // Stop or supersede invalidates the deferral.
     private RoomKey? _deferredWalkTarget;
 
     public bool WalkTo(RoomKey destination)
@@ -655,9 +593,9 @@ public sealed class AutoWalkManager : IRecoverableEngine
         _expectedAfterCurrentMove = exit.Target;
         _stepInFlight = true;
 
-        // Trapped exits — route through TrapDisarmManager (PR 7.22)
-        // before the move bytes go out. The walker waits for the trap
-        // reply; the actual move bytes are sent from OnTrapReply.
+        // Trapped exits — route through TrapDisarmManager before the move
+        // bytes go out. The walker waits for the trap reply; the actual
+        // move bytes are sent from OnTrapReply.
         if (exit.Hint == RoomExitHint.Trap && _trapEnqueuer is not null)
         {
             string dirWord = DirectionWord(step.Direction);
@@ -698,10 +636,10 @@ public sealed class AutoWalkManager : IRecoverableEngine
 
         // Door / KeyLocked exits — route through DoorOpenManager to
         // bash/pick/open before the move bytes go out. The keyed-door
-        // path (KeyItemId > 0) tries bash/pick first to save key
-        // charges (per MudProxy 1280-1322) and falls back to the
-        // single-shot `use <keyName> <dir>` + `open <dir>` sequence
-        // when no stat-alt is viable or both verbs exhaust.
+        // path (KeyItemId > 0) tries bash/pick first to save key charges
+        // and falls back to the single-shot `use <keyName> <dir>` +
+        // `open <dir>` sequence when no stat-alt is viable or both verbs
+        // exhaust.
         if ((exit.Hint == RoomExitHint.Door || exit.Hint == RoomExitHint.KeyLocked)
             && _doorEnqueuer is not null)
         {
@@ -924,14 +862,12 @@ public sealed class AutoWalkManager : IRecoverableEngine
         WriteBytes(bytes, $"command '{step.Command}'");
     }
 
-    /// <summary>
-    /// Emit a move (cardinal direction, text-exit command, or teleport
-    /// keyword) — fires the pre-move stealth hook (so <c>sn</c> is the
-    /// last command before the move) then writes the move bytes. Every
-    /// move-byte send routes through here so the choke point stays
-    /// single; non-move sends (multi-action prerequisites, the teleport
-    /// <c>.@party</c> relay) call <see cref="WriteBytes"/> directly.
-    /// </summary>
+    // Emit a move (cardinal direction, text-exit command, or teleport
+    // keyword) — fires the pre-move stealth hook (so sn is the last
+    // command before the move) then writes the move bytes. Every move-byte
+    // send routes through here so the choke point stays single; non-move
+    // sends (multi-action prerequisites, the teleport .@party relay) call
+    // WriteBytes directly.
     private void EmitMoveBytes(byte[] bytes, string reasonForLog)
     {
         _preMoveHook?.Invoke();
@@ -1135,14 +1071,12 @@ public sealed class AutoWalkManager : IRecoverableEngine
         }
     }
 
-    /// <summary>
-    /// Reconcile <c>_index</c> with the tracker's current room after a
-    /// pause. Returns true when the walker can resume safely from its
-    /// new index (whether or not the index moved). Returns false when
-    /// the player ended up at a room that isn't on the remaining path
-    /// AND can't legally take the next planned step — the caller should
-    /// re-plan rather than blindly re-sending a stale step direction.
-    /// </summary>
+    // Reconcile _index with the tracker's current room after a pause.
+    // Returns true when the walker can resume safely from its new index
+    // (whether or not the index moved). Returns false when the player
+    // ended up at a room that isn't on the remaining path AND can't
+    // legally take the next planned step — the caller should re-plan
+    // rather than blindly re-sending a stale step direction.
     private bool TryReconcileIndexAfterResume()
     {
         if (_path is null) return true;

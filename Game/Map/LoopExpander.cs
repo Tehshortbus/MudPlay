@@ -2,33 +2,24 @@ using System.Collections.Generic;
 
 namespace FujinTerm.Game.Map;
 
-/// <summary>
-/// Static expansion of a saved <see cref="Loop"/>'s persistent
-/// <see cref="LoopWaypoint"/> list into the flat runtime
-/// <see cref="LoopStep"/> sequence the runner executes. BFS-fills
-/// the move directions between consecutive waypoints (plus the
-/// closing leg back to waypoint 0) and inserts per-waypoint commands
-/// after each arrival.
-/// </summary>
-/// <remarks>
-/// Pure static helper — takes no state and produces no side effects
-/// beyond the returned tuple. Lets the runner do the expansion once
-/// at <c>Start</c> and the Navigation overlay do it on demand for
-/// the right-click "Preview on map" pane, both off the same code
-/// path.
-/// </remarks>
+// Static expansion of a saved Loop's persistent LoopWaypoint list into the
+// flat runtime LoopStep sequence the runner executes. BFS-fills the move
+// directions between consecutive waypoints (plus the closing leg back to
+// waypoint 0) and inserts per-waypoint commands after each arrival.
+//
+// Pure static helper — takes no state and produces no side effects beyond
+// the returned tuple. Lets the runner do the expansion once at Start and
+// the Navigation overlay do it on demand for the right-click "Preview on
+// map" pane, both off the same code path.
 public static class LoopExpander
 {
-    /// <summary>
-    /// Expand <paramref name="waypoints"/> into the cycle's runtime
-    /// step list. Returns the flat list of moves + commands AND a
-    /// per-leg unreachable list so callers can surface "fix the loop"
-    /// hints. Empty steps + empty unreachables means "too few
-    /// waypoints to form a cycle" (need at least 2).
-    /// </summary>
-    /// <param name="waypoints">Ordered cycle (closing edge implicit).</param>
-    /// <param name="bfs">BFS pathfinder bound to the active room graph.</param>
-    /// <param name="filter">Optional avoided-rooms / stash filter.</param>
+    // Expand waypoints into the cycle's runtime step list. Returns the flat
+    // list of moves + commands AND a per-leg unreachable list so callers
+    // can surface "fix the loop" hints. Empty steps + empty unreachables
+    // means "too few waypoints to form a cycle" (need at least 2).
+    // waypoints is the ordered cycle (closing edge implicit); bfs is the
+    // pathfinder bound to the active room graph; filter is an optional
+    // avoided-rooms / stash filter.
     public static (IReadOnlyList<LoopStep> Steps,
                    IReadOnlyList<(RoomKey From, RoomKey To)> UnreachableSegments)
         Expand(IReadOnlyList<LoopWaypoint> waypoints, BfsMapper bfs, IRoomFilter? filter = null)
@@ -60,14 +51,11 @@ public static class LoopExpander
         return (steps, unreachable);
     }
 
-    /// <summary>
-    /// Walk the expanded cycle from <paramref name="start"/> and
-    /// accumulate every room visited (start, each intermediate hop,
-    /// every waypoint, ending back at <paramref name="start"/>). Used
-    /// by the map overlay to render the closed-loop polyline anchored
-    /// at the rotation entry. Returns empty when the cycle can't be
-    /// resolved (too few waypoints, unreachable legs).
-    /// </summary>
+    // Walk the expanded cycle from the first waypoint and accumulate every
+    // room visited (start, each intermediate hop, every waypoint, ending
+    // back at the start). Used by the map overlay to render the closed-loop
+    // polyline anchored at the rotation entry. Returns empty when the cycle
+    // can't be resolved (too few waypoints, unreachable legs).
     public static IReadOnlyList<RoomKey> ResolveCycleRoomKeys(
         IReadOnlyList<LoopWaypoint> waypoints,
         BfsMapper bfs,

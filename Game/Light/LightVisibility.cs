@@ -1,26 +1,23 @@
 namespace FujinTerm.Game.Light;
 
-/// <summary>
-/// How visible a room is to the player, from the combined illumination
-/// <c>V = charIllu + roomLight</c> against MME's band table
-/// (<c>frmMain.frm:33293-33300</c>). <see cref="PitchBlack"/> and
-/// <see cref="VeryDark"/> mean the server hides room contents and can't-see
-/// applies; the rest render, with a melee penalty easing as V rises.
-/// </summary>
+// How visible a room is to the player, from the combined illumination
+// V = charIllu + roomLight against MajorMUD's band table. PitchBlack and VeryDark
+// mean the server hides room contents and can't-see applies; the rest render, with
+// a melee penalty easing as V rises.
 public enum LightVisibility
 {
-    /// <summary><c>V &lt; -200</c> — can't see, contents hidden.</summary>
+    // V < -200 — can't see, contents hidden.
     PitchBlack,
 
-    /// <summary><c>-200 &lt;= V &lt; -150</c> — can't see, contents hidden.</summary>
+    // -200 <= V < -150 — can't see, contents hidden.
     VeryDark,
 
-    /// <summary><c>-150 &lt;= V &lt; -100</c> — visible, heavy melee penalty.</summary>
+    // -150 <= V < -100 — visible, heavy melee penalty.
     BarelyVisible,
 
-    /// <summary><c>-100 &lt;= V &lt; 0</c> — visible, slight penalty.</summary>
+    // -100 <= V < 0 — visible, slight penalty.
     DimlyLit,
 
-    /// <summary><c>V &gt;= 0</c> — fully lit, no penalty.</summary>
+    // V >= 0 — fully lit, no penalty.
     Normal,
 }

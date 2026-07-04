@@ -7,49 +7,33 @@ using FujinTerm.Services.Patterns;
 
 namespace FujinTerm.Game.Combat;
 
-/// <summary>
-/// Phase 9 PR 9.0b — turns the wire's <c>Also here:</c> line into a
-/// classified entity list (Player / Monster / Unknown). The output
-/// feeds <c>CombatStateTracker</c> (PR 9.0b sub-C) — which holds the
-/// <c>Combat</c> gate on <see cref="Game.Map.MovementCoordinator"/>
-/// while any classified Monster carries non-zero AttackPriority — and
-/// the LogPane's double-click-to-fix flow for unknown names.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Algorithm per docs/10-phase-9 § Cross-cut 2:
-/// </para>
-/// <list type="number">
-/// <item>Split the comma-separated occupant capture, normalising the
-/// Oxford <c>" and "</c> form into a comma the same way
-/// <see cref="AutoPartyManager"/> does.</item>
-/// <item>For each entry: try direct match against every
-/// <see cref="MonsterMessageRecord.Name"/> where
-/// <see cref="MonsterMessageRecord.AllowNoPrefix"/> is true; else try
-/// the prefix-stripped form against every monster's
-/// <see cref="MonsterMessageRecord.FlavorPrefixes"/>.</item>
-/// <item>If no monster match, fall through to player lookup: the
-/// entry's first whitespace token compared against every
-/// <see cref="PlayerRecord.GivenName"/> in the active per-BBS
-/// database (case-insensitive).</item>
-/// <item>Else Unknown — emit a Warn-severity log row with the raw
-/// <c>Also here:</c> line carried as <see cref="LogEntry.Context"/>.
-/// PR 9.0b sub-D's LogPane double-click handler opens the
-/// <see cref="ViewModels.UnknownEntityFixDialogViewModel"/> from this
-/// row.</item>
-/// </list>
-/// <para>
-/// Performance: ~1100 monster records in a typical realm × ~5 entries
-/// per Also-Here line × ~prefix-list-size-per-record ≈ ~50k string
-/// comparisons in the worst pathological case. Naive scan is fine for
-/// the post-Phase-9 hot path (rooms display every few seconds at most);
-/// a prefix-aware lookup index can replace this if profiling shows it
-/// matters.
-/// </para>
-/// </remarks>
+// Turns the wire's "Also here:" line into a classified entity list (Player /
+// Monster / Unknown). The output feeds CombatStateTracker — which holds the
+// Combat gate on MovementCoordinator while any classified Monster carries
+// non-zero AttackPriority — and the LogPane's double-click-to-fix flow for
+// unknown names.
+//
+// Algorithm:
+// 1. Split the comma-separated occupant capture, normalising the Oxford " and "
+//    form into a comma the same way AutoPartyManager does.
+// 2. For each entry: try direct match against every MonsterMessageRecord.Name
+//    where AllowNoPrefix is true; else try the prefix-stripped form against
+//    every monster's FlavorPrefixes.
+// 3. If no monster match, fall through to player lookup: the entry's first
+//    whitespace token compared against every PlayerRecord.GivenName in the
+//    active per-BBS database (case-insensitive).
+// 4. Else Unknown — emit a Warn-severity log row with the raw "Also here:" line
+//    carried as LogEntry.Context. The LogPane double-click handler opens the
+//    UnknownEntityFixDialogViewModel from this row.
+//
+// Performance: ~1100 monster records in a typical realm × ~5 entries per
+// Also-Here line × ~prefix-list-size-per-record ≈ ~50k string comparisons in the
+// worst pathological case. Naive scan is fine for the hot path (rooms display
+// every few seconds at most); a prefix-aware lookup index can replace this if
+// profiling shows it matters.
 public sealed class RoomEntityClassifier : IDisposable
 {
-    /// <summary>LogService category for all rows this classifier emits.</summary>
+    // LogService category for all rows this classifier emits.
     public const string LogCategory = "RoomClassifier";
 
     private static readonly Regex AndNormaliser = new(@"\s+and\s+", RegexOptions.Compiled);
@@ -65,13 +49,13 @@ public sealed class RoomEntityClassifier : IDisposable
     private string? _alsoHereRawFirst;   // raw line that started the buffer
     private bool _disposed;
 
-    /// <summary>Fires after each successful <c>Also here:</c> parse.
-    /// Subscribers run on the MessageRouter's marshalled thread — the
-    /// UI thread in normal app use; the test thread under xUnit.</summary>
+    // Fires after each successful "Also here:" parse. Subscribers run on the
+    // MessageRouter's marshalled thread — the UI thread in normal app use; the
+    // test thread under xUnit.
     public event Action<RoomEntitiesObservation>? EntitiesObserved;
 
-    /// <summary>Last observation parsed, or <c>null</c> when no
-    /// <c>Also here:</c> line has been seen this session.</summary>
+    // Last observation parsed, or null when no "Also here:" line has been seen
+    // this session.
     public RoomEntitiesObservation? Current { get; private set; }
 
     public RoomEntityClassifier(
@@ -81,13 +65,10 @@ public sealed class RoomEntityClassifier : IDisposable
         LogService? log = null)
         : this(router, monsters, players, roomTracker: null, log) { }
 
-    /// <summary>
-    /// Construct with a <see cref="RoomTracker"/> binding so the
-    /// classifier wipes its observation when the player moves rooms.
-    /// Without this, a stale Also-Here from the previous room would
-    /// keep CombatManager swinging at a target that didn't follow us
-    /// in — the user's "wasted combat round on move" scenario.
-    /// </summary>
+    // Construct with a RoomTracker binding so the classifier wipes its
+    // observation when the player moves rooms. Without this, a stale Also-Here
+    // from the previous room would keep CombatManager swinging at a target that
+    // didn't follow us in — the "wasted combat round on move" scenario.
     public RoomEntityClassifier(
         MessageRouter router,
         MonsterMessageStore monsters,
@@ -108,16 +89,13 @@ public sealed class RoomEntityClassifier : IDisposable
             _roomTracker.StateChanged += OnRoomTrackerStateChanged;
     }
 
-    /// <summary>
-    /// Bind to the per-session <see cref="Terminal.LineExtractor"/> so
-    /// the classifier can stitch wrapped "Also here:" lines back
-    /// together. The MajorMUD server wraps occupant lists at the
-    /// 80-column boundary, so the regex-based MessageRouter pattern
-    /// fires only when the list fits on one row. The fallback path
-    /// here buffers everything from "Also here:" until a line ends
-    /// with "." then re-feeds the joined text through the parse.
-    /// Idempotent — re-attaching to the same extractor is a no-op.
-    /// </summary>
+    // Bind to the per-session LineExtractor so the classifier can stitch wrapped
+    // "Also here:" lines back together. The MajorMUD server wraps occupant lists
+    // at the 80-column boundary, so the regex-based MessageRouter pattern fires
+    // only when the list fits on one row. The fallback path here buffers
+    // everything from "Also here:" until a line ends with "." then re-feeds the
+    // joined text through the parse. Idempotent — re-attaching to the same
+    // extractor is a no-op.
     public void AttachLineExtractor(Terminal.LineExtractor lines)
     {
         ArgumentNullException.ThrowIfNull(lines);
@@ -206,33 +184,23 @@ public sealed class RoomEntityClassifier : IDisposable
         EntitiesObserved?.Invoke(obs);
     }
 
-    /// <summary>
-    /// Public for direct callers (the sub-G fix dialog can re-classify
-    /// a fixed-up name to confirm the prefix took). Skips the
-    /// MessageRouter subscription path.
-    /// </summary>
+    // Public for direct callers (the fix dialog can re-classify a fixed-up name
+    // to confirm the prefix took). Skips the MessageRouter subscription path.
     public RoomEntity Classify(string entry) => Classify(entry, rawAlsoHereLine: string.Empty);
 
-    /// <summary>
-    /// Append a single freshly-arrived entity to the current room
-    /// observation and re-fire <see cref="EntitiesObserved"/>. Called
-    /// by <see cref="RoomEntryWatcher"/> when the wire reports
-    /// <c>"&lt;name&gt; &lt;verb&gt; into the room from &lt;dir&gt;."</c>
-    /// — the new entity slots into the existing
-    /// <see cref="RoomEntitiesObservation.Entities"/> list so
-    /// downstream consumers (CombatStateTracker re-evaluating the
-    /// Combat gate, CombatManager re-picking by priority) see the
-    /// updated room state without waiting for a full re-display.
-    /// </summary>
-    /// <remarks>
-    /// If no <see cref="Current"/> observation exists yet (player
-    /// just connected, mob spawned before the first Also-Here line),
-    /// synthesises a fresh observation with an empty raw line. The
-    /// caller's <paramref name="rawWireLine"/> is captured for the
-    /// new observation's raw-line field so consumers that read it
-    /// (LogPane click-to-fix) see the arrival line rather than the
-    /// stale Also-Here.
-    /// </remarks>
+    // Append a single freshly-arrived entity to the current room observation and
+    // re-fire EntitiesObserved. Called by RoomEntryWatcher when the wire reports
+    // "<name> <verb> into the room from <dir>." — the new entity slots into the
+    // existing observation's Entities list so downstream consumers
+    // (CombatStateTracker re-evaluating the Combat gate, CombatManager re-picking
+    // by priority) see the updated room state without waiting for a full
+    // re-display.
+    //
+    // If no Current observation exists yet (player just connected, mob spawned
+    // before the first Also-Here line), synthesises a fresh observation with an
+    // empty raw line. The caller's rawWireLine is captured for the new
+    // observation's raw-line field so consumers that read it (LogPane
+    // click-to-fix) see the arrival line rather than the stale Also-Here.
     public void AppendArrivalEntity(RoomEntity entity, string rawWireLine)
     {
         IReadOnlyList<RoomEntity> baseEntities = Current is { } cur
@@ -320,13 +288,10 @@ public sealed class RoomEntityClassifier : IDisposable
         return false;
     }
 
-    /// <summary>
-    /// The <see cref="MonsterMessageRecord"/> carries a back-reference
-    /// to the Monsters-table row via <see cref="MonsterMessageRecord.Links"/>;
-    /// typically a single <c>(Monsters, N)</c> entry. Returns the first
-    /// such number, or <c>null</c> when the record has none (a
-    /// user-curated entry not bound to a specific monster row).
-    /// </summary>
+    // The MonsterMessageRecord carries a back-reference to the Monsters-table row
+    // via its Links; typically a single (Monsters, N) entry. Returns the first
+    // such number, or null when the record has none (a user-curated entry not
+    // bound to a specific monster row).
     private static int? ResolveMonsterNumber(MonsterMessageRecord m)
     {
         if (m.Links is null) return null;
@@ -352,13 +317,10 @@ public sealed class RoomEntityClassifier : IDisposable
         return false;
     }
 
-    /// <summary>
-    /// Mirror of <see cref="AutoPartyManager.SplitOccupantList"/>'s
-    /// Oxford-comma-aware split. Duplicated rather than reused because
-    /// the AutoParty helper is private + this consumer needs the same
-    /// semantics; the alternative is hoisting the helper into a shared
-    /// utility, which inflates the surface for a 12-line function.
-    /// </summary>
+    // Mirror of AutoPartyManager.SplitOccupantList's Oxford-comma-aware split.
+    // Duplicated rather than reused because the AutoParty helper is private + this
+    // consumer needs the same semantics; the alternative is hoisting the helper
+    // into a shared utility, which inflates the surface for a 12-line function.
     private static IEnumerable<string> SplitOccupantList(string list)
     {
         string normalised = AndNormaliser.Replace(list, ", ");
@@ -369,12 +331,10 @@ public sealed class RoomEntityClassifier : IDisposable
         }
     }
 
-    /// <summary>
-    /// "Raijin (sneaking)" → "Raijin"; "nasty giant rat." → "nasty
-    /// giant rat". Strips a trailing parenthetical AND any non-letter
-    /// trailing characters. Preserves spaces inside the name so multi-
-    /// word monster names ("giant rat") survive.
-    /// </summary>
+    // "Raijin (sneaking)" → "Raijin"; "nasty giant rat." → "nasty giant rat".
+    // Strips a trailing parenthetical AND any non-letter trailing characters.
+    // Preserves spaces inside the name so multi-word monster names ("giant rat")
+    // survive.
     private static string StripTrailingNoise(string raw)
     {
         if (string.IsNullOrEmpty(raw)) return string.Empty;
@@ -423,25 +383,18 @@ public sealed class RoomEntityClassifier : IDisposable
         NoteRoomChanged();
     }
 
-    /// <summary>
-    /// Remove ONE entity matching <paramref name="monsterName"/>
-    /// (case-insensitive match against <see cref="RoomEntity.ResolvedName"/>
-    /// then <see cref="RoomEntity.RawName"/> as fallback) from
-    /// <see cref="Current"/> and re-fire <see cref="EntitiesObserved"/>.
-    /// Called by <see cref="MonsterDeathWatcher"/> when a specific
-    /// death-line pattern is observed so CombatManager doesn't sit
-    /// on a stale entity that already died — the bug behind the
-    /// "fierce kobold thief arrived but no attack" scenario where the
-    /// just-killed "giant rat" still appeared in the Current list and
-    /// blocked the target re-pick.
-    /// </summary>
-    /// <param name="monsterName">The dead monster's name. The
-    /// death-line patterns use the base / canonical name (no flavour
-    /// prefix), so resolved-name matches first; raw-name match
-    /// covers the edge case where a no-prefix monster carries the
-    /// same string in both fields.</param>
-    /// <returns><c>true</c> when a matching entity was removed,
-    /// <c>false</c> otherwise (defensive caller logging).</returns>
+    // Remove ONE entity matching monsterName (case-insensitive match against
+    // ResolvedName then RawName as fallback) from Current and re-fire
+    // EntitiesObserved. Called by MonsterDeathWatcher when a specific death-line
+    // pattern is observed so CombatManager doesn't sit on a stale entity that
+    // already died — the bug behind the "fierce kobold thief arrived but no
+    // attack" scenario where the just-killed "giant rat" still appeared in the
+    // Current list and blocked the target re-pick.
+    //
+    // The death-line patterns use the base / canonical name (no flavour prefix),
+    // so resolved-name matches first; raw-name match covers the edge case where a
+    // no-prefix monster carries the same string in both fields. Returns true when
+    // a matching entity was removed, false otherwise (defensive caller logging).
     public bool RemoveDeadEntity(string monsterName)
     {
         if (string.IsNullOrWhiteSpace(monsterName)) return false;
@@ -472,19 +425,13 @@ public sealed class RoomEntityClassifier : IDisposable
         return true;
     }
 
-    /// <summary>
-    /// Wipe <see cref="Current"/> and re-fire <see cref="EntitiesObserved"/>
-    /// with an empty observation — drives CombatManager to clear its
-    /// target so the next round doesn't waste a swing on a monster
-    /// that didn't follow us in. The next Also-Here parse (arrives
-    /// within milliseconds of the move) rebuilds the list for the
-    /// new room and CombatManager picks afresh.
-    /// </summary>
-    /// <remarks>
-    /// Public so callers other than <see cref="RoomTracker"/> can
-    /// drive the wipe (tests, future forced-refresh paths).
-    /// Idempotent on already-empty observations.
-    /// </remarks>
+    // Wipe Current and re-fire EntitiesObserved with an empty observation —
+    // drives CombatManager to clear its target so the next round doesn't waste a
+    // swing on a monster that didn't follow us in. The next Also-Here parse
+    // (arrives within milliseconds of the move) rebuilds the list for the new
+    // room and CombatManager picks afresh. Public so callers other than
+    // RoomTracker can drive the wipe (tests, forced-refresh paths). Idempotent on
+    // already-empty observations.
     public void NoteRoomChanged()
     {
         RoomEntitiesObservation wiped = new(

@@ -6,51 +6,34 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game.Remote;
 
-/// <summary>
-/// On-demand party-inventory probe. Asks the whole party "do you have this
-/// item, and how many?" by broadcasting <c>@have &lt;item&gt;</c> to every
-/// non-self member and aggregating their replies into a single
-/// <see cref="PartyItemResult"/>. Backs the Settings → Other "defer to party
-/// inventory" affordance: when a walk-route crosses an <c>(Item: N)</c> /
-/// <c>(Ticket: N)</c> gate whose per-member item we lack,
-/// <see cref="Game.Map.PartyPathItemGate"/> probes the party first and — if a
-/// member has a spare — has them hand it over instead of posting a
-/// search / shop / hunt need.
-/// </summary>
-/// <remarks>
-/// <para>
-/// The round-trip rides the existing remote-command plumbing: the query goes
-/// out through <see cref="PartyBroadcaster.Broadcast"/> (one
-/// <c>/&lt;given&gt; @have &lt;item&gt;</c> per member), and each member's
-/// <see cref="InventoryQueryHandler.OnHave"/> replies
-/// <c>"yes - Nx matching '&lt;q&gt;'"</c> / <c>"no - nothing matching '&lt;q&gt;'"</c>
-/// back over an incoming telepath. We subscribe to
-/// <see cref="ChatRouter.EntryClassified"/> and correlate each reply by the
-/// echoed <c>matching '&lt;q&gt;'</c> substring, so several per-item queries can
-/// be in flight at once without their replies crossing wires.
-/// </para>
-/// <para>
-/// A query completes early once every expected responder has replied, or when
-/// the <see cref="QueryWindow"/> elapses (a member who never answers — offline,
-/// no ExecuteCommands round-trip, hasn't parsed inventory — simply doesn't
-/// count toward the total). The expected-responder set mirrors
-/// <see cref="PartyBroadcaster"/>'s own filter (non-self, named), so we never
-/// wait on a member the broadcast skipped. With no one to ask the task
-/// completes synchronously with an empty result, letting the caller fall
-/// straight through to its fallback.
-/// </para>
-/// </remarks>
+// On-demand party-inventory probe. Asks the whole party "do you have this item,
+// and how many?" by broadcasting @have <item> to every non-self member and
+// aggregating their replies into a single PartyItemResult. Backs the Settings →
+// Other "defer to party inventory" affordance: when a walk-route crosses an
+// (Item: N) / (Ticket: N) gate whose per-member item we lack, PartyPathItemGate
+// probes the party first and — if a member has a spare — has them hand it over
+// instead of posting a search / shop need.
+//
+// The round-trip rides the existing remote-command plumbing: the query goes out
+// through PartyBroadcaster.Broadcast (one /<given> @have <item> per member), and
+// each member's InventoryQueryHandler.OnHave replies "yes - Nx matching '<q>'" /
+// "no - nothing matching '<q>'" back over an incoming telepath. We subscribe to
+// ChatRouter.EntryClassified and correlate each reply by the echoed
+// matching '<q>' substring, so several per-item queries can be in flight at once
+// without their replies crossing wires.
+//
+// A query completes early once every expected responder has replied, or when the
+// QueryWindow elapses (a member who never answers — offline, no ExecuteCommands
+// round-trip, hasn't parsed inventory — simply doesn't count toward the total).
+// The expected-responder set mirrors PartyBroadcaster's own filter (non-self,
+// named), so we never wait on a member the broadcast skipped. With no one to ask
+// the task completes synchronously with an empty result, letting the caller fall
+// straight through to its fallback.
 public sealed partial class PartyInventoryProbe : IDisposable
 {
-    /// <summary>Aggregate outcome of one <c>@have</c> round-trip.</summary>
-    /// <param name="ItemId">The item id the query was about.</param>
-    /// <param name="TotalCount">Sum of matching counts reported across the party.</param>
-    /// <param name="Expected">How many members the query was sent to.</param>
-    /// <param name="Replied">How many members answered before completion.</param>
-    /// <param name="CountsByMember">
-    /// Per-member match count keyed by given name (case-insensitive). Only
-    /// members that replied appear; a non-responder is absent, not zero.
-    /// </param>
+    // Aggregate outcome of one @have round-trip. CountsByMember is the per-member
+    // match count keyed by given name (case-insensitive); only members that
+    // replied appear, a non-responder is absent, not zero.
     public readonly record struct PartyItemResult(
         int ItemId,
         int TotalCount,
@@ -61,10 +44,10 @@ public sealed partial class PartyInventoryProbe : IDisposable
         private static readonly IReadOnlyDictionary<string, int> NoCounts =
             new Dictionary<string, int>();
 
-        /// <summary>An empty result — no party members to ask, or the probe was disposed.</summary>
+        // An empty result — no party members to ask, or the probe was disposed.
         public static PartyItemResult Empty(int itemId) => new(itemId, 0, 0, 0, NoCounts);
 
-        /// <summary>True when at least one member reported holding the item.</summary>
+        // True when at least one member reported holding the item.
         public bool AnyHeld => TotalCount > 0;
     }
 
@@ -88,12 +71,9 @@ public sealed partial class PartyInventoryProbe : IDisposable
     private readonly List<PendingQuery> _pending = new();
     private bool _disposed;
 
-    /// <summary>
-    /// How long to wait for replies before completing a query with whatever
-    /// arrived. Short — the round-trip is a single telepath each way. PR 6.9's
-    /// party-cadence knobs could make this configurable later; 4 s is a safe
-    /// default that tolerates a laggy BBS without stalling the walk.
-    /// </summary>
+    // How long to wait for replies before completing a query with whatever
+    // arrived. Short — the round-trip is a single telepath each way. 4 s is a safe
+    // default that tolerates a laggy BBS without stalling the walk.
     public TimeSpan QueryWindow { get; set; } = TimeSpan.FromSeconds(4);
 
     // `cur` count is always positive; the echoed query is captured greedily so
@@ -126,11 +106,9 @@ public sealed partial class PartyInventoryProbe : IDisposable
         _chat.EntryClassified += OnChatEntry;
     }
 
-    /// <summary>
-    /// Broadcast <c>@have &lt;itemName&gt;</c> to the party and complete once
-    /// every member replies or <see cref="QueryWindow"/> elapses. Returns an
-    /// empty result immediately when the party has no one else to ask.
-    /// </summary>
+    // Broadcast @have <itemName> to the party and complete once every member
+    // replies or QueryWindow elapses. Returns an empty result immediately when the
+    // party has no one else to ask.
     public Task<PartyItemResult> QueryAsync(int itemId, string itemName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(itemName);

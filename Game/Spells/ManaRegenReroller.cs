@@ -2,77 +2,62 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game.Spells;
 
-/// <summary>
-/// Threshold + cap governing a mana-regen roll-spell reroll cycle, read live
-/// from <see cref="Models.Profile.SpellsSettings"/> on every decision so a
-/// mid-cycle settings edit takes effect on the next roll.
-/// </summary>
-/// <param name="Threshold">Reroll while the rolled <c>spells:</c> contribution
-/// lands below this. <c>null</c> disables rerolling — the spell then just
-/// recasts on expiry through the normal buff path, no <c>abil</c> read.</param>
-/// <param name="Cap">Hard ceiling on consecutive rerolls per cast cycle before
-/// accepting whatever landed. See
-/// <see cref="Models.Profile.SpellsSettings.ManaRegenRerollCap"/>.</param>
+// Threshold + cap governing a mana-regen roll-spell reroll cycle, read live
+// from SpellsSettings on every decision so a mid-cycle settings edit takes
+// effect on the next roll.
+//
+// Threshold: reroll while the rolled spells: contribution lands below this.
+// null disables rerolling — the spell then just recasts on expiry through the
+// normal buff path, no abil read. Cap: hard ceiling on consecutive rerolls per
+// cast cycle before accepting whatever landed.
 public readonly record struct ManaRegenRerollConfig(int? Threshold, int Cap);
 
-/// <summary>
-/// Paradigm-only reroll state machine for a code-145 mana-regen roll spell
-/// (nature tap / mana flux) — a persistent ± modifier to the mana-regen rate
-/// whose landed value is a fresh roll each cast. After the spell lands we read
-/// its rolled contribution off <c>abil 145</c>'s <c>spells:</c> slice
-/// (surfaced by <see cref="AbilBreakdownParser"/>); a roll below the configured
-/// threshold drags the regen rate down, so we recast to try for a better one —
-/// up to <see cref="ManaRegenRerollConfig.Cap"/> times, hard-stopping early if
-/// the next cast can't be paid without dropping under the buff floor.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Purely a state machine driven by two external events: a confirmed roll-spell
-/// landing (<see cref="OnRollSpellLanded"/>, wired from the
-/// <see cref="CastingDirector"/>'s buff-confirmation path) and a parsed
-/// <c>abil</c> breakdown (<see cref="AbilBreakdownParser.BreakdownParsed"/>).
-/// It owns no timers, no wire access, and no spell classification: the caller
-/// only invokes <see cref="OnRollSpellLanded"/> for a spell it has already
-/// resolved to a code-145 roll spell, and supplies the query / recast / afford
-/// actions. This keeps the decision logic deterministic and unit-testable.
-/// </para>
-/// <para>
-/// The Stock realm has no <c>abil</c> breakdown to read, so the reroll path is
-/// Paradigm-only; the caller gates construction / invocation on the active
-/// realm. Stock infers roll quality from observed regen ticks on a separate
-/// path.
-/// </para>
-/// <para>
-/// <b>Cycle life:</b> a landing while idle opens a cycle and zeroes the reroll
-/// counter; a landing mid-cycle is the recast we asked for and preserves the
-/// counter. Either way it fires one <c>abil 145</c> query. The returned
-/// breakdown decides accept (roll ≥ threshold, cap reached, or floor hit) or
-/// reroll (recast, counter++). Serial by construction — each <c>abil</c> read
-/// is bracketed by a landing, so there is never more than one query in flight.
-/// </para>
-/// </remarks>
+// Paradigm-only reroll state machine for a code-145 mana-regen roll spell
+// (nature tap / mana flux) — a persistent +/- modifier to the mana-regen rate
+// whose landed value is a fresh roll each cast. After the spell lands we read
+// its rolled contribution off abil 145's spells: slice (surfaced by
+// AbilBreakdownParser); a roll below the configured threshold drags the regen
+// rate down, so we recast to try for a better one — up to Cap times,
+// hard-stopping early if the next cast can't be paid without dropping under the
+// buff floor.
+//
+// Purely a state machine driven by two external events: a confirmed roll-spell
+// landing (OnRollSpellLanded, wired from the CastingDirector's buff-confirmation
+// path) and a parsed abil breakdown (AbilBreakdownParser.BreakdownParsed). It
+// owns no timers, no wire access, and no spell classification: the caller only
+// invokes OnRollSpellLanded for a spell it has already resolved to a code-145
+// roll spell, and supplies the query / recast / afford actions. This keeps the
+// decision logic deterministic and unit-testable.
+//
+// The Stock realm has no abil breakdown to read, so the reroll path is
+// Paradigm-only; the caller gates construction / invocation on the active
+// realm. Stock infers roll quality from observed regen ticks on a separate
+// path.
+//
+// Cycle life: a landing while idle opens a cycle and zeroes the reroll counter;
+// a landing mid-cycle is the recast we asked for and preserves the counter.
+// Either way it fires one abil 145 query. The returned breakdown decides accept
+// (roll >= threshold, cap reached, or floor hit) or reroll (recast, counter++).
+// Serial by construction — each abil read is bracketed by a landing, so there
+// is never more than one query in flight.
 public sealed class ManaRegenReroller : IDisposable
 {
-    /// <summary>LogService category — appears as <c>[ManaRegen]</c> rows per
-    /// reroll decision.</summary>
+    // LogService category — appears as [ManaRegen] rows per reroll decision.
     public const string LogCategory = "ManaRegen";
 
-    /// <summary>The ability code the reroll logic reads off an <c>abil</c>
-    /// breakdown — mana-regen is ability 145.</summary>
+    // The ability code the reroll logic reads off an abil breakdown —
+    // mana-regen is ability 145.
     public const int ManaRegenAbilityCode = RegenSpellClassifier.ManaRegenCode;
 
-    /// <summary>
-    /// True when <paramref name="formula"/> is a mana-regen <i>roll</i> spell —
-    /// it carries a code-<see cref="ManaRegenAbilityCode"/> ability whose stored
-    /// <c>AbilVal</c> is 0, the signature of nature tap / mana flux (the
-    /// magnitude is rolled from the level-scaled Min/Max range on each cast). A
-    /// fixed +N regen buff (AbilVal = N) or a mana HoT (chaos surge, codes
-    /// 150 / 123) is excluded — rerolling those is pointless. Thin alias over
-    /// <see cref="RegenSpellClassifier.Classify"/>'s
-    /// <see cref="RegenSpellTraits.ManaRegenRoll"/> trait so the "what counts as
-    /// a roll spell" rule lives in exactly one place, shared by the caller's
-    /// landing classifier and the Spells tab's range readout.
-    /// </summary>
+    // True when formula is a mana-regen roll spell — it carries a
+    // code-ManaRegenAbilityCode ability whose stored AbilVal is 0, the
+    // signature of nature tap / mana flux (the magnitude is rolled from the
+    // level-scaled Min/Max range on each cast). A fixed +N regen buff (AbilVal =
+    // N) or a mana HoT (chaos surge, codes 150 / 123) is excluded — rerolling
+    // those is pointless. Thin alias over RegenSpellClassifier.Classify's
+    // ManaRegenRoll trait so the "what counts as a roll spell" rule lives in
+    // exactly one place, shared by the caller's landing classifier and the
+    // Spells tab's range readout.
     public static bool IsRollSpell(in SpellFormulaInput formula)
         => RegenSpellClassifier.Has(formula, RegenSpellTraits.ManaRegenRoll);
 
@@ -106,23 +91,19 @@ public sealed class ManaRegenReroller : IDisposable
         _parser.BreakdownParsed += OnBreakdown;
     }
 
-    /// <summary>True while a reroll cycle is mid-flight (a roll landed and we're
-    /// awaiting its <c>abil</c> read, or about to recast). For diagnostics /
-    /// tests.</summary>
+    // True while a reroll cycle is mid-flight (a roll landed and we're awaiting
+    // its abil read, or about to recast). For diagnostics / tests.
     public bool CycleActive => _activeShort is not null;
 
-    /// <summary>Rerolls spent in the current cycle; resets when a fresh roll
-    /// lands while idle. For diagnostics / tests.</summary>
+    // Rerolls spent in the current cycle; resets when a fresh roll lands while
+    // idle. For diagnostics / tests.
     public int RerollsUsed => _rerollsUsed;
 
-    /// <summary>
-    /// The roll spell <paramref name="spellShort"/> just landed (confirmed via
-    /// its caster / applied message). A landing while idle opens a new cycle
-    /// with the reroll counter reset; a landing mid-cycle is the recast we
-    /// triggered and keeps the counter. Either way, fire an <c>abil 145</c>
-    /// query to read what it rolled. No-op (and abandons any cycle) when
-    /// rerolling is disabled.
-    /// </summary>
+    // The roll spell spellShort just landed (confirmed via its caster / applied
+    // message). A landing while idle opens a new cycle with the reroll counter
+    // reset; a landing mid-cycle is the recast we triggered and keeps the
+    // counter. Either way, fire an abil 145 query to read what it rolled. No-op
+    // (and abandons any cycle) when rerolling is disabled.
     public void OnRollSpellLanded(string spellShort)
     {
         if (string.IsNullOrWhiteSpace(spellShort)) return;
@@ -212,8 +193,8 @@ public sealed class ManaRegenReroller : IDisposable
         _recast(shortCode);
     }
 
-    /// <summary>Abandon any in-progress cycle — call on disconnect / death /
-    /// spell-pick change so a stale wait can't strand the reroller.</summary>
+    // Abandon any in-progress cycle — call on disconnect / death / spell-pick
+    // change so a stale wait can't strand the reroller.
     public void Reset()
     {
         _activeShort = null;

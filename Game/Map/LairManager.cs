@@ -6,35 +6,26 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game.Map;
 
-/// <summary>
-/// Per-set Auto-Lair setup catalogue. Round-trips
-/// <see cref="LairSetup"/>s under the shared
-/// <see cref="AppPaths.GameDataSetLoopsFolder"/> — same folder as loops, with
-/// the <c>.lair.json</c> filename suffix as the schema discriminator.
-/// Mirrors <see cref="LoopManager"/>'s shape (same load-on-pin,
-/// save-fires-Changed, delete-on-name lifecycle) so the UI rail can
-/// render Loops + Auto-Lair Setups side by side with identical wiring.
-/// </summary>
-/// <remarks>
-/// One-shot migration: earlier exports lived under
-/// <see cref="AppPaths.LegacyBbsLairsFolder"/> as plain <c>.json</c>
-/// files. The first <see cref="LoadAll"/> for a given set scans that
-/// folder, copies each setup into the shared Loops folder with the
-/// <c>.lair.json</c> suffix, and removes the legacy directory once
-/// empty.
-/// </remarks>
+// Per-set Auto-Lair setup catalogue. Round-trips LairSetups under the
+// shared GameDataSetLoopsFolder — same folder as loops, with the
+// .lair.json filename suffix as the schema discriminator. Mirrors
+// LoopManager's shape (same load-on-pin, save-fires-Changed,
+// delete-on-name lifecycle) so the UI rail can render Loops + Auto-Lair
+// Setups side by side with identical wiring.
+//
+// One-shot migration: earlier exports lived under LegacyBbsLairsFolder as
+// plain .json files. The first LoadAll for a given set scans that folder,
+// copies each setup into the shared Loops folder with the .lair.json
+// suffix, and removes the legacy directory once empty.
 public sealed class LairManager
 {
-    /// <summary>Suffix that flags a file in the shared Loops folder as a lair setup.</summary>
+    // Suffix that flags a file in the shared Loops folder as a lair setup.
     public const string LairFileSuffix = ".lair";
 
-    /// <summary>
-    /// Intermediate suffix used briefly between the original
-    /// <c>Lairs/{name}.json</c> layout and the current <c>{name}.lair</c>
-    /// layout. <see cref="LoadAll"/> picks these up and renames them
-    /// to <see cref="LairFileSuffix"/> so users who shipped a build
-    /// during that transition window keep their setups.
-    /// </summary>
+    // Intermediate suffix used briefly between the original
+    // Lairs/{name}.json layout and the current {name}.lair layout. LoadAll
+    // picks these up and renames them to LairFileSuffix so users who
+    // shipped a build during that transition window keep their setups.
     public const string LegacyLairFileSuffix = ".lair.json";
 
     private readonly LogService? _log;
@@ -47,25 +38,22 @@ public sealed class LairManager
         _log = log;
     }
 
-    /// <summary>Game-data set the catalogue is bound to, or null when no set is active.</summary>
+    // Game-data set the catalogue is bound to, or null when no set is active.
     public string? SetName => _setName;
 
-    /// <summary>Saved setups for the active set, sorted by name (case-insensitive).</summary>
+    // Saved setups for the active set, sorted by name (case-insensitive).
     public IReadOnlyList<LairSetup> Setups =>
         _setups.Values
                .OrderBy(s => s.Name, StringComparer.OrdinalIgnoreCase)
                .ToArray();
 
-    /// <summary>Fired after every mutation (load / save / delete).</summary>
+    // Fired after every mutation (load / save / delete).
     public event Action? SetupsChanged;
 
     public LairSetup? Get(string name) =>
         _setups.TryGetValue(name, out LairSetup? setup) ? setup : null;
 
-    /// <summary>
-    /// Rebuild the in-memory cache from disk for <paramref name="setName"/>.
-    /// Pass <c>null</c> to clear.
-    /// </summary>
+    // Rebuild the in-memory cache from disk for setName. Pass null to clear.
     public void LoadAll(string? setName)
     {
         _setups.Clear();
@@ -123,12 +111,8 @@ public sealed class LairManager
         SetupsChanged?.Invoke();
     }
 
-    /// <summary>
-    /// Persist <paramref name="setup"/> under
-    /// <see cref="AppPaths.GameDataSetLoopsFolder"/> with the
-    /// <see cref="LairFileSuffix"/> filename extension. No-op when no
-    /// set is active.
-    /// </summary>
+    // Persist setup under GameDataSetLoopsFolder with the LairFileSuffix
+    // filename extension. No-op when no set is active.
     public void Save(LairSetup setup)
     {
         ArgumentNullException.ThrowIfNull(setup);
@@ -151,11 +135,8 @@ public sealed class LairManager
         SetupsChanged?.Invoke();
     }
 
-    /// <summary>
-    /// Move the setup named <paramref name="name"/> into
-    /// <paramref name="folder"/> (empty = Loops root). No-op when the
-    /// setup isn't in the catalogue or no set is active.
-    /// </summary>
+    // Move the setup named name into folder (empty = Loops root). No-op
+    // when the setup isn't in the catalogue or no set is active.
     public bool Move(string name, string? folder)
     {
         if (Get(name) is not { } setup) return false;
@@ -167,7 +148,7 @@ public sealed class LairManager
         return true;
     }
 
-    /// <summary>Delete the setup named <paramref name="name"/>. No-op when not present or no set is active.</summary>
+    // Delete the setup named name. No-op when not present or no set is active.
     public bool Delete(string name)
     {
         if (_setName is null) return false;
@@ -178,11 +159,8 @@ public sealed class LairManager
         return true;
     }
 
-    /// <summary>
-    /// Delete the on-disk <c>.lair</c> file for <paramref name="name"/>
-    /// wherever it lives under <paramref name="root"/> (the name is
-    /// unique set-wide). Best-effort — failures are logged.
-    /// </summary>
+    // Delete the on-disk .lair file for name wherever it lives under root
+    // (the name is unique set-wide). Best-effort — failures are logged.
     private void DeleteFileForName(string root, string name)
     {
         if (!Directory.Exists(root)) return;
@@ -247,11 +225,9 @@ public sealed class LairManager
                 $"migrated {moved} setup(s) from legacy Lairs/ → Loops/{LairFileSuffix}.");
     }
 
-    /// <summary>
-    /// Rename intermediate <c>{name}.lair.json</c> files to the final
-    /// <c>{name}.lair</c> suffix. Covers the very short window in
-    /// which the unification commit shipped with the longer suffix.
-    /// </summary>
+    // Rename intermediate {name}.lair.json files to the final {name}.lair
+    // suffix. Covers the very short window in which the unification build
+    // shipped with the longer suffix.
     private void MigrateIntermediateSuffixIfPresent(string folder)
     {
         if (!Directory.Exists(folder)) return;

@@ -4,25 +4,18 @@ using FujinTerm.Game.Map;
 
 namespace FujinTerm.Game.Light;
 
-/// <summary>
-/// Scans a planned route for its darkest room and the light strength needed to
-/// see it. The route is any ordered sequence of <see cref="RoomKey"/> (a
-/// walk-to path or a <see cref="LoopExpander.ResolveCycleRoomKeys"/> cycle);
-/// resolution to concrete rooms is left to a caller-supplied delegate
-/// (production passes <c>RoomGraphManager.GetRoom</c>) so the scanner stays
-/// decoupled from where the route came from.
-/// </summary>
+// Scans a planned route for its darkest room and the light strength needed to see
+// it. The route is any ordered sequence of RoomKey (a walk-to path or a loop
+// cycle); resolution to concrete rooms is left to a caller-supplied delegate
+// (production passes RoomGraphManager.GetRoom) so the scanner stays decoupled from
+// where the route came from.
 public static class RouteLightScanner
 {
-    /// <summary>
-    /// Find the darkest room on <paramref name="route"/> and the minimum
-    /// light-source <c>Strength</c> to ready so it clears the see threshold.
-    /// Keys that don't resolve to a room are skipped (a route may cross rooms
-    /// outside the active set). Pass the player's worn <c>+illu</c> as
-    /// <paramref name="charIllu"/> — the returned
-    /// <see cref="RouteLightScan.NeededLightStrength"/> is then the strength a
-    /// provisioning light must project on top of that worn baseline.
-    /// </summary>
+    // Find the darkest room on the route and the minimum light-source Strength to
+    // ready so it clears the see threshold. Keys that don't resolve to a room are
+    // skipped (a route may cross rooms outside the active set). Pass the player's
+    // worn +illu as charIllu — the returned NeededLightStrength is then the
+    // strength a provisioning light must project on top of that worn baseline.
     public static RouteLightScan Scan(
         IEnumerable<RoomKey> route, Func<RoomKey, Room?> resolve, int charIllu)
     {

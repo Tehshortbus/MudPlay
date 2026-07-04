@@ -5,40 +5,27 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game.Map;
 
-/// <summary>
-/// In-memory graph of every room in the active game-data set —
-/// primary lookup for the Phase 7 navigation stack (room tracker,
-/// BFS mapper, walker, loop manager, auto-lair scheduler).
-/// </summary>
-/// <remarks>
-/// <para>
-/// <b>Seeding</b>: the graph reads <c>Rooms.json</c> through
-/// <see cref="GameDataCache.GetRawTable"/> once per active-set switch.
-/// Every row turns into a typed <see cref="Room"/> indexed by
-/// <see cref="RoomKey"/>. <see cref="Game.Map.RoomExit"/> values are
-/// produced inline from the per-direction MDB cells
-/// (<c>"1/3"</c> / <c>"1/3 (Door)"</c> / <c>"0"</c>). The raw
-/// <see cref="JsonDocument"/> is evicted from <see cref="GameDataCache"/>
-/// immediately after conversion (per the project's memory-hygiene
-/// pattern set by <see cref="MonsterOverlaySeedStore"/>).
-/// </para>
-/// <para>
-/// <b>Uniqueness index</b>: a side table keyed on <c>(Name, ExitMask)</c>
-/// gives the room tracker its "is this a 1-of-1 room?" answer in O(1).
-/// When the user lands in a room whose tuple resolves to exactly one
-/// candidate, the tracker promotes to <c>Located</c> without further
-/// reconciliation. Buckets with &gt; 1 candidate are surfaced via
-/// <see cref="FindCandidates"/> for the Tier-2 footprint matcher.
-/// </para>
-/// <para>
-/// <b>Wiring</b>: <see cref="AppServices"/> subscribes
-/// <see cref="OnActiveSetChanged"/> to
-/// <see cref="GameDataCache.ActiveSetChanged"/> at construction time —
-/// every set swap rebuilds the graph from scratch. Subscribers to
-/// <see cref="GraphReloaded"/> drop any per-set room references they
-/// were holding.
-/// </para>
-/// </remarks>
+// In-memory graph of every room in the active game-data set — primary lookup
+// for the navigation stack (room tracker, BFS mapper, walker, loop manager,
+// auto-lair scheduler).
+//
+// Seeding: the graph reads Rooms.json through GameDataCache.GetRawTable once per
+// active-set switch. Every row turns into a typed Room indexed by RoomKey.
+// RoomExit values are produced inline from the per-direction MDB cells
+// ("1/3" / "1/3 (Door)" / "0"). The raw JsonDocument is evicted from
+// GameDataCache immediately after conversion (per the project's memory-hygiene
+// pattern set by MonsterOverlaySeedStore).
+//
+// Uniqueness index: a side table keyed on (Name, ExitMask) gives the room
+// tracker its "is this a 1-of-1 room?" answer in O(1). When the user lands in a
+// room whose tuple resolves to exactly one candidate, the tracker promotes to
+// Located without further reconciliation. Buckets with > 1 candidate are
+// surfaced via FindCandidates for the Tier-2 footprint matcher.
+//
+// Wiring: AppServices subscribes OnActiveSetChanged to
+// GameDataCache.ActiveSetChanged at construction time — every set swap rebuilds
+// the graph from scratch. Subscribers to GraphReloaded drop any per-set room
+// references they were holding.
 public sealed class RoomGraphManager
 {
     private readonly GameDataCache _cache;
@@ -47,17 +34,15 @@ public sealed class RoomGraphManager
     private readonly Dictionary<string, List<Room>> _byName = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<(string Name, uint ExitMask), List<RoomKey>> _byNameAndExits = new();
 
-    /// <summary>Set the graph was last built from, or <c>null</c> if empty.</summary>
+    // Set the graph was last built from, or null if empty.
     public string? ActiveSet { get; private set; }
 
-    /// <summary>Number of rooms in the active graph (<c>0</c> when no set is active or load failed).</summary>
+    // Number of rooms in the active graph (0 when no set is active or load failed).
     public int RoomCount => _rooms.Count;
 
-    /// <summary>
-    /// Fires after every successful (re)load, including the
-    /// transition to no-set-active (empty graph). Subscribers should
-    /// drop any cached room references and re-pull what they need.
-    /// </summary>
+    // Fires after every successful (re)load, including the transition to
+    // no-set-active (empty graph). Subscribers should drop any cached room
+    // references and re-pull what they need.
     public event Action? GraphReloaded;
 
     public RoomGraphManager(GameDataCache cache) : this(cache, log: null) { }
@@ -69,33 +54,22 @@ public sealed class RoomGraphManager
         _log = log;
     }
 
-    /// <summary>
-    /// Direct lookup by primary key. Returns <c>null</c> when the key
-    /// doesn't resolve in the active set's graph.
-    /// </summary>
+    // Direct lookup by primary key. Returns null when the key doesn't resolve
+    // in the active set's graph.
     public Room? GetRoom(RoomKey key) =>
         _rooms.TryGetValue(key, out Room? room) ? room : null;
 
-    /// <summary>
-    /// Fires once per name learned via
-    /// <see cref="LearnRoomName"/>. Carries the room key + the name
-    /// the tracker just adopted. <see cref="Services.AppServices"/>
-    /// subscribes to surface the persist-to-Rooms.json prompt.
-    /// </summary>
+    // Fires once per name learned via LearnRoomName. Carries the room key + the
+    // name the tracker just adopted. AppServices subscribes to surface the
+    // persist-to-Rooms.json prompt.
     public event Action<RoomKey, string>? RoomNameLearned;
 
-    /// <summary>
-    /// Replace the in-memory <see cref="Room"/> at <paramref name="key"/>
-    /// with a copy whose <see cref="Room.Name"/> is the new value, and
-    /// reshuffle the <c>_byName</c> / <c>_byNameAndExits</c> indexes so
-    /// later candidate searches find the updated tuple. No-op when the
-    /// key isn't in the graph, the existing room already has the same
-    /// name, or the new name is null/empty.
-    /// </summary>
-    /// <returns>
-    /// The new <see cref="Room"/> instance (with the updated name)
-    /// when the learn succeeded; <c>null</c> when it was a no-op.
-    /// </returns>
+    // Replace the in-memory Room at key with a copy whose Name is the new value,
+    // and reshuffle the _byName / _byNameAndExits indexes so later candidate
+    // searches find the updated tuple. No-op (returns null) when the key isn't
+    // in the graph, the existing room already has the same name, or the new name
+    // is null/empty. Otherwise returns the new Room instance with the updated
+    // name.
     public Room? LearnRoomName(RoomKey key, string name)
     {
         if (string.IsNullOrWhiteSpace(name)) return null;
@@ -152,10 +126,8 @@ public sealed class RoomGraphManager
         exitBucket.Add(room.Key);
     }
 
-    /// <summary>
-    /// All rooms in the active set whose <see cref="Room.Name"/> matches
-    /// <paramref name="name"/> case-insensitively. Empty when no match.
-    /// </summary>
+    // All rooms in the active set whose Name matches name case-insensitively.
+    // Empty when no match.
     public IReadOnlyList<Room> FindByName(string name)
     {
         if (string.IsNullOrEmpty(name)) return Array.Empty<Room>();
@@ -164,12 +136,9 @@ public sealed class RoomGraphManager
             : (IReadOnlyList<Room>)Array.Empty<Room>();
     }
 
-    /// <summary>
-    /// All rooms in the active set whose <c>(Name, exit-set)</c> tuple
-    /// matches. Used by RoomTracker to detect the 1-of-1 case — when
-    /// the result has exactly one entry, the tracker can promote to
-    /// <c>Located</c> without further reconciliation.
-    /// </summary>
+    // All rooms in the active set whose (Name, exit-set) tuple matches. Used by
+    // RoomTracker to detect the 1-of-1 case — when the result has exactly one
+    // entry, the tracker can promote to Located without further reconciliation.
     public IReadOnlyList<RoomKey> FindCandidates(string name, IReadOnlySet<Direction> exits)
     {
         if (string.IsNullOrEmpty(name)) return Array.Empty<RoomKey>();
@@ -181,27 +150,20 @@ public sealed class RoomGraphManager
             : (IReadOnlyList<RoomKey>)Array.Empty<RoomKey>();
     }
 
-    /// <summary>
-    /// Read-only snapshot of every room in the active set, in load
-    /// order. The Navigation search (PR 7.12) iterates this for
-    /// substring matches; the room tree / favourites populators reuse
-    /// the same enumeration. Empty when no set is active.
-    /// </summary>
+    // Read-only snapshot of every room in the active set, in load order. The
+    // Navigation search iterates this for substring matches; the room tree /
+    // favourites populators reuse the same enumeration. Empty when no set is
+    // active.
     public IEnumerable<Room> Rooms => _rooms.Values;
 
-    /// <summary>
-    /// Every room in the active set that carries at least one trapped
-    /// exit (per the imported <c>(Trap)</c> hint). The
-    /// <c>MapControl</c> (PR 7.11) iterates this to overlay red
-    /// half-connector glyphs without rescanning every room.
-    /// </summary>
+    // Every room in the active set that carries at least one trapped exit (per
+    // the imported (Trap) hint). MapControl iterates this to overlay red
+    // half-connector glyphs without rescanning every room.
     public IEnumerable<Room> TrappedRooms => _rooms.Values.Where(r => r.HasTrappedExits);
 
-    /// <summary>
-    /// True when the active set contains exactly one room with this
-    /// room's <c>(Name, ExitMask)</c> tuple. False for ambiguous tuples
-    /// and for rooms not in the active graph.
-    /// </summary>
+    // True when the active set contains exactly one room with this room's
+    // (Name, ExitMask) tuple. False for ambiguous tuples and for rooms not in
+    // the active graph.
     public bool IsUnique(RoomKey key)
     {
         if (!_rooms.TryGetValue(key, out Room? room)) return false;
@@ -209,13 +171,10 @@ public sealed class RoomGraphManager
                && keys.Count == 1;
     }
 
-    /// <summary>
-    /// Rebuild the graph from <paramref name="setName"/>'s
-    /// <c>Rooms.json</c>. Pass <c>null</c> to clear. Safe to call
-    /// repeatedly; idempotent on no-op transitions (same set still
-    /// fires <see cref="GraphReloaded"/> because the caller may have
-    /// re-imported the underlying file).
-    /// </summary>
+    // Rebuild the graph from setName's Rooms.json. Pass null to clear. Safe to
+    // call repeatedly; idempotent on no-op transitions (same set still fires
+    // GraphReloaded because the caller may have re-imported the underlying
+    // file).
     public void OnActiveSetChanged(string? setName)
     {
         Clear();
@@ -292,9 +251,8 @@ public sealed class RoomGraphManager
         // MultiActionHidden exit. "On the X exit of this room" → action
         // belongs to the source room's X exit. "On the X exit of room
         // M/R" → action lives in the SOURCE row but applies to the
-        // REMOTE room's X exit; carry RemoteSourceRoom forward so v1
-        // can fail gracefully on those (cross-room expander is a
-        // follow-up).
+        // REMOTE room's X exit; carry RemoteSourceRoom forward so the
+        // walker fails gracefully on those (no cross-room expander).
         var byExit = new Dictionary<(RoomKey Room, Direction Dir), List<ExitAction>>();
         foreach ((RoomKey sourceRoom, MultiActionExitData.ActionCell cell) in actionCells)
         {
@@ -307,7 +265,7 @@ public sealed class RoomGraphManager
             }
             // RemoteSourceRoom is the row the action DATA lived in,
             // not the room the action targets — flagged so the walker
-            // knows to fail on cross-row data v1.
+            // knows to fail on cross-row data.
             RoomKey? remote = cell.RemoteSourceRoom is not null ? sourceRoom : null;
             list.Add(new ExitAction(cell.StepNumber, cell.Commands, remote));
         }
@@ -387,7 +345,7 @@ public sealed class RoomGraphManager
         // ganghouse rooms in 1.x non-Paradigm exports). Don't drop
         // those — keep them in the graph as null-name so the tracker
         // can learn the real name on first observation. Render through
-        // <see cref="Room.DisplayName"/> for any user-facing label.
+        // Room.DisplayName for any user-facing label.
         string name = TryReadString(row, "Name") ?? string.Empty;
 
         int cmd = TryReadIntOrZero(row, "CMD");
@@ -433,10 +391,8 @@ public sealed class RoomGraphManager
         return true;
     }
 
-    /// <summary>
-    /// MDB exports the empty cell as either <c>" "</c> (NUL),
-    /// a literal blank, or whitespace. Treat any of those as "no lair".
-    /// </summary>
+    // MDB exports the empty cell as either a NUL, a literal blank, or
+    // whitespace. Treat any of those as "no lair".
     private static bool IsLairSentinel(string? raw)
     {
         if (string.IsNullOrWhiteSpace(raw)) return true;
