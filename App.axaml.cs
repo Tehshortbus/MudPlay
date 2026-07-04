@@ -152,6 +152,13 @@ public partial class App : Application
                 FujinTerm.ViewModels.ManualCenterDialogViewModel,
                 FujinTerm.Views.ManualCenterDialog>();
 
+            // Terminal right-click → "Bug report…" — collects the user's
+            // problem description; the client-state capture happens in the
+            // MainWindow command at click time and is written to Desktop.
+            AppServices.Current.Dialogs.RegisterWindow<
+                FujinTerm.ViewModels.BugReportDialogViewModel,
+                FujinTerm.Views.BugReportDialog>();
+
             // EngineRecoveryGate → "Lost — couldn't recover" info dialog.
             // Single OK button; pops on tier-3 backtrack exhaustion.
             AppServices.Current.Dialogs.RegisterWindow<

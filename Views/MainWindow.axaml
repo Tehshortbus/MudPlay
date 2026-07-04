@@ -498,6 +498,11 @@
                         <MenuItem Header="Open Player Workshop" InputGesture="{Binding WorkshopGesture}"  Command="{Binding OpenWorkshopCommand}"/>
                         <MenuItem Header="Open Log pane"        InputGesture="{Binding LogPaneGesture}"  Command="{Binding OpenLogPaneCommand}"/>
                         <MenuItem Header="Open Backscroll"      InputGesture="{Binding BackscrollGesture}" Command="{Binding OpenBackscrollCommand}"/>
+                        <Separator/>
+                        <!-- Diagnostics — freeze current client state + recent
+                             output into a Markdown report on the Desktop. -->
+                        <MenuItem Header="Bug report…" Command="{Binding ReportBugCommand}"
+                                  ToolTip.Tip="Capture current client state and recent output to a report file on your Desktop"/>
                     </ContextMenu>
                 </ctl:TerminalControl.ContextMenu>
             </ctl:TerminalControl>

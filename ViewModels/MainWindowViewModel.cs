@@ -2529,6 +2529,38 @@ public partial class MainWindowViewModel : ObservableObject
         window.Show(main);
     }
 
+    /// <summary>
+    /// Terminal context menu → "Bug report…". Freezes the current client
+    /// state (recent scrollback, program-log tail, all gameplay settings,
+    /// engine + player state) at click time, prompts for a description, then
+    /// writes a Markdown report to the Desktop named after the realm and the
+    /// click timestamp. Capture happens before the dialog so the report
+    /// reflects the moment of the problem, not when the user finishes typing.
+    /// </summary>
+    [RelayCommand]
+    private async Task ReportBugAsync()
+    {
+        Services.AppServices svc = Services.AppServices.Current;
+
+        BugReportBuilder.BugReportCapture capture = BugReportBuilder.Capture(svc, Emulator);
+
+        string? description = await svc.Dialogs
+            .OpenWindowAsync<BugReportDialogViewModel, string>(new BugReportDialogViewModel());
+        if (string.IsNullOrWhiteSpace(description)) return;
+
+        try
+        {
+            string desktop = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
+            string path = Path.Combine(desktop, BugReportBuilder.FileName(capture));
+            await File.WriteAllTextAsync(path, BugReportBuilder.Render(capture, description));
+            svc.Log.Info("BugReport", $"Wrote bug report to {path}");
+        }
+        catch (Exception ex)
+        {
+            svc.Log.Error("BugReport", $"Failed to write bug report: {ex.Message}");
+        }
+    }
+
     private ConversationWindow? _conversation;
 
     [RelayCommand]
