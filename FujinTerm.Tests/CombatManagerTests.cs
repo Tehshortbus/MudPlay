@@ -1087,8 +1087,11 @@ public sealed class CombatManagerTests
     }
 
     [Fact]
-    public void RoomCleared_RequestsBackstabWeapon_WhenConfigured()
+    public void RoomCleared_DoesNotRequestBackstabWeapon_DeferredToPreMove()
     {
+        // Equipping breaks sneak, so the backstab re-gear must happen in the
+        // pre-move sequence (PrepBackstabForMove), immediately before the sn —
+        // NOT raced at room-clear.
         using Harness h = new();
         h.Settings.NormalWeapon = "longsword";
         h.Settings.BackstabWeapon = "dagger";
@@ -1100,7 +1103,44 @@ public sealed class CombatManagerTests
 
         h.Classifier.RemoveDeadEntity("giant rat");
 
-        Assert.Contains(("dagger", (string?)null), h.Swaps);
+        Assert.Empty(h.Swaps);
+    }
+
+    [Fact]
+    public void PrepBackstabForMove_RequestsBackstabWeapon_WhenConfigured()
+    {
+        using Harness h = new();
+        h.Settings.BackstabWeapon = "dagger";
+        h.Settings.BackstabOffHand = "buckler";
+        h.Settings.DoBackstab = true;
+
+        h.Combat.PrepBackstabForMove();
+
+        Assert.Equal(("dagger", "buckler"), Assert.Single(h.Swaps));
+    }
+
+    [Fact]
+    public void PrepBackstabForMove_NoOp_WhenBackstabDisabled()
+    {
+        using Harness h = new();
+        h.Settings.BackstabWeapon = "dagger";
+        h.Settings.DoBackstab = false;
+
+        h.Combat.PrepBackstabForMove();
+
+        Assert.Empty(h.Swaps);
+    }
+
+    [Fact]
+    public void PrepBackstabForMove_NoOp_WhenNoBackstabWeapon()
+    {
+        using Harness h = new();
+        h.Settings.DoBackstab = true;
+        h.Settings.BackstabWeapon = "";
+
+        h.Combat.PrepBackstabForMove();
+
+        Assert.Empty(h.Swaps);
     }
 
     // ----- Backstab window (PR 4.c) ----------------------------------

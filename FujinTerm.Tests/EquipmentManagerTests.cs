@@ -458,11 +458,11 @@ public sealed class EquipmentManagerTests
         Assert.Empty(mgr.LastSentForTests);
     }
 
-    // ===== ApplyBackstabArmor (room-clear backstab armor) =====
-    // Only the resolutions that short-circuit before the paced queue
-    // (NotFound / NoChange) are asserted — the Applied path enqueues on the
-    // DispatcherTimer the headless harness doesn't pump. The armor-only slot
-    // exclusion is pinned on the pure BuildWearCommands test below.
+    // ===== ApplyBackstabArmor (pre-move backstab armor) =====
+    // Sends synchronously (a burst, not the paced queue) because it runs in the
+    // pre-move sequence and must land before the sneak — so the Applied path can
+    // be asserted directly on the wire. The armor-only slot exclusion is pinned
+    // on the pure BuildWearCommands test below.
 
     private static EquipmentSet BackstabSet(bool enabled, params EquipmentSlotEntry[] slots)
         => new()
@@ -523,6 +523,27 @@ public sealed class EquipmentManagerTests
         EquipmentManager mgr = Manager(settings, InventorySnapshot.Empty, new CombatSettings());
 
         Assert.Equal(EquipResult.NoChange, mgr.ApplyBackstabArmor());
+    }
+
+    [Fact]
+    public void ApplyBackstabArmor_ArmorDeltas_SentSynchronouslyToWire()
+    {
+        // Enabled set with unworn armor + a held slot: the armor deltas hit the
+        // wire immediately (synchronous burst), the weapon slot is excluded.
+        EquipmentSettings settings = new()
+        {
+            Sets =
+            {
+                BackstabSet(enabled: true,
+                    Entry(EquipmentSlot.Weapon, "dagger"),
+                    Entry(EquipmentSlot.Torso, "leather"),
+                    Entry(EquipmentSlot.Head, "hood")),
+            },
+        };
+        EquipmentManager mgr = Manager(settings, SnapshotWithWorn("hood"), new CombatSettings());
+
+        Assert.Equal(EquipResult.Applied, mgr.ApplyBackstabArmor());
+        Assert.Equal(new[] { "wear leather" }, Wire(mgr));
     }
 
     [Fact]

@@ -2460,8 +2460,8 @@ public sealed class AppServices
 
         // EquipmentManager is the sole gear actuator: the combat engine decides
         // which weapon it wants and hands the act off here. The backstab-set
-        // armor auto-fires at room-clear (deltas only, paced) alongside the
-        // immediate backstab-weapon swap.
+        // armor (deltas only, synchronous) and the weapon swap both fire from the
+        // pre-move sequence, before the sn — equipping breaks sneak.
         Combat.SetWeaponActuator(Equipment.SwapWeapon, () => Equipment.ApplyBackstabArmor());
 
         // CashManager. Subscribes to cash-on-ground
@@ -2655,12 +2655,18 @@ public sealed class AppServices
             && !TrapDisarm.CanDisarm
             && TrapDelegation.AnyPartyMemberCanDisarm());
         Walker.SetTrapDelegateStopper(TrapDelegation.Cancel);
-        // Proactive pre-move sneak: `sn` goes out as the last
-        // command before each walker move so the move itself is sneaked
-        // (the reactive RoomTracker hook above only re-sneaks AFTER
-        // arriving). Non-blocking; the settled-state guard in
-        // StealthManager prevents a double-send when both paths fire.
-        Walker.SetPreMoveHook(() => Stealth.RequestPreMoveStealth());
+        // Proactive pre-move approach sequence: gear then `sn`, both as the last
+        // commands before each walker move so the move itself is sneaked (the
+        // reactive RoomTracker hook above only re-sneaks AFTER arriving).
+        // Backstab gear goes out FIRST — equipping breaks sneak, so the loadout
+        // must land before the sn (weapon → armor → sn → move). PrepBackstabForMove
+        // no-ops unless backstab is enabled. Non-blocking; the settled-state
+        // guard in StealthManager prevents a double sn when both paths fire.
+        Walker.SetPreMoveHook(() =>
+        {
+            Combat.PrepBackstabForMove();
+            Stealth.RequestPreMoveStealth();
+        });
         // PR B — announce the route's possession-gated item ids at walk-start
         // so the demand tracker arms auto-search for anything we lack. PR E
         // interposes the party-inventory gate ahead of the tracker: it forwards
@@ -2813,8 +2819,13 @@ public sealed class AppServices
         // overlay.
         LoopRunner = new Game.Map.LoopRunner(RoomTracker, MovementCoordinator,
             PromptScanner, Log, RoomGraph, Recovery, Bfs, Walker, Movement);
-        // Same proactive pre-move sneak for loop circuits.
-        LoopRunner.SetPreMoveHook(() => Stealth.RequestPreMoveStealth());
+        // Same proactive pre-move approach sequence for loop circuits — backstab
+        // gear before the sneak (equipping breaks sneak), then the move.
+        LoopRunner.SetPreMoveHook(() =>
+        {
+            Combat.PrepBackstabForMove();
+            Stealth.RequestPreMoveStealth();
+        });
         // Avoid-list mutation mid-loop → LoopRunner re-routes via a
         // Stop+Start cycle so the new filter applies on the next BFS.
         Movement.AvoidedChanged += () => LoopRunner.NotifyAvoidedChanged();

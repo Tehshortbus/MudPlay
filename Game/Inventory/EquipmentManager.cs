@@ -172,16 +172,17 @@ public sealed class EquipmentManager
         return null;
     }
 
-    // ----- Backstab-set armor auto-fire (room-clear) ----------------------
+    // ----- Backstab-set armor (pre-move prep) -----------------------------
 
-    // Apply the Backstab set's ARMOR at room-clear — the paced, best-effort half
-    // of backstab prep. The combat engine equips the backstab weapon
-    // immediately (SwapWeapon, so it's in hand before the surprise round), so
-    // this pass owns only the non-time-critical armor: every physical armor
-    // piece the set names that isn't already worn, deltas only, spaced through
-    // the same flood-safe queue. Weapon + off-hand slots are excluded so they
-    // can't race / double-equip against the immediate weapon swap. No-op unless
-    // a Backstab set exists and is Enabled ("automation may equip this set").
+    // Apply the Backstab set's ARMOR as part of the pre-move approach sequence.
+    // The combat engine calls this (via PrepBackstabForMove) right before the
+    // sneak: equipping breaks sneak, so the armor MUST be sent before the sn —
+    // it can't sit on the paced queue and trail into the move. The whole delta
+    // is therefore sent as one synchronous burst (deltas only, so the burst is
+    // usually a piece or two: the Backstab set overlaps the worn loadout).
+    // Weapon + off-hand slots are excluded — the immediate weapon swap owns
+    // those. No-op unless a Backstab set exists and is Enabled ("automation may
+    // equip this set"); declines while a paced full-loadout apply is in flight.
     public EquipResult ApplyBackstabArmor()
     {
         if (_isEquipping) return EquipResult.Busy;
@@ -196,7 +197,7 @@ public sealed class EquipmentManager
         if (cmds.Count == 0) return EquipResult.NoChange;
 
         _log?.Info(LogCategory, $"backstab armor — {cmds.Count} piece(s)");
-        StartPacedSend(cmds);
+        foreach (string cmd in cmds) _wire.Send(cmd);
         return EquipResult.Applied;
     }
 

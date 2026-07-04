@@ -45,6 +45,45 @@ it isn't here and you're unsure, ask.
   Lights follow the same trade-places rule as `eq` — `use`-ing a new light swaps out the
   current one (if usable).
 
+## Stealth (sneak & hide)
+
+**Commands** *([OBSERVED] — the client issues these)*
+- `sn` — attempt to sneak. `hid` — attempt to hide.
+
+**Equip before sneak** *([CONFIRMED])*
+- Equipping / removing gear breaks sneak, so any gear change for an approach must be sent
+  **before** the `sn`, never after. The correct approach order is **equip → sneak → move**.
+  (This is why the backstab loadout is applied in the walker's pre-move step, ahead of the
+  `sn`, rather than raced at room-clear.)
+
+**Sneak state machine** *(lines all [OBSERVED] — parsed by the client)*
+- `Attempting to sneak...` (alone, no suffix) — the server ACK: the sneak took and you're armed
+  to move. A move made now carries the sneak into the next room.
+- `Attempting to sneak...You don't think you're sneaking.` — soft rejection; the attempt didn't
+  take. Resend `sn`.
+- `Sneaking...` — emitted on each room entry while sneak holds; post-move confirmation you
+  arrived unseen.
+- `You make a sound as you enter the room!` — loud loss of sneak.
+- `You may not sneak right now!` — hard block; no auto-retry.
+- **[OBSERVED]** Sneak breaks *silently* when you move into a room that doesn't re-emit
+  `Sneaking...` — no failure line, the stealth is just gone.
+- **[OBSERVED]** Any NPC in the room prevents a sneak from taking — an `sn` is wasted while a
+  monster shares the room.
+
+**Backstab requires sneaking** *([OBSERVED])*
+- Backstab needs the **sneaking** state specifically (approaching an unseen target while moving
+  silently) — being merely *hidden* is not enough.
+
+## Combat & backstab
+
+- **[OBSERVED]** Backstab command: `bs <target>`.
+- **[OBSERVED]** A monster in the room with the **see-hidden** ability reveals the sneaker to
+  the whole room, so the opening move falls back to a normal attack rather than `bs`.
+- **[OBSERVED]** `Your weapon has no effect against this monster!` — the current weapon can't
+  hurt this monster; the client swaps to the configured alternate weapon.
+- **[OBSERVED]** `Your fists have no effect against this monster!` — you're swinging bare-handed
+  (no weapon in hand, or it left your hand).
+
 ## Items & acquisition
 
 - **[CONFIRMED]** Items are acquired via `buy` / `get` / `search`+`get`. There is no "hunt"
@@ -71,3 +110,10 @@ it isn't here and you're unsure, ask.
 | Remove | `You have removed <X>.` |
 | Weapon swap (two lines) | `You removed <old>.` then `You are now wearing <new>.` |
 | Already worn | `You do not have <X> left unequipped.` |
+| Sneak armed (ACK) | `Attempting to sneak...` |
+| Sneak soft-fail | `Attempting to sneak...You don't think you're sneaking.` |
+| Sneak confirmed (room entry) | `Sneaking...` |
+| Sneak lost (loud) | `You make a sound as you enter the room!` |
+| Sneak blocked (hard) | `You may not sneak right now!` |
+| Weapon ineffective | `Your weapon has no effect against this monster!` |
+| Fists ineffective | `Your fists have no effect against this monster!` |

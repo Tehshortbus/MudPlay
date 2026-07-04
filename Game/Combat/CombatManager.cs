@@ -97,9 +97,10 @@ public sealed partial class CombatManager : IDisposable
     // decides which weapon/loadout it wants and hands the act off through these
     // delegates — it never touches the wire for gear itself. swapWeapon equips a
     // weapon + off-hand immediately (the fast, unpaced path that must land before
-    // the next swing); prepBackstabArmor kicks off the Backstab set's paced armor
-    // apply at room-clear. Until wired both no-op, so the manager stays a pure
-    // decider (tests assert on the decision, not the actuation).
+    // the next swing); prepBackstabArmor applies the Backstab set's armor as a
+    // synchronous burst in the pre-move sequence, before the sn. Until wired both
+    // no-op, so the manager stays a pure decider (tests assert on the decision,
+    // not the actuation).
     private Action<string?, string?>? _swapWeapon;
     private Action? _prepBackstabArmor;
     private Func<bool>? _isSneaking;
@@ -247,9 +248,10 @@ public sealed partial class CombatManager : IDisposable
 
     // Wire the gear actuator (EquipmentManager, the sole gear owner). swapWeapon
     // equips a weapon + off-hand immediately — the unpaced fast path that must
-    // land before the next swing; prepBackstabArmor kicks off the Backstab set's
-    // paced armor apply at room-clear (null when no backstab-armor automation is
-    // wired — the weapon still gets pre-equipped either way).
+    // land before the next swing; prepBackstabArmor applies the Backstab set's
+    // armor synchronously in the pre-move sequence, before the sn (null when no
+    // backstab-armor automation is wired — the weapon still gets swapped either
+    // way).
     public void SetWeaponActuator(
         Action<string?, string?> swapWeapon, Action? prepBackstabArmor = null)
     {
@@ -647,9 +649,11 @@ public sealed partial class CombatManager : IDisposable
 
     // ----- Weapon-swap mechanics --------------------------------------
 
-    // Re-equip cascade at end of combat (room cleared). Priority: BS weapon (when
-    // configured) → normal weapon (when we'd swapped to alt). The fail-set +
-    // alt-mode flag clear here so the next room starts fresh.
+    // End-of-combat cleanup (room cleared). Resets the per-room fail-set +
+    // spell economy, and reverts an alternate-weapon swap back to normal. The
+    // backstab re-gear is NOT done here: equipping breaks sneak, so the backstab
+    // loadout must be applied in the pre-move sequence, immediately before the
+    // sn (see PrepBackstabForMove) — not raced against it at room-clear.
     private void OnRoomCleared(CombatSettings settings)
     {
         _normalWeaponFailedMonsters.Clear();
@@ -663,24 +667,31 @@ public sealed partial class CombatManager : IDisposable
         _attackSpellImmuneSpecies.Clear();
         _spellChooser.ResetForNewRoom();
 
-        // BS weapon takes precedence — re-equip after every fight so
-        // the next room can backstab. If no BS configured but we
-        // ended on the alternate, revert to normal.
-        if (settings.DoBackstab && !string.IsNullOrWhiteSpace(settings.BackstabWeapon))
-        {
-            // Weapon first, immediately — it must be in hand before the surprise
-            // round. The Backstab set's armor (when the set is enabled) follows
-            // on the paced queue, best-effort: armor isn't surprise-round-
-            // critical, so it can trail the walker into the next room.
-            _swapWeapon?.Invoke(settings.BackstabWeapon, settings.BackstabOffHand);
-            _prepBackstabArmor?.Invoke();
-            _usingAlternateWeapon = false;
-        }
-        else if (_usingAlternateWeapon)
-        {
+        // Revert an alt-weapon swap so the next fight opens on the normal
+        // weapon — but skip it when backstab is active, since the pre-move
+        // sequence re-gears to the backstab weapon before the next approach and
+        // a normal-then-backstab double swap would be wasted commands.
+        bool backstabActive = settings.DoBackstab
+            && !string.IsNullOrWhiteSpace(settings.BackstabWeapon);
+        if (!backstabActive && _usingAlternateWeapon)
             _swapWeapon?.Invoke(settings.NormalWeapon, settings.NormalOffHand);
-            _usingAlternateWeapon = false;
-        }
+        _usingAlternateWeapon = false;
+    }
+
+    // Pre-move backstab prep — invoked from the walker / loop-runner pre-move
+    // hook immediately before the sneak, so the whole approach sequence is
+    // weapon → armor → sn → move. Equipping breaks sneak, so the gear MUST land
+    // before the sn; the actuator sends both synchronously (SwapWeapon is
+    // unpaced, ApplyBackstabArmor is a synchronous burst) so nothing trails into
+    // the sneak. No-op unless backstab is enabled with a configured weapon.
+    public void PrepBackstabForMove()
+    {
+        CombatSettings settings = _readSettings();
+        if (!settings.DoBackstab || string.IsNullOrWhiteSpace(settings.BackstabWeapon))
+            return;
+        _swapWeapon?.Invoke(settings.BackstabWeapon, settings.BackstabOffHand);
+        _prepBackstabArmor?.Invoke();
+        _usingAlternateWeapon = false;
     }
 
     // Decide which weapon should be on for the next attack and hand it to the
