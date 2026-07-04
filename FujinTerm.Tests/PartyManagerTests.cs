@@ -723,6 +723,125 @@ public sealed class PartyManagerTests
         Assert.Equal("Forged WuzHere", p.State.Members[0].Name);
     }
 
+    // ===== End-of-par-block reconciliation =====
+    // A member the game dropped (walked away, logged out, got left behind)
+    // stops appearing in the `par` table. Since the table terminates on the
+    // statline prompt — never a blank line — the roster only self-corrects
+    // when the prompt-line terminator drives ReconcileMissingFromPar. This is
+    // the wording-independent membership fix: it never reads a departure
+    // message, so it holds even on re-created realms with non-canonical text.
+
+    [Fact]
+    public void ParPoll_MemberAbsentFromPar_LeaderDropsThemOnPromptTerminator()
+    {
+        // Reproduces the reported desync: Fujin leads a 4-person party;
+        // MindGoblin leaves on their own and the next par shows only 3, but
+        // the roster stayed at 4 because reconciliation was gated on a blank
+        // line the BBS never sends. The prompt terminator now closes the block.
+        var (router, p) = Setup(localCharacterName: "Fujin");
+        router.Dispatch(Line("MindGoblin started to follow you."));
+        router.Dispatch(Line("Suijin started to follow you."));
+        router.Dispatch(Line("Raijin started to follow you."));
+        Assert.True(p.State.SelfIsLeader);
+        Assert.Equal(4, p.State.Members.Count);   // self + 3 followers
+
+        router.Dispatch(Line("The following people are in your travel party:"));
+        p.FeedTestLines(new[]
+        {
+            "  Fujin                          (Missionary) [M:100%] [H:100%]   - Frontrank",
+            "  MindGoblin                     (Druid)      [M:100%] [H:100%]   - Midrank",
+            "  Suijin                         (Mage)       [M:100%] [H:100%]   - Midrank",
+            "  Raijin                         (Priest)     [M:100%] [H:100%]   - Backrank",
+        });
+        p.FeedTestPromptLine();
+        Assert.Equal(4, p.State.Members.Count);   // everyone still present → no drop
+
+        // MindGoblin walked upstairs; the next par omits them.
+        router.Dispatch(Line("The following people are in your travel party:"));
+        p.FeedTestLines(new[]
+        {
+            "  Fujin                          (Missionary) [M:100%] [H: 88%]   - Frontrank",
+            "  Suijin                         (Mage)       [M:100%] [H:100%]   - Midrank",
+            "  Raijin                         (Priest)     [M:100%] [H:100%]   - Backrank",
+        });
+        p.FeedTestPromptLine();
+
+        Assert.Equal(3, p.State.Members.Count);
+        Assert.DoesNotContain(p.State.Members, m => m.Name.StartsWith("MindGoblin", StringComparison.Ordinal));
+        Assert.True(p.State.IsInParty);
+        // Leader stamps the departed member so the auto-reinvite flow can
+        // pull them back if they return within the grace window.
+        Assert.True(p.WasRecentlyPartied("MindGoblin"));
+    }
+
+    [Fact]
+    public void ParPoll_MemberAbsentFromPar_FollowerDropsButDoesNotStamp()
+    {
+        // A non-leader's roster must self-correct too — par is authoritative
+        // for the whole travel party regardless of who leads. But a follower
+        // can't invite anyone, so no grace-window stamp is recorded.
+        var (router, p) = Setup(localCharacterName: "Fujin");
+        router.Dispatch(Line("You are now following Raijin."));
+        Assert.False(p.State.SelfIsLeader);
+
+        router.Dispatch(Line("The following people are in your travel party:"));
+        p.FeedTestLines(new[]
+        {
+            "  Raijin                         (Priest)     [M:100%] [H:100%]   - Frontrank",
+            "  Fujin                          (Missionary) [M:100%] [H:100%]   - Midrank",
+            "  Suijin                         (Mage)       [M:100%] [H:100%]   - Backrank",
+        });
+        p.FeedTestPromptLine();
+        Assert.Equal(3, p.State.Members.Count);
+
+        router.Dispatch(Line("The following people are in your travel party:"));
+        p.FeedTestLines(new[]
+        {
+            "  Raijin                         (Priest)     [M:100%] [H:100%]   - Frontrank",
+            "  Fujin                          (Missionary) [M:100%] [H:100%]   - Midrank",
+        });
+        p.FeedTestPromptLine();
+
+        Assert.Equal(2, p.State.Members.Count);
+        Assert.DoesNotContain(p.State.Members, m => m.Name.StartsWith("Suijin", StringComparison.Ordinal));
+        Assert.False(p.WasRecentlyPartied("Suijin"));
+    }
+
+    [Fact]
+    public void ParPoll_TruncatedParWithNoRows_DoesNotWipeRoster()
+    {
+        // Defensive guard: a par header immediately followed by the prompt
+        // (garbled / truncated output, zero rows parsed) must not be read as
+        // "everyone left the party".
+        var (router, p) = Setup(localCharacterName: "Fujin");
+        router.Dispatch(Line("MindGoblin started to follow you."));
+        Assert.Equal(2, p.State.Members.Count);
+
+        router.Dispatch(Line("The following people are in your travel party:"));
+        p.FeedTestPromptLine();
+
+        Assert.Equal(2, p.State.Members.Count);
+    }
+
+    [Fact]
+    public void ParPoll_SelfNeverReconciledAway_WhenAbsentFromOwnPar()
+    {
+        // The self row is skipped by reconciliation — a par table that (for
+        // whatever display reason) omitted our own row must never drop us.
+        var (router, p) = Setup(localCharacterName: "Fujin");
+        router.Dispatch(Line("Raijin started to follow you."));
+        Assert.Equal(2, p.State.Members.Count);
+
+        router.Dispatch(Line("The following people are in your travel party:"));
+        p.FeedTestLines(new[]
+        {
+            "  Raijin                         (Priest)     [M:100%] [H:100%]   - Backrank",
+        });
+        p.FeedTestPromptLine();
+
+        Assert.Contains(p.State.Members, m => m.IsSelf);
+    }
+
     [Fact]
     public void DefaultPatterns_HaveAllPartyEntries()
     {

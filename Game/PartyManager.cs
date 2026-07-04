@@ -523,6 +523,12 @@ public sealed partial class PartyManager : IDisposable
 
     private void OnParHeader(MatchResult _)
     {
+        // Safety net — if the previous par block is somehow still open (its
+        // terminating prompt line never arrived), reconcile it before the new
+        // block clears the captured names, so a departed member isn't carried
+        // an extra poll cycle. In the normal flow the block already ended on
+        // its prompt line and _parState is Idle here, making this a no-op.
+        if (_parState == ParState.ReadingRows) ReconcileMissingFromPar();
         _parState = ParState.ReadingRows;
         _parBlockNames.Clear();
     }
@@ -665,26 +671,32 @@ public sealed partial class PartyManager : IDisposable
         return false;
     }
 
-    // End-of-par-block reconciliation — when we're leader, any member the par
-    // output omitted is a "lost" member. Stamp them into the grace window and
-    // drop the roster row so the Re-invite-lost-party-members flow picks them up
-    // if they reconnect within the window. Mirrors the dissolution-snapshot
-    // path, but works for parties of 3+ where a single drop doesn't dissolve the
-    // whole party (par just shows N-1 instead of N).
+    // End-of-par-block reconciliation — any member the par output omitted has
+    // left the travel party, so drop the roster row. This is the authoritative
+    // membership correction: `par` is the game's own list, so a member missing
+    // from it is gone no matter how they left (walked away, logged out, was
+    // dropped) and no matter which departure line — if any — the realm printed.
+    // That wording-independence matters on re-created MajorMUD realms whose
+    // per-departure messages differ from the canonical game. Works for parties
+    // of 3+ where a single drop doesn't dissolve the whole party (par just shows
+    // N-1 instead of N); the leader additionally stamps the grace window so the
+    // Re-invite-lost-party-members flow can pull them back if they return.
     //
     // Defensive guard: only acts when at least one row was parsed this cycle. An
     // empty _parBlockNames set means the par output was malformed / truncated /
     // never finished — not "everyone disappeared". Without this gate every
     // transient parse failure would flag the entire party as missing.
-    //
-    // Names in _parBlockNames are the full par-row names ("Raijin WuzHere");
-    // AddOrTouchMember upgrades existing members' Name to the long form on first
-    // observation, so by the time this runs the comparison hits for every member
-    // whose row was present.
     private void ReconcileMissingFromPar()
     {
         if (_parBlockNames.Count == 0) return;
-        if (!State.SelfIsLeader) return;
+
+        // Compare on given name — _parBlockNames stores the long par-row form
+        // ("Raijin WuzHere") while a roster row first added via chat may still
+        // be short ("Raijin"). AddOrTouchMember upgrades present members to the
+        // long form during the same block, but reducing both sides to the
+        // given token is robust regardless of which form each carries.
+        HashSet<string> present = new(StringComparer.OrdinalIgnoreCase);
+        foreach (string n in _parBlockNames) present.Add(GivenNameOf(n));
 
         DateTimeOffset now = NowProvider();
         List<PartyMember>? missing = null;
@@ -692,16 +704,24 @@ public sealed partial class PartyManager : IDisposable
         {
             if (m.IsSelf) continue;
             if (string.IsNullOrEmpty(m.Name)) continue;
-            if (_parBlockNames.Contains(m.Name)) continue;
+            if (present.Contains(GivenNameOf(m.Name))) continue;
             (missing ??= new()).Add(m);
         }
         if (missing is null) return;
 
         foreach (PartyMember m in missing)
         {
-            string given = GivenNameOf(m.Name);
-            if (!string.IsNullOrEmpty(given))
-                _recentlyDisconnected[given] = now;
+            // par is authoritative for the roster regardless of who leads — a
+            // member it omits has left the travel party (walked away, logged
+            // out, was dropped), so the row goes. Only the leader stamps the
+            // grace window: the auto-reinvite-on-return flow is leader-only, so
+            // a follower recording a re-invite candidate would be pointless.
+            if (State.SelfIsLeader)
+            {
+                string given = GivenNameOf(m.Name);
+                if (!string.IsNullOrEmpty(given))
+                    _recentlyDisconnected[given] = now;
+            }
             State.Members.Remove(m);
         }
         State.IsInParty = State.Members.Count > 0;
@@ -758,15 +778,20 @@ public sealed partial class PartyManager : IDisposable
 
     // ----- par-block row parser ------------------------------------------
 
-    private void OnLineEmitted(LineExtractor.EmittedLine line) => HandleLine(line.Text);
+    private void OnLineEmitted(LineExtractor.EmittedLine line) => HandleLine(line.Text, line.IsPromptLine);
 
     // Test seam — feeds the par-block state machine without spinning up a real
     // LineExtractor. Tests prime the state via TestEnterParBlock then pump rows
     // here. Same shape as WhoListParser.FeedTestLines.
     internal void FeedTestLines(IEnumerable<string> lines)
     {
-        foreach (string text in lines) HandleLine(text);
+        foreach (string text in lines) HandleLine(text, isPromptLine: false);
     }
+
+    // Test seam — feeds a synthetic prompt line (IsPromptLine=true), the
+    // real-BBS par-block terminator, so tests can drive end-of-block
+    // reconciliation exactly the way the LineExtractor does in production.
+    internal void FeedTestPromptLine(string text = "[HP=0/MA=0]:") => HandleLine(text, isPromptLine: true);
 
     // Test seam — flips the state machine into ReadingRows without dispatching
     // the par-header pattern.
@@ -776,16 +801,27 @@ public sealed partial class PartyManager : IDisposable
         _parBlockNames.Clear();
     }
 
-    private void HandleLine(string text)
+    private void HandleLine(string text, bool isPromptLine = false)
     {
         if (_parState != ParState.ReadingRows) return;
+        // The statline prompt ([HP=...]:) is the real par-block terminator.
+        // MajorMUD ends the table by returning to the prompt, not by emitting a
+        // blank line, so the blank-line branch below effectively never fires
+        // against live output — which is why a departed member used to linger
+        // in the roster forever. Reconciling here drops them within the same
+        // poll. Interleave-safe: a mid-combat line between polls isn't a prompt,
+        // so it can't prematurely close the block.
+        if (isPromptLine)
+        {
+            EndParBlock();
+            return;
+        }
         // Blank line ends the par block. Don't reset the parState until
         // we've seen the terminator so a mid-block blank doesn't kill the
         // parser, but in practice the par table is contiguous.
         if (string.IsNullOrWhiteSpace(text))
         {
-            _parState = ParState.Idle;
-            ReconcileMissingFromPar();
+            EndParBlock();
             return;
         }
         // Pending-invitee row — check this first because the regex is
@@ -893,6 +929,16 @@ public sealed partial class PartyManager : IDisposable
         member.Meditating = position == PlayerPosition.Meditating;
 
         State.IsInParty = State.Members.Count > 0;
+    }
+
+    // Close out the current par block: leave ReadingRows, reconcile the roster
+    // against what the block listed, and clear the captured names for the next
+    // poll. Reconcile must run before the clear (it reads _parBlockNames).
+    private void EndParBlock()
+    {
+        _parState = ParState.Idle;
+        ReconcileMissingFromPar();
+        _parBlockNames.Clear();
     }
 
     // Ensure self is represented in PartyState.Members with the leader marker
