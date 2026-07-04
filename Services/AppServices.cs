@@ -1989,13 +1989,7 @@ public sealed class AppServices
             readOwnGivenName: () => Profile.CurrentProfileName,
             log: Log,
             readPartySettings: () =>
-                ReadSection<Models.Profile.PartySettings>(Profile.Current, "Party"),
-            isTwoHandedWeapon: IsConfiguredWeaponTwoHanded,
-            // Live worn-weapon feed from the inventory snapshot's Weapon Hand
-            // slot, so the first combat round skips equipping a weapon already in
-            // hand instead of drawing a "left unequipped" reject.
-            readEquippedWeapon: () => Inventory.Snapshot.EquippedItems
-                .FirstOrDefault(e => e.Slot == "Weapon Hand").Name);
+                ReadSection<Models.Profile.PartySettings>(Profile.Current, "Party"));
 
         // HealthManager. Master on/off is
         // GeneralSettings.AutoMode.AutoHealRest (shared with the
@@ -2460,8 +2454,15 @@ public sealed class AppServices
                 p.Settings["Combat"] = System.Text.Json.JsonSerializer.SerializeToElement(combat);
                 Profile.Save();
             },
+            isTwoHanded: IsConfiguredWeaponTwoHanded,
             log: Log);
         EquipRemote = new Game.Remote.EquipHandler(RemoteCommands, Equipment);
+
+        // EquipmentManager is the sole gear actuator: the combat engine decides
+        // which weapon it wants and hands the act off here. The backstab-set
+        // armor auto-fires at room-clear (deltas only, paced) alongside the
+        // immediate backstab-weapon swap.
+        Combat.SetWeaponActuator(Equipment.SwapWeapon, () => Equipment.ApplyBackstabArmor());
 
         // CashManager. Subscribes to cash-on-ground
         // / cash-picked-up / cash-dropped patterns and dispatches

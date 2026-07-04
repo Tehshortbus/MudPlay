@@ -32,6 +32,30 @@ public sealed class EquipmentManagerTests
             EquippedItems = names.Select(n => new EquippedItem(n, "slot")).ToList(),
         };
 
+    // Worn loadout keyed by real slot strings ("Weapon Hand" / "Off-Hand") —
+    // what SwapWeapon diffs against.
+    private static InventorySnapshot SnapshotWithSlots(params (string Slot, string Name)[] items)
+        => InventorySnapshot.Empty with
+        {
+            EquippedItems = items.Select(i => new EquippedItem(i.Name, i.Slot)).ToList(),
+        };
+
+    // A manager wired for the immediate weapon fast path — snapshot + two-handed
+    // predicate are the only inputs SwapWeapon reads.
+    private static EquipmentManager SwapManager(
+        InventorySnapshot snapshot, Func<string?, bool>? isTwoHanded = null)
+        => new(
+            readEquipment: () => new EquipmentSettings(),
+            getSnapshot:   () => snapshot,
+            readCombat:    () => new CombatSettings(),
+            writeCombat:   _ => { },
+            isTwoHanded:   isTwoHanded);
+
+    private static List<string> Wire(EquipmentManager mgr)
+        => mgr.LastSentForTests
+            .Select(b => System.Text.Encoding.Latin1.GetString(b).TrimEnd('\r'))
+            .ToList();
+
     private static EquipmentManager Manager(
         EquipmentSettings settings,
         InventorySnapshot snapshot,
@@ -315,5 +339,203 @@ public sealed class EquipmentManagerTests
         EquipmentManager mgr = Manager(settings, InventorySnapshot.Empty, combat);
 
         Assert.Equal(EquipResult.NoChange, mgr.ApplyBySetId("set-7"));
+    }
+
+    // ===== SwapWeapon (immediate combat fast path) =====
+    // Unlike the paced apply, this bypasses the DispatcherTimer and writes the
+    // wire synchronously, so the tests can assert directly on LastSentForTests.
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData(null)]
+    public void SwapWeapon_EmptyWeapon_NoOp(string? weapon)
+    {
+        EquipmentManager mgr = SwapManager(InventorySnapshot.Empty);
+
+        mgr.SwapWeapon(weapon, "shield");
+
+        Assert.Empty(mgr.LastSentForTests);
+    }
+
+    [Fact]
+    public void SwapWeapon_WeaponNotWorn_EquipsWeapon()
+    {
+        EquipmentManager mgr = SwapManager(InventorySnapshot.Empty);
+
+        mgr.SwapWeapon("longsword", null);
+
+        Assert.Equal(new[] { "eq longsword" }, Wire(mgr));
+    }
+
+    [Fact]
+    public void SwapWeapon_WeaponAlreadyWorn_SkipsWeaponEquip_CaseInsensitive()
+    {
+        EquipmentManager mgr = SwapManager(SnapshotWithSlots(("Weapon Hand", "LongSword")));
+
+        mgr.SwapWeapon("longsword", null);
+
+        Assert.Empty(mgr.LastSentForTests);
+    }
+
+    [Fact]
+    public void SwapWeapon_OneHander_EquipsWeaponAndOffHand_WhenNeitherWorn()
+    {
+        EquipmentManager mgr = SwapManager(InventorySnapshot.Empty);
+
+        mgr.SwapWeapon("longsword", "shield");
+
+        Assert.Equal(new[] { "eq longsword", "eq shield" }, Wire(mgr));
+    }
+
+    [Fact]
+    public void SwapWeapon_OneHander_EquipsOffHand_WhenWeaponWornButOffHandDiffers()
+    {
+        EquipmentManager mgr = SwapManager(SnapshotWithSlots(("Weapon Hand", "longsword")));
+
+        mgr.SwapWeapon("longsword", "shield");
+
+        Assert.Equal(new[] { "eq shield" }, Wire(mgr));
+    }
+
+    [Fact]
+    public void SwapWeapon_OneHander_SkipsOffHand_WhenAlreadyWorn()
+    {
+        EquipmentManager mgr = SwapManager(
+            SnapshotWithSlots(("Weapon Hand", "longsword"), ("Off-Hand", "shield")));
+
+        mgr.SwapWeapon("longsword", "shield");
+
+        Assert.Empty(mgr.LastSentForTests);
+    }
+
+    [Fact]
+    public void SwapWeapon_TwoHander_RemovesWornOffHand_ThenEquipsWeapon()
+    {
+        // The game refuses a two-hander wield while a hand is full, so the
+        // off-hand is rem'd first — the auto-trade doesn't cover this.
+        EquipmentManager mgr = SwapManager(
+            SnapshotWithSlots(("Off-Hand", "shield")),
+            isTwoHanded: w => w == "warhammer");
+
+        mgr.SwapWeapon("warhammer", null);
+
+        Assert.Equal(new[] { "rem shield", "eq warhammer" }, Wire(mgr));
+    }
+
+    [Fact]
+    public void SwapWeapon_TwoHander_NoOffHandWorn_JustEquipsWeapon()
+    {
+        EquipmentManager mgr = SwapManager(InventorySnapshot.Empty,
+            isTwoHanded: w => w == "warhammer");
+
+        mgr.SwapWeapon("warhammer", null);
+
+        Assert.Equal(new[] { "eq warhammer" }, Wire(mgr));
+    }
+
+    [Fact]
+    public void SwapWeapon_TwoHander_IgnoresConfiguredOffHand()
+    {
+        // A two-hander fills both hands — the off-hand arg is never equipped.
+        EquipmentManager mgr = SwapManager(InventorySnapshot.Empty,
+            isTwoHanded: w => w == "warhammer");
+
+        mgr.SwapWeapon("warhammer", "shield");
+
+        Assert.Equal(new[] { "eq warhammer" }, Wire(mgr));
+    }
+
+    [Fact]
+    public void SwapWeapon_TwoHander_AlreadyWorn_NoOp()
+    {
+        EquipmentManager mgr = SwapManager(
+            SnapshotWithSlots(("Weapon Hand", "warhammer")),
+            isTwoHanded: w => w == "warhammer");
+
+        mgr.SwapWeapon("warhammer", null);
+
+        Assert.Empty(mgr.LastSentForTests);
+    }
+
+    // ===== ApplyBackstabArmor (room-clear backstab armor) =====
+    // Only the resolutions that short-circuit before the paced queue
+    // (NotFound / NoChange) are asserted — the Applied path enqueues on the
+    // DispatcherTimer the headless harness doesn't pump. The armor-only slot
+    // exclusion is pinned on the pure BuildWearCommands test below.
+
+    private static EquipmentSet BackstabSet(bool enabled, params EquipmentSlotEntry[] slots)
+        => new()
+        {
+            Trigger = EquipTriggerType.Backstab,
+            Enabled = enabled,
+            Name = "Backstab",
+            Slots = slots.ToList(),
+        };
+
+    [Fact]
+    public void ApplyBackstabArmor_NoBackstabSet_NotFound()
+    {
+        EquipmentManager mgr = Manager(new EquipmentSettings(),
+            InventorySnapshot.Empty, new CombatSettings());
+
+        Assert.Equal(EquipResult.NotFound, mgr.ApplyBackstabArmor());
+    }
+
+    [Fact]
+    public void ApplyBackstabArmor_DisabledSet_NotFound()
+    {
+        EquipmentSettings settings = new()
+        {
+            Sets = { BackstabSet(enabled: false, Entry(EquipmentSlot.Torso, "leather")) },
+        };
+        EquipmentManager mgr = Manager(settings, InventorySnapshot.Empty, new CombatSettings());
+
+        Assert.Equal(EquipResult.NotFound, mgr.ApplyBackstabArmor());
+    }
+
+    [Fact]
+    public void ApplyBackstabArmor_AllArmorWorn_NoChange()
+    {
+        EquipmentSettings settings = new()
+        {
+            Sets = { BackstabSet(enabled: true, Entry(EquipmentSlot.Torso, "leather")) },
+        };
+        EquipmentManager mgr = Manager(settings, SnapshotWithWorn("leather"), new CombatSettings());
+
+        Assert.Equal(EquipResult.NoChange, mgr.ApplyBackstabArmor());
+    }
+
+    [Fact]
+    public void ApplyBackstabArmor_OnlyHeldSlots_NoChange()
+    {
+        // A set naming only weapon / off-hand contributes no armor — the
+        // armor-only pass leaves those to the combat engine's immediate swap.
+        EquipmentSettings settings = new()
+        {
+            Sets =
+            {
+                BackstabSet(enabled: true,
+                    Entry(EquipmentSlot.Weapon, "dagger"),
+                    Entry(EquipmentSlot.OffHand, "buckler")),
+            },
+        };
+        EquipmentManager mgr = Manager(settings, InventorySnapshot.Empty, new CombatSettings());
+
+        Assert.Equal(EquipResult.NoChange, mgr.ApplyBackstabArmor());
+    }
+
+    [Fact]
+    public void BuildWearCommands_ArmorOnly_ExcludesHeldSlots()
+    {
+        EquipmentSet set = Set("bs", "Backstab",
+            Entry(EquipmentSlot.Weapon, "dagger"),
+            Entry(EquipmentSlot.OffHand, "buckler"),
+            Entry(EquipmentSlot.Torso, "leather"),
+            Entry(EquipmentSlot.Head, "hood"));
+
+        List<string> cmds = EquipmentManager.BuildWearCommands(set, Worn(), armorOnly: true);
+
+        Assert.Equal(new[] { "wear leather", "wear hood" }, cmds);
     }
 }

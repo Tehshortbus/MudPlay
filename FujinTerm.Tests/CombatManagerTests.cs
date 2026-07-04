@@ -36,11 +36,11 @@ public sealed class CombatManagerTests
         public Dictionary<int, MonsterOverlay> Overlays { get; } = new();
         public string? OwnName { get; set; } = "Fujin";
         public bool AutoCombatEnabled { get; set; } = true;
-        // Weapon names the injected 2H predicate should report as two-handed.
-        public HashSet<string> TwoHandedWeapons { get; } = new(StringComparer.OrdinalIgnoreCase);
-        // What the live inventory reports worn in the Weapon Hand, or null for
-        // "nothing / unknown" (the default — most tests don't wire inventory).
-        public string? EquippedWeapon { get; set; }
+        // Every weapon/off-hand swap the engine asked the actuator for, in order.
+        // The actual wire commands (worn-diff + two-handed rule) are
+        // EquipmentManager's job now, tested in EquipmentManagerTests; here we
+        // pin the decision — which loadout combat requested and when.
+        public List<(string? Weapon, string? OffHand)> Swaps { get; } = new();
 
         public Harness()
         {
@@ -53,10 +53,9 @@ public sealed class CombatManagerTests
                 readSettings: () => Settings,
                 isEnabled: () => AutoCombatEnabled,
                 readOwnGivenName: () => OwnName,
-                log: Log,
-                isTwoHandedWeapon: w => w is not null && TwoHandedWeapons.Contains(w),
-                readEquippedWeapon: () => EquippedWeapon);
+                log: Log);
             Combat.SetWireSender(b => Sent.Add(b));
+            Combat.SetWeaponActuator((w, oh) => Swaps.Add((w, oh)));
         }
 
         public void SetOverlay(int monsterNumber, MonsterAttackPriority? priority = null,
@@ -1012,7 +1011,7 @@ public sealed class CombatManagerTests
     // ----- Weapon-swap matrix ----------------------------------------
 
     [Fact]
-    public void Attack_EquipsNormalWeapon_BeforeFirstSwing()
+    public void Attack_RequestsNormalWeapon_BeforeFirstSwing()
     {
         using Harness h = new();
         h.Settings.NormalWeapon = "longsword";
@@ -1021,80 +1020,40 @@ public sealed class CombatManagerTests
 
         h.Feed("Also here: giant rat.");
 
-        // Three sends: eq longsword, eq shield, a giant rat
-        Assert.Equal(3, h.Sent.Count);
-        List<string> lines = h.Sent.Select(b => System.Text.Encoding.Latin1.GetString(b).TrimEnd('\r')).ToList();
-        Assert.Equal("eq longsword", lines[0]);
-        Assert.Equal("eq shield", lines[1]);
-        Assert.Equal("a giant rat", lines[2]);
+        // The engine hands the normal loadout to the actuator, then swings. The
+        // worn-diff / wire commands are EquipmentManager's concern.
+        Assert.Equal(("longsword", "shield"), Assert.Single(h.Swaps));
+        Assert.Equal("a giant rat", h.LastSent);
     }
 
     [Fact]
-    public void Attack_NoEquipChange_IdempotentOnSameWeapon()
+    public void WeaponNoEffect_RequestsAlternate_AndReSwings()
     {
         using Harness h = new();
         h.Settings.NormalWeapon = "longsword";
-        h.AddMonster(1, "giant rat", killable: true);
-        h.AddMonster(2, "kobold",    killable: true);
+        h.Settings.AlternateWeapon = "warhammer";
+        h.Settings.AlternateAttackCommand = "swing";
+        h.AddMonster(1, "stone golem", killable: true);
 
-        h.Feed("Also here: giant rat.");
-        Assert.Equal(2, h.Sent.Count);    // eq + attack
+        h.Feed("Also here: stone golem.");
+        h.Swaps.Clear();
 
-        // Room change — same weapon should not re-equip.
-        h.Classifier.NoteRoomChanged();
-        h.Feed("Also here: kobold.");
-        Assert.Equal(3, h.Sent.Count);    // just attack, no second eq
-        Assert.Equal("a kobold", h.LastSent);
+        h.Feed("Your weapon has no effect against this monster!");
+
+        // Requested the alternate loadout and re-swung with the alt command.
+        Assert.Equal(("warhammer", (string?)null), Assert.Single(h.Swaps));
+        Assert.Equal("swing stone golem", h.LastSent);
     }
 
     [Fact]
-    public void Attack_SkipsEquip_WhenWeaponAlreadyWorn()
+    public void Snapshot_ReflectsTargetAndAltFlag()
     {
-        // Reproduces the live bug: the configured normal weapon is already in
-        // hand (live inventory reports it worn), but the shadow state is still
-        // null on the first swing — the old code fired a redundant `eq
-        // quarterstaff`, which the game rejects with "You do not have
-        // quarterstaff left unequipped.". With the inventory feed wired, the
-        // first swing goes straight out with no equip.
-        using Harness h = new();
-        h.Settings.NormalWeapon = "quarterstaff";
-        h.EquippedWeapon = "quarterstaff";
-        h.AddMonster(1, "giant rat", killable: true);
-
-        h.Feed("Also here: giant rat.");
-
-        byte[] only = Assert.Single(h.Sent);
-        Assert.Equal("a giant rat", Encoding.Latin1.GetString(only).TrimEnd('\r'));
-    }
-
-    [Fact]
-    public void Attack_StillEquips_WhenWornWeaponDiffers()
-    {
-        // The worn weapon differs from the configured normal weapon, so the
-        // equip must still fire before the first swing.
-        using Harness h = new();
-        h.Settings.NormalWeapon = "longsword";
-        h.EquippedWeapon = "dagger";
-        h.AddMonster(1, "giant rat", killable: true);
-
-        h.Feed("Also here: giant rat.");
-
-        List<string> lines = h.Sent.Select(b => Encoding.Latin1.GetString(b).TrimEnd('\r')).ToList();
-        Assert.Equal("eq longsword", lines[0]);
-        Assert.Equal("a giant rat", lines[1]);
-    }
-
-    [Fact]
-    public void Snapshot_ReflectsWeaponShadowAndTarget()
-    {
-        // Backs the bug-report engine-state dump. Before combat the shadow is
-        // clean (null weapon == "no equip sent yet" — the state that made the
-        // redundant first-round `eq` visible); after the first swing it mirrors
-        // what went out.
+        // Backs the bug-report engine-state dump. The worn weapon is no longer
+        // shadowed here (live inventory owns that); the decision state is the
+        // current target + whether we're on the alternate weapon.
         using Harness h = new();
         CombatManager.DebugState pre = h.Combat.Snapshot();
         Assert.Null(pre.CurrentTarget);
-        Assert.Null(pre.LastEquippedWeapon);
         Assert.False(pre.UsingAlternateWeapon);
 
         h.Settings.NormalWeapon = "longsword";
@@ -1102,76 +1061,12 @@ public sealed class CombatManagerTests
         h.Feed("Also here: giant rat.");
 
         CombatManager.DebugState post = h.Combat.Snapshot();
-        Assert.Equal("longsword", post.LastEquippedWeapon);
         Assert.Equal("giant rat", post.CurrentTarget);
         Assert.False(post.UsingAlternateWeapon);
     }
 
     [Fact]
-    public void WeaponNoEffect_SwapsToAlternate_AndReSwings()
-    {
-        using Harness h = new();
-        h.Settings.NormalWeapon = "longsword";
-        h.Settings.AlternateWeapon = "warhammer";
-        h.Settings.AlternateAttackCommand = "swing";
-        h.AddMonster(1, "stone golem", killable: true);
-
-        h.Feed("Also here: stone golem.");
-        Assert.Equal(2, h.Sent.Count);    // eq longsword, a stone golem
-        h.Sent.Clear();
-
-        h.Feed("Your weapon has no effect against this monster!");
-
-        // eq warhammer + swing stone golem
-        List<string> lines = h.Sent.Select(b => System.Text.Encoding.Latin1.GetString(b).TrimEnd('\r')).ToList();
-        Assert.Contains("eq warhammer", lines);
-        Assert.Contains("swing stone golem", lines);
-    }
-
-    [Fact]
-    public void Attack_TwoHandedNormalWeapon_SkipsOffHand()
-    {
-        using Harness h = new();
-        h.Settings.NormalWeapon = "greatsword";
-        h.Settings.NormalOffHand = "shield";   // ignored — a two-hander uses both hands
-        h.TwoHandedWeapons.Add("greatsword");
-        h.AddMonster(1, "giant rat", killable: true);
-
-        h.Feed("Also here: giant rat.");
-
-        List<string> lines = h.Sent.Select(b => System.Text.Encoding.Latin1.GetString(b).TrimEnd('\r')).ToList();
-        Assert.Equal("eq greatsword", lines[0]);
-        Assert.Equal("a giant rat", lines[1]);
-        Assert.DoesNotContain("eq shield", lines);
-    }
-
-    [Fact]
-    public void WeaponNoEffect_SwapToTwoHandedAlt_RemovesShieldFirst()
-    {
-        using Harness h = new();
-        h.Settings.NormalWeapon = "longsword";
-        h.Settings.NormalOffHand = "shield";
-        h.Settings.AlternateWeapon = "greatsword";
-        h.Settings.AlternateAttackCommand = "swing";
-        h.TwoHandedWeapons.Add("greatsword");
-        h.AddMonster(1, "stone golem", killable: true);
-
-        h.Feed("Also here: stone golem.");   // eq longsword, eq shield, a stone golem
-        h.Sent.Clear();
-
-        h.Feed("Your weapon has no effect against this monster!");
-
-        List<string> lines = h.Sent.Select(b => System.Text.Encoding.Latin1.GetString(b).TrimEnd('\r')).ToList();
-        // Shield comes off before the two-hander goes on; no off-hand re-equip.
-        int removeIdx = lines.IndexOf("remove shield");
-        int equipIdx = lines.IndexOf("eq greatsword");
-        Assert.True(removeIdx >= 0, "expected a 'remove shield' before the two-hander");
-        Assert.True(equipIdx > removeIdx, "shield must be removed before equipping the two-hander");
-        Assert.Contains("swing stone golem", lines);
-    }
-
-    [Fact]
-    public void RoomCleared_RevertsToNormal_WhenWasOnAlt()
+    public void RoomCleared_RequestsNormal_WhenWasOnAlt()
     {
         using Harness h = new();
         h.Settings.NormalWeapon = "longsword";
@@ -1180,7 +1075,7 @@ public sealed class CombatManagerTests
 
         h.Feed("Also here: stone golem.");
         h.Feed("Your weapon has no effect against this monster!");
-        h.Sent.Clear();
+        h.Swaps.Clear();
 
         // Simulate room-cleared: drop the species from the classifier
         // so the next observation has no engageable. Use the
@@ -1188,12 +1083,11 @@ public sealed class CombatManagerTests
         // post-removal list.
         h.Classifier.RemoveDeadEntity("stone golem");
 
-        List<string> lines = h.Sent.Select(b => System.Text.Encoding.Latin1.GetString(b).TrimEnd('\r')).ToList();
-        Assert.Contains("eq longsword", lines);
+        Assert.Contains(("longsword", (string?)null), h.Swaps);
     }
 
     [Fact]
-    public void RoomCleared_EquipsBackstab_WhenConfigured()
+    public void RoomCleared_RequestsBackstabWeapon_WhenConfigured()
     {
         using Harness h = new();
         h.Settings.NormalWeapon = "longsword";
@@ -1202,12 +1096,11 @@ public sealed class CombatManagerTests
         h.AddMonster(1, "giant rat", killable: true);
 
         h.Feed("Also here: giant rat.");
-        h.Sent.Clear();
+        h.Swaps.Clear();
 
         h.Classifier.RemoveDeadEntity("giant rat");
 
-        List<string> lines = h.Sent.Select(b => System.Text.Encoding.Latin1.GetString(b).TrimEnd('\r')).ToList();
-        Assert.Contains("eq dagger", lines);
+        Assert.Contains(("dagger", (string?)null), h.Swaps);
     }
 
     // ----- Backstab window (PR 4.c) ----------------------------------
@@ -1225,8 +1118,7 @@ public sealed class CombatManagerTests
         // Opening swing into the room is `bs`, and the BS path must NOT
         // re-equip — the BS weapon is pre-equipped at room-clear.
         Assert.Equal("bs giant rat", h.LastSent);
-        List<string> lines = h.Sent.Select(b => System.Text.Encoding.Latin1.GetString(b).TrimEnd('\r')).ToList();
-        Assert.DoesNotContain(lines, l => l.StartsWith("eq ", StringComparison.Ordinal));
+        Assert.Empty(h.Swaps);
     }
 
     [Fact]
@@ -1343,21 +1235,20 @@ public sealed class CombatManagerTests
     }
 
     [Fact]
-    public void FistsNoEffect_ClearsShadowState_AndReEquipsOnNextRoom()
+    public void FistsNoEffect_ClearsAltFlag_AndReRequestsOnNextRoom()
     {
         using Harness h = new();
         h.Settings.NormalWeapon = "longsword";
         h.AddMonster(1, "giant rat", killable: true);
 
         h.Feed("Also here: giant rat.");
-        h.Sent.Clear();
+        h.Swaps.Clear();
 
         h.Feed("Your fists have no effect against this monster!");
 
-        // Force a fresh observation — should re-equip from scratch.
+        // Force a fresh observation — should re-request the normal weapon.
         h.Feed("Also here: giant rat.");
-        List<string> lines = h.Sent.Select(b => System.Text.Encoding.Latin1.GetString(b).TrimEnd('\r')).ToList();
-        Assert.Contains("eq longsword", lines);
+        Assert.Contains(("longsword", (string?)null), h.Swaps);
     }
 
     [Fact]
