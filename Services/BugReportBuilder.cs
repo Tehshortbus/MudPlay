@@ -205,7 +205,11 @@ public static class BugReportBuilder
         Kv(sb, "Current room",
             roomState.CurrentRoom is { } room ? $"{room.Key.Map}/{room.Key.Room} — {room.DisplayName}" : "(unknown)");
         Kv(sb, "Room confidence", roomState.Confidence.ToString());
-        Kv(sb, "Last move sent", svc.RoomTracker.LastMoveSentAt?.ToString("HH:mm:ss") ?? "(never)");
+        // RoomTracker anchors its timestamps in UTC (DateTimeOffset.UtcNow); the
+        // rest of the report uses local .Now. The two are the same absolute
+        // instant so all the tracker's comparisons work either way, but printing
+        // the raw value would show the UTC hour next to local ones — normalize.
+        Kv(sb, "Last move sent", svc.RoomTracker.LastMoveSentAt?.ToLocalTime().ToString("HH:mm:ss") ?? "(never)");
 
         IReadOnlyList<Game.Map.RoomKey> history = svc.RoomTracker.GetHistory();
         if (history.Count > 0)
