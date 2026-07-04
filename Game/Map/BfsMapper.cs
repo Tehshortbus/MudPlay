@@ -348,6 +348,47 @@ public sealed class BfsMapper
     }
 
     /// <summary>
+    /// Nearest graph-reachable room to <paramref name="seed"/> (inclusive)
+    /// that the blacklist does not hide, by BFS hop distance. Returns
+    /// <paramref name="seed"/> unchanged when it isn't blacklisted (or no
+    /// blacklist is configured), and falls back to <paramref name="seed"/>
+    /// when every reachable room is hidden.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="BuildLayout"/> exempts its origin from the blacklist so
+    /// the "you are here" marker always has an anchor. That exemption is
+    /// correct for the live current room but wrong for a fallback anchor
+    /// (the offline last-known room): blacklisting the parked room should
+    /// hide it at once, not keep it visible just because it happens to be
+    /// the layout origin. The map routes its non-live origin through here
+    /// so the layout never anchors on — and so never exempts — a hidden
+    /// room, mirroring the movement path's re-root off a blacklisted origin.
+    /// </remarks>
+    public RoomKey NearestVisibleRoom(RoomKey seed)
+    {
+        if (_isBlacklisted?.Invoke(seed) != true) return seed;
+        if (_graph.GetRoom(seed) is null) return seed;
+
+        Queue<RoomKey> queue = new();
+        HashSet<RoomKey> seen = new() { seed };
+        queue.Enqueue(seed);
+        while (queue.Count > 0)
+        {
+            RoomKey here = queue.Dequeue();
+            if (_graph.GetRoom(here) is not { } room) continue;
+            foreach ((Direction _, RoomExit exit) in room.Exits)
+            {
+                RoomKey next = exit.Target;
+                if (!seen.Add(next)) continue;
+                if (_graph.GetRoom(next) is null) continue;
+                if (_isBlacklisted?.Invoke(next) != true) return next;
+                queue.Enqueue(next);
+            }
+        }
+        return seed;
+    }
+
+    /// <summary>
     /// How many retry origins to try, ordered by stub count descending.
     /// Each one costs another full BFS + refinement pass, so a small
     /// cap keeps worst-case build cost bounded. The improvement loop

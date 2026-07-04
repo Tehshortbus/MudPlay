@@ -106,30 +106,33 @@
               RowDefinitions="Auto,Auto,Auto,Auto,Auto"
               ColumnDefinitions="*,180">
 
-            <!-- Visibility + orientation. ShowToolbar is the master gate;
-                 VerticalToolbar swaps between horizontal-top and vertical
-                 mounting; Left / Right pick the edge when vertical.
-                 Radios stay disabled until Vertical is on, since they're
-                 meaningless for the horizontal top mount. -->
+            <!-- Visibility + position. ShowToolbar is the master gate; the
+                 four edge radios share one group and stay live only while
+                 Show toolbar is checked. Top / Bottom mount horizontally,
+                 Left / Right vertically. Top is the default. -->
             <StackPanel Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2"
                         Spacing="2" Margin="0,0,0,10">
                 <TextBlock Classes="SectionHeader" Text="Toolbar options"/>
-                <CheckBox Content="Show toolbar"
-                          IsChecked="{Binding ShowToolbar, Mode=TwoWay}"
-                          ToolTip.Tip="Master visibility — uncheck to hide the toolbar entirely."/>
                 <StackPanel Orientation="Horizontal" Spacing="16">
-                    <CheckBox Content="Vertical toolbar"
-                              IsChecked="{Binding VerticalToolbar, Mode=TwoWay}"
-                              IsEnabled="{Binding ShowToolbar}"
-                              ToolTip.Tip="Rotate the toolbar to a vertical edge instead of the top."/>
-                    <RadioButton GroupName="VerticalSide" Content="Left"
-                                 IsChecked="{Binding IsLeftSide, Mode=TwoWay}"
-                                 IsEnabled="{Binding VerticalSideEnabled}"
-                                 ToolTip.Tip="Dock the vertical toolbar to the left edge."/>
-                    <RadioButton GroupName="VerticalSide" Content="Right"
-                                 IsChecked="{Binding IsRightSide, Mode=TwoWay}"
-                                 IsEnabled="{Binding VerticalSideEnabled}"
-                                 ToolTip.Tip="Dock the vertical toolbar to the right edge."/>
+                    <CheckBox Content="Show toolbar"
+                              IsChecked="{Binding ShowToolbar, Mode=TwoWay}"
+                              ToolTip.Tip="Master visibility — uncheck to hide the toolbar entirely."/>
+                    <RadioButton GroupName="ToolbarPosition" Content="Top"
+                                 IsChecked="{Binding IsTop, Mode=TwoWay}"
+                                 IsEnabled="{Binding ShowToolbar}"
+                                 ToolTip.Tip="Dock the toolbar to the top edge (default)."/>
+                    <RadioButton GroupName="ToolbarPosition" Content="Bottom"
+                                 IsChecked="{Binding IsBottom, Mode=TwoWay}"
+                                 IsEnabled="{Binding ShowToolbar}"
+                                 ToolTip.Tip="Dock the toolbar to the bottom edge, above the status bar."/>
+                    <RadioButton GroupName="ToolbarPosition" Content="Left"
+                                 IsChecked="{Binding IsLeft, Mode=TwoWay}"
+                                 IsEnabled="{Binding ShowToolbar}"
+                                 ToolTip.Tip="Dock the toolbar vertically to the left edge."/>
+                    <RadioButton GroupName="ToolbarPosition" Content="Right"
+                                 IsChecked="{Binding IsRight, Mode=TwoWay}"
+                                 IsEnabled="{Binding ShowToolbar}"
+                                 ToolTip.Tip="Dock the toolbar vertically to the right edge."/>
                 </StackPanel>
 
                 <!-- Import another character's toolbar layout + keybinds,

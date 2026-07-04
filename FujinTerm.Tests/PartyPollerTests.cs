@@ -63,6 +63,35 @@ public sealed class PartyPollerTests
         // No assertion — test passes by not throwing.
     }
 
+    [Fact]
+    public void ParPoll_GateReturnsFalse_SendsNothing()
+    {
+        // par rides the auto-heal/rest toggle; a false gate (toggle off,
+        // or auto-all killed the flag) must silence the poll.
+        var (poller, _, state, _, _, wire) = Setup();
+        state.Members.Add(new PartyMember { Name = "Forged" });
+        state.IsInParty = true;
+        poller.IsParPollEnabled = () => false;
+        wire.Clear();   // drop the on-join @health send; isolate the par poll
+
+        poller.DoParPollForTests();
+
+        Assert.Empty(wire);
+    }
+
+    [Fact]
+    public void ParPoll_GateReturnsTrue_SendsPar()
+    {
+        var (poller, _, state, _, _, wire) = Setup();
+        state.Members.Add(new PartyMember { Name = "Forged" });
+        state.IsInParty = true;
+        poller.IsParPollEnabled = () => true;
+
+        poller.DoParPollForTests();
+
+        Assert.Equal("par\r", LastWire(wire));
+    }
+
     // ===== Settings.Party par-cadence setter =====
 
     [Fact]

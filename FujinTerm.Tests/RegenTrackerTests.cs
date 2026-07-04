@@ -270,4 +270,70 @@ public sealed class RegenTrackerTests
         Assert.Equal(TimeSpan.FromSeconds(20), RegenConstants.SeedRestingInterval);
         Assert.Equal(TimeSpan.FromSeconds(10), RegenConstants.SeedMeditatingInterval);
     }
+
+    [Fact]
+    public void DefaultRealm_NaturalCadenceIsStockThirtySeconds()
+    {
+        var (state, tracker, _) = Setup();
+        state.Hp = 100;                            // baseline
+        state.Hp = 103;                            // uptick anchors HpNatural at T0.
+
+        Assert.Equal(TimeSpan.FromSeconds(30), tracker.GetTimeToNextHpNaturalTick());
+        tracker.Dispose();
+    }
+
+    [Fact]
+    public void SetRealmParaMud_ReseedsNaturalCadenceToTenSecondGrid()
+    {
+        // Paradigm splits the natural cycle into thirds on a 10 s grid, so the
+        // status-bar countdown must count down from 10 s, not the stock 30 s.
+        var (state, tracker, _) = Setup();
+        tracker.SetRealm(RealmType.ParaMud);
+        state.Hp = 100;                            // baseline
+        state.Hp = 103;                            // uptick anchors HpNatural at T0.
+
+        Assert.Equal(TimeSpan.FromSeconds(10), tracker.GetTimeToNextHpNaturalTick());
+        tracker.Dispose();
+    }
+
+    [Fact]
+    public void SetRealmParaMud_ReseedsRestCadenceToTenSecondGrid()
+    {
+        var (state, tracker, _) = Setup();
+        tracker.SetRealm(RealmType.ParaMud);
+        state.Position = PlayerPosition.Resting;   // anchors HpRest at T0.
+
+        Assert.Equal(TimeSpan.FromSeconds(10), tracker.GetTimeToNextHpRestTick());
+        tracker.Dispose();
+    }
+
+    [Fact]
+    public void SetRealmBackToStock_RestoresStockCadence()
+    {
+        var (state, tracker, _) = Setup();
+        tracker.SetRealm(RealmType.ParaMud);
+        tracker.SetRealm(RealmType.Stock);
+        state.Hp = 100;
+        state.Hp = 103;
+
+        Assert.Equal(TimeSpan.FromSeconds(30), tracker.GetTimeToNextHpNaturalTick());
+        tracker.Dispose();
+    }
+
+    [Fact]
+    public void SetRealm_ClearsStaleAmountEstimate()
+    {
+        // The per-tick amount was learned under the old realm's divisor +
+        // cadence — a realm switch invalidates it.
+        var (state, tracker, clock) = Setup();
+        state.Hp = 100;
+        clock.Advance(TimeSpan.FromSeconds(30));
+        state.Hp = 106;                            // a stock-cadence sample lands.
+        Assert.Equal(1, tracker.HpNatural.Stat.SampleCount);
+
+        tracker.SetRealm(RealmType.ParaMud);
+        Assert.Equal(0, tracker.HpNatural.Stat.SampleCount);
+        Assert.Equal(0, tracker.HpNatural.Stat.EstimatedAmount);
+        tracker.Dispose();
+    }
 }

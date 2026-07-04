@@ -1,6 +1,5 @@
 using System.ComponentModel;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using Avalonia.Controls;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -12,26 +11,23 @@ using FujinTerm.Views.Settings;
 namespace FujinTerm.ViewModels.Settings;
 
 /// <summary>
-/// "Statline" tab — Phase 4 PR 4.7 surface, modelled on MegaMUD's
-/// Statline dialog: a read-only <b>Current Statline</b> preview, the
-/// editable <b>Statline Command</b> (default <c>full</c>), and a
-/// <b>Customize</b> dropdown that appends wildcard tokens to the
-/// command box. Phase 12 PR 12.1 replaces this with a richer
-/// drag-token builder; the persisted DTO stays a single string so the
-/// upgrade is transparent.
+/// "Statline" tab — modelled on MegaMUD's Statline dialog: a read-only
+/// <b>Current Statline</b> preview, the editable <b>Statline Command</b>
+/// (default <c>full</c>), and a <b>Customize</b> dropdown that appends
+/// wildcard tokens to the command box. The saved command is the single
+/// source of truth — it's both what we send to the BBS
+/// (<c>set statline …</c>) and what the prompt parser is generated from,
+/// so the editor and the on-wire prompt can't drift. The grammar that
+/// interprets the command string lives in <see cref="StatlineSyntax"/>.
 /// </summary>
 public sealed partial class StatlineSectionViewModel : SettingsSectionViewModel
 {
     private const string TabKey = "Statline";
-    private const string DefaultCommand = "full";
-
-    private static readonly Regex FormattingCodes =
-        new(@"%(?:[fb][0-7]|[dBNULR])", RegexOptions.Compiled);
 
     private readonly ProfileService _profile;
     private readonly PlayerState _playerState;
     private readonly Func<string, Task<bool>>? _sendText;
-    private string _appliedCommand = DefaultCommand;
+    private string _appliedCommand = StatlineSyntax.Default;
     private bool _suppressDirty = true;
     private bool _dirty;
     private Control? _view;
@@ -57,7 +53,7 @@ public sealed partial class StatlineSectionViewModel : SettingsSectionViewModel
     /// </summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CurrentStatlinePreview))]
-    private string _command = DefaultCommand;
+    private string _command = StatlineSyntax.Default;
 
     /// <summary>
     /// Read-only preview that mirrors how the BBS will render the prompt
@@ -89,6 +85,12 @@ public sealed partial class StatlineSectionViewModel : SettingsSectionViewModel
         _profile.ProfileLoaded += OnProfileChanged;
         _profile.ProfileClosed += OnProfileClosedExternally;
         _playerState.PropertyChanged += OnPlayerStateChanged;
+        OnDispose(() =>
+        {
+            _profile.ProfileLoaded -= OnProfileChanged;
+            _profile.ProfileClosed -= OnProfileClosedExternally;
+            _playerState.PropertyChanged -= OnPlayerStateChanged;
+        });
 
         LoadFromProfile();
         _suppressDirty = false;
@@ -100,7 +102,7 @@ public sealed partial class StatlineSectionViewModel : SettingsSectionViewModel
 
         // Treat "full" / blank as null on disk so the JSON stays minimal
         // and round-trips back to the default in the editor.
-        string? toStore = IsDefault(Command) ? null : Command;
+        string? toStore = StatlineSyntax.IsDefault(Command) ? null : Command;
         StatlineSettings dto = new() { Command = toStore };
 
         profile.Settings ??= new();
@@ -114,7 +116,7 @@ public sealed partial class StatlineSectionViewModel : SettingsSectionViewModel
         // forget — the send is async but the Apply contract is sync.
         if (!string.Equals(_appliedCommand, Command, StringComparison.Ordinal))
         {
-            string wire = NormalizeForWire(Command);
+            string wire = StatlineSyntax.NormalizeForWire(Command);
             _ = _sendText?.Invoke($"set statline {wire}\r");
             _appliedCommand = Command;
         }
@@ -139,7 +141,7 @@ public sealed partial class StatlineSectionViewModel : SettingsSectionViewModel
         // If user hasn't customised yet (command is "full" or blank),
         // promote them to a `full custom ` prefix before appending so the
         // first token forms a valid custom statline.
-        if (IsDefault(Command))
+        if (StatlineSyntax.IsDefault(Command))
         {
             Command = "full custom " + SelectedWildcard.Code;
         }
@@ -153,7 +155,7 @@ public sealed partial class StatlineSectionViewModel : SettingsSectionViewModel
 
     /// <summary>Reset the command box to the class default (<c>full</c>).</summary>
     [RelayCommand]
-    private void ResetToDefault() => Command = DefaultCommand;
+    private void ResetToDefault() => Command = StatlineSyntax.Default;
 
     private void OnProfileChanged(CharacterProfile _) => ReloadAfterProfileSwap();
     private void OnProfileClosedExternally() => ReloadAfterProfileSwap();
@@ -176,7 +178,7 @@ public sealed partial class StatlineSectionViewModel : SettingsSectionViewModel
     private void LoadFromProfile()
     {
         StatlineSettings dto = ReadOrDefault();
-        Command = string.IsNullOrWhiteSpace(dto.Command) ? DefaultCommand : dto.Command!;
+        Command = string.IsNullOrWhiteSpace(dto.Command) ? StatlineSyntax.Default : dto.Command!;
         _appliedCommand = Command;
     }
 
@@ -204,47 +206,16 @@ public sealed partial class StatlineSectionViewModel : SettingsSectionViewModel
 
     partial void OnCommandChanged(string value) => Dirty();
 
-    /// <summary>
-    /// Normalize the user's command to the on-wire form the BBS expects.
-    /// `full` / blank → `full`. Anything already starting with `full`
-    /// (e.g. `full custom %h`) goes through verbatim. A raw wildcard
-    /// string gets wrapped in `full custom …`.
-    /// </summary>
-    private static string NormalizeForWire(string command)
-    {
-        if (IsDefault(command)) return DefaultCommand;
-        string trimmed = command.TrimStart();
-        return trimmed.StartsWith("full", StringComparison.OrdinalIgnoreCase)
-            ? command
-            : $"full custom {command}";
-    }
-
     // ----- Wildcard rendering -------------------------------------------
-
-    private static bool IsDefault(string? cmd)
-        => string.IsNullOrWhiteSpace(cmd) || cmd!.Trim().Equals(DefaultCommand, StringComparison.OrdinalIgnoreCase);
 
     private string RenderPreview(string? command)
     {
-        string template;
-
-        if (IsDefault(command))
-        {
-            template = DefaultTemplateForClass();
-        }
-        else
-        {
-            string trimmed = command!.TrimStart();
-            const string prefix = "full custom ";
-            if (trimmed.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-            {
-                template = trimmed.Substring(prefix.Length);
-            }
-            else
-            {
-                template = command;
-            }
-        }
+        // Default / blank has no fixed template (it's class-dependent), so
+        // synthesise the class default; otherwise pull the bare wildcard
+        // template out of the command via the shared grammar.
+        string template = StatlineSyntax.IsDefault(command)
+            ? DefaultTemplateForClass()
+            : StatlineSyntax.ExtractTemplate(command!);
 
         return ApplyWildcards(template);
     }
@@ -258,9 +229,9 @@ public sealed partial class StatlineSectionViewModel : SettingsSectionViewModel
 
     private string ApplyWildcards(string template)
     {
-        // Drop colour / formatting codes from the plain-text preview
-        // — Phase 12's preview will honour them visually.
-        string s = FormattingCodes.Replace(template, string.Empty);
+        // Drop colour / formatting codes from the plain-text preview —
+        // they render as ANSI escapes on the wire, never plain text.
+        string s = StatlineSyntax.StripFormatting(template);
 
         // Sample values stand in for unobserved live state so the preview
         // is informative pre-connect. Once PromptParser has seen a status

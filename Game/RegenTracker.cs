@@ -46,6 +46,15 @@ namespace FujinTerm.Game;
 /// mirrors the anchor onto the other so a max-HP / max-MA character
 /// still has a live countdown driven by whichever stream is moving.
 /// </para>
+/// <para>
+/// The intervals quoted above are the <b>Stock</b> cadence. On ParaMud /
+/// Paradigm the server splits each cycle's amount into thirds on a faster
+/// grid, so the observable cadence differs — <see cref="SetRealm"/> re-seeds
+/// every cycle from the active <see cref="RealmRegenProfile"/> (wired to
+/// <see cref="Services.GameDataCache.ActiveSetChanged"/> in
+/// <c>AppServices</c>). Cycles default to the Stock profile until told
+/// otherwise.
+/// </para>
 /// </remarks>
 public sealed class RegenTracker : IDisposable
 {
@@ -55,9 +64,13 @@ public sealed class RegenTracker : IDisposable
     private DateTimeOffset? _lastArtifactAt;
     private int _lastHp;
     private int _lastMa;
+    private DateTimeOffset? _lastHpTickAt;
+    private DateTimeOffset? _lastMaTickAt;
     private bool _hpBaselineSet;
     private bool _maBaselineSet;
     private bool _disposed;
+
+    private RealmRegenProfile _profile = RealmRegenProfile.Stock;
 
     public RegenCycle HpNatural { get; } = new("HP natural", RegenConstants.SeedStandingInterval);
     public RegenCycle HpRest    { get; } = new("HP rest",    RegenConstants.SeedRestingInterval);
@@ -89,6 +102,21 @@ public sealed class RegenTracker : IDisposable
 
     /// <summary>Time-to-next MP meditate tick, or <c>null</c> when not meditating.</summary>
     public TimeSpan? GetTimeToNextMpMediTick() => MpMedi.GetTimeToNext(_clock());
+
+    /// <summary>
+    /// Re-seed every cycle's tick cadence for the given realm family (see
+    /// <see cref="RealmRegenProfile"/>). Called once at wire-up and again on
+    /// every <see cref="Services.GameDataCache.ActiveSetChanged"/>. Idempotent
+    /// — re-applying the same realm just re-asserts the same intervals.
+    /// </summary>
+    public void SetRealm(RealmType realm)
+    {
+        _profile = RealmRegenProfile.For(realm);
+        HpNatural.Reseed(_profile.StandingInterval);
+        MpNatural.Reseed(_profile.StandingInterval);
+        HpRest.Reseed(_profile.RestingInterval);
+        MpMedi.Reseed(_profile.MeditatingInterval);
+    }
 
     /// <summary>Mark the moment as an artifact (heal / drink / etc.) so subsequent up-deltas drop.</summary>
     public void RecordArtifact() => _lastArtifactAt = _clock();
@@ -147,7 +175,9 @@ public sealed class RegenTracker : IDisposable
         // valid even when MA sits at max and never upticks.
         if (natClaimed) MpNatural.Start(now);
 
-        HpTickObserved?.Invoke(new RegenSample(now, delta, TimeSpan.Zero, _state.Position));
+        TimeSpan sinceLast = _lastHpTickAt is { } prevTick ? now - prevTick : TimeSpan.Zero;
+        _lastHpTickAt = now;
+        HpTickObserved?.Invoke(new RegenSample(now, delta, sinceLast, _state.Position));
     }
 
     private void ConsiderMa()
@@ -179,7 +209,9 @@ public sealed class RegenTracker : IDisposable
         // still see a live HP countdown driven by observed MA ticks.
         if (natClaimed) HpNatural.Start(now);
 
-        MaTickObserved?.Invoke(new RegenSample(now, delta, TimeSpan.Zero, _state.Position));
+        TimeSpan sinceLast = _lastMaTickAt is { } prevTick ? now - prevTick : TimeSpan.Zero;
+        _lastMaTickAt = now;
+        MaTickObserved?.Invoke(new RegenSample(now, delta, sinceLast, _state.Position));
     }
 
     /// <summary>
@@ -237,7 +269,13 @@ public sealed class RegenTracker : IDisposable
     }
 }
 
-/// <summary>One observed regen sample — payload of the tick-observed events.</summary>
+/// <summary>
+/// One observed regen sample — payload of the tick-observed events.
+/// <paramref name="IntervalSinceLast"/> is the wall-clock gap since the
+/// previous observed uptick of the <i>same</i> stream (HP or MA), or
+/// <see cref="TimeSpan.Zero"/> for the first sample. It carries the raw
+/// cadence a diagnostic can read a realm's real tick timing off of.
+/// </summary>
 public readonly record struct RegenSample(
     DateTimeOffset Timestamp,
     int Delta,

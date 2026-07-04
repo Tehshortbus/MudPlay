@@ -10,21 +10,32 @@ namespace FujinTerm.ViewModels;
 /// </summary>
 public sealed class BackscrollRowViewModel
 {
+    private string? _plainText;
+
     public ScrollbackBuffer.Row Source { get; }
     public string TimestampText { get; }
     public Cell[] Cells => Source.Cells;
 
-    /// <summary>Plain-text projection of the row, used by search + export.</summary>
-    public string PlainText { get; }
+    /// <summary>
+    /// Plain-text projection of the row, used by search + export. Built on
+    /// first access and cached — the transcript renders straight from
+    /// <see cref="Cells"/>, so a row that's never searched or exported never
+    /// pays for this string. Deferring it keeps a full backscroll's worth of
+    /// row VMs from each allocating a duplicate copy of their text up front.
+    /// </summary>
+    public string PlainText => _plainText ??= BuildPlainText();
 
     public BackscrollRowViewModel(ScrollbackBuffer.Row source)
     {
         Source = source;
         TimestampText = source.Timestamp.ToLocalTime().ToString("HH:mm:ss");
+    }
 
-        char[] chars = new char[source.Cells.Length];
-        for (int i = 0; i < source.Cells.Length; i++)
-            chars[i] = source.Cells[i].Char;
-        PlainText = new string(chars).TrimEnd();
+    private string BuildPlainText()
+    {
+        char[] chars = new char[Source.Cells.Length];
+        for (int i = 0; i < Source.Cells.Length; i++)
+            chars[i] = Source.Cells[i].Char;
+        return new string(chars).TrimEnd();
     }
 }

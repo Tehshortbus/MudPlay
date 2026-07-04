@@ -5,23 +5,29 @@ namespace FujinTerm.Services;
 /// ordered loosely by "urgency" but consumers should not rely on the numeric
 /// comparison (filtering uses set membership instead).
 /// </summary>
+/// <remarks>
+/// <para>
+/// <see cref="Info"/> / <see cref="Warn"/> / <see cref="Error"/> are always
+/// recorded. <see cref="Debug"/> and <see cref="Combat"/> are
+/// <i>generation-gated</i> — <see cref="LogService.Debug(string, string)"/> and
+/// <see cref="LogService.Combat(string, string)"/> no-op unless the matching
+/// per-character diagnostic toggle is on (see <see cref="LogDiagnosticState"/>).
+/// </para>
+/// </remarks>
 public enum LogSeverity
 {
-    /// <summary>Verbose diagnostic detail. Hidden by default in the log pane.</summary>
+    /// <summary>Verbose cross-engine diagnostic detail. Generation-gated on the Debug toggle.</summary>
     Debug,
 
-    /// <summary>General informational message (connect, disconnect, profile loaded, etc.).</summary>
+    /// <summary>General informational message (connect, disconnect, profile loaded, etc.). Always recorded.</summary>
     Info,
 
-    /// <summary>Recoverable anomaly worth surfacing but not breaking work.</summary>
+    /// <summary>Recoverable anomaly worth surfacing but not breaking work. Always recorded.</summary>
     Warn,
 
-    /// <summary>Failure that the user should see immediately.</summary>
+    /// <summary>Failure that the user should see immediately. Always recorded.</summary>
     Error,
 
-    /// <summary>Server-originated game text routed to the log (e.g., system broadcasts).</summary>
-    GameMsg,
-
-    /// <summary>Command issued to the server (by the user or by automation).</summary>
-    Cmd,
+    /// <summary>Combat-engine decision trace. Generation-gated on the Combat toggle; carries its own log chip.</summary>
+    Combat,
 }

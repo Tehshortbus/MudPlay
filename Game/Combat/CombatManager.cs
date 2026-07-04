@@ -384,7 +384,7 @@ public sealed partial class CombatManager : IDisposable
         // swinging at is the dead one; the other doesn't auto-engage.
         if (string.Equals(current, deadMonsterName, StringComparison.OrdinalIgnoreCase))
         {
-            _log?.Info(LogCategory,
+            _log?.Combat(LogCategory,
                 $"target died — clearing _currentTarget='{current}' (raw-name match)");
             _currentTarget = null;
             return;
@@ -404,7 +404,7 @@ public sealed partial class CombatManager : IDisposable
                 if (e.Kind != EntityKind.Monster) continue;
                 if (!string.Equals(e.RawName, current, StringComparison.OrdinalIgnoreCase)) continue;
                 if (!string.Equals(e.ResolvedName, deadMonsterName, StringComparison.OrdinalIgnoreCase)) continue;
-                _log?.Info(LogCategory,
+                _log?.Combat(LogCategory,
                     $"target died — clearing _currentTarget='{current}' (resolved-name match)");
                 _currentTarget = null;
                 return;
@@ -432,7 +432,7 @@ public sealed partial class CombatManager : IDisposable
         if (_classifier.Current is { } liveObs &&
             TryBuildCandidate(liveObs, target) is { } cand)
         {
-            _log?.Info(LogCategory, $"@kill retarget → {cand.RawName}");
+            _log?.Combat(LogCategory, $"@kill retarget → {cand.RawName}");
             DispatchRoundAction(settings, cand, CountEngageable(liveObs), liveObs);
             return;
         }
@@ -534,7 +534,7 @@ public sealed partial class CombatManager : IDisposable
                             friendlyCount++;
                     }
                 }
-                _log?.Info(LogCategory,
+                _log?.Combat(LogCategory,
                     $"room cleared — was=target={_currentTarget} " +
                     $"source={obs.Source} " +
                     $"obs-entities={total} (unknown={unknownCount} " +
@@ -573,7 +573,7 @@ public sealed partial class CombatManager : IDisposable
             }
             else if (engageable.Count < min || engageable.Count > max)
             {
-                _log?.Info(LogCategory,
+                _log?.Combat(LogCategory,
                     $"min/max gate skip — count={engageable.Count} window=[{min}..{max}]");
                 // Clear target so we don't keep swinging at an old pick
                 // that's now out-of-window after a kill.
@@ -618,7 +618,7 @@ public sealed partial class CombatManager : IDisposable
         {
             if (UnengageableReason(settings, cand.MonsterNumber) is { } reason)
             {
-                _log?.Info(LogCategory,
+                _log?.Combat(LogCategory,
                     $"skip un-actionable {cand.RawName} (#{cand.MonsterNumber}) — {reason}");
                 continue;
             }
@@ -633,7 +633,7 @@ public sealed partial class CombatManager : IDisposable
         // walker steps to the next room.
         if (choice is not { } picked)
         {
-            _log?.Info(LogCategory,
+            _log?.Combat(LogCategory,
                 $"room un-actionable: {engageable.Count} hostile(s), none hittable — " +
                 $"moving on (engageable=[" +
                 $"{string.Join(",", engageable.Select(e => e.RawName))}])");
@@ -650,13 +650,13 @@ public sealed partial class CombatManager : IDisposable
         // re-pick.
         if (_currentTarget is null)
         {
-            _log?.Info(LogCategory,
+            _log?.Combat(LogCategory,
                 $"re-pick: no current target — picking {picked.RawName} from " +
                 $"[{string.Join(",", engageable.Select(e => e.RawName))}]");
         }
         else
         {
-            _log?.Info(LogCategory,
+            _log?.Combat(LogCategory,
                 $"re-pick: target '{_currentTarget}' not in engageable — " +
                 $"switching to {picked.RawName} (engageable=[" +
                 $"{string.Join(",", engageable.Select(e => e.RawName))}])");
@@ -805,7 +805,7 @@ public sealed partial class CombatManager : IDisposable
             _lastEquippedOffHand = null;
         }
 
-        _log?.Info(LogCategory,
+        _log?.Combat(LogCategory,
             $"equip weapon={weapon} offhand={(newIsTwoHanded ? "<two-handed>" : offHand ?? "<none>")}");
         Send($"eq {weapon.Trim()}");
         _lastEquippedWeapon = weapon;
@@ -861,13 +861,13 @@ public sealed partial class CombatManager : IDisposable
         _noEffectCounts[species] = count;
         if (count < threshold)
         {
-            _log?.Info(LogCategory,
+            _log?.Combat(LogCategory,
                 $"weapon-no-effect species={species} count={count}/{threshold}");
             return;
         }
 
         if (_normalWeaponFailedMonsters.Add(species))
-            _log?.Info(LogCategory, $"adding {species} to normal-weapon fail-set");
+            _log?.Combat(LogCategory, $"adding {species} to normal-weapon fail-set");
 
         // Swap NOW and re-send the attack so we don't waste a round.
         EquipForAttack(settings, wantAlternate: true);
@@ -987,7 +987,7 @@ public sealed partial class CombatManager : IDisposable
             int annNumber = ResolveMonsterNumber(liveObs, announcedTarget);
             if (UnengageableReason(settings, annNumber) is { } annReason)
             {
-                _log?.Info(LogCategory,
+                _log?.Combat(LogCategory,
                     $"target-priority {settings.TargetPriority} skipped — " +
                     $"{announcedTarget} un-actionable for us ({annReason}); " +
                     "re-picking our own target");
@@ -1000,7 +1000,7 @@ public sealed partial class CombatManager : IDisposable
             // the per-round chooser against that specific instance.
             if (TryBuildCandidate(liveObs, announcedTarget) is { } cand)
             {
-                _log?.Info(LogCategory,
+                _log?.Combat(LogCategory,
                     $"target-priority {settings.TargetPriority} follow={announcer} " +
                     $"→ {cand.RawName}");
                 DispatchRoundAction(settings, cand, CountEngageable(liveObs), liveObs);
@@ -1136,7 +1136,7 @@ public sealed partial class CombatManager : IDisposable
         if (now - _lastRoomRefreshAt < RoomRefreshCooldown) return;
         _lastRoomRefreshAt = now;
 
-        _log?.Info(LogCategory,
+        _log?.Combat(LogCategory,
             "combat-line while room appears empty — sending CR for short re-display");
         _wireSender(Encoding.Latin1.GetBytes("\r"));
     }
@@ -1155,7 +1155,7 @@ public sealed partial class CombatManager : IDisposable
         if (_wireSender is null) return;
         if (_currentTarget is null) return;
 
-        _log?.Info(LogCategory,
+        _log?.Combat(LogCategory,
             $"target-not-here — dropping target={_currentTarget} + refreshing room");
         _currentTarget = null;
 
@@ -1178,7 +1178,7 @@ public sealed partial class CombatManager : IDisposable
     private void ResumeEngage(RoomEntitiesObservation live)
     {
         _combatOff = false;
-        _log?.Info(LogCategory, "combat resumed after interrupt — re-engaging room");
+        _log?.Combat(LogCategory, "combat resumed after interrupt — re-engaging room");
         _currentTarget = null;     // force a fresh pick + equip
         OnEntitiesObserved(live);
     }
@@ -1303,9 +1303,9 @@ public sealed partial class CombatManager : IDisposable
         string verb = string.IsNullOrWhiteSpace(command) ? "a" : command.Trim();
         string line = $"{verb} {target}";
         if (priority is { } prio)
-            _log?.Info(LogCategory, $"attack target={target} cmd={verb} prio={prio}");
+            _log?.Combat(LogCategory, $"attack target={target} cmd={verb} prio={prio}");
         else
-            _log?.Info(LogCategory, $"attack target={target} cmd={verb}");
+            _log?.Combat(LogCategory, $"attack target={target} cmd={verb}");
         _lastAttackCommand = line;
         if (_wireSender is null) return;
         _wireSender(Encoding.Latin1.GetBytes(line + "\r"));
@@ -1319,7 +1319,7 @@ public sealed partial class CombatManager : IDisposable
         _lastCastAction = null;
         string verb = string.IsNullOrWhiteSpace(command) ? "a" : command.Trim();
         string line = $"{verb} {target}";
-        _log?.Info(LogCategory,
+        _log?.Combat(LogCategory,
             $"re-fire target={target} cmd={verb} timing={refireReason}");
         _lastAttackCommand = line;
         if (_wireSender is null) return;
@@ -1362,7 +1362,7 @@ public sealed partial class CombatManager : IDisposable
         // stale room view. Disarm regardless so we don't loop on the same
         // unanswered attack.
         _awaitingEngageSince = null;
-        _log?.Info(LogCategory,
+        _log?.Combat(LogCategory,
             $"attack unconfirmed after {EngageConfirmWindow.TotalSeconds:0}s " +
             $"(target={_currentTarget ?? _castingSpellTarget ?? "?"}) — CR re-display");
         _currentTarget = null;

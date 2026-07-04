@@ -66,6 +66,9 @@ public sealed class SeeHiddenIndex
             }
         }
 
+        // Folded into the HashSet — release the pinned raw Monsters
+        // JsonDocument (GetRawTable re-parses it if another index asks).
+        _cache.EvictTable("Monsters");
         _numbers = set;
         return set;
     }

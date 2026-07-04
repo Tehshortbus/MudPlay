@@ -181,6 +181,12 @@ public partial class MainWindowViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(IsReconnectPending))]
     [NotifyPropertyChangedFor(nameof(ConnectionLabel))]
     [NotifyPropertyChangedFor(nameof(ConnectionStatusText))]
+    // Swapping the active profile mid-session desyncs it from the live game
+    // state, so New / Open / Open-recent are disconnected-only (Save / Save-as
+    // stay available). Re-evaluate their CanExecute when the wire flips.
+    [NotifyCanExecuteChangedFor(nameof(NewProfileCommand))]
+    [NotifyCanExecuteChangedFor(nameof(OpenProfileCommand))]
+    [NotifyCanExecuteChangedFor(nameof(OpenRecentProfileCommand))]
     private bool _isConnected;
 
     [ObservableProperty]
@@ -206,9 +212,7 @@ public partial class MainWindowViewModel : ObservableObject
     // Toggle buttons, the Action-menu check items, and the Settings →
     // General checkboxes all write here. The partial OnXxxChanged
     // handlers persist to the profile and refresh the toolbar IsActive
-    // badge. AutoSearch is intentionally absent — no engine consumes it
-    // yet (IsAutoSearchWired => false), so it stays stubbed until the
-    // hidden-exit walker lands.
+    // badge.
     [ObservableProperty][NotifyPropertyChangedFor(nameof(IsAllAutoOff))] private bool _isAutoCombatActive;
     [ObservableProperty][NotifyPropertyChangedFor(nameof(IsAllAutoOff))] private bool _isAutoNukeActive;
     [ObservableProperty][NotifyPropertyChangedFor(nameof(IsAllAutoOff))] private bool _isAutoHealRestActive;
@@ -218,18 +222,30 @@ public partial class MainWindowViewModel : ObservableObject
     [ObservableProperty][NotifyPropertyChangedFor(nameof(IsAllAutoOff))] private bool _isAutoGetCashActive;
     [ObservableProperty][NotifyPropertyChangedFor(nameof(IsAllAutoOff))] private bool _isAutoSneakActive;
     [ObservableProperty][NotifyPropertyChangedFor(nameof(IsAllAutoOff))] private bool _isAutoHideActive;
+    [ObservableProperty][NotifyPropertyChangedFor(nameof(IsAllAutoOff))] private bool _isAutoSearchActive;
+
+    /// <summary>
+    /// Master "Disable hangups" toggle. When on, every automatic disconnect
+    /// path (@hangup / @relog remote commands, low-HP emergency hangup,
+    /// nightly-cleanup log-off) is suppressed — the client drops the carrier
+    /// only on an explicit user action. Persisted in
+    /// <see cref="Models.Profile.GeneralSettings.DisableHangups"/> and
+    /// reseeded on profile load like the auto-mode toggles. Not part of
+    /// <see cref="IsAllAutoOff"/> — it gates disconnects, not auto-engines.
+    /// </summary>
+    [ObservableProperty] private bool _isDisableHangupsActive;
 
     /// <summary>
     /// True when every wired auto-engine is off — drives the "Auto-All"
     /// master toggle's depressed/checked state. Mirrors
     /// <see cref="Game.AutoModeController.AllWiredOff"/> but computed from
-    /// the live observables so the badge updates instantly. AutoSearch is
-    /// excluded (no engine yet), matching the controller's wired set.
+    /// the live observables so the badge updates instantly.
     /// </summary>
     public bool IsAllAutoOff =>
         !IsAutoCombatActive && !IsAutoNukeActive && !IsAutoHealRestActive
         && !IsAutoBlessActive && !IsAutoLightActive && !IsAutoGetItemsActive
-        && !IsAutoGetCashActive && !IsAutoSneakActive && !IsAutoHideActive;
+        && !IsAutoGetCashActive && !IsAutoSneakActive && !IsAutoHideActive
+        && !IsAutoSearchActive;
 
     public bool IsDisconnected => !IsConnected;
 
@@ -646,6 +662,9 @@ public partial class MainWindowViewModel : ObservableObject
         // duration timer. Self-buff confirmation goes through the
         // ConditionTracker AppliedMessage path instead.
         AppServices.Current.CastDirector.AttachLineExtractor(Lines);
+        // abil-breakdown parser — feeds the mana-regen reroll engine the rolled
+        // `spells:` slice of `abil 145` after a nature-tap / mana-flux landing.
+        AppServices.Current.AbilBreakdown.AttachLineExtractor(Lines);
         // Inbound ailment chip-clear — PartyAilmentTracker watches server
         // lines for OUR cure spell landing on a party member (matched by the
         // cure spell's CasterMessage template) and clears that member's
@@ -662,6 +681,8 @@ public partial class MainWindowViewModel : ObservableObject
         // Same survey line drives item auto-get — its own buffer
         // stitches wrapped rows so the multi-line "You notice" parses.
         AppServices.Current.AutoGetItems.AttachLineExtractor(Lines);
+        // And the @what / @get-all ground-item snapshot off the same survey.
+        AppServices.Current.GroundItems.AttachLineExtractor(Lines);
         // Inventory parser reads the full `i` dump (carried currency,
         // Wealth, Encumbrance) so CashManager's gate has live carry
         // weight; it buffers the wrapped deposit echo too.
@@ -766,6 +787,9 @@ public partial class MainWindowViewModel : ObservableObject
         // ride the same gate-wrapped pipeline so spell commands respect
         // the suicide-password / trainer-menu lockouts upstream.
         AppServices.Current.Cast.SetWireSender(engineSend);
+        // Mana-regen reroll engine's `abil 145` query + cooldown-bypassing
+        // recast ride the same gate-wrapped pipeline as the cast engine.
+        AppServices.Current.SetEngineWireSender(engineSend);
         // PR 10.18 — item-cast buff sequencer's wield/use/wield commands ride
         // the same gate-wrapped pipeline as the other engines.
         AppServices.Current.ItemCast.SetWireSender(engineSend);
@@ -778,12 +802,34 @@ public partial class MainWindowViewModel : ObservableObject
         // Phase 9 PR 9.L — AutoGetItemsManager's `get <name>` commands
         // ride the same gate-wrapped pipeline.
         AppServices.Current.AutoGetItems.SetWireSender(engineSend);
+        // Base auto-search — the per-room `sea` rides the same gate-wrapped
+        // pipeline so it can't land mid-password-prompt.
+        AppServices.Current.AutoSearch.SetWireSender(engineSend);
+        // Active auto-light — the route's `use <light>` / `rem <old>` swap
+        // rides the same gate-wrapped pipeline.
+        AppServices.Current.AutoLightProvisioner.SetWireSender(engineSend);
+        // Auto-light provisioning detour — the `buy <light>` at the shop rides
+        // the same gate-wrapped pipeline.
+        AppServices.Current.AutoLightShopRouter.SetWireSender(engineSend);
+        // Shop-source routing (PR C) — the `buy <item>` at the detour shop
+        // rides the same gate-wrapped pipeline.
+        AppServices.Current.PathItemShopRouter.SetWireSender(engineSend);
+        // Party-inventory deferral (PR E) — the `@party give` / `@do give`
+        // hand-off rides the same gate-wrapped pipeline. The @have probe
+        // itself broadcasts through the already-bound PartyBroadcaster.
+        AppServices.Current.PartyPathItemGate.SetWireSender(engineSend);
         // Phase 9 PR 9.E follow-up — StashRoomManager's `hide N <coin>`
         // commands ride the same gate-wrapped pipeline.
         AppServices.Current.Stash.SetWireSender(engineSend);
         // Phase 9 PR 9.E follow-up — auto-deposit reroute's bank `dep`
         // command rides the same gate-wrapped pipeline.
         AppServices.Current.AutoDeposit.SetWireSender(engineSend);
+        // Phase 12 — @drop-all / @deposit-all / @share emit drop / dep / with /
+        // give on the same gate-wrapped pipeline.
+        AppServices.Current.InventoryAction.SetWireSender(engineSend);
+        // Phase 12 — @heal receive side polls `par` so CastingDirector heals
+        // the requester off fresh party HP.
+        AppServices.Current.Heal.SetWireSender(engineSend);
         // Cluster 3 — StealthManager's auto-sneak / auto-hide commands.
         AppServices.Current.Stealth.SetWireSender(engineSend);
         // @do passthrough — gate-wrapped because a malicious caller's
@@ -844,6 +890,11 @@ public partial class MainWindowViewModel : ObservableObject
         // LoginAutomator's LoggedIntoGame fires (only point in the
         // session where the entry command is allowed to auto-fire).
         AppServices.Current.MainMenuEntry.SetWireSender(engineSend);
+        // StatlineReconciler — gate-wrapped so a `set statline` resend can't
+        // land mid-password-prompt. Armed unconditionally on every connect
+        // (below) so the live statline reconciles to the editor regardless of
+        // whether login was automated.
+        AppServices.Current.StatlineReconcile.SetWireSender(engineSend);
 
         // CleanupLogoutOrchestrator — proactive log-off on the nightly
         // shutdown warning. Safe = room clear of killable NPCs AND not
@@ -858,6 +909,9 @@ public partial class MainWindowViewModel : ObservableObject
         AppServices.Current.CleanupLogout.SetConnectedCheck(() => IsConnected);
         AppServices.Current.CleanupLogout.SetAutoLogoutEnabledCheck(
             () => ResolveActiveBbs()?.ReconnectAfterCleanup ?? false);
+        AppServices.Current.CleanupLogout.SetHangupsDisabledCheck(
+            () => AppServices.Current.Profile.Current is { } p
+                && ReadGeneralFromProfile(p).DisableHangups);
         AppServices.Current.CleanupLogout.SetDisconnectCallback(
             () => _ = DisconnectInternalAsync());
 
@@ -970,6 +1024,8 @@ public partial class MainWindowViewModel : ObservableObject
          && e.PropertyName != nameof(IsAutoGetCashActive)
          && e.PropertyName != nameof(IsAutoSneakActive)
          && e.PropertyName != nameof(IsAutoHideActive)
+         && e.PropertyName != nameof(IsAutoSearchActive)
+         && e.PropertyName != nameof(IsDisableHangupsActive)
          && e.PropertyName != nameof(IsAllAutoOff)) return;
 
         foreach (ToolbarButtonItem row in ToolbarItems)
@@ -989,6 +1045,9 @@ public partial class MainWindowViewModel : ObservableObject
                 break;
             case "ToggleCapture":
                 row.IsActive = IsDumping;
+                break;
+            case "ToggleDisableHangups":
+                row.IsActive = IsDisableHangupsActive;
                 break;
             case "ToggleAutoCombat":
                 row.IsActive = IsAutoCombatActive;
@@ -1016,6 +1075,9 @@ public partial class MainWindowViewModel : ObservableObject
                 break;
             case "ToggleAutoHide":
                 row.IsActive = IsAutoHideActive;
+                break;
+            case "ToggleAutoSearch":
+                row.IsActive = IsAutoSearchActive;
                 break;
             case "ToggleAllAutoOff":
                 // Depressed = auto-responses running; inverse of "all off".
@@ -2083,6 +2145,11 @@ public partial class MainWindowViewModel : ObservableObject
                 // "are we in-game?" latch. The actual Logon fire
                 // happens on the first PromptObserved, not here.
                 AppServices.Current.EventScheduler.NotifyConnected();
+                // Reconcile the statline to the editor on EVERY connect —
+                // unconditional, unlike the auto-login-gated engines. Resets
+                // the Synced latch + retry counter; the actual resend (if any)
+                // is mismatch-gated and fires off the first in-game prompt.
+                AppServices.Current.StatlineReconcile.Arm();
                 // Re-enable any auto-actions the user opted into reviving on
                 // reconnect (Settings → Other). Only on a reconnect — a
                 // connect following a prior in-session disconnect — never on
@@ -2112,6 +2179,8 @@ public partial class MainWindowViewModel : ObservableObject
                 // Phase 8 PR 8.2 — stop the event scheduler's timers
                 // and latch the Re-log flag (only if we were in-game).
                 AppServices.Current.EventScheduler.NotifyDisconnected();
+                // Stop statline reconciliation until the next connect re-arms.
+                AppServices.Current.StatlineReconcile.Disarm();
                 // Phase 11 — pause Time Analysis accrual: we're no longer
                 // in-game, so the offline span doesn't count. Totals freeze
                 // and resume on the next in-game prompt after reconnect.
@@ -2124,6 +2193,7 @@ public partial class MainWindowViewModel : ObservableObject
                 // on the next session.
                 AppServices.Current.Conditions.ClearAll();
                 AppServices.Current.CastDirector.ResetBuffTracking();
+                AppServices.Current.ManaRegen.Reset();
 
                 // Categorise: if the user clicked Disconnect, the flag was
                 // set in DisconnectInternalAsync. Otherwise check for a
@@ -2424,39 +2494,56 @@ public partial class MainWindowViewModel : ObservableObject
     private BackscrollWindow? _backscroll;
 
     [RelayCommand]
-    private void OpenBackscroll() => OpenBackscrollInternal(focusSearch: false);
-
-    /// <summary>
-    /// Terminal context menu → Edit → Find in scrollback. Opens the backscroll
-    /// window (or activates it if already open) and lands focus on the search
-    /// box so the user can type immediately.
-    /// </summary>
-    [RelayCommand]
-    private void FindInScrollback() => OpenBackscrollInternal(focusSearch: true);
-
-    private void OpenBackscrollInternal(bool focusSearch)
+    private void OpenBackscroll()
     {
         if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
             return;
 
-        // Toggle convention — see OpenPlaceholder. Find-in-scrollback is
-        // the same toggle: hitting it while Backscroll is already open
-        // closes the window. Opening freshly with focusSearch=true lands
-        // focus on the search box.
+        // Toggle convention — see OpenPlaceholder: pressing the command while
+        // Backscroll is already open closes the window.
         if (_backscroll is { } existing)
         {
             existing.Close();
             return;
         }
 
-        BackscrollViewModel vm = new(Emulator)
-        {
-            FocusSearchOnOpen = focusSearch,
-        };
+        BackscrollViewModel vm = new(Emulator);
         BackscrollWindow window = new() { DataContext = vm };
         window.Closed += (_, _) => _backscroll = null;
         _backscroll = window;
         window.Show(main);
+    }
+
+    /// <summary>
+    /// Terminal context menu → "Bug report…". Freezes the current client
+    /// state (recent scrollback, program-log tail, all gameplay settings,
+    /// engine + player state) at click time, prompts for a description, then
+    /// writes a Markdown report to the Desktop named after the realm and the
+    /// click timestamp. Capture happens before the dialog so the report
+    /// reflects the moment of the problem, not when the user finishes typing.
+    /// </summary>
+    [RelayCommand]
+    private async Task ReportBugAsync()
+    {
+        Services.AppServices svc = Services.AppServices.Current;
+
+        BugReportBuilder.BugReportCapture capture = BugReportBuilder.Capture(svc, Emulator);
+
+        string? description = await svc.Dialogs
+            .OpenWindowAsync<BugReportDialogViewModel, string>(new BugReportDialogViewModel());
+        if (string.IsNullOrWhiteSpace(description)) return;
+
+        try
+        {
+            string desktop = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
+            string path = Path.Combine(desktop, BugReportBuilder.FileName(capture));
+            await File.WriteAllTextAsync(path, BugReportBuilder.Render(capture, description));
+            svc.Log.Info("BugReport", $"Wrote bug report to {path}");
+        }
+        catch (Exception ex)
+        {
+            svc.Log.Error("BugReport", $"Failed to write bug report: {ex.Message}");
+        }
     }
 
     private ConversationWindow? _conversation;
@@ -2478,6 +2565,7 @@ public partial class MainWindowViewModel : ObservableObject
         {
             DataContext = new ConversationViewModel(
                 AppServices.Current.ChatHistory,
+                AppServices.Current.CommandHistory,
                 SendUserText,
                 Application.Current),
         };
@@ -2565,20 +2653,30 @@ public partial class MainWindowViewModel : ObservableObject
         : "_Save profile…";
 
     /// <summary>
+    /// True while it's safe to swap the active profile — only when the wire
+    /// is down. Loading a different (or blank) profile mid-session would fire
+    /// ProfileLoaded and reload every per-character service against the new
+    /// scope while still connected to the old character's game, desyncing
+    /// settings / party / game-data state. Gates New / Open / Open-recent;
+    /// Save / Save-as don't swap the active profile, so they stay available.
+    /// </summary>
+    private bool CanSwapProfile => IsDisconnected;
+
+    /// <summary>
     /// Blank-slate the running profile. The outgoing profile is auto-saved
     /// first (handled inside ProfileService.LoadBlank), then Current is
     /// replaced with a fresh in-memory draft. The user names + persists
     /// it later via File → Save profile (which routes to Save As since
     /// the draft has no name yet).
     /// </summary>
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanSwapProfile))]
     private void NewProfile()
     {
         AppServices.Current.Profile.LoadBlank();
         SyncProfileMenuState();
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanSwapProfile))]
     private async Task OpenProfileAsync()
     {
         ProfileService profile = AppServices.Current.Profile;
@@ -2662,7 +2760,7 @@ public partial class MainWindowViewModel : ObservableObject
         AppServices.Current.Log.Info("Profile", $"Saved profile '{name}' on '{bbs}'.");
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanSwapProfile))]
     private void OpenRecentProfile(ProfileRef? recent)
     {
         if (recent is null) return;
@@ -2710,7 +2808,14 @@ public partial class MainWindowViewModel : ObservableObject
     }
 
     private void SyncProfileMenuState()
-        => HasNamedProfile = !AppServices.Current.Profile.IsBlankDraft && AppServices.Current.Profile.Current is not null;
+    {
+        HasNamedProfile = !AppServices.Current.Profile.IsBlankDraft && AppServices.Current.Profile.Current is not null;
+        // Save-profile-as renames the *current* profile without flipping
+        // HasNamedProfile, so the NotifyPropertyChangedFor on that bool
+        // won't fire — nudge the label directly so its embedded profile
+        // name refreshes on every state sync, rename included.
+        OnPropertyChanged(nameof(SaveProfileLabel));
+    }
 
     [RelayCommand]
     private void OpenSettings() => OpenSettingsAt(null);
@@ -2771,7 +2876,8 @@ public partial class MainWindowViewModel : ObservableObject
         }
         var workshopVm = new ViewModels.CharacterWorkshop.CharacterWorkshopViewModel(
             svc.DeathRecovery, svc.Profile, svc.PlayerStats, svc.GameData, svc.Inventory, svc.Players,
-            svc.Alignment, svc.TrainerWalk, svc.Quests, svc.Equipment, sectionId);
+            svc.Alignment, svc.TrainerWalk, svc.Quests, svc.Equipment,
+            svc.Resolver, svc.ItemNames, svc.ItemOverlaySeed, sectionId);
         Views.CharacterWorkshop.CharacterWorkshopWindow window = new() { DataContext = workshopVm };
         // The Workshop VM + its sections are rebuilt on every open, so dispose
         // them on close to detach their long-lived service-event subscriptions.
@@ -2867,7 +2973,11 @@ public partial class MainWindowViewModel : ObservableObject
                 sendText: SendTextFromSettings,
                 initialSectionId: sectionId),
         };
-        window.Closed += (_, _) => _settings = null;
+        window.Closed += (_, _) =>
+        {
+            if (window.DataContext is SettingsWindowViewModel vm) vm.Dispose();
+            _settings = null;
+        };
         _settings = window;
         window.Show(main);
     }
@@ -3282,10 +3392,32 @@ public partial class MainWindowViewModel : ObservableObject
                 AppServices.Current.CombatSession,
                 AppServices.Current.TimeAnalysis,
                 AppServices.Current.SessionActivity,
-                AppServices.Current.SessionStatsLayout),
+                AppServices.Current.TransactionHistory,
+                AppServices.Current.SessionStatsLayout,
+                OpenTransactionHistory),
         };
         window.Closed += (_, _) => _sessionStats = null;
         _sessionStats = window;
+        window.Show(main);
+    }
+
+    /// <summary>Singleton handle for the live TransactionHistoryWindow — re-press toggles closed (CLAUDE.md window rule).</summary>
+    private TransactionHistoryWindow? _transactionHistory;
+
+    [RelayCommand]
+    private void OpenTransactionHistory()
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
+            return;
+
+        if (_transactionHistory is { } existing) { existing.Close(); return; }
+
+        TransactionHistoryWindow window = new()
+        {
+            DataContext = new TransactionHistoryViewModel(AppServices.Current.TransactionHistory),
+        };
+        window.Closed += (_, _) => _transactionHistory = null;
+        _transactionHistory = window;
         window.Show(main);
     }
 
@@ -3514,6 +3646,17 @@ public partial class MainWindowViewModel : ObservableObject
     [RelayCommand]
     private void ToggleAutoHide() => IsAutoHideActive = !IsAutoHideActive;
 
+    /// <summary>Flip the live <see cref="IsAutoSearchActive"/> bit.</summary>
+    [RelayCommand]
+    private void ToggleAutoSearch() => IsAutoSearchActive = !IsAutoSearchActive;
+
+    /// <summary>Flip the live <see cref="IsDisableHangupsActive"/> bit
+    /// (the partial OnXxxChanged hook persists it to
+    /// GeneralSettings.DisableHangups and the toolbar IsActive badge
+    /// follows). Bound from the toolbar / Action-menu / hotkey.</summary>
+    [RelayCommand]
+    private void ToggleDisableHangups() => IsDisableHangupsActive = !IsDisableHangupsActive;
+
     /// <summary>
     /// Master "Auto-All" kill-switch. Delegates to the shared
     /// <see cref="Game.AutoModeController"/> so the toolbar button, the
@@ -3524,6 +3667,52 @@ public partial class MainWindowViewModel : ObservableObject
     /// </summary>
     [RelayCommand]
     private void AllAutoOff() => AppServices.Current.AutoModeController.ToggleAll();
+
+    // ----- Inventory / equipment bulk actions (Action menu + toolbar) -----
+    // Local twins of the @get-all / @drop-all / @deposit-all remote commands
+    // and the Default gear set. Reuse the same engine backends; the status
+    // line the engine would reply on the party channel is surfaced in the
+    // program log instead.
+
+    /// <summary>"Get All" — pick up every item on the room floor.</summary>
+    [RelayCommand]
+    private void GetAll() => AppServices.Current.Log.Info(
+        Game.Inventory.InventoryManager.LogCategory,
+        AppServices.Current.InventoryAction.GetAll());
+
+    /// <summary>"Drop All" — drop every carried-but-unworn item.</summary>
+    [RelayCommand]
+    private void DropAll() => AppServices.Current.Log.Info(
+        Game.Inventory.InventoryManager.LogCategory,
+        AppServices.Current.InventoryAction.DropAll());
+
+    /// <summary>"Deposit All" — bank wealth down to the keep-on-hand floor.</summary>
+    [RelayCommand]
+    private void DepositAll() => AppServices.Current.Log.Info(
+        Game.Inventory.InventoryManager.LogCategory,
+        AppServices.Current.InventoryAction.DepositAll());
+
+    /// <summary>
+    /// "Equip All" — walk the character into the Default gear set. The
+    /// engine logs the apply and the wire shows the wears, so only the
+    /// no-wire outcomes (already worn / not configured / busy) get a
+    /// program-log note here.
+    /// </summary>
+    [RelayCommand]
+    private void EquipAll()
+    {
+        Game.Inventory.EquipResult result =
+            AppServices.Current.Equipment.ApplyByTrigger(Models.Profile.EquipTriggerType.Default);
+        string? note = result switch
+        {
+            Game.Inventory.EquipResult.NoChange => "Default gear set already worn.",
+            Game.Inventory.EquipResult.NotFound => "No default gear set configured.",
+            Game.Inventory.EquipResult.Busy     => "Equip already in progress.",
+            _ => null, // Applied — the engine logs the apply and the wire shows it.
+        };
+        if (note is not null)
+            AppServices.Current.Log.Info(Game.Inventory.EquipmentManager.LogCategory, note);
+    }
 
     private bool _suppressAutoEngineWriteback;
 
@@ -3621,6 +3810,12 @@ public partial class MainWindowViewModel : ObservableObject
     partial void OnIsAutoHideActiveChanged(bool value)
         => PersistAutoModeFlag(d => d.AutoHide = value);
 
+    partial void OnIsAutoSearchActiveChanged(bool value)
+        => PersistAutoModeFlag(d => d.AutoSearch = value);
+
+    partial void OnIsDisableHangupsActiveChanged(bool value)
+        => PersistGeneralFlag(g => g.DisableHangups = value);
+
     private void PersistAutoModeFlag(Action<Models.Profile.AutoActionDefaults> mutator)
     {
         if (_suppressAutoEngineWriteback) return;
@@ -3628,6 +3823,24 @@ public partial class MainWindowViewModel : ObservableObject
         profile.Settings ??= new();
         Models.Profile.GeneralSettings dto = ReadGeneralFromProfile(profile);
         mutator(dto.AutoMode);
+        profile.Settings["General"] =
+            System.Text.Json.JsonSerializer.SerializeToElement(dto);
+        AppServices.Current.Profile.Save();
+    }
+
+    /// <summary>
+    /// Persist a top-level <see cref="Models.Profile.GeneralSettings"/>
+    /// field (vs <see cref="PersistAutoModeFlag"/>'s nested AutoMode bits).
+    /// Same suppress guard so a profile-load reseed of the observable
+    /// doesn't re-persist what it just read.
+    /// </summary>
+    private void PersistGeneralFlag(Action<Models.Profile.GeneralSettings> mutator)
+    {
+        if (_suppressAutoEngineWriteback) return;
+        if (AppServices.Current.Profile.Current is not { } profile) return;
+        profile.Settings ??= new();
+        Models.Profile.GeneralSettings dto = ReadGeneralFromProfile(profile);
+        mutator(dto);
         profile.Settings["General"] =
             System.Text.Json.JsonSerializer.SerializeToElement(dto);
         AppServices.Current.Profile.Save();
@@ -3647,9 +3860,11 @@ public partial class MainWindowViewModel : ObservableObject
         try
         {
             Models.Profile.CharacterProfile? profile = AppServices.Current.Profile.Current;
-            Models.Profile.AutoActionDefaults am = profile is null
-                ? new Models.Profile.AutoActionDefaults()
-                : ReadGeneralFromProfile(profile).AutoMode;
+            Models.Profile.GeneralSettings general = profile is null
+                ? new Models.Profile.GeneralSettings()
+                : ReadGeneralFromProfile(profile);
+            Models.Profile.AutoActionDefaults am = general.AutoMode;
+            IsDisableHangupsActive = general.DisableHangups;
             IsAutoCombatActive   = am.AutoCombat;
             IsAutoNukeActive     = am.AutoNuke;
             IsAutoHealRestActive = am.AutoHealRest;
@@ -3659,6 +3874,7 @@ public partial class MainWindowViewModel : ObservableObject
             IsAutoGetCashActive  = am.AutoGetCash;
             IsAutoSneakActive    = am.AutoSneak;
             IsAutoHideActive     = am.AutoHide;
+            IsAutoSearchActive   = am.AutoSearch;
         }
         finally
         {

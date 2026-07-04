@@ -131,7 +131,7 @@ public partial class NavigationWindow : Window
             return;
         }
 
-        label.Text = Game.Map.RoomTooltipBuilder.Build(room, svc.RoomGraph, svc.GameData, svc.TBInfo, svc.MonsterSpawns, svc.SpellCatalog);
+        label.Text = Game.Map.RoomTooltipBuilder.Build(room, svc.RoomGraph, svc.GameData, svc.TBInfo, svc.MonsterSpawns, svc.SpellCatalog, svc.PlayerIllumination.Current);
 
         // Anchor near the cursor — offset a few pixels so the popup
         // doesn't sit directly under the pointer. The MapControl shares

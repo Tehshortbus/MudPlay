@@ -100,7 +100,7 @@
                                      ItemTemplate="{StaticResource SpellPickItem}"
                                      PlaceholderText="Type code or name…"
                                      Width="260" HorizontalAlignment="Left"
-                                     ToolTip.Tip="Auto-regen utility (e.g. troll-skin) cast during downtime."/>
+                                     ToolTip.Tip="HP-regen HoT (e.g. regeneration) used as assisted healing: when the Minor heal threshold trips, this is cast FIRST — ahead of the single-target minor heal — unless HP is already in life-threat range or the HoT is still ticking. Want it kept always-up instead? Put it in a Bless slot."/>
 
                     <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="Mana Regen"/>
                     <AutoCompleteBox Grid.Row="3" Grid.Column="1"
@@ -134,6 +134,38 @@
                                      PlaceholderText="Type code or name…"
                                      Width="260" HorizontalAlignment="Left"
                                      ToolTip.Tip="Cast when MA is full and we're between actions."/>
+                </Grid>
+
+                <!-- ============ Mana-regen reroll (Paradigm roll spells) ============ -->
+                <!-- Nature tap / mana flux (ability 145, roll value) land a fresh
+                     ± mana-regen-rate modifier each cast; a bad roll is worth
+                     recasting. After the buff lands the engine reads the rolled
+                     value off `abil 145` and recasts until it meets the
+                     threshold, up to the cap, stopping early at the mana floor.
+                     Empty threshold = rerolling off (recast on expiry only).
+                     Paradigm-only — Stock has no abil breakdown to read. -->
+                <TextBlock Classes="SectionHeader" Text="Mana-regen reroll (Paradigm roll spells)"/>
+                <TextBlock Text="{Binding ManaRegenRerollHint}"
+                           Foreground="{StaticResource ChromeFgMutedBrush}"
+                           FontSize="{StaticResource FontSizeSm}"
+                           FontStyle="Italic"
+                           TextWrapping="Wrap"
+                           MaxWidth="440" HorizontalAlignment="Left"
+                           Margin="0,0,0,6"/>
+                <Grid ColumnDefinitions="180,*" RowDefinitions="Auto,Auto">
+                    <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Reroll if roll below"/>
+                    <NumericUpDown Grid.Row="0" Grid.Column="1"
+                                   Value="{Binding ManaRegenRerollThreshold, Mode=TwoWay}"
+                                   Minimum="-9999" Maximum="9999" Increment="1" FormatString="0"
+                                   Width="120" HorizontalAlignment="Left"
+                                   ToolTip.Tip="Recast the mana-regen roll spell when its rolled contribution lands below this. Leave empty to disable rerolling — the spell then just recasts on expiry. Paradigm only."/>
+
+                    <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Max rerolls"/>
+                    <NumericUpDown Grid.Row="1" Grid.Column="1"
+                                   Value="{Binding ManaRegenRerollCap, Mode=TwoWay}"
+                                   Minimum="1" Maximum="20" Increment="1" FormatString="0"
+                                   Width="120" HorizontalAlignment="Left"
+                                   ToolTip.Tip="Hard ceiling on consecutive rerolls per cast cycle before accepting whatever landed. Rerolling also stops early if paying for the next cast would drop mana below the buff floor."/>
                 </Grid>
 
                 <!-- ============ Other spells ============ -->
@@ -195,115 +227,35 @@
                                      ToolTip.Tip="Cast when entering a dark room."/>
                 </Grid>
 
-                <!-- ============ Bless spells (10 slots) ============ -->
-                <TextBlock Classes="SectionHeader" Text="Bless spells (10 slots)"/>
+                <!-- ============ Bless spells ============ -->
+                <!-- Self-buff slots the CastingDirector recasts when not
+                     active. Row order is cast priority. The active realm sets
+                     how many rows show — Stock 10, ParaMud 15 — rebuilt on a
+                     game-data set swap; picks beyond a narrower realm's count
+                     are preserved (stashed off-screen), not lost. -->
+                <TextBlock Classes="SectionHeader" Text="Bless spells"/>
                 <TextBlock Text="Self-buff slots — CastingDirector recasts when not active."
                            Foreground="{StaticResource ChromeFgMutedBrush}"
                            FontSize="{StaticResource FontSizeSm}"
                            FontStyle="Italic"
                            Margin="0,0,0,4"/>
-                <Grid ColumnDefinitions="80,260,16,80,260"
-                      RowDefinitions="Auto,Auto,Auto,Auto,Auto">
-                    <!-- Row 0 -->
-                    <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Bless 1"/>
-                    <AutoCompleteBox Grid.Row="0" Grid.Column="1"
-                                     Text="{Binding Bless1Spell, Mode=TwoWay}"
-                                     ItemsSource="{Binding SpellSuggestions}"
-                                     ValueMemberBinding="{ReflectionBinding Short}"
-                                     ItemFilter="{Binding SpellSuggestionFilter}"
-                                     ItemTemplate="{StaticResource SpellPickItem}"
-                                     PlaceholderText="Type code or name…"
-                                     Width="260" HorizontalAlignment="Left"/>
-                    <TextBlock Grid.Row="0" Grid.Column="3" Classes="FieldLabel" Text="Bless 6"/>
-                    <AutoCompleteBox Grid.Row="0" Grid.Column="4"
-                                     Text="{Binding Bless6Spell, Mode=TwoWay}"
-                                     ItemsSource="{Binding SpellSuggestions}"
-                                     ValueMemberBinding="{ReflectionBinding Short}"
-                                     ItemFilter="{Binding SpellSuggestionFilter}"
-                                     ItemTemplate="{StaticResource SpellPickItem}"
-                                     PlaceholderText="Type code or name…"
-                                     Width="260" HorizontalAlignment="Left"/>
-
-                    <!-- Row 1 -->
-                    <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Bless 2"/>
-                    <AutoCompleteBox Grid.Row="1" Grid.Column="1"
-                                     Text="{Binding Bless2Spell, Mode=TwoWay}"
-                                     ItemsSource="{Binding SpellSuggestions}"
-                                     ValueMemberBinding="{ReflectionBinding Short}"
-                                     ItemFilter="{Binding SpellSuggestionFilter}"
-                                     ItemTemplate="{StaticResource SpellPickItem}"
-                                     PlaceholderText="Type code or name…"
-                                     Width="260" HorizontalAlignment="Left"/>
-                    <TextBlock Grid.Row="1" Grid.Column="3" Classes="FieldLabel" Text="Bless 7"/>
-                    <AutoCompleteBox Grid.Row="1" Grid.Column="4"
-                                     Text="{Binding Bless7Spell, Mode=TwoWay}"
-                                     ItemsSource="{Binding SpellSuggestions}"
-                                     ValueMemberBinding="{ReflectionBinding Short}"
-                                     ItemFilter="{Binding SpellSuggestionFilter}"
-                                     ItemTemplate="{StaticResource SpellPickItem}"
-                                     PlaceholderText="Type code or name…"
-                                     Width="260" HorizontalAlignment="Left"/>
-
-                    <!-- Row 2 -->
-                    <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Bless 3"/>
-                    <AutoCompleteBox Grid.Row="2" Grid.Column="1"
-                                     Text="{Binding Bless3Spell, Mode=TwoWay}"
-                                     ItemsSource="{Binding SpellSuggestions}"
-                                     ValueMemberBinding="{ReflectionBinding Short}"
-                                     ItemFilter="{Binding SpellSuggestionFilter}"
-                                     ItemTemplate="{StaticResource SpellPickItem}"
-                                     PlaceholderText="Type code or name…"
-                                     Width="260" HorizontalAlignment="Left"/>
-                    <TextBlock Grid.Row="2" Grid.Column="3" Classes="FieldLabel" Text="Bless 8"/>
-                    <AutoCompleteBox Grid.Row="2" Grid.Column="4"
-                                     Text="{Binding Bless8Spell, Mode=TwoWay}"
-                                     ItemsSource="{Binding SpellSuggestions}"
-                                     ValueMemberBinding="{ReflectionBinding Short}"
-                                     ItemFilter="{Binding SpellSuggestionFilter}"
-                                     ItemTemplate="{StaticResource SpellPickItem}"
-                                     PlaceholderText="Type code or name…"
-                                     Width="260" HorizontalAlignment="Left"/>
-
-                    <!-- Row 3 -->
-                    <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="Bless 4"/>
-                    <AutoCompleteBox Grid.Row="3" Grid.Column="1"
-                                     Text="{Binding Bless4Spell, Mode=TwoWay}"
-                                     ItemsSource="{Binding SpellSuggestions}"
-                                     ValueMemberBinding="{ReflectionBinding Short}"
-                                     ItemFilter="{Binding SpellSuggestionFilter}"
-                                     ItemTemplate="{StaticResource SpellPickItem}"
-                                     PlaceholderText="Type code or name…"
-                                     Width="260" HorizontalAlignment="Left"/>
-                    <TextBlock Grid.Row="3" Grid.Column="3" Classes="FieldLabel" Text="Bless 9"/>
-                    <AutoCompleteBox Grid.Row="3" Grid.Column="4"
-                                     Text="{Binding Bless9Spell, Mode=TwoWay}"
-                                     ItemsSource="{Binding SpellSuggestions}"
-                                     ValueMemberBinding="{ReflectionBinding Short}"
-                                     ItemFilter="{Binding SpellSuggestionFilter}"
-                                     ItemTemplate="{StaticResource SpellPickItem}"
-                                     PlaceholderText="Type code or name…"
-                                     Width="260" HorizontalAlignment="Left"/>
-
-                    <!-- Row 4 -->
-                    <TextBlock Grid.Row="4" Grid.Column="0" Classes="FieldLabel" Text="Bless 5"/>
-                    <AutoCompleteBox Grid.Row="4" Grid.Column="1"
-                                     Text="{Binding Bless5Spell, Mode=TwoWay}"
-                                     ItemsSource="{Binding SpellSuggestions}"
-                                     ValueMemberBinding="{ReflectionBinding Short}"
-                                     ItemFilter="{Binding SpellSuggestionFilter}"
-                                     ItemTemplate="{StaticResource SpellPickItem}"
-                                     PlaceholderText="Type code or name…"
-                                     Width="260" HorizontalAlignment="Left"/>
-                    <TextBlock Grid.Row="4" Grid.Column="3" Classes="FieldLabel" Text="Bless 10"/>
-                    <AutoCompleteBox Grid.Row="4" Grid.Column="4"
-                                     Text="{Binding Bless10Spell, Mode=TwoWay}"
-                                     ItemsSource="{Binding SpellSuggestions}"
-                                     ValueMemberBinding="{ReflectionBinding Short}"
-                                     ItemFilter="{Binding SpellSuggestionFilter}"
-                                     ItemTemplate="{StaticResource SpellPickItem}"
-                                     PlaceholderText="Type code or name…"
-                                     Width="260" HorizontalAlignment="Left"/>
-                </Grid>
+                <ItemsControl ItemsSource="{Binding BlessSlots}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:SelfBlessSlotViewModel">
+                            <Grid ColumnDefinitions="80,260" Margin="0,0,0,4">
+                                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="{Binding Label}"/>
+                                <AutoCompleteBox Grid.Column="1"
+                                                 Text="{Binding Spell, Mode=TwoWay}"
+                                                 ItemsSource="{Binding $parent[ItemsControl].((vm:SpellsSectionViewModel)DataContext).SpellSuggestions}"
+                                                 ValueMemberBinding="{ReflectionBinding Short}"
+                                                 ItemFilter="{Binding $parent[ItemsControl].((vm:SpellsSectionViewModel)DataContext).SpellSuggestionFilter}"
+                                                 ItemTemplate="{StaticResource SpellPickItem}"
+                                                 PlaceholderText="Type code or name…"
+                                                 Width="260" HorizontalAlignment="Left"/>
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
 
                 <!-- ============ Ailment handling / coordination ============ -->
                 <!-- Each ailment pairs its Ignore* (gates the @wait) with the

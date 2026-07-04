@@ -2,11 +2,20 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:FujinTerm.ViewModels.Settings"
              xmlns:settings="using:FujinTerm.Views.Settings"
+             xmlns:spells="using:FujinTerm.Game.Spells"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="780" d:DesignHeight="900"
              x:Class="FujinTerm.Views.Settings.CombatSectionView"
              x:DataType="vm:CombatSectionViewModel">
+
+    <UserControl.Resources>
+        <!-- Dropdown row: "code — name". The box commits the Short cast-code
+             (ValueMemberBinding); this template only shapes the list display. -->
+        <DataTemplate x:Key="SpellPickItem" x:DataType="spells:SpellPick">
+            <TextBlock Text="{Binding Display}"/>
+        </DataTemplate>
+    </UserControl.Resources>
 
     <UserControl.Styles>
         <Style Selector="TextBlock.SectionHeader">
@@ -226,10 +235,15 @@
                 <!-- Multi-attack (room spell). -->
                 <Grid ColumnDefinitions="160,260,110,110,140" Margin="0,2,0,0">
                     <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Multi-attack"/>
-                    <TextBox Grid.Column="1"
-                             Text="{Binding MultiAttackSpellName, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
-                             Width="260" HorizontalAlignment="Left"
-                             ToolTip.Tip="Multi-target room spell to fire."/>
+                    <AutoCompleteBox Grid.Column="1"
+                                     Text="{Binding MultiAttackSpellName, Mode=TwoWay}"
+                                     ItemsSource="{Binding SpellSuggestions}"
+                                     ValueMemberBinding="{ReflectionBinding Short}"
+                                     ItemFilter="{Binding SpellSuggestionFilter}"
+                                     ItemTemplate="{StaticResource SpellPickItem}"
+                                     PlaceholderText="Type code or name…"
+                                     Width="260" HorizontalAlignment="Left"
+                                     ToolTip.Tip="Multi-target room spell to fire. Suggestions come from this class's known spells."/>
                     <NumericUpDown Grid.Column="2"
                                    Value="{Binding MultiAttackMinEnemies, Mode=TwoWay}"
                                    Minimum="0" Maximum="20" Width="100" HorizontalAlignment="Left"
@@ -237,7 +251,7 @@
                     <NumericUpDown Grid.Column="3"
                                    Value="{Binding MultiAttackMaxCastsPerRoom, Mode=TwoWay}"
                                    Minimum="0" Maximum="100" Width="100" HorizontalAlignment="Left"
-                                   ToolTip.Tip="Cap on back-to-back fires."/>
+                                   ToolTip.Tip="Casts per room — blank = no limit, 0 = never cast (off), N = at most N."/>
                     <NumericUpDown Grid.Column="4"
                                    Value="{Binding MultiAttackMinManaPerCast, Mode=TwoWay}"
                                    Minimum="0" Maximum="100000" Width="130" HorizontalAlignment="Left"
@@ -247,10 +261,15 @@
                 <!-- Debuff (AOE). -->
                 <Grid ColumnDefinitions="160,260,110,110,140" Margin="0,2,0,0">
                     <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Debuff (AOE)"/>
-                    <TextBox Grid.Column="1"
-                             Text="{Binding AreaDebuffSpellName, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
-                             Width="260" HorizontalAlignment="Left"
-                             ToolTip.Tip="Area-effect debuff (e.g. blind-room, curse-room)."/>
+                    <AutoCompleteBox Grid.Column="1"
+                                     Text="{Binding AreaDebuffSpellName, Mode=TwoWay}"
+                                     ItemsSource="{Binding SpellSuggestions}"
+                                     ValueMemberBinding="{ReflectionBinding Short}"
+                                     ItemFilter="{Binding SpellSuggestionFilter}"
+                                     ItemTemplate="{StaticResource SpellPickItem}"
+                                     PlaceholderText="Type code or name…"
+                                     Width="260" HorizontalAlignment="Left"
+                                     ToolTip.Tip="Area-effect debuff (e.g. blind-room, curse-room). Suggestions come from this class's known spells."/>
                     <NumericUpDown Grid.Column="2"
                                    Value="{Binding AreaDebuffMinEnemies, Mode=TwoWay}"
                                    Minimum="0" Maximum="20" Width="100" HorizontalAlignment="Left"
@@ -258,7 +277,7 @@
                     <NumericUpDown Grid.Column="3"
                                    Value="{Binding AreaDebuffMaxCastsPerRoom, Mode=TwoWay}"
                                    Minimum="0" Maximum="100" Width="100" HorizontalAlignment="Left"
-                                   ToolTip.Tip="Cap on back-to-back fires."/>
+                                   ToolTip.Tip="Casts per room — blank = no limit, 0 = never cast (off), N = at most N."/>
                     <NumericUpDown Grid.Column="4"
                                    Value="{Binding AreaDebuffMinManaPerCast, Mode=TwoWay}"
                                    Minimum="0" Maximum="100000" Width="130" HorizontalAlignment="Left"
@@ -268,17 +287,22 @@
                 <!-- Debuff (single target — no Min enemies). -->
                 <Grid ColumnDefinitions="160,260,110,110,140" Margin="0,2,0,0">
                     <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Debuff (single target)"/>
-                    <TextBox Grid.Column="1"
-                             Text="{Binding SingleTargetDebuffSpellName, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
-                             Width="260" HorizontalAlignment="Left"
-                             ToolTip.Tip="Single-target debuff (e.g. weakness, slow)."/>
+                    <AutoCompleteBox Grid.Column="1"
+                                     Text="{Binding SingleTargetDebuffSpellName, Mode=TwoWay}"
+                                     ItemsSource="{Binding SpellSuggestions}"
+                                     ValueMemberBinding="{ReflectionBinding Short}"
+                                     ItemFilter="{Binding SpellSuggestionFilter}"
+                                     ItemTemplate="{StaticResource SpellPickItem}"
+                                     PlaceholderText="Type code or name…"
+                                     Width="260" HorizontalAlignment="Left"
+                                     ToolTip.Tip="Single-target debuff (e.g. weakness, slow). Suggestions come from this class's known spells."/>
                     <TextBlock Grid.Column="2" Classes="FieldLabel" Text="—" HorizontalAlignment="Center"
                                Foreground="{StaticResource ChromeFgMutedBrush}"
                                ToolTip.Tip="Single-target — Min enemies doesn't apply."/>
                     <NumericUpDown Grid.Column="3"
                                    Value="{Binding SingleTargetDebuffMaxCastsPerRoom, Mode=TwoWay}"
                                    Minimum="0" Maximum="100" Width="100" HorizontalAlignment="Left"
-                                   ToolTip.Tip="Re-cast cap for the active fight."/>
+                                   ToolTip.Tip="Casts per room — blank = no limit, 0 = never cast (off), N = at most N."/>
                     <NumericUpDown Grid.Column="4"
                                    Value="{Binding SingleTargetDebuffMinManaPerCast, Mode=TwoWay}"
                                    Minimum="0" Maximum="100000" Width="130" HorizontalAlignment="Left"
@@ -288,17 +312,22 @@
                 <!-- Normal attack spell (single-target — no Min enemies). -->
                 <Grid ColumnDefinitions="160,260,110,110,140" Margin="0,2,0,0">
                     <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Normal attack spell"/>
-                    <TextBox Grid.Column="1"
-                             Text="{Binding NormalAttackSpellName, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
-                             Width="260" HorizontalAlignment="Left"
-                             ToolTip.Tip="Primary single-target damage spell."/>
+                    <AutoCompleteBox Grid.Column="1"
+                                     Text="{Binding NormalAttackSpellName, Mode=TwoWay}"
+                                     ItemsSource="{Binding SpellSuggestions}"
+                                     ValueMemberBinding="{ReflectionBinding Short}"
+                                     ItemFilter="{Binding SpellSuggestionFilter}"
+                                     ItemTemplate="{StaticResource SpellPickItem}"
+                                     PlaceholderText="Type code or name…"
+                                     Width="260" HorizontalAlignment="Left"
+                                     ToolTip.Tip="Primary single-target damage spell. Suggestions come from this class's known spells."/>
                     <TextBlock Grid.Column="2" Classes="FieldLabel" Text="—" HorizontalAlignment="Center"
                                Foreground="{StaticResource ChromeFgMutedBrush}"
                                ToolTip.Tip="Single-target — Min enemies doesn't apply."/>
                     <NumericUpDown Grid.Column="3"
                                    Value="{Binding NormalAttackSpellMaxCastsPerRoom, Mode=TwoWay}"
                                    Minimum="0" Maximum="100" Width="100" HorizontalAlignment="Left"
-                                   ToolTip.Tip="Cap on back-to-back fires."/>
+                                   ToolTip.Tip="Casts per room — blank = no limit, 0 = never cast (off), N = at most N."/>
                     <NumericUpDown Grid.Column="4"
                                    Value="{Binding NormalAttackSpellMinManaPerCast, Mode=TwoWay}"
                                    Minimum="0" Maximum="100000" Width="130" HorizontalAlignment="Left"
@@ -308,17 +337,22 @@
                 <!-- Alternate attack spell (single-target — no Min enemies). -->
                 <Grid ColumnDefinitions="160,260,110,110,140" Margin="0,2,0,0">
                     <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Alternate attack spell"/>
-                    <TextBox Grid.Column="1"
-                             Text="{Binding AlternateAttackSpellName, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
-                             Width="260" HorizontalAlignment="Left"
-                             ToolTip.Tip="Fallback / second-choice damage spell — used when the normal pick can't fire."/>
+                    <AutoCompleteBox Grid.Column="1"
+                                     Text="{Binding AlternateAttackSpellName, Mode=TwoWay}"
+                                     ItemsSource="{Binding SpellSuggestions}"
+                                     ValueMemberBinding="{ReflectionBinding Short}"
+                                     ItemFilter="{Binding SpellSuggestionFilter}"
+                                     ItemTemplate="{StaticResource SpellPickItem}"
+                                     PlaceholderText="Type code or name…"
+                                     Width="260" HorizontalAlignment="Left"
+                                     ToolTip.Tip="Fallback / second-choice damage spell — used when the normal pick can't fire. Suggestions come from this class's known spells."/>
                     <TextBlock Grid.Column="2" Classes="FieldLabel" Text="—" HorizontalAlignment="Center"
                                Foreground="{StaticResource ChromeFgMutedBrush}"
                                ToolTip.Tip="Single-target — Min enemies doesn't apply."/>
                     <NumericUpDown Grid.Column="3"
                                    Value="{Binding AlternateAttackSpellMaxCastsPerRoom, Mode=TwoWay}"
                                    Minimum="0" Maximum="100" Width="100" HorizontalAlignment="Left"
-                                   ToolTip.Tip="Cap on back-to-back fires."/>
+                                   ToolTip.Tip="Casts per room — blank = no limit, 0 = never cast (off), N = at most N."/>
                     <NumericUpDown Grid.Column="4"
                                    Value="{Binding AlternateAttackSpellMinManaPerCast, Mode=TwoWay}"
                                    Minimum="0" Maximum="100000" Width="130" HorizontalAlignment="Left"

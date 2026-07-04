@@ -109,6 +109,39 @@ public sealed class LocalInputBufferTests
     }
 
     [Fact]
+    public void Set_ReplacesWholeBuffer()
+    {
+        // Recall swaps the live line for a previously-sent command wholesale.
+        LocalInputBuffer b = new();
+        b.Append("half-typed");
+        b.Set("north");
+        Assert.Equal("north", b.Text);
+    }
+
+    [Fact]
+    public void Set_ClampsToMaxLength()
+    {
+        LocalInputBuffer b = new();
+        b.Set(new string('z', LocalInputBuffer.MaxLength + 50));
+        Assert.Equal(LocalInputBuffer.MaxLength, b.Length);
+    }
+
+    [Fact]
+    public void Set_EmptyOrNull_ClearsAndFiresChanged()
+    {
+        // Down past the newest entry recalls an empty line — the overlay
+        // must repaint to erase what was shown, so Changed fires even when
+        // the result is empty.
+        LocalInputBuffer b = new();
+        b.Append("stale");
+        int events = 0;
+        b.Changed += () => events++;
+        b.Set(null);
+        Assert.Equal(string.Empty, b.Text);
+        Assert.Equal(1, events);
+    }
+
+    [Fact]
     public void Changed_Fires_OnEveryMutation()
     {
         LocalInputBuffer b = new();

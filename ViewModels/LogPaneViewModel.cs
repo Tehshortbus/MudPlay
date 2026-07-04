@@ -51,50 +51,35 @@ public sealed partial class LogPaneViewModel : ObservableObject, IDisposable
     /// </summary>
     public bool IsBulkUpdating => _bulkUpdate;
 
-    // Severity filter toggles — each defaults to "show". Setting any of them
-    // re-runs the filter against the live snapshot.
-    [ObservableProperty] private bool _showDebug   = true;
-    [ObservableProperty] private bool _showInfo    = true;
-    [ObservableProperty] private bool _showWarn    = true;
-    [ObservableProperty] private bool _showError   = true;
-    [ObservableProperty] private bool _showGameMsg = true;
-    [ObservableProperty] private bool _showCmd     = true;
+    // Display-filter toggles for the always-on record levels — each defaults
+    // to "show". Setting any of them re-runs the filter against the live
+    // snapshot. Debug / Combat rows aren't display-filtered here; they follow
+    // their generation toggles (DebugDiagnostics / CombatDiagnostics).
+    [ObservableProperty] private bool _showInfo  = true;
+    [ObservableProperty] private bool _showWarn  = true;
+    [ObservableProperty] private bool _showError = true;
 
     [ObservableProperty] private string _searchText = string.Empty;
 
     /// <summary>
-    /// Unified combat toggle (replaces the previous separate
-    /// "Combat preset" filter and "Combat diagnostics" umbrella
-    /// checkboxes — both expressed the same intent at different
-    /// layers). When on:
-    /// <list type="bullet">
-    /// <item>Filter the displayed rows to the Phase 9 combat-engine
-    /// source categories (<see cref="CombatSources"/>).</item>
-    /// <item>Push to <see cref="LogDiagnosticState.CombatDiagnostics"/>
-    /// so <see cref="Game.Combat.RoundDamageTracker"/> writes the
-    /// per-round trace file (and future verbose Debug emitters
-    /// switch on).</item>
-    /// </list>
-    /// Off by default — verbose tracing is a transient debugging
-    /// affordance, not a per-session default.
+    /// Generation toggle for the Debug channel. Mirrors
+    /// <see cref="LogDiagnosticState.DebugDiagnostics"/> — flipping it makes
+    /// every <c>_log?.Debug(...)</c> site across the engines start (or stop)
+    /// emitting, AND shows/hides the Debug rows already in the ring.
+    /// Persisted per-character via AppServices. Off by default — verbose
+    /// tracing is a troubleshooting affordance, not a per-session default.
     /// </summary>
-    [ObservableProperty] private bool _combatFilter;
+    [ObservableProperty] private bool _debugDiagnostics;
 
     /// <summary>
-    /// Source-name set <see cref="CombatFilter"/> filters to. Sourced
-    /// from <c>docs/10-phase-9-automation-engines.md</c> § Cross-cut 3
-    /// — the categories Phase 9 engines emit under. Match is
-    /// ordinal case-insensitive (the producer's tag wins; the filter
-    /// doesn't care which case the engine chose).
+    /// Generation toggle for the Combat channel. Mirrors
+    /// <see cref="LogDiagnosticState.CombatDiagnostics"/> — flipping it gates
+    /// the combat-decision trace channel AND
+    /// <see cref="Game.Combat.RoundDamageTracker"/>'s per-round trace file,
+    /// and shows/hides the Combat rows already in the ring. Persisted
+    /// per-character via AppServices. Off by default.
     /// </summary>
-    public static IReadOnlySet<string> CombatSources { get; } =
-        new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "Combat", "CombatGate", "RoomClassifier",
-            "Health", "HealthGate",
-            "Casting", "CastSend",
-            "Round", "Gate",
-        };
+    [ObservableProperty] private bool _combatDiagnostics;
 
     /// <summary>
     /// When true, every appended row scrolls the list to the bottom. The
@@ -141,7 +126,8 @@ public sealed partial class LogPaneViewModel : ObservableObject, IDisposable
         if (_diagnostics is not null)
         {
             _suppressDiagnosticEcho = true;
-            _combatFilter = _diagnostics.CombatDiagnostics;
+            _debugDiagnostics  = _diagnostics.DebugDiagnostics;
+            _combatDiagnostics = _diagnostics.CombatDiagnostics;
             _suppressDiagnosticEcho = false;
             _diagnostics.Changed += OnDiagnosticsChanged;
         }
@@ -152,23 +138,41 @@ public sealed partial class LogPaneViewModel : ObservableObject, IDisposable
 
     private void OnDiagnosticsChanged()
     {
-        // Another window flipped the umbrella — mirror it here without
-        // echoing back into _diagnostics (avoid a feedback loop).
+        // Another window (or a profile load) changed a toggle — mirror both
+        // here without echoing back into _diagnostics (avoid a feedback loop).
         Dispatcher.UIThread.Post(() =>
         {
             if (_diagnostics is null) return;
-            if (CombatFilter == _diagnostics.CombatDiagnostics) return;
-            _suppressDiagnosticEcho = true;
-            CombatFilter = _diagnostics.CombatDiagnostics;
-            _suppressDiagnosticEcho = false;
+            if (DebugDiagnostics != _diagnostics.DebugDiagnostics)
+            {
+                _suppressDiagnosticEcho = true;
+                DebugDiagnostics = _diagnostics.DebugDiagnostics;
+                _suppressDiagnosticEcho = false;
+            }
+            if (CombatDiagnostics != _diagnostics.CombatDiagnostics)
+            {
+                _suppressDiagnosticEcho = true;
+                CombatDiagnostics = _diagnostics.CombatDiagnostics;
+                _suppressDiagnosticEcho = false;
+            }
         });
     }
 
-    partial void OnCombatFilterChanged(bool value)
+    partial void OnDebugDiagnosticsChanged(bool value)
     {
-        // Two effects: refilter the displayed rows AND push the
-        // umbrella flag so RoundDamageTracker + future verbose
-        // emitters react.
+        // Two effects: show/hide the Debug rows AND push the generation flag
+        // so every _log?.Debug(...) site across the engines starts/stops.
+        Rebuild();
+        if (_suppressDiagnosticEcho) return;
+        if (_diagnostics is null) return;
+        _diagnostics.DebugDiagnostics = value;
+    }
+
+    partial void OnCombatDiagnosticsChanged(bool value)
+    {
+        // Two effects: show/hide the Combat rows AND push the generation flag
+        // so the combat-decision channel + RoundDamageTracker's per-round
+        // trace file react.
         Rebuild();
         if (_suppressDiagnosticEcho) return;
         if (_diagnostics is null) return;
@@ -204,12 +208,9 @@ public sealed partial class LogPaneViewModel : ObservableObject, IDisposable
         Rows.Add(row);
     }
 
-    partial void OnShowDebugChanged(bool value)   => Rebuild();
-    partial void OnShowInfoChanged(bool value)    => Rebuild();
-    partial void OnShowWarnChanged(bool value)    => Rebuild();
-    partial void OnShowErrorChanged(bool value)   => Rebuild();
-    partial void OnShowGameMsgChanged(bool value) => Rebuild();
-    partial void OnShowCmdChanged(bool value)     => Rebuild();
+    partial void OnShowInfoChanged(bool value)     => Rebuild();
+    partial void OnShowWarnChanged(bool value)     => Rebuild();
+    partial void OnShowErrorChanged(bool value)    => Rebuild();
     partial void OnSearchTextChanged(string value) => Rebuild();
 
     /// <summary>Recompute <see cref="Rows"/> from the live log snapshot.</summary>
@@ -253,7 +254,6 @@ public sealed partial class LogPaneViewModel : ObservableObject, IDisposable
     private bool Passes(LogEntry entry)
     {
         if (!SeverityAllowed(entry.Severity)) return false;
-        if (CombatFilter && !CombatSources.Contains(entry.Source)) return false;
         if (string.IsNullOrEmpty(SearchText)) return true;
 
         return entry.Message.Contains(SearchText, StringComparison.OrdinalIgnoreCase)
@@ -262,13 +262,14 @@ public sealed partial class LogPaneViewModel : ObservableObject, IDisposable
 
     private bool SeverityAllowed(LogSeverity s) => s switch
     {
-        LogSeverity.Debug   => ShowDebug,
-        LogSeverity.Info    => ShowInfo,
-        LogSeverity.Warn    => ShowWarn,
-        LogSeverity.Error   => ShowError,
-        LogSeverity.GameMsg => ShowGameMsg,
-        LogSeverity.Cmd     => ShowCmd,
-        _                   => true,
+        LogSeverity.Info   => ShowInfo,
+        LogSeverity.Warn   => ShowWarn,
+        LogSeverity.Error  => ShowError,
+        // Debug / Combat rows follow their generation toggle: shown while the
+        // channel is on, hidden once it's off (older rows linger in the ring).
+        LogSeverity.Debug  => DebugDiagnostics,
+        LogSeverity.Combat => CombatDiagnostics,
+        _                  => true,
     };
 
     private LogPaneRowViewModel MakeRow(LogEntry e) => new(e, SeverityBrush);
@@ -295,12 +296,11 @@ public sealed partial class LogPaneViewModel : ObservableObject, IDisposable
 
         return new()
         {
-            [LogSeverity.Debug]   = Lookup("SeverityDebugBrush"),
-            [LogSeverity.Info]    = Lookup("SeverityInfoBrush"),
-            [LogSeverity.Warn]    = Lookup("SeverityWarnBrush"),
-            [LogSeverity.Error]   = Lookup("SeverityErrorBrush"),
-            [LogSeverity.GameMsg] = Lookup("SeverityGameMsgBrush"),
-            [LogSeverity.Cmd]     = Lookup("SeverityCmdBrush"),
+            [LogSeverity.Debug]  = Lookup("SeverityDebugBrush"),
+            [LogSeverity.Info]   = Lookup("SeverityInfoBrush"),
+            [LogSeverity.Warn]   = Lookup("SeverityWarnBrush"),
+            [LogSeverity.Error]  = Lookup("SeverityErrorBrush"),
+            [LogSeverity.Combat] = Lookup("SeverityCombatBrush"),
         };
     }
 

@@ -158,6 +158,13 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
         _profile.ProfileClosed += OnProfileClosedExternally;
         _spellbook.Changed += OnSpellbookChanged;
         _gameData.ActiveSetChanged += OnActiveSetChanged;
+        OnDispose(() =>
+        {
+            _profile.ProfileLoaded -= OnProfileChanged;
+            _profile.ProfileClosed -= OnProfileClosedExternally;
+            _spellbook.Changed -= OnSpellbookChanged;
+            _gameData.ActiveSetChanged -= OnActiveSetChanged;
+        });
         _suppressDirty = true;
         LoadFromProfile();
         _suppressDirty = false;

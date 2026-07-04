@@ -1,0 +1,414 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:FujinTerm.ViewModels.CharacterWorkshop"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="620" d:DesignHeight="620"
+             x:Class="FujinTerm.Views.CharacterWorkshop.CalculatorsSectionView"
+             x:DataType="vm:CalculatorsSectionViewModel">
+
+    <UserControl.Styles>
+        <Style Selector="TextBlock.FieldLabel">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgSecBrush}"/>
+            <Setter Property="FontSize" Value="{StaticResource FontSizeMd}"/>
+        </Style>
+        <Style Selector="TextBlock.FieldValue">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgBrush}"/>
+            <Setter Property="FontSize" Value="{StaticResource FontSizeMd}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontFamily" Value="{StaticResource FontMono}"/>
+        </Style>
+        <Style Selector="TextBlock.BoxTitle">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgBrush}"/>
+            <Setter Property="FontSize" Value="{StaticResource FontSizeMd}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+        <Style Selector="TextBlock.Section">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgSecBrush}"/>
+            <Setter Property="FontSize" Value="{StaticResource FontSizeMd}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+        <Style Selector="Border.SubBox">
+            <Setter Property="Background" Value="{StaticResource ChromeBgBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource ChromeBorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="Padding" Value="12"/>
+        </Style>
+        <Style Selector="NumericUpDown.Stat">
+            <Setter Property="Width" Value="118"/>
+            <Setter Property="FormatString" Value="0"/>
+            <Setter Property="Increment" Value="1"/>
+            <Setter Property="Minimum" Value="0"/>
+            <Setter Property="Maximum" Value="9999"/>
+        </Style>
+    </UserControl.Styles>
+
+    <Grid Margin="22">
+        <ScrollViewer VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled">
+            <!-- Each calculator is its own collapsible Expander; add more here as
+                 sibling Expanders to grow the tab into a calculator toolbox. -->
+            <StackPanel Spacing="14" MaxWidth="560" HorizontalAlignment="Left">
+
+                <!-- ===== Monster Matchup ===== -->
+                <Expander IsExpanded="True" HorizontalAlignment="Stretch">
+                    <Expander.Header>
+                        <TextBlock Classes="BoxTitle" Text="Monster Matchup"/>
+                    </Expander.Header>
+
+                    <StackPanel Spacing="14" Margin="0,8,0,0">
+
+                        <!-- ===== Your values (+ You → Monster projection) ===== -->
+                        <Border Classes="SubBox">
+                            <StackPanel Spacing="10">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock Grid.Column="0" Classes="Section" Text="Your Values" VerticalAlignment="Center"/>
+                                    <Button Grid.Column="1" Content="Reset to actual"
+                                            Command="{Binding ResetDefensesCommand}"
+                                            ToolTip.Tip="Discard your weapon / accuracy / AC / dodge edits and re-seed from the live stat + gear values."/>
+                                </Grid>
+
+                                <StackPanel Orientation="Horizontal" Spacing="14">
+                                    <StackPanel Spacing="3">
+                                        <TextBlock Classes="FieldLabel" Text="Accuracy"/>
+                                        <NumericUpDown Classes="Stat" Value="{Binding PlayerAccuracy, Mode=TwoWay}"/>
+                                    </StackPanel>
+                                    <StackPanel Spacing="3">
+                                        <TextBlock Classes="FieldLabel" Text="Armour Class"/>
+                                        <NumericUpDown Classes="Stat" Minimum="-9999" Value="{Binding PlayerAc, Mode=TwoWay}"/>
+                                    </StackPanel>
+                                    <StackPanel Spacing="3">
+                                        <TextBlock Classes="FieldLabel" Text="Dodge"/>
+                                        <NumericUpDown Classes="Stat" Minimum="-9999" Value="{Binding PlayerDodge, Mode=TwoWay}"/>
+                                    </StackPanel>
+                                </StackPanel>
+
+                                <Border Height="1" Background="{StaticResource ChromeBorderBrush}" Margin="0,2"/>
+
+                                <TextBlock Classes="Section" Text="You → Monster"/>
+
+                                <StackPanel Spacing="3">
+                                    <TextBlock Classes="FieldLabel" Text="Weapon"/>
+                                    <AutoCompleteBox ItemsSource="{Binding WeaponNames}"
+                                                     SelectedItem="{Binding SelectedWeaponName, Mode=TwoWay}"
+                                                     FilterMode="ContainsOrdinal"
+                                                     MinimumPrefixLength="1"
+                                                     MinWidth="260"
+                                                     HorizontalAlignment="Left"
+                                                     PlaceholderText="Equipped weapon — type to model a different one…"/>
+                                </StackPanel>
+
+                                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto">
+                                    <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Hit Chance" Margin="0,2,16,2"/>
+                                    <TextBlock Grid.Row="0" Grid.Column="1" Classes="FieldValue" Text="{Binding MatchupPlayerHit}" Margin="0,2"/>
+                                    <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Damage" Margin="0,2,16,2"/>
+                                    <TextBlock Grid.Row="1" Grid.Column="1" Classes="FieldValue" Text="{Binding MatchupPlayerDamage}" Margin="0,2"/>
+                                    <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Swings/Rnd" Margin="0,2,16,2"
+                                               IsVisible="{Binding MatchupHasWeapon}"/>
+                                    <TextBlock Grid.Row="2" Grid.Column="1" Classes="FieldValue" Text="{Binding MatchupSwings}" Margin="0,2"
+                                               IsVisible="{Binding MatchupHasWeapon}"/>
+                                    <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="DPS" Margin="0,2,16,2"
+                                               IsVisible="{Binding MatchupHasWeapon}"/>
+                                    <TextBlock Grid.Row="3" Grid.Column="1" Classes="FieldValue" Text="{Binding MatchupDps}" Margin="0,2"
+                                               IsVisible="{Binding MatchupHasWeapon}"/>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- ===== Monster values ===== -->
+                        <Border Classes="SubBox">
+                            <StackPanel Spacing="10">
+                                <TextBlock Classes="Section" Text="Monster Values"/>
+
+                                <AutoCompleteBox ItemsSource="{Binding MonsterNames}"
+                                                 SelectedItem="{Binding SelectedMonsterName, Mode=TwoWay}"
+                                                 FilterMode="ContainsOrdinal"
+                                                 MinimumPrefixLength="1"
+                                                 MinWidth="260"
+                                                 HorizontalAlignment="Left"
+                                                 PlaceholderText="Type a monster name to fill the values…"/>
+
+                                <StackPanel Orientation="Horizontal" Spacing="14">
+                                    <StackPanel Spacing="3">
+                                        <TextBlock Classes="FieldLabel" Text="Armour Class"/>
+                                        <NumericUpDown Classes="Stat" Minimum="-9999" Value="{Binding MonsterAc, Mode=TwoWay}"/>
+                                    </StackPanel>
+                                    <StackPanel Spacing="3">
+                                        <TextBlock Classes="FieldLabel" Text="Damage Resist"/>
+                                        <NumericUpDown Classes="Stat" Value="{Binding MonsterDr, Mode=TwoWay}"/>
+                                    </StackPanel>
+                                    <StackPanel Spacing="3">
+                                        <TextBlock Classes="FieldLabel" Text="Dodge"/>
+                                        <NumericUpDown Classes="Stat" Minimum="-9999" Value="{Binding MonsterDodge, Mode=TwoWay}"/>
+                                    </StackPanel>
+                                </StackPanel>
+
+                                <Border Height="1" Background="{StaticResource ChromeBorderBrush}" Margin="0,2"/>
+
+                                <!-- Incoming attacks: chance each lands on YOU, at the
+                                     accuracy you set (vs your AC + dodge above). Rows are
+                                     seeded from the monster but freely add/removed. -->
+                                <TextBlock Classes="Section" Text="Monster → You"/>
+
+                                <!-- Column header. Fixed widths keep the header aligned
+                                     with each attack row below (no shared size scope). -->
+                                <Grid ColumnDefinitions="104,120,70,78,Auto" Margin="0,2,0,0">
+                                    <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Attack"/>
+                                    <TextBlock Grid.Column="1" Classes="FieldLabel" Text="Accuracy"/>
+                                    <TextBlock Grid.Column="2" Classes="FieldLabel" Text="Damage"/>
+                                    <TextBlock Grid.Column="3" Classes="FieldLabel" Text="Hit % on you"/>
+                                </Grid>
+
+                                <ItemsControl ItemsSource="{Binding MonsterAttacks}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:MonsterAttackRowViewModel">
+                                            <Grid ColumnDefinitions="104,120,70,78,Auto" Margin="0,2">
+                                                <TextBlock Grid.Column="0" Classes="FieldValue" Text="{Binding Label}" VerticalAlignment="Center"/>
+                                                <NumericUpDown Grid.Column="1" Width="114"
+                                                               FormatString="0" Increment="1" Minimum="0" Maximum="9999"
+                                                               Value="{Binding Accuracy, Mode=TwoWay}"/>
+                                                <TextBlock Grid.Column="2" Classes="FieldValue" Text="{Binding Damage}" VerticalAlignment="Center"/>
+                                                <TextBlock Grid.Column="3" Classes="FieldValue" Text="{Binding HitPercent}"
+                                                           Foreground="{StaticResource AccentAmberBrush}" VerticalAlignment="Center"/>
+                                                <Button Grid.Column="4" Content="✕" Padding="8,2" VerticalAlignment="Center"
+                                                        Command="{Binding RemoveCommand}"
+                                                        ToolTip.Tip="Remove this attack"/>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <Button Content="＋ Add attack" HorizontalAlignment="Left"
+                                        Command="{Binding AddAttackCommand}"
+                                        ToolTip.Tip="Add a custom attack row to the incoming-hit calculator."/>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </Expander>
+
+                <!-- ===== Movement Speed ===== -->
+                <Expander HorizontalAlignment="Stretch">
+                    <Expander.Header>
+                        <TextBlock Classes="BoxTitle" Text="Movement Speed"/>
+                    </Expander.Header>
+
+                    <Border Classes="SubBox" Margin="0,8,0,0">
+                        <StackPanel Spacing="10">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBlock Grid.Column="0" Classes="Section" Text="Inputs" VerticalAlignment="Center"/>
+                                <Button Grid.Column="1" Content="Reset to actual"
+                                        Command="{Binding ResetMovementCommand}"
+                                        ToolTip.Tip="Discard your edits and re-seed encumbrance + quickness from the live values."/>
+                            </Grid>
+
+                            <StackPanel Orientation="Horizontal" Spacing="14">
+                                <StackPanel Spacing="3">
+                                    <TextBlock Classes="FieldLabel" Text="Encumbrance %"/>
+                                    <NumericUpDown Classes="Stat" Maximum="100" Value="{Binding MoveEncumbrance, Mode=TwoWay}"/>
+                                </StackPanel>
+                                <StackPanel Spacing="3">
+                                    <TextBlock Classes="FieldLabel" Text="Quickness"/>
+                                    <NumericUpDown Classes="Stat" Value="{Binding MoveQuickness, Mode=TwoWay}"/>
+                                </StackPanel>
+                                <StackPanel Spacing="3">
+                                    <TextBlock Classes="FieldLabel" Text="Slowness"/>
+                                    <NumericUpDown Classes="Stat" Value="{Binding MoveSlowness, Mode=TwoWay}"/>
+                                </StackPanel>
+                            </StackPanel>
+
+                            <Border Height="1" Background="{StaticResource ChromeBorderBrush}" Margin="0,2"/>
+
+                            <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto">
+                                <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Speed" Margin="0,2,16,2"/>
+                                <TextBlock Grid.Row="0" Grid.Column="1" Classes="FieldValue" Text="{Binding MoveSpeedText}" Margin="0,2"/>
+                                <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Status" Margin="0,2,16,2"/>
+                                <TextBlock Grid.Row="1" Grid.Column="1" Classes="FieldValue" Text="{Binding MoveStatusText}"
+                                           Foreground="{StaticResource AccentAmberBrush}" Margin="0,2"/>
+                            </Grid>
+
+                            <TextBlock Classes="FieldLabel" Text="{Binding MoveAdviceText}" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Border>
+                </Expander>
+
+                <!-- ===== Swing Calculator ===== -->
+                <Expander HorizontalAlignment="Stretch">
+                    <Expander.Header>
+                        <TextBlock Classes="BoxTitle" Text="Swing Calculator"/>
+                    </Expander.Header>
+
+                    <StackPanel Spacing="14" Margin="0,8,0,0">
+                        <Border Classes="SubBox">
+                            <StackPanel Spacing="10">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock Grid.Column="0" Classes="Section" Text="Inputs" VerticalAlignment="Center"/>
+                                    <Button Grid.Column="1" Content="Reset to actual"
+                                            Command="{Binding ResetSwingCommand}"
+                                            ToolTip.Tip="Discard your edits and re-seed weapon + stats from the live values."/>
+                                </Grid>
+
+                                <StackPanel Spacing="3">
+                                    <TextBlock Classes="FieldLabel" Text="Weapon"/>
+                                    <AutoCompleteBox ItemsSource="{Binding WeaponNames}"
+                                                     SelectedItem="{Binding SelectedSwingWeaponName, Mode=TwoWay}"
+                                                     FilterMode="ContainsOrdinal"
+                                                     MinimumPrefixLength="1"
+                                                     MinWidth="260"
+                                                     HorizontalAlignment="Left"
+                                                     PlaceholderText="Equipped weapon — type to model a different one…"/>
+                                </StackPanel>
+
+                                <StackPanel Orientation="Horizontal" Spacing="14">
+                                    <StackPanel Spacing="3">
+                                        <TextBlock Classes="FieldLabel" Text="Level"/>
+                                        <NumericUpDown Classes="Stat" Value="{Binding SwingLevel, Mode=TwoWay}"/>
+                                    </StackPanel>
+                                    <StackPanel Spacing="3">
+                                        <TextBlock Classes="FieldLabel" Text="Combat Lvl"/>
+                                        <NumericUpDown Classes="Stat" Minimum="1" Maximum="5" Value="{Binding SwingCombatLevel, Mode=TwoWay}"/>
+                                    </StackPanel>
+                                    <StackPanel Spacing="3">
+                                        <TextBlock Classes="FieldLabel" Text="Agility"/>
+                                        <NumericUpDown Classes="Stat" Value="{Binding SwingAgility, Mode=TwoWay}"/>
+                                    </StackPanel>
+                                </StackPanel>
+
+                                <StackPanel Orientation="Horizontal" Spacing="14">
+                                    <StackPanel Spacing="3">
+                                        <TextBlock Classes="FieldLabel" Text="Strength"/>
+                                        <NumericUpDown Classes="Stat" Value="{Binding SwingStrength, Mode=TwoWay}"/>
+                                    </StackPanel>
+                                    <StackPanel Spacing="3">
+                                        <TextBlock Classes="FieldLabel" Text="Encumbrance %"/>
+                                        <NumericUpDown Classes="Stat" Maximum="100" Value="{Binding SwingEncumbrance, Mode=TwoWay}"/>
+                                    </StackPanel>
+                                    <StackPanel Spacing="3">
+                                        <TextBlock Classes="FieldLabel" Text="Speed"/>
+                                        <ComboBox ItemsSource="{Binding SwingSpeedOptions}"
+                                                  SelectedItem="{Binding SwingSpeedOption, Mode=TwoWay}"
+                                                  MinWidth="118"/>
+                                    </StackPanel>
+                                </StackPanel>
+
+                                <StackPanel Orientation="Horizontal" Spacing="18">
+                                    <CheckBox Content="Bashing" IsChecked="{Binding SwingBashing, Mode=TwoWay}"/>
+                                    <CheckBox Content="Slowness" IsChecked="{Binding SwingSlowness, Mode=TwoWay}"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Classes="SubBox" IsVisible="{Binding SwingHasWeapon}">
+                            <StackPanel Spacing="10">
+                                <TextBlock Classes="Section" Text="Result"/>
+
+                                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto">
+                                    <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Energy / swing" Margin="0,2,16,2"/>
+                                    <TextBlock Grid.Row="0" Grid.Column="1" Classes="FieldValue" Text="{Binding SwingEnergyText}" Margin="0,2"/>
+                                    <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Raw swings" Margin="0,2,16,2"/>
+                                    <TextBlock Grid.Row="1" Grid.Column="1" Classes="FieldValue" Text="{Binding SwingRawText}" Margin="0,2"/>
+                                    <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Encumbrance" Margin="0,2,16,2"/>
+                                    <TextBlock Grid.Row="2" Grid.Column="1" Classes="FieldValue" Text="{Binding SwingEncumText}" Margin="0,2"/>
+                                    <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="QnD crits" Margin="0,2,16,2"/>
+                                    <TextBlock Grid.Row="3" Grid.Column="1" Classes="FieldValue" Text="{Binding SwingQndText}" Margin="0,2"/>
+                                </Grid>
+
+                                <Border Height="1" Background="{StaticResource ChromeBorderBrush}" Margin="0,2"/>
+
+                                <TextBlock Classes="Section" Text="Swings / EU remaining (10 rounds)"/>
+                                <Grid ColumnDefinitions="70,90,Auto" Margin="0,2,0,0">
+                                    <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Round"/>
+                                    <TextBlock Grid.Column="1" Classes="FieldLabel" Text="Swings"/>
+                                    <TextBlock Grid.Column="2" Classes="FieldLabel" Text="EU carried"/>
+                                </Grid>
+                                <ItemsControl ItemsSource="{Binding SwingRounds}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:SwingRoundRow">
+                                            <Grid ColumnDefinitions="70,90,Auto" Margin="0,1">
+                                                <TextBlock Grid.Column="0" Classes="FieldValue" Text="{Binding Round}"/>
+                                                <TextBlock Grid.Column="1" Classes="FieldValue" Text="{Binding Swings}"/>
+                                                <TextBlock Grid.Column="2" Classes="FieldValue" Text="{Binding EnergyCarried}"/>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock Classes="FieldLabel" IsVisible="{Binding !SwingHasWeapon}"
+                                   Text="Pick a weapon (or equip one) to see the swing breakdown."/>
+                    </StackPanel>
+                </Expander>
+
+                <!-- ===== Backstab Calculator ===== -->
+                <Expander HorizontalAlignment="Stretch">
+                    <Expander.Header>
+                        <TextBlock Classes="BoxTitle" Text="Backstab Calculator"/>
+                    </Expander.Header>
+
+                    <StackPanel Spacing="14" Margin="0,8,0,0">
+                        <Border Classes="SubBox">
+                            <StackPanel Spacing="10">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock Grid.Column="0" Classes="Section" Text="Weapon" VerticalAlignment="Center"/>
+                                    <Button Grid.Column="1" Content="Reset to backstab set"
+                                            Command="{Binding ResetBackstabCommand}"
+                                            ToolTip.Tip="Set the weapon back to the Equipment Manager's Backstab-set weapon."/>
+                                </Grid>
+
+                                <AutoCompleteBox ItemsSource="{Binding WeaponNames}"
+                                                 SelectedItem="{Binding SelectedBackstabWeaponName, Mode=TwoWay}"
+                                                 FilterMode="ContainsOrdinal"
+                                                 MinimumPrefixLength="1"
+                                                 MinWidth="260"
+                                                 HorizontalAlignment="Left"
+                                                 PlaceholderText="Backstab-set weapon — type to model a different one…"/>
+                                <TextBlock Classes="FieldLabel"
+                                           Text="Level, strength, stealth and the +BS bonuses are read live from your character."/>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Classes="SubBox">
+                            <StackPanel Spacing="10">
+                                <TextBlock Classes="Section" Text="Inputs (live)"/>
+                                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto">
+                                    <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Level" Margin="0,2,16,2"/>
+                                    <TextBlock Grid.Row="0" Grid.Column="1" Classes="FieldValue" Text="{Binding BackstabLevelText}" Margin="0,2"/>
+                                    <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Strength" Margin="0,2,16,2"/>
+                                    <TextBlock Grid.Row="1" Grid.Column="1" Classes="FieldValue" Text="{Binding BackstabStrengthText}" Margin="0,2"/>
+                                    <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Stealth" Margin="0,2,16,2"/>
+                                    <TextBlock Grid.Row="2" Grid.Column="1" Classes="FieldValue" Text="{Binding BackstabStealthText}" Margin="0,2"/>
+                                    <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="Stealth source" Margin="0,2,16,2"/>
+                                    <TextBlock Grid.Row="3" Grid.Column="1" Classes="FieldValue" Text="{Binding BackstabClassStealthText}" Margin="0,2"/>
+                                    <TextBlock Grid.Row="4" Grid.Column="0" Classes="FieldLabel" Text="Bonuses" Margin="0,2,16,2"/>
+                                    <TextBlock Grid.Row="4" Grid.Column="1" Classes="FieldValue" Text="{Binding BackstabBonusText}" Margin="0,2"/>
+                                    <TextBlock Grid.Row="5" Grid.Column="0" Classes="FieldLabel" Text="Realm" Margin="0,2,16,2"/>
+                                    <TextBlock Grid.Row="5" Grid.Column="1" Classes="FieldValue" Text="{Binding BackstabRealmText}" Margin="0,2"/>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Classes="SubBox" IsVisible="{Binding BackstabHasWeapon}">
+                            <StackPanel Spacing="10">
+                                <TextBlock Classes="Section" Text="Backstab damage"/>
+                                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto">
+                                    <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Weapon range" Margin="0,2,16,2"/>
+                                    <TextBlock Grid.Row="0" Grid.Column="1" Classes="FieldValue" Text="{Binding BackstabWeaponRangeText}" Margin="0,2"/>
+                                    <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Min" Margin="0,2,16,2"/>
+                                    <TextBlock Grid.Row="1" Grid.Column="1" Classes="FieldValue" Text="{Binding BackstabMinText}" Margin="0,2"/>
+                                    <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Max" Margin="0,2,16,2"/>
+                                    <TextBlock Grid.Row="2" Grid.Column="1" Classes="FieldValue" Text="{Binding BackstabMaxText}" Margin="0,2"/>
+                                    <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="Average" Margin="0,2,16,2"/>
+                                    <TextBlock Grid.Row="3" Grid.Column="1" Classes="FieldValue" Text="{Binding BackstabAvgText}" Margin="0,2"/>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock Classes="FieldLabel" IsVisible="{Binding !BackstabHasWeapon}"
+                                   Text="Pick a backstab weapon (or set one on the Backstab gear set) to see the damage range."/>
+                    </StackPanel>
+                </Expander>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

@@ -110,6 +110,12 @@ public sealed partial class AutoTrainerSectionViewModel : SettingsSectionViewMod
         _profile.ProfileLoaded += OnProfileChanged;
         _profile.ProfileClosed += OnProfileClosedExternally;
         _gameData.ActiveSetChanged += OnActiveSetChanged;
+        OnDispose(() =>
+        {
+            _profile.ProfileLoaded -= OnProfileChanged;
+            _profile.ProfileClosed -= OnProfileClosedExternally;
+            _gameData.ActiveSetChanged -= OnActiveSetChanged;
+        });
 
         _suppressDirty = true;
         LoadFromProfile();

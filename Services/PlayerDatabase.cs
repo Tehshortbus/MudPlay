@@ -224,6 +224,26 @@ public sealed class PlayerDatabase
         SaveObservations();
     }
 
+    // ----- Reads ---------------------------------------------------------
+
+    /// <summary>
+    /// Look up one player's merged record by name (given or full display
+    /// name — reduced to the given name, the stable key). Returns
+    /// <c>null</c> when no observation exists for that player. Read-only;
+    /// never creates a row. Used by <see cref="Game.Remote.PartyLevelTracker"/>
+    /// to read a party member's known level (exact or title-derived) at
+    /// path-planning time.
+    /// </summary>
+    public PlayerRecord? Find(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return null;
+        (string given, _) = PlayerObservation.SplitName(name);
+        if (string.IsNullOrEmpty(given)) return null;
+        if (!_observations.TryGetValue(given, out PlayerObservation? obs)) return null;
+        _customizations.TryGetValue(given, out PlayerCustomization c);
+        return PlayerRecord.Merge(obs, c);
+    }
+
     // ----- Greet tracking (BBS tier) ------------------------------------
 
     /// <summary>
@@ -279,6 +299,52 @@ public sealed class PlayerDatabase
 
         Rebuild();
         SaveObservations();
+    }
+
+    /// <summary>
+    /// Record one player's exact character level, as learned from an
+    /// <c>@level</c> probe reply (<c>"Level N, X exp, …"</c>). This is the
+    /// authoritative source for a player's level — it supersedes the
+    /// 5-level band the game's title otherwise implies (see
+    /// <see cref="Game.GameData.ClassTitleTable"/>). Keyed on given name
+    /// like every other observation lookup; creates a minimal row when the
+    /// player is unknown (we only get a level reply from someone we asked,
+    /// so they're real), otherwise updates the existing row's
+    /// <see cref="PlayerObservation.Level"/> and bumps
+    /// <see cref="PlayerObservation.LastSeenUtc"/> — answering a telepath
+    /// proves presence. Every other field is left untouched. Saves the BBS
+    /// observation file.
+    /// </summary>
+    public void RecordLevel(string name, int level, DateTime nowUtc)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+        if (level <= 0) return;
+        (string given, string family) = PlayerObservation.SplitName(name);
+        if (string.IsNullOrEmpty(given)) return;
+
+        if (_observations.TryGetValue(given, out PlayerObservation? existing))
+        {
+            _observations[given] = existing with { Level = level, LastSeenUtc = nowUtc };
+        }
+        else
+        {
+            _observations[given] = new PlayerObservation(
+                GivenName:    given,
+                FamilyName:   family,
+                Class:        null,
+                Race:         null,
+                Alignment:    null,
+                Title:        null,
+                Gang:         null,
+                Role:         null,
+                FirstSeenUtc: nowUtc,
+                LastSeenUtc:  nowUtc,
+                Level:        level);
+        }
+
+        Rebuild();
+        SaveObservations();
+        ObservationRecorded?.Invoke(given);
     }
 
     /// <summary>
@@ -485,6 +551,9 @@ public sealed class PlayerDatabase
             // shouldn't be erased by a later who-observation that didn't
             // carry equipment).
             Equipment    = newer.Equipment ?? older.Equipment,
+            // Level: same treatment — a probed level survives a later
+            // who-observation that carried no level.
+            Level        = newer.Level ?? older.Level,
             // Greet time isn't ordered by LastSeen — keep the later of
             // the two so a duplicate-row collapse never re-opens a greet
             // we already sent today.

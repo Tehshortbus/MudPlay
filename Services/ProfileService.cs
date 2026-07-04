@@ -47,6 +47,17 @@ public sealed class ProfileService
     public bool IsBlankDraft => Current is not null && CurrentProfileName is null;
 
     /// <summary>
+    /// Late-bound system-log sink. Set by <c>AppServices</c> after construction
+    /// so the character-lifecycle transitions (load / swap / close / re-home)
+    /// land in the always-on Info stream — the peer of the game-data set audit
+    /// in <see cref="GameDataCache"/>. Left <c>null</c> in tests.
+    /// </summary>
+    public LogService? Log { get; set; }
+
+    /// <summary>Source tag for this service's system-log rows.</summary>
+    private const string LogCategory = "Profile";
+
+    /// <summary>
     /// Fired after a profile becomes <see cref="Current"/>. Per-character
     /// services rebind their state inside the handler.
     /// </summary>
@@ -121,6 +132,7 @@ public sealed class ProfileService
                 $"Character profile '{profileName}' on '{bbsName}' not found.", path);
         NormalizeForLoad(loaded);
 
+        string? outgoing = CurrentProfileName;
         if (Current is not null)
         {
             // Auto-save the outgoing profile so per-session edits don't
@@ -139,6 +151,9 @@ public sealed class ProfileService
         Current = loaded;
         CurrentProfileName = profileName;
         CurrentBbsName = bbsName;
+        Log?.Info(LogCategory, outgoing is null
+            ? $"Loaded profile '{profileName}' on '{bbsName}'."
+            : $"Swapped profile '{outgoing}' → '{profileName}' on '{bbsName}'.");
         ProfileLoaded?.Invoke(loaded);
         return loaded;
     }
@@ -180,6 +195,7 @@ public sealed class ProfileService
     /// </remarks>
     public CharacterProfile LoadBlank()
     {
+        string? outgoing = CurrentProfileName;
         if (Current is not null)
         {
             // Auto-save the outgoing profile (no-op on drafts) so per-session
@@ -195,6 +211,9 @@ public sealed class ProfileService
         Current = draft;
         CurrentProfileName = null;
         CurrentBbsName = null;
+        Log?.Info(LogCategory, outgoing is null
+            ? "Started a blank draft profile (no character loaded)."
+            : $"Closed profile '{outgoing}'; started a blank draft profile.");
         ProfileLoaded?.Invoke(draft);
         return draft;
     }
@@ -246,9 +265,13 @@ public sealed class ProfileService
         else
             Directory.CreateDirectory(destFolder); // never-saved-yet edge: just stake the destination.
 
+        string fromBbs = CurrentBbsName;
+        string fromName = CurrentProfileName;
         Current.Name = targetName;
         CurrentProfileName = targetName;
         CurrentBbsName = newBbs;
+        Log?.Info(LogCategory,
+            $"Re-homed profile '{fromName}' ({fromBbs}) → '{targetName}' ({newBbs}).");
     }
 
     /// <summary>
@@ -283,9 +306,13 @@ public sealed class ProfileService
     public void Close()
     {
         if (Current is null) return;
+        string? outgoing = CurrentProfileName;
         Current = null;
         CurrentProfileName = null;
         CurrentBbsName = null;
+        Log?.Info(LogCategory, outgoing is null
+            ? "Closed the blank draft profile."
+            : $"Closed profile '{outgoing}'.");
         ProfileClosed?.Invoke();
     }
 

@@ -23,27 +23,24 @@ public sealed class ToolbarSettings
 
     /// <summary>
     /// Master visibility — when false the toolbar is hidden entirely
-    /// regardless of orientation. Default true.
+    /// regardless of <see cref="Position"/>. Default true.
     /// </summary>
     public bool Visible { get; set; } = true;
 
     /// <summary>
-    /// When true, the toolbar mounts vertically on the side picked by
-    /// <see cref="Side"/>; when false it mounts horizontally at the top.
-    /// Default false (horizontal, matches MegaMUD's familiar layout).
+    /// Edge the toolbar docks to — one of four. Top / Bottom mount it
+    /// horizontally; Left / Right mount it vertically. Ignored when
+    /// <see cref="Visible"/> is false. Default <see cref="ToolbarPosition.Top"/>
+    /// (the familiar MegaMUD spot).
     /// </summary>
-    public bool Vertical { get; set; } = false;
-
-    /// <summary>
-    /// Edge to dock the toolbar to when <see cref="Vertical"/> is true.
-    /// Ignored when the toolbar is horizontal. Default <see cref="ToolbarSide.Left"/>.
-    /// </summary>
-    public ToolbarSide Side { get; set; } = ToolbarSide.Left;
+    public ToolbarPosition Position { get; set; } = ToolbarPosition.Top;
 }
 
-/// <summary>Edge a vertical toolbar can dock to.</summary>
-public enum ToolbarSide
+/// <summary>Edge the toolbar docks to. Top / Bottom are horizontal mounts; Left / Right are vertical.</summary>
+public enum ToolbarPosition
 {
+    Top,
+    Bottom,
     Left,
     Right,
 }

@@ -15,7 +15,7 @@ namespace FujinTerm.Services;
 public sealed partial class DisplayConfig : ObservableObject
 {
     [ObservableProperty] private double _fontSize = 16.0;
-    [ObservableProperty] private int _scrollbackLines = 10_000;
+    [ObservableProperty] private int _scrollbackLines = 4_000;
     [ObservableProperty] private int _terminalCols = 80;
     [ObservableProperty] private int _terminalRows = 25;
 }

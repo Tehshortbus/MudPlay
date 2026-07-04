@@ -1,6 +1,9 @@
+using System.Collections.ObjectModel;
 using System.Text.Json;
 using Avalonia.Controls;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
+using FujinTerm.Game;
 using FujinTerm.Models.Profile;
 using FujinTerm.Services;
 using FujinTerm.Views.Settings;
@@ -11,9 +14,11 @@ namespace FujinTerm.ViewModels.Settings;
 /// "Spells" tab — self-cast picks per role. Top section orders the
 /// between-round casting categories (Minor / Major party heal, Minor /
 /// Major self heal, Curing, Buffing, Debuffing). Middle sections name the
-/// heal / regen / cure spells. Bottom section holds 10 bless slots that
-/// cover every class's stacked-buff playstyle. Persists as the
-/// <c>"Spells"</c> entry in <see cref="CharacterProfile.Settings"/>.
+/// heal / regen / cure spells. Bottom section holds the bless slots (10 on
+/// a Stock realm, 15 on ParaMud, sized live from
+/// <see cref="GameDataCache.ActiveRealm"/>) that cover every class's
+/// stacked-buff playstyle. Persists as the <c>"Spells"</c> entry in
+/// <see cref="CharacterProfile.Settings"/>.
 /// </summary>
 /// <remarks>
 /// Wires DTO storage only — <c>CastingDirector</c> (the between-round
@@ -27,10 +32,17 @@ public sealed partial class SpellsSectionViewModel : SettingsSectionViewModel
     private const string TabKey = "Spells";
 
     private readonly ProfileService _profile;
+    private readonly GameDataCache _gameData;
     private readonly Game.Spells.SpellbookState _spellbook;
     private Control? _view;
     private bool _suppressDirty;
     private bool _dirty;
+
+    /// <summary>Bless picks whose slot index exceeds the current realm's
+    /// visible count (e.g. a ParaMud profile's slots 11–15 viewed on a 10-slot
+    /// Stock realm). Held aside so they persist untouched across the narrower
+    /// realm and re-surface when a wider one is loaded.</summary>
+    private readonly Dictionary<int, string> _overflowBlessSlots = new();
 
     public override string Id => "spells";
     public override string Title => "Spells";
@@ -49,17 +61,22 @@ public sealed partial class SpellsSectionViewModel : SettingsSectionViewModel
 
     public override Control View => _view ??= new SpellsSectionView { DataContext = this };
 
-    public override IEnumerable<string> SearchableLabels => new[]
+    public override IEnumerable<string> SearchableLabels =>
+        _staticSearchLabels.Concat(
+            Enumerable.Range(1, SpellsSettings.ParaMudBlessSlotCount)
+                      .Select(i => $"Bless {i}"));
+
+    private static readonly string[] _staticSearchLabels =
     {
         "Spells",
         "Spell type priority", "Priority", "Minor party heal", "Major party heal",
         "Minor self heal", "Major self heal", "Curing", "Buffing", "Debuffing",
         "Healing", "Regeneration", "Minor heal", "Major heal",
         "HP Regen", "Mana Regen", "When HP full", "When Mana full",
+        "Mana-regen reroll", "Reroll if roll below", "Reroll threshold",
+        "Max rerolls", "Reroll cap", "Nature tap", "Mana flux",
         "Other spells", "Cure Holds", "Cure poison", "Cure disease", "Cure blindness",
-        "Room light", "Light",
-        "Bless", "Bless 1", "Bless 2", "Bless 3", "Bless 4", "Bless 5",
-        "Bless 6", "Bless 7", "Bless 8", "Bless 9", "Bless 10",
+        "Room light", "Light", "Bless",
         "Ailment handling", "Coordination",
         "Ignore poison", "Ignore blindness", "Ignore confusion", "Ignore disease",
         "Don't announce poison", "Don't announce blindness",
@@ -101,6 +118,19 @@ public sealed partial class SpellsSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private string? _whenHpFullSpell;
     [ObservableProperty] private string? _whenMaFullSpell;
 
+    // ----- Mana-regen reroll (Paradigm roll spells) -----------------
+    // Empty threshold = rerolling off (the spell just recasts on expiry).
+
+    [ObservableProperty] private int? _manaRegenRerollThreshold;
+    [ObservableProperty] private int _manaRegenRerollCap = 3;
+
+    /// <summary>Plain-language state of the mana-regen reroll for the current
+    /// <see cref="MaRegenSpell"/> pick — the level-scaled roll range when it
+    /// resolves to a Paradigm roll spell (nature tap / mana flux, ability code
+    /// 145), otherwise why rerolling doesn't apply. Recomputed when the pick or
+    /// the spellbook (class / level) changes.</summary>
+    public string ManaRegenRerollHint => BuildManaRegenRerollHint();
+
     // ----- Cures + utility ------------------------------------------
 
     [ObservableProperty] private string? _cureHoldsSpell;
@@ -109,18 +139,12 @@ public sealed partial class SpellsSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private string? _cureBlindnessSpell;
     [ObservableProperty] private string? _roomLightSpell;
 
-    // ----- Bless (10 slots) -----------------------------------------
+    // ----- Bless slots (realm-sized: Stock 10 / ParaMud 15) ---------
 
-    [ObservableProperty] private string? _bless1Spell;
-    [ObservableProperty] private string? _bless2Spell;
-    [ObservableProperty] private string? _bless3Spell;
-    [ObservableProperty] private string? _bless4Spell;
-    [ObservableProperty] private string? _bless5Spell;
-    [ObservableProperty] private string? _bless6Spell;
-    [ObservableProperty] private string? _bless7Spell;
-    [ObservableProperty] private string? _bless8Spell;
-    [ObservableProperty] private string? _bless9Spell;
-    [ObservableProperty] private string? _bless10Spell;
+    /// <summary>Self-bless rows for the active realm, in priority order.
+    /// Rebuilt from the sparse map on load and whenever the game-data set
+    /// (hence realm) changes. Bound one-to-one to the tab's ItemsControl.</summary>
+    public ObservableCollection<SelfBlessSlotViewModel> BlessSlots { get; } = new();
 
     // ----- Ailment handling / coordination --------------------------
     // The four "Ignore X" gates suppress the @wait sent to the party
@@ -137,23 +161,60 @@ public sealed partial class SpellsSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private bool _doNotAnnounceConfusion;
     [ObservableProperty] private bool _doNotAnnounceDiseased;
 
-    public SpellsSectionViewModel() : this(AppServices.Current.Profile) { }
+    public SpellsSectionViewModel()
+        : this(AppServices.Current.Profile, AppServices.Current.GameData) { }
 
-    public SpellsSectionViewModel(ProfileService profile)
+    public SpellsSectionViewModel(ProfileService profile, GameDataCache gameData)
     {
         ArgumentNullException.ThrowIfNull(profile);
+        ArgumentNullException.ThrowIfNull(gameData);
         _profile = profile;
+        _gameData = gameData;
         _spellbook = AppServices.Current.Spellbook;
         Priority = new PriorityRankingViewModel(MarkDirty);
         _profile.ProfileLoaded += OnProfileChanged;
         _profile.ProfileClosed += OnProfileClosedExternally;
         _spellbook.Changed += OnSpellbookChanged;
+        _gameData.ActiveSetChanged += OnRealmChanged;
+        OnDispose(() =>
+        {
+            _profile.ProfileLoaded -= OnProfileChanged;
+            _profile.ProfileClosed -= OnProfileClosedExternally;
+            _spellbook.Changed -= OnSpellbookChanged;
+            _gameData.ActiveSetChanged -= OnRealmChanged;
+        });
         _suppressDirty = true;
         LoadFromProfile();
         _suppressDirty = false;
     }
 
-    private void OnSpellbookChanged() => OnPropertyChanged(nameof(SpellSuggestions));
+    private void OnSpellbookChanged()
+    {
+        OnPropertyChanged(nameof(SpellSuggestions));
+        // Class / level swap rescales the roll range shown in the reroll hint.
+        OnPropertyChanged(nameof(ManaRegenRerollHint));
+    }
+
+    // Resolves the current MaRegenSpell pick to its roll range (nature tap /
+    // mana flux, code 145) via the shared classifier, or explains why
+    // rerolling doesn't apply. Kept off the render path — only rebuilt when the
+    // pick or the spellbook changes.
+    private string BuildManaRegenRerollHint()
+    {
+        if (NullIfBlank(MaRegenSpell) is not { } code)
+            return "Pick a mana-regen spell above to configure rerolling.";
+
+        if (_spellbook.FindByCastCode(code) is not { } spell)
+            return $"'{code}' isn't in this class's spell list — rerolling needs a known roll spell.";
+
+        if (!Game.Spells.ManaRegenReroller.IsRollSpell(spell.Formula))
+            return $"{spell.Name.Trim()} isn't a roll spell — it just recasts on expiry, so rerolling doesn't apply.";
+
+        (long min, long max) = Game.Spells.SpellCalculator.AffectMagnitude(spell.Formula, _spellbook.Level);
+        string atLevel = _spellbook.Level > 0 ? $" at level {_spellbook.Level}" : string.Empty;
+        return $"{spell.Name.Trim()} rolls {min}…{max} to your mana-regen rate{atLevel}. " +
+               "Recast until the roll reaches the threshold (Paradigm only).";
+    }
 
     public override void Apply()
     {
@@ -176,22 +237,16 @@ public sealed partial class SpellsSectionViewModel : SettingsSectionViewModel
             WhenHpFullSpell   = NullIfBlank(WhenHpFullSpell),
             WhenMaFullSpell   = NullIfBlank(WhenMaFullSpell),
 
+            ManaRegenRerollThreshold = ManaRegenRerollThreshold,
+            ManaRegenRerollCap       = ManaRegenRerollCap,
+
             CureHoldsSpell     = NullIfBlank(CureHoldsSpell),
             CurePoisonSpell    = NullIfBlank(CurePoisonSpell),
             CureDiseaseSpell   = NullIfBlank(CureDiseaseSpell),
             CureBlindnessSpell = NullIfBlank(CureBlindnessSpell),
             RoomLightSpell     = NullIfBlank(RoomLightSpell),
 
-            Bless1Spell  = NullIfBlank(Bless1Spell),
-            Bless2Spell  = NullIfBlank(Bless2Spell),
-            Bless3Spell  = NullIfBlank(Bless3Spell),
-            Bless4Spell  = NullIfBlank(Bless4Spell),
-            Bless5Spell  = NullIfBlank(Bless5Spell),
-            Bless6Spell  = NullIfBlank(Bless6Spell),
-            Bless7Spell  = NullIfBlank(Bless7Spell),
-            Bless8Spell  = NullIfBlank(Bless8Spell),
-            Bless9Spell  = NullIfBlank(Bless9Spell),
-            Bless10Spell = NullIfBlank(Bless10Spell),
+            BlessSlots = CollectBlessSlots(),
 
             IgnorePoison    = IgnorePoison,
             IgnoreBlindness = IgnoreBlindness,
@@ -257,22 +312,16 @@ public sealed partial class SpellsSectionViewModel : SettingsSectionViewModel
         WhenHpFullSpell = dto.WhenHpFullSpell;
         WhenMaFullSpell = dto.WhenMaFullSpell;
 
+        ManaRegenRerollThreshold = dto.ManaRegenRerollThreshold;
+        ManaRegenRerollCap       = dto.ManaRegenRerollCap;
+
         CureHoldsSpell     = dto.CureHoldsSpell;
         CurePoisonSpell    = dto.CurePoisonSpell;
         CureDiseaseSpell   = dto.CureDiseaseSpell;
         CureBlindnessSpell = dto.CureBlindnessSpell;
         RoomLightSpell     = dto.RoomLightSpell;
 
-        Bless1Spell  = dto.Bless1Spell;
-        Bless2Spell  = dto.Bless2Spell;
-        Bless3Spell  = dto.Bless3Spell;
-        Bless4Spell  = dto.Bless4Spell;
-        Bless5Spell  = dto.Bless5Spell;
-        Bless6Spell  = dto.Bless6Spell;
-        Bless7Spell  = dto.Bless7Spell;
-        Bless8Spell  = dto.Bless8Spell;
-        Bless9Spell  = dto.Bless9Spell;
-        Bless10Spell = dto.Bless10Spell;
+        RebuildBlessSlots(dto.BlessSlots ?? new Dictionary<int, string>());
 
         IgnorePoison    = dto.IgnorePoison;
         IgnoreBlindness = dto.IgnoreBlindness;
@@ -301,6 +350,45 @@ public sealed partial class SpellsSectionViewModel : SettingsSectionViewModel
         }
     }
 
+    // ----- Bless slots ----------------------------------------------
+
+    // Active game-data set changed → the realm may have flipped
+    // (Stock ↔ ParaMud), so re-partition the bless rows for the new slot
+    // count. Rebuilds from the current full map so in-progress edits (and the
+    // dirty flag) survive; only which slots are visible changes.
+    private void OnRealmChanged(string? _)
+        => Dispatcher.UIThread.Post(() => RebuildBlessSlots(CollectBlessSlots()));
+
+    // Build the visible slot rows for the active realm (Stock 10 / ParaMud 15)
+    // from the full sparse map. Picks beyond the visible count are stashed in
+    // _overflowBlessSlots so a wider-realm profile round-trips its extra slots
+    // rather than losing them. Row construction is self-suppressed, so this
+    // never marks the tab dirty.
+    private void RebuildBlessSlots(IReadOnlyDictionary<int, string> full)
+    {
+        int count = SpellsSettings.BlessSlotCountFor(_gameData.ActiveRealm);
+
+        _overflowBlessSlots.Clear();
+        foreach (KeyValuePair<int, string> kv in full)
+            if (kv.Key > count) _overflowBlessSlots[kv.Key] = kv.Value;
+
+        BlessSlots.Clear();
+        for (int i = 1; i <= count; i++)
+            BlessSlots.Add(new SelfBlessSlotViewModel(
+                i, full.TryGetValue(i, out string? code) ? code : null, MarkDirty));
+    }
+
+    // Merge the visible rows with the preserved out-of-range slots into the
+    // full sparse map. Visible blanks drop out; overflow keys (always beyond
+    // the visible count, so never colliding) stay untouched.
+    private Dictionary<int, string> CollectBlessSlots()
+    {
+        Dictionary<int, string> map = new(_overflowBlessSlots);
+        foreach (SelfBlessSlotViewModel slot in BlessSlots)
+            if (NullIfBlank(slot.Spell) is { } code) map[slot.Index] = code;
+        return map;
+    }
+
     // ----- IsDirty plumbing -----------------------------------------
 
     private void ClearDirty()
@@ -320,26 +408,24 @@ public sealed partial class SpellsSectionViewModel : SettingsSectionViewModel
     partial void OnMinorHealSpellChanged(string? value)      => MarkDirty();
     partial void OnMajorHealSpellChanged(string? value)      => MarkDirty();
     partial void OnHpRegenSpellChanged(string? value)        => MarkDirty();
-    partial void OnMaRegenSpellChanged(string? value)        => MarkDirty();
     partial void OnWhenHpFullSpellChanged(string? value)     => MarkDirty();
     partial void OnWhenMaFullSpellChanged(string? value)     => MarkDirty();
+
+    partial void OnMaRegenSpellChanged(string? value)
+    {
+        MarkDirty();
+        // The reroll hint keys off the mana-regen pick.
+        OnPropertyChanged(nameof(ManaRegenRerollHint));
+    }
+
+    partial void OnManaRegenRerollThresholdChanged(int? value) => MarkDirty();
+    partial void OnManaRegenRerollCapChanged(int value)        => MarkDirty();
 
     partial void OnCureHoldsSpellChanged(string? value)      => MarkDirty();
     partial void OnCurePoisonSpellChanged(string? value)     => MarkDirty();
     partial void OnCureDiseaseSpellChanged(string? value)    => MarkDirty();
     partial void OnCureBlindnessSpellChanged(string? value)  => MarkDirty();
     partial void OnRoomLightSpellChanged(string? value)      => MarkDirty();
-
-    partial void OnBless1SpellChanged(string? value)         => MarkDirty();
-    partial void OnBless2SpellChanged(string? value)         => MarkDirty();
-    partial void OnBless3SpellChanged(string? value)         => MarkDirty();
-    partial void OnBless4SpellChanged(string? value)         => MarkDirty();
-    partial void OnBless5SpellChanged(string? value)         => MarkDirty();
-    partial void OnBless6SpellChanged(string? value)         => MarkDirty();
-    partial void OnBless7SpellChanged(string? value)         => MarkDirty();
-    partial void OnBless8SpellChanged(string? value)         => MarkDirty();
-    partial void OnBless9SpellChanged(string? value)         => MarkDirty();
-    partial void OnBless10SpellChanged(string? value)        => MarkDirty();
 
     partial void OnIgnorePoisonChanged(bool value)           => MarkDirty();
     partial void OnIgnoreBlindnessChanged(bool value)        => MarkDirty();

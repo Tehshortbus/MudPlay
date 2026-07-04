@@ -10,18 +10,20 @@ namespace FujinTerm.Game.Cash;
 /// Phase 9 PR 9.E follow-up — stash dispatch for user-marked stash
 /// rooms. Dispatches one <c>hide N &lt;coin&gt;</c> command per
 /// currency whose held amount exceeds its <see cref="CashSettings"/>
-/// <c>KeepXxxOnHand</c> floor.
+/// <c>KeepXxxOnHand</c> floor, then one <c>hide &lt;item&gt;</c> per
+/// carried item flagged <see cref="Models.GameData.ItemOverlay.AutoStash"/>.
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Invoked, not autonomous.</b> Stashing only happens as a step of
-/// an auto-deposit reroute: when the wealth / coin gate trips while a
-/// Loop or Auto-Lair is running and the configured destination is a
-/// stash room, <see cref="AutoDepositManager"/> walks the character
-/// there and calls <see cref="ExecuteStash"/> on arrival. This manager
-/// does NOT subscribe to <see cref="RoomTracker.StateChanged"/> — a
-/// manual walk through a stash room must never trigger a hide (per user
-/// direction).
+/// <b>Two triggers.</b> A stash fires either as a step of an
+/// auto-deposit reroute (when the wealth / coin gate trips while a Loop
+/// or Auto-Lair is running and the configured destination is a stash
+/// room, <see cref="AutoDepositManager"/> walks the character there and
+/// calls <see cref="ExecuteStash"/> on arrival) OR when the character
+/// naturally passes through a stash room that sits on the active
+/// loop / lair route — a dedicated detour is only spent on a stash room
+/// that is off-route. A purely manual walk through a stash room while no
+/// engine is running never triggers a hide (per user direction).
 /// </para>
 /// <para>
 /// Room set lives on <see cref="CharacterProfile.StashRooms"/> — the
@@ -32,13 +34,17 @@ namespace FujinTerm.Game.Cash;
 /// direction — no per-room rules).
 /// </para>
 /// <para>
-/// v1 scope: cash only. Item-side stash rules (dump excess
-/// potions / etc.) land when the inventory subsystem ships per the
-/// MudProxy CashManager audit.
+/// Stash rooms hold cash <i>and</i> items (banks are cash-only): every
+/// carried, unworn item whose game-data <c>AutoStash</c> flag is set is
+/// hidden by its canonical name. The per-item opt-in comes from the
+/// injected resolver, which reads the 4-tier
+/// <see cref="Models.GameData.ItemOverlay"/> override.
 /// </para>
 /// <para>
 /// Master gate: <see cref="AutoActionDefaults.AutoGetCash"/> — same
-/// toggle as <see cref="CashManager"/>.
+/// toggle as <see cref="CashManager"/>. Item stashing rides the same
+/// gate: a stash is one operation ("dump my excess cash and my
+/// auto-stash items"), not two independently toggled behaviours.
 /// </para>
 /// </remarks>
 public sealed class StashRoomManager : IDisposable
@@ -47,9 +53,21 @@ public sealed class StashRoomManager : IDisposable
     /// rows per entry + dispatch.</summary>
     public const string LogCategory = "StashRoom";
 
+    /// <summary>
+    /// What a single stash dispatch put away: the room it happened in,
+    /// the currency amounts hidden, and the canonical names of the items
+    /// hidden. Either list may be empty (cash-only or items-only stash),
+    /// but the event only fires when at least one is non-empty.
+    /// </summary>
+    public sealed record StashDispatch(
+        RoomKey Room,
+        IReadOnlyList<(string Currency, long Amount)> Currencies,
+        IReadOnlyList<string> Items);
+
     private readonly ProfileService _profile;
     private readonly Func<CashSettings> _readCash;
     private readonly Func<InventorySnapshot> _getSnapshot;
+    private readonly Func<string, string?> _resolveAutoStashItem;
     private readonly Func<bool> _isEnabled;
     private readonly LogService? _log;
 
@@ -57,23 +75,27 @@ public sealed class StashRoomManager : IDisposable
     private bool _disposed;
 
     /// <summary>Fires after a successful stash dispatch. Carries the
-    /// room key + the (currency, amount) pairs that were sent.</summary>
-    public event Action<RoomKey, IReadOnlyList<(string Currency, long Amount)>>? StashExecuted;
+    /// room key, the (currency, amount) pairs, and the item names that
+    /// were sent.</summary>
+    public event Action<StashDispatch>? StashExecuted;
 
     public StashRoomManager(
         ProfileService profile,
         Func<CashSettings> readCash,
         Func<InventorySnapshot> getSnapshot,
+        Func<string, string?> resolveAutoStashItem,
         Func<bool> isEnabled,
         LogService? log = null)
     {
         ArgumentNullException.ThrowIfNull(profile);
         ArgumentNullException.ThrowIfNull(readCash);
         ArgumentNullException.ThrowIfNull(getSnapshot);
+        ArgumentNullException.ThrowIfNull(resolveAutoStashItem);
         ArgumentNullException.ThrowIfNull(isEnabled);
         _profile = profile;
         _readCash = readCash;
         _getSnapshot = getSnapshot;
+        _resolveAutoStashItem = resolveAutoStashItem;
         _isEnabled = isEnabled;
         _log = log;
     }
@@ -112,11 +134,12 @@ public sealed class StashRoomManager : IDisposable
         if (!isStash) return;
 
         CashSettings cash = _readCash();
-        // Authoritative per-denomination holdings (the `i`-seeded,
-        // delta-tracked snapshot) — NOT CashManager's since-engine-start
-        // pickup tally, which never sees the starting balance and would
-        // undercount the hide amounts.
-        CurrencyHoldings held = _getSnapshot().Currency;
+        // Authoritative per-denomination holdings + carried items (the
+        // `i`-seeded, delta-tracked snapshot) — NOT CashManager's
+        // since-engine-start pickup tally, which never sees the starting
+        // balance and would undercount the hide amounts.
+        InventorySnapshot snapshot = _getSnapshot();
+        CurrencyHoldings held = snapshot.Currency;
         _log?.Debug(LogCategory,
             $"entered stash room map={enteredRoom.Map} room={enteredRoom.Room}");
 
@@ -127,11 +150,25 @@ public sealed class StashRoomManager : IDisposable
         DispatchOne("platinum", held.Platinum, cash.KeepPlatinumOnHand, dispatched);
         DispatchOne("runic",    held.Runic,    cash.KeepRunicOnHand,    dispatched);
 
-        if (dispatched.Count > 0)
+        // Stash rooms hold items too (banks are cash-only). Hide every
+        // carried, unworn item flagged AutoStash by its canonical name.
+        // One hide per listed carry entry: MajorMUD lists each carried
+        // item slot as its own token, so repeated names hide repeated
+        // copies naturally.
+        List<string> hiddenItems = new();
+        foreach (string entry in snapshot.CarriedItems)
+        {
+            if (_resolveAutoStashItem(entry) is not { } name) continue;
+            Send($"hide {name}");
+            hiddenItems.Add(name);
+        }
+
+        if (dispatched.Count > 0 || hiddenItems.Count > 0)
         {
             _log?.Info(LogCategory,
-                $"stash dispatched room=({enteredRoom.Map},{enteredRoom.Room}) currencies={dispatched.Count}");
-            StashExecuted?.Invoke(enteredRoom, dispatched);
+                $"stash dispatched room=({enteredRoom.Map},{enteredRoom.Room}) "
+                + $"currencies={dispatched.Count} items={hiddenItems.Count}");
+            StashExecuted?.Invoke(new StashDispatch(enteredRoom, dispatched, hiddenItems));
         }
     }
 

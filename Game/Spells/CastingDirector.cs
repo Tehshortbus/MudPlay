@@ -34,7 +34,12 @@ namespace FujinTerm.Game.Spells;
 /// player. Thresholds: <see cref="HealthSettings.MinorHealCombatTrigger"/>
 /// / <see cref="HealthSettings.MajorHealCombatTrigger"/> while
 /// <see cref="PlayerState.InCombat"/>; <see cref="HealthSettings.HealRestTrigger"/>
-/// during rest.</item>
+/// during rest. When an HP-regen HoT
+/// (<see cref="SpellsSettings.HpRegenSpell"/>) is configured, the minor path
+/// casts it FIRST — ahead of the single-target heal — whenever HP trips the
+/// minor trigger while still above the major (life-threat) trigger and the
+/// HoT isn't already ticking on us; a running HoT falls through to the
+/// instant single-target heal.</item>
 /// <item><b>Curing</b> — remove an active ailment. The actual
 /// ailment state comes from <see cref="Conditions.ConditionTracker"/>
 /// (game-data Messages tab owns the patterns). Per-ailment cure
@@ -113,6 +118,7 @@ public sealed class CastingDirector : IDisposable
     private Func<MessageRecord, string?>? _shortFromAppliedRecord;
     private Func<int, string?>? _classNameByNumber;
     private Func<string, bool>? _isPartyWideBuff;
+    private Action<string>? _selfBuffLandedSink;
     private Func<DateTime> _now = () => DateTime.UtcNow;
     private LineExtractor? _lines;
 
@@ -354,6 +360,21 @@ public sealed class CastingDirector : IDisposable
     }
 
     /// <summary>
+    /// Wire a sink notified with the 4-letter cast code every time one of OUR
+    /// self-buffs is confirmed to have landed (via the ConditionTracker
+    /// AppliedMessage path). The mana-regen reroll engine subscribes here to
+    /// learn when a code-145 roll spell (nature tap / mana flux) re-landed so it
+    /// can read <c>abil 145</c> and reroll a bad value; the sink itself owns the
+    /// spell / realm filtering. Optional — until wired, self-buff landings only
+    /// refresh the recast timer.
+    /// </summary>
+    public void SetSelfBuffLandedSink(Action<string> sink)
+    {
+        ArgumentNullException.ThrowIfNull(sink);
+        _selfBuffLandedSink = sink;
+    }
+
+    /// <summary>
     /// Override the clock used for buff-expiry math. Test seam — production
     /// uses <see cref="DateTime.UtcNow"/>.
     /// </summary>
@@ -407,9 +428,15 @@ public sealed class CastingDirector : IDisposable
         // A self-cast buff confirmed via its AppliedMessage — start (or
         // refresh) its duration timer keyed to self so the recast window
         // is honoured. Party-cast confirmation rides OnLine instead.
-        if (_shortFromAppliedRecord?.Invoke(r) is { } shortCode
-            && _buffInfoByShort?.Invoke(shortCode) is { } info)
-            _activeUntil[("", shortCode)] = _now().AddSeconds(info.DurationSec);
+        if (_shortFromAppliedRecord?.Invoke(r) is { } shortCode)
+        {
+            if (_buffInfoByShort?.Invoke(shortCode) is { } info)
+                _activeUntil[("", shortCode)] = _now().AddSeconds(info.DurationSec);
+            // Feed the reroll engine: a re-landed code-145 roll spell wants its
+            // fresh roll read off abil 145. The sink filters for the roll spell
+            // + Paradigm realm; here we just report the confirmed landing.
+            _selfBuffLandedSink?.Invoke(shortCode);
+        }
         Evaluate();
     }
 
@@ -429,7 +456,7 @@ public sealed class CastingDirector : IDisposable
 
         string key = p.Target.Trim().ToLowerInvariant();
         _activeUntil[(key, p.Short)] = _now().AddSeconds(p.DurationSec);
-        _log?.Info(LogCategory,
+        _log?.Combat(LogCategory,
             $"party-buff confirmed spell={p.Short} target={p.Target} " +
             $"duration={p.DurationSec}s");
         _pendingPartyCast = null;
@@ -506,7 +533,7 @@ public sealed class CastingDirector : IDisposable
                 && _manaCostLookup?.Invoke(cand.Spell) is { } cost
                 && _state.Ma < cost)
             {
-                _log?.Info(LogCategory,
+                _log?.Combat(LogCategory,
                     $"{category} skip spell={cand.Spell} cost={cost} ma={_state.Ma} " +
                     "(insufficient mana)");
                 continue;
@@ -524,7 +551,7 @@ public sealed class CastingDirector : IDisposable
             if (category == SpellCategory.Buffing && cand.Target is { } tgt)
                 ArmPartyBuffConfirm(cand.Spell, tgt);
 
-            _log?.Info(LogCategory,
+            _log?.Combat(LogCategory,
                 $"{category} fired spell={cand.Spell} target={cand.Target ?? "<self>"} " +
                 $"hp={_state.Hp}/{_state.MaxHp} ma={_state.Ma}/{_state.MaxMa}");
             // Tell the combat engine a between-round cast went out so it can
@@ -556,7 +583,7 @@ public sealed class CastingDirector : IDisposable
 
         _cast.NotifyExternalCastSent();
         _activeUntil[("", token)] = _now().AddSeconds(durationSec);
-        _log?.Info(LogCategory, $"Buffing item-cast fired token={token} duration={durationSec}s");
+        _log?.Combat(LogCategory, $"Buffing item-cast fired token={token} duration={durationSec}s");
         CastFired?.Invoke();
         return true;
     }
@@ -601,7 +628,6 @@ public sealed class CastingDirector : IDisposable
     private string? PickMinorSelfHeal(SpellsSettings spells, HealthSettings health)
     {
         if (_state.MaxHp <= 0) return null;
-        if (string.IsNullOrWhiteSpace(spells.MinorHealSpell)) return null;
         if (!ManaClearsHealFloor(health)) return null;
 
         int hpPct = (int)Math.Round(_state.Hp * 100.0 / _state.MaxHp);
@@ -617,7 +643,22 @@ public sealed class CastingDirector : IDisposable
         // mid-walk between rooms.
         if (!_state.InCombat && _state.Position != PlayerPosition.Resting) return null;
 
-        return spells.MinorHealSpell;
+        // Prefer an HP-regen HoT (regeneration / rejuvinating field) over the
+        // single-target heal: once it's ticking it restores far more per mana
+        // than repeated instant heals, so cast it FIRST when the minor-heal
+        // trigger trips. Two gates keep it safe:
+        //  • It's only substituted while HP sits ABOVE the major-heal trigger —
+        //    inside the life-threat band we want the instant top-up, never a
+        //    slow HoT that heals a round later.
+        //  • IsRecastDue is false once the HoT is confirmed active with
+        //    remaining duration, so a running HoT falls through to the instant
+        //    single-target heal for the immediate top-up while it ticks.
+        if (hpPct > health.MajorHealCombatTrigger
+            && !string.IsNullOrWhiteSpace(spells.HpRegenSpell)
+            && IsRecastDue("", spells.HpRegenSpell))
+            return spells.HpRegenSpell;
+
+        return string.IsNullOrWhiteSpace(spells.MinorHealSpell) ? null : spells.MinorHealSpell;
     }
 
     /// <summary>
@@ -849,34 +890,37 @@ public sealed class CastingDirector : IDisposable
     }
 
     /// <summary>
-    /// Walk the 14 self-buff slots (10 Bless + HpRegen + MaRegen +
-    /// WhenHpFull + WhenMaFull) and return the first configured slot due to
-    /// recast on us. Hard-gated to out-of-combat — self buffs are expensive
-    /// and shouldn't burn a combat round.
+    /// Walk the self-buff slots (the sparse Bless slots in slot-index order,
+    /// then MaRegen + WhenHpFull + WhenMaFull) and return the first configured
+    /// slot due to recast on us. Hard-gated to out-of-combat — self buffs are
+    /// expensive and shouldn't burn a combat round.
     /// </summary>
+    /// <remarks>
+    /// <see cref="SpellsSettings.HpRegenSpell"/> deliberately does NOT live here:
+    /// an HP-regen HoT is treated as assisted healing, cast reactively by the
+    /// minor-self-heal path (<see cref="PickMinorSelfHeal"/>) when HP trips the
+    /// trigger — not maintained always-up like a buff. A user who wants a
+    /// constantly-refreshed regen buff puts that spell in a Bless slot instead.
+    /// <see cref="SpellsSettings.MaRegenSpell"/> stays a downtime buff — it tops
+    /// the mana pool (and feeds the reroll engine), it doesn't heal HP.
+    /// </remarks>
     private CastCandidate? PickSelfBuff(SpellsSettings spells, bool manaBuffsAllowed)
     {
         if (_state.InCombat) return null;
 
-        (string? Spell, bool Eligible)[] slots =
-        {
-            (spells.Bless1Spell,      true),
-            (spells.Bless2Spell,      true),
-            (spells.Bless3Spell,      true),
-            (spells.Bless4Spell,      true),
-            (spells.Bless5Spell,      true),
-            (spells.Bless6Spell,      true),
-            (spells.Bless7Spell,      true),
-            (spells.Bless8Spell,      true),
-            (spells.Bless9Spell,      true),
-            (spells.Bless10Spell,     true),
-            (spells.HpRegenSpell,     true),
-            (spells.MaRegenSpell,     true),
-            // WhenHp/MaFull additionally require the matching pool to be at
-            // max — they're "downtime, ready for next fight" buffs.
-            (spells.WhenHpFullSpell,  _state.MaxHp > 0 && _state.Hp >= _state.MaxHp),
-            (spells.WhenMaFullSpell,  _state.MaxMa > 0 && _state.Ma >= _state.MaxMa),
-        };
+        // Bless slots first (in priority = slot-index order), then the mana-regen
+        // / "when full" downtime buffs.
+        IEnumerable<(string? Spell, bool Eligible)> slots =
+            spells.BlessSlots.OrderBy(kv => kv.Key)
+                .Select(kv => ((string?)kv.Value, true))
+                .Concat(new (string? Spell, bool Eligible)[]
+                {
+                    (spells.MaRegenSpell,     true),
+                    // WhenHp/MaFull additionally require the matching pool to be
+                    // at max — they're "downtime, ready for next fight" buffs.
+                    (spells.WhenHpFullSpell,  _state.MaxHp > 0 && _state.Hp >= _state.MaxHp),
+                    (spells.WhenMaFullSpell,  _state.MaxMa > 0 && _state.Ma >= _state.MaxMa),
+                });
 
         foreach ((string? slot, bool eligible) in slots)
         {

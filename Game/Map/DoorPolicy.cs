@@ -8,22 +8,24 @@ namespace FujinTerm.Game.Map;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The "unbashable strength threshold" is a v1 hardcode per user
-/// direction — doors whose <c>StatRequirement</c> exceeds it can't
-/// be bashed by any reachable build. Future work (gated on the
-/// Phase 9 Workshop landing) replaces this with a proper
-/// max-strength calc that walks the Races table and the
-/// item-bonus slot matrix.
+/// The "unbashable strength threshold" — the highest
+/// <c>StatRequirement</c> a door can carry and still be bashable by
+/// some reachable build — is supplied per game-data set by
+/// <see cref="MaxStrengthIndex.MaxAchievableStrength"/>, which walks
+/// the Races table and the item <c>+Strength</c> slot matrix. Both
+/// decision methods take it as a parameter and fall back to
+/// <see cref="UnbashableStrengthThreshold"/> when no set is loaded.
 /// </para>
 /// </remarks>
 public static class DoorPolicy
 {
     /// <summary>
-    /// Conservative ceiling for "is this door bashable by anyone on
-    /// this realm?" Doors with <c>StatRequirement &gt;</c> this value
-    /// are treated as bash-impossible even when the data marks them
-    /// <c>(picklocks/strength)</c>. v1 placeholder; supersede with
-    /// the Workshop-driven max-strength calc.
+    /// Fallback ceiling for "is this door bashable by anyone on this
+    /// realm?", used when no game-data set is loaded so
+    /// <see cref="MaxStrengthIndex"/> can't compute the real maximum.
+    /// Doors with <c>StatRequirement &gt;</c> the effective ceiling are
+    /// treated as bash-impossible even when the data marks them
+    /// <c>(picklocks/strength)</c>.
     /// </summary>
     public const int UnbashableStrengthThreshold = 200;
 
@@ -34,7 +36,13 @@ public static class DoorPolicy
     /// impossible door fails fast with a clean reason instead of
     /// burning bash/pick attempts at the server.
     /// </summary>
-    public static bool IsAchievable(int statRequirement, bool canBash, int playerStrength, int playerPicklocks)
+    /// <param name="maxBashableStrength">The active set's
+    /// <see cref="MaxStrengthIndex.MaxAchievableStrength"/> — the highest
+    /// Strength any build can reach. A door needing more than this can't be
+    /// bashed by anyone. Defaults to <see cref="UnbashableStrengthThreshold"/>.</param>
+    public static bool IsAchievable(
+        int statRequirement, bool canBash, int playerStrength, int playerPicklocks,
+        int maxBashableStrength = UnbashableStrengthThreshold)
     {
         if (statRequirement <= 0)
         {
@@ -44,7 +52,7 @@ public static class DoorPolicy
         }
 
         bool bashable = canBash
-                     && statRequirement <= UnbashableStrengthThreshold
+                     && statRequirement <= maxBashableStrength
                      && playerStrength >= statRequirement;
         bool pickable = playerPicklocks >= statRequirement;
         return bashable || pickable;
@@ -60,6 +68,10 @@ public static class DoorPolicy
     /// <param name="playerStrength">Live <see cref="PlayerStats.Strength"/>.</param>
     /// <param name="playerPicklocks">Live <see cref="PlayerStats.Picklocks"/>.</param>
     /// <param name="preferPickOverBash">User setting from Settings.Other.</param>
+    /// <param name="maxBashableStrength">The active set's
+    /// <see cref="MaxStrengthIndex.MaxAchievableStrength"/> — the highest
+    /// Strength any build can reach. Bash is never chosen for a door needing
+    /// more than this. Defaults to <see cref="UnbashableStrengthThreshold"/>.</param>
     /// <returns>
     /// <c>"bash"</c>, <c>"pick"</c>, or <c>null</c> when neither verb
     /// can succeed (caller surfaces a "no viable verb" failure).
@@ -69,10 +81,11 @@ public static class DoorPolicy
         bool canBash,
         int playerStrength,
         int playerPicklocks,
-        bool preferPickOverBash)
+        bool preferPickOverBash,
+        int maxBashableStrength = UnbashableStrengthThreshold)
     {
         bool bashOk = canBash
-                   && statRequirement <= UnbashableStrengthThreshold
+                   && statRequirement <= maxBashableStrength
                    && (statRequirement <= 0 || playerStrength >= statRequirement);
         bool pickOk = statRequirement <= 0 || playerPicklocks >= statRequirement;
 

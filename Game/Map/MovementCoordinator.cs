@@ -80,6 +80,14 @@ public sealed class MovementCoordinator
     /// which point we <c>uninvite</c> them and resume).</summary>
     public const string PartyInviteGate = "PartyInvite";
 
+    /// <summary>Asserted by <c>PartyFollowerMovementGate</c> while the local
+    /// character is a party <em>follower</em> (in a party but not the leader).
+    /// MajorMUD movement is leader-driven — the leader walks and the game drags
+    /// followers along — so a follower's own walk / loop / auto-lair is held
+    /// silently to avoid fighting the leader's drag. Clears the moment we lead
+    /// the party or leave it, so a queued route resumes on its own.</summary>
+    public const string FollowerGate = "Follower";
+
     private const int HistoryCapacity = 200;
 
     private readonly LogService? _log;

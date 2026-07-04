@@ -36,6 +36,24 @@ public sealed class LogService
     public event Action<LogEntry>? EntryAdded;
 
     /// <summary>
+    /// Session diagnostic state gating generation of the <see cref="LogSeverity.Debug"/>
+    /// and <see cref="LogSeverity.Combat"/> channels. Null in unit tests that don't
+    /// exercise gating — treated as "all diagnostics off" so <see cref="Debug(string, string)"/>
+    /// / <see cref="Combat(string, string)"/> no-op. The running app wires
+    /// <c>AppServices.LogDiagnostics</c> here so the LogPane toggles (persisted per-character)
+    /// gate emission at the source, not just at display.
+    /// </summary>
+    public LogDiagnosticState? Diagnostics { get; set; }
+
+    /// <summary>True when the Debug channel should be generated. Guard hot paths on this
+    /// before building an interpolated Debug message so the disabled path stays allocation-free.</summary>
+    public bool IsDebugEnabled => Diagnostics?.DebugDiagnostics ?? false;
+
+    /// <summary>True when the Combat channel should be generated. Guard hot paths on this
+    /// before building an interpolated Combat message so the disabled path stays allocation-free.</summary>
+    public bool IsCombatEnabled => Diagnostics?.CombatDiagnostics ?? false;
+
+    /// <summary>
     /// Per-source double-click handler registry. The LogPane looks
     /// up the handler by an entry's <see cref="LogEntry.Source"/>
     /// and invokes it when the user double-clicks the row — lets a
@@ -203,19 +221,34 @@ public sealed class LogService
     }
 
     // ----- Convenience shorthands ---------------------------------------
+    // Info / Warn / Error are always recorded. Debug / Combat are
+    // generation-gated: they no-op unless the matching per-character
+    // diagnostic toggle is on, so producers can call them unconditionally
+    // and pay nothing (beyond the argument evaluation) when the channel is
+    // off. Hot paths that build interpolated messages should still guard on
+    // IsDebugEnabled / IsCombatEnabled to skip the string allocation.
 
-    public void Debug(string source, string message)   => Log(LogSeverity.Debug,   source, message);
-    public void Info(string source, string message)    => Log(LogSeverity.Info,    source, message);
-    public void Warn(string source, string message)    => Log(LogSeverity.Warn,    source, message);
-    public void Error(string source, string message)   => Log(LogSeverity.Error,   source, message);
-    public void GameMsg(string source, string message) => Log(LogSeverity.GameMsg, source, message);
-    public void Cmd(string source, string message)     => Log(LogSeverity.Cmd,     source, message);
+    public void Info(string source, string message)  => Log(LogSeverity.Info,  source, message);
+    public void Warn(string source, string message)  => Log(LogSeverity.Warn,  source, message);
+    public void Error(string source, string message) => Log(LogSeverity.Error, source, message);
+
+    public void Debug(string source, string message)
+    {
+        if (!IsDebugEnabled) return;
+        Log(LogSeverity.Debug, source, message);
+    }
+
+    public void Combat(string source, string message)
+    {
+        if (!IsCombatEnabled) return;
+        Log(LogSeverity.Combat, source, message);
+    }
 
     // ----- Convenience shorthands with context payload ----------------
-    // The Warn / Debug paths are the only ones that actually need it
-    // today (Phase 9 RoomClassifier emits Warn rows with the raw "Also
-    // Here" line carried in Context). Other severities can grow their
-    // own overload when a producer wants one.
+    // The Warn / Debug / Combat paths are the ones that need it today
+    // (Phase 9 RoomClassifier emits Warn rows with the raw "Also Here" line
+    // carried in Context; combat traces carry the raw wire line). Other
+    // severities can grow their own overload when a producer wants one.
 
     /// <summary>
     /// Append a <see cref="LogSeverity.Warn"/> entry with a
@@ -228,8 +261,23 @@ public sealed class LogService
 
     /// <summary>
     /// Append a <see cref="LogSeverity.Debug"/> entry with a
-    /// <see cref="LogEntry.Context"/> payload.
+    /// <see cref="LogEntry.Context"/> payload. Generation-gated on the
+    /// Debug toggle.
     /// </summary>
     public void Debug(string source, string message, string? context)
-        => Log(LogSeverity.Debug, source, message, context);
+    {
+        if (!IsDebugEnabled) return;
+        Log(LogSeverity.Debug, source, message, context);
+    }
+
+    /// <summary>
+    /// Append a <see cref="LogSeverity.Combat"/> entry with a
+    /// <see cref="LogEntry.Context"/> payload. Generation-gated on the
+    /// Combat toggle.
+    /// </summary>
+    public void Combat(string source, string message, string? context)
+    {
+        if (!IsCombatEnabled) return;
+        Log(LogSeverity.Combat, source, message, context);
+    }
 }

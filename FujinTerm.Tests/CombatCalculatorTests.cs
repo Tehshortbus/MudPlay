@@ -327,7 +327,7 @@ public sealed class CombatCalculatorTests
     public void CalcMartialArtsDamage_NoSkillYieldsZeroRange()
     {
         MeleeDamageResult r = CombatCalculator.CalcMartialArtsDamage(
-            MudAttackType.Punch, RealmType.Stock, level: 20, martialArtsSkill: 0,
+            MudAttackType.Punch, RealmType.Stock, level: 20, maPlusSkill: 0,
             strength: 50, plusMaxDamage: 0, maPlusDamage: 0);
 
         Assert.Equal(0, r.MinDamage);
@@ -341,7 +341,7 @@ public sealed class CombatCalculatorTests
         //   min = 21*20/8 + 2       = 52 + 2  = 54
         //   max = 21*(20+3)/4 + 6   = 120 + 6 = 126
         MeleeDamageResult r = CombatCalculator.CalcMartialArtsDamage(
-            MudAttackType.Punch, RealmType.Stock, level: 20, martialArtsSkill: 21,
+            MudAttackType.Punch, RealmType.Stock, level: 20, maPlusSkill: 21,
             strength: 50, plusMaxDamage: 0, maPlusDamage: 0);
 
         Assert.Equal(54, r.MinDamage);
@@ -354,7 +354,7 @@ public sealed class CombatCalculatorTests
         // skill 21, level 20, STR 50: base min 54, kick max = 21*20/6 + 7 = 77.
         // Stock kick pre-roll ×1.33 (truncated): min Fix(54*1.33)=71, max Fix(77*1.33)=102.
         MeleeDamageResult r = CombatCalculator.CalcMartialArtsDamage(
-            MudAttackType.Kick, RealmType.Stock, level: 20, martialArtsSkill: 21,
+            MudAttackType.Kick, RealmType.Stock, level: 20, maPlusSkill: 21,
             strength: 50, plusMaxDamage: 0, maPlusDamage: 0);
 
         Assert.Equal(71, r.MinDamage);
@@ -426,7 +426,7 @@ public sealed class CombatCalculatorTests
         // L30 (>=20): min = round(30/6=5) floored 5 = 5; punch max = max(round(30/4=7.5→8),12)=12.
         // skill 30, STR 50 (no strength bonus): min 35, max 42. Punch has no multiplier.
         MeleeDamageResult r = CombatCalculator.CalcMartialArtsDamage(
-            MudAttackType.Punch, RealmType.ParaMud, level: 30, martialArtsSkill: 30,
+            MudAttackType.Punch, RealmType.ParaMud, level: 30, maPlusSkill: 30,
             strength: 50, plusMaxDamage: 0, maPlusDamage: 0);
 
         Assert.Equal(35, r.MinDamage);
@@ -439,7 +439,7 @@ public sealed class CombatCalculatorTests
         // L30 kick: min 35; max = max(round(30/4=8),10)=10 → +skill30 = 40.
         // Kick ×1.33 truncated: min Fix(35*1.33)=46, max Fix(40*1.33)=53.
         MeleeDamageResult r = CombatCalculator.CalcMartialArtsDamage(
-            MudAttackType.Kick, RealmType.ParaMud, level: 30, martialArtsSkill: 30,
+            MudAttackType.Kick, RealmType.ParaMud, level: 30, maPlusSkill: 30,
             strength: 50, plusMaxDamage: 0, maPlusDamage: 0);
 
         Assert.Equal(46, r.MinDamage);
@@ -452,7 +452,7 @@ public sealed class CombatCalculatorTests
         // L10 (<20): min = round(10/8+2 = 3.25) = 3; punch max = round((13)/4+6 = 9.25) = 9.
         // skill 20: min 23, max 29.
         MeleeDamageResult r = CombatCalculator.CalcMartialArtsDamage(
-            MudAttackType.Punch, RealmType.ParaMud, level: 10, martialArtsSkill: 20,
+            MudAttackType.Punch, RealmType.ParaMud, level: 10, maPlusSkill: 20,
             strength: 50, plusMaxDamage: 0, maPlusDamage: 0);
 
         Assert.Equal(23, r.MinDamage);
@@ -465,11 +465,32 @@ public sealed class CombatCalculatorTests
         // GreaterMUD: max gets (STR-50)/10 (>0 only); min gets (STR-100)/10 (NOT
         // doubled), floored 0. STR 150: max +10, min +5. L30 punch base 35/42.
         MeleeDamageResult r = CombatCalculator.CalcMartialArtsDamage(
-            MudAttackType.Punch, RealmType.ParaMud, level: 30, martialArtsSkill: 30,
+            MudAttackType.Punch, RealmType.ParaMud, level: 30, maPlusSkill: 30,
             strength: 150, plusMaxDamage: 0, maPlusDamage: 0);
 
         Assert.Equal(40, r.MinDamage);  // 35 + 5
         Assert.Equal(52, r.MaxDamage);  // 42 + 10
+    }
+
+    [Theory]
+    // Ground truth captured from MMUD Explorer (GreaterMUD / Paradigm 1.9),
+    // Weapons tab → Calc Combat → Martial Arts, for a level-1 Kang Mystic with
+    // STR 80. maPlusSkill is MME's nMAPlusSkill floored to 1 (no +MA-skill item).
+    // L1 band min = round(1/8+2)=2 (+1 = 3); max band = round((1+3)/4+6)=7 for
+    // punch, round(1/5+7)=7 kick, round(1/6+7)=7 jk (+1 = 8). STR 80 adds +3 to
+    // max only. Kick ×1.33 / jumpkick ×1.66 truncate afterward.
+    [InlineData(MudAttackType.Punch, 3, 11)]
+    [InlineData(MudAttackType.Kick, 3, 14)]
+    [InlineData(MudAttackType.Jumpkick, 4, 18)]
+    public void CalcMartialArtsDamage_GreaterMud_MatchesMmeLevel1Mystic(
+        MudAttackType attack, int expectedMin, int expectedMax)
+    {
+        MeleeDamageResult r = CombatCalculator.CalcMartialArtsDamage(
+            attack, RealmType.ParaMud, level: 1, maPlusSkill: 1,
+            strength: 80, plusMaxDamage: 0, maPlusDamage: 0);
+
+        Assert.Equal(expectedMin, r.MinDamage);
+        Assert.Equal(expectedMax, r.MaxDamage);
     }
 
     // ----- Critical hit chance (gear/quest crit + Quick-and-Deadly) --------

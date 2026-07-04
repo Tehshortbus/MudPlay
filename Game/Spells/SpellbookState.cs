@@ -93,12 +93,22 @@ public sealed class SpellbookState
     /// the trimmed cast-code; first match wins (duplicate Shorts share a cost).
     /// </summary>
     public int? ManaCostOf(string castCode)
+        => FindByCastCode(castCode) is { } s ? (int)SpellCalculator.ManaCost(s.Formula) : null;
+
+    /// <summary>
+    /// The available spell whose <c>Spells.Short</c> cast-code matches
+    /// <paramref name="castCode"/> (case-insensitive, trimmed), or <c>null</c>
+    /// when none does. First match wins — duplicate Shorts share a formula. The
+    /// Settings spell-picker preview uses it to pull a pick's level-scaled
+    /// numbers (mana cost, roll range) without re-walking the list itself.
+    /// </summary>
+    public KnownSpell? FindByCastCode(string castCode)
     {
         if (string.IsNullOrWhiteSpace(castCode)) return null;
         string target = castCode.Trim();
         foreach (KnownSpell s in _available)
             if (string.Equals(s.Short.Trim(), target, StringComparison.OrdinalIgnoreCase))
-                return (int)SpellCalculator.ManaCost(s.Formula);
+                return s;
         return null;
     }
 

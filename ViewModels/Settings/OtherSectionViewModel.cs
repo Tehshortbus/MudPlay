@@ -54,6 +54,11 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             yield return "Pick locks instead of bashing";
             yield return "Attempt pick-lock";
             yield return "Lockpicks";
+            yield return "Search rooms if item needed";
+            yield return "Buy item if needed";
+            yield return "Hunt item if needed";
+            yield return "Defer to party inventory";
+            yield return "Avoid party-impassable level gates";
             yield return "Max comeback backtrack rooms";
             yield return "@comeback";
             yield return "Utilize self or party members to disarm traps";
@@ -119,6 +124,55 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     /// Thieves typically flip this on.
     /// </summary>
     [ObservableProperty] private bool _picklocksOverBash;
+
+    /// <summary>
+    /// When checked, auto-search arms on demand: travelling a route that
+    /// crosses an Item/Ticket exit whose item we're not carrying makes the
+    /// walker <c>sea</c> every room until the item turns up, even with the
+    /// Auto-Search master toggle off. Read live by
+    /// <see cref="Game.Map.PathItemDemandTracker"/>. Off by default.
+    /// </summary>
+    [ObservableProperty] private bool _searchRoomsIfItemNeeded;
+
+    /// <summary>
+    /// When checked, actively buy a missing route item: a one-shot walk-to
+    /// that crosses an Item/Ticket exit whose item we lack detours to the
+    /// fewest-added-steps shop that stocks it, buys it, then resumes. Aborts
+    /// if the item turns up first; falls back to search on a failed buy.
+    /// Read live by <see cref="Game.Map.PathItemShopRouter"/>. Off by default.
+    /// </summary>
+    [ObservableProperty] private bool _buyNeededPathItems;
+
+    /// <summary>
+    /// When checked, source a missing route item that no shop sells by
+    /// hunting: a one-shot walk-to that crosses an Item/Ticket exit whose
+    /// item we lack (and which no shop stocks) prompts to reroute to the
+    /// nearest room a monster that drops it spawns in, then resumes once the
+    /// drop lands. Complements "Buy item if needed" (shop-sold items). Read
+    /// live by <see cref="Game.Map.MonsterDropRouter"/>. Off by default.
+    /// </summary>
+    [ObservableProperty] private bool _huntNeededPathItems;
+
+    /// <summary>
+    /// When checked, ask the party before searching / buying / hunting a
+    /// missing route item: a walk-to that crosses an Item/Ticket exit whose
+    /// per-member item we lack broadcasts <c>@have</c>, and if a member has a
+    /// spare it's handed over (<c>give</c>) instead of posting a demand need.
+    /// Only a genuine shortfall falls through to the search / shop / hunt
+    /// sources. No-op when solo. Read live by
+    /// <see cref="Game.Map.PartyPathItemGate"/>. Off by default.
+    /// </summary>
+    [ObservableProperty] private bool _deferToPartyInventory;
+
+    /// <summary>
+    /// When checked and leading a party, route <b>around</b> level gates the
+    /// whole party can't clear instead of walking the leader through and
+    /// leaving a member behind. Each member's level comes from an
+    /// <c>@level</c> probe (exact) or, until probed, their title band. Read
+    /// live by <see cref="Services.MovementFilter"/> through
+    /// <see cref="Game.Remote.PartyLevelTracker"/>. Off by default.
+    /// </summary>
+    [ObservableProperty] private bool _avoidPartyImpassableLevelGates;
 
     /// <summary>
     /// Off by default. When on, every observed Confirmed→Pending→Confirmed
@@ -197,7 +251,9 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             // branch when every Auto-* engine is off and
             // GeneralSettings.AllowHangupInAllOffMode set).
             // Removed per user direction: "Hangup if naked".
-            new StubField("Search rooms if item needed",     StubFieldKind.Check, "Phase 7 — walker auto-searches when item-collect requires it."),
+            // "Search rooms if item needed" graduated to a wired checkbox
+            // below the door caps (PathItemDemandTracker arms auto-search
+            // while a route needs an item we lack).
             // Removed per user direction: "Backwards if warning" (nonsense),
             // "Provide light in dimly lit rooms" (handled elsewhere),
             // "Don't move unless sneaking" (our movement engine always sneaks
@@ -241,6 +297,11 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
         _globalSettings = globalSettings;
         _profile.ProfileLoaded += OnProfileChanged;
         _profile.ProfileClosed += OnProfileClosedExternally;
+        OnDispose(() =>
+        {
+            _profile.ProfileLoaded -= OnProfileChanged;
+            _profile.ProfileClosed -= OnProfileClosedExternally;
+        });
         _suppressDirty = true;
         LoadFromProfile();
         _suppressDirty = false;
@@ -259,6 +320,11 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             MaxBashAttempts       = Math.Clamp(MaxBashAttempts,       1, 100),
             MaxPickAttempts       = Math.Clamp(MaxPickAttempts,       1, 100),
             PicklocksOverBash     = PicklocksOverBash,
+            SearchRoomsIfItemNeeded = SearchRoomsIfItemNeeded,
+            BuyNeededPathItems    = BuyNeededPathItems,
+            HuntNeededPathItems   = HuntNeededPathItems,
+            DeferToPartyInventory = DeferToPartyInventory,
+            AvoidPartyImpassableLevelGates = AvoidPartyImpassableLevelGates,
             LogMovementHopTiming  = LogMovementHopTiming,
             MaxComebackBacktrackRooms = Math.Clamp(MaxComebackBacktrackRooms, 1, 50),
             AutoRequestComebackWhenLeftBehind = AutoRequestComebackWhenLeftBehind,
@@ -312,6 +378,11 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
         MaxBashAttempts       = dto.MaxBashAttempts;
         MaxPickAttempts       = dto.MaxPickAttempts;
         PicklocksOverBash     = dto.PicklocksOverBash;
+        SearchRoomsIfItemNeeded = dto.SearchRoomsIfItemNeeded;
+        BuyNeededPathItems    = dto.BuyNeededPathItems;
+        HuntNeededPathItems   = dto.HuntNeededPathItems;
+        DeferToPartyInventory = dto.DeferToPartyInventory;
+        AvoidPartyImpassableLevelGates = dto.AvoidPartyImpassableLevelGates;
         LogMovementHopTiming  = dto.LogMovementHopTiming;
         MaxComebackBacktrackRooms = dto.MaxComebackBacktrackRooms;
         AutoRequestComebackWhenLeftBehind = dto.AutoRequestComebackWhenLeftBehind;
@@ -371,6 +442,11 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     partial void OnMaxBashAttemptsChanged(int value)       => MarkDirty();
     partial void OnMaxPickAttemptsChanged(int value)       => MarkDirty();
     partial void OnPicklocksOverBashChanged(bool value)    => MarkDirty();
+    partial void OnSearchRoomsIfItemNeededChanged(bool value) => MarkDirty();
+    partial void OnBuyNeededPathItemsChanged(bool value) => MarkDirty();
+    partial void OnHuntNeededPathItemsChanged(bool value) => MarkDirty();
+    partial void OnDeferToPartyInventoryChanged(bool value) => MarkDirty();
+    partial void OnAvoidPartyImpassableLevelGatesChanged(bool value) => MarkDirty();
     partial void OnLogMovementHopTimingChanged(bool value) => MarkDirty();
     partial void OnMaxComebackBacktrackRoomsChanged(int value) => MarkDirty();
     partial void OnAutoRequestComebackWhenLeftBehindChanged(bool value) => MarkDirty();

@@ -62,8 +62,8 @@ public sealed partial class ProfilePickerDialogViewModel : ObservableObject, IDi
         EmptyMessage = emptyMessage;
 
         foreach (ProfileRef r in profiles
-            .OrderBy(static p => p.Name, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(static p => p.Bbs, StringComparer.OrdinalIgnoreCase))
+            .OrderBy(static p => p.Bbs, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(static p => p.Name, StringComparer.OrdinalIgnoreCase))
             Profiles.Add(r);
 
         SelectedProfile = Profiles.FirstOrDefault();

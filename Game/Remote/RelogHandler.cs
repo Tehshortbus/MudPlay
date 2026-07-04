@@ -37,6 +37,7 @@ public sealed class RelogHandler : IDisposable
     private readonly GameCommands _commands;
     private readonly RelogSignal _signal;
     private Action<byte[]>? _wireSender;
+    private Func<bool>? _hangupsDisabled;
     private bool _disposed;
 
     public RelogHandler(RemoteCommandManager engine, GameCommands commands, RelogSignal signal)
@@ -66,6 +67,19 @@ public sealed class RelogHandler : IDisposable
         _wireSender = sender;
     }
 
+    /// <summary>
+    /// Bind the master "Disable hangups" check. When it returns
+    /// <c>true</c>, <c>@relog</c> is a no-op — a relog is a carrier drop
+    /// followed by a forced reconnect, so it counts as an automatic
+    /// hangup the user has opted out of. Read live so a mid-session toggle
+    /// takes effect immediately.
+    /// </summary>
+    public void SetHangupsDisabledCheck(Func<bool> disabled)
+    {
+        ArgumentNullException.ThrowIfNull(disabled);
+        _hangupsDisabled = disabled;
+    }
+
     public void Dispose()
     {
         if (_disposed) return;
@@ -75,6 +89,11 @@ public sealed class RelogHandler : IDisposable
 
     private void OnRelog(RemoteCommandContext ctx)
     {
+        // Master kill-switch: only an explicit local action may drop the
+        // carrier. A relog is a drop-then-redial, so it's suppressed too —
+        // silently, since this command never replies.
+        if (_hangupsDisabled?.Invoke() ?? false) return;
+
         string command = _commands.ExitCommand;
         if (string.IsNullOrEmpty(command)) return;
         // Arm BEFORE the wire write so the Disconnected event handler

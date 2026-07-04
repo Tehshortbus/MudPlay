@@ -26,6 +26,7 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
     private const string TabKey = "Combat";
 
     private readonly ProfileService _profile;
+    private readonly Game.Spells.SpellbookState _spellbook;
     private Control? _view;
     private bool _suppressDirty;
     private bool _dirty;
@@ -35,6 +36,15 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
     public override bool IsDirty => _dirty;
 
     public bool HasProfile => _profile.Current is not null;
+
+    /// <summary>Known-spell suggestions for the spell-combat typeahead boxes —
+    /// the current class's learnable list (level gate ignored), ordered by name
+    /// + distinct by cast-code, from
+    /// <see cref="Game.Spells.SpellbookState.AvailablePicks"/>. Each box commits
+    /// the 4-letter <see cref="Game.Spells.SpellPick.Short"/> cast-code (what the
+    /// game recognises — the same value <see cref="Models.Profile.CombatSpellSlot.SpellName"/>
+    /// stores). Refreshes when the spellbook rebuilds (class swap / reroll).</summary>
+    public IReadOnlyList<Game.Spells.SpellPick> SpellSuggestions => _spellbook.AvailablePicks;
 
     public override Control View => _view ??= new CombatSectionView { DataContext = this };
 
@@ -201,26 +211,27 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
 
     // Five slots × 4 fields each — flat to keep the AXAML grid binding straightforward.
 
+    // MaxCastsPerRoom is nullable: blank = no limit, 0 = never cast, N = cap.
     [ObservableProperty] private string? _multiAttackSpellName;
     [ObservableProperty] private int _multiAttackMinEnemies;
-    [ObservableProperty] private int _multiAttackMaxCastsPerRoom;
+    [ObservableProperty] private int? _multiAttackMaxCastsPerRoom;
     [ObservableProperty] private int _multiAttackMinManaPerCast;
 
     [ObservableProperty] private string? _areaDebuffSpellName;
     [ObservableProperty] private int _areaDebuffMinEnemies;
-    [ObservableProperty] private int _areaDebuffMaxCastsPerRoom;
+    [ObservableProperty] private int? _areaDebuffMaxCastsPerRoom;
     [ObservableProperty] private int _areaDebuffMinManaPerCast;
 
     [ObservableProperty] private string? _singleTargetDebuffSpellName;
-    [ObservableProperty] private int _singleTargetDebuffMaxCastsPerRoom;
+    [ObservableProperty] private int? _singleTargetDebuffMaxCastsPerRoom;
     [ObservableProperty] private int _singleTargetDebuffMinManaPerCast;
 
     [ObservableProperty] private string? _normalAttackSpellName;
-    [ObservableProperty] private int _normalAttackSpellMaxCastsPerRoom;
+    [ObservableProperty] private int? _normalAttackSpellMaxCastsPerRoom;
     [ObservableProperty] private int _normalAttackSpellMinManaPerCast;
 
     [ObservableProperty] private string? _alternateAttackSpellName;
-    [ObservableProperty] private int _alternateAttackSpellMaxCastsPerRoom;
+    [ObservableProperty] private int? _alternateAttackSpellMaxCastsPerRoom;
     [ObservableProperty] private int _alternateAttackSpellMinManaPerCast;
 
     // ----- Display --------------------------------------------------
@@ -234,9 +245,17 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
     {
         ArgumentNullException.ThrowIfNull(profile);
         _profile = profile;
+        _spellbook = AppServices.Current.Spellbook;
         Priority = new PriorityRankingViewModel(MarkDirty);
         _profile.ProfileLoaded += OnProfileChanged;
         _profile.ProfileClosed += OnProfileClosedExternally;
+        _spellbook.Changed += OnSpellbookChanged;
+        OnDispose(() =>
+        {
+            _profile.ProfileLoaded -= OnProfileChanged;
+            _profile.ProfileClosed -= OnProfileClosedExternally;
+            _spellbook.Changed -= OnSpellbookChanged;
+        });
         _suppressDirty = true;
         LoadFromProfile();
         _suppressDirty = false;
@@ -292,35 +311,35 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
             {
                 SpellName       = NullIfBlank(MultiAttackSpellName),
                 MinEnemies      = ClampSpell(MultiAttackMinEnemies),
-                MaxCastsPerRoom = ClampSpell(MultiAttackMaxCastsPerRoom),
+                MaxCastsPerRoom = ClampCasts(MultiAttackMaxCastsPerRoom),
                 MinManaPerCast  = ClampSpell(MultiAttackMinManaPerCast),
             },
             AreaDebuffSpell = new CombatSpellSlot
             {
                 SpellName       = NullIfBlank(AreaDebuffSpellName),
                 MinEnemies      = ClampSpell(AreaDebuffMinEnemies),
-                MaxCastsPerRoom = ClampSpell(AreaDebuffMaxCastsPerRoom),
+                MaxCastsPerRoom = ClampCasts(AreaDebuffMaxCastsPerRoom),
                 MinManaPerCast  = ClampSpell(AreaDebuffMinManaPerCast),
             },
             SingleTargetDebuffSpell = new CombatSpellSlot
             {
                 SpellName       = NullIfBlank(SingleTargetDebuffSpellName),
                 MinEnemies      = 0, // ignored for single-target
-                MaxCastsPerRoom = ClampSpell(SingleTargetDebuffMaxCastsPerRoom),
+                MaxCastsPerRoom = ClampCasts(SingleTargetDebuffMaxCastsPerRoom),
                 MinManaPerCast  = ClampSpell(SingleTargetDebuffMinManaPerCast),
             },
             NormalAttackSpell = new CombatSpellSlot
             {
                 SpellName       = NullIfBlank(NormalAttackSpellName),
                 MinEnemies      = 0,
-                MaxCastsPerRoom = ClampSpell(NormalAttackSpellMaxCastsPerRoom),
+                MaxCastsPerRoom = ClampCasts(NormalAttackSpellMaxCastsPerRoom),
                 MinManaPerCast  = ClampSpell(NormalAttackSpellMinManaPerCast),
             },
             AlternateAttackSpell = new CombatSpellSlot
             {
                 SpellName       = NullIfBlank(AlternateAttackSpellName),
                 MinEnemies      = 0,
-                MaxCastsPerRoom = ClampSpell(AlternateAttackSpellMaxCastsPerRoom),
+                MaxCastsPerRoom = ClampCasts(AlternateAttackSpellMaxCastsPerRoom),
                 MinManaPerCast  = ClampSpell(AlternateAttackSpellMinManaPerCast),
             },
 
@@ -350,8 +369,14 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
     /// counts which top out far below.</summary>
     private static int ClampSpell(int value) => Math.Clamp(value, 0, 100_000);
 
+    /// <summary>Per-room cast cap: <c>null</c> (blank) stays "no limit";
+    /// a supplied value clamps to the editor's 0..100 range (0 = never cast).</summary>
+    private static int? ClampCasts(int? value) => value is { } v ? Math.Clamp(v, 0, 100) : null;
+
     private void OnProfileChanged(CharacterProfile _) => ReloadAfterProfileSwap();
     private void OnProfileClosedExternally() => ReloadAfterProfileSwap();
+
+    private void OnSpellbookChanged() => OnPropertyChanged(nameof(SpellSuggestions));
 
     private void ReloadAfterProfileSwap()
     {
@@ -521,28 +546,28 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
     // Spell slot — multi-attack
     partial void OnMultiAttackSpellNameChanged(string? value)        => MarkDirty();
     partial void OnMultiAttackMinEnemiesChanged(int value)           => MarkDirty();
-    partial void OnMultiAttackMaxCastsPerRoomChanged(int value)      => MarkDirty();
+    partial void OnMultiAttackMaxCastsPerRoomChanged(int? value)     => MarkDirty();
     partial void OnMultiAttackMinManaPerCastChanged(int value)       => MarkDirty();
 
     // Spell slot — AOE debuff
     partial void OnAreaDebuffSpellNameChanged(string? value)         => MarkDirty();
     partial void OnAreaDebuffMinEnemiesChanged(int value)            => MarkDirty();
-    partial void OnAreaDebuffMaxCastsPerRoomChanged(int value)       => MarkDirty();
+    partial void OnAreaDebuffMaxCastsPerRoomChanged(int? value)      => MarkDirty();
     partial void OnAreaDebuffMinManaPerCastChanged(int value)        => MarkDirty();
 
     // Spell slot — single-target debuff
     partial void OnSingleTargetDebuffSpellNameChanged(string? value)        => MarkDirty();
-    partial void OnSingleTargetDebuffMaxCastsPerRoomChanged(int value)      => MarkDirty();
+    partial void OnSingleTargetDebuffMaxCastsPerRoomChanged(int? value)     => MarkDirty();
     partial void OnSingleTargetDebuffMinManaPerCastChanged(int value)       => MarkDirty();
 
     // Spell slot — normal attack spell
     partial void OnNormalAttackSpellNameChanged(string? value)          => MarkDirty();
-    partial void OnNormalAttackSpellMaxCastsPerRoomChanged(int value)   => MarkDirty();
+    partial void OnNormalAttackSpellMaxCastsPerRoomChanged(int? value)  => MarkDirty();
     partial void OnNormalAttackSpellMinManaPerCastChanged(int value)    => MarkDirty();
 
     // Spell slot — alternate attack spell
     partial void OnAlternateAttackSpellNameChanged(string? value)          => MarkDirty();
-    partial void OnAlternateAttackSpellMaxCastsPerRoomChanged(int value)   => MarkDirty();
+    partial void OnAlternateAttackSpellMaxCastsPerRoomChanged(int? value)  => MarkDirty();
     partial void OnAlternateAttackSpellMinManaPerCastChanged(int value)    => MarkDirty();
 
     // Display

@@ -86,6 +86,10 @@
                           InputGesture="{Binding ToggleConnectionGesture}"/>
                 <MenuItem Header="_Quick Connect…" Command="{Binding OpenQuickConnectCommand}"/>
                 <MenuItem Header="BBS list"      Command="{Binding OpenBbsSettingsCommand}"/>
+                <MenuItem Header="Disable hangups"
+                          ToggleType="CheckBox"
+                          IsChecked="{Binding IsDisableHangupsActive, Mode=TwoWay}"
+                          ToolTip.Tip="Block every automatic disconnect — only you can hang up (hotkey / toolbar / menu)"/>
                 <Separator/>
                 <MenuItem Header="_New profile…"  InputGesture="{Binding NewProfileGesture}"       Command="{Binding NewProfileCommand}"/>
                 <MenuItem Header="_Open profile…" InputGesture="{Binding OpenProfileGesture}"       Command="{Binding OpenProfileCommand}"/>
@@ -145,13 +149,14 @@
             </MenuItem>
 
             <MenuItem Header="_Action">
-                <!-- Bulk one-shot commands. Wired progressively as the
-                     owning phases ship; Action menu's job is the surface,
-                     not the engines. -->
-                <MenuItem Header="Get All"     IsEnabled="False" ToolTip.Tip="Wired in Phase 12 PR 12.4 (Quick Tools)"/>
-                <MenuItem Header="Drop All"    IsEnabled="False" ToolTip.Tip="Wired in Phase 12 PR 12.4 (Quick Tools)"/>
-                <MenuItem Header="Equip All"   IsEnabled="False" ToolTip.Tip="Wired in Phase 9 PR 9.11 (Workshop EQUIP → apply active set)"/>
-                <MenuItem Header="Deposit All" IsEnabled="False" ToolTip.Tip="Wired in Phase 13 PR 13.E (CashManager)"/>
+                <!-- Bulk one-shot commands. Local twins of the @get-all /
+                     @drop-all / @deposit-all remote commands and the Default
+                     gear set; the toolbar Get/Drop/Equip/Deposit buttons drive
+                     the same commands via the catalogue. -->
+                <MenuItem Header="Get All"     Command="{Binding GetAllCommand}"     ToolTip.Tip="Pick up every item on the room floor"/>
+                <MenuItem Header="Drop All"    Command="{Binding DropAllCommand}"    ToolTip.Tip="Drop every carried (unworn) item"/>
+                <MenuItem Header="Equip All"   Command="{Binding EquipAllCommand}"   ToolTip.Tip="Wear the Default gear set"/>
+                <MenuItem Header="Deposit All" Command="{Binding DepositAllCommand}" ToolTip.Tip="Bank wealth down to the keep-on-hand floor"/>
                 <Separator/>
 
                 <!-- Master auto-responses switch. Snapshot logic lives in
@@ -218,14 +223,20 @@
                 <Separator/>
                 <MenuItem Header="About FujinTerm"     Command="{Binding OpenAboutCommand}"/>
             </MenuItem>
+
+            <!-- Standalone action, no dropdown — clicking fires the capture
+                 directly (freeze client state + recent output into a Markdown
+                 report on the Desktop). -->
+            <MenuItem Header="Bug Report" Command="{Binding ReportBugCommand}"
+                      ToolTip.Tip="Capture current client state and recent output to a report file on your Desktop"/>
         </Menu>
 
         <!-- ============ Toolbar (dynamic — built from ToolbarItems) ============ -->
         <!-- Layout comes from the active character's ToolbarSettings.Layout
-             via the catalogue. The three Borders mount at top / left /
+             via the catalogue. The four Borders mount at top / bottom / left /
              right; IsVisible on each is driven by ToolbarConfig's derived
-             ShowTop / ShowLeft / ShowRight flags so toggling the
-             Settings → Toolbar Show / Vertical / Side controls re-docks
+             ShowTop / ShowBottom / ShowLeft / ShowRight flags so toggling the
+             Settings → Toolbar Show / Position controls re-docks
              without a window rebuild. Item templates are inlined per-
              orientation because StackPanel orientation lives on the
              ItemsPanel, not the items themselves. -->
@@ -424,6 +435,51 @@
             </Grid>
         </Border>
 
+        <!-- Bottom (horizontal). Docked after the status bar so the status
+             bar keeps the very-bottom edge and this toolbar sits directly
+             above it. Mirrors the Top border; ShowBottom drives visibility. -->
+        <Border DockPanel.Dock="Bottom" Classes="Toolbar"
+                IsVisible="{Binding Toolbar.ShowBottom}">
+            <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
+                <ItemsControl Grid.Column="0"
+                              ItemsSource="{Binding ToolbarItems}"
+                              VerticalAlignment="Center">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <StackPanel Orientation="Horizontal" Spacing="4"/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="svc:ToolbarButtonItem">
+                            <Panel>
+                                <Border Classes="ToolbarSeparator"
+                                        IsVisible="{Binding IsSeparator}"/>
+                                <Button Classes="ToolbarBtn"
+                                        Classes.Active="{Binding IsActive}"
+                                        Classes.Danger="{Binding IsDanger}"
+                                        IsVisible="{Binding IsButton}" IsEnabled="{Binding IsActionEnabled}"
+                                        Command="{Binding Command}"
+                                        ToolTip.Tip="{Binding Tooltip}">
+                                    <Panel>
+                                        <Path Data="{Binding IconResourceKey, Converter={x:Static svc:IconResourceConverter.Instance}}"
+                                              IsVisible="{Binding !ShowAlternate}"
+                                              Stroke="{Binding $parent[Button].Foreground}"
+                                              StrokeThickness="1.5" StrokeJoin="Round" StrokeLineCap="Round"
+                                              Width="16" Height="16" Stretch="Uniform"/>
+                                        <Path Data="{Binding AlternateIconResourceKey, Converter={x:Static svc:IconResourceConverter.Instance}}"
+                                              IsVisible="{Binding ShowAlternate}"
+                                              Stroke="{Binding $parent[Button].Foreground}"
+                                              StrokeThickness="1.5" StrokeJoin="Round" StrokeLineCap="Round"
+                                              Width="16" Height="16" Stretch="Uniform"/>
+                                    </Panel>
+                                </Button>
+                            </Panel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </Grid>
+        </Border>
+
         <!-- ============ Terminal canvas ============ -->
         <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
                       Background="{StaticResource ChromeBgSunkenBrush}">
@@ -434,20 +490,17 @@
                                  VerticalAlignment="Center">
                 <ctl:TerminalControl.ContextMenu>
                     <ContextMenu>
-                        <!-- Edit group — terminal-specific selection operations. -->
-                        <MenuItem Header="Copy"                 InputGesture="Ctrl+Shift+C" IsEnabled="False" ToolTip.Tip="Selection support lands with the chrome polish"/>
-                        <MenuItem Header="Paste"                InputGesture="Ctrl+Shift+V" IsEnabled="False" ToolTip.Tip="Paste lands with the chrome polish"/>
-                        <MenuItem Header="Select all"           IsEnabled="False" ToolTip.Tip="Selection support lands with the chrome polish"/>
-                        <MenuItem Header="Find in scrollback…"  Command="{Binding FindInScrollbackCommand}"/>
-                        <MenuItem Header="Clear screen"         IsEnabled="False" ToolTip.Tip="Screen-clear command lands with the chrome polish"/>
+                        <!-- Panel quick-opens — the windows most useful to reach
+                             from a right-click on the canvas. -->
+                        <MenuItem Header="Open Backscroll"      InputGesture="{Binding BackscrollGesture}"   Command="{Binding OpenBackscrollCommand}"/>
+                        <MenuItem Header="Open Player Workshop" InputGesture="{Binding WorkshopGesture}"     Command="{Binding OpenWorkshopCommand}"/>
+                        <MenuItem Header="Open Conversation"    InputGesture="{Binding ConversationGesture}" Command="{Binding OpenConversationCommand}"/>
+                        <MenuItem Header="Open Navigation"      InputGesture="{Binding NavigationGesture}"   Command="{Binding OpenNavigationCommand}"/>
                         <Separator/>
-                        <!-- View group — the panel quick-opens that make
-                             sense from a right-click on the canvas. The full
-                             six-group mirror of the menu bar can land later
-                             alongside selection support. -->
-                        <MenuItem Header="Open Player Workshop" InputGesture="{Binding WorkshopGesture}"  Command="{Binding OpenWorkshopCommand}"/>
-                        <MenuItem Header="Open Log pane"        InputGesture="{Binding LogPaneGesture}"  Command="{Binding OpenLogPaneCommand}"/>
-                        <MenuItem Header="Open Backscroll"      InputGesture="{Binding BackscrollGesture}" Command="{Binding OpenBackscrollCommand}"/>
+                        <!-- Diagnostics — freeze current client state + recent
+                             output into a Markdown report on the Desktop. -->
+                        <MenuItem Header="Bug report…" Command="{Binding ReportBugCommand}"
+                                  ToolTip.Tip="Capture current client state and recent output to a report file on your Desktop"/>
                     </ContextMenu>
                 </ctl:TerminalControl.ContextMenu>
             </ctl:TerminalControl>

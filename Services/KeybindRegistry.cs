@@ -76,11 +76,14 @@ public static class KeybindRegistry
         keys.Add(("Right",     Key.Right));
 
         // OEM punctuation that survives Avalonia's cross-platform mapping.
+        // The keyboard period (Key.OemPeriod) is deliberately absent — it's
+        // the MajorMUD say-precursor in `set talk slow`, so it must always
+        // reach the game as typed text and can never be a macro chord (see
+        // ExcludedKeys). The numpad period (Key.Decimal) stays bindable.
         keys.Add((";",  Key.OemSemicolon));
         keys.Add(("=",  Key.OemPlus));
         keys.Add((",",  Key.OemComma));
         keys.Add(("-",  Key.OemMinus));
-        keys.Add((".",  Key.OemPeriod));
         keys.Add(("/",  Key.OemQuestion));
         keys.Add(("`",  Key.OemTilde));
         keys.Add(("[",  Key.OemOpenBrackets));
@@ -102,6 +105,12 @@ public static class KeybindRegistry
         Key.LeftCtrl, Key.RightCtrl, Key.LeftShift, Key.RightShift,
         Key.LeftAlt, Key.RightAlt, Key.LWin, Key.RWin, Key.CapsLock,
         Key.NumLock, Key.Scroll, Key.PrintScreen, Key.Pause,
+        // Keyboard period is MajorMUD's `set talk slow` say-precursor — a
+        // leading `.` marks the line as a say. Binding it to a macro would
+        // swallow that keystroke before it reached the wire, so every
+        // slow-talk say gets rejected. It must always pass through as text.
+        // (The numpad period, Key.Decimal, is unaffected and stays bindable.)
+        Key.OemPeriod,
     };
 
     /// <summary>

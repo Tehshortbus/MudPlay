@@ -44,10 +44,23 @@ public sealed partial class BackscrollViewModel : ObservableObject, IDisposable
     // TimestampGutter, each of which walks every row to rebuild inlines).
     // The compounding made typing visibly laggy while Backscroll was open.
     private bool _refreshScheduled;
+    // Set when a ScreenUpdated arrived while mirroring was suspended
+    // (see AutoFollow) so we can catch the tail up on resume.
+    private bool _liveTailDeferred;
 
     public ObservableCollection<BackscrollRowViewModel> Rows { get; } = new();
 
     [ObservableProperty] private string _searchText = string.Empty;
+
+    /// <summary>
+    /// Whether the live screen mirror tracks the terminal in real time.
+    /// Driven by <see cref="Views.BackscrollWindow"/>: true only while the
+    /// window is focused AND scrolled to the bottom. When false, live-tail
+    /// refreshes are deferred — mirroring the screen re-lays-out the whole
+    /// (potentially 10k-row) transcript, so doing it on every keystroke echo
+    /// while the user is reviewing history or typing in the main terminal
+    /// janks the shared UI thread.
+    /// </summary>
     [ObservableProperty] private bool _autoFollow = true;
 
     [ObservableProperty]
@@ -66,8 +79,6 @@ public sealed partial class BackscrollViewModel : ObservableObject, IDisposable
 
     /// <summary>Fired when the user requests Go to live (scroll to bottom).</summary>
     public event Action? GoToLiveRequested;
-
-    public bool FocusSearchOnOpen { get; set; }
 
     public BackscrollViewModel(TerminalEmulator emulator)
     {
@@ -107,13 +118,29 @@ public sealed partial class BackscrollViewModel : ObservableObject, IDisposable
 
     private void OnScreenUpdated()
     {
+        // Suspended: the user isn't watching the live tail (window unfocused or
+        // scrolled up into history). Mirroring here would relayout the whole
+        // transcript on every keystroke echo — record that we fell behind and
+        // catch up in OnAutoFollowChanged once the user returns to the tail.
+        if (!AutoFollow) { _liveTailDeferred = true; return; }
         if (_refreshScheduled) return;
         _refreshScheduled = true;
         Dispatcher.UIThread.Post(() =>
         {
             _refreshScheduled = false;
-            RefreshLiveTail();
+            if (AutoFollow) RefreshLiveTail();
+            else _liveTailDeferred = true;
         });
+    }
+
+    partial void OnAutoFollowChanged(bool value)
+    {
+        // Back at the live tail: flush the screen state we skipped while suspended.
+        if (value && _liveTailDeferred)
+        {
+            _liveTailDeferred = false;
+            RefreshLiveTail();
+        }
     }
 
     /// <summary>
@@ -178,7 +205,12 @@ public sealed partial class BackscrollViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
-    private void GoToLive() => GoToLiveRequested?.Invoke();
+    private void GoToLive()
+    {
+        // Resume mirroring (flushes any deferred tail) before scrolling down.
+        AutoFollow = true;
+        GoToLiveRequested?.Invoke();
+    }
 
     [RelayCommand]
     private void FindNext()

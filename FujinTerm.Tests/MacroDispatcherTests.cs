@@ -110,4 +110,21 @@ public sealed class MacroDispatcherTests
         Assert.False(d.TryHandleKey(Key.NumPad8, KeyModifiers.None));
         Assert.Empty(sent);
     }
+
+    [Fact]
+    public void TryHandleKey_NeverFiresMacroBoundToExcludedKey()
+    {
+        // A chord persisted before the keyboard period was excluded must not
+        // hijack the keystroke — otherwise the slow-talk say-precursor `.`
+        // gets swallowed and every say is rejected. The dispatcher enforces
+        // the exclusion at fire time regardless of stale stored data.
+        MacroStore store = new();
+        store.Macros.Add(new Macro("OemPeriod", false, false, false, "d", Enabled: true));
+        List<byte[]> sent = new();
+        MacroDispatcher d = new(store);
+        d.SetSender(sent.Add);
+
+        Assert.False(d.TryHandleKey(Key.OemPeriod, KeyModifiers.None));
+        Assert.Empty(sent);
+    }
 }

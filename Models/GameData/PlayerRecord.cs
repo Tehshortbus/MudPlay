@@ -28,6 +28,7 @@ namespace FujinTerm.Models.GameData;
 /// <param name="LastSeenUtc">When this record was last refreshed by a <c>who</c> observation.</param>
 /// <param name="Equipment">Most recent equipment loadout seen on <c>look &lt;player&gt;</c>. Empty list = explicit "Nothing"; <c>null</c> = never looked at.</param>
 /// <param name="LastGreetedUtc">When <see cref="Game.GreetManager"/> last auto-greeted this player, or <c>null</c> if never. Drives the once-per-local-day greet rule. Per-BBS, like every other observation field.</param>
+/// <param name="Level">Exact character level as reported by an <c>@level</c> probe reply (<see cref="Services.PlayerDatabase.RecordLevel"/>). <c>null</c> until the player answers one — the title-derived range from <see cref="Game.GameData.ClassTitleTable"/> is the only signal before that. Authoritative over the range once set, because a title only pins a 5-level band.</param>
 public sealed record PlayerObservation(
     string GivenName,
     string FamilyName,
@@ -40,7 +41,8 @@ public sealed record PlayerObservation(
     DateTime FirstSeenUtc,
     DateTime LastSeenUtc,
     IReadOnlyList<EquipmentItem>? Equipment = null,
-    DateTime? LastGreetedUtc = null)
+    DateTime? LastGreetedUtc = null,
+    int? Level = null)
 {
     /// <summary>
     /// Combined display name — <c>"GivenName FamilyName"</c>, trimmed.
@@ -125,7 +127,8 @@ public sealed record PlayerRecord(
     bool InviteToPartyIfSeen = false,
     bool JoinPartyIfInvited = false,
     bool DontAutoDelete = false,
-    IReadOnlyList<EquipmentItem>? Equipment = null)
+    IReadOnlyList<EquipmentItem>? Equipment = null,
+    int? Level = null)
 {
     /// <summary>
     /// Combined display name — <c>"GivenName FamilyName"</c>, trimmed.
@@ -156,7 +159,8 @@ public sealed record PlayerRecord(
         InviteToPartyIfSeen: cust.InviteToPartyIfSeen,
         JoinPartyIfInvited:  cust.JoinPartyIfInvited,
         DontAutoDelete:      cust.DontAutoDelete,
-        Equipment:           obs.Equipment);
+        Equipment:           obs.Equipment,
+        Level:               obs.Level);
 
     /// <summary>Pull just the customization slice off this merged row (used by the edit dialog Save path).</summary>
     public PlayerCustomization ToCustomization() => new(

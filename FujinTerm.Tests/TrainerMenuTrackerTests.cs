@@ -109,6 +109,30 @@ public sealed class TrainerMenuTrackerTests
     }
 
     [Fact]
+    public void CharCreationTrainingRow_WithoutOutbound_EntersMenu()
+    {
+        // Initial character creation reaches the training screen from the
+        // class/race/alignment flow with no outbound `train stats`, so the
+        // gate never arms. The training row carries the "MAJOR MUD
+        // Character Creation" box beside the "Point Cost Chart" panel;
+        // both phrases on one line confirm entry without the gate.
+        var (tracker, router, _) = Setup();
+        Dispatch(router, "  MAJOR MUD Character Creation      Point Cost Chart");
+        Assert.True(tracker.IsInTrainerMenu);
+    }
+
+    [Fact]
+    public void CharCreationPhraseAlone_WithoutMarker_DoesNotEnterMenu()
+    {
+        // "Character Creation" without the "Point Cost Chart" marker never
+        // reaches OnMenuMarker (the marker pattern requires the panel
+        // header), so no earlier char-creation screen flips the state.
+        var (tracker, router, _) = Setup();
+        Dispatch(router, "  MAJOR MUD Character Creation — choose your class");
+        Assert.False(tracker.IsInTrainerMenu);
+    }
+
+    [Fact]
     public void MarkerAfterExpiringWindow_DoesNotEnterMenu()
     {
         // Mutable clock: arm, then jump past the expecting-menu window.

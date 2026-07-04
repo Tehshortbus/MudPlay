@@ -88,6 +88,8 @@ public sealed class ItemMagicIndex
             }
         }
 
+        // Folded into the map — release the pinned raw Items JsonDocument.
+        _cache.EvictTable("Items");
         _byName = map;
         return map;
     }

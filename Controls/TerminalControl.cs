@@ -93,6 +93,13 @@ public sealed class TerminalControl : Control
     private int _pendingFlushRow;
     private int _pendingFlushCol;
 
+    // Per-control cursor over the shared command-recall history. Built
+    // lazily on first keystroke (AppServices.Current is live by then; it
+    // may not be at design-time construction).
+    private FujinTerm.Services.CommandHistoryNavigator? _historyNav;
+    private FujinTerm.Services.CommandHistoryNavigator HistoryNav =>
+        _historyNav ??= new(FujinTerm.Services.AppServices.Current.CommandHistory);
+
     public TerminalControl()
     {
         Focusable = true;
@@ -222,31 +229,11 @@ public sealed class TerminalControl : Control
         context.FillRectangle(Brushes.Black, bounds);
         if (em is null) return;
 
-        // Draw row by row, batching consecutive same-attribute cells into
-        // a single "run" to reduce draw calls and keep BG fills contiguous.
         var screen = em.Screen;
-        for (int y = 0; y < screen.Rows; y++)
-        {
-            int x = 0;
-            while (x < screen.Cols)
-            {
-                var startAttr = screen[x, y].Attr;
-                int runStart = x;
-                int runEnd = x;
-                while (runEnd < screen.Cols && screen[runEnd, y].Attr == startAttr)
-                    runEnd++;
 
-                DrawRun(context, screen, runStart, runEnd, y, startAttr);
-                x = runEnd;
-            }
-        }
-
-        // Local-line-edit overlay: paint the buffered (not-yet-sent)
-        // text at the cursor position, then advance the caret to the
-        // end of the overlay so the visual caret sits where the user's
-        // next char will land. The cell grid behind it is unchanged —
-        // when the user hits Enter and the server echoes the line
-        // back, the echo writes real cells over the overlay area.
+        // Resolve the local-line-edit overlay (buffered, not-yet-sent text)
+        // up front — its length decides whether the whole screen needs to
+        // scroll to keep the caret in view.
         //
         // Three render modes, in priority order:
         //   1. Live buffer non-empty → draw at CURRENT cursor.
@@ -274,63 +261,112 @@ public sealed class TerminalControl : Control
             overlayStartCol = _pendingFlushCol;
             overlayStartRow = _pendingFlushRow;
         }
+
+        // MajorMUD keeps its prompt on the bottom row, so a buffer long
+        // enough to wrap spills past the last row. Rather than truncate the
+        // tail (hiding what the user types) or float just the input upward
+        // (it slides over static content — jarring), scroll the WHOLE screen
+        // up by the overflow, exactly as character-mode server echo does.
+        // The input then simply wraps onto the next line while the screen
+        // scrolls to reveal it.
+        int rowShift = 0;
         if (overlayText is not null)
         {
-            int col = overlayStartCol;
-            int row = overlayStartRow;
+            int endCol = overlayStartCol;
+            int endRow = overlayStartRow;
             foreach (char ch in overlayText)
             {
-                if (col >= screen.Cols)
-                {
-                    // Wrap to next row so a long buffer keeps rendering
-                    // instead of clipping at the right edge.
-                    col = 0;
-                    row++;
-                    if (row >= screen.Rows) break; // out of vertical room — silently truncate
-                }
-                double px = col * _cellW;
-                double py = row * _cellH;
-                // Match the cursor-cell foreground so the overlay reads
-                // inline with the prompt. Black BG fill first so any
-                // server-painted cells underneath don't bleed through.
-                context.FillRectangle(Brushes.Black,
-                    new Rect(px, py, _cellW, _cellH));
-                var glyph = new FormattedText(
-                    ch.ToString(),
-                    CultureInfo.InvariantCulture,
-                    FlowDirection.LeftToRight,
-                    _typeface,
-                    FontSize,
-                    Brushes.LightGray);
-                context.DrawText(glyph, new Point(px, py));
-                col++;
+                if (endCol >= screen.Cols) { endCol = 0; endRow++; }
+                endCol++;
             }
-            // Caret tracks the END of the LIVE buffer overlay (mode 1).
-            // For pending overlay (mode 2) the caret stays at the
-            // current cursor — the buffer is empty so the next typed
-            // char would land there, NOT at the end of the pending
-            // ghost text.
-            if (InputBuffer is { Length: > 0 })
-            {
-                caretCol = col;
-                caretRow = row;
-            }
+            rowShift = System.Math.Max(0, endRow - (screen.Rows - 1));
         }
 
-        // Cursor caret — a thin horizontal bar at the bottom of its cell,
-        // shown only when the screen says it's visible AND the blink is "on".
-        // Position is the END of the buffer overlay (if any) so the caret
-        // sits where the next typed char will land.
-        if (screen.CursorVisible && _cursorBlinkOn && caretRow < screen.Rows)
+        using (context.PushTransform(Matrix.CreateTranslation(0, -rowShift * _cellH)))
         {
-            var cx = caretCol * _cellW;
-            var cy = caretRow * _cellH;
-            // Buffer-full hint: when the local buffer is at the wire
-            // cap (254 chars) the caret colour shifts so the user can
-            // see further keystrokes are being dropped on the floor.
-            IBrush caretBrush = InputBuffer is { IsFull: true } ? Brushes.OrangeRed : Brushes.LightGray;
-            context.FillRectangle(caretBrush,
-                new Rect(cx, cy + _cellH * 0.85, _cellW, _cellH * 0.15));
+            // Draw row by row, batching consecutive same-attribute cells into
+            // a single "run" to reduce draw calls and keep BG fills contiguous.
+            for (int y = 0; y < screen.Rows; y++)
+            {
+                int x = 0;
+                while (x < screen.Cols)
+                {
+                    var startAttr = screen[x, y].Attr;
+                    int runStart = x;
+                    int runEnd = x;
+                    while (runEnd < screen.Cols && screen[runEnd, y].Attr == startAttr)
+                        runEnd++;
+
+                    DrawRun(context, screen, runStart, runEnd, y, startAttr);
+                    x = runEnd;
+                }
+            }
+
+            // Paint the buffered overlay at the cursor, wrapping onto the
+            // next line at the right edge. The cell grid behind it is
+            // unchanged — when the user hits Enter and the server echoes the
+            // line back, the echo writes real cells over the overlay area.
+            // The shared scroll transform above keeps a bottom-row caret and
+            // its wrapped tail on-screen.
+            if (overlayText is not null)
+            {
+                int col = overlayStartCol;
+                int row = overlayStartRow;
+                foreach (char ch in overlayText)
+                {
+                    if (col >= screen.Cols)
+                    {
+                        // Wrap to the next line so a long buffer keeps
+                        // rendering instead of clipping at the right edge.
+                        col = 0;
+                        row++;
+                    }
+                    double px = col * _cellW;
+                    double py = row * _cellH;
+                    // Black BG fill first so any server-painted cells
+                    // underneath don't bleed through, then the glyph in the
+                    // prompt foreground so the overlay reads inline.
+                    context.FillRectangle(Brushes.Black,
+                        new Rect(px, py, _cellW, _cellH));
+                    var glyph = new FormattedText(
+                        ch.ToString(),
+                        CultureInfo.InvariantCulture,
+                        FlowDirection.LeftToRight,
+                        _typeface,
+                        FontSize,
+                        Brushes.LightGray);
+                    context.DrawText(glyph, new Point(px, py));
+                    col++;
+                }
+                // Caret tracks the END of the LIVE buffer overlay (mode 1).
+                // For pending overlay (mode 2) the caret stays at the
+                // current cursor — the buffer is empty so the next typed
+                // char would land there, NOT at the end of the pending
+                // ghost text.
+                if (InputBuffer is { Length: > 0 })
+                {
+                    caretCol = col;
+                    caretRow = row;
+                }
+            }
+
+            // Cursor caret — a thin horizontal bar at the bottom of its cell,
+            // shown only when the screen says it's visible AND the blink is
+            // "on". Position is the END of the buffer overlay (if any) so the
+            // caret sits where the next typed char will land. The row test is
+            // against the post-scroll position so a caret pushed to the
+            // bottom line still draws.
+            if (screen.CursorVisible && _cursorBlinkOn && caretRow - rowShift < screen.Rows)
+            {
+                var cx = caretCol * _cellW;
+                var cy = caretRow * _cellH;
+                // Buffer-full hint: when the local buffer is at the wire
+                // cap (254 chars) the caret colour shifts so the user can
+                // see further keystrokes are being dropped on the floor.
+                IBrush caretBrush = InputBuffer is { IsFull: true } ? Brushes.OrangeRed : Brushes.LightGray;
+                context.FillRectangle(caretBrush,
+                    new Rect(cx, cy + _cellH * 0.85, _cellW, _cellH * 0.15));
+            }
         }
     }
 
@@ -408,14 +444,15 @@ public sealed class TerminalControl : Control
         // Local-line-edit intercept. Enter flushes the buffer + CR;
         // Backspace pops the last buffered char (and consumes the
         // event regardless so we never send 0x08 to the wire when in
-        // line mode — per user: backspace just erases the buffer).
-        // All other special keys (arrows, F-keys, Ctrl+letter, Tab,
+        // line mode — per user: backspace just erases the buffer). Up /
+        // Down recall previously-sent commands into the buffer. The
+        // remaining special keys (Left/Right, F-keys, Ctrl+letter, Tab,
         // Escape) pass straight through via MapKey because they're
         // meaningful to the server immediately (login prompts, menu
         // navigation) and aren't part of any "line" the user is
         // composing. In character-mode (full-screen forms) the buffer is
-        // bypassed entirely — Enter/Backspace fall through to MapKey so
-        // the server's form reads each keystroke as it lands.
+        // bypassed entirely — Enter/Backspace/arrows fall through to
+        // MapKey so the server's form reads each keystroke as it lands.
         if (InputBuffer is { CharacterMode: false } buf)
         {
             if (e.Key == Key.Enter)
@@ -431,6 +468,11 @@ public sealed class TerminalControl : Control
                     _pendingFlushRow  = em.Screen.CursorY;
                     _pendingFlushCol  = em.Screen.CursorX;
                 }
+                // Record the typed line for Up/Down recall before the
+                // flush clears the buffer; blank lines are dropped by
+                // CommandHistory.Record itself.
+                FujinTerm.Services.AppServices.Current.CommandHistory.Record(buf.Text);
+                HistoryNav.Reset();
                 UserInput?.Invoke(buf.FlushBytes());
                 InvalidateVisual();
                 e.Handled = true;
@@ -439,6 +481,25 @@ public sealed class TerminalControl : Control
             if (e.Key == Key.Back)
             {
                 buf.Backspace();
+                e.Handled = true;
+                return;
+            }
+            // Up / Down recall a previously-sent command into the buffer.
+            // History navigation is reserved for line-mode; full-screen
+            // forms (CharacterMode) skip this whole block, so their raw
+            // CSI arrows still flow through MapKey below. Consumed even
+            // with empty history so the arrow never leaks to the wire
+            // mid-compose.
+            if (e.Key == Key.Up || e.Key == Key.Down)
+            {
+                string? recalled = e.Key == Key.Up
+                    ? HistoryNav.Previous(buf.Text)
+                    : HistoryNav.Next();
+                if (recalled is not null)
+                {
+                    buf.Set(recalled);
+                    InvalidateVisual();
+                }
                 e.Handled = true;
                 return;
             }
@@ -468,6 +529,9 @@ public sealed class TerminalControl : Control
         if (InputBuffer is { CharacterMode: false } buf)
         {
             buf.Append(e.Text);
+            // Typing a fresh char abandons history browsing — the next Up
+            // starts again from the newest entry.
+            HistoryNav.Reset();
             e.Handled = true;
             return;
         }

@@ -94,12 +94,13 @@ public sealed class HealthManager : IDisposable
     private Action? _requestPartyWait;          // ping leader to halt (PartyRestSync)
     private Action? _requestPartyOk;            // release leader
     private Func<bool>? _isLeaderResting;       // follower + leader is resting/meditating
+    private Action? _requestPartyHeal;          // follower flee-substitute: broadcast @heal
     private bool _partyWaitSignaled;            // @wait sent, awaiting @ok
     private bool _hpGateAsserted;
     private bool _maGateAsserted;
     private bool _restInFlight;          // sent rest, awaiting recovery
     private bool _restConfirmedByPrompt; // observed (Resting) since the last rest emit
-    private bool _fledThisCombat;        // sent flee, awaiting combat to end
+    private bool _fledThisCombat;        // reacted to run-trigger (flee OR @heal), awaiting combat end
     private bool _hangFired;             // disconnect-on-emergency single-shot per session
     private Map.IRecoverableEngine? _fleeEngine;     // engine we paused mid-flee
     private Map.Direction _fleeDirection;             // sustained direction for multi-step flee
@@ -236,12 +237,23 @@ public sealed class HealthManager : IDisposable
     /// gated only by the auto-heal master switch. Left null preserves the old
     /// gate-only rest behavior.
     /// </para>
+    /// <para>
+    /// <paramref name="requestPartyHeal"/> (optional) is the follower's
+    /// flee-substitute: when the run-if-below HP trigger fires AND we're a
+    /// follower, <see cref="Evaluate"/> invokes this instead of
+    /// <see cref="TryFlee"/> — a follower must not run off alone (it breaks
+    /// party formation), so it broadcasts <c>@heal</c> and stays put while the
+    /// party healer tops it up. Leader / solo still flee. Left null preserves
+    /// the flee-for-everyone behavior. Typically wired to
+    /// <see cref="PartyRestSync.RequestHeal"/>.
+    /// </para>
     /// </summary>
     public void SetPartyRoleSync(
         Func<bool> isPartyFollower,
         Action requestPartyWait,
         Action requestPartyOk,
-        Func<bool>? isLeaderResting = null)
+        Func<bool>? isLeaderResting = null,
+        Action? requestPartyHeal = null)
     {
         ArgumentNullException.ThrowIfNull(isPartyFollower);
         ArgumentNullException.ThrowIfNull(requestPartyWait);
@@ -250,6 +262,7 @@ public sealed class HealthManager : IDisposable
         _requestPartyWait = requestPartyWait;
         _requestPartyOk = requestPartyOk;
         _isLeaderResting = isLeaderResting;
+        _requestPartyHeal = requestPartyHeal;
     }
 
     /// <summary>True while the HP gate is held.</summary>
@@ -262,10 +275,11 @@ public sealed class HealthManager : IDisposable
     /// <c>stand</c> emit.</summary>
     public bool RestInFlight => _restInFlight;
 
-    /// <summary>True between the <c>flee</c> emit and the next time
-    /// <see cref="PlayerState.InCombat"/> goes false. Single-shot per
-    /// combat so a low-HP fight can't burn a flee command on every
-    /// HP-changed event.</summary>
+    /// <summary>True between the run-if-below reaction (a <c>flee</c> for
+    /// leader / solo, or a broadcast <c>@heal</c> for a party follower) and the
+    /// next time <see cref="PlayerState.InCombat"/> goes false. Single-shot per
+    /// combat so a low-HP fight can't burn the reaction on every HP-changed
+    /// event.</summary>
     public bool FledThisCombat => _fledThisCombat;
 
     private void OnStateChanged(object? sender, PropertyChangedEventArgs e)
@@ -371,7 +385,7 @@ public sealed class HealthManager : IDisposable
         {
             _restInFlight = false;
             _restConfirmedByPrompt = false;
-            _log?.Info(LogCategory,
+            _log?.Combat(LogCategory,
                 $"rest interrupted — position now {_state.Position} " +
                 $"(hp={_state.Hp}/{_state.MaxHp} ma={_state.Ma}/{_state.MaxMa} " +
                 $"inCombat={_state.InCombat})");
@@ -468,7 +482,23 @@ public sealed class HealthManager : IDisposable
             if (hpRun)
             {
                 _fledThisCombat = true;
-                TryFlee($"HP {_state.Hp}/{_state.MaxHp} <= run-trigger={hpRunTrigger}");
+                string reason = $"HP {_state.Hp}/{_state.MaxHp} <= run-trigger={hpRunTrigger}";
+                // A party follower must NOT run off alone — that breaks party
+                // formation and strands them. Instead broadcast @heal so the
+                // party healer tops us up; we stay put. The leader owns the
+                // party's run decision, and solo characters just flee. TryFlee
+                // itself already no-ops when no movement engine is active (i.e.
+                // when idle), so the leader/solo path only runs when "not idle".
+                if (_requestPartyHeal is not null && (_isPartyFollower?.Invoke() ?? false))
+                {
+                    _log?.Combat(LogCategory,
+                        $"party follower low HP — requesting heal instead of fleeing ({reason})");
+                    _requestPartyHeal();
+                }
+                else
+                {
+                    TryFlee(reason);
+                }
             }
         }
 
@@ -482,7 +512,7 @@ public sealed class HealthManager : IDisposable
             int hpRunTrigger = ResolveThreshold(s.HpThresholdMode, s.RunIfBelowHp, _state.MaxHp);
             if (_state.Hp > hpRunTrigger && _lastKnownRoom is { } room)
             {
-                _log?.Info(LogCategory,
+                _log?.Combat(LogCategory,
                     $"flee complete — resuming engine={_fleeEngine.Name} at {room} " +
                     $"(HP {_state.Hp}/{_state.MaxHp} > run-trigger={hpRunTrigger})");
                 _fleeEngine.ResumeAfterRecovery(room);
@@ -545,7 +575,7 @@ public sealed class HealthManager : IDisposable
 
             SendChained(s.PreRestCommand);
             SendCommand(command);
-            _log?.Info(LogCategory,
+            _log?.Combat(LogCategory,
                 $"{command}{(anyGate ? "" : " (opportunistic, leader resting)")} " +
                 $"hp={_state.Hp}/{_state.MaxHp} ma={_state.Ma}/{_state.MaxMa}");
             _restInFlight = true;
@@ -553,7 +583,7 @@ public sealed class HealthManager : IDisposable
         else if (!shouldRest && _restInFlight)
         {
             SendChained(s.PostRestCommand);
-            _log?.Info(LogCategory,
+            _log?.Combat(LogCategory,
                 $"recovered hp={_state.Hp}/{_state.MaxHp} ma={_state.Ma}/{_state.MaxMa}");
             _restInFlight = false;
             _restConfirmedByPrompt = false;
@@ -574,6 +604,10 @@ public sealed class HealthManager : IDisposable
     /// </summary>
     private void TryEmergencyHangup(HealthSettings s)
     {
+        // Master kill-switch: the user has declared only an explicit local
+        // action may drop the carrier. Hard-overrides AllowHangupInAllOffMode —
+        // an opted-out character won't auto-disconnect even at low HP.
+        if (_readGeneralSettings?.Invoke() is { DisableHangups: true }) return;
         if (_hangFired || s.HangIfBelowHp <= 0 || _state.MaxHp <= 0) return;
 
         int hangTrigger = ResolveThreshold(s.HpThresholdMode, s.HangIfBelowHp, _state.MaxHp);
@@ -606,7 +640,7 @@ public sealed class HealthManager : IDisposable
         Map.IRecoverableEngine? engine = _getActiveMovementEngine?.Invoke();
         if (engine is null)
         {
-            _log?.Info(LogCategory,
+            _log?.Combat(LogCategory,
                 $"flee skipped (no active movement engine) — {reason}");
             return;
         }
@@ -647,7 +681,7 @@ public sealed class HealthManager : IDisposable
         if (combat.BreakBeforeFleeing)
             SendCommand("break");
 
-        _log?.Info(LogCategory,
+        _log?.Combat(LogCategory,
             $"flee start engine={engine.Name} mode={combat.RunDirection} dir={direction} " +
             $"distance={distance} ({reason})");
         engine.SendBacktrackMove(direction);
@@ -750,7 +784,7 @@ public sealed class HealthManager : IDisposable
         {
             _fleeEngine.SendBacktrackMove(_fleeDirection);
             _fleeStepsRemaining--;
-            _log?.Info(LogCategory,
+            _log?.Combat(LogCategory,
                 $"flee step engine={_fleeEngine.Name} dir={_fleeDirection} " +
                 $"remaining={_fleeStepsRemaining}");
         }
@@ -758,7 +792,7 @@ public sealed class HealthManager : IDisposable
         if (!_restInFlight) return;
         _restInFlight = false;
         _restConfirmedByPrompt = false;
-        _log?.Info(LogCategory, "rest-in-flight cleared on room change");
+        _log?.Combat(LogCategory, "rest-in-flight cleared on room change");
     }
 
     /// <summary>

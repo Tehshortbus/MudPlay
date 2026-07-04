@@ -1,0 +1,40 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:FujinTerm.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="460" d:DesignHeight="320"
+        x:Class="FujinTerm.Views.BugReportDialog"
+        x:DataType="vm:BugReportDialogViewModel"
+        Title="Bug report"
+        Width="460" Height="320"
+        WindowStartupLocation="CenterOwner">
+
+    <Border Background="{StaticResource ChromeBgBrush}" Padding="14">
+        <Grid RowDefinitions="Auto,*,Auto" RowSpacing="10">
+
+            <TextBlock Grid.Row="0"
+                       Text="Describe what went wrong. The current client state (recent screen, program log, settings, engine + player state) is captured automatically and written alongside your notes to a file on your Desktop."
+                       Foreground="{StaticResource ChromeFgMutedBrush}"
+                       FontSize="11" TextWrapping="Wrap"/>
+
+            <TextBox Grid.Row="1"
+                     Name="DescriptionBox"
+                     Text="{Binding Description, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                     PlaceholderText="What happened? What did you expect instead?"
+                     AcceptsReturn="True"
+                     TextWrapping="Wrap"
+                     VerticalContentAlignment="Top"
+                     FontSize="12"/>
+
+            <StackPanel Grid.Row="2" Orientation="Horizontal"
+                        HorizontalAlignment="Right" Spacing="8">
+                <Button Content="Write report" Command="{Binding SubmitCommand}"
+                        IsEnabled="{Binding CanSubmit}"
+                        IsDefault="True" MinWidth="100"/>
+                <Button Content="Cancel" Command="{Binding CancelCommand}"
+                        IsCancel="True" MinWidth="80"/>
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>

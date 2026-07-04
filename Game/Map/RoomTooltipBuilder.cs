@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
+using FujinTerm.Game.Light;
 using FujinTerm.Services;
 
 namespace FujinTerm.Game.Map;
@@ -43,7 +44,7 @@ public static class RoomTooltipBuilder
 {
     public static string Build(Room room, RoomGraphManager graph, GameDataCache? data,
         TBInfoStore? tbinfo = null, MonsterSpawnIndex? spawnIndex = null,
-        Game.Spells.KnownSpellCatalog? spellCatalog = null)
+        Game.Spells.KnownSpellCatalog? spellCatalog = null, int charIllu = 0)
     {
         ArgumentNullException.ThrowIfNull(room);
         ArgumentNullException.ThrowIfNull(graph);
@@ -102,7 +103,7 @@ public static class RoomTooltipBuilder
             if (needBottomBlank) { sb.Append('\n'); needBottomBlank = false; }
             sb.Append('\n').Append("Room Light: ").Append(room.Light > 0 ? "+" : "")
               .Append(room.Light);
-            string lightDesc = BuildLightDescription(room.Light);
+            string lightDesc = BuildLightDescription(room.Light, charIllu);
             if (lightDesc.Length > 0) sb.Append('\n').Append(lightDesc);
         }
 
@@ -157,18 +158,13 @@ public static class RoomTooltipBuilder
 
     // ----- Light description ---------------------------------------
 
-    private static string BuildLightDescription(int light)
-    {
-        // MMUD-Explorer's mapping (frmMap.frm:44617-44626). We render
-        // the descriptive line based on the room's own Light value;
-        // the player-illu-relative variant lands once we have a stat
-        // parser for the player's current illumination.
-        if (light <= -200) return "The room is pitch black";
-        if (light <= -150) return "The room is very dark — you can't see anything";
-        if (light <= -100) return "The room is barely visible";
-        if (light <  0)    return "The room is dimly lit";
-        return string.Empty;
-    }
+    private static string BuildLightDescription(int light, int charIllu)
+        // Visibility is a function of V = charIllu + roomLight: a lit lantern or
+        // worn +illu gear lifts a dark room out of the "can't see" bands, so the
+        // phrase reflects what the player actually sees, not the room's raw
+        // offset. Shares LightModel's MME band table so the tooltip and the
+        // route predictor never drift.
+        => LightModel.Describe(LightModel.Classify(charIllu, roomLight: light));
 
     // ----- Exits block ---------------------------------------------
 

@@ -202,7 +202,7 @@ public sealed class RoundDamageTracker : IDisposable
         }
         _current = null;
 
-        _log?.Info(LogCategory,
+        _log?.Combat(LogCategory,
             $"n={summary.RoundNumber} dmgDealt={summary.DamageDealt} " +
             $"dmgTaken={summary.DamageTaken} hits={summary.Hits} misses={summary.Misses} " +
             $"hpAfter={summary.HpAfter} maAfter={summary.MaAfter}");

@@ -16,8 +16,16 @@ namespace FujinTerm.ViewModels.Settings;
 /// that lives in the Phase 5 Game Data Browser, not here. Settings-tab
 /// data has no tier picker.
 /// </remarks>
-public abstract partial class SettingsSectionViewModel : ObservableObject
+public abstract partial class SettingsSectionViewModel : ObservableObject, IDisposable
 {
+    // Cleanup callbacks (typically event `-=`) registered by sections that hook
+    // publishers outliving the Settings window — ProfileService, GameDataCache,
+    // PlayerState, the spellbook, keybindings. Run on Dispose when the window
+    // closes; without them the singletons keep every section VM (and the whole
+    // window graph) alive for the app's lifetime, leaking a fresh copy per reopen.
+    private readonly List<Action> _teardown = new();
+    private bool _disposed;
+
     /// <summary>Stable identifier — sidebar selection persists across reopens against this.</summary>
     public abstract string Id { get; }
 
@@ -58,4 +66,23 @@ public abstract partial class SettingsSectionViewModel : ObservableObject
             (string.IsNullOrEmpty(search)
              || pick.Short.Contains(search, StringComparison.OrdinalIgnoreCase)
              || pick.Name.Contains(search, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// Register a cleanup callback (typically an event <c>-=</c>) to run when the
+    /// Settings window closes. Sections that subscribe to a singleton outliving the
+    /// window MUST unhook here, or the publisher pins the whole VM graph forever.
+    /// </summary>
+    protected void OnDispose(Action teardown)
+    {
+        ArgumentNullException.ThrowIfNull(teardown);
+        _teardown.Add(teardown);
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        foreach (Action t in _teardown) t();
+        _teardown.Clear();
+    }
 }

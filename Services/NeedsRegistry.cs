@@ -16,6 +16,18 @@ public enum NeedKind
     /// lantern / +illu gear / light spell) to see a dark room. Posted
     /// by auto-light, fulfilled opportunistically by auto-get.</summary>
     LightSource,
+
+    /// <summary>The character needs a specific item to traverse a
+    /// planned route — an <c>(Item: N)</c> / <c>(Ticket: N)</c> exit
+    /// gate the walker will hit but we don't carry the required item.
+    /// The <see cref="Need.Descriptor"/> is the item id (decimal). Posted
+    /// by <see cref="Game.Map.PathItemDemandTracker"/> at walk-start;
+    /// resolved when the item enters inventory. Its consumer today is the
+    /// Settings → Other "search rooms if item needed" affordance, which
+    /// arms auto-search while any such need is outstanding; later PRs add
+    /// active fulfillers (shop routing, monster-drop reroute, party
+    /// obtain) that claim the same needs.</summary>
+    PathItem,
 }
 
 /// <summary>
@@ -33,11 +45,19 @@ public enum NeedKind
 /// <param name="Requester">Identifier of the engine that posted the need
 /// (e.g. <c>"AutoLightManager"</c>). Diagnostic only.</param>
 /// <param name="PostedAt">Wall-clock time the need was first posted.</param>
+/// <param name="Quantity">How many copies the local character should
+/// acquire to satisfy this need — 1 solo, the party shortfall when the
+/// leader is provisioning everyone across a gate. Fulfillers read it to
+/// acquire the full count (e.g. <c>buy</c> N), and the requester resolves
+/// the need on count-met rather than the first copy. Not part of registry
+/// identity (dedup keys on kind + descriptor), so it is fixed at first
+/// post.</param>
 public readonly record struct Need(
     NeedKind Kind,
     string Descriptor,
     string Requester,
-    DateTimeOffset PostedAt);
+    DateTimeOffset PostedAt,
+    int Quantity = 1);
 
 /// <summary>
 /// The fulfillment half of the Phase 9 auto-engine coordination model
@@ -89,13 +109,16 @@ public sealed class NeedsRegistry
     }
 
     /// <summary>
-    /// Post a need. Deduped on (<paramref name="kind"/>,
+    /// Post a need for <paramref name="quantity"/> copies (clamped to at
+    /// least one). Deduped on (<paramref name="kind"/>,
     /// <paramref name="descriptor"/>): re-posting an already-outstanding
     /// identical need is a no-op (no duplicate slot, no event) and
-    /// returns the existing need. Returns the (new or existing) need so
-    /// the requester can hold the handle.
+    /// returns the existing need — so the quantity is fixed by the first
+    /// post and a re-announce with a different count doesn't disturb an
+    /// acquisition already in flight. Returns the (new or existing) need
+    /// so the requester can hold the handle.
     /// </summary>
-    public Need Post(NeedKind kind, string descriptor, string requester)
+    public Need Post(NeedKind kind, string descriptor, string requester, int quantity = 1)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(descriptor);
         ArgumentException.ThrowIfNullOrWhiteSpace(requester);
@@ -113,14 +136,14 @@ public sealed class NeedsRegistry
             else
             {
                 isNew = true;
-                need = new Need(kind, descriptor, requester, DateTimeOffset.Now);
+                need = new Need(kind, descriptor, requester, DateTimeOffset.Now, Math.Max(1, quantity));
                 _slots.Add(new Slot { Need = need });
             }
         }
 
         if (isNew)
         {
-            _log?.Info("Needs", $"posted — kind={kind} descriptor={descriptor} by={requester}");
+            _log?.Info("Needs", $"posted — kind={kind} descriptor={descriptor} qty={need.Quantity} by={requester}");
             NeedPosted?.Invoke(need);
         }
         return need;

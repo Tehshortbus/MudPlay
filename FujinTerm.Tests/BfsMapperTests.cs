@@ -704,6 +704,30 @@ public sealed class BfsMapperTests : IDisposable
     }
 
     [Fact]
+    public void Blacklist_ProductionWiring_StoreAddHidesRoomOnNextBuild()
+    {
+        // Mirror AppServices wiring exactly: the predicate is bound ONCE
+        // to the live store's IsBlacklisted, and the BFS cache is flushed
+        // on every Changed (Add / Remove / pin). Crucially, ConfigureBlacklist
+        // is NOT called again after the first bind — only the store's
+        // _entries mutates, via Add. This reproduces the runtime path the
+        // map takes when the user right-clicks "Add to blacklist".
+        var (bfs, _) = NewMapper();
+        RoomBlacklistStore store = new();
+        bfs.ConfigureBlacklist(store.IsBlacklisted);  // bind once, like startup
+        store.Changed += () => bfs.InvalidateCache();  // like AppServices line 2633
+
+        RoomLayout before = bfs.BuildLayout(new RoomKey(1, 1));
+        Assert.Contains(new RoomKey(1, 2), before.Positions.Keys);
+
+        store.Add(new RoomKey(1, 2), "Plaza");  // fires Changed → InvalidateCache
+
+        RoomLayout after = bfs.BuildLayout(new RoomKey(1, 1));
+        Assert.NotSame(before, after);
+        Assert.DoesNotContain(new RoomKey(1, 2), after.Positions.Keys);
+    }
+
+    [Fact]
     public void Blacklist_FindPath_StillTraversesBlacklistedRoom()
     {
         // Important: blacklist only suppresses RENDER. Pathing must
@@ -717,6 +741,59 @@ public sealed class BfsMapperTests : IDisposable
 
         Assert.NotNull(path);
         Assert.Equal(new[] { Direction.N, Direction.N }, path);
+    }
+
+    [Fact]
+    public void NearestVisibleRoom_UnbannedSeed_ReturnedUnchanged()
+    {
+        var (bfs, _) = NewMapper();
+        bfs.ConfigureBlacklist(k => k == new RoomKey(1, 2));  // Plaza only
+
+        // Seed isn't blacklisted → no re-rooting, it's its own answer.
+        Assert.Equal(new RoomKey(1, 1), bfs.NearestVisibleRoom(new RoomKey(1, 1)));
+    }
+
+    [Fact]
+    public void NearestVisibleRoom_BannedSeed_HopsToSoleVisibleNeighbour()
+    {
+        var (bfs, _) = NewMapper();
+        bfs.ConfigureBlacklist(k => k == new RoomKey(1, 5));  // Lookout
+
+        // Lookout's only exit is S → East Bridge, which is visible.
+        Assert.Equal(new RoomKey(1, 4), bfs.NearestVisibleRoom(new RoomKey(1, 5)));
+    }
+
+    [Fact]
+    public void NearestVisibleRoom_BannedSeedAndNeighbour_HopsTwoDeep()
+    {
+        var (bfs, _) = NewMapper();
+        HashSet<RoomKey> banned = new() { new RoomKey(1, 5), new RoomKey(1, 4) };
+        bfs.ConfigureBlacklist(banned.Contains);
+
+        // Lookout (1/5) → East Bridge (1/4) both hidden; BFS continues
+        // past the bridge to Town Gates (1/1), its only other exit.
+        Assert.Equal(new RoomKey(1, 1), bfs.NearestVisibleRoom(new RoomKey(1, 5)));
+    }
+
+    [Fact]
+    public void NearestVisibleRoom_AllReachableBanned_FallsBackToSeed()
+    {
+        var (bfs, _) = NewMapper();
+        bfs.ConfigureBlacklist(_ => true);  // every room hidden
+
+        // No visible room exists anywhere → keep the seed so the map
+        // still has an anchor to render the "you are here" marker.
+        Assert.Equal(new RoomKey(1, 1), bfs.NearestVisibleRoom(new RoomKey(1, 1)));
+    }
+
+    [Fact]
+    public void NearestVisibleRoom_SeedNotInGraph_ReturnedUnchanged()
+    {
+        var (bfs, _) = NewMapper();
+        bfs.ConfigureBlacklist(_ => true);  // forces past the early unbanned check
+
+        // A key with no room can't be BFS-expanded → returned as-is.
+        Assert.Equal(new RoomKey(9, 9), bfs.NearestVisibleRoom(new RoomKey(9, 9)));
     }
 
     // ----- graphical crossing (river under a bridge) -----------------

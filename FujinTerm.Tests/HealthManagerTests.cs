@@ -675,6 +675,78 @@ public sealed class HealthManagerTests
         Assert.Contains("rest", h.SentLines);
     }
 
+    // ----- follower flee-substitute: @heal instead of running -------
+
+    [Fact]
+    public void Follower_LowHpInCombat_RequestsHealInsteadOfFlee()
+    {
+        // A party follower at the run trigger must NOT flee (that strands them
+        // from the party) — it broadcasts @heal via the wired callback instead.
+        using Harness h = new();
+        int healRequested = 0;
+        h.Health.SetPartyRoleSync(
+            isPartyFollower: () => true,
+            requestPartyWait: () => { },
+            requestPartyOk: () => { },
+            requestPartyHeal: () => healRequested++);
+        h.State.MaxHp = 200;
+        h.State.InCombat = true;
+        h.State.HasPromptData = true;
+        h.State.Hp = 30;                 // 15% — below default 20% run trigger
+
+        Assert.Equal(1, healRequested);
+        Assert.True(h.Health.FledThisCombat);
+
+        // Single-shot per combat — dropping further doesn't re-request.
+        h.State.Hp = 25;
+        Assert.Equal(1, healRequested);
+    }
+
+    [Fact]
+    public void LeaderOrSolo_LowHpInCombat_DoesNotRequestHeal()
+    {
+        // Not a follower (leader / solo) — the heal callback never fires; the
+        // flee path runs instead (a no-op here since no movement engine is
+        // wired, i.e. "idle", so nothing reaches the wire).
+        using Harness h = new();
+        int healRequested = 0;
+        h.Health.SetPartyRoleSync(
+            isPartyFollower: () => false,
+            requestPartyWait: () => { },
+            requestPartyOk: () => { },
+            requestPartyHeal: () => healRequested++);
+        h.State.MaxHp = 200;
+        h.State.InCombat = true;
+        h.State.HasPromptData = true;
+        h.State.Hp = 30;
+
+        Assert.Equal(0, healRequested);
+        Assert.True(h.Health.FledThisCombat);
+        Assert.DoesNotContain("flee", h.SentLines);
+    }
+
+    [Fact]
+    public void Follower_WithoutHealCallbackWired_FallsBackToFlee()
+    {
+        // isPartyFollower true but no requestPartyHeal callback wired: the
+        // null-guard falls through to the flee path rather than silently doing
+        // nothing at the run trigger.
+        using Harness h = new();
+        h.Health.SetPartyRoleSync(
+            isPartyFollower: () => true,
+            requestPartyWait: () => { },
+            requestPartyOk: () => { });   // requestPartyHeal omitted (null)
+        h.State.MaxHp = 200;
+        h.State.InCombat = true;
+        h.State.HasPromptData = true;
+        h.State.Hp = 30;
+
+        // Flee path taken (still a no-op on the wire without an engine), and
+        // the single-shot latch is set.
+        Assert.True(h.Health.FledThisCombat);
+        Assert.DoesNotContain("flee", h.SentLines);
+    }
+
     // ----- Multi-step flee + auto-resume (Cluster 5b foundation) ----
 
     /// <summary>Fake engine for testing the flee dispatch — captures
@@ -1080,6 +1152,42 @@ public sealed class HealthManagerTests
         h.State.MaxHp = 200;
         h.State.HasPromptData = true;
         h.State.Hp = 50;       // 25% — above 5% hang threshold
+
+        Assert.DoesNotContain("=x", h.SentLines);
+    }
+
+    // ----- master "Disable hangups" kill-switch ---------------------
+
+    [Fact]
+    public void DisableHangups_HpBelowTrigger_NoHang()
+    {
+        // Engine live, HP well below the hang threshold, but the master
+        // kill-switch silences the emergency hangup.
+        using Harness h = new();
+        h.General = new Models.Profile.GeneralSettings { DisableHangups = true };
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 5;        // 2.5% — would normally hang
+
+        Assert.DoesNotContain("=x", h.SentLines);
+    }
+
+    [Fact]
+    public void DisableHangups_OverridesAllowHangupInAllOffMode()
+    {
+        // Both the all-off carve-out AND the master kill-switch are set —
+        // DisableHangups wins, so an all-engines-off character at lethal
+        // HP still won't auto-disconnect.
+        using Harness h = new();
+        h.AutoHealRestEnabled = false;
+        h.General = new Models.Profile.GeneralSettings
+        {
+            AllowHangupInAllOffMode = true,
+            DisableHangups = true,
+        };
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 5;
 
         Assert.DoesNotContain("=x", h.SentLines);
     }

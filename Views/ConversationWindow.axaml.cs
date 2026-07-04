@@ -46,6 +46,22 @@ public partial class ConversationWindow : Window
         }
     }
 
+    private void OnRecallSelected(object? sender, SelectionChangedEventArgs e)
+    {
+        // Dropdown pick fills the box, then hands focus back to the input
+        // with the caret at the end so the user can edit / Enter at once.
+        if (sender is not ListBox { SelectedItem: string command } list) return;
+        if (DataContext is ConversationViewModel vm) vm.InputText = command;
+        // Clear the selection so the same entry can be re-picked next open.
+        list.SelectedIndex = -1;
+        this.FindControl<Button>("RecallButton")?.Flyout?.Hide();
+        if (this.FindControl<TextBox>("InputBox") is { } box)
+        {
+            box.Focus();
+            box.CaretIndex = box.Text?.Length ?? 0;
+        }
+    }
+
     private void OnScrollToRow(ConversationRowViewModel row)
     {
         if (_rowsList is null) return;
@@ -73,8 +89,21 @@ public partial class ConversationWindow : Window
             return;
         }
 
-        if (e.Key != Key.Enter && e.Key != Key.Return) return;
         if (DataContext is not ConversationViewModel vm) return;
+
+        // Up / Down recall previously-sent commands into the box, same as
+        // the terminal canvas. The input is single-line, so the arrows
+        // have no native job here to clobber.
+        if (e.Key == Key.Up || e.Key == Key.Down)
+        {
+            if (e.Key == Key.Up) vm.RecallPrevious();
+            else vm.RecallNext();
+            if (sender is TextBox tb) tb.CaretIndex = tb.Text?.Length ?? 0;
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key != Key.Enter && e.Key != Key.Return) return;
         if (vm.SendInputCommand.CanExecute(null))
         {
             vm.SendInputCommand.Execute(null);

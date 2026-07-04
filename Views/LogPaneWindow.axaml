@@ -19,50 +19,51 @@
                 BorderBrush="{StaticResource ChromeBorderSoftBrush}"
                 BorderThickness="0,0,0,1"
                 Padding="10,6">
-            <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto" VerticalAlignment="Center">
+            <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto,Auto" VerticalAlignment="Center">
 
-                <!-- Severity filter checkboxes -->
+                <!-- Display filters for the always-on record levels. These
+                     only hide/show rows that already exist. -->
                 <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                    <CheckBox IsChecked="{Binding ShowDebug}"   Content="DBG"
-                              Foreground="{StaticResource SeverityDebugBrush}" FontSize="11"/>
-                    <CheckBox IsChecked="{Binding ShowInfo}"    Content="INF"
+                    <CheckBox IsChecked="{Binding ShowInfo}"  Content="INF"
                               Foreground="{StaticResource SeverityInfoBrush}" FontSize="11"/>
-                    <CheckBox IsChecked="{Binding ShowWarn}"    Content="WRN"
+                    <CheckBox IsChecked="{Binding ShowWarn}"  Content="WRN"
                               Foreground="{StaticResource SeverityWarnBrush}" FontSize="11"/>
-                    <CheckBox IsChecked="{Binding ShowError}"   Content="ERR"
+                    <CheckBox IsChecked="{Binding ShowError}" Content="ERR"
                               Foreground="{StaticResource SeverityErrorBrush}" FontSize="11"/>
-                    <CheckBox IsChecked="{Binding ShowGameMsg}" Content="GAM"
-                              Foreground="{StaticResource SeverityGameMsgBrush}" FontSize="11"/>
-                    <CheckBox IsChecked="{Binding ShowCmd}"     Content="CMD"
-                              Foreground="{StaticResource SeverityCmdBrush}" FontSize="11"/>
                 </StackPanel>
 
-                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10"
-                            VerticalAlignment="Center" Margin="14,0,0,0">
-                    <!-- Unified combat toggle (was two: "Combat preset"
-                         filter + "Combat diagnostics" umbrella). Single
-                         click both narrows the displayed rows to the
-                         Phase 9 combat-engine source categories AND
-                         flips the LogDiagnosticState umbrella so
-                         RoundDamageTracker writes the per-round trace
-                         file. Off by default. -->
-                    <CheckBox IsChecked="{Binding CombatFilter}"
-                              Content="Combat"
-                              Foreground="{StaticResource ChromeFgSecBrush}"
-                              FontSize="11"
-                              ToolTip.Tip="Combat focus: show only rows from the Phase 9 combat-engine source categories (Combat / CombatGate / RoomClassifier / Health / HealthGate / Casting / CastSend / Round / Gate), AND enable the per-round trace file at Data/Logs/combat-{sessionStart}.log. Session-only — resets on app launch."/>
+                <!-- Generation toggles. Unlike the display filters, these
+                     change what the program PRODUCES: flipping one on makes
+                     the matching channel emit (and its rows appear); off
+                     silences it at the source. Persisted per-character. -->
+                <Border Grid.Column="1" Margin="14,0,0,0"
+                        BorderBrush="{StaticResource ChromeBorderSoftBrush}"
+                        BorderThickness="1,0,0,0" Padding="12,0,0,0">
+                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <CheckBox IsChecked="{Binding DebugDiagnostics}"
+                                  Content="Debug"
+                                  Foreground="{StaticResource SeverityDebugBrush}"
+                                  FontSize="11"
+                                  ToolTip.Tip="Generate the verbose Debug channel across all engines and show its rows. Persisted per-character; off by default."/>
+                        <CheckBox IsChecked="{Binding CombatDiagnostics}"
+                                  Content="Combat"
+                                  Foreground="{StaticResource SeverityCombatBrush}"
+                                  FontSize="11"
+                                  ToolTip.Tip="Generate the combat-decision channel (and the per-round trace file at Data/Logs/combat-{sessionStart}.log) and show its rows. Persisted per-character; off by default."/>
+                    </StackPanel>
+                </Border>
 
-                    <CheckBox IsChecked="{Binding AutoScroll}"
-                              Content="Auto-scroll"
-                              Foreground="{StaticResource ChromeFgSecBrush}"
-                              FontSize="11"/>
-                </StackPanel>
+                <CheckBox Grid.Column="2" Margin="14,0,0,0"
+                          IsChecked="{Binding AutoScroll}"
+                          Content="Auto-scroll"
+                          Foreground="{StaticResource ChromeFgSecBrush}"
+                          FontSize="11" VerticalAlignment="Center"/>
 
-                <TextBox Grid.Column="3" MinWidth="220"
+                <TextBox Grid.Column="4" MinWidth="220"
                          PlaceholderText="Search source / message…"
                          Text="{Binding SearchText, Mode=TwoWay}"/>
 
-                <Button Grid.Column="4" Margin="8,0,0,0"
+                <Button Grid.Column="5" Margin="8,0,0,0"
                         Content="Clear" Command="{Binding ClearCommand}"/>
             </Grid>
         </Border>

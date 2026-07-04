@@ -59,6 +59,19 @@ public sealed partial class InventoryManager : IDisposable
     private readonly LogService? _log;
     private readonly object _lock = new();
 
+    // Resolves a game item display-name ("a torch") to its carry weight (MDB
+    // Encum), or null when unknown. Lets item get / drop / buy / sell move the
+    // live encumbrance estimate the same way coin transactions already do.
+    // Null in tests that don't exercise item weight.
+    private readonly Func<string, int?>? _itemWeight;
+
+    // Resolves a worn item's display-name to its true slot string ("Torso"), or
+    // null when unknown. The "You are now wearing X." line names no slot, so this
+    // supplies the real placement instead of a generic "Worn" that would misfile
+    // the piece in "Snapshot Current". Null in tests / when no game data is loaded
+    // — the handler falls back to the generic slot.
+    private readonly Func<string, string?>? _slotResolver;
+
     private LineExtractor? _lines;
     private bool _disposed;
 
@@ -70,11 +83,16 @@ public sealed partial class InventoryManager : IDisposable
     private bool _loaded;
     private DateTimeOffset _lastUpdated = DateTimeOffset.MinValue;
     private IReadOnlyList<EquippedItem> _equipped = Array.Empty<EquippedItem>();
-    // Carried-but-unworn item names from the last full 'i' dump. Unlike the
-    // worn set, this is NOT patched incrementally between dumps — death-recovery
-    // reads it as a best-effort "last-known" deathpile snapshot, and the worn
-    // half (which IS patched) is deduped against it at capture time.
+    // Carried-but-unworn item names. Re-based by each full 'i' dump and patched
+    // incrementally between dumps: get / buy add, drop / sell remove, and
+    // equip / remove move a name between this list and the worn set. Name
+    // matching is best-effort (case-insensitive) and self-corrects on the next
+    // 'i'. Death-recovery reads it as a "last-known" deathpile snapshot; the
+    // worn half is deduped against it at capture time.
     private IReadOnlyList<string> _carried = Array.Empty<string>();
+    // The lit light source, if the last dump listed one as "… (Readied/N)".
+    // Rebased by each full 'i': a dump with no readied light clears it.
+    private ReadiedLight? _readiedLight;
 
     // ----- full-'i' capture FSM (single-threaded — OnLine only) --------
     private bool _capturing;
@@ -86,9 +104,14 @@ public sealed partial class InventoryManager : IDisposable
     // transaction-start line and prepend it to the next row for one retry.
     private string _pendingMergeLine = "";
 
-    public InventoryManager(LogService? log = null)
+    public InventoryManager(
+        LogService? log = null,
+        Func<string, int?>? itemWeightResolver = null,
+        Func<string, string?>? slotResolver = null)
     {
         _log = log;
+        _itemWeight = itemWeightResolver;
+        _slotResolver = slotResolver;
     }
 
     /// <summary>Fired (outside the lock) whenever the snapshot changes.</summary>
@@ -112,7 +135,8 @@ public sealed partial class InventoryManager : IDisposable
                     new EncumbranceReading(_curWeight, _maxWeight, _percentage, _category),
                     _equipped,
                     _carried,
-                    _lastUpdated);
+                    _lastUpdated,
+                    _readiedLight);
             }
         }
     }
@@ -218,12 +242,27 @@ public sealed partial class InventoryManager : IDisposable
         if (held.Success)
         {
             string name = held.Groups[1].Value.TrimEnd();
+            // A weapon swap prints only this one line, but the displaced weapon is
+            // still in the worn set — read its name off the vacated hand as it
+            // leaves so it returns to the pack (like the unnamed-removal path),
+            // instead of vanishing until the next full 'i' dump. Skip an item that
+            // matches the incoming name (a re-confirm of the same weapon).
+            var displaced = new List<string>();
             PatchEquipped(list =>
             {
+                foreach (EquippedItem e in list)
+                    if (e.Slot == "Weapon Hand"
+                        && !string.Equals(e.Name, name, StringComparison.OrdinalIgnoreCase))
+                        displaced.Add(e.Name);
                 list.RemoveAll(e => e.Slot == "Weapon Hand");
                 list.Add(new EquippedItem(name, "Weapon Hand"));
                 return true;
             });
+            // The newly-held weapon leaves the pack for the hand; the displaced one
+            // returns to it.
+            RemoveCarried(name);
+            foreach (string old in displaced)
+                PatchCarried(list => { list.Add(old); return true; });
             return;
         }
 
@@ -231,14 +270,18 @@ public sealed partial class InventoryManager : IDisposable
         if (worn.Success)
         {
             string name = worn.Groups[1].Value.TrimEnd();
-            // Slot stays generic — only Weapon Hand / Off-Hand are special-cased
-            // downstream, and AC / ability bonuses sum regardless of slot. The
-            // next full 'i' dump restores the exact 21-slot placement.
+            // The wear line names no slot; resolve the item's true slot from game
+            // data so "Snapshot Current" files it correctly (e.g. a re-worn vest
+            // returns to "Torso", not a generic bucket). Fall back to a generic
+            // "Worn" when unresolved — the next full 'i' dump restores the exact
+            // 21-slot placement, and AC / ability bonuses sum regardless of slot.
+            string slot = _slotResolver?.Invoke(name) ?? "Worn";
             PatchEquipped(list =>
             {
-                list.Add(new EquippedItem(name, "Worn"));
+                list.Add(new EquippedItem(name, slot));
                 return true;
             });
+            RemoveCarried(name);
             return;
         }
 
@@ -248,12 +291,26 @@ public sealed partial class InventoryManager : IDisposable
             string name = removed.Groups[1].Value.TrimEnd();
             PatchEquipped(list =>
                 list.RemoveAll(e => string.Equals(e.Name, name, StringComparison.OrdinalIgnoreCase)) > 0);
+            // A removed piece returns to the pack (unworn) until re-equipped.
+            PatchCarried(list => { list.Add(name); return true; });
             return;
         }
 
         if (NoWeaponReadiedRegex().IsMatch(line))
         {
-            PatchEquipped(list => list.RemoveAll(e => e.Slot == "Weapon Hand") > 0);
+            // Weapon removal is unnamed ("You now have no weapon readied."),
+            // unlike the armor path which names its item. Read the outgoing
+            // weapon's name from the worn set as it leaves so it can return to
+            // the pack (unworn) just like removed armor.
+            var unreadied = new List<string>();
+            PatchEquipped(list =>
+            {
+                foreach (EquippedItem e in list)
+                    if (e.Slot == "Weapon Hand") unreadied.Add(e.Name);
+                return list.RemoveAll(e => e.Slot == "Weapon Hand") > 0;
+            });
+            foreach (string name in unreadied)
+                PatchCarried(list => { list.Add(name); return true; });
             return;
         }
 
@@ -324,6 +381,13 @@ public sealed partial class InventoryManager : IDisposable
         Match bought = BoughtRegex().Match(line);
         if (bought.Success)
         {
+            // The bought item enters the pack unworn (MajorMUD never auto-wields
+            // a purchase), so it lands in the carried list until the player wears
+            // or sells it.
+            string boughtName = bought.Groups[1].Value.TrimEnd();
+            PatchCarried(list => { list.Add(boughtName); return true; });
+            AdjustItemWeight(boughtName, +1);
+
             string priceTail = bought.Groups[2].Value;
             long priceCopper = ParsePriceToCopper(priceTail);
             if (priceCopper > 0)
@@ -350,12 +414,70 @@ public sealed partial class InventoryManager : IDisposable
         Match sold = SoldRegex().Match(line);
         if (sold.Success)
         {
+            // The sold item leaves the pack.
+            string soldName = sold.Groups[1].Value.TrimEnd();
+            RemoveCarried(soldName);
+            AdjustItemWeight(soldName, -1);
+
             long price = ParsePriceToCopper(sold.Groups[2].Value);
             if (price > 0)
             {
                 lock (_lock) ApplyTransaction(price);
                 Changed?.Invoke();
             }
+            return;
+        }
+
+        // Give away: "You just gave a torch to Bob." — the item (or coins) leaves
+        // us, exactly like a drop, so it must leave the pack / purse to keep the
+        // Character Workshop inventory and the possession checks (path-item gate,
+        // etc.) honest. The recipient is irrelevant to our own snapshot.
+        Match gaveAway = GaveItemAwayRegex().Match(line);
+        if (gaveAway.Success)
+        {
+            ApplyGiveTransfer(gaveAway.Groups[1].Value.TrimEnd(), -1);
+            return;
+        }
+
+        // Receive: "Bob just gave you a torch." — the item (or coins) enters our
+        // pack, like a get. Lets a hand-off from a party member (or another of
+        // our characters) show up without waiting for the next full 'i' dump.
+        Match received = ReceivedItemRegex().Match(line);
+        if (received.Success)
+        {
+            ApplyGiveTransfer(received.Groups[2].Value.TrimEnd(), +1);
+            return;
+        }
+
+        // Failed give: "You don't have a torch to give." — no state change (we
+        // never held it), logged so a give-driven flow can see the attempt bounced.
+        if (GiveFailedRegex().IsMatch(line))
+        {
+            _log?.Debug(LogCategory, "give bounced: item not held");
+            return;
+        }
+
+        // Get: "You took rusty dagger." — the item enters the pack unworn. The
+        // currency pickup ("You picked up N ...", no trailing period) is a
+        // different verb and is matched (and returned) above, so only item lines
+        // reach here.
+        Match gotItem = TookItemRegex().Match(line);
+        if (gotItem.Success)
+        {
+            string name = gotItem.Groups[1].Value.TrimEnd();
+            PatchCarried(list => { list.Add(name); return true; });
+            AdjustItemWeight(name, +1);
+            return;
+        }
+
+        // Drop: "You dropped torch." — the item leaves the pack. Currency drops
+        // carry a numeric count and are matched above.
+        Match droppedItem = DropItemRegex().Match(line);
+        if (droppedItem.Success)
+        {
+            string name = droppedItem.Groups[1].Value.TrimEnd();
+            RemoveCarried(name);
+            AdjustItemWeight(name, -1);
         }
     }
 
@@ -393,6 +515,7 @@ public sealed partial class InventoryManager : IDisposable
         int copper = 0, silver = 0, gold = 0, platinum = 0, runic = 0;
         var equipped = new List<EquippedItem>();
         var carried = new List<string>();
+        ReadiedLight? readiedLight = null;
         if (itemsText.Length > 0)
         {
             foreach (string token in itemsText.Split(", ", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
@@ -408,6 +531,18 @@ public sealed partial class InventoryManager : IDisposable
                         case "copper": copper = count; break;
                     }
                     currencyTokens.Add(token);
+                    continue;
+                }
+
+                // A lit light prints inline with a "(Readied/N)" suffix instead
+                // of a slot label; capture the countdown and don't file it as a
+                // plain carried item.
+                Match lit = ReadiedLightRegex().Match(token);
+                if (lit.Success)
+                {
+                    string name = lit.Groups[1].Value.TrimEnd();
+                    if (name.Length > 0 && int.TryParse(lit.Groups[2].Value, out int readied))
+                        readiedLight = new ReadiedLight(name, readied);
                     continue;
                 }
 
@@ -466,12 +601,14 @@ public sealed partial class InventoryManager : IDisposable
             _category = category;
             _equipped = equipped;
             _carried = carried;
+            _readiedLight = readiedLight;
             _loaded = true;
             _lastUpdated = DateTimeOffset.Now;
         }
 
         _log?.Debug(LogCategory,
-            $"parsed: wealth={wealthCopper} copper, enc={curWeight}/{maxWeight} {category} [{percentage}%], worn={equipped.Count}, carried={carried.Count}");
+            $"parsed: wealth={wealthCopper} copper, enc={curWeight}/{maxWeight} {category} [{percentage}%], worn={equipped.Count}, carried={carried.Count}"
+            + (readiedLight is { } rl ? $", lit={rl.Name} (Readied/{rl.Readied})" : ""));
         Changed?.Invoke();
     }
 
@@ -495,6 +632,60 @@ public sealed partial class InventoryManager : IDisposable
             }
         }
         if (changed) Changed?.Invoke();
+    }
+
+    // Carried-list counterpart to PatchEquipped: same loaded-baseline gate (an
+    // add before the first 'i' would imply the pack holds only that one item),
+    // same publish-only-if-changed contract.
+    private void PatchCarried(Func<List<string>, bool> mutate)
+    {
+        bool changed = false;
+        lock (_lock)
+        {
+            if (_loaded)
+            {
+                var list = new List<string>(_carried);
+                if (mutate(list))
+                {
+                    _carried = list;
+                    changed = true;
+                }
+            }
+        }
+        if (changed) Changed?.Invoke();
+    }
+
+    // A give / receive of coins ("... 30 gold crowns ...") adjusts currency, not
+    // the pack; anything else is an item entering (+1) or leaving (-1) it. The
+    // currency guard stops a coin hand-off from being filed as a phantom carried
+    // item and keeps the purse in step, mirroring how drop / pickup split coins
+    // from items elsewhere in this class.
+    private void ApplyGiveTransfer(string name, int sign)
+    {
+        Match coin = CurrencyTokenRegex().Match(name);
+        if (coin.Success && int.TryParse(coin.Groups[1].Value, out int count))
+        {
+            lock (_lock) AdjustCurrency(coin.Groups[2].Value, sign * count);
+            Changed?.Invoke();
+            return;
+        }
+
+        if (sign > 0) PatchCarried(list => { list.Add(name); return true; });
+        else RemoveCarried(name);
+        AdjustItemWeight(name, sign);
+    }
+
+    // Drop the first carried entry matching name (case-insensitive). Only the
+    // first, so selling one of two identical items leaves the other in the pack.
+    private void RemoveCarried(string name)
+    {
+        PatchCarried(list =>
+        {
+            int idx = list.FindIndex(n => string.Equals(n, name, StringComparison.OrdinalIgnoreCase));
+            if (idx < 0) return false;
+            list.RemoveAt(idx);
+            return true;
+        });
     }
 
     // The capture buffer holds the "You are carrying ..." rows plus the Keys /
@@ -576,8 +767,38 @@ public sealed partial class InventoryManager : IDisposable
     {
         long weightDelta = TotalCoins() / 3 - oldCoins / 3;
         _curWeight = (int)Math.Max(0, _curWeight + weightDelta);
+        RecomputeEncumbrancePercent();
+    }
+
+    // Re-derive percentage + bracket from the current / max weight. Shared by
+    // the coin-weight and item-weight adjustments.
+    private void RecomputeEncumbrancePercent()
+    {
         _percentage = _maxWeight > 0 ? (int)((long)_curWeight * 100 / _maxWeight) : 0;
         _category = DeriveCategory(_percentage);
+    }
+
+    // Move the live encumbrance estimate as a single item enters (+1) or leaves
+    // (-1) the pack, reading its carry weight (MDB Encum) from the active game
+    // data. A null resolver, an unresolved name, or a zero-weight item is a
+    // no-op — and the next full 'i' dump re-bases the reading regardless, so a
+    // stale estimate self-corrects. Gated on a loaded baseline like the carried
+    // list: adjusting from a 0/0 reading would be meaningless.
+    private void AdjustItemWeight(string itemName, int sign)
+    {
+        if (_itemWeight is null) return;
+        if (_itemWeight(itemName) is not int weight || weight == 0) return;
+        bool changed = false;
+        lock (_lock)
+        {
+            if (_loaded)
+            {
+                _curWeight = (int)Math.Max(0, _curWeight + (long)sign * weight);
+                RecomputeEncumbrancePercent();
+                changed = true;
+            }
+        }
+        if (changed) Changed?.Invoke();
     }
 
     private static long ComputeWealth(int copper, int silver, int gold, int platinum, int runic)
@@ -735,6 +956,11 @@ public sealed partial class InventoryManager : IDisposable
     [GeneratedRegex(@"^(.*?)\s+\((Head|Ears|Eyes|Face|Neck|Back|Torso|Arms|Wrist|Hands|Finger|Waist|Legs|Feet|Worn|Off-Hand|Weapon Hand|Two handed)\)$")]
     private static partial Regex EquippedSlotRegex();
 
+    // A lit light prints inline as "lantern (Readied/239)" — the count is the
+    // remaining-charge counter (item's UseCount / 10 at full), not a slot.
+    [GeneratedRegex(@"^(.*?)\s+\(Readied/(\d+)\)$")]
+    private static partial Regex ReadiedLightRegex();
+
     // Incremental equip / remove lines (single item, between full 'i' dumps).
     [GeneratedRegex(@"^You are now holding (.+)\.$")]
     private static partial Regex HeldWeaponRegex();
@@ -747,4 +973,30 @@ public sealed partial class InventoryManager : IDisposable
 
     [GeneratedRegex(@"^You now have no weapon readied\.$")]
     private static partial Regex NoWeaponReadiedRegex();
+
+    // Item get / drop (single item). MajorMUD phrases the item get as "You took
+    // X." and the item drop as "You dropped X." (the drop regex also tolerates
+    // the present-tense "You drop X."). The currency forms use different verbs
+    // ("You picked up N ..." with no trailing period / "You dropped N ...") and
+    // carry a numeric count; they're matched and returned earlier, so a coin
+    // line never reaches these.
+    [GeneratedRegex(@"^You took (.+?)\.$")]
+    private static partial Regex TookItemRegex();
+
+    [GeneratedRegex(@"^You drop(?:ped)? (.+?)\.$")]
+    private static partial Regex DropItemRegex();
+
+    // Item / coin hand-off between characters. Give-away names the recipient
+    // ("... to Bob."); receive names the giver ("Bob just gave you ..."). The
+    // captured name (item or a currency token) is routed through the currency
+    // guard in ApplyGiveTransfer. The greedy item groups let a multi-word name
+    // ("a rusty dagger") round-trip; the recipient / giver token isn't used.
+    [GeneratedRegex(@"^You just gave (.+) to (.+)\.$")]
+    private static partial Regex GaveItemAwayRegex();
+
+    [GeneratedRegex(@"^(.+?) just gave you (.+)\.$")]
+    private static partial Regex ReceivedItemRegex();
+
+    [GeneratedRegex(@"^You don't have (.+) to give\.$")]
+    private static partial Regex GiveFailedRegex();
 }

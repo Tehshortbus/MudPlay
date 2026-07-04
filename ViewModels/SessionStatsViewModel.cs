@@ -1,6 +1,7 @@
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using FujinTerm.Game.Cash;
 using FujinTerm.Game.Combat;
 using FujinTerm.Services;
 
@@ -34,7 +35,13 @@ public sealed partial class SessionStatsViewModel : ObservableObject, IDisposabl
     private readonly CombatSessionTracker _combatTracker;
     private readonly TimeAnalysisTracker _timeTracker;
     private readonly SessionActivityTracker _activityTracker;
+    private readonly TransactionHistoryTracker _transactionTracker;
     private readonly SessionStatsLayoutStore _layoutStore;
+
+    /// <summary>Opens the Transaction history window. Routed back to
+    /// <c>MainWindowViewModel</c> so the window follows the modeless
+    /// toggle-window contract (re-press closes) rather than being spawned here.</summary>
+    private readonly Action _openTransactionHistory;
 
     /// <summary>Drives the live wall-clock ticking of durations / rates: the
     /// time-derived figures advance with real time even when no tracker input
@@ -104,16 +111,22 @@ public sealed partial class SessionStatsViewModel : ObservableObject, IDisposabl
         CombatSessionTracker combat,
         TimeAnalysisTracker time,
         SessionActivityTracker activity,
-        SessionStatsLayoutStore layout)
+        TransactionHistoryTracker transactions,
+        SessionStatsLayoutStore layout,
+        Action openTransactionHistory)
     {
         ArgumentNullException.ThrowIfNull(combat);
         ArgumentNullException.ThrowIfNull(time);
         ArgumentNullException.ThrowIfNull(activity);
+        ArgumentNullException.ThrowIfNull(transactions);
         ArgumentNullException.ThrowIfNull(layout);
+        ArgumentNullException.ThrowIfNull(openTransactionHistory);
         _combatTracker = combat;
         _timeTracker = time;
         _activityTracker = activity;
+        _transactionTracker = transactions;
         _layoutStore = layout;
+        _openTransactionHistory = openTransactionHistory;
 
         LoadLayout();
 
@@ -243,16 +256,22 @@ public sealed partial class SessionStatsViewModel : ObservableObject, IDisposabl
 
     // ----- Commands ----------------------------------------------------
 
-    /// <summary>Manual "Reset session" — wipes every Phase 11 tracker's counters
-    /// and restarts their clocks. The resets raise <c>Changed</c>, which refreshes
-    /// the bound figures.</summary>
+    /// <summary>Manual "Reset session" — wipes every session tracker's counters
+    /// and restarts their clocks, and clears the transaction ledger. The resets
+    /// raise <c>Changed</c>, which refreshes the bound figures.</summary>
     [RelayCommand]
     private void Reset()
     {
         _combatTracker.Reset();
         _timeTracker.Reset();
         _activityTracker.Reset();
+        _transactionTracker.Reset();
     }
+
+    /// <summary>"Transaction history" button — opens the modeless ledger window
+    /// (bank deposits + stash-room hides recorded this session).</summary>
+    [RelayCommand]
+    private void OpenTransactionHistory() => _openTransactionHistory();
 
     // ----- Refresh plumbing --------------------------------------------
 

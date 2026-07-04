@@ -146,6 +146,40 @@ public sealed class CastingDirectorTests
     }
 
     [Fact]
+    public void MinorHeal_PrefersHpRegenHoT_OverSingleTargetInRoutineBand()
+    {
+        // HP trips the minor trigger but stays above the major (life-threat)
+        // trigger → cast the HP-regen HoT first instead of the instant heal.
+        using Harness h = new();
+        h.Spells.MinorHealSpell = "heal";
+        h.Spells.HpRegenSpell = "regen";
+        h.Health.MinorHealCombatTrigger = 70;
+        h.Health.MajorHealCombatTrigger = 40;
+
+        h.SetPrompt(hp: 60, maxHp: 100, inCombat: true);    // 40 < 60 <= 70
+
+        Assert.Single(h.CastsSent);
+        Assert.Equal("regen", h.CastsSent[0]);
+    }
+
+    [Fact]
+    public void MinorHeal_LifeThreatBand_UsesInstantHeal_NotHoT()
+    {
+        // Below the major trigger the HoT is NOT substituted — a slow HoT that
+        // heals a round later is the wrong call when HP is critical.
+        using Harness h = new();
+        h.Spells.MinorHealSpell = "heal";
+        h.Spells.HpRegenSpell = "regen";
+        h.Health.MinorHealCombatTrigger = 70;
+        h.Health.MajorHealCombatTrigger = 40;
+
+        h.SetPrompt(hp: 30, maxHp: 100, inCombat: true);    // 30 <= 40 → life-threat
+
+        Assert.Single(h.CastsSent);
+        Assert.Equal("heal", h.CastsSent[0]);
+    }
+
+    [Fact]
     public void RoutineCombat_NoCast_WhenAboveThreshold()
     {
         using Harness h = new();
@@ -497,6 +531,7 @@ public sealed class CastingDirectorTests
         public ConditionTracker Conditions { get; }
         public CastingDirector Director { get; }
         public List<string> CastsSent { get; } = new();
+        public List<string> SelfBuffLanded { get; } = new();
         public SpellsSettings Spells { get; set; } = new();
         public HealthSettings Health { get; set; } = new();
         public bool AutoBlessEnabled { get; set; } = true;
@@ -536,6 +571,9 @@ public sealed class CastingDirectorTests
                     ? (info.Caster, info.Duration)
                     : null,
                 record => record.Name);
+            // Capture the reroll sink so a test can assert a confirmed self-buff
+            // landing is reported to the mana-regen reroll engine.
+            Director.SetSelfBuffLandedSink(SelfBuffLanded.Add);
             // Healthy baseline so Tier-1 doesn't fire over the cure path.
             State.MaxHp = 200;
             State.Hp = 200;
@@ -590,6 +628,19 @@ public sealed class CastingDirectorTests
 
         Assert.Single(h.CastsSent);
         Assert.Equal("neutralize", h.CastsSent[0]);
+    }
+
+    [Fact]
+    public void SelfBuffLanding_NotifiesTheRerollSink()
+    {
+        using CureHarness h = new();
+        // A confirmed self-buff — its condition Name doubles as the cast short
+        // in this harness, so a resolved landing reports that short to the sink.
+        h.RecordCondition("ntap", MessageFlags.None, "You tap into the mana around you.");
+
+        h.FeedLine("You tap into the mana around you.");
+
+        Assert.Contains("ntap", h.SelfBuffLanded);
     }
 
     [Fact]
@@ -648,14 +699,14 @@ public sealed class CastingDirectorTests
         Assert.Equal("freedom", h.CastsSent[0]);
     }
 
-    // ----- Buffing (Bless1–10 slot walk) -----------------------------
+    // ----- Buffing (bless slot walk) ---------------------------------
 
     [Fact]
     public void Buff_OutOfCombat_FiresFirstUnactiveSlot()
     {
         using CureHarness h = new();
-        h.Spells.Bless1Spell = "bless";
-        h.Spells.Bless2Spell = "haste";
+        h.Spells.BlessSlots[1] ="bless";
+        h.Spells.BlessSlots[2] ="haste";
         h.Health.BlessIfAboveMa = 50;
         h.State.MaxMa = 100;
         h.State.Ma = 80;
@@ -673,7 +724,7 @@ public sealed class CastingDirectorTests
     {
         using CureHarness h = new();
         h.AutoBlessEnabled = false;          // Auto-Bless engine disabled
-        h.Spells.Bless1Spell = "bless";
+        h.Spells.BlessSlots[1] ="bless";
         h.Health.BlessIfAboveMa = 50;
         h.State.MaxMa = 100;
         h.State.Ma = 80;
@@ -689,8 +740,8 @@ public sealed class CastingDirectorTests
     public void Buff_SkipsActiveBuff_PicksNext()
     {
         using CureHarness h = new();
-        h.Spells.Bless1Spell = "bless";
-        h.Spells.Bless2Spell = "haste";
+        h.Spells.BlessSlots[1] ="bless";
+        h.Spells.BlessSlots[2] ="haste";
         h.Health.BlessIfAboveMa = 50;
         h.State.MaxMa = 100;
         h.State.Ma = 80;
@@ -714,7 +765,7 @@ public sealed class CastingDirectorTests
     public void Buff_AllActive_NoCast()
     {
         using CureHarness h = new();
-        h.Spells.Bless1Spell = "bless";
+        h.Spells.BlessSlots[1] ="bless";
         h.Health.BlessIfAboveMa = 50;
         h.State.MaxMa = 100;
         h.State.Ma = 80;
@@ -738,7 +789,7 @@ public sealed class CastingDirectorTests
         // Cast → confirm (300s timer) → no recast mid-duration → recast once
         // inside the 15s-of-expiry window.
         using CureHarness h = new();
-        h.Spells.Bless1Spell = "bless";
+        h.Spells.BlessSlots[1] ="bless";
         h.BuffInfo["bless"] = (string.Empty, 300);
         h.Health.BlessIfAboveMa = 50;
         h.State.MaxMa = 100;
@@ -775,7 +826,7 @@ public sealed class CastingDirectorTests
         // Server-confirmed early wear-off drops the timer so the next pass
         // re-attempts without waiting out the stale clock.
         using CureHarness h = new();
-        h.Spells.Bless1Spell = "bless";
+        h.Spells.BlessSlots[1] ="bless";
         h.BuffInfo["bless"] = (string.Empty, 300);
         h.Health.BlessIfAboveMa = 50;
         h.State.MaxMa = 100;
@@ -806,7 +857,7 @@ public sealed class CastingDirectorTests
     {
         // MA too low — saving for heals.
         using CureHarness h = new();
-        h.Spells.Bless1Spell = "bless";
+        h.Spells.BlessSlots[1] ="bless";
         h.Health.BlessIfAboveMa = 70;
         h.State.MaxMa = 100;
         h.State.Ma = 50;
@@ -824,7 +875,7 @@ public sealed class CastingDirectorTests
         // suppresses buff casts to keep the backstab window open.
         using CureHarness h = new();
         h.Director.SetStealthGate(() => true);
-        h.Spells.Bless1Spell = "bless";
+        h.Spells.BlessSlots[1] ="bless";
         h.Health.BlessIfAboveMa = 50;
         h.State.MaxMa = 100;
         h.State.Ma = 80;
@@ -844,7 +895,7 @@ public sealed class CastingDirectorTests
         // (still-default) InCombat=false window.
         using CureHarness h = new();
         h.State.InCombat = true;
-        h.Spells.Bless1Spell = "bless";
+        h.Spells.BlessSlots[1] ="bless";
         h.Health.BlessIfAboveMa = 50;
         h.State.MaxMa = 100;
         h.State.Ma = 80;
@@ -861,7 +912,7 @@ public sealed class CastingDirectorTests
     {
         using CureHarness h = new();
         const string token = "#emerald tipped crozier";
-        h.Spells.Bless1Spell = token;
+        h.Spells.BlessSlots[1] =token;
         h.Health.BlessIfAboveMa = 50;
         h.State.MaxMa = 100;
         h.State.Ma = 80;
@@ -895,7 +946,7 @@ public sealed class CastingDirectorTests
     {
         using CureHarness h = new();
         const string token = "#wand of fire";
-        h.Spells.Bless1Spell = token;
+        h.Spells.BlessSlots[1] =token;
         h.Health.BlessIfAboveMa = 50;
         h.State.MaxMa = 100;
         h.State.Ma = 80;
@@ -919,7 +970,7 @@ public sealed class CastingDirectorTests
     {
         using CureHarness h = new();
         const string token = "#emerald tipped crozier";
-        h.Spells.Bless1Spell = token;
+        h.Spells.BlessSlots[1] =token;
         // MA below the bless floor: a mana-drawing buff would be suppressed.
         h.Health.BlessIfAboveMa = 50;
         h.State.MaxMa = 100;
@@ -944,7 +995,7 @@ public sealed class CastingDirectorTests
     {
         using CureHarness h = new();
         const string token = "#shimmering greatsword";
-        h.Spells.Bless1Spell = token;
+        h.Spells.BlessSlots[1] =token;
         h.Health.BlessIfAboveMa = 50;
         h.State.MaxMa = 100;
         h.State.InCombat = false;
@@ -971,29 +1022,33 @@ public sealed class CastingDirectorTests
     // ----- Utility (regen buffs + idle-fallback) --------------------
 
     [Fact]
-    public void Utility_HpRegenSpell_PicksWhenNotActive()
+    public void Utility_HpRegenSpell_NotCastAsBuff_WhenHpFull()
     {
+        // The HP-regen slot is assisted healing, not a downtime buff: at full
+        // HP with nothing to heal, the buff path must NOT fire it. (A user who
+        // wants it always-up puts it in a Bless slot instead.)
         using CureHarness h = new();
         h.Spells.HpRegenSpell = "trollskin";
         h.Health.BlessIfAboveMa = 50;
         h.State.MaxMa = 100;
         h.State.Ma = 80;
+        h.State.MaxHp = 200;
+        h.State.Hp = 200;                 // full → minor-heal path never trips
         h.State.InCombat = false;
 
         h.Director.Evaluate();
 
-        Assert.Single(h.CastsSent);
-        Assert.Equal("trollskin", h.CastsSent[0]);
+        Assert.Empty(h.CastsSent);
     }
 
     [Fact]
-    public void Utility_RegenSlotsAfterBless1To10()
+    public void Utility_MaRegenSlotAfterBless1To10()
     {
-        // Bless1 configured + active → utility regen is next non-
-        // active slot.
+        // Bless1 configured + active → the mana-regen downtime buff is the next
+        // non-active self-buff slot (HP-regen is no longer a buff slot).
         using CureHarness h = new();
-        h.Spells.Bless1Spell = "bless";
-        h.Spells.HpRegenSpell = "trollskin";
+        h.Spells.BlessSlots[1] ="bless";
+        h.Spells.MaRegenSpell = "kindred";
         h.Health.BlessIfAboveMa = 50;
         h.State.MaxMa = 100;
         h.State.Ma = 80;
@@ -1009,7 +1064,7 @@ public sealed class CastingDirectorTests
         h.Director.Evaluate();
 
         Assert.Single(h.CastsSent);
-        Assert.Equal("trollskin", h.CastsSent[0]);
+        Assert.Equal("kindred", h.CastsSent[0]);
     }
 
     [Fact]
@@ -1086,6 +1141,37 @@ public sealed class CastingDirectorTests
 
         h.Director.Evaluate();
         Assert.Empty(h.CastsSent);
+    }
+
+    [Fact]
+    public void MinorHeal_HpRegenHoTActive_FallsThroughToSingleTargetHeal()
+    {
+        // HoT-first on the trigger, then — once it's confirmed ticking with
+        // remaining duration — the minor path drops to the instant single-
+        // target heal for the immediate top-up while the HoT works.
+        using CureHarness h = new();
+        h.Spells.HpRegenSpell = "regen";
+        h.Spells.MinorHealSpell = "heal";
+        h.Health.MinorHealCombatTrigger = 70;
+        h.Health.MajorHealCombatTrigger = 40;
+        h.BuffInfo["regen"] = (string.Empty, 300);
+        h.RecordCondition("regen", MessageFlags.None,
+            applied: "You begin to regenerate.", endsWith: "Your regeneration fades.");
+
+        // Drop into the routine band last so the HoT-first cast fires cleanly.
+        h.State.MaxHp = 100;
+        h.State.InCombat = true;
+        h.State.Hp = 60;
+        Assert.Equal("regen", h.CastsSent[^1]);
+
+        // Confirm the HoT landed → 300s timer → no longer recast-due.
+        h.FeedLine("You begin to regenerate.");
+        h.CastsSent.Clear();
+        h.Cast.OnCombatTick();
+
+        h.Director.Evaluate();
+        Assert.Single(h.CastsSent);
+        Assert.Equal("heal", h.CastsSent[0]);
     }
 
     // ----- Party-heal (single + AOE thresholding) -------------------

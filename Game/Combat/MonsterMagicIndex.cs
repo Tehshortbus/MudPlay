@@ -96,6 +96,8 @@ public sealed class MonsterMagicIndex
             }
         }
 
+        // Folded into the map — release the pinned raw Monsters JsonDocument.
+        _cache.EvictTable("Monsters");
         _byNumber = map;
         return map;
     }

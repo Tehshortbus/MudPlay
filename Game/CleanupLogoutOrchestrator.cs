@@ -61,6 +61,7 @@ public sealed class CleanupLogoutOrchestrator : IDisposable
     private Func<bool>? _isSafe;
     private Func<bool>? _isConnected;
     private Func<bool>? _autoLogoutEnabled;
+    private Func<bool>? _hangupsDisabled;
     private Action? _disconnect;
 
     private Avalonia.Threading.DispatcherTimer? _tick;
@@ -127,6 +128,12 @@ public sealed class CleanupLogoutOrchestrator : IDisposable
     /// <summary>Supply the opt-in gate (active BBS's ReconnectAfterCleanup).</summary>
     public void SetAutoLogoutEnabledCheck(Func<bool> enabled) => _autoLogoutEnabled = enabled;
 
+    /// <summary>Supply the master "Disable hangups" check. When it returns
+    /// <c>true</c> the cleanup log-off never arms — and stands down if
+    /// toggled on mid-flow — since dropping the carrier ourselves counts as
+    /// an automatic hangup the user has opted out of.</summary>
+    public void SetHangupsDisabledCheck(Func<bool> disabled) => _hangupsDisabled = disabled;
+
     /// <summary>Supply the disconnect action invoked once we reach the
     /// main menu (the host's user-initiated disconnect path).</summary>
     public void SetDisconnectCallback(Action disconnect) => _disconnect = disconnect;
@@ -154,6 +161,7 @@ public sealed class CleanupLogoutOrchestrator : IDisposable
         // One logout per cleanup cycle — ignore the 5m / 2m follow-ups
         // once the first warning has armed us.
         if (Phase != CleanupLogoutPhase.Idle) return;
+        if (_hangupsDisabled?.Invoke() ?? false) return;
         if (!(_autoLogoutEnabled?.Invoke() ?? false)) return;
         if (!(_isConnected?.Invoke() ?? false)) return;
 
@@ -187,6 +195,14 @@ public sealed class CleanupLogoutOrchestrator : IDisposable
         if (!(_isConnected?.Invoke() ?? false))
         {
             Abort("connection dropped before logout completed");
+            return;
+        }
+
+        // User flipped "Disable hangups" on after we armed — stand down
+        // before sending the exit or dropping the carrier.
+        if (_hangupsDisabled?.Invoke() ?? false)
+        {
+            Abort("hangups disabled mid-flow");
             return;
         }
 

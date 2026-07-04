@@ -18,13 +18,6 @@ namespace FujinTerm.Game.Spells;
 public static class SpellEffectFormatter
 {
     /// <summary>
-    /// Seconds per spell-duration tick — MMUD Explorer's <c>SPELL_ROUND_SECS</c>
-    /// (<c>modMMudFunc.bas</c>). Spell durations are stored in ticks; the display
-    /// multiplies by this to show seconds. Distinct from the 5-second combat round.
-    /// </summary>
-    private const int SpellRoundSeconds = 3;
-
-    /// <summary>
     /// Compose the effect string for <paramref name="formula"/> at
     /// <paramref name="level"/> (the level-scaled Min/Max/Dur figures clamp to the
     /// spell's <c>ReqLevel</c>, so a level-0 "base" render still yields real
@@ -99,7 +92,7 @@ public static class SpellEffectFormatter
         if (!suppressDuration)
         {
             long durTicks = Math.Max(SpellCalculator.Duration(formula, level), childDurTicks);
-            if (durTicks > 0) parts.Add($"{durTicks * SpellRoundSeconds} seconds");
+            if (durTicks > 0) parts.Add($"{durTicks * SpellCalculator.SpellRoundSeconds} seconds");
         }
 
         if (affects.Length > 0) parts.Add(affects);

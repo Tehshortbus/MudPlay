@@ -22,7 +22,7 @@ namespace FujinTerm.ViewModels.Settings;
 ///       (calls <see cref="ApplyAndClose"/>), per CLAUDE.md's edit-window toggle policy.</description></item>
 /// </list>
 /// </remarks>
-public sealed partial class SettingsWindowViewModel : ObservableObject
+public sealed partial class SettingsWindowViewModel : ObservableObject, IDisposable
 {
     private readonly ProfileService _profile;
     private readonly LogService _log;
@@ -68,6 +68,18 @@ public sealed partial class SettingsWindowViewModel : ObservableObject
             ? Sections.FirstOrDefault(s => string.Equals(s.Id, initialSectionId, StringComparison.OrdinalIgnoreCase))
               ?? Sections.FirstOrDefault()
             : Sections.FirstOrDefault();
+    }
+
+    /// <summary>
+    /// Tears down every section so the singletons they hooked (ProfileService,
+    /// GameDataCache, PlayerState, spellbook, keybindings) release their
+    /// references. Called by the host window's <c>Closed</c> handler; without
+    /// it each reopen of Settings leaks its entire VM graph for the app's life.
+    /// </summary>
+    public void Dispose()
+    {
+        foreach (SettingsSectionViewModel section in Sections)
+            section.Dispose();
     }
 
     /// <summary>
@@ -238,6 +250,7 @@ public sealed partial class SettingsWindowViewModel : ObservableObject
         Sections.Add(new CashSectionViewModel());
         Sections.Add(new StatlineSectionViewModel(_profile, AppServices.Current.PlayerState, _sendText));
         Sections.Add(new TalkSectionViewModel());
+        Sections.Add(new AutoLightSectionViewModel());
         Sections.Add(new AutoLairSectionViewModel());
         Sections.Add(new AutoTrainerSectionViewModel());
         Sections.Add(new OtherSectionViewModel());

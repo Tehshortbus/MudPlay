@@ -19,9 +19,9 @@ public sealed class MonsterMatchupCalculatorTests
         new(RealmType.ParaMud, accuracy, avgDmg, swings, hasWeapon, ac, dodge, protEvil, protGood, dr);
 
     private static MonsterMatchupProfile Monster(
-        int ac = 50, int dr = 2, int hp = 100, bool hasAttack = true,
+        int ac = 50, int dr = 2, int hp = 100, int dodge = 0, bool hasAttack = true,
         int attackAcc = 120, int avgAttack = 8, bool isEvil = false, bool isGood = false) =>
-        new(ac, dr, hp, hasAttack, attackAcc, avgAttack, isEvil, isGood);
+        new(ac, dr, hp, dodge, hasAttack, attackAcc, avgAttack, isEvil, isGood);
 
     [Fact]
     public void PlayerToMonster_MatchesHitFormula_AndProjectsDps()
@@ -43,6 +43,27 @@ public sealed class MonsterMatchupCalculatorTests
         Assert.Equal(expectedDps, r.PlayerDps, 5);
         Assert.Equal(expectedRounds, r.RoundsToKill);
         Assert.True(r.HasWeapon);
+    }
+
+    [Fact]
+    public void MonsterDodge_LowersPlayerHitChance()
+    {
+        // A monster's Dodge ability (e.g. Lord of the Hunt's 70) feeds the
+        // player → monster hit calc as the defender's dodge, so raising it can
+        // only lower our hit chance — never raise it.
+        PlayerMatchupProfile p = Player(accuracy: 200, avgDmg: 10, swings: 2.0, dr: 0);
+        MonsterMatchupProfile noDodge = Monster(ac: 50, dr: 2, hp: 100, dodge: 0);
+        MonsterMatchupProfile withDodge = Monster(ac: 50, dr: 2, hp: 100, dodge: 70);
+
+        int expected = CombatCalculator.CalculateHitChance(
+            attackerAccuracy: 200, defenderAC: 50, defenderDodge: 70,
+            realmType: RealmType.ParaMud).OverallHitPercent;
+
+        MonsterMatchupResult rNo = MonsterMatchupCalculator.Compute(p, noDodge);
+        MonsterMatchupResult rDodge = MonsterMatchupCalculator.Compute(p, withDodge);
+
+        Assert.Equal(expected, rDodge.PlayerHitPercent);
+        Assert.True(rDodge.PlayerHitPercent <= rNo.PlayerHitPercent);
     }
 
     [Fact]

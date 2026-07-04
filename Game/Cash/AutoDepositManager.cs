@@ -40,6 +40,19 @@ namespace FujinTerm.Game.Cash;
 /// keep-on-hand floors).
 /// </para>
 /// <para>
+/// <b>Pass-through vs. detour.</b> A dedicated detour is only worth
+/// spending on a store the running engine won't reach on its own. When
+/// the configured stash destination already sits on the active route —
+/// a resolved loop circuit room (<see cref="LoopRunner.ResolveLoopRoomKeys"/>)
+/// or a marked Auto-Lair room (<see cref="AutoLairManager.IsMarked"/>) —
+/// the gate crossing is a no-op: this manager subscribes to
+/// <see cref="RoomTracker.StateChanged"/> and stashes in passing every
+/// time the character naturally walks through a marked stash room while a
+/// loop / lair runs. Banks always detour (a bank is never a route
+/// waypoint), and an off-route stash room still detours. A purely manual
+/// walk with no engine running never triggers a pass-through stash.
+/// </para>
+/// <para>
 /// Everything runs on the UI thread (<see cref="AutoWalkManager.Event"/>
 /// and the <see cref="CashManager.AutoDepositRequested"/> event both fire
 /// there), so no marshalling is needed. Single-flight: a second gate
@@ -111,6 +124,7 @@ public sealed class AutoDepositManager : IDisposable
 
         _cash.AutoDepositRequested += OnAutoDepositRequested;
         _walker.Event += OnWalkEvent;
+        _tracker.StateChanged += OnRoomEntered;
     }
 
     /// <summary>Bind the wire sender — typically the gate-wrapped engine
@@ -156,6 +170,18 @@ public sealed class AutoDepositManager : IDisposable
 
         bool destinationIsStash = IsStashRoom(destination);
 
+        // Pass-through: if the stash destination already sits on the active
+        // route, don't spend a dedicated detour — OnRoomEntered stashes it
+        // when the engine walks through on its own. Banks always detour;
+        // off-route stash rooms still detour.
+        if (destinationIsStash && IsOnActiveRoute(destination, resume, current.Key))
+        {
+            _log?.Info(LogCategory,
+                $"stash room {destination} on the active {resume.Kind} route — "
+                + "no detour, stashing on pass-through");
+            return;
+        }
+
         _busy = true;
         _resume = resume;
         _destination = destination;
@@ -175,6 +201,24 @@ public sealed class AutoDepositManager : IDisposable
             _log?.Warn(LogCategory, $"can't reach {destination} — resuming");
             Resume();
         }
+    }
+
+    /// <summary>
+    /// Pass-through stash trigger. Fires when the character walks into a
+    /// marked stash room while a loop / lair is running — stashes in
+    /// passing, no detour. Suppressed while a reroute is in flight
+    /// (<c>_busy</c>, where the arrival handler owns the stash) and when
+    /// no resumable engine is active (a purely manual walk never stashes).
+    /// </summary>
+    private void OnRoomEntered(RoomTransition t)
+    {
+        if (_busy) return;
+        if (t.NewRoom is not { } room) return;
+        if (t.PreviousRoom is { } prev && prev.Key.Equals(room.Key)) return;
+        if (!IsStashRoom(room.Key)) return;
+        if (SnapshotRunningEngine().Kind == ResumeKind.None) return;
+        _log?.Info(LogCategory, $"passed through stash room {room.Key} during automation — stashing");
+        _stash.ExecuteStash(room.Key);
     }
 
     private void OnWalkEvent(WalkEvent e)
@@ -237,7 +281,7 @@ public sealed class AutoDepositManager : IDisposable
     {
         CashSettings cash = _readCash();
         CurrencyHoldings held = _getSnapshot().Currency;
-        long keepValue = KeepValueInCopper(cash);
+        long keepValue = cash.KeepOnHandCopper();
         long depositValue = held.TotalCopperValue - keepValue;
         if (depositValue <= 0)
         {
@@ -250,21 +294,37 @@ public sealed class AutoDepositManager : IDisposable
         Deposited?.Invoke(depositValue);
     }
 
-    /// <summary>Total copper value of the per-currency keep-on-hand
-    /// floors — the slice of wealth we leave on the character.</summary>
-    private static long KeepValueInCopper(CashSettings c) =>
-        c.KeepCopperOnHand
-        + c.KeepSilverOnHand * 10
-        + c.KeepGoldOnHand * 100
-        + c.KeepPlatinumOnHand * 10000
-        + c.KeepRunicOnHand * 1000000;
-
     private bool IsStashRoom(RoomKey room)
     {
         if (_profile.Current?.StashRooms is not { } stashes) return false;
         foreach (RoomRef r in stashes)
             if (r.Map == room.Map && r.Room == room.Room) return true;
         return false;
+    }
+
+    /// <summary>
+    /// Whether <paramref name="room"/> is a room the running engine will
+    /// reach on its own — a resolved loop-circuit room, or a marked
+    /// Auto-Lair room. Such a room needs no detour: the pass-through
+    /// handler stashes it when the engine walks through.
+    /// </summary>
+    private bool IsOnActiveRoute(RoomKey room, ResumeTarget resume, RoomKey current)
+    {
+        switch (resume.Kind)
+        {
+            case ResumeKind.Lair:
+                // The lair engine roams among its marked rooms, so a marked
+                // stash room is guaranteed to be revisited.
+                return _autoLair.IsMarked(room);
+            case ResumeKind.Loop:
+                // The loop re-walks its resolved circuit each lap; membership
+                // means a guaranteed per-lap pass.
+                foreach (RoomKey k in _loopRunner.ResolveLoopRoomKeys(current))
+                    if (k.Equals(room)) return true;
+                return false;
+            default:
+                return false;
+        }
     }
 
     // ----- engine snapshot / stop / resume ---------------------------
@@ -321,6 +381,7 @@ public sealed class AutoDepositManager : IDisposable
         _disposed = true;
         _cash.AutoDepositRequested -= OnAutoDepositRequested;
         _walker.Event -= OnWalkEvent;
+        _tracker.StateChanged -= OnRoomEntered;
     }
 
     private enum DepositPhase

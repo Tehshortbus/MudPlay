@@ -74,6 +74,8 @@ public sealed class SpellReqLevelIndex
             }
         }
 
+        // Folded into the map — release the pinned raw Spells JsonDocument.
+        _cache.EvictTable("Spells");
         _byShort = map;
         return map;
     }

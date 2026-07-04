@@ -84,6 +84,49 @@ public sealed class PromptParserTests
     }
 
     [Fact]
+    public void StatScreenMax_SnapsMaxAbovePromptHighWaterMark()
+    {
+        var (scanner, state, parser) = Setup();
+        Feed(scanner, "[HP=240/MA=90]:");           // prompt learns a low HWM.
+        Assert.Equal(240, state.MaxHp);
+
+        parser.ApplyStatScreenMax(320, 140);         // stat screen is authoritative.
+        Assert.Equal(320, state.MaxHp);
+        Assert.Equal(140, state.MaxMa);
+    }
+
+    [Fact]
+    public void StatScreenMax_OverridesDownward_BecauseStatScreenIsTruth()
+    {
+        var (scanner, state, parser) = Setup();
+        Feed(scanner, "[HP=500/MA=200]:");           // a spuriously-high HWM.
+        parser.ApplyStatScreenMax(320, 140);
+        Assert.Equal(320, state.MaxHp);
+        Assert.Equal(140, state.MaxMa);
+    }
+
+    [Fact]
+    public void StatScreenMax_LaterLowHp_DoesNotDropTheMax()
+    {
+        var (scanner, state, parser) = Setup();
+        parser.ApplyStatScreenMax(320, 140);
+        Feed(scanner, "[HP=100/MA=30]:");            // a low current reading.
+        Assert.Equal(100, state.Hp);
+        Assert.Equal(320, state.MaxHp);              // max stays authoritative.
+        Assert.Equal(140, state.MaxMa);
+    }
+
+    [Fact]
+    public void StatScreenMax_NonPositive_LeavesLearnedMaxIntact()
+    {
+        var (scanner, state, parser) = Setup();
+        Feed(scanner, "[HP=320/MA=140]:");
+        parser.ApplyStatScreenMax(0, 0);             // failed / absent parse.
+        Assert.Equal(320, state.MaxHp);
+        Assert.Equal(140, state.MaxMa);
+    }
+
+    [Fact]
     public void NoPromptDataYet_HasPromptDataIsFalse()
     {
         var (_, state, _) = Setup();

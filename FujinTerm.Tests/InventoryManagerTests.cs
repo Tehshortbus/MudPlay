@@ -22,9 +22,12 @@ public sealed class InventoryManagerTests
         public LineExtractor Lines { get; }
         public int ChangedCount { get; private set; }
 
-        public Harness()
+        public Harness(
+            Func<string, int?>? itemWeight = null,
+            Func<string, string?>? slotResolver = null)
         {
-            Inv = new InventoryManager();
+            Inv = new InventoryManager(
+                log: null, itemWeightResolver: itemWeight, slotResolver: slotResolver);
             Lines = new LineExtractor(new TerminalEmulator(80, 24));
             Inv.AttachLineExtractor(Lines);
             Inv.Changed += () => ChangedCount++;
@@ -87,6 +90,42 @@ public sealed class InventoryManagerTests
         using Harness h = new();
         FeedFullInventory(h);
         Assert.Equal(1, h.ChangedCount);
+    }
+
+    [Fact]
+    public void FullParse_ReadiedLight_ParsedAsLitLightNotCarried()
+    {
+        using Harness h = new();
+
+        // Exact live capture: a lit lantern lists inline as "(Readied/239)".
+        h.Feed("You are carrying 2 platinum pieces, 38 gold crowns, 2 silver nobles, "
+             + "8 copper farthings, padded vest (Torso), padded pants (Legs), "
+             + "padded helm (Head), padded gloves (Hands), padded boots (Feet), "
+             + "lantern (Readied/239), quarterstaff (Two handed), dagger");
+        h.Feed("You have no keys.");
+        h.Feed("Wealth:    23828 copper farthings");
+        h.Feed("Encumbrance:    624/2880  -  Light  [21%]");
+
+        InventorySnapshot snap = h.Inv.Snapshot;
+        Assert.NotNull(snap.ReadiedLight);
+        ReadiedLight light = snap.ReadiedLight!.Value;
+        Assert.Equal("lantern", light.Name);
+        Assert.Equal(239, light.Readied);
+        Assert.Equal(TimeSpan.FromSeconds(239 * 30), light.RemainingTime);
+
+        // The lit light is not double-counted as a plain carried item; the
+        // unworn pack still holds the quarterstaff-less bits (dagger).
+        Assert.DoesNotContain(snap.CarriedItems, s => s.Contains("Readied", StringComparison.Ordinal));
+        Assert.DoesNotContain(snap.CarriedItems, s => s.Equals("lantern", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("dagger", snap.CarriedItems);
+    }
+
+    [Fact]
+    public void FullParse_NoReadiedLight_LeavesLightNull()
+    {
+        using Harness h = new();
+        FeedFullInventory(h);
+        Assert.Null(h.Inv.Snapshot.ReadiedLight);
     }
 
     [Theory]
@@ -455,6 +494,56 @@ public sealed class InventoryManagerTests
     }
 
     [Fact]
+    public void Equip_WeaponSwap_ReturnsDisplacedWeaponToCarried()
+    {
+        using Harness h = new();
+        // Worn quarterstaff + a carried dagger, mirroring the reported scenario.
+        h.Feed("You are carrying quarterstaff (Weapon Hand), dagger, 5 copper farthings.");
+        h.Feed("Wealth:    5 copper farthings");
+        h.Feed("Encumbrance:    60/2880  -  Light  [2%]");
+
+        // Wielding the dagger vacates the hand: the dagger leaves the pack for the
+        // hand and the displaced quarterstaff returns to the pack (not vanishes).
+        h.Feed("You are now holding dagger.");
+
+        Assert.Contains(Worn(h), e => e is { Name: "dagger", Slot: "Weapon Hand" });
+        Assert.DoesNotContain(Worn(h), e => e.Name == "quarterstaff");
+        Assert.Contains("quarterstaff", Carried(h));
+        Assert.DoesNotContain("dagger", Carried(h));
+    }
+
+    [Fact]
+    public void Equip_WeaponSwapBack_MovesBothWeaponsCorrectly()
+    {
+        using Harness h = new();
+        h.Feed("You are carrying quarterstaff (Weapon Hand), dagger, 5 copper farthings.");
+        h.Feed("Wealth:    5 copper farthings");
+        h.Feed("Encumbrance:    60/2880  -  Light  [2%]");
+
+        h.Feed("You are now holding dagger.");        // quarterstaff → pack
+        h.Feed("You are now holding quarterstaff.");  // dagger → pack, quarterstaff → hand
+
+        Assert.Single(Worn(h), e => e.Slot == "Weapon Hand");
+        Assert.Contains(Worn(h), e => e is { Name: "quarterstaff", Slot: "Weapon Hand" });
+        Assert.Contains("dagger", Carried(h));
+        Assert.DoesNotContain("quarterstaff", Carried(h));
+    }
+
+    [Fact]
+    public void Equip_SameWeaponReconfirmed_DoesNotDuplicateIntoCarried()
+    {
+        using Harness h = new();
+        FeedEquippedBaseline(h);   // quarterstaff already in hand
+
+        // Re-confirming the same weapon must not shove a phantom copy into the pack.
+        h.Feed("You are now holding quarterstaff.");
+
+        Assert.Single(Worn(h), e => e.Slot == "Weapon Hand");
+        Assert.Contains(Worn(h), e => e is { Name: "quarterstaff", Slot: "Weapon Hand" });
+        Assert.DoesNotContain("quarterstaff", Carried(h));
+    }
+
+    [Fact]
     public void Remove_WeaponReadied_ClearsWeaponHand()
     {
         using Harness h = new();
@@ -504,5 +593,423 @@ public sealed class InventoryManagerTests
 
         Assert.False(h.Inv.IsLoaded);
         Assert.Empty(Worn(h));
+    }
+
+    // ----- incremental carried-item get / drop / buy / sell ------------
+
+    // A baseline 'i' dump with one worn item (padded gloves) and one carried-
+    // but-unworn item (lantern), so the patches below have a real pack to edit.
+    private static void FeedCarriedBaseline(Harness h)
+    {
+        h.Feed("You are carrying padded gloves (Hands), lantern, 5 copper farthings.");
+        h.Feed("Wealth:    5 copper farthings");
+        h.Feed("Encumbrance:    50/2880  -  Light  [2%]");
+    }
+
+    private static IReadOnlyList<string> Carried(Harness h) => h.Inv.Snapshot.CarriedItems;
+
+    [Fact]
+    public void Get_AddsItemToCarried()
+    {
+        using Harness h = new();
+        FeedCarriedBaseline(h);
+
+        // MajorMUD's item-get confirmation is "You took X."
+        h.Feed("You took rusty dagger.");
+
+        Assert.Contains("rusty dagger", Carried(h));
+        Assert.Contains("lantern", Carried(h));   // baseline item untouched
+    }
+
+    // MajorMUD's actual drop confirmation is past tense ("You dropped X.").
+    [Fact]
+    public void Drop_RemovesItemFromCarried()
+    {
+        using Harness h = new();
+        FeedCarriedBaseline(h);
+
+        h.Feed("You dropped lantern.");
+
+        Assert.DoesNotContain("lantern", Carried(h));
+    }
+
+    // The present-tense phrasing is tolerated too, in case a realm uses it.
+    [Fact]
+    public void Drop_PresentTense_RemovesItemFromCarried()
+    {
+        using Harness h = new();
+        FeedCarriedBaseline(h);
+
+        h.Feed("You drop lantern.");
+
+        Assert.DoesNotContain("lantern", Carried(h));
+    }
+
+    [Fact]
+    public void Buy_AddsItemToCarried()
+    {
+        using Harness h = new();
+        FeedCarriedBaseline(h);
+
+        h.Feed("You bought torch for 5 copper farthings.");
+
+        Assert.Contains("torch", Carried(h));
+    }
+
+    [Fact]
+    public void Sell_RemovesItemFromCarried()
+    {
+        using Harness h = new();
+        FeedCarriedBaseline(h);
+
+        h.Feed("You sold lantern for 3 copper farthings.");
+
+        Assert.DoesNotContain("lantern", Carried(h));
+    }
+
+    [Fact]
+    public void Equip_MovesItemOutOfCarried()
+    {
+        using Harness h = new();
+        FeedCarriedBaseline(h);
+
+        // Wielding a carried weapon moves it from the pack to the hand — it must
+        // not linger in both lists.
+        h.Feed("You are now holding lantern.");
+
+        Assert.DoesNotContain("lantern", Carried(h));
+        Assert.Contains(Worn(h), e => e is { Name: "lantern", Slot: "Weapon Hand" });
+    }
+
+    [Fact]
+    public void Wear_MovesItemOutOfCarried()
+    {
+        using Harness h = new();
+        FeedCarriedBaseline(h);
+
+        h.Feed("You are now wearing lantern.");
+
+        Assert.DoesNotContain("lantern", Carried(h));
+    }
+
+    [Fact]
+    public void Remove_MovesWornItemIntoCarried()
+    {
+        using Harness h = new();
+        FeedCarriedBaseline(h);
+
+        // A removed worn piece returns to the pack as carried-but-unworn.
+        h.Feed("You have removed padded gloves.");
+
+        Assert.Contains("padded gloves", Carried(h));
+        Assert.DoesNotContain(Worn(h), e => e.Name == "padded gloves");
+    }
+
+    [Fact]
+    public void GetItem_DoesNotCollideWithCurrencyPickup()
+    {
+        using Harness h = new();
+        FeedCarriedBaseline(h);
+
+        // Past-tense currency line must not land in the carried item list.
+        h.Feed("You picked up 30 gold crowns.");
+
+        Assert.DoesNotContain(Carried(h), c => c.Contains("gold"));
+        Assert.Equal(30, h.Inv.Snapshot.Currency.Gold);
+    }
+
+    [Fact]
+    public void RemoveWeapon_MovesWeaponIntoCarried()
+    {
+        using Harness h = new();
+        // Baseline: a worn weapon (quarterstaff) plus carried gear.
+        h.Feed("You are carrying quarterstaff (Weapon Hand), padded gloves (Hands), lantern, 5 copper farthings.");
+        h.Feed("Wealth:    5 copper farthings");
+        h.Feed("Encumbrance:    60/2880  -  Light  [2%]");
+
+        // Weapon removal is unnamed, so the manager reads the outgoing weapon's
+        // name from the worn set and returns it to the pack.
+        h.Feed("You now have no weapon readied.");
+
+        Assert.DoesNotContain(Worn(h), e => e.Slot == "Weapon Hand");
+        Assert.Contains("quarterstaff", Carried(h));
+    }
+
+    [Fact]
+    public void CarriedPatch_BeforeBaseline_IsIgnored()
+    {
+        using Harness h = new();
+
+        // No 'i' parsed yet — adding to an empty pack would imply it holds only
+        // this one item, so the line is consumed but not applied.
+        h.Feed("You took rusty dagger.");
+
+        Assert.False(h.Inv.IsLoaded);
+        Assert.Empty(Carried(h));
+    }
+
+    // ----- incremental give / receive ----------------------------------
+
+    [Fact]
+    public void GiveAway_RemovesItemFromCarried()
+    {
+        using Harness h = new();
+        FeedCarriedBaseline(h);   // holds lantern
+
+        h.Feed("You just gave lantern to Bob.");
+
+        Assert.DoesNotContain("lantern", Carried(h));
+    }
+
+    // A multi-word recipient (an NPC) must not eat into the greedy item group.
+    [Fact]
+    public void GiveAway_MultiWordRecipient_RemovesItem()
+    {
+        using Harness h = new();
+        FeedCarriedBaseline(h);
+
+        h.Feed("You just gave lantern to the old man.");
+
+        Assert.DoesNotContain("lantern", Carried(h));
+    }
+
+    [Fact]
+    public void Receive_AddsItemToCarried()
+    {
+        using Harness h = new();
+        FeedCarriedBaseline(h);
+
+        h.Feed("Bob just gave you rusty dagger.");
+
+        Assert.Contains("rusty dagger", Carried(h));
+        Assert.Contains("lantern", Carried(h));   // baseline item untouched
+    }
+
+    // An NPC / quest giver names more than one word before "just gave you".
+    [Fact]
+    public void Receive_MultiWordGiver_AddsItem()
+    {
+        using Harness h = new();
+        FeedCarriedBaseline(h);
+
+        h.Feed("The old man just gave you a brass key.");
+
+        Assert.Contains("a brass key", Carried(h));
+    }
+
+    // Giving coins adjusts the purse, not the pack — no phantom carried item.
+    [Fact]
+    public void GiveAway_Coins_AdjustsCurrencyNotCarried()
+    {
+        using Harness h = new();
+        h.Feed("You are carrying lantern, 30 gold crowns.");
+        h.Feed("Wealth:    3000 copper farthings");
+        h.Feed("Encumbrance:    50/2880  -  Light  [2%]");
+
+        h.Feed("You just gave 10 gold crowns to Bob.");
+
+        Assert.Equal(20, h.Inv.Snapshot.Currency.Gold);
+        Assert.DoesNotContain(Carried(h), c => c.Contains("gold"));
+    }
+
+    [Fact]
+    public void Receive_Coins_AdjustsCurrencyNotCarried()
+    {
+        using Harness h = new();
+        FeedCarriedBaseline(h);   // 5 copper
+
+        h.Feed("Bob just gave you 30 gold crowns.");
+
+        Assert.Equal(30, h.Inv.Snapshot.Currency.Gold);
+        Assert.DoesNotContain(Carried(h), c => c.Contains("gold"));
+    }
+
+    // "You don't have X to give." is a bounced give — nothing changes.
+    [Fact]
+    public void GiveFailed_LeavesCarriedUnchanged()
+    {
+        using Harness h = new();
+        FeedCarriedBaseline(h);
+
+        h.Feed("You don't have torch to give.");
+
+        Assert.Contains("lantern", Carried(h));
+        Assert.Single(Carried(h));
+    }
+
+    // ----- incremental item-weight encumbrance -------------------------
+
+    // Stands in for the game-data Encum lookup: a fixed name→weight table.
+    // Unlisted names resolve to null, exercising the unknown-item path.
+    private static int? TestWeight(string name) => name switch
+    {
+        "torch" => 40,
+        "lantern" => 30,
+        "broadsword" => 150,
+        _ => null,
+    };
+
+    private static int Weight(Harness h) => h.Inv.Snapshot.Encumbrance.CurrentWeight;
+
+    [Fact]
+    public void Get_AddsItemWeightToEncumbrance()
+    {
+        using Harness h = new(TestWeight);
+        FeedCarriedBaseline(h);   // 50/2880
+
+        h.Feed("You took torch.");
+
+        Assert.Equal(90, Weight(h));   // 50 + 40
+    }
+
+    [Fact]
+    public void Drop_SubtractsItemWeightFromEncumbrance()
+    {
+        using Harness h = new(TestWeight);
+        FeedCarriedBaseline(h);   // 50/2880, holds lantern (30)
+
+        h.Feed("You dropped lantern.");
+
+        Assert.Equal(20, Weight(h));   // 50 - 30
+    }
+
+    [Fact]
+    public void Buy_AddsItemWeightToEncumbrance()
+    {
+        using Harness h = new(TestWeight);
+        FeedCarriedBaseline(h);
+
+        // "for nothing" so the purchase price moves no coins — isolates the
+        // item-weight change from the coin-weight change buying normally causes.
+        h.Feed("You bought broadsword for nothing.");
+
+        Assert.Equal(200, Weight(h));   // 50 + 150
+    }
+
+    [Fact]
+    public void Sell_SubtractsItemWeightFromEncumbrance()
+    {
+        using Harness h = new(TestWeight);
+        // 3 copper + a 2-copper sale = 5 copper: both sides floor to 1
+        // coin-weight unit, so the sale's coin weight is a no-op and only the
+        // lantern's item weight moves.
+        h.Feed("You are carrying lantern, 3 copper farthings.");
+        h.Feed("Wealth:    3 copper farthings");
+        h.Feed("Encumbrance:    50/2880  -  Light  [2%]");
+
+        h.Feed("You sold lantern for 2 copper farthings.");
+
+        Assert.Equal(20, Weight(h));   // 50 - 30
+    }
+
+    [Fact]
+    public void Equip_DoesNotChangeTotalWeight()
+    {
+        using Harness h = new(TestWeight);
+        FeedCarriedBaseline(h);   // holds lantern
+
+        // Wielding an item already on your person doesn't change carried weight —
+        // it moves between lists, not on/off the body.
+        h.Feed("You are now holding lantern.");
+
+        Assert.Equal(50, Weight(h));
+    }
+
+    [Fact]
+    public void Get_UnknownItem_LeavesWeightUntouched()
+    {
+        using Harness h = new(TestWeight);
+        FeedCarriedBaseline(h);
+
+        // Not in the weight table — the carried list still updates, but the
+        // encumbrance estimate holds until the next 'i' dump re-bases it.
+        h.Feed("You took mysterious orb.");
+
+        Assert.Contains("mysterious orb", Carried(h));
+        Assert.Equal(50, Weight(h));
+    }
+
+    [Fact]
+    public void Drop_ClampsWeightAtZero()
+    {
+        using Harness h = new(TestWeight);
+        // A light 10-unit pack holding a heavy broadsword (150).
+        h.Feed("You are carrying broadsword, 5 copper farthings.");
+        h.Feed("Wealth:    5 copper farthings");
+        h.Feed("Encumbrance:    10/2880  -  None  [0%]");
+
+        h.Feed("You dropped broadsword.");
+
+        // 10 - 150 floors at 0 rather than going negative.
+        Assert.Equal(0, Weight(h));
+    }
+
+    [Fact]
+    public void ItemWeight_RecomputesPercentageAndCategory()
+    {
+        using Harness h = new(TestWeight);
+        // Small max so a single heavy item visibly moves the bracket.
+        h.Feed("You are carrying 5 copper farthings.");
+        h.Feed("Wealth:    5 copper farthings");
+        h.Feed("Encumbrance:    10/200  -  None  [5%]");
+
+        h.Feed("You took broadsword.");   // +150 → 160/200 = 80%
+
+        EncumbranceReading e = h.Inv.Snapshot.Encumbrance;
+        Assert.Equal(160, e.CurrentWeight);
+        Assert.Equal(80, e.Percentage);
+        Assert.Equal(EncumbranceLevel.Heavy, e.Category);
+    }
+
+    [Fact]
+    public void ItemWeight_NoResolver_LeavesEncumbranceUntouched()
+    {
+        using Harness h = new();   // no weight resolver wired
+        FeedCarriedBaseline(h);
+
+        h.Feed("You took torch.");
+
+        Assert.Contains("torch", Carried(h));
+        Assert.Equal(50, Weight(h));
+    }
+
+    // ----- incremental wear-slot resolution ----------------------------
+
+    [Fact]
+    public void Wear_ResolvesRealSlotFromGameData()
+    {
+        // The "You are now wearing X." line names no slot; the resolver supplies
+        // the item's true one so the worn set — and "Snapshot Current" — file it
+        // under "Torso" rather than a generic bucket.
+        using Harness h = new(slotResolver: name => name == "padded vest" ? "Torso" : null);
+        FeedCarriedBaseline(h);
+
+        h.Feed("You are now wearing padded vest.");
+
+        Assert.Contains(Worn(h), e => e is { Name: "padded vest", Slot: "Torso" });
+    }
+
+    [Fact]
+    public void Wear_NoResolver_FallsBackToGenericWornSlot()
+    {
+        using Harness h = new();   // no slot resolver wired
+        FeedCarriedBaseline(h);
+
+        h.Feed("You are now wearing padded vest.");
+
+        // Unresolved slots keep the generic placeholder — the next 'i' dump
+        // restores the exact placement.
+        Assert.Contains(Worn(h), e => e is { Name: "padded vest", Slot: "Worn" });
+    }
+
+    [Fact]
+    public void Wear_UnknownItem_FallsBackToGenericWornSlot()
+    {
+        using Harness h = new(slotResolver: _ => null);   // resolver knows nothing
+        FeedCarriedBaseline(h);
+
+        h.Feed("You are now wearing padded vest.");
+
+        Assert.Contains(Worn(h), e => e is { Name: "padded vest", Slot: "Worn" });
     }
 }

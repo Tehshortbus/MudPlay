@@ -121,6 +121,22 @@ public sealed class LocalInputBuffer
     }
 
     /// <summary>
+    /// Replace the whole buffer with <paramref name="text"/> (clamped to
+    /// <see cref="MaxLength"/>), then repaint. Used by command-history
+    /// recall: Up / Down swap the live line for a previously-sent command
+    /// wholesale rather than character by character. Always fires
+    /// <see cref="Changed"/> so recalling an empty line still erases the
+    /// previously-shown text from the overlay.
+    /// </summary>
+    public void Set(string? text)
+    {
+        _buf.Length = 0;
+        if (!string.IsNullOrEmpty(text))
+            _buf.Append(text, 0, Math.Min(MaxLength, text.Length));
+        Changed?.Invoke();
+    }
+
+    /// <summary>
     /// Drop all buffered chars without producing wire bytes. Used by
     /// connection swaps + tests; the Enter path uses
     /// <see cref="FlushBytes"/> instead.

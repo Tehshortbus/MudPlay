@@ -7,7 +7,6 @@ using System.Linq;
 using System.Text.Json;
 using Avalonia.Controls;
 using CommunityToolkit.Mvvm.ComponentModel;
-using CommunityToolkit.Mvvm.Input;
 using FujinTerm.Game;
 using FujinTerm.Game.Calculators;
 using FujinTerm.Game.GameData;
@@ -32,10 +31,13 @@ namespace FujinTerm.ViewModels.CharacterWorkshop;
 /// Backstab only when the character has stealth.</item>
 /// <item>Quest Bonuses — a flat readout of every completed quest's permanent stat
 /// reward, aggregated by ability. Empty when no completed quest grants a bonus.</item>
+/// <item>Inventory — the full carry list harvested from the last <c>i</c> dump:
+/// every worn item (with its slot) and every carried-but-unworn item.</item>
 /// </list>
-/// Recomputes whenever the live <see cref="PlayerStats"/> snapshot changes,
-/// inventory updates, or the completed-quest set changes; the Reset / Refresh
-/// buttons force a re-pull.
+/// Every readout recomputes live — base stats when the <c>stat</c> snapshot
+/// changes, encumbrance / currency / inventory when the <c>i</c> dump changes,
+/// alignment on a <c>who</c> refresh, quest bonuses when the completed-quest set
+/// changes. There is no manual refresh; the panel always mirrors the live state.
 /// </summary>
 public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewModel
 {
@@ -132,47 +134,27 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
     /// </summary>
     [ObservableProperty] private bool _alignmentStale;
 
-    // ----- Box D: monster matchup ----------------------------------------
-    /// <summary>
-    /// Typeahead source — one entry per monster, labelled <c>"name (#number)"</c>
-    /// so duplicate-named monsters stay distinguishable and the user can read off
-    /// the exact record number.
-    /// </summary>
-    public ObservableCollection<string> MonsterNames { get; } = new();
-    /// <summary>Maps each typeahead label back to its monster Number for exact-record lookup.</summary>
-    private readonly Dictionary<string, int> _monsterNumberByLabel = new(StringComparer.Ordinal);
-    /// <summary>The label the user picked; null/empty clears the matchup readout.</summary>
-    [ObservableProperty] private string? _selectedMonsterName;
-    /// <summary>True once a valid monster row is resolved — gates the whole Box D readout.</summary>
-    [ObservableProperty] private bool _hasMatchup;
-    // Player → monster.
-    [ObservableProperty] private string _matchupPlayerHit = "—";
-    [ObservableProperty] private string _matchupPlayerDamage = "—";
-    [ObservableProperty] private string _matchupSwings = "—";
-    [ObservableProperty] private string _matchupDps = "—";
-    [ObservableProperty] private string _matchupRounds = "—";
-    /// <summary>False when unarmed — hides the DPS / rounds-to-kill rows that need a weapon.</summary>
-    [ObservableProperty] private bool _matchupHasWeapon;
-    // Monster → player.
-    [ObservableProperty] private string _matchupMonsterHit = "—";
-    [ObservableProperty] private string _matchupMonsterDamage = "—";
-    /// <summary>False when the monster has no physical attack slot to preview.</summary>
-    [ObservableProperty] private bool _matchupMonsterHasAttack;
+    // ----- Box A: carry weight + carried currency ------------------------
+    // Both are inventory-sourced (InventoryManager's snapshot), refreshed live
+    // on every `i` dump or incremental coin line — no manual re-pull needed.
+    /// <summary>Current / max carry weight from the last inventory reading ("cur / max").</summary>
+    [ObservableProperty] private string _encumbrance = "—";
+    /// <summary>Per-denomination coins currently carried (nonzero only), or "none".</summary>
+    [ObservableProperty] private string _currencyHeld = "—";
+    /// <summary>Consolidated wealth in copper farthings (matches the game's <c>Wealth:</c> line).</summary>
+    [ObservableProperty] private string _totalWealth = "—";
 
-    // Player-side values captured by ComputeDerivedCombat so the matchup can be
-    // recomputed (on monster pick or stat/gear change) without re-aggregating.
-    private RealmType _mRealm;
-    private int _mNormalAccuracy;
-    private int _mAvgWeaponDamage;
-    private double _mSwingsPerRound;
-    private bool _mHasWeapon;
-    private int _mArmourClass;
-    private int _mDodge;
-    private int _mProtEvil;
-    private int _mProtGood;
-    private int _mDamageResist;
-    private int _mCritChance;
-    private int _mAvgCritDamage;
+    // ----- Inventory: the full carry list from the last `i` dump ---------
+    /// <summary>Worn items ("name (Slot)") harvested from the last inventory dump.</summary>
+    public ObservableCollection<string> EquippedItems { get; } = new();
+    /// <summary>Carried-but-unworn item names harvested from the last inventory dump.</summary>
+    public ObservableCollection<string> CarriedItems { get; } = new();
+    /// <summary>True once at least one worn item is known — gates the equipped list.</summary>
+    [ObservableProperty] private bool _hasEquipped;
+    /// <summary>True once at least one carried item is known — gates the carried list.</summary>
+    [ObservableProperty] private bool _hasCarried;
+    /// <summary>False until the first <c>i</c> dump is parsed — drives the "type i to load" hint.</summary>
+    [ObservableProperty] private bool _inventoryLoaded;
 
     public CharacterInfoSectionViewModel(PlayerStats stats, GameDataCache gameData, InventoryManager inventory, PlayerDatabase playerDb, AlignmentTracker alignmentTracker, QuestBonusState questBonuses)
     {
@@ -194,18 +176,19 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
         _playerDb.Players.CollectionChanged += OnPlayersChanged;
         _alignmentTracker.StaleChanged += OnAlignmentStaleChanged;
         _questBonuses.Changed += OnQuestBonusesChanged;
-        EnsureMonsterNames();
         Refresh();
     }
 
-    /// <summary>Re-pull live base stats, re-aggregate gear, recompute derived combat.</summary>
-    [RelayCommand]
-    public void Refresh()
+    // Re-pull every live readout: base stats + derived combat from the stat
+    // snapshot, alignment from `who`, and wealth + full carry list from the
+    // last `i` dump. Wired to every source's change event — no manual refresh.
+    private void Refresh()
     {
         RefreshBaseStats();
         RefreshDerived();
         RefreshAlignment();
-        RefreshMatchup();
+        RefreshWealth();
+        RefreshInventory();
     }
 
     // ----- Box A ----------------------------------------------------------
@@ -395,65 +378,29 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
             KickAccuracy = (maBaseAccy + t.PlusKickAccy - kickAccyPenalty).ToString(CultureInfo.InvariantCulture);
             JumpKickAccuracy = (maBaseAccy + t.PlusJumpKickAccy - jumpKickAccyPenalty).ToString(CultureInfo.InvariantCulture);
 
-            PunchDamage = MARange(MudAttackType.Punch, realm, level, maSkill, str, t.PlusMaxDamage, t.PlusPunchDmg);
-            KickDamage = MARange(MudAttackType.Kick, realm, level, maSkill, str, t.PlusMaxDamage, t.PlusKickDmg);
-            JumpKickDamage = MARange(MudAttackType.Jumpkick, realm, level, maSkill, str, t.PlusMaxDamage, t.PlusJumpKickDmg);
+            // The damage formula takes MME's nMAPlusSkill — the item-granted
+            // per-attack MA +skill bonus, floored to 1 by its Calc-Combat toggle —
+            // NOT the Martial Arts skill stat (that stat drives accuracy above, and
+            // gates these rows on/off, but never the damage magnitude). No stock
+            // ability grants a +MA-skill bonus, so 1 is the value MME uses.
+            const int maPlusSkill = 1;
+            PunchDamage = MARange(MudAttackType.Punch, realm, level, maPlusSkill, str, t.PlusMaxDamage, t.PlusPunchDmg);
+            KickDamage = MARange(MudAttackType.Kick, realm, level, maPlusSkill, str, t.PlusMaxDamage, t.PlusKickDmg);
+            JumpKickDamage = MARange(MudAttackType.Jumpkick, realm, level, maPlusSkill, str, t.PlusMaxDamage, t.PlusJumpKickDmg);
         }
         else
         {
             PunchAccuracy = KickAccuracy = JumpKickAccuracy = "—";
             PunchDamage = KickDamage = JumpKickDamage = "—";
         }
-
-        CapturePlayerMatchupInputs(t, realm, level, nCombatLevel, str, agi, intel, chm, encumCur, encumMax);
     }
 
-    private static string MARange(MudAttackType type, RealmType realm, int level, int maSkill, int str,
+    private static string MARange(MudAttackType type, RealmType realm, int level, int maPlusSkill, int str,
                                   int plusMaxDamage, int maPlusDamage)
     {
         MeleeDamageResult d = CombatCalculator.CalcMartialArtsDamage(
-            type, realm, level, maSkill, str, plusMaxDamage, maPlusDamage);
+            type, realm, level, maPlusSkill, str, plusMaxDamage, maPlusDamage);
         return string.Create(CultureInfo.InvariantCulture, $"{d.MinDamage}-{d.MaxDamage}");
-    }
-
-    // Snapshot the player-side numbers the monster matchup needs so Box D can
-    // recompute against any selected monster without re-aggregating gear.
-    private void CapturePlayerMatchupInputs(EquipmentStatSummary t, RealmType realm,
-                                            int level, int nCombatLevel,
-                                            int str, int agi, int intel, int chm,
-                                            int encumCur, int encumMax)
-    {
-        _mRealm = realm;
-        _mNormalAccuracy = (level > 0 && nCombatLevel > 0)
-            ? CombatCalculator.CalcAccuracy(MudAttackType.Normal, realm, level, nCombatLevel,
-                str, agi, intel, chm, t.TotalWornAccy,
-                realm == RealmType.ParaMud ? t.PlusAccuracy : t.MaxSingleAbil22,
-                encumCur, encumMax, t.WeaponStrReq)
-            : 0;
-
-        _mHasWeapon = t.WeaponMax > 0;
-        MeleeDamageResult dmg = CombatCalculator.CalcMeleeDamage(
-            MudAttackType.Normal, realm, str, t.WeaponMin, t.WeaponMax, t.PlusMaxDamage);
-        _mAvgWeaponDamage = _mHasWeapon ? (dmg.MinDamage + dmg.MaxDamage) / 2 : 0;
-
-        SwingCalcResult swings = CombatCalculator.CalcSwings(
-            nCombatLevel, level, t.WeaponSpeed, agi, str, t.WeaponStrReq,
-            encumCur, encumMax, realmType: realm);
-        _mSwingsPerRound = swings.RawSwings;
-
-        // Critical hits fold into DPS: gear/quest crit (abil 58) + the
-        // Quick-and-Deadly bonus (only when STR meets the weapon's requirement,
-        // matching CalculateAttack), then diminishing returns. A crit averages
-        // 3× the normal-attack max damage.
-        int qnd = (t.WeaponStrReq <= 0 || str >= t.WeaponStrReq) ? swings.QnDCritBonus : 0;
-        _mCritChance = _mHasWeapon ? CombatCalculator.CalcCritChance(t.PlusCrits, qnd, realm) : 0;
-        _mAvgCritDamage = _mHasWeapon ? dmg.MaxDamage * 3 : 0;
-
-        _mArmourClass = _stats.ArmourClass;
-        _mDodge = CombatCalculator.CalcDodge(level, agi, chm, t.PlusDodge, encumCur, encumMax);
-        _mProtEvil = t.PlusProtEvil;
-        _mProtGood = t.PlusProtGood;
-        _mDamageResist = (int)System.Math.Round(t.PlusDR, System.MidpointRounding.AwayFromZero);
     }
 
     private static string Acc(MudAttackType type, RealmType realm, int level, int nCombatLevel,
@@ -503,140 +450,61 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
         Alignment = string.IsNullOrEmpty(word) ? "—" : word;
     }
 
-    // ----- Box D: monster matchup -----------------------------------------
+    // ----- Box A: carry weight + carried currency -------------------------
 
-    // Populate the typeahead list once from the active set. Cheap to retry if
-    // the set wasn't loaded at construction (no monsters yet).
-    private void EnsureMonsterNames()
+    // Encumbrance + currency both ride the same InventoryManager snapshot, so
+    // they refresh together on every `i` dump or incremental coin line.
+    private void RefreshWealth()
     {
-        if (MonsterNames.Count > 0) return;
-        JsonDocument? doc = _gameData.GetRawTable("Monsters");
-        if (doc is null) return;
+        InventorySnapshot snap = _inventory.Snapshot;
 
-        foreach (JsonElement row in doc.RootElement.EnumerateArray())
-        {
-            if (!row.TryGetProperty("Name", out JsonElement nameEl)) continue;
-            if (nameEl.ValueKind != JsonValueKind.String) continue;
-            string? name = nameEl.GetString();
-            if (string.IsNullOrEmpty(name)) continue;
+        EncumbranceReading enc = snap.Encumbrance;
+        Encumbrance = enc.MaxWeight > 0
+            ? string.Create(CultureInfo.InvariantCulture, $"{enc.CurrentWeight} / {enc.MaxWeight}")
+            : "—";
 
-            int number = row.TryGetProperty("Number", out JsonElement numEl)
-                         && numEl.ValueKind == JsonValueKind.Number && numEl.TryGetInt32(out int n)
-                ? n : 0;
-            string label = string.Create(CultureInfo.InvariantCulture, $"{name} (#{number})");
-            MonsterNames.Add(label);
-            _monsterNumberByLabel[label] = number;
-        }
+        CurrencyHoldings coins = snap.Currency;
+        CurrencyHeld = FormatCoins(coins);
+        // The wealth line mirrors the game's own "Wealth:  N copper farthings"
+        // summary — the consolidated value in the base denomination, ungrouped
+        // like the game (no thousands separator) and not decomposed (the Coins
+        // line above carries the per-coin breakdown).
+        TotalWealth = coins.TotalCopperValue > 0
+            ? string.Create(CultureInfo.InvariantCulture, $"{coins.TotalCopperValue} copper farthings")
+            : "—";
     }
 
-    // Resolve the exact monster record by its Number — names aren't unique, so
-    // the typeahead label carries the number and we look up against it.
-    private JsonElement? FindMonsterRowByNumber(int number)
+    // Per-denomination coins currently carried, high → low, nonzero only.
+    private static string FormatCoins(CurrencyHoldings c)
     {
-        JsonDocument? doc = _gameData.GetRawTable("Monsters");
-        if (doc is null) return null;
-        foreach (JsonElement row in doc.RootElement.EnumerateArray())
-        {
-            if (row.TryGetProperty("Number", out JsonElement n)
-                && n.ValueKind == JsonValueKind.Number && n.TryGetInt32(out int v) && v == number)
-                return row;
-        }
-        return null;
+        var parts = new List<string>(5);
+        if (c.Runic > 0) parts.Add($"{c.Runic:N0} runic");
+        if (c.Platinum > 0) parts.Add($"{c.Platinum:N0} platinum");
+        if (c.Gold > 0) parts.Add($"{c.Gold:N0} gold");
+        if (c.Silver > 0) parts.Add($"{c.Silver:N0} silver");
+        if (c.Copper > 0) parts.Add($"{c.Copper:N0} copper");
+        return parts.Count > 0 ? string.Join(", ", parts) : "none";
     }
 
-    partial void OnSelectedMonsterNameChanged(string? value) => RefreshMatchup();
+    // ----- Inventory: the full carry list from the last `i` dump ----------
 
-    private void RefreshMatchup()
+    private void RefreshInventory()
     {
-        EnsureMonsterNames();
+        InventorySnapshot snap = _inventory.Snapshot;
 
-        if (string.IsNullOrEmpty(SelectedMonsterName)
-            || !_monsterNumberByLabel.TryGetValue(SelectedMonsterName, out int monsterNumber))
-        {
-            HasMatchup = false;
-            return;
-        }
+        EquippedItems.Clear();
+        foreach (EquippedItem item in snap.EquippedItems)
+            EquippedItems.Add(string.IsNullOrEmpty(item.Slot)
+                ? item.Name
+                : string.Create(CultureInfo.InvariantCulture, $"{item.Name} ({item.Slot})"));
 
-        JsonElement? rowOpt = FindMonsterRowByNumber(monsterNumber);
-        if (rowOpt is not JsonElement row)
-        {
-            HasMatchup = false;
-            return;
-        }
+        CarriedItems.Clear();
+        foreach (string name in snap.CarriedItems)
+            CarriedItems.Add(name);
 
-        int align = GetInt(row, "Align");
-        bool isEvil = align is 1 or 2 or 5 or 6;
-        bool isGood = align is 0 or 4;
-
-        // Primary physical attack = first slot (0..4) with AttType 1 (melee) or
-        // 3 (rob). For those, AttAcc / AttMin / AttMax are numeric; for spell
-        // slots (type 2) those columns are spell metadata, so we skip them.
-        bool hasPhysical = false;
-        int attackAcc = 0, attackAvg = 0;
-        for (int i = 0; i < 5; i++)
-        {
-            int type = GetInt(row, $"AttType-{i}");
-            if (type is not (1 or 3)) continue;
-            attackAcc = GetInt(row, $"AttAcc-{i}");
-            int min = GetInt(row, $"AttMin-{i}");
-            int max = GetInt(row, $"AttMax-{i}");
-            attackAvg = (min + max) / 2;
-            hasPhysical = true;
-            break;
-        }
-
-        var monster = new MonsterMatchupProfile(
-            ArmourClass: GetInt(row, "ArmourClass"),
-            DamageResist: GetInt(row, "DamageResist"),
-            Hp: GetInt(row, "HP"),
-            HasPhysicalAttack: hasPhysical,
-            AttackAccuracy: attackAcc,
-            AvgAttackDamage: attackAvg,
-            IsEvil: isEvil,
-            IsGood: isGood);
-
-        var player = new PlayerMatchupProfile(
-            Realm: _mRealm,
-            NormalAccuracy: _mNormalAccuracy,
-            AvgWeaponDamage: _mAvgWeaponDamage,
-            SwingsPerRound: _mSwingsPerRound,
-            HasWeapon: _mHasWeapon,
-            ArmourClass: _mArmourClass,
-            Dodge: _mDodge,
-            ProtEvil: _mProtEvil,
-            ProtGood: _mProtGood,
-            DamageResist: _mDamageResist,
-            CritChancePercent: _mCritChance,
-            AvgCritDamage: _mAvgCritDamage);
-
-        MonsterMatchupResult r = MonsterMatchupCalculator.Compute(player, monster);
-
-        MatchupHasWeapon = r.HasWeapon;
-        MatchupPlayerHit = $"{r.PlayerHitPercent}%";
-        MatchupPlayerDamage = $"{r.PlayerDamagePerHit} / hit";
-        MatchupSwings = r.HasWeapon
-            ? r.PlayerSwingsPerRound.ToString("0.0", CultureInfo.InvariantCulture)
-            : "—";
-        MatchupDps = r.HasWeapon
-            ? r.PlayerDps.ToString("0.0", CultureInfo.InvariantCulture)
-            : "—";
-        MatchupRounds = r.RoundsToKill > 0
-            ? r.RoundsToKill.ToString(CultureInfo.InvariantCulture)
-            : "—";
-
-        MatchupMonsterHasAttack = r.MonsterHasPhysicalAttack;
-        if (r.MonsterHasPhysicalAttack)
-        {
-            MatchupMonsterHit = $"{r.MonsterHitPercent}%";
-            MatchupMonsterDamage = $"{r.MonsterDamagePerHit} / hit";
-        }
-        else
-        {
-            MatchupMonsterHit = "N/A";
-            MatchupMonsterDamage = "N/A";
-        }
-
-        HasMatchup = true;
+        HasEquipped = EquippedItems.Count > 0;
+        HasCarried = CarriedItems.Count > 0;
+        InventoryLoaded = _inventory.IsLoaded;
     }
 
     private static string Display(string value) => string.IsNullOrEmpty(value) ? "—" : value;
@@ -649,10 +517,13 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
     }
 
     private void OnStatsChanged(object? sender, PropertyChangedEventArgs e) => Refresh();
+    // An `i` dump (or incremental coin/item line) landed — refold gear into
+    // derived combat and re-pull wealth + the full carry list.
     private void OnInventoryChanged()
     {
         RefreshDerived();
-        RefreshMatchup();
+        RefreshWealth();
+        RefreshInventory();
     }
     private void OnPlayersChanged(object? sender, NotifyCollectionChangedEventArgs e) => RefreshAlignment();
     // Dark-cloud line fired (or a `who` cleared it) — just sync the flag; the
@@ -660,12 +531,8 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
     private void OnAlignmentStaleChanged() => AlignmentStale = _alignmentTracker.IsStale;
 
     // The Quest Status tab republished the completed-quest bonus set — refold it
-    // into derived combat and the matchup (which both consume the combined aggregate).
-    private void OnQuestBonusesChanged()
-    {
-        RefreshDerived();
-        RefreshMatchup();
-    }
+    // into derived combat (which consumes the combined aggregate).
+    private void OnQuestBonusesChanged() => RefreshDerived();
 
     public override void Dispose()
     {

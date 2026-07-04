@@ -355,12 +355,17 @@
                         <TextBlock Grid.Column="2" Classes="dim" Text="—" HorizontalAlignment="Right"/>
                     </Grid>
 
-                    <Button Content="Reset session"
-                            Command="{Binding ResetCommand}"
-                            HorizontalAlignment="Left"
-                            Margin="0,8,0,0"
-                            FontSize="11"
-                            ToolTip.Tip="Wipe every session counter and restart the clocks. Counters also reset automatically on connect."/>
+                    <StackPanel Orientation="Horizontal" Spacing="6"
+                                HorizontalAlignment="Left" Margin="0,8,0,0">
+                        <Button Content="Reset session"
+                                Command="{Binding ResetCommand}"
+                                FontSize="11"
+                                ToolTip.Tip="Wipe every session counter and restart the clocks. Counters also reset automatically on connect."/>
+                        <Button Content="Transaction history"
+                                Command="{Binding OpenTransactionHistoryCommand}"
+                                FontSize="11"
+                                ToolTip.Tip="Bank deposits and stash-room hides recorded this session — the time, the store, and what was put away."/>
+                    </StackPanel>
                 </StackPanel>
             </Expander>
 

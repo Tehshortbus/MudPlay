@@ -24,12 +24,18 @@ namespace FujinTerm.Game.Inventory;
 /// pair with <see cref="InventoryManager.IsLoaded"/> to tell "empty purse"
 /// from "haven't parsed an <c>i</c> yet".
 /// </param>
+/// <param name="ReadiedLight">
+/// The light source currently lit, if the dump listed one as
+/// <c>… (Readied/N)</c>; <c>null</c> when nothing is readied. A readied light
+/// is reported here, not in <see cref="CarriedItems"/>.
+/// </param>
 public readonly record struct InventorySnapshot(
     CurrencyHoldings Currency,
     EncumbranceReading Encumbrance,
     System.Collections.Generic.IReadOnlyList<EquippedItem> EquippedItems,
     System.Collections.Generic.IReadOnlyList<string> CarriedItems,
-    System.DateTimeOffset LastUpdated)
+    System.DateTimeOffset LastUpdated,
+    ReadiedLight? ReadiedLight = null)
 {
     /// <summary>Never-observed snapshot.</summary>
     public static InventorySnapshot Empty => new(

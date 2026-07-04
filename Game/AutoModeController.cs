@@ -13,10 +13,8 @@ namespace FujinTerm.Game;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Operates over the nine engines that actually have runtime wiring —
-/// <see cref="AutoActionDefaults.AutoSearch"/> is intentionally excluded
-/// until its engine ships, so a kill / restore never strands a flag the
-/// runtime can't honour.
+/// Operates over every auto-engine that actually has runtime wiring, so a
+/// kill / restore never strands a flag the runtime can't honour.
 /// </para>
 /// <para>
 /// The snapshot is per-session and per-character: it is captured on the
@@ -33,8 +31,7 @@ public sealed class AutoModeController
     private const string LogCategory = "AutoMode";
 
     /// <summary>
-    /// The wired engines, in stable order. AutoSearch is excluded — it has
-    /// no engine yet, so the kill-switch must not touch it.
+    /// The wired engines, in stable order.
     /// </summary>
     private static readonly (Func<AutoActionDefaults, bool> Get,
                              Action<AutoActionDefaults, bool> Set)[] Wired =
@@ -48,6 +45,7 @@ public sealed class AutoModeController
         (d => d.AutoGetCash,  (d, v) => d.AutoGetCash  = v),
         (d => d.AutoSneak,    (d, v) => d.AutoSneak    = v),
         (d => d.AutoHide,     (d, v) => d.AutoHide     = v),
+        (d => d.AutoSearch,   (d, v) => d.AutoSearch   = v),
     };
 
     private readonly ProfileService _profile;

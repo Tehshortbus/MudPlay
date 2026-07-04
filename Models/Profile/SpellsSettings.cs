@@ -1,3 +1,5 @@
+using FujinTerm.Game;
+
 namespace FujinTerm.Models.Profile;
 
 /// <summary>
@@ -43,7 +45,7 @@ public sealed class SpellsSettings
     /// <summary>Priority slot for cure spells (the four cure-* picks below).</summary>
     public int PriorityCuring { get; set; } = 5;
 
-    /// <summary>Priority slot for buff / bless casts (the 10 bless slots).</summary>
+    /// <summary>Priority slot for buff / bless casts (the bless slots).</summary>
     public int PriorityBuffing { get; set; } = 6;
 
     /// <summary>Priority slot for between-round debuffs (CombatSettings'
@@ -64,8 +66,33 @@ public sealed class SpellsSettings
     /// <summary>Auto-regen utility (e.g. troll-skin) cast during downtime.</summary>
     public string? HpRegenSpell { get; set; }
 
-    /// <summary>Auto-regen utility for the mana pool.</summary>
+    /// <summary>Auto-regen utility for the mana pool. Holds either a
+    /// code-145 regen-rate <i>roll</i> spell (nature tap / mana flux — a
+    /// persistent ± modifier to the mana-regen rate that the reroll logic can
+    /// re-cast when it lands below <see cref="ManaRegenRerollThreshold"/>) or a
+    /// mana heal-over-time buff (chaos surge — recast on expiry like an HP
+    /// HoT). The reroll path only engages for roll spells; HoTs fall through to
+    /// the normal recast-when-due behaviour.</summary>
     public string? MaRegenSpell { get; set; }
+
+    /// <summary>
+    /// Reroll the <see cref="MaRegenSpell"/> when its rolled mana-regen
+    /// contribution (the code-145 <c>spells:</c> slice, positive or negative)
+    /// lands below this value — a bad roll drags the mana-regen rate down, so
+    /// the engine re-casts to try for a better one. <c>null</c> disables
+    /// rerolling (the spell then just recasts on expiry). Seeded from the
+    /// spell's level-scaled roll range on the Spells tab.
+    /// </summary>
+    public int? ManaRegenRerollThreshold { get; set; }
+
+    /// <summary>
+    /// Maximum consecutive rerolls of the <see cref="MaRegenSpell"/> per cast
+    /// cycle before accepting whatever landed — a hard ceiling so a persistently
+    /// unlucky streak can't drain the mana pool. Rerolling also hard-stops early
+    /// if paying for the next cast would drop mana below the buff floor.
+    /// Defaults to 3.
+    /// </summary>
+    public int ManaRegenRerollCap { get; set; } = 3;
 
     /// <summary>Cast when HP is full and we're between actions (room spell,
     /// debuff, etc.).</summary>
@@ -95,28 +122,34 @@ public sealed class SpellsSettings
     /// Settings.Other "Provide light in dimly lit rooms" toggle).</summary>
     public string? RoomLightSpell { get; set; }
 
-    // ----- Bless slots (10) -----------------------------------------
+    // ----- Bless slots (sparse) -------------------------------------
 
-    /// <summary>Self-buff slot #1 — recast when not active.</summary>
-    public string? Bless1Spell { get; set; }
-    /// <summary>Self-buff slot #2.</summary>
-    public string? Bless2Spell { get; set; }
-    /// <summary>Self-buff slot #3.</summary>
-    public string? Bless3Spell { get; set; }
-    /// <summary>Self-buff slot #4.</summary>
-    public string? Bless4Spell { get; set; }
-    /// <summary>Self-buff slot #5.</summary>
-    public string? Bless5Spell { get; set; }
-    /// <summary>Self-buff slot #6.</summary>
-    public string? Bless6Spell { get; set; }
-    /// <summary>Self-buff slot #7.</summary>
-    public string? Bless7Spell { get; set; }
-    /// <summary>Self-buff slot #8.</summary>
-    public string? Bless8Spell { get; set; }
-    /// <summary>Self-buff slot #9.</summary>
-    public string? Bless9Spell { get; set; }
-    /// <summary>Self-buff slot #10.</summary>
-    public string? Bless10Spell { get; set; }
+    /// <summary>
+    /// Self-buff picks the <see cref="Game.Spells.CastingDirector"/> recasts
+    /// when the buff isn't active, keyed by 1-based slot index (slot order is
+    /// cast priority). Sparse: only filled slots persist, so a profile built
+    /// on a 15-slot <see cref="RealmType.ParaMud"/> realm loads on a 10-slot
+    /// <see cref="RealmType.Stock"/> realm without carrying ghost slots — and
+    /// the out-of-range picks round-trip back when it returns to a wider realm.
+    /// Each value is the 4-letter cast-code the game recognises.
+    /// </summary>
+    public Dictionary<int, string> BlessSlots { get; set; } = new();
+
+    /// <summary>Self-bless slots the Spells tab shows on a Stock realm. Stock
+    /// MajorMUD caps active effects at 10 (buffs and debuffs share them), so 10
+    /// is the working ceiling — nothing beyond it can stay up anyway.</summary>
+    public const int StockBlessSlotCount = 10;
+
+    /// <summary>Self-bless slots shown on a ParaMud realm. The effect cap is
+    /// lifted there, so item / self / party buffs comfortably exceed 10; 15 is
+    /// reasonable headroom for the common case.</summary>
+    public const int ParaMudBlessSlotCount = 15;
+
+    /// <summary>How many self-bless slots the Spells tab surfaces for a realm
+    /// family — <see cref="ParaMudBlessSlotCount"/> on ParaMud, otherwise
+    /// <see cref="StockBlessSlotCount"/>.</summary>
+    public static int BlessSlotCountFor(RealmType realm) =>
+        realm == RealmType.ParaMud ? ParaMudBlessSlotCount : StockBlessSlotCount;
 
     // ----- Ailment handling / coordination ------------------------------
     // The four "Ignore X" gates suppress the automatic @wait that

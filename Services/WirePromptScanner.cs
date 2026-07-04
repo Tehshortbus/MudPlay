@@ -29,7 +29,7 @@ namespace FujinTerm.Services;
 /// so the original <c>^</c>-anchored line regex would only catch the first.
 /// </para>
 /// </remarks>
-public sealed partial class WirePromptScanner
+public sealed class WirePromptScanner
 {
     private const int BufferCap = 1024;
 
@@ -41,8 +41,43 @@ public sealed partial class WirePromptScanner
 
     private StripState _state;
 
+    /// <summary>
+    /// The active status-line pattern. Defaults to the permissive
+    /// class-default shape; <see cref="InstallRegex"/> swaps in a regex
+    /// built from the user's custom statline so the parser matches whatever
+    /// the editor authored. Reference assignment is atomic, so a swap from
+    /// the UI thread while <see cref="Append"/> reads it off the Telnet pump
+    /// is safe — at worst one append still uses the previous pattern.
+    /// </summary>
+    private Regex _statusLine = StatlinePromptRegexBuilder.Default;
+
     /// <summary>Fired once per matched status line, in the order observed on the wire.</summary>
     public event Action<PromptObservation>? PromptObserved;
+
+    /// <summary>
+    /// Fired (at most once per <see cref="Append"/>) when a default-shaped
+    /// statline appears that the active pattern did <b>not</b> match — i.e. the
+    /// live prompt isn't the statline the editor authored. Drives the logon
+    /// reconciler to resend <c>set statline</c>. Structurally unreachable while
+    /// the active pattern IS the default, so default-statline users never see
+    /// it (and never trigger a resend).
+    /// </summary>
+    public event Action? PromptShapeUnmatched;
+
+    /// <summary>
+    /// Swap in the status-line pattern for the active profile's statline —
+    /// built by <see cref="StatlinePromptRegexBuilder"/> from the editor
+    /// command string. Installed on profile load / mutation so the scanner
+    /// reads exactly the shape the BBS was told to print.
+    /// </summary>
+    public void InstallRegex(Regex statusLine)
+    {
+        ArgumentNullException.ThrowIfNull(statusLine);
+        _statusLine = statusLine;
+    }
+
+    /// <summary>Restore the permissive class-default pattern (on profile close).</summary>
+    public void ResetRegexToDefault() => _statusLine = StatlinePromptRegexBuilder.Default;
 
     /// <summary>
     /// Append <paramref name="data"/> from the live Telnet stream. Strips
@@ -85,9 +120,11 @@ public sealed partial class WirePromptScanner
         // once and the regex is compiled.
         string text = _buffer.ToString();
         int lastEnd = 0;
-        foreach (Match m in StatusLineRegex().Matches(text))
+        bool activeMatched = false;
+        foreach (Match m in _statusLine.Matches(text))
         {
             if (!int.TryParse(m.Groups["hp"].Value, out int hp)) continue;
+            activeMatched = true;
 
             string typeRaw = m.Groups["type"].Value;
             ManaType manaType = typeRaw switch
@@ -117,6 +154,25 @@ public sealed partial class WirePromptScanner
             lastEnd = m.Index + m.Length;
         }
 
+        // Mismatch detection for the logon reconciler: if the active pattern
+        // matched nothing here but a default-shaped statline IS present, the
+        // server is printing a statline our editor-built pattern doesn't
+        // recognise (typically: editor holds a custom statline but the game is
+        // still on the class default). Signal it once so the reconciler can
+        // resend `set statline`. Skipped when the active pattern already IS the
+        // default — default-statline users can't drift, so they never resend.
+        if (!activeMatched && !ReferenceEquals(_statusLine, StatlinePromptRegexBuilder.Default))
+        {
+            bool defaultMatched = false;
+            foreach (Match d in StatlinePromptRegexBuilder.Default.Matches(text))
+            {
+                defaultMatched = true;
+                int end = d.Index + d.Length;
+                if (end > lastEnd) lastEnd = end;
+            }
+            if (defaultMatched) PromptShapeUnmatched?.Invoke();
+        }
+
         // Drop everything up to the last match — the tail (anything after the
         // last match's end) might be the start of a partial statline that
         // completes in the next Append, so keep it.
@@ -142,13 +198,6 @@ public sealed partial class WirePromptScanner
     }
 
     private enum StripState : byte { Normal, EscSeen, Csi }
-
-    // Same shape as KnownPatterns.StatusLine but unanchored (server chains
-    // multiple statlines on one row). hp / type / mana / statea / stateb.
-    [GeneratedRegex(
-        @"\[HP=(?<hp>\d{1,4})(?:\/(?<type>MA|KAI)=(?<mana>\d{1,3}))?(?:\s\((?<statea>Resting|Meditating)\)\s)?\]:(?:\s\((?<stateb>Resting|Meditating)\))?",
-        RegexOptions.Compiled)]
-    private static partial Regex StatusLineRegex();
 }
 
 /// <summary>One observed prompt — payload of <see cref="WirePromptScanner.PromptObserved"/>.</summary>

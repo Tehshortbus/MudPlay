@@ -210,7 +210,7 @@ public sealed class CombatSettingsTests
         CombatSpellSlot slot = new();
         Assert.Null(slot.SpellName);
         Assert.Equal(0, slot.MinEnemies);
-        Assert.Equal(0, slot.MaxCastsPerRoom);
+        Assert.Null(slot.MaxCastsPerRoom);   // blank = no per-room cast cap
         Assert.Equal(0, slot.MinManaPerCast);
     }
 }

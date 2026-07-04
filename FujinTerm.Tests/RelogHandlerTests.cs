@@ -159,4 +159,35 @@ public sealed class RelogHandlerTests
         engine.DispatchForTests(Telepath("Trusted", "@relog"));
         Assert.True(signal.PeekForTests());
     }
+
+    // ===== Master "Disable hangups" kill-switch =========================
+
+    [Fact]
+    public void Relog_WhenHangupsDisabled_SendsNothingAndRaisesNoSignal()
+    {
+        // Kill-switch on → an authorised @relog is a silent no-op: a relog
+        // is a drop-then-redial, so it counts as an automatic hangup the
+        // user opted out of. No wire, no RelogSignal.
+        var (engine, handler, players, wire, _, signal) = Setup();
+        handler.SetHangupsDisabledCheck(() => true);
+        SeedPlayer(players, "Trusted", PlayerRemoteControls.HangupDisconnect);
+
+        engine.DispatchForTests(Telepath("Trusted", "@relog"));
+
+        Assert.Empty(wire);
+        Assert.False(signal.PeekForTests());
+    }
+
+    [Fact]
+    public void Relog_WhenCheckReturnsFalse_FiresNormally()
+    {
+        // Kill-switch off → behaves exactly as the unguarded path.
+        var (engine, handler, players, wire, _, _) = Setup();
+        handler.SetHangupsDisabledCheck(() => false);
+        SeedPlayer(players, "Trusted", PlayerRemoteControls.HangupDisconnect);
+
+        engine.DispatchForTests(Telepath("Trusted", "@relog"));
+
+        Assert.Equal("=x\r", Encoding.Latin1.GetString(Assert.Single(wire)));
+    }
 }

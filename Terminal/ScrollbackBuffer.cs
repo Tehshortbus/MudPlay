@@ -21,13 +21,15 @@ namespace FujinTerm.Terminal;
 /// </para>
 /// <para>
 /// Memory: at 80 columns and 24 bytes per <see cref="Cell"/> (rough
-/// upper bound), 10 000 rows is ~19 MB. Acceptable for a desktop client.
+/// upper bound), each 1000 rows is ~1.9 MB, so the 4000-row default
+/// holds ~7.7 MB. Users who want a deeper history raise it via
+/// <see cref="SetCapacity"/> and pay the memory for it explicitly.
 /// </para>
 /// </remarks>
 public sealed class ScrollbackBuffer
 {
     /// <summary>Default ring capacity.</summary>
-    public const int DefaultCapacity = 10_000;
+    public const int DefaultCapacity = 4_000;
 
     /// <summary>
     /// One captured row. <see cref="Cells"/> is a defensive copy owned by
