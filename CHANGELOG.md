@@ -2,9 +2,12 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0): **MAJOR** = whole-program refactor, **MINOR** = a large PR, **PATCH** = a small / bugfix PR.
 
-## 1.2.1
+## 1.2.2
 
-Corrects and extends the game-mechanics reference.
+Records how attack spells actually fail to damage a monster.
+
+**Changed**
+- **Attack-spell failure modes documented accurately.** `GAME_MECHANICS.md` now separates the three independent reasons an attack spell does no damage, each confirmed against 1.11p data: (1) `SpellImmu +N` — a level gate that blocks any spell whose base learnable level is below N (monster #184's `SpellImmu +10` blocks everything learnable at level ≤ 9); (2) a spell targeting restriction such as the priest `harm` spell's *living-only* tag, which no `NonLiving` monster (e.g. an acid slime) can be hurt by — the actual cause of the `Your spell has no effect on <monster>.` line, corrected from the earlier "immune to a damage type" framing; and (3) flat percentage resistance per damage type (#184's `Resist-Fire +50` halves fire damage; 100% deals 0, over-100% heals). The message-catalogue label for the no-effect line is corrected to a targeting mismatch rather than "immunity."
 
 **Changed**
 - **Weapon-swap message reference corrected.** `GAME_MECHANICS.md` claimed a weapon swap prints two lines (a removal then a wear). A live capture (swapping a quarterstaff and a dagger) confirms it prints a single line — `You are now holding <X>.` — with no removal line for the displaced weapon, which returns to the pack silently. The two-line pattern is the *armor*-into-an-occupied-slot case. The message catalogue and the Equipment prose now record the weapon-vs-armor distinction, matching the client's own inventory parser.

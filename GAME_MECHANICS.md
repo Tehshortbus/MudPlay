@@ -91,32 +91,45 @@ it isn't here and you're unsure, ask.
 - **[OBSERVED]** `Your fists have no effect against this monster!` — you're swinging bare-handed
   (no weapon in hand, or it left your hand).
 
-## Attack spells: immunity vs resistance
+## Attack spells: why one fails to damage a monster
 
-Two **distinct** mechanics decide why an attack spell fails to hurt a monster — do not
-conflate them.
+**Three independent mechanics** decide whether an attack spell damages a monster — do not
+conflate them. (Worked examples use the 1.11p data set.)
 
-**Immunity** *([CONFIRMED])*
-- A monster immune to a spell's damage type draws `Your spell has no effect on <monster>.` —
-  a hard, binary immunity to that spell type (e.g. a `harm` spell vs an acid slime). The
-  client reads this line as species-scoped attack-spell immunity and gates that spell out of
-  the attack cascade (primary → alternate → weapon) for the rest of the room.
+**1. SpellImmu +N — level immunity** *([CONFIRMED])*
+- The monster's `SpellImmu` ability carries a value N and blocks any spell whose **base
+  learnable level** (the Spells table `ReqLevel`) is **below N**; such a spell deals no damage.
+  A spell learnable at level ≥ N still lands.
+- Example: monster **#184** has `SpellImmu +10`, so every spell learnable at level 9 or lower
+  can't hurt it — only spells learnable at 10+ work.
+- Deterministic from game data, so the engine **pre-empts** it: `LevelBlockedFor` /
+  `AttackSpellCanLand` skip a level-blocked spell before casting, and fold it into whether the
+  monster is engageable at all.
 
-**Percentage resistance** *([CONFIRMED])* — a separate, numeric mechanic, **not** the immunity
-above:
-- A monster's resistance to a spell type is a **percentage**, applied as a numeric reduction on
-  the spell's damage — it does **not** produce the `no effect` line.
-- At **exactly 100%** resist the spell lands but deals **0 damage**.
-- **Above 100%** resist the damage goes **negative** — the spell **heals** the monster instead
-  of harming it.
-- There is **no single canonical resist / heal line** to match: every combat spell has its
-  **own** verbose cast / hit text, so the tell isn't a fixed message — it's the **damage number**
-  carried in that spell's hit line. **0 or a negative number is the resist signal.** Detecting
-  it means reading the per-spell damage value, not matching one string.
-- Consequence: immunity is the only one of the two that emits `Your spell has no effect on
-  <monster>.` (and it's what the engine gates on). An over-100%-resist cast emits no such line —
-  the only evidence is the 0 / negative damage figure — so "full resist" must never be treated as
-  equivalent to immunity.
+**2. Spell targeting restriction (e.g. living-only)** *([CONFIRMED])*
+- A spell can carry a targeting tag that disqualifies whole classes of monster. The priest
+  **harm** spell is tagged **living only**, so a monster flagged **NonLiving** takes no damage
+  from it — this is the `Your spell has no effect on <monster>.` case (e.g. `harm` on an acid
+  slime).
+- This is **not** a resistance and **not** a level gate — it's a hard eligibility mismatch
+  between a spell attribute and a monster attribute. Currently caught only **reactively**, off
+  the `no effect` line: `OnSpellNoEffect` marks the species + spell immune for the rest of the
+  room and gates that spell down the attack cascade (primary → alternate → weapon).
+
+**3. Percentage resistance per damage type** *([CONFIRMED])*
+- A monster's `Resist-<type> +N` ability is a **flat N% reduction** of that damage type.
+  Example: #184 has `Resist-Fire +50`, so fire spells deal **half** damage to it.
+- At **100%** the type does **0 damage**; **above 100%** the damage goes **negative** and the
+  spell **heals** the monster instead of harming it.
+- There is **no dedicated message**: every spell's verbose hit text differs, so the only tell is
+  the **damage number** in that spell's own hit line — **0 or negative is the resist signal.**
+  Detecting it means reading the per-spell damage value, not matching one string.
+- Not modeled or detected today: a resisted 0 / heal cast produces no `no effect` line, so
+  nothing currently stops the engine from re-casting a spell that heals the monster — "full
+  resist" must never be treated as equivalent to the immunity above.
+- Damage-type resist ability codes in the data: Resist-Cold (3), Resist-Fire (5),
+  Resist-Stone (65), Resist-Lightning (66), Resist-Water (147), Magic Resist (36). Ability
+  code 17 is "damage ignoring magic resistance" — a spell that bypasses the Magic-Resist cut.
 
 ## Items & acquisition
 
@@ -152,4 +165,4 @@ above:
 | Sneak blocked (hard) | `You may not sneak right now!` |
 | Weapon ineffective | `Your weapon has no effect against this monster!` |
 | Fists ineffective | `Your fists have no effect against this monster!` |
-| Spell immunity | `Your spell has no effect on <monster>.` |
+| Spell can't affect target (e.g. living-only vs NonLiving) | `Your spell has no effect on <monster>.` |
