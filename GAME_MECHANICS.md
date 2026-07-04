@@ -31,6 +31,10 @@ it isn't here and you're unsure, ask.
   single-slot swap needs no explicit `rem` first.
 
 **Other**
+- **[CONFIRMED]** A weapon equip / swap prints a **single** line — `You are now holding <new>.`.
+  Swapping into an occupied weapon hand emits **no** removal line for the old weapon; the
+  displaced weapon returns to the pack silently. (Armor differs: a swap into an occupied armor
+  slot prints `You have removed <old>.` first, then `You are now wearing <new>.`.)
 - **[CONFIRMED]** No effect in the game force-unequips gear (no disarm / removal effects).
   Worn state changes *only* from commands the player or the client issues.
 - **[OBSERVED]** A two-handed weapon needs both hands free; the game rejects the wield while an
