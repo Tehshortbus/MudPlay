@@ -4,31 +4,19 @@ using FujinTerm.Models.Profile;
 
 namespace FujinTerm.Services;
 
-/// <summary>
-/// In-house docking/floating panel framework. Each registered panel owns one
-/// <see cref="UserControl"/> instance that the host reparents between a dock
-/// container in the main window and a separate top-level <see cref="Window"/>.
-/// The UserControl is never recreated, never duplicated — every reference
-/// (data bindings, event subscriptions) survives state changes.
-/// </summary>
-/// <remarks>
-/// <para>
-/// State is one of <see cref="PanelState.Docked"/>, <see cref="PanelState.Floating"/>,
-/// or <see cref="PanelState.Hidden"/>. Position / size apply only to
-/// <c>Floating</c>; they are captured live from the floating window and
-/// snapshotted on demand via <see cref="SnapshotLayouts"/>.
-/// </para>
-/// <para>
-/// Persistence: the host does not write to disk itself. The wiring layer
-/// (typically <see cref="AppServices"/>) hands persisted layouts in via
-/// <see cref="ApplyLayouts"/> on profile load, and grabs them back via
-/// <see cref="SnapshotLayouts"/> before save / profile swap.
-/// </para>
-/// <para>
-/// Phase 0 ships infrastructure only. The first consumers are Phase 1's
-/// LogPaneWindow and BackscrollWindow.
-/// </para>
-/// </remarks>
+// In-house docking/floating panel framework. Each registered panel owns one
+// UserControl instance that the host reparents between a dock container in the
+// main window and a separate top-level Window. The UserControl is never
+// recreated, never duplicated — every reference (data bindings, event
+// subscriptions) survives state changes.
+//
+// State is one of PanelState.Docked, PanelState.Floating, or PanelState.Hidden.
+// Position / size apply only to Floating; they are captured live from the
+// floating window and snapshotted on demand via SnapshotLayouts.
+//
+// Persistence: the host does not write to disk itself. The wiring layer
+// (typically AppServices) hands persisted layouts in via ApplyLayouts on profile
+// load, and grabs them back via SnapshotLayouts before save / profile swap.
 public sealed class FloatingPanelHost
 {
     private sealed class Registration
@@ -50,20 +38,16 @@ public sealed class FloatingPanelHost
 
     private Window? _ownerWindow;
 
-    /// <summary>Fired whenever a panel's state transitions (Docked / Floating / Hidden).</summary>
+    // Fired whenever a panel's state transitions (Docked / Floating / Hidden).
     public event Action? LayoutsChanged;
 
-    /// <summary>
-    /// Set the parent window for floating panels (the main app window).
-    /// Called once during startup, alongside <see cref="DialogService.SetMainWindow"/>.
-    /// </summary>
+    // Set the parent window for floating panels (the main app window). Called
+    // once during startup, alongside DialogService.SetMainWindow.
     public void SetOwnerWindow(Window owner) => _ownerWindow = owner;
 
-    /// <summary>
-    /// Register a panel. Idempotent on <paramref name="panelId"/> — re-registering
-    /// with a different content control throws. Applies any persisted layout
-    /// pulled in by an earlier <see cref="ApplyLayouts"/> call.
-    /// </summary>
+    // Register a panel. Idempotent on panelId — re-registering with a different
+    // content control throws. Applies any persisted layout pulled in by an
+    // earlier ApplyLayouts call.
     public void Register(string panelId, UserControl content, ContentControl dockContainer, string floatingTitle)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(panelId);
@@ -98,20 +82,17 @@ public sealed class FloatingPanelHost
         ApplyState(reg, raiseEvent: false);
     }
 
-    /// <summary>Move the panel into the dock container.</summary>
+    // Move the panel into the dock container.
     public void Dock(string panelId) => Transition(panelId, PanelState.Docked);
 
-    /// <summary>Move the panel into its own floating window.</summary>
+    // Move the panel into its own floating window.
     public void Float(string panelId) => Transition(panelId, PanelState.Floating);
 
-    /// <summary>Hide the panel (closes the floating window if any; clears the dock slot).</summary>
+    // Hide the panel (closes the floating window if any; clears the dock slot).
     public void Hide(string panelId) => Transition(panelId, PanelState.Hidden);
 
-    /// <summary>
-    /// Reset every registered panel to its default state (<see cref="PanelState.Docked"/>)
-    /// and forget any pending layouts. Bound to the View → Reset layout
-    /// menu entry.
-    /// </summary>
+    // Reset every registered panel to its default state (PanelState.Docked) and
+    // forget any pending layouts. Bound to the View → Reset layout menu entry.
     public void ResetToDefault()
     {
         _pendingLayouts.Clear();
@@ -123,18 +104,16 @@ public sealed class FloatingPanelHost
         LayoutsChanged?.Invoke();
     }
 
-    /// <summary>Current state of <paramref name="panelId"/> (throws if not registered).</summary>
+    // Current state of panelId (throws if not registered).
     public PanelState GetState(string panelId) => GetRegistration(panelId).Layout.State;
 
-    /// <summary>Returns true if a panel with this id has been registered.</summary>
+    // Returns true if a panel with this id has been registered.
     public bool IsRegistered(string panelId) => _panels.ContainsKey(panelId);
 
-    /// <summary>
-    /// Replace all in-memory layouts with the supplied dictionary. Called by
-    /// the wiring layer on <c>ProfileService.ProfileLoaded</c>. Layouts for
-    /// already-registered panels are applied immediately; the rest are stashed
-    /// and applied when their panels register.
-    /// </summary>
+    // Replace all in-memory layouts with the supplied dictionary. Called by the
+    // wiring layer on ProfileService.ProfileLoaded. Layouts for already-registered
+    // panels are applied immediately; the rest are stashed and applied when their
+    // panels register.
     public void ApplyLayouts(IReadOnlyDictionary<string, PanelLayout>? layouts)
     {
         _pendingLayouts.Clear();
@@ -165,12 +144,10 @@ public sealed class FloatingPanelHost
         LayoutsChanged?.Invoke();
     }
 
-    /// <summary>
-    /// Capture every panel's current state into a fresh dictionary suitable
-    /// for persisting onto <see cref="CharacterProfile.PanelLayouts"/>.
-    /// Includes pending layouts for panels that haven't registered yet so a
-    /// load-save-reload round-trip doesn't lose state.
-    /// </summary>
+    // Capture every panel's current state into a fresh dictionary suitable for
+    // persisting onto CharacterProfile.PanelLayouts. Includes pending layouts for
+    // panels that haven't registered yet so a load-save-reload round-trip doesn't
+    // lose state.
     public Dictionary<string, PanelLayout> SnapshotLayouts()
     {
         Dictionary<string, PanelLayout> snapshot = new(StringComparer.OrdinalIgnoreCase);

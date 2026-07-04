@@ -4,30 +4,25 @@ using FujinTerm.Models.GameData;
 
 namespace FujinTerm.Services;
 
-/// <summary>
-/// In-memory cache of the Monster Messages catalogue for the active
-/// game-data set. Parallels <see cref="MessageStore"/> for monsters:
-/// one <see cref="MonsterMessageRecord"/> per Monsters-table row,
-/// carrying the parser patterns for every line the monster can
-/// produce in combat (hit / death / armor-block / dodge / miss +
-/// flavor prefixes).
-/// </summary>
-/// <remarks>
-/// Wiring: <see cref="AppServices"/> subscribes the store to
-/// <see cref="GameDataCache.ActiveSetChanged"/> — on every set switch
-/// the per-set file is reloaded (missing file ⇒ falls back to the
-/// universal seed; missing seed ⇒ empty catalogue). The Monsters tab
-/// edit dialog binds individual records via the standard load-edit-save
-/// flow shared with the spell-message editor.
-/// </remarks>
+// In-memory cache of the Monster Messages catalogue for the active game-data
+// set. Parallels MessageStore for monsters: one MonsterMessageRecord per
+// Monsters-table row, carrying the parser patterns for every line the monster
+// can produce in combat (hit / death / armor-block / dodge / miss + flavor
+// prefixes).
+//
+// Wiring: AppServices subscribes the store to
+// GameDataCache.ActiveSetChanged — on every set switch the per-set file is
+// reloaded (missing file ⇒ falls back to the universal seed; missing seed ⇒
+// empty catalogue). The Monsters tab edit dialog binds individual records via
+// the standard load-edit-save flow shared with the spell-message editor.
 public sealed class MonsterMessageStore
 {
     private readonly LogService? _log;
 
-    /// <summary>Live mirror of the active set's monster-message records.</summary>
+    // Live mirror of the active set's monster-message records.
     public ObservableCollection<MonsterMessageRecord> Messages { get; } = new();
 
-    /// <summary>Set name currently sourcing <see cref="Messages"/>, or <c>null</c> when none is active.</summary>
+    // Set name currently sourcing Messages, or null when none is active.
     public string? ActiveSet { get; private set; }
 
     public MonsterMessageStore() { }
@@ -38,19 +33,15 @@ public sealed class MonsterMessageStore
         _log = log;
     }
 
-    /// <summary>
-    /// Switch the catalogue to <paramref name="setName"/>'s on-disk
-    /// file. Pass <c>null</c> to clear (no set active). Load priority:
-    /// <list type="number">
-    ///   <item>Per-set file <see cref="AppPaths.MonsterMessagesFile"/>
-    ///     — the canonical persisted state once a user has saved.</item>
-    ///   <item>Universal seed <see cref="AppPaths.DefaultMonsterMessagesSeedFile"/>
-    ///     — applies on first launch; the monster Number ↔ message
-    ///     mapping is universal for 1.11p, usable as a starting point
-    ///     for other realms (the editor lets the user fix mismatches).</item>
-    /// </list>
-    /// The seed itself is never written.
-    /// </summary>
+    // Switch the catalogue to setName's on-disk file. Pass null to clear (no
+    // set active). Load priority:
+    //   1. Per-set file AppPaths.MonsterMessagesFile — the canonical
+    //      persisted state once a user has saved.
+    //   2. Universal seed AppPaths.DefaultMonsterMessagesSeedFile — applies on
+    //      first launch; the monster Number ↔ message mapping is universal for
+    //      1.11p, usable as a starting point for other realms (the editor lets
+    //      the user fix mismatches).
+    // The seed itself is never written.
     public void Load(string? setName)
     {
         Messages.Clear();
@@ -79,14 +70,14 @@ public sealed class MonsterMessageStore
         }
     }
 
-    /// <summary>Persist <see cref="Messages"/> to <see cref="ActiveSet"/>'s file.</summary>
+    // Persist Messages to ActiveSet's file.
     public void Save()
     {
         if (string.IsNullOrWhiteSpace(ActiveSet)) return;
         JsonStore.Save(AppPaths.MonsterMessagesFile(ActiveSet), Messages);
     }
 
-    /// <summary>Replace the catalogue with <paramref name="records"/> and persist.</summary>
+    // Replace the catalogue with records and persist.
     public void Replace(IEnumerable<MonsterMessageRecord> records)
     {
         Messages.Clear();
@@ -94,7 +85,7 @@ public sealed class MonsterMessageStore
         Save();
     }
 
-    /// <summary>Find the record anchored to <paramref name="monsterNumber"/>, or <c>null</c>.</summary>
+    // Find the record anchored to monsterNumber, or null.
     public MonsterMessageRecord? FindByMonsterNumber(int monsterNumber)
     {
         foreach (MonsterMessageRecord m in Messages)
@@ -110,10 +101,8 @@ public sealed class MonsterMessageStore
         return null;
     }
 
-    /// <summary>
-    /// Upsert <paramref name="record"/>: replace the existing record
-    /// with the same Id if present, else append. Persists after.
-    /// </summary>
+    // Upsert record: replace the existing record with the same Id if present,
+    // else append. Persists after.
     public void Upsert(MonsterMessageRecord record)
     {
         ArgumentNullException.ThrowIfNull(record);
@@ -125,12 +114,10 @@ public sealed class MonsterMessageStore
         Save();
     }
 
-    /// <summary>
-    /// Replace the record at the original Id with <paramref name="updated"/>.
-    /// Used by the editor when content edits flip the projected Id —
-    /// the originalId reference still points at the slot to swap.
-    /// Falls back to upsert when no slot matches.
-    /// </summary>
+    // Replace the record at the original Id with updated. Used by the editor
+    // when content edits flip the projected Id — the originalId reference
+    // still points at the slot to swap. Falls back to upsert when no slot
+    // matches.
     public void Replace(string originalId, MonsterMessageRecord updated)
     {
         for (int i = 0; i < Messages.Count; i++)

@@ -2,31 +2,25 @@ using FujinTerm.Models.Profile;
 
 namespace FujinTerm.Services;
 
-/// <summary>
-/// Loads and resolves quest definitions for the active game-data set. Two layers
-/// merge per (flag, step) in priority order:
-/// <list type="number">
-///   <item>the user's per-set overlay <c>{set}/quests.json</c> — display name,
-///   show/hide visibility, edited step markdown;</item>
-///   <item>the universal read-only seed <c>QuestDefs.seed.json</c>, keyed by the
-///   same game-data flag numbers (custom realms reuse the numbers), so a curated
-///   default ports across every set;</item>
-///   <item>an auto-draft (blank name, shown, no edited steps) for any quest the
-///   crawler discovers that neither layer names yet.</item>
-/// </list>
-/// The seed is never written; the overlay travels with the set (sibling to
-/// <c>triggers.json</c>) and reloads on <see cref="OnActiveSetChanged"/>. The
-/// mechanical data — ordered steps + stat bonuses — is crawled from the set's
-/// <c>TBInfo</c> elsewhere; this store owns only the user/seed text layer.
-/// <para>
-/// The overlay also holds two user-driven extras: <b>manual quests</b> the crawler
-/// never finds (identity in the reserved <see cref="QuestDefinition.ManualFlagBase"/>
-/// flag range, persisted verbatim since they have no crawl baseline — see
-/// <see cref="ManualQuests"/>), and a <see cref="QuestDefinition.Blocked"/> flag that
-/// suppresses a spuriously-crawled quest from the journal in sets where it shouldn't
-/// appear.
-/// </para>
-/// </summary>
+// Loads and resolves quest definitions for the active game-data set. Two layers
+// merge per (flag, step) in priority order:
+//   1. the user's per-set overlay {set}/quests.json — display name, show/hide
+//      visibility, edited step markdown;
+//   2. the universal read-only seed QuestDefs.seed.json, keyed by the same
+//      game-data flag numbers (custom realms reuse the numbers), so a curated
+//      default ports across every set;
+//   3. an auto-draft (blank name, shown, no edited steps) for any quest the
+//      crawler discovers that neither layer names yet.
+// The seed is never written; the overlay travels with the set (sibling to
+// triggers.json) and reloads on OnActiveSetChanged. The mechanical data —
+// ordered steps + stat bonuses — is crawled from the set's TBInfo elsewhere;
+// this store owns only the user/seed text layer.
+//
+// The overlay also holds two user-driven extras: manual quests the crawler
+// never finds (identity in the reserved QuestDefinition.ManualFlagBase flag
+// range, persisted verbatim since they have no crawl baseline — see
+// ManualQuests), and a QuestDefinition.Blocked flag that suppresses a
+// spuriously-crawled quest from the journal in sets where it shouldn't appear.
 public sealed class QuestStore
 {
     private readonly LogService? _log;
@@ -34,13 +28,11 @@ public sealed class QuestStore
     private readonly Dictionary<(int Flag, int Step), QuestDefinition> _seed = new();
     private readonly Dictionary<(int Flag, int Step), QuestDefinition> _overlay = new();
 
-    /// <summary>Active set whose overlay is loaded, or <c>null</c> when none.</summary>
+    // Active set whose overlay is loaded, or null when none.
     public string? ActiveSet { get; private set; }
 
-    /// <param name="log">Optional log sink for load diagnostics.</param>
-    /// <param name="seedPath">Universal seed path; defaults to
-    /// <see cref="AppPaths.DefaultQuestDefsSeedFile"/>. Parameterized so tests can
-    /// point at a scratch seed without touching the shared Global copy.</param>
+    // seedPath defaults to AppPaths.DefaultQuestDefsSeedFile; it's parameterized
+    // so tests can point at a scratch seed without touching the shared Global copy.
     public QuestStore(LogService? log = null, string? seedPath = null)
     {
         _log = log;
@@ -48,11 +40,8 @@ public sealed class QuestStore
         LoadInto(_seed, _seedPath, "seed");
     }
 
-    /// <summary>
-    /// Swap the active set: drop the previous overlay and load
-    /// <c>{set}/quests.json</c> (empty when the set has no overlay yet, or when
-    /// <paramref name="setName"/> is blank).
-    /// </summary>
+    // Swap the active set: drop the previous overlay and load {set}/quests.json
+    // (empty when the set has no overlay yet, or when setName is blank).
     public void OnActiveSetChanged(string? setName)
     {
         _overlay.Clear();
@@ -61,11 +50,9 @@ public sealed class QuestStore
         LoadInto(_overlay, AppPaths.QuestsFile(ActiveSet), "overlay");
     }
 
-    /// <summary>
-    /// Resolve the effective definition for a quest: the user overlay if it names
-    /// this (flag, step); else the universal seed; else a blank-named, visible
-    /// auto-draft. Never returns <c>null</c>.
-    /// </summary>
+    // Resolve the effective definition for a quest: the user overlay if it names
+    // this (flag, step); else the universal seed; else a blank-named, visible
+    // auto-draft. Never returns null.
     public QuestDefinition Resolve(int flag, int step)
     {
         (int Flag, int Step) key = (flag, step);
@@ -74,15 +61,13 @@ public sealed class QuestStore
         return new QuestDefinition(flag, step);
     }
 
-    /// <summary>
-    /// Persist the user's edited definitions to the active set's overlay
-    /// (<c>{set}/quests.json</c>) and refresh the in-memory layer so later
-    /// <see cref="Resolve"/> calls see the edits immediately. The overlay stays a
-    /// delta: a definition that matches what <see cref="Resolve"/> would return
-    /// with no overlay (the seed entry, or a blank auto-draft) is dropped rather
-    /// than frozen into the file, so a later seed update still flows through for
-    /// untouched quests. No-op when no set is active.
-    /// </summary>
+    // Persist the user's edited definitions to the active set's overlay
+    // ({set}/quests.json) and refresh the in-memory layer so later Resolve calls
+    // see the edits immediately. The overlay stays a delta: a definition that
+    // matches what Resolve would return with no overlay (the seed entry, or a
+    // blank auto-draft) is dropped rather than frozen into the file, so a later
+    // seed update still flows through for untouched quests. No-op when no set is
+    // active.
     public void Save(IEnumerable<QuestDefinition> defs)
     {
         ArgumentNullException.ThrowIfNull(defs);
@@ -118,11 +103,10 @@ public sealed class QuestStore
         }
     }
 
-    /// <summary>
-    /// Every user-added (manual) quest the store knows for the active set, resolved
-    /// (overlay over seed) and ordered by flag. These carry no crawl backing, so the
-    /// Quest Status tab and editor materialize them straight from the definition.
-    /// </summary>
+    // Every user-added (manual) quest the store knows for the active set,
+    // resolved (overlay over seed) and ordered by flag. These carry no crawl
+    // backing, so the Quest Status tab and editor materialize them straight from
+    // the definition.
     public IReadOnlyList<QuestDefinition> ManualQuests()
     {
         var keys = new HashSet<(int Flag, int Step)>();

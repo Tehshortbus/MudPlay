@@ -3,19 +3,15 @@ using System.Runtime.InteropServices;
 
 namespace FujinTerm.Services;
 
-/// <summary>
-/// Cross-platform "hand this off to the OS" launcher. Used to open log
-/// folders, docs, URLs, and similar bystander targets that don't belong
-/// inside a FujinTerm window. Each method swallows launcher failures and
-/// returns <c>false</c> rather than throwing — callers usually surface a
-/// status-bar message on failure.
-/// </summary>
+// Cross-platform "hand this off to the OS" launcher. Used to open log folders,
+// docs, URLs, and similar bystander targets that don't belong inside a
+// FujinTerm window. Each method swallows launcher failures and returns false
+// rather than throwing — callers usually surface a status-bar message on
+// failure.
 public static class ShellLaunch
 {
-    /// <summary>
-    /// Open a file or folder path in the platform's default handler
-    /// (Explorer / Finder / xdg-open). Returns <c>true</c> on success.
-    /// </summary>
+    // Open a file or folder path in the platform's default handler
+    // (Explorer / Finder / xdg-open). Returns true on success.
     public static bool OpenPath(string path)
     {
         if (string.IsNullOrWhiteSpace(path)) return false;
@@ -23,10 +19,8 @@ public static class ShellLaunch
         return TryLaunch(path);
     }
 
-    /// <summary>
-    /// Open an <c>http://</c> / <c>https://</c> URL in the user's default
-    /// browser. Returns <c>true</c> on success.
-    /// </summary>
+    // Open an http:// / https:// URL in the user's default browser. Returns
+    // true on success.
     public static bool OpenUrl(string url)
     {
         if (string.IsNullOrWhiteSpace(url)) return false;

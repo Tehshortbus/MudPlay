@@ -2,11 +2,9 @@ using FujinTerm.Terminal;
 
 namespace FujinTerm.Services.Patterns;
 
-/// <summary>
-/// Matches when the line's text equals a fixed string. Useful for
-/// well-known one-shot lines (e.g. <c>"Welcome to MajorMUD!"</c>) where
-/// neither prefix nor regex is needed.
-/// </summary>
+// Matches when the line's text equals a fixed string. Useful for well-known
+// one-shot lines (e.g. "Welcome to MajorMUD!") where neither prefix nor regex is
+// needed.
 public sealed class ExactPattern : IMessagePattern
 {
     private static readonly string[] EmptyGroups = [];

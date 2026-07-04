@@ -6,51 +6,42 @@ using FujinTerm.Terminal;
 
 namespace FujinTerm.Services;
 
-/// <summary>
-/// Snapshots the live client state into a self-contained Markdown bug
-/// report. <see cref="Capture"/> freezes everything time-sensitive (recent
-/// scrollback, the program log tail, all gameplay settings, engine + player
-/// state) at the instant the user clicks "Bug report", so the report reflects
-/// the moment of the problem rather than whenever the user finishes typing
-/// their description. <see cref="Render"/> then folds the user's description in
-/// and produces the final document; <see cref="FileName"/> derives the
-/// Desktop file name (<c>&lt;realm&gt;-&lt;timestamp&gt;.md</c>).
-/// </summary>
-/// <remarks>
-/// The two-phase split (capture → render) keeps the capture pure data: the
-/// description arrives from a dialog that opens <i>after</i> the click, and the
-/// scrollback / log keep growing while the user types. Rendering per-section
-/// Markdown at capture time is deliberate — it freezes each subsystem's view
-/// without holding live references that could mutate underneath us.
-/// </remarks>
+// Snapshots the live client state into a self-contained Markdown bug report.
+// Capture freezes everything time-sensitive (recent scrollback, the program
+// log tail, all gameplay settings, engine + player state) at the instant the
+// user clicks "Bug report", so the report reflects the moment of the problem
+// rather than whenever the user finishes typing their description. Render then
+// folds the user's description in and produces the final document; FileName
+// derives the Desktop file name (realm-timestamp.md).
+//
+// The two-phase split (capture → render) keeps the capture pure data: the
+// description arrives from a dialog that opens after the click, and the
+// scrollback / log keep growing while the user types. Rendering per-section
+// Markdown at capture time is deliberate — it freezes each subsystem's view
+// without holding live references that could mutate underneath us.
 public static class BugReportBuilder
 {
-    /// <summary>How many trailing transcript lines (scrollback + live screen) to include.</summary>
+    // How many trailing transcript lines (scrollback + live screen) to include.
     private const int ScrollbackLines = 500;
 
-    /// <summary>How many trailing program-log entries to include.</summary>
+    // How many trailing program-log entries to include.
     private const int LogLines = 250;
 
-    /// <summary>One captured section of the report — a heading and its pre-rendered Markdown body.</summary>
+    // One captured section of the report — a heading and its pre-rendered Markdown body.
     public readonly record struct Section(string Heading, string Body);
 
-    /// <summary>
-    /// Frozen point-in-time capture produced by <see cref="Capture"/>. Holds the
-    /// realm + timestamp used for the file name and every pre-rendered section.
-    /// The user's issue description is folded in later by <see cref="Render"/>.
-    /// </summary>
+    // Frozen point-in-time capture produced by Capture. Holds the realm +
+    // timestamp used for the file name and every pre-rendered section. The
+    // user's issue description is folded in later by Render.
     public sealed record BugReportCapture(
         DateTimeOffset CapturedAt,
         RealmType Realm,
         IReadOnlyList<Section> Sections);
 
-    /// <summary>
-    /// Freeze the current client state into a <see cref="BugReportCapture"/>.
-    /// Every section is built defensively — a failure reading one subsystem is
-    /// surfaced inline in that section rather than aborting the whole report,
-    /// because a bug report is most needed exactly when something is in a bad
-    /// state.
-    /// </summary>
+    // Freeze the current client state into a BugReportCapture. Every section is
+    // built defensively — a failure reading one subsystem is surfaced inline in
+    // that section rather than aborting the whole report, because a bug report
+    // is most needed exactly when something is in a bad state.
     public static BugReportCapture Capture(AppServices svc, TerminalEmulator emulator)
     {
         ArgumentNullException.ThrowIfNull(svc);
@@ -76,11 +67,9 @@ public static class BugReportBuilder
         return new BugReportCapture(now, realm, sections);
     }
 
-    /// <summary>
-    /// Compose the final Markdown document from a <paramref name="capture"/> and
-    /// the user's <paramref name="issueDescription"/>. The description is placed
-    /// at the top so a triager reads the "what went wrong" before the state dump.
-    /// </summary>
+    // Compose the final Markdown document from a capture and the user's
+    // issueDescription. The description is placed at the top so a triager reads
+    // the "what went wrong" before the state dump.
     public static string Render(BugReportCapture capture, string issueDescription)
     {
         ArgumentNullException.ThrowIfNull(capture);
@@ -103,11 +92,9 @@ public static class BugReportBuilder
         return sb.ToString();
     }
 
-    /// <summary>
-    /// Desktop file name for a capture: <c>&lt;realm&gt;-&lt;yyyyMMdd-HHmmss&gt;.md</c>,
-    /// e.g. <c>paradigm-20260703-142530.md</c>. Uses the click timestamp so the
-    /// name matches when the problem was seen, not when the file was written.
-    /// </summary>
+    // Desktop file name for a capture: realm-yyyyMMdd-HHmmss.md, e.g.
+    // paradigm-20260703-142530.md. Uses the click timestamp so the name matches
+    // when the problem was seen, not when the file was written.
     public static string FileName(BugReportCapture capture)
     {
         ArgumentNullException.ThrowIfNull(capture);
@@ -143,14 +130,11 @@ public static class BugReportBuilder
         return Json(snapshot);
     }
 
-    /// <summary>
-    /// The Character Workshop's persisted, per-character artifacts — the gear
-    /// sets, the CP-allocation plan, and the quest log. These live as top-level
-    /// <see cref="Models.Profile.CharacterProfile"/> properties (not in the
-    /// settings-tab dictionary), so the settings dump wouldn't otherwise carry
-    /// them. The rest of the Workshop is a read-only view over stats / inventory
-    /// already captured above.
-    /// </summary>
+    // The Character Workshop's persisted, per-character artifacts — the gear
+    // sets, the CP-allocation plan, and the quest log. These live as top-level
+    // CharacterProfile properties (not in the settings-tab dictionary), so the
+    // settings dump wouldn't otherwise carry them. The rest of the Workshop is
+    // a read-only view over stats / inventory already captured above.
     private static string BuildWorkshop(AppServices svc)
     {
         var profile = svc.Profile.Current;
@@ -273,12 +257,10 @@ public static class BugReportBuilder
         return sb.ToString();
     }
 
-    /// <summary>
-    /// Emit one settings tier's deltas as JSON, dropping any BBS / Display
-    /// keys per the "everything except BBS + Display" scope. Those live in
-    /// separate stores today (BbsProfileStore / DisplayConfig), so this is
-    /// belt-and-braces — the tab dictionary shouldn't contain them anyway.
-    /// </summary>
+    // Emit one settings tier's deltas as JSON, dropping any BBS / Display keys
+    // per the "everything except BBS + Display" scope. Those live in separate
+    // stores today (BbsProfileStore / DisplayConfig), so this is belt-and-
+    // braces — the tab dictionary shouldn't contain them anyway.
     private static void AppendTier(StringBuilder sb, string label, Dictionary<string, JsonElement>? tier)
     {
         sb.Append("**").Append(label).Append("**\n\n");
@@ -361,7 +343,7 @@ public static class BugReportBuilder
     private static void Kv(StringBuilder sb, string key, string value)
         => sb.Append("- **").Append(key).Append("**: ").Append(value).Append('\n');
 
-    /// <summary>Serialize <paramref name="value"/> into a fenced JSON block.</summary>
+    // Serialize value into a fenced JSON block.
     private static string Json(object? value)
     {
         try
@@ -374,7 +356,7 @@ public static class BugReportBuilder
         }
     }
 
-    /// <summary>Run a section builder, converting any throw into an inline note.</summary>
+    // Run a section builder, converting any throw into an inline note.
     private static string SafeSection(Func<string> build)
     {
         try { return build(); }

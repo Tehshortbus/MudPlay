@@ -1,48 +1,39 @@
 namespace FujinTerm.Services;
 
-/// <summary>
-/// Per-session diagnostic file writer. Each instance opens one file under
-/// <c>Data/Logs/{yyyy-MM-dd_HH-mm-ss}-{topic}.log</c> and appends timestamped
-/// lines. Used by walk / loop / match diagnostics in later phases — anything
-/// too noisy for <see cref="LogService"/> but useful when chasing a bug.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Thread-safe: a single internal lock guards the writer. Lines are flushed
-/// to disk on every <see cref="WriteLine"/> call so a crash doesn't truncate
-/// the tail.
-/// </para>
-/// <para>
-/// Rotation: callers invoke the static <see cref="PruneOldLogs"/> once at
-/// startup to delete files older than the configured retention window
-/// (default 30 days). Phase 4's Settings.Other exposes the knob.
-/// </para>
-/// </remarks>
+// Per-session diagnostic file writer. Each instance opens one file under
+// Data/Logs/{yyyy-MM-dd_HH-mm-ss}-{topic}.log and appends timestamped lines.
+// Used by walk / loop / match diagnostics — anything too noisy for LogService
+// but useful when chasing a bug.
+//
+// Thread-safe: a single internal lock guards the writer. Lines are flushed to
+// disk on every WriteLine call so a crash doesn't truncate the tail.
+//
+// Rotation: callers invoke the static PruneOldLogs once at startup to delete
+// files older than the configured retention window (default 30 days).
+// Settings.Other exposes the knob.
 public sealed class DebugLogWriter : IDisposable, IAsyncDisposable
 {
-    /// <summary>Default retention window applied by <see cref="PruneOldLogs"/>.</summary>
+    // Default retention window applied by PruneOldLogs.
     public const int DefaultRetentionDays = 30;
 
     private readonly object _gate = new();
     private StreamWriter? _writer;
 
-    /// <summary>Full path of the file this writer is appending to.</summary>
+    // Full path of the file this writer is appending to.
     public string Path { get; }
 
-    /// <summary>Topic tag from construction, surfaced for diagnostics.</summary>
+    // Topic tag from construction, surfaced for diagnostics.
     public string Topic { get; }
 
-    /// <summary>True until <see cref="Dispose"/> / <see cref="DisposeAsync"/> closes the file.</summary>
+    // True until Dispose / DisposeAsync closes the file.
     public bool IsOpen
     {
         get { lock (_gate) { return _writer is not null; } }
     }
 
-    /// <summary>
-    /// Open a fresh log file for <paramref name="topic"/>. The path is derived
-    /// from <see cref="AppPaths.NewDebugLogFile"/> and includes a timestamp so
-    /// concurrent writers for the same topic don't collide.
-    /// </summary>
+    // Open a fresh log file for topic. The path is derived from
+    // AppPaths.NewDebugLogFile and includes a timestamp so concurrent writers
+    // for the same topic don't collide.
     public DebugLogWriter(string topic)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(topic);
@@ -54,10 +45,8 @@ public sealed class DebugLogWriter : IDisposable, IAsyncDisposable
         WriteHeader();
     }
 
-    /// <summary>
-    /// Append <paramref name="message"/> as a single line prefixed with a
-    /// millisecond-precision wall-clock timestamp. No-op once disposed.
-    /// </summary>
+    // Append message as a single line prefixed with a millisecond-precision
+    // wall-clock timestamp. No-op once disposed.
     public void WriteLine(string message)
     {
         lock (_gate)
@@ -69,7 +58,7 @@ public sealed class DebugLogWriter : IDisposable, IAsyncDisposable
         }
     }
 
-    /// <summary>Append a formatted line. Shorthand for <c>WriteLine(string.Format(...))</c>.</summary>
+    // Append a formatted line. Shorthand for WriteLine(string.Format(...)).
     public void WriteLine(string format, params object?[] args) => WriteLine(string.Format(format, args));
 
     private void WriteHeader()
@@ -94,13 +83,10 @@ public sealed class DebugLogWriter : IDisposable, IAsyncDisposable
         return ValueTask.CompletedTask;
     }
 
-    /// <summary>
-    /// Delete every <c>*.log</c> file under <see cref="AppPaths.LogsDir"/>
-    /// whose last-write time is older than <paramref name="retentionDays"/>.
-    /// Called once on app startup. Failures on individual files are swallowed
-    /// (returned in the result) so a single locked file can't break startup.
-    /// </summary>
-    /// <returns>The number of files actually deleted.</returns>
+    // Delete every *.log file under AppPaths.LogsDir whose last-write time is
+    // older than retentionDays. Called once on app startup. Failures on
+    // individual files are swallowed so a single locked file can't break
+    // startup. Returns the number of files actually deleted.
     public static int PruneOldLogs(int retentionDays = DefaultRetentionDays)
     {
         if (retentionDays <= 0) return 0;

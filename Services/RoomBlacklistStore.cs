@@ -7,28 +7,21 @@ using FujinTerm.Models.Profile;
 
 namespace FujinTerm.Services;
 
-/// <summary>
-/// Per-BBS room-blacklist store. Loads
-/// <c>Data/BBS/{bbs}/room_blacklist.json</c> on every BBS pin (the
-/// usual ProfileService event the rest of the BBS-tier subsystems
-/// subscribe to) and exposes a <see cref="IReadOnlySet{RoomKey}"/>
-/// for the consumers — <see cref="BfsMapper"/> (skip placement, keep
-/// stub edge), <see cref="ViewModels.Navigation.NavigationViewModel"/>
-/// (filter from room search), and the right-click "Add to blacklist"
-/// command on the map.
-/// </summary>
+// Per-BBS room-blacklist store. Loads Data/BBS/{bbs}/room_blacklist.json on
+// every BBS pin (the usual ProfileService event the rest of the BBS-tier
+// subsystems subscribe to) and exposes a read-only set of RoomKeys for the
+// consumers — BfsMapper (skip placement, keep stub edge), NavigationViewModel
+// (filter from room search), and the right-click "Add to blacklist" command on
+// the map.
 public sealed class RoomBlacklistStore
 {
     private readonly LogService? _log;
     private string? _activeBbs;
     private readonly Dictionary<RoomKey, BlacklistedRoom> _entries = new();
 
-    /// <summary>
-    /// Fires whenever the blacklist contents change — either a load
-    /// against a new active BBS, or an in-session Add / Remove.
-    /// Consumers refresh derived state (BFS layout cache, search
-    /// results, map render).
-    /// </summary>
+    // Fires whenever the blacklist contents change — either a load against a new
+    // active BBS, or an in-session Add / Remove. Consumers refresh derived state
+    // (BFS layout cache, search results, map render).
     public event Action? Changed;
 
     public RoomBlacklistStore(LogService? log = null)
@@ -36,28 +29,22 @@ public sealed class RoomBlacklistStore
         _log = log;
     }
 
-    /// <summary>Read-only snapshot of currently-blacklisted keys.</summary>
+    // Read-only snapshot of currently-blacklisted keys.
     public IReadOnlySet<RoomKey> Blacklisted
         => _entries.Keys.ToHashSet();
 
-    /// <summary>
-    /// Read-only ordered snapshot of currently-blacklisted rooms with
-    /// the display name captured at add-time. Order is insertion-stable
-    /// so the Modify dialog shows entries in the order the user added
-    /// them.
-    /// </summary>
+    // Read-only ordered snapshot of currently-blacklisted rooms with the
+    // display name captured at add-time. Order is insertion-stable so the Modify
+    // dialog shows entries in the order the user added them.
     public IReadOnlyList<BlacklistedRoom> Entries
         => _entries.Values.ToList();
 
-    /// <summary>True when <paramref name="key"/> is in the blacklist.</summary>
+    // True when key is in the blacklist.
     public bool IsBlacklisted(RoomKey key) => _entries.ContainsKey(key);
 
-    /// <summary>
-    /// Add <paramref name="key"/> with display <paramref name="name"/>.
-    /// Idempotent — re-adding an existing key updates the stored
-    /// name and persists. Fires <see cref="Changed"/> on insertion or
-    /// name update; no-ops when the existing entry is identical.
-    /// </summary>
+    // Add key with display name. Idempotent — re-adding an existing key updates
+    // the stored name and persists. Fires Changed on insertion or name update;
+    // no-ops when the existing entry is identical.
     public void Add(RoomKey key, string name)
     {
         if (_entries.TryGetValue(key, out BlacklistedRoom? existing))
@@ -73,10 +60,7 @@ public sealed class RoomBlacklistStore
         Changed?.Invoke();
     }
 
-    /// <summary>
-    /// Remove <paramref name="key"/>. No-op when absent. Fires
-    /// <see cref="Changed"/> on actual removal.
-    /// </summary>
+    // Remove key. No-op when absent. Fires Changed on actual removal.
     public bool Remove(RoomKey key)
     {
         if (!_entries.Remove(key)) return false;
@@ -85,12 +69,9 @@ public sealed class RoomBlacklistStore
         return true;
     }
 
-    /// <summary>
-    /// Replace the entire blacklist with <paramref name="newEntries"/>
-    /// and persist. Used by the Modify-Blacklist dialog on OK — it
-    /// stages changes locally and commits the full working copy in
-    /// one shot so Cancel can discard cleanly.
-    /// </summary>
+    // Replace the entire blacklist with newEntries and persist. Used by the
+    // Modify-Blacklist dialog on OK — it stages changes locally and commits the
+    // full working copy in one shot so Cancel can discard cleanly.
     public void ReplaceAll(IEnumerable<BlacklistedRoom> newEntries)
     {
         ArgumentNullException.ThrowIfNull(newEntries);
@@ -104,14 +85,9 @@ public sealed class RoomBlacklistStore
         Changed?.Invoke();
     }
 
-    /// <summary>
-    /// Load the blacklist for the active BBS <paramref name="bbs"/>. Called
-    /// by <see cref="AppServices"/> on
-    /// <see cref="ProfileService.ProfileLoaded"/> /
-    /// <see cref="ProfileService.BbsPinApplied"/> with the resolved active
-    /// BBS name; resets the in-memory store when the pin clears
-    /// (<paramref name="bbs"/> is <c>null</c> / blank).
-    /// </summary>
+    // Load the blacklist for the active BBS. Called by AppServices on
+    // ProfileService.ProfileLoaded / BbsPinApplied with the resolved active BBS
+    // name; resets the in-memory store when the pin clears (bbs is null / blank).
     public void OnBbsPinApplied(string? bbs)
     {
         if (string.IsNullOrWhiteSpace(bbs))

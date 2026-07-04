@@ -3,24 +3,18 @@ using System.Text.Json;
 
 namespace FujinTerm.Services;
 
-/// <summary>
-/// Lightweight in-memory index of <c>Items.json</c> for the active
-/// game-data set, mapping the MDB <c>Number</c> field to its
-/// <c>Name</c>. Used by walker / handler code that needs to resolve
-/// an item id back to the verbatim name to send to the game (door
-/// keys via <c>use &lt;name&gt; &lt;dir&gt;</c>, tickets via
-/// inventory checks, etc.). Also exposes two slot-filtered name lists
-/// (<see cref="WeaponNames"/> / <see cref="OffHandNames"/>) for the
-/// Settings → Combat typeahead boxes.
-/// </summary>
-/// <remarks>
-/// Subscribes to <see cref="GameDataCache.ActiveSetChanged"/>, loads
-/// the raw <c>Items.json</c>, populates the int → string map plus the
-/// slot-filtered name lists in a single pass, and evicts the raw
-/// <see cref="JsonDocument"/>. Only the fields these indexes need
-/// (Number, Name, ItemType, Worn, Encum) are retained — full item editing
-/// is owned by the Game Data browser and reads its own copy.
-/// </remarks>
+// In-memory index of Items.json for the active game-data set, mapping the
+// MDB Number field to its Name. Walker / handler code resolves an item id
+// back to the verbatim name to send to the game (door keys via
+// use <name> <dir>, tickets via inventory checks, etc.). Also exposes two
+// slot-filtered name lists (WeaponNames / OffHandNames) for the
+// Settings → Combat typeahead boxes.
+//
+// Subscribes to GameDataCache.ActiveSetChanged, loads the raw Items.json,
+// populates the int → string map plus the slot-filtered name lists in a
+// single pass, then evicts the raw JsonDocument. Only the fields these
+// indexes need (Number, Name, ItemType, Worn, Encum) are retained — full
+// item editing is owned by the Game Data browser and reads its own copy.
 public sealed class ItemNameStore
 {
     private readonly GameDataCache _cache;
@@ -28,8 +22,7 @@ public sealed class ItemNameStore
     private readonly Dictionary<int, string> _names = new();
 
     // Slot-filtered, alphabetically-sorted, de-duplicated name lists
-    // for the Combat-tab typeahead boxes. Classification follows MMUD
-    // Explorer parity (frmBSCalc.frm / frmMain.frm): a weapon is
+    // for the Combat-tab typeahead boxes. Classification: a weapon is
     // ItemType == 1; an off-hand item is Worn == 12 (shields, tomes,
     // the bard lute, etc.). No class dual-wields, so one-handed weapons
     // never appear in the off-hand list.
@@ -55,29 +48,22 @@ public sealed class ItemNameStore
     // (see WornCodeOf).
     private readonly Dictionary<int, int> _wornByNumber = new();
 
-    /// <summary>Active set the store was last loaded from, or <c>null</c> if empty.</summary>
     public string? ActiveSet { get; private set; }
 
-    /// <summary>
-    /// Alphabetically-sorted, distinct names of every weapon
-    /// (<c>ItemType == 1</c>) in the active set. Suggestion source for
-    /// the Combat-tab weapon typeahead boxes. Empty when no set is
-    /// active.
-    /// </summary>
+    // Alphabetically-sorted, distinct names of every weapon (ItemType == 1)
+    // in the active set — suggestion source for the Combat-tab weapon
+    // typeahead boxes. Empty when no set is active.
     public IReadOnlyList<string> WeaponNames => _weaponNames;
 
-    /// <summary>
-    /// Alphabetically-sorted, distinct names of every off-hand item
-    /// (<c>Worn == 12</c> — shields, tomes, instruments) in the active
-    /// set. Suggestion source for the Combat-tab off-hand typeahead
-    /// boxes. Empty when no set is active.
-    /// </summary>
+    // Alphabetically-sorted, distinct names of every off-hand item
+    // (Worn == 12 — shields, tomes, instruments) in the active set —
+    // suggestion source for the Combat-tab off-hand typeahead boxes.
+    // Empty when no set is active.
     public IReadOnlyList<string> OffHandNames => _offHandNames;
 
-    /// <summary>Number of entries in the active store.</summary>
     public int EntryCount => _names.Count;
 
-    /// <summary>Fires after every successful (re)load, including the transition to no-set-active.</summary>
+    // Fires after every successful (re)load, including the transition to no-set-active.
     public event Action? StoreReloaded;
 
     public ItemNameStore(GameDataCache cache) : this(cache, log: null) { }
@@ -89,25 +75,19 @@ public sealed class ItemNameStore
         _log = log;
     }
 
-    /// <summary>
-    /// Get the canonical name for the given item id, or <c>null</c>
-    /// when the id isn't in the active set. The returned string is
-    /// the verbatim MDB <c>Name</c> — fed straight into the game's
-    /// <c>use &lt;name&gt; &lt;dir&gt;</c> verb.
-    /// </summary>
+    // Canonical name for the given item id, or null when the id isn't in the
+    // active set. The returned string is the verbatim MDB Name — fed straight
+    // into the game's use <name> <dir> verb.
     public string? GetName(int itemId)
         => _names.TryGetValue(itemId, out string? name) ? name : null;
 
-    /// <summary>
-    /// Resolve a single room "You notice ..." entry (e.g.
-    /// <c>"a long sword"</c>) to its item <c>Number</c>, or <c>null</c>
-    /// when nothing in the active set matches. Leading articles
-    /// (<c>a/an/the/some</c>) and a leading count are stripped before
-    /// matching; an exact normalized hit is preferred, falling back to a
-    /// de-pluralized form (drop a trailing <c>s</c>). Cash entries
-    /// (<c>"500 gold coins"</c>) won't be in <c>Items.json</c> and so
-    /// return <c>null</c> — the caller skips them naturally.
-    /// </summary>
+    // Resolve a single room "You notice ..." entry (e.g. "a long sword") to
+    // its item Number, or null when nothing in the active set matches.
+    // Leading articles (a/an/the/some) and a leading count are stripped
+    // before matching; an exact normalized hit is preferred, falling back to
+    // a de-pluralized form (drop a trailing s). Cash entries ("500 gold
+    // coins") won't be in Items.json and so return null — the caller skips
+    // them naturally.
     public int? FindByName(string roomEntry)
     {
         if (string.IsNullOrWhiteSpace(roomEntry)) return null;
@@ -125,36 +105,30 @@ public sealed class ItemNameStore
         return null;
     }
 
-    /// <summary>
-    /// Carry weight (MDB <c>Encum</c>) of the item a game display name refers
-    /// to, or <c>null</c> when nothing in the active set matches. Name matching
-    /// reuses <see cref="FindByName"/>'s article/count normalization, so
-    /// "a torch" / "torch" both resolve. Used by the inventory tracker to move
-    /// the encumbrance estimate as items enter / leave the pack.
-    /// </summary>
+    // Carry weight (MDB Encum) of the item a game display name refers to, or
+    // null when nothing in the active set matches. Name matching reuses
+    // FindByName's article/count normalization, so "a torch" / "torch" both
+    // resolve. Used by the inventory tracker to move the encumbrance estimate
+    // as items enter / leave the pack.
     public int? WeightOf(string displayName)
         => FindByName(displayName) is int number
            && _encumByNumber.TryGetValue(number, out int encum)
             ? encum : null;
 
-    /// <summary>
-    /// Equip-location code (MDB <c>Worn</c>) of the item a game display name
-    /// refers to, or <c>null</c> when nothing in the active set matches. Name
-    /// matching reuses <see cref="FindByName"/>'s article/count normalization.
-    /// Used by the inventory tracker to slot a freshly-worn piece by its real
-    /// location when the wear line itself names none.
-    /// </summary>
+    // Equip-location code (MDB Worn) of the item a game display name refers
+    // to, or null when nothing in the active set matches. Name matching
+    // reuses FindByName's article/count normalization. Used by the inventory
+    // tracker to slot a freshly-worn piece by its real location when the wear
+    // line itself names none.
     public int? WornCodeOf(string displayName)
         => FindByName(displayName) is int number
            && _wornByNumber.TryGetValue(number, out int worn)
             ? worn : null;
 
-    /// <summary>
-    /// Lower-case, trim, and strip a leading article / count token so a
-    /// loose room phrasing collapses to the canonical item name shape.
-    /// Shared by the reverse-index build and the
-    /// <see cref="FindByName"/> lookup so both sides agree on the key.
-    /// </summary>
+    // Lower-case, trim, and strip a leading article / count token so a loose
+    // room phrasing collapses to the canonical item name shape. Shared by the
+    // reverse-index build and the FindByName lookup so both sides agree on
+    // the key.
     private static string Normalize(string raw)
     {
         string s = raw.Trim().ToLowerInvariant();
@@ -185,9 +159,9 @@ public sealed class ItemNameStore
         return s.Trim();
     }
 
-    /// <summary>Read an integer field from a JSON row, or <c>0</c> when
-    /// the property is missing / non-numeric. Used for the slot-classifier
-    /// reads (ItemType / Worn) where absent means "not that slot".</summary>
+    // Read an integer field from a JSON row, or 0 when the property is
+    // missing / non-numeric. Used for the slot-classifier reads
+    // (ItemType / Worn) where absent means "not that slot".
     private static int ReadInt(JsonElement row, string property)
         => row.TryGetProperty(property, out JsonElement el)
            && el.ValueKind == JsonValueKind.Number
@@ -207,12 +181,8 @@ public sealed class ItemNameStore
             or "six" or "seven" or "eight" or "nine" or "ten";
     }
 
-    /// <summary>
-    /// Reload the store from <paramref name="setName"/>'s
-    /// <c>Items.json</c>. Pass <c>null</c> to clear. Wired by
-    /// <see cref="AppServices"/> to
-    /// <see cref="GameDataCache.ActiveSetChanged"/>.
-    /// </summary>
+    // Reload the store from setName's Items.json. Pass null to clear. Wired
+    // by AppServices to GameDataCache.ActiveSetChanged.
     public void OnActiveSetChanged(string? setName)
     {
         _names.Clear();

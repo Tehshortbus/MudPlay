@@ -260,8 +260,8 @@ public enum TargetPriority
 // Attack Order — WHEN to (re-)announce our swing to control initiative order.
 // Pure timing: re-fires our own current target on someone else's announce so
 // our announce lands last; it never switches the monster (TargetPriority owns
-// the "who"). Wraps the standard party attack-order behavior plus a
-// FujinTerm-original AttackLastRoom mode that drops the party-membership filter.
+// the "who"). Covers the usual party attack-order timing modes plus an
+// AttackLastRoom mode that drops the party-membership filter.
 public enum AttackTiming
 {
     // Own cadence; no re-fire coordination.
@@ -284,7 +284,7 @@ public enum AttackTiming
 }
 
 // Behavior when a non-party player is engaged with a monster we would otherwise
-// target. FujinTerm-original.
+// target.
 public enum PoliteMode
 {
     // Engage regardless of who else is fighting. Default.

@@ -2,19 +2,15 @@ using System.Text;
 
 namespace FujinTerm.Services;
 
-/// <summary>
-/// Byte → printable-text converters used by the Wire Inspector's two panes.
-/// Pure functions; no state.
-/// </summary>
+// Byte → printable-text converters used by the Wire Inspector's two panes.
+// Pure functions; no state.
 public static class WireFormatter
 {
-    /// <summary>
-    /// Render <paramref name="bytes"/> with non-printables made visible as
-    /// caret-style markers (<c>ESC</c> → <c>^[</c>, <c>CR</c> → <c>^M</c>,
-    /// etc.) but newline bytes preserved as actual line breaks for readability.
-    /// Latin-1 maps the high half (0x80–0xFF) straight to U+0080–U+00FF; the
-    /// terminal already speaks Latin-1, so this matches what the user sees.
-    /// </summary>
+    // Render bytes with non-printables made visible as caret-style markers
+    // (ESC → ^[, CR → ^M, etc.) but newline bytes preserved as actual line
+    // breaks for readability. Latin-1 maps the high half (0x80–0xFF) straight to
+    // U+0080–U+00FF; the terminal already speaks Latin-1, so this matches what
+    // the user sees.
     public static string RenderRaw(ReadOnlySpan<byte> bytes)
     {
         // Two bytes can grow to three chars max ("^[" markers + payload), so
@@ -42,16 +38,13 @@ public static class WireFormatter
         return sb.ToString();
     }
 
-    /// <summary>
-    /// Render <paramref name="bytes"/> as readable text for at-a-glance
-    /// debugging: ANSI CSI escape sequences are dropped, the backspace
-    /// overstrike MajorMUD uses to highlight an exit's first letter
-    /// (<c>F&lt;BS&gt;o…</c> → <c>o…</c>) is collapsed, and CR is removed while
-    /// LF is kept as a line break. So an <c>Obvious exits:</c> line that
-    /// arrives as <c>nF&lt;BS&gt;orth, …&lt;CR&gt;</c> renders as
-    /// <c>north, …</c>. Remaining C0 controls + DEL stay as caret markers so
-    /// a stray byte doesn't silently hide a problem. Not a full VT100 parser.
-    /// </summary>
+    // Render bytes as readable text for at-a-glance debugging: ANSI CSI escape
+    // sequences are dropped, the backspace overstrike MajorMUD uses to highlight
+    // an exit's first letter (F<BS>o… → o…) is collapsed, and CR is removed while
+    // LF is kept as a line break. So an "Obvious exits:" line that arrives as
+    // nF<BS>orth, …<CR> renders as "north, …". Remaining C0 controls + DEL stay
+    // as caret markers so a stray byte doesn't silently hide a problem. Not a
+    // full VT100 parser.
     public static string RenderStripped(ReadOnlySpan<byte> bytes)
     {
         StringBuilder sb = new(bytes.Length);

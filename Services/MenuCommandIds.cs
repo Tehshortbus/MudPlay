@@ -1,15 +1,12 @@
 namespace FujinTerm.Services;
 
-/// <summary>
-/// Stable identifiers for every menu-bar / context-menu command. The main
-/// menu and the terminal right-click context menu both reference these IDs;
-/// keeping them in one place prevents drift between the two surfaces and
-/// gives later phases a single rename target when they wire stubs.
-/// </summary>
-/// <remarks>
-/// Naming convention: <c>group.action</c> in lower-kebab. Example:
-/// <c>file.connect</c>, <c>view.log</c>, <c>tools.replay-capture</c>.
-/// </remarks>
+// Stable identifiers for every menu-bar / context-menu command. The main
+// menu and the terminal right-click context menu both reference these IDs;
+// keeping them in one place prevents drift between the two surfaces and gives
+// a single rename target.
+//
+// Naming convention: group.action in lower-kebab. Example: file.connect,
+// view.log, tools.replay-capture.
 public static class MenuCommandIds
 {
     // ----- File ----------------------------------------------------------

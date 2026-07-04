@@ -3,29 +3,21 @@ using System.Text.RegularExpressions;
 
 namespace FujinTerm.Services;
 
-/// <summary>
-/// Sniffs the post-IAC wire stream for the BBS's "shutting down for
-/// nightly cleanup" warning and captures the most recent
-/// (observed_at, minutes_remaining) tuple. The connect / disconnect
-/// lifecycle in <c>MainWindowViewModel</c> reads <see cref="Latest"/>
-/// to decide whether to arm an auto-reconnect after the BBS comes
-/// back online.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Pattern: case-insensitive substring match on <c>"shutting down in
-/// N minute"</c>, with the integer captured. Tolerates ANSI CSI escapes
-/// in the wire stream (stripped inline before regex). Only one phrasing
-/// today — we'll grow the regex as we observe other realm-specific
-/// variants in the wild.
-/// </para>
-/// <para>
-/// Last warning wins: a 5-minute warning followed by a 2-minute one
-/// updates <see cref="Latest"/> to the 2-minute observation. The
-/// estimated shutdown moment (<see cref="CleanupWarning.EstimatedShutdownAt"/>)
-/// is recomputed from the latest sample, not anchored to the first.
-/// </para>
-/// </remarks>
+// Sniffs the post-IAC wire stream for the BBS's "shutting down for nightly
+// cleanup" warning and captures the most recent (observed_at,
+// minutes_remaining) tuple. The connect / disconnect lifecycle in
+// MainWindowViewModel reads Latest to decide whether to arm an auto-reconnect
+// after the BBS comes back online.
+//
+// Pattern: case-insensitive substring match on "shutting down in N minute",
+// with the integer captured. Tolerates ANSI CSI escapes in the wire stream
+// (stripped inline before regex). Only one phrasing today — we'll grow the
+// regex as we observe other realm-specific variants in the wild.
+//
+// Last warning wins: a 5-minute warning followed by a 2-minute one updates
+// Latest to the 2-minute observation. The estimated shutdown moment
+// (CleanupWarning.EstimatedShutdownAt) is recomputed from the latest sample,
+// not anchored to the first.
 public sealed partial class CleanupWarningWatcher
 {
     private const int BufferCap = 4096;
@@ -33,31 +25,26 @@ public sealed partial class CleanupWarningWatcher
     private readonly StringBuilder _buffer = new(BufferCap);
     private StripState _state;
 
-    /// <summary>Most-recently observed warning, or <c>null</c> if none in this session.</summary>
+    // Most-recently observed warning, or null if none in this session.
     public CleanupWarning? Latest { get; private set; }
 
-    /// <summary>
-    /// True after we've observed the in-cleanup "this system is not
-    /// available at the moment, please try again later" rejection
-    /// message. Distinct from <see cref="Latest"/> (the pre-shutdown
-    /// warning) — that one tells the user "the BBS is GOING down";
-    /// this flag tells us "the BBS IS down right now and we just
-    /// connected mid-cleanup". Reset on next successful
-    /// <see cref="Reset"/> (i.e. on next outgoing connect attempt).
-    /// </summary>
+    // True after we've observed the in-cleanup "this system is not available at
+    // the moment, please try again later" rejection message. Distinct from
+    // Latest (the pre-shutdown warning) — that one tells the user "the BBS is
+    // GOING down"; this flag tells us "the BBS IS down right now and we just
+    // connected mid-cleanup". Reset on next successful Reset (i.e. on next
+    // outgoing connect attempt).
     public bool InCleanupMode { get; private set; }
 
-    /// <summary>Fires every time a pre-shutdown warning line is matched. Payload = the new <see cref="Latest"/>.</summary>
+    // Fires every time a pre-shutdown warning line is matched. Payload = the new Latest.
     public event Action<CleanupWarning>? WarningObserved;
 
-    /// <summary>
-    /// Fires once per <see cref="InCleanupMode"/> activation — i.e.
-    /// when the watcher sees the "system not available" rejection
-    /// message for the first time since the last <see cref="Reset"/>.
-    /// </summary>
+    // Fires once per InCleanupMode activation — i.e. when the watcher sees the
+    // "system not available" rejection message for the first time since the last
+    // Reset.
     public event Action? CleanupModeDetected;
 
-    /// <summary>Wipe in-flight buffer + cached warning + cleanup-mode flag. Called on new connect.</summary>
+    // Wipe in-flight buffer + cached warning + cleanup-mode flag. Called on new connect.
     public void Reset()
     {
         _buffer.Clear();
@@ -66,11 +53,8 @@ public sealed partial class CleanupWarningWatcher
         InCleanupMode = false;
     }
 
-    /// <summary>
-    /// Feed post-IAC display bytes. Strips ANSI escapes inline, appends
-    /// to a rolling buffer, and fires <see cref="WarningObserved"/> for
-    /// every fresh regex match.
-    /// </summary>
+    // Feed post-IAC display bytes. Strips ANSI escapes inline, appends to a
+    // rolling buffer, and fires WarningObserved for every fresh regex match.
     public void Append(ReadOnlySpan<byte> data)
     {
         if (data.IsEmpty) return;
@@ -140,9 +124,9 @@ public sealed partial class CleanupWarningWatcher
     private enum StripState : byte { Normal, EscSeen, Csi }
 }
 
-/// <summary>One observed cleanup-warning sample.</summary>
+// One observed cleanup-warning sample.
 public readonly record struct CleanupWarning(DateTimeOffset ObservedAt, int MinutesRemaining)
 {
-    /// <summary>When the BBS is expected to actually go offline.</summary>
+    // When the BBS is expected to actually go offline.
     public DateTimeOffset EstimatedShutdownAt => ObservedAt.AddMinutes(MinutesRemaining);
 }

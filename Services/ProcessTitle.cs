@@ -3,15 +3,12 @@ using System.Text;
 
 namespace FujinTerm.Services;
 
-/// <summary>
-/// Sets the OS process name (the <c>comm</c> field shown by <c>ps</c>,
-/// <c>top</c>, <c>htop</c>, and process managers) to the active
-/// <c>{char}@{bbs}</c> identity, so a user running several FujinTerm
-/// instances side-by-side can tell them apart at the process level.
-/// Linux-only via <c>prctl(PR_SET_NAME)</c>; a silent no-op on every other
-/// platform (Windows / macOS expose no equivalently cheap per-process rename,
-/// and the window title already carries the readable form there).
-/// </summary>
+// Sets the OS process name (the comm field shown by ps, top, htop, and
+// process managers) to the active {char}@{bbs} identity, so a user running
+// several FujinTerm instances side-by-side can tell them apart at the process
+// level. Linux-only via prctl(PR_SET_NAME); a silent no-op on every other
+// platform (Windows / macOS expose no equivalently cheap per-process rename,
+// and the window title already carries the readable form there).
 public static class ProcessTitle
 {
     // PR_SET_NAME's option constant, and the kernel's hard cap on the comm
@@ -19,13 +16,11 @@ public static class ProcessTitle
     private const int PrSetName = 15;
     private const int MaxNameBytes = 15;
 
-    /// <summary>
-    /// Compose <c>{profile}@{bbs}</c> from the loaded profile + active BBS and
-    /// push it to the kernel as this process's name. Either part may be
-    /// <c>null</c>: yields the char alone, <c>@{bbs}</c> alone, or the bare
-    /// app name when both are absent. Over-long names are truncated to the
-    /// 15-byte comm limit without splitting a multi-byte UTF-8 sequence.
-    /// </summary>
+    // Compose {profile}@{bbs} from the loaded profile + active BBS and push it
+    // to the kernel as this process's name. Either part may be null: yields the
+    // char alone, @{bbs} alone, or the bare app name when both are absent.
+    // Over-long names are truncated to the 15-byte comm limit without splitting
+    // a multi-byte UTF-8 sequence.
     public static void Set(string? profile, string? bbs)
     {
         if (!OperatingSystem.IsLinux()) return;

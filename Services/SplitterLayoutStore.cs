@@ -3,30 +3,21 @@ using FujinTerm.Models.Profile;
 
 namespace FujinTerm.Services;
 
-/// <summary>
-/// Per-character splitter-position memory for two-pane resizable
-/// dialogs. Parallels <see cref="WindowLayoutStore"/> for the
-/// horizontal split inside a window (e.g. the MonsterEditDialog's
-/// editable-vs-MDB pane split).
-/// </summary>
-/// <remarks>
-/// <para>
-/// Each dialog calls <see cref="AttachGrid"/> once during construction
-/// with a stable id + the Grid whose ColumnDefinitions to drive + the
-/// two column indexes (LEFT and RIGHT of the splitter). The store
-/// wires the parent <see cref="Window"/>'s Opened + Closing handlers
-/// so the column widths restore from the profile on open and the
-/// current ratio captures back on close.
-/// </para>
-/// <para>
-/// Ratio semantics: stored value is <c>leftWidth / (leftWidth + rightWidth)</c>
-/// at close time. On restore the value is applied as a star-width pair
-/// <c>(ratio*, (1-ratio)*)</c> so the dialog still scales when the
-/// user resizes the window. Restore is skipped when the ratio looks
-/// degenerate (less than 5% or more than 95%) so a stuck splitter
-/// doesn't hide a whole pane.
-/// </para>
-/// </remarks>
+// Per-character splitter-position memory for two-pane resizable dialogs.
+// Parallels WindowLayoutStore for the horizontal split inside a window (e.g. the
+// MonsterEditDialog's editable-vs-MDB pane split).
+//
+// Each dialog calls AttachGrid once during construction with a stable id + the
+// Grid whose ColumnDefinitions to drive + the two column indexes (LEFT and
+// RIGHT of the splitter). The store wires the parent Window's Opened + Closing
+// handlers so the column widths restore from the profile on open and the
+// current ratio captures back on close.
+//
+// Ratio semantics: stored value is leftWidth / (leftWidth + rightWidth) at
+// close time. On restore the value is applied as a star-width pair
+// (ratio*, (1-ratio)*) so the dialog still scales when the user resizes the
+// window. Restore is skipped when the ratio looks degenerate (less than 5% or
+// more than 95%) so a stuck splitter doesn't hide a whole pane.
 public sealed class SplitterLayoutStore
 {
     private const double MinRatio = 0.05;
@@ -43,17 +34,12 @@ public sealed class SplitterLayoutStore
         profile.ProfileSaving += p => p.SplitterRatios = Snapshot();
     }
 
-    /// <summary>
-    /// Wire <paramref name="grid"/>'s ColumnDefinitions to the
-    /// per-profile ratio store. Calls back into the supplied
-    /// <paramref name="owner"/> window for Opened / Closing events so
-    /// the dialog doesn't have to manage subscriptions itself.
-    /// </summary>
-    /// <param name="owner">The host window — drives the lifecycle events.</param>
-    /// <param name="grid">The Grid whose ColumnDefinitions carry the splittable columns.</param>
-    /// <param name="leftColumnIndex">Index of the LEFT column in <paramref name="grid"/>.ColumnDefinitions.</param>
-    /// <param name="rightColumnIndex">Index of the RIGHT column.</param>
-    /// <param name="id">Stable identifier — used as the dictionary key.</param>
+    // Wire grid's ColumnDefinitions to the per-profile ratio store. Calls back
+    // into the supplied owner window for Opened / Closing events so the dialog
+    // doesn't have to manage subscriptions itself. owner is the host window that
+    // drives the lifecycle events; leftColumnIndex / rightColumnIndex are the
+    // LEFT / RIGHT column indexes in grid.ColumnDefinitions; id is the stable
+    // dictionary key.
     public void AttachGrid(Window owner, Grid grid, int leftColumnIndex, int rightColumnIndex, string id)
     {
         ArgumentNullException.ThrowIfNull(owner);
@@ -64,11 +50,11 @@ public sealed class SplitterLayoutStore
         owner.Closing += (_, _) => CaptureFrom(grid, leftColumnIndex, rightColumnIndex, id);
     }
 
-    /// <summary>Snapshot every known ratio — used by ProfileSaving.</summary>
+    // Snapshot every known ratio — used by ProfileSaving.
     public Dictionary<string, double> Snapshot()
         => new(_ratios, StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>Replace the in-memory map with whatever a freshly-loaded profile carries.</summary>
+    // Replace the in-memory map with whatever a freshly-loaded profile carries.
     public void ApplyFromProfile(IReadOnlyDictionary<string, double>? incoming)
     {
         _ratios.Clear();

@@ -2,31 +2,21 @@ using System.Collections.Frozen;
 
 namespace FujinTerm.Services;
 
-/// <summary>
-/// Central registry of every action that can appear on the main window
-/// toolbar. Maps each stable <c>ActionId</c> string (e.g.
-/// <c>"ToggleConnection"</c>) to its display label, icon resource key
-/// (looked up via <c>StaticResource</c> on <c>Themes/Icons.axaml</c>),
-/// tooltip, optional shortcut hint, and the
-/// <see cref="ViewModels.MainWindowViewModel"/> command name to bind
-/// against.
-/// </summary>
-/// <remarks>
-/// Both the Settings → Toolbar editor and the live
-/// <c>MainWindow.axaml</c> dynamic toolbar read from this catalogue, so
-/// adding a new toolbar action is a one-line entry plus a glyph in the
-/// icons theme — the editor surfaces it automatically and the
-/// rendered toolbar resolves it through the same lookup.
-/// </remarks>
+// Central registry of every action that can appear on the main window toolbar.
+// Maps each stable ActionId string (e.g. "ToggleConnection") to its display
+// label, icon resource key (looked up via StaticResource on
+// Themes/Icons.axaml), tooltip, optional shortcut hint, and the
+// MainWindowViewModel command name to bind against.
+//
+// Both the Settings → Toolbar editor and the live MainWindow.axaml dynamic
+// toolbar read from this catalogue, so adding a new toolbar action is a one-line
+// entry plus a glyph in the icons theme — the editor surfaces it automatically
+// and the rendered toolbar resolves it through the same lookup.
 public static class ToolbarItemCatalogue
 {
-    /// <summary>
-    /// One catalogue entry. <see cref="ActionId"/> is the stable
-    /// identifier persisted on the user's profile;
-    /// <see cref="CommandName"/> is the MainWindowViewModel property
-    /// the button binds to (Avalonia resolves
-    /// <c>{Binding {CommandName}}</c> via the DataContext).
-    /// </summary>
+    // One catalogue entry. ActionId is the stable identifier persisted on the
+    // user's profile; CommandName is the MainWindowViewModel property the button
+    // binds to (Avalonia resolves {Binding {CommandName}} via the DataContext).
     public sealed record Entry(
         string ActionId,
         string Label,
@@ -82,7 +72,7 @@ public static class ToolbarItemCatalogue
         new("OpenLogPane",        "Program Log",          "IconLog",
             "OpenLogPaneCommand",      ShortcutHint: "F9"),
 
-        // ----- Action menu surface (PR 4.6b) ---------------------------------
+        // ----- Action menu surface -------------------------------------------
         // These mirror the Action menu in MainWindow.axaml. The CommandName
         // resolves by reflection to the matching [RelayCommand] on
         // MainWindowViewModel. Adding an entry here also makes the action
@@ -158,13 +148,13 @@ public static class ToolbarItemCatalogue
             InDefaultLayout: false),
     };
 
-    /// <summary>All entries in their canonical (default-layout) order.</summary>
+    // All entries in their canonical (default-layout) order.
     public static IReadOnlyList<Entry> AllEntries { get; } = _entries;
 
     private static readonly FrozenDictionary<string, Entry> _byId =
         _entries.ToFrozenDictionary(e => e.ActionId, StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>Look up an entry by its <see cref="Entry.ActionId"/>; <c>null</c> if unknown.</summary>
+    // Look up an entry by its ActionId; null if unknown.
     public static Entry? Find(string? actionId)
         => actionId is null ? null : (_byId.TryGetValue(actionId, out Entry? e) ? e : null);
 }

@@ -1,12 +1,10 @@
 namespace FujinTerm.Services;
 
-/// <summary>
-/// Per-input-field cursor over a shared <see cref="CommandHistory"/>.
-/// Tracks where the user is while cycling Up / Down and stashes the
-/// in-progress line so Down past the newest entry restores what they were
-/// typing. Each input widget (the terminal control, the Conversation
-/// window) owns its own navigator over the one shared history.
-/// </summary>
+// Per-input-field cursor over a shared CommandHistory. Tracks where the user is
+// while cycling Up / Down and stashes the in-progress line so Down past the
+// newest entry restores what they were typing. Each input widget (the terminal
+// control, the Conversation window) owns its own navigator over the one shared
+// history.
 public sealed class CommandHistoryNavigator
 {
     private readonly CommandHistory _history;
@@ -17,23 +15,18 @@ public sealed class CommandHistoryNavigator
 
     public CommandHistoryNavigator(CommandHistory history) => _history = history;
 
-    /// <summary>
-    /// Drop back to the live line and forget the stash. Call when the user
-    /// edits the line afresh or submits — the next <see cref="Previous"/>
-    /// then starts browsing from the newest entry again.
-    /// </summary>
+    // Drop back to the live line and forget the stash. Call when the user edits
+    // the line afresh or submits — the next Previous then starts browsing from
+    // the newest entry again.
     public void Reset()
     {
         _index = -1;
         _stash = string.Empty;
     }
 
-    /// <summary>
-    /// Step to an older entry (Up). Returns the text to display, or null
-    /// when there's nothing older / no history at all. The first step off
-    /// the live line stashes <paramref name="currentText"/> so
-    /// <see cref="Next"/> can restore it.
-    /// </summary>
+    // Step to an older entry (Up). Returns the text to display, or null when
+    // there's nothing older / no history at all. The first step off the live
+    // line stashes currentText so Next can restore it.
     public string? Previous(string currentText)
     {
         IReadOnlyList<string> e = _history.Entries;
@@ -55,11 +48,9 @@ public sealed class CommandHistoryNavigator
         return e[_index];
     }
 
-    /// <summary>
-    /// Step toward a newer entry (Down). Past the newest entry it restores
-    /// the stashed in-progress line and returns to the live state. Returns
-    /// null when already on the live line (nothing to do).
-    /// </summary>
+    // Step toward a newer entry (Down). Past the newest entry it restores the
+    // stashed in-progress line and returns to the live state. Returns null when
+    // already on the live line (nothing to do).
     public string? Next()
     {
         if (_index < 0) return null;   // already live

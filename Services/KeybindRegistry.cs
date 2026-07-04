@@ -3,39 +3,27 @@ using FujinTerm.Models.Profile;
 
 namespace FujinTerm.Services;
 
-/// <summary>
-/// Single source of truth for which keys + key combinations the user
-/// is allowed to bind a macro to. Encodes:
-/// <list type="bullet">
-///   <item><b>Bindable keys</b> — the picker list shown in the macro
-///         edit dialog (F1-F12, Numpad 0-9 + operators, A-Z, 0-9,
-///         navigation cluster, common punctuation).</item>
-///   <item><b>Excluded keys</b> — keys that can never be bound regardless
-///         of modifier (Enter / Escape / Tab / Backspace / Delete /
-///         pure modifier keys).</item>
-///   <item><b>Reserved combos</b> — chord+modifier combinations
-///         hardcoded elsewhere (the F2 / F3 / ... open-window
-///         shortcuts in <see cref="Views.GlobalHotkeys"/>, the
-///         Ctrl+C / Ctrl+V copy/paste keys in
-///         <see cref="Controls.TerminalControl"/>). Macro binding to a
-///         reserved combo would silently steal the keystroke from the
-///         built-in handler.</item>
-/// </list>
-/// </summary>
-/// <remarks>
-/// Adapted from MudProxyViewer's <c>MacroManager.ExcludedKeys</c> +
-/// <c>BindableKeys</c> + <c>IsExcludedCombo</c> design — same threat
-/// model (don't let a user-bound macro accidentally hijack copy/paste
-/// or the OS close window). Reserved-combo list mirrors what
-/// <see cref="Views.GlobalHotkeys"/> wires up.
-/// </remarks>
+// Single source of truth for which keys + key combinations the user is
+// allowed to bind a macro to. Encodes:
+//   Bindable keys — the picker list shown in the macro edit dialog (F1-F12,
+//     Numpad 0-9 + operators, A-Z, 0-9, navigation cluster, common
+//     punctuation).
+//   Excluded keys — keys that can never be bound regardless of modifier
+//     (Enter / Escape / Tab / Backspace / Delete / pure modifier keys).
+//   Reserved combos — chord+modifier combinations hardcoded elsewhere (the
+//     F2 / F3 / ... open-window shortcuts in Views.GlobalHotkeys, the
+//     Ctrl+C / Ctrl+V copy/paste keys in Controls.TerminalControl). Macro
+//     binding to a reserved combo would silently steal the keystroke from
+//     the built-in handler.
+//
+// The excluded/bindable/reserved split enforces one threat model: don't let
+// a user-bound macro accidentally hijack copy/paste or the OS close-window
+// shortcut. Reserved-combo list mirrors what Views.GlobalHotkeys wires up.
 public static class KeybindRegistry
 {
-    /// <summary>
-    /// Avalonia <see cref="Key"/> values offered in the edit dialog's
-    /// picker. Display name first, key second so the combo can show a
-    /// friendly label ("Numpad 8" instead of "NumPad8").
-    /// </summary>
+    // Avalonia Key values offered in the edit dialog's picker. Display name
+    // first, key second so the combo can show a friendly label ("Numpad 8"
+    // instead of "NumPad8").
     public static readonly IReadOnlyList<(string DisplayName, Key Key)> BindableKeys = BuildBindableKeys();
 
     private static IReadOnlyList<(string DisplayName, Key Key)> BuildBindableKeys()
@@ -94,11 +82,9 @@ public static class KeybindRegistry
         return keys;
     }
 
-    /// <summary>
-    /// Keys that can never be bound. Includes the obvious text-editing
-    /// keys plus the pure modifier keys (binding "Ctrl" alone makes no
-    /// sense — the user means "Ctrl+something").
-    /// </summary>
+    // Keys that can never be bound. Includes the obvious text-editing keys
+    // plus the pure modifier keys (binding "Ctrl" alone makes no sense — the
+    // user means "Ctrl+something").
     public static readonly IReadOnlySet<Key> ExcludedKeys = new HashSet<Key>
     {
         Key.Enter, Key.Return, Key.Escape, Key.Tab, Key.Back, Key.Delete, Key.None,
@@ -113,13 +99,11 @@ public static class KeybindRegistry
         Key.OemPeriod,
     };
 
-    /// <summary>
-    /// Chords reserved at the OS / terminal level — these never live
-    /// in <see cref="KeybindingStore"/> because the user can't rebind
-    /// them, but they still need to be rejected as macro keybinds.
-    /// Alt+F4 stays the system's window-close shortcut; Ctrl+C /
-    /// Ctrl+V stay copy / paste in <see cref="Controls.TerminalControl"/>.
-    /// </summary>
+    // Chords reserved at the OS / terminal level — these never live in
+    // KeybindingStore because the user can't rebind them, but they still need
+    // to be rejected as macro keybinds. Alt+F4 stays the system's
+    // window-close shortcut; Ctrl+C / Ctrl+V stay copy / paste in
+    // Controls.TerminalControl.
     private static readonly IReadOnlyList<(Key Key, bool Ctrl, bool Shift, bool Alt, string Action)> _systemReserved = new[]
     {
         (Key.C,  true,  false, false, "Copy"),
@@ -127,15 +111,11 @@ public static class KeybindRegistry
         (Key.F4, false, false, true,  "Close window (OS)"),
     };
 
-    /// <summary>
-    /// True when the supplied chord is reserved by the app or the
-    /// OS / terminal — returns a friendly action name via
-    /// <paramref name="action"/>. Queries the live
-    /// <see cref="KeybindingStore"/> for built-in-action collisions
-    /// so a rebind takes effect immediately for downstream conflict
-    /// checks (the macro edit dialog stops flagging the old chord
-    /// the moment it's freed).
-    /// </summary>
+    // True when the supplied chord is reserved by the app or the OS /
+    // terminal — returns a friendly action name via action. Queries the live
+    // KeybindingStore for built-in-action collisions so a rebind takes effect
+    // immediately for downstream conflict checks (the macro edit dialog stops
+    // flagging the old chord the moment it's freed).
     public static bool IsReserved(KeybindingStore store, Key key, bool ctrl, bool shift, bool alt, out string? action)
     {
         ArgumentNullException.ThrowIfNull(store);
@@ -157,7 +137,7 @@ public static class KeybindRegistry
         return false;
     }
 
-    /// <summary>Convenience: refuse to bind a chord that's either an excluded key or a reserved combo.</summary>
+    // Refuse to bind a chord that's either an excluded key or a reserved combo.
     public static bool IsForbidden(KeybindingStore store, Key key, bool ctrl, bool shift, bool alt, out string? reason)
     {
         if (ExcludedKeys.Contains(key))
@@ -174,7 +154,7 @@ public static class KeybindRegistry
         return false;
     }
 
-    /// <summary>Look up a key in the bindable list by its enum value. <c>null</c> when not present.</summary>
+    // Look up a key in the bindable list by its enum value. null when not present.
     public static (string DisplayName, Key Key)? FindBindable(Key key)
     {
         foreach ((string display, Key k) in BindableKeys)

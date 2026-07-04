@@ -4,61 +4,45 @@ using FujinTerm.Models.GameData;
 
 namespace FujinTerm.Services;
 
-/// <summary>
-/// In-memory cache of the active game-data set's ItemOverlay seed —
-/// the Defaults-tier baseline for per-item automation behaviour (the
-/// 9 Options checkboxes + MinToKeep / MaxToGet) before any user Global
-/// / BBS / Character override is applied.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Seeds are <b>realm-flavored</b>. Each realm family (stock MajorMUD,
-/// Paradigm, …) ships its own decoded-from-<c>Items.md</c> seed file
-/// under <see cref="AppPaths.BundledItemOverlaySeedFile"/>; the active
-/// set's <c>Info.json[0].Legit</c> field picks which realm's seed to
-/// load:
-/// </para>
-/// <list type="bullet">
-///   <item><c>Legit = 0</c> or <c>1</c> → <b>stock</b> seed.</item>
-///   <item><c>Legit = 2</c> → <b>paradigm</b> seed.</item>
-///   <item>Anything else → fall back to <b>stock</b> (safest default).</item>
-/// </list>
-/// <para>
-/// Wiring: <see cref="AppServices"/> subscribes the store to
-/// <see cref="GameDataCache.ActiveSetChanged"/> — every set switch
-/// rereads the new set's Info.json, picks the realm, and reloads the
-/// matching seed file. Consumers call <see cref="GetOverlay(int)"/> to
-/// retrieve the seed baseline for a specific item Number; that overlay
-/// is then passed to <see cref="SettingsResolver.ResolveGameData{T}"/>
-/// as the Defaults-tier record over which higher-tier deltas are
-/// merged.
-/// </para>
-/// <para>
-/// The seed file itself is never written by the app. To reset a seed,
-/// delete the user-writable copy at
-/// <see cref="AppPaths.ItemOverlaySeedFile"/> and relaunch —
-/// <see cref="AppPaths.EnsureGlobalSeedsBootstrapped"/> re-copies it
-/// from the bundled source.
-/// </para>
-/// <para>
-/// This service is a near-direct sibling of
-/// <see cref="MonsterOverlaySeedStore"/>; the two share their
-/// realm-resolution logic and lifetime contract. Only the per-record
-/// payload + the lookup table type differ.
-/// </para>
-/// </remarks>
+// In-memory cache of the active game-data set's ItemOverlay seed — the
+// Defaults-tier baseline for per-item automation behaviour (the 9 Options
+// checkboxes + MinToKeep / MaxToGet) before any user Global / BBS /
+// Character override is applied.
+//
+// Seeds are realm-flavored. Each realm family (stock MajorMUD, Paradigm, …)
+// ships its own decoded-from-Items.md seed file under
+// AppPaths.BundledItemOverlaySeedFile; the active set's Info.json[0].Legit
+// field picks which realm's seed to load:
+//   Legit = 0 or 1 → stock seed.
+//   Legit = 2      → paradigm seed.
+//   Anything else  → fall back to stock (safest default).
+//
+// Wiring: AppServices subscribes the store to
+// GameDataCache.ActiveSetChanged — every set switch rereads the new set's
+// Info.json, picks the realm, and reloads the matching seed file. Consumers
+// call GetOverlay to retrieve the seed baseline for a specific item Number;
+// that overlay is then passed to SettingsResolver.ResolveGameData as the
+// Defaults-tier record over which higher-tier deltas are merged.
+//
+// The seed file itself is never written by the app. To reset a seed, delete
+// the user-writable copy at AppPaths.ItemOverlaySeedFile and relaunch —
+// AppPaths.EnsureGlobalSeedsBootstrapped re-copies it from the bundled
+// source.
+//
+// This service is a near-direct sibling of MonsterOverlaySeedStore; the two
+// share their realm-resolution logic and lifetime contract. Only the
+// per-record payload + the lookup table type differ.
 public sealed class ItemOverlaySeedStore
 {
     private readonly LogService? _log;
     private readonly Dictionary<int, ItemOverlay> _byNumber = new();
 
-    /// <summary>Realm flavor currently sourcing the cache, or <c>null</c> when none loaded.</summary>
+    // Realm flavor currently sourcing the cache, or null when none loaded.
     public string? ActiveRealm { get; private set; }
 
-    /// <summary>Set name currently sourcing the cache, or <c>null</c> when none active.</summary>
+    // Set name currently sourcing the cache, or null when none active.
     public string? ActiveSet { get; private set; }
 
-    /// <summary>Number of records in the loaded seed (post-deserialization).</summary>
     public int Count => _byNumber.Count;
 
     public ItemOverlaySeedStore() { }
@@ -69,14 +53,11 @@ public sealed class ItemOverlaySeedStore
         _log = log;
     }
 
-    /// <summary>
-    /// Switch the cache to whichever realm-seed matches
-    /// <paramref name="setName"/>'s <c>Info.json[0].Legit</c>. Pass
-    /// <c>null</c> to clear (no set active). Errors loading
-    /// <c>Info.json</c> or the seed file produce an empty cache and a
-    /// warning log entry — the resolver then falls back to its own
-    /// <c>new ItemOverlay()</c> defaults.
-    /// </summary>
+    // Switch the cache to whichever realm-seed matches setName's
+    // Info.json[0].Legit. Pass null to clear (no set active). Errors loading
+    // Info.json or the seed file produce an empty cache and a warning log
+    // entry — the resolver then falls back to its own new ItemOverlay()
+    // defaults.
     public void Load(string? setName)
     {
         _byNumber.Clear();
@@ -132,18 +113,16 @@ public sealed class ItemOverlaySeedStore
         }
     }
 
-    /// <summary>
-    /// Defaults-tier overlay for <paramref name="itemNumber"/>. Returns a
-    /// blank <see cref="ItemOverlay"/> when the seed has no record for
-    /// that item (i.e. the item's stock values match the runtime
-    /// defaults already — every flag off, MinToKeep = None, MaxToGet = All).
-    /// </summary>
+    // Defaults-tier overlay for itemNumber. Returns a blank ItemOverlay when
+    // the seed has no record for that item (i.e. the item's stock values
+    // match the runtime defaults already — every flag off, MinToKeep = None,
+    // MaxToGet = All).
     public ItemOverlay GetOverlay(int itemNumber) =>
         _byNumber.TryGetValue(itemNumber, out ItemOverlay? overlay)
             ? overlay
             : new ItemOverlay();
 
-    /// <summary>Reads <c>Info.json[0].Legit</c> from the set's folder and maps to a realm name.</summary>
+    // Reads Info.json[0].Legit from the set's folder and maps to a realm name.
     private string ResolveRealm(string setName)
     {
         string infoPath = Path.Combine(AppPaths.GameDataSetDir(setName), "Info.json");
@@ -177,14 +156,11 @@ public sealed class ItemOverlaySeedStore
         return "stock";
     }
 
-    /// <summary>
-    /// Wire shape on disk. Mirrors
-    /// <c>Defaults/ItemOverlay.{realm}.seed.json</c>'s JSON layout —
-    /// Number + Name + the overridable fields. Boolean flags only ever
-    /// appear in the JSON when <c>true</c> (the decoder omits them
-    /// otherwise to keep the seed file lean). Name is kept on the wire
-    /// for human inspection but discarded on load.
-    /// </summary>
+    // Wire shape on disk. Mirrors Defaults/ItemOverlay.{realm}.seed.json's
+    // JSON layout — Number + Name + the overridable fields. Boolean flags
+    // only ever appear in the JSON when true (the decoder omits them
+    // otherwise to keep the seed file lean). Name is kept on the wire for
+    // human inspection but discarded on load.
     private sealed record SeedRecord
     {
         public int     Number          { get; init; }

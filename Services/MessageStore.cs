@@ -4,59 +4,48 @@ using FujinTerm.Models.GameData;
 
 namespace FujinTerm.Services;
 
-/// <summary>
-/// In-memory cache of the Messages/Responses catalogue for the
-/// <see cref="GameDataCache.ActiveSet"/>. Records are paired with the
-/// active game-data set on disk at
-/// <c>Data/game data/{set}/messages.json</c>, falling back to the
-/// universal wcc-derived seed at <c>Data/Global/Messages.seed.json</c>
-/// (bootstrapped from the bundled <c>Defaults/</c> copy on first
-/// launch).
-/// </summary>
-/// <remarks>
-/// Wiring: <see cref="AppServices"/> subscribes the store to
-/// <see cref="GameDataCache.ActiveSetChanged"/> — on every set switch
-/// the file at <see cref="AppPaths.MessagesFile"/> is reloaded
-/// (missing file ⇒ falls through to the seed). The Game Data Browser →
-/// Messages tab binds the live <see cref="Messages"/> collection.
-/// </remarks>
+// In-memory cache of the Messages/Responses catalogue for the active set.
+// Records are paired with the active game-data set on disk at
+// Data/game data/{set}/messages.json, falling back to the universal
+// wcc-derived seed at Data/Global/Messages.seed.json (bootstrapped from the
+// bundled Defaults/ copy on first launch).
+//
+// Wiring: AppServices subscribes the store to
+// GameDataCache.ActiveSetChanged — on every set switch the file at
+// AppPaths.MessagesFile is reloaded (missing file ⇒ falls through to the
+// seed). The Game Data Browser → Messages tab binds the live Messages
+// collection.
 public sealed class MessageStore
 {
     private readonly LogService? _log;
 
-    /// <summary>Live mirror of the active set's message records. Bound by the Messages tab.</summary>
+    // Live mirror of the active set's message records. Bound by the Messages tab.
     public ObservableCollection<MessageRecord> Messages { get; } = new();
 
-    /// <summary>Set name currently sourcing <see cref="Messages"/>, or <c>null</c> when none is active.</summary>
+    // Set name currently sourcing Messages, or null when none is active.
     public string? ActiveSet { get; private set; }
 
     public MessageStore() { }
 
-    /// <summary>
-    /// Production ctor — wire the log sink so parse failures surface
-    /// in the LogPane instead of silently leaving the catalogue empty.
-    /// </summary>
+    // Production ctor — wire the log sink so parse failures surface in the
+    // LogPane instead of silently leaving the catalogue empty.
     public MessageStore(LogService log)
     {
         ArgumentNullException.ThrowIfNull(log);
         _log = log;
     }
 
-    /// <summary>
-    /// Switch the catalogue to <paramref name="setName"/>'s on-disk
-    /// file. Pass <c>null</c> to clear (no set active). Load priority:
-    /// <list type="number">
-    ///   <item>Per-set file <see cref="AppPaths.MessagesFile"/>
-    ///     (<c>Data/game data/{set}/messages.json</c>) — the canonical
-    ///     persisted state once a user has edited.</item>
-    ///   <item>Universal seed <see cref="AppPaths.DefaultMessagesSeedFile"/>
-    ///     (<c>Data/Global/Messages.seed.json</c>) — applies to every
-    ///     set; the message text is universal across MajorMUD realms.
-    ///     Bootstrapped from the bundled <c>Defaults/</c> copy on
-    ///     first launch via <see cref="AppPaths.EnsureGlobalSeedsBootstrapped"/>.</item>
-    /// </list>
-    /// The seed itself is never written.
-    /// </summary>
+    // Switch the catalogue to setName's on-disk file. Pass null to clear (no
+    // set active). Load priority:
+    //   1. Per-set file AppPaths.MessagesFile
+    //      (Data/game data/{set}/messages.json) — the canonical persisted
+    //      state once a user has edited.
+    //   2. Universal seed AppPaths.DefaultMessagesSeedFile
+    //      (Data/Global/Messages.seed.json) — applies to every set; the
+    //      message text is universal across MajorMUD realms. Bootstrapped
+    //      from the bundled Defaults/ copy on first launch via
+    //      AppPaths.EnsureGlobalSeedsBootstrapped.
+    // The seed itself is never written.
     public void Load(string? setName)
     {
         Messages.Clear();
@@ -67,14 +56,10 @@ public sealed class MessageStore
         TryLoadInto(AppPaths.DefaultMessagesSeedFile);
     }
 
-    /// <summary>
-    /// Read a JSON list from <paramref name="path"/> and append every
-    /// record to <see cref="Messages"/>. Returns <c>true</c> iff the
-    /// file existed AND parsed cleanly. A corrupt file returns
-    /// <c>false</c> + leaves <see cref="Messages"/> in whatever state
-    /// the partial parse left it (callers reset via the upstream
-    /// Clear() before invoking).
-    /// </summary>
+    // Read a JSON list from path and append every record to Messages.
+    // Returns true iff the file existed AND parsed cleanly. A corrupt file
+    // returns false + leaves Messages in whatever state the partial parse
+    // left it (callers reset via the upstream Clear() before invoking).
     private bool TryLoadInto(string path)
     {
         if (!File.Exists(path)) return false;
@@ -97,14 +82,14 @@ public sealed class MessageStore
         }
     }
 
-    /// <summary>Persist <see cref="Messages"/> to <see cref="ActiveSet"/>'s file.</summary>
+    // Persist Messages to ActiveSet's file.
     public void Save()
     {
         if (string.IsNullOrWhiteSpace(ActiveSet)) return;
         JsonStore.Save(AppPaths.MessagesFile(ActiveSet), Messages);
     }
 
-    /// <summary>Replace the catalogue with <paramref name="records"/> and persist.</summary>
+    // Replace the catalogue with records and persist.
     public void Replace(IEnumerable<MessageRecord> records)
     {
         Messages.Clear();
