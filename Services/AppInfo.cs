@@ -22,7 +22,7 @@ public static class AppInfo
     public static string Version { get; } = ReadAssemblyVersion();
 
     /// <summary>
-    /// <c>"FujinTerm 0.6.0"</c> — the form the <c>@version</c>
+    /// <c>"FujinTerm 1.0.0"</c> — the form the <c>@version</c>
     /// remote-command reply uses to match the format other clients
     /// emit (MegaMUD: <c>"MegaMud 1.03u"</c>).
     /// </summary>
