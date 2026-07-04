@@ -95,13 +95,23 @@ public sealed partial class PartyManager : IDisposable
     // par row regex — anchored on the real MajorMUD format:
     //
     //   Raijin WuzHere                  (Priest)        [M:100%] [H:100%]   - Midrank
+    //   Fujin WuzHere                   (Mystic)        [K: 60%] [H: 96%]   - Frontrank
     //   Fujin WuzHere                   (Mystic)                  [H: 96%]   - Frontrank
     //   Raijin WuzHere                  (Priest)        [M:100%] [H: 85%]   - Backrank
     //
     // Name is given + (optional) family. Class is in parens and can contain
-    // spaces ("High Priest" etc.). [M:N%] is optional — non-caster classes /
-    // display rules omit it. [H:N%] is load-bearing; rows without it aren't
-    // member rows.
+    // spaces ("High Priest" etc.). [H:N%] is load-bearing; rows without it
+    // aren't member rows.
+    //
+    // The secondary-resource bracket is optional AND its letter is
+    // class-dependent: casters show mana ([M:N%]), Mystics / monks show kai
+    // ([K:N%]) — so the bracket must accept BOTH letters. It vanishes entirely
+    // when the pool reads 0% (a Mystic whose kai has drained shows no bracket).
+    // Missing the [K:] alternative was a real bug: a Mystic party member's
+    // [K:N%] row failed to match, so par reconciliation read them as having left
+    // and dropped their roster row every poll — then re-added them (firing the
+    // on-join @health round-trip) on the one poll where their kai read 0% and
+    // the bracket disappeared. Both letters feed the same mp group.
     //
     // IMPORTANT: the percentage is right-padded to a 3-char column. At 100%
     // there's no padding ([H:100%]), at <100% there's a leading space ([H: 85%],
@@ -112,7 +122,7 @@ public sealed partial class PartyManager : IDisposable
     // doesn't carry Position — that field stays at its default (Standing) for
     // non-self members until a per-member status query fills it.
     [GeneratedRegex(
-        @"^\s+(?<name>\S[\w '-]*?)\s+\((?<class>[^)]+)\)\s*(?:\[M:\s*(?<mp>\d+)%\])?\s*\[H:\s*(?<hp>\d+)%\]\s*(?<state>[RM])?\s*(?:-\s*(?<rank>\w+))?",
+        @"^\s+(?<name>\S[\w '-]*?)\s+\((?<class>[^)]+)\)\s*(?:\[[MK]:\s*(?<mp>\d+)%\])?\s*\[H:\s*(?<hp>\d+)%\]\s*(?<state>[RM])?\s*(?:-\s*(?<rank>\w+))?",
         RegexOptions.CultureInvariant)]
     private static partial Regex ParRow();
 
@@ -861,9 +871,11 @@ public sealed partial class PartyManager : IDisposable
         if (name.Length == 0) return;
         string klass = m.Groups["class"].Success ? m.Groups["class"].Value.Trim() : string.Empty;
         int hpPct = int.Parse(m.Groups["hp"].Value, System.Globalization.CultureInfo.InvariantCulture);
-        // [M:N%] bracket is omitted when the class has no mana (Warriors,
-        // level-1 Mystics with 0 Kai, etc.). Absent = leave MpPercent
-        // unchanged on existing members; default 0 on new ones.
+        // Secondary-resource bracket ([M:N%] mana or [K:N%] kai) is omitted
+        // when the class has none (Warriors) or the pool reads 0% (a Mystic
+        // whose kai has drained). Absent = leave MpPercent unchanged on
+        // existing members; default 0 on new ones. Both letters feed this one
+        // mp group — the PartyWindow renders a single secondary bar per member.
         int? mpPct = m.Groups["mp"].Success
             ? int.Parse(m.Groups["mp"].Value, System.Globalization.CultureInfo.InvariantCulture)
             : (int?)null;

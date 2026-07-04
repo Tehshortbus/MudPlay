@@ -842,6 +842,71 @@ public sealed class PartyManagerTests
         Assert.Contains(p.State.Members, m => m.IsSelf);
     }
 
+    // ===== Mystic / monk kai bracket ([K:N%]) parses like mana =====
+    // A Mystic party member's secondary resource is kai, rendered [K:N%] — not
+    // [M:N%]. The par-row regex must accept both letters. Before it did, a
+    // Mystic's [K:] row failed to match, so end-of-block reconciliation read the
+    // Mystic as having left and dropped their roster row every poll — then
+    // re-added them (re-firing PartyPoller's on-join @health round-trip) on the
+    // one poll where their kai read 0% and the bracket vanished. This is the
+    // mid-combat "/Fujin @health" spam the stock realm capture showed.
+
+    [Fact]
+    public void ParBlock_MysticKaiBracket_ParsesResourceIntoMpPercent()
+    {
+        var (_, p) = Setup(localCharacterName: "Raijin");
+        p.TestEnterParBlock();
+        p.FeedTestLines(new[]
+        {
+            "  Fujin WuzHere                  (Mystic)     [K: 60%] [H: 82%]   - Frontrank",
+            "  Raijin WuzHere                 (Priest)     [M:100%] [H: 86%]   - Backrank",
+            string.Empty,
+        });
+
+        PartyMember fujin = p.State.Members.First(x => x.Name == "Fujin WuzHere");
+        Assert.Equal("Mystic", fujin.Class);
+        Assert.Equal(82, fujin.HpPercent);
+        // Kai flows into the shared mp field (same as the @health reply's KAI=).
+        Assert.Equal(60, fujin.MpPercent);
+    }
+
+    [Fact]
+    public void ParPoll_MysticWithKai_StaysInRoster_AcrossKaiDrainingToZero()
+    {
+        // End-to-end reproduction: a Mystic leader whose [K:N%] rows failed to
+        // parse got reconciled out of the roster every poll, then re-added on
+        // the poll where kai read 0% (bracket omitted) — the re-add fired the
+        // on-join @health round-trip mid-combat. The Mystic row must parse
+        // whether kai is present or drained, so the SAME roster instance
+        // persists across the cycle: no drop, no re-add, no @health re-fire.
+        var (router, p) = Setup(localCharacterName: "Raijin");
+        router.Dispatch(Line("You are now following Fujin."));
+        PartyMember fujin = p.State.Members.First(m => m.Name.StartsWith("Fujin", StringComparison.Ordinal));
+
+        // Poll 1: Fujin has kai → [K:100%] bracket present.
+        router.Dispatch(Line("The following people are in your travel party:"));
+        p.FeedTestLines(new[]
+        {
+            "  Fujin WuzHere                  (Mystic)     [K:100%] [H: 82%]   - Frontrank",
+            "  Raijin WuzHere                 (Priest)     [M:100%] [H: 86%]   - Backrank",
+        });
+        p.FeedTestPromptLine();
+        Assert.Same(fujin, p.State.Members.First(m => m.Name.StartsWith("Fujin", StringComparison.Ordinal)));
+
+        // Poll 2: Fujin's kai drained → the [K:] bracket vanishes entirely.
+        router.Dispatch(Line("The following people are in your travel party:"));
+        p.FeedTestLines(new[]
+        {
+            "  Fujin WuzHere                  (Mystic)              [H: 76%]   - Frontrank",
+            "  Raijin WuzHere                 (Priest)     [M:100%] [H: 90%]   - Backrank",
+        });
+        p.FeedTestPromptLine();
+
+        // Same instance throughout — never reconciled away, never re-added.
+        Assert.Same(fujin, p.State.Members.First(m => m.Name.StartsWith("Fujin", StringComparison.Ordinal)));
+        Assert.Equal(76, fujin.HpPercent);
+    }
+
     [Fact]
     public void DefaultPatterns_HaveAllPartyEntries()
     {
