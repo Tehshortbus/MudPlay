@@ -712,6 +712,16 @@ public sealed class AppServices
     // ReqLevel ≥ SpellImmu eligibility check.
     public Game.Combat.SpellReqLevelIndex SpellReqLevel { get; private set; } = null!;
 
+    // Lookup of each monster's elemental damage-type resistance (codes
+    // 3/5/65/66/147) in the active game-data set. Paired with SpellAttackType for
+    // the pre-emptive resist guard — skip an attack spell whose element the target
+    // resists ≥ 100%.
+    public Game.Combat.MonsterResistIndex MonsterResist { get; private set; } = null!;
+
+    // Lookup of each spell's AttType (damage element) by cast-code in the active
+    // game-data set. Paired with MonsterResist for the resist guard.
+    public Game.Combat.SpellAttackTypeIndex SpellAttackType { get; private set; } = null!;
+
     // Catalogue of every light-source item (ItemType 6) in the
     // active set — projected illumination (IlluTarget) + burn budget —
     // for computing carried illumination and provisioning a dark route.
@@ -2210,13 +2220,17 @@ public sealed class AppServices
             hasSeeHidden: n => SeeHidden.Has(n));
 
         // Deterministic magic eligibility — weapon HitMagic ≥ monster Magical
-        // picks normal-vs-alternate, and spell ReqLevel ≥ monster SpellImmu
-        // gates single-target debuff / attack spells. Both fail open when game
+        // picks normal-vs-alternate, spell ReqLevel ≥ monster SpellImmu gates
+        // single-target debuff / attack spells, and the resist pair skips an attack
+        // spell whose element the target resists ≥ 100%. All fail open when game
         // data is silent.
         MonsterMagic = new Game.Combat.MonsterMagicIndex(GameData);
         ItemMagic = new Game.Combat.ItemMagicIndex(GameData);
         SpellReqLevel = new Game.Combat.SpellReqLevelIndex(GameData);
-        Combat.SetMagicEligibility(MonsterMagic, ItemMagic, SpellReqLevel);
+        MonsterResist = new Game.Combat.MonsterResistIndex(GameData);
+        SpellAttackType = new Game.Combat.SpellAttackTypeIndex(GameData);
+        Combat.SetMagicEligibility(
+            MonsterMagic, ItemMagic, SpellReqLevel, MonsterResist, SpellAttackType);
 
         // Light catalogue + live carried illumination. The snapshot provider is
         // deferred (Inventory is assigned later in this method), so reading

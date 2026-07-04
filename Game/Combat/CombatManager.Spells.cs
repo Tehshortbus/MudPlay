@@ -48,23 +48,32 @@ public sealed partial class CombatManager
     private MonsterMagicIndex? _monsterMagic;
     private ItemMagicIndex? _itemMagic;
     private SpellReqLevelIndex? _spellReqLevel;
+    private MonsterResistIndex? _monsterResist;
+    private SpellAttackTypeIndex? _spellAttackType;
 
     // Opt into deterministic magic-eligibility gating. monsterMagic supplies each
     // monster's Magical / SpellImmu levels, itemMagic supplies each weapon's
-    // HitMagic level, and spellReqLevel supplies each spell's ReqLevel. Once
-    // wired, normal-vs-alternate weapon selection prefers whichever weapon can
+    // HitMagic level, spellReqLevel supplies each spell's ReqLevel, and the pair
+    // monsterResist / spellAttackType drive the elemental resist guard (a spell
+    // whose damage element the target resists ≥ 100% is skipped pre-emptively).
+    // Once wired, normal-vs-alternate weapon selection prefers whichever weapon can
     // actually hit the target (HitMagic ≥ Magical) and the chooser skips
-    // single-target spells the target is level-immune to (ReqLevel < SpellImmu).
-    // Until called, both gates fail open.
+    // single-target spells the target is level-immune to (ReqLevel < SpellImmu) or
+    // resists elementally ≥ 100%. Until called, every gate fails open.
     public void SetMagicEligibility(
-        MonsterMagicIndex monsterMagic, ItemMagicIndex itemMagic, SpellReqLevelIndex spellReqLevel)
+        MonsterMagicIndex monsterMagic, ItemMagicIndex itemMagic, SpellReqLevelIndex spellReqLevel,
+        MonsterResistIndex monsterResist, SpellAttackTypeIndex spellAttackType)
     {
         ArgumentNullException.ThrowIfNull(monsterMagic);
         ArgumentNullException.ThrowIfNull(itemMagic);
         ArgumentNullException.ThrowIfNull(spellReqLevel);
+        ArgumentNullException.ThrowIfNull(monsterResist);
+        ArgumentNullException.ThrowIfNull(spellAttackType);
         _monsterMagic = monsterMagic;
         _itemMagic = itemMagic;
         _spellReqLevel = spellReqLevel;
+        _monsterResist = monsterResist;
+        _spellAttackType = spellAttackType;
     }
 
     // Room-scoped damage-immunity map — canonical species → single-target
@@ -363,7 +372,8 @@ public sealed partial class CombatManager
             ImmuneAttackSpells:  ImmuneActionsFor(target),
             SpellsAvailable:     true,
             LevelBlockedActions: LevelBlockedFor(settings, monsterNumber),
-            AllowNukes:          _autoNukeGate?.Invoke() ?? true);
+            AllowNukes:          _autoNukeGate?.Invoke() ?? true,
+            ResistBlockedActions: ResistBlockedFor(settings, monsterNumber));
     }
 
     // Choose the alternate weapon when (a) this species already produced a "no
@@ -414,6 +424,37 @@ public sealed partial class CombatManager
             (blocked ??= new HashSet<CombatSpellAction>()).Add(action);
         }
         Check(settings.SingleTargetDebuffSpell, CombatSpellAction.SingleDebuff);
+        Check(settings.NormalAttackSpell, CombatSpellAction.NormalAttackSpell);
+        Check(settings.AlternateAttackSpell, CombatSpellAction.AlternateAttackSpell);
+        return blocked;
+    }
+
+    // The single-target attack-spell actions the monster's elemental resistance
+    // deterministically neutralizes: a configured Normal / Alternate attack spell
+    // whose damage element the target resists ≥ 100% deals 0 damage (100%) or
+    // *heals* it (> 100%), so it's skipped down the cascade (primary → alternate →
+    // weapon). Only *elemental* spells qualify — Magic Resist (AttType 4) and
+    // poison (AttType 6) are not deterministic, so their spells are never
+    // pre-empted here. Debuffs and multi/area room spells are never resist-blocked.
+    // A negative or 1–99% resist does not block — the spell still lands (bonus or
+    // reduced) damage. Returns null (nothing blocked) when the indexes aren't wired
+    // or no configured attack spell hits a ≥ 100% wall.
+    private IReadOnlySet<CombatSpellAction>? ResistBlockedFor(
+        CombatSettings settings, int monsterNumber)
+    {
+        if (_monsterResist is null || _spellAttackType is null) return null;
+
+        HashSet<CombatSpellAction>? blocked = null;
+        void Check(CombatSpellSlot slot, CombatSpellAction action)
+        {
+            if (string.IsNullOrWhiteSpace(slot.SpellName)) return;
+            int attType = _spellAttackType.AttackType(slot.SpellName);
+            if (attType < 0) return;                                       // unknown spell → fail open
+            int code = MonsterResistIndex.ElementalResistCode(attType);
+            if (code < 0) return;                                          // non-elemental (M.R./poison)
+            if (_monsterResist.ResistPercent(monsterNumber, code) < 100) return;  // still takes damage
+            (blocked ??= new HashSet<CombatSpellAction>()).Add(action);
+        }
         Check(settings.NormalAttackSpell, CombatSpellAction.NormalAttackSpell);
         Check(settings.AlternateAttackSpell, CombatSpellAction.AlternateAttackSpell);
         return blocked;

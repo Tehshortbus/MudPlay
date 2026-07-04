@@ -141,9 +141,14 @@ map one-to-one onto a monster `Resist-<type>` ability:
   (adolescent red dragon) has `Resist-Fire +50`, so fire spells deal **half** damage. At
   **100%** the element does **0 damage**; **above 100%** the damage goes **negative** and the
   spell **heals** the monster instead of harming it.
-- Because the curve is flat and deterministic, a ≥100% elemental resist is the **only**
+- The value is **signed**. A **negative** `Resist-<type>` is a *vulnerability* — that element
+  deals **extra** damage (e.g. `Resist-Fire -50` → +50% fire damage). Across 1.11p the column
+  runs roughly **-200 … +300**. So the full curve is: negative = bonus damage → `0` = normal →
+  `100` = zero damage → `>100` = healing.
+- Because the curve is flat and deterministic, a **≥100%** elemental resist is the **only**
   resistance the engine can safely **pre-empt** — skip the spell before casting when the target
-  resists its element ≥100%.
+  resists its element ≥100%. A negative (or 1–99%) resist must still **fire** the spell: it's a
+  damage bonus or a partial cut, never a reason to skip.
 - There is **no dedicated message**: every spell's verbose hit text differs, so the only
   runtime tell is the **damage number** in that spell's own hit line — **0 or negative is the
   resist signal.** Not modeled today: a resisted 0 / heal cast produces no `no effect` line, so

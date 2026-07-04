@@ -2,6 +2,16 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0): **MAJOR** = whole-program refactor, **MINOR** = a large PR, **PATCH** = a small / bugfix PR.
 
+## 1.3.0
+
+Pre-emptive elemental-resistance guard for attack spells.
+
+**Added**
+- **Attack spells now skip a target that resists their element ≥ 100%.** Before casting a configured Normal / Alternate attack spell, the combat engine looks up the spell's damage element (`AttType`) and the monster's matching `Resist-<type>` value; when the target resists that element **≥ 100%** — where the spell deals **0 damage** (exactly 100%) or **heals** the monster (> 100%) — the slot is skipped down the attack cascade (Normal → Alternate → weapon), exactly like the existing "no-effect" immunity and `SpellImmu` level gates. It's deterministic and pre-emptive, so a round and its mana are never wasted casting into a wall. Only the **five elemental** types (Cold / Fire / Stone / Lightning / Water) are guarded — **Magic Resist** (`AttType 4`, a capped, probabilistic cut) and **poison** (`AttType 6`, a binary immunity) are never pre-empted, and a **negative** or partial (1–99%) resist still fires the spell (it's a damage bonus or a mere reduction, not a reason to skip). Two new game-data indexes back it — `MonsterResistIndex` (elemental resist codes 3/5/65/66/147 by monster) and `SpellAttackTypeIndex` (`AttType` by cast-code) — each failing open when the data is silent, so a thin data set never suppresses a spell.
+
+**Changed**
+- `GAME_MECHANICS.md` mechanism 3a now records that an elemental resist is **signed**: a negative `Resist-<type>` is a *vulnerability* (the element deals extra damage). The full curve runs vulnerability (negative) → normal (0) → immunity (100) → healing (> 100), and only the ≥ 100% end is safely pre-emptable.
+
 ## 1.2.3
 
 Corrects how damage-type resistance splits into three unlike flavors, and records the spell-targeting monster-type taxonomy.

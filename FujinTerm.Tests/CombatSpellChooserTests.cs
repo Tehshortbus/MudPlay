@@ -620,6 +620,114 @@ public sealed class CombatSpellChooserTests
         Assert.Equal("star", d.Spell);
     }
 
+    // ----- Deterministic elemental-resist gating (ResistBlockedActions) --
+    // A target that resists an attack spell's damage element ≥ 100% neutralizes
+    // it (0 damage / heal), so the engine marks the slot resist-blocked and the
+    // chooser skips it down the cascade — exactly like level-block, but only the
+    // two single-target attack slots are ever named (elemental only; M.R. and
+    // poison spells never appear here).
+
+    private static CombatSpellContext ResistBlockedCtx(
+        params CombatSpellAction[] blocked) =>
+        new(EnemyCount: 3, TargetRawName: "a skeleton", Mana: 100, MaxMana: 100,
+            BackstabPending: false,
+            ResistBlockedActions: new HashSet<CombatSpellAction>(blocked));
+
+    [Fact]
+    public void Choose_NormalAttackSpellResistBlocked_FallsToAlternate()
+    {
+        CombatSpellChooser sut = new();
+        CombatSettings settings = new()
+        {
+            NormalAttackSpell = Slot("cold"),
+            AlternateAttackSpell = Slot("flame"),
+        };
+
+        CombatSpellDecision d = sut.Choose(
+            settings, ResistBlockedCtx(CombatSpellAction.NormalAttackSpell));
+        Assert.Equal(CombatSpellAction.AlternateAttackSpell, d.Action);
+        Assert.Equal("flame", d.Spell);
+    }
+
+    [Fact]
+    public void Choose_BothAttackSpellsResistBlocked_FallsToWeapon()
+    {
+        CombatSpellChooser sut = new();
+        CombatSettings settings = new()
+        {
+            NormalAttackSpell = Slot("cold"),
+            AlternateAttackSpell = Slot("frost"),
+        };
+
+        CombatSpellDecision d = sut.Choose(
+            settings,
+            ResistBlockedCtx(
+                CombatSpellAction.NormalAttackSpell,
+                CombatSpellAction.AlternateAttackSpell));
+        Assert.Equal(CombatSpellAction.WeaponAttack, d.Action);
+        Assert.Null(d.Spell);
+    }
+
+    [Fact]
+    public void Choose_NotResistBlocked_FiresNormally()
+    {
+        CombatSpellChooser sut = new();
+        CombatSettings settings = new()
+        {
+            NormalAttackSpell = Slot("cold"),
+        };
+
+        // An empty (but non-null) block set leaves the attack spell eligible.
+        CombatSpellDecision d = sut.Choose(settings, ResistBlockedCtx());
+        Assert.Equal(CombatSpellAction.NormalAttackSpell, d.Action);
+        Assert.Equal("cold", d.Spell);
+    }
+
+    [Fact]
+    public void Choose_MultiAttack_NeverResistBlocked()
+    {
+        CombatSpellChooser sut = new();
+        CombatSettings settings = new()
+        {
+            MultiAttackSpell = Slot("star", minEnemies: 2),
+            NormalAttackSpell = Slot("cold"),
+        };
+
+        // Even if the set names MultiAttack (it never does in practice), the
+        // multi branch ignores resist — room spells hit the whole room, so one
+        // resistant occupant doesn't disqualify them.
+        CombatSpellDecision d = sut.Choose(
+            settings, ResistBlockedCtx(CombatSpellAction.MultiAttack));
+        Assert.Equal(CombatSpellAction.MultiAttack, d.Action);
+        Assert.Equal("star", d.Spell);
+    }
+
+    [Fact]
+    public void Choose_NormalResistBlocked_AlternateLevelBlocked_FallsToWeapon()
+    {
+        CombatSpellChooser sut = new();
+        CombatSettings settings = new()
+        {
+            NormalAttackSpell = Slot("cold"),
+            AlternateAttackSpell = Slot("harm"),
+        };
+
+        // The two deterministic gates compose: Normal is resist-blocked, Alternate
+        // is level-blocked (SpellImmu), so both single-target spells are skipped
+        // and the round falls through to the weapon swing.
+        CombatSpellContext ctx = new(
+            EnemyCount: 1, TargetRawName: "a skeleton", Mana: 100, MaxMana: 100,
+            BackstabPending: false,
+            LevelBlockedActions: new HashSet<CombatSpellAction>
+                { CombatSpellAction.AlternateAttackSpell },
+            ResistBlockedActions: new HashSet<CombatSpellAction>
+                { CombatSpellAction.NormalAttackSpell });
+
+        CombatSpellDecision d = sut.Choose(settings, ctx);
+        Assert.Equal(CombatSpellAction.WeaponAttack, d.Action);
+        Assert.Null(d.Spell);
+    }
+
     // ----- Full per-room ordering walk-through ---------------------------
 
     [Fact]
