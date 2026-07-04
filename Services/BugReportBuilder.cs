@@ -64,6 +64,7 @@ public static class BugReportBuilder
             new("Session", SafeSection(() => BuildSession(svc, realm, now))),
             new("Player state", SafeSection(() => BuildPlayerState(svc))),
             new("Inventory", SafeSection(() => BuildInventory(svc))),
+            new("Player Workshop", SafeSection(() => BuildWorkshop(svc))),
             new("Movement engine", SafeSection(() => BuildMovement(svc))),
             new("Special room markers", SafeSection(() => BuildRoomMarkers(svc))),
             new("Auto-mode", SafeSection(() => BuildAutoMode(svc))),
@@ -142,6 +143,35 @@ public static class BugReportBuilder
         return Json(snapshot);
     }
 
+    /// <summary>
+    /// The Character Workshop's persisted, per-character artifacts — the gear
+    /// sets, the CP-allocation plan, and the quest log. These live as top-level
+    /// <see cref="Models.Profile.CharacterProfile"/> properties (not in the
+    /// settings-tab dictionary), so the settings dump wouldn't otherwise carry
+    /// them. The rest of the Workshop is a read-only view over stats / inventory
+    /// already captured above.
+    /// </summary>
+    private static string BuildWorkshop(AppServices svc)
+    {
+        var profile = svc.Profile.Current;
+        if (profile is null) return "_(no character loaded)_";
+
+        StringBuilder sb = new();
+
+        sb.Append("**Gear sets (Equipment)**\n\n");
+        sb.Append(profile.Equipment is { } equip ? Json(equip) : "_(none)_\n");
+
+        var plan = profile.CharacterPlan;
+        sb.Append("\n**CP allocation plan (CharacterPlan)** (").Append(plan?.Count ?? 0).Append(")\n\n");
+        sb.Append(plan is { Count: > 0 } ? Json(plan) : "_(none)_\n");
+
+        var quests = profile.QuestLog;
+        sb.Append("\n**Quest log (QuestLog)** (").Append(quests?.Count ?? 0).Append(")\n\n");
+        sb.Append(quests is { Count: > 0 } ? Json(quests) : "_(none)_\n");
+
+        return sb.ToString();
+    }
+
     private static string BuildMovement(AppServices svc)
     {
         StringBuilder sb = new();
@@ -149,8 +179,12 @@ public static class BugReportBuilder
         Kv(sb, "Active", svc.MovementControl.IsActive.ToString());
         Kv(sb, "Paused", svc.MovementControl.IsPaused.ToString());
         Kv(sb, "Loop runner", svc.LoopRunner.State.ToString());
+        Kv(sb, "Staged loop", svc.LoopRunner.StagedLoop?.Name ?? "(none)");
+        Kv(sb, "Auto-Lair phase", svc.AutoLair.Phase.ToString());
         Kv(sb, "Auto-Lair active", svc.AutoLair.IsActive.ToString());
         Kv(sb, "Auto-Lair paused", svc.AutoLair.IsPaused.ToString());
+        Kv(sb, "Auto-Lair target",
+            svc.AutoLair.CurrentTarget is { } lair ? $"{lair.Map}/{lair.Room}" : "(none)");
 
         var roomState = svc.RoomTracker.State;
         Kv(sb, "Current room",
@@ -182,12 +216,18 @@ public static class BugReportBuilder
         var stash = profile?.StashRooms;
         sb.Append("\n**Stash rooms** (").Append(stash?.Count ?? 0).Append(")\n\n");
         if (stash is not { Count: > 0 }) sb.Append("_(none)_\n");
-        else foreach (var r in stash) sb.Append("- ").Append(Json(r).TrimEnd()).Append('\n');
+        else foreach (var r in stash) sb.Append("- ").Append(r.Map).Append('/').Append(r.Room).Append('\n');
 
         var favorites = svc.Favorites.All;
         sb.Append("\n**Favorites** (").Append(favorites.Count).Append(")\n\n");
         if (favorites.Count == 0) sb.Append("_(none)_\n");
-        else foreach (var f in favorites) sb.Append("- ").Append(Json(f).TrimEnd()).Append('\n');
+        else foreach (var f in favorites)
+        {
+            sb.Append("- ").Append(f.Map).Append('/').Append(f.Room);
+            if (!string.IsNullOrWhiteSpace(f.Label)) sb.Append(" — ").Append(f.Label);
+            if (!string.IsNullOrWhiteSpace(f.Folder)) sb.Append("  (folder: ").Append(f.Folder).Append(')');
+            sb.Append('\n');
+        }
 
         return sb.ToString();
     }
