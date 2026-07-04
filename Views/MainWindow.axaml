@@ -223,6 +223,12 @@
                 <Separator/>
                 <MenuItem Header="About FujinTerm"     Command="{Binding OpenAboutCommand}"/>
             </MenuItem>
+
+            <!-- Standalone action, no dropdown — clicking fires the capture
+                 directly (freeze client state + recent output into a Markdown
+                 report on the Desktop). -->
+            <MenuItem Header="Bug Report" Command="{Binding ReportBugCommand}"
+                      ToolTip.Tip="Capture current client state and recent output to a report file on your Desktop"/>
         </Menu>
 
         <!-- ============ Toolbar (dynamic — built from ToolbarItems) ============ -->
@@ -484,20 +490,12 @@
                                  VerticalAlignment="Center">
                 <ctl:TerminalControl.ContextMenu>
                     <ContextMenu>
-                        <!-- Edit group — terminal-specific selection operations. -->
-                        <MenuItem Header="Copy"                 InputGesture="Ctrl+Shift+C" IsEnabled="False" ToolTip.Tip="Selection support lands with the chrome polish"/>
-                        <MenuItem Header="Paste"                InputGesture="Ctrl+Shift+V" IsEnabled="False" ToolTip.Tip="Paste lands with the chrome polish"/>
-                        <MenuItem Header="Select all"           IsEnabled="False" ToolTip.Tip="Selection support lands with the chrome polish"/>
-                        <MenuItem Header="Find in scrollback…"  Command="{Binding FindInScrollbackCommand}"/>
-                        <MenuItem Header="Clear screen"         IsEnabled="False" ToolTip.Tip="Screen-clear command lands with the chrome polish"/>
-                        <Separator/>
-                        <!-- View group — the panel quick-opens that make
-                             sense from a right-click on the canvas. The full
-                             six-group mirror of the menu bar can land later
-                             alongside selection support. -->
-                        <MenuItem Header="Open Player Workshop" InputGesture="{Binding WorkshopGesture}"  Command="{Binding OpenWorkshopCommand}"/>
-                        <MenuItem Header="Open Log pane"        InputGesture="{Binding LogPaneGesture}"  Command="{Binding OpenLogPaneCommand}"/>
-                        <MenuItem Header="Open Backscroll"      InputGesture="{Binding BackscrollGesture}" Command="{Binding OpenBackscrollCommand}"/>
+                        <!-- Panel quick-opens — the windows most useful to reach
+                             from a right-click on the canvas. -->
+                        <MenuItem Header="Open Backscroll"      InputGesture="{Binding BackscrollGesture}"   Command="{Binding OpenBackscrollCommand}"/>
+                        <MenuItem Header="Open Player Workshop" InputGesture="{Binding WorkshopGesture}"     Command="{Binding OpenWorkshopCommand}"/>
+                        <MenuItem Header="Open Conversation"    InputGesture="{Binding ConversationGesture}" Command="{Binding OpenConversationCommand}"/>
+                        <MenuItem Header="Open Navigation"      InputGesture="{Binding NavigationGesture}"   Command="{Binding OpenNavigationCommand}"/>
                         <Separator/>
                         <!-- Diagnostics — freeze current client state + recent
                              output into a Markdown report on the Desktop. -->
