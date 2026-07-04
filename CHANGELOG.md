@@ -2,6 +2,13 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0): **MAJOR** = whole-program refactor, **MINOR** = a large PR, **PATCH** = a small / bugfix PR.
 
+## 1.4.1
+
+A live activity-status chip in the Navigation top bar, so a stalled loop explains itself.
+
+**Added**
+- **The Navigation top bar now shows *why* the movement engine is doing what it's doing.** Next to the loop name and step counter sits a new colour-coded chip that reads the movement-coordinator's pause gates directly: **Moving** (green) while stepping, **Fighting** (red) while the room is held for combat, **Waiting — …** (amber) with the actual reason (resting on low HP, meditating on low mana, a hurt party member, a pending invitee, following the leader, corpse recovery, looting), or **Paused** (muted) when you paused it yourself. Previously a loop that stopped mid-run gave no on-screen reason — the gate holding it was only visible in the debug log — so "why did my loop just stop?" had no answer in the UI. The chip is hidden while idle. Backing it, `MovementCoordinator` gained a fine-grained `GatesChanged` event that fires on every gate transition (not just the coarse paused↔running flip), so the reason stays accurate even when one hold swaps for another without the engine ever un-pausing (e.g. combat ending straight into a rest).
+
 ## 1.4.0
 
 A batch of party, movement, and navigation bug fixes plus two UI quality-of-life touches.

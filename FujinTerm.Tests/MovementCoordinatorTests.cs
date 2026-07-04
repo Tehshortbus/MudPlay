@@ -83,6 +83,57 @@ public sealed class MovementCoordinatorTests
         Assert.Equal(2, c.AssertedGates.Count);
     }
 
+    // ----- GatesChanged — fine-grained per-transition signal -----
+
+    [Fact]
+    public void GatesChanged_FiresOnEveryAssertAndClear()
+    {
+        MovementCoordinator c = new();
+        int fires = 0;
+        c.GatesChanged += () => fires++;
+
+        c.AssertGate(MovementCoordinator.CombatGate);
+        c.ClearGate(MovementCoordinator.CombatGate);
+
+        Assert.Equal(2, fires);
+    }
+
+    [Fact]
+    public void GatesChanged_FiresEvenWhenPausedStateDoesNotFlip()
+    {
+        // The whole point of GatesChanged over PauseStateChanged: swapping the
+        // reason while staying paused (Combat clears into a still-asserted
+        // HealthRecovery) must still notify a live "why are we paused" label.
+        MovementCoordinator c = new();
+        c.AssertGate(MovementCoordinator.HealthRecoveryGate);
+
+        int pauseFlips = 0;
+        int gateChanges = 0;
+        c.PauseStateChanged += _ => pauseFlips++;
+        c.GatesChanged += () => gateChanges++;
+
+        c.AssertGate(MovementCoordinator.CombatGate);   // still paused
+        c.ClearGate(MovementCoordinator.CombatGate);    // still paused (HP gate holds)
+
+        Assert.True(c.IsPaused);
+        Assert.Equal(0, pauseFlips);   // never flipped
+        Assert.Equal(2, gateChanges);  // but both transitions fired
+    }
+
+    [Fact]
+    public void GatesChanged_IdempotentTransition_DoesNotFire()
+    {
+        MovementCoordinator c = new();
+        int fires = 0;
+        c.GatesChanged += () => fires++;
+
+        c.AssertGate(MovementCoordinator.UserGate);
+        c.AssertGate(MovementCoordinator.UserGate);   // no-op re-assert
+        c.ClearGate(MovementCoordinator.CombatGate);  // no-op clear (never asserted)
+
+        Assert.Equal(1, fires);
+    }
+
     // ----- Phase 9 PR 9.0b — gate constants -----
 
     [Fact]

@@ -87,6 +87,15 @@ public sealed class MovementCoordinator
     // do not fire (e.g. clearing HealthRecovery while User is still asserted).
     public event Action<bool>? PauseStateChanged;
 
+    // Fires after EVERY real gate assert/clear, whether or not it flips the
+    // overall paused state. PauseStateChanged is the coarse "are we moving or
+    // not" signal; this is the fine-grained "which gate changed" signal a UI
+    // needs to keep a live "why are we paused" label accurate — e.g. Combat
+    // clearing into a still-asserted HealthRecovery keeps IsPaused true (so
+    // PauseStateChanged stays silent) but the reason shown to the user must
+    // switch from "Fighting" to "Resting."
+    public event Action? GatesChanged;
+
     // Last HistoryCapacity gate transitions, oldest first. Backs a gate
     // timeline debug view and grep-friendly forensics on what asserted /
     // cleared when.
@@ -112,6 +121,7 @@ public sealed class MovementCoordinator
         if (!_assertedGates.Add(gate)) return;
         RecordTransition(gate, asserted: true, asserter, reason);
         if (!wasPaused) PauseStateChanged?.Invoke(true);
+        GatesChanged?.Invoke();
     }
 
     // Clear gate. Idempotent — clearing a gate that wasn't asserted is a no-op
@@ -123,6 +133,7 @@ public sealed class MovementCoordinator
         if (!_assertedGates.Remove(gate)) return;
         RecordTransition(gate, asserted: false, asserter, reason);
         if (!IsPaused) PauseStateChanged?.Invoke(false);
+        GatesChanged?.Invoke();
     }
 
     private void RecordTransition(string gate, bool asserted, string? asserter, string? reason)
