@@ -260,7 +260,7 @@ public enum TargetPriority
 // Attack Order — WHEN to (re-)announce our swing to control initiative order.
 // Pure timing: re-fires our own current target on someone else's announce so
 // our announce lands last; it never switches the monster (TargetPriority owns
-// the "who"). Wraps the standard MegaMUD PartyAttackOrder behavior plus a
+// the "who"). Wraps the standard party attack-order behavior plus a
 // FujinTerm-original AttackLastRoom mode that drops the party-membership filter.
 public enum AttackTiming
 {
