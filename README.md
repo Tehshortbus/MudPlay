@@ -1,7 +1,7 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.2.0** — Gear actuation gets a single owner, and enabled backstab loadouts now arm themselves in the auto-walker's pre-move sequence. The Equipment Manager is the sole actuator: combat decides which weapon to wield and delegates the swap, using the uniform `eq` verb and diffing against the live worn loadout so only the pieces that differ hit the wire — no cached shadow. With an enabled Backstab set, the auto-walker gears up in its pre-move sequence — equipping the backstab weapon and armor and *then* sneaking (weapon → armor → sneak → move), since equipping breaks sneak. See the [version history](CHANGELOG.md) for the full changelog.
+> **Version 1.2.1** — Corrects the weapon-swap message in the game-mechanics reference. A live capture confirms a weapon swap prints a single line — `You are now holding <X>.`, with no removal line for the displaced weapon — not the two-line pattern the reference claimed (that's the armor-into-an-occupied-slot case). The message catalogue and Equipment prose now record the weapon-vs-armor distinction, matching the client's own inventory parser. See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->
 
 A modern Telnet terminal client for **MajorMUD** and other BBS door games, built in C# / .NET 10 with [Avalonia](https://avaloniaui.net/). It renders a faithful CP437 cell grid with full VT100/ANSI parsing, and layers a MegaMUD-style automation suite (combat, party, navigation, healing, and more) on top — all in modeless, dockable windows so the terminal stays live while you configure anything.
