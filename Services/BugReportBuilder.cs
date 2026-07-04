@@ -178,8 +178,23 @@ public static class BugReportBuilder
         Kv(sb, "Coalesced state", svc.MovementControl.State.ToString());
         Kv(sb, "Active", svc.MovementControl.IsActive.ToString());
         Kv(sb, "Paused", svc.MovementControl.IsPaused.ToString());
-        Kv(sb, "Loop runner", svc.LoopRunner.State.ToString());
-        Kv(sb, "Staged loop", svc.LoopRunner.StagedLoop?.Name ?? "(none)");
+        var loop = svc.LoopRunner;
+        Kv(sb, "Loop runner", loop.State.ToString());
+        // CurrentLoop is the loop of the LIVE run; StagedLoop is the loaded-but-
+        // -not-started slot. They're mutually exclusive, so report both — a
+        // running loop shows up under CurrentLoop, never StagedLoop.
+        Kv(sb, "Running loop",
+            loop.CurrentLoop is { } running
+                ? $"{running.Name} — step {loop.CurrentIndex + 1}/{loop.StepCount}"
+                : "(none)");
+        if (loop.CurrentLoop is not null)
+        {
+            Kv(sb, "Loop approach target",
+                loop.ApproachTarget is { } appr ? $"{appr.Map}/{appr.Room}" : "(none)");
+            Kv(sb, "Loop circle start",
+                loop.CircleStartRoom is { } start ? $"{start.Map}/{start.Room}" : "(none)");
+        }
+        Kv(sb, "Staged loop", loop.StagedLoop?.Name ?? "(none)");
         Kv(sb, "Auto-Lair phase", svc.AutoLair.Phase.ToString());
         Kv(sb, "Auto-Lair active", svc.AutoLair.IsActive.ToString());
         Kv(sb, "Auto-Lair paused", svc.AutoLair.IsPaused.ToString());
