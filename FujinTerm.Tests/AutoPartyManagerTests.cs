@@ -443,7 +443,7 @@ public sealed class AutoPartyManagerTests
     }
 
     [Fact]
-    public void JoinNag_NonOkTelepath_AbortsEntireNag()
+    public void JoinNag_NonBracedTextReply_AbortsEntireNag()
     {
         var (engine, router, players, _) = Setup();
         SeedPlayer(players, "Raijin", inviteOnSeen: true);
@@ -460,13 +460,42 @@ public sealed class AutoPartyManagerTests
         engine.TickNagsForTests();
         Assert.Single(engine.LastSentForTests);
 
-        // Anything other than {Ok} from the target — kill the nag.
+        // Non-braced free text is a human replying (a decline) — kill the nag.
         Dispatch(router, "Raijin telepaths: nah I'm good");
         engine.LastSentForTests.Clear();
 
         engine.NowProvider = () => t0.AddSeconds(20);
         engine.TickNagsForTests();
         Assert.Empty(engine.LastSentForTests);
+    }
+
+    [Fact]
+    public void JoinNag_BracedMachineTelepath_DoesNotAbort()
+    {
+        // Reproduces the live bug: right after inviting Raijin the leader pinged
+        // his @health, and his client's automated {HP=…} reply landed before the
+        // initial delay elapsed — the old code treated any non-{Ok} reply as a
+        // decline and cancelled the nag, so no @join ever fired. A fully-braced
+        // machine payload must be ignored: the nag stays live and still fires.
+        var (engine, router, players, _) = Setup();
+        SeedPlayer(players, "Raijin", inviteOnSeen: true);
+        DateTime t0 = Now;
+        engine.NowProvider = () => t0;
+        engine.JoinNagInitialDelay = TimeSpan.FromSeconds(5);
+        engine.JoinNagFrequency    = TimeSpan.FromSeconds(10);
+        engine.JoinNagMaxTotal     = TimeSpan.FromSeconds(120);
+
+        Dispatch(router, "Also here: Raijin.");
+        engine.LastSentForTests.Clear();
+
+        // @health reply arrives within the initial-delay window, before any @join.
+        Dispatch(router, "Raijin telepaths: {HP=43/43,MA=15/34, Resting}");
+
+        // Past the delay — the nag survived, so the first @join still fires.
+        engine.NowProvider = () => t0.AddSeconds(5);
+        engine.TickNagsForTests();
+        byte[] sent = Assert.Single(engine.LastSentForTests);
+        Assert.Equal("/Raijin @join\r", Encoding.Latin1.GetString(sent));
     }
 
     [Fact]

@@ -73,6 +73,12 @@ public sealed partial class CombatManager : IDisposable
     // 2H). Injected so the manager stays game-data-free; null ⇒ never two-handed
     // (preserves the original always-equip-off-hand behaviour for tests).
     private readonly Func<string?, bool> _isTwoHandedWeapon;
+    // Reports the weapon the game currently has worn (live inventory's Weapon
+    // Hand slot), or null when unknown / nothing worn. Consulted before an equip
+    // so we never re-send `eq X` for a weapon already in hand — the game answers
+    // that with "You do not have X left unequipped." null ⇒ no inventory hook
+    // (tests), so the shadow-only behaviour is preserved.
+    private readonly Func<string?>? _readEquippedWeapon;
     private readonly LogService? _log;
 
     private readonly IDisposable _announceSub;
@@ -214,7 +220,8 @@ public sealed partial class CombatManager : IDisposable
         Func<string?> readOwnGivenName,
         LogService? log = null,
         Func<PartySettings>? readPartySettings = null,
-        Func<string?, bool>? isTwoHandedWeapon = null)
+        Func<string?, bool>? isTwoHandedWeapon = null,
+        Func<string?>? readEquippedWeapon = null)
     {
         ArgumentNullException.ThrowIfNull(router);
         ArgumentNullException.ThrowIfNull(classifier);
@@ -233,6 +240,7 @@ public sealed partial class CombatManager : IDisposable
         _readOwnGivenName = readOwnGivenName;
         _readPartySettings = readPartySettings;
         _isTwoHandedWeapon = isTwoHandedWeapon ?? (static _ => false);
+        _readEquippedWeapon = readEquippedWeapon;
         _log = log;
 
         _classifier.EntitiesObserved += OnEntitiesObserved;
@@ -699,6 +707,17 @@ public sealed partial class CombatManager : IDisposable
         if (string.IsNullOrWhiteSpace(weapon)) return;
         if (string.Equals(weapon, _lastEquippedWeapon, StringComparison.OrdinalIgnoreCase))
             return;
+
+        // Already worn per live inventory — skip the equip and sync the shadow so
+        // subsequent rounds short-circuit on the cheap check above. Covers the
+        // fresh-session / fresh-room case where our shadow is still null but the
+        // weapon is already in hand (a redundant `eq` would draw "You do not have
+        // X left unequipped.").
+        if (string.Equals(weapon, _readEquippedWeapon?.Invoke(), StringComparison.OrdinalIgnoreCase))
+        {
+            _lastEquippedWeapon = weapon;
+            return;
+        }
 
         bool newIsTwoHanded = _isTwoHandedWeapon(weapon);
 
