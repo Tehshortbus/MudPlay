@@ -649,13 +649,29 @@ public sealed class CastingDirector : IDisposable
         {
             if (m.IsSelf) continue;
             if (m.Poisoned && !string.IsNullOrWhiteSpace(spells.CurePoisonSpell))
-                return new CastCandidate(spells.CurePoisonSpell, m.Name);
+                return new CastCandidate(spells.CurePoisonSpell, MemberTarget(m));
             if (m.Diseased && !string.IsNullOrWhiteSpace(spells.CureDiseaseSpell))
-                return new CastCandidate(spells.CureDiseaseSpell, m.Name);
+                return new CastCandidate(spells.CureDiseaseSpell, MemberTarget(m));
             if (m.Blinded && !string.IsNullOrWhiteSpace(spells.CureBlindnessSpell))
-                return new CastCandidate(spells.CureBlindnessSpell, m.Name);
+                return new CastCandidate(spells.CureBlindnessSpell, MemberTarget(m));
         }
         return null;
+    }
+
+    // Resolve the cast-target string for a party member. Self resolves to null —
+    // a self-cast in MajorMUD is the bare 4-letter spell code with no target, and
+    // appending our own name (which the par table can carry as "Given Family")
+    // makes the server reject the cast against a non-existent room target. Other
+    // members resolve to their GIVEN name only; MajorMUD targets a cast by first
+    // name token, so a "Given Family" par-row name would likewise miss.
+    private static string? MemberTarget(PartyMember m) =>
+        m.IsSelf ? null : GivenName(m.Name);
+
+    private static string GivenName(string name)
+    {
+        if (string.IsNullOrEmpty(name)) return name;
+        int space = name.IndexOf(' ');
+        return space >= 0 ? name[..space] : name;
     }
 
     // ----- Party heal -------------------------------------------------
@@ -704,7 +720,7 @@ public sealed class CastingDirector : IDisposable
             return new CastCandidate(aoeSpell, Target: null);
 
         if (!string.IsNullOrWhiteSpace(singleSpell) && lowest is not null)
-            return new CastCandidate(singleSpell, Target: lowest.Name);
+            return new CastCandidate(singleSpell, Target: MemberTarget(lowest));
 
         // Below threshold but only AOE configured and below count
         // hasn't hit AoeMinMembers — accept the AOE anyway since
@@ -848,9 +864,13 @@ public sealed class CastingDirector : IDisposable
             {
                 if (m.IsSelf) continue;
                 if (!MemberMatchesClasses(m, slot.ClassNumbers)) continue;
-                string key = m.Name.Trim().ToLowerInvariant();
+                // Given name only: MajorMUD targets a cast by first name token, and
+                // the recast key must match the target we stash for confirmation so
+                // the buff doesn't re-fire every round on a "Given Family" mismatch.
+                string given = GivenName(m.Name);
+                string key = given.ToLowerInvariant();
                 if (!IsRecastDue(key, slot.Spell)) continue;
-                return new CastCandidate(slot.Spell, m.Name);
+                return new CastCandidate(slot.Spell, given);
             }
         }
         return null;

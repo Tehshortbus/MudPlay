@@ -315,4 +315,62 @@ public sealed class AilmentSyncEngineTests
         tracker.Dispose();
         rest.Dispose();
     }
+
+    // ===== Mid-affliction Ignore-toggle reconcile (ReevaluateWaits) =====
+    //
+    // OnConditionsChanged latches the @wait decision at onset. Toggling an
+    // Ignore<X> gate while still afflicted must reconcile the standing wait —
+    // the live report was "flip IgnorePoison on while poisoned and the party
+    // never resumes". SpellsSectionViewModel.Apply calls ReevaluateWaits after
+    // pushing the new settings.
+
+    [Fact]
+    public void ReevaluateWaits_TogglingIgnoreOnMidPoison_ReleasesWait()
+    {
+        using Harness h = new();
+        SeedAll(h);
+
+        h.Feed("You have been poisoned!");
+        Assert.Equal("/Leader @wait\r", Assert.Single(h.Telepath));
+
+        // Flip IgnorePoison ON while still poisoned. Without the reconcile the
+        // already-telepathed @wait stands and the leader is stuck.
+        h.Spells.IgnorePoison = true;
+        h.Engine.ReevaluateWaits();
+
+        Assert.Equal(new[] { "/Leader @wait\r", "/Leader @ok\r" }, h.Telepath);
+    }
+
+    [Fact]
+    public void ReevaluateWaits_TogglingIgnoreOffMidPoison_PlacesWait()
+    {
+        using Harness h = new();
+        SeedAll(h);
+        h.Spells = new SpellsSettings { IgnorePoison = true };
+
+        h.Feed("You have been poisoned!");
+        Assert.Empty(h.Telepath);   // ignored at onset — say fired, no @wait
+
+        // Flip IgnorePoison OFF while still poisoned → (re)place the wait.
+        h.Spells.IgnorePoison = false;
+        h.Engine.ReevaluateWaits();
+
+        Assert.Equal("/Leader @wait\r", Assert.Single(h.Telepath));
+    }
+
+    [Fact]
+    public void ReevaluateWaits_NoSettingChange_IsNoOpOnWire()
+    {
+        using Harness h = new();
+        SeedAll(h);
+
+        h.Feed("You have been poisoned!");
+        Assert.Single(h.Telepath);   // the onset @wait
+
+        // Reconciling without toggling anything must not double-@wait or @ok —
+        // PartyRestSync dedupes the standing reason.
+        h.Engine.ReevaluateWaits();
+
+        Assert.Single(h.Telepath);
+    }
 }

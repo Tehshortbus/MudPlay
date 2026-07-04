@@ -53,35 +53,47 @@
         </Border>
 
         <!-- ============ Scrollback rows ============ -->
-        <!-- Terminal-tight row spacing: ListBoxItem padding 0, no per-row
-             margin, fixed line-height set on the cell renderer to match
-             the Mx437 font's cell height (16 px). The default Fluent
-             ListBoxItem ships with ~6 px vertical padding which reads as
-             "double-spaced" against terminal output. -->
-        <!-- Two-column layout inside one ScrollViewer so the gutter scrolls
-             in lockstep with the body. Timestamps render in the gutter
-             (non-selectable); body is a SelectableTextBlock so drag-select
-             spans rows and Ctrl+C copies the multi-line range. Both
-             controls share the same font + size so the lines stay aligned. -->
-        <ScrollViewer x:Name="RowsScroll"
-                      Background="Black"
-                      HorizontalScrollBarVisibility="Auto"
-                      VerticalScrollBarVisibility="Auto"
-                      UseLayoutRounding="True">
-            <Grid ColumnDefinitions="Auto,*" Margin="4">
-                <ctl:TimestampGutter Grid.Column="0"
-                                     Rows="{Binding Rows}"
-                                     Margin="0,0,12,0"
-                                     FontFamily="avares://FujinTerm/Assets/Fonts/Mx437_IBM_VGA_8x16.ttf#Mx437 IBM VGA 8x16"
-                                     FontSize="16"/>
-                <ctl:SelectableTranscript Grid.Column="1"
-                                          x:Name="Transcript"
-                                          Rows="{Binding Rows}"
-                                          Foreground="White"
-                                          FontFamily="avares://FujinTerm/Assets/Fonts/Mx437_IBM_VGA_8x16.ttf#Mx437 IBM VGA 8x16"
-                                          FontSize="16"/>
-            </Grid>
-        </ScrollViewer>
+        <!-- One virtualizing ListBox so only the ~screenful of rows actually
+             on screen ever materialise — a 10k+ row transcript would freeze
+             the client if every row laid out at once. Each row is a
+             two-column template: a non-selectable timestamp gutter plus a
+             TranscriptRow (a per-row SelectableTextBlock) so drag-select +
+             Ctrl+C copy work within a row, and ListBox multi-select + Ctrl+C
+             copies whole rows across the range. ListBoxItem padding is zeroed
+             to keep terminal-tight line spacing. -->
+        <ListBox x:Name="RowsList"
+                 ItemsSource="{Binding Rows}"
+                 Background="Black"
+                 BorderThickness="0"
+                 Padding="4"
+                 SelectionMode="Multiple"
+                 ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                 ScrollViewer.VerticalScrollBarVisibility="Auto"
+                 UseLayoutRounding="True">
+            <ListBox.Styles>
+                <Style Selector="ListBoxItem">
+                    <Setter Property="Padding" Value="0"/>
+                    <Setter Property="MinHeight" Value="0"/>
+                </Style>
+            </ListBox.Styles>
+            <ListBox.ItemTemplate>
+                <DataTemplate DataType="vm:BackscrollRowViewModel">
+                    <Grid ColumnDefinitions="Auto,*">
+                        <TextBlock Grid.Column="0"
+                                   Text="{Binding TimestampText}"
+                                   Foreground="#808080"
+                                   FontFamily="avares://FujinTerm/Assets/Fonts/Mx437_IBM_VGA_8x16.ttf#Mx437 IBM VGA 8x16"
+                                   FontSize="16"
+                                   Margin="0,0,12,0"/>
+                        <ctl:TranscriptRow Grid.Column="1"
+                                           Row="{Binding}"
+                                           Foreground="White"
+                                           FontFamily="avares://FujinTerm/Assets/Fonts/Mx437_IBM_VGA_8x16.ttf#Mx437 IBM VGA 8x16"
+                                           FontSize="16"/>
+                    </Grid>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
 
     </DockPanel>
 </Window>

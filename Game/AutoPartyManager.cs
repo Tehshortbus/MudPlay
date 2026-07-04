@@ -309,19 +309,32 @@ public sealed class AutoPartyManager : IDisposable
         // {Ok} (case-insensitive, optional surrounding whitespace) =
         // acknowledgement that they're coming — stop the @join sends
         // but leave the nag entry alive so the join-confirmation
-        // path can still cancel it cleanly. Anything else from this
-        // target ends the entire nag attempt.
+        // path can still cancel it cleanly.
         if (body.Equals("{Ok}", StringComparison.OrdinalIgnoreCase))
         {
             state.Acknowledged = true;
             _log?.Log(LogSeverity.Info, "AutoParty",
                 $"{sender} acknowledged @join with {{Ok}} — holding further sends.");
+            return;
         }
-        else
-        {
-            CancelNag(sender, reason: $"replied '{body}' (not {{Ok}})");
-        }
+
+        // Any other fully-braced {…} body is a machine-generated remote-command
+        // reply (e.g. an @health payload like {HP=43/43,MA=15/34, Resting}), not
+        // the invited player themselves deciding not to come. Ignore it — the
+        // leader pinging the invitee's @health mid-invite must not kill the
+        // @join chase before the first nag even fires.
+        if (IsBracedPayload(body)) return;
+
+        // Non-braced free text is the human replying — treat as a decline and
+        // stop chasing.
+        CancelNag(sender, reason: $"replied '{body}' (not {{Ok}})");
     }
+
+    // A telepath body wholly wrapped in braces is an automated remote-command
+    // reply from another FujinTerm client (@health, @status, {Ok}, …), never a
+    // person typing a decline.
+    private static bool IsBracedPayload(string body) =>
+        body.Length >= 2 && body[0] == '{' && body[^1] == '}';
 
     // Bind the wire-sender — same shape as
     // Remote.PartyEssentialHandlers.SetWireSender. The main-window VM supplies

@@ -32,4 +32,12 @@ public sealed partial class RoomState : ObservableObject
     // is in RoomConfidence.Unknown / between rooms).
     [ObservableProperty] [field: Owner(typeof(RoomTracker))]
     private System.Collections.Generic.IReadOnlySet<Direction>? _openDoorDirections;
+
+    // Every direction on the latest observation's "Obvious exits:" line. The
+    // walker checks this before searching a graph-hidden exit — if the direction
+    // is already showing (a prior `sea` uncovered it, or it simply isn't hidden
+    // in this room instance), skip the redundant `sea <dir>` and send the
+    // cardinal move directly. null before the first observation.
+    [ObservableProperty] [field: Owner(typeof(RoomTracker))]
+    private System.Collections.Generic.IReadOnlySet<Direction>? _observedExitDirections;
 }

@@ -50,6 +50,14 @@ public sealed class PartyAilmentTracker : IDisposable
         ("@held",     MessageFlags.MovementPrevented),
     };
 
+    // The @-tokens this tracker consumes as inbound ailment announces. Exposed so
+    // the remote-command engine can mark them reserved — they ride the say
+    // channel as party-sync signals, not @-commands, so the engine must swallow
+    // them silently instead of bouncing a "{command invalid}" reply back at the
+    // announcing member.
+    public static IReadOnlyList<string> AnnounceTokens { get; } =
+        Array.ConvertAll(Tokens, t => t.Token);
+
     private readonly ChatRouter _chat;
     private readonly PartyManager _party;
     private readonly PartyEssentialHandlers _essentials;

@@ -50,6 +50,13 @@ public sealed class RemoteCommandManager : IDisposable
     // an exact registration always wins.
     private readonly ConcurrentDictionary<string, Registration> _prefixHandlers
         = new(StringComparer.OrdinalIgnoreCase);
+    // Reserved @-tokens owned by OTHER subsystems that happen to ride the chat
+    // channels (e.g. the party ailment-sync announces @poisoned / @blind / @held
+    // that PartyAilmentTracker consumes on its own ChatRouter subscription).
+    // They aren't commands, so the engine swallows them before the unknown-command
+    // path — otherwise every announcing member gets a "{command invalid}" reply.
+    private readonly HashSet<string> _ignored
+        = new(StringComparer.OrdinalIgnoreCase);
     private Action<byte[]>? _wireSender;
     // Test seam — last bytes the engine asked to write to the wire. Inspected by
     // tests when no real sender is bound.
@@ -168,6 +175,19 @@ public sealed class RemoteCommandManager : IDisposable
         return _handlers.TryRemove(command, out _);
     }
 
+    // Mark an @-token as reserved: the engine swallows it silently (no handler
+    // dispatch, no denial reply) so a subsystem that consumes it on its own
+    // ChatRouter subscription — the party ailment-sync announces are the live
+    // case — isn't undercut by an "{command invalid}" bounce. command is verbatim
+    // including the leading @, matched case-insensitively.
+    public void RegisterIgnored(string command)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(command);
+        if (!command.StartsWith('@'))
+            throw new ArgumentException("Ignored token must start with '@'.", nameof(command));
+        _ignored.Add(command);
+    }
+
     // Register a handler for a family of suffix-form commands sharing one prefix
     // — e.g. prefix @equip- matches @equip-fighting, @equip-tank, …. The text
     // after the prefix is folded in as the command's leading argument (Args[0]),
@@ -263,6 +283,11 @@ public sealed class RemoteCommandManager : IDisposable
         if (tokens.Length == 0) return;
         string command = tokens[0];
         string[] args = tokens.Length > 1 ? tokens[1..] : Array.Empty<string>();
+
+        // Reserved announce tokens (party ailment sync, etc.) are consumed by
+        // their owning subsystem — swallow silently so they never reach the
+        // unknown-command denial path and bounce a reply at the sender.
+        if (_ignored.Contains(command)) return;
 
         // Hard-blocks first — bypass everything else. Always silent (no
         // reply) even when WarnOnDenial is on: never advertise the block

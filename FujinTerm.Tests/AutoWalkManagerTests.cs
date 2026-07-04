@@ -797,6 +797,72 @@ public sealed class AutoWalkManagerTests : IDisposable
         Assert.IsType<MoveStep>(h.Walker.Steps[0]);
     }
 
+    // ----- hidden-exit reveal ----------------------------------------
+
+    // 1/1 → E is a graph-hidden exit to 1/2 ("(Hidden)" → SearchableHidden).
+    private const string HiddenExitGraphJson = """
+        [
+          { "Map Number": 1, "Room Number": 1, "Name": "Outside",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "0", "E": "1/2 (Hidden)", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 2, "Name": "Cave",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "0", "E": "0", "W": "1/1",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+        ]
+        """;
+
+    private sealed class FakeHiddenEnqueuer
+    {
+        public List<(Direction Direction, string Sender, Action<HiddenSearchResult> Reply)> Calls { get; } = new();
+        public void Enqueue(Direction direction, string sender, Action<HiddenSearchResult> reply)
+            => Calls.Add((direction, sender, reply));
+    }
+
+    [Fact]
+    public void Walker_HiddenExit_NotYetRevealed_RoutesThroughSearchEnqueuer()
+    {
+        Harness h = NewHarness(HiddenExitGraphJson);
+        FakeHiddenEnqueuer hidden = new();
+        h.Walker.SetHiddenSearchEnqueuer(hidden.Enqueue);
+
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Walker.WalkTo(new RoomKey(1, 2));
+
+        // No observation fed — ObservedExitDirections is null, so the
+        // walker searches to uncover the hidden exit before moving.
+        Assert.Single(hidden.Calls);
+        Assert.Equal(Direction.E, hidden.Calls[0].Direction);
+        Assert.Equal("walker",    hidden.Calls[0].Sender);
+        Assert.Empty(h.Sent);
+    }
+
+    [Fact]
+    public void Walker_HiddenExit_AlreadyRevealed_SkipsSearch_SendsMoveDirectly()
+    {
+        // Live bug: a manual `sea e` uncovered the east exit, but on the
+        // next walk pass the walker still re-fired `sea e` even though the
+        // display already listed it. Fix: pre-check ObservedExitDirections
+        // and send the cardinal move directly (mirrors the open-door
+        // pre-check).
+        Harness h = NewHarness(HiddenExitGraphJson);
+        FakeHiddenEnqueuer hidden = new();
+        h.Walker.SetHiddenSearchEnqueuer(hidden.Enqueue);
+
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        // Live "Obvious exits:" already lists E — the exit is uncovered.
+        h.Tracker.NoteRoomObserved(new RoomObservation(
+            "Outside", new HashSet<Direction> { Direction.E }));
+
+        h.Walker.WalkTo(new RoomKey(1, 2));
+
+        // Search enqueuer NOT called — walker went straight to the move.
+        Assert.Empty(hidden.Calls);
+        Assert.Single(h.Sent);
+        Assert.Equal("e\r", Encoding.Latin1.GetString(h.Sent[0]));
+    }
+
     // ----- text exits (commit 4) -------------------------------------
 
     private const string TextExitGraphJson = """

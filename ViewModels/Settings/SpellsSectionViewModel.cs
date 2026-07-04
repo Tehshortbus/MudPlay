@@ -256,6 +256,11 @@ public sealed partial class SpellsSectionViewModel : SettingsSectionViewModel
         profile.Settings[TabKey] = JsonSerializer.SerializeToElement(dto);
         _profile.Save();
 
+        // Push the Ignore<X> gates at the live ailment engine so a toggle taken
+        // mid-affliction re-balances the @wait it already placed — otherwise
+        // enabling IgnorePoison while poisoned leaves the party paused.
+        AppServices.Current.AilmentSync.ReevaluateWaits();
+
         ClearDirty();
     }
 

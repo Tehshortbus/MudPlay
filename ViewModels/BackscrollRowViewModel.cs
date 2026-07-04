@@ -4,8 +4,8 @@ namespace FujinTerm.ViewModels;
 
 // One row in the BackscrollViewModel's displayed list. Carries the
 // timestamp prefix string and the raw Cell[] the row was captured at;
-// Controls.SelectableTranscript reads both to compose the inline transcript
-// display.
+// Controls.TranscriptRow reads the cells to compose the coloured inline
+// display and the timestamp renders in the sibling gutter column.
 public sealed class BackscrollRowViewModel
 {
     private string? _plainText;

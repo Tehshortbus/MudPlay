@@ -299,6 +299,11 @@ public sealed class RoomTracker
         // send the cardinal move directly).
         State.OpenDoorDirections = observation.OpenDoorDirections;
 
+        // Mirror the full observed-exit set so the walker can skip a
+        // redundant `sea <dir>` when a graph-hidden exit is already
+        // showing in the live display.
+        State.ObservedExitDirections = observation.Exits;
+
         switch (State.Confidence)
         {
             case RoomConfidence.Unknown:

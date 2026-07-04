@@ -38,6 +38,9 @@ public sealed class CombatManagerTests
         public bool AutoCombatEnabled { get; set; } = true;
         // Weapon names the injected 2H predicate should report as two-handed.
         public HashSet<string> TwoHandedWeapons { get; } = new(StringComparer.OrdinalIgnoreCase);
+        // What the live inventory reports worn in the Weapon Hand, or null for
+        // "nothing / unknown" (the default — most tests don't wire inventory).
+        public string? EquippedWeapon { get; set; }
 
         public Harness()
         {
@@ -51,7 +54,8 @@ public sealed class CombatManagerTests
                 isEnabled: () => AutoCombatEnabled,
                 readOwnGivenName: () => OwnName,
                 log: Log,
-                isTwoHandedWeapon: w => w is not null && TwoHandedWeapons.Contains(w));
+                isTwoHandedWeapon: w => w is not null && TwoHandedWeapons.Contains(w),
+                readEquippedWeapon: () => EquippedWeapon);
             Combat.SetWireSender(b => Sent.Add(b));
         }
 
@@ -1041,6 +1045,43 @@ public sealed class CombatManagerTests
         h.Feed("Also here: kobold.");
         Assert.Equal(3, h.Sent.Count);    // just attack, no second eq
         Assert.Equal("a kobold", h.LastSent);
+    }
+
+    [Fact]
+    public void Attack_SkipsEquip_WhenWeaponAlreadyWorn()
+    {
+        // Reproduces the live bug: the configured normal weapon is already in
+        // hand (live inventory reports it worn), but the shadow state is still
+        // null on the first swing — the old code fired a redundant `eq
+        // quarterstaff`, which the game rejects with "You do not have
+        // quarterstaff left unequipped.". With the inventory feed wired, the
+        // first swing goes straight out with no equip.
+        using Harness h = new();
+        h.Settings.NormalWeapon = "quarterstaff";
+        h.EquippedWeapon = "quarterstaff";
+        h.AddMonster(1, "giant rat", killable: true);
+
+        h.Feed("Also here: giant rat.");
+
+        byte[] only = Assert.Single(h.Sent);
+        Assert.Equal("a giant rat", Encoding.Latin1.GetString(only).TrimEnd('\r'));
+    }
+
+    [Fact]
+    public void Attack_StillEquips_WhenWornWeaponDiffers()
+    {
+        // The worn weapon differs from the configured normal weapon, so the
+        // equip must still fire before the first swing.
+        using Harness h = new();
+        h.Settings.NormalWeapon = "longsword";
+        h.EquippedWeapon = "dagger";
+        h.AddMonster(1, "giant rat", killable: true);
+
+        h.Feed("Also here: giant rat.");
+
+        List<string> lines = h.Sent.Select(b => Encoding.Latin1.GetString(b).TrimEnd('\r')).ToList();
+        Assert.Equal("eq longsword", lines[0]);
+        Assert.Equal("a giant rat", lines[1]);
     }
 
     [Fact]

@@ -33,10 +33,9 @@ public sealed partial class BackscrollViewModel : ObservableObject, IDisposable
     private string _lastMatchSearchText = string.Empty;
     // Coalesces many ScreenUpdated events into a single RefreshLiveTail per
     // dispatcher tick — without this, every byte echoed during typing fires
-    // a full live-tail refresh (which fires ~25 row replacements in Rows,
-    // each of which fires CollectionChanged on the SelectableTranscript +
-    // TimestampGutter, each of which walks every row to rebuild inlines).
-    // The compounding made typing visibly laggy while Backscroll was open.
+    // a full live-tail refresh (which replaces ~25 rows in Rows). The
+    // virtualizing ListBox only re-renders the realised tail rows, but the
+    // coalescing still spares the collection churn on keystroke bursts.
     private bool _refreshScheduled;
     // Set when a ScreenUpdated arrived while mirroring was suspended
     // (see AutoFollow) so we can catch the tail up on resume.
@@ -48,11 +47,9 @@ public sealed partial class BackscrollViewModel : ObservableObject, IDisposable
 
     // Whether the live screen mirror tracks the terminal in real time.
     // Driven by Views.BackscrollWindow: true only while the window is focused
-    // AND scrolled to the bottom. When false, live-tail refreshes are
-    // deferred — mirroring the screen re-lays-out the whole (potentially
-    // 10k-row) transcript, so doing it on every keystroke echo while the user
-    // is reviewing history or typing in the main terminal janks the shared
-    // UI thread.
+    // AND scrolled to the bottom. When false, live-tail refreshes are deferred
+    // so a user reading back through history isn't repeatedly yanked down to
+    // the tail as new screen output streams in.
     [ObservableProperty] private bool _autoFollow = true;
 
     [ObservableProperty]
@@ -63,8 +60,9 @@ public sealed partial class BackscrollViewModel : ObservableObject, IDisposable
         => $"{_scrollbackCount:N0} scrollback  •  {Rows.Count - _scrollbackCount:N0} live  •  {MatchCount:N0} matches";
 
     // Fired when Find Next lands on a match. Payload: (rowIndex,
-    // columnOffsetWithinRowText, matchLength). The window translates this
-    // into a selection + scroll on the SelectableTranscript.
+    // columnOffsetWithinRowText, matchLength). The window selects the matched
+    // row in the ListBox and scrolls it into view (row-granular — the column
+    // and length are reported for completeness but unused by the window).
     public event Action<int, int, int>? FindMatchRequested;
 
     // Fired when the user requests Go to live (scroll to bottom).
@@ -109,9 +107,9 @@ public sealed partial class BackscrollViewModel : ObservableObject, IDisposable
     private void OnScreenUpdated()
     {
         // Suspended: the user isn't watching the live tail (window unfocused or
-        // scrolled up into history). Mirroring here would relayout the whole
-        // transcript on every keystroke echo — record that we fell behind and
-        // catch up in OnAutoFollowChanged once the user returns to the tail.
+        // scrolled up into history). Record that we fell behind and catch up in
+        // OnAutoFollowChanged once the user returns to the tail, rather than
+        // scrolling them down mid-review.
         if (!AutoFollow) { _liveTailDeferred = true; return; }
         if (_refreshScheduled) return;
         _refreshScheduled = true;
