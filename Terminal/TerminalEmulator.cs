@@ -3,36 +3,30 @@ using System.Text;
 
 namespace FujinTerm.Terminal;
 
-/// <summary>
-/// A small ANSI / VT100-ish terminal emulator. Bytes received from the
-/// network are fed in via <see cref="Feed"/>; the emulator interprets the
-/// stream — printable characters, C0 controls, and CSI/ESC sequences —
-/// and updates a <see cref="TerminalScreen"/> accordingly.
-///
-/// Sequences that require a reply back to the host (Device Status Report,
-/// Device Attributes) are emitted via <see cref="ResponseReady"/>; the
-/// shell hooks that to the Telnet client. Any state change to the screen
-/// fires <see cref="ScreenUpdated"/> after the input buffer is drained,
-/// so the UI can repaint at most once per chunk.
-/// </summary>
+// A small ANSI / VT100-ish terminal emulator. Bytes received from the network
+// are fed in via Feed; the emulator interprets the stream — printable
+// characters, C0 controls, and CSI/ESC sequences — and updates a
+// TerminalScreen accordingly.
+//
+// Sequences that require a reply back to the host (Device Status Report,
+// Device Attributes) are emitted via ResponseReady; the shell hooks that to
+// the Telnet client. Any state change to the screen fires ScreenUpdated after
+// the input buffer is drained, so the UI can repaint at most once per chunk.
 public sealed class TerminalEmulator
 {
     public TerminalScreen Screen { get; }
 
-    /// <summary>Bytes the host expects in reply (DSR, DA responses).</summary>
+    // Bytes the host expects in reply (DSR, DA responses).
     public event Action<byte[]>? ResponseReady;
 
-    /// <summary>Fires once per Feed() call after all bytes are processed.</summary>
+    // Fires once per Feed() call after all bytes are processed.
     public event Action? ScreenUpdated;
 
-    /// <summary>
-    /// Fires every time <see cref="LineFeed"/> moves the cursor off a row —
-    /// the canonical "this line just finished" signal. Used by
-    /// <see cref="LineExtractor"/> so chat / automation see every completed
-    /// line, regardless of whether the row eventually scrolls off-screen.
-    /// <see cref="ScrollbackBuffer.RowAdded"/> remains the "row left the
-    /// visible screen" signal (only ScrollUp fires it).
-    /// </summary>
+    // Fires every time LineFeed moves the cursor off a row — the canonical
+    // "this line just finished" signal. Used by LineExtractor so chat /
+    // automation see every completed line, regardless of whether the row
+    // eventually scrolls off-screen. ScrollbackBuffer.RowAdded remains the
+    // "row left the visible screen" signal (only ScrollUp fires it).
     public event Action<ScrollbackBuffer.Row>? LineCompleted;
 
     // Current SGR state (foreground/background/flags) used for new writes.
@@ -74,7 +68,7 @@ public sealed class TerminalEmulator
         _scrollBottom = rows - 1;
     }
 
-    /// <summary>Resize the underlying screen and reset the scroll region.</summary>
+    // Resize the underlying screen and reset the scroll region.
     public void Resize(int cols, int rows)
     {
         if (cols == Screen.Cols && rows == Screen.Rows) return;
@@ -85,14 +79,12 @@ public sealed class TerminalEmulator
         ScreenUpdated?.Invoke();
     }
 
-    /// <summary>
-    /// Fires after a successful <see cref="Resize"/>. Subscribers (the
-    /// terminal canvas) invalidate their measure so the layout re-runs
-    /// against the new cell grid.
-    /// </summary>
+    // Fires after a successful Resize. Subscribers (the terminal canvas)
+    // invalidate their measure so the layout re-runs against the new cell
+    // grid.
     public event Action? ScreenResized;
 
-    /// <summary>Process a chunk of incoming bytes from the host.</summary>
+    // Process a chunk of incoming bytes from the host.
     public void Feed(ReadOnlySpan<byte> bytes)
     {
         foreach (byte b in bytes) FeedByte(b);
@@ -131,7 +123,7 @@ public sealed class TerminalEmulator
         }
     }
 
-    /// <summary>Handle a byte while we're not inside any escape sequence.</summary>
+    // Handle a byte while we're not inside any escape sequence.
     private void ProcessGround(byte b)
     {
         // C0 controls first — these are common enough that the switch cost
@@ -189,7 +181,7 @@ public sealed class TerminalEmulator
             Screen.CursorX++;
     }
 
-    /// <summary>Index-y down a row, scrolling the region if at the bottom.</summary>
+    // Index-y down a row, scrolling the region if at the bottom.
     private void LineFeed()
     {
         // LF is the canonical "this row is done" signal. Fire LineCompleted
@@ -222,7 +214,7 @@ public sealed class TerminalEmulator
         _privateMode = false;
     }
 
-    /// <summary>Handle a byte right after an ESC.</summary>
+    // Handle a byte right after an ESC.
     private void ProcessEsc(byte b)
     {
         switch (b)
@@ -274,7 +266,7 @@ public sealed class TerminalEmulator
         _state = State.Ground;
     }
 
-    /// <summary>Handle a byte while inside a CSI sequence (after ESC [).</summary>
+    // Handle a byte while inside a CSI sequence (after ESC [).
     private void ProcessCsi(byte b)
     {
         // A leading '?' marks a DEC private-mode sequence (e.g. ?25h).
@@ -309,15 +301,15 @@ public sealed class TerminalEmulator
         // Intermediates ('!' to '/') and other bytes — stay in CSI and ignore.
     }
 
-    /// <summary>Read parameter <paramref name="index"/>, treating 0/missing as default.</summary>
+    // Read parameter index, treating 0/missing as default.
     private int Param(int index, int defaultValue) =>
         index < _params.Count && _params[index] != 0 ? _params[index] : defaultValue;
 
-    /// <summary>Read parameter <paramref name="index"/> verbatim (0 stays 0).</summary>
+    // Read parameter index verbatim (0 stays 0).
     private int ParamRaw(int index, int defaultValue) =>
         index < _params.Count ? _params[index] : defaultValue;
 
-    /// <summary>Run the side-effect of a completed CSI sequence.</summary>
+    // Run the side-effect of a completed CSI sequence.
     private void DispatchCsi(char final)
     {
         switch (final)
@@ -409,7 +401,7 @@ public sealed class TerminalEmulator
         }
     }
 
-    /// <summary>Move the cursor by a (dx, dy) offset, clamped to the screen.</summary>
+    // Move the cursor by a (dx, dy) offset, clamped to the screen.
     private void MoveRel(int dx, int dy)
     {
         Screen.CursorX = Math.Clamp(Screen.CursorX + dx, 0, Screen.Cols - 1);
@@ -417,7 +409,7 @@ public sealed class TerminalEmulator
         _wrapPending = false;
     }
 
-    /// <summary>CSI J — erase parts of the display.</summary>
+    // CSI J — erase parts of the display.
     private void EraseInDisplay(int mode)
     {
         switch (mode)
@@ -446,7 +438,7 @@ public sealed class TerminalEmulator
         }
     }
 
-    /// <summary>CSI K — erase parts of the current line.</summary>
+    // CSI K — erase parts of the current line.
     private void EraseInLine(int mode)
     {
         switch (mode)
@@ -457,7 +449,7 @@ public sealed class TerminalEmulator
         }
     }
 
-    /// <summary>CSI P — delete <paramref name="n"/> chars at cursor, shifting the rest left.</summary>
+    // CSI P — delete n chars at cursor, shifting the rest left.
     private void DeleteChars(int n)
     {
         n = Math.Clamp(n, 1, Screen.Cols - Screen.CursorX);
@@ -470,7 +462,7 @@ public sealed class TerminalEmulator
         }
     }
 
-    /// <summary>CSI @ — insert <paramref name="n"/> blank cells at cursor, shifting right.</summary>
+    // CSI @ — insert n blank cells at cursor, shifting right.
     private void InsertChars(int n)
     {
         n = Math.Clamp(n, 1, Screen.Cols - Screen.CursorX);
@@ -481,7 +473,7 @@ public sealed class TerminalEmulator
             Screen.Put(x, y, new Cell(' ', _attr));
     }
 
-    /// <summary>CSI X — erase <paramref name="n"/> cells in place (no shift).</summary>
+    // CSI X — erase n cells in place (no shift).
     private void EraseChars(int n)
     {
         n = Math.Clamp(n, 1, Screen.Cols - Screen.CursorX);
@@ -489,10 +481,8 @@ public sealed class TerminalEmulator
             Screen.Put(x, Screen.CursorY, new Cell(' ', _attr));
     }
 
-    /// <summary>
-    /// CSI m — Select Graphic Rendition. Walks the parameter list and
-    /// accumulates style/color changes onto <see cref="_attr"/>.
-    /// </summary>
+    // CSI m — Select Graphic Rendition. Walks the parameter list and
+    // accumulates style/color changes onto _attr.
     private void ApplySgr()
     {
         if (_params.Count == 0) { _attr = CellAttributes.Default; return; }
@@ -543,10 +533,8 @@ public sealed class TerminalEmulator
         }
     }
 
-    /// <summary>
-    /// Decode the tail of a 38;... or 48;... SGR sequence. Returns true on
-    /// success and advances <paramref name="i"/> past the consumed sub-args.
-    /// </summary>
+    // Decode the tail of a 38;... or 48;... SGR sequence. Returns true on
+    // success and advances i past the consumed sub-args.
     private bool TryReadExtendedColor(ref int i, out TerminalColor color)
     {
         color = TerminalColor.Default;
@@ -588,7 +576,7 @@ public sealed class TerminalEmulator
         _wrapPending = false;
     }
 
-    /// <summary>CSI ? Pn h/l — DEC private mode set/reset.</summary>
+    // CSI ? Pn h/l — DEC private mode set/reset.
     private void SetMode(bool on)
     {
         if (!_privateMode) return;
@@ -613,7 +601,7 @@ public sealed class TerminalEmulator
         }
     }
 
-    /// <summary>CSI Pn n — Device Status Report.</summary>
+    // CSI Pn n — Device Status Report.
     private void DeviceStatusReport()
     {
         if (_params.Count == 0) return;
@@ -629,13 +617,13 @@ public sealed class TerminalEmulator
         }
     }
 
-    /// <summary>CSI c — identify ourselves as a VT101.</summary>
+    // CSI c — identify ourselves as a VT101.
     private void SendDeviceAttributes()
     {
         ResponseReady?.Invoke(Encoding.ASCII.GetBytes("\x1B[?1;0c"));
     }
 
-    /// <summary>ESC c — full reset to power-on state.</summary>
+    // ESC c — full reset to power-on state.
     private void ResetTerminal()
     {
         _attr = CellAttributes.Default;

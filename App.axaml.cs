@@ -39,13 +39,13 @@ public partial class App : Application
             AppServices.Current.Dialogs.SetMainWindow(mainWindow);
             AppServices.Current.Panels.SetOwnerWindow(mainWindow);
 
-            // Phase 5 PR 5.3 — register the unified import-conflict dialog.
-            // Every importer (MDB tables, MegaMUD spell messages, MegaMUD
-            // .mp paths, favourites) routes its row-level conflicts through
-            // this one window via DialogService.OpenWindowAsync.
+            // Register the unified import-conflict dialog. Every importer
+            // (MDB tables, MegaMUD spell messages, MegaMUD .mp paths,
+            // favourites) routes its row-level conflicts through this one
+            // window via DialogService.OpenWindowAsync.
             AppServices.Current.Dialogs.RegisterWindow<ImportConflictViewModel, ImportConflictWindow>();
 
-            // Phase 5 per-record edit dialogs — Messages tab + Monsters tab.
+            // Per-record edit dialogs — Messages tab + Monsters tab.
             AppServices.Current.Dialogs.RegisterWindow<
                 FujinTerm.ViewModels.GameData.Edit.MessageEditDialogViewModel,
                 FujinTerm.Views.GameData.Edit.MessageEditDialog>();
@@ -77,7 +77,7 @@ public partial class App : Application
                 FujinTerm.ViewModels.Keybind.KeybindEditDialogViewModel,
                 FujinTerm.Views.Keybind.KeybindEditDialog>();
 
-            // Phase 8 PR 8.4 — Settings.Events tab's per-row editor.
+            // Settings.Events tab's per-row editor.
             AppServices.Current.Dialogs.RegisterWindow<
                 FujinTerm.ViewModels.Settings.EventEditDialogViewModel,
                 FujinTerm.Views.Settings.EventEditDialog>();
@@ -109,12 +109,12 @@ public partial class App : Application
                 FujinTerm.ViewModels.RoomNameLearnedDialogViewModel,
                 FujinTerm.Views.RoomNameLearnedDialog>();
 
-            // Phase 9 PR 9.0a sub-G — Unknown-entity fix dialog. PR 9.0b's
-            // RoomEntityClassifier opens this when it emits a Warn row
-            // for an Also-Here name it can't resolve to a Monster or a
-            // Player; the dialog collects the user's intent (flavor
-            // prefix / player observation) and returns it for the
-            // classifier to commit at the active 4-tier scope.
+            // Unknown-entity fix dialog. RoomEntityClassifier opens this
+            // when it emits a Warn row for an Also-Here name it can't
+            // resolve to a Monster or a Player; the dialog collects the
+            // user's intent (flavor prefix / player observation) and
+            // returns it for the classifier to commit at the active
+            // 4-tier scope.
             AppServices.Current.Dialogs.RegisterWindow<
                 FujinTerm.ViewModels.UnknownEntityFixDialogViewModel,
                 FujinTerm.Views.UnknownEntityFixDialog>();
@@ -131,14 +131,14 @@ public partial class App : Application
                 FujinTerm.ViewModels.GameDataManagerViewModel,
                 FujinTerm.Views.GameDataManagerDialog>();
 
-            // Phase 10 PR 10.11a — Quest editor (Character Workshop → Quest
-            // Status → "Edit Quests…"). Names / show-hides / annotates quest
-            // steps; writes the active set's {set}/quests.json overlay.
+            // Quest editor (Character Workshop → Quest Status → "Edit
+            // Quests…"). Names / show-hides / annotates quest steps;
+            // writes the active set's {set}/quests.json overlay.
             AppServices.Current.Dialogs.RegisterWindow<
                 FujinTerm.ViewModels.CharacterWorkshop.QuestEditorViewModel,
                 FujinTerm.Views.CharacterWorkshop.QuestEditorWindow>();
 
-            // Phase 10 — Item Finder (Character Workshop → Equipment Manager →
+            // Item Finder (Character Workshop → Equipment Manager →
             // "Item Finder"). Read-only catalog of every equippable item in the
             // active set, grouped filters by class / level / alignment / stats.
             AppServices.Current.Dialogs.RegisterWindow<
@@ -243,16 +243,15 @@ public partial class App : Application
                     coverageWindow.Show(desktop.MainWindow!);
                 });
 
-            // Phase 9 PR 9.0b sub-D — RoomClassifier unknown-entity
-            // click-to-fix. The classifier emits Warn rows with the
-            // raw "Also Here:" line carried as LogEntry.Context and the
-            // unknown name quoted in the Message. Double-click on such
-            // a row opens the fix dialog. The dialog returns Add-as-
-            // flavor-prefix / Add-as-player-observation / Cancel; the
-            // handler commits the latter directly via PlayerDatabase.
-            // The former just logs the intent for now — picking the
-            // target monster needs a UI affordance (search + selection)
-            // beyond the 9.0b foundation scope.
+            // RoomClassifier unknown-entity click-to-fix. The classifier
+            // emits Warn rows with the raw "Also Here:" line carried as
+            // LogEntry.Context and the unknown name quoted in the Message.
+            // Double-click on such a row opens the fix dialog. The dialog
+            // returns Add-as-flavor-prefix / Add-as-player-observation /
+            // Cancel; the handler commits the latter directly via
+            // PlayerDatabase. The former just logs the intent for now —
+            // picking the target monster needs a UI affordance (search +
+            // selection) that hasn't shipped yet.
             AppServices.Current.Log.RegisterDetailHandler(
                 FujinTerm.Game.Combat.RoomEntityClassifier.LogCategory,
                 async (entry) =>
@@ -292,7 +291,7 @@ public partial class App : Application
                             break;
 
                         case FujinTerm.ViewModels.UnknownEntityFixAction.AddFlavorPrefix:
-                            // Future PR: open a monster picker, then attach
+                            // Not yet wired: open a monster picker, then attach
                             // the prefix to the selected MonsterMessageRecord.
                             AppServices.Current.Log.Info("RoomClassifier",
                                 $"Flavor-prefix add for '{result.EntityName}' " +
@@ -305,12 +304,10 @@ public partial class App : Application
         base.OnFrameworkInitializationCompleted();
     }
 
-    /// <summary>
-    /// Extract the single-quoted name from a RoomClassifier Warn message
-    /// of the form <c>"unknown entity 'foozle' — double-click to fix"</c>.
-    /// Returns empty when the message doesn't carry a quoted name —
-    /// caller treats that as "nothing to fix".
-    /// </summary>
+    // Extract the single-quoted name from a RoomClassifier Warn message of
+    // the form "unknown entity 'foozle' — double-click to fix". Returns
+    // empty when the message doesn't carry a quoted name — caller treats
+    // that as "nothing to fix".
     private static string ParseUnknownNameFromMessage(string message)
     {
         if (string.IsNullOrEmpty(message)) return string.Empty;
@@ -321,17 +318,12 @@ public partial class App : Application
         return message.Substring(open + 1, close - open - 1);
     }
 
-    /// <summary>
-    /// Insert a placeholder <see cref="FujinTerm.Models.GameData.MonsterMessageRecord"/>
-    /// for an unknown name into the active <see cref="MonsterMessageStore"/>.
-    /// AllowNoPrefix is true (the name alone is the matchable form);
-    /// every line list is empty (the user fills them in later via the
-    /// Monsters tab editor); Links is null (no MDB row to bind yet).
-    /// Skips when a record with the same case-insensitive name already
-    /// exists — that's the case the user just hit when cave bear was
-    /// already in the catalogue but unreachable, fixed at the
-    /// classifier layer in the same change set.
-    /// </summary>
+    // Insert a placeholder MonsterMessageRecord for an unknown name into the
+    // active MonsterMessageStore. AllowNoPrefix is true (the name alone is
+    // the matchable form); every line list is empty (the user fills them in
+    // later via the Monsters tab editor); Links is null (no MDB row to bind
+    // yet). Skips when a record with the same case-insensitive name already
+    // exists.
     private static void AddPlaceholderMonster(string name)
     {
         string trimmed = (name ?? string.Empty).Trim();
@@ -376,12 +368,10 @@ public partial class App : Application
             "Open Game Data → Monsters to fill in hit / death / dodge lines.");
     }
 
-    /// <summary>
-    /// Mirror of <c>MonsterEditDialogViewModel.ComputeId</c> for the
-    /// minimum case (empty content + AllowNoPrefix=true). Kept inline
-    /// rather than calling the VM method to avoid coupling App startup
-    /// to the Game Data editor namespace.
-    /// </summary>
+    // Mirror of MonsterEditDialogViewModel.ComputeId for the minimum case
+    // (empty content + AllowNoPrefix=true). Kept inline rather than calling
+    // the VM method to avoid coupling App startup to the Game Data editor
+    // namespace.
     private static string ComputeMonsterMessageId(string name)
     {
         string blob = name + "||1";

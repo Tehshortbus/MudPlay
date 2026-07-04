@@ -1,13 +1,11 @@
 namespace FujinTerm.Terminal;
 
-/// <summary>
-/// Color resolver: turns a logical <see cref="TerminalColor"/> (default /
-/// indexed / RGB) into a concrete 32-bit ARGB value the renderer can blit.
-///
-/// Owns the standard 16-color and 256-color xterm palettes, plus the
-/// "default" foreground/background fallbacks used when a cell hasn't been
-/// touched by an SGR sequence.
-/// </summary>
+// Color resolver: turns a logical TerminalColor (default / indexed / RGB)
+// into a concrete 32-bit ARGB value the renderer can blit.
+//
+// Owns the standard 16-color and 256-color xterm palettes, plus the
+// "default" foreground/background fallbacks used when a cell hasn't been
+// touched by an SGR sequence.
 public static class AnsiPalette
 {
     // Classic Windows-console / CGA palette. Dim entries are 0x80 channels, bright entries
@@ -23,22 +21,20 @@ public static class AnsiPalette
         0xFF0000FF, 0xFFFF00FF, 0xFF00FFFF, 0xFFFFFFFF,
     };
 
-    /// <summary>Color used when a cell's foreground is "default".</summary>
+    // Color used when a cell's foreground is "default".
     public const uint DefaultForegroundArgb = 0xFFC0C0C0;
-    /// <summary>Color used when a cell's background is "default".</summary>
+    // Color used when a cell's background is "default".
     public const uint DefaultBackgroundArgb = 0xFF000000;
 
     // Lazily-built once per process; covers the full xterm 256-color palette.
     private static readonly uint[] s_xterm256 = BuildXterm256();
 
-    /// <summary>Look up an entry in the 256-color xterm palette.</summary>
+    // Look up an entry in the 256-color xterm palette.
     public static uint Indexed256(int idx) => s_xterm256[idx & 0xFF];
 
-    /// <summary>
-    /// Map a logical foreground color to its final 32-bit ARGB value.
-    /// When the cell is bold, indexed colors 0–7 are promoted to their
-    /// "bright" counterparts 8–15 — matches what xterm and BBS clients do.
-    /// </summary>
+    // Map a logical foreground color to its final 32-bit ARGB value. When the
+    // cell is bold, indexed colors 0–7 are promoted to their "bright"
+    // counterparts 8–15 — matches what xterm and BBS clients do.
     public static uint ResolveForeground(TerminalColor color, bool bold) =>
         color.Kind switch
         {
@@ -48,7 +44,7 @@ public static class AnsiPalette
             _ => DefaultForegroundArgb,
         };
 
-    /// <summary>Map a logical background color to its ARGB value.</summary>
+    // Map a logical background color to its ARGB value.
     public static uint ResolveBackground(TerminalColor color) =>
         color.Kind switch
         {
@@ -66,18 +62,16 @@ public static class AnsiPalette
         return Indexed256(idx);
     }
 
-    /// <summary>Split an ARGB uint into (R, G, B) bytes for the renderer.</summary>
+    // Split an ARGB uint into (R, G, B) bytes for the renderer.
     public static (byte R, byte G, byte B) ToRgb(uint argb) =>
         ((byte)((argb >> 16) & 0xFF),
          (byte)((argb >> 8) & 0xFF),
          (byte)(argb & 0xFF));
 
-    /// <summary>
-    /// Construct the full xterm 256-color palette:
-    ///   0–15    : the basic 16 ANSI colors (above).
-    ///   16–231  : a 6×6×6 RGB cube with the canonical xterm intensity steps.
-    ///   232–255 : a 24-step grayscale ramp.
-    /// </summary>
+    // Construct the full xterm 256-color palette:
+    //   0–15    : the basic 16 ANSI colors (above).
+    //   16–231  : a 6×6×6 RGB cube with the canonical xterm intensity steps.
+    //   232–255 : a 24-step grayscale ramp.
     private static uint[] BuildXterm256()
     {
         var t = new uint[256];
@@ -103,7 +97,7 @@ public static class AnsiPalette
         return t;
     }
 
-    /// <summary>Pack RGB bytes into a fully-opaque ARGB uint.</summary>
+    // Pack RGB bytes into a fully-opaque ARGB uint.
     private static uint Pack(byte r, byte g, byte b) =>
         0xFF000000u | ((uint)r << 16) | ((uint)g << 8) | b;
 }

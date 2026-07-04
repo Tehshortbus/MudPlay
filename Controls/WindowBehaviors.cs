@@ -5,27 +5,23 @@ using Avalonia.Interactivity;
 
 namespace FujinTerm.Controls;
 
-/// <summary>
-/// Attached behaviours for top-level windows.
-/// </summary>
-/// <remarks>
-/// <see cref="RaiseToFrontOnClickProperty"/> brings a window to the front of the
-/// z-order whenever the user clicks anywhere inside it. The app's tool windows
-/// are all modeless and owned by the main window (<c>Window.Show(owner)</c>); on
-/// several Linux window managers an owned window does <i>not</i> auto-raise above
-/// its siblings when clicked, and <see cref="Window.Activate"/> alone won't
-/// restack it, so with two or three panels open the one you click can stay buried
-/// under another. A tunnelling <see cref="InputElement.PointerPressedEvent"/>
-/// handler — registered with <c>handledEventsToo</c> so a child control that marks
-/// the click handled can't swallow it before we see it — momentarily toggles
-/// <see cref="Window.Topmost"/> (setting it lifts the window to the top of its
-/// band; clearing it does not lower it again) to force the WM to raise the owned
-/// window, then activates it for focus. The main window itself has no owner and is
-/// left to the WM — force-raising it would make it jump above its own owned tool
-/// windows and flicker — so it only gets activated. Wired app-wide via a single
-/// <c>Style Selector="Window"</c> in <c>App.axaml</c>, so every window opts in
-/// with no per-window code.
-/// </remarks>
+// Attached behaviours for top-level windows.
+//
+// RaiseToFrontOnClickProperty brings a window to the front of the z-order
+// whenever the user clicks anywhere inside it. The app's tool windows are all
+// modeless and owned by the main window (Window.Show(owner)); on several Linux
+// window managers an owned window does not auto-raise above its siblings when
+// clicked, and Window.Activate alone won't restack it, so with two or three
+// panels open the one you click can stay buried under another. A tunnelling
+// InputElement.PointerPressedEvent handler — registered with handledEventsToo
+// so a child control that marks the click handled can't swallow it before we
+// see it — momentarily toggles Window.Topmost (setting it lifts the window to
+// the top of its band; clearing it does not lower it again) to force the WM to
+// raise the owned window, then activates it for focus. The main window itself
+// has no owner and is left to the WM — force-raising it would make it jump
+// above its own owned tool windows and flicker — so it only gets activated.
+// Wired app-wide via a single Style Selector="Window" in App.axaml, so every
+// window opts in with no per-window code.
 public static class WindowBehaviors
 {
     public static readonly AttachedProperty<bool> RaiseToFrontOnClickProperty =

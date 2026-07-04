@@ -10,29 +10,27 @@ using FujinTerm.Terminal;
 
 namespace FujinTerm.Controls;
 
-/// <summary>
-/// Custom Avalonia control that draws the terminal grid and forwards
-/// keyboard input back out to the view-model.
-///
-/// Rendering pipeline:
-///   1. Compute per-cell pixel size from the chosen monospace font.
-///   2. For each row, walk left-to-right grouping consecutive cells that
-///      share the same attributes into "runs" (single fill + per-glyph draw).
-///   3. After all cells are drawn, paint the cursor caret if visible.
-///
-/// Input pipeline:
-///   • OnTextInput catches normal printable text and posts the bytes
-///     (Latin-1 encoded) to <see cref="UserInput"/>.
-///   • OnKeyDown maps non-text keys (arrows, Enter, Ctrl+letter, F1–F4) to
-///     the matching ANSI/VT escape sequences and emits those.
-/// </summary>
+// Custom Avalonia control that draws the terminal grid and forwards keyboard
+// input back out to the view-model.
+//
+// Rendering pipeline:
+//   1. Compute per-cell pixel size from the chosen monospace font.
+//   2. For each row, walk left-to-right grouping consecutive cells that
+//      share the same attributes into "runs" (single fill + per-glyph draw).
+//   3. After all cells are drawn, paint the cursor caret if visible.
+//
+// Input pipeline:
+//   - OnTextInput catches normal printable text and posts the bytes
+//     (Latin-1 encoded) to UserInput.
+//   - OnKeyDown maps non-text keys (arrows, Enter, Ctrl+letter, F1–F4) to
+//     the matching ANSI/VT escape sequences and emits those.
 public sealed class TerminalControl : Control
 {
-    /// <summary>The emulator whose screen we render. Bound from XAML.</summary>
+    // The emulator whose screen we render. Bound from XAML.
     public static readonly StyledProperty<TerminalEmulator?> EmulatorProperty =
         AvaloniaProperty.Register<TerminalControl, TerminalEmulator?>(nameof(Emulator));
 
-    /// <summary>Bitmap-style monospace font; defaults to embedded MX437.</summary>
+    // Bitmap-style monospace font; defaults to embedded MX437.
     public static readonly StyledProperty<FontFamily> FontFamilyProperty =
         AvaloniaProperty.Register<TerminalControl, FontFamily>(
             nameof(FontFamily),
@@ -59,18 +57,16 @@ public sealed class TerminalControl : Control
         set => SetValue(FontSizeProperty, value);
     }
 
-    /// <summary>Raised on the UI thread with bytes to send to the host.</summary>
+    // Raised on the UI thread with bytes to send to the host.
     public event Action<byte[]>? UserInput;
 
-    /// <summary>
-    /// Optional client-side line buffer. When set, printable keystrokes
-    /// accumulate locally and only flush to the wire on Enter — so engine
-    /// auto-sends (par poll, AutoParty invite, @health round-trip, etc.)
-    /// can't interleave into the user's half-typed input on the server
-    /// side. See <see cref="Terminal.LocalInputBuffer"/> for rationale.
-    /// When null (no buffer attached) the control falls back to the
-    /// classic character-mode path — every keystroke straight to the wire.
-    /// </summary>
+    // Optional client-side line buffer. When set, printable keystrokes
+    // accumulate locally and only flush to the wire on Enter — so engine
+    // auto-sends (par poll, AutoParty invite, @health round-trip, etc.) can't
+    // interleave into the user's half-typed input on the server side. See
+    // Terminal.LocalInputBuffer for rationale. When null (no buffer attached)
+    // the control falls back to the classic character-mode path — every
+    // keystroke straight to the wire.
     public LocalInputBuffer? InputBuffer { get; set; }
 
     private Typeface _typeface;
@@ -193,10 +189,8 @@ public sealed class TerminalControl : Control
         }
     }
 
-    /// <summary>
-    /// Measure the width and height of the chosen font's "M" glyph and
-    /// snap the result to whole pixels. Used as the per-cell box size.
-    /// </summary>
+    // Measure the width and height of the chosen font's "M" glyph and snap the
+    // result to whole pixels. Used as the per-cell box size.
     private void RecalculateMetrics()
     {
         _typeface = new Typeface(FontFamily);
@@ -211,7 +205,7 @@ public sealed class TerminalControl : Control
         InvalidateVisual();
     }
 
-    /// <summary>Tell layout the control wants exactly cols × rows × cell pixels.</summary>
+    // Tell layout the control wants exactly cols × rows × cell pixels.
     protected override Size MeasureOverride(Size availableSize)
     {
         var em = Emulator;
@@ -370,7 +364,7 @@ public sealed class TerminalControl : Control
         }
     }
 
-    /// <summary>Render one horizontal run of same-attribute cells.</summary>
+    // Render one horizontal run of same-attribute cells.
     private void DrawRun(DrawingContext context, TerminalScreen screen, int x0, int x1, int y, CellAttributes attr)
     {
         bool reverse = (attr.Flags & CellFlags.Reverse) != 0;
@@ -544,11 +538,9 @@ public sealed class TerminalControl : Control
         e.Handled = true;
     }
 
-    /// <summary>
-    /// Translate non-text key presses into the byte sequence a real terminal
-    /// would emit. Returns null for keys we don't handle; OnTextInput will
-    /// pick up regular characters.
-    /// </summary>
+    // Translate non-text key presses into the byte sequence a real terminal
+    // would emit. Returns null for keys we don't handle; OnTextInput will pick
+    // up regular characters.
     private static byte[]? MapKey(KeyEventArgs e)
     {
         switch (e.Key)

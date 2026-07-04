@@ -8,28 +8,20 @@ using FujinTerm.Game.Map;
 
 namespace FujinTerm.Controls;
 
-/// <summary>
-/// BFS-planar room map rendering for the Phase 7 Navigation window.
-/// </summary>
-/// <remarks>
-/// <para>
-/// <b>Rendering style</b> — modeled on MudProxy's <c>MapRenderer</c>:
-/// per layout coord we draw a slightly darker "tile" rectangle, then
-/// short exit stubs from the tile centre to each tile edge (one stub
-/// per direction the source room has, sourced from
-/// <see cref="RoomLayout.EdgesFromCoord"/>), then a smaller room-node
-/// rectangle centred in the tile. Adjacent tiles' stubs meet at the
-/// shared edge to form a continuous visual line; exits to rooms that
-/// fell off-grid still render as a stub from the source side, which
-/// matches MudProxy.
-/// </para>
-/// <para>
-/// <b>Input</b> — plain left-button drag pans the view; a mouse-wheel
-/// notch zooms about the cursor. A left-button release without
-/// movement is treated as a click on the underlying room (used by
-/// the loop-builder mode); right-click opens the host's context menu.
-/// </para>
-/// </remarks>
+// BFS-planar room map rendering for the Navigation window.
+//
+// Rendering style — per layout coord we draw a slightly darker "tile"
+// rectangle, then short exit stubs from the tile centre to each tile edge (one
+// stub per direction the source room has, sourced from
+// RoomLayout.EdgesFromCoord), then a smaller room-node rectangle centred in
+// the tile. Adjacent tiles' stubs meet at the shared edge to form a
+// continuous visual line; exits to rooms that fell off-grid still render as a
+// stub from the source side.
+//
+// Input — plain left-button drag pans the view; a mouse-wheel notch zooms
+// about the cursor. A left-button release without movement is treated as a
+// click on the underlying room (used by the loop-builder mode); right-click
+// opens the host's context menu.
 public sealed class MapControl : Control
 {
     public static readonly StyledProperty<RoomLayout?> LayoutProperty =
@@ -53,58 +45,47 @@ public sealed class MapControl : Control
     public static readonly StyledProperty<IReadOnlyList<RoomKey>?> WalkPathProperty =
         AvaloniaProperty.Register<MapControl, IReadOnlyList<RoomKey>?>(nameof(WalkPath));
 
-    /// <summary>
-    /// Preview polyline for a queued (but not yet running) walk. Drawn
-    /// in red beneath any live <see cref="WalkPath"/> so an active walk
-    /// overlays its target without flicker. NavigationViewModel sets
-    /// this when a search-result selection arms a destination.
-    /// </summary>
+    // Preview polyline for a queued (but not yet running) walk. Drawn in red
+    // beneath any live WalkPath so an active walk overlays its target without
+    // flicker. NavigationViewModel sets this when a search-result selection
+    // arms a destination.
     public static readonly StyledProperty<IReadOnlyList<RoomKey>?> PreviewPathProperty =
         AvaloniaProperty.Register<MapControl, IReadOnlyList<RoomKey>?>(nameof(PreviewPath));
 
     public static readonly StyledProperty<IReadOnlyList<RoomKey>?> LoopPathProperty =
         AvaloniaProperty.Register<MapControl, IReadOnlyList<RoomKey>?>(nameof(LoopPath));
 
-    /// <summary>
-    /// Live BFS-expanded preview of the loop the user is currently
-    /// building in the Navigation window's loop-builder strip. Drawn
-    /// underneath any active <see cref="LoopPath"/> / <see cref="WalkPath"/>
-    /// so an active automation always overlays the build preview when
-    /// both share a segment. Pen is dashed cyan to distinguish from the
-    /// solid red preview and the blue active-loop pens.
-    /// </summary>
+    // Live BFS-expanded preview of the loop the user is currently building in
+    // the Navigation window's loop-builder strip. Drawn underneath any active
+    // LoopPath / WalkPath so an active automation always overlays the build
+    // preview when both share a segment. Pen is dashed cyan to distinguish from
+    // the solid red preview and the blue active-loop pens.
     public static readonly StyledProperty<IReadOnlyList<RoomKey>?> LoopBuilderPathProperty =
         AvaloniaProperty.Register<MapControl, IReadOnlyList<RoomKey>?>(nameof(LoopBuilderPath));
 
-    /// <summary>
-    /// Per-click ordered waypoints surfaced as numbered red circles
-    /// on the map while the user is in loop-build mode. Separate from
-    /// <see cref="LoopBuilderPath"/> because the path is the BFS-filled
-    /// flat room sequence (every intermediate hop), whereas this list
-    /// is only the rooms the user actually clicked.
-    /// </summary>
+    // Per-click ordered waypoints surfaced as numbered red circles on the map
+    // while the user is in loop-build mode. Separate from LoopBuilderPath
+    // because the path is the BFS-filled flat room sequence (every
+    // intermediate hop), whereas this list is only the rooms the user actually
+    // clicked.
     public static readonly StyledProperty<IReadOnlyList<RoomKey>?> LoopBuilderWaypointsProperty =
         AvaloniaProperty.Register<MapControl, IReadOnlyList<RoomKey>?>(nameof(LoopBuilderWaypoints));
 
-    /// <summary>
-    /// Loop preview drawn during the walker-driven approach phase of a
-    /// loop run. Distinct from <see cref="LoopBuilderPath"/> only by
-    /// semantic (drawn with the same red pen). Visible alongside the
-    /// active <see cref="WalkPath"/> so the user sees both the
-    /// immediate walk to the start waypoint and the bigger-picture
-    /// cycle that's about to begin.
-    /// </summary>
+    // Loop preview drawn during the walker-driven approach phase of a loop run.
+    // Distinct from LoopBuilderPath only by semantic (drawn with the same red
+    // pen). Visible alongside the active WalkPath so the user sees both the
+    // immediate walk to the start waypoint and the bigger-picture cycle that's
+    // about to begin.
     public static readonly StyledProperty<IReadOnlyList<RoomKey>?> LoopApproachPreviewPathProperty =
         AvaloniaProperty.Register<MapControl, IReadOnlyList<RoomKey>?>(nameof(LoopApproachPreviewPath));
 
     public static readonly StyledProperty<IReadOnlySet<RoomKey>?> AvoidedRoomsProperty =
         AvaloniaProperty.Register<MapControl, IReadOnlySet<RoomKey>?>(nameof(AvoidedRooms));
 
-    /// <summary>Rooms the user has marked as stash drops. Rendered
-    /// with a gold outline so the user can spot them at a glance.
-    /// <see cref="Game.Cash.StashRoomManager"/> reads the same set
-    /// from <see cref="Models.Profile.CharacterProfile.StashRooms"/>
-    /// and dispatches <c>hide N &lt;coin&gt;</c> on entry.</summary>
+    // Rooms the user has marked as stash drops. Rendered with a gold outline so
+    // the user can spot them at a glance. Game.Cash.StashRoomManager reads the
+    // same set from Models.Profile.CharacterProfile.StashRooms and dispatches
+    // hide N <coin> on entry.
     public static readonly StyledProperty<IReadOnlySet<RoomKey>?> StashRoomsProperty =
         AvaloniaProperty.Register<MapControl, IReadOnlySet<RoomKey>?>(nameof(StashRooms));
 
@@ -114,35 +95,27 @@ public sealed class MapControl : Control
     public static readonly StyledProperty<IReadOnlySet<RoomKey>?> AutoLairRoomsProperty =
         AvaloniaProperty.Register<MapControl, IReadOnlySet<RoomKey>?>(nameof(AutoLairRooms));
 
-    /// <summary>
-    /// Ordered list of Auto-Lair markers — when non-null + non-empty,
-    /// each room gets a numbered amber circle overlay matching the
-    /// CURRENT NAV row index. Same pattern as
-    /// <see cref="LoopBuilderWaypoints"/> for loops; the order is
-    /// supplied by <see cref="ViewModels.Navigation.NavigationViewModel"/>
-    /// so the map and the CURRENT NAV list always agree.
-    /// </summary>
+    // Ordered list of Auto-Lair markers — when non-null + non-empty, each room
+    // gets a numbered amber circle overlay matching the CURRENT NAV row index.
+    // Same pattern as LoopBuilderWaypoints for loops; the order is supplied by
+    // ViewModels.Navigation.NavigationViewModel so the map and the CURRENT NAV
+    // list always agree.
     public static readonly StyledProperty<IReadOnlyList<RoomKey>?> AutoLairWaypointsProperty =
         AvaloniaProperty.Register<MapControl, IReadOnlyList<RoomKey>?>(nameof(AutoLairWaypoints));
 
-    /// <summary>
-    /// Stable full-leg path drawn in orange during an Auto-Lair run —
-    /// <c>current → wait-room → lair</c>. Holds steady across the
-    /// Approaching → Waiting → Entering transitions so the line
-    /// doesn't redraw / disappear as the walker steps through it,
-    /// fixing the per-step flicker the user-driven WalkPath had.
-    /// When set, the regular <see cref="WalkPath"/> is suppressed.
-    /// </summary>
+    // Stable full-leg path drawn in orange during an Auto-Lair run —
+    // current → wait-room → lair. Holds steady across the Approaching →
+    // Waiting → Entering transitions so the line doesn't redraw / disappear as
+    // the walker steps through it, fixing the per-step flicker the user-driven
+    // WalkPath had. When set, the regular WalkPath is suppressed.
     public static readonly StyledProperty<IReadOnlyList<RoomKey>?> AutoLairApproachPathProperty =
         AvaloniaProperty.Register<MapControl, IReadOnlyList<RoomKey>?>(nameof(AutoLairApproachPath));
 
-    /// <summary>
-    /// Set of rooms with a CMD-driven teleport command (TBInfo Action
-    /// chain contains a <c>teleport &lt;r&gt; &lt;m&gt;</c> directive).
-    /// Rendered with diagonal cross-hatch lines over the cell fill so
-    /// the user can see at a glance which rooms hide a non-exit
-    /// movement option (e.g. 1/1182 "use chime" → 1/65).
-    /// </summary>
+    // Set of rooms with a CMD-driven teleport command (TBInfo Action chain
+    // contains a teleport <r> <m> directive). Rendered with diagonal
+    // cross-hatch lines over the cell fill so the user can see at a glance
+    // which rooms hide a non-exit movement option (e.g. 1/1182 "use chime" →
+    // 1/65).
     public static readonly StyledProperty<IReadOnlySet<RoomKey>?> TeleportRoomsProperty =
         AvaloniaProperty.Register<MapControl, IReadOnlySet<RoomKey>?>(nameof(TeleportRooms));
 
@@ -152,9 +125,8 @@ public sealed class MapControl : Control
     public static readonly StyledProperty<RoomKey?> SelectedRoomKeyProperty =
         AvaloniaProperty.Register<MapControl, RoomKey?>(nameof(SelectedRoomKey));
 
-    /// <summary>Walk-to destination — blue-filled with a ring so it's
-    /// immediately recognisable as the goal, mirroring the
-    /// "you are here" treatment.</summary>
+    // Walk-to destination — blue-filled with a ring so it's immediately
+    // recognisable as the goal, mirroring the "you are here" treatment.
     public static readonly StyledProperty<RoomKey?> DestinationRoomKeyProperty =
         AvaloniaProperty.Register<MapControl, RoomKey?>(nameof(DestinationRoomKey));
 
@@ -289,12 +261,10 @@ public sealed class MapControl : Control
         set => SetValue(WalkPathIsAutoLairProperty, value);
     }
 
-    /// <summary>
-    /// Cursor for the keyboard map-crawler. Null = no selection (the
-    /// current room is implicitly active when the user first presses
-    /// a navigation key). Drawn as a cyan ring around the cell so it
-    /// reads distinctly from the amber current-room highlight.
-    /// </summary>
+    // Cursor for the keyboard map-crawler. Null = no selection (the current
+    // room is implicitly active when the user first presses a navigation key).
+    // Drawn as a cyan ring around the cell so it reads distinctly from the
+    // amber current-room highlight.
     public RoomKey? SelectedRoomKey
     {
         get => GetValue(SelectedRoomKeyProperty);
@@ -307,19 +277,15 @@ public sealed class MapControl : Control
         set => SetValue(DestinationRoomKeyProperty, value);
     }
 
-    /// <summary>
-    /// Fired when the user steps the crawler up or down — the layout
-    /// host is expected to rebuild from the new room (which lives on a
-    /// different floor and therefore isn't in the current layout).
-    /// </summary>
+    // Fired when the user steps the crawler up or down — the layout host is
+    // expected to rebuild from the new room (which lives on a different floor
+    // and therefore isn't in the current layout).
     public event Action<RoomKey>? FloorChangeRequested;
 
-    /// <summary>
-    /// Key chord that steps the crawler one floor up. Bound from
-    /// the user's macro configured to send <c>u</c> to the game so
-    /// the same chord drives both in-game movement and the map
-    /// crawler. Defaults to <c>PageUp</c> when the macro isn't bound.
-    /// </summary>
+    // Key chord that steps the crawler one floor up. Bound from the user's
+    // macro configured to send u to the game so the same chord drives both
+    // in-game movement and the map crawler. Defaults to PageUp when the macro
+    // isn't bound.
     public FujinTerm.Models.Profile.KeyChord UpStepChord
     {
         get => GetValue(UpStepChordProperty);
@@ -332,15 +298,12 @@ public sealed class MapControl : Control
         set => SetValue(DownStepChordProperty, value);
     }
 
-    /// <summary>
-    /// Per-direction crawler chords derived from the user's N/S/E/W +
-    /// diagonal movement macros (Settings → Macros). When a direction
-    /// has a macro bound, the macro's key steps the crawler that way so
-    /// the same key that sends the direction in-game also drives the
-    /// map. Directions absent here fall through to the hardcoded numpad /
-    /// arrow defaults in <see cref="OnKeyDown"/>, so the crawler is never
-    /// left with no binding.
-    /// </summary>
+    // Per-direction crawler chords derived from the user's N/S/E/W + diagonal
+    // movement macros (Settings → Macros). When a direction has a macro bound,
+    // the macro's key steps the crawler that way so the same key that sends the
+    // direction in-game also drives the map. Directions absent here fall
+    // through to the hardcoded numpad / arrow defaults in OnKeyDown, so the
+    // crawler is never left with no binding.
     public IReadOnlyDictionary<Direction, FujinTerm.Models.Profile.KeyChord>? CompassChords
     {
         get => GetValue(CompassChordsProperty);
@@ -349,7 +312,7 @@ public sealed class MapControl : Control
 
     // ----- view-state ------------------------------------------------
 
-    /// <summary>World tile size in layout units. Multiplied by <see cref="_zoom"/> to get screen pixels.</summary>
+    // World tile size in layout units. Multiplied by _zoom to get screen pixels.
     private const double TileWorldSize = 24.0;
 
     private double _zoom = 1.2;
@@ -381,13 +344,10 @@ public sealed class MapControl : Control
     private bool IsAutoFollowSuppressed
         => DateTime.UtcNow < _autoFollowSuppressedUntil;
 
-    /// <summary>
-    /// Fires once the pointer has dwelled over a room cell for
-    /// <see cref="HoverDelayMs"/>, AND any time the hovered room
-    /// changes. Carries the room key + screen-local pointer position
-    /// so the host can position a popup. Null payload means
-    /// "no room is being hovered" — host should dismiss the popup.
-    /// </summary>
+    // Fires once the pointer has dwelled over a room cell for HoverDelayMs, AND
+    // any time the hovered room changes. Carries the room key + screen-local
+    // pointer position so the host can position a popup. Null payload means
+    // "no room is being hovered" — host should dismiss the popup.
     public event Action<RoomKey?, Point>? RoomHovered;
     private double _panStartX;
     private double _panStartY;
@@ -402,7 +362,7 @@ public sealed class MapControl : Control
     private static readonly IBrush LairFill      = new SolidColorBrush(Color.Parse("#8E4F7B"));
     private static readonly IBrush ShopFill      = new SolidColorBrush(Color.Parse("#4A7791"));
     private static readonly IBrush SpellFill     = new SolidColorBrush(Color.Parse("#6428A0"));
-    // Vertical-exit indicators (MudProxy convention): green = up only,
+    // Vertical-exit indicators: green = up only,
     // yellow = down only, orange = both. Applied as the room-node fill
     // when no higher-priority highlight (current / auto-lair / lair /
     // shop / spell) takes the cell.
@@ -438,10 +398,9 @@ public sealed class MapControl : Control
     private static readonly IPen   TrapBridgePen   = new Pen(new SolidColorBrush(Color.Parse("#DC3C3C")), 1.5) { DashStyle = BridgeDash, LineCap = PenLineCap.Round };
     private static readonly IPen   ActionBridgePen = new Pen(new SolidColorBrush(Color.Parse("#8B008B")), 1.5) { DashStyle = BridgeDash, LineCap = PenLineCap.Round };
     private static readonly IPen   HiddenBridgePen = new Pen(new SolidColorBrush(Color.Parse("#008B8B")), 1.5) { DashStyle = BridgeDash, LineCap = PenLineCap.Round };
-    /// <summary>Max grid distance (Chebyshev) a gap-bridge line spans;
-    /// beyond this the rooms are too far apart to bridge cleanly and we
-    /// fall back to a dangling stub rather than shoot a line across the
-    /// map.</summary>
+    // Max grid distance (Chebyshev) a gap-bridge line spans; beyond this the
+    // rooms are too far apart to bridge cleanly and we fall back to a dangling
+    // stub rather than shoot a line across the map.
     private const int BridgeMaxCells = 4;
     private static readonly IPen   RoomBorderPen = new Pen(new SolidColorBrush(Color.Parse("#D0D0D0")), 1.0);
     private static readonly IPen   CurrentPen    = new Pen(new SolidColorBrush(Color.Parse("#FFD24D")), 2.0);
@@ -486,39 +445,31 @@ public sealed class MapControl : Control
         LineCap = PenLineCap.Round,
         LineJoin = PenLineJoin.Round,
     };
-    /// <summary>
-    /// Solid red "where Run would walk" preview line for queued walk-to
-    /// destinations. Drawn beneath the active walk so a live walk
-    /// overlays it. Hue distinct from the trap red (<see cref="TrapPen"/>
-    /// #DC3C3C) so the user reads them as different signals. Dashed-
-    /// red is reserved for future loop previews (per UX direction).
-    /// </summary>
+    // Solid red "where Run would walk" preview line for queued walk-to
+    // destinations. Drawn beneath the active walk so a live walk overlays it.
+    // Hue distinct from the trap red (TrapPen #DC3C3C) so the user reads them
+    // as different signals. Dashed-red is reserved for loop previews.
     private static readonly IPen   PreviewPathPen = new Pen(new SolidColorBrush(Color.Parse("#E66C5A")), 3.0)
     {
         LineCap  = PenLineCap.Round,
         LineJoin = PenLineJoin.Round,
     };
 
-    /// <summary>
-    /// Solid red polyline for the user's in-progress loop-builder
-    /// gap-filled path. Shares hue with <see cref="PreviewPathPen"/>
-    /// (queued walk-to) because both are "preview" overlays. Executing
-    /// engines have their own per-engine colours
-    /// (walk-to <see cref="WalkPathPen"/> blue, loop
-    /// <see cref="LoopPathPen"/> green, auto-lair
-    /// <see cref="AutoLairWalkPen"/> orange), so red unambiguously
-    /// means "planned, not yet driving." Numbered waypoint markers
-    /// (drawn separately) disambiguate build-preview from a
-    /// single-leg walk-to preview when both could theoretically be
-    /// visible.
-    /// </summary>
+    // Solid red polyline for the user's in-progress loop-builder gap-filled
+    // path. Shares hue with PreviewPathPen (queued walk-to) because both are
+    // "preview" overlays. Executing engines have their own per-engine colours
+    // (walk-to WalkPathPen blue, loop LoopPathPen green, auto-lair
+    // AutoLairWalkPen orange), so red unambiguously means "planned, not yet
+    // driving." Numbered waypoint markers (drawn separately) disambiguate
+    // build-preview from a single-leg walk-to preview when both could
+    // theoretically be visible.
     private static readonly IPen   LoopBuilderPen = new Pen(new SolidColorBrush(Color.Parse("#E66C5A")), 3.0)
     {
         LineCap     = PenLineCap.Round,
         LineJoin    = PenLineJoin.Round,
     };
 
-    /// <summary>Fill brush for the per-waypoint numbered circle markers.</summary>
+    // Fill brush for the per-waypoint numbered circle markers.
     private static readonly IBrush LoopBuilderWaypointFill =
         new SolidColorBrush(Color.Parse("#E66C5A"));
     private static readonly IPen   LoopBuilderWaypointRing =
@@ -526,7 +477,7 @@ public sealed class MapControl : Control
     private static readonly IBrush LoopBuilderWaypointTextBrush =
         new SolidColorBrush(Color.Parse("#FFFFFFFF"));
 
-    /// <summary>Auto-Lair numbered overlay — amber to match the section theme.</summary>
+    // Auto-Lair numbered overlay — amber to match the section theme.
     private static readonly IBrush AutoLairWaypointFill =
         new SolidColorBrush(Color.Parse("#DC821E"));
     private static readonly IPen   AutoLairWaypointRing =
@@ -550,11 +501,11 @@ public sealed class MapControl : Control
         LineCap = PenLineCap.Round,
     };
 
-    /// <summary>Golden X for stash rooms — matches the shape of the
-    /// avoid-X so the two map markers read as a pair ("flagged room")
-    /// with colour carrying the action: red = avoid, gold = stash.
-    /// Distinct from the amber current-room ring + the white selection
-    /// ring so the user can scan for stashes at a glance.</summary>
+    // Golden X for stash rooms — matches the shape of the avoid-X so the two
+    // map markers read as a pair ("flagged room") with colour carrying the
+    // action: red = avoid, gold = stash. Distinct from the amber current-room
+    // ring + the white selection ring so the user can scan for stashes at a
+    // glance.
     private static readonly IPen   StashXPen      = new Pen(new SolidColorBrush(Color.Parse("#FFFFD24E")), 2.5)
     {
         LineCap = PenLineCap.Round,
@@ -594,7 +545,7 @@ public sealed class MapControl : Control
             PreviewPathProperty, TeleportRoomsProperty);
 
         // Auto-centre on the player's current room every time it
-        // changes (MudProxy's CenterOnRoom rule) — but only when the
+        // changes — but only when the
         // user isn't actively browsing. Drag-pan and crawler steps
         // both arm a 10-second suppression window during which
         // CurrentRoomKey updates are visually ignored.
@@ -621,11 +572,9 @@ public sealed class MapControl : Control
         });
     }
 
-    /// <summary>
-    /// Raised on right-click. The key is the hit room, or <c>null</c> when
-    /// the click landed on empty map space — so the context-menu target is
-    /// cleared instead of left pointing at a stale (off-screen) room.
-    /// </summary>
+    // Raised on right-click. The key is the hit room, or null when the click
+    // landed on empty map space — so the context-menu target is cleared
+    // instead of left pointing at a stale (off-screen) room.
     public event Action<RoomKey?, Point>? RoomRightClicked;
     public event Action<RoomKey, Point>? RoomLeftClicked;
 
@@ -884,9 +833,8 @@ public sealed class MapControl : Control
     }
 
     // EnsureSelectionVisible removed — SelectedRoomKeyProperty's
-    // ChangeHandler in the ctor now calls CenterOnRoom on every move
-    // (MudProxy CenterOnRoom rule), so the explicit margin check is
-    // no longer needed.
+    // ChangeHandler in the ctor now calls CenterOnRoom on every move,
+    // so the explicit margin check is no longer needed.
 
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
     {
@@ -916,12 +864,9 @@ public sealed class MapControl : Control
         e.Handled = true;
     }
 
-    /// <summary>
-    /// Centre the view on the room at <paramref name="key"/>. Modelled
-    /// on MudProxy's <c>MapRenderer.CenterOnRoom</c> — pan = -coord *
-    /// zoom puts the cell's world point exactly at screen centre.
-    /// No-op when the room isn't in the active layout.
-    /// </summary>
+    // Centre the view on the room at key. pan = -coord * zoom puts the cell's
+    // world point exactly at screen centre. No-op when the room isn't in the
+    // active layout.
     public void CenterOnRoom(RoomKey key)
     {
         if (Layout is null) return;
@@ -931,7 +876,7 @@ public sealed class MapControl : Control
         InvalidateVisual();
     }
 
-    /// <summary>Re-centre on the player's current room (Home key / explicit recenter).</summary>
+    // Re-centre on the player's current room (Home key / explicit recenter).
     public void FitToCurrent()
     {
         if (Layout is null) return;
@@ -939,14 +884,11 @@ public sealed class MapControl : Control
         CenterOnRoom(origin);
     }
 
-    /// <summary>
-    /// Explicit "show me where I am right now" — clears the browse-
-    /// suppression window (so live moves resume centring), moves the
-    /// crawler selection to the live current room, and centres on it.
-    /// Same body as the Home key handler; exposed publicly so the
-    /// right-click context menu "Center on Player" item can fire it
-    /// from the VM via the window code-behind.
-    /// </summary>
+    // Explicit "show me where I am right now" — clears the browse-suppression
+    // window (so live moves resume centring), moves the crawler selection to
+    // the live current room, and centres on it. Same body as the Home key
+    // handler; exposed publicly so the right-click context menu "Center on
+    // Player" item can fire it from the VM via the window code-behind.
     public void RecenterOnPlayer()
     {
         _autoFollowSuppressedUntil = DateTime.MinValue;
@@ -1063,24 +1005,19 @@ public sealed class MapControl : Control
             tilePixels);
     }
 
-    /// <summary>
-    /// Walks <see cref="RoomLayout.EdgesFromCoord"/> once and draws each
-    /// connection exactly once. Three cases per exit, resolved against
-    /// the exit's REAL target room (not just the grid-adjacent cell):
-    /// <list type="bullet">
-    ///   <item><b>Grid-adjacent</b> — target sits on the expected
-    ///     neighbouring cell: a clean continuous line between the two
-    ///     centres (no overlap seam, no thickness bump).</item>
-    ///   <item><b>Gap-bridge</b> — target is placed but NOT adjacent
-    ///     (the map data wouldn't tile flat): a dashed direct line
-    ///     between the two room centres, up to
-    ///     <see cref="BridgeMaxCells"/> apart, so the connection is
-    ///     visible instead of vanishing into a stub-to-nowhere.</item>
-    ///   <item><b>Stub</b> — target genuinely unplaced (dropped
-    ///     collision / blacklisted) or beyond the bridge distance: a
-    ///     short stub from the source centre to its cell edge.</item>
-    /// </list>
-    /// </summary>
+    // Walks RoomLayout.EdgesFromCoord once and draws each connection exactly
+    // once. Three cases per exit, resolved against the exit's REAL target room
+    // (not just the grid-adjacent cell):
+    //   - Grid-adjacent — target sits on the expected neighbouring cell: a
+    //     clean continuous line between the two centres (no overlap seam, no
+    //     thickness bump).
+    //   - Gap-bridge — target is placed but NOT adjacent (the map data
+    //     wouldn't tile flat): a dashed direct line between the two room
+    //     centres, up to BridgeMaxCells apart, so the connection is visible
+    //     instead of vanishing into a stub-to-nowhere.
+    //   - Stub — target genuinely unplaced (dropped collision / blacklisted)
+    //     or beyond the bridge distance: a short stub from the source centre
+    //     to its cell edge.
     private void DrawAllExitLines(DrawingContext ctx, double tilePixels, double cx, double cy, Rect viewport)
     {
         if (Layout is null) return;
@@ -1189,26 +1126,22 @@ public sealed class MapControl : Control
         }
     }
 
-    /// <summary>How a single exit connection should be rendered.</summary>
+    // How a single exit connection should be rendered.
     internal enum ConnectionKind
     {
-        /// <summary>Target on the expected neighbouring cell — clean line.</summary>
+        // Target on the expected neighbouring cell — clean line.
         Adjacent,
-        /// <summary>Target placed but not adjacent — dashed gap-bridge line.</summary>
+        // Target placed but not adjacent — dashed gap-bridge line.
         Bridge,
-        /// <summary>Target unplaced or too far — half-stub to the cell edge.</summary>
+        // Target unplaced or too far — half-stub to the cell edge.
         Stub,
     }
 
-    /// <summary>
-    /// Decide how to render an exit from <paramref name="source"/> given
-    /// where its target actually landed. Pure geometry so the
-    /// adjacent / bridge / stub rule is unit-testable without a
-    /// <see cref="DrawingContext"/>. A target on the
-    /// <paramref name="expected"/> cell draws clean; one placed elsewhere
-    /// within <paramref name="bridgeMaxCells"/> (Chebyshev) bridges; an
-    /// unplaced or far target stubs.
-    /// </summary>
+    // Decide how to render an exit from source given where its target actually
+    // landed. Pure geometry so the adjacent / bridge / stub rule is
+    // unit-testable without a DrawingContext. A target on the expected cell
+    // draws clean; one placed elsewhere within bridgeMaxCells (Chebyshev)
+    // bridges; an unplaced or far target stubs.
     internal static ConnectionKind ClassifyConnection(
         bool targetPlaced,
         (int X, int Y) source,
@@ -1229,16 +1162,13 @@ public sealed class MapControl : Control
             && set.Contains(dir);
     }
 
-    /// <summary>
-    /// True when the exit at <paramref name="coord"/> heading
-    /// <paramref name="dir"/> is a <see cref="RoomExitHint.MultiActionHidden"/>
-    /// — i.e. one or more in-room actions (lever, switch, button …)
-    /// must execute before the walker can traverse. Queried at render
-    /// time rather than pre-computed because action-required edges are
-    /// sparse and the visible-viewport edge count is bounded; doing a
-    /// dictionary hop per edge is fine and avoids dragging another
-    /// pre-computed set through <see cref="RoomLayout"/>.
-    /// </summary>
+    // True when the exit at coord heading dir is a
+    // RoomExitHint.MultiActionHidden — i.e. one or more in-room actions
+    // (lever, switch, button …) must execute before the walker can traverse.
+    // Queried at render time rather than pre-computed because action-required
+    // edges are sparse and the visible-viewport edge count is bounded; doing a
+    // dictionary hop per edge is fine and avoids dragging another pre-computed
+    // set through RoomLayout.
     private bool IsActionRequiredEdge((int X, int Y) coord, Direction dir)
     {
         if (Graph is null || Layout is null) return false;
@@ -1248,13 +1178,10 @@ public sealed class MapControl : Control
         return exit.Hint == RoomExitHint.MultiActionHidden;
     }
 
-    /// <summary>
-    /// True when the exit at <paramref name="coord"/> heading
-    /// <paramref name="dir"/> is a <see cref="RoomExitHint.SearchableHidden"/>
-    /// — present but masked from "Obvious exits:" until the player
-    /// runs <c>sea &lt;dir&gt;</c>. Same lookup pattern as
-    /// <see cref="IsActionRequiredEdge"/>.
-    /// </summary>
+    // True when the exit at coord heading dir is a
+    // RoomExitHint.SearchableHidden — present but masked from "Obvious exits:"
+    // until the player runs `sea <dir>`. Same lookup pattern as
+    // IsActionRequiredEdge.
     private bool IsHiddenEdge((int X, int Y) coord, Direction dir)
     {
         if (Graph is null || Layout is null) return false;
@@ -1318,10 +1245,9 @@ public sealed class MapControl : Control
     private static void DrawAvoidX(DrawingContext ctx, Rect cell)
         => DrawCellX(ctx, cell, AvoidXPen);
 
-    /// <summary>Golden cross-strokes for stash rooms. Same geometry
-    /// as the avoid X — the two markers share a shape so the user
-    /// recognises them as "flagged rooms" and the colour carries the
-    /// action (red = avoid, gold = stash).</summary>
+    // Golden cross-strokes for stash rooms. Same geometry as the avoid X —
+    // the two markers share a shape so the user recognises them as "flagged
+    // rooms" and the colour carries the action (red = avoid, gold = stash).
     private static void DrawStashX(DrawingContext ctx, Rect cell)
         => DrawCellX(ctx, cell, StashXPen);
 
@@ -1348,13 +1274,11 @@ public sealed class MapControl : Control
         ctx.DrawText(ft, p);
     }
 
-    /// <summary>
-    /// Draw a small numbered red circle on every loop-builder waypoint
-    /// in click order (1, 2, 3, ...). The marker overlays the cell so
-    /// the user sees the order at a glance even with the red polyline
-    /// looping through the area. Skipped when the waypoint isn't on
-    /// the current layout (different floor / disconnected island).
-    /// </summary>
+    // Draw a small numbered red circle on every loop-builder waypoint in click
+    // order (1, 2, 3, ...). The marker overlays the cell so the user sees the
+    // order at a glance even with the red polyline looping through the area.
+    // Skipped when the waypoint isn't on the current layout (different floor /
+    // disconnected island).
     private void DrawLoopBuilderWaypoints(DrawingContext ctx, double tilePixels, double cx, double cy)
     {
         if (LoopBuilderWaypoints is not { Count: > 0 } waypoints) return;
@@ -1387,13 +1311,10 @@ public sealed class MapControl : Control
         }
     }
 
-    /// <summary>
-    /// Render numbered amber circles on every marked Auto-Lair room.
-    /// Index matches the CURRENT NAV row order supplied by
-    /// <see cref="ViewModels.Navigation.NavigationViewModel.AutoLairMarkedKeys"/>
-    /// so the map and the rail are always in sync. Mirrors
-    /// <see cref="DrawLoopBuilderWaypoints"/> with the amber theme.
-    /// </summary>
+    // Render numbered amber circles on every marked Auto-Lair room. Index
+    // matches the CURRENT NAV row order supplied by
+    // NavigationViewModel.AutoLairMarkedKeys so the map and the rail are
+    // always in sync. Mirrors DrawLoopBuilderWaypoints with the amber theme.
     private void DrawAutoLairWaypoints(DrawingContext ctx, double tilePixels, double cx, double cy)
     {
         if (AutoLairWaypoints is not { Count: > 0 } waypoints) return;
@@ -1423,13 +1344,10 @@ public sealed class MapControl : Control
         }
     }
 
-    /// <summary>
-    /// Draws a half-line from the cell centre to one edge. Only used
-    /// by the dangling-exit branch in <see cref="DrawAllExitLines"/>
-    /// — full lines between two placed cells are drawn end-to-end
-    /// without overlap. No StubOverlap here: there's no adjacent
-    /// stub to meet, so the segment ends flush at the cell edge.
-    /// </summary>
+    // Draws a half-line from the cell centre to one edge. Only used by the
+    // dangling-exit branch in DrawAllExitLines — full lines between two placed
+    // cells are drawn end-to-end without overlap. No StubOverlap here: there's
+    // no adjacent stub to meet, so the segment ends flush at the cell edge.
     private static void DrawStub(DrawingContext ctx, IPen pen, Rect cell, double mx, double my, Direction dir)
     {
         switch (dir)
@@ -1549,20 +1467,15 @@ public sealed class MapControl : Control
         }
     }
 
-    /// <summary>
-    /// Draws small filled triangles in the right corners of the node
-    /// to indicate U/D exits:
-    /// <list type="bullet">
-    /// <item>top-right green triangle when the room has an Up exit;</item>
-    /// <item>bottom-right yellow triangle when it has a Down exit;</item>
-    /// <item>both triangles when both exits are present (Up+Down rooms
-    /// get the green corner on top of the existing UpDownFill or the
-    /// classification fill — orange/green/yellow stay distinct).</item>
-    /// </list>
-    /// Triangle size scales with the node so it stays glanceable on
-    /// small cells without crowding the centre dot of the player /
-    /// destination marker.
-    /// </summary>
+    // Draws small filled triangles in the right corners of the node to
+    // indicate U/D exits:
+    //   - top-right green triangle when the room has an Up exit;
+    //   - bottom-right yellow triangle when it has a Down exit;
+    //   - both triangles when both exits are present (Up+Down rooms get the
+    //     green corner on top of the existing UpDownFill or the classification
+    //     fill — orange/green/yellow stay distinct).
+    // Triangle size scales with the node so it stays glanceable on small cells
+    // without crowding the centre dot of the player / destination marker.
     private static void DrawVerticalCornerBadge(DrawingContext ctx, Rect node, VerticalHint hint)
     {
         double size = Math.Max(node.Width * 0.50, 7.0);
@@ -1594,13 +1507,10 @@ public sealed class MapControl : Control
         }
     }
 
-    /// <summary>
-    /// Draws diagonal cross-hatch lines across the cell node to mark a
-    /// room with a CMD-driven teleport command. Clipped to the node so
-    /// the lines don't bleed onto neighbouring connectors. Spacing
-    /// scales with the cell so the pattern stays readable when zoomed
-    /// in/out.
-    /// </summary>
+    // Draws diagonal cross-hatch lines across the cell node to mark a room
+    // with a CMD-driven teleport command. Clipped to the node so the lines
+    // don't bleed onto neighbouring connectors. Spacing scales with the cell
+    // so the pattern stays readable when zoomed in/out.
     private static void DrawTeleportHash(DrawingContext ctx, Rect node)
     {
         double spacing = Math.Max(node.Width * 0.30, 4.0);

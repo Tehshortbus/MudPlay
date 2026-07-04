@@ -12,20 +12,15 @@ using FujinTerm.ViewModels;
 
 namespace FujinTerm.Controls;
 
-/// <summary>
-/// One <see cref="SelectableTextBlock"/> that renders the body of the
-/// Backscroll transcript — every row's cells inline as coloured
-/// <see cref="Run"/>s, separated by <see cref="LineBreak"/>s. Native
-/// drag-to-select spans rows and Ctrl+C copies the multi-line range.
-/// Timestamps live in the parallel <see cref="TimestampGutter"/> so the
-/// user's selection can't accidentally include them.
-/// </summary>
-/// <remarks>
-/// Rebuilding all <see cref="TextBlock.Inlines"/> on every
-/// <see cref="INotifyCollectionChanged.CollectionChanged"/> scales
-/// linearly with row count. For the Backscroll's default 10k-row cap
-/// that's fine on modern hardware; revisit if it becomes a bottleneck.
-/// </remarks>
+// One SelectableTextBlock that renders the body of the Backscroll transcript —
+// every row's cells inline as coloured Runs, separated by LineBreaks. Native
+// drag-to-select spans rows and Ctrl+C copies the multi-line range. Timestamps
+// live in the parallel TimestampGutter so the user's selection can't
+// accidentally include them.
+//
+// Rebuilding all Inlines on every CollectionChanged scales linearly with row
+// count. For the Backscroll's default 10k-row cap that's fine on modern
+// hardware; revisit if it becomes a bottleneck.
 public sealed class SelectableTranscript : SelectableTextBlock
 {
     public static readonly StyledProperty<System.Collections.IList?> RowsProperty =
@@ -37,11 +32,9 @@ public sealed class SelectableTranscript : SelectableTextBlock
         set => SetValue(RowsProperty, value);
     }
 
-    /// <summary>
-    /// Per-row absolute character offset within the rendered text. Built
-    /// each <see cref="Rebuild"/> so the view-model can scroll a Find-next
-    /// match into view + set selection at the matched substring.
-    /// </summary>
+    // Per-row absolute character offset within the rendered text. Built each
+    // Rebuild so the view-model can scroll a Find-next match into view + set
+    // selection at the matched substring.
     public IReadOnlyList<int> RowCharOffsets => _rowOffsets;
     private int[] _rowOffsets = Array.Empty<int>();
 
