@@ -106,9 +106,10 @@ it isn't here and you're unsure, ask.
 
 | Event | Line |
 |---|---|
-| Wear (names no slot) | `You are now wearing <X>.` |
+| Weapon equip / swap (one line) | `You are now holding <X>.` |
+| Armor wear, empty slot (names no slot) | `You are now wearing <X>.` |
+| Armor swap into an occupied slot (two lines) | `You have removed <old>.` then `You are now wearing <new>.` |
 | Remove | `You have removed <X>.` |
-| Weapon swap (two lines) | `You removed <old>.` then `You are now wearing <new>.` |
 | Already worn | `You do not have <X> left unequipped.` |
 | Sneak armed (ACK) | `Attempting to sneak...` |
 | Sneak soft-fail | `Attempting to sneak...You don't think you're sneaking.` |
