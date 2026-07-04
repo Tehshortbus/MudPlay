@@ -91,6 +91,29 @@ it isn't here and you're unsure, ask.
 - **[OBSERVED]** `Your fists have no effect against this monster!` — you're swinging bare-handed
   (no weapon in hand, or it left your hand).
 
+## Attack spells: immunity vs resistance
+
+Two **distinct** mechanics decide why an attack spell fails to hurt a monster — do not
+conflate them.
+
+**Immunity** *([CONFIRMED])*
+- A monster immune to a spell's damage type draws `Your spell has no effect on <monster>.` —
+  a hard, binary immunity to that spell type (e.g. a `harm` spell vs an acid slime). The
+  client reads this line as species-scoped attack-spell immunity and gates that spell out of
+  the attack cascade (primary → alternate → weapon) for the rest of the room.
+
+**Percentage resistance** *(mechanic [CONFIRMED]; the exact wire line for the resist / heal
+case is not yet recorded — ask before parsing it)*
+- A monster's resistance to a spell type is a **percentage**, and is **not** the immunity
+  above — it's a numeric reduction on the damage, not the `no effect` line.
+- At **exactly 100%** resist the spell lands but deals **0 damage**.
+- **Above 100%** resist the damage goes **negative** — the spell **heals** the monster
+  instead of harming it.
+- Consequence: immunity is the only one of the two that emits `Your spell has no effect on
+  <monster>.` (and the engine gates on it). An over-100%-resist cast produces no such line;
+  it silently heals the target, so "full resist" must never be treated as equivalent to
+  immunity.
+
 ## Items & acquisition
 
 - **[CONFIRMED]** Items are acquired via `buy` / `get` / `search`+`get`. There is no "hunt"
@@ -125,3 +148,4 @@ it isn't here and you're unsure, ask.
 | Sneak blocked (hard) | `You may not sneak right now!` |
 | Weapon ineffective | `Your weapon has no effect against this monster!` |
 | Fists ineffective | `Your fists have no effect against this monster!` |
+| Spell immunity | `Your spell has no effect on <monster>.` |

@@ -4,10 +4,13 @@ Notable changes per merged PR, **newest first**. The top of the [README](README.
 
 ## 1.2.1
 
-Corrects the weapon-swap message in the game-mechanics reference.
+Corrects and extends the game-mechanics reference.
 
 **Changed**
 - **Weapon-swap message reference corrected.** `GAME_MECHANICS.md` claimed a weapon swap prints two lines (a removal then a wear). A live capture (swapping a quarterstaff and a dagger) confirms it prints a single line — `You are now holding <X>.` — with no removal line for the displaced weapon, which returns to the pack silently. The two-line pattern is the *armor*-into-an-occupied-slot case. The message catalogue and the Equipment prose now record the weapon-vs-armor distinction, matching the client's own inventory parser.
+
+**Added**
+- **Attack-spell immunity vs resistance recorded.** `GAME_MECHANICS.md` now documents that a spell's `Your spell has no effect on <monster>.` line is a hard, binary *immunity* (which the combat engine gates on) — distinct from percentage *resistance*, a numeric reduction where exactly 100% resist deals 0 damage and over-100% resist inverts into *healing* the monster with no "no effect" line to flag it.
 
 ## 1.2.0
 
