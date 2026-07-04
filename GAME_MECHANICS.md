@@ -145,34 +145,37 @@ map one-to-one onto a monster `Resist-<type>` ability:
   resist signal.** Not modeled today: a resisted 0 / heal cast produces no `no effect` line, so
   nothing currently stops the engine from re-casting a spell that heals the monster.
 
-*3b. Magic Resist (M.R., code 36) — probabilistic, NOT pre-emptable.* The `AttType 4` "Normal"
-spells (e.g. mage `magic missile`, priest `harm`) are **not** elemental and are cut by the
-monster's `M.R.` ability, **not** a `Resist-<type>`. The elemental Select-Case above explicitly
-**skips** `AttType 4` (Normal) and `AttType 6` (Poison) — M.R. is their mitigation path instead.
-M.R. works through **two independent effects**, and neither ever nulls the spell deterministically
-from the M.R. value alone (equations below are the reference client's own combat math):
+*3b. Magic Resist (M.R., code 36) — probabilistic, NOT pre-emptable.* `AttType 4` "Normal" spells
+(mage `magic missile`, priest `harm`) are **not** elemental, so the elemental Select-Case above
+explicitly **skips** them (it skips `AttType 4` Normal and `AttType 6` Poison). Their only
+damage-type mitigation is the monster's `M.R.` ability, **not** a `Resist-<type>` — and M.R.
+never nulls a spell deterministically from its value alone. It works through **two independent
+effects, each separately gated** (equations below are the reference client's own combat math):
 
-- **Partial damage reduction.** `baseline M.R. is 50` (the no-change point). For M.R. ≥ 50 the
-  reduction is `(M.R. − 50) / 200`, i.e. it climbs to a hard **cap of 50%** at M.R. 150 and stops
-  (with the target's own AntiMagic active the cap rises to **75%**, via `M.R. / 200`). Below M.R.
-  50 the term goes negative — low M.R. *amplifies* damage taken. So even an enormous M.R. only
-  ever **halves** (or, under AntiMagic, three-quarters) the Normal damage — it can't reach 0.
-- **Full-resist chance.** A separate per-cast roll can negate the spell entirely, with probability
-  `M.R. / 2` percent (so M.R. 100 → 50% chance, capped at 98% for M.R. ≥ 196). This roll only
-  fires when the spell's `TypeOfResists` allows it (see below) — it is a *chance*, never a
-  certainty short of the cap.
-- Net: a value of **100 in M.R. does not mean 0 damage** — it means ~25% less damage *and* a ~50%
-  chance to fully resist that cast. So M.R. must **never** feed a ≥100%→skip guard; a high-M.R.
-  monster can still take Normal-spell damage. Ability code **17** `Damage(-MR)` is damage that
-  **bypasses** the M.R. partial-reduction cut entirely.
+- **Partial damage reduction** — gated by the spell's *damage ability code*. Applies only to code
+  **1** `Damage`; code **17** `Damage(-MR)` **bypasses** it. `baseline M.R. is 50` (the no-change
+  point): for M.R. ≥ 50 the reduction is `(M.R. − 50) / 200`, climbing to a hard **cap of 50%** at
+  M.R. 150 and stopping (the target's own AntiMagic raises the cap to **75%**, via `M.R. / 200`).
+  Below M.R. 50 the term goes negative — low M.R. *amplifies* damage taken. So even an enormous
+  M.R. only ever **halves** (or, under AntiMagic, three-quarters) the damage — it can't reach 0.
+- **Full-resist chance** — gated by the spell's `TypeOfResists` (below). A separate per-cast roll
+  can negate the spell entirely, with probability `M.R. / 2` percent (M.R. 100 → 50% chance,
+  capped at 98% for M.R. ≥ 196) — a *chance*, never a certainty short of the cap.
+- Net: **100 M.R. never means 0 damage**, so M.R. must **never** feed a ≥100%→skip guard. Both
+  example spells actually carry code **17** (bypass the partial cut), which shows how the two
+  gates combine: `magic missile` (code 17 + `TypeOfResists 0`) takes **neither** effect — it
+  always lands full, the reliable nuker; `harm` (code 17 + `TypeOfResists 2`) takes no partial
+  cut but *can* be fully-resist-rolled; a code-**1** Normal spell would eat the capped partial cut
+  on top. In every case a high-M.R. monster can still take Normal-spell damage.
 
 *3b-note. `TypeOfResists` — the full-resist eligibility flag.* The Spells-table `TypeOfResists`
 column (values 0/1/2) gates whether the full-resist roll above can fire, independent of the
 damage type: **0 = never** (no full-resist roll — the spell always lands its post-reduction
 damage), **1 = only when the target has AntiMagic**, **2 = always eligible**. Elemental attack
-spells are typically `TypeOfResists 0` (magic missile 0, fireball / frost jet / lightning bolt /
-acid jet all 0), so their only mitigation is the deterministic elemental cut in 3a — which is
-exactly why a ≥100% elemental resist is safely pre-emptable. `harm` is `TypeOfResists 2`.
+spells are typically `TypeOfResists 0` (fireball / frost jet / lightning bolt / acid jet all 0),
+so their only mitigation is the deterministic elemental cut in 3a — which is exactly why a ≥100%
+elemental resist is safely pre-emptable. Among Normal spells, `magic missile` is `TypeOfResists 0`
+(never rolled-resisted) while `harm` is `TypeOfResists 2`.
 
 *3c. Poison (`AttType 6`) — not resistible, binary immunity.* Poison has **no** resist value and
 **no** `Resist-Poison` code — a target is either affected or immune, never "partially resisted."
