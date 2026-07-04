@@ -108,13 +108,17 @@ conflate them. (Worked examples use the 1.11p data set.)
 
 **2. Spell targeting restriction (e.g. living-only)** *([CONFIRMED])*
 - A spell can carry a targeting tag that disqualifies whole classes of monster. The priest
-  **harm** spell is tagged **living only**, so a monster flagged **NonLiving** takes no damage
-  from it — this is the `Your spell has no effect on <monster>.` case (e.g. `harm` on an acid
-  slime).
+  **harm** spell carries `AffectsLivingOnly` (ability code 108), so a monster flagged
+  **NonLiving** (code 109) takes no damage from it — this is the
+  `Your spell has no effect on <monster>.` case (e.g. `harm` on an acid slime). A spell with **no**
+  targeting tag hits everything: `magic missile` carries no such tag, so it damages living,
+  nonliving, **and** undead alike.
 - This is **not** a resistance and **not** a level gate — it's a hard eligibility mismatch
   between a spell attribute and a monster attribute. Currently caught only **reactively**, off
   the `no effect` line: `OnSpellNoEffect` marks the species + spell immune for the rest of the
   room and gates that spell down the attack cascade (primary → alternate → weapon).
+- The full tag/flag taxonomy (living / nonliving / undead / animal, and the charm family) is in
+  **Spell targeting: monster type tags** below.
 
 **3. Damage-type resistance** *([CONFIRMED])*
 
@@ -183,6 +187,50 @@ elemental resist is safely pre-emptable. Among Normal spells, `magic missile` is
   poison-immune, the **golden headdress** item grants poison immunity, and **swamp boots** /
   **snakeskin boots** negate certain room-cast "swamp poison" effects — snakeskin also grants
   immunity to certain poisons, varying by game-data set.
+
+## Spell targeting: monster type tags
+
+A spell's eligibility against a monster is a match between a **spell-side targeting tag** and a
+**monster-side type flag**. A spell with no targeting tag affects every monster; a tagged spell
+only affects monsters carrying the matching flag (or, for `living-only`, *lacking* the NonLiving
+flag). These are hard eligibility gates, independent of resistance and level immunity above.
+
+**Monster-side type flags** *([CONFIRMED] — verified against 1.11p)*
+- **NonLiving** — the `NonLiving` ability (code 109). Its **absence** means the monster is living;
+  there is no separate "living" flag.
+- **Undead** — a **dedicated `Undead` column** on the Monsters row, *separate* from NonLiving. It
+  is a **byte-boolean**: **0 = not undead, any non-zero = undead.** The MDB stores the Boolean
+  `True` as `-1`, so across 1.11p the column holds `0` (986 rows), `1` (107 rows), **and `255`**
+  (8 rows — `-1` as a byte); all non-zero values mean undead. **Test `Undead != 0`, never
+  `== 1`.**
+- **Animal** — the `Animal` ability (code 78). Gates the animal-charm spells below.
+- These are independent axes: a monster can be NonLiving without being Undead. Worked examples:
+
+  | Monster | NonLiving (109) | Undead (col) | Animal (78) | Net |
+  |---|---|---|---|---|
+  | thug (#10) | — | 0 | — | living |
+  | lashworm (#2) | — | 0 | ✓ | living animal |
+  | acid slime (#5) | ✓ | 0 | — | nonliving, **not** undead |
+  | skeleton (#11) | ✓ | 1 | — | nonliving **and** undead |
+
+**Spell-side targeting tags** *([CONFIRMED])*
+- `AffectsLivingOnly` (code 108) — only affects monsters **without** the NonLiving flag (e.g.
+  `harm`, `enslave`).
+- `AffectsUndeadOnly` (code 23) — only affects monsters with `Undead != 0`.
+- `AffectsAnimalsOnly` (code 80) — only affects monsters with the Animal flag (e.g. `charm
+  animal`).
+- No tag — affects all monster types (e.g. `magic missile`).
+
+**Charm / enslave family** *([CONFIRMED] except where noted)*
+- All charm-type control spells share the same base ability, `Enslave` (code 6); they differ
+  **only** by their targeting tag. `enslave` (#55) is `Enslave` + `AffectsLivingOnly` (any living
+  target); `charm animal` (#92) is `Enslave` + `AffectsAnimalsOnly` (needs the Animal flag);
+  `song of charming` (#49, bard) is `Enslave` + `AffectsLivingOnly`.
+- **[NEEDS CONFIRMATION]** A "charm level" is believed to cap what these can affect (possibly the
+  caster's minimum level for the spell to take). This could **not** be verified: the reference
+  client only *displays* these tags — it does not model charm success, and no "charm level" column
+  exists on the Spells row (only `ReqLevel` / `MageryLVL` / `Cap`, which are learn/scaling params).
+  Ask before building on a charm-level rule.
 
 ## Items & acquisition
 

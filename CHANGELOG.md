@@ -4,10 +4,13 @@ Notable changes per merged PR, **newest first**. The top of the [README](README.
 
 ## 1.2.3
 
-Corrects how damage-type resistance splits into three unlike flavors.
+Corrects how damage-type resistance splits into three unlike flavors, and records the spell-targeting monster-type taxonomy.
 
 **Changed**
 - **Damage-type resistance split into its three real flavors, with the reference client's exact math.** `GAME_MECHANICS.md` previously lumped every `Resist-*` code — including Magic Resist — under one "flat N% cut, 100% = 0 damage, >100% = heal" rule. That's only true for the five *elemental* types (Cold/Fire/Stone/Lightning/Water, `AttType` 0/1/2/3/5 → resist codes 3/5/65/66/147), which is the one flavor deterministic enough to *pre-empt* (skip a spell whose element the target resists ≥100%). **Magic Resist** (M.R., code 36) — the cut on `AttType 4` "Normal" spells like `magic missile` and `harm` — is now recorded with its actual two-part equation: a partial damage reduction that baselines at M.R. 50 and **caps at 50%** (75% under AntiMagic), plus a separate full-resist *roll* at `M.R. / 2` percent. So 100 M.R. is **not** 0 damage (it's ~25% less damage and a ~50% negate chance); M.R. must never feed a ≥100%→skip guard, and code 17 `Damage(-MR)` bypasses the reduction. **Poison** (`AttType 6`) is recorded as *not resistible at all* — binary affected/immune, immunity sourced from race/items (Kang race, golden headdress, swamp/snakeskin boots) rather than a stat. Adds the `AttType`→element→resist-code mapping table and documents the `TypeOfResists` column (0 = never full-resistable, 1 = only under AntiMagic, 2 = always) that gates the full-resist roll.
+
+**Added**
+- **Spell-targeting monster-type taxonomy recorded.** `GAME_MECHANICS.md` gains a *Spell targeting: monster type tags* section: a spell's eligibility against a monster is a match between a **spell-side targeting tag** (`AffectsLivingOnly` 108, `AffectsUndeadOnly` 23, `AffectsAnimalsOnly` 80, or *no tag* = affects everything) and a **monster-side type flag** (the `NonLiving` ability 109 whose *absence* means living, the `Animal` ability 78, and a dedicated `Undead` column). The `Undead` column is a **byte-boolean** — `0` = not undead, any non-zero = undead — and across 1.11p it holds `0` (986 rows), `1` (107), **and `255`** (8 rows, the MDB's Boolean `True` stored as `-1`), so the correct test is `Undead != 0`, **never `== 1`**. `harm` (living-only, blocked by NonLiving) versus `magic missile` (no tag → hits living, nonliving, and undead alike) is the worked contrast, with a thug / lashworm / acid slime / skeleton example table; the charm family (`enslave`, `charm animal`, `song of charming`) all share the `Enslave` base ability (code 6) and differ *only* by targeting tag. A "charm level" cap is flagged **[NEEDS CONFIRMATION]** — unverifiable against the reference client, which only *displays* these tags.
 
 ## 1.2.2
 
