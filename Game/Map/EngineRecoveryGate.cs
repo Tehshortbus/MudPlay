@@ -367,9 +367,16 @@ public sealed class EngineRecoveryGate
         _log?.Log(LogSeverity.Warn, LogSource, $"Tier3.failed: {detail}");
         _tier3.Clear();
         _tier3Backtracking = false;
+
+        // Capture the engine name BEFORE aborting. AbortFromRecoveryFailure
+        // re-enters the gate synchronously — both engines reset themselves,
+        // and Reset() calls back into Detach() which nulls _engine — so
+        // reading _engine.Name after the abort would NullReference. This is
+        // deterministic re-entrancy, not a thread race.
+        string engineName = _engine.Name;
         // Stay in tier 3 visually; engine aborts; UI pops the dialog.
         _engine.AbortFromRecoveryFailure(detail);
-        RecoveryFailed?.Invoke(new RecoveryFailedEvent(_engine.Name, detail));
+        RecoveryFailed?.Invoke(new RecoveryFailedEvent(engineName, detail));
     }
 
     // ----- matcher delegates -----------------------------------------
