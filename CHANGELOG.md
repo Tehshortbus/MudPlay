@@ -2,6 +2,13 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0): **MAJOR** = whole-program refactor, **MINOR** = a large PR, **PATCH** = a small / bugfix PR.
 
+## 1.4.2
+
+When you die, movement now stops and stays stopped until you resume it yourself — so a running loop, walk-to, or Auto-Lair can't march you straight back out of the graveyard before you've recovered.
+
+**Added**
+- **A death now halts every movement engine and holds you in the graveyard until you manually resume.** Dying in MajorMUD drops all your non-loyal gear and teleports you — alone — into a graveyard room; if you were leading a party, that party disbands on your death, so afterwards you're always the one who'd drive movement. Previously an active loop / walk-to / Auto-Lair would just keep going, walking your freshly-revived, stripped character back into whatever killed it. The client now recognises your own death (the canonical *"You have been slain by …"* line) and asserts the same pause the manual **Pause** button uses, so nothing moves until you deliberately resume from the Navigation window. Because it rides the existing user-pause, every resume affordance already clears it and it can never leave a stuck gate. While the death-hold is active the Navigation activity chip reads **Paused — recovering** (instead of a plain **Paused**) so it's clear *why* you're stopped; the flavour drops the instant you resume.
+
 ## 1.4.1
 
 A live activity-status chip in the Navigation top bar, so a stalled loop explains itself — including holds from a party member's `@wait` and your own movement-blocking ailments.

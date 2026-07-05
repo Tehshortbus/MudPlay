@@ -1104,6 +1104,12 @@ public sealed class AppServices
     // sent @ok, so a loop doesn't walk away from a resting member.
     public Game.PartyWaitMovementGate PartyWaitMovement { get; private set; } = null!;
 
+    // Death-halt bridge — when the local player dies, asserts UserGate so every
+    // movement engine stops and we sit in the graveyard until the player
+    // manually resumes. Exposes HaltedForDeath so the Navigation chip can read
+    // "Paused — recovering" while the death pause holds.
+    public Game.PlayerDeathMovementHalt PlayerDeathHalt { get; private set; } = null!;
+
     // Leader-rest bridge — nudges Health to re-evaluate when
     // the party leader's rest / meditate posture flips, so a standing-idle
     // follower opportunistically tops off during the leader's downtime
@@ -1926,6 +1932,12 @@ public sealed class AppServices
         // attributed to the next combat.
         DeathWatcher = new Game.Combat.DeathLineWatcher(Router, Log);
         DeathWatcher.PlayerDied += _ => RoundDamage.MarkCombatEnded();
+
+        // Death-halt bridge. On our death, stops every movement engine (via
+        // UserGate) so we stay in the graveyard we respawn into until the player
+        // manually resumes — no loop / walk-to / auto-lair marches us back out
+        // before we've recovered.
+        PlayerDeathHalt = new Game.PlayerDeathMovementHalt(DeathWatcher, MovementCoordinator, Log);
 
         // CombatManager. Picks a target on each
         // classifier emit and sends the configured attack command via

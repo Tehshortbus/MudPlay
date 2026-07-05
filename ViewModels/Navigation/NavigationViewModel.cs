@@ -38,6 +38,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         _services.Walker.Event += OnWalkerEvent;
         _services.MovementCoordinator.PauseStateChanged += OnPauseChanged;
         _services.MovementCoordinator.GatesChanged += OnGatesChanged;
+        _services.PlayerDeathHalt.HaltedForDeathChanged += OnGatesChanged;
         _services.Conditions.PropertyChanged += OnConditionsChanged;
         _services.RoomGraph.GraphReloaded += OnGraphReloaded;
         _services.TBInfo.StoreReloaded    += RefreshTeleportRooms;
@@ -89,6 +90,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         _services.Walker.Event -= OnWalkerEvent;
         _services.MovementCoordinator.PauseStateChanged -= OnPauseChanged;
         _services.MovementCoordinator.GatesChanged -= OnGatesChanged;
+        _services.PlayerDeathHalt.HaltedForDeathChanged -= OnGatesChanged;
         _services.Conditions.PropertyChanged -= OnConditionsChanged;
         _services.RoomGraph.GraphReloaded -= OnGraphReloaded;
         _services.TBInfo.StoreReloaded    -= RefreshTeleportRooms;
@@ -1899,9 +1901,12 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
 
         // User pause and combat outrank everything, including a held ailment:
         // an explicit pause is the user's own doing, and mid-fight "Fighting" is
-        // the more useful readout than "Held".
+        // the more useful readout than "Held". A death-induced halt rides the
+        // same UserGate but flavours the chip so the user knows why we stopped.
         if (gates.Contains(Game.Map.MovementCoordinator.UserGate))
-            return ("Paused", NavActivityKind.Paused);
+            return _services.PlayerDeathHalt.HaltedForDeath
+                ? ("Paused — recovering", NavActivityKind.Paused)
+                : ("Paused", NavActivityKind.Paused);
         if (gates.Contains(Game.Map.MovementCoordinator.CombatGate))
             return ("Fighting", NavActivityKind.Fighting);
 
