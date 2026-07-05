@@ -394,19 +394,23 @@ public sealed class RoomTrackerTests : IDisposable
     // ----- Suspect-strikes ladder ------------------------------------
 
     [Fact]
-    public void Confirmed_RepeatedMismatchObs_AccumulatesSuspectStrikes()
+    public void Confirmed_MismatchObsAfterEachMove_AccumulatesSuspectStrikes()
     {
         RoomTracker tracker = NewTracker();
+        DateTimeOffset t = DateTimeOffset.UnixEpoch;
         tracker.SetLocated(new RoomKey(1, 1));    // Town Gates
 
-        // Each mismatching observation increments the strike counter
-        // but preserves the anchor room — the UI stays "Located".
-        tracker.NoteRoomObserved(Obs("Hallway", Direction.N));     // ambiguous (2/1, 2/3) — strike 1
+        // Each mismatching observation that follows a fresh move increments the
+        // strike counter but preserves the anchor room — the UI stays "Located".
+        // A move must sit between observations: a stationary stream of identical
+        // redisplays is one piece of evidence, not one strike apiece (002347).
+        tracker.NoteRoomObserved(Obs("Hallway", Direction.N), t);     // ambiguous (2/1, 2/3) — strike 1
         Assert.Equal(RoomConfidence.Suspect, tracker.State.Confidence);
         Assert.Equal(1, tracker.State.SuspectStrikes);
         Assert.Equal(new RoomKey(1, 1), tracker.State.CurrentRoom!.Key);
 
-        tracker.NoteRoomObserved(Obs("Hallway", Direction.N));     // strike 2
+        tracker.NoteMoveSent(Direction.N, t.AddSeconds(1));
+        tracker.NoteRoomObserved(Obs("Hallway", Direction.N), t.AddSeconds(2));     // strike 2
         Assert.Equal(2, tracker.State.SuspectStrikes);
         Assert.Equal(new RoomKey(1, 1), tracker.State.CurrentRoom!.Key);
     }
@@ -415,16 +419,50 @@ public sealed class RoomTrackerTests : IDisposable
     public void Suspect_NextMismatchAtStrikeLimit_FailsReplay_LandsLost()
     {
         RoomTracker tracker = NewTracker();
+        DateTimeOffset t = DateTimeOffset.UnixEpoch;
         tracker.SetLocated(new RoomKey(1, 1));
 
-        // Three mismatching observations in a row — no recorded
-        // RecentSteps so replay can't recover → Lost.
-        tracker.NoteRoomObserved(Obs("Hallway", Direction.N));
-        tracker.NoteRoomObserved(Obs("Hallway", Direction.N));
-        tracker.NoteRoomObserved(Obs("Hallway", Direction.N));
+        // Three mismatching observations, each after a move so they count as
+        // distinct evidence — the recorded steps route nowhere near a "Hallway",
+        // so replay can't recover and the third strike lands Lost.
+        tracker.NoteRoomObserved(Obs("Hallway", Direction.N), t);
+        tracker.NoteMoveSent(Direction.N, t.AddSeconds(1));
+        tracker.NoteRoomObserved(Obs("Hallway", Direction.N), t.AddSeconds(2));
+        tracker.NoteMoveSent(Direction.N, t.AddSeconds(3));
+        tracker.NoteRoomObserved(Obs("Hallway", Direction.N), t.AddSeconds(4));
 
         Assert.Equal(RoomConfidence.Lost, tracker.State.Confidence);
         Assert.Null(tracker.State.CurrentRoom);
+    }
+
+    [Fact]
+    public void Suspect_StationaryIdenticalRedisplays_DoNotStrikeToLost()
+    {
+        // 002347: a stationary player parked in an ambiguous room (identical
+        // "Main Road" rooms, "Darkwood Forest" with dozens of candidates) sits
+        // in Suspect with a preserved marker. Passive redisplays of the same
+        // room — an Enter echo, a cash-on-ground notice, a party arrival line —
+        // arrive with no move between them. Before the fix each identical
+        // redisplay accrued a Suspect strike and the third declared the player
+        // Lost, wiping the map marker while they never moved.
+        RoomTracker tracker = NewTracker();
+        DateTimeOffset t = DateTimeOffset.UnixEpoch;
+        tracker.SetLocated(new RoomKey(1, 1));                          // Town Gates — marker visible
+
+        // First ambiguous redisplay knocks us to Suspect (strike 1); marker kept.
+        tracker.NoteRoomObserved(Obs("Hallway", Direction.N), t);
+        Assert.Equal(RoomConfidence.Suspect, tracker.State.Confidence);
+        Assert.Equal(1, tracker.State.SuspectStrikes);
+
+        // Six more identical redisplays, no move between any of them.
+        for (int i = 1; i <= 6; i++)
+            tracker.NoteRoomObserved(Obs("Hallway", Direction.N), t.AddSeconds(i));
+
+        // Still Suspect at the same strike count — the marker never vanished.
+        Assert.Equal(RoomConfidence.Suspect, tracker.State.Confidence);
+        Assert.Equal(1, tracker.State.SuspectStrikes);
+        Assert.NotNull(tracker.State.CurrentRoom);
+        Assert.Equal(new RoomKey(1, 1), tracker.State.CurrentRoom!.Key);
     }
 
     [Fact]

@@ -4,10 +4,15 @@ Notable changes per merged PR, **newest first**. The top of the [README](README.
 
 ## 1.4.8
 
-A crash fix: the navigation self-healing recovery could take the whole client down when it gave up on a lost route.
+Two navigation fixes from live play: the self-healing recovery could take the whole client down when it gave up on a lost route, and a stationary player parked in an ambiguous area could watch their map marker vanish on its own.
 
 **Fixed**
 - **The client crashed to desktop when navigation recovery failed terminally — e.g. a "go path" that got lost with no anchor to backtrack from, or a route that exhausted its backtrack without finding a unique room.** The recovery gate's terminal-failure path called the engine's abort, which resets the engine and detaches it from the gate (nulling the gate's engine reference) — then the very next line read that now-null reference to name the engine in the failure event, throwing a `NullReferenceException` that propagated to the top and aborted the process. The gate now captures the engine name *before* the re-entrant abort call, so a failed recovery surfaces the normal "Lost — use the map to set your location" dialog instead of killing the app. A regression test drives the exact detach-during-abort re-entrancy.
+- **Standing still in an ambiguous area (MajorMUD's identical "Main Road" rooms, or a "Darkwood Forest" tile with dozens of same-name candidates) could make your map marker vanish on its own.** When the position tracker can't pin a single room from name + exits, it parks in a "Suspect" state that keeps showing your last marker. But every passive redisplay of that same room — an *Enter* echo, a cash-on-ground notice, a party member arriving — was counted as a fresh mismatch and accrued a "suspect strike"; a stationary player idling in place (resting, casting) would silently rack up strikes with no move between them until the third one declared them Lost and wiped the marker. A redisplay of the identical room with no move since the last one carries no new position evidence, so the tracker now ignores it instead of striking — strikes only accrue after an actual move. The moment you move, the normal ladder re-arms, so genuine desyncs still escalate.
+
+## 1.4.7
+
+A currency-capture fix so the Session Stats window records coins picked up in a real realm, not just synthetic fixtures.
 
 **Fixed**
 - **Session Stats currency stayed at zero even while you looted coins, because the cash pickup/drop/stash patterns only matched a synthetic wording the live game never sends.** The three confirmation patterns required a literal "pieces" noun and a trailing period, but this realm names coins in full — copper farthings, silver nobles, gold crowns, platinum pieces, runic coins — and the pickup line carries no period, so `You picked up 6 silver nobles` never matched, the `CoinCollected` event never fired, and the panel's currency counters never moved (even though the inventory tracker recorded the holdings correctly all along). The patterns now anchor on the denomination keyword plus its specific coin noun, capture the keyword, and drop the mandatory period — so real loot registers. The coin-noun anchor keeps a shared-verb item line (`You dropped a silver key.`) from being misread as coin, and "piece" stays in the noun set so existing `N gold pieces` fixtures still resolve.

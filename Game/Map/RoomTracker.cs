@@ -81,6 +81,13 @@ public sealed class RoomTracker
     // line arrives before the exits line that confirms the move).
     public DateTimeOffset? LastMoveSentAt { get; private set; }
 
+    // The last observation we fully processed (name + exit set) and when. Used
+    // to tell a passive redisplay of the same room — an Enter, a cash-on-ground
+    // notice, a party arrival echo — apart from a genuine failed-move mismatch,
+    // so a stationary player can't accrue Suspect strikes while standing still.
+    private RoomObservation? _lastObservation;
+    private DateTimeOffset _lastObservationAt;
+
     // The state class itself — bound by the UI, mutated only by this tracker.
     public RoomState State { get; } = new();
 
@@ -358,6 +365,14 @@ public sealed class RoomTracker
                 LandFromCandidateSearch(observation, when);
                 break;
         }
+
+        // Record what we just fully processed so the next observation can tell
+        // a passive redisplay of the same room from a genuine move outcome. Set
+        // after the switch so the reconcile paths above still see the previous
+        // value; skipped on the peek-suppression early-return so a dropped peek
+        // doesn't masquerade as the last real observation.
+        _lastObservation = observation;
+        _lastObservationAt = when;
     }
 
     // The death-message detector saw the post-suicide / killed-in-combat "You
@@ -606,6 +621,21 @@ public sealed class RoomTracker
 
     private void ReconcileFromSuspect(RoomObservation observation, DateTimeOffset when)
     {
+        // A stationary player in an ambiguous room (identical "Main Road" rooms,
+        // "Darkwood Forest" {SW} with dozens of candidates) can't be resolved by
+        // name+exits, so we sit in Suspect with no anchor. While parked there,
+        // every passive redisplay of the same room — an Enter echo, a
+        // cash-on-ground notice, a party arrival line — re-enters here. Without
+        // this guard each identical redisplay accrues a Suspect strike and the
+        // player is declared Lost (marker vanishes) despite never having moved.
+        // Only a redisplay that follows an actual move can carry new information,
+        // so a repeat with no move since we last processed it is a no-op.
+        if (IsRepeatRedisplayWithoutMove(observation))
+        {
+            State.LastUpdatedAt = when;
+            return;
+        }
+
         Room? current = State.CurrentRoom;
         if (current is not null && MatchesPredicted(current, observation))
         {
@@ -639,6 +669,23 @@ public sealed class RoomTracker
 
         EnterSuspect(when, $"suspect mismatch continues; candidates={candidates.Count}");
     }
+
+    // True when the incoming observation is identical to the last one we fully
+    // processed AND no move command has gone out since then — i.e. the player is
+    // standing still and the server just redisplayed the same room. Such a
+    // redisplay carries no new position signal, so the caller skips the Suspect
+    // strike that would otherwise march a parked-in-ambiguity player to Lost.
+    private bool IsRepeatRedisplayWithoutMove(RoomObservation observation)
+    {
+        if (_lastObservation is not { } prev) return false;
+        if (!SameObservation(prev, observation)) return false;
+        if (LastMoveSentAt is { } sent && sent > _lastObservationAt) return false;
+        return true;
+    }
+
+    private static bool SameObservation(RoomObservation a, RoomObservation b) =>
+        string.Equals(a.Name, b.Name, StringComparison.OrdinalIgnoreCase)
+        && a.Exits.SetEquals(b.Exits);
 
     private void LandFromCandidateSearch(RoomObservation observation, DateTimeOffset when)
     {
