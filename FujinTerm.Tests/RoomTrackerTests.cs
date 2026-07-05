@@ -35,6 +35,9 @@ public sealed class RoomTrackerTests : IDisposable
     /// Inn: W → 1/1, N → 1/5
     /// Cellar (1/5) is name-and-exits unique.
     /// 2/1 + 2/2 are an ambiguous-name pair for the Reconciling case.
+    /// 3/1 "Darkwood Forest, Main Road" has a hidden `go path` text exit
+    /// (S → 3/2) plus visible {SE, W}; 3/2 + 3/3 are an ambiguous
+    /// "Darkwood Forest" {SW} pair that only the go-path edge disambiguates.
     /// </summary>
     private const string GraphJson = """
         [
@@ -69,7 +72,19 @@ public sealed class RoomTrackerTests : IDisposable
           { "Map Number": 2, "Room Number": 4, "Name": "Far Hall",
             "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
             "N": "0", "S": "2/3", "E": "0", "W": "0",
-            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 3, "Room Number": 1, "Name": "Darkwood Forest, Main Road",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "0", "S": "3/2 (Text: go path, enter path, walk path)", "E": "0", "W": "3/10",
+            "NE": "0", "NW": "0", "SE": "3/9", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 3, "Room Number": 2, "Name": "Darkwood Forest",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "0", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "3/11", "U": "0", "D": "0" },
+          { "Map Number": 3, "Room Number": 3, "Name": "Darkwood Forest",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "0", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "3/12", "U": "0", "D": "0" }
         ]
         """;
 
@@ -394,19 +409,23 @@ public sealed class RoomTrackerTests : IDisposable
     // ----- Suspect-strikes ladder ------------------------------------
 
     [Fact]
-    public void Confirmed_RepeatedMismatchObs_AccumulatesSuspectStrikes()
+    public void Confirmed_MismatchObsAfterEachMove_AccumulatesSuspectStrikes()
     {
         RoomTracker tracker = NewTracker();
+        DateTimeOffset t = DateTimeOffset.UnixEpoch;
         tracker.SetLocated(new RoomKey(1, 1));    // Town Gates
 
-        // Each mismatching observation increments the strike counter
-        // but preserves the anchor room — the UI stays "Located".
-        tracker.NoteRoomObserved(Obs("Hallway", Direction.N));     // ambiguous (2/1, 2/3) — strike 1
+        // Each mismatching observation that follows a fresh move increments the
+        // strike counter but preserves the anchor room — the UI stays "Located".
+        // A move must sit between observations: a stationary stream of identical
+        // redisplays is one piece of evidence, not one strike apiece (002347).
+        tracker.NoteRoomObserved(Obs("Hallway", Direction.N), t);     // ambiguous (2/1, 2/3) — strike 1
         Assert.Equal(RoomConfidence.Suspect, tracker.State.Confidence);
         Assert.Equal(1, tracker.State.SuspectStrikes);
         Assert.Equal(new RoomKey(1, 1), tracker.State.CurrentRoom!.Key);
 
-        tracker.NoteRoomObserved(Obs("Hallway", Direction.N));     // strike 2
+        tracker.NoteMoveSent(Direction.N, t.AddSeconds(1));
+        tracker.NoteRoomObserved(Obs("Hallway", Direction.N), t.AddSeconds(2));     // strike 2
         Assert.Equal(2, tracker.State.SuspectStrikes);
         Assert.Equal(new RoomKey(1, 1), tracker.State.CurrentRoom!.Key);
     }
@@ -415,16 +434,50 @@ public sealed class RoomTrackerTests : IDisposable
     public void Suspect_NextMismatchAtStrikeLimit_FailsReplay_LandsLost()
     {
         RoomTracker tracker = NewTracker();
+        DateTimeOffset t = DateTimeOffset.UnixEpoch;
         tracker.SetLocated(new RoomKey(1, 1));
 
-        // Three mismatching observations in a row — no recorded
-        // RecentSteps so replay can't recover → Lost.
-        tracker.NoteRoomObserved(Obs("Hallway", Direction.N));
-        tracker.NoteRoomObserved(Obs("Hallway", Direction.N));
-        tracker.NoteRoomObserved(Obs("Hallway", Direction.N));
+        // Three mismatching observations, each after a move so they count as
+        // distinct evidence — the recorded steps route nowhere near a "Hallway",
+        // so replay can't recover and the third strike lands Lost.
+        tracker.NoteRoomObserved(Obs("Hallway", Direction.N), t);
+        tracker.NoteMoveSent(Direction.N, t.AddSeconds(1));
+        tracker.NoteRoomObserved(Obs("Hallway", Direction.N), t.AddSeconds(2));
+        tracker.NoteMoveSent(Direction.N, t.AddSeconds(3));
+        tracker.NoteRoomObserved(Obs("Hallway", Direction.N), t.AddSeconds(4));
 
         Assert.Equal(RoomConfidence.Lost, tracker.State.Confidence);
         Assert.Null(tracker.State.CurrentRoom);
+    }
+
+    [Fact]
+    public void Suspect_StationaryIdenticalRedisplays_DoNotStrikeToLost()
+    {
+        // 002347: a stationary player parked in an ambiguous room (identical
+        // "Main Road" rooms, "Darkwood Forest" with dozens of candidates) sits
+        // in Suspect with a preserved marker. Passive redisplays of the same
+        // room — an Enter echo, a cash-on-ground notice, a party arrival line —
+        // arrive with no move between them. Before the fix each identical
+        // redisplay accrued a Suspect strike and the third declared the player
+        // Lost, wiping the map marker while they never moved.
+        RoomTracker tracker = NewTracker();
+        DateTimeOffset t = DateTimeOffset.UnixEpoch;
+        tracker.SetLocated(new RoomKey(1, 1));                          // Town Gates — marker visible
+
+        // First ambiguous redisplay knocks us to Suspect (strike 1); marker kept.
+        tracker.NoteRoomObserved(Obs("Hallway", Direction.N), t);
+        Assert.Equal(RoomConfidence.Suspect, tracker.State.Confidence);
+        Assert.Equal(1, tracker.State.SuspectStrikes);
+
+        // Six more identical redisplays, no move between any of them.
+        for (int i = 1; i <= 6; i++)
+            tracker.NoteRoomObserved(Obs("Hallway", Direction.N), t.AddSeconds(i));
+
+        // Still Suspect at the same strike count — the marker never vanished.
+        Assert.Equal(RoomConfidence.Suspect, tracker.State.Confidence);
+        Assert.Equal(1, tracker.State.SuspectStrikes);
+        Assert.NotNull(tracker.State.CurrentRoom);
+        Assert.Equal(new RoomKey(1, 1), tracker.State.CurrentRoom!.Key);
     }
 
     [Fact]
@@ -466,6 +519,57 @@ public sealed class RoomTrackerTests : IDisposable
         tracker.NoteRoomObserved(Obs("Inn", Direction.W, Direction.N));
         Assert.Equal(RoomConfidence.Confirmed, tracker.State.Confidence);
         Assert.Equal(new RoomKey(1, 4), tracker.State.CurrentRoom!.Key);
+    }
+
+    // ----- go-path (text-exit) resolution ----------------------------
+
+    [Fact]
+    public void Pending_GoPathTextExit_ResolvesToDeterministicTarget()
+    {
+        // 002430: a manually typed `go path` enqueues a pending move with a
+        // null cardinal, so the old code skipped prediction entirely and fell
+        // to name+exits candidate search — which can't match a go-path
+        // destination (the hidden text exit sits in the graph ExitMask but
+        // never on the "Obvious exits:" line), leaving the tracker Suspect →
+        // Lost. The go-path exit is a deterministic graph edge, so the head
+        // pending move now resolves through 3/1's Text exit straight to 3/2,
+        // even though "Darkwood Forest" {SW} is name-ambiguous (3/2 vs 3/3).
+        RoomTracker tracker = NewTracker();
+        tracker.SetLocated(new RoomKey(3, 1));       // Darkwood Forest, Main Road — S go-path → 3/2
+        tracker.NoteMoveSent("go path");             // manual text exit, no resolved cardinal
+        Assert.Equal(RoomConfidence.Pending, tracker.State.Confidence);
+
+        tracker.NoteRoomObserved(Obs("Darkwood Forest", Direction.SW));
+
+        Assert.Equal(RoomConfidence.Confirmed, tracker.State.Confidence);
+        Assert.Equal(new RoomKey(3, 2), tracker.State.CurrentRoom!.Key);
+    }
+
+    [Fact]
+    public void ReplayRecover_FollowsGoPathTextExit_LandsTrueRoom()
+    {
+        // Client-restart recovery across a go-path step. LastKnownRoom is the
+        // unique 3/1; the persisted trail is a single `go path` command. On
+        // relaunch Hydrate seeds Confirmed at 3/1 and primes the text step. The
+        // first login redisplay is the ambiguous 3/2 ("Darkwood Forest" {SW}),
+        // which no unique candidate resolves. Replay must now follow the text
+        // exit (3/1 + go path → 3/2) instead of bailing on the null cardinal.
+        RoomTracker tracker = NewTracker();
+        var profile = new FujinTerm.Models.Profile.CharacterProfile
+        {
+            LastKnownRoom = new FujinTerm.Models.Profile.RoomRef(3, 1),
+            RecentSteps = new List<FujinTerm.Models.Profile.DirectionDto>
+            {
+                new(null, "go path"),
+            },
+        };
+        tracker.Hydrate(profile);
+        Assert.Equal(new RoomKey(3, 1), tracker.State.CurrentRoom!.Key);
+
+        tracker.NoteRoomObserved(Obs("Darkwood Forest", Direction.SW));
+
+        Assert.Equal(RoomConfidence.Confirmed, tracker.State.Confidence);
+        Assert.Equal(new RoomKey(3, 2), tracker.State.CurrentRoom!.Key);
     }
 
     // ----- profile hydrate / save ------------------------------------

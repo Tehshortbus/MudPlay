@@ -81,6 +81,13 @@ public sealed class RoomTracker
     // line arrives before the exits line that confirms the move).
     public DateTimeOffset? LastMoveSentAt { get; private set; }
 
+    // The last observation we fully processed (name + exit set) and when. Used
+    // to tell a passive redisplay of the same room — an Enter, a cash-on-ground
+    // notice, a party arrival echo — apart from a genuine failed-move mismatch,
+    // so a stationary player can't accrue Suspect strikes while standing still.
+    private RoomObservation? _lastObservation;
+    private DateTimeOffset _lastObservationAt;
+
     // The state class itself — bound by the UI, mutated only by this tracker.
     public RoomState State { get; } = new();
 
@@ -358,6 +365,14 @@ public sealed class RoomTracker
                 LandFromCandidateSearch(observation, when);
                 break;
         }
+
+        // Record what we just fully processed so the next observation can tell
+        // a passive redisplay of the same room from a genuine move outcome. Set
+        // after the switch so the reconcile paths above still see the previous
+        // value; skipped on the peek-suppression early-return so a dropped peek
+        // doesn't masquerade as the last real observation.
+        _lastObservation = observation;
+        _lastObservationAt = when;
     }
 
     // The death-message detector saw the post-suicide / killed-in-combat "You
@@ -515,13 +530,15 @@ public sealed class RoomTracker
         Room? source = State.CurrentRoom;
 
         // Try to match against the head pending move first — that's the
-        // oldest move the server is most likely to be confirming.
+        // oldest move the server is most likely to be confirming. The head may
+        // be a cardinal step or a text exit ("go path"); both resolve to a
+        // single deterministic graph edge out of the source room.
         if (_pending.TryPeek(out PendingMove head)
             && source is not null
-            && head.Cardinal is { } direction
-            && source.Exits.TryGetValue(direction, out RoomExit exit))
+            && TryResolvePendingExit(source, head, out RoomExit exit))
         {
             Room? expected = _graph.GetRoom(exit.Target);
+            string moveLabel = DescribeMove(head);
 
             // Strategy 1 — predicted neighbour matches.
             if (expected is not null && MatchesPredicted(expected, observation))
@@ -533,13 +550,13 @@ public sealed class RoomTracker
                 // room is also a 1-of-1 graph match for the observation.
                 bool strict = _graph.FindCandidates(observation.Name, observation.Exits).Count == 1;
                 if (_pending.IsEmpty)
-                    SetRoom(expected, RoomConfidence.Confirmed, when, $"move {direction} confirmed", isStrictAnchor: strict);
+                    SetRoom(expected, RoomConfidence.Confirmed, when, $"move {moveLabel} confirmed", isStrictAnchor: strict);
                 else
                 {
                     // More moves still in flight — land Confirmed at
                     // the new room (we know where we are) but keep
                     // Pending posture if more confirmations are due.
-                    SetRoom(expected, RoomConfidence.Pending, when, $"move {direction} confirmed, queue not empty");
+                    SetRoom(expected, RoomConfidence.Pending, when, $"move {moveLabel} confirmed, queue not empty");
                 }
                 return;
             }
@@ -566,7 +583,7 @@ public sealed class RoomTracker
                     RoomConfidence target = _pending.IsEmpty
                         ? RoomConfidence.Confirmed
                         : RoomConfidence.Pending;
-                    SetRoom(learned, target, when, $"move {direction} confirmed (null-name learned)");
+                    SetRoom(learned, target, when, $"move {moveLabel} confirmed (null-name learned)");
                     return;
                 }
             }
@@ -606,6 +623,21 @@ public sealed class RoomTracker
 
     private void ReconcileFromSuspect(RoomObservation observation, DateTimeOffset when)
     {
+        // A stationary player in an ambiguous room (identical "Main Road" rooms,
+        // "Darkwood Forest" {SW} with dozens of candidates) can't be resolved by
+        // name+exits, so we sit in Suspect with no anchor. While parked there,
+        // every passive redisplay of the same room — an Enter echo, a
+        // cash-on-ground notice, a party arrival line — re-enters here. Without
+        // this guard each identical redisplay accrues a Suspect strike and the
+        // player is declared Lost (marker vanishes) despite never having moved.
+        // Only a redisplay that follows an actual move can carry new information,
+        // so a repeat with no move since we last processed it is a no-op.
+        if (IsRepeatRedisplayWithoutMove(observation))
+        {
+            State.LastUpdatedAt = when;
+            return;
+        }
+
         Room? current = State.CurrentRoom;
         if (current is not null && MatchesPredicted(current, observation))
         {
@@ -639,6 +671,23 @@ public sealed class RoomTracker
 
         EnterSuspect(when, $"suspect mismatch continues; candidates={candidates.Count}");
     }
+
+    // True when the incoming observation is identical to the last one we fully
+    // processed AND no move command has gone out since then — i.e. the player is
+    // standing still and the server just redisplayed the same room. Such a
+    // redisplay carries no new position signal, so the caller skips the Suspect
+    // strike that would otherwise march a parked-in-ambiguity player to Lost.
+    private bool IsRepeatRedisplayWithoutMove(RoomObservation observation)
+    {
+        if (_lastObservation is not { } prev) return false;
+        if (!SameObservation(prev, observation)) return false;
+        if (LastMoveSentAt is { } sent && sent > _lastObservationAt) return false;
+        return true;
+    }
+
+    private static bool SameObservation(RoomObservation a, RoomObservation b) =>
+        string.Equals(a.Name, b.Name, StringComparison.OrdinalIgnoreCase)
+        && a.Exits.SetEquals(b.Exits);
 
     private void LandFromCandidateSearch(RoomObservation observation, DateTimeOffset when)
     {
@@ -700,23 +749,34 @@ public sealed class RoomTracker
 
         foreach (DirectionDto step in _recentSteps)
         {
-            if (step.Cardinal is not { } direction)     // text exits aren't replayable through the graph
+            RoomExit exit;
+            if (step.Cardinal is { } direction)
+            {
+                if (!cursor.Exits.TryGetValue(direction, out exit))
+                {
+                    _log?.Debug("RoomTracker",
+                        $"Replay-recovery abort: no {direction} exit from {cursor.Key} ({cursor.Name}).");
+                    return false;
+                }
+            }
+            else if (step.Command is { } command && TryResolveTextExit(cursor, command, out exit))
+            {
+                // Text-exit step ("go path") — a deterministic graph edge, so
+                // it replays through the cursor room's matching Text exit just
+                // like a cardinal step. Resolved into exit above.
+            }
+            else
             {
                 _log?.Debug("RoomTracker",
-                    $"Replay-recovery abort at {cursor.Key}: step '{step.Command ?? "?"}' is a text exit, not graph-replayable.");
+                    $"Replay-recovery abort at {cursor.Key} ({cursor.Name}): step '{step.Command ?? "?"}' matches no exit out of this room.");
                 return false;
             }
-            if (!cursor.Exits.TryGetValue(direction, out RoomExit exit))
-            {
-                _log?.Debug("RoomTracker",
-                    $"Replay-recovery abort: no {direction} exit from {cursor.Key} ({cursor.Name}).");
-                return false;
-            }
+
             Room? next = _graph.GetRoom(exit.Target);
             if (next is null)
             {
                 _log?.Debug("RoomTracker",
-                    $"Replay-recovery abort: {direction} from {cursor.Key} targets {exit.Target}, which isn't in the graph.");
+                    $"Replay-recovery abort: step out of {cursor.Key} targets {exit.Target}, which isn't in the graph.");
                 return false;
             }
             cursor = next;
@@ -750,6 +810,50 @@ public sealed class RoomTracker
             $"Suspect strike {strikes}/{SuspectStrikeLimit}: {reason}.");
         RaiseStateChanged(prev, RoomConfidence.Suspect, prevRoom, prevRoom);
     }
+
+    // Resolve the graph exit a pending move takes out of the source room. A
+    // cardinal move indexes the exit slot directly; a text-exit move ("go path")
+    // is a deterministic edge too — the source room's Text exit carries the exact
+    // target + direction, so we follow it rather than skipping prediction. A
+    // null-cardinal go-path would otherwise fall through to name+exits candidate
+    // search, which can't match a go-path destination (its hidden text exit sits
+    // in the graph ExitMask but never on the "Obvious exits:" line). Returns
+    // false when the move maps to no known exit (stale graph, mistyped command).
+    private static bool TryResolvePendingExit(Room source, PendingMove head, out RoomExit exit)
+    {
+        if (head.Cardinal is { } direction)
+            return source.Exits.TryGetValue(direction, out exit);
+        if (head.Command is { } command)
+            return TryResolveTextExit(source, command, out exit);
+        exit = default;
+        return false;
+    }
+
+    // Find the room's Text exit whose comma-separated command alternatives
+    // include command (case-insensitive). One matched token ("go path") is enough
+    // — the exit's Target + direction are the deterministic landing.
+    private static bool TryResolveTextExit(Room room, string command, out RoomExit exit)
+    {
+        foreach (RoomExit candidate in room.Exits.Values)
+        {
+            if (candidate.TextCommands is not { } commands) continue;
+            foreach (string token in commands)
+            {
+                if (string.Equals(token, command, StringComparison.OrdinalIgnoreCase))
+                {
+                    exit = candidate;
+                    return true;
+                }
+            }
+        }
+        exit = default;
+        return false;
+    }
+
+    // Human-readable label for a pending move — its cardinal short form, or the
+    // verbatim text command for text exits. Used only in log / reason strings.
+    private static string DescribeMove(PendingMove move) =>
+        move.Cardinal?.ToString() ?? move.Command ?? "?";
 
     // Looser match: name match plus observed-exits-are-subset of graph-exits.
     // Tolerates "Obvious exits:" hiding closed doors / searchable / conditional
