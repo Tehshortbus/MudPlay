@@ -2,6 +2,13 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0): **MAJOR** = whole-program refactor, **MINOR** = a large PR, **PATCH** = a small / bugfix PR.
 
+## 1.4.6
+
+A layout fix for the Session Stats window from live use: the panels now share one width and the rate graphs get room to breathe.
+
+**Fixed**
+- **In the Session Stats window, the "Player Statistics" section rendered narrower than "Time Analysis" / "Session Statistics" and its numbers were squished, while the two rate graphs collapsed to a thin sliver.** Every panel was left-anchored under a fixed width cap, which let each one shrink to just its own content — so the graphs shrank to about their header-text width and Player Statistics (naturally narrower) came up short with a cramped rate column. The panels now stretch to fill the scroll column, so all five share one width and line up. The Kills/hour and Exp/hour sparklines widen to the full panel and gained a little height (44 → 60 px) so the trend is legible, and the Player Statistics rows were re-columned so the label flexes on the left and the numeric block (count / min–max / avg / rate) groups tightly on the right — matching the other two sections.
+
 ## 1.4.5
 
 A navigation-reliability pass from live play: a per-room "can't reach" flag, last-position recall after a client restart in same-named areas, and two loop-engine fixes so a route recovers itself instead of stalling out.

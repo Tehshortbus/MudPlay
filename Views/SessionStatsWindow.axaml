@@ -75,16 +75,16 @@
         <Style Selector="TextBlock.draghandle">
             <Setter Property="Cursor" Value="SizeAll"/>
         </Style>
-        <!-- Uniform panel width: every graph and section shares one capped,
-             left-anchored width so they line up and none stretches when the
-             window widens. -->
+        <!-- Uniform panel width: every graph and section stretches to fill the
+             scroll column so they all share one width and line up. Left-anchoring
+             with a cap made each panel shrink to its own content, leaving the
+             graphs a header's-width sliver and Player Statistics narrower than
+             its siblings. -->
         <Style Selector="StackPanel.panel">
-            <Setter Property="HorizontalAlignment" Value="Left"/>
-            <Setter Property="MaxWidth" Value="248"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
         </Style>
         <Style Selector="Expander.panel">
-            <Setter Property="HorizontalAlignment" Value="Left"/>
-            <Setter Property="MaxWidth" Value="248"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
         </Style>
     </Window.Styles>
 
@@ -128,7 +128,7 @@
                         BorderThickness="1"
                         CornerRadius="3"
                         Padding="4"
-                        Height="44">
+                        Height="60">
                     <Grid ColumnDefinitions="*,34">
                         <controls:SparklineControl Grid.Column="0"
                                                    Samples="{Binding KillsPerHour}"
@@ -156,7 +156,7 @@
                         BorderThickness="1"
                         CornerRadius="3"
                         Padding="4"
-                        Height="44">
+                        Height="60">
                     <Grid ColumnDefinitions="*,34">
                         <controls:SparklineControl Grid.Column="0"
                                                    Samples="{Binding ExperiencePerHour}"
@@ -187,7 +187,7 @@
                          crit accuracy, defensive avoidance) — swing-type and
                          per-round rows leave it blank since a count, not a
                          rate, is what describes them. -->
-                    <Grid ColumnDefinitions="60,30,52,28,*">
+                    <Grid ColumnDefinitions="*,30,52,28,44">
                         <TextBlock Grid.Column="0" Classes="sub" Text="Offense" Margin="0,0,0,0"/>
                         <TextBlock Grid.Column="1" Classes="colhdr" Text="#" HorizontalAlignment="Right"/>
                         <TextBlock Grid.Column="2" Classes="colhdr" Text="min–max" HorizontalAlignment="Right"/>
@@ -195,32 +195,32 @@
                         <TextBlock Grid.Column="4" Classes="colhdr" Text="rate" HorizontalAlignment="Right"/>
                     </Grid>
 
-                    <Grid ColumnDefinitions="60,30,52,28,*">
+                    <Grid ColumnDefinitions="*,30,52,28,44">
                         <TextBlock Grid.Column="0" Classes="lbl" Text="Hit"/>
                         <TextBlock Grid.Column="1" Classes="dimr" Text="{Binding Combat.Hits, StringFormat='{}×{0}'}"/>
                         <TextBlock Grid.Column="2" Classes="dimr" Text="{Binding HitRangeText}"/>
                         <TextBlock Grid.Column="3" Classes="dimr" Text="{Binding Combat.HitAvgDamage, StringFormat='{}{0:F0}'}"/>
                         <TextBlock Grid.Column="4" Classes="valr" Text="{Binding Combat.HitPercent, StringFormat='{}{0:F0}%'}"/>
                     </Grid>
-                    <Grid ColumnDefinitions="60,30,52,28,*">
+                    <Grid ColumnDefinitions="*,30,52,28,44">
                         <TextBlock Grid.Column="0" Classes="lbl" Text="Miss"/>
                         <TextBlock Grid.Column="1" Classes="dimr" Text="{Binding Combat.Misses, StringFormat='{}×{0}'}"/>
                         <TextBlock Grid.Column="4" Classes="valr" Text="{Binding Combat.MissPercent, StringFormat='{}{0:F0}%'}"/>
                     </Grid>
-                    <Grid ColumnDefinitions="60,30,52,28,*">
+                    <Grid ColumnDefinitions="*,30,52,28,44">
                         <TextBlock Grid.Column="0" Classes="lbl" Text="Crit"/>
                         <TextBlock Grid.Column="1" Classes="dimr" Text="{Binding Combat.Crits, StringFormat='{}×{0}'}"/>
                         <TextBlock Grid.Column="2" Classes="dimr" Text="{Binding CritRangeText}"/>
                         <TextBlock Grid.Column="3" Classes="dimr" Text="{Binding Combat.CritAvgDamage, StringFormat='{}{0:F0}'}"/>
                         <TextBlock Grid.Column="4" Classes="valr" Text="{Binding Combat.CritPercent, StringFormat='{}{0:F0}%'}"/>
                     </Grid>
-                    <Grid ColumnDefinitions="60,30,52,28,*">
+                    <Grid ColumnDefinitions="*,30,52,28,44">
                         <TextBlock Grid.Column="0" Classes="lbl" Text="Backstab"/>
                         <TextBlock Grid.Column="1" Classes="dimr" Text="{Binding Combat.Backstabs, StringFormat='{}×{0}'}"/>
                         <TextBlock Grid.Column="2" Classes="dimr" Text="{Binding BackstabRangeText}"/>
                         <TextBlock Grid.Column="3" Classes="dimr" Text="{Binding Combat.BackstabAvgDamage, StringFormat='{}{0:F0}'}"/>
                     </Grid>
-                    <Grid ColumnDefinitions="60,30,52,28,*">
+                    <Grid ColumnDefinitions="*,30,52,28,44">
                         <TextBlock Grid.Column="0" Classes="lbl" Text="Round"
                                    ToolTip.Tip="Damage dealt per combat round, across rounds where we dealt damage."/>
                         <TextBlock Grid.Column="1" Classes="dimr" Text="{Binding Combat.RoundsWithDamage, StringFormat='{}×{0}'}"/>
@@ -229,13 +229,13 @@
                     </Grid>
 
                     <!-- Proc / spell rows — surface only once recognised. -->
-                    <Grid ColumnDefinitions="60,30,52,28,*" IsVisible="{Binding HasProcs}">
+                    <Grid ColumnDefinitions="*,30,52,28,44" IsVisible="{Binding HasProcs}">
                         <TextBlock Grid.Column="0" Classes="lbl" Text="Proc"/>
                         <TextBlock Grid.Column="1" Classes="dimr" Text="{Binding Combat.ProcHits, StringFormat='{}×{0}'}"/>
                         <TextBlock Grid.Column="2" Classes="dimr" Text="{Binding ProcRangeText}"/>
                         <TextBlock Grid.Column="3" Classes="dimr" Text="{Binding Combat.ProcAvgDamage, StringFormat='{}{0:F0}'}"/>
                     </Grid>
-                    <Grid ColumnDefinitions="60,30,52,28,*" IsVisible="{Binding HasSpells}">
+                    <Grid ColumnDefinitions="*,30,52,28,44" IsVisible="{Binding HasSpells}">
                         <TextBlock Grid.Column="0" Classes="lbl" Text="Spell"/>
                         <TextBlock Grid.Column="1" Classes="dimr" Text="{Binding Combat.SpellHits, StringFormat='{}×{0}'}"/>
                         <TextBlock Grid.Column="2" Classes="dimr" Text="{Binding SpellRangeText}"/>
@@ -243,11 +243,11 @@
                     </Grid>
 
                     <!-- Defense — dodge and miss folded into one "avoided" rate. -->
-                    <Grid ColumnDefinitions="60,30,52,28,*" Margin="0,4,0,0">
+                    <Grid ColumnDefinitions="*,30,52,28,44" Margin="0,4,0,0">
                         <TextBlock Grid.Column="0" Classes="sub" Text="Defense" Margin="0,0,0,0"/>
                         <TextBlock Grid.Column="4" Classes="colhdr" Text="rate" HorizontalAlignment="Right"/>
                     </Grid>
-                    <Grid ColumnDefinitions="60,30,52,28,*">
+                    <Grid ColumnDefinitions="*,30,52,28,44">
                         <TextBlock Grid.Column="0" Classes="lbl" Text="Dodge/Miss"
                                    ToolTip.Tip="Incoming attacks avoided — the mob missed or we dodged."/>
                         <TextBlock Grid.Column="4" Classes="valr" Text="{Binding Combat.AvoidPercent, StringFormat='{}{0:F0}%'}"/>
