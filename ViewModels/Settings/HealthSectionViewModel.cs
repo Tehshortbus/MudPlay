@@ -82,13 +82,16 @@ public sealed partial class HealthSectionViewModel : SettingsSectionViewModel
 
     public HealthSectionViewModel() : this(
         AppServices.Current.Profile,
-        TryGetPlayerState()) { }
+        TryGetPlayerState(),
+        TryGetDeathFloor) { }
 
-    public HealthSectionViewModel(ProfileService profile, Game.PlayerState? state = null)
+    public HealthSectionViewModel(ProfileService profile, Game.PlayerState? state = null,
+        Func<int>? readDeathFloor = null)
     {
         ArgumentNullException.ThrowIfNull(profile);
         _profile = profile;
         _state = state;
+        _readDeathFloor = readDeathFloor;
         _profile.ProfileLoaded += OnProfileChanged;
         _profile.ProfileClosed += OnProfileClosedExternally;
         if (_state is not null) _state.PropertyChanged += OnStateChanged;
@@ -109,7 +112,34 @@ public sealed partial class HealthSectionViewModel : SettingsSectionViewModel
         catch { return null; }    // design-time
     }
 
+    // Active-BBS death floor (BbsProfile.PlayerDiesAtHp), read through the same
+    // ResolveActiveBbs path the engine's readDeathFloor uses so the Hang-up
+    // ticker's lower bound matches where the game actually kills the character.
+    private static int TryGetDeathFloor()
+    {
+        try { return AppServices.Current.ResolveActiveBbs()?.PlayerDiesAtHp ?? -25; }
+        catch { return -25; }    // design-time
+    }
+
+    private readonly Func<int>? _readDeathFloor;
     private readonly Game.PlayerState? _state;
+
+    // Lower bound for the Hang-up ticker — the bottom of the continuous HP scale,
+    // i.e. the per-BBS death floor. Value mode expresses it as raw HP; Percentage
+    // mode as a % of live max (rounded toward zero so the floor % still maps to a
+    // firing HP, not one tick past the floor). Without a live max (disconnected)
+    // Percentage mode falls back to a permissive -100 %; the engine's fire window
+    // never fires past the true floor regardless of what the ticker allows.
+    public int HangMinimum
+    {
+        get
+        {
+            int floor = Math.Min(0, _readDeathFloor?.Invoke() ?? -25);
+            if (HpModeAbsolute) return floor;
+            if (LiveMaxHp <= 0) return -100;
+            return (int)Math.Ceiling(floor * 100.0 / LiveMaxHp);
+        }
+    }
 
     // Live MaxHp from Game.PlayerState. 0 when no connection / no prompt observed
     // yet — conversion strings then render empty.
@@ -130,6 +160,7 @@ public sealed partial class HealthSectionViewModel : SettingsSectionViewModel
             OnPropertyChanged(nameof(MajorHealCombatTriggerConverted));
             OnPropertyChanged(nameof(RunIfBelowHpConverted));
             OnPropertyChanged(nameof(HangIfBelowHpConverted));
+            OnPropertyChanged(nameof(HangMinimum));   // % floor tracks live max
         }
         else if (e.PropertyName == nameof(Game.PlayerState.MaxMa))
         {
@@ -186,7 +217,7 @@ public sealed partial class HealthSectionViewModel : SettingsSectionViewModel
             RestMaxHp              = Clamp(RestMaxHp),
             RestIfBelowHp          = Clamp(RestIfBelowHp),
             RunIfBelowHp           = Clamp(RunIfBelowHp),
-            HangIfBelowHp          = Clamp(HangIfBelowHp),
+            HangIfBelowHp          = ClampHang(HangIfBelowHp),
             HealRestTrigger        = Clamp(HealRestTrigger),
             MinorHealCombatTrigger = Clamp(MinorHealCombatTrigger),
             MajorHealCombatTrigger = Clamp(MajorHealCombatTrigger),
@@ -226,6 +257,12 @@ public sealed partial class HealthSectionViewModel : SettingsSectionViewModel
     // for both modes keeps the engine code from having to remember which mode
     // produced the number.
     private static int Clamp(int value) => Math.Clamp(value, 0, 100_000);
+
+    // Hang-up is the one HP threshold that may go negative — in either mode it
+    // opens down to the per-BBS death floor (HangMinimum) so the user can set it
+    // inside the bleeding-out band, closer to death.
+    private int ClampHang(int value) =>
+        Math.Clamp(value, HangMinimum, 100_000);
 
     private void OnProfileChanged(CharacterProfile _) => ReloadAfterProfileSwap();
     private void OnProfileClosedExternally() => ReloadAfterProfileSwap();
@@ -307,13 +344,26 @@ public sealed partial class HealthSectionViewModel : SettingsSectionViewModel
     {
         if (value) HpModeAbsolute = false;
         RefreshAllHpConverted();
+        RefreshHangBounds();
         MarkDirty();
     }
     partial void OnHpModeAbsoluteChanged(bool value)
     {
         if (value) HpModePercentage = false;
         RefreshAllHpConverted();
+        RefreshHangBounds();
         MarkDirty();
+    }
+
+    // The Hang-up ticker's floor tracks the HP radial (raw death floor in Value
+    // mode, that floor as a % of max in Percentage mode). Re-raise it on a mode
+    // flip and snap the value back into the new range — the two modes' floors
+    // differ, so a value valid in one can sit past the other's bound.
+    private void RefreshHangBounds()
+    {
+        OnPropertyChanged(nameof(HangMinimum));
+        int clamped = ClampHang(HangIfBelowHp);
+        if (clamped != HangIfBelowHp) HangIfBelowHp = clamped;
     }
     partial void OnRestMaxHpChanged(int value)                { OnPropertyChanged(nameof(RestMaxHpConverted));              MarkDirty(); }
     partial void OnRestIfBelowHpChanged(int value)            { OnPropertyChanged(nameof(RestIfBelowHpConverted));          MarkDirty(); }

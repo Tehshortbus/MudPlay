@@ -2,6 +2,13 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0): **MAJOR** = whole-program refactor, **MINOR** = a large PR, **PATCH** = a small / bugfix PR.
 
+## 1.4.10
+
+The Health tab's "Hang up if below" ticker can now go negative — down to the realm death floor — so a player can set the emergency disconnect deep in the bleeding-out band, closer to death (issue #107).
+
+**Changed**
+- **The "Hang up if below" HP threshold now accepts negative values in *both* Percentage and Value mode, bounded at the per-BBS death floor (`BBS → Player dies at`).** Hitting 0 HP in MajorMUD only *drops* you — you're bleeding out but still revivable and still able to hang up — and death only happens at the realm's negative floor (default -25). HP% doesn't clamp at zero either: a dropped character reads a negative percentage, exactly as the `par` party display shows. Previously the hangup ticker floored at 0, so the only choices were "hang the instant I drop" or a positive-HP panic button; a player who wanted to squeeze out a few more rounds of party rescue before pulling the plug couldn't express it. The ticker is now one continuous scale from the top (100 %/max) down through 0 into the negatives, bottoming out at the death floor — set the hangup anywhere on it (e.g. hang at -15 HP, or the percentage that resolves there), in whichever unit you prefer. Sliding it to the floor makes an empty fire window, the natural "never hang up" position; **0 is a live trigger** ("hang the moment I drop"), no longer a disable. To turn the auto-hangup off entirely, use the existing **Disable hang-ups** master switch. The ticker's lower bound and the engine's fire window read the same active-BBS death floor, so the UI can never offer a value the engine would reject.
+
 ## 1.4.9
 
 Three heal/buff-engine fixes from live Mystic play: the auto-caster double-cast heals and buffs each round, drained kai into a "not enough kai" error, and ignored the per-set percentage-vs-value choice on the Health tab's HP / MA thresholds.

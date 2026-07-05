@@ -1082,15 +1082,20 @@ public sealed class HealthManagerTests
     }
 
     [Fact]
-    public void Hangup_ZeroSetting_Disabled()
+    public void Hangup_ZeroSetting_FiresAtZeroNotAbove()
     {
+        // 0 is a live trigger now — "hang the moment I drop", not a disable. The
+        // off-switch is GeneralSettings.DisableHangups. So at 1 HP (above 0) it
+        // holds; the instant HP hits 0 it fires.
         HealthSettings s = new() { HangIfBelowHp = 0 };
         using Harness h = new(s);
-        h.State.MaxHp = 200;
-        h.State.HasPromptData = true;
-        h.State.Hp = 1;        // would normally trigger
-
+        // Settle Hp before the prompt flips on (SetPrompt does this ordering), so
+        // the default Hp=0 doesn't trip the 0 trigger during setup.
+        h.SetPrompt(hp: 1, maxHp: 200);             // above the 0 trigger
         Assert.DoesNotContain("=x", h.SentLines);
+
+        h.State.Hp = 0;                             // dropped — at the trigger
+        Assert.Contains("=x", h.SentLines);
     }
 
     [Fact]
@@ -1212,6 +1217,108 @@ public sealed class HealthManagerTests
         // positive-band-only behavior — a bleeding-out char below 0 won't hang.
         using Harness h = new() { DeathFloor = 10 };
         h.SetPrompt(hp: -5, maxHp: 200);
+
+        Assert.DoesNotContain("=x", h.SentLines);
+    }
+
+    // ----- negative hangup, both modes (issue 107) ------------------
+    // The hang trigger is a point on one continuous HP scale that runs from the
+    // top down through 0 into the negatives — HP% goes negative while bleeding out
+    // (as par shows), so a percentage trigger goes negative just like an absolute
+    // one. Either way the user can set the hangup deep in the bleeding-out band,
+    // closer to death, bounded at the per-BBS death floor.
+
+    [Fact]
+    public void Hangup_PercentMode_NegativeTrigger_FiresInBleedOut()
+    {
+        // -6 % of 200 max = -12 HP trigger; floor -25. Dropping to -15 sits inside
+        // (-25, -12] and fires — a percentage hangup set past 0 into the bleed band.
+        HealthSettings s = new()
+        {
+            HpThresholdMode = ThresholdMode.Percentage,
+            HangIfBelowHp = -6,
+        };
+        using Harness h = new(s);
+        h.SetPrompt(hp: -15, maxHp: 200);
+
+        Assert.Contains("=x", h.SentLines);
+    }
+
+    [Fact]
+    public void Hangup_PercentMode_NegativeTrigger_AboveTrigger_NoFire()
+    {
+        // Above the -12 HP trigger the -6 % setting resolves to — hold the line.
+        HealthSettings s = new()
+        {
+            HpThresholdMode = ThresholdMode.Percentage,
+            HangIfBelowHp = -6,
+        };
+        using Harness h = new(s);
+        h.SetPrompt(hp: -10, maxHp: 200);   // -10 > -12 → no fire
+
+        Assert.DoesNotContain("=x", h.SentLines);
+    }
+
+    [Fact]
+    public void Hangup_ValueMode_NegativeTrigger_FiresInBleedOut()
+    {
+        // Trigger at -10, floor at -25: dropping to -15 sits inside (-25, -10] and
+        // fires — a hangup deliberately set past 0 into the bleeding-out band.
+        HealthSettings s = new()
+        {
+            HpThresholdMode = ThresholdMode.Absolute,
+            HangIfBelowHp = -10,
+        };
+        using Harness h = new(s);
+        h.SetPrompt(hp: -15, maxHp: 200);
+
+        Assert.Contains("=x", h.SentLines);
+    }
+
+    [Fact]
+    public void Hangup_ValueMode_NegativeTrigger_AboveTrigger_NoFire()
+    {
+        // Bleeding out, but above the chosen -10 trigger — hold the connection so
+        // a party heal / revive can still reach a character who set a deep hangup.
+        HealthSettings s = new()
+        {
+            HpThresholdMode = ThresholdMode.Absolute,
+            HangIfBelowHp = -10,
+        };
+        using Harness h = new(s);
+        h.SetPrompt(hp: -5, maxHp: 200);
+
+        Assert.DoesNotContain("=x", h.SentLines);
+    }
+
+    [Fact]
+    public void Hangup_ValueMode_ZeroTrigger_FiresAtZero()
+    {
+        // 0 is a live "hang the moment I drop" trigger, not a disable — the same
+        // in Value mode as Percentage.
+        HealthSettings s = new()
+        {
+            HpThresholdMode = ThresholdMode.Absolute,
+            HangIfBelowHp = 0,
+        };
+        using Harness h = new(s);
+        h.SetPrompt(hp: 0, maxHp: 200);
+
+        Assert.Contains("=x", h.SentLines);
+    }
+
+    [Fact]
+    public void Hangup_ValueMode_TriggerAtDeathFloor_Disabled()
+    {
+        // Sliding the trigger to the death floor collapses the fire window (empty),
+        // the natural "never hang up" position — a bleeding-out char won't drop.
+        HealthSettings s = new()
+        {
+            HpThresholdMode = ThresholdMode.Absolute,
+            HangIfBelowHp = -25,   // == default death floor
+        };
+        using Harness h = new(s);
+        h.SetPrompt(hp: -10, maxHp: 200);
 
         Assert.DoesNotContain("=x", h.SentLines);
     }

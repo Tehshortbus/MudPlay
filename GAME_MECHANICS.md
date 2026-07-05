@@ -120,6 +120,11 @@ it isn't here and you're unsure, ask.
   through at 0 HP or below**. So the emergency-hangup escape stays available all the way through the
   bleeding-out window — the client's low-HP auto-hangup fires down to (but not past) the BBS death
   floor, giving a dropped-but-not-yet-dead character a last chance to disconnect before dying.
+- **HP percentage goes negative while bleeding out.** HP% is a plain `hp / maxHp` ratio with no clamp
+  at zero, so a dropped character reads a **negative percentage** — the `par` party display shows it
+  as such (e.g. a member driven to −12/200 HP reads a negative HP%). So a percentage-based threshold
+  is a continuous scale from 100 % down through 0 % into the negatives, exactly like an absolute-HP
+  scale — the auto-hangup's "hang up if below" trigger can be set anywhere on it, including negative.
 
 **Death — the BBS negative-HP threshold** *([CONFIRMED])*
 - Each **BBS sets its own negative-HP death threshold**; not every BBS advertises the number. When
