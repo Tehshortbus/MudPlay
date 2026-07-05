@@ -115,6 +115,11 @@ it isn't here and you're unsure, ask.
   - a **healing spell** lifts their HP above 0.
 - While dropped, another player can also `drag <name>` — the dropped character then **follows
   wherever the dragging player moves**, their only way out of the room until aided or healed.
+- **A dropped character can still hang up.** Dropping blocks in-realm *actions* (move / fight / cast),
+  but the **carrier drop / main-menu exit** (the Game-Exit command, e.g. `=x` / `;o`) **still goes
+  through at 0 HP or below**. So the emergency-hangup escape stays available all the way through the
+  bleeding-out window — the client's low-HP auto-hangup fires down to (but not past) the BBS death
+  floor, giving a dropped-but-not-yet-dead character a last chance to disconnect before dying.
 
 **Death — the BBS negative-HP threshold** *([CONFIRMED])*
 - Each **BBS sets its own negative-HP death threshold**; not every BBS advertises the number. When
