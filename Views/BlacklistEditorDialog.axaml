@@ -29,7 +29,7 @@
     <Grid RowDefinitions="Auto,*,Auto,Auto,Auto" Margin="16">
 
         <TextBlock Grid.Row="0"
-                   Text="Blacklisted rooms are hidden from the map render and the room search. Edges into them render as dangling stubs."
+                   Text="Blacklisted rooms are hidden from the map render and the room search; edges into them render as dangling stubs. Tick &quot;Can't reach&quot; for dev / orphan rooms a normal player can never stand in — the navigation system then refuses to resolve your position into them."
                    TextWrapping="Wrap"
                    FontSize="11"
                    Foreground="{StaticResource ChromeFgMutedBrush}"
@@ -43,11 +43,12 @@
             <Grid RowDefinitions="Auto,*">
                 <!-- Column headers -->
                 <Grid Grid.Row="0"
-                      ColumnDefinitions="60,80,*"
+                      ColumnDefinitions="60,70,*,90"
                       Background="{StaticResource ChromeBgAltBrush}">
-                    <TextBlock Grid.Column="0" Classes="SectionHeader" Text="Map"  Margin="8,4"/>
-                    <TextBlock Grid.Column="1" Classes="SectionHeader" Text="Room" Margin="0,4"/>
-                    <TextBlock Grid.Column="2" Classes="SectionHeader" Text="Name" Margin="0,4"/>
+                    <TextBlock Grid.Column="0" Classes="SectionHeader" Text="Map"        Margin="8,4"/>
+                    <TextBlock Grid.Column="1" Classes="SectionHeader" Text="Room"       Margin="0,4"/>
+                    <TextBlock Grid.Column="2" Classes="SectionHeader" Text="Name"       Margin="0,4"/>
+                    <TextBlock Grid.Column="3" Classes="SectionHeader" Text="Can't reach" Margin="0,4"/>
                 </Grid>
                 <ListBox Grid.Row="1"
                          x:Name="EntriesList"
@@ -57,11 +58,15 @@
                          BorderThickness="0">
                     <ListBox.ItemTemplate>
                         <DataTemplate DataType="model:BlacklistedRoom">
-                            <Grid ColumnDefinitions="60,80,*">
+                            <Grid ColumnDefinitions="60,70,*,90">
                                 <TextBlock Grid.Column="0" Text="{Binding Map}"  Margin="0,2"/>
                                 <TextBlock Grid.Column="1" Text="{Binding Room}" Margin="0,2"/>
                                 <TextBlock Grid.Column="2" Text="{Binding Name}" Margin="0,2"
                                            TextTrimming="CharacterEllipsis"/>
+                                <CheckBox  Grid.Column="3"
+                                           IsChecked="{Binding CannotBeReached, Mode=TwoWay}"
+                                           HorizontalAlignment="Center"
+                                           ToolTip.Tip="Exclude this room from navigation position resolution (dev / unreachable room)."/>
                             </Grid>
                         </DataTemplate>
                     </ListBox.ItemTemplate>

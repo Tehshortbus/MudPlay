@@ -492,6 +492,21 @@ public sealed class RoomTracker
             return;
         }
 
+        // Same-named-area recovery — most commonly a client relaunch. Hydrate
+        // seeds Confirmed at the persisted LastKnownRoom (the last KNOWN unique
+        // room) and primes RecentSteps with the walk taken since. In an ambiguous
+        // area (e.g. Darkwood Forest, ~8 identical "Main Road" rooms) that anchor
+        // is stale — the player walked deeper before quitting — so the first login
+        // redisplay disagrees with it, yet no unique candidate and no null-name
+        // neighbour resolves it. A single mismatch only bumps a Suspect strike and
+        // never reaches the strike limit that would otherwise trigger replay, so
+        // the player sits stranded on the wrong room. Project the persisted trail
+        // forward from the history anchor here: when its endpoint matches the
+        // observation we land Confirmed at the true room. Harmless mid-walk — a
+        // stale non-anchor start over-walks to a room that won't match, so replay
+        // returns false and we fall through to Suspect exactly as before.
+        if (TryReplayRecover(observation, when)) return;
+
         EnterSuspect(when, $"observation mismatched from Confirmed; candidates={candidates.Count}");
     }
 
@@ -664,6 +679,11 @@ public sealed class RoomTracker
     // false.
     private bool TryReplayRecover(RoomObservation observation, DateTimeOffset when)
     {
+        // Nothing to replay is the common "no pending trail" case (any mismatch
+        // with a clean step list) — stay silent so it doesn't drown the Debug
+        // channel. Once there's a real trail to project we trace every abort
+        // below, so a "still lost after a client restart" bug report shows
+        // exactly where the projection diverged.
         if (_history.First is null) return false;
         if (_recentSteps.Count == 0) return false;
 
@@ -671,18 +691,44 @@ public sealed class RoomTracker
         // persisted steps.
         RoomKey start = _history.First.Value.Room;
         Room? cursor = _graph.GetRoom(start);
-        if (cursor is null) return false;
+        if (cursor is null)
+        {
+            _log?.Debug("RoomTracker",
+                $"Replay-recovery abort: history anchor {start} isn't in the active graph.");
+            return false;
+        }
 
         foreach (DirectionDto step in _recentSteps)
         {
-            if (step.Cardinal is not { } direction) return false;     // text exits aren't replayable through the graph
-            if (!cursor.Exits.TryGetValue(direction, out RoomExit exit)) return false;
+            if (step.Cardinal is not { } direction)     // text exits aren't replayable through the graph
+            {
+                _log?.Debug("RoomTracker",
+                    $"Replay-recovery abort at {cursor.Key}: step '{step.Command ?? "?"}' is a text exit, not graph-replayable.");
+                return false;
+            }
+            if (!cursor.Exits.TryGetValue(direction, out RoomExit exit))
+            {
+                _log?.Debug("RoomTracker",
+                    $"Replay-recovery abort: no {direction} exit from {cursor.Key} ({cursor.Name}).");
+                return false;
+            }
             Room? next = _graph.GetRoom(exit.Target);
-            if (next is null) return false;
+            if (next is null)
+            {
+                _log?.Debug("RoomTracker",
+                    $"Replay-recovery abort: {direction} from {cursor.Key} targets {exit.Target}, which isn't in the graph.");
+                return false;
+            }
             cursor = next;
         }
 
-        if (!MatchesPredicted(cursor, observation)) return false;
+        if (!MatchesPredicted(cursor, observation))
+        {
+            _log?.Debug("RoomTracker",
+                $"Replay-recovery no match: {start} + {_recentSteps.Count} steps → {cursor.Key} ({cursor.Name}), " +
+                $"but the redisplay was '{observation.Name}' — falling through to the mismatch path.");
+            return false;
+        }
 
         _log?.Log(LogSeverity.Info, "RoomTracker",
             $"Replay-recovery succeeded: {start} + {_recentSteps.Count} steps → {cursor.Key} ({cursor.Name}).");

@@ -876,10 +876,9 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
             if (CurrentMode == NavigationMode.LoopBuild
                 && LoopBuilder is { CanSave: true })
                 return true;
-            // Loop running: the runner has a loop in flight.
-            if (_services.LoopRunner.State is Game.Map.LoopState.Running
-                                          or Game.Map.LoopState.Approaching
-                                          or Game.Map.LoopState.Paused
+            // Loop running: the runner has a loop in flight (any non-Idle state,
+            // including the transient Recovering).
+            if (_services.LoopRunner.State != Game.Map.LoopState.Idle
                 && _services.LoopRunner.CurrentLoop is not null)
                 return true;
             // Auto-Lair build / running with at least one marker.
@@ -1017,9 +1016,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     private void GoToFavorite(FavoriteRowViewModel? row)
     {
         if (row is null) return;
-        if (_services.LoopRunner.State is Game.Map.LoopState.Running
-                                       or Game.Map.LoopState.Paused
-                                       or Game.Map.LoopState.Approaching)
+        if (_services.LoopRunner.State != Game.Map.LoopState.Idle)
             _services.LoopRunner.Stop("user walk-to from Favorites");
         if (_services.AutoLair.IsActive) _services.AutoLair.Stop();
         _services.Walker.WalkTo(row.Key);
@@ -1439,9 +1436,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         // walk-to takes precedence over the automation in the
         // background. Auto-Lair owns the walker for its routing, so
         // stopping it cleanly releases the walker for our WalkTo call.
-        if (_services.LoopRunner.State is Game.Map.LoopState.Running
-                                       or Game.Map.LoopState.Paused
-                                       or Game.Map.LoopState.Approaching)
+        if (_services.LoopRunner.State != Game.Map.LoopState.Idle)
             _services.LoopRunner.Stop("user walk-to from Navigation");
         if (_services.AutoLair.IsActive)
             _services.AutoLair.Stop();
@@ -2150,7 +2145,8 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         {
             Game.Map.LoopRunner runner = _services.LoopRunner;
             if (runner.State is Game.Map.LoopState.Running
-                              or Game.Map.LoopState.Approaching) return "Pause";
+                              or Game.Map.LoopState.Approaching
+                              or Game.Map.LoopState.Recovering) return "Pause";
             if (runner.State == Game.Map.LoopState.Paused) return "Run";
             // Auto-Lair gets Pause / Run too — the chip stays distinct
             // from the Lair-mode "Stop" so the user has both Pause (this
@@ -2458,11 +2454,12 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
             return;
         }
 
-        // Loop running or approaching → pause (assert user gate) and
+        // Loop running / approaching / recovering → pause (assert user gate) and
         // auto-open the builder seeded from the running loop so the
         // user can edit clicks before resuming.
         if (runner.State is Game.Map.LoopState.Running
-                         or Game.Map.LoopState.Approaching)
+                         or Game.Map.LoopState.Approaching
+                         or Game.Map.LoopState.Recovering)
         {
             _services.MovementCoordinator.AssertGate(Game.Map.MovementCoordinator.UserGate);
             OpenBuilderForRunningLoop();

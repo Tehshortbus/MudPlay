@@ -495,6 +495,90 @@ public sealed class RoomGraphManagerTests : IDisposable
         Assert.False(graph.IsUnique(new RoomKey(999, 999)));
     }
 
+    // ----- unreachable filter (CannotBeReached) ----------------------
+
+    // Same fixture as IsUnique_FalseForAmbiguousTuple: 2/1 and 2/3 are both
+    // "Hallway" + {N}, so they share a candidate bucket the ConfigureUnreachable
+    // predicate can prune.
+    private const string HallwayAmbiguousJson = """
+        [
+          { "Map Number": 2, "Room Number": 1, "Name": "Hallway",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "2/2", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 2, "Room Number": 3, "Name": "Hallway",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "2/4", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+        ]
+        """;
+
+    [Fact]
+    public void FindCandidates_NoPredicate_ReturnsWholeBucket()
+    {
+        SeedRooms("beta", HallwayAmbiguousJson);
+        GameDataCache cache = NewCache();
+        cache.SwitchSet("beta");
+        RoomGraphManager graph = new(cache);
+        graph.OnActiveSetChanged("beta");
+
+        var hits = graph.FindCandidates("Hallway", new HashSet<Direction> { Direction.N });
+        Assert.Equal(2, hits.Count);
+        Assert.Contains(new RoomKey(2, 1), hits);
+        Assert.Contains(new RoomKey(2, 3), hits);
+    }
+
+    [Fact]
+    public void FindCandidates_ExcludesUnreachable_ReturnsRemainingInOrder()
+    {
+        SeedRooms("beta", HallwayAmbiguousJson);
+        GameDataCache cache = NewCache();
+        cache.SwitchSet("beta");
+        RoomGraphManager graph = new(cache);
+        graph.OnActiveSetChanged("beta");
+
+        // Flag 2/3 unreachable → the ambiguous bucket collapses to the single
+        // reachable room, so the tracker can promote to it cleanly.
+        graph.ConfigureUnreachable(k => k.Equals(new RoomKey(2, 3)));
+
+        var hits = graph.FindCandidates("Hallway", new HashSet<Direction> { Direction.N });
+        Assert.Single(hits);
+        Assert.Equal(new RoomKey(2, 1), hits[0]);
+    }
+
+    [Fact]
+    public void FindCandidates_AllUnreachable_ReturnsEmpty()
+    {
+        SeedRooms("beta", HallwayAmbiguousJson);
+        GameDataCache cache = NewCache();
+        cache.SwitchSet("beta");
+        RoomGraphManager graph = new(cache);
+        graph.OnActiveSetChanged("beta");
+
+        // Both rooms flagged → the bucket resolves to zero, so the tracker
+        // replays / stays Lost rather than stranding the player.
+        graph.ConfigureUnreachable(_ => true);
+
+        Assert.Empty(graph.FindCandidates("Hallway", new HashSet<Direction> { Direction.N }));
+    }
+
+    [Fact]
+    public void FindCandidates_ClearingPredicate_RestoresFullBucket()
+    {
+        SeedRooms("beta", HallwayAmbiguousJson);
+        GameDataCache cache = NewCache();
+        cache.SwitchSet("beta");
+        RoomGraphManager graph = new(cache);
+        graph.OnActiveSetChanged("beta");
+
+        graph.ConfigureUnreachable(_ => true);
+        Assert.Empty(graph.FindCandidates("Hallway", new HashSet<Direction> { Direction.N }));
+
+        // Null predicate means "no exclusions" — the stored bucket returns as-is.
+        graph.ConfigureUnreachable(null);
+        Assert.Equal(2, graph.FindCandidates("Hallway", new HashSet<Direction> { Direction.N }).Count);
+    }
+
     // ----- swap reload -----------------------------------------------
 
     [Fact]

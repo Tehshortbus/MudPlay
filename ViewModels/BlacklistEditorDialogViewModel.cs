@@ -82,9 +82,11 @@ public sealed partial class BlacklistEditorDialogViewModel
         _store = store;
         _graph = graph;
 
-        // Snapshot the store's current entries into the working copy.
+        // Snapshot the store's current entries into the working copy —
+        // preserve CannotBeReached so an untouched entry round-trips its flag
+        // when the user hits Save.
         foreach (BlacklistedRoom e in _store.Entries)
-            Entries.Add(new BlacklistedRoom(e.Map, e.Room, e.Name));
+            Entries.Add(new BlacklistedRoom(e.Map, e.Room, e.Name, e.CannotBeReached));
 
         // The Remove-selected button enables off the live selection count.
         SelectedEntries.CollectionChanged += (_, _) => OnPropertyChanged(nameof(CanRemoveSelected));

@@ -517,6 +517,37 @@ public sealed class RoomTrackerTests : IDisposable
     }
 
     [Fact]
+    public void ReplayRecover_OnLogin_LandsTrueRoom_InSameNamedArea()
+    {
+        // Client-restart recovery in an ambiguous area. The last KNOWN unique
+        // room was 2/2 (Hallway + {S}); the player then walked S into 2/1
+        // (Hallway + {N}) — which is name+exit-ambiguous with 2/3 — before
+        // quitting. On relaunch Hydrate seeds Confirmed at the persisted 2/2
+        // anchor and primes the pending step [S]. The first login redisplay
+        // (the real room, 2/1) disagrees with the anchor, no unique candidate
+        // resolves it, and a lone Suspect strike would strand the player.
+        // Projecting the persisted trail forward (2/2 + S → 2/1) recovers the
+        // true room.
+        RoomTracker tracker = NewTracker();
+        var profile = new FujinTerm.Models.Profile.CharacterProfile
+        {
+            LastKnownRoom = new FujinTerm.Models.Profile.RoomRef(2, 2),
+            RecentSteps = new List<FujinTerm.Models.Profile.DirectionDto>
+            {
+                new(Direction.S),
+            },
+        };
+        tracker.Hydrate(profile);
+        Assert.Equal(new RoomKey(2, 2), tracker.State.CurrentRoom!.Key);
+
+        // The redisplay of the room the player is actually standing in.
+        tracker.NoteRoomObserved(Obs("Hallway", Direction.N));
+
+        Assert.Equal(RoomConfidence.Confirmed, tracker.State.Confidence);
+        Assert.Equal(new RoomKey(2, 1), tracker.State.CurrentRoom!.Key);
+    }
+
+    [Fact]
     public void ConfirmedTransition_ClearsRecentStepsOnProfile()
     {
         RoomTracker tracker = NewTracker();

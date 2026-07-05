@@ -42,6 +42,14 @@ public sealed class RoomBlacklistStore
     // True when key is in the blacklist.
     public bool IsBlacklisted(RoomKey key) => _entries.ContainsKey(key);
 
+    // True when key is blacklisted AND flagged CannotBeReached — a room the
+    // RoomTracker must never resolve the player's position into (dev / orphan
+    // rooms with no walkable inbound edge). Plain-blacklisted rooms return false
+    // here; only the explicit flag counts. Bound to
+    // RoomGraphManager.ConfigureUnreachable so candidate resolution skips them.
+    public bool IsUnreachable(RoomKey key)
+        => _entries.TryGetValue(key, out BlacklistedRoom? e) && e.CannotBeReached;
+
     // Add key with display name. Idempotent — re-adding an existing key updates
     // the stored name and persists. Fires Changed on insertion or name update;
     // no-ops when the existing entry is identical.
@@ -79,7 +87,7 @@ public sealed class RoomBlacklistStore
         foreach (BlacklistedRoom e in newEntries)
         {
             RoomKey key = new(e.Map, e.Room);
-            _entries[key] = new BlacklistedRoom(e.Map, e.Room, e.Name);
+            _entries[key] = new BlacklistedRoom(e.Map, e.Room, e.Name, e.CannotBeReached);
         }
         Persist();
         Changed?.Invoke();

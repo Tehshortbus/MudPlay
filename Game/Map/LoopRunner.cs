@@ -57,6 +57,25 @@ public sealed class LoopRunner : IRecoverableEngine
     // to send the loop's first step before the walker has actually finished.
     private bool _pausedFromApproach;
 
+    // Set when the walker fires Finished for the approach while the runner is still
+    // parked in the paused-from-approach window (its own resume handler ran before
+    // ours in the coordinator's subscriber list, so it completed the walk and reset
+    // to Idle before we could hand off). Buffers the arrival so the resume path
+    // enters the circle instead of restoring Approaching and waiting for a Finished
+    // that will never re-fire. (Live bug: loop "walks to the first room then just
+    // sits there" until a second Run click.)
+    private bool _approachFinishedWhilePaused;
+
+    // Bounded auto-recovery counter. When a mid-circuit step blocks at its source
+    // room, or the recovery gate hands back a room that isn't the step's expected
+    // target, the runner re-determines its position and reroutes onto the nearest
+    // loop segment (see EnterRecovery) instead of failing straight to Idle. This
+    // caps how many consecutive recoveries we attempt before giving up; it resets
+    // to 0 on any forward progress (AdvanceStep) and on a fresh (non-recovery)
+    // Start, so a healthy loop always has the full budget.
+    private int _recoverAttempts;
+    private const int MaxRecoverAttempts = 3;
+
     // Waypoint the walker is currently approaching during LoopState.Approaching.
     // Null when not approaching.
     private RoomKey? _approachTarget;
@@ -205,10 +224,13 @@ public sealed class LoopRunner : IRecoverableEngine
             return;
         }
 
+        // Desync: the gate recovered us to a real room that isn't the step's
+        // expected target. Rather than fail to Idle, reroute the loop from where we
+        // actually ended up (the gate call is terminal — FinishTier3Success does
+        // nothing after this, so detaching + re-planning here is safe).
         _log?.Warn("LoopRunner",
-            $"ResumeAfterRecovery: desync at step {_index + 1} — recovered at {recoveredAnchor} but expected {_expectedMoveTarget}; failing loop");
-        RaiseAfterReset(new LoopEvent(LoopEventKind.Failed,
-            $"step {_index + 1} desynced (recovered at {recoveredAnchor}, expected {_expectedMoveTarget})"));
+            $"ResumeAfterRecovery: desync at step {_index + 1} — recovered at {recoveredAnchor} but expected {_expectedMoveTarget}; rerouting from re-determined room");
+        EnterRecovery($"step {_index + 1} desynced (recovered at {recoveredAnchor})");
     }
 
     public void AbortFromRecoveryFailure(string detail)
@@ -307,7 +329,15 @@ public sealed class LoopRunner : IRecoverableEngine
 
     // Start running loop. If a loop is already running, it is stopped first. Returns
     // false when the loop is empty.
-    public bool Start(Loop loop)
+    public bool Start(Loop loop) => StartInternal(loop, isRecovery: false);
+
+    // Shared engine for both a fresh user Start and an auto-recovery reroute. On a
+    // recovery reroute (isRecovery) we deliberately keep the session-scoped state —
+    // the bounded _recoverAttempts budget and the lap history / first-waypoint flag
+    // — so the reroute continues the same lap instead of re-arming ReachedFirstWaypoint
+    // (which would re-fire the party @reset side effect on every recovery). EnterRecovery
+    // has already detached the gate + cleared the in-flight step by the time we land here.
+    private bool StartInternal(Loop loop, bool isRecovery)
     {
         ArgumentNullException.ThrowIfNull(loop);
         if (loop.Waypoints.Count < 2)
@@ -317,16 +347,26 @@ public sealed class LoopRunner : IRecoverableEngine
             return false;
         }
 
-        if (State is LoopState.Running or LoopState.Paused or LoopState.Approaching)
+        if (isRecovery)
         {
             _log?.Info("LoopRunner",
-                $"Start: superseding active loop '{_loop?.Name ?? "?"}' (state={State}) with '{loop.Name}'");
-            Stop("superseded by new loop");
+                $"recovery reroute: re-planning loop '{loop.Name}' from {_tracker.State.CurrentRoom?.Key.ToString() ?? "(unknown)"}");
         }
         else
         {
-            _log?.Info("LoopRunner",
-                $"Start: loop='{loop.Name}' waypoints={loop.Waypoints.Count} from={_tracker.State.CurrentRoom?.Key.ToString() ?? "(unknown)"}");
+            _recoverAttempts = 0;
+            if (State is LoopState.Running or LoopState.Paused
+                       or LoopState.Approaching or LoopState.Recovering)
+            {
+                _log?.Info("LoopRunner",
+                    $"Start: superseding active loop '{_loop?.Name ?? "?"}' (state={State}) with '{loop.Name}'");
+                Stop("superseded by new loop");
+            }
+            else
+            {
+                _log?.Info("LoopRunner",
+                    $"Start: loop='{loop.Name}' waypoints={loop.Waypoints.Count} from={_tracker.State.CurrentRoom?.Key.ToString() ?? "(unknown)"}");
+            }
         }
 
         _loop = loop;
@@ -334,11 +374,14 @@ public sealed class LoopRunner : IRecoverableEngine
         _stepInFlight = false;
         _awaitingPromptForCommand = false;
         _expectedMoveTarget = null;
-        _firstWaypointReached = false;
-        _lapDurations.Clear();
         _approachTarget = null;
         _circleStartRoom = null;
         _expandedSteps = new List<LoopStep>();
+        if (!isRecovery)
+        {
+            _firstWaypointReached = false;
+            _lapDurations.Clear();
+        }
 
         RoomKey? currentKey = _tracker.State.CurrentRoom?.Key;
 
@@ -514,24 +557,40 @@ public sealed class LoopRunner : IRecoverableEngine
 
     private void OnWalkerEvent(WalkEvent e)
     {
-        if (State != LoopState.Approaching) return;
+        // The runner cares about walker events during two shapes of "approach in
+        // flight": the live LoopState.Approaching, and the paused-from-approach
+        // window where a gate flipped us to Paused while the walker was still
+        // driving. In the latter, if the walker's own resume handler ran before
+        // ours it completes the walk and fires Finished while we're still Paused —
+        // dropping it here strands the run, so buffer it for the resume path.
+        bool approaching = State == LoopState.Approaching;
+        bool pausedMidApproach = State == LoopState.Paused && _pausedFromApproach;
+        if (!approaching && !pausedMidApproach) return;
         if (_approachTarget is null) return;
 
         switch (e.Kind)
         {
             case WalkEventKind.Finished:
-                // Walker arrived at the chosen waypoint. Rotation
-                // already happened in Start — just hand off into the
-                // circle.
-                _log?.Info("LoopRunner",
-                    $"approach finished at {_approachTarget}; entering circle");
                 _approachTarget = null;
+                if (pausedMidApproach)
+                {
+                    // Coordinator is already unpaused (the walker only finishes
+                    // while Walking), but our OnPauseChanged resume hasn't run yet.
+                    // Buffer the arrival; the resume branch enters the circle.
+                    _log?.Info("LoopRunner",
+                        "approach finished during pause window; deferring circle entry to resume");
+                    _approachFinishedWhilePaused = true;
+                    break;
+                }
+                // Walker arrived at the chosen waypoint. Rotation already happened
+                // in Start — just hand off into the circle.
+                _log?.Info("LoopRunner", "approach finished; entering circle");
                 BeginCircle();
                 break;
             case WalkEventKind.Failed:
                 // Walker gave up (tier-3 abort, blocked, no path, etc.).
                 _log?.Warn("LoopRunner",
-                    $"approach to {_approachTarget} failed: {e.Detail}");
+                    $"approach failed: {e.Detail}");
                 RaiseAfterReset(new LoopEvent(LoopEventKind.Failed,
                     $"approach failed: {e.Detail}"));
                 break;
@@ -797,6 +856,14 @@ public sealed class LoopRunner : IRecoverableEngine
 
     private void OnTrackerStateChanged(RoomTransition t)
     {
+        // While recovering we're waiting for the tracker to (re)confirm a room so
+        // we can reroute onto the nearest loop segment. Handle that before the
+        // normal running-step confirmation logic (which gates on Running).
+        if (State == LoopState.Recovering)
+        {
+            OnRecoveringTransition(t);
+            return;
+        }
         if (State != LoopState.Running || !_stepInFlight) return;
         if (_loop is null || _index >= _expandedSteps.Count) return;
         if (_expandedSteps[_index] is not MoveLoopStep) return;
@@ -829,13 +896,15 @@ public sealed class LoopRunner : IRecoverableEngine
         else if (t.PreviousRoom is not null
             && key.Equals(t.PreviousRoom.Key))
         {
-            // Blocked at source — fail the loop. The walker has a
-            // single-retry policy; for loop runs we prefer to bail
-            // and surface than to silently retry forever.
+            // Blocked at source — the move didn't take (a mob in the way, lag, a
+            // transient obstruction). Instead of failing straight to Idle, enter
+            // bounded auto-recovery: re-determine where we are and reroute onto the
+            // loop from there. Since we're confirmed back at the source (which is on
+            // the loop), the reroute re-sends this step; a persistent block trips
+            // the MaxRecoverAttempts cap and finally surfaces as Failed.
             _log?.Warn("LoopRunner",
-                $"step {_index + 1} blocked at source {key}; expected {_expectedMoveTarget}; failing loop");
-            RaiseAfterReset(new LoopEvent(LoopEventKind.Failed,
-                $"step {_index + 1} blocked"));
+                $"step {_index + 1} blocked at source {key}; expected {_expectedMoveTarget}; entering recovery");
+            EnterRecovery($"step {_index + 1} blocked at {key}");
         }
         else
         {
@@ -861,8 +930,87 @@ public sealed class LoopRunner : IRecoverableEngine
         AdvanceStep();
     }
 
+    // Auto-recovery entry: a mid-circuit step landed somewhere we didn't plan for
+    // (blocked at the source room, or the recovery gate handed back a room that
+    // isn't the step's expected target). Rather than fail to Idle, re-determine
+    // where we actually are and reroute onto the nearest loop segment. When the
+    // tracker already knows the room we reroute immediately; when it's unsure we
+    // send a bare `look` and let the echo (re)confirm the room in
+    // OnRecoveringTransition. Bounded by MaxRecoverAttempts so a persistent block
+    // eventually surfaces as Failed instead of looping forever.
+    private void EnterRecovery(string reason)
+    {
+        if (_loop is null)
+        {
+            RaiseAfterReset(new LoopEvent(LoopEventKind.Failed, reason));
+            return;
+        }
+
+        _recoverAttempts++;
+        if (_recoverAttempts > MaxRecoverAttempts)
+        {
+            _log?.Warn("LoopRunner",
+                $"recovery exhausted after {MaxRecoverAttempts} attempts; failing loop. last={reason}");
+            RaiseAfterReset(new LoopEvent(LoopEventKind.Failed,
+                $"recovery exhausted: {reason}"));
+            return;
+        }
+
+        // Drop the gate + any in-flight step; we're re-planning from scratch.
+        _recovery?.Detach();
+        StopDelayTimer();
+        _stepInFlight = false;
+        _awaitingPromptForCommand = false;
+        _expectedMoveTarget = null;
+        _approachTarget = null;
+        State = LoopState.Recovering;
+        Raise(new LoopEvent(LoopEventKind.Paused, $"recovering: {reason}"));
+
+        // Tracker already sure of the room → reroute now. Issuing a `look` here
+        // would race the reroute's first move: the echo re-prints the current room
+        // and would trip the tracker into Suspect right after we send that move.
+        if (_tracker.State.Confidence == RoomConfidence.Confirmed
+            && _tracker.State.CurrentRoom is not null)
+        {
+            _log?.Warn("LoopRunner",
+                $"recovery {_recoverAttempts}/{MaxRecoverAttempts}: {reason}; rerouting from {_tracker.State.CurrentRoom.Key}");
+            RerouteFromCurrentRoom();
+            return;
+        }
+
+        // Position unknown — ask the game to re-print the room and wait for the
+        // tracker to (re)confirm before rerouting. Bare `look` has no target, so
+        // the outbound peek-suppression pattern won't fire on it.
+        _log?.Warn("LoopRunner",
+            $"recovery {_recoverAttempts}/{MaxRecoverAttempts}: {reason}; issuing look to re-determine room");
+        Write(Encoding.Latin1.GetBytes("look\r"), "recovery look");
+    }
+
+    // Reroute the active loop from wherever the tracker now says we are — picks the
+    // closest waypoint, re-approaches if needed, and continues the circle. Reuses
+    // Start's planning; isRecovery keeps the bounded budget + lap continuity.
+    private void RerouteFromCurrentRoom()
+    {
+        if (_loop is null) return;
+        StartInternal(_loop, isRecovery: true);
+    }
+
+    // Tracker transitions arriving while State == Recovering: once it firmly
+    // (re)confirms a room, reroute onto the nearest loop segment from there.
+    private void OnRecoveringTransition(RoomTransition t)
+    {
+        if (t.NewConfidence != RoomConfidence.Confirmed) return;
+        if (t.NewRoom is null) return;
+        _log?.Info("LoopRunner",
+            $"recovery: re-determined room {t.NewRoom.Key}; rerouting");
+        RerouteFromCurrentRoom();
+    }
+
     private void AdvanceStep()
     {
+        // Forward progress → refresh the recovery budget so an unrelated block
+        // later in the lap gets the full retry allowance again.
+        _recoverAttempts = 0;
         _index++;
         Raise(new LoopEvent(LoopEventKind.StepCompleted, $"{_index}/{_expandedSteps.Count}"));
         SendNextStep();
@@ -901,14 +1049,24 @@ public sealed class LoopRunner : IRecoverableEngine
         }
         if (State == LoopState.Paused && _pausedFromApproach)
         {
-            // Walker is still mid-approach (or finished it during the
-            // pause window) — clear our local pause flag and put the
-            // runner back into Approaching so OnWalkerEvent.Finished
-            // still hands off into BeginCircle correctly. Don't send
-            // any loop steps; the walker owns the wire until it's
-            // done with the approach.
-            _log?.Info("LoopRunner", "coordinator resumed during approach");
             _pausedFromApproach = false;
+            if (_approachFinishedWhilePaused)
+            {
+                // The walker completed the approach during the pause window (its
+                // resume handler fired Finished before ours). Enter the circle now
+                // instead of restoring Approaching — the walker is done and won't
+                // re-fire Finished. This is the fix for the "loop walks to the
+                // first room then sits idle until a second Run" bug.
+                _approachFinishedWhilePaused = false;
+                _log?.Info("LoopRunner",
+                    "coordinator resumed; approach already finished, entering circle");
+                BeginCircle();
+                return;
+            }
+            // Walker is still mid-approach — put the runner back into Approaching
+            // so OnWalkerEvent.Finished still hands off into BeginCircle correctly.
+            // Don't send any loop steps; the walker owns the wire until it's done.
+            _log?.Info("LoopRunner", "coordinator resumed during approach");
             State = LoopState.Approaching;
             Raise(new LoopEvent(LoopEventKind.Resumed, "coordinator resumed (approach)"));
             return;
@@ -965,6 +1123,8 @@ public sealed class LoopRunner : IRecoverableEngine
         _circleStartRoom = null;
         _firstWaypointReached = false;
         _pausedFromApproach = false;
+        _approachFinishedWhilePaused = false;
+        _recoverAttempts = 0;
         _lapDurations.Clear();
         _lapStartedAt = default;
         State = LoopState.Idle;
@@ -995,6 +1155,12 @@ public enum LoopState
     // starting waypoint. Loop runner has nothing on the wire yet; transitions to
     // Running when the walker fires Finished.
     Approaching = 3,
+    // Transient auto-recovery: a mid-circuit step didn't land where planned, so
+    // the runner is re-determining its position (immediately from a confirmed
+    // room, or after a bare `look`) before rerouting onto the nearest loop segment.
+    // Treated as an active, in-flight state everywhere (never Idle); resolves back
+    // into Approaching / Running via StartInternal, or fails after MaxRecoverAttempts.
+    Recovering = 4,
 }
 
 public enum LoopEventKind
