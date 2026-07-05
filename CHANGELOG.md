@@ -2,6 +2,16 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0): **MAJOR** = whole-program refactor, **MINOR** = a large PR, **PATCH** = a small / bugfix PR.
 
+## 1.4.4
+
+Four fixes from live play: combat follow-up attacks, room tracking on login, the loop-save prompt, and the navigation activity chip.
+
+**Fixed**
+- **With "attack after last party member" on, your follow-up swing never fired for a member who showed a family name.** MajorMUD announces a party member's actions (moves-to-attack, chat) by their *given* name alone, but the `par` roster stores the full *"Given Family"* name — so a member called "Raijin WuzHere" in the roster announces simply as "Raijin". The combat engine compared the announced given name against the full roster name, which never matched, so your character stood idle instead of attacking after them (the same mismatch also broke target-priority "follow this member/leader"). Roster matching now normalises both sides to the given name (the first whitespace-delimited token), so the follow-up attack and follow-target both fire whether or not the member carries a family name.
+- **On login your location came up "completely unknown" even while you stood in a known room.** The room tracker is hydrated to your last-known room (Confirmed) on profile load, then the client auto-enters the realm by sending the configured entry command — default `E`, which collides with the cardinal *East*. That keystroke rides the same outbound observer that sniffs your manual movement, so the entry `E` was read as an East step and walked the freshly-hydrated tracker off the real login room (Confirmed → Pending → Suspect ×3 → Lost). The main-menu entry automation now flags that one keystroke to the observer as a menu selection rather than a move, so the login room stays confirmed and navigation knows where you are immediately.
+- **Saving a running loop falsely prompted "you changed the loop — run the new one?" when you hadn't edited a thing.** The prompt compared the editor's rows against the runner's *live* loop, but the runner rotates its waypoint list in place as it walks (and re-rotates on restart), so an untouched loop read as changed just from having been walked. The prompt now gates on whether the editor's own steps actually differ from what you opened, so it only appears when you genuinely edited the route.
+- **The Navigation activity chip claimed "looping and moving" while the character stood still.** When a loop failed, the runner raised its Failed event *before* resetting its own state, so the navigation view read the stale Running/looping state and pinned the chip on "Looping" even though the run had stopped. The runner now resets to Idle before raising Failed, so the chip reflects the real stopped state.
+
 ## 1.4.3
 
 A per-BBS death-floor setting that keeps the emergency auto-hangup firing through the whole bleeding-out window instead of giving up at 0 HP — and learns the realm's true floor from your own slow deaths.

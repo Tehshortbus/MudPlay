@@ -207,17 +207,15 @@ public sealed class LoopRunner : IRecoverableEngine
 
         _log?.Warn("LoopRunner",
             $"ResumeAfterRecovery: desync at step {_index + 1} — recovered at {recoveredAnchor} but expected {_expectedMoveTarget}; failing loop");
-        Raise(new LoopEvent(LoopEventKind.Failed,
+        RaiseAfterReset(new LoopEvent(LoopEventKind.Failed,
             $"step {_index + 1} desynced (recovered at {recoveredAnchor}, expected {_expectedMoveTarget})"));
-        Reset();
     }
 
     public void AbortFromRecoveryFailure(string detail)
     {
         _log?.Warn("LoopRunner",
             $"AbortFromRecoveryFailure: loop='{_loop?.Name ?? "?"}' at step {_index + 1}; {detail}");
-        Raise(new LoopEvent(LoopEventKind.Failed, $"tier3 recovery failed: {detail}"));
-        Reset();
+        RaiseAfterReset(new LoopEvent(LoopEventKind.Failed, $"tier3 recovery failed: {detail}"));
     }
 
     // ----- public surface --------------------------------------------
@@ -391,9 +389,8 @@ public sealed class LoopRunner : IRecoverableEngine
             // No reachable waypoint — bail; gate would fail us anyway.
             _log?.Warn("LoopRunner",
                 $"Start failed: no reachable waypoint from {currentKey} (graph disconnected, all behind avoided rooms, or filter excludes them)");
-            Raise(new LoopEvent(LoopEventKind.Failed,
+            RaiseAfterReset(new LoopEvent(LoopEventKind.Failed,
                 $"no reachable waypoint from {currentKey}"));
-            Reset();
             return false;
         }
 
@@ -535,9 +532,8 @@ public sealed class LoopRunner : IRecoverableEngine
                 // Walker gave up (tier-3 abort, blocked, no path, etc.).
                 _log?.Warn("LoopRunner",
                     $"approach to {_approachTarget} failed: {e.Detail}");
-                Raise(new LoopEvent(LoopEventKind.Failed,
+                RaiseAfterReset(new LoopEvent(LoopEventKind.Failed,
                     $"approach failed: {e.Detail}"));
-                Reset();
                 break;
         }
     }
@@ -632,9 +628,8 @@ public sealed class LoopRunner : IRecoverableEngine
         {
             _log?.Warn("LoopRunner",
                 $"SendMove fail: no exit {step.Direction} from {_tracker.State.CurrentRoom?.Key.ToString() ?? "(unknown)"} on step {_index + 1}/{_expandedSteps.Count}");
-            Raise(new LoopEvent(LoopEventKind.Failed,
+            RaiseAfterReset(new LoopEvent(LoopEventKind.Failed,
                 $"no exit {step.Direction} from {_tracker.State.CurrentRoom?.Key.ToString() ?? "(unknown)"}"));
-            Reset();
             return;
         }
 
@@ -711,8 +706,7 @@ public sealed class LoopRunner : IRecoverableEngine
     private void FailStep(string reason)
     {
         _log?.Warn("LoopRunner", $"SendMove fail at step {_index + 1}/{_expandedSteps.Count}: {reason}");
-        Raise(new LoopEvent(LoopEventKind.Failed, reason));
-        Reset();
+        RaiseAfterReset(new LoopEvent(LoopEventKind.Failed, reason));
     }
 
     private void SendCommand(CommandLoopStep step)
@@ -840,9 +834,8 @@ public sealed class LoopRunner : IRecoverableEngine
             // and surface than to silently retry forever.
             _log?.Warn("LoopRunner",
                 $"step {_index + 1} blocked at source {key}; expected {_expectedMoveTarget}; failing loop");
-            Raise(new LoopEvent(LoopEventKind.Failed,
+            RaiseAfterReset(new LoopEvent(LoopEventKind.Failed,
                 $"step {_index + 1} blocked"));
-            Reset();
         }
         else
         {
@@ -978,6 +971,19 @@ public sealed class LoopRunner : IRecoverableEngine
     }
 
     private void Raise(LoopEvent evt) => Event?.Invoke(evt);
+
+    // Terminal-failure raise: Reset() to Idle FIRST, then raise. Consumers that
+    // re-read runner state inside the event handler (NavigationViewModel does so
+    // synchronously) must see the final Idle state — otherwise a Failed raised
+    // while still Running pins the Nav "Looping/moving" chip and Reset() fires no
+    // follow-up event to clear it. Mirrors Stop's reset-then-raise ordering.
+    // Callers build the LoopEvent as the argument, so its Detail (which reads
+    // live step state like _index) is frozen before Reset() wipes that state.
+    private void RaiseAfterReset(LoopEvent evt)
+    {
+        Reset();
+        Raise(evt);
+    }
 }
 
 public enum LoopState

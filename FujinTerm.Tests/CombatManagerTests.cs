@@ -595,6 +595,27 @@ public sealed class CombatManagerTests
     }
 
     [Fact]
+    public void AttackTimingLastParty_FullNamedMember_MatchedByGivenName()
+    {
+        // Regression: PartyMember.Name holds the full `par` name
+        // ("Raijin WuzHere") while the announce line carries only the given
+        // name ("Raijin"). AttackLastParty must match by given name — a
+        // full-vs-given mismatch meant the re-fire silently never happened
+        // and the character stopped attacking after the party member.
+        using Harness h = new();
+        h.Settings.AttackTiming = AttackTiming.AttackLastParty;
+        h.Party.Members.Add(new PartyMember { Name = "Raijin WuzHere" });
+        h.AddMonster(1, "giant rat", killable: true);
+
+        h.Feed("Also here: giant rat.");
+        Assert.Single(h.Sent);
+
+        h.Feed("Raijin moves to attack giant rat.");
+        Assert.Equal(2, h.Sent.Count);
+        Assert.Equal("a giant rat", h.LastSent);
+    }
+
+    [Fact]
     public void AttackTimingAfter_RefiresOnNamedPlayerOnly()
     {
         using Harness h = new();
@@ -741,6 +762,29 @@ public sealed class CombatManagerTests
         h.Settings.TargetPriority = TargetPriority.FollowLeader;
         h.Party.LeaderName = "Boss";
         h.Party.Members.Add(new PartyMember { Name = "Boss" });
+        h.AddMonster(1, "kobold thief", killable: true, allowNoPrefix: false,
+            "angry", "large");
+
+        h.Feed("Also here: angry kobold thief, large kobold thief.");
+        Assert.Equal("a angry kobold thief", h.LastSent);
+
+        h.Feed("Boss moves to attack large kobold thief.");
+
+        Assert.Equal(2, h.Sent.Count);
+        Assert.Equal("a large kobold thief", h.LastSent);
+        Assert.Equal("large kobold thief", h.Combat.CurrentTarget);
+    }
+
+    [Fact]
+    public void TargetPriorityFollowLeader_FullNamedLeader_MatchedByGivenName()
+    {
+        // LeaderName is the full `par` name; the announce carries the given
+        // name. FollowLeader must normalise both to the given name or it never
+        // recognises a full-named leader's target announce.
+        using Harness h = new();
+        h.Settings.TargetPriority = TargetPriority.FollowLeader;
+        h.Party.LeaderName = "Boss McBossface";
+        h.Party.Members.Add(new PartyMember { Name = "Boss McBossface" });
         h.AddMonster(1, "kobold thief", killable: true, allowNoPrefix: false,
             "angry", "large");
 

@@ -221,6 +221,40 @@ public sealed class OutboundMovementObserverTests : IDisposable
         Assert.Equal(new RoomKey(1, 2), tracker.State.CurrentRoom!.Key);
     }
 
+    // ----- realm-entry suppression -----------------------------------
+
+    [Fact]
+    public void SuppressNextMove_DropsEntryKeystroke_TrackerStaysConfirmed()
+    {
+        // Realm-entry keystroke "E" collides with cardinal East. On login the
+        // tracker is freshly hydrated to the confirmed login room; without
+        // suppression the observer would read "E" as an East move and walk the
+        // tracker off it (Confirmed → Pending → Suspect ×3 → Lost).
+        (RoomTracker tracker, OutboundMovementObserver observer) = NewObserver();
+        tracker.SetLocated(new RoomKey(1, 1));
+
+        observer.SuppressNextMove();
+        observer.ObserveOutbound(Cmd("e"));
+
+        Assert.Equal(RoomConfidence.Confirmed, tracker.State.Confidence);
+        Assert.Equal(new RoomKey(1, 1), tracker.State.CurrentRoom!.Key);
+    }
+
+    [Fact]
+    public void SuppressNextMove_ConsumesOnlyOneCommand()
+    {
+        (RoomTracker tracker, OutboundMovementObserver observer) = NewObserver();
+        tracker.SetLocated(new RoomKey(1, 1));
+
+        observer.SuppressNextMove();
+        observer.ObserveOutbound(Cmd("e"));
+        Assert.Equal(RoomConfidence.Confirmed, tracker.State.Confidence);
+
+        // Suppression spent — a genuine cardinal now reaches the tracker.
+        observer.ObserveOutbound(Cmd("n"));
+        Assert.Equal(RoomConfidence.Pending, tracker.State.Confidence);
+    }
+
     // ----- safety guards ---------------------------------------------
 
     [Fact]
