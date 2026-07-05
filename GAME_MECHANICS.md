@@ -91,6 +91,50 @@ it isn't here and you're unsure, ask.
 - **[OBSERVED]** `Your fists have no effect against this monster!` — you're swinging bare-handed
   (no weapon in hand, or it left your hand).
 
+## Vitality — HP, dropping, and death
+
+**Max-HP sources** *([CONFIRMED])*
+- **Class** sets the base health rolls; **race** applies an adjustment to those rolls; **level**
+  scales max HP within the bounds those two establish. Same class differs by race, and climbs with
+  level between the race/class-determined floor and ceiling.
+- The **Health stat** scales **HP regen** (higher Health → faster natural recovery), not the max
+  itself — it's the regen rate, on a scale, not a cap.
+
+**Positive HP — fully functional** *([CONFIRMED])*
+- At any positive HP (**1 … max**) the character keeps **every** normal action; HP level alone
+  imposes no restriction. Ailments / status afflictions are a separate axis and can still block
+  actions (e.g. a *held* status stops movement server-side) — but that's independent of HP.
+
+**0 HP — "dropped" / bleeding out** *([CONFIRMED])*
+- Hitting **0 HP** *drops* the character: they can **no longer move on their own**, and can **no
+  longer fight or cast spells** — a dropped character is out of the action entirely, not merely
+  immobile. A drop leaves them **bleeding out** — left unreversed, HP keeps trending toward the BBS
+  death threshold (below).
+- Two reversals bring a dropped character back into the positive:
+  - **another player** issues `aid <name>` on them, or
+  - a **healing spell** lifts their HP above 0.
+- While dropped, another player can also `drag <name>` — the dropped character then **follows
+  wherever the dragging player moves**, their only way out of the room until aided or healed.
+
+**Death — the BBS negative-HP threshold** *([CONFIRMED])*
+- Each **BBS sets its own negative-HP death threshold**; not every BBS advertises the number. When
+  HP **reaches or passes** it (at, or more negative than, the threshold), the character **dies**:
+  - loses a **life**,
+  - **all non-loyal items drop to the ground** (loyal items stay on the corpse/player),
+  - the character is **teleported to the graveyard room** appropriate to the **map** they died on.
+- Graveyard rooms are **per-map**; one known graveyard is **`1/2189`** (map 1, room 2189).
+
+**Death readout & overkill** *([CONFIRMED])*
+- There is **no "overkill" message**. The HP figure visible at death is just the value HP was driven
+  to by the killing event. A **single large hit** can drive it **far below the true floor** — the
+  blow overshoots the threshold with no clamp or announcement — so an overkill death's HP reading
+  **over-negatives** (understates) the real floor.
+- A **slow death** — bleeding out, HP crossing the floor one tick at a time — lands right at the
+  floor, so its reading is an **accurate** measurement of the true threshold.
+- Consequence: the stored death threshold is only a starting estimate (the client seeds it at `-25`,
+  a guess). Refine it from **slow deaths only**; an overkill reading is unreliable and must not push
+  the estimate more negative.
+
 ## Attack spells: why one fails to damage a monster
 
 **Three independent mechanics** decide whether an attack spell damages a monster — do not
@@ -245,8 +289,16 @@ flag). These are hard eligibility gates, independent of resistance and level imm
 ## Party
 
 - **[CONFIRMED]** Party size: minimum 2, maximum 6.
-- **[CONFIRMED]** Leader disconnect disbands the whole party — no grace-window auto-invite for
-  a dropped leader.
+- **[CONFIRMED]** Losing the leader disbands the whole party — whether the leader **disconnects or
+  dies**. No grace-window auto-invite for a lost leader; on the leader's own death the party is gone
+  by the time they respawn in the graveyard.
+- **[CONFIRMED]** When a **non-leader party member dies**, they leave the active party — but in the
+  leader's `par` the name shows as an **invited** (pending) slot **indistinguishable from a genuine
+  pending invite**. So a member death is recognized **not** from `par` but from the room line
+  **`<Name> has died.`** emitted where they're killed. The leader keys roster cleanup off that named
+  member — **uninviting** them; there's no automatic removal. (Consequence for automation: never
+  infer a death by diffing `par` alone — a died-and-now-invited name looks identical to a recruit
+  we're still waiting on; only the death line disambiguates.)
 - **[CONFIRMED]** A `par` row's secondary-resource bracket — mana `[M:N%]` for casters, kai
   `[K:N%]` for Mystics / monks — is **omitted entirely when the resource is exactly 0 points**,
   and this holds for mana and kai alike. It's a 0-*points* rule, not a 0-*percent* one: a caster
@@ -288,3 +340,6 @@ flag). These are hard eligibility gates, independent of resistance and level imm
 | Weapon ineffective | `Your weapon has no effect against this monster!` |
 | Fists ineffective | `Your fists have no effect against this monster!` |
 | Spell can't affect target (e.g. living-only vs NonLiving) | `Your spell has no effect on <monster>.` |
+| Local player death (lives readout) | `You now have N lives remaining.` |
+| Local player slain | `You have been slain by <killer>.` |
+| Party member / other player killed in room | `<Name> has died.` |
