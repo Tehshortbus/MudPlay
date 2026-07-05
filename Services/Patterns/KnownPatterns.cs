@@ -217,6 +217,7 @@ public static class KnownPatterns
     public const string PartyYouInvited     = "party.you-invited";       // "You have invited X to follow you." — our own outbound invite confirmation
     public const string PartyHeader         = "party.par-header";        // "The following people are in your travel party:" — anchors the par-block state machine
     public const string PartyMemberDeath    = "party.member-death";      // "X has been slain by Y" — conservative kill-attribution match
+    public const string PartyMemberDied     = "party.member-died";       // "X has died." — the universal third-person death line any observer sees; the consumer scopes it to party members by roster match (see PartyDeathRosterCleanup)
     // ----- Dissolution signals (Playpen-verified, 2026-06-01) ----------
     public const string PartyFollowerRemoved      = "party.follower-removed";       // "X has been removed from your followers." — leader's view of an uninvite
     public const string PartyYouNoLongerFollowing = "party.you-no-longer-following";// "You are no longer following X." — follower's view of leader's uninvite / our own unfollow

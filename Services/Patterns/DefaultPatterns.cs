@@ -354,6 +354,18 @@ public static class DefaultPatterns
         // evictions from PartyState.Members.
         yield return new RegexPattern(KnownPatterns.PartyMemberDeath,
             @"^(?<player>\w+) has been slain by ");
+        // "<Name> has died." — the universal third-person death line an observer
+        // sees when any player in the room dies (the counterpart to the
+        // first-person "You have been slain by ..." we match as UserSlain). It is
+        // NOT party-specific, so unlike PartyMemberDeath above it is deliberately
+        // NOT wired to any roster-eviction path — matching it broadly would
+        // false-evict on a same-named mob/NPC. Its sole consumer,
+        // PartyDeathRosterCleanup, bounds every action to a name that is BOTH a
+        // current party member AND shows as an [Invited] par slot, so a stray
+        // "goblin has died." can never trigger a real uninvite. Wording is
+        // user-reported and pending live re-confirmation.
+        yield return new RegexPattern(KnownPatterns.PartyMemberDied,
+            @"^(?<player>\w+) has died\.?\s*$");
 
         // ----- Party dissolution (Playpen-verified, 2026-06-01) ---------
         // Three signals that should evict members / wipe the party.

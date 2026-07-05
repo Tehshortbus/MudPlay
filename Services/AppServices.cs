@@ -1110,6 +1110,14 @@ public sealed class AppServices
     // "Paused — recovering" while the death pause holds.
     public Game.PlayerDeathMovementHalt PlayerDeathHalt { get; private set; } = null!;
 
+    // Party-death roster-cleanup bridge — when we're leading an automated route
+    // and an active member dies (turning into a phantom [Invited] par slot),
+    // uninvites that slot once the room clears so the loop doesn't stall on the
+    // PartyInviteGate waiting for a corpse to "join". Needs MovementControl for
+    // the movement-active gate, so it's constructed later than the other party
+    // bridges.
+    public Game.PartyDeathRosterCleanup PartyDeathCleanup { get; private set; } = null!;
+
     // Leader-rest bridge — nudges Health to re-evaluate when
     // the party leader's rest / meditate posture flips, so a standing-idle
     // follower opportunistically tops off during the leader's downtime
@@ -2889,6 +2897,15 @@ public sealed class AppServices
         // the Nav window because both act on the same engine primitives.
         MovementControl = new Game.Map.MovementController(
             Walker, LoopRunner, AutoLair, MovementCoordinator);
+
+        // Party-death roster-cleanup bridge. Leader-side: when an active party
+        // member dies mid-route it lingers as an [Invited] par slot; we uninvite
+        // that phantom once combat clears so the loop / walk-to doesn't stall on
+        // the PartyInviteGate. Gated on a movement engine actually running so
+        // hands-on party management is left to the user.
+        PartyDeathCleanup = new Game.PartyDeathRosterCleanup(
+            Router, PartyState, Party, MovementCoordinator,
+            isMovementActive: () => MovementControl.IsActive, log: Log);
 
         // Shared room-search resolver — backs the Nav rail search
         // box AND the @goto handler. Subscribes to ActiveSetChanged
