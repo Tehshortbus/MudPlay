@@ -164,6 +164,19 @@ public sealed class CashManagerTests
         Assert.Equal(30, h.Cash.HeldCoin("gold"));
     }
 
+    // Full coin name on the drop / hide confirmations (live wording), so the
+    // held tally the auto-deposit gates read stays accurate after a stash run.
+    [Fact]
+    public void DroppedAndHidden_FullCoinName_DecrementHeld()
+    {
+        using Harness h = new();
+        h.Feed("You picked up 30 gold crowns");
+        h.Feed("You dropped 5 gold crowns.");
+        h.Feed("You hid 10 gold crowns.");
+
+        Assert.Equal(15, h.Cash.HeldCoin("gold"));
+    }
+
     [Fact]
     public void PickedUp_RaisesCoinCollected()
     {
@@ -171,6 +184,43 @@ public sealed class CashManagerTests
         h.Feed("You picked up 50 gold pieces.");
 
         Assert.Equal(("gold", 50), Assert.Single(h.Collected));
+    }
+
+    // Live wire wording: the pickup line names the coin in full and carries
+    // NO trailing period ("You picked up 6 silver nobles"). The old pattern
+    // required a literal "pieces" + period, so real pickups never matched and
+    // Session Stats currency stayed at zero. One case per denomination pins
+    // every full coin name.
+    [Theory]
+    [InlineData("You picked up 6 silver nobles", "silver", 6)]
+    [InlineData("You picked up 1 silver noble", "silver", 1)]
+    [InlineData("You picked up 4 copper farthings", "copper", 4)]
+    [InlineData("You picked up 12 gold crowns", "gold", 12)]
+    [InlineData("You picked up 3 platinum pieces", "platinum", 3)]
+    [InlineData("You picked up 2 runic coins", "runic", 2)]
+    public void PickedUp_FullCoinName_NoPeriod_RaisesCoinCollected(
+        string line, string currency, int count)
+    {
+        using Harness h = new();
+        h.Feed(line);
+
+        Assert.Equal((currency, count), Assert.Single(h.Collected));
+        Assert.Equal(count, h.Cash.HeldCoin(currency));
+    }
+
+    // Item drops / hides share the "You dropped" / "You hid" verb with coin
+    // lines; the coin-noun anchor keeps a colour-adjective item ("a silver
+    // key") from being counted as currency.
+    [Fact]
+    public void Dropped_ItemNamedLikeCoin_DoesNotAdjustHeld()
+    {
+        using Harness h = new();
+        h.Feed("You picked up 10 silver nobles");
+        Assert.Equal(10, h.Cash.HeldCoin("silver"));
+
+        h.Feed("You dropped a silver key.");
+
+        Assert.Equal(10, h.Cash.HeldCoin("silver"));
     }
 
     [Fact]
