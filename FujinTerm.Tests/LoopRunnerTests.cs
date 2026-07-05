@@ -245,6 +245,58 @@ public sealed class LoopRunnerTests : IDisposable
         Assert.Null(loopAtFail);
     }
 
+    // ----- auto-recovery: blocked-at-source reroute --------------------
+
+    [Fact]
+    public void BlockedAtSource_ReroutesAndReSendsStep_InsteadOfFailing()
+    {
+        // Player + loop entry both at 1/1. Start sends the first step (N). The
+        // move is refused (a mob in the doorway, lag): the game re-prints the
+        // source room, so the tracker re-confirms 1/1 with the same room as its
+        // previous. Old behavior failed straight to Idle; the fix enters bounded
+        // recovery — since we're confirmed back on the loop, it reroutes from
+        // here and re-sends the blocked step rather than giving up.
+        Harness h = NewHarness();
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Runner.Start(AbCycle());
+        Assert.Single(h.Sent);
+        Assert.Equal("n\r", Encoding.Latin1.GetString(h.Sent[0]));
+
+        // Refused-move redisplay: the source room (A / 1/1) re-appears.
+        h.Tracker.NoteRoomObserved(new RoomObservation("A",
+            new HashSet<Direction> { Direction.N }));
+
+        // Rerouted, not failed: still driving and the blocked step went out again.
+        Assert.Equal(LoopState.Running, h.Runner.State);
+        Assert.DoesNotContain(h.Events, e => e.Kind == LoopEventKind.Failed);
+        Assert.Contains(h.Events, e =>
+            e.Kind == LoopEventKind.Paused && e.Detail.Contains("recovering"));
+        Assert.Equal(2, h.Sent.Count);
+        Assert.Equal("n\r", Encoding.Latin1.GetString(h.Sent[1]));
+    }
+
+    [Fact]
+    public void BlockedAtSource_PersistentBlock_ExhaustsBudget_ThenFails()
+    {
+        // A block that never clears must not reroute forever — the bounded
+        // budget (MaxRecoverAttempts = 3) eventually surfaces as Failed so the
+        // Nav chip and toolbar don't hang in a "recovering" state indefinitely.
+        Harness h = NewHarness();
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Runner.Start(AbCycle());
+
+        // Four refused redisplays: three consume the retry budget (each reroutes
+        // + re-sends), the fourth trips the cap and fails.
+        for (int i = 0; i < 4; i++)
+        {
+            h.Tracker.NoteRoomObserved(new RoomObservation("A",
+                new HashSet<Direction> { Direction.N }));
+        }
+
+        Assert.Equal(LoopState.Idle, h.Runner.State);
+        Assert.Contains(h.Events, e => e.Kind == LoopEventKind.Failed);
+    }
+
     // ----- PR C: lap timing + ReachedFirstWaypoint ---------------------
 
     [Fact]

@@ -213,4 +213,48 @@ public sealed class RoomBlacklistStoreTests : IDisposable
 
         Assert.Empty(store.Blacklisted);
     }
+
+    // ----- CannotBeReached flag --------------------------------------
+
+    [Fact]
+    public void IsUnreachable_OnlyTrueForFlaggedEntries()
+    {
+        RoomBlacklistStore store = new();
+        store.ReplaceAll(new[]
+        {
+            new BlacklistedRoom(7, 1, "orphan dev room", cannotBeReached: true),
+            new BlacklistedRoom(7, 2, "just decluttered"),   // plain blacklist, reachable
+        });
+
+        // Flagged room is both blacklisted and unreachable.
+        Assert.True(store.IsBlacklisted(new RoomKey(7, 1)));
+        Assert.True(store.IsUnreachable(new RoomKey(7, 1)));
+
+        // Plain-blacklisted room is NOT unreachable — the flag is opt-in.
+        Assert.True(store.IsBlacklisted(new RoomKey(7, 2)));
+        Assert.False(store.IsUnreachable(new RoomKey(7, 2)));
+
+        // Unknown key is neither.
+        Assert.False(store.IsUnreachable(new RoomKey(7, 9)));
+    }
+
+    [Fact]
+    public void CannotBeReached_SurvivesDiskRoundTrip()
+    {
+        RoomBlacklistStore store = new();
+        store.OnBbsPinApplied(_scratchBbs);
+        store.ReplaceAll(new[]
+        {
+            new BlacklistedRoom(7, 1, "orphan dev room", cannotBeReached: true),
+            new BlacklistedRoom(7, 2, "just decluttered"),
+        });
+
+        // Reload from disk into a fresh store — the flag must persist.
+        RoomBlacklistStore reloaded = new();
+        reloaded.OnBbsPinApplied(_scratchBbs);
+
+        Assert.True(reloaded.IsUnreachable(new RoomKey(7, 1)));
+        Assert.False(reloaded.IsUnreachable(new RoomKey(7, 2)));
+        Assert.True(reloaded.IsBlacklisted(new RoomKey(7, 2)));
+    }
 }

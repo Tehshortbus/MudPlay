@@ -2882,6 +2882,14 @@ public sealed class AppServices
         // on every blacklist change so the next layout build picks
         // up the new filter.
         Bfs.ConfigureBlacklist(RoomBlacklist.IsBlacklisted);
+        // Rooms flagged CannotBeReached are dropped from the tracker's
+        // position-candidate resolution so a login / silent-desync
+        // observation can never land the player in a dev / orphan room.
+        // The predicate reads the store live, so no reindex is needed
+        // when the flag set changes — but re-invoke on Changed anyway to
+        // keep the wiring symmetric and future-proof against a cached
+        // predicate.
+        RoomGraph.ConfigureUnreachable(RoomBlacklist.IsUnreachable);
         RoomBlacklist.Changed += () => Bfs.InvalidateCache();
 
         // Loop execution engine. MainWindowViewModel

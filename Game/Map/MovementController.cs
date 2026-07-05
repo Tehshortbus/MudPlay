@@ -66,7 +66,8 @@ public sealed class MovementController : IDisposable
             if (_autoLair.IsActive)
                 return _autoLair.IsPaused ? MovementEngineState.Paused : MovementEngineState.Running;
             if (_loops.State == LoopState.Paused) return MovementEngineState.Paused;
-            if (_loops.State is LoopState.Running or LoopState.Approaching)
+            if (_loops.State is LoopState.Running or LoopState.Approaching
+                             or LoopState.Recovering)
                 return MovementEngineState.Running;
             if (_walker.State == WalkState.Paused) return MovementEngineState.Paused;
             if (_walker.State == WalkState.Walking) return MovementEngineState.Running;

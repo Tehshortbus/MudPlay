@@ -2,6 +2,21 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0): **MAJOR** = whole-program refactor, **MINOR** = a large PR, **PATCH** = a small / bugfix PR.
 
+## 1.4.5
+
+A navigation-reliability pass from live play: a per-room "can't reach" flag, last-position recall after a client restart in same-named areas, and two loop-engine fixes so a route recovers itself instead of stalling out.
+
+**Added**
+- **A per-room "Can't reach" flag in the Modify-Blacklist dialog, for dev / orphan rooms a normal player can never stand in.** Plain blacklisting only declutters the map render — but such a room is still a valid *(name, exit-set)* candidate the navigation position-tracker can resolve you *into*, which strands the nav system somewhere you physically can't be (e.g. an orphan room in the MDB with no walkable inbound edge). Ticking **"Can't reach"** on a blacklist entry drops that room from position-candidate resolution entirely, so an ambiguous login or silent-desync observation can never land you there. It's a separate opt-in bit from the plain blacklist because a normally-reachable room can be blacklisted purely to tidy the render while still being a legitimate position — and the flag round-trips to disk with the entry.
+
+**Fixed**
+- **After closing and reopening the client deep in a same-named area, your position came up wrong or lost — even though you weren't lost when you quit.** In an ambiguous area (MajorMUD's Darkwood Forest is ~8 identical *"Main Road"* rooms), the tracker is hydrated Confirmed at your last *known-unique* room and primed with the walk you took since — but that anchor is stale, because you walked deeper into the identical rooms before quitting. On relaunch the first room redisplay disagrees with the anchor, no unique candidate resolves it, and a lone mismatch only bumped a Suspect strike (never reaching the limit that would trigger recovery), so you sat stranded on the wrong room. The tracker now projects the persisted trail forward from the anchor: when its endpoint matches the redisplay, it lands Confirmed at the true room. Harmless mid-walk — a stale non-anchor start over-walks to a room that won't match, so recovery declines and the old behaviour is unchanged.
+- **A loop's "Run" took two clicks: the first walked all the way to the first loop room, then just sat there idle.** When the approach-walk to the loop's entry finished during a pause window (a rest / combat gate that lifted right as the walker arrived), the walker's own resume handler completed the walk and reset itself *before* the loop runner's resume handler ran — so the arrival was dropped and the runner sat waiting for a "finished" signal that would never re-fire. The runner now buffers that arrival and enters the circle on resume, so a single **Run** click both walks to the loop and starts running it.
+- **A running loop would stop on its own and drop straight to idle instead of working out where it was and carrying on.** When a step was refused (a mob blocking the doorway, lag) or the character landed somewhere unplanned, the runner failed the entire loop rather than trying to recover. It now enters a bounded auto-recovery: re-determine the current room (issuing a bare `look` when the tracker is unsure), then reroute onto the nearest segment of the loop and continue from there — picking up whatever leg of the route the character actually fell in. A block that never clears trips a retry cap (3 attempts) and finally surfaces as a real failure, so recovery can't spin forever.
+
+**Changed**
+- **The navigation engine now emits Debug-channel tracing for position replay-recovery and unreachable-room candidate drops.** The lifecycle events stay always-on Info as before; the added Debug rows record *why* a replay projection declined (missing anchor, unwalkable step, endpoint mismatch) and when a "can't reach" flag actually pruned a candidate — so a *"still lost after a restart"* or *"nav won't resolve into that room"* bug report shows exactly where resolution diverged.
+
 ## 1.4.4
 
 Four fixes from live play: combat follow-up attacks, room tracking on login, the loop-save prompt, and the navigation activity chip.

@@ -34,6 +34,13 @@ public sealed class RoomGraphManager
     private readonly Dictionary<string, List<Room>> _byName = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<(string Name, uint ExitMask), List<RoomKey>> _byNameAndExits = new();
 
+    // Live predicate identifying rooms a normal player can never stand in (dev /
+    // orphan rooms flagged CannotBeReached in the room blacklist). When set,
+    // FindCandidates drops matching keys so the RoomTracker never resolves the
+    // player's position into one. Evaluated per call so blacklist edits take
+    // effect without rebuilding any index. Null (default) means "no exclusions".
+    private Func<RoomKey, bool>? _isUnreachable;
+
     // Set the graph was last built from, or null if empty.
     public string? ActiveSet { get; private set; }
 
@@ -136,18 +143,54 @@ public sealed class RoomGraphManager
             : (IReadOnlyList<Room>)Array.Empty<Room>();
     }
 
-    // All rooms in the active set whose (Name, exit-set) tuple matches. Used by
-    // RoomTracker to detect the 1-of-1 case — when the result has exactly one
-    // entry, the tracker can promote to Located without further reconciliation.
+    // Bind (or clear, with null) the predicate that marks rooms as unreachable by
+    // a normal player. Once set, FindCandidates excludes matching keys so the
+    // tracker can't land the player in a dev / orphan room. AppServices wires this
+    // to RoomBlacklistStore.IsUnreachable and re-invokes on blacklist changes; the
+    // predicate reads the store live, so no reindex is needed when the flag set
+    // changes.
+    public void ConfigureUnreachable(Func<RoomKey, bool>? isUnreachable)
+        => _isUnreachable = isUnreachable;
+
+    // All rooms in the active set whose (Name, exit-set) tuple matches, minus any
+    // flagged unreachable (see ConfigureUnreachable). Used by RoomTracker to
+    // detect the 1-of-1 case — when the result has exactly one entry, the tracker
+    // can promote to Located without further reconciliation. Excluding unreachable
+    // rooms here means an ambiguous bucket that resolves to a single reachable
+    // room now promotes cleanly, and a bucket of only-unreachable rooms resolves
+    // to zero (tracker replays / stays Lost) instead of stranding the player.
     public IReadOnlyList<RoomKey> FindCandidates(string name, IReadOnlySet<Direction> exits)
     {
         if (string.IsNullOrEmpty(name)) return Array.Empty<RoomKey>();
         ArgumentNullException.ThrowIfNull(exits);
 
         uint mask = MaskFromSet(exits);
-        return _byNameAndExits.TryGetValue((name, mask), out List<RoomKey>? keys)
-            ? keys
-            : (IReadOnlyList<RoomKey>)Array.Empty<RoomKey>();
+        if (!_byNameAndExits.TryGetValue((name, mask), out List<RoomKey>? keys))
+            return Array.Empty<RoomKey>();
+
+        if (_isUnreachable is not { } excluded) return keys;
+
+        // Only allocate a filtered copy when at least one key is excluded —
+        // the common case (nothing flagged) returns the stored bucket as-is.
+        List<RoomKey>? filtered = null;
+        for (int i = 0; i < keys.Count; i++)
+        {
+            if (!excluded(keys[i]))
+            {
+                filtered?.Add(keys[i]);
+                continue;
+            }
+            filtered ??= new List<RoomKey>(keys.Take(i));
+        }
+        if (filtered is null) return keys;
+
+        // An exclusion actually fired — trace it so a "nav won't resolve into
+        // that room" report shows the CannotBeReached drop. Rare (only when a
+        // matching room is flagged), and interpolation is Debug-gated up front.
+        if (_log?.IsDebugEnabled == true)
+            _log.Debug("RoomGraph",
+                $"FindCandidates('{name}', mask={mask:X}): dropped {keys.Count - filtered.Count} unreachable of {keys.Count}; {filtered.Count} left.");
+        return filtered;
     }
 
     // Read-only snapshot of every room in the active set, in load order. The
