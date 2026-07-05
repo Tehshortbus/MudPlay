@@ -1104,6 +1104,20 @@ public sealed class AppServices
     // sent @ok, so a loop doesn't walk away from a resting member.
     public Game.PartyWaitMovementGate PartyWaitMovement { get; private set; } = null!;
 
+    // Death-halt bridge — when the local player dies, asserts UserGate so every
+    // movement engine stops and we sit in the graveyard until the player
+    // manually resumes. Exposes HaltedForDeath so the Navigation chip can read
+    // "Paused — recovering" while the death pause holds.
+    public Game.PlayerDeathMovementHalt PlayerDeathHalt { get; private set; } = null!;
+
+    // Party-death roster-cleanup bridge — when we're leading an automated route
+    // and an active member dies (turning into a phantom [Invited] par slot),
+    // uninvites that slot once the room clears so the loop doesn't stall on the
+    // PartyInviteGate waiting for a corpse to "join". Needs MovementControl for
+    // the movement-active gate, so it's constructed later than the other party
+    // bridges.
+    public Game.PartyDeathRosterCleanup PartyDeathCleanup { get; private set; } = null!;
+
     // Leader-rest bridge — nudges Health to re-evaluate when
     // the party leader's rest / meditate posture flips, so a standing-idle
     // follower opportunistically tops off during the leader's downtime
@@ -1926,6 +1940,12 @@ public sealed class AppServices
         // attributed to the next combat.
         DeathWatcher = new Game.Combat.DeathLineWatcher(Router, Log);
         DeathWatcher.PlayerDied += _ => RoundDamage.MarkCombatEnded();
+
+        // Death-halt bridge. On our death, stops every movement engine (via
+        // UserGate) so we stay in the graveyard we respawn into until the player
+        // manually resumes — no loop / walk-to / auto-lair marches us back out
+        // before we've recovered.
+        PlayerDeathHalt = new Game.PlayerDeathMovementHalt(DeathWatcher, MovementCoordinator, Log);
 
         // CombatManager. Picks a target on each
         // classifier emit and sends the configured attack command via
@@ -2877,6 +2897,15 @@ public sealed class AppServices
         // the Nav window because both act on the same engine primitives.
         MovementControl = new Game.Map.MovementController(
             Walker, LoopRunner, AutoLair, MovementCoordinator);
+
+        // Party-death roster-cleanup bridge. Leader-side: when an active party
+        // member dies mid-route it lingers as an [Invited] par slot; we uninvite
+        // that phantom once combat clears so the loop / walk-to doesn't stall on
+        // the PartyInviteGate. Gated on a movement engine actually running so
+        // hands-on party management is left to the user.
+        PartyDeathCleanup = new Game.PartyDeathRosterCleanup(
+            Router, PartyState, Party, MovementCoordinator,
+            isMovementActive: () => MovementControl.IsActive, log: Log);
 
         // Shared room-search resolver — backs the Nav rail search
         // box AND the @goto handler. Subscribes to ActiveSetChanged

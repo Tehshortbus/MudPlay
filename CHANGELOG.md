@@ -2,6 +2,14 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0): **MAJOR** = whole-program refactor, **MINOR** = a large PR, **PATCH** = a small / bugfix PR.
 
+## 1.4.2
+
+Two death-handling fixes for automated routes: your own death now halts movement until you manually resume, and a party member who dies mid-route no longer stalls your loop on a phantom invite slot.
+
+**Added**
+- **A death now halts every movement engine and holds you in the graveyard until you manually resume.** Dying in MajorMUD drops all your non-loyal gear and teleports you — alone — into a graveyard room; if you were leading a party, that party disbands on your death, so afterwards you're always the one who'd drive movement. Previously an active loop / walk-to / Auto-Lair would just keep going, walking your freshly-revived, stripped character back into whatever killed it. The client now recognises your own death (the canonical *"You have been slain by …"* line) and asserts the same pause the manual **Pause** button uses, so nothing moves until you deliberately resume from the Navigation window. Because it rides the existing user-pause, every resume affordance already clears it and it can never leave a stuck gate. While the death-hold is active the Navigation activity chip reads **Paused — recovering** (instead of a plain **Paused**) so it's clear *why* you're stopped; the flavour drops the instant you resume.
+- **When a party member dies mid-route while you're leading, the client now clears their corpse's phantom invite slot so your loop keeps running.** When a non-leader party member is killed, MajorMUD doesn't drop them cleanly — the dead character lingers in your `par` as an `[Invited]` (pending) slot, indistinguishable from a genuine recruit you're still waiting on. Left alone, the auto-party engine treats that corpse as an invitee and holds your loop / walk-to / Auto-Lair until the whole *If leading, wait only* window elapses. Because we *know* this "invitee" is actually a member who just died — every observer sees a *"&lt;Name&gt; has died."* line — the client now waits for the current fight to finish, confirms the dead member is showing as an `[Invited]` slot, sends `uninvite` to clear it, and lets the route continue instead of stalling. Every action is doubly bounded: it only ever acts on a name that was an *active* member of your party at the moment it died, and only sends the uninvite once that same name actually shows as invited — so a still-pending recruit or a same-named mob can never trigger it. Gated on a movement engine actually running, since hands-on play leaves party state to you.
+
 ## 1.4.1
 
 A live activity-status chip in the Navigation top bar, so a stalled loop explains itself — including holds from a party member's `@wait` and your own movement-blocking ailments.
