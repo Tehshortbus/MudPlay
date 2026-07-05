@@ -331,6 +331,17 @@
                                        ToolTip.Tip="Negative-HP floor at which a character actually dies. 0 HP only drops you into a revivable bleed-out — death happens here. The emergency auto-hangup keeps firing through the whole bleeding-out window down to this floor. Default -25."/>
                     </Grid>
 
+                    <!-- Auto-refine traces the true floor from slow deaths: a
+                         bleed-out crosses the floor one tick at a time and lands
+                         right at it, so its HP reading measures the real value.
+                         The seed above is only a guess; a single big overkill hit
+                         over-negatives the floor and is discarded. Off pins the
+                         manual value. -->
+                    <CheckBox IsChecked="{Binding AutoRefineDeathFloor, Mode=TwoWay}"
+                              Margin="0,6,0,0"
+                              Content="Auto-refine the floor from slow deaths"
+                              ToolTip.Tip="Learn the realm's true death floor from deaths where you bled out gradually (which land right at the floor). A single big overkill hit blows past the floor and is ignored. Turn off to keep the value you set above."/>
+
                     <!-- ===== Confirmations =====
                          Show-information / Show-data-being-sent /
                          Show-reason-for-running were removed entirely —
