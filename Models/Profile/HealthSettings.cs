@@ -30,6 +30,12 @@ public sealed class HealthSettings
     public int RunIfBelowHp { get; set; } = 20;
 
     // Drop the connection when HP falls below this emergency threshold. Default 5 (%).
+    // A point on one continuous HP scale (per HpThresholdMode): from 100 %/max down
+    // through 0 into the negatives — HP% goes negative while bleeding out, as the
+    // game's par display shows. It may go negative in either mode, down to the
+    // per-BBS death floor (BbsProfile.PlayerDiesAtHp), letting the player set the
+    // hangup deep in the bleeding-out band, closer to death. There is no zero
+    // sentinel: turning the auto-hangup off is GeneralSettings.DisableHangups.
     public int HangIfBelowHp { get; set; } = 5;
 
     // ----- Heal-spell thresholds (CastingDirector triggers) ---------

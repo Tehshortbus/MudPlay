@@ -561,18 +561,25 @@ public sealed class HealthManager : IDisposable
     // Hangup-on-emergency: HP at or below HealthSettings.HangIfBelowHp triggers a
     // hard disconnect via the configured Game-Exit command. Single-shot — the
     // disconnect command goes once per session and the log captures it for
-    // postmortem. Defaults: HangIfBelowHp=5 (%). Setting it to 0 disables the
-    // check entirely. Called from the normal evaluate path and — when
-    // GeneralSettings.AllowHangupInAllOffMode is set — from the engine-disabled
-    // carve-out.
+    // postmortem. Defaults: HangIfBelowHp=5 (%). Called from the normal evaluate
+    // path and — when GeneralSettings.AllowHangupInAllOffMode is set — from the
+    // engine-disabled carve-out.
+    //
+    // The trigger is a point on one continuous HP scale — 100 %/max down through
+    // 0 into the negatives (HP% goes negative while bleeding out, exactly as the
+    // game's par display shows). So the trigger has no zero sentinel: 0 is a live
+    // "hang the moment I drop" value, and negatives let the user hang up deep in
+    // the bleeding-out band, closer to death. Turning the feature off is the
+    // GeneralSettings.DisableHangups master switch's job, not a magic threshold.
     //
     // The fire window is (deathFloor, hangTrigger]: it stays live through the
     // bleeding-out zone below 0 HP because a dropped character can still hang up,
     // but bails once HP has fallen to or past the realm death floor — at that
     // point the character is already dead and there's nothing to disconnect
     // (this also guards against dead/respawned chars reading garbage HP). The
-    // floor is clamped to <= 0: a misconfigured positive value collapses to 0,
-    // preserving the old positive-band-only behavior.
+    // floor is clamped to <= 0: a misconfigured positive value collapses to 0.
+    // A trigger resolved at or below the floor yields an empty window (never
+    // fires) — the natural "never hang up" position at the bottom of the scale.
     //
     // Returns true only when it actually sent the disconnect this call, so the
     // Evaluate caller can short-circuit the rest of the recovery machinery. A
@@ -584,7 +591,7 @@ public sealed class HealthManager : IDisposable
         // action may drop the carrier. Hard-overrides AllowHangupInAllOffMode —
         // an opted-out character won't auto-disconnect even at low HP.
         if (_readGeneralSettings?.Invoke() is { DisableHangups: true }) return false;
-        if (_hangFired || s.HangIfBelowHp <= 0 || _state.MaxHp <= 0) return false;
+        if (_hangFired || _state.MaxHp <= 0) return false;
 
         int hangTrigger = PoolThreshold.Resolve(s.HpThresholdMode, s.HangIfBelowHp, _state.MaxHp);
         int deathFloor = Math.Min(0, _readDeathFloor?.Invoke() ?? -25);
