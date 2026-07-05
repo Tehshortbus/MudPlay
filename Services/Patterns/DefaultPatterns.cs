@@ -164,12 +164,23 @@ public static class DefaultPatterns
         // without per-currency regexes.
         yield return new RegexPattern(KnownPatterns.CashOnGround,
             @"^There (?:is a (?<currency>\w+) piece|are (?<count>\d+) (?<currency2>\w+) pieces) here\.");
+        // Pickup / drop / stash confirmations. The coin is named in full —
+        // "copper farthings", "silver nobles", "gold crowns", "platinum
+        // pieces", "runic coins" (runic renamed per-BBS on some realms) —
+        // NOT a generic "pieces", and the pickup line carries no trailing
+        // period. Capture the keyword (the denomination-defining first word)
+        // and anchor on the specific coin noun so a shared-verb item line
+        // ("You dropped a silver key.") can't be misread as coin — item
+        // pickups use "You took", but item drops / hides share the verb. Coin
+        // nouns mirror InventoryManager's currency regexes; the plural `s?`
+        // covers count==1 singulars ("1 silver noble"). "piece" stays in the
+        // noun set so synthetic "N gold pieces" fixtures still resolve.
         yield return new RegexPattern(KnownPatterns.CashPickedUp,
-            @"^You pick(?:ed)? up (?:a (?<currency>\w+) piece|(?<count>\d+) (?<currency2>\w+) pieces)\.");
+            @"^You pick(?:ed)? up (?:a (?<currency>copper|silver|gold|platinum|runic)|(?<count>\d+) (?<currency2>copper|silver|gold|platinum|runic)) (?:farthing|noble|crown|piece|coin)s?\b");
         yield return new RegexPattern(KnownPatterns.CashDropped,
-            @"^You drop(?:ped)? (?:a (?<currency>\w+) piece|(?<count>\d+) (?<currency2>\w+) pieces)\.");
+            @"^You drop(?:ped)? (?:a (?<currency>copper|silver|gold|platinum|runic)|(?<count>\d+) (?<currency2>copper|silver|gold|platinum|runic)) (?:farthing|noble|crown|piece|coin)s?\b");
         yield return new RegexPattern(KnownPatterns.CashHidden,
-            @"^You hid (?:a (?<currency>\w+) piece|(?<count>\d+) (?<currency2>\w+) pieces)\.");
+            @"^You hid (?:a (?<currency>copper|silver|gold|platinum|runic)|(?<count>\d+) (?<currency2>copper|silver|gold|platinum|runic)) (?:farthing|noble|crown|piece|coin)s?\b");
         // Corpse loot — "N <currency> drop to the ground." emitted
         // after the kill announce. Verb agreement is `drop` for plural
         // counts; tolerating `drops?` covers any singular-1 variant

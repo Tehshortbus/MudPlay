@@ -299,6 +299,31 @@ flag). These are hard eligibility gates, independent of resistance and level imm
 - **[CONFIRMED]** Items are acquired via `buy` / `get` / `search`+`get`. There is no "hunt"
   verb — don't describe path-item sourcing as "hunting."
 
+## Currency & cash
+
+- **[CONFIRMED]** Five denominations, each with its own full coin name:
+  **copper farthings**, **silver nobles**, **gold crowns**, **platinum pieces**, **runic coins**.
+  The **runic** coin noun can be **renamed per BBS** (a realm may call its top denomination
+  something else); the other four are stable across the target realms.
+- **[CONFIRMED]** Value ladder (in copper): 1 silver = 10, 1 gold = 100, 1 platinum = 10 000,
+  1 runic = 1 000 000. Wealth is consolidated in copper farthings (the game's `Wealth:` line).
+- **[CONFIRMED]** The **keyword** the client keys policy/value on is the denomination-defining
+  first word (`copper`/`silver`/`gold`/`platinum`/`runic`); the second word is the flavour coin
+  noun (`farthings`/`nobles`/`crowns`/`pieces`/`coins`). Some lines carry only the keyword,
+  others the full pair — don't assume one form:
+  - **Get** command sends the bare keyword: `get 6 silver` (never `get 6 silver nobles`).
+  - **Corpse loot** drops name the bare keyword: `6 silver drop to the ground.`
+  - **Pickup confirmation** names the full coin **and carries NO trailing period**:
+    `You picked up 6 silver nobles` (singular `You picked up 1 silver noble`).
+  - **Drop / stash confirmations** name the full coin **with** a trailing period:
+    `You dropped 5 gold crowns.` / `You hid 219 copper farthings.`
+  - **Room survey** lists the full coin: `You notice 56 silver nobles, 198 copper farthings here.`
+- **[CONFIRMED]** Item vs. coin disambiguation is by verb + shape. An **item** get is
+  `You took <item>.`; an item drop is `You dropped <item>.` — the drop/hide verbs are **shared**
+  with coins, so a colour-adjective item (`You dropped a silver key.`) is told apart from coin only
+  by the trailing **coin noun** (`nobles`/`farthings`/…) and a numeric count. `You picked up …` is
+  coin-exclusive (items never use it).
+
 ## Party
 
 - **[CONFIRMED]** Party size: minimum 2, maximum 6.
@@ -356,3 +381,8 @@ flag). These are hard eligibility gates, independent of resistance and level imm
 | Local player death (lives readout) | `You now have N lives remaining.` |
 | Local player slain | `You have been slain by <killer>.` |
 | Party member / other player killed in room | `<Name> has died.` |
+| Coin pickup (no trailing period) | `You picked up N <coin>` (e.g. `6 silver nobles`) |
+| Coin drop | `You dropped N <coin>.` |
+| Coin stash / hide | `You hid N <coin>.` |
+| Corpse loot drop (bare keyword) | `N <keyword> drop to the ground.` |
+| Room cash survey | `You notice ... N <coin> ... here.` |

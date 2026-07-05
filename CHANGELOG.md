@@ -2,6 +2,13 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0): **MAJOR** = whole-program refactor, **MINOR** = a large PR, **PATCH** = a small / bugfix PR.
 
+## 1.4.7
+
+A currency-capture fix so the Session Stats window records coins picked up in a real realm, not just synthetic fixtures.
+
+**Fixed**
+- **Session Stats currency stayed at zero even while you looted coins, because the cash pickup/drop/stash patterns only matched a synthetic wording the live game never sends.** The three confirmation patterns required a literal "pieces" noun and a trailing period, but this realm names coins in full — copper farthings, silver nobles, gold crowns, platinum pieces, runic coins — and the pickup line carries no period, so `You picked up 6 silver nobles` never matched, the `CoinCollected` event never fired, and the panel's currency counters never moved (even though the inventory tracker recorded the holdings correctly all along). The patterns now anchor on the denomination keyword plus its specific coin noun, capture the keyword, and drop the mandatory period — so real loot registers. The coin-noun anchor keeps a shared-verb item line (`You dropped a silver key.`) from being misread as coin, and "piece" stays in the noun set so existing `N gold pieces` fixtures still resolve.
+
 ## 1.4.6
 
 A layout fix for the Session Stats window from live use: the panels now share one width and the rate graphs get room to breathe.
