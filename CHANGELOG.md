@@ -2,9 +2,15 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0): **MAJOR** = whole-program refactor, **MINOR** = a large PR, **PATCH** = a small / bugfix PR.
 
-## 1.4.2
+## 1.4.3
 
-Two death-handling fixes for automated routes: your own death now halts movement until you manually resume, and a party member who dies mid-route no longer stalls your loop on a phantom invite slot.
+A per-BBS death-floor setting that keeps the emergency auto-hangup firing through the whole bleeding-out window instead of giving up at 0 HP.
+
+**Added**
+- **A per-BBS "Player dies at (HP):" setting (Settings → BBS → Realm mechanics, seeded at -25).** In MajorMUD, hitting 0 HP doesn't kill you — you *drop* and bleed out (you can't move, fight, or cast, but you're still revivable by another player's `aid` or a heal, and you can still hang up); death only happens when HP falls to a per-realm negative floor. That floor is a realm balance knob, so it lives on the BBS profile alongside the game-menu commands, not in per-character health settings.
+
+**Changed**
+- **The emergency low-HP auto-hangup now fires all the way through the bleeding-out window, down to the death floor.** Previously the hangup bailed the instant HP reached 0 — which is exactly when a character has dropped and most needs the escape. Since a dropped-but-not-yet-dead character can still execute the main-menu exit, the auto-hangup now stays live across the whole `(death floor, hang-trigger]` band: it keeps trying to disconnect a bleeding-out character right up to — but not past — the point they actually die (a character already at or below the floor is dead, so there's nothing left to disconnect). This also fixes a gap where a *non-caster* who dropped (0 HP, 0 mana) would skip the hangup entirely, because the health engine's dead/dropped early-out ran before the hangup check. The hangup remains strictly HP-driven — mana is never a trigger — and every existing kill-switch (Disable hangups, hang-threshold 0, the all-off-mode opt-in) still applies.
 
 **Added**
 - **A death now halts every movement engine and holds you in the graveyard until you manually resume.** Dying in MajorMUD drops all your non-loyal gear and teleports you — alone — into a graveyard room; if you were leading a party, that party disbands on your death, so afterwards you're always the one who'd drive movement. Previously an active loop / walk-to / Auto-Lair would just keep going, walking your freshly-revived, stripped character back into whatever killed it. The client now recognises your own death (the canonical *"You have been slain by …"* line) and asserts the same pause the manual **Pause** button uses, so nothing moves until you deliberately resume from the Navigation window. Because it rides the existing user-pause, every resume affordance already clears it and it can never leave a stuck gate. While the death-hold is active the Navigation activity chip reads **Paused — recovering** (instead of a plain **Paused**) so it's clear *why* you're stopped; the flavour drops the instant you resume.

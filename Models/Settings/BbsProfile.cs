@@ -95,6 +95,18 @@ public sealed class BbsProfile
     // logout flow.
     public string GameExitCommand { get; set; } = "=x";
 
+    // ----- Realm mechanics -----
+
+    // The negative-HP floor at which a MajorMUD character actually dies.
+    // Hitting 0 HP only *drops* you (bleeding out — can't move/fight/cast,
+    // but revivable and still able to hang up); death happens when HP falls
+    // to this value. Stored per-BBS because the floor is a realm balance
+    // knob, not a per-character stat. Seeded at the standard -25; clamp
+    // consumers treat any positive value as 0. The emergency auto-hangup
+    // reads this so it keeps firing through the whole bleeding-out window
+    // (from the hang-trigger down to — but not past — this floor).
+    public int PlayerDiesAtHp { get; set; } = -25;
+
     // ----- Terminal dimensions (NAWS, RFC 1073) -----
 
     // Terminal columns to advertise via Telnet NAWS at connect-time.

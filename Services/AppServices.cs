@@ -2059,6 +2059,10 @@ public sealed class AppServices
             // assert the CombatGate, so we stay in sync with the
             // movement gate logic.
             hasEngageableHostiles: () => CombatTracker.HasEngageableHostiles,
+            // Per-realm negative-HP death floor: keeps the emergency
+            // hangup firing through the bleeding-out window down to the
+            // point the character actually dies.
+            readDeathFloor: () => ResolveActiveBbs()?.PlayerDiesAtHp ?? -25,
             log: Log);
 
         // Leader-rest nudge: a standing-idle follower's own PlayerState may
