@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using FujinTerm.Game.Health;
 using FujinTerm.Models.GameData;
 using FujinTerm.Models.Profile;
 using FujinTerm.Services;
@@ -57,6 +58,23 @@ public sealed class CastingDirector : IDisposable
     // window".
     private const int RecastMarginSec = 15;
 
+    // Optimistic self-buff recast clock used the instant a self-buff cast is
+    // SENT — before its AppliedMessage confirms — so a second evaluation on the
+    // same round can't re-issue the buff while the first is still in flight. When
+    // the buff's real effect duration is resolvable it's used; otherwise this
+    // conservative fallback holds the recast until the AppliedMessage lands with
+    // the true duration.
+    private const int UnknownBuffRecastFallbackSec = 60;
+
+    // Self-heal duplicate-suppression window. OnCombatTick wipes the
+    // CastCoordinator's one-cast-per-round cooldown, so a second Evaluate can fire
+    // on STALE pool data (the server hasn't reflected the first heal yet) and
+    // re-issue the identical heal. Unlike buffs, heals carry no recast timer, so
+    // this guard suppresses a byte-for-byte repeat (same spell, unchanged HP + MA)
+    // within this window. Once the pool moves — the heal landed, or damage came in
+    // — the guard no longer matches and a fresh heal is free to fire.
+    private static readonly TimeSpan SameSelfHealStaleGuard = TimeSpan.FromSeconds(8);
+
     private readonly PlayerState _state;
     private readonly CastCoordinator _cast;
     private readonly Conditions.ConditionTracker? _conditions;
@@ -89,6 +107,10 @@ public sealed class CastingDirector : IDisposable
     private Action<string>? _selfBuffLandedSink;
     private Func<DateTime> _now = () => DateTime.UtcNow;
     private LineExtractor? _lines;
+
+    // Last self-heal we sent — spell code, the HP + MA it was sent at, and when.
+    // Feeds SameSelfHealStaleGuard so a stale re-evaluation can't double-cast it.
+    private (string Spell, int Hp, int Ma, DateTime At)? _lastSelfHealCast;
 
     private bool _disposed;
 
@@ -324,6 +346,7 @@ public sealed class CastingDirector : IDisposable
     {
         _activeUntil.Clear();
         _pendingPartyCast = null;
+        _lastSelfHealCast = null;
     }
 
     // True when a buff on targetKey ("" = self) is due to be (re)cast: either never
@@ -333,6 +356,31 @@ public sealed class CastingDirector : IDisposable
         if (!_activeUntil.TryGetValue((targetKey, spellShort), out DateTime until))
             return true;
         return (until - _now()).TotalSeconds <= RecastMarginSec;
+    }
+
+    // True when spell is the same self-heal we just sent AND neither pool has
+    // moved since AND we're still inside the stale window — i.e. a re-evaluation
+    // firing before the server reflected the first cast. See
+    // SameSelfHealStaleGuard for why this exists.
+    private bool IsStaleSelfHealRepeat(string spell)
+    {
+        if (_lastSelfHealCast is not { } last) return false;
+        return last.Spell == spell
+            && last.Hp == _state.Hp
+            && last.Ma == _state.Ma
+            && (_now() - last.At) < SameSelfHealStaleGuard;
+    }
+
+    // Start the optimistic self-buff recast clock the instant a self-buff cast is
+    // sent. Uses the buff's resolved effect duration when available, else a
+    // conservative fallback; the AppliedMessage path later overwrites this with
+    // the true duration once the buff confirms.
+    private void StartSelfBuffTimer(string spellShort)
+    {
+        long seconds = _buffInfoByShort?.Invoke(spellShort) is { DurationSec: > 0 } info
+            ? info.DurationSec
+            : UnknownBuffRecastFallbackSec;
+        _activeUntil[("", spellShort)] = _now().AddSeconds(seconds);
     }
 
     private void OnConditionApplied(MessageRecord r)
@@ -449,17 +497,41 @@ public sealed class CastingDirector : IDisposable
                 continue;
             }
 
+            // Self-heal duplicate guard: OnCombatTick wipes the coordinator's
+            // one-cast-per-round cooldown, so a second Evaluate this round can
+            // re-issue the SAME heal on stale pool data before the server
+            // reflects the first. Suppress a byte-for-byte repeat inside the
+            // stale window; skip-and-continue so a different (e.g. major) heal or
+            // lower-priority cast can still fire.
+            bool isSelfHeal = category is SpellCategory.MinorSelfHeal
+                                        or SpellCategory.MajorSelfHeal;
+            if (isSelfHeal && IsStaleSelfHealRepeat(cand.Spell))
+            {
+                _log?.Combat(LogCategory,
+                    $"{category} skip spell={cand.Spell} (stale repeat — " +
+                    $"hp={_state.Hp} ma={_state.Ma} unchanged since last cast)");
+                continue;
+            }
+
             if (!_cast.TryCast(cand.Spell, cand.Target)) return null;
 
             // Combat-sourced debuff landed — advance the combat engine's
             // once-per-room / once-per-target bookkeeping so it won't re-fire.
             if (category == SpellCategory.Debuffing) _combatDebuffCommit?.Invoke();
 
-            // Party-buff cast sent — arm CasterMessage confirmation so the
-            // duration timer only starts once we observe it land. Self buffs
-            // (null target) confirm via the ConditionTracker AppliedMessage.
-            if (category == SpellCategory.Buffing && cand.Target is { } tgt)
-                ArmPartyBuffConfirm(cand.Spell, tgt);
+            if (isSelfHeal)
+                _lastSelfHealCast = (cand.Spell, _state.Hp, _state.Ma, _now());
+
+            // Buff cast sent — start the recast clock immediately. A party buff
+            // (targeted) arms CasterMessage confirmation so the timer starts on
+            // the observed land; a self buff (null target) starts an optimistic
+            // timer NOW so a stale re-evaluation this round can't re-issue it
+            // before the AppliedMessage confirms with the true duration.
+            if (category == SpellCategory.Buffing)
+            {
+                if (cand.Target is { } tgt) ArmPartyBuffConfirm(cand.Spell, tgt);
+                else StartSelfBuffTimer(cand.Spell);
+            }
 
             _log?.Combat(LogCategory,
                 $"{category} fired spell={cand.Spell} target={cand.Target ?? "<self>"} " +
@@ -524,8 +596,11 @@ public sealed class CastingDirector : IDisposable
     {
         if (_state.MaxHp <= 0) return null;
         if (!ManaClearsHealFloor(health)) return null;
-        int hpPct = (int)Math.Round(_state.Hp * 100.0 / _state.MaxHp);
-        if (hpPct > health.MajorHealCombatTrigger) return null;
+        // Trigger read per HpThresholdMode — percentage of MaxHp, or an absolute
+        // HP value — then compared against raw HP.
+        int majorTrigger = PoolThreshold.Resolve(
+            health.HpThresholdMode, health.MajorHealCombatTrigger, _state.MaxHp);
+        if (_state.Hp > majorTrigger) return null;
         // Fall back to minor when the user hasn't configured a major
         // — better to fire something than skip the life-threat path.
         return !string.IsNullOrWhiteSpace(spells.MajorHealSpell)
@@ -538,14 +613,14 @@ public sealed class CastingDirector : IDisposable
         if (_state.MaxHp <= 0) return null;
         if (!ManaClearsHealFloor(health)) return null;
 
-        int hpPct = (int)Math.Round(_state.Hp * 100.0 / _state.MaxHp);
         // Use the in-combat trigger while engaged, the rest-time
         // trigger otherwise (matches the user's two-threshold mental
-        // model from the Health tab).
-        int trigger = _state.InCombat
+        // model from the Health tab). Read per HpThresholdMode.
+        int triggerValue = _state.InCombat
             ? health.MinorHealCombatTrigger
             : health.HealRestTrigger;
-        if (hpPct > trigger) return null;
+        int trigger = PoolThreshold.Resolve(health.HpThresholdMode, triggerValue, _state.MaxHp);
+        if (_state.Hp > trigger) return null;
 
         // Out-of-combat heal-spell-during-rest only — don't cast
         // mid-walk between rooms.
@@ -561,7 +636,9 @@ public sealed class CastingDirector : IDisposable
         //  • IsRecastDue is false once the HoT is confirmed active with
         //    remaining duration, so a running HoT falls through to the instant
         //    single-target heal for the immediate top-up while it ticks.
-        if (hpPct > health.MajorHealCombatTrigger
+        int majorTrigger = PoolThreshold.Resolve(
+            health.HpThresholdMode, health.MajorHealCombatTrigger, _state.MaxHp);
+        if (_state.Hp > majorTrigger
             && !string.IsNullOrWhiteSpace(spells.HpRegenSpell)
             && IsRecastDue("", spells.HpRegenSpell))
             return spells.HpRegenSpell;
@@ -578,14 +655,14 @@ public sealed class CastingDirector : IDisposable
     // prompt data.
     private bool ManaClearsHealFloor(HealthSettings health)
     {
-        int floor = _state.InCombat
+        int floorValue = _state.InCombat
             ? health.HealIfAboveMaCombat
             : health.HealIfAboveMaResting;
-        if (floor <= 0) return true;
-        if (health.MaThresholdMode == ThresholdMode.Absolute)
-            return _state.Ma >= floor;
-        if (_state.MaxMa <= 0) return true;
-        return (int)Math.Round(_state.Ma * 100.0 / _state.MaxMa) >= floor;
+        if (floorValue <= 0) return true;
+        // Unknown pool (percentage mode, MaxMa 0) resolves to 0, so a heal is
+        // never blocked before prompt data loads. Absolute mode compares raw MA.
+        int floor = PoolThreshold.Resolve(health.MaThresholdMode, floorValue, _state.MaxMa);
+        return _state.Ma >= floor;
     }
 
     // ----- Curing -----------------------------------------------------
@@ -763,8 +840,11 @@ public sealed class CastingDirector : IDisposable
         // use-spell costs 0 mana) recasts regardless, so the floor + per-cast
         // affordability are applied per-slot below via IsBuffAffordable. MA
         // unknown (MaxMa 0) blocks mana-drawing buffs but not free item-casts.
-        bool manaBuffsAllowed = _state.MaxMa > 0
-            && (int)Math.Round(_state.Ma * 100.0 / _state.MaxMa) >= health.BlessIfAboveMa;
+        // BlessIfAboveMa read per MaThresholdMode — percentage of MaxMa, or an
+        // absolute MA / kai value — then compared against raw MA.
+        int blessFloor = PoolThreshold.Resolve(
+            health.MaThresholdMode, health.BlessIfAboveMa, _state.MaxMa);
+        bool manaBuffsAllowed = _state.MaxMa > 0 && _state.Ma >= blessFloor;
 
         // Self buffs first (rows 1–10 + regen + when-full), then party buffs.
         if (PickSelfBuff(spells, manaBuffsAllowed) is { } self) return self;

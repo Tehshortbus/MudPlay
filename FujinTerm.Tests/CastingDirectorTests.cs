@@ -823,8 +823,10 @@ public sealed class CastingDirectorTests
     [Fact]
     public void Buff_ConditionEnded_ClearsTimer_RecastsImmediately()
     {
-        // Server-confirmed early wear-off drops the timer so the next pass
-        // re-attempts without waiting out the stale clock.
+        // Server-confirmed early wear-off drops the timer so the wear-off line's
+        // own re-evaluation recasts immediately — once — without waiting out the
+        // stale clock. The optimistic on-send timer then blocks a same-round
+        // double.
         using CureHarness h = new();
         h.Spells.BlessSlots[1] ="bless";
         h.BuffInfo["bless"] = (string.Empty, 300);
@@ -843,13 +845,92 @@ public sealed class CastingDirectorTests
         h.Director.Evaluate();                 // mid-duration → no recast
         Assert.Empty(h.CastsSent);
 
-        h.FeedLine("Your blessing fades.");    // early wear-off → clears timer
-        h.CastsSent.Clear();
-        h.Cast.OnCombatTick();
-        h.Director.Evaluate();                 // due again immediately
-
+        h.FeedLine("Your blessing fades.");    // wear-off clears timer → recasts now
         Assert.Single(h.CastsSent);
         Assert.Equal("bless", h.CastsSent[0]);
+
+        // The recast re-armed the optimistic timer, so a stale re-evaluation this
+        // round can't fire a second bless.
+        h.Cast.OnCombatTick();
+        h.Director.Evaluate();
+        Assert.Single(h.CastsSent);
+    }
+
+    [Fact]
+    public void SelfHeal_StaleRepeat_SuppressedWhenPoolUnchanged()
+    {
+        // Repro of the swan double-cast: a combat tick wipes the coordinator's
+        // one-cast-per-round cooldown, so a second evaluation on the SAME (not-
+        // yet-server-reflected) HP/MA would re-issue the identical heal. The
+        // stale guard suppresses the byte-for-byte repeat.
+        using Harness h = new();
+        h.Spells.MinorHealSpell = "swan";
+        h.Health.MinorHealCombatTrigger = 70;
+        h.Health.MajorHealCombatTrigger = 40;
+
+        h.SetPrompt(hp: 65, maxHp: 100, inCombat: true);   // casts swan once
+        Assert.Single(h.CastsSent);
+        Assert.Equal("swan", h.CastsSent[0]);
+
+        h.Cast.OnCombatTick();                 // wipe cooldown (root-cause window)
+        h.Director.Evaluate();                 // unchanged pool → suppressed
+        Assert.Single(h.CastsSent);
+
+        // Once HP actually drops, the pool moved → a fresh heal is free to fire.
+        h.SetPrompt(hp: 55, maxHp: 100, inCombat: true);
+        Assert.Equal(2, h.CastsSent.Count);
+        Assert.Equal("swan", h.CastsSent[1]);
+    }
+
+    [Fact]
+    public void SelfBuff_OptimisticTimer_SuppressesSameRoundRecast()
+    {
+        // Repro of the tige double-cast: without an on-send recast clock, a
+        // combat tick wiping the cooldown lets a second evaluation re-issue the
+        // buff before its AppliedMessage confirms — draining kai and drawing a
+        // "not enough kai" error. The optimistic timer closes that window.
+        using CureHarness h = new();
+        h.Spells.BlessSlots[1] = "tige";
+        h.BuffInfo["tige"] = (string.Empty, 300);
+        h.Health.BlessIfAboveMa = 70;          // 70% of 5 kai → floor 4
+        h.State.MaxMa = 5;
+        h.State.Ma = 5;
+        h.State.InCombat = false;
+        h.RecordCondition("tige", MessageFlags.None,
+            applied: "You feel invigorated.", endsWith: "Your vigor fades.");
+
+        h.Director.Evaluate();                 // first cast — optimistic timer arms
+        Assert.Single(h.CastsSent);
+        Assert.Equal("tige", h.CastsSent[0]);
+
+        // Stale re-evaluation (kai spend not yet reflected) must NOT re-cast.
+        h.Cast.OnCombatTick();
+        h.Director.Evaluate();
+        Assert.Single(h.CastsSent);
+    }
+
+    [Fact]
+    public void Buff_BlessIfAboveMa_AbsoluteMode_UsesRawMa()
+    {
+        // In Absolute mode BlessIfAboveMa is a raw kai count, not a percent —
+        // a Kai class with a 5-kai pool blesses at "4 kai or more", not "4%".
+        using CureHarness h = new();
+        h.Spells.BlessSlots[1] = "tige";
+        h.BuffInfo["tige"] = (string.Empty, 300);
+        h.Health.MaThresholdMode = ThresholdMode.Absolute;
+        h.Health.BlessIfAboveMa = 4;
+        h.State.MaxMa = 5;
+        h.State.InCombat = false;
+        h.RecordCondition("tige", MessageFlags.None, applied: "You feel invigorated.");
+
+        h.State.Ma = 3;                        // below the absolute floor
+        h.Director.Evaluate();
+        Assert.Empty(h.CastsSent);
+
+        h.State.Ma = 4;                        // clears the floor
+        h.Director.Evaluate();
+        Assert.Single(h.CastsSent);
+        Assert.Equal("tige", h.CastsSent[0]);
     }
 
     [Fact]
