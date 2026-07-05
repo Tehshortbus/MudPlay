@@ -35,6 +35,9 @@ public sealed class RoomTrackerTests : IDisposable
     /// Inn: W → 1/1, N → 1/5
     /// Cellar (1/5) is name-and-exits unique.
     /// 2/1 + 2/2 are an ambiguous-name pair for the Reconciling case.
+    /// 3/1 "Darkwood Forest, Main Road" has a hidden `go path` text exit
+    /// (S → 3/2) plus visible {SE, W}; 3/2 + 3/3 are an ambiguous
+    /// "Darkwood Forest" {SW} pair that only the go-path edge disambiguates.
     /// </summary>
     private const string GraphJson = """
         [
@@ -69,7 +72,19 @@ public sealed class RoomTrackerTests : IDisposable
           { "Map Number": 2, "Room Number": 4, "Name": "Far Hall",
             "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
             "N": "0", "S": "2/3", "E": "0", "W": "0",
-            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 3, "Room Number": 1, "Name": "Darkwood Forest, Main Road",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "0", "S": "3/2 (Text: go path, enter path, walk path)", "E": "0", "W": "3/10",
+            "NE": "0", "NW": "0", "SE": "3/9", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 3, "Room Number": 2, "Name": "Darkwood Forest",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "0", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "3/11", "U": "0", "D": "0" },
+          { "Map Number": 3, "Room Number": 3, "Name": "Darkwood Forest",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "0", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "3/12", "U": "0", "D": "0" }
         ]
         """;
 
@@ -504,6 +519,57 @@ public sealed class RoomTrackerTests : IDisposable
         tracker.NoteRoomObserved(Obs("Inn", Direction.W, Direction.N));
         Assert.Equal(RoomConfidence.Confirmed, tracker.State.Confidence);
         Assert.Equal(new RoomKey(1, 4), tracker.State.CurrentRoom!.Key);
+    }
+
+    // ----- go-path (text-exit) resolution ----------------------------
+
+    [Fact]
+    public void Pending_GoPathTextExit_ResolvesToDeterministicTarget()
+    {
+        // 002430: a manually typed `go path` enqueues a pending move with a
+        // null cardinal, so the old code skipped prediction entirely and fell
+        // to name+exits candidate search — which can't match a go-path
+        // destination (the hidden text exit sits in the graph ExitMask but
+        // never on the "Obvious exits:" line), leaving the tracker Suspect →
+        // Lost. The go-path exit is a deterministic graph edge, so the head
+        // pending move now resolves through 3/1's Text exit straight to 3/2,
+        // even though "Darkwood Forest" {SW} is name-ambiguous (3/2 vs 3/3).
+        RoomTracker tracker = NewTracker();
+        tracker.SetLocated(new RoomKey(3, 1));       // Darkwood Forest, Main Road — S go-path → 3/2
+        tracker.NoteMoveSent("go path");             // manual text exit, no resolved cardinal
+        Assert.Equal(RoomConfidence.Pending, tracker.State.Confidence);
+
+        tracker.NoteRoomObserved(Obs("Darkwood Forest", Direction.SW));
+
+        Assert.Equal(RoomConfidence.Confirmed, tracker.State.Confidence);
+        Assert.Equal(new RoomKey(3, 2), tracker.State.CurrentRoom!.Key);
+    }
+
+    [Fact]
+    public void ReplayRecover_FollowsGoPathTextExit_LandsTrueRoom()
+    {
+        // Client-restart recovery across a go-path step. LastKnownRoom is the
+        // unique 3/1; the persisted trail is a single `go path` command. On
+        // relaunch Hydrate seeds Confirmed at 3/1 and primes the text step. The
+        // first login redisplay is the ambiguous 3/2 ("Darkwood Forest" {SW}),
+        // which no unique candidate resolves. Replay must now follow the text
+        // exit (3/1 + go path → 3/2) instead of bailing on the null cardinal.
+        RoomTracker tracker = NewTracker();
+        var profile = new FujinTerm.Models.Profile.CharacterProfile
+        {
+            LastKnownRoom = new FujinTerm.Models.Profile.RoomRef(3, 1),
+            RecentSteps = new List<FujinTerm.Models.Profile.DirectionDto>
+            {
+                new(null, "go path"),
+            },
+        };
+        tracker.Hydrate(profile);
+        Assert.Equal(new RoomKey(3, 1), tracker.State.CurrentRoom!.Key);
+
+        tracker.NoteRoomObserved(Obs("Darkwood Forest", Direction.SW));
+
+        Assert.Equal(RoomConfidence.Confirmed, tracker.State.Confidence);
+        Assert.Equal(new RoomKey(3, 2), tracker.State.CurrentRoom!.Key);
     }
 
     // ----- profile hydrate / save ------------------------------------
