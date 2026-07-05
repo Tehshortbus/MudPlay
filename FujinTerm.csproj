@@ -26,7 +26,7 @@
          hand-edit. Bump this here and the @version pong updates with
          the next build. Semver policy (post-1.0): MAJOR = whole-program
          refactor, MINOR = a large PR, PATCH = a small / bugfix PR. -->
-    <Version>1.4.2</Version>
+    <Version>1.4.3</Version>
 
     <!-- Memory footprint: pin the Workstation GC (one small heap) rather than
          the Server GC (a heap + background thread per core), which on a

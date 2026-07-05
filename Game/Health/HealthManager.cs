@@ -42,7 +42,11 @@ namespace FujinTerm.Game.Health;
 //
 // Hang-if-below: PlayerState.Hp at or below HealthSettings.HangIfBelowHp fires a
 // single-shot hard disconnect via the configured exit command. Setting the
-// threshold to 0 disables the check.
+// threshold to 0 disables the check. The trigger stays live all the way through
+// the bleeding-out window: a MajorMUD character at 0 HP or below hasn't died yet
+// (death happens at the per-realm negative floor, BbsProfile.PlayerDiesAtHp) and
+// can still hang up, so the disconnect keeps firing down to — but not past — that
+// floor, giving a dropped-but-not-yet-dead character a last chance to escape.
 public sealed class HealthManager : IDisposable
 {
     // LogService category — appears as [Health] rows per assert / clear / rest /
@@ -65,6 +69,7 @@ public sealed class HealthManager : IDisposable
     private readonly Func<Models.Profile.CombatSettings>? _readCombatSettings;
     private readonly Func<Models.Profile.GeneralSettings>? _readGeneralSettings;
     private readonly Func<bool>? _hasEngageableHostiles;
+    private readonly Func<int>? _readDeathFloor;
     private readonly LogService? _log;
 
     private Action<byte[]>? _wireSender;
@@ -112,6 +117,7 @@ public sealed class HealthManager : IDisposable
                readCombatSettings: null,
                readGeneralSettings: null,
                hasEngageableHostiles: null,
+               readDeathFloor: null,
                log) { }
 
     // Full constructor. The additional selectors wire the flee path:
@@ -131,6 +137,11 @@ public sealed class HealthManager : IDisposable
     //     every tick while a hostile keeps breaking it (a room with hostiles
     //     breaks resting every combat round, so the room must be cleared first).
     //     Typically wired to CombatStateTracker.HasEngageableHostiles.
+    //   readDeathFloor — the realm's negative-HP death floor (BbsProfile.
+    //     PlayerDiesAtHp, e.g. -25). The emergency-hangup path fires anywhere in
+    //     the bleeding-out window (hang-trigger down to this floor) but bails once
+    //     HP has fallen past it — a character at or below the floor is already
+    //     dead, so there's nothing left to disconnect. Null defaults to -25.
     public HealthManager(
         PlayerState state,
         MovementCoordinator coordinator,
@@ -142,6 +153,7 @@ public sealed class HealthManager : IDisposable
         Func<Models.Profile.CombatSettings>? readCombatSettings,
         Func<Models.Profile.GeneralSettings>? readGeneralSettings,
         Func<bool>? hasEngageableHostiles,
+        Func<int>? readDeathFloor = null,
         LogService? log = null)
     {
         ArgumentNullException.ThrowIfNull(state);
@@ -158,6 +170,7 @@ public sealed class HealthManager : IDisposable
         _readCombatSettings = readCombatSettings;
         _readGeneralSettings = readGeneralSettings;
         _hasEngageableHostiles = hasEngageableHostiles;
+        _readDeathFloor = readDeathFloor;
         _log = log;
         _state.PropertyChanged += OnStateChanged;
     }
@@ -283,15 +296,27 @@ public sealed class HealthManager : IDisposable
             // shouldn't be left dying just because auto-heal is off — but
             // it stays opt-in (default off) since hanging up is a last
             // resort. Only the hangup branch runs; everything else above
-            // already cleared.
+            // already cleared. TryEmergencyHangup self-guards on MaxHp and the
+            // trigger/death-floor window, so we just need a prompt — the hangup
+            // stays live all the way through the bleeding-out zone.
             if (_readGeneralSettings?.Invoke() is { AllowHangupInAllOffMode: true }
-                && _state.HasPromptData && (_state.Hp > 0 || _state.Ma > 0))
+                && _state.HasPromptData)
             {
                 TryEmergencyHangup(_readSettings());
             }
             return;
         }
         if (!_state.HasPromptData) return;
+        HealthSettings s = _readSettings();
+
+        // Emergency hangup evaluates first and runs through the whole
+        // bleeding-out window: a dropped character (Hp <= 0 but not yet at the
+        // realm death floor) can still hang up, so this must precede the
+        // dead/dropped early-return below — otherwise a bleeding-out non-caster
+        // (Ma also 0) would skip the disconnect entirely. When it actually
+        // fires there's nothing left to rest / flee for, so we're done.
+        if (TryEmergencyHangup(s)) return;
+
         // Defensive: in real use PromptParser writes Hp + MaxHp before
         // flipping HasPromptData, so Hp == 0 here means either the
         // character is genuinely dead OR a producer races the
@@ -301,7 +326,6 @@ public sealed class HealthManager : IDisposable
         // PlayerDied + recovery routing, which doesn't need a rest
         // gate.
         if (_state.Hp <= 0 && _state.Ma <= 0) return;
-        HealthSettings s = _readSettings();
 
         // Rest-interruption recovery on a resting-state change. Two-step
         // latch so we don't race the (Resting) prompt arrival:
@@ -532,28 +556,39 @@ public sealed class HealthManager : IDisposable
             _restInFlight = false;
             _restConfirmedByPrompt = false;
         }
-
-        TryEmergencyHangup(s);
     }
 
-    // Hangup-on-emergency: HP below HealthSettings.HangIfBelowHp triggers a hard
-    // disconnect via the configured Game-Exit command. Single-shot — the
+    // Hangup-on-emergency: HP at or below HealthSettings.HangIfBelowHp triggers a
+    // hard disconnect via the configured Game-Exit command. Single-shot — the
     // disconnect command goes once per session and the log captures it for
     // postmortem. Defaults: HangIfBelowHp=5 (%). Setting it to 0 disables the
-    // check entirely (no false positives on dead/respawned chars). Called from
-    // the normal evaluate path and — when
+    // check entirely. Called from the normal evaluate path and — when
     // GeneralSettings.AllowHangupInAllOffMode is set — from the engine-disabled
     // carve-out.
-    private void TryEmergencyHangup(HealthSettings s)
+    //
+    // The fire window is (deathFloor, hangTrigger]: it stays live through the
+    // bleeding-out zone below 0 HP because a dropped character can still hang up,
+    // but bails once HP has fallen to or past the realm death floor — at that
+    // point the character is already dead and there's nothing to disconnect
+    // (this also guards against dead/respawned chars reading garbage HP). The
+    // floor is clamped to <= 0: a misconfigured positive value collapses to 0,
+    // preserving the old positive-band-only behavior.
+    //
+    // Returns true only when it actually sent the disconnect this call, so the
+    // Evaluate caller can short-circuit the rest of the recovery machinery. A
+    // couldn't-send (no exit command configured) still latches _hangFired but
+    // returns false, letting normal rest / flee run as a fallback.
+    private bool TryEmergencyHangup(HealthSettings s)
     {
         // Master kill-switch: the user has declared only an explicit local
         // action may drop the carrier. Hard-overrides AllowHangupInAllOffMode —
         // an opted-out character won't auto-disconnect even at low HP.
-        if (_readGeneralSettings?.Invoke() is { DisableHangups: true }) return;
-        if (_hangFired || s.HangIfBelowHp <= 0 || _state.MaxHp <= 0) return;
+        if (_readGeneralSettings?.Invoke() is { DisableHangups: true }) return false;
+        if (_hangFired || s.HangIfBelowHp <= 0 || _state.MaxHp <= 0) return false;
 
         int hangTrigger = ResolveThreshold(s.HpThresholdMode, s.HangIfBelowHp, _state.MaxHp);
-        if (_state.Hp <= 0 || _state.Hp > hangTrigger) return;
+        int deathFloor = Math.Min(0, _readDeathFloor?.Invoke() ?? -25);
+        if (_state.Hp <= deathFloor || _state.Hp > hangTrigger) return false;
 
         _hangFired = true;
         string? hangCmd = _readHangupCommand?.Invoke();
@@ -562,13 +597,13 @@ public sealed class HealthManager : IDisposable
             _log?.Warn(LogCategory,
                 $"HANGUP threshold crossed (HP {_state.Hp}/{_state.MaxHp} <= {hangTrigger}) " +
                 $"but no hangup command configured — set Settings → Other → Game Exit.");
+            return false;
         }
-        else
-        {
-            _log?.Warn(LogCategory,
-                $"HANGUP — HP {_state.Hp}/{_state.MaxHp} <= hang-trigger={hangTrigger} cmd='{hangCmd}'");
-            SendCommand(hangCmd);
-        }
+
+        _log?.Warn(LogCategory,
+            $"HANGUP — HP {_state.Hp}/{_state.MaxHp} <= hang-trigger={hangTrigger} cmd='{hangCmd}'");
+        SendCommand(hangCmd);
+        return true;
     }
 
     // Try to dispatch a single flee step. No-ops (with a log line) when no

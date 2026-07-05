@@ -42,6 +42,11 @@ public sealed class HealthManagerTests
         /// touch it.</summary>
         public bool HostilesPresent { get; set; }
 
+        /// <summary>Per-BBS negative-HP death floor (BbsProfile.PlayerDiesAtHp).
+        /// Default -25 matches the seeded value. The emergency hangup fires
+        /// anywhere in the bleeding-out window down to — but not past — this.</summary>
+        public int DeathFloor { get; set; } = -25;
+
         public Harness(HealthSettings? settings = null)
         {
             Settings = settings ?? new HealthSettings();
@@ -55,6 +60,7 @@ public sealed class HealthManagerTests
                 readCombatSettings: null,
                 readGeneralSettings: () => General,
                 hasEngageableHostiles: () => HostilesPresent,
+                readDeathFloor: () => DeathFloor,
                 log: Log);
             Health.SetWireSender(b => Sent.Add(b));
         }
@@ -1066,9 +1072,11 @@ public sealed class HealthManagerTests
     public void Hangup_HpBelowTrigger_SendsDisconnect()
     {
         using Harness h = new();
-        h.State.MaxHp = 200;
-        h.State.HasPromptData = true;
-        h.State.Hp = 5;        // 2.5% — below default 5% hang threshold
+        // Prompt-accurate ordering (Hp before HasPromptData): the hangup now
+        // fires anywhere in the (deathFloor, hangTrigger] window, so the value
+        // must be settled before the prompt flip — otherwise a transient Hp=0
+        // (a dropped state) would itself trip the disconnect.
+        h.SetPrompt(hp: 5, maxHp: 200);   // 2.5% — below default 5% hang threshold
 
         Assert.Contains("=x", h.SentLines);
     }
@@ -1089,9 +1097,18 @@ public sealed class HealthManagerTests
     public void Hangup_AboveThreshold_NoFire()
     {
         using Harness h = new();
-        h.State.MaxHp = 200;
-        h.State.HasPromptData = true;
-        h.State.Hp = 50;        // 25% — above 5% hang threshold
+        h.SetPrompt(hp: 50, maxHp: 200);   // 25% — above 5% hang threshold
+
+        Assert.DoesNotContain("=x", h.SentLines);
+    }
+
+    [Fact]
+    public void Hangup_ZeroMana_HealthyHp_NeverHangs()
+    {
+        // Mana is NOT a hangup trigger — only HP is. A drained caster with
+        // full HP just meditates / rests; it must never auto-disconnect.
+        using Harness h = new();
+        h.SetPrompt(hp: 200, maxHp: 200, ma: 0, maxMa: 100);
 
         Assert.DoesNotContain("=x", h.SentLines);
     }
@@ -1102,14 +1119,138 @@ public sealed class HealthManagerTests
         // First crossing fires; subsequent property changes within
         // the same low-HP window must not re-fire.
         using Harness h = new();
-        h.State.MaxHp = 200;
-        h.State.HasPromptData = true;
-        h.State.Hp = 5;
+        h.SetPrompt(hp: 5, maxHp: 200);
         int hangCount = h.SentLines.Count(l => l == "=x");
         Assert.Equal(1, hangCount);
 
         h.State.Hp = 3;        // even lower — still no second hang
         Assert.Equal(1, h.SentLines.Count(l => l == "=x"));
+    }
+
+    // ----- bleeding-out window (per-BBS death floor) ----------------
+    // 0 HP only drops a MajorMUD character (bleeding out — revivable, still
+    // able to hang up); death happens at the per-realm negative floor. The
+    // emergency hangup must stay live all the way through that window, down to
+    // but not past the floor.
+
+    [Fact]
+    public void Hangup_JustDroppedAtZero_StillHangs()
+    {
+        // Exactly 0 HP — the top of the bleeding-out window. Old logic bailed
+        // at Hp<=0; now the disconnect fires (a dropped character can hang up).
+        using Harness h = new();
+        h.SetPrompt(hp: 0, maxHp: 200);
+
+        Assert.Contains("=x", h.SentLines);
+    }
+
+    [Fact]
+    public void Hangup_BleedingOutAboveFloor_StillHangs()
+    {
+        // Dropped and bleeding out, but above the -25 floor → still alive,
+        // still able to escape.
+        using Harness h = new();
+        h.SetPrompt(hp: -10, maxHp: 200);
+
+        Assert.Contains("=x", h.SentLines);
+    }
+
+    [Fact]
+    public void Hangup_BleedingOutNonCaster_StillHangs()
+    {
+        // The regression this restructure fixes: a non-caster (Ma 0/0) at
+        // negative HP used to hit Evaluate's `Hp<=0 && Ma<=0` early-return and
+        // never reach the hangup. It must fire now.
+        using Harness h = new();
+        h.SetPrompt(hp: -10, maxHp: 200, ma: 0, maxMa: 0);
+
+        Assert.Contains("=x", h.SentLines);
+    }
+
+    [Fact]
+    public void Hangup_AtDeathFloor_DoesNotHang()
+    {
+        // Exactly at the floor — already dead, nothing left to disconnect.
+        using Harness h = new();
+        h.SetPrompt(hp: -25, maxHp: 200);
+
+        Assert.DoesNotContain("=x", h.SentLines);
+    }
+
+    [Fact]
+    public void Hangup_PastDeathFloor_DoesNotHang()
+    {
+        using Harness h = new();
+        h.SetPrompt(hp: -30, maxHp: 200);   // overshot the floor → dead
+
+        Assert.DoesNotContain("=x", h.SentLines);
+    }
+
+    [Fact]
+    public void Hangup_CustomFloor_FiresDownToConfiguredFloor()
+    {
+        // A realm with a deeper floor keeps the window open further.
+        using Harness h = new() { DeathFloor = -50 };
+        h.SetPrompt(hp: -40, maxHp: 200);   // above -50 → still hangs
+
+        Assert.Contains("=x", h.SentLines);
+    }
+
+    [Fact]
+    public void Hangup_CustomFloor_BailsAtConfiguredFloor()
+    {
+        using Harness h = new() { DeathFloor = -50 };
+        h.SetPrompt(hp: -50, maxHp: 200);   // at the deeper floor → dead
+
+        Assert.DoesNotContain("=x", h.SentLines);
+    }
+
+    [Fact]
+    public void Hangup_PositiveFloorClampsToZero()
+    {
+        // A misconfigured positive floor collapses to 0, restoring the old
+        // positive-band-only behavior — a bleeding-out char below 0 won't hang.
+        using Harness h = new() { DeathFloor = 10 };
+        h.SetPrompt(hp: -5, maxHp: 200);
+
+        Assert.DoesNotContain("=x", h.SentLines);
+    }
+
+    [Fact]
+    public void Hangup_Fires_ShortCircuitsRest()
+    {
+        // Once we've committed to disconnecting there's no point resting — the
+        // hangup returns early from Evaluate before the rest-out branch.
+        using Harness h = new();
+        h.SetPrompt(hp: 5, maxHp: 200);   // below both hang- and rest-trigger
+
+        Assert.Contains("=x", h.SentLines);
+        Assert.DoesNotContain("rest", h.SentLines);
+    }
+
+    [Fact]
+    public void Hangup_NoExitCommand_FallsBackToRest()
+    {
+        // Couldn't-send (no exit command configured) latches the single-shot
+        // but doesn't short-circuit — normal recovery still runs as a fallback.
+        using Harness h = new() { HangupCommand = null };
+        h.SetPrompt(hp: 5, maxHp: 200);
+
+        Assert.DoesNotContain("=x", h.SentLines);
+        Assert.Contains("rest", h.SentLines);
+    }
+
+    [Fact]
+    public void Hangup_DroppedInAllOffMode_StillHangs()
+    {
+        // The all-off carve-out honours the bleeding-out window too, so an AFK
+        // character that dropped with every engine off still gets its escape.
+        using Harness h = new();
+        h.AutoHealRestEnabled = false;
+        h.General = new Models.Profile.GeneralSettings { AllowHangupInAllOffMode = true };
+        h.SetPrompt(hp: -10, maxHp: 200);
+
+        Assert.Contains("=x", h.SentLines);
     }
 
     // ----- all-off-mode hangup carve-out ----------------------------
@@ -1121,9 +1262,7 @@ public sealed class HealthManagerTests
         using Harness h = new();
         h.AutoHealRestEnabled = false;
         h.General = new Models.Profile.GeneralSettings { AllowHangupInAllOffMode = true };
-        h.State.MaxHp = 200;
-        h.State.HasPromptData = true;
-        h.State.Hp = 5;        // 2.5% — below default 5% hang threshold
+        h.SetPrompt(hp: 5, maxHp: 200);   // 2.5% — below default 5% hang threshold
 
         Assert.Contains("=x", h.SentLines);
     }
@@ -1149,9 +1288,7 @@ public sealed class HealthManagerTests
         using Harness h = new();
         h.AutoHealRestEnabled = false;
         h.General = new Models.Profile.GeneralSettings { AllowHangupInAllOffMode = true };
-        h.State.MaxHp = 200;
-        h.State.HasPromptData = true;
-        h.State.Hp = 50;       // 25% — above 5% hang threshold
+        h.SetPrompt(hp: 50, maxHp: 200);   // 25% — above 5% hang threshold
 
         Assert.DoesNotContain("=x", h.SentLines);
     }

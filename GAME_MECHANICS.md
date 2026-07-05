@@ -115,6 +115,11 @@ it isn't here and you're unsure, ask.
   - a **healing spell** lifts their HP above 0.
 - While dropped, another player can also `drag <name>` — the dropped character then **follows
   wherever the dragging player moves**, their only way out of the room until aided or healed.
+- **A dropped character can still hang up.** Dropping blocks in-realm *actions* (move / fight / cast),
+  but the **carrier drop / main-menu exit** (the Game-Exit command, e.g. `=x` / `;o`) **still goes
+  through at 0 HP or below**. So the emergency-hangup escape stays available all the way through the
+  bleeding-out window — the client's low-HP auto-hangup fires down to (but not past) the BBS death
+  floor, giving a dropped-but-not-yet-dead character a last chance to disconnect before dying.
 
 **Death — the BBS negative-HP threshold** *([CONFIRMED])*
 - Each **BBS sets its own negative-HP death threshold**; not every BBS advertises the number. When
@@ -134,6 +139,14 @@ it isn't here and you're unsure, ask.
 - Consequence: the stored death threshold is only a starting estimate (the client seeds it at `-25`,
   a guess). Refine it from **slow deaths only**; an overkill reading is unreliable and must not push
   the estimate more negative.
+- **One death message, both cases.** There is exactly **one death line** — `You have been slain by
+  <killer>.` — for **every** death, an overkill blow *and* a slow bleed-out alike; a bleed-out still
+  names the **last attacker**, so the line by itself cannot tell a slow death from an overkill. The
+  only runtime signal that separates them is the **HP trajectory** into death: a gradual, small-step
+  descent through the bleeding-out band (slow, accurate) versus a single large HP drop that blows
+  past the floor (overkill, discard). So the client's floor auto-refinement must classify off the
+  observed HP steps, not the message — and, per the trace's stated assumption, only while the
+  killing blow isn't a huge hit that leaps right past the floor.
 
 ## Attack spells: why one fails to damage a monster
 

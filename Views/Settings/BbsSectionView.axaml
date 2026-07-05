@@ -313,6 +313,35 @@
                                    ToolTip.Tip="Sent at the MajorMUD main menu to log off. Default '=x'. Fires immediately when a permitted player telepaths @hangup; full cleanup-warning automation ships in a follow-up PR."/>
                     </Grid>
 
+                    <!-- ===== Realm mechanics (per-BBS) =====
+                         The negative-HP death floor. 0 HP only drops a character
+                         into a revivable bleed-out; death happens at this value.
+                         Stored per-BBS because it's a realm balance knob. The
+                         emergency auto-hangup reads it so the disconnect keeps
+                         firing all the way through the bleeding-out window. -->
+                    <TextBlock Classes="GroupHeader" Text="Realm mechanics" Margin="0,18,0,0"/>
+
+                    <Grid ColumnDefinitions="180,Auto,*" Margin="0,6,0,0" ColumnSpacing="8">
+                        <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Player dies at (HP):"/>
+                        <NumericUpDown Grid.Column="1"
+                                       Value="{Binding PlayerDiesAtHp, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                                       Minimum="-999" Maximum="0" Increment="1"
+                                       FormatString="0" Width="140"
+                                       HorizontalAlignment="Left"
+                                       ToolTip.Tip="Negative-HP floor at which a character actually dies. 0 HP only drops you into a revivable bleed-out — death happens here. The emergency auto-hangup keeps firing through the whole bleeding-out window down to this floor. Default -25."/>
+                    </Grid>
+
+                    <!-- Auto-refine traces the true floor from slow deaths: a
+                         bleed-out crosses the floor one tick at a time and lands
+                         right at it, so its HP reading measures the real value.
+                         The seed above is only a guess; a single big overkill hit
+                         over-negatives the floor and is discarded. Off pins the
+                         manual value. -->
+                    <CheckBox IsChecked="{Binding AutoRefineDeathFloor, Mode=TwoWay}"
+                              Margin="0,6,0,0"
+                              Content="Auto-refine the floor from slow deaths"
+                              ToolTip.Tip="Learn the realm's true death floor from deaths where you bled out gradually (which land right at the floor). A single big overkill hit blows past the floor and is ignored. Turn off to keep the value you set above."/>
+
                     <!-- ===== Confirmations =====
                          Show-information / Show-data-being-sent /
                          Show-reason-for-running were removed entirely —

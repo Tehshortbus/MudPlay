@@ -41,6 +41,8 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         "BBS", "Host", "Port", "Telnet", "Redial", "Cleanup", "Reconnect",
         "Sysop", "Terminal", "Cols", "Rows", "NAWS", "Connection",
         "Game entry command", "Game exit command", "Enter realm", "Logoff",
+        "Player dies at", "Death floor", "Bleeding out", "Dropped", "Hangup HP",
+        "Auto-refine death floor", "Trace death floor", "Slow death", "Learn floor",
         "Display", "Font", "Font size", "Scrollback", "Backscroll", "Buffer",
         "Confirm", "Confirm exit", "Confirm hangup", "Confirm save", "Confirm delete",
     };
@@ -81,6 +83,18 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     // front-end, not the character.
     [ObservableProperty] private string _gameEntryCommand = "E";
     [ObservableProperty] private string _gameExitCommand = "=x";
+
+    // ----- Realm mechanics (per-BBS) -----
+    // The negative-HP floor at which a character actually dies (0 HP only drops
+    // you into a revivable bleed-out). The emergency auto-hangup reads it to
+    // keep firing through the whole bleeding-out window. Seeded at the standard
+    // -25.
+    [ObservableProperty] private int _playerDiesAtHp = -25;
+
+    // When on, the death-floor tracer refines PlayerDiesAtHp from observed slow
+    // deaths (a bleed-out lands right at the true floor). Off pins the manual
+    // value. Default on.
+    [ObservableProperty] private bool _autoRefineDeathFloor = true;
 
     // ----- Per-character credentials -----
     // True when any character profile is loaded — including unsaved drafts.
@@ -544,6 +558,8 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         ScrollbackLines = profile.ScrollbackLines;
         GameEntryCommand = profile.GameEntryCommand;
         GameExitCommand = profile.GameExitCommand;
+        PlayerDiesAtHp = profile.PlayerDiesAtHp;
+        AutoRefineDeathFloor = profile.AutoRefineDeathFloor;
     }
 
     private void LoadCredentialsFor(string bbsName)
@@ -637,6 +653,8 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         ScrollbackLines = defaults.ScrollbackLines;
         GameEntryCommand = defaults.GameEntryCommand;
         GameExitCommand = defaults.GameExitCommand;
+        PlayerDiesAtHp = defaults.PlayerDiesAtHp;
+        AutoRefineDeathFloor = defaults.AutoRefineDeathFloor;
     }
 
     private void Dirty()
@@ -680,6 +698,10 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
             ? new BbsProfile().GameEntryCommand : GameEntryCommand.Trim();
         profile.GameExitCommand = string.IsNullOrWhiteSpace(GameExitCommand)
             ? new BbsProfile().GameExitCommand : GameExitCommand.Trim();
+        // Death floor is a negative-HP value; a positive entry is meaningless
+        // (0 HP already means dropped), so clamp to <= 0 at the point of storage.
+        profile.PlayerDiesAtHp = Math.Min(0, PlayerDiesAtHp);
+        profile.AutoRefineDeathFloor = AutoRefineDeathFloor;
     }
 
     partial void OnNameChanged(string value)                    { Dirty(); }
@@ -739,6 +761,8 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     partial void OnScrollbackLinesChanged(int value)            { PushToCache(); Dirty(); }
     partial void OnGameEntryCommandChanged(string value)        { PushToCache(); Dirty(); }
     partial void OnGameExitCommandChanged(string value)         { PushToCache(); Dirty(); }
+    partial void OnPlayerDiesAtHpChanged(int value)             { PushToCache(); Dirty(); }
+    partial void OnAutoRefineDeathFloorChanged(bool value)      { PushToCache(); Dirty(); }
 
     // Confirm flags are Global-tier, not per-BBS — they don't push into
     // the per-BBS cache, just mark the section dirty so Apply commits

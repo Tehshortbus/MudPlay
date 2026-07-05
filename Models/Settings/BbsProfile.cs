@@ -95,6 +95,28 @@ public sealed class BbsProfile
     // logout flow.
     public string GameExitCommand { get; set; } = "=x";
 
+    // ----- Realm mechanics -----
+
+    // The negative-HP floor at which a MajorMUD character actually dies.
+    // Hitting 0 HP only *drops* you (bleeding out — can't move/fight/cast,
+    // but revivable and still able to hang up); death happens when HP falls
+    // to this value. Stored per-BBS because the floor is a realm balance
+    // knob, not a per-character stat. Seeded at the standard -25; clamp
+    // consumers treat any positive value as 0. The emergency auto-hangup
+    // reads this so it keeps firing through the whole bleeding-out window
+    // (from the hang-trigger down to — but not past — this floor).
+    public int PlayerDiesAtHp { get; set; } = -25;
+
+    // Let the client trace the realm's true death floor from observed *slow*
+    // deaths and refine PlayerDiesAtHp toward it. The seed (-25) is only a
+    // guess; a bleed-out crosses the floor one tick at a time and lands right
+    // at it, so its HP reading is an accurate measurement. When on, the death-
+    // floor tracer overwrites PlayerDiesAtHp from such deaths (an overkill's
+    // over-negative reading is discarded and never refines). Off pins the
+    // user's manual value. Default on — the whole point of the setting is to
+    // start from a guess and let real deaths correct it.
+    public bool AutoRefineDeathFloor { get; set; } = true;
+
     // ----- Terminal dimensions (NAWS, RFC 1073) -----
 
     // Terminal columns to advertise via Telnet NAWS at connect-time.

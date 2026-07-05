@@ -683,6 +683,11 @@ public sealed class AppServices
     // engines subscribe for their own death-clean-up paths.
     public Game.Combat.DeathLineWatcher DeathWatcher { get; private set; } = null!;
 
+    // Refines the active BBS's negative-HP death floor
+    // (Models.Settings.BbsProfile.PlayerDiesAtHp) from observed slow deaths by
+    // watching the local HP trajectory into each death.
+    public Game.Health.DeathFloorTracer DeathFloorTracer { get; private set; } = null!;
+
     // Auto-attack engine. Picks a target from
     // RoomClassifier's last observation and sends the
     // configured attack command when
@@ -1941,6 +1946,15 @@ public sealed class AppServices
         DeathWatcher = new Game.Combat.DeathLineWatcher(Router, Log);
         DeathWatcher.PlayerDied += _ => RoundDamage.MarkCombatEnded();
 
+        // Death-floor tracer. Watches the HP descent into each death and, on a
+        // clean slow death (bled gradually to the floor, not overkilled), refines
+        // the active BBS's PlayerDiesAtHp to the measured value — the seed is only
+        // a guess. Reads / persists the realm profile through the same
+        // ResolveActiveBbs / Bbs.Save path the settings UI uses.
+        DeathFloorTracer = new Game.Health.DeathFloorTracer(
+            PlayerState, ResolveActiveBbs, Bbs.Save, Log);
+        DeathWatcher.PlayerDied += _ => DeathFloorTracer.RecordDeath();
+
         // Death-halt bridge. On our death, stops every movement engine (via
         // UserGate) so we stay in the graveyard we respawn into until the player
         // manually resumes — no loop / walk-to / auto-lair marches us back out
@@ -2059,6 +2073,10 @@ public sealed class AppServices
             // assert the CombatGate, so we stay in sync with the
             // movement gate logic.
             hasEngageableHostiles: () => CombatTracker.HasEngageableHostiles,
+            // Per-realm negative-HP death floor: keeps the emergency
+            // hangup firing through the bleeding-out window down to the
+            // point the character actually dies.
+            readDeathFloor: () => ResolveActiveBbs()?.PlayerDiesAtHp ?? -25,
             log: Log);
 
         // Leader-rest nudge: a standing-idle follower's own PlayerState may
