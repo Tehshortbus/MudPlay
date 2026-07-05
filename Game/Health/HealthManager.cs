@@ -366,10 +366,10 @@ public sealed class HealthManager : IDisposable
         bool follower = _isPartyFollower?.Invoke() ?? false;
 
         // ----- HP gate transitions ---------------------------------
-        int hpRestTrigger = ResolveThreshold(s.HpThresholdMode, s.RestIfBelowHp, _state.MaxHp);
+        int hpRestTrigger = PoolThreshold.Resolve(s.HpThresholdMode, s.RestIfBelowHp, _state.MaxHp);
         int hpRestTarget  = follower
             ? Math.Min(hpRestTrigger + 1, _state.MaxHp)
-            : ResolveThreshold(s.HpThresholdMode, s.RestMaxHp, _state.MaxHp);
+            : PoolThreshold.Resolve(s.HpThresholdMode, s.RestMaxHp, _state.MaxHp);
 
         // Strictly below — "rest if below N" rests only when the pool is
         // under N, never AT N. (Equal-or-less traps a level-2 mystic: 1 max
@@ -391,10 +391,10 @@ public sealed class HealthManager : IDisposable
         }
 
         // ----- MA gate transitions ---------------------------------
-        int maRestTrigger = ResolveThreshold(s.MaThresholdMode, s.RestIfBelowMa, _state.MaxMa);
+        int maRestTrigger = PoolThreshold.Resolve(s.MaThresholdMode, s.RestIfBelowMa, _state.MaxMa);
         int maRestTarget  = follower
             ? Math.Min(maRestTrigger + 1, _state.MaxMa)
-            : ResolveThreshold(s.MaThresholdMode, s.RestMaxMa, _state.MaxMa);
+            : PoolThreshold.Resolve(s.MaThresholdMode, s.RestMaxMa, _state.MaxMa);
 
         // Strictly below (see HP gate above) — the mystic-at-level-2 case.
         if (!_maGateAsserted && _state.Ma < maRestTrigger && _state.MaxMa > 0)
@@ -445,7 +445,7 @@ public sealed class HealthManager : IDisposable
         }
         else if (!_fledThisCombat)
         {
-            int hpRunTrigger = ResolveThreshold(s.HpThresholdMode, s.RunIfBelowHp, _state.MaxHp);
+            int hpRunTrigger = PoolThreshold.Resolve(s.HpThresholdMode, s.RunIfBelowHp, _state.MaxHp);
             bool hpRun = _state.MaxHp > 0 && _state.Hp > 0 && _state.Hp <= hpRunTrigger;
             if (hpRun)
             {
@@ -477,7 +477,7 @@ public sealed class HealthManager : IDisposable
         // continues toward the original destination.
         if (_fleeEngine is not null && _fleeStepsRemaining <= 0 && _state.MaxHp > 0)
         {
-            int hpRunTrigger = ResolveThreshold(s.HpThresholdMode, s.RunIfBelowHp, _state.MaxHp);
+            int hpRunTrigger = PoolThreshold.Resolve(s.HpThresholdMode, s.RunIfBelowHp, _state.MaxHp);
             if (_state.Hp > hpRunTrigger && _lastKnownRoom is { } room)
             {
                 _log?.Combat(LogCategory,
@@ -586,7 +586,7 @@ public sealed class HealthManager : IDisposable
         if (_readGeneralSettings?.Invoke() is { DisableHangups: true }) return false;
         if (_hangFired || s.HangIfBelowHp <= 0 || _state.MaxHp <= 0) return false;
 
-        int hangTrigger = ResolveThreshold(s.HpThresholdMode, s.HangIfBelowHp, _state.MaxHp);
+        int hangTrigger = PoolThreshold.Resolve(s.HpThresholdMode, s.HangIfBelowHp, _state.MaxHp);
         int deathFloor = Math.Min(0, _readDeathFloor?.Invoke() ?? -25);
         if (_state.Hp <= deathFloor || _state.Hp > hangTrigger) return false;
 
@@ -700,8 +700,8 @@ public sealed class HealthManager : IDisposable
     // pool never reports a phantom MA deficit before prompt data loads.
     private bool NeedsOpportunisticTopOff(HealthSettings s)
     {
-        int hpTarget = ResolveThreshold(s.HpThresholdMode, s.RestMaxHp, _state.MaxHp);
-        int maTarget = ResolveThreshold(s.MaThresholdMode, s.RestMaxMa, _state.MaxMa);
+        int hpTarget = PoolThreshold.Resolve(s.HpThresholdMode, s.RestMaxHp, _state.MaxHp);
+        int maTarget = PoolThreshold.Resolve(s.MaThresholdMode, s.RestMaxMa, _state.MaxMa);
         bool needHp = _state.MaxHp > 0 && _state.Hp < hpTarget;
         bool needMa = _state.MaxMa > 0 && _state.Ma < maTarget;
         return needHp || needMa;
@@ -756,19 +756,6 @@ public sealed class HealthManager : IDisposable
         _restInFlight = false;
         _restConfirmedByPrompt = false;
         _log?.Combat(LogCategory, "rest-in-flight cleared on room change");
-    }
-
-    // Percentage mode: treat value as 0..100 of max. Absolute mode: pass through
-    // as-is. Defensive against max being zero or negative (returns 0 — no
-    // false-positive gate fire when prompt data isn't loaded yet).
-    private static int ResolveThreshold(ThresholdMode mode, int value, int max)
-    {
-        if (mode == ThresholdMode.Percentage)
-        {
-            if (max <= 0) return 0;
-            return (int)Math.Round(max * (value / 100.0));
-        }
-        return value;
     }
 
     // Send pre-/post-rest chain — split on ; or ^M / newline (the documented
