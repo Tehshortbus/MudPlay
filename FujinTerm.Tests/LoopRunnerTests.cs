@@ -215,6 +215,36 @@ public sealed class LoopRunnerTests : IDisposable
         Assert.Contains(h.Events, e => e.Kind == LoopEventKind.Failed);
     }
 
+    [Fact]
+    public void Failed_RaisedAfterReset_HandlerSeesIdleState()
+    {
+        // Regression: the Nav "Looping/moving" chip stuck on after a loop
+        // failed because the Failed event was raised while the runner was
+        // still Running (Reset() ran afterwards, firing no follow-up event).
+        // A synchronous handler that re-reads runner state — as
+        // NavigationViewModel does to drive the engine-action chip — must
+        // observe the final Idle state at event time.
+        Harness h = NewHarness();
+        h.Tracker.SetLocated(new RoomKey(1, 3));   // C: only S exit; AbCycle's first step is N
+
+        LoopState? stateAtFail = null;
+        Loop? loopAtFail = null;
+        bool sawFail = false;
+        h.Runner.Event += e =>
+        {
+            if (e.Kind != LoopEventKind.Failed) return;
+            sawFail = true;
+            stateAtFail = h.Runner.State;
+            loopAtFail = h.Runner.CurrentLoop;
+        };
+
+        h.Runner.Start(AbCycle());
+
+        Assert.True(sawFail);
+        Assert.Equal(LoopState.Idle, stateAtFail);
+        Assert.Null(loopAtFail);
+    }
+
     // ----- PR C: lap timing + ReachedFirstWaypoint ---------------------
 
     [Fact]

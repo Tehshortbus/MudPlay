@@ -1815,6 +1815,13 @@ public sealed class AppServices
         // wire-send pipeline by MainWindowViewModel.SendUserInput.
         OutboundMovement = new Game.Map.OutboundMovementObserver(RoomTracker, Log);
 
+        // Realm-entry keystroke isn't a move. The entry command (default "E")
+        // collides with cardinal East and is pumped through the same
+        // wire-observe pipeline as manual movement; without this coupling a
+        // fresh-login "E" fabricates an East step that walks RoomTracker off
+        // the just-hydrated login room.
+        MainMenuEntry.SetMoveSuppressor(OutboundMovement.SuppressNextMove);
+
         // Death-message detector — bound to the per-session
         // LineExtractor by MainWindowViewModel.AttachLineExtractor.
         Death = new Game.DeathDetector(RoomTracker, Log);

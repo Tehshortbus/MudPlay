@@ -59,6 +59,7 @@ public sealed class MainMenuEntryAutomation : IDisposable
     private readonly IDisposable _patternSub;
     private readonly IDisposable _roomSub;
     private readonly WireSender _wire = new();
+    private Action? _suppressNextMove;
     private DateTime _armedUntilUtc = DateTime.MinValue;
     private Avalonia.Threading.DispatcherTimer? _startupTimer;
     private int _startupIndex;
@@ -125,6 +126,13 @@ public sealed class MainMenuEntryAutomation : IDisposable
     // matches but produces no wire output.
     public void SetWireSender(Action<byte[]> sender) => _wire.Bind(sender);
 
+    // Bind the callback that tells the outbound-move observer to ignore the
+    // realm-entry keystroke. The entry command (default "E") collides with
+    // cardinal East and rides the same wire-observe path as manual movement;
+    // firing this right before the send stops the observer fabricating an East
+    // step that desyncs the freshly-hydrated login room.
+    public void SetMoveSuppressor(Action suppressor) => _suppressNextMove = suppressor;
+
     // Open the arm window — UNLESS a hangup signal is pending, in which case
     // consume the suppression flag and refuse to arm so the user manually
     // re-enters. Called by MainWindowViewModel right after
@@ -189,6 +197,10 @@ public sealed class MainMenuEntryAutomation : IDisposable
         if (string.IsNullOrEmpty(command)) return;
         if (!_wire.IsBound) return;
 
+        // Menu selection, not a step — keep the observer from reading "E" as
+        // East. Must precede the send: the wire path is synchronous, so the
+        // observer sees this keystroke on the very next call.
+        _suppressNextMove?.Invoke();
         _wire.Send(command);
         _log?.Log(LogSeverity.Info, "MainMenuEntry",
             $"Auto-entered realm with '{command}'; awaiting first room display before refresh.");

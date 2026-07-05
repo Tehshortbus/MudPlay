@@ -28,6 +28,15 @@ public sealed partial class LoopEditorDialogViewModel : ObservableObject, IDialo
     private readonly ConfirmService? _confirm;
     private readonly bool _isNew;
 
+    // The loop's runnable steps as opened, so Save can tell whether the user
+    // actually edited the cycle. Gates the "apply to the running loop?" prompt
+    // — a Save with no step change must not nag. Compared against the dialog's
+    // own current rows (not the runner's live copy): the runner rotates its
+    // waypoint list to the current room at Start, so a positional diff against
+    // it would false-positive; a restart re-rotates anyway, making rotation
+    // irrelevant to whether the run would differ.
+    private readonly List<(string Room, string? Command, int DelayMs)> _openedSteps;
+
     // Window title — flips between "Create Loop" (when the dialog was opened
     // on a fresh empty loop) and "Edit Loop" (mutating an existing saved
     // loop). Bound from the AXAML Window.Title.
@@ -107,6 +116,13 @@ public sealed partial class LoopEditorDialogViewModel : ObservableObject, IDialo
         foreach (LoopWaypoint w in loop.Waypoints)
             Waypoints.Add(new LoopWaypointRowViewModel(w, graph));
         RenumberRows();
+
+        // Snapshot the opened steps using the same derivation Save uses
+        // (row.Key.ToString() / Command / DelayMs) so the dirty check is an
+        // apples-to-apples comparison immune to Room-string reformatting.
+        _openedSteps = Waypoints
+            .Select(r => (r.Key.ToString(), r.Command, r.DelayMs))
+            .ToList();
     }
 
     // ----- row commands ----------------------------------------------
@@ -423,7 +439,8 @@ public sealed partial class LoopEditorDialogViewModel : ObservableObject, IDialo
         // runner on the in-memory pre-edit version (it'll pick up
         // the new disk version next time the user clicks Run).
         if (_runner is { } runner && _confirm is { } confirm
-            && IsEditingRunningLoop(runner, oldName))
+            && IsEditingRunningLoop(runner, oldName)
+            && StepsEditedSinceOpen(waypoints))
         {
             bool restart = await confirm.ConfirmAsync(
                 "Apply to running loop?",
@@ -445,6 +462,27 @@ public sealed partial class LoopEditorDialogViewModel : ObservableObject, IDialo
     private static bool IsEditingRunningLoop(LoopRunner runner, string oldName)
         => runner.CurrentLoop is { } cur
         && string.Equals(cur.Name, oldName, StringComparison.OrdinalIgnoreCase);
+
+    // True when the saved waypoint sequence (rooms, per-waypoint commands,
+    // delays, in order) differs from what the dialog opened on — i.e. the user
+    // actually changed the runnable cycle. A Save that only renames or edits
+    // notes leaves this false, so it never offers a mid-lap restart (the runner
+    // would drive the identical path). Name / notes still persist via Save.
+    private bool StepsEditedSinceOpen(List<LoopWaypoint> current)
+    {
+        if (current.Count != _openedSteps.Count) return true;
+        for (int i = 0; i < current.Count; i++)
+        {
+            (string room, string? command, int delayMs) = _openedSteps[i];
+            if (!string.Equals(current[i].Room, room, StringComparison.OrdinalIgnoreCase))
+                return true;
+            if (!string.Equals(current[i].Command ?? string.Empty, command ?? string.Empty,
+                    StringComparison.Ordinal))
+                return true;
+            if (current[i].DelayMs != delayMs) return true;
+        }
+        return false;
+    }
 
     [RelayCommand]
     private void Cancel() => CloseRequested?.Invoke(null);

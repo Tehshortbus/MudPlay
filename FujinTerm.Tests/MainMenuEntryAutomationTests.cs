@@ -297,6 +297,51 @@ public sealed class MainMenuEntryAutomationTests
         Assert.Equal("E\r", Encoding.Latin1.GetString(Assert.Single(engine.LastSentForTests)));
     }
 
+    // ===== Realm-entry move suppression =================================
+
+    [Fact]
+    public void EntryCommand_InvokesMoveSuppressor_BeforeSend()
+    {
+        // The realm-entry keystroke ("E") collides with cardinal East and rides
+        // the same wire-observe path as manual movement. It must be flagged to
+        // the outbound-move observer as a non-move BEFORE it hits the wire — the
+        // send is synchronous, so the observer sees the keystroke on its very
+        // next call. Capturing the sent-count at suppressor-invoke time proves
+        // the ordering (0 = fired pre-send).
+        var (engine, router, _, _) = Setup();
+        int suppressCalls = 0;
+        int sentAtSuppress = -1;
+        engine.SetMoveSuppressor(() =>
+        {
+            suppressCalls++;
+            sentAtSuppress = engine.LastSentForTests.Count;
+        });
+        engine.Arm();
+
+        DispatchMenuLine(router);
+
+        Assert.Equal(1, suppressCalls);
+        Assert.Equal(0, sentAtSuppress);
+        Assert.Single(engine.LastSentForTests);
+    }
+
+    [Fact]
+    public void MoveSuppressor_NotInvoked_WhenEntryDoesNotFire()
+    {
+        // No entry send (hangup intent) → no move suppression either. A spurious
+        // suppress here would silently drop the user's first genuine manual move
+        // after they type the entry command themselves.
+        var (engine, router, _, signal) = Setup();
+        int suppressCalls = 0;
+        engine.SetMoveSuppressor(() => suppressCalls++);
+        signal.SignalHangup();
+        engine.Arm();
+
+        DispatchMenuLine(router);
+
+        Assert.Equal(0, suppressCalls);
+    }
+
     // ===== Post-entry startup sequence (room-gated) =====================
 
     [Fact]

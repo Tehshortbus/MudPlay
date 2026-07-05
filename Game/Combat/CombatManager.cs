@@ -862,7 +862,9 @@ public sealed partial class CombatManager : IDisposable
             _                           => null,
         };
         if (followName is not { Length: > 0 }) return false;
-        if (!string.Equals(announcer, followName, StringComparison.OrdinalIgnoreCase))
+        // FollowLeader reads LeaderName (full `par` name) and FollowMember reads a
+        // user-typed name; the announcer is always a given name — normalise both.
+        if (!string.Equals(GivenName(announcer), GivenName(followName), StringComparison.OrdinalIgnoreCase))
             return false;
 
         if (_classifier.Current is { } liveObs)
@@ -927,8 +929,8 @@ public sealed partial class CombatManager : IDisposable
         {
             AttackTiming.AttackLastParty => IsPartyMember(announcer),
             AttackTiming.AttackLastRoom  => true,
-            AttackTiming.AttackAfter     => string.Equals(announcer,
-                                                settings.AttackAfterPlayerName ?? string.Empty,
+            AttackTiming.AttackAfter     => string.Equals(GivenName(announcer),
+                                                GivenName(settings.AttackAfterPlayerName ?? string.Empty),
                                                 StringComparison.OrdinalIgnoreCase),
             _                            => false,  // Default — own cadence
         };
@@ -1130,12 +1132,27 @@ public sealed partial class CombatManager : IDisposable
 
     private bool IsPartyMember(string name)
     {
+        // Announce lines carry the GIVEN name ("Raijin"), while PartyMember.Name
+        // holds the full `par` name ("Raijin WuzHere"). Match by given name — the
+        // party-layer convention everywhere else — or AttackLastParty never
+        // recognises a full-named member and the re-fire silently never happens.
+        string given = GivenName(name);
         foreach (PartyMember m in _party.Members)
         {
-            if (string.Equals(m.Name, name, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(GivenName(m.Name), given, StringComparison.OrdinalIgnoreCase))
                 return true;
         }
         return false;
+    }
+
+    // First whitespace-delimited token. MajorMUD announce / chat lines address
+    // players by given name only, so all announcer-vs-roster matching normalises
+    // to it (mirrors PartyManager / PartyPoller).
+    private static string GivenName(string name)
+    {
+        if (string.IsNullOrEmpty(name)) return string.Empty;
+        int space = name.IndexOf(' ');
+        return space >= 0 ? name[..space] : name;
     }
 
     private MonsterOverlay ResolveOverlay(int monsterNumber)

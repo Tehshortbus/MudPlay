@@ -36,6 +36,7 @@ public sealed partial class OutboundMovementObserver
 
     private readonly RoomTracker _tracker;
     private readonly LogService? _log;
+    private bool _suppressNextCommand;
 
     public OutboundMovementObserver(RoomTracker tracker, LogService? log = null)
     {
@@ -43,6 +44,15 @@ public sealed partial class OutboundMovementObserver
         _tracker = tracker;
         _log = log;
     }
+
+    // Drop the very next observed command instead of interpreting it as a
+    // move / peek. MainMenuEntryAutomation calls this right before pumping the
+    // realm-entry keystroke (default "E"), which collides with cardinal East
+    // yet is a menu selection, not a step. The send path is synchronous, so the
+    // next ObserveOutbound call is guaranteed to be that keystroke — without
+    // this it would fabricate an East move and desync the just-hydrated login
+    // room (Confirmed → Pending → Suspect ×3 → Lost).
+    public void SuppressNextMove() => _suppressNextCommand = true;
 
     public void ObserveOutbound(ReadOnlySpan<byte> bytes)
     {
@@ -52,6 +62,13 @@ public sealed partial class OutboundMovementObserver
             .Trim()
             .ToLowerInvariant();
         if (cmd.Length == 0) return;
+
+        if (_suppressNextCommand)
+        {
+            _suppressNextCommand = false;
+            _log?.Info("OutboundMovement", $"Suppressed realm-entry command '{cmd}' (menu selection, not a move).");
+            return;
+        }
 
         if (LookCommandPattern().IsMatch(cmd))
         {
