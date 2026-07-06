@@ -1,7 +1,7 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.5.2** — A miracle-save death is now captured by death recovery. **Fixed:** when the game kills you but revives you on a last-instant miracle, the readout announces your remaining lives ("You now have N lives remaining.") instead of the plain slain line the death detector keyed on, so the death slipped past recovery entirely — no death record, no floor update, no lives decrement. The detector now matches both readout forms, so a miracle-save is captured like any other death and feeds the same death-floor estimate. See the [version history](CHANGELOG.md) for the full changelog.
+> **Version 1.5.3** — The realm death-floor estimate now sharpens from live play, not just from clean deaths. **Fixed:** the floor only moved on a captured death, so a character who bled well past the current floor and lived left that evidence unused. The tracer now ratchets the floor to one below the deepest HP you're seen alive at (a later in-band prompt proves the previous reading survived), so the estimate tightens from live play. The terminal death reading is structurally excluded, and an overkill that masks the reached HP can't corrupt the estimate. See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->
 
 A modern Telnet terminal client for **MajorMUD** and other BBS door games, built in C# / .NET 10 with [Avalonia](https://avaloniaui.net/). It renders a faithful CP437 cell grid with full VT100/ANSI parsing, and layers a MegaMUD-style automation suite (combat, party, navigation, healing, and more) on top — all in modeless, dockable windows so the terminal stays live while you configure anything.

@@ -2,6 +2,13 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0): **MAJOR** = whole-program refactor, **MINOR** = a large PR, **PATCH** = a small / bugfix PR.
 
+## 1.5.3
+
+The realm death-floor estimate now sharpens from live play, not just from clean deaths: any HP reading you survive below the current floor ratchets the estimate deeper, so the "how far past zero can I go" figure keeps improving without waiting for the next death.
+
+**Fixed**
+- **The death floor wasn't refined from a survived bleeding-out reading.** The floor estimate only moved on a captured death, so a character who bled well past the current floor and lived left that evidence on the table. The tracer now ratchets the floor to one below the deepest HP you're seen alive at — a later in-band prompt proves the previous reading survived — so the estimate tightens from live play. The terminal death reading is structurally excluded (it never proves survival), and an overkill that masks the reached HP can't corrupt the estimate.
+
 ## 1.5.2
 
 The miracle-save death — the "but, due to a miracle, you have been saved" sequence — is now recognised as the real death it is and captured by death recovery, so a run that ends in a last-instant rescue still records the death and its floor.

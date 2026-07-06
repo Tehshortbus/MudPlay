@@ -69,7 +69,11 @@ public sealed class DeathFloorTracerTests
         h.Tracer.RecordDeath();
 
         Assert.Equal(-40, h.Bbs!.PlayerDiesAtHp);
-        Assert.Equal(1, h.SaveCount);
+        // Two writes: the live-survival path refines to -33 the moment the char is
+        // seen bleeding on from a survived -32 (below the -25 seed), then the death
+        // itself refines to the measured -40. Both are correct; the final floor is
+        // the deeper -40.
+        Assert.Equal(2, h.SaveCount);
     }
 
     [Fact]
@@ -123,6 +127,64 @@ public sealed class DeathFloorTracerTests
         h.Tracer.RecordDeath();
 
         Assert.Equal(-25, h.Bbs!.PlayerDiesAtHp);
+        Assert.Equal(0, h.SaveCount);
+    }
+
+    // ----- live-survival refine (no death) ---------------------------
+
+    [Fact]
+    public void LiveSurvival_BelowSeed_RefinesFloorWithoutDeath()
+    {
+        using Harness h = new();
+        h.SetMaxHp(64);
+        // Report 193417: one hard hit from +1 to -49 (survived, bleeding), then
+        // the reading moves to -48 — a second in-band prompt that proves the
+        // character was alive at -49. Floor refines to -50 (one below the deepest
+        // survived reading); no death is recorded.
+        h.Feed(1, -49, -48);
+
+        Assert.Equal(-50, h.Bbs!.PlayerDiesAtHp);
+        Assert.Equal(1, h.SaveCount);
+    }
+
+    [Fact]
+    public void LiveSurvival_TerminalDeathReading_NeverRefinesFloor()
+    {
+        using Harness h = new();
+        h.SetMaxHp(64);
+        // Survives -49, then a killing overkill hit drives HP to -251. The -251
+        // is the terminal reading (no later in-band prompt), so it can never
+        // refine the floor; only the survived -49 does (→ -50). The overkill death
+        // is then discarded by the slow-death classifier.
+        h.Feed(1, -49, -251);
+        h.Tracer.RecordDeath();
+
+        Assert.Equal(-50, h.Bbs!.PlayerDiesAtHp);   // from surviving -49, not the -251 death
+        Assert.Equal(1, h.SaveCount);
+    }
+
+    [Fact]
+    public void LiveSurvival_ShallowerThanSeed_DoesNotRefine()
+    {
+        using Harness h = new();
+        h.SetMaxHp(64);
+        // Surviving shallow negatives (well above the -25 seed) tells us nothing
+        // new — the floor is already believed to be deeper.
+        h.Feed(1, -5, -10);
+
+        Assert.Equal(-25, h.Bbs!.PlayerDiesAtHp);
+        Assert.Equal(0, h.SaveCount);
+    }
+
+    [Fact]
+    public void LiveSurvival_AutoRefineOff_DoesNotRefine()
+    {
+        using Harness h = new();
+        h.Bbs!.AutoRefineDeathFloor = false;
+        h.SetMaxHp(64);
+        h.Feed(1, -49, -48);
+
+        Assert.Equal(-25, h.Bbs.PlayerDiesAtHp);
         Assert.Equal(0, h.SaveCount);
     }
 
