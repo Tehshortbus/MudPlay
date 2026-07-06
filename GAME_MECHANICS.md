@@ -440,7 +440,12 @@ flag). These are hard eligibility gates, independent of resistance and level imm
     same round-trip shape as `@health` / `@level`). If **all** members reply AND each can cover the
     toll (`wealth >= TollGold * 100`), the route may use the toll room; if **any** member can't
     cover it (or doesn't reply), **avoid that toll room for this passing**. Wealth changes
-    constantly (loot / spend), so it's polled fresh at planning time rather than cached.
+    constantly (loot / spend), so it's polled fresh at planning time rather than cached. (This half
+    is now implemented: `MovementFilter.IsTollGateBlocked` + `PartyWealthProbe` / `PartyWealthTracker`.
+    Unlike the level half — which keeps every member's level warm on each roster change — wealth is
+    **demand-polled**: `MinWealth` fires the `@wealth` probe only while BFS is evaluating a toll exit,
+    and a follower with no fresh reading gates the toll, so the first plan routes around it while the
+    probe warms up.)
   - **Level:** use the member level already **stored in game data** (each player's recorded level);
     only when it's suspected stale, **re-poll in the room with `@level`**. A member outside the
     exit's `(Level: MIN to MAX)` window means the party routes around that exit. (This half is

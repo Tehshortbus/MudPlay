@@ -403,6 +403,75 @@ public sealed class MovementFilterTests
         Assert.True(filter.IsExitBlocked(GatedExit(20, 0)));
     }
 
+    // ----- IsExitBlocked: party-wealth toll branch ------------------
+
+    [Fact]
+    public void PartyWealth_TakesPrecedence_OverSelfWealth()
+    {
+        (_, MovementFilter filter) = NewPair();
+        // We can afford the toll, but the party's poorest member can't —
+        // route around so we don't strand them at the gate.
+        filter.WealthProvider = () => 1000;
+        filter.PartyWealthProvider = () => 100;
+        Assert.True(filter.IsExitBlocked(TollExit(5)));   // need 500, party min 100
+    }
+
+    [Fact]
+    public void PartyWealth_WholePartyAffords_Allows()
+    {
+        (_, MovementFilter filter) = NewPair();
+        filter.PartyWealthProvider = () => 500;
+        Assert.False(filter.IsExitBlocked(TollExit(5)));  // everyone has >= 500
+    }
+
+    [Fact]
+    public void PartyWealth_PoorestMemberCannotAfford_Blocks()
+    {
+        (_, MovementFilter filter) = NewPair();
+        filter.PartyWealthProvider = () => 499;
+        Assert.True(filter.IsExitBlocked(TollExit(5)));   // one short of 500
+    }
+
+    [Fact]
+    public void PartyWealth_Null_FallsBackToSelfWealth()
+    {
+        (_, MovementFilter filter) = NewPair();
+        // Not leading / our own wallet unknown — provider returns null, so the
+        // self-only branch decides.
+        filter.PartyWealthProvider = () => null;
+        filter.WealthProvider = () => 499;
+        Assert.True(filter.IsExitBlocked(TollExit(5)));   // self-only: 499 < 500
+    }
+
+    [Fact]
+    public void PartyWealth_NoProvider_FallsBackToSelfWealth()
+    {
+        (_, MovementFilter filter) = NewPair();
+        // PartyWealthProvider unset entirely (solo character).
+        filter.WealthProvider = () => 500;
+        Assert.False(filter.IsExitBlocked(TollExit(5)));  // self-only: 500 >= 500
+    }
+
+    [Fact]
+    public void PartyWealth_ZeroTollGold_DoesNotBlock()
+    {
+        (_, MovementFilter filter) = NewPair();
+        filter.PartyWealthProvider = () => 0;
+        // A Toll-hint exit with no parsed amount can't gate — nothing to owe.
+        Assert.False(filter.IsExitBlocked(TollExit(0)));
+    }
+
+    [Fact]
+    public void PartyWealth_DoesNotAffectLevelGate()
+    {
+        (_, MovementFilter filter) = NewPair();
+        // The party-wealth branch fires only for a toll exit; a pure level
+        // gate must be untouched even when the party is flat broke.
+        filter.PartyWealthProvider = () => 0;
+        filter.LevelProvider = () => 30;
+        Assert.False(filter.IsExitBlocked(GatedExit(20, 0)));  // level OK, no toll
+    }
+
     // ----- IRoomFilter integration with BfsMapper -------------------
 
     [Fact]

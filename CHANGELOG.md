@@ -2,6 +2,13 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0): **MAJOR** = whole-program refactor, **MINOR** = a large PR, **PATCH** = a small / bugfix PR.
 
+## 1.5.10
+
+When you're leading a party, the navigator can now route around a toll gate that a follower can't afford — so it stops walking the group to a gate one member gets stranded at. It only asks the party for their wealth when a candidate route actually crosses a toll, never on a timer.
+
+**Added**
+- **Party-wide toll affordability gate for path planning.** A `(Toll: N)` map exit is per-crosser — every member of the party needs a wealth value of `N × 100` copper on hand, or they're refused at the gate and left behind. Previously the navigator only checked the *leader's* own wallet against a toll, so it could route the whole party through a gate a follower couldn't pay and strand them. With the new **Settings → Other → "Avoid party-unaffordable tolls"** toggle on, when you're leading a party the navigator now folds every member's on-hand wealth into the decision: if any member can't cover the toll (or hasn't reported), it routes around that toll room instead. Unlike the level gate — which keeps every member's level warm on each roster change because level is stable — wealth drifts constantly with loot and spending, so it's **demand-polled**: the client only sends the party `@wealth` while it's actually evaluating a toll on a candidate route, never on a timer or roster change. Because the reply lands a beat after the first plan, the first pass conservatively routes around the toll while the wealth readings warm up, and the next lap of a loop (or a walk-to retry) uses the fresh figures. A member who hasn't reported fresh wealth is treated as unable to pay — the safe side, since it never marches a follower to a gate they can't clear.
+
 ## 1.5.9
 
 A looping walk no longer bails out and gets "lost" mid-circuit when the room simply re-prints during combat — the tracker stops mistaking a harmless redisplay of the room you're in for a refused move, so it keeps waiting for the step you actually took instead of firing a bogus recovery that then bonks a real exit at the wrong room.

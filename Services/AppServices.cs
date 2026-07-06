@@ -955,6 +955,19 @@ public sealed class AppServices
     // gates".
     public Game.Remote.PartyLevelTracker PartyLevel { get; private set; } = null!;
 
+    // On-demand party-wealth probe — broadcasts @wealth and forwards each
+    // reply to PartyWealth. Unlike the level probe it doesn't persist to
+    // the players table (wealth drifts); it's fired only when a route
+    // crosses a toll.
+    public Game.Remote.PartyWealthProbe PartyWealthProbe { get; private set; } = null!;
+
+    // Demand-driven party-wealth gate — feeds
+    // MovementFilter.PartyWealthProvider so BFS routes a following party
+    // around (Toll: N) exits a member can't afford. Polls @wealth only when
+    // a toll is on a candidate path. Gated by Settings → Other "avoid
+    // party-unaffordable tolls".
+    public Game.Remote.PartyWealthTracker PartyWealth { get; private set; } = null!;
+
     // Shared Acquisition movement-gate driver. Both
     // Cash and AutoGetItems feed it; it owns
     // the single assert/clear of
@@ -2728,6 +2741,29 @@ public sealed class AppServices
                 Resolver.Resolve<Models.Profile.OtherSettings>("Other").AvoidPartyImpassableLevelGates,
             log: Log);
         Movement.PartyLevelBoundsProvider = PartyLevel.Bounds;
+
+        // Party-wealth probe + tracker. Unlike level, wealth isn't kept warm —
+        // it drifts with loot / spend — so the tracker probes @wealth only when
+        // BFS actually evaluates a toll exit (MinWealth is the demand trigger),
+        // records each reply, and exposes the party's minimum wallet;
+        // MovementFilter reads that to route a following party around a toll a
+        // member can't afford. The probe forwards replies straight to the
+        // tracker (not the players table). Both gated by the "avoid
+        // party-unaffordable tolls" toggle. The recordWealth closure reads the
+        // PartyWealth property lazily, so the construction order is fine.
+        PartyWealthProbe = new Game.Remote.PartyWealthProbe(
+            PartyBroadcaster, Chat, PartyState,
+            recordWealth: (given, copper) => PartyWealth.Record(given, copper),
+            log: Log);
+        PartyWealth = new Game.Remote.PartyWealthTracker(
+            PartyState, PartyWealthProbe,
+            selfWealth: () =>
+                Inventory.IsLoaded ? Inventory.Snapshot.Currency.TotalCopperValue : (long?)null,
+            isEnabled: () =>
+                Resolver.Resolve<Models.Profile.OtherSettings>("Other").AvoidPartyUnaffordableTolls,
+            post: action => Avalonia.Threading.Dispatcher.UIThread.Post(action),
+            log: Log);
+        Movement.PartyWealthProvider = PartyWealth.MinWealth;
 
         // Base auto-search — a bare `sea` on each genuine room entry reveals
         // hidden items for the auto-get engines. Armed by the persisted
