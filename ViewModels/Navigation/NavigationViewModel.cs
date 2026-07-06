@@ -39,6 +39,8 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         _services.MovementCoordinator.PauseStateChanged += OnPauseChanged;
         _services.MovementCoordinator.GatesChanged += OnGatesChanged;
         _services.PlayerDeathHalt.HaltedForDeathChanged += OnGatesChanged;
+        _services.DeathRecovery.PropertyChanged += OnDeathRecoveryChanged;
+        _services.RoomTracker.PlayerDeathObserved += RefreshDeathRooms;
         _services.Conditions.PropertyChanged += OnConditionsChanged;
         _services.RoomGraph.GraphReloaded += OnGraphReloaded;
         _services.TBInfo.StoreReloaded    += RefreshTeleportRooms;
@@ -75,6 +77,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         RefreshFavorites();
         RefreshCrawlerChords();
         RefreshTeleportRooms();
+        RefreshDeathRooms();
     }
 
     // Per-second pump for CURRENT NAV lair countdowns. Cheap to leave
@@ -91,6 +94,8 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         _services.MovementCoordinator.PauseStateChanged -= OnPauseChanged;
         _services.MovementCoordinator.GatesChanged -= OnGatesChanged;
         _services.PlayerDeathHalt.HaltedForDeathChanged -= OnGatesChanged;
+        _services.DeathRecovery.PropertyChanged -= OnDeathRecoveryChanged;
+        _services.RoomTracker.PlayerDeathObserved -= RefreshDeathRooms;
         _services.Conditions.PropertyChanged -= OnConditionsChanged;
         _services.RoomGraph.GraphReloaded -= OnGraphReloaded;
         _services.TBInfo.StoreReloaded    -= RefreshTeleportRooms;
@@ -387,6 +392,32 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         StashRooms = next;
     }
 
+    // The DEATH aggregator broadcasts a bulk Records change (add / mark-recovered
+    // / clear) via OnPropertyChanged(nameof(Records)); a null name is the
+    // reset-everything signal. Either way, re-derive the skull set.
+    private void OnDeathRecoveryChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is null or nameof(Game.Recovery.DeathRecoveryManager.Records))
+            RefreshDeathRooms();
+    }
+
+    // Rooms holding an un-recovered deathpile, projected onto the map as skull
+    // markers. Refreshed on every death — RoomTracker.PlayerDeathObserved is the
+    // universal signal that fires for the miracle-save phrasing too, so the skull
+    // lands the instant we die — and on any DeathRecoveryManager.Records change,
+    // so it clears the instant the pile flips to Recovered. Null when nothing is
+    // outstanding so the map draws no marker.
+    private void RefreshDeathRooms()
+    {
+        HashSet<RoomKey>? next = null;
+        foreach (DeathRecord r in _services.DeathRecovery.Records)
+        {
+            if (r.Status == DeathRecoveryStatus.Recovered || r.Room is not { } room) continue;
+            (next ??= new()).Add(new RoomKey(room.Map, room.Room));
+        }
+        DeathRooms = next;
+    }
+
     private void OnLoopRunnerEvent(LoopEvent _)
     {
         OnPropertyChanged(nameof(IsLoopRunning));
@@ -564,6 +595,10 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     // the route.
     [ObservableProperty] private IReadOnlyList<RoomKey>? _autoLairApproachPath;
     [ObservableProperty] private IReadOnlySet<RoomKey>? _teleportRooms;
+
+    // Rooms with an un-recovered deathpile, bound to MapControl.DeathRooms — each
+    // renders a skull. Refreshed by RefreshDeathRooms.
+    [ObservableProperty] private IReadOnlySet<RoomKey>? _deathRooms;
     [ObservableProperty] private bool _isAutoLairing;
     [ObservableProperty] private RoomKey? _selectedRoomKey;
 

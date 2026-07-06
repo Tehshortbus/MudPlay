@@ -102,6 +102,17 @@ public sealed class RoomTracker
     // learned name back to the active game-data set's Rooms.json.
     public event Action<NameLearnedEvent>? NameLearned;
 
+    // Fired from NoteDeath for BOTH death phrasings ("You now have N lives
+    // remaining." and the miracle-save "You have N lives left."). This is the one
+    // universal local-death signal — DeathLineWatcher's PlayerDied only fires on
+    // the "slain by" line, which a miracle-save death never prints, so movement /
+    // combat quiescence that hangs off "slain by" alone silently misses every
+    // miracle death (the loop kept rerouting out of the graveyard; the combat
+    // engine re-attacked a stale hostile). Consumers that must react to ANY death
+    // subscribe here. Raised synchronously inside NoteDeath, before the respawn
+    // room confirms, so a loop-stop lands ahead of the graveyard's recovery-reroute.
+    public event Action? PlayerDeathObserved;
+
     public RoomTracker(RoomGraphManager graph) : this(graph, log: null) { }
 
     public RoomTracker(RoomGraphManager graph, LogService? log)
@@ -445,6 +456,12 @@ public sealed class RoomTracker
         _recentSteps.Clear();
         PersistSteps();
         SetRoom(room: null, RoomConfidence.PendingRespawn, when, "death recorded");
+
+        // Broadcast the death AFTER the PendingRespawn transition but BEFORE the
+        // graveyard's own room display confirms. A loop stopping here resets its
+        // recovery state, so the later PendingRespawn → Confirmed(graveyard)
+        // transition can't drive a recovery-reroute back out.
+        PlayerDeathObserved?.Invoke();
     }
 
     // A movement-refusal line was seen (e.g. "You are too paralyzed to move." /

@@ -443,6 +443,7 @@
                                  AutoLairWaypoints="{Binding AutoLairMarkedKeys}"
                                  AutoLairApproachPath="{Binding AutoLairApproachPath}"
                                  TeleportRooms="{Binding TeleportRooms}"
+                                 DeathRooms="{Binding DeathRooms}"
                                  WalkPathIsAutoLair="{Binding IsAutoLairing}"
                                  SelectedRoomKey="{Binding SelectedRoomKey, Mode=TwoWay}"
                                  UpStepChord="{Binding UpStepChord}"
