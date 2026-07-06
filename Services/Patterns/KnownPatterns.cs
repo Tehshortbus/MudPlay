@@ -213,6 +213,12 @@ public static class KnownPatterns
     // as `WhoListParser`), not by a one-line regex.
     public const string PartyFollowsYou     = "party.follows-you";       // "X started to follow you."
     public const string PartyYouFollowing   = "party.you-following";     // "You are now following X."  (we joined someone's party)
+    // " -- Following your Party leader <dir> --" — the game dragging us one room
+    // in the leader's wake. A follower sends no movement bytes, so this line is
+    // the ONLY movement signal for a dragged follower; FollowMoveObserver turns it
+    // into a RoomTracker.NoteMoveSent so the map stays located instead of drifting
+    // to Lost. Group 0 captures the long-form direction word.
+    public const string PartyFollowMove     = "party.follow-move";
     public const string PartyStopsFollowing = "party.stops-following";   // "X has stopped following you." / "X stops following you."
     public const string PartyYouInvited     = "party.you-invited";       // "You have invited X to follow you." — our own outbound invite confirmation
     public const string PartyHeader         = "party.par-header";        // "The following people are in your travel party:" — anchors the par-block state machine

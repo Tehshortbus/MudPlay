@@ -343,6 +343,13 @@ public static class DefaultPatterns
             @"^(?<player>\w+) started to follow you\.");
         yield return new RegexPattern(KnownPatterns.PartyYouFollowing,
             @"^You are now following (?<player>\w+)\.?$");
+        // Party-follow drag — the game moved us one room in the leader's wake and
+        // prints " -- Following your Party leader <dir> --" just before the new
+        // room display. Longest direction alternatives first so "northeast" can't
+        // be shortened to "north". Captures the direction so FollowMoveObserver can
+        // feed it to RoomTracker as the move a dragged follower never typed.
+        yield return new RegexPattern(KnownPatterns.PartyFollowMove,
+            @"^\s*--\s*Following your Party leader\s+(?<dir>northeast|northwest|southeast|southwest|north|south|east|west|up|down)\s*--\s*$");
         yield return new RegexPattern(KnownPatterns.PartyStopsFollowing,
             @"^(?<player>\w+) (?:stops following you|has stopped following you)\.?");
         // Outbound-invite confirmation — the server echoes this every

@@ -271,6 +271,16 @@ it isn't here and you're unsure, ask.
   the same room is a real move with a real room display; it resolves as a normal
   predicted-neighbour match because the exit's target *is* the source, so it is not confused
   with a passive redisplay.)
+- **[CONFIRMED]** **A party follower is dragged one room per leader step, announced by
+  ` -- Following your Party leader <dir> --`.** Movement is leader-driven: when the party
+  leader walks, the game moves every follower one room the same way and prints this line
+  immediately *before* the follower's new room display. The follower issues no movement command
+  of its own (`PartyFollowerMovementGate` holds its engines), so this line is the **only** signal
+  that a dragged follower moved. The client keys on it (`FollowMoveObserver` →
+  `RoomTracker.NoteMoveSent`) to stay located; without it the tracker keeps its old anchor, reads
+  every new room as a mismatch and falls to Lost within a few rooms. The direction is the long-form
+  word the game prints (`north`, `northeast`, `up`, …). Verified from a live follower capture walking
+  Darkwood Forest (northeast / east / southeast / southwest / south drags).
 
 ## Attack spells: why one fails to damage a monster
 

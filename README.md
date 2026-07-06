@@ -1,10 +1,8 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.9.0**
-> - Session Stats gets a compact top bar for Reset session + Transaction history
-> - Each collapsible section has its own Reset button
-> - Resetting Time Analysis restarts the per-hour rates while keeping the running totals
+> **Version 1.9.1**
+> - Party followers stay located on the map — leader-driven drags now feed the room tracker instead of dropping it to "lost"
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->
