@@ -416,9 +416,14 @@ public sealed class CastingDirector : IDisposable
 
         string key = p.Target.Trim().ToLowerInvariant();
         _activeUntil[(key, p.Short)] = _now().AddSeconds(p.DurationSec);
-        _log?.Combat(LogCategory,
+        // Info, not Combat: the user wants to confirm the recast timer actually
+        // armed and see when it will re-fire, and the combat-diagnostics channel is
+        // off in normal play. Surface both the effect duration and the recast lead
+        // (fires RecastMarginSec before expiry).
+        long recastInSec = Math.Max(0L, p.DurationSec - RecastMarginSec);
+        _log?.Info(LogCategory,
             $"party-buff confirmed spell={p.Short} target={p.Target} " +
-            $"duration={p.DurationSec}s");
+            $"duration={p.DurationSec}s — recast in {recastInSec}s.");
         _pendingPartyCast = null;
     }
 
@@ -563,7 +568,11 @@ public sealed class CastingDirector : IDisposable
 
         _cast.NotifyExternalCastSent();
         _activeUntil[("", token)] = _now().AddSeconds(durationSec);
-        _log?.Combat(LogCategory, $"Buffing item-cast fired token={token} duration={durationSec}s");
+        // Same reasoning as the party-buff confirm: surface the armed recast timer
+        // on the always-on Info channel, not combat diagnostics.
+        long recastInSec = Math.Max(0L, durationSec - RecastMarginSec);
+        _log?.Info(LogCategory,
+            $"item-cast buff fired token={token} duration={durationSec}s — recast in {recastInSec}s.");
         CastFired?.Invoke();
         return true;
     }

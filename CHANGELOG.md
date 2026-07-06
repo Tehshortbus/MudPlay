@@ -2,6 +2,13 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0): **MAJOR** = whole-program refactor, **MINOR** = a large PR, **PATCH** = a small / bugfix PR.
 
+## 1.5.4
+
+Casting a party buff (Bless slots) now reports its effect duration and recast timing on the always-on program log, so you can confirm the recast timer actually armed and see when it will re-fire.
+
+**Fixed**
+- **The program log didn't show a party bless's duration or recast timing.** Casting a party bless armed its recast timer and logged the confirmation, but only on the combat-diagnostics channel — which is off in normal play — so nothing showed and you couldn't tell whether the timer was set. The confirmation now lands on the always-on Info channel with the effect duration and the recast lead, e.g. `party-buff confirmed spell=bles target=Fujin duration=300s — recast in 285s.` (the recast fires 15s before expiry). The item-cast buff confirmation moved to the same always-on channel with the same duration/recast enrichment.
+
 ## 1.5.3
 
 The realm death-floor estimate now sharpens from live play, not just from clean deaths: any HP reading you survive below the current floor ratchets the estimate deeper, so the "how far past zero can I go" figure keeps improving without waiting for the next death.

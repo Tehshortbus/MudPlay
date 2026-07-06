@@ -1,7 +1,7 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.5.3** — The realm death-floor estimate now sharpens from live play, not just from clean deaths. **Fixed:** the floor only moved on a captured death, so a character who bled well past the current floor and lived left that evidence unused. The tracer now ratchets the floor to one below the deepest HP you're seen alive at (a later in-band prompt proves the previous reading survived), so the estimate tightens from live play. The terminal death reading is structurally excluded, and an overkill that masks the reached HP can't corrupt the estimate. See the [version history](CHANGELOG.md) for the full changelog.
+> **Version 1.5.4** — Party buffs now report their duration and recast timing on the always-on program log. **Fixed:** casting a party bless armed its recast timer and logged the confirmation, but only on the combat-diagnostics channel (off in normal play), so nothing showed and you couldn't tell whether the timer was set. The confirmation now lands on the always-on Info channel with the effect duration and the recast lead — e.g. `party-buff confirmed spell=bles target=Fujin duration=300s — recast in 285s.` (recast fires 15s before expiry). See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->
 
 A modern Telnet terminal client for **MajorMUD** and other BBS door games, built in C# / .NET 10 with [Avalonia](https://avaloniaui.net/). It renders a faithful CP437 cell grid with full VT100/ANSI parsing, and layers a MegaMUD-style automation suite (combat, party, navigation, healing, and more) on top — all in modeless, dockable windows so the terminal stays live while you configure anything.
