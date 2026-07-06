@@ -267,7 +267,7 @@ public sealed partial class SessionStatsViewModel : ObservableObject, IDisposabl
 
     // ----- Commands ----------------------------------------------------
 
-    // Manual "Reset session" — wipes every session tracker's counters and
+    // Top-bar "Reset session" — wipes every session tracker's counters and
     // restarts their clocks, and clears the transaction ledger. The resets
     // raise Changed, which refreshes the bound figures.
     [RelayCommand]
@@ -278,6 +278,29 @@ public sealed partial class SessionStatsViewModel : ObservableObject, IDisposabl
         _activityTracker.Reset();
         _transactionTracker.Reset();
     }
+
+    // Per-section resets, one per collapsible. Each wipes only its own section's
+    // figures so a user can re-anchor one dimension without losing the rest.
+
+    // "Player Statistics" reset — the combat tally (hit / miss / crit / etc.).
+    [RelayCommand]
+    private void ResetPlayerStats() => _combatTracker.Reset();
+
+    // "Time Analysis" reset — the activity-time breakdown. Because the per-hour
+    // rates are measured over this same session time, restarting it also restarts
+    // every rate (kills/hr, exp/hr, currency/hr, and both sparklines) via
+    // ResetRates — while the Session Statistics totals stay put.
+    [RelayCommand]
+    private void ResetTimeAnalysis()
+    {
+        _timeTracker.Reset();
+        _activityTracker.ResetRates();
+    }
+
+    // "Session Statistics" reset — the running totals and their rates (kills,
+    // experience, currency collected / stashed, and the two rate sparklines).
+    [RelayCommand]
+    private void ResetSessionStats() => _activityTracker.Reset();
 
     // "Transaction history" button — opens the modeless ledger window (bank
     // deposits + stash-room hides recorded this session).

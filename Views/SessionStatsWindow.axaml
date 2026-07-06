@@ -86,7 +86,47 @@
         <Style Selector="Expander.panel">
             <Setter Property="HorizontalAlignment" Value="Stretch"/>
         </Style>
+        <!-- Compact action-bar buttons (Reset session / Transaction history). -->
+        <Style Selector="Button.topaction">
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Padding" Value="8,3"/>
+            <Setter Property="MinHeight" Value="0"/>
+        </Style>
+        <!-- Per-section reset button living in each panel's header, right of the
+             title. Muted and borderless so it reads as a secondary affordance and
+             doesn't compete with the section title. -->
+        <Style Selector="Button.sectionreset">
+            <Setter Property="FontSize" Value="10"/>
+            <Setter Property="Padding" Value="6,1"/>
+            <Setter Property="MinHeight" Value="0"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+        </Style>
     </Window.Styles>
+
+    <DockPanel LastChildFill="True">
+
+    <!-- ===== Compact action bar ===== -->
+    <!-- Session-wide actions live in one tidy strip up top: a full "Reset
+         session" (every counter) and the transaction-history opener. The
+         per-section resets sit in each panel's own header below. -->
+    <Border DockPanel.Dock="Top"
+            Background="{StaticResource ChromeBgElevBrush}"
+            BorderBrush="{StaticResource ChromeBorderSoftBrush}"
+            BorderThickness="0,0,0,1"
+            Padding="8,5">
+        <StackPanel Orientation="Horizontal" Spacing="6">
+            <Button Classes="topaction"
+                    Content="Reset session"
+                    Command="{Binding ResetCommand}"
+                    ToolTip.Tip="Wipe every session counter and restart the clocks. Counters also reset automatically on connect."/>
+            <Button Classes="topaction"
+                    Content="Transaction history"
+                    Command="{Binding OpenTransactionHistoryCommand}"
+                    ToolTip.Tip="Bank deposits and stash-room hides recorded this session — the time, the store, and what was put away."/>
+        </StackPanel>
+    </Border>
 
     <!-- Single scrollable column of reorderable panels: the two rate graphs and
          the three stat sections. Each panel carries a stable Tag id matching
@@ -182,9 +222,14 @@
             <Expander Tag="PlayerStatistics" Classes="panel" IsExpanded="True"
                       IsVisible="{Binding IsPlayerStatsVisible}">
                 <Expander.Header>
-                    <TextBlock Classes="draghandle" Text="Player Statistics"
-                               Foreground="{StaticResource ChromeFgBrush}"
-                               FontSize="12"/>
+                    <Grid ColumnDefinitions="*,Auto" HorizontalAlignment="Stretch">
+                        <TextBlock Grid.Column="0" Classes="draghandle" Text="Player Statistics"
+                                   Foreground="{StaticResource ChromeFgBrush}"
+                                   FontSize="12"/>
+                        <Button Grid.Column="1" Classes="sectionreset" Content="Reset"
+                                Command="{Binding ResetPlayerStatsCommand}"
+                                ToolTip.Tip="Reset just the combat statistics."/>
+                    </Grid>
                 </Expander.Header>
                 <StackPanel Spacing="1" Margin="4,2">
                     <!-- Column headers (shared widths align every data row).
@@ -265,9 +310,14 @@
             <Expander Tag="TimeAnalysis" Classes="panel" IsExpanded="True"
                       IsVisible="{Binding IsTimeAnalysisVisible}">
                 <Expander.Header>
-                    <TextBlock Classes="draghandle" Text="Time Analysis"
-                               Foreground="{StaticResource ChromeFgBrush}"
-                               FontSize="12"/>
+                    <Grid ColumnDefinitions="*,Auto" HorizontalAlignment="Stretch">
+                        <TextBlock Grid.Column="0" Classes="draghandle" Text="Time Analysis"
+                                   Foreground="{StaticResource ChromeFgBrush}"
+                                   FontSize="12"/>
+                        <Button Grid.Column="1" Classes="sectionreset" Content="Reset"
+                                Command="{Binding ResetTimeAnalysisCommand}"
+                                ToolTip.Tip="Reset the time breakdown. The per-hour rates are measured over this time, so they restart too — but the session totals stay."/>
+                    </Grid>
                 </Expander.Header>
                 <StackPanel Spacing="2" Margin="4,2">
                     <TextBlock Classes="sub" Text="Totals"/>
@@ -328,9 +378,14 @@
             <Expander Tag="SessionStatistics" Classes="panel" IsExpanded="True"
                       IsVisible="{Binding IsSessionStatsVisible}">
                 <Expander.Header>
-                    <TextBlock Classes="draghandle" Text="Session Statistics"
-                               Foreground="{StaticResource ChromeFgBrush}"
-                               FontSize="12"/>
+                    <Grid ColumnDefinitions="*,Auto" HorizontalAlignment="Stretch">
+                        <TextBlock Grid.Column="0" Classes="draghandle" Text="Session Statistics"
+                                   Foreground="{StaticResource ChromeFgBrush}"
+                                   FontSize="12"/>
+                        <Button Grid.Column="1" Classes="sectionreset" Content="Reset"
+                                Command="{Binding ResetSessionStatsCommand}"
+                                ToolTip.Tip="Reset the session totals and their per-hour rates."/>
+                    </Grid>
                 </Expander.Header>
                 <StackPanel Spacing="1" Margin="4,2">
                     <!-- total | per-hour table (shared widths align every row). -->
@@ -362,21 +417,11 @@
                                    ToolTip.Tip="{Binding CurrencyStashedTip}"/>
                         <TextBlock Grid.Column="2" Classes="dim" Text="—" HorizontalAlignment="Right"/>
                     </Grid>
-
-                    <StackPanel Orientation="Horizontal" Spacing="6"
-                                HorizontalAlignment="Left" Margin="0,8,0,0">
-                        <Button Content="Reset session"
-                                Command="{Binding ResetCommand}"
-                                FontSize="11"
-                                ToolTip.Tip="Wipe every session counter and restart the clocks. Counters also reset automatically on connect."/>
-                        <Button Content="Transaction history"
-                                Command="{Binding OpenTransactionHistoryCommand}"
-                                FontSize="11"
-                                ToolTip.Tip="Bank deposits and stash-room hides recorded this session — the time, the store, and what was put away."/>
-                    </StackPanel>
                 </StackPanel>
             </Expander>
 
         </StackPanel>
     </ScrollViewer>
+
+    </DockPanel>
 </Window>
