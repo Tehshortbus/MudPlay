@@ -964,8 +964,8 @@ public sealed class AppServices
     // Demand-driven party-wealth gate — feeds
     // MovementFilter.PartyWealthProvider so BFS routes a following party
     // around (Toll: N) exits a member can't afford. Polls @wealth only when
-    // a toll is on a candidate path. Gated by Settings → Other "avoid
-    // party-unaffordable tolls".
+    // a toll is on a candidate path. Always on: a toll is per-crosser, so
+    // stranding a member at a gate is never the wanted behaviour.
     public Game.Remote.PartyWealthTracker PartyWealth { get; private set; } = null!;
 
     // Shared Acquisition movement-gate driver. Both
@@ -2748,9 +2748,9 @@ public sealed class AppServices
         // records each reply, and exposes the party's minimum wallet;
         // MovementFilter reads that to route a following party around a toll a
         // member can't afford. The probe forwards replies straight to the
-        // tracker (not the players table). Both gated by the "avoid
-        // party-unaffordable tolls" toggle. The recordWealth closure reads the
-        // PartyWealth property lazily, so the construction order is fine.
+        // tracker (not the players table). Always on — a toll is per-crosser, so
+        // stranding a member at a gate is never wanted. The recordWealth closure
+        // reads the PartyWealth property lazily, so the construction order is fine.
         PartyWealthProbe = new Game.Remote.PartyWealthProbe(
             PartyBroadcaster, Chat, PartyState,
             recordWealth: (given, copper) => PartyWealth.Record(given, copper),
@@ -2759,8 +2759,6 @@ public sealed class AppServices
             PartyState, PartyWealthProbe,
             selfWealth: () =>
                 Inventory.IsLoaded ? Inventory.Snapshot.Currency.TotalCopperValue : (long?)null,
-            isEnabled: () =>
-                Resolver.Resolve<Models.Profile.OtherSettings>("Other").AvoidPartyUnaffordableTolls,
             post: action => Avalonia.Threading.Dispatcher.UIThread.Post(action),
             log: Log);
         Movement.PartyWealthProvider = PartyWealth.MinWealth;

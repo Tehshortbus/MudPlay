@@ -2,6 +2,16 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0): **MAJOR** = whole-program refactor, **MINOR** = a large PR, **PATCH** = a small / bugfix PR.
 
+## 1.5.11
+
+The party-wide toll gate added in 1.5.10 is now always on instead of an opt-in setting — routing a party around a gate a member can't pay is never the wrong call, so it no longer needs a switch.
+
+**Changed**
+- **Avoiding a party-unaffordable toll is now unconditional.** When you're leading a party, the navigator always folds every member's on-hand wealth into a toll decision and routes around a `(Toll: N)` exit any member can't cover — there's no longer a setting to enable it. A toll is per-crosser, so walking the group to a gate that strands a member is never desired behaviour; the demand-driven `@wealth` poll (fired only while a candidate route actually crosses a toll) is unchanged. As before, it does nothing when you're solo or just following.
+
+**Removed**
+- **Settings → Other → "Avoid party-unaffordable tolls" checkbox.** The behaviour it gated is now the default, so the toggle (added the same day in 1.5.10, never released) is gone.
+
 ## 1.5.10
 
 When you're leading a party, the navigator can now route around a toll gate that a follower can't afford — so it stops walking the group to a gate one member gets stranded at. It only asks the party for their wealth when a candidate route actually crosses a toll, never on a timer.

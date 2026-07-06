@@ -130,19 +130,6 @@ public sealed class OtherSettings
     // Settings → Other.
     public bool AvoidPartyImpassableLevelGates { get; set; }
 
-    // When true and leading a party, route around (Toll: N) exits a member
-    // can't afford rather than walking the leader through and stranding them at
-    // the gate. A toll is per-crosser (every member needs N*100 copper-value on
-    // hand), so BFS treats such an exit as non-traversable via
-    // Services.MovementFilter.PartyWealthProvider, which
-    // Game.Remote.PartyWealthTracker feeds from an @wealth probe. Unlike the
-    // level gate, wealth isn't kept warm — it's polled only when BFS actually
-    // evaluates a toll exit (wealth drifts constantly), and a member who can't
-    // cover it or hasn't reported fresh wealth gates the exit. Read live by the
-    // filter through the tracker. Default false (opt-in). Char-tier; surfaced in
-    // Settings → Other.
-    public bool AvoidPartyUnaffordableTolls { get; set; }
-
     // When true, Game.HopTimingCalibrator logs one Info line per observed hop
     // with the wall-clock time + the current Game.EncumbranceLevel. Used to
     // calibrate the Settings → Auto-Lair tab's per-encumbrance seconds-per-hop
