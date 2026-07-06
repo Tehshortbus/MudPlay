@@ -955,6 +955,19 @@ public sealed class AppServices
     // gates".
     public Game.Remote.PartyLevelTracker PartyLevel { get; private set; } = null!;
 
+    // On-demand party-wealth probe — broadcasts @wealth and forwards each
+    // reply to PartyWealth. Unlike the level probe it doesn't persist to
+    // the players table (wealth drifts); it's fired only when a route
+    // crosses a toll.
+    public Game.Remote.PartyWealthProbe PartyWealthProbe { get; private set; } = null!;
+
+    // Demand-driven party-wealth gate — feeds
+    // MovementFilter.PartyWealthProvider so BFS routes a following party
+    // around (Toll: N) exits a member can't afford. Polls @wealth only when
+    // a toll is on a candidate path. Gated by Settings → Other "avoid
+    // party-unaffordable tolls".
+    public Game.Remote.PartyWealthTracker PartyWealth { get; private set; } = null!;
+
     // Shared Acquisition movement-gate driver. Both
     // Cash and AutoGetItems feed it; it owns
     // the single assert/clear of
@@ -1064,9 +1077,10 @@ public sealed class AppServices
     // Hooked from MainWindowViewModel.SendUserInput.
     public Game.Map.OutboundMovementObserver OutboundMovement { get; private set; } = null!;
 
-    // Death-message detector — watches lines for the post-suicide /
-    // killed-in-combat You now have N lives remaining. shape
-    // and fires Game.Map.RoomTracker.NoteDeath. Captures
+    // Death-message detector — watches lines for either post-death lives
+    // readout (You now have N lives remaining. / You have N lives left.,
+    // the latter the miracle-save death) and fires
+    // Game.Map.RoomTracker.NoteDeath. Captures
     // a Models.Profile.DeathRecord on the loaded profile
     // for the Workshop DEATH section and pivots the tracker
     // into Game.Map.RoomConfidence.PendingRespawn.
@@ -1114,6 +1128,21 @@ public sealed class AppServices
     // manually resumes. Exposes HaltedForDeath so the Navigation chip can read
     // "Paused — recovering" while the death pause holds.
     public Game.PlayerDeathMovementHalt PlayerDeathHalt { get; private set; } = null!;
+
+    // Dropped / mortally-wounded bridge — while the local character is at or
+    // below 0 HP, holds the EngineSendGate (a dropped character can't act, so
+    // every engine send is rejected), asserts MovementCoordinator's
+    // MortallyWoundedGate, and clears the stale party roster (a drop removes us
+    // from the party game-side). Auto-clears on recovery.
+    public Game.PlayerDroppedGate PlayerDropped { get; private set; } = null!;
+
+    // Ally-drop rescue bridge — reacts to another party / recently-partied member
+    // dropping to the ground (0 HP): holds movement (AllyDownGate) to stay with
+    // them, sends `aid <name>`, feeds the aided ally into CastDirector for a
+    // heal-by-name until they recover, polls their off-roster vitals via `@health`,
+    // and (if leading) re-invites them once aided. Auto-releases on recovery,
+    // rejoin, death, logoff, or timeout.
+    public Game.AllyDroppedHandler AllyDropped { get; private set; } = null!;
 
     // Party-death roster-cleanup bridge — when we're leading an automated route
     // and an active member dies (turning into a phantom [Invited] par slot),
@@ -1862,6 +1891,12 @@ public sealed class AppServices
         // null until a stat screen parses — IsExitBlocked never gates on
         // an unknown level, so an unparsed character walks unrestricted.
         Movement.LevelProvider = () => Stats.HasParsed ? PlayerStats.Level : (int?)null;
+        // Feed on-hand wealth into (Toll: N) exit affordability. null until an
+        // 'i' dump parses (IsLoaded false), so an unknown wallet never gates —
+        // same rule as an unknown level. IsLoaded distinguishes "empty purse"
+        // (a real 0 that WOULD gate a toll) from "haven't parsed inventory yet".
+        Movement.WealthProvider = () =>
+            Inventory.IsLoaded ? Inventory.Snapshot.Currency.TotalCopperValue : (long?)null;
         Favorites = new FavoritesStore(Profile, Log);
 
         // Coordinator + walker. Coordinator is the
@@ -1967,6 +2002,28 @@ public sealed class AppServices
         // manually resumes — no loop / walk-to / auto-lair marches us back out
         // before we've recovered.
         PlayerDeathHalt = new Game.PlayerDeathMovementHalt(DeathWatcher, MovementCoordinator, Log);
+
+        // Dropped / mortally-wounded bridge. While HP is at or below 0 the
+        // character can't act — the game rejects every command — so this holds
+        // the EngineSendGate (silences all wrapped engines), asserts the
+        // MortallyWoundedGate (visible movement pause), and clears the stale
+        // party roster (a drop removes us from the party game-side; recovery
+        // needs a re-invite from the leader to rejoin). All three release the
+        // moment HP climbs back positive.
+        PlayerDropped = new Game.PlayerDroppedGate(
+            PlayerState, EngineGate, MovementCoordinator, Party, Log);
+
+        // Ally-drop rescue. Distinct from PlayerDropped (which owns OUR drop):
+        // reacts to another party / recently-partied member hitting 0 HP — aids
+        // them, holds movement via AllyDownGate to stay in the room, polls their
+        // off-roster vitals via @health, and re-invites once aided when we lead.
+        // The heal-by-name is delegated to CastDirector via the downed-ally
+        // provider wired below. Gated on AutoHealRest (shared party-heal master).
+        AllyDropped = new Game.AllyDroppedHandler(
+            Router, PartyState, Party, Chat, MovementCoordinator,
+            readParty: () => ReadSection<Models.Profile.PartySettings>(Profile.Current, "Party"),
+            isEnabled: () => ReadAutoModeFlag(d => d.AutoHealRest),
+            log: Log);
 
         // CombatManager. Picks a target on each
         // classifier emit and sends the configured attack command via
@@ -2084,7 +2141,10 @@ public sealed class AppServices
             // hangup firing through the bleeding-out window down to the
             // point the character actually dies.
             readDeathFloor: () => ResolveActiveBbs()?.PlayerDiesAtHp ?? -25,
-            log: Log);
+            log: Log,
+            // Emergency hangup drops the carrier on purpose — flag it so the
+            // reactive-reconnect path doesn't immediately dial back in.
+            hangupSignal: HangupSignal);
 
         // Leader-rest nudge: a standing-idle follower's own PlayerState may
         // not change between the 5s par polls that flip the leader's
@@ -2201,6 +2261,11 @@ public sealed class AppServices
         // cast once for the whole party; the picker checks this to skip the
         // per-member loop.
         CastDirector.SetPartyWideBuffCheck(IsPartyWideBuff);
+        // Downed-ally rescue heal. A dropped ally leaves `par`, so PickPartyHeal's
+        // roster walk can't see them — the AllyDroppedHandler feeds each aided
+        // downed ally back in here as the top-priority name-targeted heal until
+        // they recover / rejoin.
+        CastDirector.SetDownedAllyProvider(() => AllyDropped.AidedDownedGivenNames());
         Tick.CombatTickElapsed += CastDirector.OnCombatTick;
 
         // Mana-regen roll-spell reroll (Paradigm only). AbilBreakdown parses
@@ -2676,6 +2741,29 @@ public sealed class AppServices
                 Resolver.Resolve<Models.Profile.OtherSettings>("Other").AvoidPartyImpassableLevelGates,
             log: Log);
         Movement.PartyLevelBoundsProvider = PartyLevel.Bounds;
+
+        // Party-wealth probe + tracker. Unlike level, wealth isn't kept warm —
+        // it drifts with loot / spend — so the tracker probes @wealth only when
+        // BFS actually evaluates a toll exit (MinWealth is the demand trigger),
+        // records each reply, and exposes the party's minimum wallet;
+        // MovementFilter reads that to route a following party around a toll a
+        // member can't afford. The probe forwards replies straight to the
+        // tracker (not the players table). Both gated by the "avoid
+        // party-unaffordable tolls" toggle. The recordWealth closure reads the
+        // PartyWealth property lazily, so the construction order is fine.
+        PartyWealthProbe = new Game.Remote.PartyWealthProbe(
+            PartyBroadcaster, Chat, PartyState,
+            recordWealth: (given, copper) => PartyWealth.Record(given, copper),
+            log: Log);
+        PartyWealth = new Game.Remote.PartyWealthTracker(
+            PartyState, PartyWealthProbe,
+            selfWealth: () =>
+                Inventory.IsLoaded ? Inventory.Snapshot.Currency.TotalCopperValue : (long?)null,
+            isEnabled: () =>
+                Resolver.Resolve<Models.Profile.OtherSettings>("Other").AvoidPartyUnaffordableTolls,
+            post: action => Avalonia.Threading.Dispatcher.UIThread.Post(action),
+            log: Log);
+        Movement.PartyWealthProvider = PartyWealth.MinWealth;
 
         // Base auto-search — a bare `sea` on each genuine room entry reveals
         // hidden items for the auto-get engines. Armed by the persisted

@@ -100,6 +100,11 @@ public sealed class LoopRunner : IRecoverableEngine
     private readonly List<TimeSpan> _lapDurations = new();
     private const int MaxLapHistory = 10;
 
+    // Total laps completed this run. Distinct from _lapDurations.Count, which is
+    // capped at MaxLapHistory — the UI's lap counter needs the true running total
+    // so it keeps climbing past the 10th lap instead of freezing.
+    private int _completedLaps;
+
     // Custom-command delay timer state. _delayTimer is lazily constructed on first
     // delay use; _delayRemaining tracks the time left when the timer is stopped by
     // a pause so resume continues from where it left off rather than restarting the
@@ -171,6 +176,10 @@ public sealed class LoopRunner : IRecoverableEngine
 
     // Read-only window onto the rolling lap-time history (oldest first).
     public IReadOnlyList<TimeSpan> LapHistory => _lapDurations;
+
+    // Laps completed this run — the true running total (unlike LapHistory.Count,
+    // which caps at MaxLapHistory). The lap the walker is currently on is this + 1.
+    public int CompletedLaps => _completedLaps;
 
     private readonly RoomGraphManager? _graph;
 
@@ -381,6 +390,7 @@ public sealed class LoopRunner : IRecoverableEngine
         {
             _firstWaypointReached = false;
             _lapDurations.Clear();
+            _completedLaps = 0;
         }
 
         RoomKey? currentKey = _tracker.State.CurrentRoom?.Key;
@@ -666,6 +676,7 @@ public sealed class LoopRunner : IRecoverableEngine
             TimeSpan lapTime = now - _lapStartedAt;
             _lapDurations.Add(lapTime);
             if (_lapDurations.Count > MaxLapHistory) _lapDurations.RemoveAt(0);
+            _completedLaps++;
             _lapStartedAt = now;
             _index = 0;
             Raise(new LoopEvent(LoopEventKind.RepeatStarted, _loop.Name));
@@ -1126,6 +1137,7 @@ public sealed class LoopRunner : IRecoverableEngine
         _approachFinishedWhilePaused = false;
         _recoverAttempts = 0;
         _lapDurations.Clear();
+        _completedLaps = 0;
         _lapStartedAt = default;
         State = LoopState.Idle;
     }

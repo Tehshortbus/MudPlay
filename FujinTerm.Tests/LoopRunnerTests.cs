@@ -251,8 +251,10 @@ public sealed class LoopRunnerTests : IDisposable
     public void BlockedAtSource_ReroutesAndReSendsStep_InsteadOfFailing()
     {
         // Player + loop entry both at 1/1. Start sends the first step (N). The
-        // move is refused (a mob in the doorway, lag): the game re-prints the
-        // source room, so the tracker re-confirms 1/1 with the same room as its
+        // move is refused (a mob in the doorway, a shut door, an impairment): the
+        // game prints an explicit refusal line — NOT a room redisplay — which
+        // MovementRefusalDetector routes to RoomTracker.NoteMoveBlocked, dropping
+        // the pending move and re-confirming 1/1 with the same room as its
         // previous. Old behavior failed straight to Idle; the fix enters bounded
         // recovery — since we're confirmed back on the loop, it reroutes from
         // here and re-sends the blocked step rather than giving up.
@@ -262,9 +264,9 @@ public sealed class LoopRunnerTests : IDisposable
         Assert.Single(h.Sent);
         Assert.Equal("n\r", Encoding.Latin1.GetString(h.Sent[0]));
 
-        // Refused-move redisplay: the source room (A / 1/1) re-appears.
-        h.Tracker.NoteRoomObserved(new RoomObservation("A",
-            new HashSet<Direction> { Direction.N }));
+        // Explicit refusal line seen: the move never took, tracker reverts to
+        // Confirmed at the source (1/1).
+        h.Tracker.NoteMoveBlocked();
 
         // Rerouted, not failed: still driving and the blocked step went out again.
         Assert.Equal(LoopState.Running, h.Runner.State);
@@ -285,16 +287,52 @@ public sealed class LoopRunnerTests : IDisposable
         h.Tracker.SetLocated(new RoomKey(1, 1));
         h.Runner.Start(AbCycle());
 
-        // Four refused redisplays: three consume the retry budget (each reroutes
-        // + re-sends), the fourth trips the cap and fails.
+        // Four explicit refusals: three consume the retry budget (each reroutes
+        // + re-sends, putting the tracker back into Pending), the fourth trips the
+        // cap and fails.
         for (int i = 0; i < 4; i++)
         {
-            h.Tracker.NoteRoomObserved(new RoomObservation("A",
-                new HashSet<Direction> { Direction.N }));
+            h.Tracker.NoteMoveBlocked();
         }
 
         Assert.Equal(LoopState.Idle, h.Runner.State);
         Assert.Contains(h.Events, e => e.Kind == LoopEventKind.Failed);
+    }
+
+    [Fact]
+    public void PassiveSourceRedisplay_WhileMovePending_IsIgnored_NoFalseRecovery()
+    {
+        // CONFIRMED game mechanic: a refused move never redisplays the room — it
+        // always prints an explicit refusal line instead. So when the SOURCE room
+        // re-appears while a move is pending, it can only be a passive re-look (a
+        // combat-clear, a mob arrival, a bare re-glance), never the move's
+        // outcome. The tracker must ignore it and keep waiting for the real move
+        // result — NOT infer a refusal and cascade the loop into a bogus recovery.
+        Harness h = NewHarness();
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Runner.Start(AbCycle());
+        Assert.Single(h.Sent);
+
+        // Passive redisplay of the source room (A / 1/1) while the N move is still
+        // in flight.
+        h.Tracker.NoteRoomObserved(new RoomObservation("A",
+            new HashSet<Direction> { Direction.N }));
+
+        // No recovery, no extra step, still running with the move pending.
+        Assert.Equal(LoopState.Running, h.Runner.State);
+        Assert.DoesNotContain(h.Events, e => e.Kind == LoopEventKind.Failed);
+        Assert.DoesNotContain(h.Events, e =>
+            e.Kind == LoopEventKind.Paused && e.Detail.Contains("recovering"));
+        Assert.Single(h.Sent);
+        Assert.Equal(RoomConfidence.Pending, h.Tracker.State.Confidence);
+
+        // The move's real result (room B) now confirms cleanly and advances.
+        h.Tracker.NoteRoomObserved(new RoomObservation("B",
+            new HashSet<Direction> { Direction.N, Direction.S }));
+
+        Assert.Equal(LoopState.Running, h.Runner.State);
+        Assert.DoesNotContain(h.Events, e => e.Kind == LoopEventKind.Failed);
+        Assert.Contains(h.Events, e => e.Kind == LoopEventKind.StepCompleted);
     }
 
     // ----- PR C: lap timing + ReachedFirstWaypoint ---------------------
@@ -373,6 +411,34 @@ public sealed class LoopRunnerTests : IDisposable
         Assert.NotEmpty(h.Runner.LapHistory);
         h.Runner.Stop();
         Assert.Empty(h.Runner.LapHistory);
+    }
+
+    [Fact]
+    public void CompletedLaps_CountsEachWrap_AndResetsOnStop()
+    {
+        // The Nav lap counter reads CompletedLaps (uncapped), unlike LapHistory.Count
+        // which caps at MaxLapHistory. One full lap → 1; the displayed "lap N" is this
+        // + 1. Stop resets it so a fresh run starts back at lap 1.
+        Harness h = NewHarness();
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Runner.Start(AbCycle());
+        Assert.Equal(0, h.Runner.CompletedLaps);
+
+        h.Tracker.NoteRoomObserved(new RoomObservation("B",
+            new HashSet<Direction> { Direction.N, Direction.S }));
+        h.Tracker.NoteRoomObserved(new RoomObservation("A",
+            new HashSet<Direction> { Direction.N }));
+        Assert.Equal(1, h.Runner.CompletedLaps);
+
+        // A second lap increments again.
+        h.Tracker.NoteRoomObserved(new RoomObservation("B",
+            new HashSet<Direction> { Direction.N, Direction.S }));
+        h.Tracker.NoteRoomObserved(new RoomObservation("A",
+            new HashSet<Direction> { Direction.N }));
+        Assert.Equal(2, h.Runner.CompletedLaps);
+
+        h.Runner.Stop();
+        Assert.Equal(0, h.Runner.CompletedLaps);
     }
 
     // ----- circuit-phase special exits (shared with the walker) ------

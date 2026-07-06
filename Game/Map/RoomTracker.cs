@@ -212,13 +212,21 @@ public sealed class RoomTracker
 
     // ----- inputs -----------------------------------------------------
 
-    // The walker (or any other caller that just sent a move) reports the
+    // The walker (or any other engine caller that just sent a move) reports the
     // direction. The tracker enqueues a pending move and prepares to validate
-    // against the next observation.
+    // against the next observation. Because the engine's bytes echo back through
+    // SendUserInput → OutboundMovementObserver → NoteMoveSentByObserver, this
+    // direct call also arms a consume-once echo claim so that echo is dropped
+    // rather than enqueued as a phantom second move.
     public void NoteMoveSent(Direction direction, DateTimeOffset? whenUtc = null)
+        => NoteMoveSentCore(direction, isEngineAnnouncement: true, whenUtc ?? DateTimeOffset.UtcNow);
+
+    private void NoteMoveSentCore(Direction direction, bool isEngineAnnouncement, DateTimeOffset when)
     {
-        DateTimeOffset when = whenUtc ?? DateTimeOffset.UtcNow;
-        _lastCardinalAnnouncement = (direction, when);
+        if (isEngineAnnouncement)
+        {
+            _cardinalEchoClaim = (direction, when + EchoClaimExpiry);
+        }
         EnqueuePending(PendingMove.FromDirection(direction, when));
         AppendStep(new DirectionDto(direction));
 
@@ -232,61 +240,81 @@ public sealed class RoomTracker
         // hang the prediction on.
     }
 
-    // Echo-aware overload for OutboundMovementObserver. The observer fires from
-    // SendUserInput right after the walker / loop-runner already called
-    // NoteMoveSent directly — drop the second announcement when the most-recent
-    // direction matches within MoveDebounceWindow. Manual cardinal typing
-    // (no walker call) lands as a real announcement.
+    // Echo-aware overload for OutboundMovementObserver. The engine's own bytes
+    // echo back here after the walker / loop-runner already called NoteMoveSent
+    // directly. Consume the matching echo claim (armed by that direct call) and
+    // drop this second announcement. The claim is consumed exactly once and is
+    // matched on direction alone, NOT on a wall-clock window: a synchronous map
+    // re-root on entering a new area can stall the byte round-trip well past any
+    // fixed millisecond budget, and the old time-window let that late echo slip
+    // through as a phantom move that wedged the pending queue and stalled the
+    // walk. A generous expiry still bounds an orphaned claim (a refused move
+    // whose echo never comes) so it can't later swallow an unrelated manual step.
+    // Manual cardinal typing (no engine call, so no claim) lands as a real move.
     public void NoteMoveSentByObserver(Direction direction, DateTimeOffset? whenUtc = null)
     {
         DateTimeOffset when = whenUtc ?? DateTimeOffset.UtcNow;
-        if (_lastCardinalAnnouncement is { Dir: var lastDir, At: var lastAt }
-            && lastDir == direction
-            && (when - lastAt) < MoveDebounceWindow)
+        if (_cardinalEchoClaim is { Dir: var claimDir, ExpiresAt: var expiresAt }
+            && claimDir == direction
+            && when < expiresAt)
         {
+            _cardinalEchoClaim = null;
             _log?.Log(LogSeverity.Debug, "RoomTracker",
-                $"Debounced observer echo of NoteMoveSent({direction}); engine already announced within {MoveDebounceWindow.TotalMilliseconds:0} ms.");
+                $"Consumed engine echo of move {direction}; not re-enqueued.");
             return;
         }
-        NoteMoveSent(direction, whenUtc);
+        NoteMoveSentCore(direction, isEngineAnnouncement: false, when);
     }
 
     // Echo-aware overload for OutboundMovementObserver's text-exit path. Mirrors
-    // the cardinal debounce above. SpecialExitDispatch (walker / loop-runner)
+    // the cardinal claim above. SpecialExitDispatch (walker / loop-runner)
     // announces a text exit WITH its resolved cardinal, then pumps the bytes;
     // those bytes flow back through SendUserInput → the observer, which would
     // otherwise enqueue a SECOND, cardinal-less pending move for the same
     // physical step. That phantom keeps the pending queue non-empty after the
     // walker has already landed, holding the tracker in Pending and stalling the
-    // walk until the next observation flushes it. Drop the observer echo when the
-    // engine just announced the same command. Manual text typing (no engine
-    // call, or past the window) lands as a real announcement.
+    // walk until the next observation flushes it. Consume the claim armed by the
+    // engine's direct call to drop the echo. Manual text typing (no engine call)
+    // lands as a real announcement.
     public void NoteMoveSentByObserver(string command, DateTimeOffset? whenUtc = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(command);
         DateTimeOffset when = whenUtc ?? DateTimeOffset.UtcNow;
-        if (_lastTextAnnouncement is { Command: var lastCmd, At: var lastAt }
-            && string.Equals(lastCmd, command, StringComparison.OrdinalIgnoreCase)
-            && (when - lastAt) < MoveDebounceWindow)
+        if (_textEchoClaim is { Command: var claimCmd, ExpiresAt: var expiresAt }
+            && string.Equals(claimCmd, command, StringComparison.OrdinalIgnoreCase)
+            && when < expiresAt)
         {
+            _textEchoClaim = null;
             _log?.Log(LogSeverity.Debug, "RoomTracker",
-                $"Debounced observer echo of NoteMoveSent('{command}'); engine already announced within {MoveDebounceWindow.TotalMilliseconds:0} ms.");
+                $"Consumed engine echo of move '{command}'; not re-enqueued.");
             return;
         }
-        NoteMoveSent(command, whenUtc: whenUtc);
+        NoteMoveSentCore(command, cardinal: null, isEngineAnnouncement: false, when);
     }
 
-    private (Direction Dir, DateTimeOffset At)? _lastCardinalAnnouncement;
-    private (string Command, DateTimeOffset At)? _lastTextAnnouncement;
-    private static readonly TimeSpan MoveDebounceWindow = TimeSpan.FromMilliseconds(100);
+    private (Direction Dir, DateTimeOffset ExpiresAt)? _cardinalEchoClaim;
+    private (string Command, DateTimeOffset ExpiresAt)? _textEchoClaim;
+    // A move's bytes normally echo back within a few milliseconds, but a
+    // synchronous map re-root on entering a new area can stall the round-trip;
+    // the expiry only has to outlast that worst-case pump, while staying short
+    // enough that an orphaned claim (echo never arrived) can't shadow a later
+    // manual move of the same direction.
+    private static readonly TimeSpan EchoClaimExpiry = TimeSpan.FromSeconds(2);
 
     // Text-exit move (e.g. "go path") — used by the look-direction-interception
     // work for arbitrary text commands that don't map to a Direction.
     public void NoteMoveSent(string command, Direction? cardinal = null, DateTimeOffset? whenUtc = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(command);
-        DateTimeOffset when = whenUtc ?? DateTimeOffset.UtcNow;
-        _lastTextAnnouncement = (command, when);
+        NoteMoveSentCore(command, cardinal, isEngineAnnouncement: true, whenUtc ?? DateTimeOffset.UtcNow);
+    }
+
+    private void NoteMoveSentCore(string command, Direction? cardinal, bool isEngineAnnouncement, DateTimeOffset when)
+    {
+        if (isEngineAnnouncement)
+        {
+            _textEchoClaim = (command, when + EchoClaimExpiry);
+        }
         EnqueuePending(new PendingMove(cardinal, command, when));
         AppendStep(new DirectionDto(cardinal, command));
 
@@ -375,9 +403,10 @@ public sealed class RoomTracker
         _lastObservationAt = when;
     }
 
-    // The death-message detector saw the post-suicide / killed-in-combat "You
-    // now have N lives remaining." line. Capture a DeathRecord on the loaded
-    // profile (room captured = where we were when the death message fired),
+    // The death-message detector saw a post-death lives readout — either "You now
+    // have N lives remaining." (plain / suicide death) or "You have N lives left."
+    // (miracle-save death). Capture a DeathRecord on the loaded profile (room
+    // captured = where we were when the death message fired),
     // drain pending state, and transition to PendingRespawn so the next
     // observation lands as the new authoritative position without churning
     // Suspect strikes.
@@ -588,22 +617,32 @@ public sealed class RoomTracker
                 }
             }
 
-            // Strategy 1b — refused-move redisplay (same room as source).
+            // Strategy 1b — passive redisplay of the source room while a
+            // move is still pending. CONFIRMED game mechanic: a refused
+            // ("bonked") move NEVER redisplays the room — every refusal
+            // instead prints an explicit line (wording varies by bonk
+            // type: "There is no exit in that direction!", "You can't go
+            // that way.", "The door is closed.", etc.), which
+            // MovementRefusalDetector catches and routes to
+            // NoteMoveBlocked. So a redisplay that still matches the
+            // source can only be a passive re-look (a combat-clear, an
+            // arrival/departure notice, a bare re-glance) — never the
+            // pending move's outcome. Treat it as noise: keep the pending
+            // move intact and stay Pending so the move's real result (a
+            // different room) can still confirm via Strategy 1. A genuine
+            // self-loop exit that lands back in the source room is caught
+            // earlier by Strategy 1 (its target IS the source), so it
+            // never reaches here. Dequeuing + confirming here — the old
+            // "move-refused redisplay" behaviour — silently invented a
+            // refusal that never happened, stranding the loop at the
+            // source while the player had actually moved on, and cascaded
+            // into a bogus recovery that bonked a real exit at the true
+            // room.
             if (MatchesPredicted(source, observation))
             {
-                _pending.TryDequeue(out _);
-                DropMostRecentStep();                       // the move didn't actually take place
-                State.SuspectStrikes = 0;
-                RoomConfidence target = _pending.IsEmpty
-                    ? RoomConfidence.Confirmed
-                    : RoomConfidence.Pending;
-                // CurrentRoom already == source; reuse SetConfidence so
-                // history stays correctly seeded with the unchanged room.
-                // No PersistConfirmedAnchor here — the source room's
-                // strictness was already settled when it was first
-                // anchored; re-confirming after a refused move adds no
-                // new strict signal.
-                SetConfidence(target, when, "move-refused redisplay");
+                _log?.Log(LogSeverity.Debug, "RoomTracker",
+                    $"Passive redisplay of source '{source.Name}' while move {moveLabel} pending; ignoring.");
+                State.LastUpdatedAt = when;
                 return;
             }
         }

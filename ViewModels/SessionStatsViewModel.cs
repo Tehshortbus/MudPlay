@@ -61,6 +61,9 @@ public sealed partial class SessionStatsViewModel : ObservableObject, IDisposabl
     private TimeAnalysisStats _time;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CurrencyCollectedText), nameof(CurrencyCollectedTip),
+        nameof(CurrencyPerHourText), nameof(CurrencyStashedText), nameof(CurrencyStashedTip),
+        nameof(KillsRateText), nameof(ExpRateText))]
     private SessionActivityStats _activity;
 
     // Kills/hour series feeding the kills sparkline; reassigned each refresh.
@@ -224,6 +227,18 @@ public sealed partial class SessionStatsViewModel : ObservableObject, IDisposabl
     // spell lands.
     public bool HasSpells => Combat.SpellHits > 0;
 
+    // ----- Session Statistics (currency) -------------------------------
+    // The copper totals/rate read as coin denominations rather than raw
+    // comma-grouped copper, flipping up to the largest denomination that fits
+    // (1000 copper/hr -> "10 gold/hr"). The exact itemised wealth line rides
+    // along as a tooltip for the total/stashed figures.
+
+    public string CurrencyCollectedText => CurrencyFormat.Denominate(Activity.CurrencyCollected);
+    public string CurrencyCollectedTip  => CurrencyFormat.Full(Activity.CurrencyCollected);
+    public string CurrencyPerHourText   => CurrencyFormat.Denominate(Activity.CurrencyPerHour);
+    public string CurrencyStashedText   => CurrencyFormat.Denominate(Activity.CurrencyStashed);
+    public string CurrencyStashedTip    => CurrencyFormat.Full(Activity.CurrencyStashed);
+
     // ----- Rate-graph scales -------------------------------------------
     // The sparklines normalise each series to its own min–max, so the plot is
     // shapely but unitless on its own. These label the y-axis — peak at the top
@@ -235,19 +250,19 @@ public sealed partial class SessionStatsViewModel : ObservableObject, IDisposabl
     public string ExpPeakText    => RateLabel(Peak(ExperiencePerHour), compact: true);
     public string ExpFloorText   => RateLabel(Floor(ExperiencePerHour), compact: true);
 
+    // Current headline rate, printed in each graph header so the number is
+    // legible without eyeballing the curve — it equals the curve's right-most
+    // point by construction (both are total ÷ time online).
+    public string KillsRateText => $"{Activity.KillsPerHour:F1}/hr";
+    public string ExpRateText   => $"{RateLabel(Activity.ExperiencePerHour, compact: true)}/hr";
+
     private static double Peak(IReadOnlyList<double> s)  => s.Count > 0 ? s.Max() : 0;
     private static double Floor(IReadOnlyList<double> s) => s.Count > 0 ? s.Min() : 0;
 
     private static string RateLabel(double v, bool compact)
     {
         if (v <= 0) return "0";
-        if (!compact) return v.ToString("F0");
-        return v switch
-        {
-            >= 1_000_000 => $"{v / 1_000_000d:0.#}M",
-            >= 1_000     => $"{v / 1_000d:0.#}k",
-            _            => v.ToString("F0"),
-        };
+        return compact ? RateText.Compact(v) : v.ToString("F0");
     }
 
     // ----- Commands ----------------------------------------------------

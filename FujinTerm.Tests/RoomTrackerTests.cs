@@ -200,21 +200,31 @@ public sealed class RoomTrackerTests : IDisposable
     }
 
     [Fact]
-    public void Pending_RefusedMoveRedisplay_StaysAtSource()
+    public void Pending_PassiveSourceRedisplay_StaysPending_ThenRealMoveConfirms()
     {
-        // Tracker is Located at Town Gates (1/1). We send N — the
-        // server refuses silently (no "can't move" line) and just
-        // redisplays the SAME room. Observation == current room name
-        // + exits. Tracker should stay at 1/1, not chase candidates.
+        // Tracker is Located at Town Gates (1/1). We send N. CONFIRMED game
+        // mechanic: a refused ("bonked") move NEVER redisplays the room — it
+        // always prints an explicit refusal line (handled separately via
+        // NoteMoveBlocked). So a same-room redisplay while the move is Pending
+        // can only be a passive re-look (combat-clear, arrival notice, bare
+        // re-glance), never the move's outcome. The tracker must keep waiting
+        // for the real result, NOT infer a refusal and confirm at the source.
         RoomTracker tracker = NewTracker();
         tracker.SetLocated(new RoomKey(1, 1));
         tracker.NoteMoveSent(Direction.N);
 
-        // Observe Town Gates again (same as current).
+        // Passive redisplay of Town Gates (same as current) while N pending.
         tracker.NoteRoomObserved(Obs("Town Gates", Direction.N, Direction.E));
 
-        Assert.Equal(RoomConfidence.Confirmed, tracker.State.Confidence);
+        // Still Pending, still anchored at the source — no false refusal.
+        Assert.Equal(RoomConfidence.Pending, tracker.State.Confidence);
         Assert.Equal(new RoomKey(1, 1), tracker.State.CurrentRoom!.Key);
+
+        // The move's real outcome (North Square / 1/3) now confirms cleanly.
+        tracker.NoteRoomObserved(Obs("North Square", Direction.S));
+
+        Assert.Equal(RoomConfidence.Confirmed, tracker.State.Confidence);
+        Assert.Equal(new RoomKey(1, 3), tracker.State.CurrentRoom!.Key);
     }
 
     [Fact]
@@ -570,6 +580,88 @@ public sealed class RoomTrackerTests : IDisposable
 
         Assert.Equal(RoomConfidence.Confirmed, tracker.State.Confidence);
         Assert.Equal(new RoomKey(3, 2), tracker.State.CurrentRoom!.Key);
+    }
+
+    // ----- move-echo consume-once claim ------------------------------
+
+    [Fact]
+    public void EngineMove_LateObserverEcho_IsConsumed_ObservationConfirms()
+    {
+        // 195229/195335: the engine's own bytes echo back through the observer
+        // after the walker already announced the move. A synchronous map re-root
+        // on entering a new area can stall that round-trip past the old 100 ms
+        // debounce window, so the late echo was treated as a real second move and
+        // double-enqueued — leaving the queue non-empty forever so the next
+        // observation confirmed as "queue not empty" (Pending) and the walk stalled.
+        // The claim now matches on direction alone, not a wall clock, so a 500 ms
+        // echo is still consumed and the single move confirms cleanly.
+        RoomTracker tracker = NewTracker();
+        DateTimeOffset t = DateTimeOffset.UnixEpoch;
+        tracker.SetLocated(new RoomKey(1, 1));                       // Town Gates
+
+        tracker.NoteMoveSent(Direction.N, t);                        // engine announces
+        tracker.NoteMoveSentByObserver(Direction.N, t.AddMilliseconds(500)); // late echo
+        tracker.NoteRoomObserved(Obs("North Square", Direction.S), t.AddMilliseconds(600));
+
+        Assert.Equal(RoomConfidence.Confirmed, tracker.State.Confidence);
+        Assert.Equal(new RoomKey(1, 3), tracker.State.CurrentRoom!.Key);
+    }
+
+    [Fact]
+    public void EngineTextExit_LateObserverEcho_IsConsumed_ObservationConfirms()
+    {
+        // Same late-echo hazard on the text-exit path (SpecialExitDispatch
+        // announces "go path", the bytes echo back through the observer). A
+        // stalled round-trip must not enqueue a phantom cardinal-less move.
+        RoomTracker tracker = NewTracker();
+        DateTimeOffset t = DateTimeOffset.UnixEpoch;
+        tracker.SetLocated(new RoomKey(3, 1));                       // Darkwood Main Road
+
+        tracker.NoteMoveSent("go path", cardinal: null, whenUtc: t);
+        tracker.NoteMoveSentByObserver("go path", t.AddMilliseconds(500));
+        tracker.NoteRoomObserved(Obs("Darkwood Forest", Direction.SW), t.AddMilliseconds(600));
+
+        Assert.Equal(RoomConfidence.Confirmed, tracker.State.Confidence);
+        Assert.Equal(new RoomKey(3, 2), tracker.State.CurrentRoom!.Key);
+    }
+
+    [Fact]
+    public void TwoManualSameDirectionMoves_BothEnqueue()
+    {
+        // A manual move (no engine call, only the observer path) must never arm a
+        // claim — otherwise a second manual step of the same direction would be
+        // swallowed as an "echo" of the first. Two manual N moves both enqueue, so
+        // one observation clears only the head and the tracker stays Pending with
+        // the second move still in flight.
+        RoomTracker tracker = NewTracker();
+        DateTimeOffset t = DateTimeOffset.UnixEpoch;
+        tracker.SetLocated(new RoomKey(1, 1));                       // Town Gates
+
+        tracker.NoteMoveSentByObserver(Direction.N, t);              // manual #1
+        tracker.NoteMoveSentByObserver(Direction.N, t.AddMilliseconds(10)); // manual #2
+        tracker.NoteRoomObserved(Obs("North Square", Direction.S), t.AddMilliseconds(20));
+
+        Assert.Equal(RoomConfidence.Pending, tracker.State.Confidence);
+        Assert.Equal(new RoomKey(1, 3), tracker.State.CurrentRoom!.Key);
+    }
+
+    [Fact]
+    public void OrphanedClaim_PastExpiry_DoesNotSwallowLaterManualMove()
+    {
+        // An engine move whose echo never arrives (a refused move) leaves the
+        // claim armed. The generous expiry bounds it so a genuine manual move of
+        // the same direction well afterwards is NOT mistaken for the missing echo
+        // — it lands as a real second move (head confirms, queue stays non-empty).
+        RoomTracker tracker = NewTracker();
+        DateTimeOffset t = DateTimeOffset.UnixEpoch;
+        tracker.SetLocated(new RoomKey(1, 1));                       // Town Gates
+
+        tracker.NoteMoveSent(Direction.N, t);                        // echo never comes
+        tracker.NoteMoveSentByObserver(Direction.N, t.AddSeconds(2.5)); // manual, past expiry
+        tracker.NoteRoomObserved(Obs("North Square", Direction.S), t.AddSeconds(2.6));
+
+        Assert.Equal(RoomConfidence.Pending, tracker.State.Confidence);
+        Assert.Equal(new RoomKey(1, 3), tracker.State.CurrentRoom!.Key);
     }
 
     // ----- profile hydrate / save ------------------------------------

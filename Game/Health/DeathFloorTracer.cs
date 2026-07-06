@@ -4,9 +4,14 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game.Health;
 
-// Traces a realm's true negative-HP death floor from observed *slow* deaths and
-// refines BbsProfile.PlayerDiesAtHp toward it. The seed (-25) is only a guess;
-// this lets real deaths correct it.
+// Traces a realm's true negative-HP death floor and refines
+// BbsProfile.PlayerDiesAtHp toward it from two independent kinds of evidence.
+// The seed (-25) is only a guess; both paths correct it downward:
+//   1. A clean *slow* death lands right at the floor, so its HP reading measures
+//      it exactly (RecordDeath).
+//   2. A *live* reading deep in the bleeding-out band that the character survived
+//      proves the floor sits below it — a hard hit we lived through is a valid
+//      lower bound even though it never qualifies as a slow death (NoteHp).
 //
 // Why the HP trajectory and not the death line: MajorMUD prints exactly one
 // death message ("You have been slain by <killer>.") whether you were overkilled
@@ -91,16 +96,48 @@ public sealed class DeathFloorTracer : IDisposable
             return;
         }
 
-        // In the bleeding-out band (hp <= 0). A downward move from a reading that
-        // was also in the band is a bleed tick — the only place we can measure
-        // the realm's passive drain and spot a combat hit that doesn't belong.
-        if (_lastHp is int prev && prev <= 0 && hp < prev)
+        // In the bleeding-out band (hp <= 0), reading a fresh in-band HP means the
+        // *previous* in-band reading was survived — a death shows one final in-band
+        // HP and then jumps straight to a positive respawn, never another in-band
+        // prompt, so this branch can never fire on the terminal (overkill) death
+        // reading.
+        if (_lastHp is int prev && prev <= 0)
         {
-            _sawBleedTick = true;
-            int step = prev - hp;
-            if (step > _maxInBandStep) _maxInBandStep = step;
+            // A downward move is a bleed tick — the only place we can measure the
+            // realm's passive drain and spot a combat hit that doesn't belong.
+            if (hp < prev)
+            {
+                _sawBleedTick = true;
+                int step = prev - hp;
+                if (step > _maxInBandStep) _maxInBandStep = step;
+            }
+
+            // Live survival evidence, independent of the slow-death classifier: a
+            // hard hit we *survived* is valid floor evidence even though a hard hit
+            // that *kills* (overkill) must be discarded. Being alive this deep
+            // proves the realm floor sits below the seed, so ratchet it down.
+            RefineFloorFromLiveSurvival(prev);
         }
         _lastHp = hp;
+    }
+
+    // A confirmed-alive in-band reading refines the floor: death fires at HP <=
+    // floor, so surviving `survivedHp` proves the floor is at least one below it.
+    // That one-below bound is also what keeps the emergency hangup live at the
+    // deepest HP we've actually survived (its fire window bails at HP <= floor).
+    private void RefineFloorFromLiveSurvival(int survivedHp)
+    {
+        int bound = survivedHp - 1;
+        BbsProfile? bbs = _resolveBbs();
+        if (bbs is null || !bbs.AutoRefineDeathFloor) return;
+        if (bound >= bbs.PlayerDiesAtHp) return;   // estimate already at least this deep
+
+        int old = bbs.PlayerDiesAtHp;
+        bbs.PlayerDiesAtHp = bound;
+        _saveBbs(bbs);
+        _log?.Info(LogCategory,
+            $"alive at HP {survivedHp} (floor was {old}) — a survived reading can't sit at or below the floor; " +
+            $"refined {old} → {bound} (BBS '{bbs.Name}').");
     }
 
     // The local player just died (wired to DeathLineWatcher.PlayerDied). Classify

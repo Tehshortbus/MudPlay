@@ -54,6 +54,10 @@ public sealed class SuicidePasswordTracker : IDisposable
 
     private FlowState _state = FlowState.Idle;
 
+    // Reason string this tracker uses for its EngineSendGate hold, so it composes
+    // with any other hold (e.g. PlayerDroppedGate's) instead of clobbering it.
+    private const string GateHoldReason = "SuicidePassword";
+
     // ----- Outbound-line sniffer (capture model) -------------------------
     // The state-machine prompts are NOT reliable timing for password
     // capture — the server's prompt-ack burst arrives AFTER the user
@@ -196,7 +200,7 @@ public sealed class SuicidePasswordTracker : IDisposable
         // flow. Lock the gate; we don't need to capture the old value
         // (it's already what we have stored, presumably).
         _state = FlowState.AwaitingOldPassword;
-        _gate.IsLocked = true;
+        _gate.Hold(GateHoldReason);
         _log?.Log(LogSeverity.Info, "Suicide",
             "Detected change-password flow — engine gate LOCKED for old-password entry.");
     }
@@ -209,7 +213,7 @@ public sealed class SuicidePasswordTracker : IDisposable
         //   * Fresh set, no existing password — flow opens here directly.
         //   * Change-password flow — already in AwaitingOldPassword.
         _state = FlowState.AwaitingNewPassword;
-        _gate.IsLocked = true;
+        _gate.Hold(GateHoldReason);
         _log?.Log(LogSeverity.Info, "Suicide",
             "Awaiting new-password entry — engine gate LOCKED.");
     }
@@ -221,7 +225,7 @@ public sealed class SuicidePasswordTracker : IDisposable
         // the attempt; we don't capture anything (this is the user's
         // existing password being challenged).
         _state = FlowState.AwaitingUsePassword;
-        _gate.IsLocked = true;
+        _gate.Hold(GateHoldReason);
         _log?.Log(LogSeverity.Info, "Suicide",
             "Detected `suicide` use-flow — engine gate LOCKED for password challenge.");
     }
@@ -294,7 +298,7 @@ public sealed class SuicidePasswordTracker : IDisposable
     private void Reset(string reason)
     {
         _state = FlowState.Idle;
-        _gate.IsLocked = false;
+        _gate.Release(GateHoldReason);
         // Disarm the outbound sniffer + drop any in-flight line so a
         // fresh flow doesn't inherit leftover bytes from an aborted
         // one (user typed half a password then server bailed with

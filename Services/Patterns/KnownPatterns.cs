@@ -218,6 +218,16 @@ public static class KnownPatterns
     public const string PartyHeader         = "party.par-header";        // "The following people are in your travel party:" — anchors the par-block state machine
     public const string PartyMemberDeath    = "party.member-death";      // "X has been slain by Y" — conservative kill-attribution match
     public const string PartyMemberDied     = "party.member-died";       // "X has died." — the universal third-person death line any observer sees; the consumer scopes it to party members by roster match (see PartyDeathRosterCleanup)
+    // "X drops to the ground!" — the room/party-side signal a player hit 0 HP
+    // (mortally wounded, not yet dead). Seen by everyone present, including the
+    // dropper (with their own name). AllyDroppedHandler scopes it to a party /
+    // recently-partied ally (excluding self, whose self-drop PlayerDroppedGate
+    // owns) and reacts with aid + name-targeted heal.
+    public const string PartyMemberDropped  = "party.member-dropped";
+    // "You have aided X, ..." — confirmation OUR `aid <name>` landed, so the
+    // downed ally is back to positive HP and can act again. Gates the switch from
+    // "aiding" to "keep healing by name / re-invite".
+    public const string UserAidedAlly       = "party.user-aided-ally";
     // ----- Dissolution signals (Playpen-verified, 2026-06-01) ----------
     public const string PartyFollowerRemoved      = "party.follower-removed";       // "X has been removed from your followers." — leader's view of an uninvite
     public const string PartyYouNoLongerFollowing = "party.you-no-longer-following";// "You are no longer following X." — follower's view of leader's uninvite / our own unfollow

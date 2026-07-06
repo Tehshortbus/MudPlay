@@ -152,6 +152,118 @@ it isn't here and you're unsure, ask.
   past the floor (overkill, discard). So the client's floor auto-refinement must classify off the
   observed HP steps, not the message — and, per the trace's stated assumption, only while the
   killing blow isn't a huge hit that leaps right past the floor.
+- **An overkill can mask the reached HP entirely.** A killing blow that jumps well past the floor may
+  emit **no sub-floor HP prompt at all** — the client sees the pre-death HP and then the death, with
+  the intermediate value the blow drove HP to never printed. (Observed: at HP `-241` a `9`-point hit
+  simply killed the character; no `-250` prompt appeared.) So a single terminal reading can never be
+  trusted as a floor measurement. The reliable complement is **live-survival evidence**: while HP
+  ticks down through the negatives and the character is confirmed **still alive** (a *later* in-band
+  prompt proves the previous one was survived), each survived reading is a valid lower bound — the
+  floor sits **below** it — so the estimate ratchets down progressively as HP rolls further negative,
+  and simply **stops at the death message**. The terminal/masked reading is structurally excluded
+  because it is never followed by another in-band prompt.
+
+**Miracle-save — a death, not a rescue** *([CONFIRMED])*
+- When a character who still has lives dies, the engine prints a three-line miracle sequence in
+  place of the plain slain line:
+  ```
+  You have been killed!
+  But, due to a miracle, you have been saved.
+  You have N lives left.
+  ```
+  Despite the "saved" wording this **IS a death** — a life is spent (N is the post-death count),
+  non-loyal items drop, HP resets to full, and the character is teleported to the graveyard / temple
+  room, exactly like any other death. The "miracle" text is **flavor that comes with having lives**,
+  not a rescue that avoids the death. Only at **0 lives** does the engine instead force-exit the
+  character from the game (permadeath) rather than print the miracle line.
+- The lives readout on this path is `You have N lives left.` — a **different line** from the
+  slow / normal-death `You now have N lives remaining.`. A death-capture that keys only off the
+  "remaining" form misses every miracle-save death. The **reliable death marker across all forms** is
+  the `You have been killed!` line (DoT / no-named-killer deaths) alongside `You have been slain by
+  <killer>.` (attacker-named deaths) — capture off those, not off the lives readout.
+
+**On-death effect wipe** *([CONFIRMED])*
+- Death removes **all active effects — buffs and debuffs alike**. A poison ticking at the moment of
+  death clears with it: the death sequence carries `The effects of the poison wear off!` right
+  alongside `You have been killed!`. So after a death the character is at full HP with **no lingering
+  effects of any kind**; any client-side effect / buff tracking must be flushed on death.
+
+**Drop removes you from your party** *([CONFIRMED])*
+- Dropping (hitting 0 HP) doesn't just immobilize — it **removes you from the party game-side**. After
+  a miracle-save death the `par` check reads `You are not in a party at the present time.` even though
+  the client still believed it was partied and following the leader. The **only** reason a dropped
+  character still tracks the leader's room is that the leader `drag`s them — following is an artifact
+  of the drag, not live party membership.
+- While dropped / mortally wounded the game **rejects every action command**: movement, casting,
+  aiding, telepaths all bounce with `You may not do that while you are mortally wounded!`,
+  `Your command had no effect.`, or (for remote / telepath commands) `{command invalid or not
+  allowed}`. Client engines that keep firing commands in this state accomplish nothing but noise — a
+  dropped / mortally-wounded local player must suppress engine command output until healed / aided.
+- **The drop line — party-side and self.** When a character drops, everyone in the room (the party
+  included) sees `<name> drops to the ground!`; the dropped character sees it with their **own** name
+  (observed: `Raijin drops to the ground!`). That line is the party-side signal a member has gone
+  down. The drag, once someone starts it, prints `<leader> is dragging you around.` to the dragged
+  character on each of the dragger's moves (observed: `Fujin is dragging you around.`).
+- **Drag is a manual leader command, not automatic.** A dropped ally is only dragged when the party
+  **leader types `drag <name>`** after seeing the drop line — nothing drags them on its own. Dragging
+  merely relocates the still-mortally-wounded body; it does **not** revive them or restore party
+  membership.
+- **Reviving a dropped ally (leader-side reaction).** A dropped ally sits at 0 HP or below and can't
+  act for themselves — they must be brought back by **`aid <name>`** and/or a **heal** that lifts
+  their HP above 0. So a party leader watching `<member> drops to the ground!` should **aid and heal
+  that member** (drag is a separate, optional relocation choice, not the rescue).
+- **A dropped ally leaves `par`.** Once a member drops they no longer appear in the party's `par`
+  roster (`par` lists live membership only). Their vitals therefore stop refreshing from `par` — so
+  tracking a dropped, then partially-recovered ally's HP needs an out-of-band poll.
+- **`@health` telepath polls a member's vitals** *([CONFIRMED])*. Sending an ally a telepath
+  `@health` triggers their client's @health responder to reply with their current HP / MA — an
+  out-of-band way to read a member's health when `par` won't show it (e.g. after they've dropped off
+  the roster).
+- **A name-targeted heal still lands on a dropped ally who's been aided** *([CONFIRMED])*. Even though
+  an aided-but-still-dropped ally isn't in `par` anymore, a heal cast **at them by name** still
+  reaches them, so a party healer can keep topping them up until they fully recover / rejoin.
+- **Recovery to positive HP does NOT auto-rejoin the party — a re-invite is required** *([CONFIRMED])*.
+  Because the drop removed the character from the party game-side, bringing them back above 0 HP (via
+  `aid` + heal) restores their ability to act but **not** their membership. The **party leader must
+  `invite <name>` again** to pull them back into the group; until then the recovered character is solo
+  even though they're standing right there. This holds both ways: when the **local** character recovers
+  from a self-drop, the client must NOT resurrect the wiped roster — it waits for a real
+  follow / `par` signal (which only arrives after the leader's re-invite); when a **leader** revives a
+  dropped member, the rescue sequence is `aid` + heal **then** `invite <name>`.
+- Client reaction (party healer, self is a member with party heals): treat a member's drop as a
+  **wait condition** — pause farming / movement to stay with them — and, once they've been **aided**
+  back above 0, keep **healing them by name** despite their absence from `par`, polling their HP
+  periodically via an `@health` telepath until they recover, then (if leading) **re-invite** them.
+  (Implemented in `AllyDroppedHandler`: asserts `MovementCoordinator.AllyDownGate`, sends
+  `aid <name>`, exposes the aided ally to `CastingDirector`'s downed-ally heal category, polls
+  `@health`, releases on full-HP reply / rejoin / rescue timeout, and re-invites when leading. Its
+  own recent-leader memory recognises a dropped leader that a leader-disconnect already wiped from
+  the roster.)
+
+## Movement & navigation
+
+- **[CONFIRMED]** **A refused ("bonked") move always prints an explicit line and never
+  redisplays the room.** When a move command can't be honoured — no exit that way, a shut
+  door, an impairment — the game emits a one-line refusal *instead of* a room display. The
+  wording varies by the reason for the bonk, e.g.:
+  - `There is no exit in that direction!`
+  - `You can't go that way.` / `You can't move that way.`
+  - `The door is closed.`
+  - impairment forms (paralyzed / confused / stunned / dazed / too encumbered / can't see well
+    enough to move).
+
+  The player's on-screen room does **not** re-print on a refusal. This is the authoritative
+  signal the client keys on: `MovementRefusalDetector` matches these lines and calls
+  `RoomTracker.NoteMoveBlocked` (which drops the pending move and re-confirms at the source).
+- **Corollary the tracker relies on:** *a room redisplay that still matches the room you moved
+  from is never the result of a refused move.* While a move is pending, seeing the source room
+  again can only be a **passive re-look** — a combat-clear, a monster/player arrival or
+  departure notice, a bare re-glance — carrying no position signal. The tracker therefore
+  ignores it and keeps waiting for the move's real outcome (a different room), rather than
+  inferring a refusal from the redisplay alone. (A genuine self-loop exit that lands back in
+  the same room is a real move with a real room display; it resolves as a normal
+  predicted-neighbour match because the exit's target *is* the source, so it is not confused
+  with a passive redisplay.)
 
 ## Attack spells: why one fails to damage a monster
 
@@ -312,6 +424,32 @@ flag). These are hard eligibility gates, independent of resistance and level imm
   something else); the other four are stable across the target realms.
 - **[CONFIRMED]** Value ladder (in copper): 1 silver = 10, 1 gold = 100, 1 platinum = 10 000,
   1 runic = 1 000 000. Wealth is consolidated in copper farthings (the game's `Wealth:` line).
+- **[CONFIRMED]** **Toll exits gate on total wealth, not a specific coin.** A room exit tagged
+  `(Toll: N)` in the map data requires the crosser to carry a **wealth value of `N × 100`**
+  (copper farthings — the same consolidated `Wealth:` figure), held **on them** (carried coin, not
+  banked). The refusal line reads `You do not have enough to cover the toll of N gold crowns.` —
+  but "N gold crowns" is just how the message phrases the copper-value bar (`N` gold = `N × 100`
+  copper), NOT a demand for that coin specifically: any mix of denominations totalling `N × 100`
+  copper-value passes. So affordability is `TotalCopperValue >= TollGold * 100`. The check is
+  **per-crosser**: every party member needs their own `N × 100` on hand, and a member who can't
+  cover it is refused at the gate and left behind while the rest pass.
+- **[CONFIRMED]** **Gating a party's route through a toll / level exit.** Because a toll is
+  per-crosser, a leader routing the party must confirm **every** member can pay before taking the
+  route:
+  - **Toll:** poll the party with **`@wealth`** (each member's client replies with their wealth,
+    same round-trip shape as `@health` / `@level`). If **all** members reply AND each can cover the
+    toll (`wealth >= TollGold * 100`), the route may use the toll room; if **any** member can't
+    cover it (or doesn't reply), **avoid that toll room for this passing**. Wealth changes
+    constantly (loot / spend), so it's polled fresh at planning time rather than cached. (This half
+    is now implemented: `MovementFilter.IsTollGateBlocked` + `PartyWealthProbe` / `PartyWealthTracker`.
+    Unlike the level half — which keeps every member's level warm on each roster change — wealth is
+    **demand-polled**: `MinWealth` fires the `@wealth` probe only while BFS is evaluating a toll exit,
+    and a follower with no fresh reading gates the toll, so the first plan routes around it while the
+    probe warms up.)
+  - **Level:** use the member level already **stored in game data** (each player's recorded level);
+    only when it's suspected stale, **re-poll in the room with `@level`**. A member outside the
+    exit's `(Level: MIN to MAX)` window means the party routes around that exit. (This half is
+    already implemented: `MovementFilter.IsExitBlocked` + `PartyLevelProbe` / `PartyLevelTracker`.)
 - **[CONFIRMED]** The **keyword** the client keys policy/value on is the denomination-defining
   first word (`copper`/`silver`/`gold`/`platinum`/`runic`); the second word is the flavour coin
   noun (`farthings`/`nobles`/`crowns`/`pieces`/`coins`). Some lines carry only the keyword,
@@ -383,11 +521,20 @@ flag). These are hard eligibility gates, independent of resistance and level imm
 | Weapon ineffective | `Your weapon has no effect against this monster!` |
 | Fists ineffective | `Your fists have no effect against this monster!` |
 | Spell can't affect target (e.g. living-only vs NonLiving) | `Your spell has no effect on <monster>.` |
-| Local player death (lives readout) | `You now have N lives remaining.` |
-| Local player slain | `You have been slain by <killer>.` |
+| Local player death (lives readout, slow / normal) | `You now have N lives remaining.` |
+| Local player death (DoT / no named killer) | `You have been killed!` |
+| Miracle-save lives readout (a death, still has lives) | `You have N lives left.` |
+| Local player slain (attacker named) | `You have been slain by <killer>.` |
 | Party member / other player killed in room | `<Name> has died.` |
+| Character drops (0 HP, party/room-side; self sees own name) | `<Name> drops to the ground!` |
+| Being dragged while dropped (dragged char's view, per move) | `<Leader> is dragging you around.` |
+| Action attempted while dropped (rejection) | `You may not do that while you are mortally wounded!` |
 | Coin pickup (no trailing period) | `You picked up N <coin>` (e.g. `6 silver nobles`) |
 | Coin drop | `You dropped N <coin>.` |
 | Coin stash / hide | `You hid N <coin>.` |
 | Corpse loot drop (bare keyword) | `N <keyword> drop to the ground.` |
 | Room cash survey | `You notice ... N <coin> ... here.` |
+| Move refused — no exit | `There is no exit in that direction!` |
+| Move refused — blocked way | `You can't go that way.` / `You can't move that way.` |
+| Move refused — shut door | `The door is closed.` |
+| Toll exit unaffordable | `You do not have enough to cover the toll of N gold crowns.` |

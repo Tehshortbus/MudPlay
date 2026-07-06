@@ -273,11 +273,11 @@ public sealed class SuicidePasswordTrackerTests
         wrapped(Encoding.Latin1.GetBytes("par\r"));
         Assert.Single(sent);
 
-        gate.IsLocked = true;
+        gate.Hold("SuicidePassword");
         wrapped(Encoding.Latin1.GetBytes("par\r"));
         Assert.Single(sent); // still 1 — second drop on the floor
 
-        gate.IsLocked = false;
+        gate.Release("SuicidePassword");
         wrapped(Encoding.Latin1.GetBytes("par\r"));
         Assert.Equal(2, sent.Count);
     }

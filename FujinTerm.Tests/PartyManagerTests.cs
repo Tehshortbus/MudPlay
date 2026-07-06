@@ -186,6 +186,35 @@ public sealed class PartyManagerTests
     }
 
     [Fact]
+    public void NoteSelfDropped_WipesEverything()
+    {
+        // Dropping to 0 HP removes us from the party game-side — being dragged
+        // afterwards is relocation, not membership. NoteSelfDropped clears the
+        // stale roster so a follower/leader movement gate doesn't hold forever.
+        var (router, p) = Setup(localCharacterName: "Fujin");
+        router.Dispatch(Line("You are now following Raijin."));
+        Assert.True(p.State.IsInParty);
+        Assert.Equal("Raijin", p.State.LeaderName);
+
+        p.NoteSelfDropped();
+
+        Assert.Empty(p.State.Members);
+        Assert.False(p.State.IsInParty);
+        Assert.False(p.State.SelfIsLeader);
+        Assert.Null(p.State.LeaderName);
+    }
+
+    [Fact]
+    public void NoteSelfDropped_OnAlreadyEmpty_NoOp()
+    {
+        // Idempotent — a drop while already party-less mustn't churn state.
+        var (router, p) = Setup();
+        p.NoteSelfDropped();
+        Assert.Empty(p.State.Members);
+        Assert.False(p.State.IsInParty);
+    }
+
+    [Fact]
     public void Dissolved_OnAlreadyEmpty_NoOp()
     {
         // Idempotent — receiving the dissolution line when we're

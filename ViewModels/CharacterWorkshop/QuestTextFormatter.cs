@@ -60,10 +60,21 @@ internal static partial class QuestTextFormatter
     {
         var parts = new List<string>();
         if (q.ClassIds is { Count: > 0 } cls)
-            parts.Add("Classes: " + string.Join(", ", cls.Select(id => RestrictionName(gameData, "Classes", id))));
+            parts.Add("Classes: " + string.Join(", ", cls.Select(id => ClassRequirement(gameData, id, q.ClassLevels))));
         if (q.RaceIds is { Count: > 0 } rcs)
             parts.Add("Races: " + string.Join(", ", rcs.Select(id => RestrictionName(gameData, "Races", id))));
         return string.Join("  ·  ", parts);
+    }
+
+    // A restricted class with its own level gate appended ("Priest-20"), or the bare
+    // class name when the quest carries no per-class level for it. Lets a multi-class
+    // ability quest (Smash, Meditate) show each class's distinct unlock level.
+    private static string ClassRequirement(GameDataCache gameData, int id, IReadOnlyDictionary<int, int>? levels)
+    {
+        string name = RestrictionName(gameData, "Classes", id);
+        return levels is not null && levels.TryGetValue(id, out int lvl) && lvl > 0
+            ? string.Create(CultureInfo.InvariantCulture, $"{name}-{lvl}")
+            : name;
     }
 
     private static string RestrictionName(GameDataCache gameData, string table, int number) =>

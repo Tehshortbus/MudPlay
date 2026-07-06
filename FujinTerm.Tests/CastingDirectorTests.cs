@@ -1728,6 +1728,33 @@ public sealed class CastingDirectorTests
     }
 
     [Fact]
+    public void PartyBless_Confirm_SurfacesDurationOnInfoLog()
+    {
+        // The user couldn't tell from the program log whether a party bless armed
+        // its recast timer, because the confirmation logged on the combat channel
+        // (off in normal play). It now lands on the always-on Info channel with the
+        // effect duration and the recast lead (duration − 15s recast margin).
+        using PartyBlessHarness h = new();
+        h.Classes[1] = "Mage";
+        h.Health.BlessIfAboveMa = 0;
+        h.PartySettings.BlessSlots[0].Spell = "bles";
+        h.PartySettings.BlessSlots[0].ClassNumbers = new() { 1 };
+        h.BuffInfo["bles"] = ("You cast {s} on {s}!", 300);
+        h.AddMember("Raijin", "Mage");
+
+        h.Director.Evaluate();
+        h.Confirm("You cast bless on Raijin!");
+
+        LogEntry entry = Assert.Single(
+            h.Log.Snapshot(),
+            e => e.Severity == LogSeverity.Info && e.Message.Contains("party-buff confirmed"));
+        Assert.Contains("spell=bles", entry.Message);
+        Assert.Contains("target=Raijin", entry.Message);
+        Assert.Contains("duration=300s", entry.Message);
+        Assert.Contains("recast in 285s", entry.Message);   // 300 − 15s margin
+    }
+
+    [Fact]
     public void PartyBless_NoConfirm_ReattemptsNextPass()
     {
         // Decision: no confirmation observed ⇒ no timer ⇒ re-attempt. The

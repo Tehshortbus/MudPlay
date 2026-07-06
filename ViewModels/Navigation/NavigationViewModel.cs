@@ -392,6 +392,13 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(IsLoopRunning));
         RefreshLoopOverlays();
         RefreshEngineActionLabel();
+        // The lap counter ticks over on the RepeatStarted wrap event, which
+        // isn't a tracker-state change — refresh the step/lap readouts here so
+        // the header and top bar advance the moment a lap closes, not only on
+        // the next room observation.
+        OnPropertyChanged(nameof(CurrentNavHeader));
+        OnPropertyChanged(nameof(TopBarStatusText));
+        OnPropertyChanged(nameof(CurrentNavProgress));
     }
 
     private void RefreshLoopOverlays()
@@ -1811,8 +1818,8 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     {
         // A failed walk leaves the engine Idle; stash the reason so the
         // top-bar status + CURRENT NAV header can explain why we didn't
-        // move (e.g. "all routes blocked by a level requirement"). Any
-        // forward progress or a fresh start clears it.
+        // move (e.g. "all routes blocked by a level or toll requirement").
+        // Any forward progress or a fresh start clears it.
         switch (e.Kind)
         {
             case WalkEventKind.Failed:
@@ -2188,9 +2195,11 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
                     // CurrentIndex is the next step to send, clamped to
                     // [0, total). Display as 1-based so the user reads
                     // it the same way the LoopRunner logs its steps
-                    // ("step 14: move S").
+                    // ("step 14: move S"). Append the lap the walker is on
+                    // (completed laps + 1) so the top bar mirrors the
+                    // CURRENT NAV header's step + lap readout.
                     int human = Math.Min(total, lr.CurrentIndex + 1);
-                    return $"{name} on step {human} of {total}";
+                    return $"{name} · step {human}/{total} · lap {lr.CompletedLaps + 1}";
                 }
                 case NavigationEngineKind.AutoLair:
                 {
@@ -2695,16 +2704,15 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
                    $"/{_services.Walker.StepCount})";
         }
 
-        // Circle phase: show step N/K + lap counter + average lap.
-        int laps = runner.LapHistory.Count;
+        // Circle phase: show step N/K + lap counter + average lap. The lap the
+        // walker is on is completed-laps + 1; the average only exists once a lap
+        // has closed.
+        int laps = runner.CompletedLaps;
         int total = runner.StepCount;
         int stepNum = total == 0 ? 0 : runner.CurrentIndex + 1;
-        string lapPart = laps switch
-        {
-            0 => "lap 1",
-            1 => $"lap 2 · avg {FormatDuration(runner.AverageLapTime)}",
-            _ => $"lap {laps + 1} · avg {FormatDuration(runner.AverageLapTime)}",
-        };
+        string lapPart = laps == 0
+            ? "lap 1"
+            : $"lap {laps + 1} · avg {FormatDuration(runner.AverageLapTime)}";
         return $"{loop.Name} · step {stepNum}/{total} · {lapPart}";
     }
 

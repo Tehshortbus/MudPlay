@@ -2,6 +2,92 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0): **MAJOR** = whole-program refactor, **MINOR** = a large PR, **PATCH** = a small / bugfix PR.
 
+## 1.5.10
+
+When you're leading a party, the navigator can now route around a toll gate that a follower can't afford — so it stops walking the group to a gate one member gets stranded at. It only asks the party for their wealth when a candidate route actually crosses a toll, never on a timer.
+
+**Added**
+- **Party-wide toll affordability gate for path planning.** A `(Toll: N)` map exit is per-crosser — every member of the party needs a wealth value of `N × 100` copper on hand, or they're refused at the gate and left behind. Previously the navigator only checked the *leader's* own wallet against a toll, so it could route the whole party through a gate a follower couldn't pay and strand them. With the new **Settings → Other → "Avoid party-unaffordable tolls"** toggle on, when you're leading a party the navigator now folds every member's on-hand wealth into the decision: if any member can't cover the toll (or hasn't reported), it routes around that toll room instead. Unlike the level gate — which keeps every member's level warm on each roster change because level is stable — wealth drifts constantly with loot and spending, so it's **demand-polled**: the client only sends the party `@wealth` while it's actually evaluating a toll on a candidate route, never on a timer or roster change. Because the reply lands a beat after the first plan, the first pass conservatively routes around the toll while the wealth readings warm up, and the next lap of a loop (or a walk-to retry) uses the fresh figures. A member who hasn't reported fresh wealth is treated as unable to pay — the safe side, since it never marches a follower to a gate they can't clear.
+
+## 1.5.9
+
+A looping walk no longer bails out and gets "lost" mid-circuit when the room simply re-prints during combat — the tracker stops mistaking a harmless redisplay of the room you're in for a refused move, so it keeps waiting for the step you actually took instead of firing a bogus recovery that then bonks a real exit at the wrong room.
+
+**Fixed**
+- **A passive room redisplay during a pending move was misread as a refusal, derailing a running loop.** While a loop step was in flight, the tracker inferred a "move refused" purely because the next room display matched the room you were standing in — but during combat the game re-prints your room for all sorts of reasons (a mob clears, someone arrives or leaves, a bare re-glance), none of which mean your move failed. That false refusal made the loop believe it hadn't moved, so it launched a recovery that re-sent a step from the *old* room while you had actually already crossed into the next one — and that step then bonked a real exit ("There is no exit in that direction!"), desynced the tracker, and drifted it into "lost" until you manually intervened. This rests on a confirmed game rule: **a refused move never redisplays the room — it always prints an explicit refusal line instead** (the wording varies by why it bonked). So a same-room redisplay while a move is pending is now treated as the passive re-look it is: the tracker keeps the pending move and waits for the real outcome, and genuine refusals continue to be handled by their explicit refusal line. A real self-loop exit that lands you back in the same room is unaffected — it's a real move with a real room display and resolves normally.
+
+## 1.5.8
+
+A walk-to no longer wedges into a permanent "walking but not moving" state after crossing into a new area — the room tracker now recognises the engine's own echoed move regardless of how long a map re-root delays it, so it stops mistaking that echo for a phantom second step that jammed the pending queue.
+
+**Fixed**
+- **A walk-to could enter a zombie "walking but stalled" state, and stopping + re-queuing it made things worse.** Every move the walker sends is echoed back over the wire, and the room tracker debounced that echo on a fixed 100 ms wall-clock window. Crossing into a new area triggers a synchronous map re-root (thousands of rooms re-laid-out) that runs *between* the walker announcing the move and the echoed bytes arriving — pushing the echo past the 100 ms window, so it was treated as a real second move and double-enqueued. That phantom kept the tracker's pending-move queue non-empty forever: the next room display confirmed as "queue not empty" and held the tracker in `Pending`, so the walker believed it was mid-step and never advanced (the brief "map flipped to another room then back" was that same re-root). Stopping the walk didn't drain the phantom, so re-queuing inherited the jammed queue and stayed buggy. The echo is now matched by a **consume-once claim** armed only by the engine's own send and cleared by the first matching echo — timing-independent, so a re-root of any duration can't turn the echo into a phantom. A generous expiry bounds a claim whose echo never arrives (a refused move) so it can't later swallow an unrelated manual step, and manual movement (which never arms a claim) is unaffected — including two manual steps of the same direction in quick succession, which the old window used to wrongly collapse into one.
+
+## 1.5.7
+
+Walk-to routing now treats an unaffordable `(Toll: N)` exit the same way it already treats a level gate you fall outside of — the planner routes around a toll you can't cover instead of marching you into a refusal, so a walk that would only end with `You do not have enough to cover the toll of N gold crowns.` never starts down that road.
+
+**Fixed**
+- **Walk-to would march into a toll it couldn't pay.** A `(Toll: N)` exit needs the crosser to carry a wealth value of `N × 100` (the consolidated `Wealth:` figure — any coin mix totalling that copper-value passes; it doesn't have to be gold), and the game refuses the step with `You do not have enough to cover the toll of N gold crowns.` when you're short. The path planner ignored toll cost, so it would happily route you through a toll you couldn't afford and then stall on the refusal. Toll exits now gate at planning time against your live on-hand wealth exactly as level-gated exits gate against your level: the walker routes around a toll you can't cover, and when *every* route to the target is blocked by a level or toll requirement it says so (`all routes blocked by a level or toll requirement`) instead of failing with a bare "no path". As with the level gate, an unknown wallet (no inventory parsed yet) never refuses a walk — we don't gate on a bar we can't yet evaluate. This is the self / leader affordability check; a party-wide `@wealth` poll that gates the whole group's route is a separate follow-up.
+
+## 1.5.6
+
+When a party member drops in front of you, a party healer now reacts on its own: it holds movement to stay with the downed ally, aids them, keeps healing them by name until they recover, then re-invites them if you're leading — including the case where the one who dropped was the leader whose disconnect already dissolved the party.
+
+**Fixed**
+- **A dropped party member got no automatic rescue.** Seeing `<name> drops to the ground!` used to leave a party healer idle — it kept farming / moving away while the downed ally stayed at 0 HP. The client now treats an ally's drop as a wait condition: it pauses movement (an `AllyDown` hold), sends `aid <name>` to lift them above 0, then keeps healing them by name through the normal spell tiers even though a dropped ally has left the `par` roster, polling their health with an `@health` telepath until they recover. Once they're back to full it releases the hold; if you're the leader it re-invites them (recovery to positive HP restores their ability to act but not their party membership). The reaction also recognises the hardest case — the ally who dropped was the **leader**, whose disconnect had already wiped the whole party from your roster — via the handler's own short recent-leader memory, so a leader's drop still gets aided and held rather than ignored as a stranger.
+
+## 1.5.5
+
+While your own character is dropped (mortally wounded at 0 HP or below), the client now stops every background engine from spamming commands the game will only reject, and corrects the party state a drop invalidates — so a downed character sits quietly until aided / healed instead of hammering the wire and holding movement on a party it's no longer in.
+
+**Fixed**
+- **Background engines kept firing commands while you were dropped.** A mortally-wounded character can't act — the game bounces every command with `You may not do that while you are mortally wounded!` — but the automation engines (rest, cast, party polls, walk-to, etc.) kept sending anyway, flooding the wire with rejected commands. Dropping now raises a blanket engine-send hold and a movement pause (surfaced as the `MortallyWounded` pause reason) for the whole time HP is at or below 0, so all the background engines fall silent until you recover. The emergency low-HP hangup is deliberately exempt — hanging up is still allowed while dropped, so it pierces the hold and remains your last escape.
+- **Party / following state went stale after a self-drop.** Dropping removes you from the party game-side; the leader dragging your body around is physical relocation, not membership. The client used to keep believing it was partied and following, so the follower-movement gate held movement forever on a party you'd already left. A drop now clears the tracked roster / leader / following flags, and recovery re-confirms membership only from a real follow / `par` signal — which arrives after the leader re-invites you (recovery to positive HP restores your ability to act but not your membership; a re-invite is required to rejoin).
+
+## 1.5.4
+
+Casting a party buff (Bless slots) now reports its effect duration and recast timing on the always-on program log, so you can confirm the recast timer actually armed and see when it will re-fire.
+
+**Fixed**
+- **The program log didn't show a party bless's duration or recast timing.** Casting a party bless armed its recast timer and logged the confirmation, but only on the combat-diagnostics channel — which is off in normal play — so nothing showed and you couldn't tell whether the timer was set. The confirmation now lands on the always-on Info channel with the effect duration and the recast lead, e.g. `party-buff confirmed spell=bles target=Fujin duration=300s — recast in 285s.` (the recast fires 15s before expiry). The item-cast buff confirmation moved to the same always-on channel with the same duration/recast enrichment.
+
+## 1.5.3
+
+The realm death-floor estimate now sharpens from live play, not just from clean deaths: any HP reading you survive below the current floor ratchets the estimate deeper, so the "how far past zero can I go" figure keeps improving without waiting for the next death.
+
+**Fixed**
+- **The death floor wasn't refined from a survived bleeding-out reading.** The floor estimate only moved on a captured death, so a character who bled well past the current floor and lived left that evidence on the table. The tracer now ratchets the floor to one below the deepest HP you're seen alive at — a later in-band prompt proves the previous reading survived — so the estimate tightens from live play. The terminal death reading is structurally excluded (it never proves survival), and an overkill that masks the reached HP can't corrupt the estimate.
+
+## 1.5.2
+
+The miracle-save death — the "but, due to a miracle, you have been saved" sequence — is now recognised as the real death it is and captured by death recovery, so a run that ends in a last-instant rescue still records the death and its floor.
+
+**Fixed**
+- **A miracle-save death was not captured by death recovery.** When the game kills you but immediately revives you on a miracle, the readout differs from an ordinary death — it announces your remaining lives directly ("You now have N lives remaining." / "You have N life left.") rather than the plain slain line the detector keyed on. The death therefore slipped past recovery entirely: no death record, no floor update, no lives decrement. The detector now matches both readout forms, so a miracle-save is captured exactly like any other death and feeds the same death-floor estimate.
+
+## 1.5.1
+
+The low-HP emergency hangup no longer fights itself: after it drops the carrier to escape a losing fight, the client used to immediately auto-reconnect straight back into the danger. The hangup now flags the disconnect as intentional so the reactive-reconnect path stands down.
+
+**Fixed**
+- **The auto-hangup fired, then the client reconnected on its own — dialling straight back into the situation it just fled.** The emergency low-HP hangup sends the configured game-exit command to drop the carrier, but it never told the reconnect layer the drop was deliberate. The disconnect was then classified as an unexpected server-side drop and a reactive reconnect was scheduled, undoing the escape. The hangup path now arms the same intentional-disconnect signal the remote `@hangup` uses, so the drop is classified as `HangupInitiated` and no auto-reconnect fires — the client stays down until the user brings it back.
+
+## 1.5.0
+
+A readability batch across Session Stats, navigation, and the Player Workshop quest view, all from live play: coin figures now read as denominations instead of a raw copper count, the rate graphs match their headline numbers and label the current rate, the loop lap counter actually counts, the main-window looping chip is trimmed to the essentials, and multi-class ability quests show each class's own unlock level.
+
+**Changed**
+- **Session Stats currency reads as coin denominations now, not a comma-grouped copper count.** The total-collected, per-hour, and stashed figures "flip up" to the largest denomination that has a whole unit — 1000 copper an hour shows as `10 gold/hr`, not `1,000/hr` — following the same copper/silver/gold/platinum/runic ladder the inventory tracker uses. The exact itemised wealth line (`1 runic 93 platinum 5 gold 6 copper`) moves to a hover tooltip, so the compact figure fits the narrow stat columns while the full breakdown stays one hover away. No thousands-commas anywhere in the currency rows.
+- **The exp/hr and kills/hr rate graphs now carry the current rate as a header label.** Each graph header shows the same figure as its table stat (e.g. `5.7k`), abbreviated to k / M so it fits without a long digit run — so you can read the rate off the graph at a glance instead of eyeballing the plotted line against the axis.
+- **The navigation top-bar path label shows step progress and the lap number while looping** (e.g. `Docks run · step 3/8 · lap 2`), turning the bare loop name into a live position + lap readout that mirrors the Current-Nav panel.
+- **The main-window looping chip is trimmed to the essentials** — the Looping state, the lap counter, and XP/hr — dropping the longer status text so the bottom-left chip stays compact during a farm.
+- **Multi-class ability quests show each class's own required level in the Player Workshop quest "Requires" line.** A quest several classes can learn at different levels (Smash, Meditate, Supernatural Stealth) now renders each restricted class with its own gate appended — `Warrior-22, Mystic-20` instead of bare class names — surfacing the distinct per-class unlock level the crawl already knew.
+
+**Fixed**
+- **The Session Stats exp/hr and kills/hr graphs plotted a rolling-window rate that didn't match the table's session-lifetime stat** — a graph reading ~6.5k/hr sitting next to a table reading 5,749. The graph series is now anchored at session start as a cumulative average over the whole session, the same basis the table uses, so the series' right edge equals the headline number and the two can't disagree.
+- **The navigation lap counter never advanced past lap 1.** The displayed lap derived from a lap-time history list capped at ten entries, so its count froze once the cap was hit (and the "current lap" it implied was already off by the capping). A dedicated uncapped lap counter now drives the display, incrementing on every loop wrap and resetting when the loop stops, so lap 2 reads as lap 2.
+
 ## 1.4.10
 
 The Health tab's "Hang up if below" ticker can now go negative — down to the realm death floor — so a player can set the emergency disconnect deep in the bleeding-out band, closer to death (issue #107).

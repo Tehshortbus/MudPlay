@@ -43,6 +43,27 @@ public sealed class MovementFilter : IRoomFilter
     // never waves the leader through a gate the leader can't cross either.
     public Func<(int Low, int High)?>? PartyLevelBoundsProvider { get; set; }
 
+    // Supplies the player's current on-hand wealth in copper farthings (the
+    // consolidated `Wealth:` value), or null when it isn't known yet (no
+    // inventory parsed). Wired by AppServices to the live currency snapshot.
+    // A (Toll: N) exit needs N*100 copper-value carried to cross (confirmed
+    // mechanic — the game phrases the bar as "N gold crowns" but any coin mix
+    // totalling that value passes), so IsExitBlocked routes around a toll we
+    // can't afford. When null we don't gate — same rule as an unknown level.
+    public Func<long?>? WealthProvider { get; set; }
+
+    // Supplies the party's minimum on-hand wealth (copper) when this character
+    // is leading a party, or null when solo, not leading, the feature is off, or
+    // our own wallet is unknown. Wired by AppServices to
+    // Game.Remote.PartyWealthTracker. When non-null it takes precedence over
+    // WealthProvider in IsTollGateBlocked: BFS routes the party around a toll a
+    // member can't afford, instead of walking the leader through and stranding
+    // them at the gate. A toll is per-crosser, so this is a genuine second gate
+    // over the self-only wallet check. Demand-driven — the tracker only probes
+    // @wealth when this is invoked, i.e. only while BFS evaluates a toll exit,
+    // and treats a member who hasn't reported fresh wealth as unaffordable.
+    public Func<long?>? PartyWealthProvider { get; set; }
+
     // Read-only snapshot of the currently-avoided room keys.
     public IReadOnlyCollection<RoomKey> Avoided => _avoided;
 
@@ -71,7 +92,14 @@ public sealed class MovementFilter : IRoomFilter
 
     public bool IsAvoided(RoomKey key) => _avoided.Contains(key);
 
-    public bool IsExitBlocked(in RoomExit exit)
+    // An exit is non-traversable for planning when EITHER its level window
+    // excludes the crosser OR it's a toll the crosser can't afford. The two
+    // gate classes are independent (a toll exit carries Hint=Toll, a level
+    // gate is a plain cardinal with a window), so both are checked.
+    public bool IsExitBlocked(in RoomExit exit) =>
+        IsLevelGateBlocked(in exit) || IsTollGateBlocked(in exit);
+
+    private bool IsLevelGateBlocked(in RoomExit exit)
     {
         if (!exit.HasLevelGate) return false;
 
@@ -95,6 +123,29 @@ public sealed class MovementFilter : IRoomFilter
         if (exit.MinLevel > 0 && level < exit.MinLevel) return true;
         if (exit.MaxLevel > 0 && level > exit.MaxLevel) return true;
         return false;
+    }
+
+    // A (Toll: N) exit needs N*100 copper-value on hand to cross. Only gate
+    // when we know our wealth — an unknown wallet never refuses a walk on a
+    // bar we can't yet evaluate.
+    private bool IsTollGateBlocked(in RoomExit exit)
+    {
+        if (exit.Hint != RoomExitHint.Toll || exit.TollGold <= 0) return false;
+        long cost = (long)exit.TollGold * 100;
+
+        // Party branch: a toll is per-crosser, so when leading a party route
+        // around one a member can't afford rather than stranding them at the
+        // gate. The provider (PartyWealthTracker.MinWealth) folds in our own
+        // wallet too, and returns null — falling through to the self-only
+        // branch — when solo, not leading, the feature is off, or our own
+        // wallet is unknown. It's the demand trigger for the @wealth probe:
+        // invoked here only for a toll exit, so nothing polls unless a toll is
+        // actually in play.
+        if (PartyWealthProvider?.Invoke() is { } partyMin)
+            return partyMin < cost;
+
+        if (WealthProvider?.Invoke() is not { } wealth) return false;
+        return wealth < cost;
     }
 
     // True when the user has flagged this room as a stash drop-off point.

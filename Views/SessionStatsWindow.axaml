@@ -121,7 +121,10 @@
                         IsVisible="{Binding IsKillsGraphVisible}">
                 <Grid ColumnDefinitions="*,Auto">
                     <TextBlock Grid.Column="0" Classes="lbl draghandle" Text="Kills/hour"/>
-                    <TextBlock Grid.Column="1" Classes="dim" Text="{Binding DurationText}"/>
+                    <TextBlock Grid.Column="1" Classes="valr"
+                               Foreground="{StaticResource AccentGreenBrush}"
+                               Text="{Binding KillsRateText}"
+                               ToolTip.Tip="{Binding DurationText}"/>
                 </Grid>
                 <Border Background="{StaticResource ChromeBgSunkenBrush}"
                         BorderBrush="{StaticResource ChromeBorderSoftBrush}"
@@ -149,7 +152,10 @@
                         IsVisible="{Binding IsExpGraphVisible}">
                 <Grid ColumnDefinitions="*,Auto">
                     <TextBlock Grid.Column="0" Classes="lbl draghandle" Text="Exp/hour"/>
-                    <TextBlock Grid.Column="1" Classes="dim" Text="{Binding DurationText}"/>
+                    <TextBlock Grid.Column="1" Classes="valr"
+                               Foreground="{StaticResource AccentCyanBrush}"
+                               Text="{Binding ExpRateText}"
+                               ToolTip.Tip="{Binding DurationText}"/>
                 </Grid>
                 <Border Background="{StaticResource ChromeBgSunkenBrush}"
                         BorderBrush="{StaticResource ChromeBorderSoftBrush}"
@@ -344,14 +350,16 @@
                     </Grid>
                     <Grid ColumnDefinitions="*,76,72">
                         <TextBlock Grid.Column="0" Classes="lbl" Text="Currency"
-                                   ToolTip.Tip="Currency picked up this session, in copper value."/>
-                        <TextBlock Grid.Column="1" Classes="valr" Text="{Binding Activity.CurrencyCollected, StringFormat='{}{0:N0}'}"/>
-                        <TextBlock Grid.Column="2" Classes="valr" Text="{Binding Activity.CurrencyPerHour, StringFormat='{}{0:N0}'}"/>
+                                   ToolTip.Tip="Currency picked up this session, shown as coin denominations."/>
+                        <TextBlock Grid.Column="1" Classes="valr" Text="{Binding CurrencyCollectedText}"
+                                   ToolTip.Tip="{Binding CurrencyCollectedTip}"/>
+                        <TextBlock Grid.Column="2" Classes="valr" Text="{Binding CurrencyPerHourText}"/>
                     </Grid>
                     <Grid ColumnDefinitions="*,76,72">
                         <TextBlock Grid.Column="0" Classes="lbl" Text="Stashed"
-                                   ToolTip.Tip="Currency stashed or bank-deposited this session, in copper value."/>
-                        <TextBlock Grid.Column="1" Classes="valr" Text="{Binding Activity.CurrencyStashed, StringFormat='{}{0:N0}'}"/>
+                                   ToolTip.Tip="Currency stashed or bank-deposited this session, shown as coin denominations."/>
+                        <TextBlock Grid.Column="1" Classes="valr" Text="{Binding CurrencyStashedText}"
+                                   ToolTip.Tip="{Binding CurrencyStashedTip}"/>
                         <TextBlock Grid.Column="2" Classes="dim" Text="—" HorizontalAlignment="Right"/>
                     </Grid>
 

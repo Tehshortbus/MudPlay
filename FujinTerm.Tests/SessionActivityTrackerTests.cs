@@ -134,17 +134,19 @@ public sealed class SessionActivityTrackerTests
     }
 
     [Fact]
-    public void KillsPerHourSeries_PrunesBeyondWindow_ButTotalKeepsTheKill()
+    public void KillsPerHourSeries_KeepsOldKills_RightEdgeMatchesHeadline()
     {
         (SessionActivityTracker t, Clock c) = Make();
         t.NoteKill();        // t=0
-        c.Advance(70);       // 70 min later — the kill is outside the 60-min window
+        c.Advance(70);       // 70 min later — a rolling window would have dropped it
 
-        // Total still counts the old kill...
-        Assert.Equal(1, t.Snapshot().MonstersKilled);
-        // ...but it's aged out of the rolling sparkline window.
+        SessionActivityStats s = t.Snapshot();
+        Assert.Equal(1, s.MonstersKilled);
+        // The kill is kept for the whole session, so the curve stays non-zero and
+        // its right edge equals the headline kills/hour the panel prints.
         IReadOnlyList<double> series = t.KillsPerHourSeries(6);
-        Assert.All(series, v => Assert.Equal(0d, v, 6));
+        Assert.True(series[^1] > 0);
+        Assert.Equal(s.KillsPerHour, series[^1], 3); // 1 kill / (70/60 h)
     }
 
     [Fact]
@@ -170,17 +172,19 @@ public sealed class SessionActivityTrackerTests
     }
 
     [Fact]
-    public void ExperiencePerHourSeries_PrunesBeyondWindow_ButTotalKeepsTheGain()
+    public void ExperiencePerHourSeries_KeepsOldGains_RightEdgeMatchesHeadline()
     {
         (SessionActivityTracker t, Clock c) = Make();
         t.NoteExperience(5000); // t=0
-        c.Advance(70);          // 70 min later — outside the 60-min window
+        c.Advance(70);          // 70 min later — a rolling window would have dropped it
 
-        // Total still counts the old gain...
-        Assert.Equal(5000L, t.Snapshot().ExperienceEarned);
-        // ...but it's aged out of the rolling sparkline window.
+        SessionActivityStats s = t.Snapshot();
+        Assert.Equal(5000L, s.ExperienceEarned);
+        // The gain is kept for the whole session, so the curve stays non-zero and
+        // its right edge equals the headline exp/hour the panel prints.
         IReadOnlyList<double> series = t.ExperiencePerHourSeries(6);
-        Assert.All(series, v => Assert.Equal(0d, v, 6));
+        Assert.True(series[^1] > 0);
+        Assert.Equal(s.ExperiencePerHour, series[^1], 3); // 5000 exp / (70/60 h)
     }
 
     [Fact]
