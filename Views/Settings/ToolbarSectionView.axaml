@@ -89,19 +89,19 @@
                 <TextBox Grid.Column="1"
                          Text="{Binding Url, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
                          PlaceholderText="https://…"/>
-                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="2"
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4"
                             VerticalAlignment="Center">
-                    <Button Content="↑" FontSize="10" Padding="6,1"
+                    <Button Content="↑" FontSize="14" Padding="10,3"
                             Background="Transparent" BorderThickness="0"
                             ToolTip.Tip="Move up"
                             Command="{Binding $parent[ListBox].((vm:ToolbarSectionViewModel)DataContext).MoveWebsiteUpCommand}"
                             CommandParameter="{Binding}"/>
-                    <Button Content="↓" FontSize="10" Padding="6,1"
+                    <Button Content="↓" FontSize="14" Padding="10,3"
                             Background="Transparent" BorderThickness="0"
                             ToolTip.Tip="Move down"
                             Command="{Binding $parent[ListBox].((vm:ToolbarSectionViewModel)DataContext).MoveWebsiteDownCommand}"
                             CommandParameter="{Binding}"/>
-                    <Button Content="✕" FontSize="10" Padding="6,1"
+                    <Button Content="✕" FontSize="14" Padding="10,3"
                             Background="Transparent" BorderThickness="0"
                             Foreground="{StaticResource AccentRedBrush}"
                             ToolTip.Tip="Remove link"
@@ -124,63 +124,51 @@
         <TextBlock Classes="SectionHeader"
                    Text="Help menu websites — shown under Help ↗ (shared across all characters)"/>
 
-        <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,180">
-            <!-- Editable label/URL list. -->
-            <Border Grid.Row="0" Grid.Column="0"
-                    Height="196" VerticalAlignment="Top"
-                    BorderBrush="{StaticResource ChromeBorderBrush}"
-                    BorderThickness="1"
-                    Background="{StaticResource ChromeBgSunkenBrush}">
-                <ListBox ItemsSource="{Binding WebsiteRows}"
-                         ItemTemplate="{StaticResource WebsiteRowTemplate}"
-                         Background="Transparent"
-                         BorderThickness="0"/>
-            </Border>
+        <!-- List-level actions sit above the box; per-row reorder / remove
+             live inline on each row (see WebsiteRowTemplate). -->
+        <StackPanel Orientation="Horizontal" Spacing="8">
+            <Button Content="Add link"
+                    Command="{Binding AddWebsiteCommand}"
+                    ToolTip.Tip="Add a new website link to the Help menu."/>
+            <Button Content="Reset to default"
+                    Command="{Binding ResetWebsitesToDefaultCommand}"
+                    ToolTip.Tip="Restore the built-in reference links (wiki, subreddit, MudInfo, Facebook group)."/>
+        </StackPanel>
 
-            <!-- Website rail: list-level actions only. Per-row reorder / remove
-                 live inline on each row (see WebsiteRowTemplate). -->
-            <StackPanel Grid.Row="0" Grid.Column="1"
-                        Margin="12,0,0,0"
-                        VerticalAlignment="Top"
-                        Spacing="6">
-                <Button Content="Add link"
-                        Command="{Binding AddWebsiteCommand}"
-                        HorizontalAlignment="Stretch"
-                        ToolTip.Tip="Add a new website link to the Help menu."/>
-                <Button Content="Reset to default"
-                        Command="{Binding ResetWebsitesToDefaultCommand}"
-                        HorizontalAlignment="Stretch"
-                        ToolTip.Tip="Restore the built-in reference links (wiki, subreddit, MudInfo, Facebook group)."/>
-            </StackPanel>
+        <!-- Editable label/URL list — full width now the rail is gone. -->
+        <Border Height="220"
+                BorderBrush="{StaticResource ChromeBorderBrush}"
+                BorderThickness="1"
+                Background="{StaticResource ChromeBgSunkenBrush}">
+            <ListBox ItemsSource="{Binding WebsiteRows}"
+                     ItemTemplate="{StaticResource WebsiteRowTemplate}"
+                     Background="Transparent"
+                     BorderThickness="0"/>
+        </Border>
 
-            <!-- Active BBS's own site — a per-BBS value edited here as a
-                 special row tied to whichever BBS is active. -->
-            <Grid Grid.Row="1" Grid.Column="0"
-                  Margin="0,10,0,0"
-                  ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8"
-                  IsVisible="{Binding HasActiveBbs}">
-                <TextBlock Grid.Column="0"
-                           VerticalAlignment="Center"
-                           Foreground="{StaticResource ChromeFgMutedBrush}"
-                           Text="{Binding ActiveBbsName, StringFormat='{}{0} site:'}"/>
-                <TextBox Grid.Column="1"
-                         Text="{Binding BbsWebsiteUrl, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
-                         PlaceholderText="https://… (optional)"
-                         ToolTip.Tip="This BBS's website — appears as the 'BBS site ↗' entry under Help. Stored per-BBS."/>
-                <CheckBox Grid.Column="2"
-                          VerticalAlignment="Center"
-                          Content="Show in Help menu"
-                          IsChecked="{Binding ShowBbsWebsiteInHelp, Mode=TwoWay}"
-                          ToolTip.Tip="Show this BBS's 'BBS site ↗' entry in the Help menu. Uncheck to hide it even with a URL saved."/>
-            </Grid>
-            <TextBlock Grid.Row="1" Grid.Column="0"
-                       Margin="0,10,0,0"
-                       IsVisible="{Binding !HasActiveBbs}"
+        <!-- Active BBS's own site — a per-BBS value edited here as a special
+             row tied to whichever BBS is active. -->
+        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8"
+              IsVisible="{Binding HasActiveBbs}">
+            <TextBlock Grid.Column="0"
+                       VerticalAlignment="Center"
                        Foreground="{StaticResource ChromeFgMutedBrush}"
-                       FontSize="{StaticResource FontSizeSm}"
-                       TextWrapping="Wrap"
-                       Text="Configure a BBS (Settings → BBS + Display) to attach its website to the Help menu."/>
+                       Text="{Binding ActiveBbsName, StringFormat='{}{0} site:'}"/>
+            <TextBox Grid.Column="1"
+                     Text="{Binding BbsWebsiteUrl, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                     PlaceholderText="https://… (optional)"
+                     ToolTip.Tip="This BBS's website — appears as the 'BBS site ↗' entry under Help. Stored per-BBS."/>
+            <CheckBox Grid.Column="2"
+                      VerticalAlignment="Center"
+                      Content="Show in Help menu"
+                      IsChecked="{Binding ShowBbsWebsiteInHelp, Mode=TwoWay}"
+                      ToolTip.Tip="Show this BBS's 'BBS site ↗' entry in the Help menu. Uncheck to hide it even with a URL saved."/>
         </Grid>
+        <TextBlock IsVisible="{Binding !HasActiveBbs}"
+                   Foreground="{StaticResource ChromeFgMutedBrush}"
+                   FontSize="{StaticResource FontSizeSm}"
+                   TextWrapping="Wrap"
+                   Text="Configure a BBS (Settings → BBS + Display) to attach its website to the Help menu."/>
 
         <Separator Margin="0,4"/>
 
