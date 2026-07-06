@@ -2,6 +2,17 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.10.0
+
+- Navigation map marks each un-recovered death with a skull; it clears once the deathpile is fully recovered
+- Any death — including miracle-save deaths — halts the loop / walk-to / Auto-Lair in the graveyard instead of rerouting straight back out
+- Dying clears the room's monsters, so combat no longer re-attacks a phantom target after a party member walks into the graveyard
+- Death detail's "Equipped at death" column renamed "Equipment Lost"
+- Deathpile now lists the coins on hand at death, each denomination by its own count (100 gold crowns / 1 platinum piece), under "Inventory lost"
+- Follower map stops drifting to "suspect" — a follower's `par` poll no longer misreads "You are following <leader>." as the room name
+- Auto-deposit no-ops when the Bank dropdown has no valid pick — a stale/orphaned bank key no longer detours to a phantom bank or probes party `@wealth` for a toll
+- Bank picker placeholder now reads "(Banks from game data and Stash rooms)"
+
 ## 1.9.1
 
 - Party followers stay located on the map — leader-driven drags now feed the room tracker instead of dropping it to "lost"

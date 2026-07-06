@@ -8,15 +8,20 @@ namespace FujinTerm.Game;
 // graveyard we respawn into instead of a still-running loop / walk-to / Auto-Lair
 // marching us straight back out before we've recovered.
 //
-// It reacts only to OUR own death — DeathLineWatcher fires on the canonical
-// "You have been slain by <killer>." line; a party member's death is a different
-// room line handled elsewhere. The halt is unconditional because any death lands
-// us alone in the graveyard regardless of prior party role: a leader's party
-// disbands on death and a dead follower is dropped from the group, so after death
-// we are always the one who would drive movement. (That's why "matters when leader
-// or solo" collapses to "always" — there's no post-death case where we're still a
-// follower being dragged by a living leader.) When no engine was running the
-// assert is a harmless no-op.
+// It reacts to OUR own death via RoomTracker.PlayerDeathObserved — the ONE signal
+// that fires for both death phrasings. An earlier version keyed off
+// DeathLineWatcher's "You have been slain by <killer>." line, but a miracle-save
+// death ("You have been killed! / … saved. / You have N lives left.") never prints
+// "slain by", so the halt silently missed every miracle death and the loop kept
+// rerouting out of the graveyard. RoomTracker.NoteDeath fires the universal signal
+// for both forms, so both now halt. A party member's death is a different room line
+// handled elsewhere. The halt is unconditional because any death lands us alone in
+// the graveyard regardless of prior party role: a leader's party disbands on death
+// and a dead follower is dropped from the group, so after death we are always the
+// one who would drive movement. (That's why "matters when leader or solo" collapses
+// to "always" — there's no post-death case where we're still a follower being
+// dragged by a living leader.) When no engine was running the assert is a harmless
+// no-op.
 //
 // The halt rides the shared UserGate rather than a bespoke gate: the requirement
 // is identical to a manual pause — "stay stopped until the player resumes" — and
@@ -31,7 +36,7 @@ public sealed class PlayerDeathMovementHalt : IDisposable
     // Surfaced in MovementCoordinator.History when the death pause asserts UserGate.
     public const string AsserterName = "PlayerDeathMovementHalt";
 
-    private readonly DeathLineWatcher _death;
+    private readonly RoomTracker _tracker;
     private readonly MovementCoordinator _coordinator;
     private readonly LogService? _log;
     private bool _disposed;
@@ -45,21 +50,21 @@ public sealed class PlayerDeathMovementHalt : IDisposable
     public event Action? HaltedForDeathChanged;
 
     public PlayerDeathMovementHalt(
-        DeathLineWatcher death,
+        RoomTracker tracker,
         MovementCoordinator coordinator,
         LogService? log = null)
     {
-        ArgumentNullException.ThrowIfNull(death);
+        ArgumentNullException.ThrowIfNull(tracker);
         ArgumentNullException.ThrowIfNull(coordinator);
-        _death = death;
+        _tracker = tracker;
         _coordinator = coordinator;
         _log = log;
 
-        _death.PlayerDied += OnPlayerDied;
+        _tracker.PlayerDeathObserved += OnPlayerDied;
         _coordinator.GatesChanged += OnGatesChanged;
     }
 
-    private void OnPlayerDied(PlayerDiedEvent _)
+    private void OnPlayerDied()
     {
         // Assert first, THEN raise the flavour: AssertGate fires GatesChanged, and
         // OnGatesChanged must still see HaltedForDeath == false at that point so it
@@ -91,7 +96,7 @@ public sealed class PlayerDeathMovementHalt : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
-        _death.PlayerDied -= OnPlayerDied;
+        _tracker.PlayerDeathObserved -= OnPlayerDied;
         _coordinator.GatesChanged -= OnGatesChanged;
     }
 }

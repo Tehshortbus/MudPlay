@@ -2013,8 +2013,10 @@ public sealed class AppServices
         // Death-halt bridge. On our death, stops every movement engine (via
         // UserGate) so we stay in the graveyard we respawn into until the player
         // manually resumes — no loop / walk-to / auto-lair marches us back out
-        // before we've recovered.
-        PlayerDeathHalt = new Game.PlayerDeathMovementHalt(DeathWatcher, MovementCoordinator, Log);
+        // before we've recovered. Rides RoomTracker.PlayerDeathObserved (fires on
+        // BOTH death phrasings) rather than DeathLineWatcher's "slain by"-only line
+        // so a miracle-save death halts too.
+        PlayerDeathHalt = new Game.PlayerDeathMovementHalt(RoomTracker, MovementCoordinator, Log);
 
         // Dropped / mortally-wounded bridge. While HP is at or below 0 the
         // character can't act — the game rejects every command — so this holds
@@ -3032,6 +3034,25 @@ public sealed class AppServices
         MovementControl = new Game.Map.MovementController(
             Walker, LoopRunner, AutoLair, MovementCoordinator);
 
+        // Death engine-quiescence. On our death RoomTracker fires
+        // PlayerDeathObserved (both death phrasings). PlayerDeathHalt applies the
+        // UserGate pause, but a loop caught mid-recovery — a miracle-save restores
+        // HP, which clears the HealthRecovery gate and fires the loop's
+        // ResumeAfterRecovery just before the death registers — sits in the
+        // Recovering state that the pause doesn't cover, so the graveyard's
+        // respawn-room confirm would drive a recovery-reroute straight back out.
+        // Stop the engines outright: the reset clears that recovery state so no
+        // reroute can fire. Also wipe the classifier's room view so a hostile from
+        // the room we died in doesn't linger as a stale target the combat engine
+        // re-attacks when a party member later walks into the graveyard.
+        RoomTracker.PlayerDeathObserved += () =>
+        {
+            LoopRunner.Stop("player died — halting in graveyard");
+            Walker.Stop("player died — halting in graveyard");
+            AutoLair.Stop("player died — halting in graveyard");
+            RoomClassifier.NoteRoomChanged();
+        };
+
         // Party-death roster-cleanup bridge. Leader-side: when an active party
         // member dies mid-route it lingers as an [Invited] par slot; we uninvite
         // that phantom once combat clears so the loop / walk-to doesn't stall on
@@ -3093,6 +3114,7 @@ public sealed class AppServices
             Cash,
             readCash: () => ReadSection<Models.Profile.CashSettings>(Profile.Current, "Cash"),
             getSnapshot: () => Inventory.Snapshot,
+            isBankRoom: key => Game.GameData.BankCatalog.IsBankRoom(GameData, key),
             profile: Profile,
             tracker: RoomTracker,
             walker: Walker,

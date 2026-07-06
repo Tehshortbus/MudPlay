@@ -1,5 +1,6 @@
 using System.Linq;
 using System.Text.Json.Serialization;
+using FujinTerm.Game.Inventory;
 
 namespace FujinTerm.Models.Profile;
 
@@ -60,6 +61,14 @@ public sealed class DeathRecord
     // EquippedAtDeath.
     public List<DeathItem>? LostItems { get; set; }
 
+    // Coins on hand at the moment of death — they drop into the deathpile with
+    // the carried items, so they're shown alongside them under "Inventory lost".
+    // Stored as per-denomination counts (not a consolidated copper total) so the
+    // display lists each denomination the player actually held. null on records
+    // written before currency capture landed, or when no inventory snapshot had
+    // been observed.
+    public CurrencyHoldings? CoinsAtDeath { get; set; }
+
     // "{Map}/{Room}" for the DEATH grid's map/room column, or "—" when the death
     // room was unknown. Display-only — not persisted.
     [JsonIgnore]
@@ -78,15 +87,44 @@ public sealed class DeathRecord
     public string EquippedAtDeathText => DescribeItems(EquippedAtDeath);
 
     // Newline-joined carried-item names for the DEATH detail panel's "Inventory
-    // lost" column, or a placeholder when none were recorded. Display-only — not
-    // persisted.
+    // lost" column, followed by the coins-on-hand lines (each denomination the
+    // player held, largest first), or a placeholder when neither was recorded.
+    // Display-only — not persisted.
     [JsonIgnore]
-    public string LostItemsText => DescribeItems(LostItems);
+    public string LostItemsText
+    {
+        get
+        {
+            var lines = new List<string>();
+            if (LostItems is { Count: > 0 })
+                lines.AddRange(LostItems.Select(i => i.Name));
+            lines.AddRange(DescribeCoins(CoinsAtDeath));
+            return lines.Count > 0 ? string.Join("\n", lines) : "None recorded.";
+        }
+    }
 
     private static string DescribeItems(List<DeathItem>? items) =>
         items is { Count: > 0 }
             ? string.Join("\n", items.Select(i => i.Name))
             : "None recorded.";
+
+    // Per-denomination coin lines (largest first) using the stock MajorMUD coin
+    // names with a plural 's'. Each denomination is listed by its own count —
+    // "100 gold crowns" + "1 platinum piece" stays split rather than being
+    // re-bucketed into a consolidated total, so the player sees exactly what
+    // coins the deathpile holds. All-zero (or null) holdings yield nothing.
+    private static IEnumerable<string> DescribeCoins(CurrencyHoldings? coins)
+    {
+        if (coins is not { } c) yield break;
+        if (c.Runic > 0)    yield return Coin(c.Runic,    "runic coin");
+        if (c.Platinum > 0) yield return Coin(c.Platinum, "platinum piece");
+        if (c.Gold > 0)     yield return Coin(c.Gold,     "gold crown");
+        if (c.Silver > 0)   yield return Coin(c.Silver,   "silver noble");
+        if (c.Copper > 0)   yield return Coin(c.Copper,   "copper farthing");
+    }
+
+    private static string Coin(int count, string singular) =>
+        $"{count} {singular}{(count == 1 ? "" : "s")}";
 
     public DeathRecord() { }
 

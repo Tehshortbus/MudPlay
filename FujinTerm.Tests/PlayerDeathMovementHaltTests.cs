@@ -1,9 +1,7 @@
+using System.IO;
 using FujinTerm.Game;
-using FujinTerm.Game.Combat;
 using FujinTerm.Game.Map;
 using FujinTerm.Services;
-using FujinTerm.Services.Patterns;
-using FujinTerm.Terminal;
 using Xunit;
 
 namespace FujinTerm.Tests;
@@ -12,40 +10,54 @@ namespace FujinTerm.Tests;
 /// The death-halt bridge: on our own death it asserts
 /// <see cref="MovementCoordinator.UserGate"/> so every movement engine stops and
 /// we sit in the graveyard until a manual resume, flavouring the chip via
-/// <see cref="PlayerDeathMovementHalt.HaltedForDeath"/>.
+/// <see cref="PlayerDeathMovementHalt.HaltedForDeath"/>. It rides
+/// <see cref="RoomTracker.PlayerDeathObserved"/>, which fires for BOTH death
+/// phrasings, so a miracle-save death ("You have N lives left.") halts as surely
+/// as a plain "slain by" one.
 /// </summary>
 public sealed class PlayerDeathMovementHaltTests
 {
     private sealed class Harness : IDisposable
     {
-        public MessageRouter Router { get; } = new();
-        public DeathLineWatcher Watcher { get; }
+        private const string GraphJson = """
+        [
+          { "Number": 1, "Name": "Start", "Map": 1, "Light": 0, "Shop": 0,
+            "Lair": "", "Delay": 5,
+            "N": "0", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+        ]
+        """;
+
+        private readonly string _root;
+        public RoomTracker Tracker { get; }
         public MovementCoordinator Coord { get; } = new();
         public PlayerDeathMovementHalt Halt { get; }
         public int FlavourChanges { get; private set; }
 
         public Harness()
         {
-            DefaultPatterns.Seed(Router);
-            Watcher = new DeathLineWatcher(Router);
-            Halt = new PlayerDeathMovementHalt(Watcher, Coord);
+            _root = Path.Combine(Path.GetTempPath(), "fujinterm-deathhalt-" + Path.GetRandomFileName());
+            Directory.CreateDirectory(Path.Combine(_root, "alpha"));
+            File.WriteAllText(Path.Combine(_root, "alpha", "Rooms.json"), GraphJson);
+            GameDataCache cache = new(_root);
+            cache.SwitchSet("alpha");
+            RoomGraphManager graph = new(cache);
+            graph.OnActiveSetChanged("alpha");
+
+            Tracker = new RoomTracker(graph);
+            Halt = new PlayerDeathMovementHalt(Tracker, Coord);
             Halt.HaltedForDeathChanged += () => FlavourChanges++;
         }
 
-        public void Die() => Feed("You have been slain by a giant rat.");
-
-        public void Feed(string line)
-        {
-            LineExtractor.EmittedLine emitted = new(
-                line, Array.Empty<CellAttributes>(),
-                DateTimeOffset.UtcNow, IsPromptLine: false);
-            Router.Dispatch(emitted);
-        }
+        // A miracle-save death — the phrasing that DeathLineWatcher's "slain by"
+        // watcher never sees. RoomTracker.NoteDeath fires PlayerDeathObserved
+        // regardless of phrasing.
+        public void Die() => Tracker.NoteDeath(6, "You have 6 lives left.");
 
         public void Dispose()
         {
             Halt.Dispose();
-            Watcher.Dispose();
+            try { Directory.Delete(_root, recursive: true); } catch { /* temp cleanup */ }
         }
     }
 

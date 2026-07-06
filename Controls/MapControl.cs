@@ -119,6 +119,14 @@ public sealed class MapControl : Control
     public static readonly StyledProperty<IReadOnlySet<RoomKey>?> TeleportRoomsProperty =
         AvaloniaProperty.Register<MapControl, IReadOnlySet<RoomKey>?>(nameof(TeleportRooms));
 
+    // Rooms holding an un-recovered deathpile (a DeathRecord whose Status isn't
+    // Recovered). Each gets a skull glyph so the player can spot where a death is
+    // waiting to be recovered. Supplied by NavigationViewModel from
+    // DeathRecoveryManager.Records; a record flipping to Recovered drops its room
+    // from the set and the skull clears on the next render.
+    public static readonly StyledProperty<IReadOnlySet<RoomKey>?> DeathRoomsProperty =
+        AvaloniaProperty.Register<MapControl, IReadOnlySet<RoomKey>?>(nameof(DeathRooms));
+
     public static readonly StyledProperty<bool> WalkPathIsAutoLairProperty =
         AvaloniaProperty.Register<MapControl, bool>(nameof(WalkPathIsAutoLair));
 
@@ -253,6 +261,12 @@ public sealed class MapControl : Control
     {
         get => GetValue(TeleportRoomsProperty);
         set => SetValue(TeleportRoomsProperty, value);
+    }
+
+    public IReadOnlySet<RoomKey>? DeathRooms
+    {
+        get => GetValue(DeathRoomsProperty);
+        set => SetValue(DeathRoomsProperty, value);
     }
 
     public bool WalkPathIsAutoLair
@@ -510,6 +524,18 @@ public sealed class MapControl : Control
     {
         LineCap = PenLineCap.Round,
     };
+    // Death-marker skull — bone-white silhouette with dark hollows, drawn on
+    // rooms that still hold an un-recovered deathpile. The dark eye / nose / tooth
+    // features carry the contrast so the glyph reads on both light and dark room
+    // fills; the thin rim keeps the bone shape legible over the amber current-room
+    // fill. Vector primitives (no emoji glyph) so it renders on any font.
+    private static readonly IBrush SkullBoneFill  = new SolidColorBrush(Color.Parse("#ECE7DA"));
+    private static readonly IBrush SkullSocketFill = new SolidColorBrush(Color.Parse("#141414"));
+    private static readonly IPen   SkullRimPen     = new Pen(new SolidColorBrush(Color.Parse("#2E281F")), 1.0);
+    private static readonly IPen   SkullToothPen    = new Pen(new SolidColorBrush(Color.Parse("#2E281F")), 1.0)
+    {
+        LineCap = PenLineCap.Round,
+    };
     private static readonly IBrush SeqNumberFill  = new SolidColorBrush(Color.Parse("#FFFFFF"));
     private static readonly IBrush AutoLairFill   = new SolidColorBrush(Color.Parse("#DC821E"));
     private static readonly IPen   AutoLairBorder = new Pen(new SolidColorBrush(Color.Parse("#FFA500")), 2.0)
@@ -542,7 +568,7 @@ public sealed class MapControl : Control
             AutoLairWaypointsProperty, AutoLairApproachPathProperty,
             LoopApproachPreviewPathProperty, AvoidedRoomsProperty, StashRoomsProperty, LoopSequenceNumbersProperty,
             AutoLairRoomsProperty, WalkPathIsAutoLairProperty, SelectedRoomKeyProperty,
-            PreviewPathProperty, TeleportRoomsProperty);
+            PreviewPathProperty, TeleportRoomsProperty, DeathRoomsProperty);
 
         // Auto-centre on the player's current room every time it
         // changes — but only when the
@@ -947,6 +973,9 @@ public sealed class MapControl : Control
             if (StashRooms is not null && StashRooms.Contains(kvp.Value))
                 DrawStashX(context, cell);
 
+            if (DeathRooms is not null && DeathRooms.Contains(kvp.Value))
+                DrawSkull(context, cell);
+
             if (LoopSequenceNumbers is not null
                 && LoopSequenceNumbers.TryGetValue(kvp.Value, out int seq)
                 && tilePixels >= 16)
@@ -1260,6 +1289,57 @@ public sealed class MapControl : Control
         Point bottomRight = new(cell.Right - inset, cell.Bottom - inset);
         ctx.DrawLine(pen, topLeft, bottomRight);
         ctx.DrawLine(pen, topRight, bottomLeft);
+    }
+
+    // A small bone-white skull marking a room that still holds an un-recovered
+    // deathpile. Built from primitives — a rounded jaw block under a cranium
+    // ellipse (the shared bone fill merges them into one silhouette), with dark
+    // eye sockets, a nose triangle, and two tooth strokes — so it renders crisply
+    // at any zoom without depending on an emoji glyph the map font may not carry.
+    private static void DrawSkull(DrawingContext ctx, Rect cell)
+    {
+        double span = Math.Min(cell.Width, cell.Height);
+        double mx = cell.X + cell.Width  / 2.0;
+        double my = cell.Y + cell.Height / 2.0;
+        double r  = span * 0.22;                     // cranium radius
+
+        // Jaw first (drawn under the cranium) — a rounded block whose top tucks
+        // behind the cranium so the two read as a single skull outline. The
+        // cranium sits on the cell centre so the full glyph (cranium up to the
+        // teeth) is vertically balanced in the square rather than riding high.
+        double jawW = r * 1.25;
+        double jawH = r * 0.95;
+        Point head  = new(mx, my);
+        Rect jaw = new(mx - jawW / 2.0, head.Y, jawW, jawH);
+        ctx.DrawRectangle(SkullBoneFill, SkullRimPen, jaw, r * 0.35, r * 0.35);
+
+        // Cranium.
+        ctx.DrawEllipse(SkullBoneFill, SkullRimPen, head, r, r);
+
+        // Eye sockets — dark hollows set into the cranium.
+        double eyeR  = r * 0.34;
+        double eyeDX = r * 0.44;
+        double eyeY  = head.Y - r * 0.02;
+        ctx.DrawEllipse(SkullSocketFill, null, new Point(mx - eyeDX, eyeY), eyeR, eyeR);
+        ctx.DrawEllipse(SkullSocketFill, null, new Point(mx + eyeDX, eyeY), eyeR, eyeR);
+
+        // Nose — a small dark downward triangle between and below the eyes.
+        StreamGeometry nose = new();
+        using (StreamGeometryContext g = nose.Open())
+        {
+            double top = head.Y + r * 0.35;
+            g.BeginFigure(new Point(mx - r * 0.14, top), isFilled: true);
+            g.LineTo(new Point(mx + r * 0.14, top));
+            g.LineTo(new Point(mx, top + r * 0.34));
+            g.EndFigure(true);
+        }
+        ctx.DrawGeometry(SkullSocketFill, null, nose);
+
+        // Two tooth strokes across the jaw so the mouth reads at a glance.
+        double toothTop = head.Y + r * 0.62;
+        double toothBot = toothTop + r * 0.4;
+        ctx.DrawLine(SkullToothPen, new Point(mx - r * 0.2, toothTop), new Point(mx - r * 0.2, toothBot));
+        ctx.DrawLine(SkullToothPen, new Point(mx + r * 0.2, toothTop), new Point(mx + r * 0.2, toothBot));
     }
 
     private void DrawSequenceNumber(DrawingContext ctx, Rect cell, int seq)

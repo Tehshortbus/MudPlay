@@ -88,6 +88,39 @@ public sealed class DeathDetectorTests : IDisposable
         Assert.NotNull(tracker.State.CurrentRoom);
     }
 
+    // ----- universal death signal -------------------------------------
+
+    [Theory]
+    [InlineData("You now have 4 lives remaining.")]               // plain / suicide death
+    [InlineData("You have 4 lives left.")]                        // miracle-save death
+    public void DeathMessage_FiresPlayerDeathObserved_ForBothPhrasings(string line)
+    {
+        // The engine-quiescence bridges (movement halt, loop stop, combat-target
+        // wipe) ride RoomTracker.PlayerDeathObserved so a miracle-save death — which
+        // never prints "slain by" — halts as surely as a plain death.
+        (RoomTracker tracker, DeathDetector detector) = NewDetector();
+        tracker.SetLocated(new RoomKey(1, 1));
+        int fired = 0;
+        tracker.PlayerDeathObserved += () => fired++;
+
+        detector.FeedTestLine(line);
+
+        Assert.Equal(1, fired);
+    }
+
+    [Fact]
+    public void NonDeathLine_DoesNotFirePlayerDeathObserved()
+    {
+        (RoomTracker tracker, DeathDetector detector) = NewDetector();
+        tracker.SetLocated(new RoomKey(1, 1));
+        int fired = 0;
+        tracker.PlayerDeathObserved += () => fired++;
+
+        detector.FeedTestLine("You hit the goblin for 4 damage.");
+
+        Assert.Equal(0, fired);
+    }
+
     // ----- death recording on profile --------------------------------
 
     [Fact]

@@ -188,6 +188,12 @@ it isn't here and you're unsure, ask.
   "remaining" form misses every miracle-save death. The **reliable death marker across all forms** is
   the `You have been killed!` line (DoT / no-named-killer deaths) alongside `You have been slain by
   <killer>.` (attacker-named deaths) — capture off those, not off the lives readout.
+- **Coins on hand drop into the deathpile** too, alongside the non-loyal items — they're recoverable
+  from the corpse like the rest of the pile. The five denominations (largest first) are `runic coin`,
+  `platinum piece`, `gold crown`, `silver noble`, `copper farthing`, at the 1 000 000 / 10 000 / 100 /
+  10 / 1 copper-farthing ratio ladder. The deathpile display lists each denomination the character
+  held by its own count (e.g. `100 gold crowns` + `1 platinum piece`), **not** re-bucketed into a
+  consolidated wealth total.
 
 **On-death effect wipe** *([CONFIRMED])*
 - Death removes **all active effects — buffs and debuffs alike**. A poison ticking at the moment of
@@ -281,6 +287,22 @@ it isn't here and you're unsure, ask.
   every new room as a mismatch and falls to Lost within a few rooms. The direction is the long-form
   word the game prints (`north`, `northeast`, `up`, …). Verified from a live follower capture walking
   Darkwood Forest (northeast / east / southeast / southwest / south drags).
+- **[CONFIRMED]** **`par` output must never be read as a room name.** The party-list command replies
+  with a fixed block whose **first line is `You are following <leader>.`** (the follower's follow
+  status), then `The following people are in your travel party:`, then one indented roster row per
+  member (`<name>  (<class>)  [K/M: N%] [H: N%]  - Frontrank/Backrank`). A follower's party tracking
+  polls `par` constantly, so this block routinely lands in the room-display buffer just before a
+  dragged room. `You are following <leader>.` renders in the **same bright cyan** the room title uses,
+  so the colour-anchored room-name detector will grab it unless the `par` lines and the drag line are
+  treated as block boundaries. (`RoomDisplayParser.PartyChatterBoundaryPattern` does this — the room
+  the follower lands in is displayed immediately after ` -- Following your Party leader <dir> --`, so
+  that drag line is the natural boundary.)
+- **[CONFIRMED]** **Hidden/foliage exits drag the follower with no direction.** Some Darkwood Forest
+  exits are text-only: the leader prints `<leader> shoves aside the foliage, and disappears among the
+  trees.` and the follower is pulled through with `You push through the dense foliage, and walk onto a
+  small path.` — **no** ` -- Following your Party leader <dir> --` line and **no** cardinal direction.
+  The follower's room changes but there is nothing to feed `NoteMoveSent`, so the tracker sees the new
+  room as a mismatch and must recover via replay/candidate resolution rather than a predicted step.
 
 ## Attack spells: why one fails to damage a monster
 

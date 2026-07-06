@@ -87,6 +87,10 @@ public sealed class AutoDepositManagerTests : IDisposable
         // the inventory-changed re-check.
         public CashSettings Settings { get; } = new();
         public InventorySnapshot Snapshot { get; set; } = InventorySnapshot.Empty;
+        // Rooms the deposit engine treats as real banks (Shops ShopType == 7).
+        // The line-graph fixture ships no Shops.json, so a bank test registers
+        // its destination here to stand in for the game-data lookup.
+        public HashSet<RoomKey> Banks { get; } = new();
         public List<byte[]> Deposited { get; } = new();
         public List<byte[]> Stashed { get; } = new();
         public List<long> DepositedValues { get; } = new();
@@ -162,6 +166,7 @@ public sealed class AutoDepositManagerTests : IDisposable
         AutoDepositManager autoDeposit = new(cash,
             readCash: () => h.Settings,
             getSnapshot: () => h.Snapshot,
+            isBankRoom: k => h.Banks.Contains(k),
             profile: profile,
             tracker: tracker,
             walker: walker,
@@ -227,6 +232,7 @@ public sealed class AutoDepositManagerTests : IDisposable
     {
         h.Settings.BankRoomKey = bankRoom;
         h.Settings.AutoDepositIfWealthExceeds = wealthCeiling;
+        if (RoomKey.TryParseWire(bankRoom, out RoomKey key)) h.Banks.Add(key);
     }
 
     [Fact]
@@ -334,6 +340,7 @@ public sealed class AutoDepositManagerTests : IDisposable
         // Trip on the coin-count gate (≥1 coin) so the deposit math can still
         // come out ≤ keep at the bank.
         h.Settings.BankRoomKey = "1/3";
+        h.Banks.Add(new RoomKey(1, 3));
         h.Settings.AutoDepositIfCoinsExceed = 1;
         h.Settings.KeepGoldOnHand = 100; // keep 100 gold = 10000 copper
 
@@ -384,6 +391,27 @@ public sealed class AutoDepositManagerTests : IDisposable
         using Harness h = NewHarness();
         StartLair(h);
         // Gate threshold set but no bank/stash location → nothing fires.
+        h.Settings.AutoDepositIfWealthExceeds = 1000;
+
+        h.SetWealth(copper: 0, silver: 0, gold: 50, platinum: 0, runic: 0, totalCopperValue: 5000);
+
+        Assert.True(h.Lair.IsActive);
+        Assert.Empty(h.Deposited);
+    }
+
+    [Fact]
+    public void GateCross_OrphanedBankKey_DoesNotReroute()
+    {
+        using Harness h = NewHarness();
+        StartLair(h);
+        // A stale / orphaned BankRoomKey: a parseable room that is neither a
+        // real bank (never registered in h.Banks) nor a marked stash (1/2 is
+        // also not a marked lair room, so the lair engine would never Stop() for
+        // it on its own). The Settings picker would show its placeholder, but
+        // the raw key survives on disk. The engine must no-op — the lair keeps
+        // running (never stopped for a detour), so no walk to a phantom bank and
+        // crucially no toll @wealth probe en route.
+        h.Settings.BankRoomKey = "1/2";
         h.Settings.AutoDepositIfWealthExceeds = 1000;
 
         h.SetWealth(copper: 0, silver: 0, gold: 50, platinum: 0, runic: 0, totalCopperValue: 5000);

@@ -25,8 +25,12 @@ namespace FujinTerm.Game.Cash;
 // Bank vs. stash. The configured BankRoomKey is classified against the
 // character's StashRooms: a match is a stash room (on arrival, this manager calls
 // StashRoomManager.ExecuteStash to fire the per-currency `hide` commands),
-// anything else is a bank (this manager sends a single `dep <value>` for the held
-// wealth above the keep-on-hand floors).
+// otherwise it must validate as a real bank (Shops ShopType == 7 via
+// BankCatalog) before this manager sends a single `dep <value>` for the held
+// wealth above the keep-on-hand floors. A key that resolves to neither — a
+// stale / orphaned BankRoomKey the Settings picker shows as unset — is a no-op:
+// honouring it would detour to a phantom bank and, on a tolled route, probe the
+// party's @wealth for a deposit that can never land.
 //
 // Pass-through vs. detour. A dedicated detour is only worth spending on a store
 // the running engine won't reach on its own. When the configured stash
@@ -51,6 +55,7 @@ public sealed class AutoDepositManager : IDisposable
     private readonly CashManager _cash;
     private readonly Func<CashSettings> _readCash;
     private readonly Func<InventorySnapshot> _getSnapshot;
+    private readonly Func<RoomKey, bool> _isBankRoom;
     private readonly ProfileService _profile;
     private readonly RoomTracker _tracker;
     private readonly AutoWalkManager _walker;
@@ -77,6 +82,7 @@ public sealed class AutoDepositManager : IDisposable
         CashManager cash,
         Func<CashSettings> readCash,
         Func<InventorySnapshot> getSnapshot,
+        Func<RoomKey, bool> isBankRoom,
         ProfileService profile,
         RoomTracker tracker,
         AutoWalkManager walker,
@@ -88,6 +94,7 @@ public sealed class AutoDepositManager : IDisposable
         ArgumentNullException.ThrowIfNull(cash);
         ArgumentNullException.ThrowIfNull(readCash);
         ArgumentNullException.ThrowIfNull(getSnapshot);
+        ArgumentNullException.ThrowIfNull(isBankRoom);
         ArgumentNullException.ThrowIfNull(profile);
         ArgumentNullException.ThrowIfNull(tracker);
         ArgumentNullException.ThrowIfNull(walker);
@@ -97,6 +104,7 @@ public sealed class AutoDepositManager : IDisposable
         _cash = cash;
         _readCash = readCash;
         _getSnapshot = getSnapshot;
+        _isBankRoom = isBankRoom;
         _profile = profile;
         _tracker = tracker;
         _walker = walker;
@@ -151,6 +159,22 @@ public sealed class AutoDepositManager : IDisposable
         }
 
         bool destinationIsStash = IsStashRoom(destination);
+
+        // Destination-validity gate. A persisted BankRoomKey can go stale — the
+        // active game-data set changed, or a room was un-marked as a stash —
+        // leaving a key that resolves to neither a bank (Shops ShopType == 7)
+        // nor a marked stash room. The Settings → Cash picker shows its
+        // placeholder in that case (no valid selection), but the raw key
+        // survives on disk. Honouring it would detour to a non-bank room and,
+        // when the route crosses a toll, probe the party's @wealth for a
+        // deposit that can never land. No valid destination → no-op.
+        if (!destinationIsStash && !_isBankRoom(destination))
+        {
+            _log?.Info(LogCategory,
+                $"BankRoomKey '{cash.BankRoomKey}' is neither a bank nor a marked stash "
+                + "room in the active set — no deposit destination, ignoring");
+            return;
+        }
 
         // Pass-through: if the stash destination already sits on the active
         // route, don't spend a dedicated detour — OnRoomEntered stashes it
