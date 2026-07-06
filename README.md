@@ -1,10 +1,8 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.7.0**
-> - Equip All / @equip-<set> fill empty slots from carried gear when a set is empty or its items are missing
-> - Loose gear is level / class / alignment checked before it's worn
-> - Duplicate-named pieces are rejected; fingers and wrists take two distinct items each
+> **Version 1.7.1**
+> - Engine-sent telepaths (party @-command probes / nags) now show their message in the Conversation window instead of a blank line
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->
