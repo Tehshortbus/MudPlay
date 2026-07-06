@@ -1304,10 +1304,12 @@ public sealed class MapControl : Control
         double r  = span * 0.22;                     // cranium radius
 
         // Jaw first (drawn under the cranium) — a rounded block whose top tucks
-        // behind the cranium so the two read as a single skull outline.
+        // behind the cranium so the two read as a single skull outline. The
+        // cranium sits on the cell centre so the full glyph (cranium up to the
+        // teeth) is vertically balanced in the square rather than riding high.
         double jawW = r * 1.25;
         double jawH = r * 0.95;
-        Point head  = new(mx, my - r * 0.35);
+        Point head  = new(mx, my);
         Rect jaw = new(mx - jawW / 2.0, head.Y, jawW, jawH);
         ctx.DrawRectangle(SkullBoneFill, SkullRimPen, jaw, r * 0.35, r * 0.35);
 
