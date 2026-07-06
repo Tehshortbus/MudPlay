@@ -57,18 +57,17 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
     // menu re-reads on GlobalSettingsChanged.
     public ObservableCollection<HelpWebsiteRowViewModel> WebsiteRows { get; } = new();
 
-    [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(RemoveWebsiteCommand))]
-    [NotifyCanExecuteChangedFor(nameof(MoveWebsiteUpCommand))]
-    [NotifyCanExecuteChangedFor(nameof(MoveWebsiteDownCommand))]
-    private HelpWebsiteRowViewModel? _selectedWebsiteRow;
-
     // The active BBS's own website — a per-BBS value (BbsProfile.WebsiteUrl)
     // relocated here from the BBS tab, edited as a special row tied to whichever
     // BBS is active. Persisted via read-modify-write against a fresh disk copy
     // on Apply so a concurrent BBS-section save can't clobber it. Empty /
     // whitespace clears the field.
     [ObservableProperty] private string? _bbsWebsiteUrl;
+
+    // Per-BBS toggle for whether the active BBS's site appears in the Help menu
+    // at all. Independent of the URL — unchecking hides the "BBS site ↗" entry
+    // even with a URL saved. Persisted alongside BbsWebsiteUrl.
+    [ObservableProperty] private bool _showBbsWebsiteInHelp = true;
 
     // Display name of the BBS the website field ties to, or null when no BBS is
     // configured. Gates the field's editability in the view.
@@ -431,11 +430,11 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
         WebsiteRows.Clear();
         foreach (HelpWebsite link in dto.Links)
             WebsiteRows.Add(HelpWebsiteRowViewModel.FromModel(link, Dirty));
-        SelectedWebsiteRow = null;
 
         BbsProfile? active = AppServices.Current.ResolveActiveBbs();
         ActiveBbsName = active?.Name;
         BbsWebsiteUrl = active?.WebsiteUrl;
+        ShowBbsWebsiteInHelp = active?.ShowWebsiteInHelp ?? true;
     }
 
     // Read the Global-tier website list, falling back to the seeded defaults on
@@ -480,6 +479,7 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
         if (AppServices.Current.ResolveActiveBbs() is { } active)
         {
             active.WebsiteUrl = string.IsNullOrWhiteSpace(BbsWebsiteUrl) ? null : BbsWebsiteUrl.Trim();
+            active.ShowWebsiteInHelp = ShowBbsWebsiteInHelp;
             _bbsStore.Save(active);
         }
     }
@@ -487,56 +487,40 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
     [RelayCommand]
     private void AddWebsite()
     {
-        HelpWebsiteRowViewModel row = new(Dirty) { Label = "New link", Url = "https://" };
-        WebsiteRows.Add(row);
-        SelectedWebsiteRow = row;
+        WebsiteRows.Add(new HelpWebsiteRowViewModel(Dirty) { Label = "New link", Url = "https://" });
         Dirty();
     }
 
-    [RelayCommand(CanExecute = nameof(HasSelectedWebsite))]
-    private void RemoveWebsite()
+    // Move / remove act on the row whose inline button was clicked (passed as
+    // the command parameter, per the navigation-window pattern) so the user
+    // never has to select a row first. No-op at the list boundaries.
+    [RelayCommand]
+    private void RemoveWebsite(HelpWebsiteRowViewModel? row)
     {
-        if (SelectedWebsiteRow is null) return;
-        WebsiteRows.Remove(SelectedWebsiteRow);
-        SelectedWebsiteRow = null;
+        if (row is null) return;
+        WebsiteRows.Remove(row);
         Dirty();
     }
 
-    private bool HasSelectedWebsite() => SelectedWebsiteRow is not null;
-
-    [RelayCommand(CanExecute = nameof(CanMoveWebsiteUp))]
-    private void MoveWebsiteUp()
+    [RelayCommand]
+    private void MoveWebsiteUp(HelpWebsiteRowViewModel? row)
     {
-        if (SelectedWebsiteRow is null) return;
-        int i = WebsiteRows.IndexOf(SelectedWebsiteRow);
+        if (row is null) return;
+        int i = WebsiteRows.IndexOf(row);
         if (i <= 0) return;
-        HelpWebsiteRowViewModel moved = SelectedWebsiteRow;
         WebsiteRows.Move(i, i - 1);
-        SelectedWebsiteRow = moved;
-        MoveWebsiteUpCommand.NotifyCanExecuteChanged();
-        MoveWebsiteDownCommand.NotifyCanExecuteChanged();
         Dirty();
     }
 
-    private bool CanMoveWebsiteUp() =>
-        SelectedWebsiteRow is not null && WebsiteRows.IndexOf(SelectedWebsiteRow) > 0;
-
-    [RelayCommand(CanExecute = nameof(CanMoveWebsiteDown))]
-    private void MoveWebsiteDown()
+    [RelayCommand]
+    private void MoveWebsiteDown(HelpWebsiteRowViewModel? row)
     {
-        if (SelectedWebsiteRow is null) return;
-        int i = WebsiteRows.IndexOf(SelectedWebsiteRow);
+        if (row is null) return;
+        int i = WebsiteRows.IndexOf(row);
         if (i < 0 || i >= WebsiteRows.Count - 1) return;
-        HelpWebsiteRowViewModel moved = SelectedWebsiteRow;
         WebsiteRows.Move(i, i + 1);
-        SelectedWebsiteRow = moved;
-        MoveWebsiteUpCommand.NotifyCanExecuteChanged();
-        MoveWebsiteDownCommand.NotifyCanExecuteChanged();
         Dirty();
     }
-
-    private bool CanMoveWebsiteDown() =>
-        SelectedWebsiteRow is not null && WebsiteRows.IndexOf(SelectedWebsiteRow) < WebsiteRows.Count - 1;
 
     [RelayCommand]
     private void ResetWebsitesToDefault()
@@ -544,11 +528,12 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
         WebsiteRows.Clear();
         foreach (HelpWebsite link in HelpWebsitesSettings.DefaultLinks())
             WebsiteRows.Add(HelpWebsiteRowViewModel.FromModel(link, Dirty));
-        SelectedWebsiteRow = null;
         Dirty();
     }
 
     partial void OnBbsWebsiteUrlChanged(string? value) => Dirty();
+
+    partial void OnShowBbsWebsiteInHelpChanged(bool value) => Dirty();
 
     // Open the keybind editor for row. The dialog handles both rebinding and
     // clearing — conflict detection inside it blocks Save when the chosen combo

@@ -127,6 +127,12 @@ public partial class MainWindowViewModel : ObservableObject
     // True when BbsWebsiteUrl looks launch-able — gates the Help menu item.
     public bool HasBbsWebsite => !string.IsNullOrWhiteSpace(BbsWebsiteUrl);
 
+    // Per-BBS toggle (BbsProfile.ShowWebsiteInHelp) for whether the "BBS site ↗"
+    // entry appears in the Help menu at all — independent of HasBbsWebsite,
+    // which only gates its enabled state. Edited under Settings → Toolbar +
+    // Shortcuts. Defaults on when there's no active BBS to read.
+    public bool ShowBbsWebsiteInHelp => ResolveActiveBbs()?.ShowWebsiteInHelp ?? true;
+
     // User-editable Help-menu website list (Global tier). Composed into the
     // Help menu by the code-behind, and edited under Settings → Toolbar +
     // Shortcuts. Repopulated from GlobalSettings by RefreshHelpLinks whenever
@@ -1961,6 +1967,7 @@ public partial class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(CanConnect));
         OnPropertyChanged(nameof(BbsWebsiteUrl));
         OnPropertyChanged(nameof(HasBbsWebsite));
+        OnPropertyChanged(nameof(ShowBbsWebsiteInHelp));
 
         // Mirror the title-bar identity onto the OS process name so
         // multiple instances are distinguishable in ps / top / htop.

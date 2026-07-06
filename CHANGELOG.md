@@ -5,9 +5,10 @@ Notable changes per merged PR, **newest first**. The top of the [README](README.
 ## 1.6.0
 
 - Help-menu websites now editable under Settings → Toolbar + Shortcuts
-- Add / remove / rename / reorder links, with Reset to default
+- Per-row add / remove / rename / reorder controls, with Reset to default
 - MajorMUD Facebook Group added to the default link set
 - BBS website field moved out of Settings → BBS into the same editor
+- Per-BBS toggle to show or hide the BBS site in the Help menu
 
 ## 1.5.11
 

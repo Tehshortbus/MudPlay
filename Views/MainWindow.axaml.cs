@@ -168,14 +168,17 @@ public partial class MainWindow : Window
             });
         }
 
-        // BBS site — bound live so its enable state + tooltip track the active
-        // BBS without a menu rebuild (BbsWebsiteUrl / HasBbsWebsite re-raise on
-        // every BBS pin change).
+        // BBS site — bound live so its visibility + enable state + tooltip track
+        // the active BBS without a menu rebuild (ShowBbsWebsiteInHelp /
+        // BbsWebsiteUrl / HasBbsWebsite re-raise on every BBS pin change). The
+        // per-BBS show/hide toggle drives IsVisible; the URL presence drives
+        // IsEnabled.
         MenuItem bbsSite = new()
         {
             Header  = "BBS site ↗",
             Command = vm.OpenBbsWebsiteCommand,
         };
+        bbsSite.Bind(MenuItem.IsVisibleProperty, new Binding(nameof(vm.ShowBbsWebsiteInHelp)) { Source = vm });
         bbsSite.Bind(MenuItem.IsEnabledProperty, new Binding(nameof(vm.HasBbsWebsite)) { Source = vm });
         bbsSite.Bind(ToolTip.TipProperty, new Binding(nameof(vm.BbsWebsiteUrl))
         {
