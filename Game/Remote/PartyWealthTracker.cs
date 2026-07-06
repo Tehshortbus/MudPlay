@@ -31,7 +31,6 @@ public sealed class PartyWealthTracker
     private readonly PartyState _party;
     private readonly PartyWealthProbe _probe;
     private readonly Func<long?> _selfWealth;
-    private readonly Func<bool> _isEnabled;
     private readonly Action<Action> _post;
     private readonly Func<DateTime> _clock;
     private readonly LogService? _log;
@@ -50,16 +49,14 @@ public sealed class PartyWealthTracker
         PartyState party,
         PartyWealthProbe probe,
         Func<long?> selfWealth,
-        Func<bool> isEnabled,
         Action<Action>? post = null,
         LogService? log = null)
-        : this(party, probe, selfWealth, isEnabled, post, clock: null, log: log) { }
+        : this(party, probe, selfWealth, post, clock: null, log: log) { }
 
     internal PartyWealthTracker(
         PartyState party,
         PartyWealthProbe probe,
         Func<long?> selfWealth,
-        Func<bool> isEnabled,
         Action<Action>? post,
         Func<DateTime>? clock,
         LogService? log = null)
@@ -67,11 +64,9 @@ public sealed class PartyWealthTracker
         ArgumentNullException.ThrowIfNull(party);
         ArgumentNullException.ThrowIfNull(probe);
         ArgumentNullException.ThrowIfNull(selfWealth);
-        ArgumentNullException.ThrowIfNull(isEnabled);
         _party = party;
         _probe = probe;
         _selfWealth = selfWealth;
-        _isEnabled = isEnabled;
         _post = post ?? (a => Avalonia.Threading.Dispatcher.UIThread.Post(a));
         _clock = clock ?? (() => DateTime.UtcNow);
         _log = log;
@@ -86,13 +81,12 @@ public sealed class PartyWealthTracker
     }
 
     // The party's minimum on-hand wealth in copper, or null when the party gate
-    // shouldn't apply (feature off, solo, not leading, or our own wallet unknown).
+    // shouldn't apply (solo, not leading, or our own wallet unknown).
     // MovementFilter calls this only for a (Toll: N) exit, so it doubles as the
     // demand signal to (re)poll @wealth. A follower with no fresh reading returns
     // 0 — gating any positive toll — per the confirmed avoid-on-unknown rule.
     public long? MinWealth()
     {
-        if (!_isEnabled()) return null;
         if (!_party.IsInParty || !_party.SelfIsLeader) return null;
         if (_selfWealth() is not { } self) return null;   // our own wallet unknown → stand down
 

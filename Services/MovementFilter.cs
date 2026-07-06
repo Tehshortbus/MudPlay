@@ -53,8 +53,8 @@ public sealed class MovementFilter : IRoomFilter
     public Func<long?>? WealthProvider { get; set; }
 
     // Supplies the party's minimum on-hand wealth (copper) when this character
-    // is leading a party, or null when solo, not leading, the feature is off, or
-    // our own wallet is unknown. Wired by AppServices to
+    // is leading a party, or null when solo, not leading, or our own wallet is
+    // unknown. Wired by AppServices to
     // Game.Remote.PartyWealthTracker. When non-null it takes precedence over
     // WealthProvider in IsTollGateBlocked: BFS routes the party around a toll a
     // member can't afford, instead of walking the leader through and stranding
@@ -137,10 +137,9 @@ public sealed class MovementFilter : IRoomFilter
         // around one a member can't afford rather than stranding them at the
         // gate. The provider (PartyWealthTracker.MinWealth) folds in our own
         // wallet too, and returns null — falling through to the self-only
-        // branch — when solo, not leading, the feature is off, or our own
-        // wallet is unknown. It's the demand trigger for the @wealth probe:
-        // invoked here only for a toll exit, so nothing polls unless a toll is
-        // actually in play.
+        // branch — when solo, not leading, or our own wallet is unknown. It's
+        // the demand trigger for the @wealth probe: invoked here only for a toll
+        // exit, so nothing polls unless a toll is actually in play.
         if (PartyWealthProvider?.Invoke() is { } partyMin)
             return partyMin < cost;
 

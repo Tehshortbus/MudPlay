@@ -177,18 +177,6 @@
                       Margin="0,8,0,0"
                       ToolTip.Tip="When checked and you're leading a party: if a planned route crosses a level-gated exit (Level: MIN to MAX) that a party member can't pass — too low for the floor or too high for the cap — FujinTerm plans a path AROUND it so the group stays together and still reaches the destination, rather than walking you through and stranding that member. Each member's level is learned from an `@level` probe (sent when the roster changes); until they answer, their `who` title's level band is used. If every route to the destination is level-blocked, the walker still tells 'blocked by a gate' apart from 'no path exists'. Does nothing when you're solo or just following. Applies only for this character."/>
 
-            <!-- Party toll-affordability avoidance. When checked and leading a
-                 party, the walker routes AROUND (Toll: N) exits a member can't
-                 afford instead of walking the leader through and stranding
-                 them at the gate. A toll is per-crosser — every member needs
-                 N*100 copper-value on hand. Unlike level gates, wealth isn't
-                 kept warm: an @wealth probe fires only when a planned route
-                 actually crosses a toll. -->
-            <CheckBox Content="Avoid party-unaffordable tolls"
-                      IsChecked="{Binding AvoidPartyUnaffordableTolls, Mode=TwoWay}"
-                      Margin="0,8,0,0"
-                      ToolTip.Tip="When checked and you're leading a party: if a planned route crosses a toll exit (Toll: N) a party member can't pay — a toll is per-crosser, so every member needs its cost (N gold worth, in any coin mix) on hand — FujinTerm plans a path AROUND it so nobody is stranded at the gate. Wealth changes constantly, so it isn't cached: an `@wealth` probe is sent only when a route actually crosses a toll, and a member who can't cover it (or hasn't answered yet) makes the toll be avoided this pass. As their wealth comes in, a later lap or a retry can use the toll. Does nothing when you're solo or just following. Applies only for this character."/>
-
             <!-- Leader-side @comeback backtrack budget. When a stranded
                  follower sends a bare @comeback (no room), the leader
                  pauses its engine and walks backwards along the path

@@ -30,7 +30,6 @@ public sealed class PartyWealthTrackerTests
         public readonly PartyWealthProbe Probe;
         public readonly PartyWealthTracker Tracker;
 
-        public bool Enabled = true;
         public long? SelfWealth;
         public DateTime Now = DateTime.UnixEpoch;
 
@@ -49,7 +48,6 @@ public sealed class PartyWealthTrackerTests
             Tracker = new PartyWealthTracker(
                 State, Probe,
                 selfWealth: () => SelfWealth,
-                isEnabled: () => Enabled,
                 post: a => a(),          // fire the probe synchronously in-test
                 clock: () => Now,
                 log: null);
@@ -83,18 +81,6 @@ public sealed class PartyWealthTrackerTests
     }
 
     // ----- Gating: MinWealth stands down --------------------------------------
-
-    [Fact]
-    public void MinWealth_FeatureDisabled_ReturnsNull()
-    {
-        var h = new Harness { SelfWealth = 5000, Enabled = false };
-        h.AddMember("Bob");
-        h.Lead();
-        h.Tracker.Record("Bob", 3000);
-
-        Assert.Null(h.Tracker.MinWealth());
-        Assert.Equal(0, h.Probes);   // gated off before the demand-poll
-    }
 
     [Fact]
     public void MinWealth_NotInParty_ReturnsNull()
