@@ -2250,6 +2250,11 @@ public partial class MainWindowViewModel : ObservableObject
         // display is dropped as a peek) and text-exit movement verbs
         // (so the step is captured for replay-from-last-Confirmed).
         AppServices.Current.OutboundMovement.ObserveOutbound(data);
+        // Chat router — capture engine-sent telepath "/<recipient> <message>"
+        // bursts (party @-command broadcasts / nags) so the outgoing
+        // conversation entry is attributed. Typed telepaths render on-screen
+        // and are caught by the router's line sniff instead.
+        AppServices.Current.Chat.ObserveOutbound(data);
         var t = _telnet;
         if (t is not null) _ = t.SendAsync(data);
     }

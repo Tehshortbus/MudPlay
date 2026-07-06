@@ -81,22 +81,39 @@ public sealed class ChatRouter : IDisposable
     }
 
     private void OnLineDispatched(Terminal.LineExtractor.EmittedLine line)
+        => TryCaptureTelepath(line.Text);
+
+    // Engine-sent telepaths (party @-command broadcasts, join nags) reach the
+    // wire through SendUserInput without ever rendering on the terminal, so the
+    // on-screen /-line sniff in OnLineDispatched never sees them — the outgoing
+    // conversation entry would then come up blank. Peek the raw outbound bytes
+    // here too: a complete "/<recipient> <message>\r" burst captures the same
+    // pending message a typed line would. Char-by-char terminal typing carries
+    // no complete line in a single buffer, so nothing is captured here and the
+    // typed case stays handled by the on-screen path.
+    public void ObserveOutbound(byte[] data)
     {
-        // Form is "/<prefix> <message>" — the user's slash-shortcut for
-        // sending a telepath. Match conservatively: leading slash + at
-        // least one word char, then space, then any message text.
-        // Anything that looks like that becomes the pending message; if no
-        // telepath confirmation follows on the next line, it's stale and
-        // gets overwritten by the next /-command.
-        string text = line.Text;
+        if (data.Length == 0) return;
+        string text = System.Text.Encoding.Latin1.GetString(data);
+        foreach (string outLine in text.Split(LineBreaks,
+                     StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            TryCaptureTelepath(outLine);
+    }
+
+    private static readonly char[] LineBreaks = { '\r', '\n' };
+
+    // Form is "/<prefix> <message>" — the slash-shortcut for sending a telepath.
+    // Match conservatively: leading slash + at least one word char, then space,
+    // then any message text. Anything that looks like that becomes the pending
+    // message; if no telepath confirmation follows, it's stale and gets
+    // overwritten by the next /-line. The game has other slash-commands, so a
+    // /-line that turns out not to produce a telepath just gets overwritten or
+    // dropped on the next one.
+    private void TryCaptureTelepath(string text)
+    {
         if (text.Length < 3 || text[0] != '/') return;
         int sp = text.IndexOf(' ');
         if (sp <= 1 || sp == text.Length - 1) return;
-
-        // Skip any /-line that's clearly not a telepath shortcut — the
-        // game has other slash-commands; if a slash-command turns out
-        // not to produce a telepath, the pending message just gets
-        // overwritten or dropped on the next /-line.
         _pendingTelepathMessage = text[(sp + 1)..];
     }
 

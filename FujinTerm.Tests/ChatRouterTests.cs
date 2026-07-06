@@ -63,6 +63,47 @@ public sealed class ChatRouterTests
     }
 
     [Fact]
+    public void TelepathOut_TypedLineOnScreen_AttributesMessage()
+    {
+        var (router, _, entries) = Setup();
+        // The typed /-line renders on the terminal and is sniffed off the screen.
+        router.Dispatch(Line("/Goblin hello there"));
+        router.Dispatch(Line("--- Telepath sent to Goblin ---"));
+
+        ChatLogEntry e = Assert.Single(entries);
+        Assert.Equal(ChatChannel.TelepathOutgoing, e.Channel);
+        Assert.Equal("Goblin",      e.Speaker);
+        Assert.Equal("hello there",  e.Message);
+    }
+
+    [Fact]
+    public void TelepathOut_EngineOutboundBurst_AttributesMessage()
+    {
+        var (router, chat, entries) = Setup();
+        // An engine broadcast (@wealth toll probe) never touches the screen —
+        // the raw "/<recipient> <atCommand>\r" burst must attribute the entry.
+        chat.ObserveOutbound(System.Text.Encoding.Latin1.GetBytes("/Raijin @wealth\r"));
+        router.Dispatch(Line("--- Telepath sent to Raijin ---"));
+
+        ChatLogEntry e = Assert.Single(entries);
+        Assert.Equal(ChatChannel.TelepathOutgoing, e.Channel);
+        Assert.Equal("Raijin",  e.Speaker);
+        Assert.Equal("@wealth", e.Message);
+    }
+
+    [Fact]
+    public void ObserveOutbound_NonTelepathBytes_LeaveMessageEmpty()
+    {
+        var (router, chat, entries) = Setup();
+        // A plain movement burst isn't a /-telepath — it must not seed a message.
+        chat.ObserveOutbound(System.Text.Encoding.Latin1.GetBytes("north\r"));
+        router.Dispatch(Line("--- Telepath sent to Raijin ---"));
+
+        ChatLogEntry e = Assert.Single(entries);
+        Assert.Equal(string.Empty, e.Message);
+    }
+
+    [Fact]
     public void Yell_SelfHasNoSpeaker()
     {
         var (router, _, entries) = Setup();

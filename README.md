@@ -1,10 +1,10 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.7.0**
-> - Equip All / @equip-<set> fill empty slots from carried gear when a set is empty or its items are missing
-> - Loose gear is level / class / alignment checked before it's worn
-> - Duplicate-named pieces are rejected; fingers and wrists take two distinct items each
+> **Version 1.8.0**
+> - Backscroll window draws a "live" divider marking where logged history ends and the live tail begins
+> - Engine-sent telepaths (party @-command probes / nags) now show their message in the Conversation window instead of a blank line
+> - `@`-command replies sent via say now use the period precursor instead of the literal word "say"
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

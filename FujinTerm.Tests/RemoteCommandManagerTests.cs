@@ -718,7 +718,7 @@ public sealed class RemoteCommandManagerTests
         Assert.Equal(3, engine.LastSentForTests.Count);
         Assert.Equal("/Friend {plain}\r", Encoding.Latin1.GetString(engine.LastSentForTests[0]));
         Assert.Equal("gang {plain}\r",    Encoding.Latin1.GetString(engine.LastSentForTests[1]));
-        Assert.Equal("say {plain}\r",     Encoding.Latin1.GetString(engine.LastSentForTests[2]));
+        Assert.Equal(".{plain}\r",        Encoding.Latin1.GetString(engine.LastSentForTests[2]));
     }
 
     [Fact]
@@ -754,7 +754,7 @@ public sealed class RemoteCommandManagerTests
     }
 
     [Fact]
-    public void Reply_LocalRoutesViaSayCommand()
+    public void Reply_LocalRoutesViaSayPrecursor()
     {
         var (engine, _, players) = Setup();
         SeedPlayer(players, "Friend", PlayerRemoteControls.QueryHealthStatus);
@@ -764,7 +764,8 @@ public sealed class RemoteCommandManagerTests
         engine.DispatchForTests(Local("Friend", "@health"));
 
         string wire = Encoding.Latin1.GetString(engine.LastSentForTests[0]);
-        Assert.Equal("say {hi}\r", wire);
+        // Say channel answers with the period say-precursor, not the `say` verb.
+        Assert.Equal(".{hi}\r", wire);
     }
 
     // ===== Channel scope — noise-channel ignores =====

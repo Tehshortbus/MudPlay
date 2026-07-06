@@ -157,6 +157,15 @@ public sealed partial class BackscrollViewModel : ObservableObject, IDisposable
             liveRows.Add(new BackscrollRowViewModel(new ScrollbackBuffer.Row(now, cells)));
         }
 
+        // Flag the first live row so the window draws a divider above it,
+        // marking where frozen history ends and the live tail begins. Only
+        // when history actually exists above — a session with an empty
+        // scrollback is all-live, so there's no boundary to mark.
+        if (liveRows.Count > 0 && _scrollbackCount > 0)
+        {
+            liveRows[0].ShowLiveSeparator = true;
+        }
+
         int currentLive = Rows.Count - _scrollbackCount;
 
         // Replace existing live rows in-place; cheaper than clear + re-add.
