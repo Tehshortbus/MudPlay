@@ -188,6 +188,12 @@ it isn't here and you're unsure, ask.
   "remaining" form misses every miracle-save death. The **reliable death marker across all forms** is
   the `You have been killed!` line (DoT / no-named-killer deaths) alongside `You have been slain by
   <killer>.` (attacker-named deaths) — capture off those, not off the lives readout.
+- **Coins on hand drop into the deathpile** too, alongside the non-loyal items — they're recoverable
+  from the corpse like the rest of the pile. The five denominations (largest first) are `runic coin`,
+  `platinum piece`, `gold crown`, `silver noble`, `copper farthing`, at the 1 000 000 / 10 000 / 100 /
+  10 / 1 copper-farthing ratio ladder. The deathpile display lists each denomination the character
+  held by its own count (e.g. `100 gold crowns` + `1 platinum piece`), **not** re-bucketed into a
+  consolidated wealth total.
 
 **On-death effect wipe** *([CONFIRMED])*
 - Death removes **all active effects — buffs and debuffs alike**. A poison ticking at the moment of

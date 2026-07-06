@@ -408,10 +408,12 @@ public sealed partial class DeathRecoveryManager : ObservableObject, IDisposable
         };
         if (_inventorySnapshot is { } provider)
         {
+            InventorySnapshot snapshot = provider();
             (List<DeathItem> equipped, List<DeathItem> lost) =
-                DeathLootCapture.FromSnapshot(provider());
+                DeathLootCapture.FromSnapshot(snapshot);
             record.EquippedAtDeath = equipped;
             record.LostItems = lost;
+            record.CoinsAtDeath = snapshot.Currency;
         }
         p.DeathHistory.Add(record);
         _profile.Save();

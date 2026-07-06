@@ -120,13 +120,14 @@
                                    Text="{Binding SelectedRecord.DiedText, FallbackValue=''}"/>
                     </StackPanel>
 
-                    <!-- Equipped vs inventory item loss, split MudProxy-style.
+                    <!-- Worn-loss vs carried-loss, split into two columns.
                          Captured from the inventory tracker's last-known
-                         snapshot at death (one item per line; "None recorded."
+                         snapshot at death (one item per line, coins listed by
+                         denomination under the carried half; "None recorded."
                          when the snapshot was empty or pre-tracking). -->
                     <Grid ColumnDefinitions="*,*" ColumnSpacing="16">
                         <StackPanel Grid.Column="0" Spacing="4">
-                            <TextBlock Classes="SectionHeader" Text="Equipped at death" Margin="0,0,0,2"/>
+                            <TextBlock Classes="SectionHeader" Text="Equipment Lost" Margin="0,0,0,2"/>
                             <TextBlock Classes="FieldValue" TextWrapping="Wrap" FontWeight="Normal"
                                        Text="{Binding SelectedRecord.EquippedAtDeathText, FallbackValue='—'}"/>
                         </StackPanel>

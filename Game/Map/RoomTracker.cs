@@ -441,10 +441,12 @@ public sealed class RoomTracker
             };
             if (_inventorySnapshot is { } provider)
             {
+                InventorySnapshot snapshot = provider();
                 (List<DeathItem> equipped, List<DeathItem> lost) =
-                    DeathLootCapture.FromSnapshot(provider());
+                    DeathLootCapture.FromSnapshot(snapshot);
                 record.EquippedAtDeath = equipped;
                 record.LostItems = lost;
+                record.CoinsAtDeath = snapshot.Currency;
             }
             _profile.DeathHistory.Add(record);
             _log?.Log(LogSeverity.Info, "RoomTracker",
