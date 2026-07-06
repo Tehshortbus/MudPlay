@@ -1,7 +1,11 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.5.11** — The party-wide toll gate added in 1.5.10 is now always on instead of an opt-in setting. **Changed:** when you're leading a party, the navigator always folds every member's on-hand wealth into a toll decision and routes around a `(Toll: N)` exit any member can't cover — a toll is per-crosser (every member needs `N × 100` copper on hand or they're left behind), so marching the group to a gate that strands a member is never desired, and it no longer needs a switch. The demand-driven `@wealth` poll (fired only while a candidate route actually crosses a toll, never on a timer) is unchanged, and it still does nothing when you're solo or just following. **Removed:** the **Settings → Other → "Avoid party-unaffordable tolls"** checkbox — its behaviour is now the default. See the [version history](CHANGELOG.md) for the full changelog.
+> **Version 1.5.11**
+> - Party-wide toll gate checkbox removed, now always on
+> - Navigation engine verifies the party's cash before using a toll en-route
+>
+> See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->
 
 A modern Telnet terminal client for **MajorMUD** and other BBS door games, built in C# / .NET 10 with [Avalonia](https://avaloniaui.net/). It renders a faithful CP437 cell grid with full VT100/ANSI parsing, and layers a MegaMUD-style automation suite (combat, party, navigation, healing, and more) on top — all in modeless, dockable windows so the terminal stays live while you configure anything.

@@ -14,11 +14,16 @@ What it is **not**: not a PTY wrapper, not a generic SSH client, not a curses-st
 The phased implementation plan is **complete** — the app is at **1.0.0** and in a bugfix / maintenance cycle. There is no more `docs/` build plan; work now flows as focused fixes and small enhancements, each on its own branch + PR.
 
 - **PR cadence**: one fix / feature = one PR; one PR at a time; the next doesn't begin until the current merges. Keep each PR focused (see PR-size discipline under Scope discipline).
-- **Versioning (semver, post-1.0)**: the version lives once in `FujinTerm.csproj` `<Version>` (`AppInfo.Version` reads it back for the `@version` reply). Bump it with the change — **MAJOR** = whole-program refactor, **MINOR** = a large PR, **PATCH** = a small / bugfix PR.
+- **Versioning (semver, post-1.0)**: the version lives once in `FujinTerm.csproj` `<Version>` (`AppInfo.Version` reads it back for the `@version` reply). Bump it by **change type, not PR size**:
+  - **MAJOR** — a whole-program refactor or other sweeping/breaking overhaul. Rare.
+  - **MINOR** — a new feature or an enhancement to an existing one (added or changed capability). One bump per feature/enhancement, and it resets PATCH to 0 (e.g. 1.5.11 + a feature → 1.6.0).
+  - **PATCH** — bug fixes only. **Increments by the number of bug reports handled** — one report on 1.5.11 lands 1.5.12; a batch of five handed over together advances 1.5.11 → 1.5.16.
+
+  A PR that mixes types takes the highest (a feature plus fixes is a MINOR). The version counts the reports, but the changelog does **not** need one entry per report: a batch shares a single consolidated `## <final-version>` entry whose bullets cover all the fixes.
 - **Every PR updates the version history.** `CHANGELOG.md` is the running record, newest entry first. On each PR, in the same branch:
   1. Bump `<Version>` in `FujinTerm.csproj` per the semver policy above.
-  2. Prepend a new `## <version>` section to `CHANGELOG.md` (above the previous entry) — a one-line summary paragraph, then whichever of **Added** (new features) / **Changed** (enhancements to existing features) / **Fixed** (bug fixes) / **Removed** apply. Describe the *why/effect*, not the diff.
-  3. Replace the current-version block at the top of `README.md` (between the `<!-- current-version:start -->` / `<!-- current-version:end -->` markers) so it mirrors the new top CHANGELOG entry.
+  2. Prepend a new `## <version>` section to `CHANGELOG.md` (above the previous entry) — **no summary paragraph, no Added/Changed/Fixed/Removed subheads**, just a short bullet list, one terse line per change. Short, sweet, to the point: describe the *effect*, not the diff, in a handful of words. A couple of bullets, not a prose write-up. (Example: `## 1.5.11` → `- Party-wide toll gate checkbox removed, now always on` / `- Navigation engine verifies party's cash before using a toll en-route`.)
+  3. Replace the current-version block at the top of `README.md` (between the `<!-- current-version:start -->` / `<!-- current-version:end -->` markers) so it mirrors the new top CHANGELOG entry — a `> **Version <x.y.z>**` header line, then the same terse bullets.
 
   These three moves are part of Definition of Done — a PR that changes behavior but leaves the version, changelog, or README block stale is incomplete.
 - **Code-review gate per PR** (in addition to Definition of Done below): scan the diff for dead code, stale comments, function placement against the folder layout, duplication of existing helpers, thread-safety, and PR-size discipline.

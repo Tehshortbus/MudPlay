@@ -24,8 +24,9 @@
          compiled DLL; AppInfo.Version reads it back at runtime so the
          @version remote-command reply tracks every release without a
          hand-edit. Bump this here and the @version pong updates with
-         the next build. Semver policy (post-1.0): MAJOR = whole-program
-         refactor, MINOR = a large PR, PATCH = a small / bugfix PR. -->
+         the next build. Semver policy (post-1.0), by change type: MAJOR =
+         whole-program refactor, MINOR = a new feature or enhancement,
+         PATCH = bug fixes (one bump per report handled). -->
     <Version>1.5.11</Version>
 
     <!-- Memory footprint: pin the Workstation GC (one small heap) rather than
