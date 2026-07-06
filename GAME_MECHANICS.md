@@ -240,6 +240,31 @@ it isn't here and you're unsure, ask.
   own recent-leader memory recognises a dropped leader that a leader-disconnect already wiped from
   the roster.)
 
+## Movement & navigation
+
+- **[CONFIRMED]** **A refused ("bonked") move always prints an explicit line and never
+  redisplays the room.** When a move command can't be honoured — no exit that way, a shut
+  door, an impairment — the game emits a one-line refusal *instead of* a room display. The
+  wording varies by the reason for the bonk, e.g.:
+  - `There is no exit in that direction!`
+  - `You can't go that way.` / `You can't move that way.`
+  - `The door is closed.`
+  - impairment forms (paralyzed / confused / stunned / dazed / too encumbered / can't see well
+    enough to move).
+
+  The player's on-screen room does **not** re-print on a refusal. This is the authoritative
+  signal the client keys on: `MovementRefusalDetector` matches these lines and calls
+  `RoomTracker.NoteMoveBlocked` (which drops the pending move and re-confirms at the source).
+- **Corollary the tracker relies on:** *a room redisplay that still matches the room you moved
+  from is never the result of a refused move.* While a move is pending, seeing the source room
+  again can only be a **passive re-look** — a combat-clear, a monster/player arrival or
+  departure notice, a bare re-glance — carrying no position signal. The tracker therefore
+  ignores it and keeps waiting for the move's real outcome (a different room), rather than
+  inferring a refusal from the redisplay alone. (A genuine self-loop exit that lands back in
+  the same room is a real move with a real room display; it resolves as a normal
+  predicted-neighbour match because the exit's target *is* the source, so it is not confused
+  with a passive redisplay.)
+
 ## Attack spells: why one fails to damage a monster
 
 **Three independent mechanics** decide whether an attack spell damages a monster — do not
@@ -504,3 +529,7 @@ flag). These are hard eligibility gates, independent of resistance and level imm
 | Coin stash / hide | `You hid N <coin>.` |
 | Corpse loot drop (bare keyword) | `N <keyword> drop to the ground.` |
 | Room cash survey | `You notice ... N <coin> ... here.` |
+| Move refused — no exit | `There is no exit in that direction!` |
+| Move refused — blocked way | `You can't go that way.` / `You can't move that way.` |
+| Move refused — shut door | `The door is closed.` |
+| Toll exit unaffordable | `You do not have enough to cover the toll of N gold crowns.` |

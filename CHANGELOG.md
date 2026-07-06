@@ -2,6 +2,13 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0): **MAJOR** = whole-program refactor, **MINOR** = a large PR, **PATCH** = a small / bugfix PR.
 
+## 1.5.9
+
+A looping walk no longer bails out and gets "lost" mid-circuit when the room simply re-prints during combat — the tracker stops mistaking a harmless redisplay of the room you're in for a refused move, so it keeps waiting for the step you actually took instead of firing a bogus recovery that then bonks a real exit at the wrong room.
+
+**Fixed**
+- **A passive room redisplay during a pending move was misread as a refusal, derailing a running loop.** While a loop step was in flight, the tracker inferred a "move refused" purely because the next room display matched the room you were standing in — but during combat the game re-prints your room for all sorts of reasons (a mob clears, someone arrives or leaves, a bare re-glance), none of which mean your move failed. That false refusal made the loop believe it hadn't moved, so it launched a recovery that re-sent a step from the *old* room while you had actually already crossed into the next one — and that step then bonked a real exit ("There is no exit in that direction!"), desynced the tracker, and drifted it into "lost" until you manually intervened. This rests on a confirmed game rule: **a refused move never redisplays the room — it always prints an explicit refusal line instead** (the wording varies by why it bonked). So a same-room redisplay while a move is pending is now treated as the passive re-look it is: the tracker keeps the pending move and waits for the real outcome, and genuine refusals continue to be handled by their explicit refusal line. A real self-loop exit that lands you back in the same room is unaffected — it's a real move with a real room display and resolves normally.
+
 ## 1.5.8
 
 A walk-to no longer wedges into a permanent "walking but not moving" state after crossing into a new area — the room tracker now recognises the engine's own echoed move regardless of how long a map re-root delays it, so it stops mistaking that echo for a phantom second step that jammed the pending queue.

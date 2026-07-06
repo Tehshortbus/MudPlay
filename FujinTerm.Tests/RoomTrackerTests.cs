@@ -200,21 +200,31 @@ public sealed class RoomTrackerTests : IDisposable
     }
 
     [Fact]
-    public void Pending_RefusedMoveRedisplay_StaysAtSource()
+    public void Pending_PassiveSourceRedisplay_StaysPending_ThenRealMoveConfirms()
     {
-        // Tracker is Located at Town Gates (1/1). We send N — the
-        // server refuses silently (no "can't move" line) and just
-        // redisplays the SAME room. Observation == current room name
-        // + exits. Tracker should stay at 1/1, not chase candidates.
+        // Tracker is Located at Town Gates (1/1). We send N. CONFIRMED game
+        // mechanic: a refused ("bonked") move NEVER redisplays the room — it
+        // always prints an explicit refusal line (handled separately via
+        // NoteMoveBlocked). So a same-room redisplay while the move is Pending
+        // can only be a passive re-look (combat-clear, arrival notice, bare
+        // re-glance), never the move's outcome. The tracker must keep waiting
+        // for the real result, NOT infer a refusal and confirm at the source.
         RoomTracker tracker = NewTracker();
         tracker.SetLocated(new RoomKey(1, 1));
         tracker.NoteMoveSent(Direction.N);
 
-        // Observe Town Gates again (same as current).
+        // Passive redisplay of Town Gates (same as current) while N pending.
         tracker.NoteRoomObserved(Obs("Town Gates", Direction.N, Direction.E));
 
-        Assert.Equal(RoomConfidence.Confirmed, tracker.State.Confidence);
+        // Still Pending, still anchored at the source — no false refusal.
+        Assert.Equal(RoomConfidence.Pending, tracker.State.Confidence);
         Assert.Equal(new RoomKey(1, 1), tracker.State.CurrentRoom!.Key);
+
+        // The move's real outcome (North Square / 1/3) now confirms cleanly.
+        tracker.NoteRoomObserved(Obs("North Square", Direction.S));
+
+        Assert.Equal(RoomConfidence.Confirmed, tracker.State.Confidence);
+        Assert.Equal(new RoomKey(1, 3), tracker.State.CurrentRoom!.Key);
     }
 
     [Fact]

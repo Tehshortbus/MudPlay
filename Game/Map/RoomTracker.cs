@@ -617,22 +617,32 @@ public sealed class RoomTracker
                 }
             }
 
-            // Strategy 1b — refused-move redisplay (same room as source).
+            // Strategy 1b — passive redisplay of the source room while a
+            // move is still pending. CONFIRMED game mechanic: a refused
+            // ("bonked") move NEVER redisplays the room — every refusal
+            // instead prints an explicit line (wording varies by bonk
+            // type: "There is no exit in that direction!", "You can't go
+            // that way.", "The door is closed.", etc.), which
+            // MovementRefusalDetector catches and routes to
+            // NoteMoveBlocked. So a redisplay that still matches the
+            // source can only be a passive re-look (a combat-clear, an
+            // arrival/departure notice, a bare re-glance) — never the
+            // pending move's outcome. Treat it as noise: keep the pending
+            // move intact and stay Pending so the move's real result (a
+            // different room) can still confirm via Strategy 1. A genuine
+            // self-loop exit that lands back in the source room is caught
+            // earlier by Strategy 1 (its target IS the source), so it
+            // never reaches here. Dequeuing + confirming here — the old
+            // "move-refused redisplay" behaviour — silently invented a
+            // refusal that never happened, stranding the loop at the
+            // source while the player had actually moved on, and cascaded
+            // into a bogus recovery that bonked a real exit at the true
+            // room.
             if (MatchesPredicted(source, observation))
             {
-                _pending.TryDequeue(out _);
-                DropMostRecentStep();                       // the move didn't actually take place
-                State.SuspectStrikes = 0;
-                RoomConfidence target = _pending.IsEmpty
-                    ? RoomConfidence.Confirmed
-                    : RoomConfidence.Pending;
-                // CurrentRoom already == source; reuse SetConfidence so
-                // history stays correctly seeded with the unchanged room.
-                // No PersistConfirmedAnchor here — the source room's
-                // strictness was already settled when it was first
-                // anchored; re-confirming after a refused move adds no
-                // new strict signal.
-                SetConfidence(target, when, "move-refused redisplay");
+                _log?.Log(LogSeverity.Debug, "RoomTracker",
+                    $"Passive redisplay of source '{source.Name}' while move {moveLabel} pending; ignoring.");
+                State.LastUpdatedAt = when;
                 return;
             }
         }
