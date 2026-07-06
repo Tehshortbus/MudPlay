@@ -2,8 +2,8 @@ namespace FujinTerm.Services;
 
 // Two one-shot flags coordinating "we deliberately hung up" intent across the
 // engines that need to react to it. Set by every path that intentionally drops
-// the carrier (remote @hangup, future hang-up-if-naked / hang-up-if-low-HP
-// automation); consumed by MainWindowViewModel (to suppress the reactive
+// the carrier (remote @hangup, HealthManager's low-HP emergency hangup, future
+// hang-up-if-naked automation); consumed by MainWindowViewModel (to suppress the reactive
 // auto-reconnect) and by Game.MainMenuEntryAutomation (to suppress the
 // auto-entry latch on the next connect, so the user reads what's on screen and
 // types E themselves).
@@ -27,8 +27,8 @@ public sealed class HangupSignal
 
     // Arm both one-shot flags. Called by every engine that's about to send the
     // configured exit command on the wire as a deliberate hang-up:
-    // Game.Remote.HangupHandler (today), plus the future hang-up-if-naked /
-    // hang-up-if-low-HP automation engines.
+    // Game.Remote.HangupHandler and Game.Health.HealthManager's emergency-hangup
+    // path (today), plus the future hang-up-if-naked automation engine.
     public void SignalHangup()
     {
         _disconnectExpected = true;

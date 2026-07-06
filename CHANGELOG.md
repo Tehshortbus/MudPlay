@@ -2,6 +2,13 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0): **MAJOR** = whole-program refactor, **MINOR** = a large PR, **PATCH** = a small / bugfix PR.
 
+## 1.5.1
+
+The low-HP emergency hangup no longer fights itself: after it drops the carrier to escape a losing fight, the client used to immediately auto-reconnect straight back into the danger. The hangup now flags the disconnect as intentional so the reactive-reconnect path stands down.
+
+**Fixed**
+- **The auto-hangup fired, then the client reconnected on its own — dialling straight back into the situation it just fled.** The emergency low-HP hangup sends the configured game-exit command to drop the carrier, but it never told the reconnect layer the drop was deliberate. The disconnect was then classified as an unexpected server-side drop and a reactive reconnect was scheduled, undoing the escape. The hangup path now arms the same intentional-disconnect signal the remote `@hangup` uses, so the drop is classified as `HangupInitiated` and no auto-reconnect fires — the client stays down until the user brings it back.
+
 ## 1.5.0
 
 A readability batch across Session Stats, navigation, and the Player Workshop quest view, all from live play: coin figures now read as denominations instead of a raw copper count, the rate graphs match their headline numbers and label the current rate, the loop lap counter actually counts, the main-window looping chip is trimmed to the essentials, and multi-class ability quests show each class's own unlock level.

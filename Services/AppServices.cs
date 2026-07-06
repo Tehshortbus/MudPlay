@@ -1064,9 +1064,10 @@ public sealed class AppServices
     // Hooked from MainWindowViewModel.SendUserInput.
     public Game.Map.OutboundMovementObserver OutboundMovement { get; private set; } = null!;
 
-    // Death-message detector — watches lines for the post-suicide /
-    // killed-in-combat You now have N lives remaining. shape
-    // and fires Game.Map.RoomTracker.NoteDeath. Captures
+    // Death-message detector — watches lines for either post-death lives
+    // readout (You now have N lives remaining. / You have N lives left.,
+    // the latter the miracle-save death) and fires
+    // Game.Map.RoomTracker.NoteDeath. Captures
     // a Models.Profile.DeathRecord on the loaded profile
     // for the Workshop DEATH section and pivots the tracker
     // into Game.Map.RoomConfidence.PendingRespawn.
@@ -2084,7 +2085,10 @@ public sealed class AppServices
             // hangup firing through the bleeding-out window down to the
             // point the character actually dies.
             readDeathFloor: () => ResolveActiveBbs()?.PlayerDiesAtHp ?? -25,
-            log: Log);
+            log: Log,
+            // Emergency hangup drops the carrier on purpose — flag it so the
+            // reactive-reconnect path doesn't immediately dial back in.
+            hangupSignal: HangupSignal);
 
         // Leader-rest nudge: a standing-idle follower's own PlayerState may
         // not change between the 5s par polls that flip the leader's

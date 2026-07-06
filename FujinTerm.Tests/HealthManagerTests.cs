@@ -47,6 +47,11 @@ public sealed class HealthManagerTests
         /// anywhere in the bleeding-out window down to — but not past — this.</summary>
         public int DeathFloor { get; set; } = -25;
 
+        /// <summary>The hangup-intent signal wired into the emergency-hangup
+        /// path. Tests peek it (non-consuming) to assert an intentional drop was
+        /// flagged, so the reactive-reconnect path stands down.</summary>
+        public HangupSignal Hangup { get; } = new();
+
         public Harness(HealthSettings? settings = null)
         {
             Settings = settings ?? new HealthSettings();
@@ -61,7 +66,8 @@ public sealed class HealthManagerTests
                 readGeneralSettings: () => General,
                 hasEngageableHostiles: () => HostilesPresent,
                 readDeathFloor: () => DeathFloor,
-                log: Log);
+                log: Log,
+                hangupSignal: Hangup);
             Health.SetWireSender(b => Sent.Add(b));
         }
 
@@ -1079,6 +1085,22 @@ public sealed class HealthManagerTests
         h.SetPrompt(hp: 5, maxHp: 200);   // 2.5% — below default 5% hang threshold
 
         Assert.Contains("=x", h.SentLines);
+    }
+
+    [Fact]
+    public void Hangup_SignalsIntentionalDisconnect()
+    {
+        // The emergency hangup drops the carrier on purpose. It must flag the
+        // HangupSignal so MainWindowViewModel classifies the drop as intentional
+        // and the reactive-reconnect path stands down — otherwise the client
+        // dials straight back into the danger it just fled.
+        using Harness h = new();
+        Assert.False(h.Hangup.PeekForTests().DisconnectExpected);
+
+        h.SetPrompt(hp: 5, maxHp: 200);   // below default 5% hang threshold — fires
+
+        Assert.Contains("=x", h.SentLines);
+        Assert.True(h.Hangup.PeekForTests().DisconnectExpected);
     }
 
     [Fact]

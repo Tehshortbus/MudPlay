@@ -70,6 +70,7 @@ public sealed class HealthManager : IDisposable
     private readonly Func<Models.Profile.GeneralSettings>? _readGeneralSettings;
     private readonly Func<bool>? _hasEngageableHostiles;
     private readonly Func<int>? _readDeathFloor;
+    private readonly HangupSignal? _hangupSignal;
     private readonly LogService? _log;
 
     private Action<byte[]>? _wireSender;
@@ -142,6 +143,11 @@ public sealed class HealthManager : IDisposable
     //     the bleeding-out window (hang-trigger down to this floor) but bails once
     //     HP has fallen past it — a character at or below the floor is already
     //     dead, so there's nothing left to disconnect. Null defaults to -25.
+    //   hangupSignal — flags an intentional disconnect so the reactive-reconnect
+    //     path stands down. The emergency hangup drops the carrier on purpose;
+    //     without signalling it, MainWindowViewModel would classify the drop as
+    //     unexpected and dial straight back in — exactly what a low-HP hangup is
+    //     meant to prevent. Wired to AppServices.HangupSignal.
     public HealthManager(
         PlayerState state,
         MovementCoordinator coordinator,
@@ -154,7 +160,8 @@ public sealed class HealthManager : IDisposable
         Func<Models.Profile.GeneralSettings>? readGeneralSettings,
         Func<bool>? hasEngageableHostiles,
         Func<int>? readDeathFloor = null,
-        LogService? log = null)
+        LogService? log = null,
+        HangupSignal? hangupSignal = null)
     {
         ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(coordinator);
@@ -172,6 +179,7 @@ public sealed class HealthManager : IDisposable
         _hasEngageableHostiles = hasEngageableHostiles;
         _readDeathFloor = readDeathFloor;
         _log = log;
+        _hangupSignal = hangupSignal;
         _state.PropertyChanged += OnStateChanged;
     }
 
@@ -609,6 +617,10 @@ public sealed class HealthManager : IDisposable
 
         _log?.Warn(LogCategory,
             $"HANGUP — HP {_state.Hp}/{_state.MaxHp} <= hang-trigger={hangTrigger} cmd='{hangCmd}'");
+        // Declare the drop intentional before it lands so MainWindowViewModel's
+        // reactive-reconnect path stands down — otherwise the very disconnect we
+        // just triggered gets classified as unexpected and immediately dialled back.
+        _hangupSignal?.SignalHangup();
         SendCommand(hangCmd);
         return true;
     }
