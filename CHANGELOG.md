@@ -2,6 +2,13 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0): **MAJOR** = whole-program refactor, **MINOR** = a large PR, **PATCH** = a small / bugfix PR.
 
+## 1.5.2
+
+The miracle-save death — the "but, due to a miracle, you have been saved" sequence — is now recognised as the real death it is and captured by death recovery, so a run that ends in a last-instant rescue still records the death and its floor.
+
+**Fixed**
+- **A miracle-save death was not captured by death recovery.** When the game kills you but immediately revives you on a miracle, the readout differs from an ordinary death — it announces your remaining lives directly ("You now have N lives remaining." / "You have N life left.") rather than the plain slain line the detector keyed on. The death therefore slipped past recovery entirely: no death record, no floor update, no lives decrement. The detector now matches both readout forms, so a miracle-save is captured exactly like any other death and feeds the same death-floor estimate.
+
 ## 1.5.1
 
 The low-HP emergency hangup no longer fights itself: after it drops the carrier to escape a losing fight, the client used to immediately auto-reconnect straight back into the danger. The hangup now flags the disconnect as intentional so the reactive-reconnect path stands down.

@@ -60,6 +60,8 @@ public sealed class DeathDetectorTests : IDisposable
     [InlineData("You now have 4 lives remaining.")]
     [InlineData("You now have 1 life remaining.")]
     [InlineData("You now have 0 lives remaining.")]
+    [InlineData("You have 4 lives left.")]                        // miracle-save death
+    [InlineData("You have 1 life left.")]                         // miracle-save, singular
     public void DeathMessage_TriggersTrackerNoteDeath(string line)
     {
         (RoomTracker tracker, DeathDetector detector) = NewDetector();
@@ -72,7 +74,6 @@ public sealed class DeathDetectorTests : IDisposable
     }
 
     [Theory]
-    [InlineData("You have 4 lives left.")]                        // miracle save — NOT death
     [InlineData("You hit the goblin for 4 damage.")]
     [InlineData("4 lives remaining.")]                            // missing "You now have" prefix
     [InlineData("Random chat line.")]
@@ -109,6 +110,27 @@ public sealed class DeathDetectorTests : IDisposable
         Assert.Equal(1, rec.Room!.Room);
         Assert.Equal(3, rec.LivesRemaining);
         Assert.Equal("You now have 3 lives remaining.", rec.MessageText);
+    }
+
+    [Fact]
+    public void MiracleSaveDeath_CapturesRecord_WithLivesLeftCount()
+    {
+        // The miracle-save death ("You have been killed! / But, due to a miracle,
+        // you have been saved. / You have N lives left.") is a real death — a life
+        // is spent and items drop — but its lives readout uses the "left" phrasing.
+        // It must land in the recovery history exactly like a plain death.
+        (RoomTracker tracker, DeathDetector detector) = NewDetector();
+        var profile = new CharacterProfile { LastKnownRoom = new RoomRef(1, 1) };
+        tracker.Hydrate(profile);
+
+        detector.FeedTestLine("You have 7 lives left.");
+
+        Assert.NotNull(profile.DeathHistory);
+        Assert.Single(profile.DeathHistory!);
+        DeathRecord rec = profile.DeathHistory![0];
+        Assert.Equal(7, rec.LivesRemaining);
+        Assert.Equal("You have 7 lives left.", rec.MessageText);
+        Assert.Equal(RoomConfidence.PendingRespawn, tracker.State.Confidence);
     }
 
     [Fact]

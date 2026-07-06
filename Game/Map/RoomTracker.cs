@@ -375,9 +375,10 @@ public sealed class RoomTracker
         _lastObservationAt = when;
     }
 
-    // The death-message detector saw the post-suicide / killed-in-combat "You
-    // now have N lives remaining." line. Capture a DeathRecord on the loaded
-    // profile (room captured = where we were when the death message fired),
+    // The death-message detector saw a post-death lives readout — either "You now
+    // have N lives remaining." (plain / suicide death) or "You have N lives left."
+    // (miracle-save death). Capture a DeathRecord on the loaded profile (room
+    // captured = where we were when the death message fired),
     // drain pending state, and transition to PendingRespawn so the next
     // observation lands as the new authoritative position without churning
     // Suspect strikes.

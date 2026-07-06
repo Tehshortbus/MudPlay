@@ -152,6 +152,53 @@ it isn't here and you're unsure, ask.
   past the floor (overkill, discard). So the client's floor auto-refinement must classify off the
   observed HP steps, not the message — and, per the trace's stated assumption, only while the
   killing blow isn't a huge hit that leaps right past the floor.
+- **An overkill can mask the reached HP entirely.** A killing blow that jumps well past the floor may
+  emit **no sub-floor HP prompt at all** — the client sees the pre-death HP and then the death, with
+  the intermediate value the blow drove HP to never printed. (Observed: at HP `-241` a `9`-point hit
+  simply killed the character; no `-250` prompt appeared.) So a single terminal reading can never be
+  trusted as a floor measurement. The reliable complement is **live-survival evidence**: while HP
+  ticks down through the negatives and the character is confirmed **still alive** (a *later* in-band
+  prompt proves the previous one was survived), each survived reading is a valid lower bound — the
+  floor sits **below** it — so the estimate ratchets down progressively as HP rolls further negative,
+  and simply **stops at the death message**. The terminal/masked reading is structurally excluded
+  because it is never followed by another in-band prompt.
+
+**Miracle-save — a death, not a rescue** *([CONFIRMED])*
+- When a character who still has lives dies, the engine prints a three-line miracle sequence in
+  place of the plain slain line:
+  ```
+  You have been killed!
+  But, due to a miracle, you have been saved.
+  You have N lives left.
+  ```
+  Despite the "saved" wording this **IS a death** — a life is spent (N is the post-death count),
+  non-loyal items drop, HP resets to full, and the character is teleported to the graveyard / temple
+  room, exactly like any other death. The "miracle" text is **flavor that comes with having lives**,
+  not a rescue that avoids the death. Only at **0 lives** does the engine instead force-exit the
+  character from the game (permadeath) rather than print the miracle line.
+- The lives readout on this path is `You have N lives left.` — a **different line** from the
+  slow / normal-death `You now have N lives remaining.`. A death-capture that keys only off the
+  "remaining" form misses every miracle-save death. The **reliable death marker across all forms** is
+  the `You have been killed!` line (DoT / no-named-killer deaths) alongside `You have been slain by
+  <killer>.` (attacker-named deaths) — capture off those, not off the lives readout.
+
+**On-death effect wipe** *([CONFIRMED])*
+- Death removes **all active effects — buffs and debuffs alike**. A poison ticking at the moment of
+  death clears with it: the death sequence carries `The effects of the poison wear off!` right
+  alongside `You have been killed!`. So after a death the character is at full HP with **no lingering
+  effects of any kind**; any client-side effect / buff tracking must be flushed on death.
+
+**Drop removes you from your party** *([CONFIRMED])*
+- Dropping (hitting 0 HP) doesn't just immobilize — it **removes you from the party game-side**. After
+  a miracle-save death the `par` check reads `You are not in a party at the present time.` even though
+  the client still believed it was partied and following the leader. The **only** reason a dropped
+  character still tracks the leader's room is that the leader `drag`s them — following is an artifact
+  of the drag, not live party membership.
+- While dropped / mortally wounded the game **rejects every action command**: movement, casting,
+  aiding, telepaths all bounce with `You may not do that while you are mortally wounded!`,
+  `Your command had no effect.`, or (for remote / telepath commands) `{command invalid or not
+  allowed}`. Client engines that keep firing commands in this state accomplish nothing but noise — a
+  dropped / mortally-wounded local player must suppress engine command output until healed / aided.
 
 ## Attack spells: why one fails to damage a monster
 
@@ -383,8 +430,10 @@ flag). These are hard eligibility gates, independent of resistance and level imm
 | Weapon ineffective | `Your weapon has no effect against this monster!` |
 | Fists ineffective | `Your fists have no effect against this monster!` |
 | Spell can't affect target (e.g. living-only vs NonLiving) | `Your spell has no effect on <monster>.` |
-| Local player death (lives readout) | `You now have N lives remaining.` |
-| Local player slain | `You have been slain by <killer>.` |
+| Local player death (lives readout, slow / normal) | `You now have N lives remaining.` |
+| Local player death (DoT / no named killer) | `You have been killed!` |
+| Miracle-save lives readout (a death, still has lives) | `You have N lives left.` |
+| Local player slain (attacker named) | `You have been slain by <killer>.` |
 | Party member / other player killed in room | `<Name> has died.` |
 | Coin pickup (no trailing period) | `You picked up N <coin>` (e.g. `6 silver nobles`) |
 | Coin drop | `You dropped N <coin>.` |

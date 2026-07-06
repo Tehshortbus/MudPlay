@@ -5,20 +5,26 @@ using FujinTerm.Terminal;
 
 namespace FujinTerm.Game;
 
-// Watches inbound lines for the post-suicide / killed-in-combat "You now have N
-// lives remaining." message and tells RoomTracker.NoteDeath so the room the
-// character died in is captured on the profile and the tracker switches to
-// PendingRespawn ahead of the respawn room display.
+// Watches inbound lines for the post-death lives-count readout and tells
+// RoomTracker.NoteDeath so the room the character died in is captured on the
+// profile and the tracker switches to PendingRespawn ahead of the respawn room
+// display.
 //
-// MajorMUD emits two phrasings off the same wire shape:
-//   "You now have N lives remaining." — after a death (suicide command or
-//   combat kill). This counts as death.
-//   "You have N lives left." — after a miracle save. The character survived;
-//   not a death.
+// MajorMUD emits the lives count in two phrasings, and BOTH are real deaths:
+//   "You now have N lives remaining." — after a suicide command or a slain/killed
+//     death that doesn't print the miracle flavor.
+//   "You have N lives left."          — the tail of the miracle-save sequence
+//     ("You have been killed! / But, due to a miracle, you have been saved. /
+//     You have N lives left."). Despite the "saved" wording this IS a death: a
+//     life is spent (N is the post-death count), non-loyal items drop, and the
+//     character is teleported to the graveyard — the miracle line is just flavor
+//     that accompanies dying while you still have lives. Only at 0 lives does the
+//     engine force-exit instead, so this readout never appears on permadeath.
 //
-// Only the first phrasing fires the detector. Same regex shape StatParser uses
-// for its always-on lives-count update, but with the verb tightened to "now
-// have" so the miracle-save line can't trip a phantom death record.
+// An earlier version matched only the "remaining" form on the belief the
+// miracle-save meant the character survived; that silently dropped every
+// miracle-save death from the recovery history. Both readouts now fire — each
+// carries the correct post-death lives count, so NoteDeath gets accurate data.
 public sealed partial class DeathDetector : IDisposable
 {
     private readonly RoomTracker _tracker;
@@ -64,14 +70,16 @@ public sealed partial class DeathDetector : IDisposable
         if (!m.Success) return;
         if (!int.TryParse(m.Groups[1].ValueSpan, out int lives)) return;
         _log?.Info("DeathDetector",
-            $"Death observed: '{line.Text.Trim()}' → {lives} lives remaining.");
+            $"Death observed: '{line.Text.Trim()}' → {lives} lives left.");
         _tracker.NoteDeath(lives, line.Text.Trim(), line.Timestamp);
     }
 
-    // "You now have N lives remaining." — the post-death form. Singular "life"
-    // handled too (1 remaining). The "You have N lives left." miracle-save form
-    // is intentionally not matched here.
-    [GeneratedRegex(@"^You now have (\d+) (?:lives?|life) remaining\.",
+    // Both post-death lives readouts: "You now have N lives remaining." (suicide /
+    // plain death) and "You have N lives left." (miracle-save death). Singular
+    // "life" handled too (1 remaining / 1 left). The only inputs the diagonal
+    // cross-forms would add ("now have … left", "have … remaining") don't exist in
+    // the game, so the liberal alternation can't produce a false positive.
+    [GeneratedRegex(@"^You (?:now have|have) (\d+) (?:lives?|life) (?:remaining|left)\.",
         RegexOptions.CultureInvariant)]
     private static partial Regex DeathRx();
 }
