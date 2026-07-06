@@ -495,6 +495,10 @@ public sealed class HealthManagerTests
     public void MaBelowTrigger_AssertsManaRecovery()
     {
         using Harness h = new();
+        // Live HP — a mortally-wounded character (Hp <= 0) bails before any
+        // recovery, mana included, so isolate the MA gate with healthy HP.
+        h.State.MaxHp = 200;
+        h.State.Hp = 200;
         h.State.MaxMa = 100;
         h.State.HasPromptData = true;
         h.State.Ma = 20;             // 20% < 30% trigger
@@ -1211,6 +1215,56 @@ public sealed class HealthManagerTests
         h.SetPrompt(hp: -30, maxHp: 200);   // overshot the floor → dead
 
         Assert.DoesNotContain("=x", h.SentLines);
+    }
+
+    [Fact]
+    public void Hangup_PiercesEngineSendGateHold()
+    {
+        // The escape hangup must survive the very EngineSendGate hold that a
+        // drop raises: the ordinary wire sender is gate-wrapped (drops silently
+        // while held), but the hangup rides a separate un-wrapped sender. Prove
+        // it lands even with the gate locked.
+        PlayerState state = new();
+        LogService log = new();
+        MovementCoordinator coordinator = new(log);
+        GeneralSettings general = new();
+        HealthSettings settings = new();
+
+        EngineSendGate gate = new();
+        List<byte[]> wrappedSent = new();
+        List<byte[]> hangupSent = new();
+
+        HealthManager health = new(state, coordinator,
+            readSettings: () => settings,
+            isEnabled: () => true,
+            readHangupCommand: () => "=x",
+            getActiveMovementEngine: null,
+            getLastSentDirection: null,
+            readCombatSettings: null,
+            readGeneralSettings: () => general,
+            hasEngageableHostiles: () => false,
+            readDeathFloor: () => -25,
+            log: log,
+            hangupSignal: null);
+        // Regular sends are gate-wrapped; the hangup sender is raw.
+        health.SetWireSender(gate.WrapEngineSender(wrappedSent.Add));
+        health.SetHangupWireSender(hangupSent.Add);
+
+        // A drop would hold the gate — simulate it.
+        gate.Hold(PlayerDroppedGate.HoldReason);
+
+        state.Hp = 0;
+        state.MaxHp = 200;
+        state.HasPromptData = true;   // fires Evaluate → emergency hangup
+
+        string Decode(List<byte[]> l) =>
+            l.Count == 0 ? "" : Encoding.Latin1.GetString(l[^1]).TrimEnd('\r');
+
+        Assert.Equal("=x", Decode(hangupSent));   // hangup pierced the hold
+        Assert.DoesNotContain(wrappedSent,
+            b => Encoding.Latin1.GetString(b).TrimEnd('\r') == "=x");
+
+        health.Dispose();
     }
 
     [Fact]

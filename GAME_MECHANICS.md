@@ -199,6 +199,42 @@ it isn't here and you're unsure, ask.
   `Your command had no effect.`, or (for remote / telepath commands) `{command invalid or not
   allowed}`. Client engines that keep firing commands in this state accomplish nothing but noise — a
   dropped / mortally-wounded local player must suppress engine command output until healed / aided.
+- **The drop line — party-side and self.** When a character drops, everyone in the room (the party
+  included) sees `<name> drops to the ground!`; the dropped character sees it with their **own** name
+  (observed: `Raijin drops to the ground!`). That line is the party-side signal a member has gone
+  down. The drag, once someone starts it, prints `<leader> is dragging you around.` to the dragged
+  character on each of the dragger's moves (observed: `Fujin is dragging you around.`).
+- **Drag is a manual leader command, not automatic.** A dropped ally is only dragged when the party
+  **leader types `drag <name>`** after seeing the drop line — nothing drags them on its own. Dragging
+  merely relocates the still-mortally-wounded body; it does **not** revive them or restore party
+  membership.
+- **Reviving a dropped ally (leader-side reaction).** A dropped ally sits at 0 HP or below and can't
+  act for themselves — they must be brought back by **`aid <name>`** and/or a **heal** that lifts
+  their HP above 0. So a party leader watching `<member> drops to the ground!` should **aid and heal
+  that member** (drag is a separate, optional relocation choice, not the rescue).
+- **A dropped ally leaves `par`.** Once a member drops they no longer appear in the party's `par`
+  roster (`par` lists live membership only). Their vitals therefore stop refreshing from `par` — so
+  tracking a dropped, then partially-recovered ally's HP needs an out-of-band poll.
+- **`@health` telepath polls a member's vitals** *([CONFIRMED])*. Sending an ally a telepath
+  `@health` triggers their client's @health responder to reply with their current HP / MA — an
+  out-of-band way to read a member's health when `par` won't show it (e.g. after they've dropped off
+  the roster).
+- **A name-targeted heal still lands on a dropped ally who's been aided** *([CONFIRMED])*. Even though
+  an aided-but-still-dropped ally isn't in `par` anymore, a heal cast **at them by name** still
+  reaches them, so a party healer can keep topping them up until they fully recover / rejoin.
+- **Recovery to positive HP does NOT auto-rejoin the party — a re-invite is required** *([CONFIRMED])*.
+  Because the drop removed the character from the party game-side, bringing them back above 0 HP (via
+  `aid` + heal) restores their ability to act but **not** their membership. The **party leader must
+  `invite <name>` again** to pull them back into the group; until then the recovered character is solo
+  even though they're standing right there. This holds both ways: when the **local** character recovers
+  from a self-drop, the client must NOT resurrect the wiped roster — it waits for a real
+  follow / `par` signal (which only arrives after the leader's re-invite); when a **leader** revives a
+  dropped member, the rescue sequence is `aid` + heal **then** `invite <name>`.
+- Client reaction (party healer, self is a member with party heals): treat a member's drop as a
+  **wait condition** — pause farming / movement to stay with them — and, once they've been **aided**
+  back above 0, keep **healing them by name** despite their absence from `par`, polling their HP
+  periodically via an `@health` telepath until they recover, then (if leading) **re-invite** them.
+  (Implementation lands with the ally-drop reaction work.)
 
 ## Attack spells: why one fails to damage a monster
 
@@ -435,6 +471,9 @@ flag). These are hard eligibility gates, independent of resistance and level imm
 | Miracle-save lives readout (a death, still has lives) | `You have N lives left.` |
 | Local player slain (attacker named) | `You have been slain by <killer>.` |
 | Party member / other player killed in room | `<Name> has died.` |
+| Character drops (0 HP, party/room-side; self sees own name) | `<Name> drops to the ground!` |
+| Being dragged while dropped (dragged char's view, per move) | `<Leader> is dragging you around.` |
+| Action attempted while dropped (rejection) | `You may not do that while you are mortally wounded!` |
 | Coin pickup (no trailing period) | `You picked up N <coin>` (e.g. `6 silver nobles`) |
 | Coin drop | `You dropped N <coin>.` |
 | Coin stash / hide | `You hid N <coin>.` |

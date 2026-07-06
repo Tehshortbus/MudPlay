@@ -76,6 +76,13 @@ public sealed class MovementCoordinator
     // gate only reflects waits the user hasn't chosen to ignore.
     public const string PartyWaitGate = "PartyWait";
 
+    // Asserted by PlayerDroppedGate while the local character is mortally wounded
+    // (HP <= 0). A dropped character can't move on their own — they're dragged by a
+    // party member, not walking — so every movement engine pauses until HP climbs
+    // back positive. Auto-clears on recovery, unlike the death halt's UserGate,
+    // which waits for a manual resume.
+    public const string MortallyWoundedGate = "MortallyWounded";
+
     private const int HistoryCapacity = 200;
 
     private readonly LogService? _log;

@@ -2,6 +2,14 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0): **MAJOR** = whole-program refactor, **MINOR** = a large PR, **PATCH** = a small / bugfix PR.
 
+## 1.5.5
+
+While your own character is dropped (mortally wounded at 0 HP or below), the client now stops every background engine from spamming commands the game will only reject, and corrects the party state a drop invalidates — so a downed character sits quietly until aided / healed instead of hammering the wire and holding movement on a party it's no longer in.
+
+**Fixed**
+- **Background engines kept firing commands while you were dropped.** A mortally-wounded character can't act — the game bounces every command with `You may not do that while you are mortally wounded!` — but the automation engines (rest, cast, party polls, walk-to, etc.) kept sending anyway, flooding the wire with rejected commands. Dropping now raises a blanket engine-send hold and a movement pause (surfaced as the `MortallyWounded` pause reason) for the whole time HP is at or below 0, so all the background engines fall silent until you recover. The emergency low-HP hangup is deliberately exempt — hanging up is still allowed while dropped, so it pierces the hold and remains your last escape.
+- **Party / following state went stale after a self-drop.** Dropping removes you from the party game-side; the leader dragging your body around is physical relocation, not membership. The client used to keep believing it was partied and following, so the follower-movement gate held movement forever on a party you'd already left. A drop now clears the tracked roster / leader / following flags, and recovery re-confirms membership only from a real follow / `par` signal — which arrives after the leader re-invites you (recovery to positive HP restores your ability to act but not your membership; a re-invite is required to rejoin).
+
 ## 1.5.4
 
 Casting a party buff (Bless slots) now reports its effect duration and recast timing on the always-on program log, so you can confirm the recast timer actually armed and see when it will re-fire.

@@ -720,6 +720,11 @@ public partial class MainWindowViewModel : ObservableObject
         // HealthManager sends rest / stand / pre- / post-rest commands
         // via the same gate-wrapped engine pipeline.
         AppServices.Current.Health.SetWireSender(engineSend);
+        // The emergency low-HP hangup is the one Health send that must survive
+        // an EngineSendGate hold — a mortally-wounded character can still hang
+        // up, and that hold is exactly what a drop raises. Bind it to the raw,
+        // un-wrapped SendUserInput so the escape hangup pierces the gate.
+        AppServices.Current.Health.SetHangupWireSender(SendUserInput);
         // CastCoordinator's `c <spell> [target]` emits ride the same
         // gate-wrapped pipeline so spell commands respect the
         // suicide-password / trainer-menu lockouts upstream.

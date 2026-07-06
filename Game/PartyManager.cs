@@ -526,10 +526,42 @@ public sealed partial class PartyManager : IDisposable
                 _recentlyDisconnected[given] = now;
             }
         }
+        ResetPartyMembership();
+    }
+
+    // Wipe the tracked party to the solo state. Shared by the dissolve handler and
+    // the self-drop path; callers do their own par-state flush / grace-window
+    // snapshot before invoking this.
+    private void ResetPartyMembership()
+    {
         State.Members.Clear();
         State.LeaderName   = null;
         State.SelfIsLeader = false;
         State.IsInParty    = false;
+    }
+
+    // Hitting 0 HP drops the local character from the party on the game-engine side
+    // (a follower is removed; a leader can't lead while mortally wounded). Being
+    // dragged by a party member afterwards is physical relocation, not membership —
+    // the game no longer counts us in the party — so our tracked roster + leader go
+    // stale the instant we drop. Clear them; recovery re-confirms membership only
+    // from a real "You are following X" / par signal, never from a "is dragging you
+    // around" line. Called by PlayerDroppedGate on the HP<=0 transition. Unlike the
+    // dissolve handler this takes no leader grace-window snapshot: a mortally-
+    // wounded character isn't re-inviting anyone, and recovery re-forms the party
+    // through the normal signals.
+    public void NoteSelfDropped()
+    {
+        if (State.Members.Count == 0
+            && !State.IsInParty
+            && State.LeaderName is null
+            && !State.SelfIsLeader)
+        {
+            return;
+        }
+        _parState = ParState.Idle;
+        _parBlockNames.Clear();
+        ResetPartyMembership();
     }
 
     private void OnParHeader(MatchResult _)

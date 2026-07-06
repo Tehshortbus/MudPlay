@@ -1116,6 +1116,13 @@ public sealed class AppServices
     // "Paused — recovering" while the death pause holds.
     public Game.PlayerDeathMovementHalt PlayerDeathHalt { get; private set; } = null!;
 
+    // Dropped / mortally-wounded bridge — while the local character is at or
+    // below 0 HP, holds the EngineSendGate (a dropped character can't act, so
+    // every engine send is rejected), asserts MovementCoordinator's
+    // MortallyWoundedGate, and clears the stale party roster (a drop removes us
+    // from the party game-side). Auto-clears on recovery.
+    public Game.PlayerDroppedGate PlayerDropped { get; private set; } = null!;
+
     // Party-death roster-cleanup bridge — when we're leading an automated route
     // and an active member dies (turning into a phantom [Invited] par slot),
     // uninvites that slot once the room clears so the loop doesn't stall on the
@@ -1968,6 +1975,16 @@ public sealed class AppServices
         // manually resumes — no loop / walk-to / auto-lair marches us back out
         // before we've recovered.
         PlayerDeathHalt = new Game.PlayerDeathMovementHalt(DeathWatcher, MovementCoordinator, Log);
+
+        // Dropped / mortally-wounded bridge. While HP is at or below 0 the
+        // character can't act — the game rejects every command — so this holds
+        // the EngineSendGate (silences all wrapped engines), asserts the
+        // MortallyWoundedGate (visible movement pause), and clears the stale
+        // party roster (a drop removes us from the party game-side; recovery
+        // needs a re-invite from the leader to rejoin). All three release the
+        // moment HP climbs back positive.
+        PlayerDropped = new Game.PlayerDroppedGate(
+            PlayerState, EngineGate, MovementCoordinator, Party, Log);
 
         // CombatManager. Picks a target on each
         // classifier emit and sends the configured attack command via

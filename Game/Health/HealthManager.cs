@@ -74,6 +74,7 @@ public sealed class HealthManager : IDisposable
     private readonly LogService? _log;
 
     private Action<byte[]>? _wireSender;
+    private Action<byte[]>? _hangupWireSender;  // un-wrapped: pierces EngineSendGate
     private Func<bool>? _isPartyFollower;       // in a party AND not the leader
     private Action? _requestPartyWait;          // ping leader to halt (PartyRestSync)
     private Action? _requestPartyOk;            // release leader
@@ -189,6 +190,21 @@ public sealed class HealthManager : IDisposable
     {
         ArgumentNullException.ThrowIfNull(sender);
         _wireSender = sender;
+    }
+
+    // Bind a SEPARATE, un-wrapped wire sender for the emergency low-HP hangup.
+    // Every other HealthManager send flows through _wireSender, which the app
+    // wraps through EngineSendGate — so when a hold is up (e.g. the dropped /
+    // mortally-wounded hold) those sends silently drop. That's correct for rest
+    // / stand / flee (a dropped character can't do them anyway), but the hangup
+    // MUST survive the very hold that a drop raises: hanging up is still allowed
+    // at or below 0 HP, and it's the dropped character's last escape. Wiring
+    // this to the raw un-wrapped SendUserInput lets the hangup pierce the gate.
+    // Falls back to _wireSender when unset (tests / pre-wire).
+    public void SetHangupWireSender(Action<byte[]> sender)
+    {
+        ArgumentNullException.ThrowIfNull(sender);
+        _hangupWireSender = sender;
     }
 
     // Wire party-role-aware recovery. isPartyFollower returns true when the local
@@ -325,15 +341,16 @@ public sealed class HealthManager : IDisposable
         // fires there's nothing left to rest / flee for, so we're done.
         if (TryEmergencyHangup(s)) return;
 
-        // Defensive: in real use PromptParser writes Hp + MaxHp before
-        // flipping HasPromptData, so Hp == 0 here means either the
-        // character is genuinely dead OR a producer races the
-        // ordering. Either way a zero-on-zero comparison would assert
-        // spuriously. Skip until the first real value lands —
-        // DeathLineWatcher handles the actual dead case via
-        // PlayerDied + recovery routing, which doesn't need a rest
-        // gate.
-        if (_state.Hp <= 0 && _state.Ma <= 0) return;
+        // At or below 0 HP the character is dropped / mortally wounded (or dead)
+        // and can't rest / stand / flee — the game rejects every action command.
+        // The emergency hangup already ran above (it's the one send allowed while
+        // dropped), so there's nothing left for this tick to do. Bailing on Hp
+        // alone (not Hp && Ma) also skips the zero-on-zero prompt-race assert:
+        // PromptParser writes Hp + MaxHp before flipping HasPromptData, so a real
+        // live character is never at Hp <= 0 here. PlayerDroppedGate holds the
+        // engine + movement gates for the whole dropped window; recovery routing
+        // for an actual death runs through DeathLineWatcher.
+        if (_state.Hp <= 0) return;
 
         // Rest-interruption recovery on a resting-state change. Two-step
         // latch so we don't race the (Resting) prompt arrival:
@@ -621,7 +638,10 @@ public sealed class HealthManager : IDisposable
         // reactive-reconnect path stands down — otherwise the very disconnect we
         // just triggered gets classified as unexpected and immediately dialled back.
         _hangupSignal?.SignalHangup();
-        SendCommand(hangCmd);
+        // Route through the un-wrapped hangup sender so a low-HP hangup fires even
+        // while the mortally-wounded EngineSendGate hold is up (that hold gates
+        // every OTHER engine send, but the escape hangup must pierce it).
+        SendHangup(hangCmd);
         return true;
     }
 
@@ -800,6 +820,18 @@ public sealed class HealthManager : IDisposable
         if (_wireSender is null) return;
         byte[] bytes = Encoding.Latin1.GetBytes(text + "\r");
         _wireSender(bytes);
+    }
+
+    // Emergency-hangup send. Prefers the un-wrapped hangup sender (which bypasses
+    // EngineSendGate) so it fires even while a hold is up; falls back to the
+    // ordinary wrapped sender when no hangup sender was bound (tests / pre-wire).
+    private void SendHangup(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return;
+        Action<byte[]>? sender = _hangupWireSender ?? _wireSender;
+        if (sender is null) return;
+        byte[] bytes = Encoding.Latin1.GetBytes(text + "\r");
+        sender(bytes);
     }
 
     public void Dispose()
