@@ -2,9 +2,11 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
-## 1.7.1
+## 1.8.0
 
+- Backscroll window draws a "live" divider marking where logged history ends and the live tail begins
 - Engine-sent telepaths (party @-command probes / nags) now show their message in the Conversation window instead of a blank line
+- `@`-command replies sent via say now use the period precursor instead of the literal word "say"
 
 ## 1.7.0
 

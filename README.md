@@ -1,8 +1,10 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.7.1**
+> **Version 1.8.0**
+> - Backscroll window draws a "live" divider marking where logged history ends and the live tail begins
 > - Engine-sent telepaths (party @-command probes / nags) now show their message in the Conversation window instead of a blank line
+> - `@`-command replies sent via say now use the period precursor instead of the literal word "say"
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

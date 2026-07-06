@@ -78,19 +78,43 @@
             </ListBox.Styles>
             <ListBox.ItemTemplate>
                 <DataTemplate DataType="vm:BackscrollRowViewModel">
-                    <Grid ColumnDefinitions="Auto,*">
-                        <TextBlock Grid.Column="0"
-                                   Text="{Binding TimestampText}"
-                                   Foreground="#808080"
-                                   FontFamily="avares://FujinTerm/Assets/Fonts/Mx437_IBM_VGA_8x16.ttf#Mx437 IBM VGA 8x16"
-                                   FontSize="16"
-                                   Margin="0,0,12,0"/>
-                        <ctl:TranscriptRow Grid.Column="1"
-                                           Row="{Binding}"
-                                           Foreground="White"
-                                           FontFamily="avares://FujinTerm/Assets/Fonts/Mx437_IBM_VGA_8x16.ttf#Mx437 IBM VGA 8x16"
-                                           FontSize="16"/>
-                    </Grid>
+                    <StackPanel Orientation="Vertical">
+                        <!-- Live/history divider: drawn above the first live
+                             mirror row (ShowLiveSeparator) so the boundary
+                             between frozen scrollback and the tail that updates
+                             in place is obvious. Fixed-width rules, not star
+                             columns — the ListBox item is content-width under
+                             horizontal scroll, so a star column would collapse
+                             to zero and the rule would vanish. -->
+                        <StackPanel Orientation="Horizontal"
+                                    Margin="0,3,0,3"
+                                    IsVisible="{Binding ShowLiveSeparator}">
+                            <Border Width="70" Height="1"
+                                    VerticalAlignment="Center"
+                                    Background="{StaticResource AccentAmberBrush}"/>
+                            <TextBlock Text="live"
+                                       Margin="8,0,8,0"
+                                       VerticalAlignment="Center"
+                                       Foreground="{StaticResource AccentAmberBrush}"
+                                       FontSize="11"/>
+                            <Border Width="560" Height="1"
+                                    VerticalAlignment="Center"
+                                    Background="{StaticResource AccentAmberBrush}"/>
+                        </StackPanel>
+                        <Grid ColumnDefinitions="Auto,*">
+                            <TextBlock Grid.Column="0"
+                                       Text="{Binding TimestampText}"
+                                       Foreground="#808080"
+                                       FontFamily="avares://FujinTerm/Assets/Fonts/Mx437_IBM_VGA_8x16.ttf#Mx437 IBM VGA 8x16"
+                                       FontSize="16"
+                                       Margin="0,0,12,0"/>
+                            <ctl:TranscriptRow Grid.Column="1"
+                                               Row="{Binding}"
+                                               Foreground="White"
+                                               FontFamily="avares://FujinTerm/Assets/Fonts/Mx437_IBM_VGA_8x16.ttf#Mx437 IBM VGA 8x16"
+                                               FontSize="16"/>
+                        </Grid>
+                    </StackPanel>
                 </DataTemplate>
             </ListBox.ItemTemplate>
         </ListBox>
