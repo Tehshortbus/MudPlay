@@ -2,6 +2,13 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0): **MAJOR** = whole-program refactor, **MINOR** = a large PR, **PATCH** = a small / bugfix PR.
 
+## 1.5.8
+
+A walk-to no longer wedges into a permanent "walking but not moving" state after crossing into a new area — the room tracker now recognises the engine's own echoed move regardless of how long a map re-root delays it, so it stops mistaking that echo for a phantom second step that jammed the pending queue.
+
+**Fixed**
+- **A walk-to could enter a zombie "walking but stalled" state, and stopping + re-queuing it made things worse.** Every move the walker sends is echoed back over the wire, and the room tracker debounced that echo on a fixed 100 ms wall-clock window. Crossing into a new area triggers a synchronous map re-root (thousands of rooms re-laid-out) that runs *between* the walker announcing the move and the echoed bytes arriving — pushing the echo past the 100 ms window, so it was treated as a real second move and double-enqueued. That phantom kept the tracker's pending-move queue non-empty forever: the next room display confirmed as "queue not empty" and held the tracker in `Pending`, so the walker believed it was mid-step and never advanced (the brief "map flipped to another room then back" was that same re-root). Stopping the walk didn't drain the phantom, so re-queuing inherited the jammed queue and stayed buggy. The echo is now matched by a **consume-once claim** armed only by the engine's own send and cleared by the first matching echo — timing-independent, so a re-root of any duration can't turn the echo into a phantom. A generous expiry bounds a claim whose echo never arrives (a refused move) so it can't later swallow an unrelated manual step, and manual movement (which never arms a claim) is unaffected — including two manual steps of the same direction in quick succession, which the old window used to wrongly collapse into one.
+
 ## 1.5.7
 
 Walk-to routing now treats an unaffordable `(Toll: N)` exit the same way it already treats a level gate you fall outside of — the planner routes around a toll you can't cover instead of marching you into a refusal, so a walk that would only end with `You do not have enough to cover the toll of N gold crowns.` never starts down that road.

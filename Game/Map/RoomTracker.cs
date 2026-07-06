@@ -212,13 +212,21 @@ public sealed class RoomTracker
 
     // ----- inputs -----------------------------------------------------
 
-    // The walker (or any other caller that just sent a move) reports the
+    // The walker (or any other engine caller that just sent a move) reports the
     // direction. The tracker enqueues a pending move and prepares to validate
-    // against the next observation.
+    // against the next observation. Because the engine's bytes echo back through
+    // SendUserInput → OutboundMovementObserver → NoteMoveSentByObserver, this
+    // direct call also arms a consume-once echo claim so that echo is dropped
+    // rather than enqueued as a phantom second move.
     public void NoteMoveSent(Direction direction, DateTimeOffset? whenUtc = null)
+        => NoteMoveSentCore(direction, isEngineAnnouncement: true, whenUtc ?? DateTimeOffset.UtcNow);
+
+    private void NoteMoveSentCore(Direction direction, bool isEngineAnnouncement, DateTimeOffset when)
     {
-        DateTimeOffset when = whenUtc ?? DateTimeOffset.UtcNow;
-        _lastCardinalAnnouncement = (direction, when);
+        if (isEngineAnnouncement)
+        {
+            _cardinalEchoClaim = (direction, when + EchoClaimExpiry);
+        }
         EnqueuePending(PendingMove.FromDirection(direction, when));
         AppendStep(new DirectionDto(direction));
 
@@ -232,61 +240,81 @@ public sealed class RoomTracker
         // hang the prediction on.
     }
 
-    // Echo-aware overload for OutboundMovementObserver. The observer fires from
-    // SendUserInput right after the walker / loop-runner already called
-    // NoteMoveSent directly — drop the second announcement when the most-recent
-    // direction matches within MoveDebounceWindow. Manual cardinal typing
-    // (no walker call) lands as a real announcement.
+    // Echo-aware overload for OutboundMovementObserver. The engine's own bytes
+    // echo back here after the walker / loop-runner already called NoteMoveSent
+    // directly. Consume the matching echo claim (armed by that direct call) and
+    // drop this second announcement. The claim is consumed exactly once and is
+    // matched on direction alone, NOT on a wall-clock window: a synchronous map
+    // re-root on entering a new area can stall the byte round-trip well past any
+    // fixed millisecond budget, and the old time-window let that late echo slip
+    // through as a phantom move that wedged the pending queue and stalled the
+    // walk. A generous expiry still bounds an orphaned claim (a refused move
+    // whose echo never comes) so it can't later swallow an unrelated manual step.
+    // Manual cardinal typing (no engine call, so no claim) lands as a real move.
     public void NoteMoveSentByObserver(Direction direction, DateTimeOffset? whenUtc = null)
     {
         DateTimeOffset when = whenUtc ?? DateTimeOffset.UtcNow;
-        if (_lastCardinalAnnouncement is { Dir: var lastDir, At: var lastAt }
-            && lastDir == direction
-            && (when - lastAt) < MoveDebounceWindow)
+        if (_cardinalEchoClaim is { Dir: var claimDir, ExpiresAt: var expiresAt }
+            && claimDir == direction
+            && when < expiresAt)
         {
+            _cardinalEchoClaim = null;
             _log?.Log(LogSeverity.Debug, "RoomTracker",
-                $"Debounced observer echo of NoteMoveSent({direction}); engine already announced within {MoveDebounceWindow.TotalMilliseconds:0} ms.");
+                $"Consumed engine echo of move {direction}; not re-enqueued.");
             return;
         }
-        NoteMoveSent(direction, whenUtc);
+        NoteMoveSentCore(direction, isEngineAnnouncement: false, when);
     }
 
     // Echo-aware overload for OutboundMovementObserver's text-exit path. Mirrors
-    // the cardinal debounce above. SpecialExitDispatch (walker / loop-runner)
+    // the cardinal claim above. SpecialExitDispatch (walker / loop-runner)
     // announces a text exit WITH its resolved cardinal, then pumps the bytes;
     // those bytes flow back through SendUserInput → the observer, which would
     // otherwise enqueue a SECOND, cardinal-less pending move for the same
     // physical step. That phantom keeps the pending queue non-empty after the
     // walker has already landed, holding the tracker in Pending and stalling the
-    // walk until the next observation flushes it. Drop the observer echo when the
-    // engine just announced the same command. Manual text typing (no engine
-    // call, or past the window) lands as a real announcement.
+    // walk until the next observation flushes it. Consume the claim armed by the
+    // engine's direct call to drop the echo. Manual text typing (no engine call)
+    // lands as a real announcement.
     public void NoteMoveSentByObserver(string command, DateTimeOffset? whenUtc = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(command);
         DateTimeOffset when = whenUtc ?? DateTimeOffset.UtcNow;
-        if (_lastTextAnnouncement is { Command: var lastCmd, At: var lastAt }
-            && string.Equals(lastCmd, command, StringComparison.OrdinalIgnoreCase)
-            && (when - lastAt) < MoveDebounceWindow)
+        if (_textEchoClaim is { Command: var claimCmd, ExpiresAt: var expiresAt }
+            && string.Equals(claimCmd, command, StringComparison.OrdinalIgnoreCase)
+            && when < expiresAt)
         {
+            _textEchoClaim = null;
             _log?.Log(LogSeverity.Debug, "RoomTracker",
-                $"Debounced observer echo of NoteMoveSent('{command}'); engine already announced within {MoveDebounceWindow.TotalMilliseconds:0} ms.");
+                $"Consumed engine echo of move '{command}'; not re-enqueued.");
             return;
         }
-        NoteMoveSent(command, whenUtc: whenUtc);
+        NoteMoveSentCore(command, cardinal: null, isEngineAnnouncement: false, when);
     }
 
-    private (Direction Dir, DateTimeOffset At)? _lastCardinalAnnouncement;
-    private (string Command, DateTimeOffset At)? _lastTextAnnouncement;
-    private static readonly TimeSpan MoveDebounceWindow = TimeSpan.FromMilliseconds(100);
+    private (Direction Dir, DateTimeOffset ExpiresAt)? _cardinalEchoClaim;
+    private (string Command, DateTimeOffset ExpiresAt)? _textEchoClaim;
+    // A move's bytes normally echo back within a few milliseconds, but a
+    // synchronous map re-root on entering a new area can stall the round-trip;
+    // the expiry only has to outlast that worst-case pump, while staying short
+    // enough that an orphaned claim (echo never arrived) can't shadow a later
+    // manual move of the same direction.
+    private static readonly TimeSpan EchoClaimExpiry = TimeSpan.FromSeconds(2);
 
     // Text-exit move (e.g. "go path") — used by the look-direction-interception
     // work for arbitrary text commands that don't map to a Direction.
     public void NoteMoveSent(string command, Direction? cardinal = null, DateTimeOffset? whenUtc = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(command);
-        DateTimeOffset when = whenUtc ?? DateTimeOffset.UtcNow;
-        _lastTextAnnouncement = (command, when);
+        NoteMoveSentCore(command, cardinal, isEngineAnnouncement: true, whenUtc ?? DateTimeOffset.UtcNow);
+    }
+
+    private void NoteMoveSentCore(string command, Direction? cardinal, bool isEngineAnnouncement, DateTimeOffset when)
+    {
+        if (isEngineAnnouncement)
+        {
+            _textEchoClaim = (command, when + EchoClaimExpiry);
+        }
         EnqueuePending(new PendingMove(cardinal, command, when));
         AppendStep(new DirectionDto(cardinal, command));
 
