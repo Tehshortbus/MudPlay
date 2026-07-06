@@ -43,6 +43,15 @@ public sealed class MovementFilter : IRoomFilter
     // never waves the leader through a gate the leader can't cross either.
     public Func<(int Low, int High)?>? PartyLevelBoundsProvider { get; set; }
 
+    // Supplies the player's current on-hand wealth in copper farthings (the
+    // consolidated `Wealth:` value), or null when it isn't known yet (no
+    // inventory parsed). Wired by AppServices to the live currency snapshot.
+    // A (Toll: N) exit needs N*100 copper-value carried to cross (confirmed
+    // mechanic — the game phrases the bar as "N gold crowns" but any coin mix
+    // totalling that value passes), so IsExitBlocked routes around a toll we
+    // can't afford. When null we don't gate — same rule as an unknown level.
+    public Func<long?>? WealthProvider { get; set; }
+
     // Read-only snapshot of the currently-avoided room keys.
     public IReadOnlyCollection<RoomKey> Avoided => _avoided;
 
@@ -71,7 +80,14 @@ public sealed class MovementFilter : IRoomFilter
 
     public bool IsAvoided(RoomKey key) => _avoided.Contains(key);
 
-    public bool IsExitBlocked(in RoomExit exit)
+    // An exit is non-traversable for planning when EITHER its level window
+    // excludes the crosser OR it's a toll the crosser can't afford. The two
+    // gate classes are independent (a toll exit carries Hint=Toll, a level
+    // gate is a plain cardinal with a window), so both are checked.
+    public bool IsExitBlocked(in RoomExit exit) =>
+        IsLevelGateBlocked(in exit) || IsTollGateBlocked(in exit);
+
+    private bool IsLevelGateBlocked(in RoomExit exit)
     {
         if (!exit.HasLevelGate) return false;
 
@@ -95,6 +111,18 @@ public sealed class MovementFilter : IRoomFilter
         if (exit.MinLevel > 0 && level < exit.MinLevel) return true;
         if (exit.MaxLevel > 0 && level > exit.MaxLevel) return true;
         return false;
+    }
+
+    // A (Toll: N) exit needs N*100 copper-value on hand to cross. Only gate
+    // when we know our wealth — an unknown wallet never refuses a walk on a
+    // bar we can't yet evaluate. Self-only for now: the leader can't see a
+    // follower's carried coin, so party-wide toll gating (poll @wealth) is a
+    // separate concern; this at least stops US walking into a toll we can't pay.
+    private bool IsTollGateBlocked(in RoomExit exit)
+    {
+        if (exit.Hint != RoomExitHint.Toll || exit.TollGold <= 0) return false;
+        if (WealthProvider?.Invoke() is not { } wealth) return false;
+        return wealth < (long)exit.TollGold * 100;
     }
 
     // True when the user has flagged this room as a stash drop-off point.

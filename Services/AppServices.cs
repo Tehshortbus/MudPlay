@@ -1878,6 +1878,12 @@ public sealed class AppServices
         // null until a stat screen parses — IsExitBlocked never gates on
         // an unknown level, so an unparsed character walks unrestricted.
         Movement.LevelProvider = () => Stats.HasParsed ? PlayerStats.Level : (int?)null;
+        // Feed on-hand wealth into (Toll: N) exit affordability. null until an
+        // 'i' dump parses (IsLoaded false), so an unknown wallet never gates —
+        // same rule as an unknown level. IsLoaded distinguishes "empty purse"
+        // (a real 0 that WOULD gate a toll) from "haven't parsed inventory yet".
+        Movement.WealthProvider = () =>
+            Inventory.IsLoaded ? Inventory.Snapshot.Currency.TotalCopperValue : (long?)null;
         Favorites = new FavoritesStore(Profile, Log);
 
         // Coordinator + walker. Coordinator is the

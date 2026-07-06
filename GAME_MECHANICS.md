@@ -399,6 +399,27 @@ flag). These are hard eligibility gates, independent of resistance and level imm
   something else); the other four are stable across the target realms.
 - **[CONFIRMED]** Value ladder (in copper): 1 silver = 10, 1 gold = 100, 1 platinum = 10 000,
   1 runic = 1 000 000. Wealth is consolidated in copper farthings (the game's `Wealth:` line).
+- **[CONFIRMED]** **Toll exits gate on total wealth, not a specific coin.** A room exit tagged
+  `(Toll: N)` in the map data requires the crosser to carry a **wealth value of `N × 100`**
+  (copper farthings — the same consolidated `Wealth:` figure), held **on them** (carried coin, not
+  banked). The refusal line reads `You do not have enough to cover the toll of N gold crowns.` —
+  but "N gold crowns" is just how the message phrases the copper-value bar (`N` gold = `N × 100`
+  copper), NOT a demand for that coin specifically: any mix of denominations totalling `N × 100`
+  copper-value passes. So affordability is `TotalCopperValue >= TollGold * 100`. The check is
+  **per-crosser**: every party member needs their own `N × 100` on hand, and a member who can't
+  cover it is refused at the gate and left behind while the rest pass.
+- **[CONFIRMED]** **Gating a party's route through a toll / level exit.** Because a toll is
+  per-crosser, a leader routing the party must confirm **every** member can pay before taking the
+  route:
+  - **Toll:** poll the party with **`@wealth`** (each member's client replies with their wealth,
+    same round-trip shape as `@health` / `@level`). If **all** members reply AND each can cover the
+    toll (`wealth >= TollGold * 100`), the route may use the toll room; if **any** member can't
+    cover it (or doesn't reply), **avoid that toll room for this passing**. Wealth changes
+    constantly (loot / spend), so it's polled fresh at planning time rather than cached.
+  - **Level:** use the member level already **stored in game data** (each player's recorded level);
+    only when it's suspected stale, **re-poll in the room with `@level`**. A member outside the
+    exit's `(Level: MIN to MAX)` window means the party routes around that exit. (This half is
+    already implemented: `MovementFilter.IsExitBlocked` + `PartyLevelProbe` / `PartyLevelTracker`.)
 - **[CONFIRMED]** The **keyword** the client keys policy/value on is the denomination-defining
   first word (`copper`/`silver`/`gold`/`platinum`/`runic`); the second word is the flavour coin
   noun (`farthings`/`nobles`/`crowns`/`pieces`/`coins`). Some lines carry only the keyword,

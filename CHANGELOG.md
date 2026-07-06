@@ -2,6 +2,13 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0): **MAJOR** = whole-program refactor, **MINOR** = a large PR, **PATCH** = a small / bugfix PR.
 
+## 1.5.7
+
+Walk-to routing now treats an unaffordable `(Toll: N)` exit the same way it already treats a level gate you fall outside of — the planner routes around a toll you can't cover instead of marching you into a refusal, so a walk that would only end with `You do not have enough to cover the toll of N gold crowns.` never starts down that road.
+
+**Fixed**
+- **Walk-to would march into a toll it couldn't pay.** A `(Toll: N)` exit needs the crosser to carry a wealth value of `N × 100` (the consolidated `Wealth:` figure — any coin mix totalling that copper-value passes; it doesn't have to be gold), and the game refuses the step with `You do not have enough to cover the toll of N gold crowns.` when you're short. The path planner ignored toll cost, so it would happily route you through a toll you couldn't afford and then stall on the refusal. Toll exits now gate at planning time against your live on-hand wealth exactly as level-gated exits gate against your level: the walker routes around a toll you can't cover, and when *every* route to the target is blocked by a level or toll requirement it says so (`all routes blocked by a level or toll requirement`) instead of failing with a bare "no path". As with the level gate, an unknown wallet (no inventory parsed yet) never refuses a walk — we don't gate on a bar we can't yet evaluate. This is the self / leader affordability check; a party-wide `@wealth` poll that gates the whole group's route is a separate follow-up.
+
 ## 1.5.6
 
 When a party member drops in front of you, a party healer now reacts on its own: it holds movement to stay with the downed ally, aids them, keeps healing them by name until they recover, then re-invites them if you're leading — including the case where the one who dropped was the leader whose disconnect already dissolved the party.

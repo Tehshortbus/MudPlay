@@ -1818,8 +1818,8 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     {
         // A failed walk leaves the engine Idle; stash the reason so the
         // top-bar status + CURRENT NAV header can explain why we didn't
-        // move (e.g. "all routes blocked by a level requirement"). Any
-        // forward progress or a fresh start clears it.
+        // move (e.g. "all routes blocked by a level or toll requirement").
+        // Any forward progress or a fresh start clears it.
         switch (e.Kind)
         {
             case WalkEventKind.Failed:

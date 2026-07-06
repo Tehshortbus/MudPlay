@@ -333,6 +333,76 @@ public sealed class MovementFilterTests
         Assert.False(filter.IsExitBlocked(GatedExit(0, 0)));   // ungated exit
     }
 
+    // ----- IsExitBlocked: (Toll: N) wealth-gate evaluation ----------
+
+    private static RoomExit TollExit(int tollGold) =>
+        new(new RoomKey(1, 2), RoomExitHint.Toll, RawHint: null,
+            TollGold: tollGold);
+
+    [Fact]
+    public void IsExitBlocked_Toll_NoWealthProvider_DoesNotBlock()
+    {
+        (_, MovementFilter filter) = NewPair();
+        // WealthProvider unset (AppServices wires it; a bare filter has none).
+        Assert.False(filter.IsExitBlocked(TollExit(5)));
+    }
+
+    [Fact]
+    public void IsExitBlocked_Toll_UnknownWealth_DoesNotBlock()
+    {
+        (_, MovementFilter filter) = NewPair();
+        filter.WealthProvider = () => null;   // no inventory parsed yet
+        Assert.False(filter.IsExitBlocked(TollExit(5)));
+    }
+
+    [Fact]
+    public void IsExitBlocked_Toll_CanAfford_Allows()
+    {
+        (_, MovementFilter filter) = NewPair();
+        // Toll 5 needs 5*100 = 500 copper-value on hand.
+        filter.WealthProvider = () => 500;
+        Assert.False(filter.IsExitBlocked(TollExit(5)));   // exactly meets the bar
+    }
+
+    [Fact]
+    public void IsExitBlocked_Toll_CannotAfford_Blocks()
+    {
+        (_, MovementFilter filter) = NewPair();
+        filter.WealthProvider = () => 499;
+        Assert.True(filter.IsExitBlocked(TollExit(5)));    // one short of 500
+    }
+
+    [Fact]
+    public void IsExitBlocked_Toll_ZeroTollGold_DoesNotBlock()
+    {
+        (_, MovementFilter filter) = NewPair();
+        filter.WealthProvider = () => 0;
+        // A Toll-hint exit with no parsed amount can't gate — nothing to owe.
+        Assert.False(filter.IsExitBlocked(TollExit(0)));
+    }
+
+    [Fact]
+    public void IsExitBlocked_Toll_IndependentOfLevelGate()
+    {
+        (_, MovementFilter filter) = NewPair();
+        // A pure toll exit carries no level window, so the level branch must
+        // never block it even when the level provider says we're low.
+        filter.LevelProvider = () => 1;
+        filter.WealthProvider = () => 1000;
+        Assert.False(filter.IsExitBlocked(TollExit(5)));
+    }
+
+    [Fact]
+    public void IsExitBlocked_LevelGate_UnaffectedByWealthProvider()
+    {
+        (_, MovementFilter filter) = NewPair();
+        // A pure level gate carries no toll, so the wealth branch must never
+        // rescue a walk the level window forbids.
+        filter.LevelProvider = () => 19;
+        filter.WealthProvider = () => 1_000_000;
+        Assert.True(filter.IsExitBlocked(GatedExit(20, 0)));
+    }
+
     // ----- IRoomFilter integration with BfsMapper -------------------
 
     [Fact]
