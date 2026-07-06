@@ -112,6 +112,7 @@ public sealed partial class RoomDisplayParser : IDisposable
             if (string.IsNullOrWhiteSpace(text)) { boundaryIndex = i; break; }
             if (MovementTransitionPattern().IsMatch(text)) { boundaryIndex = i; break; }
             if (PromptLikePattern().IsMatch(text)) { boundaryIndex = i; break; }
+            if (PartyChatterBoundaryPattern().IsMatch(text)) { boundaryIndex = i; break; }
         }
 
         // Colour-anchored pass: prefer a bright-cyan line.
@@ -240,6 +241,23 @@ public sealed partial class RoomDisplayParser : IDisposable
     // Stray prompt segment — safety net if LineExtractor's split missed one.
     [GeneratedRegex(@"^\s*\[HP=", RegexOptions.CultureInvariant)]
     private static partial Regex PromptLikePattern();
+
+    // Party movement/status chatter that sits between a `par` poll (or the
+    // leader's drag) and the room display it precedes. Treated as a block
+    // boundary so the room-name search never reaches back into `par` output.
+    // A follower's party tracking polls `par` constantly, and its first line
+    // ("You are following <leader>.") renders in the same bright cyan the room
+    // title uses — without this boundary the colour-anchored pass grabs it as
+    // the room name, poisoning every dragged step to Suspect. The leader-drag
+    // line ("-- Following your Party leader <dir> --") sits immediately before
+    // the room the follower lands in, so it's the natural block boundary too.
+    //   - " -- Following your Party leader <dir> --"  (leader-drag line)
+    //   - "You are following <name>." / "You are now following <name>."
+    //   - "The following people are in your travel party:"  (par roster header)
+    [GeneratedRegex(
+        @"^\s*(--\s*Following your Party leader\b|You are (now\s+)?following\b|The following people are in your travel party\b)",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex PartyChatterBoundaryPattern();
 
     // Player typed something at the prompt and the server echoed it back.
     // Catches "look n", "sea sword", "l e", "exa torch", etc.

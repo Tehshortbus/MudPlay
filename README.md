@@ -1,8 +1,8 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.9.1**
-> - Party followers stay located on the map — leader-driven drags now feed the room tracker instead of dropping it to "lost"
+> **Version 1.9.2**
+> - Follower map stops drifting to "suspect" — a follower's `par` poll no longer misreads "You are following <leader>." as the room name
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

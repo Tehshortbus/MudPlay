@@ -288,6 +288,57 @@ public sealed class RoomDisplayParserTests : IDisposable
         Assert.Equal(new RoomKey(1, 1), tracker.State.CurrentRoom!.Key);
     }
 
+    // ----- party-list (`par`) output must never become a room name -----
+
+    [Fact]
+    public void ParOutput_BeforeDraggedRoom_DoesNotBecomeRoomName()
+    {
+        // The follower's party tracking polls `par` constantly. Its output —
+        // "You are following <leader>." + roster — lands in the buffer right
+        // before the leader-drag line and the room the follower is pulled into.
+        // Without the party-chatter boundary the name search reaches back and
+        // grabs "You are following Fujin." as the room name, knocking the
+        // tracker to Suspect. The boundary must isolate the real room title.
+        (RoomTracker tracker, RoomDisplayParser parser) = NewParser();
+
+        parser.FeedTestLines(new[] { "Town Gates", "Obvious exits: north." });
+        Assert.Equal(new RoomKey(1, 1), tracker.State.CurrentRoom!.Key);
+
+        parser.FeedTestLines(new[]
+        {
+            "You are following Fujin.",
+            "The following people are in your travel party:",
+            "  Fujin WuzHere                  (Mystic)     [K: 60%] [H:100%]   - Frontrank",
+            "  Raijin WuzHere                 (Priest)     [M: 94%] [H:100%]   - Backrank",
+            " -- Following your Party leader north --",
+            "North Square",
+            "Obvious exits: south.",
+        });
+
+        Assert.Equal(RoomConfidence.Confirmed, tracker.State.Confidence);
+        Assert.Equal(new RoomKey(1, 2), tracker.State.CurrentRoom!.Key);
+    }
+
+    [Fact]
+    public void FollowLeaderDragLine_ActsAsBlockBoundary()
+    {
+        // Even with no `par` output, the leader-drag line alone must isolate
+        // the dragged room's title from whatever combat/chatter preceded it.
+        (RoomTracker tracker, RoomDisplayParser parser) = NewParser();
+
+        parser.FeedTestLines(new[]
+        {
+            "The dark goblin archer collapses with a spiteful hiss.",
+            "You gain 40 experience.",
+            "Fujin just left to the north.",
+            " -- Following your Party leader north --",
+            "North Square",
+            "Obvious exits: south.",
+        });
+
+        Assert.Equal(new RoomKey(1, 2), tracker.State.CurrentRoom!.Key);
+    }
+
     [Fact]
     public void PromptLikeLine_AsBoundary_IsolatesNextRoom()
     {
