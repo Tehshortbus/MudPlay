@@ -1,8 +1,10 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.9.2**
+> **Version 1.9.3**
 > - Follower map stops drifting to "suspect" — a follower's `par` poll no longer misreads "You are following <leader>." as the room name
+> - Auto-deposit no-ops when the Bank dropdown has no valid pick — a stale/orphaned bank key no longer detours to a phantom bank or probes party `@wealth` for a toll
+> - Bank picker placeholder now reads "(Banks from game data and Stash rooms)"
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

@@ -104,7 +104,7 @@
                               SelectedItem="{Binding SelectedBank, Mode=TwoWay}"
                               DisplayMemberBinding="{Binding Display}"
                               Width="420" HorizontalAlignment="Left"
-                              PlaceholderText="(banks from Shops + your marked stash rooms)"
+                              PlaceholderText="(Banks from game data and Stash rooms)"
                               ToolTip.Tip="Populated from the active game-data Shops table where ShopType == 7 (banks), plus every room you've toggled as a stash on the Navigation map."/>
                 </Grid>
 

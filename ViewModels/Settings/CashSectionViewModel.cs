@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Avalonia.Controls;
 using CommunityToolkit.Mvvm.ComponentModel;
+using FujinTerm.Game.GameData;
 using FujinTerm.Game.Map;
 using FujinTerm.Models.Profile;
 using FujinTerm.Services;
@@ -311,23 +312,15 @@ public sealed partial class CashSectionViewModel : SettingsSectionViewModel
 
     private static void AppendShopBanks(AppServices svc, List<BankChoice> choices)
     {
-        JsonDocument? doc = svc.GameData.GetRawTable("Shops");
-        if (doc is null) return;
-        foreach (JsonElement el in doc.RootElement.EnumerateArray())
+        // Same ShopType == 7 + Assigned-To parse the auto-deposit engine's
+        // destination-validity check uses, so the picker offers exactly the
+        // rooms a persisted key will validate against.
+        foreach (BankShop bank in BankCatalog.Enumerate(svc.GameData))
         {
-            if (!TryReadShopType(el, out int shopType)) continue;
-            if (shopType != 7) continue;       // not a bank
-
-            string shopName = el.TryGetProperty("Name", out JsonElement nameEl)
-                              && nameEl.ValueKind == JsonValueKind.String
-                ? nameEl.GetString() ?? string.Empty
-                : string.Empty;
-            (int map, int room) = TryReadAssignedRoom(el);
-            if (map == 0 && room == 0) continue;
-            string roomName = svc.RoomGraph.GetRoom(new RoomKey(map, room))?.Name ?? "(unknown)";
+            string roomName = string.IsNullOrEmpty(bank.RoomName) ? "(unknown)" : bank.RoomName;
             choices.Add(new BankChoice(
-                Value:   $"{map}/{room}",
-                Display: $"({map}/{room}) {roomName} - {shopName}"));
+                Value:   $"{bank.Map}/{bank.Room}",
+                Display: $"({bank.Map}/{bank.Room}) {roomName} - {bank.Name}"));
         }
     }
 
@@ -347,35 +340,6 @@ public sealed partial class CashSectionViewModel : SettingsSectionViewModel
         }
     }
 
-    private static bool TryReadShopType(JsonElement el, out int shopType)
-    {
-        shopType = 0;
-        if (!el.TryGetProperty("ShopType", out JsonElement t)) return false;
-        if (t.ValueKind == JsonValueKind.Number) { shopType = t.GetInt32(); return true; }
-        if (t.ValueKind == JsonValueKind.String
-            && int.TryParse(t.GetString(), out int parsed)) { shopType = parsed; return true; }
-        return false;
-    }
-
-    private static (int Map, int Room) TryReadAssignedRoom(JsonElement el)
-    {
-        if (!el.TryGetProperty("Assigned To", out JsonElement aEl)) return (0, 0);
-        if (aEl.ValueKind != JsonValueKind.String) return (0, 0);
-        string s = aEl.GetString() ?? string.Empty;
-        // "Room 1/297" or "Room 1/297, Room 6/1334" — take the first.
-        int start = s.IndexOf("Room ", StringComparison.OrdinalIgnoreCase);
-        if (start < 0) return (0, 0);
-        string tail = s[(start + 5)..];
-        int slash = tail.IndexOf('/');
-        if (slash <= 0) return (0, 0);
-        if (!int.TryParse(tail[..slash], out int map)) return (0, 0);
-        string roomTail = tail[(slash + 1)..];
-        int end = 0;
-        while (end < roomTail.Length && char.IsDigit(roomTail[end])) end++;
-        if (end == 0) return (0, 0);
-        if (!int.TryParse(roomTail[..end], out int room)) return (0, 0);
-        return (map, room);
-    }
 }
 
 // One entry in the Bank picker — gold-equivalent location the auto-deposit flow
