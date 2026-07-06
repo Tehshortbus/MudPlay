@@ -30,6 +30,13 @@ it isn't here and you're unsure, ask.
   an occupied off-hand, etc.). If it isn't usable, the swap fails and nothing changes. So a
   single-slot swap needs no explicit `rem` first.
 
+**Named-item uniqueness & paired slots** *([CONFIRMED])*
+- Only **one of each *named* item** can be worn at a time. Two identically-named pieces
+  (e.g. two *silver bracelets*) can't both be equipped; the second is refused. Distinct
+  names are fine — a *silver bracelet* and an *ivory bracelet* equip together.
+- The **finger** and **wrist** families each hold **two** physical pieces (Finger1/Finger2,
+  Wrist1/Wrist2), so long as the two are distinct names. Every other slot holds one.
+
 **Other**
 - **[CONFIRMED]** A weapon equip / swap prints a **single** line — `You are now holding <new>.`.
   Swapping into an occupied weapon hand emits **no** removal line for the old weapon; the

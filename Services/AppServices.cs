@@ -2592,6 +2592,8 @@ public sealed class AppServices
                 Profile.Save();
             },
             isTwoHanded: IsConfiguredWeaponTwoHanded,
+            resolveItemSlot: ResolveEquipItemSlot,
+            canEquipItem: CanCharacterEquipItem,
             log: Log);
         EquipRemote = new Game.Remote.EquipHandler(RemoteCommands, Equipment);
 
@@ -3302,6 +3304,32 @@ public sealed class AppServices
             _ => 0,
         };
         return Game.GameData.LookupEnums.IsTwoHandedWeaponType(code);
+    }
+
+    // Physical EquipmentSlot a carried item name fills, or null if the active
+    // game-data set has no matching Items row / the item isn't wearable gear.
+    // Fed to EquipmentManager's inventory-fallback planner so it can slot loose
+    // carried gear into empty slots.
+    private Models.Profile.EquipmentSlot? ResolveEquipItemSlot(string itemName)
+    {
+        if (GameData.FindRowByName("Items", itemName) is not System.Text.Json.JsonElement row)
+            return null;
+        return Game.Inventory.EquipmentSlotMap.SlotForItem(row);
+    }
+
+    // True when the live character can actually wear the named carried item —
+    // gated by level / class / alignment against the active game-data set. Feeds
+    // the inventory-fallback planner so it never queues gear the game would reject.
+    // An unknown item (no Items row) resolves false: don't queue what we can't verify.
+    private bool CanCharacterEquipItem(string itemName)
+    {
+        if (GameData.FindRowByName("Items", itemName) is not System.Text.Json.JsonElement row)
+            return false;
+        Game.Inventory.ClassEquipProfile cls =
+            Game.Inventory.ItemEquipFilter.ResolveClassProfile(GameData, PlayerStats.Class);
+        Game.Calculators.AlignmentBucket? bucket =
+            Game.Inventory.ItemEquipFilter.BucketForWord(Players.Find(PlayerStats.Name)?.Alignment);
+        return Game.Inventory.ItemEquipFilter.CanEquip(row, PlayerStats.Level, cls, bucket);
     }
 
     // Read a single boolean off the active profile's

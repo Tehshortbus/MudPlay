@@ -2,6 +2,12 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.7.0
+
+- Equip All / @equip-<set> fill empty slots from carried gear when a set is empty or its items are missing
+- Loose gear is level / class / alignment checked before it's worn
+- Duplicate-named pieces are rejected; fingers and wrists take two distinct items each
+
 ## 1.6.0
 
 - Help-menu websites now editable under Settings → Toolbar + Shortcuts

@@ -559,4 +559,163 @@ public sealed class EquipmentManagerTests
 
         Assert.Equal(new[] { "wear leather", "wear hood" }, cmds);
     }
+
+    // ===== BuildEquipCommands (inventory-aware fallback plan, pure) =====
+    // The resolver / canEquip game-data lookups are stubbed so the plan logic
+    // (set pass → carried fallback, distinct-name + family-capacity rules) is
+    // pinned without a live GameDataCache.
+
+    private static Func<string, EquipmentSlot?> Resolver(
+        params (string Name, EquipmentSlot Slot)[] map)
+    {
+        var d = map.ToDictionary(x => x.Name, x => x.Slot, StringComparer.OrdinalIgnoreCase);
+        return name => d.TryGetValue(name, out EquipmentSlot s) ? s : (EquipmentSlot?)null;
+    }
+
+    private static readonly Func<string, bool> EquipAll = static _ => true;
+
+    private static IReadOnlyList<EquippedItem> WornList(
+        params (string Name, string Slot)[] items)
+        => items.Select(i => new EquippedItem(i.Name, i.Slot)).ToList();
+
+    [Fact]
+    public void BuildEquipCommands_EmptySet_FillsFromCarriedInOrder()
+    {
+        EquipmentSet set = Set("default", "Default");
+        var carried = new[] { "iron helm", "leather boots" };
+        Func<string, EquipmentSlot?> resolve = Resolver(
+            ("iron helm", EquipmentSlot.Head), ("leather boots", EquipmentSlot.Feet));
+
+        List<string> cmds = EquipmentManager.BuildEquipCommands(
+            set, carried, WornList(), resolve, EquipAll);
+
+        Assert.Equal(new[] { "wear iron helm", "wear leather boots" }, cmds);
+    }
+
+    [Fact]
+    public void BuildEquipCommands_DuplicateNamedItem_EquipsOnlyDistinctPerFamily()
+    {
+        // Two silver bracelets + one ivory: the wrist family holds two, but the
+        // duplicate name is refused — a silver + the ivory, not two silvers.
+        EquipmentSet set = Set("default", "Default");
+        var carried = new[] { "silver bracelet", "silver bracelet", "ivory bracelet" };
+        Func<string, EquipmentSlot?> resolve = Resolver(
+            ("silver bracelet", EquipmentSlot.Wrist1),
+            ("ivory bracelet", EquipmentSlot.Wrist1));
+
+        List<string> cmds = EquipmentManager.BuildEquipCommands(
+            set, carried, WornList(), resolve, EquipAll);
+
+        Assert.Equal(new[] { "wear silver bracelet", "wear ivory bracelet" }, cmds);
+    }
+
+    [Fact]
+    public void BuildEquipCommands_PairedFamily_CapsAtTwo()
+    {
+        // Three distinct rings, but a hand wears only two.
+        EquipmentSet set = Set("default", "Default");
+        var carried = new[] { "ruby ring", "emerald ring", "sapphire ring" };
+        Func<string, EquipmentSlot?> resolve = Resolver(
+            ("ruby ring", EquipmentSlot.Finger1),
+            ("emerald ring", EquipmentSlot.Finger1),
+            ("sapphire ring", EquipmentSlot.Finger1));
+
+        List<string> cmds = EquipmentManager.BuildEquipCommands(
+            set, carried, WornList(), resolve, EquipAll);
+
+        Assert.Equal(new[] { "wear ruby ring", "wear emerald ring" }, cmds);
+    }
+
+    [Fact]
+    public void BuildEquipCommands_Weapon_UsesEqVerb()
+    {
+        EquipmentSet set = Set("default", "Default");
+        var carried = new[] { "long sword" };
+        Func<string, EquipmentSlot?> resolve = Resolver(("long sword", EquipmentSlot.Weapon));
+
+        List<string> cmds = EquipmentManager.BuildEquipCommands(
+            set, carried, WornList(), resolve, EquipAll);
+
+        Assert.Equal(new[] { "eq long sword" }, cmds);
+    }
+
+    [Fact]
+    public void BuildEquipCommands_SetNamesUncarriedItem_FallsBackToCarried()
+    {
+        // The set wants a gold helm we don't have, but we carry an iron one — the
+        // fallback fills the head slot from what's actually in the pack.
+        EquipmentSet set = Set("default", "Default", Entry(EquipmentSlot.Head, "gold helm"));
+        var carried = new[] { "iron helm" };
+        Func<string, EquipmentSlot?> resolve = Resolver(("iron helm", EquipmentSlot.Head));
+
+        List<string> cmds = EquipmentManager.BuildEquipCommands(
+            set, carried, WornList(), resolve, EquipAll);
+
+        Assert.Equal(new[] { "wear iron helm" }, cmds);
+    }
+
+    [Fact]
+    public void BuildEquipCommands_SetPickCarried_WinsOverFallbackForSameFamily()
+    {
+        // The set's explicit head pick is carried, so it's placed and fills the
+        // single head slot — the other carried head item doesn't also get worn.
+        EquipmentSet set = Set("default", "Default", Entry(EquipmentSlot.Head, "mithril helm"));
+        var carried = new[] { "mithril helm", "leather cap" };
+        Func<string, EquipmentSlot?> resolve = Resolver(
+            ("mithril helm", EquipmentSlot.Head), ("leather cap", EquipmentSlot.Head));
+
+        List<string> cmds = EquipmentManager.BuildEquipCommands(
+            set, carried, WornList(), resolve, EquipAll);
+
+        Assert.Equal(new[] { "wear mithril helm" }, cmds);
+    }
+
+    [Fact]
+    public void BuildEquipCommands_SkipsAlreadyWornItemAndFilledFamily()
+    {
+        // Head already occupied: the carried helm (same name) is skipped, and the
+        // family is full so no other head item is queued — only the free slot fills.
+        EquipmentSet set = Set("default", "Default");
+        var carried = new[] { "helm", "leather cap", "boots" };
+        Func<string, EquipmentSlot?> resolve = Resolver(
+            ("helm", EquipmentSlot.Head),
+            ("leather cap", EquipmentSlot.Head),
+            ("boots", EquipmentSlot.Feet));
+
+        List<string> cmds = EquipmentManager.BuildEquipCommands(
+            set, carried, WornList(("helm", "Head")), resolve, EquipAll);
+
+        Assert.Equal(new[] { "wear boots" }, cmds);
+    }
+
+    [Fact]
+    public void BuildEquipCommands_UnequippableGear_IsSkipped()
+    {
+        // canEquip rejects the cursed blade (wrong class / level / alignment); the
+        // next carried weapon fills the hand instead.
+        EquipmentSet set = Set("default", "Default");
+        var carried = new[] { "cursed blade", "plain dagger" };
+        Func<string, EquipmentSlot?> resolve = Resolver(
+            ("cursed blade", EquipmentSlot.Weapon), ("plain dagger", EquipmentSlot.Weapon));
+        Func<string, bool> canEquip = name => !string.Equals(name, "cursed blade", StringComparison.OrdinalIgnoreCase);
+
+        List<string> cmds = EquipmentManager.BuildEquipCommands(
+            set, carried, WornList(), resolve, canEquip);
+
+        Assert.Equal(new[] { "eq plain dagger" }, cmds);
+    }
+
+    [Fact]
+    public void BuildEquipCommands_NonWearableCarried_IsSkipped()
+    {
+        // resolveSlot returns null for loot the realm can't wear — it never queues.
+        EquipmentSet set = Set("default", "Default");
+        var carried = new[] { "gold coin", "iron helm" };
+        Func<string, EquipmentSlot?> resolve = Resolver(("iron helm", EquipmentSlot.Head));
+
+        List<string> cmds = EquipmentManager.BuildEquipCommands(
+            set, carried, WornList(), resolve, EquipAll);
+
+        Assert.Equal(new[] { "wear iron helm" }, cmds);
+    }
 }
