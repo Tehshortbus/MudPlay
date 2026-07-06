@@ -1,8 +1,10 @@
 using System.Collections.Specialized;
 using System.ComponentModel;
 using Avalonia.Controls;
+using Avalonia.Data;
 using Avalonia.Input;
 using Avalonia.Threading;
+using FujinTerm.Models.Settings;
 using FujinTerm.Services;
 using FujinTerm.ViewModels;
 
@@ -51,6 +53,8 @@ public partial class MainWindow : Window
             {
                 vm.GameDataSets.CollectionChanged += OnGameDataSetsChanged;
                 RebuildGameDataMenu(vm);
+                vm.HelpLinks.CollectionChanged += OnHelpLinksChanged;
+                RebuildHelpMenu(vm);
             }
         };
 
@@ -129,6 +133,70 @@ public partial class MainWindow : Window
     private void OnGameDataSetsChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
         if (DataContext is MainWindowViewModel vm) RebuildGameDataMenu(vm);
+    }
+
+    private void OnHelpLinksChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (DataContext is MainWindowViewModel vm) RebuildHelpMenu(vm);
+    }
+
+    // Compose the Help menu: the disabled "Help topics…" placeholder, then one
+    // launch item per user-editable website link (edited under Settings →
+    // Toolbar + Shortcuts), then the active BBS's own site, then the static
+    // Report / About actions. Same code-composition reason as the Game Data
+    // menu — a MenuItem can't mix a bound dynamic list with inline static
+    // children, so the whole list is assembled here on every HelpLinks change.
+    private void RebuildHelpMenu(MainWindowViewModel vm)
+    {
+        HelpMenu.Items.Clear();
+
+        HelpMenu.Items.Add(new MenuItem
+        {
+            Header    = "Help topics…",
+            IsEnabled = false,
+            [ToolTip.TipProperty] = "Old-school help browser lands in a later phase.",
+        });
+        HelpMenu.Items.Add(new Separator());
+
+        foreach (HelpWebsite link in vm.HelpLinks)
+        {
+            HelpMenu.Items.Add(new MenuItem
+            {
+                Header          = $"{link.Label} ↗",
+                Command         = vm.OpenHelpLinkCommand,
+                CommandParameter = link.Url,
+            });
+        }
+
+        // BBS site — bound live so its enable state + tooltip track the active
+        // BBS without a menu rebuild (BbsWebsiteUrl / HasBbsWebsite re-raise on
+        // every BBS pin change).
+        MenuItem bbsSite = new()
+        {
+            Header  = "BBS site ↗",
+            Command = vm.OpenBbsWebsiteCommand,
+        };
+        bbsSite.Bind(MenuItem.IsEnabledProperty, new Binding(nameof(vm.HasBbsWebsite)) { Source = vm });
+        bbsSite.Bind(ToolTip.TipProperty, new Binding(nameof(vm.BbsWebsiteUrl))
+        {
+            Source          = vm,
+            FallbackValue   = "Set a Website URL on the active BBS (Settings → Toolbar + Shortcuts) to enable.",
+            TargetNullValue = "Set a Website URL on the active BBS (Settings → Toolbar + Shortcuts) to enable.",
+        });
+        HelpMenu.Items.Add(bbsSite);
+
+        HelpMenu.Items.Add(new Separator());
+        HelpMenu.Items.Add(new MenuItem
+        {
+            Header  = "Report an issue…",
+            Command = vm.ReportIssueCommand,
+        });
+        HelpMenu.Items.Add(new Separator());
+        HelpMenu.Items.Add(new MenuItem
+        {
+            Header  = "About FujinTerm",
+            Command = vm.OpenAboutCommand,
+        });
     }
 
     // Compose the Game Data menu's items: every imported set on top

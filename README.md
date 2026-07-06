@@ -1,9 +1,11 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.5.11**
-> - Party-wide toll gate checkbox removed, now always on
-> - Navigation engine verifies the party's cash before using a toll en-route
+> **Version 1.6.0**
+> - Help-menu websites now editable under Settings → Toolbar + Shortcuts
+> - Add / remove / rename / reorder links, with Reset to default
+> - MajorMUD Facebook Group added to the default link set
+> - BBS website field moved out of Settings → BBS into the same editor
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

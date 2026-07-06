@@ -127,6 +127,41 @@ public partial class MainWindowViewModel : ObservableObject
     // True when BbsWebsiteUrl looks launch-able — gates the Help menu item.
     public bool HasBbsWebsite => !string.IsNullOrWhiteSpace(BbsWebsiteUrl);
 
+    // User-editable Help-menu website list (Global tier). Composed into the
+    // Help menu by the code-behind, and edited under Settings → Toolbar +
+    // Shortcuts. Repopulated from GlobalSettings by RefreshHelpLinks whenever
+    // the global file is saved.
+    public ObservableCollection<HelpWebsite> HelpLinks { get; } = new();
+
+    // Re-read the Help website list from the Global-tier settings file and
+    // refill HelpLinks. Falls back to the seeded defaults when the key is
+    // absent or the stored JSON is malformed, so the Help menu always shows the
+    // reference links even before the user touches the editor.
+    private void RefreshHelpLinks()
+    {
+        HelpWebsitesSettings dto = new();
+        if (AppServices.Current.Settings.Current.Settings is { } bucket
+            && bucket.TryGetValue("HelpWebsites", out System.Text.Json.JsonElement json))
+        {
+            try
+            {
+                dto = System.Text.Json.JsonSerializer.Deserialize<HelpWebsitesSettings>(json.GetRawText())
+                      ?? new HelpWebsitesSettings();
+            }
+            catch
+            {
+                dto = new HelpWebsitesSettings();
+            }
+        }
+
+        HelpLinks.Clear();
+        foreach (HelpWebsite link in dto.Links)
+        {
+            if (string.IsNullOrWhiteSpace(link.Url)) continue;
+            HelpLinks.Add(link);
+        }
+    }
+
     // Window title — "FujinTerm — {profile} — {bbs}". When no profile is
     // loaded the placeholder {default} stands in; when no BBS is selected
     // {No BBS} stands in. Both slots always render so the title bar shape
@@ -498,6 +533,12 @@ public partial class MainWindowViewModel : ObservableObject
         // Seed the BBS-pin sentinel so OnProfileMutatedForBbs can detect
         // the first real change against a known baseline.
         _lastSeenBbsName = ResolveActiveBbs()?.Name;
+
+        // Help-menu website list (Global tier). Seed now, then re-read on every
+        // global-settings Save so the Toolbar + Shortcuts editor's changes land
+        // in the menu without a relaunch.
+        RefreshHelpLinks();
+        AppServices.Current.Settings.GlobalSettingsChanged += _ => RefreshHelpLinks();
 
         // Cleanup-warning banner: when the BBS announces nightly shutdown
         // on the wire, drop a yellow banner into the terminal canvas so
@@ -3338,14 +3379,16 @@ public partial class MainWindowViewModel : ObservableObject
         AppServices.Current.Log.Info("Chatlog", $"Exported chatlog to {file.Name}");
     }
 
+    // Help → one of the user-editable website links. Opens the link's URL in
+    // the OS default browser; no-ops on a blank / malformed URL (the editor
+    // already drops empty rows, but the guard keeps a stray invocation safe).
     [RelayCommand]
-    private void OpenMajorMudWiki() => ShellLaunch.OpenUrl(AppInfo.MajorMudWikiUrl);
-
-    [RelayCommand]
-    private void OpenMajorMudReddit() => ShellLaunch.OpenUrl(AppInfo.MajorMudRedditUrl);
-
-    [RelayCommand]
-    private void OpenMudInfo() => ShellLaunch.OpenUrl(AppInfo.MudInfoUrl);
+    private void OpenHelpLink(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return;
+        if (!ShellLaunch.OpenUrl(url))
+            AppServices.Current.Log.Warn("Help", $"Could not open website: {url}");
+    }
 
     // Help → BBS site. Opens the active BBS's BbsProfile.WebsiteUrl in the
     // OS default browser. Silently no-ops when no URL is set — the menu

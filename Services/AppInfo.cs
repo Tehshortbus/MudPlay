@@ -22,10 +22,6 @@ public static class AppInfo
     public const string RepoUrl    = "https://github.com/Tehshortbus/FujinTerm";
     public const string IssuesUrl  = RepoUrl + "/issues/new";
 
-    public const string MajorMudWikiUrl     = "https://kyau.net/wiki/MajorMUD";
-    public const string MajorMudRedditUrl   = "https://www.reddit.com/r/majormud/";
-    public const string MudInfoUrl          = "https://www.mudinfo.net/";
-
     private static string ReadAssemblyVersion()
     {
         Assembly asm = typeof(AppInfo).Assembly;

@@ -206,23 +206,11 @@
                 <MenuItem Header="Open Logs folder…"           Command="{Binding OpenLogsFolderCommand}"/>
             </MenuItem>
 
-            <MenuItem Header="_Help">
-                <MenuItem Header="Help topics…"
-                          IsEnabled="False"
-                          ToolTip.Tip="Old-school help browser lands in a later phase."/>
-                <Separator/>
-                <MenuItem Header="MajorMUD wiki ↗"     Command="{Binding OpenMajorMudWikiCommand}"/>
-                <MenuItem Header="MajorMUD subreddit ↗" Command="{Binding OpenMajorMudRedditCommand}"/>
-                <MenuItem Header="MudInfo.net ↗"        Command="{Binding OpenMudInfoCommand}"/>
-                <MenuItem Header="BBS site ↗"
-                          Command="{Binding OpenBbsWebsiteCommand}"
-                          IsEnabled="{Binding HasBbsWebsite}"
-                          ToolTip.Tip="{Binding BbsWebsiteUrl, FallbackValue='Set a Website URL on the active BBS (Settings → BBS) to enable.', TargetNullValue='Set a Website URL on the active BBS (Settings → BBS) to enable.'}"/>
-                <Separator/>
-                <MenuItem Header="Report an issue…"    Command="{Binding ReportIssueCommand}"/>
-                <Separator/>
-                <MenuItem Header="About FujinTerm"     Command="{Binding OpenAboutCommand}"/>
-            </MenuItem>
+            <!-- Help: the website links are user-editable (Settings → Toolbar +
+                 Shortcuts) so the dropdown is composed in code-behind, same as
+                 the Game Data menu — a MenuItem can't mix a bound dynamic list
+                 with inline static children. -->
+            <MenuItem x:Name="HelpMenu" Header="_Help"/>
 
             <!-- Standalone action, no dropdown — clicking fires the capture
                  directly (freeze client state + recent output into a Markdown

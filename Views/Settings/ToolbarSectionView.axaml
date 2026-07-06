@@ -75,21 +75,108 @@
                            Margin="8,0,2,0"/>
             </Grid>
         </DataTemplate>
+
+        <!-- Help-menu website row — an editable [label] [url] pair. -->
+        <DataTemplate x:Key="WebsiteRowTemplate" x:DataType="vm:HelpWebsiteRowViewModel">
+            <Grid ColumnDefinitions="200,*" Margin="2" ColumnSpacing="8">
+                <TextBox Grid.Column="0"
+                         Text="{Binding Label, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                         PlaceholderText="Label"/>
+                <TextBox Grid.Column="1"
+                         Text="{Binding Url, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                         PlaceholderText="https://…"/>
+            </Grid>
+        </DataTemplate>
     </UserControl.Resources>
 
-    <Grid>
+    <!-- One outer scroller for the whole tab. The Help-websites block up top
+         is a Global setting so it stays visible with no profile loaded; the
+         toolbar/shortcuts editor below it is character-scoped and swaps to a
+         "load a profile" banner when none is loaded. -->
+    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                  HorizontalScrollBarVisibility="Disabled">
+    <StackPanel Margin="22" Spacing="10">
 
-        <!-- "No profile loaded" banner — shows when HasProfile is false. -->
+        <!-- Help-menu websites (Global tier) — always editable. -->
+        <TextBlock Classes="SectionHeader"
+                   Text="Help menu websites — shown under Help ↗ (shared across all characters)"/>
+
+        <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,180">
+            <!-- Editable label/URL list. -->
+            <Border Grid.Row="0" Grid.Column="0"
+                    Height="196" VerticalAlignment="Top"
+                    BorderBrush="{StaticResource ChromeBorderBrush}"
+                    BorderThickness="1"
+                    Background="{StaticResource ChromeBgSunkenBrush}">
+                <ListBox ItemsSource="{Binding WebsiteRows}"
+                         SelectedItem="{Binding SelectedWebsiteRow, Mode=TwoWay}"
+                         ItemTemplate="{StaticResource WebsiteRowTemplate}"
+                         Background="Transparent"
+                         BorderThickness="0"/>
+            </Border>
+
+            <!-- Website rail: add / remove / reorder / reset. -->
+            <StackPanel Grid.Row="0" Grid.Column="1"
+                        Margin="12,0,0,0"
+                        VerticalAlignment="Top"
+                        Spacing="6">
+                <Button Content="Add link"
+                        Command="{Binding AddWebsiteCommand}"
+                        HorizontalAlignment="Stretch"
+                        ToolTip.Tip="Add a new website link to the Help menu."/>
+                <Button Content="Remove"
+                        Command="{Binding RemoveWebsiteCommand}"
+                        HorizontalAlignment="Stretch"
+                        ToolTip.Tip="Delete the selected link."/>
+                <Button Content="Move up"
+                        Command="{Binding MoveWebsiteUpCommand}"
+                        HorizontalAlignment="Stretch"/>
+                <Button Content="Move down"
+                        Command="{Binding MoveWebsiteDownCommand}"
+                        HorizontalAlignment="Stretch"/>
+                <Button Content="Reset to default"
+                        Command="{Binding ResetWebsitesToDefaultCommand}"
+                        HorizontalAlignment="Stretch"
+                        ToolTip.Tip="Restore the built-in reference links (wiki, subreddit, MudInfo, Facebook group)."/>
+            </StackPanel>
+
+            <!-- Active BBS's own site — a per-BBS value edited here as a
+                 special row tied to whichever BBS is active. -->
+            <Grid Grid.Row="1" Grid.Column="0"
+                  Margin="0,10,0,0"
+                  ColumnDefinitions="Auto,*" ColumnSpacing="8"
+                  IsVisible="{Binding HasActiveBbs}">
+                <TextBlock Grid.Column="0"
+                           VerticalAlignment="Center"
+                           Foreground="{StaticResource ChromeFgMutedBrush}"
+                           Text="{Binding ActiveBbsName, StringFormat='{}{0} site:'}"/>
+                <TextBox Grid.Column="1"
+                         Text="{Binding BbsWebsiteUrl, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                         PlaceholderText="https://… (optional)"
+                         ToolTip.Tip="This BBS's website — appears as the 'BBS site ↗' entry under Help. Stored per-BBS."/>
+            </Grid>
+            <TextBlock Grid.Row="1" Grid.Column="0"
+                       Margin="0,10,0,0"
+                       IsVisible="{Binding !HasActiveBbs}"
+                       Foreground="{StaticResource ChromeFgMutedBrush}"
+                       FontSize="{StaticResource FontSizeSm}"
+                       TextWrapping="Wrap"
+                       Text="Configure a BBS (Settings → BBS + Display) to attach its website to the Help menu."/>
+        </Grid>
+
+        <Separator Margin="0,4"/>
+
+        <!-- "No profile loaded" banner — shown when HasProfile is false.
+             Only the toolbar/shortcuts editor below needs a character; the
+             websites above are global. -->
         <Border IsVisible="{Binding !HasProfile}"
-                Padding="22"
-                HorizontalAlignment="Stretch"
-                VerticalAlignment="Top">
+                HorizontalAlignment="Stretch">
             <StackPanel Spacing="10" MaxWidth="520" HorizontalAlignment="Left">
                 <TextBlock Text="Toolbar + Shortcuts"
                            Foreground="{StaticResource ChromeFgBrush}"
                            FontSize="{StaticResource FontSizeLg}"
                            FontWeight="SemiBold"/>
-                <TextBlock Text="Load or create a character profile to edit Toolbar + Shortcuts — every settings tab lives on the active character."
+                <TextBlock Text="Load or create a character profile to edit the toolbar layout + shortcuts — those live on the active character."
                            Foreground="{StaticResource ChromeFgSecBrush}"
                            FontSize="{StaticResource FontSizeMd}"
                            TextWrapping="Wrap"/>
@@ -97,12 +184,8 @@
         </Border>
 
         <!-- Editor — visible when a profile is loaded. Fixed (Auto) row
-             heights with 5-row lists; a ScrollViewer guards against the
-             window being too short to show the whole editor. -->
-        <ScrollViewer IsVisible="{Binding HasProfile}"
-                      VerticalScrollBarVisibility="Auto"
-                      HorizontalScrollBarVisibility="Disabled">
-        <Grid Margin="22"
+             heights with 8-row lists. -->
+        <Grid IsVisible="{Binding HasProfile}"
               RowDefinitions="Auto,Auto,Auto,Auto,Auto"
               ColumnDefinitions="*,180">
 
@@ -237,7 +320,7 @@
                         ToolTip.Tip="Rebind the shortcut for the selected action, or clear it."/>
             </StackPanel>
         </Grid>
-        </ScrollViewer>
 
-    </Grid>
+    </StackPanel>
+    </ScrollViewer>
 </UserControl>

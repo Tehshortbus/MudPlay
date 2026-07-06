@@ -62,7 +62,6 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private string _name = string.Empty;
     [ObservableProperty] private string _host = string.Empty;
     [ObservableProperty] private int _port = 23;
-    [ObservableProperty] private string? _websiteUrl;
     [ObservableProperty] private int _maxRedials = 3;
     [ObservableProperty] private int _redialPauseSeconds = 5;
     [ObservableProperty] private int _cleanupPeriodMinutes;
@@ -235,6 +234,12 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
 
         foreach (BbsProfile profile in _loaded.Values)
         {
+            // The website is now edited under Settings → Toolbar + Shortcuts and
+            // may have just been written there in the same OK. Re-read the
+            // on-disk value into this cached copy so our save folds it in rather
+            // than clobbering it with the WebsiteUrl loaded at selection time.
+            if (_bbsStore.Get(profile.Name) is { WebsiteUrl: var url })
+                profile.WebsiteUrl = url;
             _bbsStore.Save(profile);
         }
 
@@ -543,7 +548,6 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
 
         LoadCredentialsFor(name);
         Port = profile.Port;
-        WebsiteUrl = profile.WebsiteUrl;
         MaxRedials = profile.MaxRedials;
         RedialPauseSeconds = profile.RedialPauseSeconds;
         CleanupPeriodMinutes = profile.CleanupPeriodMinutes;
@@ -638,7 +642,6 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         Name = defaults.Name;
         Host = defaults.Host;
         Port = defaults.Port;
-        WebsiteUrl = defaults.WebsiteUrl;
         MaxRedials = defaults.MaxRedials;
         RedialPauseSeconds = defaults.RedialPauseSeconds;
         CleanupPeriodMinutes = defaults.CleanupPeriodMinutes;
@@ -681,7 +684,6 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
 
         profile.Host = Host;
         profile.Port = Port;
-        profile.WebsiteUrl = string.IsNullOrWhiteSpace(WebsiteUrl) ? null : WebsiteUrl;
         profile.MaxRedials = MaxRedials;
         profile.RedialPauseSeconds = RedialPauseSeconds;
         profile.CleanupPeriodMinutes = CleanupPeriodMinutes;
@@ -744,7 +746,6 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     }
     partial void OnHostChanged(string value)                    { PushToCache(); Dirty(); }
     partial void OnPortChanged(int value)                       { PushToCache(); Dirty(); }
-    partial void OnWebsiteUrlChanged(string? value)             { PushToCache(); Dirty(); }
     partial void OnMaxRedialsChanged(int value)                 { PushToCache(); Dirty(); }
     partial void OnRedialPauseSecondsChanged(int value)         { PushToCache(); Dirty(); }
     partial void OnCleanupPeriodMinutesChanged(int value)       { PushToCache(); Dirty(); }
