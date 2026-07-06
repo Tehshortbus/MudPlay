@@ -83,6 +83,13 @@ public sealed class MovementCoordinator
     // which waits for a manual resume.
     public const string MortallyWoundedGate = "MortallyWounded";
 
+    // Asserted by AllyDroppedHandler while a party / recently-partied ally is down
+    // (dropped to the ground). We hold our own movement so we stay in the room and
+    // keep aiding / healing them instead of walking the farm loop off without the
+    // downed member. Clears when the last downed ally recovers, rejoins, dies, or
+    // the rescue window times out.
+    public const string AllyDownGate = "AllyDown";
+
     private const int HistoryCapacity = 200;
 
     private readonly LogService? _log;

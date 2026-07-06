@@ -93,6 +93,12 @@ public sealed class CastingDirector : IDisposable
     private readonly Func<bool> _isEnabled;
     private readonly LogService? _log;
 
+    // Given names of aided-but-still-off-roster downed allies the rescue engine
+    // (AllyDroppedHandler) wants topped up by name. A dropped ally leaves `par`
+    // so PickPartyHeal's Members walk can't see them; this feeds them back in as
+    // the highest-priority heal target. Null / empty until wired.
+    private Func<IReadOnlyList<string>>? _downedAllies;
+
     // ----- Buff-duration tracking (self + party) ----------------------
     // Per (targetKey, spellShort) → UTC instant the buff wears off.
     // targetKey "" = self; otherwise the member's given name lower-cased.
@@ -194,6 +200,12 @@ public sealed class CastingDirector : IDisposable
     // — when unset the buff slot fires regardless of stealth.
     public void SetStealthGate(Func<bool> isStealthed) =>
         _isStealthedFunc = isStealthed;
+
+    // Wire the downed-ally rescue provider (AllyDroppedHandler). Each Evaluate
+    // reads the current set of aided downed allies and heals the first one by
+    // name at top priority. Optional — unset means no downed-ally heals.
+    public void SetDownedAllyProvider(Func<IReadOnlyList<string>> provider) =>
+        _downedAllies = provider;
 
     // Wire the combat engine's in-between debuff bridge. A debuff is an in-between
     // action (<=1/round) in the realm's round model, but the DECISION — config +
@@ -463,6 +475,7 @@ public sealed class CastingDirector : IDisposable
         {
             CastCandidate? pick = category switch
             {
+                SpellCategory.DownedAllyHeal  => PickDownedAllyHeal(partySettings),
                 SpellCategory.MinorPartyHeal  => PickMinorPartyHeal(partySettings),
                 SpellCategory.MajorPartyHeal  => PickMajorPartyHeal(partySettings),
                 SpellCategory.MinorSelfHeal   => Wrap(PickMinorSelfHeal(spells, health)),
@@ -596,6 +609,9 @@ public sealed class CastingDirector : IDisposable
             int p = a.Prio.CompareTo(b.Prio);
             return p != 0 ? p : ((int)a.Cat).CompareTo((int)b.Cat);
         });
+        // A downed ally is a life-critical rescue — it always fires ahead of every
+        // user-orderable category, so it leads the walk unconditionally.
+        yield return SpellCategory.DownedAllyHeal;
         foreach ((SpellCategory cat, int _) in order) yield return cat;
     }
 
@@ -758,6 +774,28 @@ public sealed class CastingDirector : IDisposable
         if (string.IsNullOrEmpty(name)) return name;
         int space = name.IndexOf(' ');
         return space >= 0 ? name[..space] : name;
+    }
+
+    // ----- Downed-ally rescue heal ------------------------------------
+
+    // Top-priority name-targeted heal for a dropped ally that's been aided back
+    // to positive HP but hasn't rejoined `par` yet. Confirmed mechanic: a heal
+    // cast at such an ally by name still lands even though they're off the
+    // roster, so this keeps topping them up until they recover / rejoin. Prefers
+    // the major party-heal spell (a downed ally is by definition critical),
+    // falling back to the minor one; if neither is configured we can't heal, but
+    // the rescue engine still aids + re-invites without us.
+    private CastCandidate? PickDownedAllyHeal(PartySettings? settings)
+    {
+        if (_downedAllies is null) return null;
+        if (settings is null) return null;
+        IReadOnlyList<string> allies = _downedAllies();
+        if (allies.Count == 0) return null;
+        string? spell = !string.IsNullOrWhiteSpace(settings.MajorPartyHealSpell)
+            ? settings.MajorPartyHealSpell
+            : settings.MinorPartyHealSpell;
+        if (string.IsNullOrWhiteSpace(spell)) return null;
+        return new CastCandidate(spell, Target: GivenName(allies[0]));
     }
 
     // ----- Party heal -------------------------------------------------
@@ -1040,4 +1078,8 @@ public enum SpellCategory
     Curing         = 4,
     Buffing        = 5,
     Debuffing      = 6,
+    // Not user-orderable — a downed ally is a life-critical rescue that always
+    // outranks every other cast, so PrioritisedCategories emits it first
+    // unconditionally rather than reading a priority slot.
+    DownedAllyHeal = 7,
 }

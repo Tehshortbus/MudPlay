@@ -2,6 +2,13 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0): **MAJOR** = whole-program refactor, **MINOR** = a large PR, **PATCH** = a small / bugfix PR.
 
+## 1.5.6
+
+When a party member drops in front of you, a party healer now reacts on its own: it holds movement to stay with the downed ally, aids them, keeps healing them by name until they recover, then re-invites them if you're leading — including the case where the one who dropped was the leader whose disconnect already dissolved the party.
+
+**Fixed**
+- **A dropped party member got no automatic rescue.** Seeing `<name> drops to the ground!` used to leave a party healer idle — it kept farming / moving away while the downed ally stayed at 0 HP. The client now treats an ally's drop as a wait condition: it pauses movement (an `AllyDown` hold), sends `aid <name>` to lift them above 0, then keeps healing them by name through the normal spell tiers even though a dropped ally has left the `par` roster, polling their health with an `@health` telepath until they recover. Once they're back to full it releases the hold; if you're the leader it re-invites them (recovery to positive HP restores their ability to act but not their party membership). The reaction also recognises the hardest case — the ally who dropped was the **leader**, whose disconnect had already wiped the whole party from your roster — via the handler's own short recent-leader memory, so a leader's drop still gets aided and held rather than ignored as a stranger.
+
 ## 1.5.5
 
 While your own character is dropped (mortally wounded at 0 HP or below), the client now stops every background engine from spamming commands the game will only reject, and corrects the party state a drop invalidates — so a downed character sits quietly until aided / healed instead of hammering the wire and holding movement on a party it's no longer in.

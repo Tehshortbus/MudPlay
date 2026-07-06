@@ -377,6 +377,18 @@ public static class DefaultPatterns
         // user-reported and pending live re-confirmation.
         yield return new RegexPattern(KnownPatterns.PartyMemberDied,
             @"^(?<player>\w+) has died\.?\s*$");
+        // "<Name> drops to the ground!" — a player hit 0 HP and is mortally
+        // wounded (down, bleeding out, not yet dead). Room/party-side signal;
+        // everyone present sees it, the dropper with their own name. Distinct
+        // from the corpse-cash "N silver drop to the ground." (two leading tokens,
+        // verb "drop", trailing period) so the two never collide. AllyDroppedHandler
+        // scopes the reaction to a party / recently-partied ally.
+        yield return new RegexPattern(KnownPatterns.PartyMemberDropped,
+            @"^(?<player>\w+) drops to the ground!");
+        // "You have aided <Name>, ..." — our first-aid landed on a downed ally;
+        // they're back to positive HP. Group 1 captures the aided ally's name.
+        yield return new RegexPattern(KnownPatterns.UserAidedAlly,
+            @"^You have aided (?<player>\w+),");
 
         // ----- Party dissolution (Playpen-verified, 2026-06-01) ---------
         // Three signals that should evict members / wipe the party.

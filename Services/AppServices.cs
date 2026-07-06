@@ -1123,6 +1123,14 @@ public sealed class AppServices
     // from the party game-side). Auto-clears on recovery.
     public Game.PlayerDroppedGate PlayerDropped { get; private set; } = null!;
 
+    // Ally-drop rescue bridge — reacts to another party / recently-partied member
+    // dropping to the ground (0 HP): holds movement (AllyDownGate) to stay with
+    // them, sends `aid <name>`, feeds the aided ally into CastDirector for a
+    // heal-by-name until they recover, polls their off-roster vitals via `@health`,
+    // and (if leading) re-invites them once aided. Auto-releases on recovery,
+    // rejoin, death, logoff, or timeout.
+    public Game.AllyDroppedHandler AllyDropped { get; private set; } = null!;
+
     // Party-death roster-cleanup bridge — when we're leading an automated route
     // and an active member dies (turning into a phantom [Invited] par slot),
     // uninvites that slot once the room clears so the loop doesn't stall on the
@@ -1986,6 +1994,18 @@ public sealed class AppServices
         PlayerDropped = new Game.PlayerDroppedGate(
             PlayerState, EngineGate, MovementCoordinator, Party, Log);
 
+        // Ally-drop rescue. Distinct from PlayerDropped (which owns OUR drop):
+        // reacts to another party / recently-partied member hitting 0 HP — aids
+        // them, holds movement via AllyDownGate to stay in the room, polls their
+        // off-roster vitals via @health, and re-invites once aided when we lead.
+        // The heal-by-name is delegated to CastDirector via the downed-ally
+        // provider wired below. Gated on AutoHealRest (shared party-heal master).
+        AllyDropped = new Game.AllyDroppedHandler(
+            Router, PartyState, Party, Chat, MovementCoordinator,
+            readParty: () => ReadSection<Models.Profile.PartySettings>(Profile.Current, "Party"),
+            isEnabled: () => ReadAutoModeFlag(d => d.AutoHealRest),
+            log: Log);
+
         // CombatManager. Picks a target on each
         // classifier emit and sends the configured attack command via
         // the bound wire sender. Reads CombatSettings live (same
@@ -2222,6 +2242,11 @@ public sealed class AppServices
         // cast once for the whole party; the picker checks this to skip the
         // per-member loop.
         CastDirector.SetPartyWideBuffCheck(IsPartyWideBuff);
+        // Downed-ally rescue heal. A dropped ally leaves `par`, so PickPartyHeal's
+        // roster walk can't see them — the AllyDroppedHandler feeds each aided
+        // downed ally back in here as the top-priority name-targeted heal until
+        // they recover / rejoin.
+        CastDirector.SetDownedAllyProvider(() => AllyDropped.AidedDownedGivenNames());
         Tick.CombatTickElapsed += CastDirector.OnCombatTick;
 
         // Mana-regen roll-spell reroll (Paradigm only). AbilBreakdown parses

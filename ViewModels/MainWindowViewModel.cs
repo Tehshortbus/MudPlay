@@ -674,6 +674,9 @@ public partial class MainWindowViewModel : ObservableObject
         // Poller needs the same wire-sender to send @health round-trip
         // requests and the periodic par poll.
         AppServices.Current.PartyPoller.SetWireSender(engineSend);
+        // Ally-drop rescue sends `aid <name>` + `/<given> @health` on the same
+        // gate-wrapped path (held while WE are mortally wounded, like every engine).
+        AppServices.Current.AllyDropped.SetWireSender(engineSend);
         // Emit @wait when we start resting and @ok when we finish, so
         // the party leader's pause-gate can react.
         AppServices.Current.PartyRest.SetWireSender(engineSend);

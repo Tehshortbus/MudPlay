@@ -234,7 +234,11 @@ it isn't here and you're unsure, ask.
   **wait condition** — pause farming / movement to stay with them — and, once they've been **aided**
   back above 0, keep **healing them by name** despite their absence from `par`, polling their HP
   periodically via an `@health` telepath until they recover, then (if leading) **re-invite** them.
-  (Implementation lands with the ally-drop reaction work.)
+  (Implemented in `AllyDroppedHandler`: asserts `MovementCoordinator.AllyDownGate`, sends
+  `aid <name>`, exposes the aided ally to `CastingDirector`'s downed-ally heal category, polls
+  `@health`, releases on full-HP reply / rejoin / rescue timeout, and re-invites when leading. Its
+  own recent-leader memory recognises a dropped leader that a leader-disconnect already wiped from
+  the roster.)
 
 ## Attack spells: why one fails to damage a monster
 
