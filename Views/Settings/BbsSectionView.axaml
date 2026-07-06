@@ -79,7 +79,7 @@
 
                     <TextBlock Classes="GroupHeader" Text="Connection"/>
 
-                    <Grid ColumnDefinitions="160,*" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="6">
+                    <Grid ColumnDefinitions="160,*" RowDefinitions="Auto,Auto,Auto" RowSpacing="6">
                         <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Name:"/>
                         <TextBox   Grid.Row="0" Grid.Column="1"
                                    Text="{Binding Name, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
@@ -99,12 +99,6 @@
                                        Minimum="1" Maximum="65535" Increment="1"
                                        FormatString="0" Width="140"
                                        HorizontalAlignment="Left"/>
-
-                        <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="Website:"/>
-                        <TextBox   Grid.Row="3" Grid.Column="1"
-                                   Text="{Binding WebsiteUrl, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
-                                   PlaceholderText="https://… (optional)" Width="280"
-                                   HorizontalAlignment="Left"/>
                     </Grid>
 
                     <TextBlock Classes="GroupHeader" Text="Retry behaviour"/>

@@ -209,7 +209,9 @@ public sealed partial class SettingsWindowViewModel : ObservableObject, IDisposa
             _profile,
             AppServices.Current.Keybindings,
             AppServices.Current.Macros,
-            AppServices.Current.Dialogs));
+            AppServices.Current.Dialogs,
+            AppServices.Current.Settings,
+            AppServices.Current.Bbs));
 
         Sections.Add(new BbsSectionViewModel(
             AppServices.Current.Bbs,

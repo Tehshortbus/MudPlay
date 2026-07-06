@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FujinTerm.Models.Profile;
+using FujinTerm.Models.Settings;
 using FujinTerm.Services;
 using FujinTerm.Views.Settings;
 
@@ -22,6 +23,8 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
     private readonly KeybindingStore _keybindings;
     private readonly MacroStore _macros;
     private readonly DialogService _dialogs;
+    private readonly SettingsService _globalSettings;
+    private readonly BbsProfileStore _bbsStore;
     private bool _suppressDirty = true;
     private bool _dirty;
     private Control? _view;
@@ -32,8 +35,11 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
 
     public override IEnumerable<string> SearchableLabels =>
         ToolbarItemCatalogue.AllEntries.Select(e => e.Label)
-            .Prepend("Shortcuts")
-            .Prepend("Toolbar + Shortcuts");
+            .Concat(new[]
+            {
+                "Toolbar + Shortcuts", "Shortcuts",
+                "Help menu websites", "Website", "BBS website", "Help links",
+            });
 
     public override Control View => _view ??= new ToolbarSectionView { DataContext = this };
 
@@ -42,6 +48,34 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
 
     // Editable per-row view-models for the layout.
     public ObservableCollection<ToolbarRowViewModel> Rows { get; } = new();
+
+    // ----- Help-menu website list (Global tier) ---------------------------
+    // The reference links shown under Help. Global scope — shared across every
+    // character/BBS — so this block stays live in the tab even with no profile
+    // loaded (unlike the toolbar/shortcuts editor below it). Persisted to
+    // GlobalSettings.Settings["HelpWebsites"] on Apply; the main window's Help
+    // menu re-reads on GlobalSettingsChanged.
+    public ObservableCollection<HelpWebsiteRowViewModel> WebsiteRows { get; } = new();
+
+    // The active BBS's own website — a per-BBS value (BbsProfile.WebsiteUrl)
+    // relocated here from the BBS tab, edited as a special row tied to whichever
+    // BBS is active. Persisted via read-modify-write against a fresh disk copy
+    // on Apply so a concurrent BBS-section save can't clobber it. Empty /
+    // whitespace clears the field.
+    [ObservableProperty] private string? _bbsWebsiteUrl;
+
+    // Per-BBS toggle for whether the active BBS's site appears in the Help menu
+    // at all. Independent of the URL — unchecking hides the "BBS site ↗" entry
+    // even with a URL saved. Persisted alongside BbsWebsiteUrl.
+    [ObservableProperty] private bool _showBbsWebsiteInHelp = true;
+
+    // Display name of the BBS the website field ties to, or null when no BBS is
+    // configured. Gates the field's editability in the view.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasActiveBbs))]
+    private string? _activeBbsName;
+
+    public bool HasActiveBbs => !string.IsNullOrEmpty(ActiveBbsName);
 
     // ----- Visibility + position ------------------------------------------
     // Editor knobs that map onto ToolbarSettings.Visible / Position. The four
@@ -119,16 +153,22 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
         ProfileService profile,
         KeybindingStore keybindings,
         MacroStore macros,
-        DialogService dialogs)
+        DialogService dialogs,
+        SettingsService globalSettings,
+        BbsProfileStore bbsStore)
     {
         ArgumentNullException.ThrowIfNull(profile);
         ArgumentNullException.ThrowIfNull(keybindings);
         ArgumentNullException.ThrowIfNull(macros);
         ArgumentNullException.ThrowIfNull(dialogs);
-        _profile     = profile;
-        _keybindings = keybindings;
-        _macros      = macros;
-        _dialogs     = dialogs;
+        ArgumentNullException.ThrowIfNull(globalSettings);
+        ArgumentNullException.ThrowIfNull(bbsStore);
+        _profile        = profile;
+        _keybindings    = keybindings;
+        _macros         = macros;
+        _dialogs        = dialogs;
+        _globalSettings = globalSettings;
+        _bbsStore       = bbsStore;
         _profile.ProfileLoaded += OnProfileChanged;
         _profile.ProfileClosed += OnProfileClosedExternally;
         // Live-refresh the per-row shortcut hint when any built-in
@@ -145,6 +185,7 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
         });
 
         LoadFromProfile();
+        LoadWebsites();
         _suppressDirty = false;
     }
 
@@ -172,19 +213,27 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
 
     public override void Apply()
     {
-        if (_profile.Current is not { } profile) return;
+        // Help-menu website list + active BBS website are Global/BBS scoped —
+        // persist them regardless of whether a character profile is loaded (the
+        // toolbar/shortcuts layout below is character-scoped and only saves when
+        // one is).
+        SaveWebsites();
 
-        ToolbarSettings dto = new()
+        if (_profile.Current is { } profile)
         {
-            Layout   = Rows.Select(r => r.ToModel()).ToList(),
-            Visible  = ShowToolbar,
-            Position = Position,
-        };
+            ToolbarSettings dto = new()
+            {
+                Layout   = Rows.Select(r => r.ToModel()).ToList(),
+                Visible  = ShowToolbar,
+                Position = Position,
+            };
 
-        profile.Settings ??= new();
-        profile.Settings[TabKey] = JsonSerializer.SerializeToElement(dto);
-        _profile.Save();
-        _profile.NotifyMutated();
+            profile.Settings ??= new();
+            profile.Settings[TabKey] = JsonSerializer.SerializeToElement(dto);
+            _profile.Save();
+            _profile.NotifyMutated();
+        }
+
         ClearDirty();
     }
 
@@ -192,6 +241,7 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
     {
         _suppressDirty = true;
         LoadFromProfile();
+        LoadWebsites();
         _suppressDirty = false;
         ClearDirty();
     }
@@ -203,6 +253,9 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
     {
         _suppressDirty = true;
         LoadFromProfile();
+        // A profile swap can change the active BBS, so re-resolve the BBS
+        // website field + its label alongside the layout.
+        LoadWebsites();
         _suppressDirty = false;
         ClearDirty();
         CopyStatus = null;
@@ -366,6 +419,121 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
         RefreshShortcutRows();
         Dirty();
     }
+
+    // ----- Help-menu website editor ---------------------------------------
+
+    // Hydrate WebsiteRows from the Global-tier list and the BBS-website field
+    // from the active BBS. Runs at ctor, on Discard, and on profile swap.
+    private void LoadWebsites()
+    {
+        HelpWebsitesSettings dto = ReadHelpWebsitesOrDefault();
+        WebsiteRows.Clear();
+        foreach (HelpWebsite link in dto.Links)
+            WebsiteRows.Add(HelpWebsiteRowViewModel.FromModel(link, Dirty));
+
+        BbsProfile? active = AppServices.Current.ResolveActiveBbs();
+        ActiveBbsName = active?.Name;
+        BbsWebsiteUrl = active?.WebsiteUrl;
+        ShowBbsWebsiteInHelp = active?.ShowWebsiteInHelp ?? true;
+    }
+
+    // Read the Global-tier website list, falling back to the seeded defaults on
+    // absence / malformed JSON so the editor always shows the reference links.
+    private HelpWebsitesSettings ReadHelpWebsitesOrDefault()
+    {
+        if (_globalSettings.Current.Settings is { } bucket
+            && bucket.TryGetValue("HelpWebsites", out JsonElement json))
+        {
+            try
+            {
+                return JsonSerializer.Deserialize<HelpWebsitesSettings>(json.GetRawText())
+                       ?? new HelpWebsitesSettings();
+            }
+            catch
+            {
+                return new HelpWebsitesSettings();
+            }
+        }
+        return new HelpWebsitesSettings();
+    }
+
+    // Persist the website list to the Global tier (dropping blank-URL rows) and
+    // the active BBS's website via read-modify-write. Fires GlobalSettingsChanged
+    // on save so the Help menu re-composes.
+    private void SaveWebsites()
+    {
+        HelpWebsitesSettings dto = new()
+        {
+            Links = WebsiteRows
+                .Select(r => r.ToModel())
+                .Where(l => !string.IsNullOrWhiteSpace(l.Url))
+                .ToList(),
+        };
+        _globalSettings.Current.Settings ??= new Dictionary<string, JsonElement>();
+        _globalSettings.Current.Settings["HelpWebsites"] = JsonSerializer.SerializeToElement(dto);
+        _globalSettings.Save();
+
+        // Re-read the active BBS off disk so this write folds into whatever the
+        // BBS section may have just saved (the BBS section likewise re-reads
+        // WebsiteUrl before its own save — the two are order-independent).
+        if (AppServices.Current.ResolveActiveBbs() is { } active)
+        {
+            active.WebsiteUrl = string.IsNullOrWhiteSpace(BbsWebsiteUrl) ? null : BbsWebsiteUrl.Trim();
+            active.ShowWebsiteInHelp = ShowBbsWebsiteInHelp;
+            _bbsStore.Save(active);
+        }
+    }
+
+    [RelayCommand]
+    private void AddWebsite()
+    {
+        WebsiteRows.Add(new HelpWebsiteRowViewModel(Dirty) { Label = "New link", Url = "https://" });
+        Dirty();
+    }
+
+    // Move / remove act on the row whose inline button was clicked (passed as
+    // the command parameter, per the navigation-window pattern) so the user
+    // never has to select a row first. No-op at the list boundaries.
+    [RelayCommand]
+    private void RemoveWebsite(HelpWebsiteRowViewModel? row)
+    {
+        if (row is null) return;
+        WebsiteRows.Remove(row);
+        Dirty();
+    }
+
+    [RelayCommand]
+    private void MoveWebsiteUp(HelpWebsiteRowViewModel? row)
+    {
+        if (row is null) return;
+        int i = WebsiteRows.IndexOf(row);
+        if (i <= 0) return;
+        WebsiteRows.Move(i, i - 1);
+        Dirty();
+    }
+
+    [RelayCommand]
+    private void MoveWebsiteDown(HelpWebsiteRowViewModel? row)
+    {
+        if (row is null) return;
+        int i = WebsiteRows.IndexOf(row);
+        if (i < 0 || i >= WebsiteRows.Count - 1) return;
+        WebsiteRows.Move(i, i + 1);
+        Dirty();
+    }
+
+    [RelayCommand]
+    private void ResetWebsitesToDefault()
+    {
+        WebsiteRows.Clear();
+        foreach (HelpWebsite link in HelpWebsitesSettings.DefaultLinks())
+            WebsiteRows.Add(HelpWebsiteRowViewModel.FromModel(link, Dirty));
+        Dirty();
+    }
+
+    partial void OnBbsWebsiteUrlChanged(string? value) => Dirty();
+
+    partial void OnShowBbsWebsiteInHelpChanged(bool value) => Dirty();
 
     // Open the keybind editor for row. The dialog handles both rebinding and
     // clearing — conflict detection inside it blocks Save when the chosen combo
@@ -587,4 +755,32 @@ public sealed partial class ToolbarRowViewModel : ObservableObject
         => ShortcutHint = chord.IsEmpty ? null : $"({chord.Label})";
 
     public ToolbarItem ToModel() => new() { Kind = Kind, ActionId = ActionId };
+}
+
+// One row in ToolbarSectionViewModel.WebsiteRows — an editable Help-menu website
+// (label + URL). Both cells two-way bind in the editor; any edit dirties the
+// parent section via the onDirty callback.
+public sealed partial class HelpWebsiteRowViewModel : ObservableObject
+{
+    private readonly Action _onDirty;
+
+    [ObservableProperty] private string _label = string.Empty;
+    [ObservableProperty] private string _url = string.Empty;
+
+    public HelpWebsiteRowViewModel(Action onDirty)
+    {
+        ArgumentNullException.ThrowIfNull(onDirty);
+        _onDirty = onDirty;
+    }
+
+    public HelpWebsite ToModel() => new() { Label = Label.Trim(), Url = Url.Trim() };
+
+    public static HelpWebsiteRowViewModel FromModel(HelpWebsite model, Action onDirty)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+        return new HelpWebsiteRowViewModel(onDirty) { Label = model.Label, Url = model.Url };
+    }
+
+    partial void OnLabelChanged(string value) => _onDirty();
+    partial void OnUrlChanged(string value) => _onDirty();
 }

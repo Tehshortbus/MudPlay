@@ -2,6 +2,14 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.6.0
+
+- Help-menu websites now editable under Settings → Toolbar + Shortcuts
+- Per-row add / remove / rename / reorder controls, with Reset to default
+- MajorMUD Facebook Group added to the default link set
+- BBS website field moved out of Settings → BBS into the same editor
+- Per-BBS toggle to show or hide the BBS site in the Help menu
+
 ## 1.5.11
 
 - Party-wide toll gate checkbox removed, now always on

@@ -31,9 +31,14 @@ public sealed class BbsProfile
 
     // Optional URL the user wants the Help → {BBS site} ↗ menu entry to
     // open (the BBS's web site, wiki, Discord — whatever the operator
-    // publishes). null hides the link; the menu entry stays present but
-    // disabled.
+    // publishes). null leaves the entry disabled (when shown). Edited under
+    // Settings → Toolbar + Shortcuts alongside the global Help-link list.
     public string? WebsiteUrl { get; set; }
+
+    // Whether the "BBS site ↗" entry appears in the Help menu for this BBS.
+    // Independent of WebsiteUrl — unchecking hides the entry even with a URL
+    // saved. Default on so a freshly-set URL surfaces without extra clicks.
+    public bool ShowWebsiteInHelp { get; set; } = true;
 
     // ----- Connection / retry behaviour -----
 

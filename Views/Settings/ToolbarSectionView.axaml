@@ -75,21 +75,114 @@
                            Margin="8,0,2,0"/>
             </Grid>
         </DataTemplate>
+
+        <!-- Help-menu website row — an editable [label] [url] pair with inline
+             reorder / remove controls on the right. The ↑ ↓ ✕ buttons act on
+             this row directly (row passed as CommandParameter, reached via
+             $parent[ListBox]) so there's no select-then-use-rail step — same
+             pattern as the navigation window's waypoint list. -->
+        <DataTemplate x:Key="WebsiteRowTemplate" x:DataType="vm:HelpWebsiteRowViewModel">
+            <Grid ColumnDefinitions="170,*,Auto" Margin="2" ColumnSpacing="6">
+                <TextBox Grid.Column="0"
+                         Text="{Binding Label, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                         PlaceholderText="Label"/>
+                <TextBox Grid.Column="1"
+                         Text="{Binding Url, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                         PlaceholderText="https://…"/>
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4"
+                            VerticalAlignment="Center">
+                    <Button Content="↑" FontSize="14" Padding="10,3"
+                            Background="Transparent" BorderThickness="0"
+                            ToolTip.Tip="Move up"
+                            Command="{Binding $parent[ListBox].((vm:ToolbarSectionViewModel)DataContext).MoveWebsiteUpCommand}"
+                            CommandParameter="{Binding}"/>
+                    <Button Content="↓" FontSize="14" Padding="10,3"
+                            Background="Transparent" BorderThickness="0"
+                            ToolTip.Tip="Move down"
+                            Command="{Binding $parent[ListBox].((vm:ToolbarSectionViewModel)DataContext).MoveWebsiteDownCommand}"
+                            CommandParameter="{Binding}"/>
+                    <Button Content="✕" FontSize="14" Padding="10,3"
+                            Background="Transparent" BorderThickness="0"
+                            Foreground="{StaticResource AccentRedBrush}"
+                            ToolTip.Tip="Remove link"
+                            Command="{Binding $parent[ListBox].((vm:ToolbarSectionViewModel)DataContext).RemoveWebsiteCommand}"
+                            CommandParameter="{Binding}"/>
+                </StackPanel>
+            </Grid>
+        </DataTemplate>
     </UserControl.Resources>
 
-    <Grid>
+    <!-- One outer scroller for the whole tab. The Help-websites block up top
+         is a Global setting so it stays visible with no profile loaded; the
+         toolbar/shortcuts editor below it is character-scoped and swaps to a
+         "load a profile" banner when none is loaded. -->
+    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                  HorizontalScrollBarVisibility="Disabled">
+    <StackPanel Margin="22" Spacing="10">
 
-        <!-- "No profile loaded" banner — shows when HasProfile is false. -->
+        <!-- Help-menu websites (Global tier) — always editable. -->
+        <TextBlock Classes="SectionHeader"
+                   Text="Help menu websites — shown under Help ↗ (shared across all characters)"/>
+
+        <!-- List-level actions sit above the box; per-row reorder / remove
+             live inline on each row (see WebsiteRowTemplate). -->
+        <StackPanel Orientation="Horizontal" Spacing="8">
+            <Button Content="Add link"
+                    Command="{Binding AddWebsiteCommand}"
+                    ToolTip.Tip="Add a new website link to the Help menu."/>
+            <Button Content="Reset to default"
+                    Command="{Binding ResetWebsitesToDefaultCommand}"
+                    ToolTip.Tip="Restore the built-in reference links (wiki, subreddit, MudInfo, Facebook group)."/>
+        </StackPanel>
+
+        <!-- Editable label/URL list — full width now the rail is gone. -->
+        <Border Height="220"
+                BorderBrush="{StaticResource ChromeBorderBrush}"
+                BorderThickness="1"
+                Background="{StaticResource ChromeBgSunkenBrush}">
+            <ListBox ItemsSource="{Binding WebsiteRows}"
+                     ItemTemplate="{StaticResource WebsiteRowTemplate}"
+                     Background="Transparent"
+                     BorderThickness="0"/>
+        </Border>
+
+        <!-- Active BBS's own site — a per-BBS value edited here as a special
+             row tied to whichever BBS is active. -->
+        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8"
+              IsVisible="{Binding HasActiveBbs}">
+            <TextBlock Grid.Column="0"
+                       VerticalAlignment="Center"
+                       Foreground="{StaticResource ChromeFgMutedBrush}"
+                       Text="{Binding ActiveBbsName, StringFormat='{}{0} site:'}"/>
+            <TextBox Grid.Column="1"
+                     Text="{Binding BbsWebsiteUrl, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                     PlaceholderText="https://… (optional)"
+                     ToolTip.Tip="This BBS's website — appears as the 'BBS site ↗' entry under Help. Stored per-BBS."/>
+            <CheckBox Grid.Column="2"
+                      VerticalAlignment="Center"
+                      Content="Show in Help menu"
+                      IsChecked="{Binding ShowBbsWebsiteInHelp, Mode=TwoWay}"
+                      ToolTip.Tip="Show this BBS's 'BBS site ↗' entry in the Help menu. Uncheck to hide it even with a URL saved."/>
+        </Grid>
+        <TextBlock IsVisible="{Binding !HasActiveBbs}"
+                   Foreground="{StaticResource ChromeFgMutedBrush}"
+                   FontSize="{StaticResource FontSizeSm}"
+                   TextWrapping="Wrap"
+                   Text="Configure a BBS (Settings → BBS + Display) to attach its website to the Help menu."/>
+
+        <Separator Margin="0,4"/>
+
+        <!-- "No profile loaded" banner — shown when HasProfile is false.
+             Only the toolbar/shortcuts editor below needs a character; the
+             websites above are global. -->
         <Border IsVisible="{Binding !HasProfile}"
-                Padding="22"
-                HorizontalAlignment="Stretch"
-                VerticalAlignment="Top">
+                HorizontalAlignment="Stretch">
             <StackPanel Spacing="10" MaxWidth="520" HorizontalAlignment="Left">
                 <TextBlock Text="Toolbar + Shortcuts"
                            Foreground="{StaticResource ChromeFgBrush}"
                            FontSize="{StaticResource FontSizeLg}"
                            FontWeight="SemiBold"/>
-                <TextBlock Text="Load or create a character profile to edit Toolbar + Shortcuts — every settings tab lives on the active character."
+                <TextBlock Text="Load or create a character profile to edit the toolbar layout + shortcuts — those live on the active character."
                            Foreground="{StaticResource ChromeFgSecBrush}"
                            FontSize="{StaticResource FontSizeMd}"
                            TextWrapping="Wrap"/>
@@ -97,12 +190,8 @@
         </Border>
 
         <!-- Editor — visible when a profile is loaded. Fixed (Auto) row
-             heights with 5-row lists; a ScrollViewer guards against the
-             window being too short to show the whole editor. -->
-        <ScrollViewer IsVisible="{Binding HasProfile}"
-                      VerticalScrollBarVisibility="Auto"
-                      HorizontalScrollBarVisibility="Disabled">
-        <Grid Margin="22"
+             heights with 8-row lists. -->
+        <Grid IsVisible="{Binding HasProfile}"
               RowDefinitions="Auto,Auto,Auto,Auto,Auto"
               ColumnDefinitions="*,180">
 
@@ -237,7 +326,7 @@
                         ToolTip.Tip="Rebind the shortcut for the selected action, or clear it."/>
             </StackPanel>
         </Grid>
-        </ScrollViewer>
 
-    </Grid>
+    </StackPanel>
+    </ScrollViewer>
 </UserControl>
