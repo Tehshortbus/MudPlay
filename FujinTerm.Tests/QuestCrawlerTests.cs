@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.Json;
 using FujinTerm.Game.Quests;
 using FujinTerm.Services;
+using FujinTerm.ViewModels.CharacterWorkshop;
 using Xunit;
 
 namespace FujinTerm.Tests;
@@ -46,6 +47,21 @@ public sealed class QuestCrawlerTests : IDisposable
         Directory.CreateDirectory(dir);
         var rows = actions.Select(a => new Dictionary<string, object> { ["Action"] = a }).ToArray();
         File.WriteAllText(Path.Combine(dir, "TBInfo.json"), JsonSerializer.Serialize(rows));
+        GameDataCache cache = new(_root);
+        cache.SwitchSet("test-set");
+        return cache;
+    }
+
+    // Seeds TBInfo plus a Classes name table so QuestTextFormatter.Requirements can
+    // render class names (not #id fallbacks) alongside their per-class level gates.
+    private GameDataCache CacheWithTbInfoAndClasses((int Number, string Name)[] classes, params string[] actions)
+    {
+        string dir = Path.Combine(_root, "test-set");
+        Directory.CreateDirectory(dir);
+        var tb = actions.Select(a => new Dictionary<string, object> { ["Action"] = a }).ToArray();
+        File.WriteAllText(Path.Combine(dir, "TBInfo.json"), JsonSerializer.Serialize(tb));
+        var cls = classes.Select(c => new Dictionary<string, object> { ["Number"] = c.Number, ["Name"] = c.Name }).ToArray();
+        File.WriteAllText(Path.Combine(dir, "Classes.json"), JsonSerializer.Serialize(cls));
         GameDataCache cache = new(_root);
         cache.SwitchSet("test-set");
         return cache;
@@ -353,6 +369,48 @@ public sealed class QuestCrawlerTests : IDisposable
         CrawledQuest q = Assert.Single(quests);
         Assert.Null(q.ClassIds);
         Assert.Null(q.RaceIds);
+    }
+
+    [Fact]
+    public void Crawl_MultiClassSkillQuest_PopulatesPerClassLevels()
+    {
+        // Smash (32): both granting chains are class-guarded and each carries its own
+        // minlevel — the per-class gate map surfaces so "Requires: Classes …" can show
+        // each class's distinct unlock level (Warrior-22, Mystic-20), the point of a
+        // multi-class ability quest.
+        IReadOnlyList<CrawledQuest> quests = QuestCrawler.Crawl(
+            CacheWithTbInfo(
+                "class 1:minlevel 22:takeitem 1247:giveability 32 1",
+                "class 2:minlevel 20:takeitem 1247:giveability 32 1"), classId: null);
+
+        CrawledQuest q = Assert.Single(quests);
+        Assert.NotNull(q.ClassLevels);
+        Assert.Equal(22, q.ClassLevels![1]);
+        Assert.Equal(20, q.ClassLevels[2]);
+    }
+
+    [Fact]
+    public void Crawl_UnrestrictedQuest_HasNullClassLevels()
+    {
+        // No class guard anywhere → no per-class gate map (nothing to append).
+        IReadOnlyList<CrawledQuest> quests = QuestCrawler.Crawl(
+            CacheWithTbInfo("giveability 125 2:minlevel 15:addability 2 1"), classId: null);
+
+        Assert.Null(Assert.Single(quests).ClassLevels);
+    }
+
+    [Fact]
+    public void Requirements_MultiClassQuest_AppendsEachClassLevel()
+    {
+        // End-to-end: a crawled multi-class ability quest renders its Requirements line
+        // with each class's own gate appended ("Warrior-22, Mystic-20"), not bare names.
+        GameDataCache cache = CacheWithTbInfoAndClasses(
+            new[] { (1, "Warrior"), (2, "Mystic") },
+            "class 1:minlevel 22:takeitem 1247:giveability 32 1",
+            "class 2:minlevel 20:takeitem 1247:giveability 32 1");
+
+        CrawledQuest q = Assert.Single(QuestCrawler.Crawl(cache, classId: null));
+        Assert.Equal("Classes: Warrior-22, Mystic-20", QuestTextFormatter.Requirements(cache, q));
     }
 
     [Fact]

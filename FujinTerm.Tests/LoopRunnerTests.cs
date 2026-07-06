@@ -375,6 +375,34 @@ public sealed class LoopRunnerTests : IDisposable
         Assert.Empty(h.Runner.LapHistory);
     }
 
+    [Fact]
+    public void CompletedLaps_CountsEachWrap_AndResetsOnStop()
+    {
+        // The Nav lap counter reads CompletedLaps (uncapped), unlike LapHistory.Count
+        // which caps at MaxLapHistory. One full lap → 1; the displayed "lap N" is this
+        // + 1. Stop resets it so a fresh run starts back at lap 1.
+        Harness h = NewHarness();
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Runner.Start(AbCycle());
+        Assert.Equal(0, h.Runner.CompletedLaps);
+
+        h.Tracker.NoteRoomObserved(new RoomObservation("B",
+            new HashSet<Direction> { Direction.N, Direction.S }));
+        h.Tracker.NoteRoomObserved(new RoomObservation("A",
+            new HashSet<Direction> { Direction.N }));
+        Assert.Equal(1, h.Runner.CompletedLaps);
+
+        // A second lap increments again.
+        h.Tracker.NoteRoomObserved(new RoomObservation("B",
+            new HashSet<Direction> { Direction.N, Direction.S }));
+        h.Tracker.NoteRoomObserved(new RoomObservation("A",
+            new HashSet<Direction> { Direction.N }));
+        Assert.Equal(2, h.Runner.CompletedLaps);
+
+        h.Runner.Stop();
+        Assert.Equal(0, h.Runner.CompletedLaps);
+    }
+
     // ----- circuit-phase special exits (shared with the walker) ------
 
     // Docks (1/1) → Pier (1/2) via a Text exit ("borrow skiff"); Pier

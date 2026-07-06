@@ -291,9 +291,9 @@ public partial class MainWindowViewModel : ObservableObject
         {
             _loopRunning = AppServices.Current.LoopRunner.State != Game.Map.LoopState.Idle;
             RefreshEngineActionChip();
-            // Loop status owns the location slot while active — refresh
-            // on every event so the "step N of M" tail keeps pace with
-            // StepCompleted / RepeatStarted / Stopped transitions.
+            // Loop status owns the location slot while active — refresh on every
+            // event so the lap counter ticks over on RepeatStarted and the slot
+            // clears on Stopped.
             RefreshLocationSlot();
         });
 
@@ -1151,21 +1151,16 @@ public partial class MainWindowViewModel : ObservableObject
 
     private void RefreshLocationSlot()
     {
-        // Loop status takes over the location slot while a loop is
-        // active so the user sees step progress alongside the chip,
-        // not just the in-flight room (which the loop is responsible
-        // for already). Tracker fallback handles every other state.
+        // Loop status takes over the location slot while a loop is active. The
+        // chip already reads "LOOPING", and the CURRENT NAV pane owns the
+        // per-step / loop-name detail — so the slot stays terse: just the lap
+        // the walker is on and the session's experience rate. Tracker fallback
+        // handles every other state.
         Game.Map.LoopRunner runner = AppServices.Current.LoopRunner;
-        if (runner.State != Game.Map.LoopState.Idle && runner.CurrentLoop is { } loop)
+        if (runner.State != Game.Map.LoopState.Idle && runner.CurrentLoop is not null)
         {
-            int total = runner.StepCount;
-            if (total > 0)
-            {
-                int human = Math.Min(total, runner.CurrentIndex + 1);
-                LocationText = $"Looping {loop.Name} on step {human} of {total}";
-                return;
-            }
-            LocationText = $"Looping {loop.Name}";
+            double xpHr = AppServices.Current.SessionActivity.Snapshot().ExperiencePerHour;
+            LocationText = $"lap {runner.CompletedLaps + 1} · {Game.Combat.RateText.Compact(xpHr)}/hr";
             return;
         }
 

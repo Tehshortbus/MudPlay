@@ -43,6 +43,12 @@ namespace FujinTerm.Game.Quests;
 //     filtering of the Quest Status list.
 //   RaceIds — race Numbers the quest is restricted to, by the same
 //     all-granting-chains-guarded rule as ClassIds; null when open to all races.
+//   ClassLevels — per-class lowest level gate for a class-restricted quest: class Number →
+//     minlevel, for each class in ClassIds that carries a level gate. Lets the "Requires:
+//     Classes …" line show each class's own requirement (Priest-20, Mage-15) instead of a
+//     bare name — the point of a multi-class ability quest whose classes unlock it at
+//     different levels. null when the quest isn't class-restricted, or when no restricted
+//     class carries a gate.
 //   BandOrdinal — 1-based position of this band among the flag's bands in ascending
 //     level order (band 1 is the lowest tier). 0 for a single-part quest. Drives
 //     the "Good 1"-style default band name.
@@ -73,6 +79,7 @@ public sealed record CrawledQuest(
     IReadOnlyList<int> AwardItems,
     IReadOnlyList<int>? ClassIds = null,
     IReadOnlyList<int>? RaceIds = null,
+    IReadOnlyDictionary<int, int>? ClassLevels = null,
     int BandOrdinal = 0,
     int StepRangeStart = 0,
     int StepRangeEnd = 0,

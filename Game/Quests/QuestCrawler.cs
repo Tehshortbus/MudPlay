@@ -105,12 +105,13 @@ public static class QuestCrawler
             int flag = flagGroup.Key;
             List<ParsedChain> flagChains = flagGroup.ToList();
             (IReadOnlyList<int>? classRestrict, IReadOnlyList<int>? raceRestrict) = ResolveRestrictions(flagChains);
+            IReadOnlyDictionary<int, int>? classLevels = ResolveClassLevels(flagChains, classRestrict);
             if (valueLadders.TryGetValue(flag, out int maxValue))
-                quests.AddRange(CrawlValueLadder(flag, rawChains, maxValue, grantedFlags, classId, classRestrict, raceRestrict));
+                quests.AddRange(CrawlValueLadder(flag, rawChains, maxValue, grantedFlags, classId, classRestrict, raceRestrict, classLevels));
             else if (ladders.TryGetValue(flag, out IReadOnlyList<(int Step, int Level)>? ladder))
-                quests.AddRange(CrawlMultiPart(flag, flagChains, ladder, classId, classRestrict, raceRestrict));
+                quests.AddRange(CrawlMultiPart(flag, flagChains, ladder, classId, classRestrict, raceRestrict, classLevels));
             else
-                quests.Add(CrawlSinglePart(flag, flagChains, classId, classRestrict, raceRestrict));
+                quests.Add(CrawlSinglePart(flag, flagChains, classId, classRestrict, raceRestrict, classLevels));
         }
         return quests;
     }
@@ -138,6 +139,28 @@ public static class QuestCrawler
             ? null
             : real.SelectMany(c => c.RaceIds).Distinct().OrderBy(x => x).ToArray();
         return (classes, races);
+    }
+
+    // The lowest level gate each restricted class faces for this quest: class Number →
+    // minlevel, one entry per class in classRestrict that carries a level gate. Behind the
+    // "Requires: Classes …" line so a multi-class ability quest can show each class's own
+    // requirement (Priest-20, Mage-15) rather than a bare name. null when the quest isn't
+    // class-restricted, or when no restricted class carries a gate (nothing to append). A
+    // chain guarding a class already counts as a real grant (ClassIds.Count > 0 ⇒
+    // IsRealGrant), so no separate real-grant filter is needed here.
+    private static IReadOnlyDictionary<int, int>? ResolveClassLevels(
+        List<ParsedChain> chains, IReadOnlyList<int>? classRestrict)
+    {
+        if (classRestrict is null || classRestrict.Count == 0) return null;
+        var levels = new Dictionary<int, int>();
+        foreach (int cid in classRestrict)
+        {
+            List<int> gates = chains
+                .Where(c => c.ClassIds.Contains(cid) && c.MinLevel is int ml && ml > 0)
+                .Select(c => c.MinLevel!.Value).ToList();
+            if (gates.Count > 0) levels[cid] = gates.Min();
+        }
+        return levels.Count > 0 ? levels : null;
     }
 
     // A granting chain does real quest work — i.e. is an entry/progress step rather than a
@@ -312,7 +335,8 @@ public static class QuestCrawler
     // step draft (QuestStepGraph) walks the same ability-value axis.
     private static IEnumerable<CrawledQuest> CrawlValueLadder(int flag, IReadOnlyList<string> rawChains,
         int maxValue, HashSet<int> grantedFlags, int? classId,
-        IReadOnlyList<int>? classRestrict, IReadOnlyList<int>? raceRestrict)
+        IReadOnlyList<int>? classRestrict, IReadOnlyList<int>? raceRestrict,
+        IReadOnlyDictionary<int, int>? classLevels)
     {
         var parsed = new List<(int Value, ParsedChain Chain)>();
         var takenAnywhere = new HashSet<int>();
@@ -355,7 +379,7 @@ public static class QuestCrawler
             int rangeEnd = i == boundaries.Length - 1 ? int.MaxValue : upper;
 
             yield return new CrawledQuest(
-                flag, upper, level, bonuses, awards, classRestrict, raceRestrict,
+                flag, upper, level, bonuses, awards, classRestrict, raceRestrict, classLevels,
                 BandOrdinal: i + 1, StepRangeStart: rangeStart, StepRangeEnd: rangeEnd, ProgressByValue: true);
         }
     }
@@ -429,14 +453,15 @@ public static class QuestCrawler
     // that grants neither a keeper nor a stat bonus awards the ability itself — the
     // skill it teaches is the reward (Smash, Meditate, Perfect Stealth, SeeHidden).
     private static CrawledQuest CrawlSinglePart(int flag, List<ParsedChain> chains, int? classId,
-        IReadOnlyList<int>? classRestrict, IReadOnlyList<int>? raceRestrict)
+        IReadOnlyList<int>? classRestrict, IReadOnlyList<int>? raceRestrict,
+        IReadOnlyDictionary<int, int>? classLevels)
     {
         int requiredLevel = ResolveLevel(chains, classId, classRestrict);
         IReadOnlyList<QuestBonus> bonuses = ResolveLowestRewardBonuses(chains, classId);
         IReadOnlyList<int> awardItems = AwardItemsFrom(KeeperCandidates(chains), classId);
         bool awardsAbility = awardItems.Count == 0 && bonuses.Count == 0;
         return new CrawledQuest(
-            flag, 0, requiredLevel, bonuses, awardItems, classRestrict, raceRestrict,
+            flag, 0, requiredLevel, bonuses, awardItems, classRestrict, raceRestrict, classLevels,
             AwardsAbility: awardsAbility);
     }
 
@@ -450,7 +475,8 @@ public static class QuestCrawler
     // give-step is ever dropped from every band's checklist.
     private static IEnumerable<CrawledQuest> CrawlMultiPart(int flag, List<ParsedChain> chains,
         IReadOnlyList<(int Step, int Level)> ladder, int? classId,
-        IReadOnlyList<int>? classRestrict, IReadOnlyList<int>? raceRestrict)
+        IReadOnlyList<int>? classRestrict, IReadOnlyList<int>? raceRestrict,
+        IReadOnlyDictionary<int, int>? classLevels)
     {
         var bandLevels = ladder.Select(m => m.Level).ToHashSet();
 
@@ -485,7 +511,7 @@ public static class QuestCrawler
             int rangeEnd = i == ladder.Count - 1 ? int.MaxValue : ladder[i + 1].Step - 1;
 
             yield return new CrawledQuest(
-                flag, level, level, bonuses, items, classRestrict, raceRestrict,
+                flag, level, level, bonuses, items, classRestrict, raceRestrict, classLevels,
                 BandOrdinal: i + 1, StepRangeStart: rangeStart, StepRangeEnd: rangeEnd);
         }
     }

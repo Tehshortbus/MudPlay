@@ -2,6 +2,21 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0): **MAJOR** = whole-program refactor, **MINOR** = a large PR, **PATCH** = a small / bugfix PR.
 
+## 1.5.0
+
+A readability batch across Session Stats, navigation, and the Player Workshop quest view, all from live play: coin figures now read as denominations instead of a raw copper count, the rate graphs match their headline numbers and label the current rate, the loop lap counter actually counts, the main-window looping chip is trimmed to the essentials, and multi-class ability quests show each class's own unlock level.
+
+**Changed**
+- **Session Stats currency reads as coin denominations now, not a comma-grouped copper count.** The total-collected, per-hour, and stashed figures "flip up" to the largest denomination that has a whole unit — 1000 copper an hour shows as `10 gold/hr`, not `1,000/hr` — following the same copper/silver/gold/platinum/runic ladder the inventory tracker uses. The exact itemised wealth line (`1 runic 93 platinum 5 gold 6 copper`) moves to a hover tooltip, so the compact figure fits the narrow stat columns while the full breakdown stays one hover away. No thousands-commas anywhere in the currency rows.
+- **The exp/hr and kills/hr rate graphs now carry the current rate as a header label.** Each graph header shows the same figure as its table stat (e.g. `5.7k`), abbreviated to k / M so it fits without a long digit run — so you can read the rate off the graph at a glance instead of eyeballing the plotted line against the axis.
+- **The navigation top-bar path label shows step progress and the lap number while looping** (e.g. `Docks run · step 3/8 · lap 2`), turning the bare loop name into a live position + lap readout that mirrors the Current-Nav panel.
+- **The main-window looping chip is trimmed to the essentials** — the Looping state, the lap counter, and XP/hr — dropping the longer status text so the bottom-left chip stays compact during a farm.
+- **Multi-class ability quests show each class's own required level in the Player Workshop quest "Requires" line.** A quest several classes can learn at different levels (Smash, Meditate, Supernatural Stealth) now renders each restricted class with its own gate appended — `Warrior-22, Mystic-20` instead of bare class names — surfacing the distinct per-class unlock level the crawl already knew.
+
+**Fixed**
+- **The Session Stats exp/hr and kills/hr graphs plotted a rolling-window rate that didn't match the table's session-lifetime stat** — a graph reading ~6.5k/hr sitting next to a table reading 5,749. The graph series is now anchored at session start as a cumulative average over the whole session, the same basis the table uses, so the series' right edge equals the headline number and the two can't disagree.
+- **The navigation lap counter never advanced past lap 1.** The displayed lap derived from a lap-time history list capped at ten entries, so its count froze once the cap was hit (and the "current lap" it implied was already off by the capping). A dedicated uncapped lap counter now drives the display, incrementing on every loop wrap and resetting when the loop stops, so lap 2 reads as lap 2.
+
 ## 1.4.10
 
 The Health tab's "Hang up if below" ticker can now go negative — down to the realm death floor — so a player can set the emergency disconnect deep in the bleeding-out band, closer to death (issue #107).
