@@ -1077,6 +1077,12 @@ public sealed class AppServices
     // Hooked from MainWindowViewModel.SendUserInput.
     public Game.Map.OutboundMovementObserver OutboundMovement { get; private set; } = null!;
 
+    // Feeds leader-driven follower drags into RoomTracker. A dragged follower
+    // sends no movement bytes of its own, so the " -- Following your Party leader
+    // <dir> --" line is the only move signal that keeps the map located instead
+    // of drifting to Lost. Subscribes to the router for app lifetime.
+    public Game.Map.FollowMoveObserver FollowMove { get; private set; } = null!;
+
     // Death-message detector — watches lines for either post-death lives
     // readout (You now have N lives remaining. / You have N lives left.,
     // the latter the miracle-save death) and fires
@@ -1862,6 +1868,13 @@ public sealed class AppServices
         // is to walk back through a unique room to re-anchor.
         Router.Subscribe(Services.Patterns.KnownPatterns.DirectionFailed,
             _ => RoomTracker.NoteDirectionFailed());
+
+        // Follower-drag → tracker bridge. When the party leader walks, the game
+        // drags us one room and prints " -- Following your Party leader <dir> --";
+        // a follower types no move, so without turning that line into a
+        // NoteMoveSent the tracker keeps its old anchor, mismatches every new room
+        // and falls to Lost within a few rooms.
+        FollowMove = new Game.Map.FollowMoveObserver(Router, RoomTracker, Log);
 
         // HiddenExitRevealManager — walker's sea-retry loop for
         // SearchableHidden exits. Subscribes to RoomTracker.StateChanged

@@ -117,6 +117,22 @@ public sealed class DefaultPatternsTests
     }
 
     [Fact]
+    public void PartyFollowMoveRegex_CapturesDragDirection()
+    {
+        IMessagePattern p = PatternById(KnownPatterns.PartyFollowMove);
+
+        // The real drag line carries a leading space before the dashes.
+        Assert.True(p.TryMatch(Line(" -- Following your Party leader northeast --"), out MatchResult r));
+        Assert.Equal("northeast", r.Groups[0]); // longest-first alternation keeps the compound intact
+
+        Assert.True(p.TryMatch(Line(" -- Following your Party leader up --"), out MatchResult r2));
+        Assert.Equal("up", r2.Groups[0]);
+
+        // A non-drag follow line must not match.
+        Assert.False(p.TryMatch(Line("You are now following Fujin."), out _));
+    }
+
+    [Fact]
     public void LearnSpellRegex_CapturesSpellName()
     {
         IMessagePattern p = PatternById(KnownPatterns.LearnSpell);
