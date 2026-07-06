@@ -1,12 +1,10 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.6.0**
-> - Help-menu websites now editable under Settings → Toolbar + Shortcuts
-> - Per-row add / remove / rename / reorder controls, with Reset to default
-> - MajorMUD Facebook Group added to the default link set
-> - BBS website field moved out of Settings → BBS into the same editor
-> - Per-BBS toggle to show or hide the BBS site in the Help menu
+> **Version 1.7.0**
+> - Equip All / @equip-<set> fill empty slots from carried gear when a set is empty or its items are missing
+> - Loose gear is level / class / alignment checked before it's worn
+> - Duplicate-named pieces are rejected; fingers and wrists take two distinct items each
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

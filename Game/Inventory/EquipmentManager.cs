@@ -35,6 +35,14 @@ public sealed class EquipmentManager
     // so the actuator stays game-data-free; null ⇒ never two-handed (one-handed
     // off-hand behaviour, the safe default for tests).
     private readonly Func<string?, bool> _isTwoHanded;
+    // Inventory-fallback resolvers (game-data-aware, injected to keep the actuator
+    // game-data-free like _isTwoHanded). _resolveItemSlot maps a carried item name
+    // to the physical EquipmentSlot it fills (null ⇒ not wearable gear);
+    // _canEquipItem gates it against the live character's level / class / alignment.
+    // Both null in tests / before game data is wired, which disables the fallback —
+    // the manual apply paths then fall back to the set-only worn diff.
+    private readonly Func<string, EquipmentSlot?>? _resolveItemSlot;
+    private readonly Func<string, bool>? _canEquipItem;
     private readonly LogService? _log;
     private readonly WireSender _wire = new();
 
@@ -48,6 +56,8 @@ public sealed class EquipmentManager
         Func<CombatSettings> readCombat,
         Action<CombatSettings> writeCombat,
         Func<string?, bool>? isTwoHanded = null,
+        Func<string, EquipmentSlot?>? resolveItemSlot = null,
+        Func<string, bool>? canEquipItem = null,
         LogService? log = null)
     {
         ArgumentNullException.ThrowIfNull(readEquipment);
@@ -59,6 +69,8 @@ public sealed class EquipmentManager
         _readCombat = readCombat;
         _writeCombat = writeCombat;
         _isTwoHanded = isTwoHanded ?? (static _ => false);
+        _resolveItemSlot = resolveItemSlot;
+        _canEquipItem = canEquipItem;
         _log = log;
     }
 
@@ -79,7 +91,8 @@ public sealed class EquipmentManager
         if (_isEquipping) return EquipResult.Busy;
         EquipmentSet? set = FindSet(keyword.Trim());
         if (set is null) return EquipResult.NotFound;
-        return ApplySet(set) ? EquipResult.Applied : EquipResult.NoChange;
+        // User-initiated gear-up: top empty / unowned slots up from carried gear.
+        return ApplySet(set, fillFromInventory: true) ? EquipResult.Applied : EquipResult.NoChange;
     }
 
     // Resolve a gear set by its stable EquipmentSet.Id and apply it. Auto-equip
@@ -94,7 +107,10 @@ public sealed class EquipmentManager
         EquipmentSet? set = _readEquipment().Sets
             .FirstOrDefault(s => string.Equals(s.Id, setId, StringComparison.Ordinal));
         if (set is null) return EquipResult.NotFound;
-        return ApplySet(set) ? EquipResult.Applied : EquipResult.NoChange;
+        // Auto-fire (resting / combat triggers): apply the set as configured, no
+        // inventory fallback — silently equipping unrelated carried gear on a
+        // scheduled trigger would be surprising.
+        return ApplySet(set, fillFromInventory: false) ? EquipResult.Applied : EquipResult.NoChange;
     }
 
     // Resolve the gear set whose Trigger matches and apply it. The local
@@ -107,7 +123,8 @@ public sealed class EquipmentManager
         EquipmentSet? set = _readEquipment().Sets
             .FirstOrDefault(s => s.Trigger == trigger);
         if (set is null) return EquipResult.NotFound;
-        return ApplySet(set) ? EquipResult.Applied : EquipResult.NoChange;
+        // "Equip All" is a manual gear-up: top empty / unowned slots up from carried gear.
+        return ApplySet(set, fillFromInventory: true) ? EquipResult.Applied : EquipResult.NoChange;
     }
 
     private EquipmentSet? FindSet(string keyword)
@@ -203,7 +220,9 @@ public sealed class EquipmentManager
 
     // True when the apply produced a change — a wear sequence started or a virtual
     // slot wrote CombatSettings. False when the set is already fully in effect.
-    private bool ApplySet(EquipmentSet set)
+    // fillFromInventory lets the user-initiated paths top empty / unowned slots up
+    // from carried gear (see BuildApplyCommands); auto-fires pass it false.
+    private bool ApplySet(EquipmentSet set, bool fillFromInventory)
     {
         bool combatChanged = false;
         CombatSettings combat = _readCombat();
@@ -213,10 +232,7 @@ public sealed class EquipmentManager
             combatChanged = true;
         }
 
-        InventorySnapshot snap = _getSnapshot();
-        var worn = new HashSet<string>(
-            snap.EquippedItems.Select(e => e.Name), StringComparer.OrdinalIgnoreCase);
-        List<string> cmds = BuildWearCommands(set, worn);
+        List<string> cmds = BuildApplyCommands(set, _getSnapshot(), fillFromInventory);
 
         if (cmds.Count == 0)
             return combatChanged;
@@ -224,6 +240,27 @@ public sealed class EquipmentManager
         _log?.Info(LogCategory, $"applying gear set '{set.Name}' — {cmds.Count} command(s)");
         StartPacedSend(cmds);
         return true;
+    }
+
+    // Pick the command list for an apply: the inventory-aware plan when the caller
+    // allows it, an 'i' dump has actually been parsed, and the game-data resolvers
+    // are wired; otherwise the set-only worn diff. The set-only path is also what
+    // every existing test exercises (their snapshots are never-observed, so
+    // haveInventory is false) and what an auto-fire uses.
+    private List<string> BuildApplyCommands(
+        EquipmentSet set, InventorySnapshot snap, bool fillFromInventory)
+    {
+        bool haveInventory = snap.LastUpdated != DateTimeOffset.MinValue;
+        if (fillFromInventory && haveInventory
+            && _resolveItemSlot is not null && _canEquipItem is not null)
+        {
+            return BuildEquipCommands(
+                set, snap.CarriedItems, snap.EquippedItems, _resolveItemSlot, _canEquipItem);
+        }
+
+        var worn = new HashSet<string>(
+            snap.EquippedItems.Select(e => e.Name), StringComparer.OrdinalIgnoreCase);
+        return BuildWearCommands(set, worn);
     }
 
     // ----- pure apply logic (unit-tested directly) ------------------------
@@ -251,6 +288,94 @@ public sealed class EquipmentManager
         }
         return cmds;
     }
+
+    // Inventory-aware apply plan for the user-initiated equip paths (Equip All /
+    // @equip-<set>). Honors the set's picks the character actually carries (or
+    // already wears), then fills any slot the set left empty — or named an item
+    // that isn't carried — from equippable carried gear, first-come-first-served.
+    //
+    // MajorMUD lets only one of each *named* item be worn, and the finger / wrist
+    // families each hold two pieces; the plan respects both — distinct names only,
+    // and never more per family than its physical slot count. Single slots aren't
+    // capacity-gated: a wear trades places with whatever occupies the slot, so a
+    // set's explicit pick replaces the worn piece there. resolveSlot returns null
+    // for an item the realm can't wear (skipped); canEquip drops gear the live
+    // character can't use (wrong class / level / alignment). Weapons take the
+    // universal `eq` verb (wear is armor-only); everything worn takes `wear`.
+    internal static List<string> BuildEquipCommands(
+        EquipmentSet set,
+        IReadOnlyList<string> carried,
+        IReadOnlyList<EquippedItem> worn,
+        Func<string, EquipmentSlot?> resolveSlot,
+        Func<string, bool> canEquip)
+    {
+        var result = new List<string>();
+        var wornNames = new HashSet<string>(
+            worn.Select(e => e.Name), StringComparer.OrdinalIgnoreCase);
+        var carriedSet = new HashSet<string>(carried, StringComparer.OrdinalIgnoreCase);
+        // One of each named item across the whole plan (also blocks re-wearing worn).
+        var chosen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        // Per-family fill count, seeded from currently-worn occupancy so the
+        // fallback only tops a family up to its remaining empty slots.
+        var used = new Dictionary<EquipmentSlot, int>();
+        foreach (EquippedItem e in worn)
+            if (EquipmentSlotMap.FromWornString(e.Slot) is EquipmentSlot s)
+                Bump(used, FamilyOf(s));
+
+        // Set pass — the set's picks we actually have.
+        foreach (EquipmentSlotEntry entry in set.Slots)
+        {
+            if (IsVirtual(entry.Slot)) continue;
+            string? name = entry.ItemName?.Trim();
+            if (string.IsNullOrEmpty(name)) continue;
+            if (wornNames.Contains(name)) { chosen.Add(name); continue; }
+            if (chosen.Contains(name)) continue;
+            // Not carried ⇒ leave the slot for the fallback to fill from what we have.
+            if (!carriedSet.Contains(name)) continue;
+            result.Add($"{Verb(entry.Slot)} {name}");
+            chosen.Add(name);
+            Bump(used, FamilyOf(entry.Slot));
+        }
+
+        // Fallback pass — fill remaining empty slots, first-come-first-served.
+        foreach (string rawName in carried)
+        {
+            string name = rawName.Trim();
+            if (name.Length == 0 || chosen.Contains(name) || wornNames.Contains(name)) continue;
+            if (resolveSlot(name) is not EquipmentSlot slot || IsVirtual(slot)) continue;
+            EquipmentSlot family = FamilyOf(slot);
+            if (used.GetValueOrDefault(family) >= Capacity(family)) continue;
+            if (!canEquip(name)) continue;
+            result.Add($"{Verb(slot)} {name}");
+            chosen.Add(name);
+            Bump(used, family);
+        }
+
+        return result;
+    }
+
+    private static void Bump(Dictionary<EquipmentSlot, int> counts, EquipmentSlot family)
+        => counts[family] = counts.GetValueOrDefault(family) + 1;
+
+    // The paired finger / wrist slots collapse onto their slot-1 member so both
+    // physical placements share one capacity budget; every other slot is its own
+    // family.
+    private static EquipmentSlot FamilyOf(EquipmentSlot slot) => slot switch
+    {
+        EquipmentSlot.Finger2 => EquipmentSlot.Finger1,
+        EquipmentSlot.Wrist2 => EquipmentSlot.Wrist1,
+        _ => slot,
+    };
+
+    // Physical slot count for a family — two for fingers / wrists, one otherwise.
+    private static int Capacity(EquipmentSlot family) =>
+        family is EquipmentSlot.Finger1 or EquipmentSlot.Wrist1 ? 2 : 1;
+
+    // The equip verb: weapons take the universal `eq` (wear is armor-only per the
+    // game's verb set); everything worn takes `wear`, matching the set-only diff.
+    private static string Verb(EquipmentSlot slot) =>
+        slot == EquipmentSlot.Weapon ? "eq" : "wear";
 
     // Fold a set's virtual-slot items into combat (Alternate Weapon →
     // CombatSettings.AlternateWeapon, Alternate Off-Hand → AlternateOffHand) and
