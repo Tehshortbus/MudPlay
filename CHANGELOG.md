@@ -2,6 +2,12 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.9.0
+
+- Session Stats gets a compact top bar for Reset session + Transaction history
+- Each collapsible section has its own Reset button
+- Resetting Time Analysis restarts the per-hour rates while keeping the running totals
+
 ## 1.8.0
 
 - Backscroll window draws a "live" divider marking where logged history ends and the live tail begins

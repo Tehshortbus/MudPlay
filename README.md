@@ -1,10 +1,10 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.8.0**
-> - Backscroll window draws a "live" divider marking where logged history ends and the live tail begins
-> - Engine-sent telepaths (party @-command probes / nags) now show their message in the Conversation window instead of a blank line
-> - `@`-command replies sent via say now use the period precursor instead of the literal word "say"
+> **Version 1.9.0**
+> - Session Stats gets a compact top bar for Reset session + Transaction history
+> - Each collapsible section has its own Reset button
+> - Resetting Time Analysis restarts the per-hour rates while keeping the running totals
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->
