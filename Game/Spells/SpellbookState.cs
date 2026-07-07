@@ -97,6 +97,22 @@ public sealed class SpellbookState
     // How many spells the character has obtained.
     public int ObtainedCount => _obtained.Count;
 
+    // The full names of every obtained spell — the persistence snapshot. Mapped
+    // back through the available list (obtained is always a subset of its
+    // numbers) so callers can store names, which re-resolve across data-set
+    // renumbering, rather than raw Spells.Number values. Empty when nothing is
+    // obtained or no class is set.
+    public IReadOnlyList<string> ObtainedNames
+    {
+        get
+        {
+            List<string> names = new(_obtained.Count);
+            foreach (KnownSpell s in _available)
+                if (_obtained.Contains(s.Number)) names.Add(s.Name);
+            return names;
+        }
+    }
+
     // Rebuild Available for a new class+level. The available list only depends on
     // class+alignment (the level gate is ignored), so it's recomputed only when
     // those change; a bare level change still fires Changed so formula displays

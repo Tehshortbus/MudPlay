@@ -310,7 +310,8 @@ public sealed class KnownSpellCatalog
                 SpellName: spellName,
                 ManaCost: manaCost,
                 UseCount: ReadInt(row, "UseCount"),
-                IsTwoHanded: LookupEnums.IsTwoHandedWeaponType(ReadInt(row, "WeaponType"))));
+                IsTwoHanded: LookupEnums.IsTwoHandedWeaponType(ReadInt(row, "WeaponType")),
+                ClassRestricted: ItemClassRestricted(row, classNumber)));
         }
 
         results.Sort(static (a, b) =>
@@ -335,6 +336,18 @@ public sealed class KnownSpellCatalog
             if (c == classNumber) return true;
         }
         return !anyRestriction;
+    }
+
+    // True when the item names classNumber in an explicit ClassRest slot — a
+    // class-specific cast source, as opposed to a universal item any class can
+    // use. Distinct from ItemUsableByClass (which also passes universal items):
+    // the Spell Book surfaces only the class-specific ones so a caster isn't
+    // buried under every generic wand / scroll in the game.
+    private static bool ItemClassRestricted(JsonElement row, int classNumber)
+    {
+        for (int i = 0; i < ItemClassRestSlots; i++)
+            if (ReadInt(row, $"ClassRest-{i}") == classNumber) return true;
+        return false;
     }
 
     // True when an item can be equipped in one of the player's equipment slots,

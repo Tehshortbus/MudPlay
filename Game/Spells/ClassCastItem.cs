@@ -12,10 +12,13 @@ namespace FujinTerm.Game.Spells;
 // Spells.ManaCost — mana deducted when the item is used; 0 = free (most charge wands
 // / proc gear). UseCount is charges before the item is consumed; 0 = unlimited.
 // IsTwoHanded marks a two-handed weapon carrier — the cast sequencer must free the
-// off-hand before wielding it to use it.
+// off-hand before wielding it to use it. ClassRestricted is true when the item's
+// ClassRest list names this class specifically (as opposed to a universal item
+// anyone can use) — the Spell Book display lists only the class-specific sources,
+// while the casting automation still consumes the full usable set.
 public readonly record struct ClassCastItem(
     int ItemNumber, string ItemName, int SpellNumber, string SpellName, int ManaCost, int UseCount,
-    bool IsTwoHanded = false)
+    bool IsTwoHanded = false, bool ClassRestricted = false)
 {
     // True when the item has unlimited uses (UseCount 0).
     public bool Unlimited => UseCount == 0;

@@ -1496,11 +1496,22 @@ public sealed class AppServices
         // Rebuild the Spell Book's available list from a class+level
         // snapshot. Unknown / null class resolves to 0 (no class), which
         // yields an empty book — correct for non-magery classes and the
-        // no-profile case alike. The obtained set is NOT seeded here (it
-        // isn't persisted); checkmarks stay empty until a live
-        // `spells`/`pow` snapshot confirms them in-game.
+        // no-profile case alike. The obtained set is restored separately in
+        // the ProfileLoaded handler below (after this seeds the class list),
+        // so the learned checkmarks survive across sessions.
         void SeedSpellbook(Models.Profile.LastKnownStats? snap) =>
             Spellbook.Refresh(snap is null ? 0 : SpellCatalog.ResolveClassNumber(snap.Class) ?? 0, snap?.Level ?? 0);
+
+        // Persist the learned-spell set with the rest of the profile. Snapshot
+        // only when the book has a resolved class — with no class the obtained
+        // set is empty for lack of a spell list, and blindly writing that would
+        // wipe a previously-persisted set we simply can't re-resolve right now.
+        Profile.ProfileSaving += p =>
+        {
+            if (Spellbook.ClassNumber < 1) return;
+            IReadOnlyList<string> learned = Spellbook.ObtainedNames;
+            p.LearnedSpells = learned.Count > 0 ? new List<string>(learned) : null;
+        };
 
         Stats.ScreenParsed += snapshot =>
         {
@@ -1531,6 +1542,10 @@ public sealed class AppServices
         // the first live `stat` reconfirms.
         Profile.ProfileLoaded += p =>
         {
+            // Capture the persisted learned set before seeding fires Changed —
+            // the restore below re-applies it once the class list exists.
+            List<string>? learned = p.LearnedSpells is { Count: > 0 } ls
+                ? new List<string>(ls) : null;
             Stats.Hydrate(p.LastKnownStats);
             // Seed the live max ceilings from the persisted snapshot so a
             // returning session starts correct instead of re-learning the
@@ -1538,6 +1553,10 @@ public sealed class AppServices
             // which ApplyStatScreenMax ignores.
             Player.ApplyStatScreenMax(p.LastKnownStats?.MaxHits ?? 0, p.LastKnownStats?.MaxMana ?? 0);
             SeedSpellbook(p.LastKnownStats);
+            // Restore the learned checkmarks now the class's available list is
+            // built. Resolves by name against Available, so entries the current
+            // class can't learn (a cross-set carryover) are harmlessly dropped.
+            if (learned is not null) Spellbook.SetObtainedByNames(learned);
         };
         Profile.ProfileClosed += () =>
         {
