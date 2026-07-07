@@ -135,8 +135,24 @@ public partial class BackscrollWindow : Window
 
         if (TopLevel.GetTopLevel(this)?.Clipboard is { } cb)
         {
-            _ = cb.SetTextAsync(sb.ToString());
+            _ = CopyAsync(cb, sb.ToString());
             e.Handled = true;
+        }
+    }
+
+    // Clipboard writes route through DBus on Linux; on a host with no
+    // activatable clipboard service the Task faults. Observing it inside a
+    // try/catch keeps a best-effort copy from surfacing as an unobserved
+    // TaskScheduler exception that would fault the finalizer thread.
+    private static async Task CopyAsync(IClipboard cb, string text)
+    {
+        try
+        {
+            await cb.SetTextAsync(text).ConfigureAwait(false);
+        }
+        catch
+        {
+            // Best-effort copy; a missing/broken platform clipboard is non-fatal.
         }
     }
 }
