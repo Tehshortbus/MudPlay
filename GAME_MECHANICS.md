@@ -127,9 +127,9 @@ are unconditional, 0/3/4 never bite on alignment alone.
 
 **Layer 2 — criminal / guard system (the Align-4 `*`; runtime reputation, NOT in the monster
 table)** *([CONFIRMED] behaviour)*
-Keyed on **your title**, enforced by **Lawful-Good (Align-4) guard** NPCs plus special actors:
+Keyed on **your title**, enforced by **guard** NPCs plus special actors:
 
-| Your title | Align-4 guards | Extra actors |
+| Your title | Guards | Extra actors |
 |---|---|---|
 | Lawful / Good / Neutral | ignore | — |
 | Seedy | ignore | bad deeds done *to* you are ignored (you lose guard protection, but guards don't aggro) |
@@ -138,14 +138,21 @@ Keyed on **your title**, enforced by **Lawful-Good (Align-4) guard** NPCs plus s
 | Villain | **slay** | bounty hunters also attack |
 | Fiend | **slay** | bounty hunters + archons / gods smite you with lightning |
 
+**Identifying a guard from imported data** *([CONFIRMED])*
+The game's monster-`Type` field distinguishes an ordinary NPC from a law-enforcing *guard*, but that
+distinction is **not exported into the MDB we import** — the imported `Type` only carries Solo /
+Leader / Follower / Stationary (0–3), never the guard value. So we can't read guard-ness off the
+type. The reliable proxy we *do* have: a monster that **casts spell 583 (`jail`)** is a guard, and
+it attacks us when our title is **Outlaw or worse**. Detection = the monster references spell `583`
+in any of its castable-spell fields (`AttHitSpell-*`, `MidSpell-*`, `DeathSpell`, `CreateSpell`). In
+the shipped set that flags the guardsmen (#13/#14/#905/#538), Sheriff Lionheart (#40), and elite
+guardsman (#757). This is a **partial** list — other mobs aggro the evil-titled without casting
+`jail` (e.g. Templar is a guard yet has no `jail`); those get added here as they're recognised.
+
 **Client hostile-in-room test.** For each monster in the room, read its `Align`: hostile if
-`Align ∈ {1,2,5}` (always), or `Align == 6` and our title is Lawful / Good / Neutral, or `Align == 4`
-**and** the NPC is a guard **and** our title is Outlaw-or-worse. Our own title comes from the stat
-screen / who line (`AlignmentTracker` / `PlayerStats`).
-- **[NEEDS CONFIRMATION]** How a *guard* (or bounty-hunter / archon) is told apart from a plain
-  Align-4 NPC in game data — it is **not** `MonType` (that's Solo / Leader / Follower / Stationary).
-  Aligns 1/2/5/6 (all wandering hunt monsters) need no type lookup, so Layer 1 stands on its own;
-  the guard layer only matters in town — pin the identifying field before relying on it there.
+`Align ∈ {1,2,5}` (always), or `Align == 6` and our title is Lawful / Good / Neutral, or the monster
+is a **guard** (casts `jail` 583, per above) **and** our title is Outlaw-or-worse. Our own title
+comes from the stat screen / who line (`AlignmentTracker` / `PlayerStats`).
 
 ## Vitality — HP, dropping, and death
 
