@@ -359,6 +359,17 @@ comes from the stat screen / who line (`AlignmentTracker` / `PlayerStats`).
   small path.` — **no** ` -- Following your Party leader <dir> --` line and **no** cardinal direction.
   The follower's room changes but there is nothing to feed `NoteMoveSent`, so the tracker sees the new
   room as a mismatch and must recover via replay/candidate resolution rather than a predicted step.
+- **[CONFIRMED]** **`look <dir>` peeks the adjacent room with a full room display, but the player never
+  moves.** Looking into an exit (`look north`, `l e`, `peer …`) renders the neighbouring room exactly
+  like walking in would — its title, its `You notice … here.` item/cash survey, and its `Also here:`
+  monster/player list — yet the player stays put. This is a *preview*, not an entry, so any
+  room-entry automation keyed on the room display (auto-get items, cash pickup, combat engage) must be
+  suppressed for it — otherwise the client fires `get`/attacks at a room it isn't standing in (the
+  reported bug). The client arms a short suppression window on sending the look (`RoomTracker.NoteLookSent`);
+  the display consumers that run *before* the `Obvious exits:` line poll `IsPeekSuppressed()` to skip
+  the peeked room, and the window is consumed when `NoteRoomObserved` fires on the exits line. The
+  player's *own* room is unaffected: walking in for real re-renders the room outside the window and the
+  automation runs normally.
 
 ## Attack spells: why one fails to damage a monster
 
