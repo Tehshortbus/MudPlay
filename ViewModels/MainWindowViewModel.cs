@@ -62,6 +62,9 @@ public partial class MainWindowViewModel : ObservableObject
     // GC root for the look-on-player parser — sibling to the who-list
     // parser; populates race / class / equipment from `look <player>`.
     private readonly Game.LookParser _lookParser;
+    // GC root for the look-on-monster parser — turns a `look <monster>`
+    // wound descriptor into the status bar's Target HP window.
+    private readonly Game.MonsterLookParser _monsterLookParser;
     // GC root for the room-display + movement-refusal parsers. Both
     // subscribe to LineExtractor in their ctors and stay alive with this
     // view-model.
@@ -417,6 +420,13 @@ public partial class MainWindowViewModel : ObservableObject
     [ObservableProperty] private string _hpTickText = "HP —";
     [ObservableProperty] private string _maTickText = "MA —";
 
+    // Estimated HP window of the last `look <monster>` target, e.g.
+    // "Target: 35-48" — empty when nothing's been looked at (or after the target
+    // dies / we change rooms), which hides the centre status slot. Fed by
+    // MonsterLookParser; the game only reveals a coarse wound band, so this is the
+    // absolute HP range that band implies against the monster's max HP.
+    [ObservableProperty] private string _targetHpText = "";
+
     // 500 ms repaint cadence for the three status-bar tick countdowns — fast
     // enough to look live without burning cycles. State sourced from
     // AppServices.Tick (combat) + AppServices.Regen (HP / MA).
@@ -606,6 +616,17 @@ public partial class MainWindowViewModel : ObservableObject
         // player into PlayerDatabase.
         _whoListParser = new Game.WhoListParser(Lines, AppServices.Current.Players, AppServices.Current.Log);
         _lookParser    = new Game.LookParser   (Lines, AppServices.Current.Players, AppServices.Current.Log);
+        // Monster-look HP estimator. Name → Number resolves through the room
+        // classifier (prefers the variant actually present, so shared names hit
+        // the right HP); Number → max HP via the game-data index.
+        _monsterLookParser = new Game.MonsterLookParser(
+            Lines,
+            AppServices.Current.RoomClassifier.ResolveLookedMonsterNumber,
+            AppServices.Current.MonsterHp.MaxHp,
+            AppServices.Current.Log);
+        _monsterLookParser.TargetObserved += OnMonsterLookTarget;
+        // A kill in the room retires whatever target we last looked at.
+        AppServices.Current.MonsterDeath.MonsterDied += OnMonsterDied;
 
         // Room-display + movement-refusal parsers feeding RoomTracker.
         // Same per-session LineExtractor binding shape as the who/look
@@ -1146,8 +1167,24 @@ public partial class MainWindowViewModel : ObservableObject
     // the bonus cycle (rest / medi) when the player is resting or
     // meditating — the two cycles have independent anchors and can be
     // desynced.
-    private void OnRoomTrackerStateChanged(Game.Map.RoomTransition _)
-        => Avalonia.Threading.Dispatcher.UIThread.Post(RefreshLocationSlot);
+    private void OnRoomTrackerStateChanged(Game.Map.RoomTransition t)
+        => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+        {
+            // A genuine room change leaves the looked-at target behind — clear its
+            // HP window so the status bar never shows a stale range. Confidence-only
+            // flips (same room re-confirmed) keep it.
+            if (t.NewRoom is not null && t.PreviousRoom is not null
+                && !t.PreviousRoom.Key.Equals(t.NewRoom.Key))
+                TargetHpText = "";
+            RefreshLocationSlot();
+        });
+
+    private void OnMonsterLookTarget(Game.MonsterLookObserved obs)
+        => Avalonia.Threading.Dispatcher.UIThread.Post(
+            () => TargetHpText = $"Target: {obs.Estimate.Describe()}");
+
+    private void OnMonsterDied(Game.Combat.MonsterDeathEvent _)
+        => Avalonia.Threading.Dispatcher.UIThread.Post(() => TargetHpText = "");
 
     private void OnRecoveryFailed(Game.Map.RecoveryFailedEvent e)
         => Avalonia.Threading.Dispatcher.UIThread.Post(() => ShowLostRecoveryDialogAsync(e));
@@ -1239,18 +1276,23 @@ public partial class MainWindowViewModel : ObservableObject
             LocationText = "Load a game data set to use navigation";
             return;
         }
-        // Full room display name + key — TextTrimming on the status-bar
-        // TextBlock clips long names down to the column's actual width
-        // at render time. The VM stays a faithful mirror of game state.
-        LocationText = room is not null
-            ? $"{room.DisplayName}  ·  {room.Key}"
-            : state.Confidence switch
-            {
-                Game.Map.RoomConfidence.Pending        => "Pending move…",
-                Game.Map.RoomConfidence.Lost           => "Lost — pick a room on the map",
-                Game.Map.RoomConfidence.PendingRespawn => "Awaiting respawn…",
-                _                                      => "Unknown location",
-            };
+        // Full room display name + key, then the session exp rate to match
+        // the loop chip's tail. TextTrimming on the status-bar TextBlock
+        // clips long names down to the column's actual width at render
+        // time. The VM stays a faithful mirror of game state.
+        if (room is not null)
+        {
+            double xpHr = AppServices.Current.SessionActivity.Snapshot().ExperiencePerHour;
+            LocationText = $"{room.DisplayName} · {room.Key} · {Game.Combat.RateText.Compact(xpHr)}/hr";
+            return;
+        }
+        LocationText = state.Confidence switch
+        {
+            Game.Map.RoomConfidence.Pending        => "Pending move…",
+            Game.Map.RoomConfidence.Lost           => "Lost — pick a room on the map",
+            Game.Map.RoomConfidence.PendingRespawn => "Awaiting respawn…",
+            _                                      => "Unknown location",
+        };
     }
 
     private void RefreshStatusBarTicks()

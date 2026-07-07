@@ -713,6 +713,11 @@ public sealed class AppServices
     // spell-immunity gating.
     public Game.Combat.MonsterMagicIndex MonsterMagic { get; private set; } = null!;
 
+    // Number → max-HP lookup in the active game-data set. Feeds the look-target
+    // HP-range readout (MonsterLookParser turns a wound descriptor into an
+    // absolute HP window).
+    public Game.Combat.MonsterHpIndex MonsterHp { get; private set; } = null!;
+
     // Lookup of each weapon's HitMagic level (code 142) in
     // the active game-data set. Paired with MonsterMagic for
     // the HitMagic ≥ Magical hit check.
@@ -1945,6 +1950,18 @@ public sealed class AppServices
         // (a real 0 that WOULD gate a toll) from "haven't parsed inventory yet".
         Movement.WealthProvider = () =>
             Inventory.IsLoaded ? Inventory.Snapshot.Currency.TotalCopperValue : (long?)null;
+        // Feed the player's own class Number into "(Class: N OK)" gate
+        // evaluation, resolving the class name through the Classes table (reuses
+        // the equip-filter resolver so the name→Number mapping lives in one
+        // place). null until stats parse or when the class is unknown, so an
+        // unparsed character walks unrestricted — same rule as level / wealth.
+        Movement.ClassNumberProvider = () =>
+        {
+            if (!Stats.HasParsed) return null;
+            int n = Game.Inventory.ItemEquipFilter
+                .ResolveClassProfile(GameData, PlayerStats.Class).ClassNumber;
+            return n > 0 ? n : (int?)null;
+        };
         Favorites = new FavoritesStore(Profile, Log);
 
         // Coordinator + walker. Coordinator is the
@@ -2417,6 +2434,7 @@ public sealed class AppServices
         // spell whose element the target resists ≥ 100%. All fail open when game
         // data is silent.
         MonsterMagic = new Game.Combat.MonsterMagicIndex(GameData);
+        MonsterHp = new Game.Combat.MonsterHpIndex(GameData);
         ItemMagic = new Game.Combat.ItemMagicIndex(GameData);
         SpellReqLevel = new Game.Combat.SpellReqLevelIndex(GameData);
         MonsterResist = new Game.Combat.MonsterResistIndex(GameData);

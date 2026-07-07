@@ -318,6 +318,40 @@ comes from the stat screen / who line (`AlignmentTracker` / `PlayerStats`).
   own recent-leader memory recognises a dropped leader that a leader-disconnect already wiped from
   the roster.)
 
+## Looking at a monster — coarse wound bands
+
+**`look <monster>` reveals a wound band, never a number** *([CONFIRMED])*
+- A player look prints a bracketed `[ Name ]` header and ends `He is unwounded.`; a **monster** look
+  has **no header** — the monster's name is the first response line, prose follows, and the **last
+  line** is `(It|He|She) appears to be <wound>.`. The `appears to be` phrasing is monster-exclusive
+  (players read `is unwounded`), so it never false-matches a player look. The server echoes the typed
+  command as its own content line (`look ca`) ahead of the name.
+- The game only ever states the condition as one of **eight coarse wound bands**, never a number.
+  Each band is a **fixed percentage window of the monster's max HP** (from game data), so
+  `max HP × band` gives an absolute HP range. Validated live: a **70-HP cave worm** reading
+  **heavily wounded** was **35–48 HP** (actual 38). Bands, percentage of max HP, lower bound
+  inclusive:
+
+  | Descriptor | % of max HP | 70-HP cave worm |
+  |---|---|---|
+  | unwounded | = 100 (full) | 70 |
+  | slightly wounded | [85, 100) | 60–69 |
+  | moderately wounded | [70, 85) | 49–59 |
+  | heavily wounded | [50, 70) | 35–48 |
+  | severely wounded | [30, 50) | 21–34 |
+  | critically wounded | [20, 30) | 14–20 |
+  | very critically wounded | (0, 20) | 1–13 |
+  | mortally wounded | ≤ 0 (dead/dying) | ≤0 |
+
+  For a band `[lo, hi)`: `Low = ceil(lo·M/100)`, `High = ceil(hi·M/100) − 1` — exactly the integer
+  HP values that read as that band.
+- **Why it's worth the range and not just a number:** against a **high-HP boss with fast regen /
+  self-heal**, the per-round scroll outpaces any attempt to tally HP by counting damage lines, so the
+  wound band is the only reliable read of where the boss's "HP gate" sits. (Implemented in
+  `MonsterLookParser` → status-bar `Target: min-max`. Name→HP resolution goes through
+  `RoomEntityClassifier.ResolveLookedMonsterNumber`, which prefers the monster variant actually in
+  the room so shared names / adjective prefixes resolve to the right HP.)
+
 ## Movement & navigation
 
 - **[CONFIRMED]** **A refused ("bonked") move always prints an explicit line and never

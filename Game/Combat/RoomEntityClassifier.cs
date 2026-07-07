@@ -210,6 +210,35 @@ public sealed class RoomEntityClassifier : IDisposable
     // to confirm the prefix took). Skips the MessageRouter subscription path.
     public RoomEntity Classify(string entry) => Classify(entry, rawAlsoHereLine: string.Empty);
 
+    // Resolve a looked-at monster name to a specific Monsters-table Number.
+    // Shared display names (~14% of a stock realm — "giant rat", "skeleton", …)
+    // map to several Numbers with different HP, so a name-only classify can pick
+    // the wrong variant. Prefer the variant ACTUALLY present in the room: the
+    // Current observation already resolved each occupant to its own Number when
+    // the room displayed, and a looked-at monster is by definition in the room.
+    // Match the look name against those first (raw or resolved, case-insensitive),
+    // then fall back to a global classify for the rare case the room list is
+    // stale/empty. Returns null when the name isn't a known monster.
+    public int? ResolveLookedMonsterNumber(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return null;
+        string trimmed = name.Trim();
+
+        if (Current is { } cur)
+        {
+            foreach (RoomEntity e in cur.Entities)
+            {
+                if (e.Kind != EntityKind.Monster || e.MonsterNumber is null) continue;
+                if (string.Equals(e.RawName, trimmed, StringComparison.OrdinalIgnoreCase)
+                 || string.Equals(e.ResolvedName, trimmed, StringComparison.OrdinalIgnoreCase))
+                    return e.MonsterNumber;
+            }
+        }
+
+        RoomEntity classified = Classify(trimmed);
+        return classified.Kind == EntityKind.Monster ? classified.MonsterNumber : null;
+    }
+
     // Append a single freshly-arrived entity to the current room observation and
     // re-fire EntitiesObserved. Called by RoomEntryWatcher when the wire reports
     // "<name> <verb> into the room from <dir>." — the new entity slots into the
