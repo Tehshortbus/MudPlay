@@ -2,8 +2,15 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
-## 1.11.9
+## 1.12.0
 
+- Looking at a monster shows its estimated HP range on the status bar — a coarse wound band applied to the monster's max HP, so a fast-regen boss's HP gate is readable at a glance
+- Map draws a one-way arrow on connectors with no return exit (class-hall entrances, drop-only passages)
+- Map keeps cross-level text portals (go-portal / manhole) off the plane instead of pulling a far floor's rooms onto it, de-cluttering ~4300 rooms
+- Map holds a 15-second browse window after a pan / zoom / floor-crawl before snapping back to the player, and re-centres correctly when crossing an up/down exit instead of holding a stale room
+- Class-gated exits are parsed, labelled in the room tooltip (e.g. "Druid only"), and dropped from walk-to routes for the wrong class
+- Level-gated exits block a walk-to route when your level falls outside the exit's window
+- Status-bar room slot now shows the session exp/hour rate alongside the room name
 - Party `@wealth` is only probed when a toll is actually on the walk-to / loop route, not on an off-path toll the map search happened to touch
 - Looking into an exit no longer fires get / equip / attack against the peeked room — automation waits until you actually walk in
 - Auto-combat now engages on a real walk-in that follows a look-direction peek
@@ -14,6 +21,7 @@ Notable changes per merged PR, **newest first**. The top of the [README](README.
 - Learned spells persist across sessions — Spell Book checkmarks survive a relog instead of blanking until the next `spells` / `pow` poll
 - Spell Book cast-on-use list shows only the class's own items, not every universal wand / scroll
 - Backscroll copy survives a broken DBus clipboard instead of crashing the client
+- A benign background DBus service-missing fault (clipboard / portal on desktops without it) no longer drops a bogus crash report on the Desktop
 
 ## 1.11.0
 

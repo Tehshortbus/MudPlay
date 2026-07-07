@@ -45,9 +45,38 @@ public static class CrashReporter
 
         TaskScheduler.UnobservedTaskException += (_, e) =>
         {
-            Report(e.Exception, "TaskScheduler.UnobservedTaskException");
+            // A background DBus service-missing fault (Avalonia's clipboard /
+            // freedesktop-portal integration on a desktop that doesn't run that
+            // service) fire-and-forgets a Task that faults with
+            // "ServiceUnknown: The name is not activatable" — it surfaces here as
+            // unobserved. It's benign and out of our control, so mark it observed
+            // and move on; dropping a "crash" report on the Desktop for it would
+            // only alarm the user over a non-fatal background hiccup.
+            if (!IsBenignBackgroundDBusFault(e.Exception))
+                Report(e.Exception, "TaskScheduler.UnobservedTaskException");
             e.SetObserved();
         };
+    }
+
+    // Recognise the DBus service-missing fault that Avalonia raises in the
+    // background on Linux desktops lacking the target service. Matched by type
+    // name + message so we don't take a compile-time dependency on Tmds.DBus,
+    // walking both the AggregateException fan-out and the InnerException chain.
+    private static bool IsBenignBackgroundDBusFault(Exception? ex)
+    {
+        if (ex is null) return false;
+        if (ex is AggregateException agg)
+            return agg.Flatten().InnerExceptions.Any(IsBenignBackgroundDBusFault);
+        for (Exception? e = ex; e is not null; e = e.InnerException)
+        {
+            if ((e.GetType().FullName ?? "").Contains("DBusException", StringComparison.Ordinal))
+                return true;
+            string msg = e.Message ?? "";
+            if (msg.Contains("org.freedesktop.DBus.Error.ServiceUnknown", StringComparison.Ordinal)
+             || msg.Contains("not activatable", StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
     }
 
     // Run the app under the crash net. An exception escaping the Avalonia run
