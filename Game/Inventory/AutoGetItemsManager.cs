@@ -46,6 +46,7 @@ public sealed class AutoGetItemsManager : IDisposable
     private readonly Func<bool> _isEnabled;
     private readonly Func<bool> _collectAfterCombatFinished;
     private readonly Func<bool> _hasEngageableHostiles;
+    private readonly Func<bool> _isPeekSuppressed;
     private readonly LogService? _log;
     private readonly IDisposable _noticeSub;
 
@@ -66,6 +67,7 @@ public sealed class AutoGetItemsManager : IDisposable
         Func<bool> isEnabled,
         Func<bool> collectAfterCombatFinished,
         Func<bool> hasEngageableHostiles,
+        Func<bool>? isPeekSuppressed = null,
         LogService? log = null)
     {
         ArgumentNullException.ThrowIfNull(router);
@@ -77,6 +79,11 @@ public sealed class AutoGetItemsManager : IDisposable
         _isEnabled = isEnabled;
         _collectAfterCombatFinished = collectAfterCombatFinished;
         _hasEngageableHostiles = hasEngageableHostiles;
+        // Null when unbound (tests) → never a peek. A `look <dir>` peek renders a
+        // full "You notice" survey for the adjacent room; gate the get path on it
+        // so we don't send get commands (and trigger the get→inventory→equip
+        // chain) against a room the player never entered.
+        _isPeekSuppressed = isPeekSuppressed ?? (static () => false);
         _log = log;
 
         _noticeSub = router.Subscribe(KnownPatterns.YouNoticeRoom, OnYouNoticeRoom);
@@ -193,6 +200,15 @@ public sealed class AutoGetItemsManager : IDisposable
     private void DispatchList(string list)
     {
         if (!_isEnabled()) return;
+        // A look-direction peek renders a full "You notice" survey for the
+        // adjacent room. Getting items from a room we never entered wastes
+        // commands and (via the resulting inventory change) can fire auto-equip;
+        // skip while the peek window is armed.
+        if (_isPeekSuppressed())
+        {
+            _log?.Debug(LogCategory, "skipped you-notice survey (look-direction peek)");
+            return;
+        }
 
         bool deferMode = _collectAfterCombatFinished() && _hasEngageableHostiles();
         if (deferMode) _deferred.Clear();   // rebuild for this survey

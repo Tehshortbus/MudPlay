@@ -2648,6 +2648,7 @@ public sealed class AppServices
             readSettings: () => ReadSection<Models.Profile.CashSettings>(Profile.Current, "Cash"),
             isEnabled: () => ReadAutoModeFlag(d => d.AutoGetCash),
             getSnapshot: () => Inventory.Snapshot,
+            isPeekSuppressed: () => RoomTracker.IsPeekSuppressed(),
             log: Log);
         // Reset held tallies on profile swap — prior character's
         // counts aren't relevant to the new one.
@@ -2705,6 +2706,7 @@ public sealed class AppServices
                 ReadSection<Models.Profile.CashSettings>(Profile.Current, "Cash")
                     .CollectAfterCombatFinished,
             hasEngageableHostiles: () => CombatTracker.HasEngageableHostiles,
+            isPeekSuppressed: () => RoomTracker.IsPeekSuppressed(),
             log: Log);
         AutoGetItems.SetAcquisitionGate(Acquisition);
         // Combat-finished flush: every room-entity observation re-checks

@@ -112,6 +112,52 @@ public sealed class RoomTrackerTests : IDisposable
         Assert.Null(tracker.State.CurrentRoom);
     }
 
+    // ----- look-direction peek suppression ---------------------------
+
+    [Fact]
+    public void IsPeekSuppressed_FalseBeforeLook()
+    {
+        RoomTracker tracker = NewTracker();
+        Assert.False(tracker.IsPeekSuppressed());
+    }
+
+    [Fact]
+    public void IsPeekSuppressed_ReadOnly_TrueOnRepeatedReadsWithinWindow()
+    {
+        RoomTracker tracker = NewTracker();
+        DateTimeOffset t0 = DateTimeOffset.UtcNow;
+        tracker.NoteLookSent(t0);
+
+        // Read-only: repeated reads within the window both see the armed flag
+        // (unlike NoteRoomObserved, which consumes it on the exits line).
+        Assert.True(tracker.IsPeekSuppressed(t0));
+        Assert.True(tracker.IsPeekSuppressed(t0.AddMilliseconds(100)));
+    }
+
+    [Fact]
+    public void IsPeekSuppressed_FalseAfterWindowExpires()
+    {
+        RoomTracker tracker = NewTracker();
+        DateTimeOffset t0 = DateTimeOffset.UtcNow;
+        tracker.NoteLookSent(t0);
+
+        Assert.False(tracker.IsPeekSuppressed(t0.AddSeconds(5)));
+    }
+
+    [Fact]
+    public void IsPeekSuppressed_FalseAfterObservationConsumesFlag()
+    {
+        RoomTracker tracker = NewTracker();
+        tracker.NoteRoomObserved(Obs("Town Gates", Direction.N, Direction.E));
+        tracker.NoteLookSent();
+        Assert.True(tracker.IsPeekSuppressed());
+
+        // The peeked room's exits line drives NoteRoomObserved, which consumes
+        // the suppression flag (and drops that observation as a preview).
+        tracker.NoteRoomObserved(Obs("Inn", Direction.N, Direction.W));
+        Assert.False(tracker.IsPeekSuppressed());
+    }
+
     // ----- Unknown → Located -----------------------------------------
 
     [Fact]

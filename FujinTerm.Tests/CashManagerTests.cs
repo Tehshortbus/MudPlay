@@ -25,6 +25,7 @@ public sealed class CashManagerTests
         public List<byte[]> Sent { get; } = new();
         public CashSettings Settings { get; set; } = new();
         public bool AutoGetCashEnabled { get; set; } = true;
+        public bool PeekSuppressed { get; set; }
         // Default Empty → MaxWeight 0 → encumbrance gate inert, so the
         // non-gate tests run the v1 full-pickup path unchanged. Gate
         // tests set a populated snapshot before feeding the cash line.
@@ -40,6 +41,7 @@ public sealed class CashManagerTests
                 readSettings: () => Settings,
                 isEnabled: () => AutoGetCashEnabled,
                 getSnapshot: () => Snapshot,
+                isPeekSuppressed: () => PeekSuppressed,
                 log: Log);
             Cash.SetWireSender(b => Sent.Add(b));
             Cash.CashDispatched += (c, n, p) => Dispatches.Add((c, n, p));
@@ -538,6 +540,35 @@ public sealed class CashManagerTests
         Assert.Equal(2, h.Dispatches.Count);
         Assert.Contains(h.Dispatches, d => d.Currency == "gold" && d.Count == 5);
         Assert.Contains(h.Dispatches, d => d.Currency == "silver" && d.Count == 10);
+    }
+
+    [Fact]
+    public void YouNotice_PeekSuppressed_NoCollect()
+    {
+        // A look-direction peek renders a full "You notice" survey for the
+        // adjacent room; collecting from a room we never entered is the bug.
+        using Harness h = new() { PeekSuppressed = true };
+        h.Settings.SilverPolicy = CashPolicy.Collect;
+
+        h.Feed("You notice 56 silver nobles here.");
+
+        Assert.Empty(h.Sent);
+        Assert.Empty(h.Dispatches);
+    }
+
+    [Fact]
+    public void YouNotice_PeekCleared_RealEntry_Collects()
+    {
+        using Harness h = new() { PeekSuppressed = true };
+        h.Settings.SilverPolicy = CashPolicy.Collect;
+
+        h.Feed("You notice 56 silver nobles here.");   // peeked — dropped
+        Assert.Empty(h.Sent);
+
+        h.PeekSuppressed = false;                       // walked in for real
+        h.Feed("You notice 56 silver nobles here.");
+
+        Assert.Contains("get 56 silver", h.AllSent);
     }
 
     // ----- Corpse loot (monster kill drops) ---------------------------

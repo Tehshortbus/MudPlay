@@ -139,8 +139,24 @@ public sealed class RoomEntityClassifier : IDisposable
         }
     }
 
+    // A `look <dir>` peek renders a full room display — name, "You notice…",
+    // "Also here:", "Obvious exits:" — for the ADJACENT room the player never
+    // entered. RoomTracker arms a suppression window on the outbound look and
+    // consumes it on the exits line, but the "Also here:" line arrives first, so
+    // this check still sees the armed flag. Emitting EntitiesObserved for a peek
+    // would assert the combat gate against a room we're not in (and pollute
+    // Current so the real walk-in's re-parse can't re-engage). Skip it — the
+    // genuine walk-in re-fires this parse with the flag cleared.
+    private bool IsPeek() => _roomTracker?.IsPeekSuppressed() ?? false;
+
     private void ProcessAlsoHere(string completeLine, string rawFirst)
     {
+        if (IsPeek())
+        {
+            _log?.Debug(LogCategory, "dropped peeked Also-here (look-direction preview)");
+            return;
+        }
+
         // Strip the "Also here: " prefix and the trailing period.
         const string prefix = "Also here:";
         int start = prefix.Length;
@@ -164,6 +180,12 @@ public sealed class RoomEntityClassifier : IDisposable
 
     private void OnRoomAlsoHere(MatchResult match)
     {
+        if (IsPeek())
+        {
+            _log?.Debug(LogCategory, "dropped peeked Also-here (look-direction preview)");
+            return;
+        }
+
         // (?<players>.+?) capture: comma-separated occupant list.
         if (match.Groups.Count == 0) return;
         string list = match.Groups[0];
