@@ -11,9 +11,11 @@ using FujinTerm.Services.Patterns;
 
 namespace FujinTerm.Game;
 
-// Party-healer reaction to an ALLY dropping to the ground (hitting 0 HP —
-// mortally wounded, bleeding out, not yet dead). Distinct from PlayerDroppedGate,
-// which owns OUR OWN drop; this owns everyone else's.
+// Party reaction to an ALLY dropping to the ground (hitting 0 HP — mortally
+// wounded, bleeding out, not yet dead). Distinct from PlayerDroppedGate, which
+// owns OUR OWN drop; this owns everyone else's. Not scoped to a healer: `aid` is
+// universal and by itself lifts a dropped ally back above 0 HP, so any party
+// member reacts — a heal top-up (when configured) merely speeds the recovery.
 //
 // The whole flow is confirmed MajorMUD mechanics (see GAME_MECHANICS.md, the
 // "Drop removes you from your party" section):
@@ -234,14 +236,14 @@ public sealed partial class AllyDroppedHandler : IDisposable
 
         if (!IsRecognisedAlly(given, name)) return;
 
-        // Scope the auto-rescue to a configured party healer — matches the
-        // confirmed client-reaction spec. Aid is universal, but keeping the
-        // automatic behaviour opt-in to a party-heal loadout means a non-healer
-        // isn't surprised by the client aiding on its own.
-        PartySettings settings = _readParty();
-        if (string.IsNullOrWhiteSpace(settings.MinorPartyHealSpell)
-            && string.IsNullOrWhiteSpace(settings.MajorPartyHealSpell))
-            return;
+        // Deliberately NOT scoped to a party-heal loadout. `aid <name>` is a
+        // universal command and, per the confirmed drop mechanics, aid alone
+        // lifts a mortally-wounded ally back above 0 HP — a heal top-up only
+        // speeds it. So a non-healer (a Mystic whose only heal is a self-power,
+        // the reported case) still aids, holds movement, and — when leading —
+        // re-invites; the name-heal top-up simply no-ops without a party-heal
+        // spell (CastingDirector reads AidedDownedGivenNames). Master gate is
+        // AutoHealRest via _isEnabled; IsRecognisedAlly keeps it to our own.
 
         if (_downed.ContainsKey(given)) return; // already rescuing this ally
 
