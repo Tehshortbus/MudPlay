@@ -23,6 +23,13 @@ namespace FujinTerm.Game.Map;
 //     None); the window only constrains who may traverse it. 0 in either slot
 //     means "no bound on that side" (the MDB encodes both no-floor and no-cap
 //     as 0, and also uses 999 as a no-cap sentinel — normalised to 0 here).
+//   - ClassGate — the single class Number allowed through a class-gated exit
+//     ("(Class: 13 OK, 0 NO)" → 13 = only Druids pass; confirmed from the
+//     Crypt Shadowed Hall data where each hall exit gates to exactly one of
+//     the 15 class Numbers, never a bitmask/sum). Like the level window the
+//     exit stays a plain cardinal (Hint None); 0 means no class gate. The
+//     trailing "N NO" count is always 0 in observed data and its non-zero
+//     meaning is unconfirmed, so we don't act on it.
 public readonly partial record struct RoomExit(
     RoomKey Target,
     RoomExitHint Hint,
@@ -35,11 +42,15 @@ public readonly partial record struct RoomExit(
     MultiActionExitData? MultiAction = null,
     int TrapDamage = 0,
     int MinLevel = 0,
-    int MaxLevel = 0)
+    int MaxLevel = 0,
+    int ClassGate = 0)
 {
     // True when this exit carries a character-level window (either a floor, a
     // cap, or both).
     public bool HasLevelGate => MinLevel > 0 || MaxLevel > 0;
+
+    // True when this exit only admits a single character class.
+    public bool HasClassGate => ClassGate > 0;
 
     // Render a level window as a friendly label: "Level 40+" (floor only),
     // "Level ≤3" (cap only), "Level 10–25" (both). Returns the empty string when
@@ -89,12 +100,13 @@ public readonly partial record struct RoomExit(
             out IReadOnlyList<string>? textCommands,
             out int trapDamage,
             out int minLevel,
-            out int maxLevel);
+            out int maxLevel,
+            out int classGate);
 
         exit = new RoomExit(key, hint, rawHint,
             statReq, canBash, keyItemId, toll, textCommands,
             MultiAction: null, TrapDamage: trapDamage,
-            MinLevel: minLevel, MaxLevel: maxLevel);
+            MinLevel: minLevel, MaxLevel: maxLevel, ClassGate: classGate);
         return true;
     }
 
@@ -108,7 +120,8 @@ public readonly partial record struct RoomExit(
         out IReadOnlyList<string>? textCommands,
         out int trapDamage,
         out int minLevel,
-        out int maxLevel)
+        out int maxLevel,
+        out int classGate)
     {
         hint = RoomExitHint.None;
         statReq = 0;
@@ -119,6 +132,7 @@ public readonly partial record struct RoomExit(
         trapDamage = 0;
         minLevel = 0;
         maxLevel = 0;
+        classGate = 0;
 
         if (string.IsNullOrEmpty(raw)) return;
 
@@ -249,9 +263,21 @@ public readonly partial record struct RoomExit(
             return;  // hint stays None — movement is still a plain cardinal step
         }
 
-        // Class / Race / Alignment / Ability / Cast / Timed restrictions:
-        // walker treats as None for now (path-time gates are a later
-        // concern); RawHint carries the detail forward.
+        // "(Class: N OK, M NO)" — a class-gated cardinal step. Only class
+        // Number N may traverse; the movement stays a plain cardinal (hint
+        // None). The "M NO" count is always 0 in observed data and its
+        // non-zero meaning is unconfirmed, so we parse only the allowed
+        // class and leave the rest in RawHint.
+        if (raw.StartsWith("Class", StringComparison.OrdinalIgnoreCase))
+        {
+            Match m = ClassGateRegex().Match(raw);
+            if (m.Success) int.TryParse(m.Groups[1].ValueSpan, out classGate);
+            return;  // hint stays None — movement is still a plain cardinal step
+        }
+
+        // Race / Alignment / Ability / Cast / Timed restrictions: walker
+        // treats as None for now (path-time gates are a later concern);
+        // RawHint carries the detail forward.
     }
 
     // Pull "N picklocks" / "N picklocks/strength" out of a modifier string. Used
@@ -286,4 +312,8 @@ public readonly partial record struct RoomExit(
     // Matches the level window in a "Level: MIN to MAX" modifier.
     [GeneratedRegex(@"Level:\s*(\d+)\s+to\s+(\d+)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex LevelRangeRegex();
+
+    // Matches the allowed class Number in a "Class: N OK, M NO" modifier.
+    [GeneratedRegex(@"Class:\s*(\d+)\s*OK", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex ClassGateRegex();
 }

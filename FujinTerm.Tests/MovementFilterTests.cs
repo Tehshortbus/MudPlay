@@ -268,6 +268,65 @@ public sealed class MovementFilterTests
         Assert.True(filter.IsExitBlocked(GatedExit(10, 25)));  // 10..25, have 30
     }
 
+    // ----- IsExitBlocked: (Class: N OK) class-gate evaluation --------
+
+    private static RoomExit ClassGatedExit(int classNumber) =>
+        new(new RoomKey(1, 2), RoomExitHint.None, RawHint: null,
+            ClassGate: classNumber);
+
+    [Fact]
+    public void IsExitBlocked_ClassGate_UnknownClass_DoesNotBlock()
+    {
+        (_, MovementFilter filter) = NewPair();
+        filter.ClassNumberProvider = () => null;   // no stat screen parsed yet
+        Assert.False(filter.IsExitBlocked(ClassGatedExit(13)));
+    }
+
+    [Fact]
+    public void IsExitBlocked_ClassGate_NoProvider_DoesNotBlock()
+    {
+        (_, MovementFilter filter) = NewPair();
+        // ClassNumberProvider unset (AppServices wires it; bare filter has none).
+        Assert.False(filter.IsExitBlocked(ClassGatedExit(13)));
+    }
+
+    [Fact]
+    public void IsExitBlocked_ClassGate_WrongClass_Blocks()
+    {
+        (_, MovementFilter filter) = NewPair();
+        filter.ClassNumberProvider = () => 1;    // Warrior at a Druid (13) hall
+        Assert.True(filter.IsExitBlocked(ClassGatedExit(13)));
+    }
+
+    [Fact]
+    public void IsExitBlocked_ClassGate_MatchingClass_Allows()
+    {
+        (_, MovementFilter filter) = NewPair();
+        filter.ClassNumberProvider = () => 13;   // Druid at the Druid hall
+        Assert.False(filter.IsExitBlocked(ClassGatedExit(13)));
+    }
+
+    [Fact]
+    public void IsExitBlocked_ClassGate_IndependentOfLevelAndToll()
+    {
+        (_, MovementFilter filter) = NewPair();
+        // A pure class gate carries no level window or toll, so those branches
+        // must never rescue or block it.
+        filter.LevelProvider = () => 1;
+        filter.WealthProvider = () => 0;
+        filter.ClassNumberProvider = () => 13;
+        Assert.False(filter.IsExitBlocked(ClassGatedExit(13)));   // right class → allowed
+    }
+
+    [Fact]
+    public void IsExitBlocked_ClassGate_DoesNotAffectPlainExit()
+    {
+        (_, MovementFilter filter) = NewPair();
+        // Wrong class, but the exit has no class gate — must not block.
+        filter.ClassNumberProvider = () => 1;
+        Assert.False(filter.IsExitBlocked(GatedExit(0, 0)));
+    }
+
     // ----- IsExitBlocked: party-bounds branch ------------------------
 
     [Fact]

@@ -445,12 +445,13 @@ public sealed class AutoWalkManager : IRecoverableEngine
             // genuinely disconnected target: re-probe with the exit gates
             // ignored. A path that appears only when gates are off means
             // every route there is gated beyond the player — a level
-            // window they fall outside or a toll they can't afford —
-            // surface that reason so the user understands why we won't move.
+            // window they fall outside, a toll they can't afford, or a
+            // class hall closed to their class — surface that reason so
+            // the user understands why we won't move.
             IReadOnlyList<Direction>? ungated =
                 _bfs.FindPath(source.Key, destination, _filter, ignoreExitGates: true);
             string reason = ungated is { Count: > 0 }
-                ? "all routes blocked by a level or toll requirement"
+                ? "all routes blocked by a level, toll, or class requirement"
                 : "no path";
             Raise(new WalkEvent(WalkEventKind.Failed, reason, destination));
             return false;

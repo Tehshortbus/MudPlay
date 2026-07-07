@@ -221,7 +221,6 @@ public sealed class RoomExitParseTests
 
     [Theory]
     [InlineData("5/55 (Level: 10-20)")]   // hyphen form — not the live "to" encoding, stays ungated
-    [InlineData("5/55 (Class: 1 OK, 2 No)")]
     [InlineData("5/55 (Race: 3 OK)")]
     [InlineData("5/55 (Alignment: Good)")]
     public void Restriction_LeftAsNone_RawHintRetained(string wire)
@@ -229,6 +228,24 @@ public sealed class RoomExitParseTests
         Assert.True(RoomExit.TryParseWire(wire, out RoomExit exit));
         Assert.Equal(RoomExitHint.None, exit.Hint);
         Assert.False(string.IsNullOrEmpty(exit.RawHint));
+    }
+
+    // ----- Class gate ("(Class: N OK, M NO)") ------------------------
+    // Confirmed from the Crypt Shadowed Hall data: the "N OK" number is the
+    // single class Number admitted (1-15), never a bitmask. The exit stays a
+    // plain cardinal (Hint None) — only who may traverse it is constrained.
+
+    [Theory]
+    [InlineData("1/1436 (Class: 13 OK, 0 NO)", 13)]   // Druid hall (live data)
+    [InlineData("1/1425 (Class: 1 OK, 0 NO)",   1)]   // Warrior hall (live data)
+    [InlineData("5/55 (Class: 1 OK, 2 No)",     1)]   // lowercase "No" variant
+    public void ClassGate_ParsesAllowedClass_StaysNoneHint(string wire, int cls)
+    {
+        Assert.True(RoomExit.TryParseWire(wire, out RoomExit exit));
+        Assert.Equal(RoomExitHint.None, exit.Hint);   // still a plain cardinal step
+        Assert.True(exit.HasClassGate);
+        Assert.Equal(cls, exit.ClassGate);
+        Assert.False(exit.HasLevelGate);              // class gate is not a level window
     }
 
     // ----- Level gate (Form A — "(Level: MIN to MAX)") ---------------

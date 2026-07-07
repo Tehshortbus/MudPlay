@@ -64,6 +64,17 @@ public sealed class MovementFilter : IRoomFilter
     // and treats a member who hasn't reported fresh wealth as unaffordable.
     public Func<long?>? PartyWealthProvider { get; set; }
 
+    // Supplies the player's own class Number (Classes.Number, 1-15), or null
+    // when the class isn't parsed yet. Wired by AppServices to the live
+    // PlayerStats.Class resolved through the Classes table. A "(Class: N OK)"
+    // exit only admits class N (confirmed single-class gate, not a bitmask), so
+    // IsExitBlocked routes around a class hall we can't enter. Evaluated against
+    // the controlling character's own class only — a party's members may be
+    // different classes, but class halls are single-class by design and a party
+    // doesn't loop through one together, so there's no party-wide branch here.
+    // When null we don't gate — same rule as an unknown level.
+    public Func<int?>? ClassNumberProvider { get; set; }
+
     // Fires the party @wealth round-trip. Wired by AppServices to
     // PartyWealthTracker.Probe. Invoked only from WarmForRoute, and only when
     // the tolls-permitted shortest route actually crosses a toll — so an
@@ -105,12 +116,23 @@ public sealed class MovementFilter : IRoomFilter
 
     public bool IsAvoided(RoomKey key) => _avoided.Contains(key);
 
-    // An exit is non-traversable for planning when EITHER its level window
-    // excludes the crosser OR it's a toll the crosser can't afford. The two
-    // gate classes are independent (a toll exit carries Hint=Toll, a level
-    // gate is a plain cardinal with a window), so both are checked.
+    // An exit is non-traversable for planning when its level window excludes
+    // the crosser, it's a toll the crosser can't afford, or it's a class gate
+    // for a class we aren't. The gate kinds are independent (a toll exit
+    // carries Hint=Toll; a level or class gate is a plain cardinal carrying a
+    // window / allowed-class), so each is checked.
     public bool IsExitBlocked(in RoomExit exit) =>
-        IsLevelGateBlocked(in exit) || IsTollGateBlocked(in exit);
+        IsLevelGateBlocked(in exit) || IsTollGateBlocked(in exit) || IsClassGateBlocked(in exit);
+
+    // A "(Class: N OK)" exit only admits class Number N. Gate only when our
+    // own class is known — an unparsed class never refuses a walk on a gate we
+    // can't yet evaluate.
+    private bool IsClassGateBlocked(in RoomExit exit)
+    {
+        if (!exit.HasClassGate) return false;
+        if (ClassNumberProvider?.Invoke() is not { } myClass) return false;
+        return myClass != exit.ClassGate;
+    }
 
     private bool IsLevelGateBlocked(in RoomExit exit)
     {

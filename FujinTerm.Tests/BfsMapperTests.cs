@@ -532,6 +532,77 @@ public sealed class BfsMapperTests : IDisposable
         Assert.Empty(layout.OffGrid);
     }
 
+    // ----- cross-plane text portals ----------------------------------
+    //
+    // Two vertical levels joined by real stairs (1/1 D↔U 1/50), plus a
+    // text portal that jumps ACROSS floors (1/51 "go portal" → surface
+    // 1/2) and a same-floor text exit (1/50 "go path" → 1/53). The
+    // importer files both text exits under a cardinal slot, so both look
+    // planar — but only the same-floor one should lay out. This mirrors
+    // the Crypt trainer's go-portal dragging the surface graveyard onto
+    // the level-3 plane.
+    //
+    //   floor  0:  1/2 ──S/N── 1/1
+    //                            │ D (stairs)
+    //   floor -1:  1/53 ──N/S── 1/51 ──W/E── 1/50 (origin)
+    //              ▲                 ╲go portal      │
+    //              ╰── go path ◀──────╲──────────────╯
+    //                                  ▶ 1/2 (cross-plane, suppressed)
+    private const string CryptJson = """
+        [
+          { "Map Number": 1, "Room Number": 1, "Name": "Surface Hub",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "1/2", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "1/50" },
+          { "Map Number": 1, "Room Number": 2, "Name": "Surface North",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "0", "S": "1/1", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 50, "Name": "Deep Hub",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "0", "S": "1/53 (Text: go path, walk path)", "E": "1/51", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "1/1", "D": "0" },
+          { "Map Number": 1, "Room Number": 51, "Name": "Deep East",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "1/53", "S": "0", "E": "1/2 (Text: go portal, enter portal)", "W": "1/50",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 53, "Name": "Deep North",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "0", "S": "1/51", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+        ]
+        """;
+
+    [Fact]
+    public void BuildLayout_CrossPlaneTextPortal_TargetSuppressed_StubRecorded()
+    {
+        var (bfs, _) = NewMapper(CryptJson);
+        RoomLayout layout = bfs.BuildLayout(new RoomKey(1, 50));   // rooted on floor -1
+
+        // The go-portal from 1/51 leads to the surface (1/2, floor 0):
+        // different floor, same component → the target is NOT dragged
+        // onto this plane.
+        Assert.DoesNotContain(new RoomKey(1, 2), layout.Positions.Keys);
+
+        // …but the exit stays visible as a source-side stub so the user
+        // still sees "there's a portal here".
+        (int X, int Y) eastCell = layout.Positions[new RoomKey(1, 51)];
+        Assert.True(layout.EdgesFromCoord.TryGetValue(eastCell, out IReadOnlySet<Direction>? edges));
+        Assert.Contains(Direction.E, edges!);
+    }
+
+    [Fact]
+    public void BuildLayout_SameFloorTextExit_StillLaysOut()
+    {
+        var (bfs, _) = NewMapper(CryptJson);
+        RoomLayout layout = bfs.BuildLayout(new RoomKey(1, 50));
+
+        // 1/50's "go path" S exit reaches 1/53, which is same-floor
+        // (-1) and same component — so it lays out normally instead of
+        // being stubbed like the cross-plane portal.
+        Assert.Contains(new RoomKey(1, 53), layout.Positions.Keys);
+    }
+
     // ----- MudProxy-style edge tracking ------------------------------
 
     [Fact]

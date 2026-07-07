@@ -337,6 +337,15 @@ public static class RoomTooltipBuilder
             case RoomExitHint.None:
                 if (exit.HasLevelGate)
                     return RoomExit.FormatLevelGate(exit.MinLevel, exit.MaxLevel);
+                if (exit.HasClassGate)
+                {
+                    // "(Class: 13 OK, 0 NO)" → "Druid only". Fall back to the
+                    // raw class Number when the Classes table isn't loaded.
+                    string? className = LookupName(data, "Classes", exit.ClassGate);
+                    return className is { Length: > 0 }
+                        ? $"{className} only"
+                        : $"Class #{exit.ClassGate} only";
+                }
                 return string.IsNullOrEmpty(exit.RawHint) ? string.Empty : exit.RawHint!;
 
             default:
