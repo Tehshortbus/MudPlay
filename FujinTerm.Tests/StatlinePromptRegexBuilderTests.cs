@@ -49,6 +49,30 @@ public sealed class StatlinePromptRegexBuilderTests
     }
 
     [Fact]
+    public void Default_MatchesNegativeHp_WhileMortallyWounded()
+    {
+        // Mortally wounded → HP goes negative and the game prints it. The
+        // default pattern must still match so the drop is recognised.
+        var seen = RunThroughScanner(StatlinePromptRegexBuilder.Default, "[HP=-4/MA=31]:");
+
+        Assert.Single(seen);
+        Assert.Equal(-4, seen[0].Hp);
+        Assert.Equal(31, seen[0].Mana);
+    }
+
+    [Fact]
+    public void CustomStatline_MatchesNegativeHp_WhileMortallyWounded()
+    {
+        // The %h fragment is signed too — a custom statline recognises the drop.
+        Regex regex = StatlinePromptRegexBuilder.Build("full custom [HP=%h/MA=%m]:");
+
+        var seen = RunThroughScanner(regex, "[HP=-4/MA=31]:");
+        Assert.Single(seen);
+        Assert.Equal(-4, seen[0].Hp);
+        Assert.Equal(31, seen[0].Mana);
+    }
+
+    [Fact]
     public void CustomStatline_CapturesHpManaAndPosition()
     {
         Regex regex = StatlinePromptRegexBuilder.Build("full custom [HP=%h/MA=%m]: %r");

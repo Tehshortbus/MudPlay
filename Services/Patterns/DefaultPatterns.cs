@@ -284,8 +284,10 @@ public static class DefaultPatterns
             @"^Obvious exits: [\w, ]+");
 
         // ----- Status ---------------------------------------------------
+        // HP is signed so the prompt still matches while mortally wounded
+        // ([HP=-4/MA=31]:) — a dropped character's prompt must not go unrecognised.
         yield return new RegexPattern(KnownPatterns.StatusLine,
-            @"^\[HP=(?<hp>\d{1,4})(?:\/(?<type>MA|KAI)=(?<mana>\d{1,3}))?(?:\s\((?<statea>Resting|Meditating)\)\s)?\]:(?:\s\((?<stateb>Resting|Meditating)\))?");
+            @"^\[HP=(?<hp>-?\d{1,4})(?:\/(?<type>MA|KAI)=(?<mana>\d{1,3}))?(?:\s\((?<statea>Resting|Meditating)\)\s)?\]:(?:\s\((?<stateb>Resting|Meditating)\))?");
         yield return new RegexPattern(KnownPatterns.UserExperience,
             @"^Exp: (?<exp>\d+) Level: (?<level>\d+) Exp needed for next level: (?<need>\d+) \((?<req>\d+)\) \[(?<percent>\d+)%\]");
         yield return new RegexPattern(KnownPatterns.UserProfile,
