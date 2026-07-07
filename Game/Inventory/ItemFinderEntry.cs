@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text.Json;
+using FujinTerm.Game;
 using FujinTerm.Game.Calculators;
 using FujinTerm.Game.GameData;
 using FujinTerm.Models.Profile;
@@ -10,12 +11,13 @@ using FujinTerm.Services;
 namespace FujinTerm.Game.Inventory;
 
 // One equippable item projected into the searchable columns the Item Finder
-// lists — slot, type, the wear requirements (level / strength), and the
-// worn-stat totals (HP / mana / regens / damage / accuracy / crits / hit-magic /
-// backstab / AC / DR). The numbers come from the same aggregation Character Info
-// uses (CharacterCalculator.AggregateItemRow), so a row's AC/DR/bonuses match
-// what the item grants once worn. Row is retained so the finder's class / level
-// / alignment filter can defer to ItemEquipFilter.CanEquip.
+// lists — slot, type, the wear requirements (level / strength), the worn-stat
+// totals (HP / mana / regens / damage / accuracy / crits / hit-magic / backstab /
+// AC / DR), and — for weapons, when a character swing context is supplied — the
+// modelled 10-round swing average. The numbers come from the same aggregation
+// Character Info uses (CharacterCalculator.AggregateItemRow), so a row's
+// AC/DR/bonuses match what the item grants once worn. Row is retained so the
+// finder's class / level / alignment filter can defer to ItemEquipFilter.CanEquip.
 //
 // Build the whole catalog with BuildCatalog — it enumerates the active set's
 // Items table once, keeps the rows that resolve to an EquipmentSlot, and returns
@@ -111,6 +113,11 @@ public sealed record ItemFinderEntry
     // Mana-regen percent bonus (Abil-145).
     public int ManaRegen { get; init; }
 
+    // Mean swings per round over a 10-round simulation for the live character
+    // wielding this weapon (energy carried forward each round). 0 for non-weapons
+    // and when the finder is opened without a usable character context.
+    public double AvgSwings { get; init; }
+
     // The backing Items row — kept so the finder's character filter can call
     // ItemEquipFilter.CanEquip against the live class / level / alignment. Valid
     // for the lifetime of the cached Items JsonDocument.
@@ -133,6 +140,7 @@ public sealed record ItemFinderEntry
     public string HpRegenText => Signed(HpRegen);
     public string ManaText => Signed(Mana);
     public string ManaRegenText => Signed(ManaRegen);
+    public string AvgSwingsText => AvgSwings > 0 ? AvgSwings.ToString("0.0", CultureInfo.InvariantCulture) : string.Empty;
 
     private static string Plain(int v) => v != 0 ? v.ToString(CultureInfo.InvariantCulture) : string.Empty;
     private static string Signed(int v) => v != 0 ? v.ToString("+0;-0", CultureInfo.InvariantCulture) : string.Empty;
@@ -140,8 +148,10 @@ public sealed record ItemFinderEntry
 
     // Project every equippable item in the active set's Items table into a
     // catalog, sorted by slot then name. Items with no resolvable slot (non-equip
-    // types, Worn 0) are skipped. Empty when no Items table is loaded.
-    public static IReadOnlyList<ItemFinderEntry> BuildCatalog(GameDataCache cache)
+    // types, Worn 0) are skipped, as are items the realm doesn't actually put in
+    // play (see IsObtainable). Empty when no Items table is loaded. When a swing
+    // context is supplied, each weapon carries its modelled 10-round swing average.
+    public static IReadOnlyList<ItemFinderEntry> BuildCatalog(GameDataCache cache, SwingContext? swing = null)
     {
         ArgumentNullException.ThrowIfNull(cache);
         JsonDocument? doc = cache.GetRawTable("Items");
@@ -152,6 +162,7 @@ public sealed record ItemFinderEntry
         {
             string? name = GetString(row, "Name");
             if (string.IsNullOrEmpty(name)) continue;
+            if (!IsObtainable(row)) continue;
             if (EquipmentSlotMap.SlotForItem(row) is not { } slot) continue;
 
             int itemType = GetInt(row, "ItemType");
@@ -170,6 +181,11 @@ public sealed record ItemFinderEntry
             int weaponType = isWeapon ? GetInt(row, "WeaponType") : -1;
             int armourType = isArmour ? GetInt(row, "ArmourType") : -1;
 
+            int strReq = GetInt(row, "StrReq");
+            double avgSwings = isWeapon && swing is { } ctx
+                ? ctx.AvgSwingsFor(GetInt(row, "Speed"), strReq)
+                : 0;
+
             list.Add(new ItemFinderEntry
             {
                 Name = name,
@@ -184,7 +200,7 @@ public sealed record ItemFinderEntry
                 WeaponType = weaponType,
                 ArmourType = armourType,
                 LevelReq = levelReq,
-                StrReq = GetInt(row, "StrReq"),
+                StrReq = strReq,
                 MinDmg = isWeapon ? t.WeaponMin : 0,
                 MaxDmg = isWeapon ? t.WeaponMax : 0,
                 Accuracy = t.TotalWornAccy + t.PlusAccuracy,
@@ -200,6 +216,7 @@ public sealed record ItemFinderEntry
                 HpRegen = t.HpRegenPercent,
                 Mana = t.PlusMaxMana,
                 ManaRegen = t.MpRegenPercent,
+                AvgSwings = avgSwings,
                 Row = row,
             });
         }
@@ -228,6 +245,21 @@ public sealed record ItemFinderEntry
         return (levelReq, backstab);
     }
 
+    // The MDB conversion stamps "In Game" = 1 on every item the realm actually
+    // spawns, sells, drops, or gates behind a quest, and 0 on sysop-only,
+    // unimplemented, or duplicate test rows (e.g. "bow of silver", the "large
+    // rock" placeholders, "longsword1..5") — even ones a shop merely references
+    // as no-generate / buy-only. Those can't be acquired in play, so the finder
+    // omits them. The check is defensive: a set predating the flag (property
+    // absent, or non-numeric) is treated as obtainable rather than blanked out.
+    private static bool IsObtainable(JsonElement row)
+    {
+        if (row.ValueKind != JsonValueKind.Object) return true;
+        if (!row.TryGetProperty("In Game", out JsonElement el)) return true;
+        if (el.ValueKind != JsonValueKind.Number || !el.TryGetInt32(out int v)) return true;
+        return v != 0;
+    }
+
     private static int GetInt(JsonElement row, string property)
     {
         if (row.ValueKind != JsonValueKind.Object) return 0;
@@ -240,5 +272,34 @@ public sealed record ItemFinderEntry
         if (row.ValueKind != JsonValueKind.Object) return null;
         if (!row.TryGetProperty(property, out JsonElement el)) return null;
         return el.ValueKind == JsonValueKind.String ? el.GetString() : null;
+    }
+
+    // Live-character inputs the finder needs to model each weapon's swing rate —
+    // everything CombatCalculator.CalcSwings consumes except the per-weapon speed
+    // and strength requirement, which vary per row. Built once when the finder
+    // opens (player stats + class combat level + encumbrance); left null when no
+    // character is loaded, in which case the Swings column stays blank.
+    public readonly record struct SwingContext(
+        int CombatLevel, int Level, int Agility, int Strength,
+        int CurrentEncum, int MaxEncum, RealmType Realm)
+    {
+        // Swing math only makes sense once the character has a real level and a
+        // resolved class combat level; below that the model divides toward garbage.
+        public bool IsUsable => Level > 0 && CombatLevel > 0;
+
+        // Mean swings per round across the 10-round energy-carry simulation for a
+        // weapon of the given speed / strength requirement, or 0 when unmodellable.
+        public double AvgSwingsFor(int weaponSpeed, int weaponStrReq)
+        {
+            if (!IsUsable || weaponSpeed <= 0) return 0;
+            SwingCalcResult res = CombatCalculator.CalcSwings(
+                CombatLevel, Level, weaponSpeed, Agility, Strength, weaponStrReq,
+                CurrentEncum, MaxEncum, realmType: Realm);
+            int[] rounds = res.SwingsPerRound;
+            if (rounds.Length == 0) return 0;
+            int total = 0;
+            foreach (int s in rounds) total += s;
+            return (double)total / rounds.Length;
+        }
     }
 }

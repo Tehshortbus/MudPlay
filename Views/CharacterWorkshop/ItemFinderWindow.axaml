@@ -229,6 +229,7 @@
                         <DataGridTextColumn Header="Lvl"        Binding="{ReflectionBinding LevelReqText}"   SortMemberPath="LevelReq"   Width="58"/>
                         <DataGridTextColumn Header="Str"        Binding="{ReflectionBinding StrReqText}"     SortMemberPath="StrReq"     Width="58"/>
                         <DataGridTextColumn Header="Dmg"        Binding="{ReflectionBinding DamageText}"     SortMemberPath="MaxDmg"     Width="78"/>
+                        <DataGridTextColumn Header="Swings"     Binding="{ReflectionBinding AvgSwingsText}"  SortMemberPath="AvgSwings"  Width="70"/>
                         <DataGridTextColumn Header="Accy"       Binding="{ReflectionBinding AccuracyText}"   SortMemberPath="Accuracy"   Width="66"/>
                         <DataGridTextColumn Header="Crit"       Binding="{ReflectionBinding CritsText}"      SortMemberPath="Crits"      Width="62"/>
                         <DataGridTextColumn Header="Hit Magic"  Binding="{ReflectionBinding HitMagicText}"   SortMemberPath="HitMagic"   Width="92"/>
