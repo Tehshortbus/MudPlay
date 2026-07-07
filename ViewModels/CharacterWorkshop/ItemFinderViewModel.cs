@@ -113,7 +113,9 @@ public sealed partial class ItemFinderViewModel : ObservableObject, IDialogViewM
     [ObservableProperty] private int _maxStrReq;     // required-strength gate (≤)
     [ObservableProperty] private int _maxLevelReq;   // required-level gate (≤)
 
-    public ItemFinderViewModel(GameDataCache gameData, PlayerStats stats, InventoryManager inventory)
+    public ItemFinderViewModel(
+        GameDataCache gameData, PlayerStats stats, InventoryManager inventory,
+        AlignmentBucket? alignment)
     {
         ArgumentNullException.ThrowIfNull(gameData);
         ArgumentNullException.ThrowIfNull(stats);
@@ -127,6 +129,22 @@ public sealed partial class ItemFinderViewModel : ObservableObject, IDialogViewM
         RowsView = new DataGridCollectionView(_all) { Filter = PassesFilter };
 
         BuildOptionLists();
+
+        // Open pre-narrowed to the live character — class / level / alignment — so
+        // the first thing shown is "what can I wear", not the whole catalog. These
+        // are ordinary filter fields the user can widen back to (Any); the pre-select
+        // just picks a useful starting point. Set before the PropertyChanged hookup
+        // so the single ApplyFilter below applies them without extra refreshes.
+        SelectedClass = ClassOptions.FirstOrDefault(
+            c => string.Equals(c, stats.Class, StringComparison.OrdinalIgnoreCase)) ?? AnyClass;
+        if (stats.Level > 0) UsableLevel = stats.Level;
+        SelectedAlignment = alignment switch
+        {
+            AlignmentBucket.Good => "Good",
+            AlignmentBucket.Neutral => "Neutral",
+            AlignmentBucket.Evil => "Evil",
+            _ => AnyAlign,
+        };
 
         _filterSuspended = false;
         PropertyChanged += OnFilterPropertyChanged;

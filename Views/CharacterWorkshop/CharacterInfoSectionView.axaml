@@ -252,10 +252,24 @@
                                            Foreground="{StaticResource ChromeFgSecBrush}"
                                            FontSize="{StaticResource FontSizeMd}"
                                            FontWeight="SemiBold"/>
-                                <ItemsControl ItemsSource="{Binding EquippedItems}">
+                                <!-- Shared-size scope so every row's name column is the
+                                     width of the widest name — the (Slot) flags then all
+                                     start at the same x, aligned in a column like the
+                                     in-game `look self`, with no wasted fixed gap. -->
+                                <ItemsControl ItemsSource="{Binding EquippedItems}"
+                                              Grid.IsSharedSizeScope="True">
                                     <ItemsControl.ItemTemplate>
-                                        <DataTemplate x:DataType="sys:String">
-                                            <TextBlock Classes="FieldValue" Text="{Binding}" TextWrapping="Wrap" Margin="0,0,0,1"/>
+                                        <DataTemplate x:DataType="vm:EquippedItemRow">
+                                            <Grid Margin="0,0,0,1">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" SharedSizeGroup="EquipName"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Grid.Column="0" Classes="FieldValue" Text="{Binding Name}"/>
+                                                <TextBlock Grid.Column="1" Classes="FieldValue"
+                                                           Foreground="{StaticResource ChromeFgSecBrush}"
+                                                           Margin="10,0,0,0" Text="{Binding Slot}"/>
+                                            </Grid>
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>

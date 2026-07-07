@@ -138,8 +138,10 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
     [ObservableProperty] private string _totalWealth = "—";
 
     // ----- Inventory: the full carry list from the last `i` dump ---------
-    // Worn items ("name (Slot)") harvested from the last inventory dump.
-    public ObservableCollection<string> EquippedItems { get; } = new();
+    // Worn items split into name + parenthesized slot so the view can align every
+    // slot flag in a shared column (like the in-game `look self`), rather than
+    // letting each "(Slot)" trail its own name at a ragged offset.
+    public ObservableCollection<EquippedItemRow> EquippedItems { get; } = new();
     // Carried-but-unworn item names harvested from the last inventory dump.
     public ObservableCollection<string> CarriedItems { get; } = new();
     // True once at least one worn item is known — gates the equipped list.
@@ -487,9 +489,11 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
 
         EquippedItems.Clear();
         foreach (EquippedItem item in snap.EquippedItems)
-            EquippedItems.Add(string.IsNullOrEmpty(item.Slot)
-                ? item.Name
-                : string.Create(CultureInfo.InvariantCulture, $"{item.Name} ({item.Slot})"));
+            EquippedItems.Add(new EquippedItemRow(
+                item.Name,
+                string.IsNullOrEmpty(item.Slot)
+                    ? string.Empty
+                    : string.Create(CultureInfo.InvariantCulture, $"({item.Slot})")));
 
         CarriedItems.Clear();
         foreach (string name in snap.CarriedItems)
@@ -536,3 +540,8 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
         _questBonuses.Changed -= OnQuestBonusesChanged;
     }
 }
+
+// One worn item for the equipped list: the name and its parenthesized slot flag
+// ("(Hands)"), kept apart so the view can align every slot in a shared column.
+// Slot is empty for a worn item the game reported without a slot label.
+public readonly record struct EquippedItemRow(string Name, string Slot);

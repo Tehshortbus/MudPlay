@@ -6,6 +6,8 @@ Notable changes per merged PR, **newest first**. The top of the [README](README.
 
 - Turning off Auto-Heal/Rest now releases a held rest gate at once — a queued walk-to resumes instead of the character sitting idle resting
 - Look-target HP readout now floats centered between the room name and the combat ticks instead of jammed against them
+- Item Finder now opens pre-filtered to the current character's class, level, and alignment — widen back to (Any) to browse everything
+- Character Info's equipped list now aligns every slot flag — (Hands) (Back) (Legs) — in a shared column instead of trailing each name at a ragged offset
 
 ## 1.15.0
 
