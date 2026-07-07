@@ -2169,7 +2169,19 @@ public sealed class AppServices
             log: Log,
             // Emergency hangup drops the carrier on purpose — flag it so the
             // reactive-reconnect path doesn't immediately dial back in.
-            hangupSignal: HangupSignal);
+            hangupSignal: HangupSignal,
+            // Hostile-aware gate for the emergency hangup: only bail while a
+            // hostile is actually here. HasHostileMonster (unlike
+            // HasEngageableHostiles) ignores the auto-attack master switch, so a
+            // manual player still hangs up when a mob shows up.
+            hasHostileInRoom: () => CombatTracker.HasHostileMonster);
+
+        // Re-check the emergency hangup whenever the room's occupants change: a
+        // hostile that wanders in or spawns while we're already below the trigger
+        // won't touch our own PlayerState, so nothing else would drive the check.
+        // Subscribed after CombatTracker (which updates HasHostileMonster in its
+        // own EntitiesObserved handler) so this reads the current hostile flag.
+        RoomClassifier.EntitiesObserved += _ => Health.ReevaluateEmergencyHangup();
 
         // Leader-rest nudge: a standing-idle follower's own PlayerState may
         // not change between the 5s par polls that flip the leader's

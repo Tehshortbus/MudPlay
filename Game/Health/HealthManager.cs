@@ -69,6 +69,7 @@ public sealed class HealthManager : IDisposable
     private readonly Func<Models.Profile.CombatSettings>? _readCombatSettings;
     private readonly Func<Models.Profile.GeneralSettings>? _readGeneralSettings;
     private readonly Func<bool>? _hasEngageableHostiles;
+    private readonly Func<bool>? _hasHostileInRoom;
     private readonly Func<int>? _readDeathFloor;
     private readonly HangupSignal? _hangupSignal;
     private readonly LogService? _log;
@@ -86,7 +87,7 @@ public sealed class HealthManager : IDisposable
     private bool _restInFlight;          // sent rest, awaiting recovery
     private bool _restConfirmedByPrompt; // observed (Resting) since the last rest emit
     private bool _fledThisCombat;        // reacted to run-trigger (flee OR @heal), awaiting combat end
-    private bool _hangFired;             // disconnect-on-emergency single-shot per session
+    private bool _hangFired;             // emergency-hangup latch; re-arms when danger passes
     private Map.IRecoverableEngine? _fleeEngine;     // engine we paused mid-flee
     private Map.Direction _fleeDirection;             // sustained direction for multi-step flee
     private int _fleeStepsRemaining;                 // moves left before flee completes
@@ -139,6 +140,13 @@ public sealed class HealthManager : IDisposable
     //     every tick while a hostile keeps breaking it (a room with hostiles
     //     breaks resting every combat round, so the room must be cleared first).
     //     Typically wired to CombatStateTracker.HasEngageableHostiles.
+    //   hasHostileInRoom — returns true while a hostile monster is in the room,
+    //     independent of the auto-attack master switch (unlike
+    //     hasEngageableHostiles, which reports false whenever auto-attack is off).
+    //     Gates the emergency hangup: a low-HP disconnect is an escape from a
+    //     fight, so with no hostile present there's nothing to flee and dropping
+    //     the carrier would only strand a safe-but-wounded character in a
+    //     reconnect loop. Wired to CombatStateTracker.HasHostileMonster.
     //   readDeathFloor — the realm's negative-HP death floor (BbsProfile.
     //     PlayerDiesAtHp, e.g. -25). The emergency-hangup path fires anywhere in
     //     the bleeding-out window (hang-trigger down to this floor) but bails once
@@ -162,7 +170,8 @@ public sealed class HealthManager : IDisposable
         Func<bool>? hasEngageableHostiles,
         Func<int>? readDeathFloor = null,
         LogService? log = null,
-        HangupSignal? hangupSignal = null)
+        HangupSignal? hangupSignal = null,
+        Func<bool>? hasHostileInRoom = null)
     {
         ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(coordinator);
@@ -178,6 +187,7 @@ public sealed class HealthManager : IDisposable
         _readCombatSettings = readCombatSettings;
         _readGeneralSettings = readGeneralSettings;
         _hasEngageableHostiles = hasEngageableHostiles;
+        _hasHostileInRoom = hasHostileInRoom;
         _readDeathFloor = readDeathFloor;
         _log = log;
         _hangupSignal = hangupSignal;
@@ -583,12 +593,33 @@ public sealed class HealthManager : IDisposable
         }
     }
 
-    // Hangup-on-emergency: HP at or below HealthSettings.HangIfBelowHp triggers a
-    // hard disconnect via the configured Game-Exit command. Single-shot — the
-    // disconnect command goes once per session and the log captures it for
-    // postmortem. Defaults: HangIfBelowHp=5 (%). Called from the normal evaluate
-    // path and — when GeneralSettings.AllowHangupInAllOffMode is set — from the
-    // engine-disabled carve-out.
+    // Re-check ONLY the emergency-hangup gate — wired to room-entity observations
+    // so a hostile that wanders in or spawns while we're already below the trigger
+    // fires the disconnect, even though nothing about our own PlayerState changed
+    // to drive the normal Evaluate. Deliberately narrow: it must not run the
+    // rest / run / flee machinery, which a room change would otherwise re-trigger
+    // (e.g. spuriously re-issuing `rest`). Honours the same engine-off carve-out
+    // as Evaluate — the hangup evaluates while auto-heal is off only when the user
+    // opted into AllowHangupInAllOffMode.
+    public void ReevaluateEmergencyHangup()
+    {
+        if (!_state.HasPromptData) return;
+        if (!_isEnabled()
+            && _readGeneralSettings?.Invoke() is not { AllowHangupInAllOffMode: true })
+            return;
+        TryEmergencyHangup(_readSettings());
+    }
+
+    // Hangup-on-emergency: HP at or below HealthSettings.HangIfBelowHp WITH a
+    // hostile in the room triggers a hard disconnect via the configured Game-Exit
+    // command. Latched so the command goes once per danger episode (not every tick
+    // while HP stays low), and the log captures it for postmortem. The latch
+    // re-arms as soon as the danger passes — HP back above the trigger, or the
+    // room clear of hostiles — so a later low-HP-with-hostile crossing (e.g. after
+    // reconnecting into a safe room, then a monster wanders in) fires afresh.
+    // Defaults: HangIfBelowHp=5 (%). Called from the normal evaluate path, the
+    // room-observation re-check (ReevaluateEmergencyHangup), and — when
+    // GeneralSettings.AllowHangupInAllOffMode is set — the engine-disabled carve-out.
     //
     // The trigger is a point on one continuous HP scale — 100 %/max down through
     // 0 into the negatives (HP% goes negative while bleeding out, exactly as the
@@ -616,11 +647,28 @@ public sealed class HealthManager : IDisposable
         // action may drop the carrier. Hard-overrides AllowHangupInAllOffMode —
         // an opted-out character won't auto-disconnect even at low HP.
         if (_readGeneralSettings?.Invoke() is { DisableHangups: true }) return false;
-        if (_hangFired || _state.MaxHp <= 0) return false;
+        if (_state.MaxHp <= 0) return false;
 
         int hangTrigger = PoolThreshold.Resolve(s.HpThresholdMode, s.HangIfBelowHp, _state.MaxHp);
         int deathFloor = Math.Min(0, _readDeathFloor?.Invoke() ?? -25);
-        if (_state.Hp <= deathFloor || _state.Hp > hangTrigger) return false;
+        bool inWindow = _state.Hp > deathFloor && _state.Hp <= hangTrigger;
+
+        // The disconnect is an escape from a fight that's killing us. With no
+        // hostile in the room there's nothing to flee, so a low-HP character is
+        // safe to stay connected and rest — dropping the carrier would only
+        // strand it in a reconnect loop it can't heal out of (log back in still
+        // below the trigger, hang up again, repeat). Gate on hostile presence and
+        // re-arm the single-shot the moment the danger passes (HP recovered above
+        // the trigger, or the room went clear) so a fresh hostile that wanders in
+        // or spawns while we're still low fires a new disconnect. Selector unwired
+        // (tests / minimal ctor) fails open — behaves as the pre-gate hangup did.
+        bool hostile = _hasHostileInRoom?.Invoke() ?? true;
+        if (!inWindow || !hostile)
+        {
+            _hangFired = false;
+            return false;
+        }
+        if (_hangFired) return false;
 
         _hangFired = true;
         string? hangCmd = _readHangupCommand?.Invoke();

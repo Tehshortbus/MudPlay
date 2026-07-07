@@ -176,6 +176,56 @@ public sealed class CombatStateTrackerTests
         Assert.True(h.CombatGateHeld);
     }
 
+    // ----- HasHostileMonster — auto-attack-independent danger signal ----
+
+    [Fact]
+    public void HasHostileMonster_TrueWithHostile_EvenWhenAutoAttackOff()
+    {
+        // The gate short-circuits off when auto-attack is disabled, so a manual
+        // player never asserts it — but the room is still dangerous. The
+        // emergency-hangup signal must report the hostile regardless.
+        using Harness h = new() { AutoAttackEnabled = false };
+        h.AddMonster(1, "giant rat", killable: true);
+
+        h.Feed("Also here: giant rat.");
+
+        Assert.False(h.CombatGateHeld);            // gate stays down (auto-attack off)
+        Assert.False(h.Tracker.HasEngageableHostiles);
+        Assert.True(h.Tracker.HasHostileMonster);  // but the danger is real
+    }
+
+    [Fact]
+    public void HasHostileMonster_FalseWhenRoomClear()
+    {
+        using Harness h = new();
+        h.Feed("Also here: Bob.");                 // player only
+        Assert.False(h.Tracker.HasHostileMonster);
+    }
+
+    [Fact]
+    public void HasHostileMonster_FalseWithOnlyFriendly()
+    {
+        using Harness h = new();
+        h.AddMonster(7, "shopkeeper", killable: true);
+        h.SetOverlay(7, relationship: MonsterRelationship.Friend);
+
+        h.Feed("Also here: shopkeeper.");
+
+        Assert.False(h.Tracker.HasHostileMonster);
+    }
+
+    [Fact]
+    public void HasHostileMonster_ClearsWhenRoomCleared()
+    {
+        using Harness h = new();
+        h.AddMonster(1, "giant rat", killable: true);
+        h.Feed("Also here: giant rat.");
+        Assert.True(h.Tracker.HasHostileMonster);
+
+        h.Feed("Also here: Bob.");                 // moved on — room clear
+        Assert.False(h.Tracker.HasHostileMonster);
+    }
+
     [Fact]
     public void RoomClearedAfterPreviouslyKillable_ClearsGate()
     {
