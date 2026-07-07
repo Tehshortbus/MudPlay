@@ -1,10 +1,11 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.15.0**
-> - Dark rooms now tracked — walking into a room too dark to show its name/exits advances the map by move inference instead of stalling the marker
-> - Auto-combat engages a monster revealed only by its dark-cyan attack line, even when no "Also here:" line ever lists it
-> - Dark-room target retracted on "Your command had no effect." so combat stops swinging at a mob that died or fled unseen
+> **Version 1.16.0**
+> - Turning off Auto-Heal/Rest now releases a held rest gate at once — a queued walk-to resumes instead of the character sitting idle resting
+> - Look-target HP readout now floats centered between the room name and the combat ticks instead of jammed against them
+> - Item Finder now opens pre-filtered to the current character's class, level, and alignment — widen back to (Any) to browse everything
+> - Character Info's equipped list now aligns every slot flag in a shared column instead of trailing each name at a ragged offset
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

@@ -3726,7 +3726,17 @@ public partial class MainWindowViewModel : ObservableObject
         => PersistAutoModeFlag(d => d.AutoNuke = value);
 
     partial void OnIsAutoHealRestActiveChanged(bool value)
-        => PersistAutoModeFlag(d => d.AutoHealRest = value);
+    {
+        PersistAutoModeFlag(d => d.AutoHealRest = value);
+        // Mirror the AutoCombat path: a genuine flip must re-evaluate the
+        // health engine at once. Toggling off releases a held HP/MA recovery
+        // gate immediately (Evaluate's disabled branch clears it) so the walker
+        // stops sitting idle mid-rest; toggling on re-asserts and rests now
+        // instead of waiting for the next HP-changed event. A profile reseed
+        // sets this without a real user toggle — skip then.
+        if (_suppressAutoEngineWriteback) return;
+        AppServices.Current.Health?.Evaluate();
+    }
 
     partial void OnIsAutoBlessActiveChanged(bool value)
         => PersistAutoModeFlag(d => d.AutoBless = value);

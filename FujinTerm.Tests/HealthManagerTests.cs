@@ -171,6 +171,25 @@ public sealed class HealthManagerTests
         Assert.True(h.HealthGateHeld);
     }
 
+    [Fact]
+    public void DisabledMidRest_ReleasesHealthGate()
+    {
+        // The reported strand: HP below the rest trigger holds the recovery
+        // gate, pausing the walker to rest. Toggling Auto-Heal/Rest off must
+        // release that gate at once — the view-model calls Evaluate on the
+        // flip — so a queued walk-to resumes instead of the character sitting
+        // idle resting until HP happens to climb back to target.
+        using Harness h = new();
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 50;                 // below 60% trigger → gate held, resting
+        Assert.True(h.HealthGateHeld);
+
+        h.AutoHealRestEnabled = false;   // user flips Auto-Heal/Rest off
+        h.Health.Evaluate();             // VM re-evaluates the engine on the flip
+        Assert.False(h.HealthGateHeld);  // gate released → walker resumes
+    }
+
     // ----- absolute threshold mode -----------------------------------
 
     [Fact]

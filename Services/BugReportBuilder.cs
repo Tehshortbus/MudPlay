@@ -271,6 +271,12 @@ public static class BugReportBuilder
         Kv(sb, "Coalesced state", svc.MovementControl.State.ToString());
         Kv(sb, "Active", svc.MovementControl.IsActive.ToString());
         Kv(sb, "Paused", svc.MovementControl.IsPaused.ToString());
+        // Name the gate(s) actually holding the pause. "Paused: True" alone
+        // can't tell a rest-hold (HealthRecovery) from a fight-hold (Combat) or
+        // a manual stop (User) — the distinction a "walker stuck idle" report
+        // needs to point at the right engine.
+        var gates = svc.MovementCoordinator.AssertedGates;
+        Kv(sb, "Paused by", gates.Count > 0 ? string.Join(", ", gates) : "(nothing)");
         var loop = svc.LoopRunner;
         Kv(sb, "Loop runner", loop.State.ToString());
         // CurrentLoop is the loop of the LIVE run; StagedLoop is the loaded-but-
