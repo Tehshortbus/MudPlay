@@ -16,6 +16,7 @@
 > - Auto-combat-off mid-round releases the walker and clears the in-combat gate so movement resumes
 > - Hand-casting a spell mid-fight re-attacks a still-alive target immediately instead of idling until the next round
 > - Rest-if-below now actually sends `rest` when it triggers
+> - A loop no longer hangs for minutes when a party @wait pause/resume lands mid-step — the in-flight move isn't re-sent, and arriving at the target advances even if the tracker's queue is momentarily out of sync
 > - Learned spells persist across sessions — Spell Book checkmarks survive a relog instead of blanking until the next `spells` / `pow` poll
 > - Spell Book cast-on-use list shows only the class's own items, not every universal wand / scroll
 > - Backscroll copy survives a broken DBus clipboard instead of crashing the client
