@@ -2,6 +2,12 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.15.0
+
+- Dark rooms now tracked — walking into a room too dark to show its name/exits advances the map by move inference instead of stalling the marker
+- Auto-combat engages a monster revealed only by its dark-cyan attack line, even when no "Also here:" line ever lists it
+- Dark-room target retracted on "Your command had no effect." so combat stops swinging at a mob that died or fled unseen
+
 ## 1.14.1
 
 - DataGrid column headers no longer truncate anywhere — short labels like "Str" render in full instead of clipping to an ellipsis (Item Finder, Game Data browser, Spell Book, Spell Coverage, and the rest)

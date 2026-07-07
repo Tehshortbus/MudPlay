@@ -1,8 +1,10 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.14.1**
-> - DataGrid column headers no longer truncate anywhere — short labels like "Str" render in full instead of clipping to an ellipsis (Item Finder, Game Data browser, Spell Book, Spell Coverage, and the rest)
+> **Version 1.15.0**
+> - Dark rooms now tracked — walking into a room too dark to show its name/exits advances the map by move inference instead of stalling the marker
+> - Auto-combat engages a monster revealed only by its dark-cyan attack line, even when no "Also here:" line ever lists it
+> - Dark-room target retracted on "Your command had no effect." so combat stops swinging at a mob that died or fled unseen
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

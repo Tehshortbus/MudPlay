@@ -628,6 +628,127 @@ public sealed class RoomTrackerTests : IDisposable
         Assert.Equal(new RoomKey(3, 2), tracker.State.CurrentRoom!.Key);
     }
 
+    // ----- dark-room advance (no name / no exits display) ------------
+
+    [Fact]
+    public void DarkRoomEntered_PendingMoveToMappedNeighbour_Advances_AndFlagsDark()
+    {
+        // A dark room ("The room is very dark...") prints no name + no exits, so
+        // NoteRoomObserved never fires. The dark line is our only signal: a sent
+        // move that yields darkness instead of a bonk means we traversed. With a
+        // single move pending onto a mapped neighbour, project onto the graph edge.
+        RoomTracker tracker = NewTracker();
+        tracker.SetLocated(new RoomKey(1, 1));       // Town Gates, N → 1/3
+        tracker.NoteMoveSent(Direction.N);
+        Assert.Equal(RoomConfidence.Pending, tracker.State.Confidence);
+
+        tracker.NoteDarkRoomEntered();
+
+        Assert.Equal(RoomConfidence.Confirmed, tracker.State.Confidence);
+        Assert.Equal(new RoomKey(1, 3), tracker.State.CurrentRoom!.Key);
+        Assert.True(tracker.IsInDarkRoom);
+    }
+
+    [Fact]
+    public void DarkRoomEntered_MultipleMovesInFlight_LandsAtHead_StaysPending()
+    {
+        // Two moves queued; the dark line confirms only the head (N → 1/3) and
+        // leaves the second in flight, so posture stays Pending at the new room.
+        RoomTracker tracker = NewTracker();
+        tracker.SetLocated(new RoomKey(1, 1));
+        tracker.NoteMoveSent(Direction.N);           // head — Town Gates → 1/3
+        tracker.NoteMoveSent(Direction.E);           // still queued
+
+        tracker.NoteDarkRoomEntered();
+
+        Assert.Equal(RoomConfidence.Pending, tracker.State.Confidence);
+        Assert.Equal(new RoomKey(1, 3), tracker.State.CurrentRoom!.Key);
+        Assert.True(tracker.IsInDarkRoom);
+    }
+
+    [Fact]
+    public void DarkRoomEntered_UnmappedEdge_HoldsSource_ButFlagsDark()
+    {
+        // The pending move has no graph edge out of the source (a dark corridor
+        // off the map). We can't fabricate a landing, so we hold the last anchor
+        // — but the darkness flag still arms so combat can engage by attack line.
+        RoomTracker tracker = NewTracker();
+        tracker.SetLocated(new RoomKey(1, 1));       // Town Gates has no S exit
+        tracker.NoteMoveSent(Direction.S);
+
+        tracker.NoteDarkRoomEntered();
+
+        Assert.Equal(RoomConfidence.Pending, tracker.State.Confidence);
+        Assert.Equal(new RoomKey(1, 1), tracker.State.CurrentRoom!.Key);
+        Assert.True(tracker.IsInDarkRoom);
+    }
+
+    [Fact]
+    public void DarkRoomEntered_WhileConfirmedNoMove_FlagsDark_HoldsRoom()
+    {
+        // A dark re-render while standing still (no pending move) carries nothing
+        // to advance on — flag the darkness but keep the confirmed room intact.
+        RoomTracker tracker = NewTracker();
+        tracker.SetLocated(new RoomKey(1, 1));
+
+        tracker.NoteDarkRoomEntered();
+
+        Assert.Equal(RoomConfidence.Confirmed, tracker.State.Confidence);
+        Assert.Equal(new RoomKey(1, 1), tracker.State.CurrentRoom!.Key);
+        Assert.True(tracker.IsInDarkRoom);
+    }
+
+    [Fact]
+    public void DarkRoomEntered_ThenLitObservation_ClearsDarkFlag()
+    {
+        // We advanced into a dark room; the moment a normal room display parses
+        // (light source readied, or a lit room re-observed), the flag clears.
+        RoomTracker tracker = NewTracker();
+        tracker.SetLocated(new RoomKey(1, 1));
+        tracker.NoteMoveSent(Direction.N);
+        tracker.NoteDarkRoomEntered();
+        Assert.True(tracker.IsInDarkRoom);
+
+        tracker.NoteRoomObserved(Obs("North Square", Direction.S));   // 1/3 lit
+
+        Assert.False(tracker.IsInDarkRoom);
+        Assert.Equal(RoomConfidence.Confirmed, tracker.State.Confidence);
+        Assert.Equal(new RoomKey(1, 3), tracker.State.CurrentRoom!.Key);
+    }
+
+    [Fact]
+    public void DarkRoomEntered_AsLookPeek_Dropped_DoesNotFlagDark()
+    {
+        // Looking into an adjacent dark room renders the same "can't see" line
+        // while we stand in a lit room. The peek window drops it — no advance,
+        // no darkness flag on our own (still-lit) room.
+        RoomTracker tracker = NewTracker();
+        DateTimeOffset t = DateTimeOffset.UnixEpoch;
+        tracker.SetLocated(new RoomKey(1, 1));
+        tracker.NoteLookSent(t);
+
+        tracker.NoteDarkRoomEntered(t.AddMilliseconds(100));
+
+        Assert.False(tracker.IsInDarkRoom);
+        Assert.Equal(RoomConfidence.Confirmed, tracker.State.Confidence);
+        Assert.Equal(new RoomKey(1, 1), tracker.State.CurrentRoom!.Key);
+    }
+
+    [Fact]
+    public void DarkRoomEntered_ThenDeath_ClearsDarkFlag()
+    {
+        // Dying in the dark must not leave the flag stuck armed after respawn.
+        RoomTracker tracker = NewTracker();
+        tracker.SetLocated(new RoomKey(1, 1));
+        tracker.NoteMoveSent(Direction.N);
+        tracker.NoteDarkRoomEntered();
+        Assert.True(tracker.IsInDarkRoom);
+
+        tracker.NoteDeath(2, "You now have 2 lives remaining.");
+
+        Assert.False(tracker.IsInDarkRoom);
+    }
+
     // ----- move-echo consume-once claim ------------------------------
 
     [Fact]

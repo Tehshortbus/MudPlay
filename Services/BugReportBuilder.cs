@@ -298,6 +298,10 @@ public static class BugReportBuilder
         Kv(sb, "Current room",
             roomState.CurrentRoom is { } room ? $"{room.Key.Map}/{room.Key.Room} — {room.DisplayName}" : "(unknown)");
         Kv(sb, "Room confidence", roomState.Confidence.ToString());
+        // Dark rooms print no name/exits/"Also here:", so the walker infers
+        // position from moves and combat from attack lines. A "stuck in the dark"
+        // report needs this flag to explain why the room display looks empty.
+        Kv(sb, "In dark room", svc.RoomTracker.IsInDarkRoom.ToString());
         // Suspect-strike count + the last observation's exit sets drive the
         // walker's hidden-search / lost-recovery decisions — the exact inputs a
         // "walker got lost / re-searched" report needs.

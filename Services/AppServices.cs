@@ -769,6 +769,13 @@ public sealed class AppServices
     // sitting on a stale entry.
     public Game.Combat.MonsterDeathWatcher MonsterDeath { get; private set; } = null!;
 
+    // Engages a monster hidden by darkness. A dark room prints no "Also here:"
+    // line, so the only tell a hostile shares it is the mob's dark-cyan attack
+    // line; this watcher reads the name off that line (gated on
+    // RoomTracker.IsInDarkRoom) and injects it into RoomClassifier so
+    // CombatManager engages it as if it had been listed.
+    public Game.Combat.DarkRoomCombatWatcher DarkRoomCombat { get; private set; } = null!;
+
     // Passive HP/MA threshold engine. Asserts /
     // clears HealthRecovery + ManaRecovery gates and drives the
     // rest / stand cycle with pre- and post-rest command sequencing.
@@ -1909,6 +1916,19 @@ public sealed class AppServices
         Router.Subscribe(Services.Patterns.KnownPatterns.DirectionFailed,
             _ => RoomTracker.NoteDirectionFailed());
 
+        // Dark-room position tracking. A room too dark to see starves the normal
+        // name + exits display (see GAME_MECHANICS.md), so the usual
+        // move-confirming observation never fires. Both darkness forms feed
+        // NoteDarkRoomEntered, which advances position along the pending move's
+        // mapped edge (no bonk means we traversed) and flags IsInDarkRoom so
+        // DarkRoomCombatWatcher can engage a mob revealed only by its attack
+        // line. Independent of AutoLight's master switch — position tracking
+        // always runs.
+        Router.Subscribe(Services.Patterns.KnownPatterns.RoomPitchBlack,
+            _ => RoomTracker.NoteDarkRoomEntered());
+        Router.Subscribe(Services.Patterns.KnownPatterns.RoomVeryDark,
+            _ => RoomTracker.NoteDarkRoomEntered());
+
         // Follower-drag → tracker bridge. When the party leader walks, the game
         // drags us one room and prints " -- Following your Party leader <dir> --";
         // a follower types no move, so without turning that line into a
@@ -2178,6 +2198,18 @@ public sealed class AppServices
             log: Log,
             readPartySettings: () =>
                 ReadSection<Models.Profile.PartySettings>(Profile.Current, "Party"));
+
+        // Dark-room combat. A room too dark to show "Also here:" hides any
+        // hostile sharing it — the only evidence is the mob's dark-cyan attack
+        // line. This watcher reads the monster name off that line and injects it
+        // into the classifier so CombatManager engages it exactly as if it had
+        // been listed (see GAME_MECHANICS.md). Gated on RoomTracker.IsInDarkRoom
+        // so it never fabricates a target in a lit room. Retracts on "Your
+        // command had no effect." — the game's tell that the target has left.
+        DarkRoomCombat = new Game.Combat.DarkRoomCombatWatcher(
+            Router, RoomTracker, RoomClassifier,
+            currentTarget: () => Combat.CurrentTarget,
+            log: Log);
 
         // HealthManager. Master on/off is
         // GeneralSettings.AutoMode.AutoHealRest (shared with the
