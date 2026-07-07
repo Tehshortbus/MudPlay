@@ -2,6 +2,11 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.14.0
+
+- Logon menu-nav editor can import another character's steps instead of retyping a shared front-end per character
+- Import lists every saved character (same-BBS candidates first), copies steps only — usernames / passwords never travel
+
 ## 1.13.0
 
 - Item Finder hides items the realm never puts in play (sysop-only / unimplemented / duplicate rows like "bow of silver"), showing only obtainable gear

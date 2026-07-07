@@ -1,10 +1,9 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.13.0**
-> - Item Finder hides items the realm never puts in play (sysop-only / unimplemented / duplicate rows like "bow of silver"), showing only obtainable gear
-> - Item Finder weapon-type filter adds "(All 1H weapons)" / "(All 2H weapons)" alongside the specific blunt/sharp types
-> - Item Finder weapons show the avg swings/round over 10 rounds for the live character, sortable like the other columns
+> **Version 1.14.0**
+> - Logon menu-nav editor can import another character's steps instead of retyping a shared front-end per character
+> - Import lists every saved character (same-BBS candidates first), copies steps only — usernames / passwords never travel
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

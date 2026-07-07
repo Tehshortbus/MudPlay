@@ -139,6 +139,22 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     // Editable rows for the per-character menu-nav sequence.
     public ObservableCollection<MenuStepEditorViewModel> MenuNavSteps { get; } = new();
 
+    // Logon sequences from other saved characters, offered as import sources so a
+    // new (or additional) character doesn't have to retype a flow another
+    // character already worked out. Every character is listed, not just ones on
+    // this BBS — some BBSes share a front-end, so a cross-BBS flow is often a
+    // mostly-right starting point. Rebuilt whenever the selected BBS or loaded
+    // profile changes.
+    public ObservableCollection<MenuNavImportOption> ImportSourceOptions { get; } = new();
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(ImportMenuNavCommand))]
+    private MenuNavImportOption? _selectedImportSource;
+
+    // Drives the picker's enabled state — false hides / greys the import row when
+    // no other character has any logon steps to borrow.
+    public bool HasImportSources => ImportSourceOptions.Count > 0;
+
     // Helper text under the credentials section.
     public string CredentialsHint
     {
@@ -603,6 +619,43 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
             Password = string.Empty;
             HasSysopPowers = false;
         }
+
+        RefreshImportSources(bbsName);
+    }
+
+    // Load every other saved character's logon steps into the import picker. Runs
+    // on each BBS-select / profile-load (the editing target drives which pair is
+    // excluded). Reads profiles straight from disk without switching to them, so a
+    // corrupt one is skipped rather than aborting the whole list.
+    private void RefreshImportSources(string editingBbs)
+    {
+        ImportSourceOptions.Clear();
+        SelectedImportSource = null;
+
+        if (HasProfile)
+        {
+            var loaded = new List<(string bbs, string name, CharacterProfile profile)>();
+            foreach (ProfileRef r in _profile.ListAll())
+            {
+                CharacterProfile? p;
+                try
+                {
+                    p = JsonStore.Load<CharacterProfile>(AppPaths.CharacterProfileFile(r.Bbs, r.Name));
+                }
+                catch (InvalidDataException)
+                {
+                    // One unreadable profile shouldn't blank the picker for the rest.
+                    continue;
+                }
+                if (p is not null) loaded.Add((r.Bbs, r.Name, p));
+            }
+
+            foreach (MenuNavImportOption option in MenuNavImportOption.Build(
+                         loaded, editingBbs, _profile.CurrentBbsName, _profile.CurrentProfileName))
+                ImportSourceOptions.Add(option);
+        }
+
+        OnPropertyChanged(nameof(HasImportSources));
     }
 
     private void RefreshProfileState()
@@ -808,4 +861,19 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         MenuNavSteps.Move(i, i + 1);
         Dirty();
     }
+
+    // Replace the current character's logon steps with a copy of the chosen
+    // source's. Destructive by design but recoverable: Settings is a Save/Cancel
+    // window, so Cancel / X drops the import if it wasn't the right starting point.
+    [RelayCommand(CanExecute = nameof(CanImportMenuNav))]
+    private void ImportMenuNav()
+    {
+        if (SelectedImportSource is not { } src) return;
+        MenuNavSteps.Clear();
+        foreach (MenuStep step in src.Steps)
+            MenuNavSteps.Add(MenuStepEditorViewModel.FromModel(step, Dirty));
+        Dirty();
+    }
+
+    private bool CanImportMenuNav() => SelectedImportSource is not null;
 }
