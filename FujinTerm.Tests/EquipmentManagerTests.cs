@@ -791,4 +791,42 @@ public sealed class EquipmentManagerTests
 
         Assert.Equal(new[] { "wear iron helm" }, cmds);
     }
+
+    [Fact]
+    public void BuildEquipCommands_StackedCarriedTokens_StripCountAndEquip()
+    {
+        // Picking up a second identical loadout stacks the pack ("2 padded helm");
+        // the game's count prefix must not stop the set's named pieces from being
+        // worn. A singleton ("demonhide sandals") has no prefix and equips as-is.
+        EquipmentSet set = Set("default", "Default",
+            Entry(EquipmentSlot.Head, "padded helm"),
+            Entry(EquipmentSlot.Torso, "padded vest"),
+            Entry(EquipmentSlot.Feet, "demonhide sandals"));
+        var carried = new[] { "2 padded helm", "2 padded vest", "demonhide sandals" };
+        Func<string, EquipmentSlot?> resolve = Resolver(
+            ("padded helm", EquipmentSlot.Head),
+            ("padded vest", EquipmentSlot.Torso),
+            ("demonhide sandals", EquipmentSlot.Feet));
+
+        List<string> cmds = EquipmentManager.BuildEquipCommands(
+            set, carried, WornList(), resolve, EquipAll);
+
+        Assert.Equal(
+            new[] { "wear padded helm", "wear padded vest", "wear demonhide sandals" }, cmds);
+    }
+
+    [Fact]
+    public void BuildEquipCommands_StackedCarried_FallbackStripsCount()
+    {
+        // Empty set → pure fallback path: a stacked carried token still resolves
+        // to its slot after the count is stripped.
+        EquipmentSet set = Set("default", "Default");
+        var carried = new[] { "2 padded helm" };
+        Func<string, EquipmentSlot?> resolve = Resolver(("padded helm", EquipmentSlot.Head));
+
+        List<string> cmds = EquipmentManager.BuildEquipCommands(
+            set, carried, WornList(), resolve, EquipAll);
+
+        Assert.Equal(new[] { "wear padded helm" }, cmds);
+    }
 }

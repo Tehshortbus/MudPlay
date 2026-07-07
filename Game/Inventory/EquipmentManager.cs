@@ -343,7 +343,8 @@ public sealed class EquipmentManager
         var result = new List<string>();
         var wornNames = new HashSet<string>(
             worn.Select(e => e.Name), StringComparer.OrdinalIgnoreCase);
-        var carriedSet = new HashSet<string>(carried, StringComparer.OrdinalIgnoreCase);
+        var carriedSet = new HashSet<string>(
+            carried.Select(c => StripStackCount(c.Trim())), StringComparer.OrdinalIgnoreCase);
         // One of each named item across the whole plan (also blocks re-wearing worn).
         var chosen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -372,7 +373,7 @@ public sealed class EquipmentManager
         // Fallback pass — fill remaining empty slots, first-come-first-served.
         foreach (string rawName in carried)
         {
-            string name = rawName.Trim();
+            string name = StripStackCount(rawName.Trim());
             if (name.Length == 0 || chosen.Contains(name) || wornNames.Contains(name)) continue;
             if (resolveSlot(name) is not EquipmentSlot slot || IsVirtual(slot)) continue;
             EquipmentSlot family = FamilyOf(slot);
@@ -384,6 +385,22 @@ public sealed class EquipmentManager
         }
 
         return result;
+    }
+
+    // The game lists a stack of identical items as "<count> <name>" (e.g.
+    // "2 padded helm"); a singleton has no prefix. Strip the count so a stacked
+    // carried token still matches its set entry and resolves to a slot —
+    // otherwise equip-all skips every doubled-up piece. Currency tokens
+    // ("86 gold crowns") never reach here: the inventory parser filters them
+    // out before the carried list is built.
+    private static string StripStackCount(string token)
+    {
+        int space = token.IndexOf(' ');
+        if (space <= 0) return token;
+        for (int i = 0; i < space; i++)
+            if (!char.IsDigit(token[i])) return token;
+        string rest = token[(space + 1)..];
+        return rest.Length == 0 ? token : rest;
     }
 
     private static void Bump(Dictionary<EquipmentSlot, int> counts, EquipmentSlot family)
