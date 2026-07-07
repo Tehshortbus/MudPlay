@@ -81,6 +81,17 @@ public sealed class RoomTracker
     // line arrives before the exits line that confirms the move).
     public DateTimeOffset? LastMoveSentAt { get; private set; }
 
+    // True while we're standing in a room too dark to display its name or exits
+    // ("The room is very dark..." / "The room is pitch black..."). Set by
+    // NoteDarkRoomEntered on the dark line, cleared the moment a normal room
+    // display parses (NoteRoomObserved), the graph reloads, or we die. Every
+    // writer runs on the marshalled MessageRouter / observer thread (the UI
+    // thread in prod), so a plain auto-prop needs no volatile / lock. Consumers
+    // (DarkRoomCombatWatcher) read it to know a mob revealed only by its
+    // dark-cyan attack line — with no "Also here:" to list it — should be
+    // engaged.
+    public bool IsInDarkRoom { get; private set; }
+
     // The last observation we fully processed (name + exit set) and when. Used
     // to tell a passive redisplay of the same room — an Enter, a cash-on-ground
     // notice, a party arrival echo — apart from a genuine failed-move mismatch,
@@ -347,6 +358,87 @@ public sealed class RoomTracker
             "Look-direction sent — next observation will be ignored as a peek.");
     }
 
+    // The server starved the room display with a darkness line ("The room is
+    // very dark..." / "The room is pitch black...") instead of a name + exits.
+    // A dark room never fires NoteRoomObserved, so the usual name+exits move
+    // confirmation can't run — but a dark line carries its own signal: the game
+    // prints an explicit refusal for EVERY blocked move (see the bonk mechanic
+    // in GAME_MECHANICS.md), so a sent move that yields a dark line instead of a
+    // bonk means we traversed. Flag the darkness (so combat can still engage a
+    // mob revealed only by its attack line), then, if a move is pending and its
+    // graph edge resolves to a mapped neighbour, advance there — never as a
+    // strict anchor, since this is a pure prediction with no name/exit
+    // confirmation. An unmapped edge (dark corridor off the graph) just holds the
+    // last anchor rather than fabricating a landing.
+    public void NoteDarkRoomEntered(DateTimeOffset? whenUtc = null)
+    {
+        DateTimeOffset when = whenUtc ?? DateTimeOffset.UtcNow;
+
+        // A look-direction peek into an adjacent dark room renders the same
+        // "can't see" line while we stand in a lit room. Drop it as a preview,
+        // exactly like NoteRoomObserved drops a peeked room display. Consume the
+        // window here — a peeked dark room prints no exits line to consume it
+        // later — so the flag can't linger and eat a real move's outcome.
+        if (_suppressObservationUntil is { } until)
+        {
+            _suppressObservationUntil = null;
+            if (when <= until)
+            {
+                _log?.Log(LogSeverity.Info, "RoomTracker",
+                    "Dropped peeked dark-room line (look-direction preview).");
+                return;
+            }
+            // window expired — fall through and treat as our own dark room
+        }
+
+        // Log only the transition INTO darkness, not every dark redisplay (a
+        // dark room can re-emit its "can't see" line each round). This one line
+        // explains both why the map stops getting name/exit updates and why
+        // combat now leans on attack-line detection, so it stays at Info.
+        if (!IsInDarkRoom)
+            _log?.Log(LogSeverity.Info, "RoomTracker",
+                "Entered a dark room — no name/exits shown; position inferred from moves, combat from attack lines.");
+        IsInDarkRoom = true;
+
+        // Only a pending move can be confirmed by the dark line. A dark display
+        // while Confirmed (a passive re-render, standing still) or with nothing
+        // in flight carries nothing to advance on.
+        if (State.Confidence != RoomConfidence.Pending) return;
+        if (State.CurrentRoom is not { } source) return;
+        if (!_pending.TryPeek(out PendingMove head)) return;
+        if (!TryResolvePendingExit(source, head, out RoomExit exit))
+        {
+            // We KNOW we moved (no bonk), but the edge isn't on the graph — a
+            // dark corridor off the map. Can't fabricate a landing, so hold the
+            // anchor; this is exactly the "map stalled in the dark" signal a bug
+            // report needs, so surface it at Info.
+            _log?.Log(LogSeverity.Info, "RoomTracker",
+                $"Dark move '{DescribeMove(head)}' has no mapped exit from {source.Key} ({source.Name}) — " +
+                "holding position; map may drift until a lit room re-anchors.");
+            return;
+        }
+        if (_graph.GetRoom(exit.Target) is not { } expected)
+        {
+            _log?.Log(LogSeverity.Info, "RoomTracker",
+                $"Dark move '{DescribeMove(head)}' targets {exit.Target}, absent from the graph — holding position.");
+            return;
+        }
+
+        // Predicted neighbour is mapped — the move traversed. Dequeue the head
+        // and land there. Non-strict (isStrictAnchor: false): a dark advance is
+        // a deduction with no name/exit match, so it must not overwrite the
+        // persisted LastKnownRoom, and it preserves RecentSteps so replay
+        // recovery keeps the trail (same contract as Strategy 1's non-1-of-1
+        // landing in ReconcileFromPending).
+        _pending.TryDequeue(out _);
+        State.SuspectStrikes = 0;
+        string moveLabel = DescribeMove(head);
+        RoomConfidence target = _pending.IsEmpty
+            ? RoomConfidence.Confirmed
+            : RoomConfidence.Pending;
+        SetRoom(expected, target, when, $"dark-room advance via {moveLabel}", isStrictAnchor: false);
+    }
+
     // Read-only peek check: true when a look-direction peek is currently armed
     // (a look <dir> was sent within the suppression window and its preview
     // display hasn't been consumed yet). Unlike NoteRoomObserved, this does NOT
@@ -381,6 +473,16 @@ public sealed class RoomTracker
             }
             // window expired — fall through and process normally
         }
+
+        // A normal room display parsed — the room is lit enough to print its
+        // name + exits, so we're no longer in the dark. The peek early-return
+        // above skips this, so peeking a lit neighbour while we stand in a dark
+        // room doesn't wrongly clear the flag. Log only the true→false edge so a
+        // triager sees where darkness began and ended without per-display noise.
+        if (IsInDarkRoom)
+            _log?.Log(LogSeverity.Info, "RoomTracker",
+                "Room display visible again — no longer in the dark.");
+        IsInDarkRoom = false;
 
         // Mirror open-door modifiers from the latest observation into
         // state so the walker can pre-check before kicking off the
@@ -473,6 +575,7 @@ public sealed class RoomTracker
         while (_pending.TryDequeue(out _)) { /* drain */ }
         _recentSteps.Clear();
         PersistSteps();
+        IsInDarkRoom = false;
         SetRoom(room: null, RoomConfidence.PendingRespawn, when, "death recorded");
 
         // Broadcast the death AFTER the PendingRespawn transition but BEFORE the
@@ -528,6 +631,7 @@ public sealed class RoomTracker
         DateTimeOffset when = whenUtc ?? DateTimeOffset.UtcNow;
         ClearPendingAndSteps();
         _history.Clear();
+        IsInDarkRoom = false;
         SetRoom(room: null, RoomConfidence.Unknown, when, "graph reloaded");
     }
 

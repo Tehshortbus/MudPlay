@@ -58,6 +58,17 @@ it isn't here and you're unsure, ask.
 - **[CONFIRMED]** `use <item>` readies a light (torch, lantern); `rem <item>` removes it.
   Lights follow the same trade-places rule as `eq` — `use`-ing a new light swaps out the
   current one (if usable).
+- **[CONFIRMED]** **A monster in a dark room is invisible to the room display but still
+  attacks — engage it by the name in its attack line.** With no `Also here:` line (the dark
+  room prints only the "can't see" line, see *Movement & navigation*), the only evidence a
+  hostile shares the room is its incoming attack line, rendered in dark cyan: a miss
+  `The <monster> <verb> at you` or a hit `The <monster> <verb> you for N damage!`. The
+  `<monster>` token is the monster's real name, so `a <monster>` (e.g. `a cave bear`) attacks
+  it exactly as if it had been listed under `Also here:`. The client injects that
+  attack-revealed monster into the room's entity list so auto-combat engages it
+  (`DarkRoomCombatWatcher`). Attacking a monster that **isn't** in the room draws
+  `Your command had no effect.` — the signal that the target is gone (retract it and stop
+  swinging).
 
 ## Stealth (sneak & hide)
 
@@ -376,6 +387,18 @@ comes from the stat screen / who line (`AlignmentTracker` / `PlayerStats`).
   the same room is a real move with a real room display; it resolves as a normal
   predicted-neighbour match because the exit's target *is* the source, so it is not confused
   with a passive redisplay.)
+- **[CONFIRMED]** **A dark room shows no name and no exits — traversal is inferred from the
+  absence of a bonk.** A room too dark to see in replaces the *entire* room display (name,
+  `Obvious exits:`, `Also here:`) with a single line — `The room is very dark - you can't see
+  anything.`, or in a considerably darker room `The room is pitch black...`. **Every** dark
+  room emits the same line, so the line itself carries no position signal. But combined with
+  the bonk rule above it makes traversal deducible: once we send a move into the dark, **no
+  bonk line means the move succeeded** — we advanced into the room the sent direction leads to.
+  The tracker keeps position by projecting that direction onto the current room's graph edge
+  (`RoomTracker.NoteDarkRoomEntered`): when the pending move resolves to a known neighbour it
+  advances there; when the edge is unmapped it holds the last position (stays Pending) rather
+  than guessing. Only the *very dark* / *pitch black* forms starve the display this way — a
+  normally-lit room always prints its name + exits.
 - **[CONFIRMED]** **A party follower is dragged one room per leader step, announced by
   ` -- Following your Party leader <dir> --`.** Movement is leader-driven: when the party
   leader walks, the game moves every follower one room the same way and prints this line
@@ -686,4 +709,9 @@ flag). These are hard eligibility gates, independent of resistance and level imm
 | Move refused — no exit | `There is no exit in that direction!` |
 | Move refused — blocked way | `You can't go that way.` / `You can't move that way.` |
 | Move refused — shut door | `The door is closed.` |
+| Room too dark to see (starves name + exits + Also-here) | `The room is very dark - you can't see anything.` |
+| Room considerably darker (same starving) | `The room is pitch black...` |
+| Incoming mob attack — miss (dark cyan; reveals a mob in a dark room) | `The <monster> <verb> at you` |
+| Incoming mob attack — hit (dark cyan; reveals a mob in a dark room) | `The <monster> <verb> you for N damage!` |
+| Attacked a target not in the room | `Your command had no effect.` |
 | Toll exit unaffordable | `You do not have enough to cover the toll of N gold crowns.` |
