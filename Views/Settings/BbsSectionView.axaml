@@ -281,6 +281,18 @@
 
                         <Button Content="Add step" Command="{Binding AddMenuStepCommand}"
                                 HorizontalAlignment="Left" Margin="0,4,0,0"/>
+
+                        <Grid ColumnDefinitions="*,Auto" Margin="0,10,0,0"
+                              IsEnabled="{Binding HasImportSources}"
+                              ToolTip.Tip="Copy the logon steps from another saved character. Replaces the steps above; usernames and passwords are never copied. Cancel the Settings window to undo.">
+                            <ComboBox Grid.Column="0"
+                                      ItemsSource="{Binding ImportSourceOptions}"
+                                      SelectedItem="{Binding SelectedImportSource}"
+                                      HorizontalAlignment="Stretch"
+                                      PlaceholderText="Import logon steps from another character…"/>
+                            <Button Grid.Column="1" Margin="6,0,0,0" Content="Import"
+                                    Command="{Binding ImportMenuNavCommand}"/>
+                        </Grid>
                     </StackPanel>
 
                     <!-- ===== Game-menu commands (per-BBS) =====
