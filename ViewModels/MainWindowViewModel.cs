@@ -3665,7 +3665,16 @@ public partial class MainWindowViewModel : ObservableObject
     partial void OnIsConnectedChanged(bool value) => RefreshLocationSlot();
 
     partial void OnIsAutoCombatActiveChanged(bool value)
-        => PersistAutoModeFlag(d => d.AutoCombat = value);
+    {
+        PersistAutoModeFlag(d => d.AutoCombat = value);
+        // A profile reseed sets this without a real user toggle — skip the
+        // re-eval (the tracker gets its own observations). A genuine flip
+        // re-evaluates the combat gate at once so toggling off mid-round
+        // releases the walker (and clears InCombat if the room is clear)
+        // instead of stalling until the next room re-display.
+        if (_suppressAutoEngineWriteback) return;
+        AppServices.Current.CombatTracker?.OnAutoAttackChanged();
+    }
 
     partial void OnIsAutoNukeActiveChanged(bool value)
         => PersistAutoModeFlag(d => d.AutoNuke = value);

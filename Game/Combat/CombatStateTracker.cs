@@ -176,6 +176,18 @@ public sealed class CombatStateTracker : IDisposable
         _canEngage = canEngage;
     }
 
+    // Re-evaluate the gate + InCombat the instant the auto-attack master toggle
+    // flips, rather than waiting for the next room observation. Toggling
+    // auto-attack OFF mid-round otherwise left the walker gate asserted (walker
+    // stalled) and InCombat stuck true (no rest) until the user forced a room
+    // re-display. Re-running the last observation applies the new toggle state
+    // at once; it never sends an attack (that's CombatManager's own subscriber).
+    public void OnAutoAttackChanged()
+    {
+        if (_disposed) return;
+        if (_classifier.Current is { } obs) OnEntitiesObserved(obs);
+    }
+
     private void OnEntitiesObserved(RoomEntitiesObservation obs)
     {
         // Single pass over the room: ANY monster (friendly or hostile)
@@ -241,6 +253,12 @@ public sealed class CombatStateTracker : IDisposable
             // Auto-attack off and no override → never hold the gate.
             // Defensive clear in case it was asserted just before toggle.
             ClearGate("auto-attack disabled");
+            // A room clear of engageable hostiles is the authoritative
+            // out-of-combat signal even with auto-attack off — otherwise
+            // InCombat stays stuck true and HealthManager never rests
+            // (CombatStatus=Off is unreliable, see OnCombatStatus). A hostile
+            // still here keeps InCombat true so we don't rest next to a mob.
+            if (targetable == 0 && _state.InCombat) _state.InCombat = false;
             return;
         }
 
