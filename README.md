@@ -1,9 +1,8 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.14.0**
-> - Logon menu-nav editor can import another character's steps instead of retyping a shared front-end per character
-> - Import lists every saved character (same-BBS candidates first), copies steps only — usernames / passwords never travel
+> **Version 1.14.1**
+> - DataGrid column headers no longer truncate anywhere — short labels like "Str" render in full instead of clipping to an ellipsis (Item Finder, Game Data browser, Spell Book, Spell Coverage, and the rest)
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

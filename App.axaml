@@ -30,6 +30,22 @@
         <!-- DataGrid ships its theme separately from FluentTheme; without
              this the Game Data Browser grids render with no chrome. -->
         <StyleInclude Source="avares://Avalonia.Controls.DataGrid/Themes/Fluent.xaml"/>
+        <!-- The stock DataGrid header ellipsis-trims its label and reserves
+             padding plus a sort-glyph slot, so even a short header like "Str"
+             clips inside an otherwise roomy column. Render the label in a
+             non-trimming TextBlock and tighten the padding so the full text
+             always shows across every grid in the app. ReflectionBinding
+             (empty path -> the header string) matches the compiled-binding
+             fallback the grids' cells already use. Must sit after the DataGrid
+             Fluent StyleInclude to override its DataGridColumnHeader template. -->
+        <Style Selector="DataGridColumnHeader">
+            <Setter Property="Padding" Value="4,0,2,0"/>
+            <Setter Property="ContentTemplate">
+                <DataTemplate>
+                    <TextBlock Text="{ReflectionBinding}" TextTrimming="None"/>
+                </DataTemplate>
+            </Setter>
+        </Style>
         <StyleInclude Source="avares://FujinTerm/Themes/Controls.axaml"/>
         <!-- Click any modeless tool window to raise it above its siblings — owned
              windows don't auto-raise on click on several Linux WMs. See
