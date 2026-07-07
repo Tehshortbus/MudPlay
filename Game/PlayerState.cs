@@ -57,4 +57,12 @@ public sealed partial class PlayerState : ObservableObject
     // Cleared on any action that breaks hide (move, attack, cast). Same role
     // as IsSneaking: read by CombatManager's backstab-window logic.
     [ObservableProperty] [field: Owner(typeof(Game.Stealth.StealthManager))] private bool _isHidden;
+
+    // True while the character is mortally wounded — HP at or below 0 with real
+    // prompt data behind it. This is the same predicate PlayerDroppedGate keys
+    // its hold on; exposed here so the remote @join / @invite handlers and the
+    // drag tracker share one definition instead of re-deriving it. The
+    // MaxHp > 0 && HasPromptData guard rejects the pre-connect / zero-on-zero
+    // prompt race before the first real status line lands.
+    public bool IsMortallyWounded => HasPromptData && MaxHp > 0 && Hp <= 0;
 }

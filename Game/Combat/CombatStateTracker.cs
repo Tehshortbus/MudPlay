@@ -48,6 +48,7 @@ public sealed class CombatStateTracker : IDisposable
 
     private bool _gateAsserted;
     private bool _anyNpcPresent;
+    private bool _hostilePresent;
     private bool _disposed;
 
     private Func<bool>? _clearWhenSeenHidden;
@@ -64,6 +65,14 @@ public sealed class CombatStateTracker : IDisposable
     // authoritatively when an Also-Here observation shows no engageable monsters
     // (room cleared).
     public bool HasEngageableHostiles => _gateAsserted;
+
+    // True while the room holds at least one engageable (Enemy-relationship)
+    // monster — the same per-entity predicate that drives the gate, but WITHOUT
+    // the auto-attack master-switch short-circuit. HasEngageableHostiles reports
+    // false whenever auto-attack is off (a manual player never asserts the gate);
+    // this reports the raw danger regardless, so the emergency-hangup gate can ask
+    // "is a hostile in the room?" for a character who isn't auto-fighting.
+    public bool HasHostileMonster => _hostilePresent;
 
     // True while the current room contains at least one NPC / monster of any
     // relationship (Enemy, Friend, Neutral — shopkeepers and quest-givers
@@ -197,6 +206,12 @@ public sealed class CombatStateTracker : IDisposable
                 roomHasSeeHidden = true;
             }
         }
+
+        // Raw hostile presence, updated on every observation ahead of the
+        // auto-attack branches below so it stays accurate even when the gate
+        // itself is short-circuited off (manual player). Read by the
+        // emergency-hangup gate.
+        _hostilePresent = targetable > 0;
 
         if (!_isAutoAttackEnabled())
         {

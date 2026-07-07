@@ -151,6 +151,12 @@ public sealed class AppServices
     // class.
     public Game.Remote.PartyEssentialHandlers PartyEssentials { get; }
 
+    // Tracks who's dragging our mortally-wounded body (the
+    // "<leader> is dragging you around." line). Read by the @join / @invite
+    // refusal reply so a downed member can tell a partymate whether help is
+    // already underway.
+    public Game.DraggedTracker Dragged { get; }
+
     // Drives the on-join @health exchange that
     // captures each new Game.PartyMember's absolute HP/MA
     // baseline, plus the periodic par poll (5 s default cadence;
@@ -1415,12 +1421,16 @@ public sealed class AppServices
         // and RoomEntityClassifier (both constructed later in
         // OnGameDataLoaded) via the property on each call, so they always
         // read the current snapshot even across set-switch rebuilds.
+        // Watches "<leader> is dragging you around." so a downed member's @join /
+        // @invite reply can name who's already hauling it out.
+        Dragged = new Game.DraggedTracker(Router, PlayerState);
         PartyEssentials = new Game.Remote.PartyEssentialHandlers(
             RemoteCommands, PlayerState, PartyState,
             readPartySettings: () => ReadSection<Models.Profile.PartySettings>(Profile.Current, "Party"),
             readCurrentRoom: () => RoomTracker?.State.CurrentRoom,
             readRoomEntities: () => RoomClassifier?.Current?.Entities,
-            readMovement: () => Game.Remote.MovementStatus.Capture(Walker, LoopRunner, AutoLair));
+            readMovement: () => Game.Remote.MovementStatus.Capture(Walker, LoopRunner, AutoLair),
+            readDraggedBy: () => Dragged.DraggedBy);
         // Drives the on-join @health exchange + the
         // periodic par poll. Wire-sender + cadence-from-settings hookup
         // happens in MainWindowViewModel.
@@ -2159,7 +2169,19 @@ public sealed class AppServices
             log: Log,
             // Emergency hangup drops the carrier on purpose — flag it so the
             // reactive-reconnect path doesn't immediately dial back in.
-            hangupSignal: HangupSignal);
+            hangupSignal: HangupSignal,
+            // Hostile-aware gate for the emergency hangup: only bail while a
+            // hostile is actually here. HasHostileMonster (unlike
+            // HasEngageableHostiles) ignores the auto-attack master switch, so a
+            // manual player still hangs up when a mob shows up.
+            hasHostileInRoom: () => CombatTracker.HasHostileMonster);
+
+        // Re-check the emergency hangup whenever the room's occupants change: a
+        // hostile that wanders in or spawns while we're already below the trigger
+        // won't touch our own PlayerState, so nothing else would drive the check.
+        // Subscribed after CombatTracker (which updates HasHostileMonster in its
+        // own EntitiesObserved handler) so this reads the current hostile flag.
+        RoomClassifier.EntitiesObserved += _ => Health.ReevaluateEmergencyHangup();
 
         // Leader-rest nudge: a standing-idle follower's own PlayerState may
         // not change between the 5s par polls that flip the leader's

@@ -22,7 +22,8 @@ public sealed class PartyEssentialHandlersTests
     private static (RemoteCommandManager engine, PartyEssentialHandlers handlers, PlayerState player, PartyState party, PlayerDatabase players, List<byte[]> partyRelay) Setup(
         FujinTerm.Game.Map.Room? currentRoom = null,
         IReadOnlyList<FujinTerm.Game.Combat.RoomEntity>? roomEntities = null,
-        MovementStatus? movement = null)
+        MovementStatus? movement = null,
+        Func<string?>? readDraggedBy = null)
     {
         MessageRouter router = new();
         DefaultPatterns.Seed(router);
@@ -34,7 +35,8 @@ public sealed class PartyEssentialHandlersTests
         PartyEssentialHandlers handlers = new(engine, player, party,
             readCurrentRoom: () => currentRoom,
             readRoomEntities: () => roomEntities,
-            readMovement: () => movement ?? default);
+            readMovement: () => movement ?? default,
+            readDraggedBy: readDraggedBy);
         List<byte[]> relayCapture = new();
         handlers.SetWireSender(relayCapture.Add);
         return (engine, handlers, player, party, players, relayCapture);
@@ -777,6 +779,81 @@ public sealed class PartyEssentialHandlersTests
         engine.DispatchForTests(Telepath("Raijin", "@join"));
 
         Assert.Contains("{I'm following Fujin; denied.}", LastReply(engine));
+        Assert.Empty(relay);
+    }
+
+    // ===== @invite / @join while mortally wounded =====
+
+    /// <summary>
+    /// Drive the character mortally wounded — negative HP with real prompt
+    /// data behind it, so PlayerState.IsMortallyWounded reads true.
+    /// </summary>
+    private static void DropPlayer(PlayerState p)
+    {
+        p.MaxHp = 150;
+        p.Hp = -4;
+        p.HasPromptData = true;
+    }
+
+    [Fact]
+    public void Join_WhileMortallyWounded_RepliesCantJoin_AndDoesNotSend()
+    {
+        var (engine, _, player, _, players, relay) = Setup();
+        SeedPlayer(players, "Raijin", PlayerRemoteControls.RequestInvite);
+        DropPlayer(player);
+
+        engine.DispatchForTests(Telepath("Raijin", "@join"));
+
+        string reply = LastReply(engine);
+        Assert.Contains("Can't join", reply);
+        Assert.Contains("mortally wounded", reply);
+        Assert.Contains("nobody is dragging me", reply);
+        Assert.Empty(relay);
+    }
+
+    [Fact]
+    public void Invite_WhileMortallyWounded_RepliesCantInvite_AndDoesNotSend()
+    {
+        var (engine, _, player, _, players, relay) = Setup();
+        SeedPlayer(players, "Raijin", PlayerRemoteControls.RequestInvite);
+        DropPlayer(player);
+
+        engine.DispatchForTests(Telepath("Raijin", "@invite"));
+
+        string reply = LastReply(engine);
+        Assert.Contains("Can't invite", reply);
+        Assert.Contains("mortally wounded", reply);
+        Assert.Empty(relay);
+    }
+
+    [Fact]
+    public void Join_WhileMortallyWounded_AndBeingDragged_NamesTheDragger()
+    {
+        var (engine, _, player, _, players, relay) =
+            Setup(readDraggedBy: () => "Fujin");
+        SeedPlayer(players, "Raijin", PlayerRemoteControls.RequestInvite);
+        DropPlayer(player);
+
+        engine.DispatchForTests(Telepath("Raijin", "@join"));
+
+        Assert.Contains("being dragged by Fujin", LastReply(engine));
+        Assert.Empty(relay);
+    }
+
+    [Fact]
+    public void Join_WhileMortallyWounded_RepliesEvenWhenWarnDenialOff()
+    {
+        // The mortally-wounded refusal is party-coordination info (like the
+        // full-party @invite reply), not a security-sensitive denial — it
+        // fires regardless of WarnOnDenial so a helper always learns why.
+        var (engine, _, player, _, players, relay) = Setup();
+        SeedPlayer(players, "Raijin", PlayerRemoteControls.RequestInvite);
+        DropPlayer(player);
+        engine.WarnOnDenial = false;
+
+        engine.DispatchForTests(Telepath("Raijin", "@join"));
+
+        Assert.Contains("Can't join", LastReply(engine));
         Assert.Empty(relay);
     }
 }

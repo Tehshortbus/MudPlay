@@ -54,4 +54,21 @@ public sealed class BugReportBuilderTests
         string md = BugReportBuilder.Render(MakeCapture(RealmType.Stock), "   ");
         Assert.Contains("_(none provided)_", md);
     }
+
+    [Fact]
+    public void RenderStateOnly_EmitsSectionsWithoutTitleOrIssue()
+    {
+        string md = BugReportBuilder.RenderStateOnly(MakeCapture(RealmType.Stock));
+
+        // No bug-report title and no user-description block — the crash reporter
+        // supplies its own document wrapper.
+        Assert.DoesNotContain("# FujinTerm bug report", md);
+        Assert.DoesNotContain("## Issue", md);
+
+        // Every captured section still lands.
+        Assert.Contains("## Session", md);
+        Assert.Contains("- **Realm**: stock", md);
+        Assert.Contains("## Scrollback", md);
+        Assert.Contains("hello world", md);
+    }
 }

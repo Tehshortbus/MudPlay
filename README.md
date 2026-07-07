@@ -1,14 +1,13 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.10.0**
-> - Navigation map marks each un-recovered death with a skull; it clears once the deathpile is fully recovered
-> - Any death — including miracle-save deaths — halts the loop / walk-to / Auto-Lair in the graveyard instead of rerouting straight back out
-> - Dying clears the room's monsters, so combat no longer re-attacks a phantom target after a party member walks into the graveyard
-> - Death detail's "Equipped at death" column renamed "Equipment Lost"; deathpile now lists the coins on hand at death by denomination under "Inventory lost"
-> - Follower map stops drifting to "suspect" — a follower's `par` poll no longer misreads "You are following <leader>." as the room name
-> - Auto-deposit no-ops when the Bank dropdown has no valid pick — a stale/orphaned bank key no longer detours to a phantom bank or probes party `@wealth` for a toll
-> - Bank picker placeholder now reads "(Banks from game data and Stash rooms)"
+> **Version 1.11.0**
+> - A fatal crash now drops a `Crash-<timestamp>.md` on the Desktop carrying the exception plus the live client state (scrollback / log / engine), so a lost session is recoverable after the fact
+> - Auto-equip / combat weapon-swap only issues wear/eq for gear still in your pack — a post-death empty inventory no longer floods "You do not have X left unequipped." each round
+> - Negative HP is parsed, so a mortally-wounded drop is recognised — engines stop firing commands into a downed body and the low-HP hangup no longer misses a plunge straight into the negatives
+> - A dropped ally is aided back up even by a non-healer — the rescue no longer requires a party-heal loadout (a name-heal top-up still needs one)
+> - A downed member answers an @join / @invite with why it can't — mortally wounded, and who (if anyone) is dragging it — instead of silently bouncing the command
+> - Low-HP auto-hangup only fires with a hostile in the room and re-arms once the danger passes — reconnecting into a clear room no longer loops through hang up → reconnect
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

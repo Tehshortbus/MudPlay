@@ -10,10 +10,11 @@ using Xunit;
 namespace FujinTerm.Tests;
 
 /// <summary>
-/// Coverage for <see cref="AllyDroppedHandler"/> — the party-healer reaction to
-/// another member dropping to the ground. Pins the recognition logic (live
-/// member, recently-partied follower, and the off-roster former-leader gap the
-/// bug report exposed), the aid / re-invite / recovery decisions, and the
+/// Coverage for <see cref="AllyDroppedHandler"/> — the party reaction to another
+/// member dropping to the ground. Pins the recognition logic (live member,
+/// recently-partied follower, and the off-roster former-leader gap the bug report
+/// exposed), the aid / re-invite / recovery decisions, that aid fires without a
+/// party-heal loadout (a non-healer still rescues), and the
 /// <see cref="MovementCoordinator.AllyDownGate"/> lifecycle.
 /// </summary>
 public sealed class AllyDroppedHandlerTests
@@ -163,8 +164,11 @@ public sealed class AllyDroppedHandlerTests
     }
 
     [Fact]
-    public void NoPartyHealConfigured_NoReaction()
+    public void NoPartyHealConfigured_StillAidsAndHolds()
     {
+        // A non-healer (no party-heal spell — e.g. a Mystic whose only heal is a
+        // self-power) must still aid a dropped ally: `aid` is universal and lifts
+        // them back above 0 HP on its own. The reported case.
         using Harness h = new();
         h.Cfg.MinorPartyHealSpell = null;
         h.Cfg.MajorPartyHealSpell = null;
@@ -172,7 +176,9 @@ public sealed class AllyDroppedHandlerTests
 
         h.Drop("Fujin");
 
-        Assert.False(h.GateAsserted);
+        Assert.True(h.GateAsserted);
+        Assert.True(h.WireHas("aid Fujin\r"));
+        Assert.True(h.Handler.IsTrackingForTests("Fujin"));
     }
 
     [Fact]

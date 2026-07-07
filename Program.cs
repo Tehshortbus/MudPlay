@@ -1,4 +1,5 @@
 using Avalonia;
+using FujinTerm.Services;
 
 namespace FujinTerm;
 
@@ -9,8 +10,16 @@ internal static class Program
     // interop (clipboard, drag/drop, native dialogs). Marking Main with
     // [STAThread] is what guarantees that.
     [STAThread]
-    public static void Main(string[] args) =>
-        BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+    public static void Main(string[] args)
+    {
+        // Install the crash net before anything can fault. CrashReporter.Guard
+        // captures exceptions escaping the UI run loop; Install hooks the
+        // out-of-band CLR failure channels. Either way a fatal error lands a
+        // Crash-<timestamp>.md on the Desktop instead of vanishing.
+        CrashReporter.Install();
+        CrashReporter.Guard(() =>
+            BuildAvaloniaApp().StartWithClassicDesktopLifetime(args));
+    }
 
     // Builds the Avalonia configuration. The XAML previewer in IDEs also
     // calls this method by reflection, so its signature must stay stable.

@@ -42,6 +42,12 @@ public sealed class HealthManagerTests
         /// touch it.</summary>
         public bool HostilesPresent { get; set; }
 
+        /// <summary>Hostile-in-room signal gating the emergency hangup —
+        /// mirrors CombatStateTracker.HasHostileMonster (auto-attack
+        /// independent). Defaults true so the existing hangup tests, which
+        /// predate the gate, keep firing exactly as before.</summary>
+        public bool HostileInRoom { get; set; } = true;
+
         /// <summary>Per-BBS negative-HP death floor (BbsProfile.PlayerDiesAtHp).
         /// Default -25 matches the seeded value. The emergency hangup fires
         /// anywhere in the bleeding-out window down to — but not past — this.</summary>
@@ -67,7 +73,8 @@ public sealed class HealthManagerTests
                 hasEngageableHostiles: () => HostilesPresent,
                 readDeathFloor: () => DeathFloor,
                 log: Log,
-                hangupSignal: Hangup);
+                hangupSignal: Hangup,
+                hasHostileInRoom: () => HostileInRoom);
             Health.SetWireSender(b => Sent.Add(b));
         }
 
@@ -1509,6 +1516,87 @@ public sealed class HealthManagerTests
         h.State.HasPromptData = true;
         h.State.Hp = 5;
 
+        Assert.DoesNotContain("=x", h.SentLines);
+    }
+
+    // ----- hostile-aware emergency-hangup gate ----------------------
+    // A low-HP disconnect is an escape from a fight; with no hostile in the room
+    // there's nothing to flee, so a wounded-but-safe character stays connected and
+    // rests instead of looping through reconnect → hang up → reconnect. The latch
+    // re-arms when the danger passes so a fresh hostile fires anew.
+
+    [Fact]
+    public void Hangup_NoHostileInRoom_HoldsConnection()
+    {
+        // Below the trigger but the room is clear — no disconnect.
+        using Harness h = new() { HostileInRoom = false };
+        h.SetPrompt(hp: 5, maxHp: 200);   // 2.5% — below the 5% hang trigger
+
+        Assert.DoesNotContain("=x", h.SentLines);
+    }
+
+    [Fact]
+    public void Hangup_HostileArrivesWhileLow_FiresViaRoomRecheck()
+    {
+        // Sitting below the trigger in a clear room; a hostile then wanders in.
+        // The room-observation re-check (not a prompt change) fires the escape.
+        using Harness h = new() { HostileInRoom = false };
+        h.SetPrompt(hp: 5, maxHp: 200);
+        Assert.DoesNotContain("=x", h.SentLines);
+
+        h.HostileInRoom = true;
+        h.Health.ReevaluateEmergencyHangup();
+
+        Assert.Contains("=x", h.SentLines);
+    }
+
+    [Fact]
+    public void Hangup_RearmsAfterRecovery_FiresOnFreshCrossing()
+    {
+        // Low + hostile fires once; HP recovers above the trigger (re-arm); a
+        // second drop with a hostile present fires a fresh disconnect.
+        using Harness h = new();   // HostileInRoom defaults true
+        h.SetPrompt(hp: 5, maxHp: 200);
+        Assert.Equal(1, h.SentLines.Count(l => l == "=x"));
+
+        h.State.Hp = 180;          // recovered above the trigger → re-arm
+        h.State.Hp = 5;            // dropped again with a hostile present
+        Assert.Equal(2, h.SentLines.Count(l => l == "=x"));
+    }
+
+    [Fact]
+    public void Hangup_ReconnectIntoSafeRoom_ThenHostile_FiresAgain()
+    {
+        // The exact reported scenario. First episode fires and drops the carrier;
+        // we reconnect still below the trigger but into a clear room — the latch
+        // re-arms without firing — and only re-fires once a hostile appears.
+        using Harness h = new();
+        h.SetPrompt(hp: 5, maxHp: 200);
+        Assert.Equal(1, h.SentLines.Count(l => l == "=x"));
+
+        h.HostileInRoom = false;              // reconnected into a clear room
+        h.Health.ReevaluateEmergencyHangup();
+        Assert.Equal(1, h.SentLines.Count(l => l == "=x"));   // re-armed, no fire
+
+        h.HostileInRoom = true;               // a hostile wanders in
+        h.Health.ReevaluateEmergencyHangup();
+        Assert.Equal(2, h.SentLines.Count(l => l == "=x"));
+    }
+
+    [Fact]
+    public void RoomRecheck_EngineOff_NoCarveOut_DoesNotHang()
+    {
+        // The room re-check honours the same engine-off gate as Evaluate: auto-heal
+        // off and no all-off carve-out means a hostile arrival can't sneak the
+        // hangup past the disabled engine.
+        using Harness h = new();
+        h.AutoHealRestEnabled = false;   // engine off; General default → carve-out off
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 5;                  // below trigger, but engine off → no fire
+        Assert.DoesNotContain("=x", h.SentLines);
+
+        h.Health.ReevaluateEmergencyHangup();   // hostile present (default), engine off
         Assert.DoesNotContain("=x", h.SentLines);
     }
 

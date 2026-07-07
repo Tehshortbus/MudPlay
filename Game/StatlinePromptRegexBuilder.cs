@@ -38,8 +38,13 @@ public static class StatlinePromptRegexBuilder
     // HP+MA, and HP+KAI shapes, resting / meditating in either the in-bracket
     // or trailing position. Same body the scanner shipped before custom
     // statlines existed, so the default path is unchanged.
+    // HP captures an optional leading minus: a mortally-wounded character
+    // bleeds into negative HP and the game prints it (e.g. [HP=-4/MA=31]:).
+    // Without the sign the whole prompt fails to match while dropped, so the HP
+    // reading freezes at its last positive value — the drop gate never fires and
+    // the emergency hangup never sees the bleeding-out window.
     public static Regex Default { get; } = new(
-        @"\[HP=(?<hp>\d{1,4})(?:\/(?<type>MA|KAI)=(?<mana>\d{1,3}))?(?:\s\((?<statea>Resting|Meditating)\)\s)?\]:(?:\s\((?<stateb>Resting|Meditating)\))?",
+        @"\[HP=(?<hp>-?\d{1,4})(?:\/(?<type>MA|KAI)=(?<mana>\d{1,3}))?(?:\s\((?<statea>Resting|Meditating)\)\s)?\]:(?:\s\((?<stateb>Resting|Meditating)\))?",
         RegexOptions.Compiled);
 
     // Compile the scanner regex for command. Default / blank / full returns
@@ -107,7 +112,7 @@ public static class StatlinePromptRegexBuilder
     // are consumed without capture so the surrounding pattern stays aligned.
     private static string FragmentFor(char code) => code switch
     {
-        'h' => @"(?<hp>\d{1,4})",
+        'h' => @"(?<hp>-?\d{1,4})",  // signed: negative HP while mortally wounded
         'H' => @"\d{1,4}",
         'M' => @"\d{1,4}",
         'r' => @"(?:\s?\((?<statea>Resting|Meditating)\))?",

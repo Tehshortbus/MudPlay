@@ -91,6 +91,23 @@ public sealed class WirePromptScannerTests
     }
 
     [Fact]
+    public void NegativeHp_WhileMortallyWounded_IsObserved()
+    {
+        // A dropped character bleeds into negative HP and the game prints it
+        // ([HP=-4/MA=31]:). The prompt must still match — otherwise the HP
+        // reading freezes at its last positive value, the drop gate never
+        // fires, and the mortally-wounded body keeps taking engine commands.
+        WirePromptScanner s = new();
+        var seen = Collect(s);
+
+        s.Append(B("[HP=-4/MA=31]:"));
+
+        Assert.Single(seen);
+        Assert.Equal(-4, seen[0].Hp);
+        Assert.Equal(31, seen[0].Mana);
+    }
+
+    [Fact]
     public void RestingFlag_LeadingForm_Detected()
     {
         WirePromptScanner s = new();

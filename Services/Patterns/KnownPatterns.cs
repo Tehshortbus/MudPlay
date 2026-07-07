@@ -234,6 +234,13 @@ public static class KnownPatterns
     // downed ally is back to positive HP and can act again. Gates the switch from
     // "aiding" to "keep healing by name / re-invite".
     public const string UserAidedAlly       = "party.user-aided-ally";
+    // "<Leader> is dragging you around." — printed to a mortally-wounded
+    // character on each move the dragger makes while hauling the downed body
+    // around (a leader-issued `drag <name>`). A dropped character can't move on
+    // its own, so this is the only signal that someone's relocating us while
+    // we're down. Group 1 captures the dragger's given name; DraggedTracker keys
+    // on it to answer "who's dragging me?" for the @join / @invite refusal reply.
+    public const string PartyDraggedAround  = "party.dragged-around";
     // ----- Dissolution signals (Playpen-verified, 2026-06-01) ----------
     public const string PartyFollowerRemoved      = "party.follower-removed";       // "X has been removed from your followers." — leader's view of an uninvite
     public const string PartyYouNoLongerFollowing = "party.you-no-longer-following";// "You are no longer following X." — follower's view of leader's uninvite / our own unfollow

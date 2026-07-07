@@ -40,6 +40,16 @@ public sealed class EquipmentManagerTests
             EquippedItems = items.Select(i => new EquippedItem(i.Name, i.Slot)).ToList(),
         };
 
+    // Observed inventory (LastUpdated set so the availability gate engages) whose
+    // pack holds exactly the given carried names; nothing worn. A pack of
+    // "Nothing!" models the post-death empty inventory the game reports.
+    private static InventorySnapshot SnapshotHeld(params string[] carried)
+        => InventorySnapshot.Empty with
+        {
+            CarriedItems = carried,
+            LastUpdated = DateTimeOffset.UtcNow,
+        };
+
     // A manager wired for the immediate weapon fast path — snapshot + two-handed
     // predicate are the only inputs SwapWeapon reads.
     private static EquipmentManager SwapManager(
@@ -119,6 +129,36 @@ public sealed class EquipmentManagerTests
         List<string> cmds = EquipmentManager.BuildWearCommands(set, Worn());
 
         Assert.Equal(new[] { "wear long sword" }, cmds);
+    }
+
+    [Fact]
+    public void BuildWearCommands_AvailabilityGate_SkipsGearNotInPack()
+    {
+        // Post-death: the loadout is in a deathpile and only a torch is carried.
+        // Only held gear yields a wear; the rest would draw "You do not have X
+        // left unequipped." if issued.
+        EquipmentSet set = Set("armor", "Armor",
+            Entry(EquipmentSlot.Head, "iron helm"),
+            Entry(EquipmentSlot.Torso, "plate mail"),
+            Entry(EquipmentSlot.Legs, "greaves"));
+
+        List<string> cmds = EquipmentManager.BuildWearCommands(
+            set, Worn(), availableNames: Worn("greaves"));
+
+        Assert.Equal(new[] { "wear greaves" }, cmds);
+    }
+
+    [Fact]
+    public void BuildWearCommands_NullAvailability_IssuesEveryNotWornItem()
+    {
+        // No 'i' parsed ⇒ availability unknown ⇒ pre-gate behaviour (issue all).
+        EquipmentSet set = Set("armor", "Armor",
+            Entry(EquipmentSlot.Head, "iron helm"),
+            Entry(EquipmentSlot.Torso, "plate mail"));
+
+        List<string> cmds = EquipmentManager.BuildWearCommands(set, Worn(), availableNames: null);
+
+        Assert.Equal(new[] { "wear iron helm", "wear plate mail" }, cmds);
     }
 
     // ===== ApplyVirtualSlots (pure) =====
@@ -364,6 +404,39 @@ public sealed class EquipmentManagerTests
         EquipmentManager mgr = SwapManager(InventorySnapshot.Empty);
 
         mgr.SwapWeapon("longsword", null);
+
+        Assert.Equal(new[] { "eq longsword" }, Wire(mgr));
+    }
+
+    [Fact]
+    public void SwapWeapon_ObservedEmptyPack_SkipsEquip_WhenWeaponNotHeld()
+    {
+        // The weapon was lost to a deathpile: an observed 'i' shows an empty
+        // pack, so no `eq` fires (it would only draw "You do not have X left
+        // unequipped." on every combat round).
+        EquipmentManager mgr = SwapManager(SnapshotHeld("Nothing!"));
+
+        mgr.SwapWeapon("quarterstaff", null);
+
+        Assert.Empty(mgr.LastSentForTests);
+    }
+
+    [Fact]
+    public void SwapWeapon_ObservedPack_EquipsWeapon_WhenHeld()
+    {
+        EquipmentManager mgr = SwapManager(SnapshotHeld("longsword"));
+
+        mgr.SwapWeapon("longsword", null);
+
+        Assert.Equal(new[] { "eq longsword" }, Wire(mgr));
+    }
+
+    [Fact]
+    public void SwapWeapon_ObservedPack_EquipsHeldWeapon_ButSkipsUnheldOffHand()
+    {
+        EquipmentManager mgr = SwapManager(SnapshotHeld("longsword"));
+
+        mgr.SwapWeapon("longsword", "shield");
 
         Assert.Equal(new[] { "eq longsword" }, Wire(mgr));
     }
