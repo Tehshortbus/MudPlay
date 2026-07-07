@@ -359,8 +359,11 @@
                      RegenTracker. -->
         <Border DockPanel.Dock="Bottom" Classes="StatusBar">
             <!-- Layout (left → right):
-                 [chip] [room name, flex] [look target] [ticks] [connection] -->
-            <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto"
+                 [chip] [room name, flex] [look target] [flex] [ticks] [connection]
+                 Two star columns straddle the look-target so it floats in the
+                 open space between the room-name block and the ticks instead of
+                 sitting jammed against them. -->
+            <Grid ColumnDefinitions="Auto,*,Auto,*,Auto,Auto"
                   VerticalAlignment="Center"
                   ColumnSpacing="14">
 
@@ -396,7 +399,7 @@
 
                 <!-- Cycle countdowns. Natural HP / MA are always visible
                      once observed; rest / medi append while resting / meditating. -->
-                <StackPanel Grid.Column="3"
+                <StackPanel Grid.Column="4"
                             Orientation="Horizontal" Spacing="14"
                             VerticalAlignment="Center">
                     <TextBlock x:Name="CombatTickLabel"
@@ -411,7 +414,7 @@
                      when a long-delay reconnect is armed (eg cleanup-mode
                      backoff). Hides itself when the timer fires or the
                      user cancels. -->
-                <StackPanel Grid.Column="4"
+                <StackPanel Grid.Column="5"
                             Orientation="Horizontal" Spacing="6"
                             HorizontalAlignment="Right"
                             VerticalAlignment="Center">

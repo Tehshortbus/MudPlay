@@ -2,6 +2,11 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.16.0
+
+- Turning off Auto-Heal/Rest now releases a held rest gate at once — a queued walk-to resumes instead of the character sitting idle resting
+- Look-target HP readout now floats centered between the room name and the combat ticks instead of jammed against them
+
 ## 1.15.0
 
 - Dark rooms now tracked — walking into a room too dark to show its name/exits advances the map by move inference instead of stalling the marker
