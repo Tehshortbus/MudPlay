@@ -434,6 +434,10 @@ public sealed class AutoWalkManager : IRecoverableEngine
             return true;
         }
 
+        // Route-scoped @wealth warm-up: probes the party only when this walk's
+        // tolls-permitted route actually crosses a toll (no-op otherwise).
+        _filter?.WarmForRoute(_bfs, source.Key, destination);
+
         IReadOnlyList<Direction>? path = _bfs.FindPath(source.Key, destination, _filter);
         if (path is null || path.Count == 0)
         {

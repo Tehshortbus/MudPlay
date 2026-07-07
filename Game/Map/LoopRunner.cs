@@ -521,6 +521,17 @@ public sealed class LoopRunner : IRecoverableEngine
             _expandedSteps = new List<LoopStep>();
             return;
         }
+        // Route-scoped @wealth warm-up: probe the party only when a leg of the
+        // cycle actually crosses a toll. LoopExpander is a pure helper (no
+        // side effects), so the probe lives here — one debounced round-trip
+        // covers every toll leg in the expansion.
+        if (_filter is not null)
+        {
+            IReadOnlyList<LoopWaypoint> wps = _loop.Waypoints;
+            for (int i = 0; i < wps.Count; i++)
+                _filter.WarmForRoute(_bfs, wps[i].Key, wps[(i + 1) % wps.Count].Key);
+        }
+
         (IReadOnlyList<LoopStep> steps,
          IReadOnlyList<(RoomKey From, RoomKey To)> unreachable)
                 = LoopExpander.Expand(_loop.Waypoints, _bfs, _filter);

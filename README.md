@@ -1,7 +1,8 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.11.8**
+> **Version 1.11.9**
+> - Party `@wealth` is only probed when a toll is actually on the walk-to / loop route, not on an off-path toll the map search happened to touch
 > - Looking into an exit no longer fires get / equip / attack against the peeked room — automation waits until you actually walk in
 > - Auto-combat now engages on a real walk-in that follows a look-direction peek
 > - Equip-all wears stacked / doubled-up gear instead of stopping after the first item

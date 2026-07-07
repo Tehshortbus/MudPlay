@@ -2835,6 +2835,7 @@ public sealed class AppServices
             post: action => Avalonia.Threading.Dispatcher.UIThread.Post(action),
             log: Log);
         Movement.PartyWealthProvider = PartyWealth.MinWealth;
+        Movement.TollWealthProbe = PartyWealth.Probe;
 
         // Base auto-search — a bare `sea` on each genuine room entry reveals
         // hidden items for the auto-get engines. Armed by the persisted

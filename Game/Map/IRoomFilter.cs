@@ -22,4 +22,13 @@ public interface IRoomFilter
     // ignored to tell "all routes level-gated" apart from
     // "graph-disconnected".
     bool IsExitBlocked(in RoomExit exit) => false;
+
+    // Called once at walk-start (walker approach, loop expansion) with the
+    // route's endpoints so a filter can warm any route-scoped state before
+    // BFS plans the path. MovementFilter uses it to fire the party @wealth
+    // probe — but only when the tolls-permitted shortest route actually
+    // crosses a toll, so an off-path toll edge inside the BFS frontier never
+    // triggers a poll. Default is a no-op; only the wealth-aware filter
+    // overrides it.
+    void WarmForRoute(BfsMapper bfs, RoomKey source, RoomKey destination) { }
 }
