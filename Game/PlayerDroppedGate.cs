@@ -108,7 +108,7 @@ public sealed class PlayerDroppedGate : IDisposable
     // Public so tests can drive it deterministically without a PropertyChanged.
     public void Evaluate()
     {
-        bool dropped = _state.HasPromptData && _state.MaxHp > 0 && _state.Hp <= 0;
+        bool dropped = _state.IsMortallyWounded;
         if (dropped == IsMortallyWounded) return;
 
         if (dropped)

@@ -398,6 +398,11 @@ public static class DefaultPatterns
         // they're back to positive HP. Group 1 captures the aided ally's name.
         yield return new RegexPattern(KnownPatterns.UserAidedAlly,
             @"^You have aided (?<player>\w+),");
+        // "<Leader> is dragging you around." — the dragged (mortally-wounded)
+        // character's per-move view of being hauled around by a party member's
+        // `drag <name>`. Group 1 = the dragger's given name.
+        yield return new RegexPattern(KnownPatterns.PartyDraggedAround,
+            @"^(?<leader>\w+) is dragging you around\.?\s*$");
 
         // ----- Party dissolution (Playpen-verified, 2026-06-01) ---------
         // Three signals that should evict members / wipe the party.

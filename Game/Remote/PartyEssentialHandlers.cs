@@ -38,6 +38,7 @@ public sealed class PartyEssentialHandlers : IDisposable
     private readonly Func<Room?>? _readCurrentRoom;
     private readonly Func<IReadOnlyList<RoomEntity>?>? _readRoomEntities;
     private readonly Func<MovementStatus>? _readMovement;
+    private readonly Func<string?>? _readDraggedBy;
     private Action<byte[]>? _wireSender;
     private bool _disposed;
 
@@ -63,7 +64,8 @@ public sealed class PartyEssentialHandlers : IDisposable
         Func<PartySettings>? readPartySettings = null,
         Func<Room?>? readCurrentRoom = null,
         Func<IReadOnlyList<RoomEntity>?>? readRoomEntities = null,
-        Func<MovementStatus>? readMovement = null)
+        Func<MovementStatus>? readMovement = null,
+        Func<string?>? readDraggedBy = null)
     {
         ArgumentNullException.ThrowIfNull(engine);
         ArgumentNullException.ThrowIfNull(player);
@@ -75,6 +77,7 @@ public sealed class PartyEssentialHandlers : IDisposable
         _readCurrentRoom = readCurrentRoom;
         _readRoomEntities = readRoomEntities;
         _readMovement = readMovement;
+        _readDraggedBy = readDraggedBy;
 
         // Categories sourced from RemoteCommandCatalog — single source of truth
         // for every documented @-command's required permission category.
@@ -368,8 +371,27 @@ public sealed class PartyEssentialHandlers : IDisposable
     // reply policy that gates the suicide policy-block reply — denials are
     // user-suppressible noise. The full-party reply is informational coordination,
     // not a denial, and fires regardless.
+    // A mortally-wounded character can neither join nor lead a party — the game
+    // rejects the join/invite command outright ("You may not do that while you
+    // are mortally wounded!"). Reply with the reason, and who (if anyone) is
+    // dragging our downed body, so the partymate understands why and whether help
+    // is already underway instead of watching the command bounce. Fires
+    // regardless of WarnOnDenial: this is party-coordination info for a member
+    // trying to help, like the full-party @invite reply, not a security-sensitive
+    // denial to a stranger. Returns true when it handled (blocked) the command.
+    private bool RejectIfMortallyWounded(RemoteCommandContext ctx, string verb)
+    {
+        if (!_player.IsMortallyWounded) return false;
+        string drag = _readDraggedBy?.Invoke() is { Length: > 0 } who
+            ? $"being dragged by {who}"
+            : "nobody is dragging me";
+        ctx.Reply($"Can't {verb} — I'm mortally wounded; {drag}.");
+        return true;
+    }
+
     private void OnInvite(RemoteCommandContext ctx)
     {
+        if (RejectIfMortallyWounded(ctx, "invite")) return;
         if (_party.IsInParty && !_party.SelfIsLeader)
         {
             if (!_engine.WarnOnDenial) return;
@@ -405,6 +427,7 @@ public sealed class PartyEssentialHandlers : IDisposable
     // answer.
     private void OnJoin(RemoteCommandContext ctx)
     {
+        if (RejectIfMortallyWounded(ctx, "join")) return;
         if (_party.IsInParty && !_party.SelfIsLeader)
         {
             if (!_engine.WarnOnDenial) return;
