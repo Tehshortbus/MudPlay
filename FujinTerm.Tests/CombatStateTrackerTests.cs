@@ -352,6 +352,33 @@ public sealed class CombatStateTrackerTests
         Assert.False(h.CombatGateHeld);
     }
 
+    [Fact]
+    public void OnAutoAttackChanged_Off_ReleasesGateWithoutNewObservation()
+    {
+        // Toggling auto-combat off mid-round used to leave the walker gated
+        // until the next room re-display. OnAutoAttackChanged re-evaluates the
+        // last observation at once so the gate drops immediately.
+        using Harness h = new();
+        h.AddMonster(1, "giant rat", killable: true);
+
+        h.Feed("Also here: giant rat.");
+        Assert.True(h.CombatGateHeld);
+
+        h.AutoAttackEnabled = false;        // toggle flips the delegate...
+        h.Tracker.OnAutoAttackChanged();    // ...and notifies the tracker
+        Assert.False(h.CombatGateHeld);     // released without a re-display
+    }
+
+    [Fact]
+    public void OnAutoAttackChanged_NoObservationYet_NoThrow()
+    {
+        // Guarded no-op before any room has been observed.
+        using Harness h = new();
+        h.AutoAttackEnabled = false;
+        h.Tracker.OnAutoAttackChanged();
+        Assert.False(h.CombatGateHeld);
+    }
+
     // ----- seehidden clear override (PR 4.c-b) -----------------------
 
     [Fact]
@@ -603,6 +630,42 @@ public sealed class CombatStateTrackerTests
 
         h.Feed("Also here: Bob.");                // monster gone — only player
         Assert.False(h.State.InCombat);
+    }
+
+    [Fact]
+    public void AutoAttackOff_RoomClear_FlipsInCombatFalse()
+    {
+        // With auto-attack off the gate never holds, but a room clear of
+        // engageable hostiles is still the authoritative out-of-combat signal.
+        // Without this, InCombat stays stuck true and HealthManager never rests.
+        using Harness h = new();
+        h.AddMonster(1, "giant rat", killable: true);
+
+        h.Feed("Also here: giant rat.");
+        h.Feed("*Combat Engaged*");
+        Assert.True(h.State.InCombat);
+
+        h.AutoAttackEnabled = false;              // user toggles auto-combat off
+        h.Feed("Also here: Bob.");                // room now clear
+        Assert.False(h.State.InCombat);           // out of combat → rest can go
+    }
+
+    [Fact]
+    public void AutoAttackOff_HostileStillHere_KeepsInCombatTrue()
+    {
+        // Turning auto-attack off next to a live mob must NOT declare us out of
+        // combat — HealthManager would otherwise rest right next to the hostile.
+        using Harness h = new();
+        h.AddMonster(1, "giant rat", killable: true);
+
+        h.Feed("Also here: giant rat.");
+        h.Feed("*Combat Engaged*");
+        Assert.True(h.State.InCombat);
+
+        h.AutoAttackEnabled = false;
+        h.Feed("Also here: giant rat.");          // mob still here
+        Assert.False(h.CombatGateHeld);           // gate down (manual player)
+        Assert.True(h.State.InCombat);            // but still in combat — no rest
     }
 
     [Fact]

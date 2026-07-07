@@ -97,6 +97,15 @@ it isn't here and you're unsure, ask.
   hurt this monster; the client swaps to the configured alternate weapon.
 - **[OBSERVED]** `Your fists have no effect against this monster!` — you're swinging bare-handed
   (no weapon in hand, or it left your hand).
+- **[CONFIRMED]** **Casting a spell mid-fight drops the auto-attack for that round** — the server
+  emits `*Combat Off*` because a cast is a distinct action that interrupts the sustained weapon
+  swing. If the target is **still alive** after the cast, the desired behaviour is to **re-attack
+  immediately** (as soon as the `*Combat Off*` lands), not wait for the next combat-round tick or a
+  manual room re-parse. Confirmed by the user casting a Kai power (`swan`) on a live target: without
+  a prompt re-attack the client idled a full round. Applies to a **hand-typed** cast just as much as
+  an engine-issued between-round cast — in this realm a spell is cast by typing its cast-code
+  (`Spells.Short`) directly (`swan`, `swan rat`), with no `c` verb precursor, so the client
+  recognises a manual cast by that cast-code on the wire.
 
 ## Monster aggression — who opens on you unprovoked
 
@@ -309,6 +318,40 @@ comes from the stat screen / who line (`AlignmentTracker` / `PlayerStats`).
   own recent-leader memory recognises a dropped leader that a leader-disconnect already wiped from
   the roster.)
 
+## Looking at a monster — coarse wound bands
+
+**`look <monster>` reveals a wound band, never a number** *([CONFIRMED])*
+- A player look prints a bracketed `[ Name ]` header and ends `He is unwounded.`; a **monster** look
+  has **no header** — the monster's name is the first response line, prose follows, and the **last
+  line** is `(It|He|She) appears to be <wound>.`. The `appears to be` phrasing is monster-exclusive
+  (players read `is unwounded`), so it never false-matches a player look. The server echoes the typed
+  command as its own content line (`look ca`) ahead of the name.
+- The game only ever states the condition as one of **eight coarse wound bands**, never a number.
+  Each band is a **fixed percentage window of the monster's max HP** (from game data), so
+  `max HP × band` gives an absolute HP range. Validated live: a **70-HP cave worm** reading
+  **heavily wounded** was **35–48 HP** (actual 38). Bands, percentage of max HP, lower bound
+  inclusive:
+
+  | Descriptor | % of max HP | 70-HP cave worm |
+  |---|---|---|
+  | unwounded | = 100 (full) | 70 |
+  | slightly wounded | [85, 100) | 60–69 |
+  | moderately wounded | [70, 85) | 49–59 |
+  | heavily wounded | [50, 70) | 35–48 |
+  | severely wounded | [30, 50) | 21–34 |
+  | critically wounded | [20, 30) | 14–20 |
+  | very critically wounded | (0, 20) | 1–13 |
+  | mortally wounded | ≤ 0 (dead/dying) | ≤0 |
+
+  For a band `[lo, hi)`: `Low = ceil(lo·M/100)`, `High = ceil(hi·M/100) − 1` — exactly the integer
+  HP values that read as that band.
+- **Why it's worth the range and not just a number:** against a **high-HP boss with fast regen /
+  self-heal**, the per-round scroll outpaces any attempt to tally HP by counting damage lines, so the
+  wound band is the only reliable read of where the boss's "HP gate" sits. (Implemented in
+  `MonsterLookParser` → status-bar `Target: min-max`. Name→HP resolution goes through
+  `RoomEntityClassifier.ResolveLookedMonsterNumber`, which prefers the monster variant actually in
+  the room so shared names / adjective prefixes resolve to the right HP.)
+
 ## Movement & navigation
 
 - **[CONFIRMED]** **A refused ("bonked") move always prints an explicit line and never
@@ -359,6 +402,17 @@ comes from the stat screen / who line (`AlignmentTracker` / `PlayerStats`).
   small path.` — **no** ` -- Following your Party leader <dir> --` line and **no** cardinal direction.
   The follower's room changes but there is nothing to feed `NoteMoveSent`, so the tracker sees the new
   room as a mismatch and must recover via replay/candidate resolution rather than a predicted step.
+- **[CONFIRMED]** **`look <dir>` peeks the adjacent room with a full room display, but the player never
+  moves.** Looking into an exit (`look north`, `l e`, `peer …`) renders the neighbouring room exactly
+  like walking in would — its title, its `You notice … here.` item/cash survey, and its `Also here:`
+  monster/player list — yet the player stays put. This is a *preview*, not an entry, so any
+  room-entry automation keyed on the room display (auto-get items, cash pickup, combat engage) must be
+  suppressed for it — otherwise the client fires `get`/attacks at a room it isn't standing in (the
+  reported bug). The client arms a short suppression window on sending the look (`RoomTracker.NoteLookSent`);
+  the display consumers that run *before* the `Obvious exits:` line poll `IsPeekSuppressed()` to skip
+  the peeked room, and the window is consumed when `NoteRoomObserved` fires on the exits line. The
+  player's *own* room is unaffected: walking in for real re-renders the room outside the window and the
+  automation runs normally.
 
 ## Attack spells: why one fails to damage a monster
 

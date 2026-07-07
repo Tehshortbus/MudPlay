@@ -692,6 +692,53 @@ public sealed class RoomEntityClassifierTests
         Assert.Equal(RoomObservationSource.RoomChange, h.Observations[1].Source);
     }
 
+    // ----- look-direction peek suppression ---------------------------
+    //
+    // A `look <dir>` peek renders a FULL room display (name, "You notice…",
+    // "Also here:", "Obvious exits:") for the ADJACENT room. RoomTracker arms a
+    // suppression window on the outbound look and consumes it on the exits line;
+    // the "Also here:" line arrives first, so the classifier still sees the armed
+    // flag and must NOT emit — otherwise it asserts the combat gate against a
+    // room the player never entered, and pollutes Current so the real walk-in
+    // can't re-engage.
+
+    [Fact]
+    public void Peek_AlsoHere_Dropped_NoObservation()
+    {
+        using TrackerHarness h = new();
+        h.AddMonster(1, "giant rat");
+
+        h.Tracker.NoteLookSent();                    // look <dir> peek armed
+        h.FeedAlsoHere("Also here: giant rat.");
+
+        Assert.Empty(h.Observations);
+        Assert.Null(h.Classifier.Current);
+    }
+
+    [Fact]
+    public void Peek_ThenRealWalkIn_ReFiresObservation()
+    {
+        using TrackerHarness h = new();
+        h.AddMonster(1, "giant rat");
+
+        // Peek east: the adjacent room's display is dropped.
+        h.Tracker.NoteLookSent();
+        h.FeedAlsoHere("Also here: giant rat.");
+        Assert.Empty(h.Observations);
+
+        // The peek's exits line consumes the suppression flag.
+        h.Tracker.NoteRoomObserved(
+            new RoomObservation("Town Gates", new HashSet<Direction> { Direction.N }));
+
+        // Now the player actually walks in — the same room display re-fires and
+        // this time the classifier emits, so combat can engage.
+        h.FeedAlsoHere("Also here: giant rat.");
+
+        Assert.Single(h.Observations);
+        Assert.NotNull(h.Classifier.Current);
+        Assert.Equal("giant rat", h.Classifier.Current!.Value.Entities[0].ResolvedName);
+    }
+
     private static void FeedLine(Terminal.LineExtractor lines, string text)
     {
         // The classifier's LineEmitted subscription is what we want

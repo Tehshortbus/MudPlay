@@ -134,10 +134,14 @@ public sealed partial class SpellBookViewModel : ObservableObject, IDisposable
 
         // Cast-on-use items: a separate section, filtered by the same search
         // box (item name or cast-spell name) but unaffected by the spell-only
-        // level gate / obtained filter.
+        // level gate / obtained filter. Only class-specific sources are listed —
+        // universal wands / scrolls anyone can use would bury the class's own
+        // gear. (The casting automation still consumes the full usable set from
+        // the book; this narrowing is display-only.)
         CastItems.Clear();
         foreach (ClassCastItem item in _allCastItems)
         {
+            if (!item.ClassRestricted) continue;
             if (filter.Length > 0
                 && !item.ItemName.Contains(filter, StringComparison.OrdinalIgnoreCase)
                 && !item.SpellName.Contains(filter, StringComparison.OrdinalIgnoreCase))

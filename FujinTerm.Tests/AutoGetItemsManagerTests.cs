@@ -31,6 +31,7 @@ public sealed class AutoGetItemsManagerTests
         public bool Enabled { get; set; } = true;
         public bool CollectAfterCombat { get; set; }
         public bool HasHostiles { get; set; }
+        public bool PeekSuppressed { get; set; }
 
         public Harness()
         {
@@ -40,6 +41,7 @@ public sealed class AutoGetItemsManagerTests
                 isEnabled: () => Enabled,
                 collectAfterCombatFinished: () => CollectAfterCombat,
                 hasEngageableHostiles: () => HasHostiles,
+                isPeekSuppressed: () => PeekSuppressed,
                 log: Log);
             Items.SetWireSender(b => Sent.Add(b));
         }
@@ -191,6 +193,35 @@ public sealed class AutoGetItemsManagerTests
         h.Items.OnRoomObserved();                  // nothing to flush
 
         Assert.Empty(h.Sent);
+    }
+
+    [Fact]
+    public void PeekSuppressed_NoSend()
+    {
+        // A look-direction peek renders a full "You notice" survey for the
+        // adjacent room; getting from a room we never entered is the bug.
+        using Harness h = new() { PeekSuppressed = true };
+        h.Flags["long sword"] = true;
+
+        h.Feed("You notice a long sword here.");
+
+        Assert.Empty(h.Sent);
+    }
+
+    [Fact]
+    public void PeekCleared_RealEntry_Sends()
+    {
+        using Harness h = new() { PeekSuppressed = true };
+        h.Flags["long sword"] = true;
+
+        h.Feed("You notice a long sword here.");    // peeked — dropped
+        Assert.Empty(h.Sent);
+
+        h.PeekSuppressed = false;                    // walked in for real
+        h.Feed("You notice a long sword here.");
+
+        Assert.Single(h.Sent);
+        Assert.Equal("get long sword", h.SentText[0]);
     }
 
     [Fact]

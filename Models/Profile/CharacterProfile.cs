@@ -118,6 +118,15 @@ public sealed class CharacterProfile
     // user's last-known values instead of zeros. null until the first capture.
     public LastKnownStats? LastKnownStats { get; set; }
 
+    // Full names of the spells this character has learned — the persisted Spell
+    // Book obtained set, so the learned checkmarks survive across sessions
+    // instead of blanking until the next in-game `spells` / `pow` poll. Stored
+    // as names (not Spells.Number) so they re-resolve cleanly even if the active
+    // game-data set version renumbers rows. Captured on ProfileSaving from
+    // Game.Spells.SpellbookState and restored on ProfileLoaded once the class is
+    // seeded. null / empty means nothing learned yet (or a non-magery class).
+    public List<string>? LearnedSpells { get; set; }
+
     // Rooms the walker / loop / auto-lair scheduler must not route through.
     // Per-character only (each player picks their own no-go list) — does not
     // flow through SettingsResolver. Persisted as a flat list of RoomRef;

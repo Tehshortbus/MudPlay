@@ -344,13 +344,15 @@ public sealed class MapControl : Control
     private readonly Avalonia.Threading.DispatcherTimer _hoverTimer;
     private const int HoverDelayMs = 250;
 
-    // Auto-follow suppression — after any explicit pan-drag or
+    // Auto-follow suppression — after any explicit pan-drag, zoom, or
     // crawler step, the player-room auto-centre is paused for this
-    // many seconds so the user can browse without the view yanking
-    // back to live position. The selection-driven centre (crawler
-    // step / Home / search jump) is always honoured.
+    // many seconds so the user can browse (including while the party
+    // follower / leader keeps moving) without the view yanking back to
+    // live position. An explicit re-root of the layout onto a room the
+    // user isn't standing on (floor-crawl / search jump) is still
+    // honoured immediately — only the movement-driven recentre waits.
     private DateTime _autoFollowSuppressedUntil = DateTime.MinValue;
-    private const int AutoFollowSuppressionSeconds = 10;
+    private const int AutoFollowSuppressionSeconds = 15;
 
     private void SuppressAutoFollow()
         => _autoFollowSuppressedUntil = DateTime.UtcNow.AddSeconds(AutoFollowSuppressionSeconds);
@@ -572,8 +574,8 @@ public sealed class MapControl : Control
 
         // Auto-centre on the player's current room every time it
         // changes — but only when the
-        // user isn't actively browsing. Drag-pan and crawler steps
-        // both arm a 10-second suppression window during which
+        // user isn't actively browsing. Drag-pan, zoom, and crawler
+        // steps all arm a 15-second suppression window during which
         // CurrentRoomKey updates are visually ignored.
         CurrentRoomKeyProperty.Changed.AddClassHandler<MapControl>((c, a) =>
         {
@@ -585,16 +587,30 @@ public sealed class MapControl : Control
         // Keyboard crawler stepping centres explicitly from
         // TryStepSelection / TryStepFloor since those can step off
         // the visible window.
-        // When the layout itself rebuilds (new floor / new origin),
-        // re-centre on whichever room the host considers active —
-        // selection takes precedence so floor-stepping lands on the
-        // new room. Layout rebuilds are typically the result of an
-        // explicit user gesture (PageUp/Down, search jump) so we
-        // ignore the browse-suppression window here.
+        // When the layout itself rebuilds, re-centre on its origin —
+        // the room it was built around. Two kinds of rebuild reach
+        // here, distinguished by whether that origin is our live room:
+        //   - Movement rebuild (walked onto a new floor, reconnect,
+        //     party-follow drag / leader loop): origin == CurrentRoomKey.
+        //     Re-centre on it, but honour the browse-suppression window
+        //     so a party member's move doesn't yank the view while the
+        //     user is actively looking around. This is also what fixes
+        //     the old bug where crossing a U/D centred on a stale
+        //     destination selection instead of where we actually landed.
+        //   - Explicit re-root (PageUp/Down floor-crawl, search jump):
+        //     origin is a room the user isn't standing on. Honour it
+        //     immediately — the user just asked to go there.
         LayoutProperty.Changed.AddClassHandler<MapControl>((c, _) =>
         {
-            RoomKey? focus = c.SelectedRoomKey ?? c.CurrentRoomKey;
-            if (focus is { } k) c.CenterOnRoom(k);
+            if (c.Layout is not { } layout) return;
+            RoomKey origin = layout.Origin;
+            if (c.CurrentRoomKey is { } cur && cur.Equals(origin))
+            {
+                if (c.IsAutoFollowSuppressed) return;
+                c.CenterOnRoom(origin);
+                return;
+            }
+            c.CenterOnRoom(origin);
         });
     }
 
@@ -623,6 +639,9 @@ public sealed class MapControl : Control
         _zoom = zoomAfter;
         _panX = cursor.X - Bounds.Width  / 2 - cxOld * TileWorldSize * _zoom;
         _panY = cursor.Y - Bounds.Height / 2 - cyOld * TileWorldSize * _zoom;
+        // Zooming is active browsing — arm the suppression window so a
+        // live move doesn't yank the view out from under the user.
+        SuppressAutoFollow();
         InvalidateVisual();
         e.Handled = true;
     }
@@ -690,7 +709,7 @@ public sealed class MapControl : Control
 
                 // Arm the auto-follow suppression window — the user
                 // is actively browsing; don't yank back to live
-                // player position for the next 10 s.
+                // player position for the next 15 s.
                 SuppressAutoFollow();
 
                 // Hide any open tooltip while dragging — the room
@@ -858,9 +877,9 @@ public sealed class MapControl : Control
         FloorChangeRequested?.Invoke(exit.Target);
     }
 
-    // EnsureSelectionVisible removed — SelectedRoomKeyProperty's
-    // ChangeHandler in the ctor now calls CenterOnRoom on every move,
-    // so the explicit margin check is no longer needed.
+    // Crawler stepping centres explicitly from TryStepSelection /
+    // TryStepFloor (a keyboard step can walk the selection off the
+    // visible window); a plain selection change does not pan on its own.
 
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
     {
@@ -875,11 +894,10 @@ public sealed class MapControl : Control
 
         if (!wasDragging && TryHitTestRoom(releasePos, out RoomKey hit))
         {
-            // Move the crawler selection to the clicked room. The
-            // SelectedRoomKeyProperty change handler centres the
-            // view; arming auto-follow suppression keeps the click
-            // sticky for the next 10 s instead of bouncing back to
-            // live player position on the next in-game move.
+            // Move the crawler selection to the clicked room and keep
+            // the click sticky for the next 15 s by arming auto-follow
+            // suppression, instead of bouncing back to live player
+            // position on the next in-game move.
             SuppressAutoFollow();
             SelectedRoomKey = hit;
 
@@ -1064,10 +1082,8 @@ public sealed class MapControl : Control
             // table tells us where each exit ACTUALLY lands, which may
             // differ from the grid-adjacent cell when the layout couldn't
             // place the pair flat.
-            Room? sourceRoom =
-                Graph is not null && Layout.CoordToRoom.TryGetValue(source, out RoomKey srcKey)
-                    ? Graph.GetRoom(srcKey)
-                    : null;
+            bool haveSrcKey = Layout.CoordToRoom.TryGetValue(source, out RoomKey srcKey);
+            Room? sourceRoom = Graph is not null && haveSrcKey ? Graph.GetRoom(srcKey) : null;
 
             foreach (Direction dir in entry.Value)
             {
@@ -1080,6 +1096,7 @@ public sealed class MapControl : Control
                 // isn't wired (keeps the old behaviour as a safety net).
                 bool targetPlaced;
                 (int X, int Y) actual;
+                bool oneWay = false;
                 if (sourceRoom is not null
                     && sourceRoom.Exits.TryGetValue(dir, out RoomExit exit))
                 {
@@ -1089,6 +1106,16 @@ public sealed class MapControl : Control
                     // heuristic, which could connect to the wrong room.
                     targetPlaced = Layout.Positions.TryGetValue(exit.Target, out (int X, int Y) ac);
                     actual = targetPlaced ? ac : expected;
+
+                    // One-way when the destination carries no exit back to
+                    // us. Class-hall entrances off the Crypt Shadowed Hall
+                    // are the canonical case: the hall room exits into a
+                    // class hall whose start room can't return, so a plain
+                    // line would imply a round trip that doesn't exist.
+                    if (targetPlaced && haveSrcKey && Graph!.GetRoom(exit.Target) is { } destRoom)
+                    {
+                        oneWay = !HasExitTo(destRoom, srcKey);
+                    }
                 }
                 else
                 {
@@ -1128,6 +1155,7 @@ public sealed class MapControl : Control
                         IPen pen = isTrap ? TrapPen : isAction ? ActionPen : isHidden ? HiddenPen : ExitPen;
                         Point tgtPt = new(cx + actual.X * tilePixels, cy + actual.Y * tilePixels);
                         ctx.DrawLine(pen, srcPt, tgtPt);
+                        if (oneWay) DrawOneWayArrow(ctx, pen, srcPt, tgtPt, tilePixels);
                         break;
                     }
                     case ConnectionKind.Bridge:
@@ -1139,6 +1167,7 @@ public sealed class MapControl : Control
                                  : isHidden ? HiddenBridgePen : ExitBridgePen;
                         Point tgtPt = new(cx + actual.X * tilePixels, cy + actual.Y * tilePixels);
                         ctx.DrawLine(pen, srcPt, tgtPt);
+                        if (oneWay) DrawOneWayArrow(ctx, pen, srcPt, tgtPt, tilePixels);
                         break;
                     }
                     default:
@@ -1442,6 +1471,50 @@ public sealed class MapControl : Control
             case Direction.SW: ctx.DrawLine(pen, new Point(mx, my), new Point(cell.Left,  cell.Bottom)); break;
             // U / D — not planar, not rendered as stubs.
         }
+    }
+
+    // True when room has any exit whose target is key — i.e. the connection
+    // is traversable in the reverse direction, so it isn't one-way.
+    private static bool HasExitTo(Room room, RoomKey key)
+    {
+        foreach (RoomExit e in room.Exits.Values)
+        {
+            if (e.Target.Equals(key)) return true;
+        }
+        return false;
+    }
+
+    // A filled arrowhead near the target end of a one-way connector, pointing
+    // from → to. Drawn in the connector's own colour (via pen.Brush) so trap /
+    // action / hidden edges keep their meaning while gaining direction. The tip
+    // sits short of the target centre so it clears the destination node fill.
+    private static void DrawOneWayArrow(DrawingContext ctx, IPen pen, Point from, Point to, double tilePixels)
+    {
+        if (pen.Brush is null) return;
+
+        double dx = to.X - from.X;
+        double dy = to.Y - from.Y;
+        double len = Math.Sqrt(dx * dx + dy * dy);
+        if (len < 1e-3) return;
+        dx /= len;
+        dy /= len;
+
+        double head = Math.Clamp(tilePixels * 0.20, 4.0, 10.0);
+        double back = Math.Max(tilePixels * 0.30, head + 2.0);
+        Point tip = new(to.X - dx * back, to.Y - dy * back);
+        double px = -dy, py = dx;                    // perpendicular unit vector
+        Point b1 = new(tip.X - dx * head + px * head * 0.6, tip.Y - dy * head + py * head * 0.6);
+        Point b2 = new(tip.X - dx * head - px * head * 0.6, tip.Y - dy * head - py * head * 0.6);
+
+        StreamGeometry geo = new();
+        using (StreamGeometryContext g = geo.Open())
+        {
+            g.BeginFigure(tip, isFilled: true);
+            g.LineTo(b1);
+            g.LineTo(b2);
+            g.EndFigure(true);
+        }
+        ctx.DrawGeometry(pen.Brush, null, geo);
     }
 
     private void DrawRoomNode(DrawingContext ctx, Rect cell, RoomKey key)

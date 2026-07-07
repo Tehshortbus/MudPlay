@@ -1,13 +1,26 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.11.0**
-> - A fatal crash now drops a `Crash-<timestamp>.md` on the Desktop carrying the exception plus the live client state (scrollback / log / engine), so a lost session is recoverable after the fact
-> - Auto-equip / combat weapon-swap only issues wear/eq for gear still in your pack — a post-death empty inventory no longer floods "You do not have X left unequipped." each round
-> - Negative HP is parsed, so a mortally-wounded drop is recognised — engines stop firing commands into a downed body and the low-HP hangup no longer misses a plunge straight into the negatives
-> - A dropped ally is aided back up even by a non-healer — the rescue no longer requires a party-heal loadout (a name-heal top-up still needs one)
-> - A downed member answers an @join / @invite with why it can't — mortally wounded, and who (if anyone) is dragging it — instead of silently bouncing the command
-> - Low-HP auto-hangup only fires with a hostile in the room and re-arms once the danger passes — reconnecting into a clear room no longer loops through hang up → reconnect
+> **Version 1.12.0**
+> - Looking at a monster shows its estimated HP range on the status bar — a coarse wound band applied to the monster's max HP, so a fast-regen boss's HP gate is readable at a glance
+> - Map draws a one-way arrow on connectors with no return exit (class-hall entrances, drop-only passages)
+> - Map keeps cross-level text portals (go-portal / manhole) off the plane instead of pulling a far floor's rooms onto it, de-cluttering ~4300 rooms
+> - Map holds a 15-second browse window after a pan / zoom / floor-crawl before snapping back to the player, and re-centres correctly when crossing an up/down exit instead of holding a stale room
+> - Class-gated exits are parsed, labelled in the room tooltip (e.g. "Druid only"), and dropped from walk-to routes for the wrong class
+> - Level-gated exits block a walk-to route when your level falls outside the exit's window
+> - Status-bar room slot now shows the session exp/hour rate alongside the room name
+> - Party `@wealth` is only probed when a toll is actually on the walk-to / loop route, not on an off-path toll the map search happened to touch
+> - Looking into an exit no longer fires get / equip / attack against the peeked room — automation waits until you actually walk in
+> - Auto-combat now engages on a real walk-in that follows a look-direction peek
+> - Equip-all wears stacked / doubled-up gear instead of stopping after the first item
+> - Auto-combat-off mid-round releases the walker and clears the in-combat gate so movement resumes
+> - Hand-casting a spell mid-fight re-attacks a still-alive target immediately instead of idling until the next round
+> - Rest-if-below now actually sends `rest` when it triggers
+> - A loop no longer hangs for minutes when a party @wait pause/resume lands mid-step — the in-flight move isn't re-sent, and arriving at the target advances even if the tracker's queue is momentarily out of sync
+> - Learned spells persist across sessions — Spell Book checkmarks survive a relog instead of blanking until the next `spells` / `pow` poll
+> - Spell Book cast-on-use list shows only the class's own items, not every universal wand / scroll
+> - Backscroll copy survives a broken DBus clipboard instead of crashing the client
+> - A benign background DBus service-missing fault (clipboard / portal on desktops without it) no longer drops a bogus crash report on the Desktop
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

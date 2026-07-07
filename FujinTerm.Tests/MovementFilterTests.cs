@@ -268,6 +268,65 @@ public sealed class MovementFilterTests
         Assert.True(filter.IsExitBlocked(GatedExit(10, 25)));  // 10..25, have 30
     }
 
+    // ----- IsExitBlocked: (Class: N OK) class-gate evaluation --------
+
+    private static RoomExit ClassGatedExit(int classNumber) =>
+        new(new RoomKey(1, 2), RoomExitHint.None, RawHint: null,
+            ClassGate: classNumber);
+
+    [Fact]
+    public void IsExitBlocked_ClassGate_UnknownClass_DoesNotBlock()
+    {
+        (_, MovementFilter filter) = NewPair();
+        filter.ClassNumberProvider = () => null;   // no stat screen parsed yet
+        Assert.False(filter.IsExitBlocked(ClassGatedExit(13)));
+    }
+
+    [Fact]
+    public void IsExitBlocked_ClassGate_NoProvider_DoesNotBlock()
+    {
+        (_, MovementFilter filter) = NewPair();
+        // ClassNumberProvider unset (AppServices wires it; bare filter has none).
+        Assert.False(filter.IsExitBlocked(ClassGatedExit(13)));
+    }
+
+    [Fact]
+    public void IsExitBlocked_ClassGate_WrongClass_Blocks()
+    {
+        (_, MovementFilter filter) = NewPair();
+        filter.ClassNumberProvider = () => 1;    // Warrior at a Druid (13) hall
+        Assert.True(filter.IsExitBlocked(ClassGatedExit(13)));
+    }
+
+    [Fact]
+    public void IsExitBlocked_ClassGate_MatchingClass_Allows()
+    {
+        (_, MovementFilter filter) = NewPair();
+        filter.ClassNumberProvider = () => 13;   // Druid at the Druid hall
+        Assert.False(filter.IsExitBlocked(ClassGatedExit(13)));
+    }
+
+    [Fact]
+    public void IsExitBlocked_ClassGate_IndependentOfLevelAndToll()
+    {
+        (_, MovementFilter filter) = NewPair();
+        // A pure class gate carries no level window or toll, so those branches
+        // must never rescue or block it.
+        filter.LevelProvider = () => 1;
+        filter.WealthProvider = () => 0;
+        filter.ClassNumberProvider = () => 13;
+        Assert.False(filter.IsExitBlocked(ClassGatedExit(13)));   // right class → allowed
+    }
+
+    [Fact]
+    public void IsExitBlocked_ClassGate_DoesNotAffectPlainExit()
+    {
+        (_, MovementFilter filter) = NewPair();
+        // Wrong class, but the exit has no class gate — must not block.
+        filter.ClassNumberProvider = () => 1;
+        Assert.False(filter.IsExitBlocked(GatedExit(0, 0)));
+    }
+
     // ----- IsExitBlocked: party-bounds branch ------------------------
 
     [Fact]
@@ -520,5 +579,133 @@ public sealed class MovementFilterTests
             try { Directory.Delete(root, recursive: true); }
             catch { /* best-effort */ }
         }
+    }
+
+    // ----- WarmForRoute: route-scoped @wealth probe -----------------
+
+    // A ──E── B ──E(Toll:5)── C, plus an off-path A ──N(Toll:5)── D branch.
+    // The A→C route crosses a toll; the A→B route does not (but the N→D toll
+    // edge sits in the BFS frontier, which is exactly the off-path case that
+    // used to fire a spurious probe).
+    private const string TollStripJson = """
+        [
+          { "Map Number": 1, "Room Number": 1, "Name": "A",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "1/4 (Toll: 5)", "S": "0", "E": "1/2", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 2, "Name": "B",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "0", "E": "1/3 (Toll: 5)", "W": "1/1",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 3, "Name": "C",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "0", "E": "0", "W": "1/2",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 4, "Name": "D",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "1/1", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+        ]
+        """;
+
+    private static void WithGraph(string roomsJson, Action<BfsMapper> body)
+    {
+        string root = Path.Combine(Path.GetTempPath(),
+            "fujinterm-warmroute-" + Path.GetRandomFileName());
+        try
+        {
+            string setDir = Path.Combine(root, "alpha");
+            Directory.CreateDirectory(setDir);
+            File.WriteAllText(Path.Combine(setDir, "Rooms.json"), roomsJson);
+            GameDataCache cache = new(root);
+            cache.SwitchSet("alpha");
+            RoomGraphManager graph = new(cache);
+            graph.OnActiveSetChanged("alpha");
+            body(new BfsMapper(graph));
+        }
+        finally
+        {
+            try { Directory.Delete(root, recursive: true); }
+            catch { /* best-effort */ }
+        }
+    }
+
+    [Fact]
+    public void WarmForRoute_TollOnRoute_Probes()
+    {
+        WithGraph(TollStripJson, bfs =>
+        {
+            (_, MovementFilter filter) = NewPair();
+            int probes = 0;
+            filter.PartyWealthProvider = () => 100;   // leading a party
+            filter.TollWealthProbe = () => probes++;
+
+            filter.WarmForRoute(bfs, new RoomKey(1, 1), new RoomKey(1, 3));
+
+            Assert.Equal(1, probes);   // A→C crosses the B→C toll
+        });
+    }
+
+    [Fact]
+    public void WarmForRoute_TollOffRoute_DoesNotProbe()
+    {
+        WithGraph(TollStripJson, bfs =>
+        {
+            (_, MovementFilter filter) = NewPair();
+            int probes = 0;
+            filter.PartyWealthProvider = () => 100;
+            filter.TollWealthProbe = () => probes++;
+
+            // A→B is a plain E; the N→D toll is in the frontier but not on
+            // the route, so it must not trigger a poll (the reported bug).
+            filter.WarmForRoute(bfs, new RoomKey(1, 1), new RoomKey(1, 2));
+
+            Assert.Equal(0, probes);
+        });
+    }
+
+    [Fact]
+    public void WarmForRoute_NoPartyGate_DoesNotProbe()
+    {
+        WithGraph(TollStripJson, bfs =>
+        {
+            (_, MovementFilter filter) = NewPair();
+            int probes = 0;
+            // PartyWealthProvider unset (solo / not leading) → nothing to warm.
+            filter.TollWealthProbe = () => probes++;
+
+            filter.WarmForRoute(bfs, new RoomKey(1, 1), new RoomKey(1, 3));
+
+            Assert.Equal(0, probes);
+        });
+    }
+
+    [Fact]
+    public void WarmForRoute_NoProbeWired_IsNoOp()
+    {
+        WithGraph(TollStripJson, bfs =>
+        {
+            (_, MovementFilter filter) = NewPair();
+            filter.PartyWealthProvider = () => 100;
+            // TollWealthProbe unset — must not throw.
+            filter.WarmForRoute(bfs, new RoomKey(1, 1), new RoomKey(1, 3));
+        });
+    }
+
+    [Fact]
+    public void WarmForRoute_RestoresTollGate()
+    {
+        WithGraph(TollStripJson, bfs =>
+        {
+            (_, MovementFilter filter) = NewPair();
+            filter.PartyWealthProvider = () => 100;   // party can't cover 500
+            filter.TollWealthProbe = () => { };
+
+            filter.WarmForRoute(bfs, new RoomKey(1, 1), new RoomKey(1, 3));
+
+            // The suspend flag is cleared in the finally: a toll the party
+            // can't afford still blocks after warming.
+            Assert.True(filter.IsExitBlocked(TollExit(5)));
+        });
     }
 }

@@ -222,6 +222,35 @@ public sealed class SpellbookStateTests : IDisposable
     }
 
     [Fact]
+    public void ObtainedNames_RoundTripsThroughSetObtainedByNames()
+    {
+        // The persistence path: ObtainedNames captured at save, fed back through
+        // SetObtainedByNames at load, must reconstruct the exact obtained set.
+        SpellbookState book = New().book;
+        book.Refresh(12, 5);
+        book.SetObtainedByNames(new[] { "starlight", "high arc" });
+
+        IReadOnlyList<string> saved = book.ObtainedNames;
+        Assert.Equal(new[] { "starlight", "high arc" }, saved);
+
+        book.ClearObtained();
+        Assert.Equal(0, book.ObtainedCount);
+
+        book.SetObtainedByNames(saved); // hydrate from the persisted names
+        Assert.True(book.IsObtained(100));
+        Assert.True(book.IsObtained(101));
+        Assert.Equal(2, book.ObtainedCount);
+    }
+
+    [Fact]
+    public void ObtainedNames_EmptyWhenNothingObtained()
+    {
+        SpellbookState book = New().book;
+        book.Refresh(12, 5);
+        Assert.Empty(book.ObtainedNames);
+    }
+
+    [Fact]
     public void ClearObtained_WipesSet_FiresOnceWhenNonEmpty()
     {
         SpellbookState book = New().book;

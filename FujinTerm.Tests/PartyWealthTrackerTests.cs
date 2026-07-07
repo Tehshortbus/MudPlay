@@ -10,12 +10,15 @@ using Xunit;
 namespace FujinTerm.Tests;
 
 /// <summary>
-/// The wealth tracker is demand-driven: unlike <see cref="PartyLevelTracker"/>
-/// (which keeps levels warm on every roster change), it holds no party-state
-/// subscription and fires an <c>@wealth</c> probe only when <c>MinWealth</c> is
-/// asked — which <see cref="MovementFilter"/> does solely while BFS evaluates a
-/// <c>(Toll: N)</c> exit. Wired to a real probe with a captured reply-window and a
-/// mutable clock so freshness / debounce are exercised deterministically.
+/// The wealth tracker is demand-driven with a two-entry split: unlike
+/// <see cref="PartyLevelTracker"/> (which keeps levels warm on every roster
+/// change), it holds no party-state subscription. <c>MinWealth</c> is a pure
+/// cache read (MovementFilter calls it per toll exit during BFS, so it must not
+/// touch the wire — BFS explores off-path toll edges). <c>Probe</c> is the
+/// route-scoped trigger fired from MovementFilter.WarmForRoute only when the
+/// planned route actually crosses a toll. Wired to a real probe with a captured
+/// reply-window and a mutable clock so freshness / debounce are exercised
+/// deterministically.
 /// </summary>
 public sealed class PartyWealthTrackerTests
 {
@@ -113,7 +116,7 @@ public sealed class PartyWealthTrackerTests
         h.Tracker.Record("Bob", 3000);
 
         Assert.Null(h.Tracker.MinWealth());   // unknown wallet never refuses a walk
-        Assert.Equal(0, h.Probes);            // no point probing when we can't gate anyway
+        Assert.Equal(0, h.Probes);            // MinWealth never probes (pure cache read)
     }
 
     // ----- Computation: min over self + fresh follower readings ---------------
@@ -166,47 +169,66 @@ public sealed class PartyWealthTrackerTests
         Assert.Equal(0, h.Tracker.MinWealth());      // gone stale → treated as absent
     }
 
-    // ----- Demand-poll: fires from MinWealth, debounced -----------------------
+    // ----- MinWealth is a pure cache read — never touches the wire ------------
 
     [Fact]
-    public void MinWealth_FiresProbe_OnDemand()
+    public void MinWealth_NeverProbes()
     {
         var h = new Harness { SelfWealth = 5000 };
         h.AddMember("Bob");
         h.Lead();
 
-        Assert.Equal(0, h.Probes);   // no probe until a toll is actually evaluated
+        // Repeated reads, across the freshness window, must never fire an
+        // @wealth — BFS calls MinWealth per off-path toll edge and the wire
+        // must stay quiet unless the route-scoped Probe decides otherwise.
         _ = h.Tracker.MinWealth();
+        h.Advance(h.Tracker.FreshnessWindow + TimeSpan.FromSeconds(1));
+        _ = h.Tracker.MinWealth();
+
+        Assert.Equal(0, h.Probes);
+    }
+
+    // ----- Probe: route-scoped, debounced -------------------------------------
+
+    [Fact]
+    public void Probe_FiresRoundTrip()
+    {
+        var h = new Harness { SelfWealth = 5000 };
+        h.AddMember("Bob");
+        h.Lead();
+
+        Assert.Equal(0, h.Probes);   // nothing until the walker warms the route
+        h.Tracker.Probe();
 
         Assert.Equal(1, h.Probes);
         Assert.Equal("/Bob @wealth\r", h.Sent(0));
     }
 
     [Fact]
-    public void MinWealth_Debounced_WithinWindow()
+    public void Probe_Debounced_WithinWindow()
     {
         var h = new Harness { SelfWealth = 5000 };
         h.AddMember("Bob");
         h.Lead();
 
-        _ = h.Tracker.MinWealth();
-        _ = h.Tracker.MinWealth();   // same window — no second round-trip
+        h.Tracker.Probe();
+        h.Tracker.Probe();   // same window (e.g. a multi-toll loop expansion) — one round-trip
 
         Assert.Equal(1, h.Probes);
     }
 
     [Fact]
-    public void MinWealth_Refires_AfterWindow()
+    public void Probe_Refires_AfterWindow()
     {
         var h = new Harness { SelfWealth = 5000 };
         h.AddMember("Bob");
         h.Lead();
 
-        _ = h.Tracker.MinWealth();
+        h.Tracker.Probe();
         Assert.Equal(1, h.Probes);
 
         h.Advance(h.Tracker.FreshnessWindow + TimeSpan.FromSeconds(1));
-        _ = h.Tracker.MinWealth();
+        h.Tracker.Probe();
 
         Assert.Equal(2, h.Probes);   // window elapsed → re-poll
     }
@@ -219,7 +241,7 @@ public sealed class PartyWealthTrackerTests
         h.Lead();
         h.AddMember("Al");   // roster grows — no subscription, so no probe
 
-        Assert.Equal(0, h.Probes);   // demand-driven only; nothing polled yet
+        Assert.Equal(0, h.Probes);   // route-scoped only; nothing polled yet
     }
 
     // ----- End-to-end: reply lands via Record, reflected next MinWealth -------
@@ -231,13 +253,13 @@ public sealed class PartyWealthTrackerTests
         h.AddMember("Bob");
         h.Lead();
 
-        Assert.Equal(0, h.Tracker.MinWealth());   // fires probe; Bob unknown → 0
+        Assert.Equal(0, h.Tracker.MinWealth());   // Bob unknown → 0 (no probe from the read)
+        h.Tracker.Probe();                        // walker warms the route
         Assert.Equal(1, h.Probes);
 
         h.Reply("Bob", Harness.Coins(3000));      // Bob answers @wealth
 
-        // Same freshness window → debounced (no new probe), reads Bob's fresh reading.
-        Assert.Equal(3000, h.Tracker.MinWealth());
-        Assert.Equal(1, h.Probes);
+        Assert.Equal(3000, h.Tracker.MinWealth()); // reads Bob's fresh reading
+        Assert.Equal(1, h.Probes);                 // still just the one round-trip
     }
 }

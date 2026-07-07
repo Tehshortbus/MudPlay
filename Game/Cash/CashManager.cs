@@ -52,6 +52,7 @@ public sealed class CashManager : IDisposable
     private readonly Func<CashSettings> _readSettings;
     private readonly Func<bool> _isEnabled;
     private readonly Func<InventorySnapshot> _getSnapshot;
+    private readonly Func<bool> _isPeekSuppressed;
     private readonly LogService? _log;
     private readonly IDisposable _groundSub;
     private readonly IDisposable _pickedUpSub;
@@ -127,6 +128,7 @@ public sealed class CashManager : IDisposable
         Func<CashSettings> readSettings,
         Func<bool> isEnabled,
         Func<InventorySnapshot>? getSnapshot = null,
+        Func<bool>? isPeekSuppressed = null,
         LogService? log = null)
     {
         ArgumentNullException.ThrowIfNull(router);
@@ -137,6 +139,9 @@ public sealed class CashManager : IDisposable
         // No snapshot bound (or before an `i` parse) → the encumbrance gate
         // is inert and collection runs the full-pickup path.
         _getSnapshot = getSnapshot ?? (static () => InventorySnapshot.Empty);
+        // Null when unbound (tests) → never a peek. A `look <dir>` peek renders
+        // a full room display, so gate the "You notice" collect path on it.
+        _isPeekSuppressed = isPeekSuppressed ?? (static () => false);
         _log = log;
 
         _groundSub   = router.Subscribe(KnownPatterns.CashOnGround,  OnCashOnGround);
@@ -399,6 +404,14 @@ public sealed class CashManager : IDisposable
     private void DispatchYouNoticeList(string list)
     {
         if (!_isEnabled()) return;
+        // "You notice" is a room-display line, so a look-direction peek renders
+        // it for the adjacent room. Collecting against a room we never entered
+        // sends get commands into empty air; skip while the peek window is armed.
+        if (_isPeekSuppressed())
+        {
+            _log?.Debug(LogCategory, "skipped you-notice cash (look-direction peek)");
+            return;
+        }
         CashSettings settings = _readSettings();
 
         foreach (string raw in list.Split(',', StringSplitOptions.TrimEntries))

@@ -521,6 +521,17 @@ public sealed class LoopRunner : IRecoverableEngine
             _expandedSteps = new List<LoopStep>();
             return;
         }
+        // Route-scoped @wealth warm-up: probe the party only when a leg of the
+        // cycle actually crosses a toll. LoopExpander is a pure helper (no
+        // side effects), so the probe lives here — one debounced round-trip
+        // covers every toll leg in the expansion.
+        if (_filter is not null)
+        {
+            IReadOnlyList<LoopWaypoint> wps = _loop.Waypoints;
+            for (int i = 0; i < wps.Count; i++)
+                _filter.WarmForRoute(_bfs, wps[i].Key, wps[(i + 1) % wps.Count].Key);
+        }
+
         (IReadOnlyList<LoopStep> steps,
          IReadOnlyList<(RoomKey From, RoomKey To)> unreachable)
                 = LoopExpander.Expand(_loop.Waypoints, _bfs, _filter);
@@ -896,15 +907,34 @@ public sealed class LoopRunner : IRecoverableEngine
             return;
         }
 
-        if (t.NewConfidence != RoomConfidence.Confirmed) return;
+        // Suspect / Lost / Unknown already returned above, so NewConfidence is
+        // now Confirmed or Pending.
         if (t.NewRoom?.Key is not { } key) return;
 
         if (key.Equals(_expectedMoveTarget))
         {
+            // Arrived at the step's target. Confirmed is the clean case;
+            // Pending means we're physically at the target but the tracker's
+            // pending queue still carries a stale entry (a phantom duplicate /
+            // an unconsumed echo). The loop only ever has one move in flight,
+            // so any queue residue at the target is spurious — the step
+            // completed either way. Advance instead of hanging in Pending
+            // forever waiting for a Confirmed the wedged queue will never
+            // deliver (the multi-minute silent loop stall).
             _stepInFlight = false;
             AdvanceStep();
+            return;
         }
-        else if (t.PreviousRoom is not null
+
+        // Below only makes sense once the move has resolved to a Confirmed
+        // room. A Pending transition that isn't at the target is just the
+        // in-flight posture — the synchronous Confirmed → Pending fired by our
+        // own NoteMoveSent inside SendMove (still at source), or a mid-flight
+        // redisplay — so wait for the real confirmation rather than treating it
+        // as a landing.
+        if (t.NewConfidence != RoomConfidence.Confirmed) return;
+
+        if (t.PreviousRoom is not null
             && key.Equals(t.PreviousRoom.Key))
         {
             // Blocked at source — the move didn't take (a mob in the way, lag, a
@@ -1112,6 +1142,22 @@ public sealed class LoopRunner : IRecoverableEngine
                 _stepInFlight = false;
                 _expectedMoveTarget = null;
                 AdvanceStep();
+                return;
+            }
+            // A move was already on the wire when the pause hit and its
+            // confirmation hasn't landed yet (the overshoot guard above didn't
+            // fire, so the tracker is still Pending on it). Re-sending it here
+            // would put a second copy of the same move on the wire AND a phantom
+            // duplicate in the tracker's pending queue — the queue never empties,
+            // the tracker sticks in Pending-at-target, and the loop hangs on a
+            // Confirmed it will never get. Keep the step in flight instead; now
+            // that we're Running again the resumed tracker events confirm it and
+            // advance us. Refusals don't hit this — a bonked move fires
+            // NoteMoveBlocked, which drops its pending entry and re-Confirms.
+            if (_stepInFlight && _tracker.State.Confidence == RoomConfidence.Pending)
+            {
+                _log?.Info("LoopRunner",
+                    $"resume: step {_index + 1} still in flight (tracker Pending); awaiting confirmation, not re-sending");
                 return;
             }
             _stepInFlight = false;

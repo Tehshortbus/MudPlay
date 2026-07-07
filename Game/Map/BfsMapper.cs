@@ -24,6 +24,17 @@ public sealed class BfsMapper
     private readonly Dictionary<(RoomKey Origin, int Radius), RoomLayout> _layoutCache = new();
     private readonly object _cacheLock = new();
 
+    // Vertical-plane index: each room → (component, floor), where floor is
+    // net U/D displacement (U:+1, D:-1) within the room's connected
+    // component computed over NON-text exits only. Text exits are excluded
+    // so a teleport-like jump (a sewer manhole, the Crypt go-portal back to
+    // the graveyard) never links two levels here. The layout BFS consults
+    // this to spot a cross-plane text exit — endpoints sharing a component
+    // but sitting on different floors — and stub it instead of dragging the
+    // far floor's rooms onto the current plane. Rebuilt lazily; dropped by
+    // OnGraphReloaded (blacklist changes don't affect vertical structure).
+    private Dictionary<RoomKey, (int Component, int Floor)>? _planeIndex;
+
     // Set of room keys to hide from the planar layout (BBS-tier room
     // blacklist). Blacklisted neighbours still get an EDGE recorded so the
     // renderer draws a dangling stub, but they are NOT placed in
@@ -184,6 +195,31 @@ public sealed class BfsMapper
         IReadOnlyList<Direction>? path = FindPath(source, destination, filter,
             returnEmptyWhenAtDestination: true);
         return path?.Count;
+    }
+
+    // True when the shortest route from source to destination crosses at
+    // least one (Toll: N) exit under the supplied filter. Used at walk-start
+    // to decide whether a party @wealth probe is worth firing: the probe only
+    // matters when a toll is actually on the route the walker will take, not
+    // on some off-path toll edge the BFS frontier happened to touch. The
+    // caller (MovementFilter.WarmForRoute) suspends its own toll gate before
+    // calling, so the returned path is the one the party WOULD walk if every
+    // toll were affordable — level gates and avoided rooms still apply.
+    public bool RouteUsesToll(RoomKey source, RoomKey destination, IRoomFilter? filter = null)
+    {
+        IReadOnlyList<Direction>? path = FindPath(source, destination, filter);
+        if (path is null || path.Count == 0) return false;
+
+        RoomKey cursor = source;
+        foreach (Direction dir in path)
+        {
+            Room? room = _graph.GetRoom(cursor);
+            if (room is null) return false;
+            if (!room.Exits.TryGetValue(dir, out RoomExit exit)) return false;
+            if (exit.Hint == RoomExitHint.Toll && exit.TollGold > 0) return true;
+            cursor = exit.Target;
+        }
+        return false;
     }
 
     // BFS-planar layout from origin. Caches the result; OnGraphReloaded
@@ -433,6 +469,21 @@ public sealed class BfsMapper
                 RoomKey next = exit.Target;
                 Room? nextRoom = _graph.GetRoom(next);
                 if (nextRoom is null) continue;
+
+                // Cross-plane text portal: the importer files a text exit
+                // (go portal, go manhole) under a cardinal slot, so it looks
+                // planar — but its target lives on another vertical level
+                // reached by real stairs. Placing it here drags that whole
+                // foreign floor onto this plane (the Crypt trainers' go-portal
+                // pulling the surface graveyard onto level 3). Record the
+                // source-side stub so the exit stays visible, then skip
+                // placement. Same-floor text exits (go path, follow trail)
+                // fall through and lay out normally.
+                if (exit.Hint == RoomExitHint.Text && IsCrossPlaneTextExit(here, next))
+                {
+                    AddEdge(edgesFromCoord, hereXY, dir);
+                    continue;
+                }
 
                 if (!TryPlanarOffset(dir, out int dx, out int dy)) continue;
                 (int X, int Y) tentative = (hereXY.X + dx, hereXY.Y + dy);
@@ -799,7 +850,65 @@ public sealed class BfsMapper
     // flushes the layout cache since per-room references are invalidated.
     public void OnGraphReloaded()
     {
-        lock (_cacheLock) _layoutCache.Clear();
+        lock (_cacheLock)
+        {
+            _layoutCache.Clear();
+            _planeIndex = null;
+        }
+    }
+
+    // Lazily assign every room a (component, floor) over the NON-text exit
+    // graph. One BFS per component; U/D shift the floor, cardinals keep it,
+    // text exits are skipped so they can't fuse two vertical levels. Result
+    // is cached until the graph reloads.
+    private Dictionary<RoomKey, (int Component, int Floor)> PlaneIndex()
+    {
+        lock (_cacheLock)
+        {
+            if (_planeIndex is not null) return _planeIndex;
+
+            var index = new Dictionary<RoomKey, (int Component, int Floor)>();
+            int component = 0;
+            var queue = new Queue<RoomKey>();
+            foreach (Room seed in _graph.Rooms)
+            {
+                if (index.ContainsKey(seed.Key)) continue;
+                index[seed.Key] = (component, 0);
+                queue.Enqueue(seed.Key);
+                while (queue.Count > 0)
+                {
+                    RoomKey cur = queue.Dequeue();
+                    Room? room = _graph.GetRoom(cur);
+                    if (room is null) continue;
+                    int curFloor = index[cur].Floor;
+                    foreach ((Direction dir, RoomExit exit) in room.Exits)
+                    {
+                        if (exit.Hint == RoomExitHint.Text) continue;   // teleports don't link floors
+                        RoomKey t = exit.Target;
+                        if (index.ContainsKey(t)) continue;
+                        if (_graph.GetRoom(t) is null) continue;
+                        int df = dir == Direction.U ? 1 : dir == Direction.D ? -1 : 0;
+                        index[t] = (component, curFloor + df);
+                        queue.Enqueue(t);
+                    }
+                }
+                component++;
+            }
+            _planeIndex = index;
+            return index;
+        }
+    }
+
+    // A text exit is cross-plane when its endpoints share a non-text
+    // component (so their floor numbers are comparable) but sit on
+    // different floors — the destination is really reached by stairs on
+    // another level, not by stepping through this cardinal cell.
+    private bool IsCrossPlaneTextExit(RoomKey source, RoomKey target)
+    {
+        Dictionary<RoomKey, (int Component, int Floor)> idx = PlaneIndex();
+        if (!idx.TryGetValue(source, out (int Component, int Floor) a)) return false;
+        if (!idx.TryGetValue(target, out (int Component, int Floor) b)) return false;
+        return a.Component == b.Component && a.Floor != b.Floor;
     }
 
     // Eagerly build (and cache) the layout from the first room in the

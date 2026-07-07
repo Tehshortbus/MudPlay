@@ -139,8 +139,24 @@ public sealed class RoomEntityClassifier : IDisposable
         }
     }
 
+    // A `look <dir>` peek renders a full room display — name, "You notice…",
+    // "Also here:", "Obvious exits:" — for the ADJACENT room the player never
+    // entered. RoomTracker arms a suppression window on the outbound look and
+    // consumes it on the exits line, but the "Also here:" line arrives first, so
+    // this check still sees the armed flag. Emitting EntitiesObserved for a peek
+    // would assert the combat gate against a room we're not in (and pollute
+    // Current so the real walk-in's re-parse can't re-engage). Skip it — the
+    // genuine walk-in re-fires this parse with the flag cleared.
+    private bool IsPeek() => _roomTracker?.IsPeekSuppressed() ?? false;
+
     private void ProcessAlsoHere(string completeLine, string rawFirst)
     {
+        if (IsPeek())
+        {
+            _log?.Debug(LogCategory, "dropped peeked Also-here (look-direction preview)");
+            return;
+        }
+
         // Strip the "Also here: " prefix and the trailing period.
         const string prefix = "Also here:";
         int start = prefix.Length;
@@ -164,6 +180,12 @@ public sealed class RoomEntityClassifier : IDisposable
 
     private void OnRoomAlsoHere(MatchResult match)
     {
+        if (IsPeek())
+        {
+            _log?.Debug(LogCategory, "dropped peeked Also-here (look-direction preview)");
+            return;
+        }
+
         // (?<players>.+?) capture: comma-separated occupant list.
         if (match.Groups.Count == 0) return;
         string list = match.Groups[0];
@@ -187,6 +209,35 @@ public sealed class RoomEntityClassifier : IDisposable
     // Public for direct callers (the fix dialog can re-classify a fixed-up name
     // to confirm the prefix took). Skips the MessageRouter subscription path.
     public RoomEntity Classify(string entry) => Classify(entry, rawAlsoHereLine: string.Empty);
+
+    // Resolve a looked-at monster name to a specific Monsters-table Number.
+    // Shared display names (~14% of a stock realm — "giant rat", "skeleton", …)
+    // map to several Numbers with different HP, so a name-only classify can pick
+    // the wrong variant. Prefer the variant ACTUALLY present in the room: the
+    // Current observation already resolved each occupant to its own Number when
+    // the room displayed, and a looked-at monster is by definition in the room.
+    // Match the look name against those first (raw or resolved, case-insensitive),
+    // then fall back to a global classify for the rare case the room list is
+    // stale/empty. Returns null when the name isn't a known monster.
+    public int? ResolveLookedMonsterNumber(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return null;
+        string trimmed = name.Trim();
+
+        if (Current is { } cur)
+        {
+            foreach (RoomEntity e in cur.Entities)
+            {
+                if (e.Kind != EntityKind.Monster || e.MonsterNumber is null) continue;
+                if (string.Equals(e.RawName, trimmed, StringComparison.OrdinalIgnoreCase)
+                 || string.Equals(e.ResolvedName, trimmed, StringComparison.OrdinalIgnoreCase))
+                    return e.MonsterNumber;
+            }
+        }
+
+        RoomEntity classified = Classify(trimmed);
+        return classified.Kind == EntityKind.Monster ? classified.MonsterNumber : null;
+    }
 
     // Append a single freshly-arrived entity to the current room observation and
     // re-fire EntitiesObserved. Called by RoomEntryWatcher when the wire reports

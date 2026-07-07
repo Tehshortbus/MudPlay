@@ -713,6 +713,11 @@ public sealed class AppServices
     // spell-immunity gating.
     public Game.Combat.MonsterMagicIndex MonsterMagic { get; private set; } = null!;
 
+    // Number → max-HP lookup in the active game-data set. Feeds the look-target
+    // HP-range readout (MonsterLookParser turns a wound descriptor into an
+    // absolute HP window).
+    public Game.Combat.MonsterHpIndex MonsterHp { get; private set; } = null!;
+
     // Lookup of each weapon's HitMagic level (code 142) in
     // the active game-data set. Paired with MonsterMagic for
     // the HitMagic ≥ Magical hit check.
@@ -1088,6 +1093,12 @@ public sealed class AppServices
     // <dir> --" line is the only move signal that keeps the map located instead
     // of drifting to Lost. Subscribes to the router for app lifetime.
     public Game.Map.FollowMoveObserver FollowMove { get; private set; } = null!;
+
+    // Recognises a manually-typed spell cast-code on the wire and arms the
+    // combat engine's between-round-cast resume, so a hand-cast that breaks
+    // combat mid-fight re-attacks a still-alive target at once instead of
+    // idling until the next round. Hooked from MainWindowViewModel.SendUserInput.
+    public Game.Combat.OutboundCastObserver OutboundCast { get; private set; } = null!;
 
     // Death-message detector — watches lines for either post-death lives
     // readout (You now have N lives remaining. / You have N lives left.,
@@ -1496,11 +1507,22 @@ public sealed class AppServices
         // Rebuild the Spell Book's available list from a class+level
         // snapshot. Unknown / null class resolves to 0 (no class), which
         // yields an empty book — correct for non-magery classes and the
-        // no-profile case alike. The obtained set is NOT seeded here (it
-        // isn't persisted); checkmarks stay empty until a live
-        // `spells`/`pow` snapshot confirms them in-game.
+        // no-profile case alike. The obtained set is restored separately in
+        // the ProfileLoaded handler below (after this seeds the class list),
+        // so the learned checkmarks survive across sessions.
         void SeedSpellbook(Models.Profile.LastKnownStats? snap) =>
             Spellbook.Refresh(snap is null ? 0 : SpellCatalog.ResolveClassNumber(snap.Class) ?? 0, snap?.Level ?? 0);
+
+        // Persist the learned-spell set with the rest of the profile. Snapshot
+        // only when the book has a resolved class — with no class the obtained
+        // set is empty for lack of a spell list, and blindly writing that would
+        // wipe a previously-persisted set we simply can't re-resolve right now.
+        Profile.ProfileSaving += p =>
+        {
+            if (Spellbook.ClassNumber < 1) return;
+            IReadOnlyList<string> learned = Spellbook.ObtainedNames;
+            p.LearnedSpells = learned.Count > 0 ? new List<string>(learned) : null;
+        };
 
         Stats.ScreenParsed += snapshot =>
         {
@@ -1531,6 +1553,10 @@ public sealed class AppServices
         // the first live `stat` reconfirms.
         Profile.ProfileLoaded += p =>
         {
+            // Capture the persisted learned set before seeding fires Changed —
+            // the restore below re-applies it once the class list exists.
+            List<string>? learned = p.LearnedSpells is { Count: > 0 } ls
+                ? new List<string>(ls) : null;
             Stats.Hydrate(p.LastKnownStats);
             // Seed the live max ceilings from the persisted snapshot so a
             // returning session starts correct instead of re-learning the
@@ -1538,6 +1564,10 @@ public sealed class AppServices
             // which ApplyStatScreenMax ignores.
             Player.ApplyStatScreenMax(p.LastKnownStats?.MaxHits ?? 0, p.LastKnownStats?.MaxMana ?? 0);
             SeedSpellbook(p.LastKnownStats);
+            // Restore the learned checkmarks now the class's available list is
+            // built. Resolves by name against Available, so entries the current
+            // class can't learn (a cross-set carryover) are harmlessly dropped.
+            if (learned is not null) Spellbook.SetObtainedByNames(learned);
         };
         Profile.ProfileClosed += () =>
         {
@@ -1920,6 +1950,18 @@ public sealed class AppServices
         // (a real 0 that WOULD gate a toll) from "haven't parsed inventory yet".
         Movement.WealthProvider = () =>
             Inventory.IsLoaded ? Inventory.Snapshot.Currency.TotalCopperValue : (long?)null;
+        // Feed the player's own class Number into "(Class: N OK)" gate
+        // evaluation, resolving the class name through the Classes table (reuses
+        // the equip-filter resolver so the name→Number mapping lives in one
+        // place). null until stats parse or when the class is unknown, so an
+        // unparsed character walks unrestricted — same rule as level / wealth.
+        Movement.ClassNumberProvider = () =>
+        {
+            if (!Stats.HasParsed) return null;
+            int n = Game.Inventory.ItemEquipFilter
+                .ResolveClassProfile(GameData, PlayerStats.Class).ClassNumber;
+            return n > 0 ? n : (int?)null;
+        };
         Favorites = new FavoritesStore(Profile, Log);
 
         // Coordinator + walker. Coordinator is the
@@ -2357,6 +2399,13 @@ public sealed class AppServices
         // engine resume the weapon attack on the resulting *Combat Off*
         // instead of idling until the next round.
         CastDirector.CastFired += Combat.NoteBetweenRoundCast;
+        // Same resume, but for a HAND-typed cast: a manual cast-code never
+        // routes through CastDirector, so sniff the wire for one and arm the
+        // identical signal. A cast-code is any Spells.Short in the active
+        // class's available list.
+        OutboundCast = new Game.Combat.OutboundCastObserver(
+            isCastCode: c => Spellbook.FindByCastCode(c) is not null,
+            onManualCast: Combat.NoteBetweenRoundCast);
         Tick.CombatTickElapsed += Combat.OnCombatTick;
 
         // StealthManager state tracker + auto-sneak /
@@ -2385,6 +2434,7 @@ public sealed class AppServices
         // spell whose element the target resists ≥ 100%. All fail open when game
         // data is silent.
         MonsterMagic = new Game.Combat.MonsterMagicIndex(GameData);
+        MonsterHp = new Game.Combat.MonsterHpIndex(GameData);
         ItemMagic = new Game.Combat.ItemMagicIndex(GameData);
         SpellReqLevel = new Game.Combat.SpellReqLevelIndex(GameData);
         MonsterResist = new Game.Combat.MonsterResistIndex(GameData);
@@ -2648,6 +2698,7 @@ public sealed class AppServices
             readSettings: () => ReadSection<Models.Profile.CashSettings>(Profile.Current, "Cash"),
             isEnabled: () => ReadAutoModeFlag(d => d.AutoGetCash),
             getSnapshot: () => Inventory.Snapshot,
+            isPeekSuppressed: () => RoomTracker.IsPeekSuppressed(),
             log: Log);
         // Reset held tallies on profile swap — prior character's
         // counts aren't relevant to the new one.
@@ -2705,6 +2756,7 @@ public sealed class AppServices
                 ReadSection<Models.Profile.CashSettings>(Profile.Current, "Cash")
                     .CollectAfterCombatFinished,
             hasEngageableHostiles: () => CombatTracker.HasEngageableHostiles,
+            isPeekSuppressed: () => RoomTracker.IsPeekSuppressed(),
             log: Log);
         AutoGetItems.SetAcquisitionGate(Acquisition);
         // Combat-finished flush: every room-entity observation re-checks
@@ -2801,6 +2853,7 @@ public sealed class AppServices
             post: action => Avalonia.Threading.Dispatcher.UIThread.Post(action),
             log: Log);
         Movement.PartyWealthProvider = PartyWealth.MinWealth;
+        Movement.TollWealthProbe = PartyWealth.Probe;
 
         // Base auto-search — a bare `sea` on each genuine room entry reveals
         // hidden items for the auto-get engines. Armed by the persisted

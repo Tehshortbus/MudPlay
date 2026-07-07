@@ -177,14 +177,17 @@ public sealed class SpellBookViewModelTests : IDisposable
     [
         // Mage-only (ClassRest 12), casts starlight (100), unlimited (UseCount 0).
         ItemRow(200, "Wand of Stars", castSpell: 100, useCount: 0, 12),
-        // Unrestricted (no ClassRest entries), casts high arc (101), 3 uses.
-        ItemRow(201, "Scroll of Arc", castSpell: 101, useCount: 3),
+        // Mage-only (ClassRest 12), casts high arc (101), 3 uses.
+        ItemRow(201, "Scroll of Arc", castSpell: 101, useCount: 3, 12),
         // Warrior-only (ClassRest 1), casts starlight — excluded for the Mage.
         ItemRow(202, "Warrior Wand", castSpell: 100, useCount: 5, 1),
         // Mage-only but no CastsSp ability — excluded (not a spell source).
         PlainItemRow(203, "Plain Dagger", 12),
         // Mage-only, casts starlight, single charge — exercises singular "use".
         ItemRow(204, "Single Charge Rod", castSpell: 100, useCount: 1, 12),
+        // Unrestricted (no ClassRest) — usable by every class, so the Spell Book
+        // lists it for none: the display shows only class-specific sources.
+        ItemRow(205, "Universal Charm", castSpell: 101, useCount: 0),
     ];
 
     [Fact]
@@ -193,8 +196,9 @@ public sealed class SpellBookViewModelTests : IDisposable
         SpellbookState book = NewBook(classNumber: 12, level: 5, items: _items); // Mage
         using SpellBookViewModel vm = new(book);
 
-        // Mage can use 200 / 201 / 204; the warrior-only 202 and the
-        // non-casting 203 are excluded. Sorted by item name.
+        // Mage sees its class-specific sources 200 / 201 / 204; the warrior-only
+        // 202, non-casting 203, and universal 205 are all excluded. Sorted by
+        // item name.
         Assert.True(vm.HasCastItems);
         Assert.Equal(new[] { "Scroll of Arc", "Single Charge Rod", "Wand of Stars" },
             vm.CastItems.Select(r => r.ItemName));
@@ -223,16 +227,16 @@ public sealed class SpellBookViewModelTests : IDisposable
     }
 
     [Fact]
-    public void CastItems_RespectClassRestriction_ForNonMageryClass()
+    public void CastItems_ShowOnlyClassSpecificItems_ForNonMageryClass()
     {
-        // A Warrior (non-magery, empty spell book) still surfaces the cast
-        // items it can use: the unrestricted scroll + the warrior-only wand.
+        // A Warrior (non-magery, empty spell book) surfaces only its
+        // class-specific cast item — the warrior-only wand. Mage-restricted
+        // rows and the universal charm anyone can use are both hidden.
         SpellbookState book = NewBook(classNumber: 1, level: 5, items: _items);
         using SpellBookViewModel vm = new(book, () => "Warrior");
 
         Assert.Empty(vm.Rows); // no spells for this class
-        Assert.Equal(new[] { "Scroll of Arc", "Warrior Wand" },
-            vm.CastItems.Select(r => r.ItemName));
+        Assert.Equal(new[] { "Warrior Wand" }, vm.CastItems.Select(r => r.ItemName));
     }
 
     [Fact]
@@ -248,6 +252,19 @@ public sealed class SpellBookViewModelTests : IDisposable
         vm.SearchText = "starlight"; // matches the cast-spell name on 200 + 204
         Assert.Equal(new[] { "Single Charge Rod", "Wand of Stars" },
             vm.CastItems.Select(r => r.ItemName));
+    }
+
+    [Fact]
+    public void CastItems_ExcludeUniversalItems_ButAutomationKeepsThem()
+    {
+        SpellbookState book = NewBook(classNumber: 12, level: 5, items: _items); // Mage
+        using SpellBookViewModel vm = new(book);
+
+        // The universal charm is usable by the Mage, so the casting automation
+        // still sees it in the shared list — it's only the display that narrows
+        // to class-specific sources.
+        Assert.Contains("Universal Charm", book.GetCastItems().Select(i => i.ItemName));
+        Assert.DoesNotContain("Universal Charm", vm.CastItems.Select(r => r.ItemName));
     }
 
     [Fact]

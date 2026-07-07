@@ -335,6 +335,77 @@ public sealed class LoopRunnerTests : IDisposable
         Assert.Contains(h.Events, e => e.Kind == LoopEventKind.StepCompleted);
     }
 
+    // ----- resume-while-in-flight + Pending-at-target self-heal --------
+
+    [Fact]
+    public void ResumeWhileMoveInFlight_DoesNotReSendMove_ThenAdvancesOnConfirmation()
+    {
+        // Regression (the multi-minute loop stall): an instantaneous pause →
+        // resume (a PartyWait gate that asserts and clears in the same instant)
+        // landed while a loop step's move was still on the wire — its
+        // confirmation hadn't arrived, so the tracker was still Pending. The old
+        // resume path fell through to SendNextStep and RE-SENT the same move: a
+        // duplicate command on the wire AND a phantom duplicate in the tracker's
+        // pending queue that never emptied, wedging the tracker in
+        // Pending-at-target and hanging the loop. The fix keeps the in-flight
+        // step and waits for its real confirmation.
+        Harness h = NewHarness();
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Runner.Start(AbCycle());
+        Assert.Single(h.Sent);
+        Assert.Equal("n\r", Encoding.Latin1.GetString(h.Sent[0]));
+        Assert.Equal(RoomConfidence.Pending, h.Tracker.State.Confidence);
+
+        // Instantaneous pause → resume while the N move is still in flight
+        // (no room observed yet, tracker still Pending on it).
+        h.Coordinator.AssertGate(MovementCoordinator.PartyWaitGate);
+        Assert.Equal(LoopState.Paused, h.Runner.State);
+        h.Coordinator.ClearGate(MovementCoordinator.PartyWaitGate);
+        Assert.Equal(LoopState.Running, h.Runner.State);
+
+        // Not re-sent: the move was not duplicated onto the wire.
+        Assert.Single(h.Sent);
+
+        // The real confirmation now lands and the loop advances cleanly.
+        h.Tracker.NoteRoomObserved(new RoomObservation("B",
+            new HashSet<Direction> { Direction.N, Direction.S }));
+
+        Assert.Equal(2, h.Sent.Count);
+        Assert.Equal("s\r", Encoding.Latin1.GetString(h.Sent[1]));
+        Assert.Contains(h.Events, e => e.Kind == LoopEventKind.StepCompleted);
+    }
+
+    [Fact]
+    public void ArrivesAtTargetWhilePendingQueueNotEmpty_Advances_NoHang()
+    {
+        // Defense in depth for the same stall: if a queue desync ever leaves a
+        // phantom move behind the confirming one, the tracker lands physically
+        // at the step's target but stays Pending ("move confirmed, queue not
+        // empty") instead of Confirmed. The loop only ever has one move in
+        // flight, so any queue residue at the target is spurious — arriving at
+        // the target means the step completed. The runner must advance rather
+        // than hang forever on a Confirmed the wedged queue never delivers.
+        Harness h = NewHarness();
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Runner.Start(AbCycle());
+        Assert.Single(h.Sent);
+
+        // Simulate the desync: a phantom duplicate of the in-flight N move is
+        // enqueued behind the real one.
+        h.Tracker.NoteMoveSent(Direction.N);
+
+        // The move confirms at B (1/2 — the step's target) but the phantom keeps
+        // the queue non-empty, so the tracker lands Pending, not Confirmed.
+        h.Tracker.NoteRoomObserved(new RoomObservation("B",
+            new HashSet<Direction> { Direction.N, Direction.S }));
+        Assert.Equal(RoomConfidence.Pending, h.Tracker.State.Confidence);
+
+        // Still advanced: the return step went out despite the Pending posture.
+        Assert.Equal(2, h.Sent.Count);
+        Assert.Equal("s\r", Encoding.Latin1.GetString(h.Sent[1]));
+        Assert.Contains(h.Events, e => e.Kind == LoopEventKind.StepCompleted);
+    }
+
     // ----- PR C: lap timing + ReachedFirstWaypoint ---------------------
 
     [Fact]

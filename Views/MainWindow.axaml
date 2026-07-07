@@ -359,8 +359,8 @@
                      RegenTracker. -->
         <Border DockPanel.Dock="Bottom" Classes="StatusBar">
             <!-- Layout (left → right):
-                 [chip] [room name, flex] [ticks] [connection] -->
-            <Grid ColumnDefinitions="Auto,*,Auto,Auto"
+                 [chip] [room name, flex] [look target] [ticks] [connection] -->
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto"
                   VerticalAlignment="Center"
                   ColumnSpacing="14">
 
@@ -384,9 +384,19 @@
                            Text="{Binding LocationText}"
                            TextTrimming="CharacterEllipsis"/>
 
+                <!-- Look-target HP window. Empty (hidden) until a `look <monster>`
+                     resolves; a coarse wound band × the monster's max HP → an
+                     absolute HP range, invaluable on fast-regen bosses. -->
+                <TextBlock Grid.Column="2"
+                           Classes="StatusSlot StatusMono"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center"
+                           Text="{Binding TargetHpText}"
+                           IsVisible="{Binding TargetHpText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+
                 <!-- Cycle countdowns. Natural HP / MA are always visible
                      once observed; rest / medi append while resting / meditating. -->
-                <StackPanel Grid.Column="2"
+                <StackPanel Grid.Column="3"
                             Orientation="Horizontal" Spacing="14"
                             VerticalAlignment="Center">
                     <TextBlock x:Name="CombatTickLabel"
@@ -401,7 +411,7 @@
                      when a long-delay reconnect is armed (eg cleanup-mode
                      backoff). Hides itself when the timer fires or the
                      user cancels. -->
-                <StackPanel Grid.Column="3"
+                <StackPanel Grid.Column="4"
                             Orientation="Horizontal" Spacing="6"
                             HorizontalAlignment="Right"
                             VerticalAlignment="Center">

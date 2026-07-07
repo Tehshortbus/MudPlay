@@ -347,6 +347,22 @@ public sealed class RoomTracker
             "Look-direction sent — next observation will be ignored as a peek.");
     }
 
+    // Read-only peek check: true when a look-direction peek is currently armed
+    // (a look <dir> was sent within the suppression window and its preview
+    // display hasn't been consumed yet). Unlike NoteRoomObserved, this does NOT
+    // consume the flag — the room-display consumers that fire BEFORE the exits
+    // line (cash pickup, auto-get, the room-entity classifier that drives the
+    // combat gate) call this to skip acting on a peeked room, while the flag
+    // stays armed until NoteRoomObserved fires on "Obvious exits:" and consumes
+    // it. Without this, a `look <dir>` peek renders a full room display and the
+    // engines fire get / equip / combat against a room the player never entered.
+    public bool IsPeekSuppressed(DateTimeOffset? whenUtc = null)
+    {
+        if (_suppressObservationUntil is not { } until) return false;
+        DateTimeOffset when = whenUtc ?? DateTimeOffset.UtcNow;
+        return when <= until;
+    }
+
     // The server-side observation parser reports the room it just saw — name +
     // the set of directions on the "Obvious exits:" line. The tracker reconciles
     // this against the expected outcome of any pending move.
