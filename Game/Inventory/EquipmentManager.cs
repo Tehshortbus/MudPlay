@@ -163,8 +163,14 @@ public sealed class EquipmentManager
         string? wornWeapon = SlotItem(snap, "Weapon Hand");
         string? wornOffHand = SlotItem(snap, "Off-Hand");
         bool twoHanded = _isTwoHanded(w);
+        // Once an 'i' has been parsed, gate equips on what's actually in the pack:
+        // a weapon lost to a deathpile can't be wielded, and blindly sending `eq`
+        // only draws "You do not have X left unequipped." on every combat round.
+        // Unknown inventory (no dump yet) ⇒ availability null ⇒ don't gate.
+        ISet<string>? held = HeldNames(snap);
 
-        if (!string.Equals(w, wornWeapon, StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(w, wornWeapon, StringComparison.OrdinalIgnoreCase)
+            && IsHeld(held, w))
         {
             if (twoHanded && !string.IsNullOrWhiteSpace(wornOffHand))
                 _wire.Send($"rem {wornOffHand!.Trim()}");
@@ -177,9 +183,24 @@ public sealed class EquipmentManager
 
         string? oh = offHand?.Trim();
         if (!string.IsNullOrEmpty(oh)
-            && !string.Equals(oh, wornOffHand, StringComparison.OrdinalIgnoreCase))
+            && !string.Equals(oh, wornOffHand, StringComparison.OrdinalIgnoreCase)
+            && IsHeld(held, oh))
             _wire.Send($"eq {oh}");
     }
+
+    // The carried-but-unworn item names for an observed inventory — the pool a
+    // wear / eq can actually draw from — or null when no 'i' dump has been parsed
+    // yet (availability unknown, so callers don't gate). Only meaningful after a
+    // dump; the carried list is patched live on pickup / drop thereafter.
+    private static ISet<string>? HeldNames(InventorySnapshot snap) =>
+        snap.LastUpdated == DateTimeOffset.MinValue
+            ? null
+            : new HashSet<string>(snap.CarriedItems, StringComparer.OrdinalIgnoreCase);
+
+    // A named item can be equipped only if it's in the pack. Null availability
+    // (no dump parsed) can't gate, so it's allowed through unchanged.
+    private static bool IsHeld(ISet<string>? held, string name) =>
+        held is null || held.Contains(name);
 
     private static string? SlotItem(InventorySnapshot snap, string slot)
     {
@@ -210,7 +231,7 @@ public sealed class EquipmentManager
         InventorySnapshot snap = _getSnapshot();
         var worn = new HashSet<string>(
             snap.EquippedItems.Select(e => e.Name), StringComparer.OrdinalIgnoreCase);
-        List<string> cmds = BuildWearCommands(set, worn, armorOnly: true);
+        List<string> cmds = BuildWearCommands(set, worn, armorOnly: true, availableNames: HeldNames(snap));
         if (cmds.Count == 0) return EquipResult.NoChange;
 
         _log?.Info(LogCategory, $"backstab armor — {cmds.Count} piece(s)");
@@ -260,7 +281,10 @@ public sealed class EquipmentManager
 
         var worn = new HashSet<string>(
             snap.EquippedItems.Select(e => e.Name), StringComparer.OrdinalIgnoreCase);
-        return BuildWearCommands(set, worn);
+        // Gate the set-only diff on the pack once we've parsed an 'i' so an
+        // auto-fire trigger doesn't flood failed wears for gear we no longer hold
+        // (e.g. after a death dumped the whole loadout into a deathpile).
+        return BuildWearCommands(set, worn, availableNames: haveInventory ? HeldNames(snap) : null);
     }
 
     // ----- pure apply logic (unit-tested directly) ------------------------
@@ -273,8 +297,14 @@ public sealed class EquipmentManager
     // explicit remove is needed for a full-loadout swap. armorOnly additionally
     // skips the held slots (Weapon / Off-Hand) — the backstab auto-fire leaves
     // the weapon to the combat engine's immediate swap.
+    // availableNames, when non-null, is the set of items the character actually
+    // holds (carried-but-unworn); an item that's neither worn nor in it is
+    // skipped, since the wear would only draw "You do not have X left
+    // unequipped." When null (no 'i' parsed, or a test), availability is unknown
+    // and every not-worn set item is issued, preserving the pre-gate behaviour.
     internal static List<string> BuildWearCommands(
-        EquipmentSet set, ISet<string> wornNames, bool armorOnly = false)
+        EquipmentSet set, ISet<string> wornNames, bool armorOnly = false,
+        ISet<string>? availableNames = null)
     {
         var cmds = new List<string>();
         foreach (EquipmentSlotEntry e in set.Slots)
@@ -284,6 +314,7 @@ public sealed class EquipmentManager
             string? name = e.ItemName?.Trim();
             if (string.IsNullOrEmpty(name)) continue;
             if (wornNames.Contains(name)) continue;
+            if (availableNames is not null && !availableNames.Contains(name)) continue;
             cmds.Add($"wear {name}");
         }
         return cmds;
