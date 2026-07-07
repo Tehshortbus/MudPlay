@@ -5,6 +5,7 @@ Notable changes per merged PR, **newest first**. The top of the [README](README.
 ## 1.11.0
 
 - A fatal crash now drops a `Crash-<timestamp>.md` on the Desktop carrying the exception plus the live client state (scrollback / log / engine), so a lost session is recoverable after the fact
+- Auto-equip / combat weapon-swap only issues wear/eq for gear still in your pack — a post-death empty inventory no longer floods "You do not have X left unequipped." each round
 
 ## 1.10.0
 
