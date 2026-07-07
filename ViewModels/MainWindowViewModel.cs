@@ -2258,6 +2258,10 @@ public partial class MainWindowViewModel : ObservableObject
         // display is dropped as a peek) and text-exit movement verbs
         // (so the step is captured for replay-from-last-Confirmed).
         AppServices.Current.OutboundMovement.ObserveOutbound(data);
+        // Cast observer — a manually-typed cast-code breaks combat for the
+        // round; arm the engine's between-round-cast resume so a still-alive
+        // target is re-attacked at once instead of a round late.
+        AppServices.Current.OutboundCast.ObserveOutbound(data);
         // Chat router — capture engine-sent telepath "/<recipient> <message>"
         // bursts (party @-command broadcasts / nags) so the outgoing
         // conversation entry is attributed. Typed telepaths render on-screen

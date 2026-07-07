@@ -1089,6 +1089,12 @@ public sealed class AppServices
     // of drifting to Lost. Subscribes to the router for app lifetime.
     public Game.Map.FollowMoveObserver FollowMove { get; private set; } = null!;
 
+    // Recognises a manually-typed spell cast-code on the wire and arms the
+    // combat engine's between-round-cast resume, so a hand-cast that breaks
+    // combat mid-fight re-attacks a still-alive target at once instead of
+    // idling until the next round. Hooked from MainWindowViewModel.SendUserInput.
+    public Game.Combat.OutboundCastObserver OutboundCast { get; private set; } = null!;
+
     // Death-message detector — watches lines for either post-death lives
     // readout (You now have N lives remaining. / You have N lives left.,
     // the latter the miracle-save death) and fires
@@ -2376,6 +2382,13 @@ public sealed class AppServices
         // engine resume the weapon attack on the resulting *Combat Off*
         // instead of idling until the next round.
         CastDirector.CastFired += Combat.NoteBetweenRoundCast;
+        // Same resume, but for a HAND-typed cast: a manual cast-code never
+        // routes through CastDirector, so sniff the wire for one and arm the
+        // identical signal. A cast-code is any Spells.Short in the active
+        // class's available list.
+        OutboundCast = new Game.Combat.OutboundCastObserver(
+            isCastCode: c => Spellbook.FindByCastCode(c) is not null,
+            onManualCast: Combat.NoteBetweenRoundCast);
         Tick.CombatTickElapsed += Combat.OnCombatTick;
 
         // StealthManager state tracker + auto-sneak /

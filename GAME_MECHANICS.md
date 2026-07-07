@@ -97,6 +97,15 @@ it isn't here and you're unsure, ask.
   hurt this monster; the client swaps to the configured alternate weapon.
 - **[OBSERVED]** `Your fists have no effect against this monster!` — you're swinging bare-handed
   (no weapon in hand, or it left your hand).
+- **[CONFIRMED]** **Casting a spell mid-fight drops the auto-attack for that round** — the server
+  emits `*Combat Off*` because a cast is a distinct action that interrupts the sustained weapon
+  swing. If the target is **still alive** after the cast, the desired behaviour is to **re-attack
+  immediately** (as soon as the `*Combat Off*` lands), not wait for the next combat-round tick or a
+  manual room re-parse. Confirmed by the user casting a Kai power (`swan`) on a live target: without
+  a prompt re-attack the client idled a full round. Applies to a **hand-typed** cast just as much as
+  an engine-issued between-round cast — in this realm a spell is cast by typing its cast-code
+  (`Spells.Short`) directly (`swan`, `swan rat`), with no `c` verb precursor, so the client
+  recognises a manual cast by that cast-code on the wire.
 
 ## Monster aggression — who opens on you unprovoked
 

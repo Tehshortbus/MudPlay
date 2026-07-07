@@ -2,12 +2,13 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
-## 1.11.7
+## 1.11.8
 
 - Looking into an exit no longer fires get / equip / attack against the peeked room — automation waits until you actually walk in
 - Auto-combat now engages on a real walk-in that follows a look-direction peek
 - Equip-all wears stacked / doubled-up gear instead of stopping after the first item
 - Auto-combat-off mid-round releases the walker and clears the in-combat gate so movement resumes
+- Hand-casting a spell mid-fight re-attacks a still-alive target immediately instead of idling until the next round
 - Rest-if-below now actually sends `rest` when it triggers
 - Learned spells persist across sessions — Spell Book checkmarks survive a relog instead of blanking until the next `spells` / `pow` poll
 - Spell Book cast-on-use list shows only the class's own items, not every universal wand / scroll
