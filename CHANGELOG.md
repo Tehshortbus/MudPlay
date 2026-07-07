@@ -2,6 +2,10 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.11.0
+
+- A fatal crash now drops a `Crash-<timestamp>.md` on the Desktop carrying the exception plus the live client state (scrollback / log / engine), so a lost session is recoverable after the fact
+
 ## 1.10.0
 
 - Navigation map marks each un-recovered death with a skull; it clears once the deathpile is fully recovered

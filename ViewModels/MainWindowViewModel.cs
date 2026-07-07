@@ -446,6 +446,14 @@ public partial class MainWindowViewModel : ObservableObject
         Lines = new LineExtractor(Emulator);
         Capture = new CaptureSession(Emulator.Screen.Scrollback);
 
+        // Feed the crash reporter a live-state snapshot so a fatal fault's
+        // Crash-<timestamp>.md carries the same scrollback / log / engine dump a
+        // manual bug report would. Reads the current Emulator at call time (it
+        // can be swapped per connection); guarded on the reporter's side.
+        CrashReporter.RegisterStateProvider(() =>
+            BugReportBuilder.RenderStateOnly(
+                BugReportBuilder.Capture(AppServices.Current, Emulator)));
+
         // 100 ms refresh — matches TickEngine's internal cadence so the
         // countdown ticks down by 0.1 s each repaint instead of jumping
         // in 0.5 s chunks.

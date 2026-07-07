@@ -85,13 +85,29 @@ public static class BugReportBuilder
         sb.Append(string.IsNullOrWhiteSpace(issueDescription) ? "_(none provided)_" : issueDescription.Trim());
         sb.Append("\n\n");
 
+        AppendSections(sb, capture);
+        return sb.ToString();
+    }
+
+    // State-only variant for the crash reporter: the section dump with no
+    // bug-report title and no user-description block, so a crash document can
+    // embed the same live-state snapshot under its own headings.
+    public static string RenderStateOnly(BugReportCapture capture)
+    {
+        ArgumentNullException.ThrowIfNull(capture);
+
+        StringBuilder sb = new(capacity: 16 * 1024);
+        AppendSections(sb, capture);
+        return sb.ToString();
+    }
+
+    private static void AppendSections(StringBuilder sb, BugReportCapture capture)
+    {
         foreach (Section section in capture.Sections)
         {
             sb.Append("## ").Append(section.Heading).Append("\n\n");
             sb.Append(section.Body.TrimEnd()).Append("\n\n");
         }
-
-        return sb.ToString();
     }
 
     // Desktop file name for a capture: realm-yyyyMMdd-HHmmss.md, e.g.
