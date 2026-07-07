@@ -40,20 +40,6 @@
             <Setter Property="FormatString" Value="0"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
         </Style>
-        <!-- The stock DataGrid header ellipsis-trims its label and reserves
-             padding plus a sort-glyph slot, so even a short header like "Str"
-             clips inside an otherwise roomy column. Render the label in a
-             non-trimming TextBlock and tighten the padding so the full text
-             always shows. ReflectionBinding (empty path -> the header string)
-             matches the compiled-binding fallback the grid's cells already use. -->
-        <Style Selector="DataGridColumnHeader">
-            <Setter Property="Padding" Value="4,0,2,0"/>
-            <Setter Property="ContentTemplate">
-                <DataTemplate>
-                    <TextBlock Text="{ReflectionBinding}" TextTrimming="None"/>
-                </DataTemplate>
-            </Setter>
-        </Style>
     </Window.Styles>
 
     <Border Background="{StaticResource ChromeBgBrush}" Padding="12">

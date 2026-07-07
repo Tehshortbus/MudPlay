@@ -2,7 +2,7 @@
 
 <!-- current-version:start -->
 > **Version 1.14.1**
-> - Item Finder column headers no longer truncate — short labels like "Str" render in full instead of clipping to an ellipsis
+> - DataGrid column headers no longer truncate anywhere — short labels like "Str" render in full instead of clipping to an ellipsis (Item Finder, Game Data browser, Spell Book, Spell Coverage, and the rest)
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->
