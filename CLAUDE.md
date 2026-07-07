@@ -13,7 +13,7 @@ What it is **not**: not a PTY wrapper, not a generic SSH client, not a curses-st
 
 The phased implementation plan is **complete** — the app is at **1.0.0** and in a bugfix / maintenance cycle. There is no more `docs/` build plan; work now flows as focused fixes and small enhancements, each on its own branch + PR.
 
-- **PR cadence**: one fix / feature = one PR; one PR at a time; the next doesn't begin until the current merges. Keep each PR focused (see PR-size discipline under Scope discipline).
+- **PR cadence**: one open PR at a time; the next doesn't begin until the current merges. **Bug reports dropped together all land on the same open PR** — a batch shares one branch + PR (consolidated changelog entry, PATCH counting the reports per the versioning rule below). The exception is a report that needs **more than a fix to resolve** — a significant feature-scale design change or new implementation: **suggest breaking that onto its own PR and let the user decide** (they'll agree, or tell you to fold it into the current open PR). Keep each PR focused (see PR-size discipline under Scope discipline). The user merges the PR when it looks good to them; after the merge, wait for whatever comes next.
 - **Versioning (semver, post-1.0)**: the version lives once in `FujinTerm.csproj` `<Version>` (`AppInfo.Version` reads it back for the `@version` reply). Bump it by **change type, not PR size**:
   - **MAJOR** — a whole-program refactor or other sweeping/breaking overhaul. Rare.
   - **MINOR** — a new feature or an enhancement to an existing one (added or changed capability). One bump per feature/enhancement, and it resets PATCH to 0 (e.g. 1.5.11 + a feature → 1.6.0).
