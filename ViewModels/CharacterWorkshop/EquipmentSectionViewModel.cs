@@ -200,7 +200,7 @@ public sealed partial class EquipmentSectionViewModel : WorkshopSectionViewModel
     [RelayCommand]
     private async Task OpenItemFinder()
     {
-        var finder = new ItemFinderViewModel(_gameData);
+        var finder = new ItemFinderViewModel(_gameData, _stats, _inventory);
         await AppServices.Current.Dialogs
             .OpenWindowAsync<ItemFinderViewModel, bool>(finder);
     }

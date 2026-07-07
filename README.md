@@ -1,26 +1,10 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.12.0**
-> - Looking at a monster shows its estimated HP range on the status bar — a coarse wound band applied to the monster's max HP, so a fast-regen boss's HP gate is readable at a glance
-> - Map draws a one-way arrow on connectors with no return exit (class-hall entrances, drop-only passages)
-> - Map keeps cross-level text portals (go-portal / manhole) off the plane instead of pulling a far floor's rooms onto it, de-cluttering ~4300 rooms
-> - Map holds a 15-second browse window after a pan / zoom / floor-crawl before snapping back to the player, and re-centres correctly when crossing an up/down exit instead of holding a stale room
-> - Class-gated exits are parsed, labelled in the room tooltip (e.g. "Druid only"), and dropped from walk-to routes for the wrong class
-> - Level-gated exits block a walk-to route when your level falls outside the exit's window
-> - Status-bar room slot now shows the session exp/hour rate alongside the room name
-> - Party `@wealth` is only probed when a toll is actually on the walk-to / loop route, not on an off-path toll the map search happened to touch
-> - Looking into an exit no longer fires get / equip / attack against the peeked room — automation waits until you actually walk in
-> - Auto-combat now engages on a real walk-in that follows a look-direction peek
-> - Equip-all wears stacked / doubled-up gear instead of stopping after the first item
-> - Auto-combat-off mid-round releases the walker and clears the in-combat gate so movement resumes
-> - Hand-casting a spell mid-fight re-attacks a still-alive target immediately instead of idling until the next round
-> - Rest-if-below now actually sends `rest` when it triggers
-> - A loop no longer hangs for minutes when a party @wait pause/resume lands mid-step — the in-flight move isn't re-sent, and arriving at the target advances even if the tracker's queue is momentarily out of sync
-> - Learned spells persist across sessions — Spell Book checkmarks survive a relog instead of blanking until the next `spells` / `pow` poll
-> - Spell Book cast-on-use list shows only the class's own items, not every universal wand / scroll
-> - Backscroll copy survives a broken DBus clipboard instead of crashing the client
-> - A benign background DBus service-missing fault (clipboard / portal on desktops without it) no longer drops a bogus crash report on the Desktop
+> **Version 1.13.0**
+> - Item Finder hides items the realm never puts in play (sysop-only / unimplemented / duplicate rows like "bow of silver"), showing only obtainable gear
+> - Item Finder weapon-type filter adds "(All 1H weapons)" / "(All 2H weapons)" alongside the specific blunt/sharp types
+> - Item Finder weapons show the avg swings/round over 10 rounds for the live character, sortable like the other columns
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

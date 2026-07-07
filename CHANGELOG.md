@@ -2,6 +2,12 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.13.0
+
+- Item Finder hides items the realm never puts in play (sysop-only / unimplemented / duplicate rows like "bow of silver"), showing only obtainable gear
+- Item Finder weapon-type filter adds "(All 1H weapons)" / "(All 2H weapons)" alongside the specific blunt/sharp types
+- Item Finder weapons show the avg swings/round over 10 rounds for the live character, sortable like the other columns
+
 ## 1.12.0
 
 - Looking at a monster shows its estimated HP range on the status bar — a coarse wound band applied to the monster's max HP, so a fast-regen boss's HP gate is readable at a glance

@@ -8,6 +8,7 @@ using System.Text.Json;
 using Avalonia.Collections;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using FujinTerm.Game;
 using FujinTerm.Game.Calculators;
 using FujinTerm.Game.Inventory;
 using FujinTerm.Models.Profile;
@@ -33,11 +34,19 @@ public sealed partial class ItemFinderViewModel : ObservableObject, IDialogViewM
     private const string AnySlot = "(Any slot)";
     private const string AnyType = "(Any)";
 
+    // Aggregate weapon-type options that span both damage kinds of a hand class.
+    // Weapon-type codes: 0 = 1H Blunt, 1 = 2H Blunt, 2 = 1H Sharp, 3 = 2H Sharp.
+    private const string All1H = "(All 1H weapons)";
+    private const string All2H = "(All 2H weapons)";
+    private static readonly int[] OneHandedCodes = { 0, 2 };
+    private static readonly int[] TwoHandedCodes = { 1, 3 };
+
     public event Action<bool>? CloseRequested;
 
     private readonly GameDataCache _gameData;
     private readonly IReadOnlyList<ItemFinderEntry> _all;
     private readonly Dictionary<string, EquipmentSlot> _slotByLabel = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, int> _weaponCodeByLabel = new(StringComparer.Ordinal);
 
     // Snapshot of the derived filter inputs, refreshed by ApplyFilter so the per-item
     // predicate stays a cheap field compare rather than re-resolving each call.
@@ -45,7 +54,9 @@ public sealed partial class ItemFinderViewModel : ObservableObject, IDialogViewM
     private AlignmentBucket? _activeAlignment;
     private bool _activeCharFilter;
     private EquipmentSlot? _activeSlot;
-    private string? _activeWeaponType;
+    // Weapon-type codes the active weapon filter accepts (null = no weapon filter).
+    // A single-element set for a specific type, the 1H / 2H pair for the aggregates.
+    private int[]? _activeWeaponCodes;
     private string? _activeArmourType;
     private bool _filterSuspended = true;
 
@@ -102,11 +113,16 @@ public sealed partial class ItemFinderViewModel : ObservableObject, IDialogViewM
     [ObservableProperty] private int _maxStrReq;     // required-strength gate (≤)
     [ObservableProperty] private int _maxLevelReq;   // required-level gate (≤)
 
-    public ItemFinderViewModel(GameDataCache gameData)
+    public ItemFinderViewModel(GameDataCache gameData, PlayerStats stats, InventoryManager inventory)
     {
         ArgumentNullException.ThrowIfNull(gameData);
+        ArgumentNullException.ThrowIfNull(stats);
+        ArgumentNullException.ThrowIfNull(inventory);
         _gameData = gameData;
-        _all = ItemFinderEntry.BuildCatalog(gameData);
+        // Snapshot the live character's swing inputs once at open — the finder is a
+        // static browse aid, so the Swings column reflects the character as they are
+        // when it's opened rather than tracking mid-browse stat changes.
+        _all = ItemFinderEntry.BuildCatalog(gameData, BuildSwingContext(gameData, stats, inventory));
 
         RowsView = new DataGridCollectionView(_all) { Filter = PassesFilter };
 
@@ -115,6 +131,28 @@ public sealed partial class ItemFinderViewModel : ObservableObject, IDialogViewM
         _filterSuspended = false;
         PropertyChanged += OnFilterPropertyChanged;
         ApplyFilter();
+    }
+
+    // Assemble the per-weapon swing inputs from the live character. Null when no
+    // character is loaded (level 0) or the class combat level can't be resolved —
+    // BuildCatalog then leaves every Swings cell blank.
+    private static ItemFinderEntry.SwingContext? BuildSwingContext(
+        GameDataCache gameData, PlayerStats stats, InventoryManager inventory)
+    {
+        if (stats.Level <= 0) return null;
+        int combatLevel = ReadInt(gameData.FindRowByName("Classes", stats.Class), "CombatLVL");
+        if (combatLevel <= 0) return null;
+        EncumbranceReading encum = inventory.Snapshot.Encumbrance;
+        return new ItemFinderEntry.SwingContext(
+            combatLevel, stats.Level, stats.Agility, stats.Strength,
+            encum.CurrentWeight, encum.MaxWeight, gameData.ActiveRealm);
+    }
+
+    private static int ReadInt(JsonElement? row, string property)
+    {
+        if (row is not JsonElement el || el.ValueKind != JsonValueKind.Object) return 0;
+        if (!el.TryGetProperty(property, out JsonElement v)) return 0;
+        return v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out int n) ? n : 0;
     }
 
     private void BuildOptionLists()
@@ -136,12 +174,21 @@ public sealed partial class ItemFinderViewModel : ObservableObject, IDialogViewM
         }
 
         WeaponTypeOptions.Add(AnyType);
-        foreach (string label in _all
+        // Offer the hand-class aggregates ahead of the specific types, but only
+        // when the catalog actually holds a weapon of that class.
+        if (_all.Any(static e => Array.IndexOf(OneHandedCodes, e.WeaponType) >= 0))
+            WeaponTypeOptions.Add(All1H);
+        if (_all.Any(static e => Array.IndexOf(TwoHandedCodes, e.WeaponType) >= 0))
+            WeaponTypeOptions.Add(All2H);
+        foreach (ItemFinderEntry e in _all
                      .Where(static e => e.WeaponTypeLabel is not null)
                      .OrderBy(static e => e.WeaponType)
-                     .Select(static e => e.WeaponTypeLabel!)
-                     .Distinct(StringComparer.Ordinal))
-            WeaponTypeOptions.Add(label);
+                     .GroupBy(static e => e.WeaponTypeLabel!, StringComparer.Ordinal)
+                     .Select(static g => g.First()))
+        {
+            _weaponCodeByLabel[e.WeaponTypeLabel!] = e.WeaponType;
+            WeaponTypeOptions.Add(e.WeaponTypeLabel!);
+        }
 
         ArmourTypeOptions.Add(AnyType);
         foreach (string label in _all
@@ -174,7 +221,13 @@ public sealed partial class ItemFinderViewModel : ObservableObject, IDialogViewM
         _activeCharFilter = _activeClass.ClassNumber > 0 || UsableLevel > 0 || _activeAlignment is not null;
 
         _activeSlot = SelectedSlot is { } sl && _slotByLabel.TryGetValue(sl, out EquipmentSlot s) ? s : null;
-        _activeWeaponType = SelectedWeaponType is { } wt && wt != AnyType ? wt : null;
+        _activeWeaponCodes = SelectedWeaponType switch
+        {
+            All1H => OneHandedCodes,
+            All2H => TwoHandedCodes,
+            { } wt when wt != AnyType && _weaponCodeByLabel.TryGetValue(wt, out int code) => new[] { code },
+            _ => null,
+        };
         _activeArmourType = SelectedArmourType is { } at && at != AnyType ? at : null;
 
         RowsView.Refresh();
@@ -187,7 +240,9 @@ public sealed partial class ItemFinderViewModel : ObservableObject, IDialogViewM
         if (o is not ItemFinderEntry e) return false;
 
         if (_activeSlot is { } slot && e.Slot != slot) return false;
-        if (_activeWeaponType is { } wt && e.WeaponTypeLabel != wt) return false;
+        // A weapon-type filter keeps only matching weapons — non-weapons (code -1)
+        // never appear in the code set, so they're excluded, as before.
+        if (_activeWeaponCodes is { } codes && Array.IndexOf(codes, e.WeaponType) < 0) return false;
         if (_activeArmourType is { } at && e.ArmourTypeLabel != at) return false;
         if (BackstabOnly && !e.CanBackstab) return false;
 
