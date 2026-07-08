@@ -156,12 +156,6 @@ public sealed class CombatSettings
     // than waste a round on break.
     public bool BreakBeforeFleeing { get; set; } = true;
 
-    // ----- Failure tracking -----------------------------------------
-
-    // How many consecutive "no effect" lines move a target to the room-scoped
-    // unhittable set. Default 1.
-    public int NoEffectFailureThreshold { get; set; } = 1;
-
     // ----- Spell combat ---------------------------------------------
 
     // How CombatSpellSlot.MinManaPerCast values are read across all five spell

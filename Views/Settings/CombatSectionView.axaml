@@ -172,9 +172,9 @@
                               ToolTip.Tip="Combat-off override for stealth runners. When sprinting a walk-to route with combat OFF and auto-sneak ON, a room holding a see-hidden monster breaks sneak. With this on, the engine force-clears every hostile in that room (bypassing the Min/Max gate) so the route can resume sneaking — preventing monsters from dragging and stacking across rooms. Off by default."/>
                 </StackPanel>
 
-                <!-- ============ Room-skip + failure ============ -->
+                <!-- ============ Room-skip ============ -->
                 <TextBlock Classes="SectionHeader" Text="Room thresholds"/>
-                <Grid ColumnDefinitions="180,*" RowDefinitions="Auto,Auto,Auto,Auto">
+                <Grid ColumnDefinitions="180,*" RowDefinitions="Auto,Auto,Auto">
                     <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Min. monsters"/>
                     <NumericUpDown Grid.Row="0" Grid.Column="1"
                                    Value="{Binding MinMonstersInRoom, Mode=TwoWay}"
@@ -192,12 +192,6 @@
                                    Value="{Binding RunDistance, Mode=TwoWay}"
                                    Minimum="1" Maximum="100" Width="120" HorizontalAlignment="Left"
                                    ToolTip.Tip="Rooms to flee before re-evaluating. Range 1–100."/>
-
-                    <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="No-effect threshold"/>
-                    <NumericUpDown Grid.Row="3" Grid.Column="1"
-                                   Value="{Binding NoEffectFailureThreshold, Mode=TwoWay}"
-                                   Minimum="1" Maximum="20" Width="120" HorizontalAlignment="Left"
-                                   ToolTip.Tip="Consecutive 'no effect' lines that move a target to the room-scoped unhittable set. Canonical-species dedup applies (nasty giant rat and giant rat share)."/>
                 </Grid>
 
                 <!-- Run-away (flee) behaviour — coordinates with Run distance

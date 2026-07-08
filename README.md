@@ -4,6 +4,7 @@
 > **Version 1.19.0**
 > - Auto-flee now walks the real graph path instead of repeating one direction into a wall — backward retraces the reverse trail toward the run's start, forward keeps heading along the planned route
 > - Flee distance default lowered from 3 rooms to 2
+> - Auto-attack swaps to the alternate weapon on the first "no effect" against a monster — the No-effect threshold picker is gone
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->
