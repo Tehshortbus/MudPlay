@@ -111,9 +111,37 @@ it isn't here and you're unsure, ask.
     not search rooms**, so a monster that walks into a room you're hidden in never reveals you — it
     just becomes a backstab target. (A monster's passive **see-hidden** ability is a separate thing:
     it reveals a stealthed character to the whole room on sight, defeating the opener — see below.)
+
+**Hide state machine** *(lines all [CONFIRMED] — from paired two-character POV captures)*
+- `Attempting to hide...` (alone, no suffix) — the attempt fired and the server ran a hide check,
+  but the outcome is **NOT reported to you**. This line is **ambiguous**: it means "a check
+  happened," not "you are hidden." You cannot tell success from failure off this line alone.
+- `Attempting to hide...You don't think you are hidden.` — explicit hide **FAILURE**. This is the
+  only self-observable failure signal.
+- **Hide SUCCESS is not self-observable.** There is no self-side "you are now hidden" confirmation.
+  The only 100%-reliable confirmation is **external**: another player displaying the room and finding
+  you **absent** from the `Also here:` line (or their `search` failing to turn you up). From your own
+  output stream, the best you can know is "an attempt fired" (`Attempting to hide...`) or "it
+  failed" (`...You don't think you are hidden.`) — never a positive success.
+- **Reveal (search) mechanic:**
+  - A player runs `search` / `sea`. On a hit they see `You see <name> hiding in the shadows.` and the
+    hidden character is revealed (returned to `Also here:`); on a miss they see
+    `Your search revealed nothing.`.
+  - The hidden character sees `<name> is searching the area.` while someone searches — i.e. you get
+    a warning that a reveal attempt is in progress.
+- **Party warning [CONFIRMED]:** **do not hide while in a party.** A hidden member is removed from
+  `Also here:`, and a player who isn't listed there **cannot be single-target-targeted** by other
+  players — including party heals and buffs — until revealed. Only room-wide spells (relevant in PvP)
+  and possibly party-wide spells still reach a hidden member. Auto-hide must therefore be suppressed
+  whenever the character is in a party.
+
 - **Client note:** the engine currently arms the opening `bs` off the **sneaking** state only. The
-  hidden-room opener (a monster walking into a room the character is hidden in) is a known gap —
-  hide-state tracking isn't wired yet, so that scenario isn't handled.
+  hidden-room opener (a monster walking into a room the character is hidden in) is a known gap, and
+  it's a **hard** one: because hide success is not self-observable, the client can never reliably
+  latch a `Hidden = true` state from its own stream. Any future hide support has to either treat
+  `Attempting to hide...` as *optimistically* hidden (and let the surprise-round resolver confirm or
+  deny after the fact) or accept that only the **failure** line (`...You don't think you are hidden.`)
+  is ground truth. Latching Hidden off a positive confirmation is not possible from the self POV.
 
 ## Combat & backstab
 
