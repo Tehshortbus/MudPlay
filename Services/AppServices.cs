@@ -2470,14 +2470,27 @@ public sealed class AppServices
         // Any NPC in the room prevents sneak, so
         // suppress the doomed `sn` instead of firing it into a rejection.
         Stealth.SetSneakBlockCheck(() => CombatTracker.HasRoomNpc);
+        // Auto-hide is suppressed in a party — a hidden member falls off the
+        // Also-here line and can't be single-target-healed/buffed until revealed.
+        Stealth.SetPartyCheck(() => PartyState.IsInParty);
 
-        // Backstab window — CombatManager opens with `bs` on the
-        // first swing into a room while sneaking, unless a seehidden
-        // monster is present (which reveals us to the whole room).
+        // Backstab window — CombatManager opens with `bs` on the first swing while
+        // stealthed: either a sneak-approach into the monster's room, or a monster
+        // walking into a room the character is (optimistically) hidden in. Skipped
+        // when a seehidden monster is present (which reveals us to the whole room).
         SeeHidden = new Game.Combat.SeeHiddenIndex(GameData);
         Combat.SetBackstabHooks(
-            isSneaking:   () => Stealth.IsSneaking,
+            isStealthed:  () => Stealth.IsStealthed,
             hasSeeHidden: n => SeeHidden.Has(n));
+        // A fresh hide re-arms the surprise round for the stationary hidden opener:
+        // when the FSM latches Hidden, re-open so a monster that wanders in is a
+        // genuine backstab target again (no gear swap — equipping would break hide).
+        Stealth.StateChanged += (prev, next) =>
+        {
+            if (next == Game.Stealth.StealthState.Hidden
+             && prev != Game.Stealth.StealthState.Hidden)
+                Combat.RearmBackstabForHide();
+        };
         // Backstab-failure flee (CombatSettings.RunIfBackstabFails). Combat detects
         // the failed surprise round; HealthManager owns the flee route + engine.
         Combat.SetBackstabFailureFlee(() => Health.RunFromBackstabFailure());

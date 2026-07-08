@@ -180,6 +180,61 @@ public sealed class StealthManagerTests
         Assert.False(h.State.IsHidden);
     }
 
+    [Fact]
+    public void HideInitiate_OptimisticallyEstablishesHidden()
+    {
+        // Hide success isn't self-observable: a bare "Attempting to hide..." only
+        // proves a check ran. We treat it as optimistically hidden so the backstab
+        // opener arms; the surprise-round resolver confirms or denies later.
+        using Harness h = new();
+        h.Feed("Attempting to hide...");
+
+        Assert.Equal(StealthState.Hidden, h.Stealth.State);
+        Assert.True(h.State.IsHidden);
+        Assert.True(h.Stealth.IsStealthed);
+    }
+
+    [Fact]
+    public void HideFailed_DropsOptimisticHidden()
+    {
+        // The one ground-truth failure line clears the optimistic hidden state.
+        using Harness h = new();
+        h.Feed("Attempting to hide...");
+        Assert.True(h.State.IsHidden);
+
+        h.Feed("Attempting to hide...You don't think you are hidden.");
+
+        Assert.Equal(StealthState.Idle, h.Stealth.State);
+        Assert.False(h.State.IsHidden);
+    }
+
+    [Fact]
+    public void HideInitiate_DoesNotMatchFailureLine()
+    {
+        // The $-anchored initiate pattern must not fire on the suffixed failure
+        // line — otherwise a failed hide would latch optimistic-hidden.
+        using Harness h = new();
+        h.Feed("Attempting to hide...You don't think you are hidden.");
+
+        Assert.False(h.State.IsHidden);
+        Assert.NotEqual(StealthState.Hidden, h.Stealth.State);
+    }
+
+    [Fact]
+    public void Hidden_MoveBreaksHide()
+    {
+        // You can't move while hidden, so a confirmed room change drops the
+        // optimistic hidden state.
+        using Harness h = new();
+        h.Feed("Attempting to hide...");
+        Assert.True(h.State.IsHidden);
+
+        h.Stealth.NoteRoomChanged();
+
+        Assert.Equal(StealthState.Idle, h.Stealth.State);
+        Assert.False(h.State.IsHidden);
+    }
+
     // ----- transition event -------------------------------------------
 
     [Fact]
@@ -218,6 +273,7 @@ public sealed class StealthManagerTests
         public List<byte[]> Sent { get; } = new();
         public bool AutoSneakOn { get; set; }
         public bool AutoHideOn { get; set; }
+        public bool InParty { get; set; }
 
         public AutoHarness()
         {
@@ -227,7 +283,13 @@ public sealed class StealthManagerTests
             Stealth.SetAutoToggles(
                 () => AutoSneakOn,
                 () => AutoHideOn);
+            Stealth.SetPartyCheck(() => InParty);
         }
+
+        public void Feed(string line) =>
+            Router.Dispatch(new LineExtractor.EmittedLine(
+                line, Array.Empty<CellAttributes>(),
+                DateTimeOffset.UtcNow, IsPromptLine: false));
 
         public string LastSent() =>
             Sent.Count == 0
@@ -431,6 +493,49 @@ public sealed class StealthManagerTests
         h.Stealth.NoteIdleOpportunity();
 
         Assert.Empty(h.Sent);
+    }
+
+    [Fact]
+    public void AutoHide_InParty_Suppressed()
+    {
+        // A hidden member falls off the room's Also-here line and can't be
+        // single-target-healed/buffed by the party until revealed, so auto-hide
+        // must not fire while in a party.
+        using AutoHarness h = new() { AutoHideOn = true, InParty = true };
+
+        h.Stealth.NoteIdleOpportunity();
+
+        Assert.Empty(h.Sent);
+    }
+
+    [Fact]
+    public void AutoHide_AttemptInFlight_NoResend()
+    {
+        // After the first `hid` the FSM sits in AttemptingHide waiting on the
+        // ambiguous initiate line; a second idle opportunity must not stack a
+        // duplicate attempt.
+        using AutoHarness h = new() { AutoHideOn = true };
+        h.Stealth.NoteIdleOpportunity();
+        Assert.Single(h.Sent);
+        Assert.Equal(StealthState.AttemptingHide, h.Stealth.State);
+
+        h.Stealth.NoteIdleOpportunity();
+
+        Assert.Single(h.Sent);
+    }
+
+    [Fact]
+    public void AutoHide_InitiateLine_LatchesHidden()
+    {
+        // End-to-end: auto-hide sends `hid`, and the server's bare initiate line
+        // optimistically latches Hidden (which is what re-arms the backstab
+        // opener via StateChanged).
+        using AutoHarness h = new() { AutoHideOn = true };
+        h.Stealth.NoteIdleOpportunity();
+        h.Feed("Attempting to hide...");
+
+        Assert.Equal(StealthState.Hidden, h.Stealth.State);
+        Assert.True(h.State.IsHidden);
     }
 
     [Fact]

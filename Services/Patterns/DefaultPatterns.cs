@@ -38,6 +38,10 @@ public static class DefaultPatterns
         yield return new RegexPattern(KnownPatterns.UserSneakFailed,   @"^Attempting to sneak\.\.\.You don't think you're sneaking\.");
         yield return new RegexPattern(KnownPatterns.UserSneakInitiate, @"^Attempting to sneak\.\.\.$");
         yield return new RegexPattern(KnownPatterns.UserCantSneak,     @"^You may not sneak right now!");
+        // UserHideFailed carries the suffix; UserHideInitiate is $-anchored so it
+        // only matches the bare (outcome-ambiguous) attempt line.
+        yield return new RegexPattern(KnownPatterns.UserHideFailed,     @"^Attempting to hide\.\.\.You don't think you are hidden\.");
+        yield return new RegexPattern(KnownPatterns.UserHideInitiate,   @"^Attempting to hide\.\.\.$");
 
         // ----- Room light ------------------------------------------------
         // Only the two "can't see" lines; prefix-anchored so trailing

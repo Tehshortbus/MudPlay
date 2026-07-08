@@ -5,6 +5,8 @@
 > - Backstab surprise round is now tracked to resolution: the first swing after `bs` is read for the `surprise` tell, so a landed vs failed opener is detected reliably
 > - Attack-order re-fire is held while a backstab is pending, so a party attack announcement can't fire a follow-up `pu` that clobbers the surprise round
 > - "Run if BS fails" now works: a detected backstab failure flees via the normal break-before-flee escape (previously the setting did nothing)
+> - Hidden characters now open with `bs` when a monster walks in; a fresh in-place hide re-arms the surprise round for the next one
+> - Auto-hide is now suppressed while in a party, so a member can't hide itself out of reach of party heals and buffs
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

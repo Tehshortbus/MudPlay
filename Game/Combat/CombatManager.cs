@@ -108,7 +108,7 @@ public sealed partial class CombatManager : IDisposable
     // not the actuation).
     private Action<string?, string?>? _swapWeapon;
     private Action? _prepBackstabArmor;
-    private Func<bool>? _isSneaking;
+    private Func<bool>? _isStealthed;
     private Func<int, bool>? _hasSeeHidden;
     private Func<bool>? _seeHiddenClearActive;
     private string? _currentTarget;
@@ -331,16 +331,17 @@ public sealed partial class CombatManager : IDisposable
         _currentTarget, _usingAlternateWeapon,
         _awaitingBackstabResolution, _pendingBackstabSpecies);
 
-    // Wire the backstab gating delegates: isSneaking reports whether the
-    // character is in the sneaking stealth state (StealthManager.IsSneaking) and
-    // hasSeeHidden reports whether a given monster Number carries the SeeHidden
-    // ability (SeeHiddenIndex). Until set, backstab never fires — the engine
-    // sends the normal attack regardless of CombatSettings.DoBackstab.
-    public void SetBackstabHooks(Func<bool> isSneaking, Func<int, bool> hasSeeHidden)
+    // Wire the backstab gating delegates: isStealthed reports whether the character
+    // holds any stealth that opens a backstab — sneaking OR (optimistically) hidden
+    // (StealthManager.IsStealthed) — and hasSeeHidden reports whether a given
+    // monster Number carries the SeeHidden ability (SeeHiddenIndex). Until set,
+    // backstab never fires — the engine sends the normal attack regardless of
+    // CombatSettings.DoBackstab.
+    public void SetBackstabHooks(Func<bool> isStealthed, Func<int, bool> hasSeeHidden)
     {
-        ArgumentNullException.ThrowIfNull(isSneaking);
+        ArgumentNullException.ThrowIfNull(isStealthed);
         ArgumentNullException.ThrowIfNull(hasSeeHidden);
-        _isSneaking = isSneaking;
+        _isStealthed = isStealthed;
         _hasSeeHidden = hasSeeHidden;
     }
 
@@ -462,7 +463,7 @@ public sealed partial class CombatManager : IDisposable
         // signal that fires on EVERY transition, so keying the reset off it makes
         // manual moves re-arm the backstab too. Runs before the AlsoHere emit for
         // the new room, so the opener is already false when that dispatch reads
-        // BackstabPending. Flag-only; _isSneaking still gates whether bs fires.
+        // BackstabPending. Flag-only; the stealth gate still decides whether bs fires.
         if (obs.Source == RoomObservationSource.RoomChange)
         {
             _backstabOpenerConsumed = false;
@@ -703,7 +704,7 @@ public sealed partial class CombatManager : IDisposable
     // chooser context so both agree on the gate.
     private bool BackstabPending(CombatSettings settings, RoomEntitiesObservation obs) =>
         settings.DoBackstab && !_backstabOpenerConsumed
-            && _isSneaking?.Invoke() == true && !RoomHasSeeHidden(obs);
+            && _isStealthed?.Invoke() == true && !RoomHasSeeHidden(obs);
 
     // Equip the normal/alternate weapon and send the weapon attack command
     // against targetRaw. Sets CurrentTarget; SendAttack clears the spell-mode
@@ -723,8 +724,8 @@ public sealed partial class CombatManager : IDisposable
     }
 
     // True when any monster currently in the room carries SeeHidden — which
-    // defeats the sneaking character's backstab for the whole room. No-op (false)
-    // until the backstab hooks are wired.
+    // defeats a stealthed character's backstab (sneak or hide) for the whole room.
+    // No-op (false) until the backstab hooks are wired.
     private bool RoomHasSeeHidden(RoomEntitiesObservation obs)
     {
         if (_hasSeeHidden is null) return false;
@@ -790,6 +791,19 @@ public sealed partial class CombatManager : IDisposable
         _swapWeapon?.Invoke(settings.BackstabWeapon, settings.BackstabOffHand);
         _prepBackstabArmor?.Invoke();
         _usingAlternateWeapon = false;
+    }
+
+    // Re-arm the surprise round for a fresh hide established in the current room —
+    // the stationary hidden opener (a monster walks into a room the character is
+    // hidden in). Unlike PrepBackstabForMove there's NO gear swap: equipping breaks
+    // hide, so the backstab loadout must already be on before the `hid`. Flag-only,
+    // so a hidden character re-hiding after a kill re-opens the surprise round for
+    // the next monster that wanders in. Bound in AppServices to
+    // StealthManager.StateChanged on the AttemptingHide/Idle -> Hidden edge.
+    public void RearmBackstabForHide()
+    {
+        if (!_readSettings().DoBackstab) return;
+        _backstabOpenerConsumed = false;
     }
 
     // Decide which weapon should be on for the next attack and hand it to the

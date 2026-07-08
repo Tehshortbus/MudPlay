@@ -135,13 +135,16 @@ it isn't here and you're unsure, ask.
   and possibly party-wide spells still reach a hidden member. Auto-hide must therefore be suppressed
   whenever the character is in a party.
 
-- **Client note:** the engine currently arms the opening `bs` off the **sneaking** state only. The
-  hidden-room opener (a monster walking into a room the character is hidden in) is a known gap, and
-  it's a **hard** one: because hide success is not self-observable, the client can never reliably
-  latch a `Hidden = true` state from its own stream. Any future hide support has to either treat
-  `Attempting to hide...` as *optimistically* hidden (and let the surprise-round resolver confirm or
-  deny after the fact) or accept that only the **failure** line (`...You don't think you are hidden.`)
-  is ground truth. Latching Hidden off a positive confirmation is not possible from the self POV.
+- **Client note:** the engine arms the opening `bs` off **either** stealth state (sneaking OR
+  hidden — the backstab gate reads `StealthManager.IsStealthed`). Because hide success is **not**
+  self-observable, the hidden side is handled **optimistically**: a bare `Attempting to hide...`
+  latches `Hidden = true` on faith, and the backstab surprise-round resolver confirms or denies it
+  after the opener swings (a real hide lands the `surprise`; a false one whiffs and, with
+  `RunIfBackstabFails`, flees). The one ground-truth signal, `...You don't think you are hidden.`,
+  drops the optimistic state. A move breaks hide (you can't move while hidden). A fresh in-place
+  hide re-arms the surprise round, so a hidden character that kills one monster and re-hides can
+  backstab the next one that wanders in. **Auto-hide is suppressed while in a party** — a hidden
+  member falls off the Also-here line and can't be single-target-healed/buffed until revealed.
 
 ## Combat & backstab
 
