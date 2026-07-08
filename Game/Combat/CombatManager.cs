@@ -188,6 +188,14 @@ public sealed partial class CombatManager : IDisposable
     private readonly HashSet<string> _normalWeaponFailedMonsters =
         new(StringComparer.OrdinalIgnoreCase);
 
+    // Backstab only lands on the surprise round — the very first action taken in
+    // a freshly-approached room. Once ANY combat action fires here (bs, spell, or
+    // swing) the surprise is spent, so re-picking `bs` on a re-engage (interrupt
+    // resume, target re-pick) would whiff a wasted round. Set true after the first
+    // dispatch in a room; reset false when a new sneak-approach begins
+    // (PrepBackstabForMove, the pre-move hook). Gates BackstabPending.
+    private bool _backstabOpenerConsumed;
+
     public CombatManager(
         MessageRouter router,
         RoomEntityClassifier classifier,
@@ -600,12 +608,15 @@ public sealed partial class CombatManager : IDisposable
     }
 
     // True when a backstab is still owed for this room — sneaking, with
-    // CombatSettings.DoBackstab on, and no occupant carries SeeHidden. The BS
-    // round must fire before any spell or normal swing or it's a guaranteed fail.
+    // CombatSettings.DoBackstab on, the surprise round unspent, and no occupant
+    // carrying SeeHidden. The BS round must fire before any spell or normal swing
+    // or it's a guaranteed fail; once any action fires here the opener is spent
+    // (_backstabOpenerConsumed) and re-engages fall back to the normal priority.
     // Shared by the backstab gate in OnEntitiesObserved and the combat-spell
     // chooser context so both agree on the gate.
     private bool BackstabPending(CombatSettings settings, RoomEntitiesObservation obs) =>
-        settings.DoBackstab && _isSneaking?.Invoke() == true && !RoomHasSeeHidden(obs);
+        settings.DoBackstab && !_backstabOpenerConsumed
+            && _isSneaking?.Invoke() == true && !RoomHasSeeHidden(obs);
 
     // Equip the normal/alternate weapon and send the weapon attack command
     // against targetRaw. Sets CurrentTarget; SendAttack clears the spell-mode
@@ -679,8 +690,15 @@ public sealed partial class CombatManager : IDisposable
     public void PrepBackstabForMove()
     {
         CombatSettings settings = _readSettings();
-        if (!settings.DoBackstab || string.IsNullOrWhiteSpace(settings.BackstabWeapon))
-            return;
+        if (!settings.DoBackstab) return;
+
+        // A new sneak-approach re-opens the surprise round for the room we're
+        // about to enter — the next action there is a genuine backstab opener
+        // again. Reset before the early-return so it still fires when we backstab
+        // with the equipped weapon (no dedicated BackstabWeapon configured).
+        _backstabOpenerConsumed = false;
+
+        if (string.IsNullOrWhiteSpace(settings.BackstabWeapon)) return;
         _swapWeapon?.Invoke(settings.BackstabWeapon, settings.BackstabOffHand);
         _prepBackstabArmor?.Invoke();
         _usingAlternateWeapon = false;

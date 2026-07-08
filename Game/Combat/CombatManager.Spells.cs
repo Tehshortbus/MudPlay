@@ -176,6 +176,12 @@ public sealed partial class CombatManager
                 _currentTarget = picked.RawName;
                 break;
         }
+
+        // Any action taken here spends the room's surprise round — a re-engage
+        // (interrupt resume, target re-pick) must not re-issue `bs` into a fight
+        // that has already begun. PrepBackstabForMove re-opens it on the next
+        // sneak-approach.
+        _backstabOpenerConsumed = true;
     }
 
     // Per-round heartbeat — wired to TickEngine.CombatTickElapsed in AppServices

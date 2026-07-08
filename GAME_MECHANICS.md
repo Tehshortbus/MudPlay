@@ -111,6 +111,19 @@ it isn't here and you're unsure, ask.
 - **[OBSERVED]** Backstab command: `bs <target>`.
 - **[OBSERVED]** A monster in the room with the **see-hidden** ability reveals the sneaker to
   the whole room, so the opening move falls back to a normal attack rather than `bs`.
+- **[CONFIRMED]** **Backstab only lands on the opening round** — the very first action taken in a
+  freshly-approached room while sneaking. Once ANY combat action has fired here (a `bs`, a spell,
+  or a normal swing), the surprise is spent and a later `bs` can no longer connect. So after the
+  opener the client must fall back to the configured normal attack priority; re-issuing `bs` on a
+  re-engage (a cast interrupt's re-attack, a target re-pick) wastes the round. The client tracks
+  the spent opener per room and re-arms it only on the next sneak-approach.
+- **[CONFIRMED]** **Success line:** a landed backstab is a **single** swing containing the word
+  **`surprise`** — e.g. `You surprise punch large wild dog for 36 damage!`.
+- **[CONFIRMED]** **Failure signals:** after `bs`, **more than one swing** means the backstab
+  failed (no surprise round); a **dark-cyan miss line** likewise means it failed.
+- **[CONFIRMED]** `You cannot backstab with this weapon.` — you tried to `bs` while sneaking with a
+  weapon that isn't backstab-capable. (No weapon-type flag in the game data exposes this ahead of
+  time; it is only knowable reactively from this line.)
 - **[OBSERVED]** `Your weapon has no effect against this monster!` — the current weapon can't
   hurt this monster; the client swaps to the configured alternate weapon.
 - **[OBSERVED]** `Your fists have no effect against this monster!` — you're swinging bare-handed
