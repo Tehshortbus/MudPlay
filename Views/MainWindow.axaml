@@ -380,8 +380,10 @@
                     <TextBlock Text="{Binding EngineActionBadge}"/>
                 </Border>
 
-                <!-- Current room. VM already abbreviates long names;
-                     TextTrimming covers narrow-window resizes too. -->
+                <!-- Map/room number + session exp/hr. VM shows the short key
+                     rather than the (often long) room name, so the rate can't
+                     be pushed behind an ellipsis; TextTrimming stays as a
+                     safety net for extreme narrow-window resizes. -->
                 <TextBlock Grid.Column="1"
                            Classes="StatusSlot"
                            Text="{Binding LocationText}"

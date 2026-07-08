@@ -1287,14 +1287,15 @@ public partial class MainWindowViewModel : ObservableObject
             LocationText = "Load a game data set to use navigation";
             return;
         }
-        // Full room display name + key, then the session exp rate to match
-        // the loop chip's tail. TextTrimming on the status-bar TextBlock
-        // clips long names down to the column's actual width at render
-        // time. The VM stays a faithful mirror of game state.
+        // Map/room number + the session exp rate — no room name. Names run long
+        // ("Newhaven, Arena", …) and were overflowing the narrow status slot,
+        // pushing the rate behind an ellipsis exactly when the name was longest.
+        // The map/room key is always short and identifies the room just as well
+        // for a player watching the strip.
         if (room is not null)
         {
             double xpHr = AppServices.Current.SessionActivity.Snapshot().ExperiencePerHour;
-            LocationText = $"{room.DisplayName} · {room.Key} · {Game.Combat.RateText.Compact(xpHr)}/hr";
+            LocationText = $"{room.Key} · {Game.Combat.RateText.Compact(xpHr)}/hr";
             return;
         }
         LocationText = state.Confidence switch
