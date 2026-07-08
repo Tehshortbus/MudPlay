@@ -2,6 +2,12 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.16.3
+
+- Status-bar location chip's xp/hr now ticks live instead of freezing at the rate captured when you last moved
+- Main window opens shorter — trimmed the dead space between the terminal and the toolbar/status bar on first launch
+- Darkwood Forest map now draws its whole area — the half hidden behind a same-plane go-path from room 1/1403 is no longer suppressed
+
 ## 1.16.0
 
 - Turning off Auto-Heal/Rest now releases a held rest gate at once — a queued walk-to resumes instead of the character sitting idle resting

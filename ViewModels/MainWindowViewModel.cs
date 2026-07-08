@@ -471,7 +471,18 @@ public partial class MainWindowViewModel : ObservableObject
         {
             Interval = TimeSpan.FromMilliseconds(100),
         };
-        _statusTickRefresh.Tick += (_, _) => RefreshStatusBarTicks();
+        // The location slot's trailing exp/hr is a continuously-decaying rate
+        // (windowed experience ÷ elapsed time), so it rides this same tick — the
+        // slot's own room / engine events fire too rarely to keep it live, which
+        // left it frozen at its entry value (0/hr at session start) while the
+        // Session Stats window, ticking the same tracker, showed the real rate.
+        // The LocationText setter's equality check drops the repaint when the
+        // compact rate is unchanged, so most ticks cost only a string compare.
+        _statusTickRefresh.Tick += (_, _) =>
+        {
+            RefreshStatusBarTicks();
+            RefreshLocationSlot();
+        };
         _statusTickRefresh.Start();
         RefreshStatusBarTicks();
 

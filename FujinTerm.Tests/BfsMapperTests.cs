@@ -534,41 +534,54 @@ public sealed class BfsMapperTests : IDisposable
 
     // ----- cross-plane text portals ----------------------------------
     //
-    // Two vertical levels joined by real stairs (1/1 D↔U 1/50), plus a
-    // text portal that jumps ACROSS floors (1/51 "go portal" → surface
-    // 1/2) and a same-floor text exit (1/50 "go path" → 1/53). The
-    // importer files both text exits under a cardinal slot, so both look
-    // planar — but only the same-floor one should lay out. This mirrors
-    // the Crypt trainer's go-portal dragging the surface graveyard onto
-    // the level-3 plane.
+    // Faithful model of the Crypt trainers' go-portal. The deep level is a
+    // one-way-in pocket: you descend into it (1/1 D→1/10→1/11→1/12) but
+    // from inside there's NO walkable route back to the surface — the go-
+    // portal (1/12 "go portal" → surface tomb entrance 1/2) is the only
+    // exit. Because the plane-index seed BFS still reaches both the pocket
+    // and the surface from 1/1, they share a component with different
+    // floors, so the portal must be stubbed rather than dragging the whole
+    // surface graveyard onto the level-3 plane. A same-floor go-path inside
+    // the pocket (1/12 → 1/14) must still lay out.
     //
-    //   floor  0:  1/2 ──S/N── 1/1
-    //                            │ D (stairs)
-    //   floor -1:  1/53 ──N/S── 1/51 ──W/E── 1/50 (origin)
-    //              ▲                 ╲go portal      │
-    //              ╰── go path ◀──────╲──────────────╯
-    //                                  ▶ 1/2 (cross-plane, suppressed)
+    //   floor  0:  1/2 (tomb entrance) ──W/E── 1/1 (graveyard seed)
+    //                                            │ D (one-way descent, no U back)
+    //   floor -1:  1/10
+    //                │ D
+    //   floor -2:  1/11
+    //                │ D
+    //   floor -3:  1/12 (origin) ──E/W── 1/13 ──S/N── 1/14
+    //               │  ╲ go portal ▶ 1/2 (cross-plane, unreachable → stubbed)
+    //               ╰──── go path ▶ 1/14 (same floor → lays out)
     private const string CryptJson = """
         [
-          { "Map Number": 1, "Room Number": 1, "Name": "Surface Hub",
+          { "Map Number": 1, "Room Number": 1, "Name": "Graveyard",
             "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
-            "N": "1/2", "S": "0", "E": "0", "W": "0",
-            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "1/50" },
-          { "Map Number": 1, "Room Number": 2, "Name": "Surface North",
+            "N": "0", "S": "0", "E": "1/2", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "1/10" },
+          { "Map Number": 1, "Room Number": 2, "Name": "Graveyard, Tomb Entrance",
             "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
-            "N": "0", "S": "1/1", "E": "0", "W": "0",
+            "N": "0", "S": "0", "E": "0", "W": "1/1",
             "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
-          { "Map Number": 1, "Room Number": 50, "Name": "Deep Hub",
+          { "Map Number": 1, "Room Number": 10, "Name": "Crypt, Level 1",
             "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
-            "N": "0", "S": "1/53 (Text: go path, walk path)", "E": "1/51", "W": "0",
-            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "1/1", "D": "0" },
-          { "Map Number": 1, "Room Number": 51, "Name": "Deep East",
+            "N": "0", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "1/11" },
+          { "Map Number": 1, "Room Number": 11, "Name": "Crypt, Level 2",
             "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
-            "N": "1/53", "S": "0", "E": "1/2 (Text: go portal, enter portal)", "W": "1/50",
+            "N": "0", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "1/12" },
+          { "Map Number": 1, "Room Number": 12, "Name": "Crypt, Level 3",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "1/2 (Text: go portal, enter portal)", "S": "1/14 (Text: go path, walk path)", "E": "1/13", "W": "0",
             "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
-          { "Map Number": 1, "Room Number": 53, "Name": "Deep North",
+          { "Map Number": 1, "Room Number": 13, "Name": "Crypt, Level 3 East",
             "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
-            "N": "0", "S": "1/51", "E": "0", "W": "0",
+            "N": "0", "S": "1/14", "E": "0", "W": "1/12",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 14, "Name": "Crypt, Level 3 South",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "1/13", "S": "0", "E": "0", "W": "0",
             "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
         ]
         """;
@@ -577,30 +590,85 @@ public sealed class BfsMapperTests : IDisposable
     public void BuildLayout_CrossPlaneTextPortal_TargetSuppressed_StubRecorded()
     {
         var (bfs, _) = NewMapper(CryptJson);
-        RoomLayout layout = bfs.BuildLayout(new RoomKey(1, 50));   // rooted on floor -1
+        RoomLayout layout = bfs.BuildLayout(new RoomKey(1, 12));   // rooted on level 3
 
-        // The go-portal from 1/51 leads to the surface (1/2, floor 0):
-        // different floor, same component → the target is NOT dragged
-        // onto this plane.
+        // The go-portal from 1/12 leads to the surface tomb entrance
+        // (1/2, floor 0). Same component, different floor, and the target
+        // can't be walked to from the pocket → it is NOT dragged onto this
+        // plane.
         Assert.DoesNotContain(new RoomKey(1, 2), layout.Positions.Keys);
 
         // …but the exit stays visible as a source-side stub so the user
         // still sees "there's a portal here".
-        (int X, int Y) eastCell = layout.Positions[new RoomKey(1, 51)];
-        Assert.True(layout.EdgesFromCoord.TryGetValue(eastCell, out IReadOnlySet<Direction>? edges));
-        Assert.Contains(Direction.E, edges!);
+        (int X, int Y) originCell = layout.Positions[new RoomKey(1, 12)];
+        Assert.True(layout.EdgesFromCoord.TryGetValue(originCell, out IReadOnlySet<Direction>? edges));
+        Assert.Contains(Direction.N, edges!);
     }
 
     [Fact]
     public void BuildLayout_SameFloorTextExit_StillLaysOut()
     {
         var (bfs, _) = NewMapper(CryptJson);
-        RoomLayout layout = bfs.BuildLayout(new RoomKey(1, 50));
+        RoomLayout layout = bfs.BuildLayout(new RoomKey(1, 12));
 
-        // 1/50's "go path" S exit reaches 1/53, which is same-floor
-        // (-1) and same component — so it lays out normally instead of
+        // 1/12's "go path" S exit reaches 1/14, which is same-floor
+        // (-3) and same component — so it lays out normally instead of
         // being stubbed like the cross-plane portal.
-        Assert.Contains(new RoomKey(1, 53), layout.Positions.Keys);
+        Assert.Contains(new RoomKey(1, 14), layout.Positions.Keys);
+    }
+
+    // A text shortcut whose endpoints sit on different plane-index floors
+    // but are STILL joined by a walkable route is a same-plane shortcut,
+    // not a cross-level portal — it must lay out. Models the Darkwood
+    // forest: two halves linked by a "go path" AND by a long lateral
+    // rocky-cliff detour whose gradual descent inflated the floor gap. The
+    // cliff's U/D steps aren't traversed on the flat layer, so the far half
+    // (1/5) can only appear via the go-path — suppressing it (the old
+    // floor-delta-only rule) hid half the forest.
+    //
+    //   floor  0:  1/1 (origin) ──E/W── 1/2
+    //               │ go path ▶ 1/5          │ D (cliff, not traversed flat)
+    //   floor -1:  1/5 ──S/N── 1/4 ──E/W── 1/3
+    private const string DarkwoodShortcutJson = """
+        [
+          { "Map Number": 1, "Room Number": 1, "Name": "Darkwood Forest, Main Road",
+            "Light": -50, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "1/5 (Text: go path, walk path)", "S": "0", "E": "1/2", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 2, "Name": "Darkwood Forest, Cliff Top",
+            "Light": -50, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "0", "S": "0", "E": "0", "W": "1/1",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "1/3" },
+          { "Map Number": 1, "Room Number": 3, "Name": "Rocky Path",
+            "Light": -50, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "0", "S": "0", "E": "0", "W": "1/4",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 4, "Name": "Valley Path",
+            "Light": -50, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "1/5", "S": "0", "E": "1/3", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 5, "Name": "Darkwood Forest",
+            "Light": -50, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "0", "S": "1/4", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "1/1 (Text: go path, walk path)", "U": "0", "D": "0" }
+        ]
+        """;
+
+    [Fact]
+    public void BuildLayout_ReachableCrossFloorTextShortcut_LaysOut()
+    {
+        var (bfs, _) = NewMapper(DarkwoodShortcutJson);
+        RoomLayout layout = bfs.BuildLayout(new RoomKey(1, 1));
+
+        // 1/5 sits a floor below 1/1 by the plane index (the cliff detour
+        // descends), but it's walkable the long way round — so the go-path
+        // is a same-plane shortcut and 1/5 lays out instead of vanishing.
+        Assert.Contains(new RoomKey(1, 5), layout.Positions.Keys);
+
+        // The cliff's lower rooms (reached only through a D exit) stay off
+        // the flat layer — the far half appears purely via the shortcut.
+        Assert.DoesNotContain(new RoomKey(1, 3), layout.Positions.Keys);
+        Assert.DoesNotContain(new RoomKey(1, 4), layout.Positions.Keys);
     }
 
     // ----- MudProxy-style edge tracking ------------------------------

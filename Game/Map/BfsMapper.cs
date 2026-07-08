@@ -35,6 +35,14 @@ public sealed class BfsMapper
     // OnGraphReloaded (blacklist changes don't affect vertical structure).
     private Dictionary<RoomKey, (int Component, int Floor)>? _planeIndex;
 
+    // Memoized directed walk-reachability over NON-text exits, keyed by
+    // (source, target). Refines the cross-plane test: a text exit whose
+    // endpoints share a component but sit on different floors is only a
+    // genuine cross-level portal when the target is otherwise unreachable
+    // on foot. Filled lazily by WalkReachableOverNonText; dropped with the
+    // plane index on reload (it depends on the same exit graph).
+    private Dictionary<(RoomKey Source, RoomKey Target), bool>? _walkReachCache;
+
     // Set of room keys to hide from the planar layout (BBS-tier room
     // blacklist). Blacklisted neighbours still get an EDGE recorded so the
     // renderer draws a dangling stub, but they are NOT placed in
@@ -854,6 +862,7 @@ public sealed class BfsMapper
         {
             _layoutCache.Clear();
             _planeIndex = null;
+            _walkReachCache = null;
         }
     }
 
@@ -900,15 +909,72 @@ public sealed class BfsMapper
     }
 
     // A text exit is cross-plane when its endpoints share a non-text
-    // component (so their floor numbers are comparable) but sit on
-    // different floors — the destination is really reached by stairs on
-    // another level, not by stepping through this cardinal cell.
+    // component (so their floor numbers are comparable), sit on different
+    // floors, AND the target can't be walked to on foot. The floor-delta
+    // gate alone false-positives on outdoor terrain: the Darkwood forest's
+    // two halves are joined by a 100-plus-room rocky-cliff detour whose
+    // gradual descent inflates the plane-index floor gap to 4, so the
+    // same-plane go-path linking them looked cross-level and got stubbed —
+    // hiding half the forest. Requiring "target unreachable on foot"
+    // distinguishes that shortcut (target still walkable the long way, so
+    // draw it) from a genuine portal like the Crypt trainers' go-portal to
+    // the surface graveyard (target reachable ONLY through the portal, so
+    // stub it to keep the foreign floor off this plane).
     private bool IsCrossPlaneTextExit(RoomKey source, RoomKey target)
     {
         Dictionary<RoomKey, (int Component, int Floor)> idx = PlaneIndex();
         if (!idx.TryGetValue(source, out (int Component, int Floor) a)) return false;
         if (!idx.TryGetValue(target, out (int Component, int Floor) b)) return false;
-        return a.Component == b.Component && a.Floor != b.Floor;
+        if (a.Component != b.Component || a.Floor == b.Floor) return false;
+        return !WalkReachableOverNonText(source, target);
+    }
+
+    // Directed BFS reachability from source to target over NON-text exits
+    // (cardinals + U/D, excluding the text portals we're classifying).
+    // Answers "can the player walk here without a teleport?" Cheap for the
+    // isolated-pocket case (a one-way-in tomb exhausts in a handful of
+    // rooms); the reachable case terminates at the target. Memoized per
+    // pair — only ever called for the few cardinal-filed text exits that
+    // already pass the floor-delta gate.
+    private bool WalkReachableOverNonText(RoomKey source, RoomKey target)
+    {
+        (RoomKey Source, RoomKey Target) pair = (source, target);
+        lock (_cacheLock)
+        {
+            if (_walkReachCache is not null &&
+                _walkReachCache.TryGetValue(pair, out bool cached))
+                return cached;
+        }
+
+        bool reachable = source == target;
+        if (!reachable)
+        {
+            var seen = new HashSet<RoomKey> { source };
+            var queue = new Queue<RoomKey>();
+            queue.Enqueue(source);
+            while (queue.Count > 0)
+            {
+                Room? room = _graph.GetRoom(queue.Dequeue());
+                if (room is null) continue;
+                foreach ((Direction _, RoomExit exit) in room.Exits)
+                {
+                    if (exit.Hint == RoomExitHint.Text) continue;
+                    RoomKey t = exit.Target;
+                    if (t == target) { reachable = true; break; }
+                    if (!seen.Add(t)) continue;
+                    if (_graph.GetRoom(t) is null) continue;
+                    queue.Enqueue(t);
+                }
+                if (reachable) break;
+            }
+        }
+
+        lock (_cacheLock)
+        {
+            _walkReachCache ??= new Dictionary<(RoomKey, RoomKey), bool>();
+            _walkReachCache[pair] = reachable;
+        }
+        return reachable;
     }
 
     // Eagerly build (and cache) the layout from the first room in the

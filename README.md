@@ -1,11 +1,10 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.16.0**
-> - Turning off Auto-Heal/Rest now releases a held rest gate at once — a queued walk-to resumes instead of the character sitting idle resting
-> - Look-target HP readout now floats centered between the room name and the combat ticks instead of jammed against them
-> - Item Finder now opens pre-filtered to the current character's class, level, and alignment — widen back to (Any) to browse everything
-> - Character Info's equipped list now aligns every slot flag in a shared column instead of trailing each name at a ragged offset
+> **Version 1.16.3**
+> - Status-bar location chip's xp/hr now ticks live instead of freezing at the rate captured when you last moved
+> - Main window opens shorter — trimmed the dead space between the terminal and the toolbar/status bar on first launch
+> - Darkwood Forest map now draws its whole area — the half hidden behind a same-plane go-path from room 1/1403 is no longer suppressed
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->
