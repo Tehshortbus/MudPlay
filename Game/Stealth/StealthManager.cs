@@ -129,10 +129,11 @@ public sealed class StealthManager : IDisposable
     public bool IsStealthed =>
         _stateValue == StealthState.Sneaking || _stateValue == StealthState.Hidden;
 
-    // True only while actively StealthState.Sneaking (not Hidden). Backstab
-    // requires the sneaking state specifically — you approach an unseen target
-    // while moving silently — so CombatManager gates its opening bs on this rather
-    // than IsStealthed.
+    // True only while actively StealthState.Sneaking (not Hidden). The game
+    // permits a backstab opener from EITHER sneaking or hidden, but hide-state
+    // tracking isn't wired yet (nothing latches StealthState.Hidden), so
+    // CombatManager currently gates its opening bs on this sneaking-only flag.
+    // When the hide FSM lands, that gate should move to IsStealthed.
     public bool IsSneaking => _stateValue == StealthState.Sneaking;
 
     // Called by an external observer (RoomTracker via AppServices) when the

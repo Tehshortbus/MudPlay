@@ -1342,6 +1342,132 @@ public sealed class CombatManagerTests
         Assert.Equal("bs goblin", h.LastSent);
     }
 
+    // ----- Backstab surprise-round resolution ------------------------
+
+    [Fact]
+    public void Backstab_Failure_FoldedNormalRound_TriggersFlee()
+    {
+        using Harness h = new();
+        h.Settings.DoBackstab = true;
+        h.Settings.RunIfBackstabFails = true;
+        h.AddMonster(1, "dark cultist", killable: true);
+        h.Combat.SetBackstabHooks(isSneaking: () => true, hasSeeHidden: _ => false);
+        bool fled = false;
+        h.Combat.SetBackstabFailureFlee(() => fled = true);
+
+        h.Feed("Also here: dark cultist.");
+        Assert.Equal("bs dark cultist", h.LastSent);
+
+        // First swing after bs lacks "surprise" — a folded normal round means
+        // the backstab failed, so the flee hook fires.
+        h.Feed("You punch dark cultist for 2 damage!");
+        Assert.True(fled);
+    }
+
+    [Fact]
+    public void Backstab_Failure_Whiff_TriggersFlee()
+    {
+        using Harness h = new();
+        h.Settings.DoBackstab = true;
+        h.Settings.RunIfBackstabFails = true;
+        h.AddMonster(1, "dark cultist", killable: true);
+        h.Combat.SetBackstabHooks(isSneaking: () => true, hasSeeHidden: _ => false);
+        bool fled = false;
+        h.Combat.SetBackstabFailureFlee(() => fled = true);
+
+        h.Feed("Also here: dark cultist.");
+        // A whiff ("You swing at X!", no "for N damage") is also a failure.
+        h.Feed("You swing at dark cultist!");
+        Assert.True(fled);
+    }
+
+    [Fact]
+    public void Backstab_Success_SurpriseLine_NoFlee()
+    {
+        using Harness h = new();
+        h.Settings.DoBackstab = true;
+        h.Settings.RunIfBackstabFails = true;
+        h.AddMonster(1, "orc rogue", killable: true);
+        h.Combat.SetBackstabHooks(isSneaking: () => true, hasSeeHidden: _ => false);
+        bool fled = false;
+        h.Combat.SetBackstabFailureFlee(() => fled = true);
+
+        h.Feed("Also here: orc rogue.");
+        // The surprise line proves the opener landed — no flee.
+        h.Feed("You surprise punch orc rogue for 30 damage!");
+        Assert.False(fled);
+    }
+
+    [Fact]
+    public void Backstab_Failure_NoFlee_WhenSettingOff()
+    {
+        using Harness h = new();
+        h.Settings.DoBackstab = true;
+        h.Settings.RunIfBackstabFails = false;   // opt-out
+        h.AddMonster(1, "dark cultist", killable: true);
+        h.Combat.SetBackstabHooks(isSneaking: () => true, hasSeeHidden: _ => false);
+        bool fled = false;
+        h.Combat.SetBackstabFailureFlee(() => fled = true);
+
+        h.Feed("Also here: dark cultist.");
+        h.Feed("You punch dark cultist for 2 damage!");
+        Assert.False(fled);
+    }
+
+    [Fact]
+    public void Backstab_SelfEmoteDuringWindow_DoesNotResolve()
+    {
+        using Harness h = new();
+        h.Settings.DoBackstab = true;
+        h.Settings.RunIfBackstabFails = true;
+        h.AddMonster(1, "dark cultist", killable: true);
+        h.Combat.SetBackstabHooks(isSneaking: () => true, hasSeeHidden: _ => false);
+        bool fled = false;
+        h.Combat.SetBackstabFailureFlee(() => fled = true);
+
+        h.Feed("Also here: dark cultist.");
+
+        // A self-emote also matches the broad UserMisses pattern, but it doesn't
+        // name the target — it must NOT be read as the resolution swing.
+        h.Feed("You feel much better!");
+        Assert.False(fled);
+
+        // The watch is still armed, so the real failure line that follows still
+        // triggers the flee.
+        h.Feed("You punch dark cultist for 2 damage!");
+        Assert.True(fled);
+    }
+
+    [Fact]
+    public void Backstab_SuppressesRefire_UntilResolved()
+    {
+        // The surprise round must stay quiet — a party announce that would
+        // normally re-fire our attack is held while the bs is pending, so the
+        // repositioning `pu` can't clobber the surprise (the over-send report).
+        using Harness h = new() { DeferUi = true };
+        h.Settings.DoBackstab = true;
+        h.Settings.AttackTiming = AttackTiming.AttackLastRoom;
+        h.AddMonster(1, "giant rat", killable: true);
+        h.Combat.SetBackstabHooks(isSneaking: () => true, hasSeeHidden: _ => false);
+
+        h.Feed("Also here: giant rat.");          // opener: bs (synchronous)
+        Assert.Single(h.Sent);
+
+        // Announce during the pending surprise round — no re-fire scheduled.
+        h.Feed("Bob moves to attack giant rat.");
+        h.PumpUi();
+        Assert.Single(h.Sent);
+
+        // The surprise round resolves (success) — re-fire suppression lifts.
+        h.Feed("You surprise punch giant rat for 30 damage!");
+
+        // A later announce now re-fires normally.
+        h.Feed("Bob moves to attack giant rat.");
+        h.PumpUi();
+        Assert.Equal(2, h.Sent.Count);
+        Assert.Equal("a giant rat", h.LastSent);
+    }
+
     // ----- seehidden clear override (PR 4.c-b) -----------------------
 
     [Fact]

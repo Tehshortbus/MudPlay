@@ -708,6 +708,12 @@ public sealed class HealthManager : IDisposable
         return true;
     }
 
+    // Public entry for CombatManager's backstab-failure flee (wired via
+    // Combat.SetBackstabFailureFlee). Routes through the shared TryFlee, which
+    // requires an active movement engine and honors BreakBeforeFleeing /
+    // RunDirection / RunDistance — so a hand-walked failure just logs and no-ops.
+    public void RunFromBackstabFailure() => TryFlee("backstab failed");
+
     // Try to begin a flee. No-ops (with a log line) when no movement engine is
     // active or when no flee direction can be resolved. On success it pauses the
     // engine, queues the full flee route, optionally sends `break`, and dispatches

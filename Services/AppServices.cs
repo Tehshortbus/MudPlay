@@ -2478,6 +2478,9 @@ public sealed class AppServices
         Combat.SetBackstabHooks(
             isSneaking:   () => Stealth.IsSneaking,
             hasSeeHidden: n => SeeHidden.Has(n));
+        // Backstab-failure flee (CombatSettings.RunIfBackstabFails). Combat detects
+        // the failed surprise round; HealthManager owns the flee route + engine.
+        Combat.SetBackstabFailureFlee(() => Health.RunFromBackstabFailure());
 
         // Deterministic magic eligibility — weapon HitMagic ≥ monster Magical
         // picks normal-vs-alternate, spell ReqLevel ≥ monster SpellImmu gates
