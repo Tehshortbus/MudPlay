@@ -171,6 +171,32 @@ public sealed class ConditionTrackerTests
         Assert.Empty(h.Ended);
     }
 
+    [Fact]
+    public void MultipleRecordsSameLine_CollapsesLog_ButFiresEachEvent()
+    {
+        using Harness h = new();
+        // Three catalogue records that all emit the same effect text — models the
+        // bless spell plus bless-proc items all reporting "You feel lucky!".
+        h.Messages.Messages.Add(MakeRecord("bless",
+            MessageFlags.None, "You feel lucky", "The effects of bless wear off"));
+        h.Messages.Messages.Add(MakeRecord("black warhammer",
+            MessageFlags.None, "You feel lucky", "The effects of bless wear off"));
+        h.Messages.Messages.Add(MakeRecord("dark blessing",
+            MessageFlags.None, "You feel lucky", "The blessing fades"));
+
+        h.Feed("You feel lucky!");
+
+        // Every record still fires ConditionApplied — CastingDirector needs to see
+        // them all to pick out the one that maps to a cast code.
+        Assert.Equal(3, h.Applied.Count);
+
+        // But the program log collapses to a single applied row, not one per record.
+        int appliedRows = h.Log.Snapshot()
+            .Count(e => e.Source == ConditionTracker.LogCategory
+                        && e.Message.Contains("condition applied"));
+        Assert.Equal(1, appliedRows);
+    }
+
     // ----- index rebuild on store changes ----------------------------
 
     [Fact]

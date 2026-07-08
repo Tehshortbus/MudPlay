@@ -191,16 +191,37 @@ public sealed partial class ConditionTracker : ObservableObject, IDisposable
         if (endedThisLine.Count > 0 || appliedThisLine.Count > 0)
             RecomputeFlags();
 
+        // Log the batch collapsed, then fan out the per-record events unchanged —
+        // downstream (CastingDirector's buff-timer path) still needs to see every
+        // record so it can pick out the one that maps to a cast code.
+        LogBatch("ended", endedThisLine);
         foreach (MessageRecord r in endedThisLine)
-        {
-            _log?.Info(LogCategory, $"condition ended name='{r.Name}' flags={r.Flags}");
             ConditionEnded?.Invoke(r);
-        }
+
+        LogBatch("applied", appliedThisLine);
         foreach (MessageRecord r in appliedThisLine)
-        {
-            _log?.Info(LogCategory, $"condition applied name='{r.Name}' flags={r.Flags}");
             ConditionApplied?.Invoke(r);
+    }
+
+    // A single game line can match many catalogue records that share the same
+    // effect text — every bless-proc item plus the bless spell all emit "You feel
+    // lucky!", so one self-cast would otherwise spam an Info row per record.
+    // Collapse a multi-record batch to one summary row (naming the effects, OR'ing
+    // their flags); a lone match keeps the detailed per-record form.
+    private void LogBatch(string verb, List<MessageRecord> records)
+    {
+        if (_log is null || records.Count == 0) return;
+        if (records.Count == 1)
+        {
+            MessageRecord only = records[0];
+            _log.Info(LogCategory, $"condition {verb} name='{only.Name}' flags={only.Flags}");
+            return;
         }
+        MessageFlags flags = MessageFlags.None;
+        foreach (MessageRecord r in records) flags |= r.Flags;
+        string names = string.Join(", ", records.Select(r => r.Name));
+        _log.Info(LogCategory,
+            $"condition {verb} — {records.Count} records matched one line (names: {names}) flags={flags}");
     }
 
     private void RecomputeFlags()
