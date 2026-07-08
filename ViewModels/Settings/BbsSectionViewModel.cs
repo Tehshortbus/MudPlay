@@ -43,6 +43,8 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         "Game entry command", "Game exit command", "Enter realm", "Logoff",
         "Player dies at", "Death floor", "Bleeding out", "Dropped", "Hangup HP",
         "Auto-refine death floor", "Trace death floor", "Slow death", "Learn floor",
+        "Disconnect pattern", "Party disconnect", "Logoff pattern", "Logs off",
+        "Player disconnect line",
         "Display", "Font", "Font size", "Scrollback", "Backscroll", "Buffer",
         "Confirm", "Confirm exit", "Confirm hangup", "Confirm save", "Confirm delete",
     };
@@ -94,6 +96,12 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     // deaths (a bleed-out lands right at the true floor). Off pins the manual
     // value. Default on.
     [ObservableProperty] private bool _autoRefineDeathFloor = true;
+
+    // Board-specific player-disconnect line (see BbsProfile.DisconnectPattern).
+    // Optional literal pattern — {name} captures the disconnecting player, *
+    // swallows a varying run. Empty = only the built-in "just disconnected" /
+    // "just hung up" forms are watched.
+    [ObservableProperty] private string? _disconnectPattern;
 
     // ----- Per-character credentials -----
     // True when any character profile is loaded — including unsaved drafts.
@@ -580,6 +588,7 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         GameExitCommand = profile.GameExitCommand;
         PlayerDiesAtHp = profile.PlayerDiesAtHp;
         AutoRefineDeathFloor = profile.AutoRefineDeathFloor;
+        DisconnectPattern = profile.DisconnectPattern;
     }
 
     private void LoadCredentialsFor(string bbsName)
@@ -711,6 +720,7 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         GameExitCommand = defaults.GameExitCommand;
         PlayerDiesAtHp = defaults.PlayerDiesAtHp;
         AutoRefineDeathFloor = defaults.AutoRefineDeathFloor;
+        DisconnectPattern = defaults.DisconnectPattern;
     }
 
     private void Dirty()
@@ -757,6 +767,8 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         // (0 HP already means dropped), so clamp to <= 0 at the point of storage.
         profile.PlayerDiesAtHp = Math.Min(0, PlayerDiesAtHp);
         profile.AutoRefineDeathFloor = AutoRefineDeathFloor;
+        profile.DisconnectPattern = string.IsNullOrWhiteSpace(DisconnectPattern)
+            ? null : DisconnectPattern.Trim();
     }
 
     partial void OnNameChanged(string value)                    { Dirty(); }
@@ -817,6 +829,7 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     partial void OnGameExitCommandChanged(string value)         { PushToCache(); Dirty(); }
     partial void OnPlayerDiesAtHpChanged(int value)             { PushToCache(); Dirty(); }
     partial void OnAutoRefineDeathFloorChanged(bool value)      { PushToCache(); Dirty(); }
+    partial void OnDisconnectPatternChanged(string? value)      { PushToCache(); Dirty(); }
 
     // Confirm flags are Global-tier, not per-BBS — they don't push into
     // the per-BBS cache, just mark the section dirty so Apply commits

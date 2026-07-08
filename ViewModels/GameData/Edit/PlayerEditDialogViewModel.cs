@@ -23,6 +23,12 @@ public sealed partial class PlayerEditDialogViewModel : ObservableObject, IDialo
     [ObservableProperty] private bool _joinPartyIfInvited;
     [ObservableProperty] private bool _dontAutoDelete;
 
+    // BBS account name, when it differs from the in-game name. Left blank on
+    // the common boards where account == character; filled in only for boards
+    // (like Playpen) whose logon/logoff presence lines key on the account name,
+    // so the disconnect-watcher can map the captured name back to this player.
+    [ObservableProperty] private string? _accountName;
+
     // ----- 12 remote-control checkboxes (mirror PlayerRemoteControls flags) -----
 
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(AllowsAll))] private bool _rcQueryVersion;
@@ -163,6 +169,7 @@ public sealed partial class PlayerEditDialogViewModel : ObservableObject, IDialo
         InviteToPartyIfSeen = original.InviteToPartyIfSeen;
         JoinPartyIfInvited  = original.JoinPartyIfInvited;
         DontAutoDelete      = original.DontAutoDelete;
+        AccountName         = original.AccountName;
 
         PlayerRemoteControls rc = original.RemoteControls;
         RcQueryVersion        = rc.HasFlag(PlayerRemoteControls.QueryVersion);
@@ -214,6 +221,11 @@ public sealed partial class PlayerEditDialogViewModel : ObservableObject, IDialo
             InviteToPartyIfSeen = InviteToPartyIfSeen,
             JoinPartyIfInvited  = JoinPartyIfInvited,
             DontAutoDelete      = DontAutoDelete,
+            // AccountName is a BBS-tier observation field, not part of the
+            // customization slice — the caller persists it separately via
+            // PlayerDatabase.SetAccountName. Carried on the result record so
+            // that write has the value.
+            AccountName         = string.IsNullOrWhiteSpace(AccountName) ? null : AccountName.Trim(),
         };
         CloseRequested?.Invoke(new PlayerEditResult(_original.DisplayName, updated));
     }

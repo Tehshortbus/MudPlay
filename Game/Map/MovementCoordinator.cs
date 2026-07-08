@@ -90,6 +90,13 @@ public sealed class MovementCoordinator
     // the rescue window times out.
     public const string AllyDownGate = "AllyDown";
 
+    // Asserted by PartyDisconnectMovementGate (leader side) while a party follower
+    // has dropped connection and we're inside the reconnect grace window. Holds so
+    // we don't sprint off without them — a returning member can reconnect and
+    // re-party in place. Clears when the dropped member re-follows us or the window
+    // (Settings → Party "If leading, wait only") elapses.
+    public const string MemberDisconnectGate = "MemberDisconnect";
+
     private const int HistoryCapacity = 200;
 
     private readonly LogService? _log;

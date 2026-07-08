@@ -348,6 +348,25 @@
                               Content="Auto-refine the floor from slow deaths"
                               ToolTip.Tip="Learn the realm's true death floor from deaths where you bled out gradually (which land right at the floor). A single big overkill hit blows past the floor and is ignored. Turn off to keep the value you set above."/>
 
+                    <!-- ===== Board disconnect line (per-BBS) =====
+                         Additive to the built-in "X just disconnected!!!" /
+                         "X just hung up!!!" forms. Some boards (Playpen) emit a
+                         custom BBS-level logoff line keyed on the ACCOUNT name,
+                         not the character name — this teaches the client that
+                         line so a party member's drop is caught. {name} captures
+                         the disconnecting player (matched against a player's
+                         account-name override, else their character name); *
+                         swallows a varying run (e.g. a trailing user count). -->
+                    <TextBlock Classes="GroupHeader" Text="Board disconnect line" Margin="0,18,0,0"/>
+                    <TextBlock Classes="FieldLabel"
+                               Margin="0,4,0,0" TextWrapping="Wrap"
+                               Text="Extra logoff line to watch, on top of the built-in &quot;just disconnected&quot; / &quot;just hung up&quot; forms. Use {name} for the player and * for a varying run. Leave blank on boards that use the standard lines."/>
+                    <TextBox Text="{Binding DisconnectPattern, Mode=TwoWay}"
+                             Margin="0,6,0,0" MaxWidth="420" HorizontalAlignment="Left"
+                             FontFamily="{StaticResource FontMono}"
+                             PlaceholderText="e.g.  ►►► [{name}] logs OFF*"
+                             ToolTip.Tip="Optional board-specific disconnect line. {name} captures the disconnecting player — matched against each party member's account-name override (Game Data → Players) if set, else their character name. * matches any varying text (like Playpen's trailing 'Lines in Use: N'). Empty = only the built-in disconnect/hang-up lines are watched."/>
+
                     <!-- ===== Confirmations =====
                          Show-information / Show-data-being-sent /
                          Show-reason-for-running were removed entirely —

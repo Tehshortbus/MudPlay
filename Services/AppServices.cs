@@ -1162,6 +1162,11 @@ public sealed class AppServices
     // sent @ok, so a loop doesn't walk away from a resting member.
     public Game.PartyWaitMovementGate PartyWaitMovement { get; private set; } = null!;
 
+    // Follower-disconnect pause bridge (leader side) — holds movement while a
+    // dropped party follower is inside the reconnect grace window, so we don't
+    // sprint off without a member who's trying to reconnect and re-party.
+    public Game.PartyDisconnectMovementGate PartyDisconnectMovement { get; private set; } = null!;
+
     // Death-halt bridge — when the local player dies, asserts UserGate so every
     // movement engine stops and we sit in the graveyard until the player
     // manually resumes. Exposes HaltedForDeath so the Navigation chip can read
@@ -1399,6 +1404,13 @@ public sealed class AppServices
         // through ResolveActiveBbs so Quick Connect and the BBS pin
         // resolution chain stay the single source of truth.
         Players = new PlayerDatabase(Profile, ResolveActiveBbs);
+        // Board-specific disconnect line: PartyManager reads the active BBS's
+        // custom DisconnectPattern live (empty on boards that use the standard
+        // lines) and resolves a captured presence name — which on some boards is
+        // the account name, not the character name — back to a given name via the
+        // player account-name overrides.
+        Party.DisconnectPatternProvider = () => ResolveActiveBbs()?.DisconnectPattern;
+        Party.PresenceNameResolver = Players.ResolveGivenNameFromPresenceName;
         // Engine only — other subsystems register additional
         // handlers without touching the engine.
         RemoteCommands = new Game.Remote.RemoteCommandManager(Chat, PartyState, Players, Log);
@@ -2023,6 +2035,14 @@ public sealed class AppServices
         // constructed earlier and already applies the leader-side opt-out.
         PartyWaitMovement = new Game.PartyWaitMovementGate(
             PartyEssentials, MovementCoordinator, Log);
+
+        // Follower-disconnect pause bridge (leader side) — asserts
+        // MovementCoordinator's MemberDisconnectGate when PartyManager reports a
+        // follower drop, so we hold in place while they try to reconnect and
+        // re-party instead of sprinting off. Clears on their re-follow or when
+        // the grace window (IfLeadingWaitTotalSec) elapses.
+        PartyDisconnectMovement = new Game.PartyDisconnectMovementGate(
+            Party, MovementCoordinator, Log);
 
         // Needs registry. Cross-engine fulfillment hub;
         // auto-light (9.K) posts, auto-get (9.L) fulfils. Cleared on
@@ -4068,6 +4088,9 @@ public sealed class AppServices
         // before we give up on a member who never sent @ok.
         AutoParty.InviteWaitWindow = TimeSpan.FromSeconds(Math.Clamp(dto.IfLeadingWaitTotalSec, 0, 3600));
         PartyWaitMovement.WaitWindow = TimeSpan.FromSeconds(Math.Clamp(dto.IfLeadingWaitTotalSec, 0, 3600));
+        // Same window holds movement for a dropped follower to reconnect and
+        // re-party before we resume.
+        PartyDisconnectMovement.GraceWindow = TimeSpan.FromSeconds(Math.Clamp(dto.IfLeadingWaitTotalSec, 0, 3600));
         Party.LocalRankPreference = dto.Rank;
         PartyBroadcaster.AutoExpResetEnabled = dto.ResetStatisticsOnLoopStart;
         // Shared nag cadence — same Settings.Party knobs feed both the
@@ -4095,6 +4118,7 @@ public sealed class AppServices
         Party.DisconnectGraceWindow = TimeSpan.FromSeconds(defaults.IfLeadingWaitTotalSec);
         AutoParty.InviteWaitWindow = TimeSpan.FromSeconds(defaults.IfLeadingWaitTotalSec);
         PartyWaitMovement.WaitWindow = TimeSpan.FromSeconds(defaults.IfLeadingWaitTotalSec);
+        PartyDisconnectMovement.GraceWindow = TimeSpan.FromSeconds(defaults.IfLeadingWaitTotalSec);
         Party.LocalRankPreference = defaults.Rank;
         PartyBroadcaster.AutoExpResetEnabled = defaults.ResetStatisticsOnLoopStart;
         TimeSpan nagInitial = TimeSpan.FromSeconds(defaults.JoinNagInitialDelaySec);

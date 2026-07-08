@@ -326,6 +326,61 @@ public sealed class PlayerDatabase
         return true;
     }
 
+    // Set (or clear) the BBS-tier account-name override for one player.
+    // Authored via the player edit dialog alongside the customization save.
+    // Stored on the observation (BBS tier) rather than the customization
+    // (Character tier) because an account belongs to the realm, not to which
+    // of our alts is looking. A blank value — or one equal to the in-game
+    // given name — clears the override to null, since no override is needed
+    // when the account name already matches the character name. No-op (returns
+    // false) when no observation exists for the player or the value is
+    // unchanged.
+    public bool SetAccountName(string nameOrGiven, string? accountName)
+    {
+        if (string.IsNullOrWhiteSpace(nameOrGiven)) return false;
+        (string given, _) = PlayerObservation.SplitName(nameOrGiven);
+        if (string.IsNullOrEmpty(given)) return false;
+        if (!_observations.TryGetValue(given, out PlayerObservation? existing)) return false;
+
+        string? normalized = string.IsNullOrWhiteSpace(accountName) ? null : accountName.Trim();
+        if (normalized is not null && normalized.Equals(given, StringComparison.OrdinalIgnoreCase))
+            normalized = null;
+
+        if (string.Equals(existing.AccountName, normalized, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        _observations[given] = existing with { AccountName = normalized };
+        Rebuild();
+        SaveObservations();
+        return true;
+    }
+
+    // Resolve a captured presence-line name (which may be an account name on
+    // boards that key logon/logoff lines on the account rather than the
+    // character) back to the player's in-game GIVEN name. Checks the authored
+    // AccountName override first — both account and in-game names are unique,
+    // so at most one row matches — then falls back to a direct given-name hit.
+    // Returns null when nothing matches. Used by the disconnect-watcher to
+    // attribute a board-custom logoff line to a party member.
+    public string? ResolveGivenNameFromPresenceName(string presenceName)
+    {
+        if (string.IsNullOrWhiteSpace(presenceName)) return null;
+        string probe = presenceName.Trim();
+        foreach (PlayerObservation o in _observations.Values)
+        {
+            if (!string.IsNullOrEmpty(o.AccountName)
+                && o.AccountName.Equals(probe, StringComparison.OrdinalIgnoreCase))
+                return o.GivenName;
+        }
+        // No account-name override matched — treat the captured name as an
+        // in-game name directly (the common case where account == character).
+        // Return it even without an observation row: a party member tracked
+        // only via par may have no who/look observation yet, but we still want
+        // to attribute their logoff by name.
+        (string given, _) = PlayerObservation.SplitName(probe);
+        return string.IsNullOrEmpty(given) ? null : given;
+    }
+
     // Manually add a player record from the Game Data Browser → Players tab's
     // Add button. Differs from RecordObservation only in intent — same merge
     // semantics if the given-name already exists (overwrites Family, bumps

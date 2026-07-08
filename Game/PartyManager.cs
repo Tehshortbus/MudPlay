@@ -92,6 +92,28 @@ public sealed partial class PartyManager : IDisposable
     // back under our lead and the paused movement engine can resume.
     public event Action<string>? MemberFollowConfirmed;
 
+    // Fires with the given name of a party FOLLOWER who just dropped connection
+    // while WE lead — the leader-side signal PartyDisconnectMovementGate rides to
+    // hold movement through the reconnect grace window. Not fired for a leader
+    // drop (that dissolves the party) nor when we're only a follower (our own
+    // movement is already held by FollowerGate). See ApplyMemberDisconnect.
+    public event Action<string>? MemberDisconnected;
+
+    // Board-specific disconnect line support. The provider returns the active
+    // BBS's raw DisconnectPattern (literal {name}/* syntax, empty/null when the
+    // board uses only the standard lines); the resolver maps a captured presence
+    // name — which on some boards (Playpen) is the BBS account name, not the
+    // character name — back to the player's given name via the account-name
+    // override table. Both are set by AppServices; a null on either disables the
+    // custom-pattern path, leaving only the built-in disconnect / hang-up lines.
+    public Func<string?>? DisconnectPatternProvider { get; set; }
+    public Func<string, string?>? PresenceNameResolver { get; set; }
+
+    // Compiled form of the current DisconnectPattern, cached against its raw
+    // source so we only recompile when the user edits the pattern or swaps BBS.
+    private string? _compiledDisconnectSource;
+    private Regex? _compiledDisconnect;
+
     // par row regex — anchored on the real MajorMUD format:
     //
     //   Raijin WuzHere                  (Priest)        [M:100%] [H:100%]   - Midrank
@@ -593,17 +615,86 @@ public sealed partial class PartyManager : IDisposable
     // leader: a returning leader has no party to be auto-re-invited into, so the
     // entry would only mislead the reconnect handler.
     //
-    // We deliberately don't watch the BBS-level "[Account] logs OFF" signal —
-    // that line keys on the BBS account name, and observers have no reliable
-    // account→character mapping. Some BBSes also disable the per-player "just
-    // hung up" message; in that case we'll only catch carrier-lost disconnects
-    // from the "just disconnected!!!." line.
+    // The built-in "just disconnected" / "just hung up" lines key on the
+    // character's given name, so route the captured name straight into the shared
+    // correlation. The BBS-level "[Account] logs OFF" signal — which keys on the
+    // account name on boards like Playpen — is handled separately via the
+    // configurable DisconnectPattern (TryCustomDisconnectLine), because it needs
+    // the account→character resolution the standard lines don't.
     private void OnPlayerDisconnects(MatchResult result)
     {
         if (result.Groups.Count == 0) return;
         string name = result.Groups[0];
         if (string.IsNullOrEmpty(name)) return;
-        string given = GivenNameOf(name);
+        ApplyMemberDisconnect(GivenNameOf(name));
+    }
+
+    // Match the active BBS's custom disconnect line (if one is configured)
+    // against a freshly-emitted terminal line. Additive to the built-in
+    // KnownPatterns.PlayerDisconnects / PlayerHungUp handlers — a board that
+    // emits both forms stays idempotent (the second hit finds the member already
+    // evicted). {name} captures the disconnecting player as the BBS renders it
+    // (account or character name); the presence resolver maps that to the given
+    // name before the shared correlation runs.
+    private void TryCustomDisconnectLine(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return;
+        Regex? rx = CurrentDisconnectRegex();
+        if (rx is null) return;
+        Match m = rx.Match(text);
+        if (!m.Success) return;
+        Group g = m.Groups["name"];
+        string captured = g.Success ? g.Value.Trim() : string.Empty;
+        if (captured.Length == 0) return;
+        // Resolver maps an account-name override back to the given name; it
+        // already falls back to the given-name token when nothing maps, so a
+        // null return only happens with no resolver wired.
+        string given = PresenceNameResolver?.Invoke(captured) ?? GivenNameOf(captured);
+        if (string.IsNullOrEmpty(given)) return;
+        ApplyMemberDisconnect(given);
+    }
+
+    // Lazily (re)compile the BBS DisconnectPattern into a Regex, caching against
+    // the raw source so recompilation only happens on an edit / BBS swap. Uses
+    // the same literal→regex translation the trigger engine applies ({name} →
+    // named capture, * → greedy run, everything else escaped). A malformed
+    // pattern disables the custom path rather than throwing on every line.
+    private Regex? CurrentDisconnectRegex()
+    {
+        string? raw = DisconnectPatternProvider?.Invoke();
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            _compiledDisconnectSource = null;
+            _compiledDisconnect = null;
+            return null;
+        }
+        if (!string.Equals(raw, _compiledDisconnectSource, StringComparison.Ordinal))
+        {
+            _compiledDisconnectSource = raw;
+            try
+            {
+                _compiledDisconnect = new Regex(
+                    TriggerEngine.LiteralToRegex(raw),
+                    RegexOptions.CultureInvariant);
+            }
+            catch (ArgumentException)
+            {
+                _compiledDisconnect = null;
+            }
+        }
+        return _compiledDisconnect;
+    }
+
+    // Shared disconnect correlation. given is the character's given-name token
+    // (built-in patterns capture it directly; the custom path resolves an
+    // account/character presence name to it first). A follower drop evicts the
+    // row, stamps the reconnect grace window, and — when WE lead — fires
+    // MemberDisconnected so the movement gate holds us in place for the returning
+    // member. A leader drop dissolves the whole party (leadership doesn't transfer
+    // on disconnect). Not-a-member is a safe no-op.
+    private void ApplyMemberDisconnect(string given)
+    {
+        if (string.IsNullOrEmpty(given)) return;
         bool wasMember = false;
         bool wasLeader = false;
         foreach (PartyMember m in State.Members)
@@ -621,8 +712,12 @@ public sealed partial class PartyManager : IDisposable
             OnPartyDissolved(default);
             return;
         }
-        RemoveMember(name);
-        _recentlyDisconnected[name] = NowProvider();
+        bool selfLeads = State.SelfIsLeader;
+        RemoveMember(given);
+        _recentlyDisconnected[given] = NowProvider();
+        // Leader-only: a follower's own movement is already held by FollowerGate,
+        // so a second wait gate there would only linger to timeout.
+        if (selfLeads) MemberDisconnected?.Invoke(given);
     }
 
     // "X just entered the Realm." — if X is in the grace-window map AND we're
@@ -821,7 +916,13 @@ public sealed partial class PartyManager : IDisposable
 
     // ----- par-block row parser ------------------------------------------
 
-    private void OnLineEmitted(LineExtractor.EmittedLine line) => HandleLine(line.Text, line.IsPromptLine);
+    private void OnLineEmitted(LineExtractor.EmittedLine line)
+    {
+        // Board-specific disconnect line runs first (independent of the par-block
+        // state machine HandleLine drives).
+        TryCustomDisconnectLine(line.Text);
+        HandleLine(line.Text, line.IsPromptLine);
+    }
 
     // Test seam — feeds the par-block state machine without spinning up a real
     // LineExtractor. Tests prime the state via TestEnterParBlock then pump rows
@@ -835,6 +936,14 @@ public sealed partial class PartyManager : IDisposable
     // real-BBS par-block terminator, so tests can drive end-of-block
     // reconciliation exactly the way the LineExtractor does in production.
     internal void FeedTestPromptLine(string text = "[HP=0/MA=0]:") => HandleLine(text, isPromptLine: true);
+
+    // Test seam — drives the FULL emitted-line path (custom disconnect match +
+    // par-block state machine), the way the live LineExtractor feed does. The
+    // plain FeedTestLines seam only pumps HandleLine, so it can't exercise the
+    // board-specific disconnect pattern (TryCustomDisconnectLine).
+    internal void FeedTestEmittedLine(string text) => OnLineEmitted(
+        new LineExtractor.EmittedLine(
+            text, new CellAttributes[text.Length], DateTimeOffset.UnixEpoch, IsPromptLine: false));
 
     // Test seam — flips the state machine into ReadingRows without dispatching
     // the par-header pattern.

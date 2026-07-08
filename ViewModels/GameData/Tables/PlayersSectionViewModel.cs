@@ -210,6 +210,9 @@ public sealed class PlayersSectionViewModel : GameDataTableSectionViewModel, IEd
         // dialog's OriginalDisplayName carries the given as its first
         // whitespace-delimited token and EditCustomization extracts it.
         _db.EditCustomization(record.GivenName, result.Updated.ToCustomization());
+        // AccountName lives on the BBS-tier observation, not the customization
+        // slice, so it takes its own write path.
+        _db.SetAccountName(record.GivenName, result.Updated.AccountName);
         Reload();
     }
 }
