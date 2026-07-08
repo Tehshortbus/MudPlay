@@ -1,14 +1,11 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.22.0**
-> - Followers auto-rejoin their party after an unexpected disconnect: on re-entering the game they telepath @comeback to the leader they were following, who then owns the pickup (our room key attached when the map position is confirmed)
-> - The followed leader is remembered across a client crash but forgotten on a clean quit or deliberate leave, so only an unexpected drop rearms the rejoin
-> - Leaders also recover a dropped member on their own: when the member re-enters, the leader probes @where and walks out to collect them
-> - New Settings → Party "return distance" (default 30 rooms) caps how far a leader walks to recover; a farther-off member is declined and told why
-> - A leader who backfilled the party to its 6-member cap while a member was gone declines the return and tells them why
-> - @forget is now bidirectional: either side drops the other from the party and clears the rejoin memory; the leader uses it to decline a recovery
-> - Remembering a former leader overrides the per-player "join if invited" flag, so their re-invite is auto-accepted on reconnect
+> **Version 1.23.0**
+> - Navigation re-latches a name-unique room through a closed door: a swung-shut door dropping an exit from the display no longer freezes position until a manual reposition
+> - Auto-sneak re-fires after a silently lost sneak attempt, instead of stranding stealth for the rest of the run
+> - "Ring chime"-style CMD teleports are now walkable — navigation routes and crosses them like any other exit
+> - A party leader crossing a chime teleport relays the whole party through, then re-invites and waits in place for them to reform
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

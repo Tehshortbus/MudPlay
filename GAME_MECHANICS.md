@@ -541,6 +541,25 @@ comes from the stat screen / who line (`AlignmentTracker` / `PlayerStats`).
   small path.` — **no** ` -- Following your Party leader <dir> --` line and **no** cardinal direction.
   The follower's room changes but there is nothing to feed `NoteMoveSent`, so the tracker sees the new
   room as a mismatch and must recover via replay/candidate resolution rather than a predicted step.
+- **[CONFIRMED]** **A CMD-driven room teleport splits the party — every member must fire it
+  themselves.** Some rooms carry a command-triggered teleport in the room's `CMD` → TBInfo action
+  chain rather than as a directional exit — e.g. Slum Street (`1/1182`) has TBInfo `#4087`:
+  `ring chime:message …:teleport 65 1:message …` / `use chime:…` (a `ring chime` / `use chime` verb
+  that teleports the caster). This is **not** a `Text` ("go path") exit where the leader traverses and
+  followers are dragged along: a CMD teleport moves **only the one character who types it**, and it
+  **breaks the party apart** (the teleport removes the mover from the group). So a leader taking a
+  party through one must:
+  1. relay the verb to the whole party first — `@party ring chime` — so every member's client fires it
+     and teleports, then
+  2. fire the verb itself (`ring chime`), and
+  3. because the teleport disbanded the party, **re-invite every member and wait for them to rejoin**
+     before continuing the route.
+- **[NEEDS CONFIRMATION]** The believed general rule (user's inference, not yet verified across all
+  cases): a teleport driven by a room **`CMD`** (TBInfo chain) splits the party and needs each member
+  to execute it (→ `@party` relay + re-invite/wait), whereas a teleport/traversal that is **exit-driven**
+  (a `Text` exit like `go path`) needs **only the leader** to execute it and is party-safe (followers
+  follow normally). Confirm before extending the split/re-invite behaviour to teleport shapes other than
+  the `ring chime` CMD case above.
 - **[CONFIRMED]** **`look <dir>` peeks the adjacent room with a full room display, but the player never
   moves.** Looking into an exit (`look north`, `l e`, `peer …`) renders the neighbouring room exactly
   like walking in would — its title, its `You notice … here.` item/cash survey, and its `Also here:`

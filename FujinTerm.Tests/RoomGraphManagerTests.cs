@@ -579,6 +579,126 @@ public sealed class RoomGraphManagerTests : IDisposable
         Assert.Equal(2, graph.FindCandidates("Hallway", new HashSet<Direction> { Direction.N }).Count);
     }
 
+    // ----- FindByNameCoveringExits (door-tolerant re-anchor) ---------
+
+    // A name-unique room with three exits — the re-anchor path resolves it
+    // even when a closed door hides one or two of them.
+    private const string FoyerJson = """
+        [
+          { "Map Number": 1, "Room Number": 20, "Name": "Grand Foyer",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "1/21", "S": "1/22", "E": "1/23", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 21, "Name": "Corridor",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "0", "S": "1/20", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+        ]
+        """;
+
+    [Fact]
+    public void FindByNameCoveringExits_SubsetOfGraphExits_MatchesUniqueRoom()
+    {
+        SeedRooms("alpha", FoyerJson);
+        GameDataCache cache = NewCache();
+        cache.SwitchSet("alpha");
+        RoomGraphManager graph = new(cache);
+        graph.OnActiveSetChanged("alpha");
+
+        // Only {N} observed (S/E doors closed) — still a subset of {N,S,E}, and
+        // the name is unique, so the room re-latches where the exact-mask
+        // FindCandidates would have missed.
+        var hits = graph.FindByNameCoveringExits("Grand Foyer",
+            new HashSet<Direction> { Direction.N });
+        Assert.Single(hits);
+        Assert.Equal(new RoomKey(1, 20), hits[0]);
+
+        Assert.Empty(graph.FindCandidates("Grand Foyer",
+            new HashSet<Direction> { Direction.N }));
+    }
+
+    [Fact]
+    public void FindByNameCoveringExits_ObservedExitNotInGraph_NoMatch()
+    {
+        SeedRooms("alpha", FoyerJson);
+        GameDataCache cache = NewCache();
+        cache.SwitchSet("alpha");
+        RoomGraphManager graph = new(cache);
+        graph.OnActiveSetChanged("alpha");
+
+        // {N, W}: W isn't a graph exit of the Foyer. A door only ever hides an
+        // exit, never invents one, so this observation can't be this room.
+        var hits = graph.FindByNameCoveringExits("Grand Foyer",
+            new HashSet<Direction> { Direction.N, Direction.W });
+        Assert.Empty(hits);
+    }
+
+    [Fact]
+    public void FindByNameCoveringExits_EmptyObservation_MatchesByNameAlone()
+    {
+        SeedRooms("alpha", FoyerJson);
+        GameDataCache cache = NewCache();
+        cache.SwitchSet("alpha");
+        RoomGraphManager graph = new(cache);
+        graph.OnActiveSetChanged("alpha");
+
+        var hits = graph.FindByNameCoveringExits("Grand Foyer", new HashSet<Direction>());
+        Assert.Single(hits);
+        Assert.Equal(new RoomKey(1, 20), hits[0]);
+    }
+
+    [Fact]
+    public void FindByNameCoveringExits_SubsetMatchesMultiple_ReturnsAll()
+    {
+        // Sewer Tunnel bucket: #10 {N}, #11 {N,S}, #12 {S}. Observing {N} is a
+        // subset of both #10 and #11, so the door-tolerant match is ambiguous —
+        // the caller (RoomTracker) only re-anchors on a single hit.
+        SeedRooms("alpha", TwinRoomsJson);
+        GameDataCache cache = NewCache();
+        cache.SwitchSet("alpha");
+        RoomGraphManager graph = new(cache);
+        graph.OnActiveSetChanged("alpha");
+
+        var hits = graph.FindByNameCoveringExits("Sewer Tunnel",
+            new HashSet<Direction> { Direction.N });
+        Assert.Equal(2, hits.Count);
+        Assert.Contains(new RoomKey(1, 10), hits);
+        Assert.Contains(new RoomKey(1, 11), hits);
+    }
+
+    [Fact]
+    public void FindByNameCoveringExits_ExcludesUnreachable()
+    {
+        SeedRooms("alpha", TwinRoomsJson);
+        GameDataCache cache = NewCache();
+        cache.SwitchSet("alpha");
+        RoomGraphManager graph = new(cache);
+        graph.OnActiveSetChanged("alpha");
+
+        // Prune #11 → the {N} subset collapses to the single reachable #10, so
+        // the tracker can re-anchor cleanly.
+        graph.ConfigureUnreachable(k => k.Equals(new RoomKey(1, 11)));
+        var hits = graph.FindByNameCoveringExits("Sewer Tunnel",
+            new HashSet<Direction> { Direction.N });
+        Assert.Single(hits);
+        Assert.Equal(new RoomKey(1, 10), hits[0]);
+    }
+
+    [Fact]
+    public void FindByNameCoveringExits_UnknownName_ReturnsEmpty()
+    {
+        SeedRooms("alpha", FoyerJson);
+        GameDataCache cache = NewCache();
+        cache.SwitchSet("alpha");
+        RoomGraphManager graph = new(cache);
+        graph.OnActiveSetChanged("alpha");
+
+        Assert.Empty(graph.FindByNameCoveringExits("Nowhere",
+            new HashSet<Direction> { Direction.N }));
+        Assert.Empty(graph.FindByNameCoveringExits("",
+            new HashSet<Direction> { Direction.N }));
+    }
+
     // ----- swap reload -----------------------------------------------
 
     [Fact]

@@ -45,6 +45,7 @@ public sealed class AutoWalkManager : IRecoverableEngine
     private bool _awaitingHiddenReveal;
     private Func<RoomKey, RoomKey, string?>? _teleportResolver;
     private Func<bool>? _isLeaderWithFollowers;
+    private Action? _onLeaderPartySplit;
     private Action? _preMoveHook;
     private Action<IReadOnlyList<int>>? _pathItemAnnouncer;
     private Action<IReadOnlyList<RoomKey>>? _routeAnnouncer;
@@ -366,6 +367,17 @@ public sealed class AutoWalkManager : IRecoverableEngine
     {
         ArgumentNullException.ThrowIfNull(check);
         _isLeaderWithFollowers = check;
+    }
+
+    // Party-split-teleport handler — invoked right after the local (leading)
+    // character crosses a party-splitting CMD teleport. The relay already sent
+    // every follower through, but the teleport dissolved the follow chain;
+    // AppServices binds this to AutoPartyManager.NotePartySplitTeleport so the
+    // roster is re-invited + the movement gate held until the group reforms.
+    public void SetPartySplitHandler(Action handler)
+    {
+        ArgumentNullException.ThrowIfNull(handler);
+        _onLeaderPartySplit = handler;
     }
 
     // Pre-move stealth hook — invoked by the walker immediately before
@@ -734,7 +746,8 @@ public sealed class AutoWalkManager : IRecoverableEngine
             emitMove: EmitMoveBytes,
             writeAux: WriteBytes,
             _teleportResolver, _isLeaderWithFollowers,
-            out string? syncFail);
+            out string? syncFail,
+            onLeaderPartySplitTeleport: _onLeaderPartySplit);
         if (sync == SpecialExitSend.Sent) return;
         if (sync == SpecialExitSend.Failed)
         {

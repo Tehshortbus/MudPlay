@@ -919,6 +919,15 @@ public partial class MainWindowViewModel : ObservableObject
         AppServices.Current.Walker.SetPartyLeaderCheck(isLeaderWithFollowers);
         AppServices.Current.LoopRunner.SetTeleportResolver(teleportResolver);
         AppServices.Current.LoopRunner.SetPartyLeaderCheck(isLeaderWithFollowers);
+        // A party-splitting CMD teleport (chime-style) dissolves the follow
+        // chain even though the `.@party <kw>` relay sent everyone through, so
+        // the party must be re-invited on landing. Both movement engines route
+        // that reform through AutoPartyManager, which holds the movement gate
+        // until the group re-forms.
+        AppServices.Current.Walker.SetPartySplitHandler(
+            AppServices.Current.AutoParty.NotePartySplitTeleport);
+        AppServices.Current.LoopRunner.SetPartySplitHandler(
+            AppServices.Current.AutoParty.NotePartySplitTeleport);
         // Walker + loop runner — gate-wrapped so a long walk doesn't
         // blast moves through a password-entry prompt.
         AppServices.Current.Walker.SetWireSender(engineSend);

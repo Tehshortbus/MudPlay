@@ -332,6 +332,30 @@ public sealed class StealthManagerTests
     }
 
     [Fact]
+    public void AutoSneak_StaleAttempt_RoomChangeResets_ReFires()
+    {
+        // 235341: a sneak attempt whose ACK ("Attempting to sneak...") and the
+        // room's "Sneaking..." confirm both go unobserved strands the FSM in
+        // AttemptingSneak. On the next room change the stale attempt must reset to
+        // Idle so auto-sneak re-fires — without the reset, TryBeginAutoSneak's
+        // in-flight guard (!= Idle && != Failed) blocks every re-attempt and
+        // auto-sneak silently stops for the rest of the run.
+        using AutoHarness h = new() { AutoSneakOn = true };
+
+        h.Stealth.NoteRoomChanged();                 // first `sn` → AttemptingSneak
+        Assert.Single(h.Sent);
+        Assert.Equal(StealthState.AttemptingSneak, h.Stealth.State);
+
+        // No ACK, no `Sneaking...` — the room changes again with the attempt
+        // still in flight. The stale attempt resets and a fresh `sn` goes out.
+        h.Stealth.NoteRoomChanged();
+
+        Assert.Equal(2, h.Sent.Count);
+        Assert.Equal("sn", h.LastSent());
+        Assert.Equal(StealthState.AttemptingSneak, h.Stealth.State);
+    }
+
+    [Fact]
     public void AutoSneak_AlreadySneaking_NoSend()
     {
         using AutoHarness h = new() { AutoSneakOn = true };

@@ -1845,23 +1845,27 @@ public sealed class AppServices
         // (it needs DialogService to spawn the modeless window).
         SpellCoverage = new SpellCoverageAuditor(GameData, Messages, Log);
 
-        // Room graph — seeded from the active set's Rooms.json
-        // every time the set switches. Built once per swap; consumers
-        // hold typed Room references for the lifetime of the set.
-        RoomGraph = new Game.Map.RoomGraphManager(GameData, Log);
-        GameData.ActiveSetChanged += RoomGraph.OnActiveSetChanged;
-        if (GameData.ActiveSet is not null)
-            RoomGraph.OnActiveSetChanged(GameData.ActiveSet);
-
         // TBInfo store — TextBlock Info table indexed by Room.Cmd. Used
-        // by the teleport / NPC-service / gambling code paths (commit 5+
-        // wires the teleport resolver). Mirrors RoomGraph's load shape:
-        // active-set-driven, raw JSON evicted after typed conversion.
+        // by the teleport / NPC-service / gambling code paths (the teleport
+        // resolver reads it at walk time). Loaded BEFORE the room graph and
+        // subscribed first so a set swap reloads it ahead of the graph: the
+        // graph consults it during build to re-hint the door exits a CMD
+        // teleport shadows (ring chime bypassing the Slum Street door). The
+        // graph reads the typed store, so the raw JSON eviction here is fine.
         TBInfo = new TBInfoStore(GameData, Log);
         MonsterSpawns = new MonsterSpawnIndex(GameData, Log);
         GameData.ActiveSetChanged += TBInfo.OnActiveSetChanged;
         if (GameData.ActiveSet is not null)
             TBInfo.OnActiveSetChanged(GameData.ActiveSet);
+
+        // Room graph — seeded from the active set's Rooms.json every time the
+        // set switches. Built once per swap; consumers hold typed Room
+        // references for the lifetime of the set. Takes TBInfo (loaded above)
+        // so the build can promote CMD-teleport-shadowed door exits to Teleport.
+        RoomGraph = new Game.Map.RoomGraphManager(GameData, Log, TBInfo);
+        GameData.ActiveSetChanged += RoomGraph.OnActiveSetChanged;
+        if (GameData.ActiveSet is not null)
+            RoomGraph.OnActiveSetChanged(GameData.ActiveSet);
 
         // Quest name / visibility overlay — sibling to the per-set triggers file,
         // reloaded on every set switch. The mechanical step + bonus data the Quest
