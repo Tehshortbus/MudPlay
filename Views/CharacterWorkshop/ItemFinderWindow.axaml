@@ -212,7 +212,11 @@
                 <!-- ReflectionBinding: the non-generic DataGridCollectionView hides the
                      row item's type from the compiled-binding pass, so columns fall back
                      to reflection (matching the Game Data / Spell Coverage grids). -->
-                <DataGrid Grid.Row="1"
+                <!-- Columns tagged with their binding path are auto-hidden by the
+                     code-behind when no visible row carries a value for them (the
+                     VM recomputes the set on every filter). Slot and Name are the
+                     untagged anchors — always shown. -->
+                <DataGrid Grid.Row="1" x:Name="ItemsGrid"
                           ItemsSource="{Binding RowsView}"
                           IsReadOnly="True"
                           AutoGenerateColumns="False"
@@ -225,22 +229,22 @@
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="Slot"       Binding="{ReflectionBinding SlotLabel}"      SortMemberPath="SlotOrder"  Width="100"/>
                         <DataGridTextColumn Header="Name"       Binding="{ReflectionBinding Name}"           SortMemberPath="Name"       Width="200"/>
-                        <DataGridTextColumn Header="Type"       Binding="{ReflectionBinding TypeLabel}"      SortMemberPath="TypeLabel"  Width="96"/>
-                        <DataGridTextColumn Header="Lvl"        Binding="{ReflectionBinding LevelReqText}"   SortMemberPath="LevelReq"   Width="58"/>
-                        <DataGridTextColumn Header="Str"        Binding="{ReflectionBinding StrReqText}"     SortMemberPath="StrReq"     Width="58"/>
-                        <DataGridTextColumn Header="Dmg"        Binding="{ReflectionBinding DamageText}"     SortMemberPath="MaxDmg"     Width="78"/>
-                        <DataGridTextColumn Header="Swings"     Binding="{ReflectionBinding AvgSwingsText}"  SortMemberPath="AvgSwings"  Width="70"/>
-                        <DataGridTextColumn Header="Accy"       Binding="{ReflectionBinding AccuracyText}"   SortMemberPath="Accuracy"   Width="66"/>
-                        <DataGridTextColumn Header="Crit"       Binding="{ReflectionBinding CritsText}"      SortMemberPath="Crits"      Width="62"/>
-                        <DataGridTextColumn Header="Hit Magic"  Binding="{ReflectionBinding HitMagicText}"   SortMemberPath="HitMagic"   Width="92"/>
-                        <DataGridTextColumn Header="BS Acc"     Binding="{ReflectionBinding BsAccuracyText}" SortMemberPath="BsAccuracy" Width="78"/>
-                        <DataGridTextColumn Header="BS Min-Max" Binding="{ReflectionBinding BsDamageText}"   SortMemberPath="BsMax"      Width="106"/>
-                        <DataGridTextColumn Header="AC"         Binding="{ReflectionBinding AcText}"         SortMemberPath="Ac"         Width="56"/>
-                        <DataGridTextColumn Header="DR"         Binding="{ReflectionBinding DrText}"         SortMemberPath="Dr"         Width="56"/>
-                        <DataGridTextColumn Header="HP"         Binding="{ReflectionBinding HpText}"         SortMemberPath="Hp"         Width="62"/>
-                        <DataGridTextColumn Header="HP Regen"   Binding="{ReflectionBinding HpRegenText}"    SortMemberPath="HpRegen"    Width="92"/>
-                        <DataGridTextColumn Header="Mana"       Binding="{ReflectionBinding ManaText}"       SortMemberPath="Mana"       Width="66"/>
-                        <DataGridTextColumn Header="MP Regen"   Binding="{ReflectionBinding ManaRegenText}"  SortMemberPath="ManaRegen"  Width="92"/>
+                        <DataGridTextColumn Header="Type"       Binding="{ReflectionBinding TypeLabel}"      SortMemberPath="TypeLabel"  Width="96"  Tag="TypeLabel"/>
+                        <DataGridTextColumn Header="Lvl"        Binding="{ReflectionBinding LevelReqText}"   SortMemberPath="LevelReq"   Width="58"  Tag="LevelReqText"/>
+                        <DataGridTextColumn Header="Str"        Binding="{ReflectionBinding StrReqText}"     SortMemberPath="StrReq"     Width="58"  Tag="StrReqText"/>
+                        <DataGridTextColumn Header="Dmg"        Binding="{ReflectionBinding DamageText}"     SortMemberPath="MaxDmg"     Width="78"  Tag="DamageText"/>
+                        <DataGridTextColumn Header="Swings"     Binding="{ReflectionBinding AvgSwingsText}"  SortMemberPath="AvgSwings"  Width="70"  Tag="AvgSwingsText"/>
+                        <DataGridTextColumn Header="Accy"       Binding="{ReflectionBinding AccuracyText}"   SortMemberPath="Accuracy"   Width="66"  Tag="AccuracyText"/>
+                        <DataGridTextColumn Header="Crit"       Binding="{ReflectionBinding CritsText}"      SortMemberPath="Crits"      Width="62"  Tag="CritsText"/>
+                        <DataGridTextColumn Header="Hit Magic"  Binding="{ReflectionBinding HitMagicText}"   SortMemberPath="HitMagic"   Width="92"  Tag="HitMagicText"/>
+                        <DataGridTextColumn Header="BS Acc"     Binding="{ReflectionBinding BsAccuracyText}" SortMemberPath="BsAccuracy" Width="78"  Tag="BsAccuracyText"/>
+                        <DataGridTextColumn Header="BS Min-Max" Binding="{ReflectionBinding BsDamageText}"   SortMemberPath="BsMax"      Width="106" Tag="BsDamageText"/>
+                        <DataGridTextColumn Header="AC"         Binding="{ReflectionBinding AcText}"         SortMemberPath="Ac"         Width="56"  Tag="AcText"/>
+                        <DataGridTextColumn Header="DR"         Binding="{ReflectionBinding DrText}"         SortMemberPath="Dr"         Width="56"  Tag="DrText"/>
+                        <DataGridTextColumn Header="HP"         Binding="{ReflectionBinding HpText}"         SortMemberPath="Hp"         Width="62"  Tag="HpText"/>
+                        <DataGridTextColumn Header="HP Regen"   Binding="{ReflectionBinding HpRegenText}"    SortMemberPath="HpRegen"    Width="92"  Tag="HpRegenText"/>
+                        <DataGridTextColumn Header="Mana"       Binding="{ReflectionBinding ManaText}"       SortMemberPath="Mana"       Width="66"  Tag="ManaText"/>
+                        <DataGridTextColumn Header="MP Regen"   Binding="{ReflectionBinding ManaRegenText}"  SortMemberPath="ManaRegen"  Width="92"  Tag="ManaRegenText"/>
                     </DataGrid.Columns>
                 </DataGrid>
             </Grid>

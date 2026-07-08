@@ -2,6 +2,11 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.17.0
+
+- Item Finder auto-hides stat columns with no values in the current filtered view — narrow to a slot and the irrelevant Dmg/Swings/Hit Magic/etc. columns drop away
+- Slot and Name columns always stay; hidden columns return the moment a matching item brings them back
+
 ## 1.16.3
 
 - Status-bar location chip's xp/hr now ticks live instead of freezing at the rate captured when you last moved
