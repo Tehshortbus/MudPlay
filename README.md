@@ -1,9 +1,11 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.20.4**
-> - A monster that pursues us into the next room is now fought instead of dragged: its walk-in arrival no longer gets wiped on the room change, so the walker holds and we stop to kill it
-> - The pursuer-keep is suppressed while fleeing, so a monster that chases us mid-flee doesn't turn us around to fight — we keep running
+> **Version 1.21.0**
+> - Leading party now holds in place when a follower drops connection, instead of sprinting off without them
+> - Hold lasts the "If leading, wait only" window, then resumes; the returning member re-parties in place if they reconnect first
+> - Settings → BBS gains an optional board disconnect line (literal `{name}`/`*` syntax) for boards whose logoff wording isn't the built-in one
+> - Player game-data table gains an optional account-name override, so a board that logs off by account name still maps the drop to the right party member
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

@@ -6,11 +6,16 @@ namespace FujinTerm.Models.GameData;
 // different BBS represents a different person, so the per-BBS scope matches
 // the social reality.
 //
-// Mutations to this record only come from the server-output parsers
+// Mutations to this record come from the server-output parsers
 // (WhoListParser and the planned look-on-player parser). User-authored
-// fields live separately on PlayerCustomization at the Character tier; the
-// edit dialog never touches an observation. PlayerDatabase merges both
-// layers for display.
+// per-character fields live separately on PlayerCustomization at the
+// Character tier. The one authored field stored HERE is AccountName: it's
+// BBS-scoped truth (an account belongs to a BBS, shared across all our
+// alts on that realm), so it belongs at the BBS tier next to the
+// observation rather than in the per-character customization layer — and
+// there's no wire source for the account→character link, so the user
+// authors it via the edit dialog. PlayerDatabase merges both layers for
+// display.
 //
 // GivenName is the first word of the in-game name (the "Forged" in "Forged
 // Paradigm"), may be empty for legacy records; FamilyName is the remainder
@@ -43,7 +48,15 @@ public sealed record PlayerObservation(
     DateTime LastSeenUtc,
     IReadOnlyList<EquipmentItem>? Equipment = null,
     DateTime? LastGreetedUtc = null,
-    int? Level = null)
+    int? Level = null,
+    // Authored BBS-tier override: the player's BBS account name, when it
+    // differs from their in-game given name. Some boards key their presence
+    // lines (logon / logoff) on the account name instead of the character
+    // name; the disconnect-watcher matches a captured name against this
+    // first, falling back to the given name when it's null. Both account and
+    // in-game names are unique, so the mapping is 1:1. null = no override
+    // (account name equals the in-game name, the common case).
+    string? AccountName = null)
 {
     // Combined display name — "GivenName FamilyName", trimmed. Used by the
     // database's case-insensitive lookup and by the customization
@@ -119,7 +132,11 @@ public sealed record PlayerRecord(
     bool JoinPartyIfInvited = false,
     bool DontAutoDelete = false,
     IReadOnlyList<EquipmentItem>? Equipment = null,
-    int? Level = null)
+    int? Level = null,
+    // Mirrors PlayerObservation.AccountName (BBS tier) into the merged row so
+    // the edit dialog can show + author it. null = account name equals the
+    // in-game name.
+    string? AccountName = null)
 {
     // Combined display name — "GivenName FamilyName", trimmed. Identical
     // contract to PlayerObservation.DisplayName so callers don't have to
@@ -149,7 +166,8 @@ public sealed record PlayerRecord(
         JoinPartyIfInvited:  cust.JoinPartyIfInvited,
         DontAutoDelete:      cust.DontAutoDelete,
         Equipment:           obs.Equipment,
-        Level:               obs.Level);
+        Level:               obs.Level,
+        AccountName:         obs.AccountName);
 
     // Pull just the customization slice off this merged row (used by the edit dialog Save path).
     public PlayerCustomization ToCustomization() => new(

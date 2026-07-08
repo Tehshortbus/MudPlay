@@ -39,6 +39,12 @@
                 <CheckBox Content="Don't auto-delete this player"
                           IsChecked="{Binding DontAutoDelete, Mode=TwoWay}"
                           ToolTip.Tip="Skip this record during the periodic cleanup of stale players (Settings → General)."/>
+                <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,4,0,0">
+                    <TextBlock Classes="FieldLabel" Text="Account name" Width="90"/>
+                    <TextBox Text="{Binding AccountName, Mode=TwoWay}" Width="200"
+                             PlaceholderText="(same as in-game name)"
+                             ToolTip.Tip="Only needed on boards whose logon/logoff lines key on the BBS account name instead of the character name (e.g. Playpen). Leave blank when they match. Stored per-BBS; used to attribute a party member's disconnect."/>
+                </StackPanel>
             </StackPanel>
 
             <!-- ===== Remote controls + observation footer ===== -->

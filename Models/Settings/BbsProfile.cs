@@ -122,6 +122,20 @@ public sealed class BbsProfile
     // start from a guess and let real deaths correct it.
     public bool AutoRefineDeathFloor { get; set; } = true;
 
+    // Board-specific player-disconnect line, matched IN ADDITION to the
+    // built-in "X just disconnected!!!" / "X just hung up!!!" forms. Some
+    // boards (Playpen) don't emit those and instead print a custom BBS-level
+    // logoff line — and worse, key it on the player's ACCOUNT name, not their
+    // character name. This pattern lets the user teach the client that line so
+    // a party member's disconnect is caught (and the party waits for them
+    // instead of sprinting off). Uses the same literal syntax as triggers:
+    // {name} captures the disconnecting player's name (matched against a
+    // member's account-name override, else their character name), * swallows a
+    // varying run (e.g. Playpen's trailing "Lines in Use: N" count). Empty =
+    // only the built-in forms are watched (default). Example for Playpen:
+    //   ►►► [{name}] logs OFF*
+    public string? DisconnectPattern { get; set; }
+
     // ----- Terminal dimensions (NAWS, RFC 1073) -----
 
     // Terminal columns to advertise via Telnet NAWS at connect-time.

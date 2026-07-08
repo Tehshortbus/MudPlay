@@ -150,6 +150,10 @@ public static class BugReportBuilder
         Kv(sb, "In party", party.IsInParty.ToString());
         Kv(sb, "Self is leader", party.SelfIsLeader.ToString());
         Kv(sb, "Leader", party.LeaderName ?? "(none)");
+        // Board-specific disconnect line, if the active BBS defines one — the
+        // config a "party sprinted off after a member dropped" report needs to
+        // confirm the custom logoff line was actually taught to the client.
+        Kv(sb, "BBS disconnect pattern", svc.ResolveActiveBbs()?.DisconnectPattern ?? "(built-in lines only)");
 
         sb.Append("\n**Members** (").Append(party.Members.Count).Append(")\n\n");
         if (party.Members.Count == 0) { sb.Append("_(none)_\n"); return sb.ToString(); }

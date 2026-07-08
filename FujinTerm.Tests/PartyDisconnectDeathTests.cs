@@ -326,6 +326,138 @@ public sealed class PartyDisconnectDeathTests
         Assert.DoesNotContain("Stranger", mgr.RecentlyDisconnected.Keys, StringComparer.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public void BuiltInDisconnect_WhenWeLead_FiresMemberDisconnected()
+    {
+        // The leader-side signal PartyDisconnectMovementGate rides — a follower
+        // drop while we lead must fire MemberDisconnected with the given name.
+        var (router, mgr, _) = Setup();
+        router.Dispatch(Line("Helper started to follow you."));
+        Assert.True(mgr.State.SelfIsLeader);
+        string? fired = null;
+        mgr.MemberDisconnected += g => fired = g;
+
+        router.Dispatch(Line("Helper just disconnected!!!."));
+
+        Assert.Equal("Helper", fired);
+    }
+
+    [Fact]
+    public void CoFollowerDisconnect_WhenWeFollow_DoesNotFireMemberDisconnected()
+    {
+        // We (Raijin) follow Fujin; Helper is a co-follower. When Helper drops,
+        // OUR own movement is already held by the FollowerGate — a second
+        // member-wait gate would only linger to timeout — so MemberDisconnected
+        // is leader-only and must stay silent here.
+        MessageRouter router = new();
+        DefaultPatterns.Seed(router);
+        PartyState state = new();
+        PartyManager mgr = new(router, state) { LocalCharacterName = "Raijin" };
+        router.Dispatch(Line("You are now following Fujin."));
+        mgr.TestEnterParBlock();
+        mgr.FeedTestLines(new[]
+        {
+            "  Fujin  WuzHere                  (Mystic)        [M:100%] [H:100%]   - Frontrank",
+            "  Raijin WuzHere                  (Priest)        [M:100%] [H:100%]   - Midrank",
+            "  Helper WuzHere                  (Cleric)        [M:100%] [H:100%]   - Backrank",
+            string.Empty,
+        });
+        Assert.False(mgr.State.SelfIsLeader);
+        string? fired = null;
+        mgr.MemberDisconnected += g => fired = g;
+
+        router.Dispatch(Line("Helper just disconnected!!!."));
+
+        Assert.Null(fired);
+        Assert.DoesNotContain(mgr.State.Members, m => m.Name.StartsWith("Helper"));
+    }
+
+    // ===== Board-specific (custom) disconnect line =====
+
+    private const string LogoffPattern = "►►► [{name}] logs OFF*";
+
+    [Fact]
+    public void CustomDisconnectLine_DirectName_RemovesPartyMember()
+    {
+        // A board whose logoff line keys on the CHARACTER name — the identity
+        // resolver maps the captured presence name straight to the given name.
+        var (router, mgr, _) = Setup();
+        mgr.DisconnectPatternProvider = () => LogoffPattern;
+        mgr.PresenceNameResolver = presence => presence;
+        router.Dispatch(Line("Helper started to follow you."));
+        Assert.Single(mgr.State.Members);
+
+        mgr.FeedTestEmittedLine("►►► [Helper] logs OFF the BBS.");
+
+        Assert.Empty(mgr.State.Members);
+        Assert.Contains("Helper", mgr.RecentlyDisconnected.Keys, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void CustomDisconnectLine_AccountName_ResolvesToPartyMember()
+    {
+        // Playpen-style board: the logoff line carries the BBS ACCOUNT name, not
+        // the in-game name. The resolver maps it to the given name through the
+        // account-name override table before the shared correlation runs.
+        var (router, mgr, _) = Setup();
+        mgr.DisconnectPatternProvider = () => LogoffPattern;
+        mgr.PresenceNameResolver = presence =>
+            presence.Equals("SuijinAcct", StringComparison.OrdinalIgnoreCase) ? "Suijin" : presence;
+        router.Dispatch(Line("Suijin started to follow you."));
+        Assert.Single(mgr.State.Members);
+        string? fired = null;
+        mgr.MemberDisconnected += g => fired = g;
+
+        mgr.FeedTestEmittedLine("►►► [SuijinAcct] logs OFF the BBS.");
+
+        Assert.Empty(mgr.State.Members);
+        Assert.Contains("Suijin", mgr.RecentlyDisconnected.Keys, StringComparer.OrdinalIgnoreCase);
+        Assert.Equal("Suijin", fired);
+    }
+
+    [Fact]
+    public void CustomDisconnectLine_OfNonMember_IsIgnored()
+    {
+        var (router, mgr, _) = Setup();
+        mgr.DisconnectPatternProvider = () => LogoffPattern;
+        mgr.PresenceNameResolver = presence => presence;
+        router.Dispatch(Line("Helper started to follow you."));
+
+        mgr.FeedTestEmittedLine("►►► [Stranger] logs OFF the BBS.");
+
+        Assert.Single(mgr.State.Members);
+        Assert.DoesNotContain("Stranger", mgr.RecentlyDisconnected.Keys, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void CustomDisconnectLine_NoPatternConfigured_IsInert()
+    {
+        // No board pattern set — the custom path must never fire, leaving only
+        // the built-in disconnect / hang-up lines active.
+        var (router, mgr, _) = Setup();
+        mgr.PresenceNameResolver = presence => presence;
+        router.Dispatch(Line("Helper started to follow you."));
+
+        mgr.FeedTestEmittedLine("►►► [Helper] logs OFF the BBS.");
+
+        Assert.Single(mgr.State.Members);
+    }
+
+    [Fact]
+    public void CustomDisconnectLine_MalformedPattern_DoesNotThrow()
+    {
+        // A pattern that compiles to invalid regex disables the custom path
+        // rather than throwing on every emitted line.
+        var (router, mgr, _) = Setup();
+        mgr.DisconnectPatternProvider = () => "[unterminated";
+        mgr.PresenceNameResolver = presence => presence;
+        router.Dispatch(Line("Helper started to follow you."));
+
+        mgr.FeedTestEmittedLine("anything at all");
+
+        Assert.Single(mgr.State.Members);
+    }
+
     // ===== Reconnect within grace window — auto-invite =====
 
     [Fact]
