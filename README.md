@@ -1,8 +1,8 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.19.3**
-> - Attack-last now sends one re-fire per round instead of one per party member — a round's burst of party attack announcements on our target coalesces into a single attack command, landing after the last announce so we stay last without spamming the wire
+> **Version 1.19.4**
+> - Backstab re-opens on every confirmed room change, so hand-walking (not just the walk-to/loop engines) re-arms the surprise round instead of falling back to a normal attack after the session's first backstab
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

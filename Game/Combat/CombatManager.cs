@@ -195,8 +195,11 @@ public sealed partial class CombatManager : IDisposable
     // a freshly-approached room. Once ANY combat action fires here (bs, spell, or
     // swing) the surprise is spent, so re-picking `bs` on a re-engage (interrupt
     // resume, target re-pick) would whiff a wasted round. Set true after the first
-    // dispatch in a room; reset false when a new sneak-approach begins
-    // (PrepBackstabForMove, the pre-move hook). Gates BackstabPending.
+    // dispatch in a room; reset false on a genuine room change — both the pre-move
+    // hook (PrepBackstabForMove, when a movement engine drives) AND the classifier's
+    // RoomChange observation in OnEntitiesObserved (which fires on every confirmed
+    // transition, so manual hand-walking re-opens the surprise round too). Gates
+    // BackstabPending.
     private bool _backstabOpenerConsumed;
 
     // AttackTiming re-fire coalescing. A combat round resolves the whole party's
@@ -404,6 +407,17 @@ public sealed partial class CombatManager : IDisposable
     private void OnEntitiesObserved(RoomEntitiesObservation obs)
     {
         CombatSettings settings = _readSettings();
+
+        // A confirmed room change re-opens the surprise round for the room we're
+        // entering. The pre-move hook (PrepBackstabForMove) already resets the
+        // opener when a movement engine drives the walk, but hand-walking leaves
+        // that hook silent — the classifier's synthetic RoomChange wipe is the one
+        // signal that fires on EVERY transition, so keying the reset off it makes
+        // manual moves re-arm the backstab too. Runs before the AlsoHere emit for
+        // the new room, so the opener is already false when that dispatch reads
+        // BackstabPending. Flag-only; _isSneaking still gates whether bs fires.
+        if (obs.Source == RoomObservationSource.RoomChange)
+            _backstabOpenerConsumed = false;
 
         // Combat-off override for stealth runners. Normally combat-off
         // means we don't engage at all. But a stealth character sprinting

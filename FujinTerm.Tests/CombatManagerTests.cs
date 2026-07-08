@@ -1316,6 +1316,32 @@ public sealed class CombatManagerTests
         Assert.Equal("a giant rat", h.LastSent);
     }
 
+    [Fact]
+    public void Backstab_ReopensOnManualRoomChange_WithoutPreMoveHook()
+    {
+        // Hand-walking never fires the walker's pre-move hook
+        // (PrepBackstabForMove), so the classifier's RoomChange observation is
+        // the only signal that re-opens the surprise round. Without keying the
+        // opener reset off it, every backstab after the session's first would
+        // fall through to a normal attack (the under-backstab report).
+        using Harness h = new();
+        h.Settings.DoBackstab = true;
+        h.AddMonster(1, "giant rat", killable: true);
+        h.AddMonster(2, "goblin", killable: true);
+        h.Combat.SetBackstabHooks(isSneaking: () => true, hasSeeHidden: _ => false);
+
+        // Room A: opener fires, then is consumed.
+        h.Feed("Also here: giant rat.");
+        Assert.Equal("bs giant rat", h.LastSent);
+
+        // Manual walk to room B — only the RoomChange wipe fires, NOT the
+        // pre-move hook. The next room must still open with a backstab.
+        h.Classifier.NoteRoomChanged();
+        h.Feed("Also here: goblin.");
+
+        Assert.Equal("bs goblin", h.LastSent);
+    }
+
     // ----- seehidden clear override (PR 4.c-b) -----------------------
 
     [Fact]
