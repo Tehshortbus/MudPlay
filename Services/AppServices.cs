@@ -2262,7 +2262,11 @@ public sealed class AppServices
             // hostile is actually here. HasHostileMonster (unlike
             // HasEngageableHostiles) ignores the auto-attack master switch, so a
             // manual player still hangs up when a mob shows up.
-            hasHostileInRoom: () => CombatTracker.HasHostileMonster);
+            hasHostileInRoom: () => CombatTracker.HasHostileMonster,
+            // Reverse-flee routing: BFS from the current room back to the active
+            // engine's start. No filter so gates / avoided rooms never block an
+            // escape — a flee just needs to physically retreat along the graph.
+            findReversePath: (from, to) => Bfs.FindPath(from, to));
 
         // Re-check the emergency hangup whenever the room's occupants change: a
         // hostile that wanders in or spawns while we're already below the trigger

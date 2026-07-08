@@ -187,10 +187,30 @@ public sealed class LoopRunner : IRecoverableEngine
 
     public string Name => "LoopRunner";
 
+    // A flee retreats toward the room the circuit began at. Null for legacy v1
+    // loops with no canonical circle anchor — flee then inverts the last move.
+    public RoomKey? JourneyOrigin => _circleStartRoom;
+
     public Direction? PeekNextPlannedDirection()
     {
         if (_loop is null || _index >= _expandedSteps.Count) return null;
         return _expandedSteps[_index] is MoveLoopStep move ? move.Direction : (Direction?)null;
+    }
+
+    public IReadOnlyList<Direction> PeekPlannedDirections(int count)
+    {
+        int n = _expandedSteps.Count;
+        if (count < 1 || _loop is null || n == 0) return Array.Empty<Direction>();
+        var dirs = new List<Direction>(count);
+        // Loops are circular — wrap around the circuit to fill the count. Stop at
+        // the first command / delay step: a forward flee sends plain cardinals
+        // only and can't run a custom-command step mid-escape.
+        for (int k = 0; k < n && dirs.Count < count; k++)
+        {
+            if (_expandedSteps[(_index + k) % n] is not MoveLoopStep move) break;
+            dirs.Add(move.Direction);
+        }
+        return dirs;
     }
 
     public void SendBacktrackMove(Direction direction)

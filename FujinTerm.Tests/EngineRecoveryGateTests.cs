@@ -58,7 +58,9 @@ public sealed class EngineRecoveryGateTests : IDisposable
         public string Name => "FakeEngine";
         public int AbortCount { get; private set; }
 
+        public RoomKey? JourneyOrigin => null;
         public Direction? PeekNextPlannedDirection() => null;
+        public IReadOnlyList<Direction> PeekPlannedDirections(int count) => Array.Empty<Direction>();
         public void SendBacktrackMove(Direction direction) { }
         public void PauseForRecovery(string reason) { }
         public void ResumeAfterRecovery(RoomKey recoveredAnchor) { }

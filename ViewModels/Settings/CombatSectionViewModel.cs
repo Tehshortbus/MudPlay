@@ -167,7 +167,7 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
 
     [ObservableProperty] private int _minMonstersInRoom;
     [ObservableProperty] private int _maxMonstersInRoom = 20;
-    [ObservableProperty] private int _runDistance = 3;
+    [ObservableProperty] private int _runDistance = 2;
     [ObservableProperty] private int _noEffectFailureThreshold = 1;
 
     // ----- Run-away (flee) behaviour --------------------------------

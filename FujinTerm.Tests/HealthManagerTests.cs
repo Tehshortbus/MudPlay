@@ -800,8 +800,15 @@ public sealed class HealthManagerTests
         public string? PausedReason { get; private set; }
         public Game.Map.RoomKey? ResumedAtRoom { get; private set; }
         public Game.Map.Direction? NextPlanned { get; set; }
+        public Game.Map.RoomKey? JourneyOrigin { get; set; }
+
+        // The engine's forward-planned route — the Forward flee walks up to
+        // RunDistance of these.
+        public List<Game.Map.Direction> PlannedForward { get; } = new();
 
         public Game.Map.Direction? PeekNextPlannedDirection() => NextPlanned;
+        public IReadOnlyList<Game.Map.Direction> PeekPlannedDirections(int count) =>
+            PlannedForward.Take(count).ToList();
         public void SendBacktrackMove(Game.Map.Direction d) => SentBacktrackMoves.Add(d);
         public void PauseForRecovery(string reason) => PausedReason = reason;
         public void ResumeAfterRecovery(Game.Map.RoomKey k) => ResumedAtRoom = k;
@@ -821,6 +828,12 @@ public sealed class HealthManagerTests
         public Game.Map.Direction? LastSent { get; set; } = Game.Map.Direction.N;
         public bool HostilesPresent { get; set; }
 
+        // Reverse-path selector for the Backward flee. Null (the default) exercises
+        // the fallback (invert the last sent direction); a test can set it to a
+        // fixed BFS route to drive the multi-direction reverse trail.
+        public Func<Game.Map.RoomKey, Game.Map.RoomKey,
+            IReadOnlyList<Game.Map.Direction>?>? ReversePath { get; set; }
+
         public FleeHarness()
         {
             Coordinator = new MovementCoordinator(Log);
@@ -833,7 +846,8 @@ public sealed class HealthManagerTests
                 readCombatSettings: () => Combat,
                 readGeneralSettings: null,
                 hasEngageableHostiles: () => HostilesPresent,
-                log: Log);
+                log: Log,
+                findReversePath: (from, to) => ReversePath?.Invoke(from, to));
             Health.SetWireSender(b => Sent.Add(b));
         }
 
@@ -859,8 +873,11 @@ public sealed class HealthManagerTests
     }
 
     [Fact]
-    public void Flee_BackwardMode_InvertsLastSentDirection()
+    public void Flee_BackwardMode_NoMap_InvertsLastSentDirection()
     {
+        // Fallback path: no reverse-path selector result and no JourneyOrigin
+        // (unmapped area), so the Backward flee inverts the last sent direction
+        // for a single conservative step back into the room we came from.
         using FleeHarness h = new();
         h.Combat.RunDirection = Models.Profile.RunDirection.Backward;
         h.Combat.BreakBeforeFleeing = true;
@@ -878,13 +895,19 @@ public sealed class HealthManagerTests
     }
 
     [Fact]
-    public void Flee_ForwardMode_UsesEnginePlannedDirection()
+    public void Flee_ForwardMode_WalksEnginePlannedTrail()
     {
+        // "Go backwards if running" off — the flee follows the engine's own
+        // planned route toward its destination, capped at RunDistance, one move
+        // per room arrival (NOT one direction repeated).
         using FleeHarness h = new();
         h.Combat.RunDirection = Models.Profile.RunDirection.Forward;
         h.Combat.BreakBeforeFleeing = false;
-        h.Combat.RunDistance = 1;
-        h.Engine!.NextPlanned = Game.Map.Direction.E;
+        h.Combat.RunDistance = 2;
+        h.Engine!.PlannedForward.AddRange(new[]
+        {
+            Game.Map.Direction.E, Game.Map.Direction.N, Game.Map.Direction.E,
+        });
 
         h.State.MaxHp = 200;
         h.State.InCombat = true;
@@ -894,33 +917,85 @@ public sealed class HealthManagerTests
         Assert.Single(h.Engine.SentBacktrackMoves);
         Assert.Equal(Game.Map.Direction.E, h.Engine.SentBacktrackMoves[0]);
         Assert.DoesNotContain("break", h.SentLines);
+
+        // Next room arrival advances to the second planned move.
+        h.Health.NoteRoomChanged(new Game.Map.RoomKey(1, 1));
+        Assert.Equal(2, h.Engine.SentBacktrackMoves.Count);
+        Assert.Equal(Game.Map.Direction.N, h.Engine.SentBacktrackMoves[1]);
+
+        // Capped at RunDistance=2 — the third planned move is never sent.
+        h.Health.NoteRoomChanged(new Game.Map.RoomKey(1, 2));
+        Assert.Equal(2, h.Engine.SentBacktrackMoves.Count);
     }
 
     [Fact]
-    public void Flee_MultiStep_SendsOnePerRoomChange()
+    public void Flee_MultiStep_WalksReverseBfsTrail_OnePerRoomChange()
     {
-        // RunDistance=3 → first step on trigger; two more steps on
-        // subsequent NoteRoomChanged calls.
+        // Backward flee (default) with a mapped reverse trail: BFS from the
+        // current room back to the engine's JourneyOrigin yields S,W,U and
+        // RunDistance caps at 3 — first step on trigger, the rest one per
+        // NoteRoomChanged, in path order (NOT one sustained direction).
         using FleeHarness h = new();
+        h.Combat.RunDirection = Models.Profile.RunDirection.Backward;
         h.Combat.BreakBeforeFleeing = false;
         h.Combat.RunDistance = 3;
-        h.LastSent = Game.Map.Direction.N;
+        h.Engine!.JourneyOrigin = new Game.Map.RoomKey(1, 0);
+        h.ReversePath = (_, _) => new[]
+        {
+            Game.Map.Direction.S, Game.Map.Direction.W, Game.Map.Direction.U,
+        };
+
+        // Establish the current room so the flee has a BFS source.
+        h.Health.NoteRoomChanged(new Game.Map.RoomKey(1, 50));
 
         h.State.MaxHp = 200;
         h.State.InCombat = true;
         h.State.HasPromptData = true;
         h.State.Hp = 30;
-        Assert.Single(h.Engine!.SentBacktrackMoves);
+        Assert.Single(h.Engine.SentBacktrackMoves);
+        Assert.Equal(Game.Map.Direction.S, h.Engine.SentBacktrackMoves[0]);
 
-        // Each room arrival advances one more step.
+        // Each room arrival advances one more step, following the trail.
         h.Health.NoteRoomChanged(new Game.Map.RoomKey(1, 100));
         Assert.Equal(2, h.Engine.SentBacktrackMoves.Count);
+        Assert.Equal(Game.Map.Direction.W, h.Engine.SentBacktrackMoves[1]);
 
         h.Health.NoteRoomChanged(new Game.Map.RoomKey(1, 101));
         Assert.Equal(3, h.Engine.SentBacktrackMoves.Count);
+        Assert.Equal(Game.Map.Direction.U, h.Engine.SentBacktrackMoves[2]);
 
         h.Health.NoteRoomChanged(new Game.Map.RoomKey(1, 102));
         Assert.Equal(3, h.Engine.SentBacktrackMoves.Count);    // stopped
+    }
+
+    [Fact]
+    public void Flee_Backward_ReversePathCapsAtRunDistance()
+    {
+        // A long reverse trail is trimmed to RunDistance — we flee only as far
+        // as configured before re-evaluating, not all the way to the origin.
+        using FleeHarness h = new();
+        h.Combat.RunDirection = Models.Profile.RunDirection.Backward;
+        h.Combat.BreakBeforeFleeing = false;
+        h.Combat.RunDistance = 2;
+        h.Engine!.JourneyOrigin = new Game.Map.RoomKey(1, 0);
+        h.ReversePath = (_, _) => new[]
+        {
+            Game.Map.Direction.S, Game.Map.Direction.W,
+            Game.Map.Direction.U, Game.Map.Direction.E,
+        };
+        h.Health.NoteRoomChanged(new Game.Map.RoomKey(1, 50));
+
+        h.State.MaxHp = 200;
+        h.State.InCombat = true;
+        h.State.HasPromptData = true;
+        h.State.Hp = 30;
+
+        h.Health.NoteRoomChanged(new Game.Map.RoomKey(1, 100));
+        h.Health.NoteRoomChanged(new Game.Map.RoomKey(1, 101));   // beyond the cap
+        Assert.Equal(2, h.Engine.SentBacktrackMoves.Count);
+        Assert.Equal(
+            new[] { Game.Map.Direction.S, Game.Map.Direction.W },
+            h.Engine.SentBacktrackMoves);
     }
 
     [Fact]

@@ -139,8 +139,8 @@ public sealed class CombatSettings
     // (rooms cap at 20 NPCs). Default 20.
     public int MaxMonstersInRoom { get; set; } = 20;
 
-    // Rooms to flee before re-evaluating. Range 1–100. Default 3.
-    public int RunDistance { get; set; } = 3;
+    // Rooms to flee before re-evaluating. Range 1–100. Default 2.
+    public int RunDistance { get; set; } = 2;
 
     // Direction strategy when fleeing. Forward continues along the active walker
     // path (away from where we entered); Backward retraces the steps we just

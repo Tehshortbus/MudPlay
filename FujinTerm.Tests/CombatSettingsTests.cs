@@ -43,7 +43,7 @@ public sealed class CombatSettingsTests
 
         Assert.Equal(0,  dto.MinMonstersInRoom);
         Assert.Equal(20, dto.MaxMonstersInRoom);
-        Assert.Equal(3,  dto.RunDistance);
+        Assert.Equal(2,  dto.RunDistance);
 
         // Flee defaults (graduated from the Other tab): retrace the way we
         // came (Backward) and break combat before the first flee move.

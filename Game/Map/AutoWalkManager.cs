@@ -54,6 +54,7 @@ public sealed class AutoWalkManager : IRecoverableEngine
     private int _index;                                      // index of the *next* step to send
     private RoomKey? _expectedAfterCurrentMove;
     private RoomKey? _destination;
+    private RoomKey? _origin;                                // room this walk was planned from (flee anchor)
     private bool _stepInFlight;
     private bool _awaitingPromptForCommand;
     private bool _awaitingTrapDisarm;
@@ -143,10 +144,29 @@ public sealed class AutoWalkManager : IRecoverableEngine
 
     public string Name => "Walker";
 
+    // The room BFS planned this walk from — a flee retreats toward it. On a
+    // ResumeAfterRecovery re-plan this becomes the room we resumed at, so each
+    // leg's flee anchors on that leg's own start. Null while Idle.
+    public RoomKey? JourneyOrigin => _origin;
+
     public Direction? PeekNextPlannedDirection()
     {
         if (_path is null || _index >= _path.Count) return null;
         return _path[_index] is MoveStep move ? move.Direction : (Direction?)null;
+    }
+
+    public IReadOnlyList<Direction> PeekPlannedDirections(int count)
+    {
+        if (count < 1 || _path is null) return Array.Empty<Direction>();
+        var dirs = new List<Direction>(count);
+        for (int i = _index; i < _path.Count && dirs.Count < count; i++)
+        {
+            // Stop at the first command / action step — a forward flee sends
+            // plain cardinals only, so we can't cross a lever / door step here.
+            if (_path[i] is not MoveStep move) break;
+            dirs.Add(move.Direction);
+        }
+        return dirs;
     }
 
     public void SendBacktrackMove(Direction direction)
@@ -495,6 +515,7 @@ public sealed class AutoWalkManager : IRecoverableEngine
         _path = new List<WalkStep>(expanded);
         _index = 0;
         _destination = destination;
+        _origin = source.Key;
         _retryCount = 0;
         _stepInFlight = false;
         _awaitingPromptForCommand = false;
@@ -1192,6 +1213,7 @@ public sealed class AutoWalkManager : IRecoverableEngine
         _index = 0;
         _expectedAfterCurrentMove = null;
         _destination = null;
+        _origin = null;
         _stepInFlight = false;
         _awaitingPromptForCommand = false;
         _awaitingTrapDisarm = false;
