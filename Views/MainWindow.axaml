@@ -6,11 +6,11 @@
         xmlns:conv="using:Avalonia.Data.Converters"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="660" d:DesignHeight="560"
+        mc:Ignorable="d" d:DesignWidth="660" d:DesignHeight="520"
         x:Class="FujinTerm.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Title="{Binding WindowTitle, FallbackValue=FujinTerm}"
-        Width="660" Height="560">
+        Width="660" Height="520">
 
     <Design.DataContext>
         <vm:MainWindowViewModel/>
