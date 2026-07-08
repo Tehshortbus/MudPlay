@@ -84,23 +84,28 @@ public sealed partial class HealthSectionViewModel : SettingsSectionViewModel
     public HealthSectionViewModel() : this(
         AppServices.Current.Profile,
         TryGetPlayerState(),
-        TryGetDeathFloor) { }
+        TryGetDeathFloor,
+        TryGetGameData()) { }
 
     public HealthSectionViewModel(ProfileService profile, Game.PlayerState? state = null,
-        Func<int>? readDeathFloor = null)
+        Func<int>? readDeathFloor = null, GameDataCache? gameData = null)
     {
         ArgumentNullException.ThrowIfNull(profile);
         _profile = profile;
         _state = state;
         _readDeathFloor = readDeathFloor;
+        _gameData = gameData;
         _profile.ProfileLoaded += OnProfileChanged;
         _profile.ProfileClosed += OnProfileClosedExternally;
         if (_state is not null) _state.PropertyChanged += OnStateChanged;
+        if (_gameData is not null) _gameData.ActiveSetChanged += OnActiveSetChanged;
+        RefreshShadowRestAvailability();
         OnDispose(() =>
         {
             _profile.ProfileLoaded -= OnProfileChanged;
             _profile.ProfileClosed -= OnProfileClosedExternally;
             if (_state is not null) _state.PropertyChanged -= OnStateChanged;
+            if (_gameData is not null) _gameData.ActiveSetChanged -= OnActiveSetChanged;
         });
         _suppressDirty = true;
         LoadFromProfile();
@@ -111,6 +116,29 @@ public sealed partial class HealthSectionViewModel : SettingsSectionViewModel
     {
         try { return AppServices.Current.PlayerState; }
         catch { return null; }    // design-time
+    }
+
+    private static GameDataCache? TryGetGameData()
+    {
+        try { return AppServices.Current.GameData; }
+        catch { return null; }    // design-time
+    }
+
+    private readonly GameDataCache? _gameData;
+
+    // ShadowRest is a Paradigm-only ability (game-data code 1103); on a stock realm
+    // no class carries it, so the Utilize-shadowrest toggle could never do anything.
+    // Hide it unless the active game-data set actually ships a ShadowRest class.
+    // Recomputed when the active set flips (a modeless Settings window can outlive a
+    // Game Data set switch).
+    [ObservableProperty] private bool _shadowRestAvailable;
+
+    private void OnActiveSetChanged(string? _) => RefreshShadowRestAvailability();
+
+    private void RefreshShadowRestAvailability()
+    {
+        ShadowRestAvailable =
+            Game.GameData.AbilityNames.AnyClassHasShadowRest(_gameData?.GetRawTable("Classes"));
     }
 
     // Active-BBS death floor (BbsProfile.PlayerDiesAtHp), read through the same

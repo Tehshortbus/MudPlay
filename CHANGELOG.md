@@ -2,10 +2,11 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
-## 1.20.2
+## 1.20.3
 
 - Attack-last re-fire opens with `bs <target>` when the surprise round is still armed, instead of firing the normal attack (`pu`) and wasting the backstab — the re-fire still lands us last in line, just with the opener
 - Kill re-pick no longer double-swings: the interrupt-resume stands down when a fresh attack just went out, so the surviving mob isn't attacked twice in the same round
+- Utilize-shadowrest toggle is now hidden on realms without the ability (stock), showing only where the active game data ships a ShadowRest class
 - bug reports addressed: stock-20260707-203503, stock-20260708-074641
 
 ## 1.20.0
