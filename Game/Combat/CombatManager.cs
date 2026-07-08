@@ -167,6 +167,25 @@ public sealed partial class CombatManager : IDisposable
     // swallow the instant Off/Engaged cycle a per-strike attack produces.
     private static readonly TimeSpan ResumePacing = TimeSpan.FromMilliseconds(2500);
 
+    // Timestamp of the last attack we actually sent to the wire (set by
+    // NoteAttackSent on every SendAttack). Distinct from _lastInterruptResumeAt,
+    // which only tracks resumes: an attack fired by the death→re-observe path
+    // (NoteMonsterDied clears the dead target, the room re-picks the survivor and
+    // swings) is a SendAttack, not a resume, so it never touched the resume
+    // stamp. The interrupt-resume must see it to avoid doubling on top of it.
+    private DateTimeOffset _lastAttackSentAt = DateTimeOffset.MinValue;
+
+    // How recently a real attack must have gone out for a pending interrupt-resume
+    // to be treated as redundant and skipped. On a kill the server fires *Combat
+    // Off*, but the death→re-observe path can re-engage the surviving mob a beat
+    // BEFORE that Off is processed; the Off then re-arms _combatOff and the next
+    // mob swing line would fire a redundant resume that doubles our attack on the
+    // same target (the reported solo double-send). Sized well under a round so a
+    // genuine next-round resume (we sat idle after a between-round cast) still
+    // fires — only a resume landing right on the heels of a fresh swing is
+    // suppressed.
+    private static readonly TimeSpan ResumeAfterAttackGuard = TimeSpan.FromMilliseconds(1500);
+
     // When a between-round CastingDirector cast was last sent (armed by
     // NoteBetweenRoundCast). The *Combat Off* the server fires in response
     // arrives within CastInterruptResumeWindow of this stamp; that lets
@@ -1062,10 +1081,13 @@ public sealed partial class CombatManager : IDisposable
     {
         if (_currentTarget is not { } target) return;   // nothing to re-fire at
 
-        // Hold all re-fires while a backstab's surprise round is still pending — a
-        // repositioning `pu` fired now can register server-side before the `bs`
-        // resolves and clobber the surprise (open with bs, then stay quiet). Once
-        // the opener settles the watch clears and normal re-fire resumes.
+        // Hold the re-fire while a bs we already sent is still resolving — a
+        // repositioning swing fired now can register server-side before the `bs`
+        // resolves and double on top of the surprise (open with bs, then stay
+        // quiet). Once the watch clears, normal re-fire resumes. Note this covers
+        // only the already-fired window; when the opener is still ARMED (unspent),
+        // the re-fire is upgraded to the bs itself in FlushAttackOrderRefire rather
+        // than suppressed, so attack-last still lands us last, opening with bs.
         if (_awaitingBackstabResolution) return;
 
         // Only reposition against OUR priority target — ignore announces on
@@ -1115,6 +1137,29 @@ public sealed partial class CombatManager : IDisposable
             return;
 
         CombatSettings settings = _readSettings();
+
+        // Backstab-aware re-fire: when the surprise round is still armed for this
+        // room (stealthed, opener unspent, no SeeHidden), the re-fire IS our
+        // opener — send `bs <target>`, never the normal attack command. Firing the
+        // ordinary swing here would spend the round as a plain attack and waste the
+        // surprise (the reported `pu <target>` on the mystic). The game grants the
+        // surprise on OUR first combat command being bs even after other party
+        // members have already swung, so staying last in line and opening with bs
+        // are not in tension. Arm the resolution watch + consume the opener exactly
+        // as DispatchRoundAction does. (The awaiting-resolution window — bs already
+        // in flight — is held upstream in HandleAttackOrderRefire so no second
+        // command doubles on top of the surprise.)
+        if (_classifier.Current is { } liveObs && BackstabPending(settings, liveObs))
+        {
+            SendAttack("bs", target, refire: true,
+                       refireReason: $"{settings.AttackTiming} announcer={announcer} (backstab opener)");
+            _currentTarget = target;
+            _awaitingBackstabResolution = true;
+            _pendingBackstabSpecies = ResolveSpeciesByName(target);
+            _backstabOpenerConsumed = true;
+            return;
+        }
+
         SendAttack(settings.NormalAttackCommand, target, refire: true,
                    refireReason: $"{settings.AttackTiming} announcer={announcer}");
     }
@@ -1290,6 +1335,12 @@ public sealed partial class CombatManager : IDisposable
     private bool TryResumeEngage(RoomEntitiesObservation live)
     {
         DateTimeOffset now = DateTimeOffset.Now;
+        // A fresh swing already went out a beat ago — this resume is redundant
+        // and would double on top of it. Happens on a kill: the death→re-observe
+        // path re-engages the surviving mob, then the kill's *Combat Off* re-arms
+        // _combatOff and the next mob swing line drops in here (the reported solo
+        // double-send). Skip while a real attack is still this recent.
+        if (now - _lastAttackSentAt < ResumeAfterAttackGuard) return false;
         if (now - _lastInterruptResumeAt < ResumePacing) return false;
         _lastInterruptResumeAt = now;
         ResumeEngage(live);
@@ -1435,6 +1486,10 @@ public sealed partial class CombatManager : IDisposable
     // matters). VerifyEngagement consumes the timestamp on the combat tick.
     private void NoteAttackSent()
     {
+        // Stamp every real swing unconditionally — the interrupt-resume guard
+        // reads this even when engagement is already confirmed (the death→re-
+        // observe re-engage happens mid-fight, long after Engaged).
+        _lastAttackSentAt = DateTimeOffset.Now;
         if (_engageConfirmed) return;
         _awaitingEngageSince ??= DateTimeOffset.Now;
     }
