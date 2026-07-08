@@ -64,6 +64,14 @@ public sealed class AutoPartyManager : IDisposable
     // have to Thread.Sleep. Defaults to DateTime.UtcNow.
     public Func<DateTime> NowProvider { get; set; } = () => DateTime.UtcNow;
 
+    // Reconnect-rejoin override. When set (AppServices wires it to
+    // PartyRejoinCoordinator.IsRememberedLeader), an invite from a sender this
+    // returns true for is auto-accepted even without a per-player
+    // JoinPartyIfInvited grant — remembering we were in that leader's party is
+    // itself standing consent to rejoin them after a reconnect. Null = no
+    // override (plain per-player rules apply).
+    public Func<string, bool>? ForceAcceptFrom { get; set; }
+
     // Test seam — most recent bytes the engine asked to write to the wire.
     internal List<byte[]> LastSentForTests => _wire.LastSentForTests;
 
@@ -551,8 +559,17 @@ public sealed class AutoPartyManager : IDisposable
 
     private void TryAutoAccept(string sender)
     {
-        if (!FindCustomization(sender, out PlayerCustomization c)) return;
-        if (!c.JoinPartyIfInvited) return;
+        // Reconnect-rejoin override runs first: if the inviter is the leader we
+        // remember following before a reconnect, join regardless of whether a
+        // per-player customization exists or has JoinPartyIfInvited set. The
+        // remembered-leader memory is the consent. Otherwise fall back to the
+        // per-player grant.
+        bool forced = ForceAcceptFrom?.Invoke(sender) == true;
+        if (!forced)
+        {
+            if (!FindCustomization(sender, out PlayerCustomization c)) return;
+            if (!c.JoinPartyIfInvited) return;
+        }
 
         // Already in this player's party? The PartyManager would have
         // populated PartyState.Members on the follow-confirmation line,

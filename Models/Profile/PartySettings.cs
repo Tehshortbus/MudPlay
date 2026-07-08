@@ -23,6 +23,16 @@ public sealed class PartySettings
     // seconds. Range 0..3600 (1 hour). Default 90.
     public int IfLeadingWaitTotalSec { get; set; } = 90;
 
+    // Leader-side recovery reach — the farthest, in BFS room-hops from our
+    // current position, we'll walk to re-collect a reconnecting party member
+    // before declining. Gates BOTH reconnect-rejoin paths in
+    // Game.Remote.PartyComebackManager: a follower's @comeback (with a room key)
+    // and the leader-initiated @where probe of a returning member. Beyond this
+    // distance the leader telepaths @forget instead of walking, so a member who
+    // reconnects on the far side of the map isn't chased across it. Range
+    // 1..500; default 30 rooms.
+    public int ReturnDistanceRooms { get; set; } = 30;
+
     // When leading a party, drop incoming @wait broadcasts so the leader's
     // automation keeps running instead of pausing on a follower's request. Off
     // (default) honours @wait regardless of leadership. Consumed by

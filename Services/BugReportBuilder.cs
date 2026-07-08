@@ -154,6 +154,15 @@ public static class BugReportBuilder
         // config a "party sprinted off after a member dropped" report needs to
         // confirm the custom logoff line was actually taught to the client.
         Kv(sb, "BBS disconnect pattern", svc.ResolveActiveBbs()?.DisconnectPattern ?? "(built-in lines only)");
+        // Follower reconnect-rejoin state — the leader we'd @comeback on the
+        // next reconnect (crash-survivable). A "didn't auto-rejoin after a drop"
+        // report hinges on whether the leader was remembered at all.
+        Kv(sb, "Reconnect rejoin leader", svc.PartyRejoin.RememberedLeader ?? "(none remembered)");
+        // Leader-side recovery state — who (if anyone) we're currently walking to
+        // re-collect, and the reach cap that gates it. A "leader never came back
+        // for me" report needs both.
+        Kv(sb, "Recovering member", svc.PartyComeback.RecoveringMember ?? "(none in flight)");
+        Kv(sb, "Recovery reach (rooms)", svc.PartyComeback.ReturnDistanceRooms.ToString());
 
         sb.Append("\n**Members** (").Append(party.Members.Count).Append(")\n\n");
         if (party.Members.Count == 0) { sb.Append("_(none)_\n"); return sb.ToString(); }

@@ -12,15 +12,21 @@ using Xunit;
 
 namespace FujinTerm.Tests;
 
-/// <summary>
-/// PR 6.1 — leader-side <see cref="PartyComebackManager"/>. A stranded
-/// follower's <c>@comeback</c> stops the running movement engine, walks to
-/// recover them, re-invites, awaits the follow confirmation, then resumes.
-/// Headless: the graph + tracker are driven directly, the wire is a no-op
-/// sink, and recovery is exercised via the synchronous "already at
-/// destination" Finished path (the walker has no completion event we can
-/// pump, and DispatcherTimer ticks aren't pumped in the xUnit harness).
-/// </summary>
+// Leader-side PartyComebackManager. Two entry paths converge on the same
+// stop-walk-recover flow:
+//   - Path A (@comeback): a stranded follower telepaths @comeback <map>/<room>,
+//     which the engine dispatches straight to the manager.
+//   - Path B (@where probe): a dropped member re-enters the realm inside the
+//     grace window, PartyManager raises MemberReturned, the leader telepaths
+//     @where, and the location reply drives the same recovery.
+// Both funnel through the party-full + return-distance gates before committing.
+// @forget is the bidirectional teardown: either side drops the other from the
+// roster (and the leader uses it to decline a recovery it can't make).
+//
+// Headless: the graph + tracker are driven directly, the recovery walk is
+// exercised via the synchronous "already at destination" Finished path (the
+// walker has no completion event we can pump, and DispatcherTimer ticks aren't
+// pumped in the xUnit harness).
 public sealed class PartyComebackManagerTests : IDisposable
 {
     private static readonly DateTime Now = new(2026, 6, 10, 0, 0, 0, DateTimeKind.Utc);
@@ -119,7 +125,7 @@ public sealed class PartyComebackManagerTests : IDisposable
 
         PartyManager party = new(router, partyState);
         PartyComebackManager comeback =
-            new(engine, party, tracker, classifier, walker, loop, lair);
+            new(engine, party, tracker, classifier, walker, loop, lair, router, bfs);
 
         return new Harness
         {
@@ -143,29 +149,16 @@ public sealed class PartyComebackManagerTests : IDisposable
     private static LineExtractor.EmittedLine Line(string text) =>
         new(text, new CellAttributes[text.Length], DateTimeOffset.UnixEpoch, IsPromptLine: false);
 
-    /// <summary>Seat the sender as an active party member so the engine's
-    /// party-whitelist gate lets the (tier <c>None</c>) <c>@comeback</c>
-    /// through.</summary>
+    // Seat the sender as an active party member so the engine's party-whitelist
+    // gate lets the (tier None) @comeback / @forget through.
     private static void SeatFollower(Harness h, string name)
     {
         h.PartyState.Members.Add(new PartyMember { Name = name });
         h.PartyState.IsInParty = true;
     }
 
-    /// <summary>Grant <paramref name="name"/> the <c>RequestInvite</c>
-    /// flag so the per-player gate authorises their <c>@forget</c> (it's
-    /// not a party-whitelist command — a left-behind follower needs the
-    /// explicit grant).</summary>
-    private static void GrantForget(Harness h, string name)
-    {
-        h.Players.RecordObservation(name, @class: null, race: null, alignment: null,
-            title: null, gang: null, role: null, nowUtc: Now);
-        h.Players.EditCustomization(name,
-            new Models.GameData.PlayerCustomization(RemoteControls: Models.GameData.PlayerRemoteControls.RequestInvite));
-    }
-
-    /// <summary>Mark 1/1 + 1/3, locate at 1/1, start Auto-Lair — the
-    /// resumable "running engine" for these tests.</summary>
+    // Mark 1/1 + 1/3, locate at 1/1, start Auto-Lair — the resumable "running
+    // engine" for these tests.
     private static void StartLair(Harness h)
     {
         h.Tracker.SetLocated(new RoomKey(1, 1));
@@ -174,6 +167,9 @@ public sealed class PartyComebackManagerTests : IDisposable
         Assert.True(h.Lair.Start());
         Assert.True(h.Lair.IsActive);
     }
+
+    private static bool Sent(Harness h, string fragment) =>
+        h.Comeback.LastSentForTests.Exists(b => Encoding.Latin1.GetString(b).Contains(fragment));
 
     // ----- idle / busy guards ----------------------------------------
 
@@ -196,8 +192,6 @@ public sealed class PartyComebackManagerTests : IDisposable
         SeatFollower(h, "Tank");
         StartLair(h);
 
-        // First @comeback to a non-current room → walker starts walking,
-        // stays busy (no synchronous completion).
         h.Engine.DispatchForTests(Telepath("Tank", "@comeback 1/3"));
         Assert.Equal(WalkState.Walking, h.Walker.State);
 
@@ -212,9 +206,9 @@ public sealed class PartyComebackManagerTests : IDisposable
     {
         using Harness h = NewHarness();
 
-        // Tank joins then gets left behind (self-departs / disconnects).
-        // The server drops them from our party, so they're NOT an active
-        // member — but the grace-window stamp makes them recoverable.
+        // Tank joins then gets left behind (self-departs / disconnects). The
+        // server drops them from our party, so they're NOT an active member —
+        // but the grace-window stamp makes them recoverable.
         h.Router.Dispatch(Line("Tank started to follow you."));
         h.Router.Dispatch(Line("Tank stops following you."));
         Assert.DoesNotContain(h.PartyState.Members,
@@ -224,7 +218,7 @@ public sealed class PartyComebackManagerTests : IDisposable
         h.Engine.DispatchForTests(Telepath("Tank", "@comeback 1/3"));
 
         // Authorised via WasRecentlyPartied → recovery walk begins.
-        Assert.Contains("coming back to 1/3", h.LastReply);
+        Assert.Contains("coming to your location for pickup", h.LastReply);
         Assert.False(h.Lair.IsActive);
         Assert.Equal(WalkState.Walking, h.Walker.State);
     }
@@ -257,8 +251,57 @@ public sealed class PartyComebackManagerTests : IDisposable
 
         h.Engine.DispatchForTests(Telepath("Stranger", "@comeback 1/3"));
 
-        // See DeliberatelyUninvited_Comeback_IsDenied — Lair.IsActive is the
-        // denial signal; the walker is Walking from AutoLair regardless.
+        Assert.True(h.Lair.IsActive);
+    }
+
+    // ----- party-full / distance gates -------------------------------
+
+    [Fact]
+    public void PartyFull_ReturningMember_DeclinedAndForgotten()
+    {
+        using Harness h = NewHarness();
+        for (int i = 1; i <= 6; i++) SeatFollower(h, $"Member{i}");
+
+        // Straggler was with us, dropped, and we backfilled their slot to the
+        // 6-member cap while they were gone.
+        h.Router.Dispatch(Line("Straggler started to follow you."));
+        h.Router.Dispatch(Line("Straggler stops following you."));
+        StartLair(h);
+
+        h.Engine.DispatchForTests(Telepath("Straggler", "@comeback 1/3"));
+
+        Assert.Contains("full", h.LastReply);
+        Assert.True(Sent(h, "/Straggler @forget"));
+        Assert.True(h.Lair.IsActive);   // declined before the engine snapshot
+    }
+
+    [Fact]
+    public void TooFar_ReturningMember_DeclinedAndForgotten()
+    {
+        using Harness h = NewHarness();
+        SeatFollower(h, "Tank");
+        h.Comeback.ReturnDistanceRooms = 1;   // 1/1 → 1/3 is 2 hops, beyond reach
+        StartLair(h);
+
+        h.Engine.DispatchForTests(Telepath("Tank", "@comeback 1/3"));
+
+        Assert.Contains("rooms off", h.LastReply);
+        Assert.True(Sent(h, "/Tank @forget"));
+        Assert.True(h.Lair.IsActive);
+    }
+
+    [Fact]
+    public void NoPath_ReturningMember_DeclinedAndForgotten()
+    {
+        using Harness h = NewHarness();
+        SeatFollower(h, "Tank");
+        StartLair(h);
+
+        // 2/1 is on a map that isn't in the graph — no route at all.
+        h.Engine.DispatchForTests(Telepath("Tank", "@comeback 2/1"));
+
+        Assert.Contains("path to you", h.LastReply);
+        Assert.True(Sent(h, "/Tank @forget"));
         Assert.True(h.Lair.IsActive);
     }
 
@@ -276,7 +319,7 @@ public sealed class PartyComebackManagerTests : IDisposable
         Assert.False(h.Lair.IsActive);                       // engine stopped
         Assert.Equal(WalkState.Walking, h.Walker.State);     // recovery walk owns the wire
         Assert.Equal(new RoomKey(1, 3), h.Walker.Destination);
-        Assert.Contains("coming back to 1/3", h.LastReply);
+        Assert.Contains("coming to your location for pickup", h.LastReply);
     }
 
     [Fact]
@@ -287,18 +330,17 @@ public sealed class PartyComebackManagerTests : IDisposable
         StartLair(h);
 
         // Auto-Lair's first move left the tracker Pending, so @comeback's
-        // WalkTo(1/1) defers (raises Started, not Finished). The command
-        // first stops Auto-Lair, so settling the tracker at 1/1 now drives
-        // the walker's deferred dispatch into WalkToImmediate, where
-        // source==dest raises Finished synchronously → re-invite leg.
+        // WalkTo(1/1) defers (raises Started, not Finished). The command first
+        // stops Auto-Lair, so settling the tracker at 1/1 now drives the
+        // walker's deferred dispatch into WalkToImmediate, where source==dest
+        // raises Finished synchronously → re-invite leg.
         h.Engine.DispatchForTests(Telepath("Tank", "@comeback 1/1"));
         h.Tracker.SetLocated(new RoomKey(1, 1));
 
         Assert.Contains("invite Tank\r",
             Encoding.Latin1.GetString(h.Party.LastSentForTests[^1]));
         Assert.Contains("re-inviting Tank", h.LastReply);
-        // Still busy — awaiting the follow confirmation, engine not yet resumed.
-        Assert.False(h.Lair.IsActive);
+        Assert.False(h.Lair.IsActive);   // still busy — awaiting the follow confirmation
     }
 
     [Fact]
@@ -336,14 +378,78 @@ public sealed class PartyComebackManagerTests : IDisposable
         Assert.Equal(WalkState.Idle, h.Walker.State);
     }
 
-    // ----- @forget (follower cancels their own pickup) ---------------
+    // ----- path B: leader probes @where on a member's return ---------
 
     [Fact]
-    public void Forget_FromRecoveringMember_UninvitesAndResumes()
+    public void MemberReturns_LeaderProbesWhere()
+    {
+        using Harness h = NewHarness();
+        h.Comeback.SetWireSender(_ => { });   // path B needs a bound wire
+        StartLair(h);
+
+        // Tank followed us, dropped, and re-enters the realm inside the grace
+        // window → PartyManager raises MemberReturned → we telepath @where.
+        h.Router.Dispatch(Line("Tank started to follow you."));
+        h.Router.Dispatch(Line("Tank just disconnected!!!."));
+        h.Router.Dispatch(Line("Tank just entered the Realm."));
+
+        Assert.True(Sent(h, "/Tank @where"));
+    }
+
+    [Fact]
+    public void MemberReturns_ProbeAnswered_RecoveryWalksToThem()
+    {
+        using Harness h = NewHarness();
+        h.Comeback.SetWireSender(_ => { });
+        StartLair(h);
+
+        h.Router.Dispatch(Line("Tank started to follow you."));
+        h.Router.Dispatch(Line("Tank just disconnected!!!."));
+        h.Router.Dispatch(Line("Tank just entered the Realm."));
+        // Leader probed @where; Tank answers with their location.
+        h.Router.Dispatch(Line("Tank telepaths: Throne Room (map 1, room 3); exits: north"));
+
+        Assert.False(h.Lair.IsActive);                    // paused for the pickup
+        Assert.Equal(WalkState.Walking, h.Walker.State);
+        Assert.Equal(new RoomKey(1, 3), h.Walker.Destination);
+        Assert.True(Sent(h, "coming to your location for pickup"));
+    }
+
+    // ----- @forget (bidirectional teardown) --------------------------
+
+    [Fact]
+    public void Forget_NotRecovering_DropsMemberFromRoster()
     {
         using Harness h = NewHarness();
         SeatFollower(h, "Tank");
-        GrantForget(h, "Tank");
+        StartLair(h);
+
+        h.Engine.DispatchForTests(Telepath("Tank", "@forget"));
+
+        Assert.DoesNotContain(h.PartyState.Members,
+            m => m.Name.Equals("Tank", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("forgetting Tank", h.LastReply);
+        Assert.True(h.Lair.IsActive);   // no recovery in flight, engine untouched
+    }
+
+    [Fact]
+    public void Forget_InvokesForgetLeaderCallback()
+    {
+        using Harness h = NewHarness();
+        SeatFollower(h, "Fujin");
+        List<string> forgotten = new();
+        h.Comeback.ForgetLeaderCallback = forgotten.Add;
+
+        h.Engine.DispatchForTests(Telepath("Fujin", "@forget"));
+
+        Assert.Contains("Fujin", forgotten);
+    }
+
+    [Fact]
+    public void Forget_FromRecoveringMember_DropsThemAndResumes()
+    {
+        using Harness h = NewHarness();
+        SeatFollower(h, "Tank");
         StartLair(h);
 
         // Pickup in flight (walking to 1/3), then Tank calls it off.
@@ -352,18 +458,17 @@ public sealed class PartyComebackManagerTests : IDisposable
 
         h.Engine.DispatchForTests(Telepath("Tank", "@forget"));
 
-        Assert.Contains("uninvite Tank\r",
-            Encoding.Latin1.GetString(h.Party.LastSentForTests[^1]));
+        Assert.DoesNotContain(h.PartyState.Members,
+            m => m.Name.Equals("Tank", StringComparison.OrdinalIgnoreCase));
         Assert.Contains("forgetting Tank", h.LastReply);
         Assert.True(h.Lair.IsActive);   // prior engine resumed
     }
 
     [Fact]
-    public void Forget_WhileAwaitingFollow_UninvitesAndResumes()
+    public void Forget_WhileAwaitingFollow_DropsThemAndResumes()
     {
         using Harness h = NewHarness();
         SeatFollower(h, "Tank");
-        GrantForget(h, "Tank");
         StartLair(h);
 
         // Drive to the AwaitingFollow phase (re-invite sent, waiting).
@@ -373,32 +478,15 @@ public sealed class PartyComebackManagerTests : IDisposable
 
         h.Engine.DispatchForTests(Telepath("Tank", "@forget"));
 
-        Assert.Contains("uninvite Tank\r",
-            Encoding.Latin1.GetString(h.Party.LastSentForTests[^1]));
         Assert.True(h.Lair.IsActive);   // resumed instead of hanging on follow
     }
 
     [Fact]
-    public void Forget_WhenNotBusy_RepliesNothingToForget()
-    {
-        using Harness h = NewHarness();
-        SeatFollower(h, "Tank");
-        GrantForget(h, "Tank");
-        StartLair(h);
-
-        h.Engine.DispatchForTests(Telepath("Tank", "@forget"));
-
-        Assert.Contains("nothing to forget", h.LastReply);
-        Assert.True(h.Lair.IsActive);   // engine untouched
-    }
-
-    [Fact]
-    public void Forget_FromDifferentMember_RepliesNothingToForget()
+    public void Forget_FromDifferentMember_DropsThemButKeepsRecovery()
     {
         using Harness h = NewHarness();
         SeatFollower(h, "Tank");
         SeatFollower(h, "Mage");
-        GrantForget(h, "Mage");
         StartLair(h);
 
         // Recovering Tank; Mage's @forget must not abandon Tank's pickup.
@@ -407,7 +495,8 @@ public sealed class PartyComebackManagerTests : IDisposable
 
         h.Engine.DispatchForTests(Telepath("Mage", "@forget"));
 
-        Assert.Contains("nothing to forget", h.LastReply);
+        Assert.DoesNotContain(h.PartyState.Members,
+            m => m.Name.Equals("Mage", StringComparison.OrdinalIgnoreCase));
         Assert.False(h.Lair.IsActive);                    // Tank's pickup still in flight
         Assert.Equal(WalkState.Walking, h.Walker.State);
     }
@@ -415,7 +504,7 @@ public sealed class PartyComebackManagerTests : IDisposable
     // ----- registration shape ----------------------------------------
 
     [Fact]
-    public void Dispose_UnregistersHandler()
+    public void Dispose_UnregistersHandlers()
     {
         Harness h = NewHarness();
         Assert.True(h.Engine.HandlerCount > 0);

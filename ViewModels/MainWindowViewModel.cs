@@ -796,6 +796,12 @@ public partial class MainWindowViewModel : ObservableObject
         // when a movement-failure line strands us as the party walks
         // off; rides the same gate-wrapped pipeline.
         AppServices.Current.ComebackRequest.SetWireSender(engineSend);
+        // Follower-side reconnect auto-rejoin — telepaths @comeback + @invite
+        // to re-form the party after a drop; same gate-wrapped pipeline.
+        AppServices.Current.PartyRejoin.SetWireSender(engineSend);
+        // Leader-side reconnect recovery — telepaths the @where probe + decline
+        // @forget when re-collecting a returning member; same pipeline.
+        AppServices.Current.PartyComeback.SetWireSender(engineSend);
         // Death-recovery auto-grab (`get`) + auto-equip (`wear` / `hold`)
         // ride the same gate-wrapped pipeline as the other engines.
         AppServices.Current.DeathRecovery.SetWireSender(engineSend);
@@ -2160,6 +2166,10 @@ public partial class MainWindowViewModel : ObservableObject
                 // the Synced latch + retry counter; the actual resend (if any)
                 // is mismatch-gated and fires off the first in-game prompt.
                 AppServices.Current.StatlineReconcile.Arm();
+                // Arm the follower reconnect-rejoin latch on every connect. It
+                // only fires (@comeback + @invite) on the first in-game room if
+                // a party leader is remembered from before the drop.
+                AppServices.Current.PartyRejoin.Arm();
                 // Re-enable any auto-actions the user opted into reviving on
                 // reconnect (Settings → Other). Only on a reconnect — a
                 // connect following a prior in-session disconnect — never on

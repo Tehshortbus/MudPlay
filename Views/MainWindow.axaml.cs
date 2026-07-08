@@ -95,6 +95,13 @@ public partial class MainWindow : Window
                 return;
             }
 
+            // Clean shutdown forgets the party we were following: a deliberate
+            // quit must NOT auto-rejoin on next launch (only a crash, which
+            // never runs this handler, leaves the memory populated). Clearing
+            // before Save persists the forget.
+            if (AppServices.Current.Profile.Current is { } profile)
+                profile.PendingReconnectLeader = null;
+
             try { AppServices.Current.Profile.Save(); }
             catch (Exception ex)
             {

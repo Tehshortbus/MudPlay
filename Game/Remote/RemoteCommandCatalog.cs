@@ -35,10 +35,13 @@ namespace FujinTerm.Game.Remote;
 //     commands beyond ordinary control: irreversible character actions
 //     (@suicide). Wider than just sysop powers.
 //
-// Party-coordination commands (@wait / @ok / @comeback / @share) map to
-// PlayerRemoteControls.None — they're gated by the engine's party-whitelist
+// Party-coordination commands (@wait / @ok / @comeback / @forget / @share) map
+// to PlayerRemoteControls.None — they're gated by the engine's party-whitelist
 // branch instead of the per-player flag check. Any active party member can issue
-// them by default. Settings.Talk → Disallow @party commands narrows ONLY the
+// them by default. @comeback and @forget additionally honour a bridge
+// (RemoteCommandManager.ComebackEligibility / ForgetEligibility) so a member
+// already dropped server-side — no longer an IsActivePartyMember — can still
+// reconnect-recover or tear down. Settings.Talk → Disallow @party commands narrows ONLY the
 // @party <sub> directive path (attack / rest / meditate / go / …); it does not
 // touch these coordination signals. @kill is NOT in this family — it's an action
 // request ("attack this target on my behalf") and sits at
@@ -85,7 +88,6 @@ public static class RemoteCommandCatalog
             ["@suicide"]      = PlayerRemoteControls.SysopCommands,   // irreversible — gated under Elevated Commands
             ["@invite"]       = PlayerRemoteControls.RequestInvite,
             ["@join"]         = PlayerRemoteControls.RequestInvite,
-            ["@forget"]       = PlayerRemoteControls.RequestInvite,
             // Bulk inventory verbs — operate on *all* applicable items
             // (@get-all: everything on the ground we can pick up; @drop-all:
             // everything in the pack we can drop; @deposit-all: bank it all).
@@ -159,6 +161,12 @@ public static class RemoteCommandCatalog
             ["@wait"]         = PlayerRemoteControls.None,
             ["@ok"]           = PlayerRemoteControls.None,
             ["@comeback"]     = PlayerRemoteControls.None,
+            // @forget is the reconnect-recovery teardown paired with @comeback:
+            // a follower calls off their own pickup, or a leader declines to
+            // recover them. Party-whitelist gated, with the same left-behind /
+            // remembered-leader bridge @comeback uses (a dropped member is no
+            // longer an IsActivePartyMember). See RemoteCommandManager.ForgetEligibility.
+            ["@forget"]       = PlayerRemoteControls.None,
             // (@kill moved to ExecuteCommands — see Basic Commands above.)
             // @heal sits at ExecuteCommands rather than None: it's an
             // action request ("cast heal on me"), not a coordination

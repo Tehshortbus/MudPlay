@@ -51,7 +51,6 @@ public sealed class RemoteCommandCatalogTests
     [Theory]
     [InlineData("@invite")]
     [InlineData("@join")]
-    [InlineData("@forget")]
     public void RequestInvite_ApplicableCommands(string cmd)
         => Assert.Equal(PlayerRemoteControls.RequestInvite, Lookup(cmd));
 
@@ -131,10 +130,13 @@ public sealed class RemoteCommandCatalogTests
     [InlineData("@wait")]
     [InlineData("@ok")]
     [InlineData("@comeback")]
+    [InlineData("@forget")]
     [InlineData("@share")]
     public void PartyWhitelist_NoneCategory(string cmd)
         // None = "any active party member" — engine routes these through
         // the party-whitelist branch instead of the per-player flag.
+        // @comeback / @forget additionally honour the reconnect-recovery
+        // eligibility hooks for a member no longer sharing a party row.
         => Assert.Equal(PlayerRemoteControls.None, Lookup(cmd));
 
     [Fact]
