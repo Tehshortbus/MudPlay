@@ -681,6 +681,27 @@ flag). These are hard eligibility gates, independent of resistance and level imm
 - **[CONFIRMED]** Talk modes (say / talk-fast / slow) differ **per realm** — that's game
   configuration, not a client bug. The keyboard period is a say-precursor and stays unbindable.
 
+## Shop prices — buy & sell *([CONFIRMED] — extracted from the reference client)*
+
+An item's cost is derived from its MDB `Price` + `Currency`, the shop's `Markup%`, and the
+buyer's Charm. Charm 50 is the neutral "retail" point (no discount, no surcharge); a Charm of 0
+in the data means "unknown," so the client prices unknown Charm at 50.
+
+- **Base value → copper.** `copper = Price × {Copper:1, Silver:10, Gold:100, Platinum:10000,
+  Runic:1000000}` (Currency codes 0–4). All the math below is in copper; the display then
+  reduces to the friendliest denomination that keeps the value ≥ 10 (or copper when < 100).
+- **BUY (per shop; identical formula in both realms).** Markup first, then charm:
+  `buy = baseCopper + Fix(baseCopper × Markup%/100)`; if Charm > 0,
+  `buy = (1 − ((Fix(Charm/5) − 10)/100)) × buy`. (`Fix` truncates toward zero.) Charm below 50
+  discounts, above 50 marks up, exactly 50 is retail.
+- **SELL (ignores markup → same at every shop for a given charm).**
+  - **Stock:** `sell = Fix((Fix(Charm/2) + 25) × baseCopper / 100)`.
+  - **Paradigm/GreaterMUD:** `sell = (baseCopper/2) × (1 + Fix((Charm − 50)/5)/100)`.
+- **Charm no-op.** Charm 0 or exactly 50 leaves BUY at retail; the two SELL branches both land on
+  ~half base at Charm 50.
+- The reference client wraps charm-scaled totals above 4,294,967,295 copper (a legacy 32-bit
+  overflow bug); the client deliberately does **not** replicate that wrap.
+
 ---
 
 ## Message catalogue (lines the client parses)

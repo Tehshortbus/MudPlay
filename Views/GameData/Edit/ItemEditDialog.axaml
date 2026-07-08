@@ -31,10 +31,6 @@
             <Setter Property="FontSize" Value="11"/>
             <Setter Property="FontFamily" Value="{StaticResource FontMono}"/>
         </Style>
-        <Style Selector="TextBox.ReadOnlyField">
-            <Setter Property="IsReadOnly" Value="True"/>
-            <Setter Property="Background" Value="{StaticResource ChromeBgSunkenBrush}"/>
-        </Style>
     </Window.Styles>
 
     <Border Background="{StaticResource ChromeBgBrush}" Padding="14">
@@ -101,47 +97,28 @@
                                 </Grid>
                             </Border>
 
-                            <!-- Details — overlay-editable carry policy + read-only MDB
-                                 fields. Constrained to HorizontalAlignment=Left + fixed
-                                 column widths so the controls don't stretch toward the
-                                 splitter; matches the compact look of the Item /
-                                 Options sections above. -->
+                            <!-- Details — overlay-editable carry policy only. The
+                                 read-only MDB facts (weight, item type, body slot,
+                                 bought/sold) live in the right-pane "Other Info".
+                                 Constrained to HorizontalAlignment=Left + fixed column
+                                 widths so the controls don't stretch toward the splitter. -->
                             <TextBlock Classes="SectionHeader" Text="Details" Margin="0,10,0,4"/>
-                            <Grid ColumnDefinitions="110,80,16,Auto,90"
-                                  RowDefinitions="Auto,Auto,Auto,Auto"
+                            <Grid ColumnDefinitions="110,80"
+                                  RowDefinitions="Auto,Auto"
                                   ColumnSpacing="8" RowSpacing="6"
                                   HorizontalAlignment="Left">
 
-                                <!-- Row 0: Min. to keep | Weight -->
+                                <!-- Row 0: Min. to keep -->
                                 <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Min. to keep"
                                            ToolTip.Tip="Engines will not drop / discard below this count. Leave blank for none."/>
                                 <TextBox   Grid.Row="0" Grid.Column="1" Text="{Binding MinToKeep, Mode=TwoWay}"
                                            PlaceholderText="None"/>
-                                <TextBlock Grid.Row="0" Grid.Column="3" Classes="FieldLabel" Text="Weight"/>
-                                <TextBox   Grid.Row="0" Grid.Column="4" Classes="ReadOnlyField" Text="{Binding Weight}"/>
 
-                                <!-- Row 1: Max to get | Price -->
+                                <!-- Row 1: Max to get -->
                                 <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Max to get"
                                            ToolTip.Tip="Stop auto-acquiring at this count. Leave blank for 'All'."/>
                                 <TextBox   Grid.Row="1" Grid.Column="1" Text="{Binding MaxToGet, Mode=TwoWay}"
                                            PlaceholderText="All"/>
-                                <TextBlock Grid.Row="1" Grid.Column="3" Classes="FieldLabel" Text="Price"/>
-                                <TextBox   Grid.Row="1" Grid.Column="4" Classes="ReadOnlyField" Text="{Binding Price}"/>
-
-                                <!-- Row 2: Item type (read-only display from MDB).
-                                     Spans Col 1..4 so the value field gets the full
-                                     width of the constrained Grid (still bounded by
-                                     HorizontalAlignment=Left on the outer Grid). -->
-                                <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Item type"/>
-                                <TextBox   Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="4"
-                                           Classes="ReadOnlyField" Text="{Binding ItemTypeText}"/>
-
-                                <!-- Row 3: Body location (read-only display from MDB).
-                                     Bought/sold moved to the right-pane "Other Info"
-                                     (read-only MDB info the user can't assign). -->
-                                <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="Body location"/>
-                                <TextBox   Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="4"
-                                           Classes="ReadOnlyField" Text="{Binding BodyLocation}"/>
                             </Grid>
 
                         </StackPanel>
