@@ -517,14 +517,19 @@ public sealed class AutoPartyManager : IDisposable
             string given = ExtractGiven(fullName);
             if (string.IsNullOrEmpty(given)) continue;
 
-            // Already in our party? Nothing to do.
-            bool stillIn = false;
+            // Already a joined member? Nothing to do. An [Invited] placeholder
+            // does NOT count — that's exactly the stuck state a trainer trip
+            // leaves behind: the leader's roster still shows the follower as
+            // [Invited] while their follower-side view has dissolved, so we must
+            // re-invite (and nag) rather than treat the hot slot as live.
+            bool stillJoined = false;
             foreach (PartyMember m in _party.Members)
             {
-                if (string.Equals(ExtractGiven(m.Name), given, StringComparison.OrdinalIgnoreCase))
-                { stillIn = true; break; }
+                if (!m.IsInvited
+                    && string.Equals(ExtractGiven(m.Name), given, StringComparison.OrdinalIgnoreCase))
+                { stillJoined = true; break; }
             }
-            if (stillIn) continue;
+            if (stillJoined) continue;
 
             // Respect the uninvite-suppression map — if the user
             // explicitly kicked them during the menu trip, don't

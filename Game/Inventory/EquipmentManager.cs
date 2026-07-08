@@ -160,13 +160,21 @@ public sealed class EquipmentManager
         if (string.IsNullOrEmpty(w)) return;
 
         InventorySnapshot snap = _getSnapshot();
+
+        // Before the first 'i' dump the worn loadout is unknown. MajorMUD persists
+        // equipment across logins, so whatever combat wants is already worn — a
+        // speculative `eq` here only draws "You do not have X left unequipped."
+        // (the already-on normal case) or, after a rare cleanup EP-zap, fails with
+        // "You may not use that weapon." Defer to the diff below, which runs once
+        // the dump lands and the real worn/held state is known.
+        if (snap.LastUpdated == DateTimeOffset.MinValue) return;
+
         string? wornWeapon = SlotItem(snap, "Weapon Hand");
         string? wornOffHand = SlotItem(snap, "Off-Hand");
         bool twoHanded = _isTwoHanded(w);
-        // Once an 'i' has been parsed, gate equips on what's actually in the pack:
-        // a weapon lost to a deathpile can't be wielded, and blindly sending `eq`
-        // only draws "You do not have X left unequipped." on every combat round.
-        // Unknown inventory (no dump yet) ⇒ availability null ⇒ don't gate.
+        // Gate equips on what's actually in the pack: a weapon lost to a deathpile
+        // can't be wielded, and blindly sending `eq` only draws "You do not have X
+        // left unequipped." on every combat round.
         ISet<string>? held = HeldNames(snap);
 
         if (!string.Equals(w, wornWeapon, StringComparison.OrdinalIgnoreCase)

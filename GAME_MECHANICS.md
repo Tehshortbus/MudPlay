@@ -52,6 +52,13 @@ it isn't here and you're unsure, ask.
   `rem`'d first.
 - **[OBSERVED]** Re-equipping an item that's already worn draws
   `You do not have <X> left unequipped.`
+- **[CONFIRMED]** Worn gear **persists across logins** — you log back in wearing whatever you
+  had on. There's no re-equip-on-connect step to do; the loadout is already correct. The one
+  exception is the rare **cleanup EP-zap**: when an evil character's alignment drops below an
+  item's Evil-Point threshold the game force-removes it, and re-equipping then fails with
+  `You may not use that weapon.` (weapon) / `You may not wear that item!` (armor). This is why the
+  client must not fire a speculative `eq` before the first `i` dump lands — the desired gear is
+  already worn, so a blind equip only draws the already-on refusal (or the EP-zap refusal).
 
 ## Light sources
 

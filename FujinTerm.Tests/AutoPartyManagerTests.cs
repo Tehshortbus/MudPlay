@@ -921,6 +921,39 @@ public sealed class AutoPartyManagerTests
     }
 
     [Fact]
+    public void TrainerMenuExited_InvitedPlaceholder_ReInvites()
+    {
+        // The reported stuck state: a joined follower at menu entry comes back
+        // as an [Invited] placeholder (their follower-side view dissolved during
+        // the trainer trip, leaving only the leader's hot invite slot). That
+        // placeholder must NOT count as "still joined" — AutoParty re-invites so
+        // the follower re-forms rather than sitting at [Invited] forever.
+        MessageRouter router = new();
+        DefaultPatterns.Seed(router);
+        PlayerDatabase players = new();
+        SeedPlayer(players, "Raijin", inviteOnSeen: true);
+        PartyState party = new();
+        TrainerMenuTracker tracker = new(router, party) { NowProvider = () => Now };
+        AutoPartyManager engine = new(router, players, party, tracker) { NowProvider = () => Now };
+        engine.SetWireSender(_ => { });
+
+        party.Members.Add(new PartyMember { Name = "Raijin WuzHere" });
+        tracker.ObserveOutbound(Encoding.Latin1.GetBytes("train stats\r"));
+        Dispatch(router, "    Point Cost Chart");
+        Assert.Contains("Raijin WuzHere", tracker.RosterAtMenuEntry);
+
+        // Follower view dissolved → row is now a bare [Invited] placeholder.
+        party.Members.Clear();
+        party.Members.Add(new PartyMember { Name = "Raijin WuzHere", IsInvited = true });
+        engine.LastSentForTests.Clear();
+
+        Dispatch(router, "[HP=33]:");
+
+        byte[] sent = Assert.Single(engine.LastSentForTests);
+        Assert.Equal("invite Raijin\r", Encoding.Latin1.GetString(sent));
+    }
+
+    [Fact]
     public void Uninvite_CancelsActiveNagInFlight()
     {
         // Uninvite arriving mid-nag should kill the nag — the player

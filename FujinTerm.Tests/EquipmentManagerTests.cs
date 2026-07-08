@@ -33,11 +33,14 @@ public sealed class EquipmentManagerTests
         };
 
     // Worn loadout keyed by real slot strings ("Weapon Hand" / "Off-Hand") —
-    // what SwapWeapon diffs against.
+    // what SwapWeapon diffs against. LastUpdated is set so the snapshot reads as
+    // observed: SwapWeapon early-returns on an unobserved (no-'i'-dump-yet) pack,
+    // so a worn-state test has to model a real inventory to reach the diff.
     private static InventorySnapshot SnapshotWithSlots(params (string Slot, string Name)[] items)
         => InventorySnapshot.Empty with
         {
             EquippedItems = items.Select(i => new EquippedItem(i.Name, i.Slot)).ToList(),
+            LastUpdated = DateTimeOffset.UtcNow,
         };
 
     // Observed inventory (LastUpdated set so the availability gate engages) whose
@@ -399,13 +402,18 @@ public sealed class EquipmentManagerTests
     }
 
     [Fact]
-    public void SwapWeapon_WeaponNotWorn_EquipsWeapon()
+    public void SwapWeapon_UnobservedInventory_NoOp()
     {
+        // Fresh login, no 'i' dumped yet: the worn loadout is unknown. MajorMUD
+        // persists gear across logins, so the desired weapon is already wielded —
+        // a speculative `eq` would only draw "You do not have X left unequipped."
+        // The equip is deferred until the pack is observed (covered by
+        // SwapWeapon_ObservedPack_EquipsWeapon_WhenHeld).
         EquipmentManager mgr = SwapManager(InventorySnapshot.Empty);
 
         mgr.SwapWeapon("longsword", null);
 
-        Assert.Equal(new[] { "eq longsword" }, Wire(mgr));
+        Assert.Empty(mgr.LastSentForTests);
     }
 
     [Fact]
@@ -454,7 +462,7 @@ public sealed class EquipmentManagerTests
     [Fact]
     public void SwapWeapon_OneHander_EquipsWeaponAndOffHand_WhenNeitherWorn()
     {
-        EquipmentManager mgr = SwapManager(InventorySnapshot.Empty);
+        EquipmentManager mgr = SwapManager(SnapshotHeld("longsword", "shield"));
 
         mgr.SwapWeapon("longsword", "shield");
 
@@ -464,7 +472,8 @@ public sealed class EquipmentManagerTests
     [Fact]
     public void SwapWeapon_OneHander_EquipsOffHand_WhenWeaponWornButOffHandDiffers()
     {
-        EquipmentManager mgr = SwapManager(SnapshotWithSlots(("Weapon Hand", "longsword")));
+        EquipmentManager mgr = SwapManager(
+            SnapshotWithSlots(("Weapon Hand", "longsword")) with { CarriedItems = new[] { "shield" } });
 
         mgr.SwapWeapon("longsword", "shield");
 
@@ -488,7 +497,7 @@ public sealed class EquipmentManagerTests
         // The game refuses a two-hander wield while a hand is full, so the
         // off-hand is rem'd first — the auto-trade doesn't cover this.
         EquipmentManager mgr = SwapManager(
-            SnapshotWithSlots(("Off-Hand", "shield")),
+            SnapshotWithSlots(("Off-Hand", "shield")) with { CarriedItems = new[] { "warhammer" } },
             isTwoHanded: w => w == "warhammer");
 
         mgr.SwapWeapon("warhammer", null);
@@ -499,7 +508,7 @@ public sealed class EquipmentManagerTests
     [Fact]
     public void SwapWeapon_TwoHander_NoOffHandWorn_JustEquipsWeapon()
     {
-        EquipmentManager mgr = SwapManager(InventorySnapshot.Empty,
+        EquipmentManager mgr = SwapManager(SnapshotHeld("warhammer"),
             isTwoHanded: w => w == "warhammer");
 
         mgr.SwapWeapon("warhammer", null);
@@ -511,7 +520,7 @@ public sealed class EquipmentManagerTests
     public void SwapWeapon_TwoHander_IgnoresConfiguredOffHand()
     {
         // A two-hander fills both hands — the off-hand arg is never equipped.
-        EquipmentManager mgr = SwapManager(InventorySnapshot.Empty,
+        EquipmentManager mgr = SwapManager(SnapshotHeld("warhammer"),
             isTwoHanded: w => w == "warhammer");
 
         mgr.SwapWeapon("warhammer", "shield");

@@ -1,8 +1,10 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.17.1**
-> - Status-bar location chip now shows the short map/room number instead of the room name, so exp/hr no longer gets pushed behind an ellipsis by a long name
+> **Version 1.17.4**
+> - No more speculative `eq` on logon — the weapon-swap fast path waits for the first inventory dump instead of drawing "You do not have X left unequipped." for gear that's already worn
+> - Trainer-menu exit now re-invites a follower stuck at [Invited] after the leader trains, instead of treating the hot invite slot as a live member
+> - Self-casting bless no longer spams the program log with a buff line per matching catalogue record — one game line collapses to a single applied entry
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->
