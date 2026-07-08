@@ -70,6 +70,9 @@ public sealed partial class CombatManager : IDisposable
     private readonly Func<bool> _isEnabled;
     private readonly Func<string?> _readOwnGivenName;
     private readonly LogService? _log;
+    // Marshals a callback to the UI dispatcher (production) so a coalesced
+    // AttackTiming re-fire flushes one turn after the round's announce burst.
+    private readonly Action<Action> _post;
 
     private readonly IDisposable _announceSub;
     private readonly IDisposable _userHitsSub;
@@ -196,6 +199,20 @@ public sealed partial class CombatManager : IDisposable
     // (PrepBackstabForMove, the pre-move hook). Gates BackstabPending.
     private bool _backstabOpenerConsumed;
 
+    // AttackTiming re-fire coalescing. A combat round resolves the whole party's
+    // auto-attacks at once, so several "moves to attack <our-target>" announces
+    // arrive as one burst (one server flush → one synchronous line batch). Firing
+    // a re-fire per announce would send several redundant attack commands that
+    // round; we only need ONE, landing after the last announce so our swing sits
+    // last in initiative. HandleAttackOrderRefire records the pending
+    // target/announcer and posts a single flush to the next dispatcher turn — it
+    // runs after the whole burst has been processed, collapsing N announces into
+    // one send. The flush is near-immediate (next turn), so it still lands well
+    // inside the ~5s round; we never hold the attack toward the round tick.
+    private bool _refireFlushScheduled;
+    private string? _refireTarget;
+    private string? _refireAnnouncer;
+
     public CombatManager(
         MessageRouter router,
         RoomEntityClassifier classifier,
@@ -205,6 +222,7 @@ public sealed partial class CombatManager : IDisposable
         Func<CombatSettings> readSettings,
         Func<bool> isEnabled,
         Func<string?> readOwnGivenName,
+        Action<Action> post,
         LogService? log = null,
         Func<PartySettings>? readPartySettings = null)
     {
@@ -216,6 +234,8 @@ public sealed partial class CombatManager : IDisposable
         ArgumentNullException.ThrowIfNull(readSettings);
         ArgumentNullException.ThrowIfNull(isEnabled);
         ArgumentNullException.ThrowIfNull(readOwnGivenName);
+        ArgumentNullException.ThrowIfNull(post);
+        _post         = post;
         _classifier   = classifier;
         _monsters     = monsters;
         _resolveOverlay = resolveOverlay;
@@ -937,6 +957,37 @@ public sealed partial class CombatManager : IDisposable
         };
         if (!fire) return;
 
+        // Coalesce the round's burst: record this as the pending re-fire and
+        // flush once on the next dispatcher turn (after the whole announce
+        // batch), so several party announces collapse into a single attack
+        // command that lands after the last of them.
+        _refireTarget = target;
+        _refireAnnouncer = announcer;
+        if (_refireFlushScheduled) return;
+        _refireFlushScheduled = true;
+        _post(FlushAttackOrderRefire);
+    }
+
+    // Trailing-edge flush of a coalesced AttackTiming re-fire (see the _refire*
+    // fields). Runs one dispatcher turn after the round's announce burst, so a
+    // single attack goes out against our target once — after the last party
+    // announce. Skips when combat was turned off, we were disposed, nothing is
+    // pending, or the target died / changed during the burst (no longer our
+    // current target).
+    private void FlushAttackOrderRefire()
+    {
+        _refireFlushScheduled = false;
+        if (_disposed) return;
+        if (_refireTarget is not { } target) return;
+        string? announcer = _refireAnnouncer;
+        _refireTarget = null;
+        _refireAnnouncer = null;
+
+        if (!_isEnabled()) return;
+        if (!string.Equals(_currentTarget, target, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        CombatSettings settings = _readSettings();
         SendAttack(settings.NormalAttackCommand, target, refire: true,
                    refireReason: $"{settings.AttackTiming} announcer={announcer}");
     }

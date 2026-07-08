@@ -1,8 +1,8 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.19.1**
-> - Backstab fires only on a room's true opening round — after the first action (including a cast-interrupt re-attack or target re-pick) it falls back to the normal attack priority instead of re-sending `bs` into a fight already underway
+> **Version 1.19.3**
+> - Attack-last now sends one re-fire per round instead of one per party member — a round's burst of party attack announcements on our target coalesces into a single attack command, landing after the last announce so we stay last without spamming the wire
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

@@ -2209,6 +2209,7 @@ public sealed class AppServices
             },
             isEnabled: () => ReadAutoModeFlag(d => d.AutoCombat),
             readOwnGivenName: () => Profile.CurrentProfileName,
+            post: action => Avalonia.Threading.Dispatcher.UIThread.Post(action),
             log: Log,
             readPartySettings: () =>
                 ReadSection<Models.Profile.PartySettings>(Profile.Current, "Party"));
