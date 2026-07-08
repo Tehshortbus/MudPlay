@@ -58,6 +58,7 @@ public sealed class CombatManagerSpellsTests
                 readSettings: () => Settings,
                 isEnabled: () => AutoCombatEnabled,
                 readOwnGivenName: () => "Fujin",
+                post: a => a(),                          // synchronous in tests
                 log: Log);
             Combat.SetWireSender(b => Sent.Add(b));
             Combat.SetBackstabHooks(() => Sneaking, n => SeeHidden.Contains(n));

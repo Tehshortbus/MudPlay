@@ -42,6 +42,17 @@ public sealed class CombatManagerTests
         // pin the decision — which loadout combat requested and when.
         public List<(string? Weapon, string? OffHand)> Swaps { get; } = new();
 
+        // When true, UI posts queue instead of running inline so a test can feed
+        // a whole announce burst, then PumpUi() to flush the single coalesced
+        // re-fire. Default false → posts run synchronously (matches the historic
+        // one-line-per-Feed tests that assert on Sent right after Feed).
+        public bool DeferUi { get; init; }
+        private readonly Queue<Action> _uiJobs = new();
+        public void PumpUi()
+        {
+            while (_uiJobs.Count > 0) _uiJobs.Dequeue()();
+        }
+
         public Harness()
         {
             DefaultPatterns.Seed(Router);
@@ -53,6 +64,7 @@ public sealed class CombatManagerTests
                 readSettings: () => Settings,
                 isEnabled: () => AutoCombatEnabled,
                 readOwnGivenName: () => OwnName,
+                post: a => { if (DeferUi) _uiJobs.Enqueue(a); else a(); },
                 log: Log);
             Combat.SetWireSender(b => Sent.Add(b));
             Combat.SetWeaponActuator((w, oh) => Swaps.Add((w, oh)));
@@ -430,6 +442,7 @@ public sealed class CombatManagerTests
             readSettings: () => h.Settings,
             isEnabled: () => h.AutoCombatEnabled,
             readOwnGivenName: () => h.OwnName,
+            post: a => a(),
             log: h.Log);
 
         h.AddMonster(1, "giant rat", killable: true);
@@ -613,6 +626,44 @@ public sealed class CombatManagerTests
         h.Feed("Raijin moves to attack giant rat.");
         Assert.Equal(2, h.Sent.Count);
         Assert.Equal("a giant rat", h.LastSent);
+    }
+
+    [Fact]
+    public void AttackTimingLastParty_CoalescesAnnounceBurst()
+    {
+        // A combat round resolves the whole party's attacks at once, so their
+        // "moves to attack <target>" announces arrive as one burst. We should
+        // re-fire ONCE that round (landing after the last announce), not once
+        // per party member. DeferUi holds the coalesced flush until PumpUi, so
+        // the whole burst is processed first — the production shape where one
+        // server flush emits every announce line before the dispatcher runs the
+        // posted flush.
+        using Harness h = new() { DeferUi = true };
+        h.Settings.AttackTiming = AttackTiming.AttackLastParty;
+        h.Party.Members.Add(new PartyMember { Name = "Suijin" });
+        h.Party.Members.Add(new PartyMember { Name = "Raijin" });
+        h.AddMonster(1, "giant rat", killable: true);
+
+        h.Feed("Also here: giant rat.");        // initial swing (synchronous)
+        Assert.Single(h.Sent);
+
+        // Burst of party announces on our target — one round. The duplicated
+        // Suijin line mirrors a live capture where the same announce emitted
+        // twice; it must not add a second send.
+        h.Feed("Suijin moves to attack giant rat.");
+        h.Feed("Suijin moves to attack giant rat.");
+        h.Feed("Raijin moves to attack giant rat.");
+        Assert.Single(h.Sent);                  // flush deferred — nothing sent yet
+
+        h.PumpUi();
+        Assert.Equal(2, h.Sent.Count);          // exactly one coalesced re-fire
+        Assert.Equal("a giant rat", h.LastSent);
+
+        // A later, separate burst still re-fires — coalescing is per-burst, not
+        // a once-per-fight cap, so we keep landing last each round.
+        h.Feed("Suijin moves to attack giant rat.");
+        h.PumpUi();
+        Assert.Equal(3, h.Sent.Count);
     }
 
     [Fact]

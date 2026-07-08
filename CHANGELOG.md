@@ -2,6 +2,10 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.19.3
+
+- Attack-last now sends one re-fire per round instead of one per party member — a round's burst of party attack announcements on our target coalesces into a single attack command, landing after the last announce so we stay last without spamming the wire
+
 ## 1.19.1
 
 - Backstab fires only on a room's true opening round — after the first action (including a cast-interrupt re-attack or a target re-pick) it falls back to the normal attack priority instead of re-sending `bs` into a fight already underway
