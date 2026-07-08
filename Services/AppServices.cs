@@ -2495,6 +2495,23 @@ public sealed class AppServices
         // the failed surprise round; HealthManager owns the flee route + engine.
         Combat.SetBackstabFailureFlee(() => Health.RunFromBackstabFailure());
 
+        // ShadowRest (Paradigm): classes carrying ability code 1103 can rest while
+        // hidden/sneaking in a room with monsters without being attacked. The rest
+        // engine relaxes its hostiles guard when solo + stealthed + class-capable +
+        // opted in; combat stands down (reads ShadowRestHolding) so the rest isn't
+        // broken, and HealthManager fires ResumeAfterShadowRest at rest-max to
+        // re-open with the held-back backstab. Inert on classes without 1103.
+        bool ClassHasShadowRest() =>
+            Stats.HasParsed
+            && GameData.FindRowByName("Classes", PlayerStats.Class) is { } classRow
+            && Game.GameData.AbilityNames.HasShadowRest(classRow);
+        Health.SetShadowRest(
+            shadowRestClass: ClassHasShadowRest,
+            isStealthed:     () => Stealth.IsStealthed,
+            isSolo:          () => !PartyState.IsInParty,
+            onRecovered:     Combat.ResumeAfterShadowRest);
+        Combat.SetShadowRestSuppression(() => Health.ShadowRestHolding);
+
         // Deterministic magic eligibility — weapon HitMagic ≥ monster Magical
         // picks normal-vs-alternate, spell ReqLevel ≥ monster SpellImmu gates
         // single-target debuff / attack spells, and the resist pair skips an attack

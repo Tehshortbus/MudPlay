@@ -82,7 +82,7 @@ public sealed class HealthSettings
     // outweighs mana conservation. 0 disables the gate (always heal). Default 0.
     public int HealIfAboveMaCombat { get; set; }
 
-    // ----- Meditation -----------------------------------------------
+    // ----- Resting Options ------------------------------------------
 
     // Use the class-specific meditate command on classes that have it. Default false.
     public bool UseMeditateAbility { get; set; }
@@ -90,6 +90,13 @@ public sealed class HealthSettings
     // Sit and meditate first when both HP and MA are low. Default false (rest
     // covers both).
     public bool MeditateBeforeResting { get; set; }
+
+    // Rest while hidden/sneaking without leaving stealth, on classes that have the
+    // ShadowRest ability (Paradigm; game-data code 1103). When on, a solo, stealthed
+    // ShadowRest character rests in place even with a monster in the room — the game
+    // keeps it un-attacked while stealthed. Inert on classes without the ability.
+    // Default false.
+    public bool UtilizeShadowRest { get; set; }
 
     // ----- Resting commands -----------------------------------------
 

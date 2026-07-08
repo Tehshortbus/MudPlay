@@ -7,6 +7,8 @@
 > - "Run if BS fails" now works: a detected backstab failure flees via the normal break-before-flee escape (previously the setting did nothing)
 > - Hidden characters now open with `bs` when a monster walks in; a fresh in-place hide re-arms the surprise round for the next one
 > - Auto-hide is now suppressed while in a party, so a member can't hide itself out of reach of party heals and buffs
+> - ShadowRest (Paradigm): solo, stealthed classes with the ability can now rest through a monster in the room — combat stands down while recovering, then re-opens with a backstab at rest-max
+> - New Settings → Health → Resting Options → "Utilize shadowrest" toggle (the category was renamed from "Meditation")
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

@@ -10,6 +10,8 @@ Notable changes per merged PR, **newest first**. The top of the [README](README.
 - Hidden characters now open with `bs` when a monster walks in: hide is tracked optimistically (its success isn't self-observable) and the surprise resolver confirms or flees
 - A fresh in-place hide re-arms the surprise round, so a hidden character can backstab each monster that wanders in after a kill
 - Auto-hide is now suppressed while in a party, so a member can't hide itself out of reach of party heals and buffs
+- ShadowRest (Paradigm): solo, stealthed classes with the ability can now rest through a monster in the room — combat stands down while recovering, then re-opens with a backstab at rest-max
+- New Settings → Health → Resting Options → "Utilize shadowrest" toggle (the category was renamed from "Meditation")
 
 ## 1.19.4
 

@@ -146,6 +146,23 @@ it isn't here and you're unsure, ask.
   backstab the next one that wanders in. **Auto-hide is suppressed while in a party** — a hidden
   member falls off the Also-here line and can't be single-target-healed/buffed until revealed.
 
+**ShadowRest** *([CONFIRMED] — user, Paradigm; not present in stock)*
+- Some Paradigm classes have a **ShadowRest** class ability. It is not a stock MajorMUD mechanic.
+  In the imported game data it is **class-ability code 1103** on the Classes table (`AbilityNames`
+  maps `1103 → "ShadowRest"`); a class row carrying that code in any `Abil-N` slot has the ability.
+- **What it does:** while **hidden or sneaking**, the character can `rest` (or meditate) and **stay
+  stealthed while resting in the room** — monsters in the room **do not attack** the resting
+  stealthed character. Normally a hostile in the room means you can't safely rest; ShadowRest lets a
+  stealthed character rest right there without being engaged.
+- Some ShadowRest classes gain an **HP-regen bonus** while resting this way (e.g. thief gets extra
+  regen). The bonus is server-side; the client's `RegenTracker` measures the actual rate off the
+  stat line, so it needs no separate model of the magnitude.
+- **No special messages** mark the state. The only observable sequence is a successful hide/sneak
+  followed by `rest` — there is no "you shadow-rest" line. So the client can't detect ShadowRest
+  from the stream; it gates on the **class ability (code 1103) + the user setting** instead.
+- **Ideally used solo.** Resting while hidden un-targets you from party single-target heals/buffs
+  (same reason auto-hide is party-suppressed above), so ShadowRest resting is a solo behavior.
+
 ## Combat & backstab
 
 - **[OBSERVED]** Backstab command: `bs <target>`.

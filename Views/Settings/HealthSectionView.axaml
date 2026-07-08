@@ -205,14 +205,17 @@
                     </StackPanel>
                 </Grid>
 
-                <!-- ============ Meditation ============ -->
-                <TextBlock Classes="SectionHeader" Text="Meditation"/>
+                <!-- ============ Resting Options ============ -->
+                <TextBlock Classes="SectionHeader" Text="Resting Options"/>
                 <CheckBox Content="Use 'meditate' ability"
                           IsChecked="{Binding UseMeditateAbility, Mode=TwoWay}"
                           ToolTip.Tip="Use the class-specific meditate command on classes that have it."/>
                 <CheckBox Content="Meditate before resting"
                           IsChecked="{Binding MeditateBeforeResting, Mode=TwoWay}"
                           ToolTip.Tip="Sit and meditate first when MA is also low; rest only after MA tops off."/>
+                <CheckBox Content="Utilize shadowrest"
+                          IsChecked="{Binding UtilizeShadowRest, Mode=TwoWay}"
+                          ToolTip.Tip="For ShadowRest classes (Paradigm): when solo and hidden/sneaking, rest in place even with a monster in the room — the game keeps you un-attacked while stealthed. Inert on classes without the ability."/>
 
                 <!-- ============ Resting commands ============ -->
                 <TextBlock Classes="SectionHeader" Text="Resting commands"/>

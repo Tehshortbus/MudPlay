@@ -89,6 +89,11 @@ public sealed class HealthManager : IDisposable
     private Action? _requestPartyOk;            // release leader
     private Func<bool>? _isLeaderResting;       // follower + leader is resting/meditating
     private Action? _requestPartyHeal;          // follower flee-substitute: broadcast @heal
+    private Func<bool>? _shadowRestClass;       // class has the ShadowRest ability (code 1103)
+    private Func<bool>? _shadowRestStealthed;   // currently hidden or sneaking
+    private Func<bool>? _shadowRestSolo;        // not in a party (ShadowRest is a solo behavior)
+    private Action? _onShadowRestRecovered;     // recovery hit rest-max — resume combat
+    private bool _shadowRestWasHolding;         // falling-edge latch for the resume callback
     private bool _partyWaitSignaled;            // @wait sent, awaiting @ok
     private bool _hpGateAsserted;
     private bool _maGateAsserted;
@@ -273,6 +278,51 @@ public sealed class HealthManager : IDisposable
         _isLeaderResting = isLeaderResting;
         _requestPartyHeal = requestPartyHeal;
     }
+
+    // Wire ShadowRest (Paradigm): classes with the ability can rest while
+    // hidden/sneaking in a room with monsters without being attacked (see
+    // GAME_MECHANICS "ShadowRest"). All three predicates plus the
+    // HealthSettings.UtilizeShadowRest toggle must hold for the behavior to engage:
+    //   shadowRestClass — the character's class carries ability code 1103.
+    //   isStealthed     — currently hidden OR sneaking (StealthManager.IsStealthed).
+    //   isSolo          — not in a party (resting hidden un-targets party heals).
+    // onRecovered fires once when recovery reaches rest-max (a held rest gate
+    // clears) while ShadowRest was holding — the resume signal that lets
+    // CombatManager re-open with a backstab now that we're topped off and still
+    // stealthed. Left unwired, ShadowRest simply never engages.
+    public void SetShadowRest(
+        Func<bool> shadowRestClass,
+        Func<bool> isStealthed,
+        Func<bool> isSolo,
+        Action onRecovered)
+    {
+        ArgumentNullException.ThrowIfNull(shadowRestClass);
+        ArgumentNullException.ThrowIfNull(isStealthed);
+        ArgumentNullException.ThrowIfNull(isSolo);
+        ArgumentNullException.ThrowIfNull(onRecovered);
+        _shadowRestClass = shadowRestClass;
+        _shadowRestStealthed = isStealthed;
+        _shadowRestSolo = isSolo;
+        _onShadowRestRecovered = onRecovered;
+    }
+
+    // True when every ShadowRest precondition holds: the user opted in, the class
+    // has the ability, and we're solo and currently stealthed. This is the "can
+    // rest safely with a monster in the room" condition — it relaxes the rest-out
+    // hostiles guard.
+    private bool ShadowRestActive() =>
+        _readSettings().UtilizeShadowRest
+        && _shadowRestClass?.Invoke() == true
+        && _shadowRestStealthed?.Invoke() == true
+        && _shadowRestSolo?.Invoke() == true;
+
+    // True while a ShadowRest recovery is in progress — ShadowRest is active AND a
+    // rest gate is held (HP/MA below its floor, climbing toward rest-max). Combat
+    // reads this to stand down so the character stays hidden and rests; it drops to
+    // false the moment recovery tops off (the gate clears), which is the falling
+    // edge that fires the resume callback.
+    public bool ShadowRestHolding =>
+        ShadowRestActive() && (_hpGateAsserted || _maGateAsserted);
 
     // True while the HP gate is held.
     public bool HpGateAsserted => _hpGateAsserted;
@@ -572,7 +622,17 @@ public sealed class HealthManager : IDisposable
         // the cycle (kill → rest → kill → rest), as per user direction.
         bool hostilesPresent = _hasEngageableHostiles?.Invoke() ?? false;
 
-        if (shouldRest && !_state.InCombat && !_restInFlight && !hostilesPresent)
+        // ShadowRest relaxes the hostiles guard: a solo, stealthed ShadowRest
+        // character rests in place even with a monster in the room — the game
+        // keeps it un-attacked while stealthed, and combat stands down (reading
+        // ShadowRestHolding) so the rest isn't broken by our own swing. Recovery
+        // runs to rest-max, then the gate clears and the resume callback re-opens
+        // combat with a backstab (we're still stealthed, opener unspent).
+        bool shadowRest = ShadowRestActive();
+        if (shadowRest && hostilesPresent && shouldRest && !_state.InCombat && !_restInFlight)
+            _log?.Combat(LogCategory, "shadowrest — resting with hostile in room (staying stealthed)");
+
+        if (shouldRest && !_state.InCombat && !_restInFlight && (!hostilesPresent || shadowRest))
         {
             // Pick rest vs meditate based on user settings + which
             // pool is the proximate trigger.
@@ -606,6 +666,20 @@ public sealed class HealthManager : IDisposable
             _restInFlight = false;
             _restConfirmedByPrompt = false;
         }
+
+        // ShadowRest resume: recovery topped off to rest-max (the held gate just
+        // cleared) while ShadowRest was holding. Fire once on the falling edge so
+        // CombatManager re-runs the room and opens with a backstab — we're still
+        // stealthed and the opener is unspent because combat stayed suppressed.
+        bool shadowRestHolding = ShadowRestHolding;
+        if (_shadowRestWasHolding && !shadowRestHolding)
+        {
+            _log?.Combat(LogCategory,
+                $"shadowrest recovered to rest-max — resuming combat " +
+                $"hp={_state.Hp}/{_state.MaxHp} ma={_state.Ma}/{_state.MaxMa}");
+            _onShadowRestRecovered?.Invoke();
+        }
+        _shadowRestWasHolding = shadowRestHolding;
     }
 
     // Re-check ONLY the emergency-hangup gate — wired to room-entity observations

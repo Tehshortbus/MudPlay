@@ -111,6 +111,7 @@ public sealed partial class CombatManager : IDisposable
     private Func<bool>? _isStealthed;
     private Func<int, bool>? _hasSeeHidden;
     private Func<bool>? _seeHiddenClearActive;
+    private Func<bool>? _shadowRestHolding;
     private string? _currentTarget;
 
     // Backstab flee-on-failure action, bound in AppServices to
@@ -368,6 +369,29 @@ public sealed partial class CombatManager : IDisposable
     {
         ArgumentNullException.ThrowIfNull(seeHiddenClearActive);
         _seeHiddenClearActive = seeHiddenClearActive;
+    }
+
+    // Wire the ShadowRest combat hold: shadowRestHolding reports whether
+    // HealthManager is mid-ShadowRest-recovery (a solo, stealthed ShadowRest
+    // character resting toward rest-max — see GAME_MECHANICS "ShadowRest"). While
+    // it returns true we stand down before dispatching a round so the character
+    // stays hidden and the rest isn't broken by our own swing; the opener stays
+    // unspent. HealthManager fires ResumeAfterShadowRest once recovery tops off,
+    // which re-runs the room and opens with the held-back backstab. Until set, the
+    // hold never engages.
+    public void SetShadowRestSuppression(Func<bool> shadowRestHolding)
+    {
+        ArgumentNullException.ThrowIfNull(shadowRestHolding);
+        _shadowRestHolding = shadowRestHolding;
+    }
+
+    // Resume normal combat after a ShadowRest recovery completes — re-run the last
+    // observation so the target re-picks and the backstab opener fires now that the
+    // hold has lifted. No-op when combat is off or no observation is cached.
+    public void ResumeAfterShadowRest()
+    {
+        if (!_isEnabled()) return;
+        if (_classifier.Current is { } live) OnEntitiesObserved(live);
     }
 
     // Called by the MonsterDeath subscriber when a death-line match resolves to a
@@ -684,6 +708,21 @@ public sealed partial class CombatManager : IDisposable
                 $"re-pick: target '{_currentTarget}' not in engageable — " +
                 $"switching to {picked.RawName} (engageable=[" +
                 $"{string.Join(",", engageable.Select(e => e.RawName))}])");
+        }
+
+        // ShadowRest hold: a solo, stealthed ShadowRest character below a rest
+        // floor stays hidden and rests instead of engaging. Stand down before any
+        // dispatch so stealth holds and the backstab opener stays unspent — once
+        // HealthManager tops off to rest-max it fires ResumeAfterShadowRest, which
+        // re-runs this observation with the hold lifted and opens with the bs.
+        // Placed after the empty-room / clear handling so a mob leaving mid-rest
+        // still tears down cleanly.
+        if (_shadowRestHolding?.Invoke() == true)
+        {
+            _log?.Combat(LogCategory,
+                $"combat held — shadowrest recovering (would engage {picked.RawName})");
+            _currentTarget = null;
+            return;
         }
 
         // Decide + dispatch this round's action. The chooser owns the full

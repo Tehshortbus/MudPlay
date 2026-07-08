@@ -58,6 +58,19 @@ public sealed class HealthManagerTests
         /// flagged, so the reactive-reconnect path stands down.</summary>
         public HangupSignal Hangup { get; } = new();
 
+        /// <summary>ShadowRest predicates (AppServices wires these to the class
+        /// ability, StealthManager.IsStealthed, and !PartyState.IsInParty). All
+        /// default to the "engaged" side so a test only sets the one it's probing;
+        /// the UtilizeShadowRest setting still has to be on for it to fire.</summary>
+        public bool ShadowRestClass { get; set; } = true;
+        public bool Stealthed { get; set; } = true;
+        public bool Solo { get; set; } = true;
+
+        /// <summary>Increments each time HealthManager fires the ShadowRest resume
+        /// callback (recovery topped off to rest-max). AppServices wires this to
+        /// CombatManager.ResumeAfterShadowRest.</summary>
+        public int ShadowRestResumeCount { get; private set; }
+
         public Harness(HealthSettings? settings = null)
         {
             Settings = settings ?? new HealthSettings();
@@ -76,6 +89,11 @@ public sealed class HealthManagerTests
                 hangupSignal: Hangup,
                 hasHostileInRoom: () => HostileInRoom);
             Health.SetWireSender(b => Sent.Add(b));
+            Health.SetShadowRest(
+                shadowRestClass: () => ShadowRestClass,
+                isStealthed: () => Stealthed,
+                isSolo: () => Solo,
+                onRecovered: () => ShadowRestResumeCount++);
         }
 
         /// <summary>
@@ -355,6 +373,128 @@ public sealed class HealthManagerTests
         // No second rest while hostile is here.
         int afterHostileRestCount = h.SentLines.Count(l => l == "rest");
         Assert.Equal(firstRestCount, afterHostileRestCount);
+    }
+
+    // ----- ShadowRest (Paradigm): rest with a hostile in the room -----
+
+    [Fact]
+    public void ShadowRest_HostilesPresent_StillRests()
+    {
+        // Solo, stealthed, ShadowRest-capable class, opted in: the game keeps
+        // us un-attacked while stealthed, so the hostiles guard is relaxed and
+        // the gated rest goes out even with a mob in the room.
+        HealthSettings s = new() { UtilizeShadowRest = true };
+        using Harness h = new(s) { HostilesPresent = true };
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 50;
+
+        Assert.True(h.HealthGateHeld);
+        Assert.Contains("rest", h.SentLines);
+        Assert.True(h.Health.RestInFlight);
+        Assert.True(h.Health.ShadowRestHolding);
+    }
+
+    [Fact]
+    public void ShadowRest_SettingOff_HostilesBlockRest()
+    {
+        // Same capable/stealthed/solo character, but UtilizeShadowRest off
+        // (default) → shadowRest inactive, the hostiles guard applies as normal.
+        using Harness h = new() { HostilesPresent = true };
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 50;
+
+        Assert.True(h.HealthGateHeld);
+        Assert.DoesNotContain("rest", h.SentLines);
+        Assert.False(h.Health.RestInFlight);
+        Assert.False(h.Health.ShadowRestHolding);
+    }
+
+    [Fact]
+    public void ShadowRest_NonShadowRestClass_HostilesBlockRest()
+    {
+        // Opted in and stealthed/solo, but the class lacks ability 1103 →
+        // ShadowRest never engages, hostiles still block the rest.
+        HealthSettings s = new() { UtilizeShadowRest = true };
+        using Harness h = new(s) { HostilesPresent = true, ShadowRestClass = false };
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 50;
+
+        Assert.DoesNotContain("rest", h.SentLines);
+        Assert.False(h.Health.RestInFlight);
+        Assert.False(h.Health.ShadowRestHolding);
+    }
+
+    [Fact]
+    public void ShadowRest_NotStealthed_HostilesBlockRest()
+    {
+        // ShadowRest needs the stealth cover — standing in the open, the game
+        // will happily attack us, so we must not rest into a mob.
+        HealthSettings s = new() { UtilizeShadowRest = true };
+        using Harness h = new(s) { HostilesPresent = true, Stealthed = false };
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 50;
+
+        Assert.DoesNotContain("rest", h.SentLines);
+        Assert.False(h.Health.RestInFlight);
+        Assert.False(h.Health.ShadowRestHolding);
+    }
+
+    [Fact]
+    public void ShadowRest_InParty_HostilesBlockRest()
+    {
+        // ShadowRest is a solo behavior — resting hidden un-targets party heals,
+        // so in a party the guard stays in force.
+        HealthSettings s = new() { UtilizeShadowRest = true };
+        using Harness h = new(s) { HostilesPresent = true, Solo = false };
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 50;
+
+        Assert.DoesNotContain("rest", h.SentLines);
+        Assert.False(h.Health.RestInFlight);
+        Assert.False(h.Health.ShadowRestHolding);
+    }
+
+    [Fact]
+    public void ShadowRest_RecoveryToRestMax_FiresResumeOnce()
+    {
+        // Option A: rest until rest-max, then the held gate clears and the
+        // falling edge fires the resume callback exactly once so CombatManager
+        // re-runs the room and opens with the still-armed backstab.
+        HealthSettings s = new() { UtilizeShadowRest = true };
+        using Harness h = new(s) { HostilesPresent = true };
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 50;              // gate held, resting, ShadowRest holding
+        Assert.True(h.Health.ShadowRestHolding);
+        Assert.Equal(0, h.ShadowRestResumeCount);
+
+        h.State.Hp = 190;             // 95% rest-max → gate clears
+        Assert.False(h.Health.ShadowRestHolding);
+        Assert.Equal(1, h.ShadowRestResumeCount);
+
+        // Idempotent — a further tick past rest-max doesn't re-fire.
+        h.State.Hp = 200;
+        Assert.Equal(1, h.ShadowRestResumeCount);
+    }
+
+    [Fact]
+    public void ShadowRest_Inactive_NoResumeOnRecovery()
+    {
+        // Without ShadowRest engaged, normal recovery to target must never fire
+        // the resume callback — it's exclusive to the stealthed rest cycle.
+        using Harness h = new();
+        h.State.MaxHp = 200;
+        h.State.HasPromptData = true;
+        h.State.Hp = 50;
+        Assert.False(h.Health.ShadowRestHolding);
+
+        h.State.Hp = 190;
+        Assert.Equal(0, h.ShadowRestResumeCount);
     }
 
     [Fact]

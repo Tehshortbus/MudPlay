@@ -222,6 +222,9 @@ public static class BugReportBuilder
         Kv(sb, "Awaiting backstab resolution", combat.AwaitingBackstabResolution
             ? $"yes (target={combat.PendingBackstabSpecies ?? "(none)"})"
             : "no");
+        // ShadowRest hold explains a stealthed character resting instead of
+        // engaging a monster in the room (combat stands down while true).
+        Kv(sb, "ShadowRest holding", svc.Health.ShadowRestHolding.ToString());
 
         return sb.ToString();
     }

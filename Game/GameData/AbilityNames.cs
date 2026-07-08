@@ -228,6 +228,27 @@ public static class AbilityNames
         return false;
     }
 
+    // Class-ability code that grants ShadowRest — a Paradigm ability letting a
+    // hidden/sneaking character rest in a room with monsters without being
+    // attacked (see GAME_MECHANICS "ShadowRest"). Not a stock mechanic; the code
+    // maps to "ShadowRest" above.
+    private const int ShadowRestCode = 1103;
+
+    // True when the JSON row (a Classes record) carries the ShadowRest grant in any
+    // of its Abil-0..9 slots — the capability gate for the shadow-rest resting
+    // behavior. element is the source Classes object; slots is the number of Abil-N
+    // slots to scan (defaults to 10).
+    public static bool HasShadowRest(System.Text.Json.JsonElement element, int slots = 10)
+    {
+        for (int i = 0; i < slots; i++)
+        {
+            if (!element.TryGetProperty($"Abil-{i}", out System.Text.Json.JsonElement codeEl)) continue;
+            if (codeEl.ValueKind != System.Text.Json.JsonValueKind.Number) continue;
+            if (codeEl.TryGetInt32(out int code) && code == ShadowRestCode) return true;
+        }
+        return false;
+    }
+
     // Render one decoded ability slot — "AC +10", "Slowness -5", or "RaceStealth"
     // (name only, value 0).
     private static string FormatPart(string name, int value)
