@@ -1195,4 +1195,21 @@ public sealed class AutoWalkManagerTests : IDisposable
         // tests can validate the wire payload without a network.
         Assert.Single(walker.LastSentForTests);
     }
+
+    [Fact]
+    public void SendBacktrackMove_WithNoActivePlan_DoesNotThrow()
+    {
+        // Tier-3 health-recovery backtracks route through the same WriteBytes
+        // choke point as planned moves, but with no walk plan in flight
+        // (_path == null). Regression: the step-counter log line used to
+        // deref _path! and crash with a NullReferenceException.
+        Harness h = NewHarness();
+        h.Tracker.SetLocated(new RoomKey(1, 2));
+
+        h.Walker.SendBacktrackMove(Direction.S);
+
+        Assert.Equal(WalkState.Idle, h.Walker.State);
+        Assert.Single(h.Sent);
+        Assert.Equal("s\r", Encoding.Latin1.GetString(h.Sent[0]));
+    }
 }

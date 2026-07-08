@@ -902,7 +902,11 @@ public sealed class AutoWalkManager : IRecoverableEngine
             _log?.Warn("Walker", $"wire sender not bound; suppressed: {reasonForLog}");
         else
             _wireSender(bytes);
-        _log?.Info("Walker", $"step {_index + 1}/{_path!.Count}: {reasonForLog}");
+        // Tier-3 recovery backtracks (SendBacktrackMove) route through here with no
+        // active walk plan, so _path is null — the step counter only makes sense
+        // when a planned path exists.
+        string progress = _path is { } path ? $"step {_index + 1}/{path.Count}: " : string.Empty;
+        _log?.Info("Walker", $"{progress}{reasonForLog}");
     }
 
     private void OnTrackerStateChanged(RoomTransition transition)
