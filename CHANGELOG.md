@@ -2,6 +2,10 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.17.1
+
+- Status-bar location chip's exp/hr no longer vanishes behind an ellipsis when the room name is long — the rate now sits in its own slot that never trims
+
 ## 1.17.0
 
 - Item Finder auto-hides stat columns with no values in the current filtered view — narrow to a slot and the irrelevant Dmg/Swings/Hit Magic/etc. columns drop away

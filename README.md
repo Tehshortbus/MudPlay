@@ -1,9 +1,8 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.17.0**
-> - Item Finder auto-hides stat columns with no values in the current filtered view — narrow to a slot and the irrelevant Dmg/Swings/Hit Magic/etc. columns drop away
-> - Slot and Name columns always stay; hidden columns return the moment a matching item brings them back
+> **Version 1.17.1**
+> - Status-bar location chip's exp/hr no longer vanishes behind an ellipsis when the room name is long — the rate now sits in its own slot that never trims
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->
