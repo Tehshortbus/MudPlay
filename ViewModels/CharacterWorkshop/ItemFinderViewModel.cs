@@ -41,7 +41,37 @@ public sealed partial class ItemFinderViewModel : ObservableObject, IDialogViewM
     private static readonly int[] OneHandedCodes = { 0, 2 };
     private static readonly int[] TwoHandedCodes = { 1, 3 };
 
+    // The grid columns that collapse to nothing once no visible item carries a
+    // value — every column but the Slot / Name anchors. Each is keyed by its
+    // binding path (mirrored in the view as the DataGridColumn.Tag) and paired
+    // with the same blank-on-zero cell text the column renders, so "column has a
+    // value" means exactly "some row's cell isn't blank" — matching what the user
+    // sees. Recomputed on every filter pass; a narrowed view drops all-empty ones.
+    private static readonly (string Key, Func<ItemFinderEntry, string> Cell)[] HideableColumns =
+    {
+        ("TypeLabel",      static e => e.TypeLabel),
+        ("LevelReqText",   static e => e.LevelReqText),
+        ("StrReqText",     static e => e.StrReqText),
+        ("DamageText",     static e => e.DamageText),
+        ("AvgSwingsText",  static e => e.AvgSwingsText),
+        ("AccuracyText",   static e => e.AccuracyText),
+        ("CritsText",      static e => e.CritsText),
+        ("HitMagicText",   static e => e.HitMagicText),
+        ("BsAccuracyText", static e => e.BsAccuracyText),
+        ("BsDamageText",   static e => e.BsDamageText),
+        ("AcText",         static e => e.AcText),
+        ("DrText",         static e => e.DrText),
+        ("HpText",         static e => e.HpText),
+        ("HpRegenText",    static e => e.HpRegenText),
+        ("ManaText",       static e => e.ManaText),
+        ("ManaRegenText",  static e => e.ManaRegenText),
+    };
+
     public event Action<bool>? CloseRequested;
+
+    // Raised after each filter pass recomputes which optional columns hold a value,
+    // so the view can re-read IsColumnVisible and toggle each DataGridColumn.
+    public event Action? VisibleColumnsChanged;
 
     private readonly GameDataCache _gameData;
     private readonly IReadOnlyList<ItemFinderEntry> _all;
@@ -60,8 +90,17 @@ public sealed partial class ItemFinderViewModel : ObservableObject, IDialogViewM
     private string? _activeArmourType;
     private bool _filterSuspended = true;
 
+    // Binding paths of the optional columns that carry a value somewhere in the
+    // current filtered view; the view shows a tagged column only while it's here.
+    private readonly HashSet<string> _visibleColumns = new(StringComparer.Ordinal);
+
     // The sorted, filterable item catalog the grid binds to.
     public DataGridCollectionView RowsView { get; }
+
+    // Whether the column keyed by this binding path holds a value in the current
+    // view. Unknown keys (the always-on Slot / Name anchors carry no tag) read false
+    // and are never consulted by the view, so they stay visible regardless.
+    public bool IsColumnVisible(string key) => _visibleColumns.Contains(key);
 
     // Class names from the active set, "(Any class)" first.
     public ObservableCollection<string> ClassOptions { get; } = new();
@@ -251,6 +290,25 @@ public sealed partial class ItemFinderViewModel : ObservableObject, IDialogViewM
         RowsView.Refresh();
         CountText = string.Create(CultureInfo.InvariantCulture,
             $"Showing {RowsView.Count:N0} of {_all.Count:N0} items");
+        RecomputeVisibleColumns();
+    }
+
+    // Walk the filtered rows and keep only the optional columns that render a
+    // non-blank cell somewhere. Short-circuits once every column is accounted for,
+    // so the common unfiltered case (all columns populated) stops after a few rows;
+    // the costly all-scan only happens when a narrowed view leaves columns empty.
+    private void RecomputeVisibleColumns()
+    {
+        _visibleColumns.Clear();
+        foreach (object? o in RowsView)
+        {
+            if (_visibleColumns.Count == HideableColumns.Length) break;
+            if (o is not ItemFinderEntry e) continue;
+            foreach ((string key, Func<ItemFinderEntry, string> cell) in HideableColumns)
+                if (!_visibleColumns.Contains(key) && !string.IsNullOrEmpty(cell(e)))
+                    _visibleColumns.Add(key);
+        }
+        VisibleColumnsChanged?.Invoke();
     }
 
     private bool PassesFilter(object o)
