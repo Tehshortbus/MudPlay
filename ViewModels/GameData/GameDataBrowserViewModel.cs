@@ -229,6 +229,12 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject, IDispos
             => Sections.Add(new PlaceholderGameDataSectionViewModel(id, title, phase, description));
     }
 
+    // External entry point (e.g. the Item Finder's row double-click) to jump the browser
+    // to a specific record in a table section. Shares the same activate-then-defer routing
+    // as an in-browser cross-section navigation.
+    public void NavigateToRecord(string targetSectionId, Func<Tables.GameDataRow, bool> rowSelector)
+        => OnNavigationRequested(new NavigationRequest(targetSectionId, rowSelector));
+
     // Route a section's NavigationRequested event to the named target: activate the
     // target tab, then defer the row-selection one dispatcher tick so the DataGrid has a
     // chance to swap views before we touch SelectedItem. The target's SelectRowMatching

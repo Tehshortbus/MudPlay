@@ -1,5 +1,8 @@
 using System;
 using Avalonia.Controls;
+using Avalonia.Input;
+using FujinTerm.Game.Inventory;
+using FujinTerm.Services;
 using FujinTerm.ViewModels.CharacterWorkshop;
 
 namespace FujinTerm.Views.CharacterWorkshop;
@@ -33,5 +36,14 @@ public partial class ItemFinderWindow : Window
         foreach (DataGridColumn col in ItemsGrid.Columns)
             if (col.Tag is string key)
                 col.IsVisible = _vm.IsColumnVisible(key);
+    }
+
+    // Double-click a result → jump to that item's Game Data record. A double-tap
+    // also selects the row, so SelectedItem is the double-clicked entry. The finder
+    // stays open (modeless) alongside the browser.
+    private void OnRowDoubleTapped(object? sender, TappedEventArgs e)
+    {
+        if (ItemsGrid.SelectedItem is ItemFinderEntry entry && entry.Number > 0)
+            AppServices.Current.OpenItemGameData(entry.Number);
     }
 }

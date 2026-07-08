@@ -4,6 +4,7 @@
 > **Version 1.18.0**
 > - Item Game Data now prices each shop the item is bought/sold at — a line under every shop shows `@<charm>cha BUY: … SELL: …` for the character's charm (or retail 50 when unknown), branched to the active realm's stock/paradigm formula
 > - Weight moved into the right-hand info pane; the redundant read-only Body location / Item type / Price fields dropped from the left edit pane
+> - Double-clicking an Item Finder row opens the Game Data Browser at that item's record
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

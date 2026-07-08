@@ -495,6 +495,11 @@ public partial class MainWindowViewModel : ObservableObject
         AppServices.Current.RoomGraph.GraphReloaded +=
             () => Avalonia.Threading.Dispatcher.UIThread.Post(RefreshLocationSlot);
 
+        // Let deep VMs (the Item Finder's row double-click) open the single-
+        // instance Game Data Browser at a specific item — only this VM can
+        // spawn / toggle that window.
+        AppServices.Current.SetItemGameDataOpener(OpenItemGameData);
+
         // Engine-state chip — same shape as the Navigation window's
         // top-bar badge (IDLE / WALKING / LOOPING / AUTO-LAIR). Lives
         // on the status bar so the user always sees which engine is
@@ -2978,6 +2983,16 @@ public partial class MainWindowViewModel : ObservableObject
     [RelayCommand] private void OpenGameDataTriggers() => ShowGameDataBrowser("triggers");
     [RelayCommand] private void OpenGameDataAliases()  => ShowGameDataBrowser("aliases");
 
+    // Registered on AppServices so the Item Finder's row double-click can jump
+    // straight to an item's Game Data record. Opens (or re-focuses) the browser
+    // at the Items section and selects the row whose "Number" matches.
+    private void OpenItemGameData(int itemNumber)
+    {
+        string numStr = itemNumber.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        ShowGameDataBrowser("items",
+            row => string.Equals(row.Get("Number"), numStr, StringComparison.Ordinal));
+    }
+
     // Game Data menu → "Modify Blacklist…". Staged editor over the
     // per-BBS room blacklist. Save commits + redraws the map; Cancel
     // discards.
@@ -3015,26 +3030,42 @@ public partial class MainWindowViewModel : ObservableObject
     // Switching in place beats closing-and-respawning because it preserves
     // search state, scroll position, and any per-section VM caches the
     // user has primed.
-    private void ShowGameDataBrowser(string? initialSectionId)
+    //
+    // A record-targeted open (rowSelector supplied — the Item Finder's
+    // double-click) is NOT a toggle: it always opens/re-focuses the browser at
+    // the requested section and selects the matching row, never closes.
+    private void ShowGameDataBrowser(
+        string? initialSectionId,
+        Func<FujinTerm.ViewModels.GameData.Tables.GameDataRow, bool>? rowSelector = null)
     {
         if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
             return;
 
         if (_gameDataBrowser is { } existing)
         {
+            FujinTerm.ViewModels.GameData.GameDataBrowserViewModel? existingVm =
+                existing.DataContext as FujinTerm.ViewModels.GameData.GameDataBrowserViewModel;
+
+            if (rowSelector is not null && initialSectionId is not null)
+            {
+                existingVm?.NavigateToRecord(initialSectionId, rowSelector);
+                existing.Activate();
+                return;
+            }
+
             if (initialSectionId is null
-                || (existing.DataContext is FujinTerm.ViewModels.GameData.GameDataBrowserViewModel vm
-                    && string.Equals(vm.SelectedSection?.Id, initialSectionId, StringComparison.OrdinalIgnoreCase)))
+                || (existingVm is not null
+                    && string.Equals(existingVm.SelectedSection?.Id, initialSectionId, StringComparison.OrdinalIgnoreCase)))
             {
                 existing.Close();
                 return;
             }
 
-            if (existing.DataContext is FujinTerm.ViewModels.GameData.GameDataBrowserViewModel vmRoute)
+            if (existingVm is not null)
             {
                 FujinTerm.ViewModels.GameData.GameDataSectionViewModel? target =
-                    vmRoute.Sections.FirstOrDefault(s => string.Equals(s.Id, initialSectionId, StringComparison.OrdinalIgnoreCase));
-                if (target is not null) vmRoute.SelectedSection = target;
+                    existingVm.Sections.FirstOrDefault(s => string.Equals(s.Id, initialSectionId, StringComparison.OrdinalIgnoreCase));
+                if (target is not null) existingVm.SelectedSection = target;
                 existing.Activate();
                 return;
             }
@@ -3043,29 +3074,32 @@ public partial class MainWindowViewModel : ObservableObject
             return;
         }
 
-        FujinTerm.Views.GameData.GameDataBrowserWindow window = new()
-        {
-            DataContext = new FujinTerm.ViewModels.GameData.GameDataBrowserViewModel(
-                AppServices.Current.GameData,
-                AppServices.Current.Triggers,
-                AppServices.Current.Aliases,
-                AppServices.Current.Players,
-                AppServices.Current.Macros,
-                AppServices.Current.Messages,
-                AppServices.Current.MonsterMessages,
-                AppServices.Current.MonsterOverlaySeed,
-                AppServices.Current.ItemOverlaySeed,
-                AppServices.Current.Resolver,
-                AppServices.Current.Dialogs,
-                AppServices.Current.Keybindings,
-                AppServices.Current.Profile,
-                AppServices.Current.RoomGraph,
-                AppServices.Current.PlayerStats,
-                initialSectionId),
-        };
+        FujinTerm.ViewModels.GameData.GameDataBrowserViewModel newVm = new(
+            AppServices.Current.GameData,
+            AppServices.Current.Triggers,
+            AppServices.Current.Aliases,
+            AppServices.Current.Players,
+            AppServices.Current.Macros,
+            AppServices.Current.Messages,
+            AppServices.Current.MonsterMessages,
+            AppServices.Current.MonsterOverlaySeed,
+            AppServices.Current.ItemOverlaySeed,
+            AppServices.Current.Resolver,
+            AppServices.Current.Dialogs,
+            AppServices.Current.Keybindings,
+            AppServices.Current.Profile,
+            AppServices.Current.RoomGraph,
+            AppServices.Current.PlayerStats,
+            initialSectionId);
+        FujinTerm.Views.GameData.GameDataBrowserWindow window = new() { DataContext = newVm };
         window.Closed += (_, _) => _gameDataBrowser = null;
         _gameDataBrowser = window;
         window.Show(main);
+
+        // The constructor already selected the section; select the target row
+        // once its table materialises (SelectRowMatching queues on cold load).
+        if (rowSelector is not null && initialSectionId is not null)
+            newVm.NavigateToRecord(initialSectionId, rowSelector);
     }
 
     // Items bound to File → Game Data → Active set. Each entry has a
