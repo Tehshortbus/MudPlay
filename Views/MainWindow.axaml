@@ -380,23 +380,14 @@
                     <TextBlock Text="{Binding EngineActionBadge}"/>
                 </Border>
 
-                <!-- Current room + session exp/hr. The rate rides its own
-                     right-docked, non-trimming block so a long room name
-                     (clipped by CharacterEllipsis to the column width) can
-                     never swallow it — the failure that put the rate behind an
-                     ellipsis exactly when the name was longest. The rate slot
-                     hides itself when there's nothing to show (Lost, no
-                     game-data set). -->
-                <DockPanel Grid.Column="1">
-                    <TextBlock DockPanel.Dock="Right"
-                               Classes="StatusSlot"
-                               Margin="12,0,0,0"
-                               Text="{Binding LocationRateText}"
-                               IsVisible="{Binding LocationRateText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                    <TextBlock Classes="StatusSlot"
-                               Text="{Binding LocationText}"
-                               TextTrimming="CharacterEllipsis"/>
-                </DockPanel>
+                <!-- Map/room number + session exp/hr. VM shows the short key
+                     rather than the (often long) room name, so the rate can't
+                     be pushed behind an ellipsis; TextTrimming stays as a
+                     safety net for extreme narrow-window resizes. -->
+                <TextBlock Grid.Column="1"
+                           Classes="StatusSlot"
+                           Text="{Binding LocationText}"
+                           TextTrimming="CharacterEllipsis"/>
 
                 <!-- Look-target HP window. Empty (hidden) until a `look <monster>`
                      resolves; a coarse wound band × the monster's max HP → an

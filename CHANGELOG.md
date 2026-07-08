@@ -4,7 +4,7 @@ Notable changes per merged PR, **newest first**. The top of the [README](README.
 
 ## 1.17.1
 
-- Status-bar location chip's exp/hr no longer vanishes behind an ellipsis when the room name is long — the rate now sits in its own slot that never trims
+- Status-bar location chip now shows the short map/room number instead of the room name, so exp/hr no longer gets pushed behind an ellipsis by a long name
 
 ## 1.17.0
 

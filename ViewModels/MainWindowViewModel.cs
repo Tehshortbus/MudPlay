@@ -304,14 +304,6 @@ public partial class MainWindowViewModel : ObservableObject
     // strip knows where the player is.
     [ObservableProperty] private string _locationText = "Unknown location";
 
-    // Session exp/hr, split out of LocationText so it renders in its own
-    // non-trimming slot. Folded into the location string, it sat at the tail and
-    // was the first thing CharacterEllipsis ate when a long room name overflowed
-    // the narrow slot — the whole reason the rate went live in the first place,
-    // gone exactly when the name was longest. Empty in states with no rate (Lost,
-    // no game-data set), which hides the slot.
-    [ObservableProperty] private string _locationRateText = string.Empty;
-
 
     // ----- Engine-state chip (mirrors the Navigation window's badge) -----
 
@@ -1279,8 +1271,7 @@ public partial class MainWindowViewModel : ObservableObject
         if (runner.State != Game.Map.LoopState.Idle && runner.CurrentLoop is not null)
         {
             double xpHr = AppServices.Current.SessionActivity.Snapshot().ExperiencePerHour;
-            LocationText = $"lap {runner.CompletedLaps + 1}";
-            LocationRateText = $"{Game.Combat.RateText.Compact(xpHr)}/hr";
+            LocationText = $"lap {runner.CompletedLaps + 1} · {Game.Combat.RateText.Compact(xpHr)}/hr";
             return;
         }
 
@@ -1294,19 +1285,17 @@ public partial class MainWindowViewModel : ObservableObject
         if (room is null && AppServices.Current.RoomGraph.RoomCount == 0)
         {
             LocationText = "Load a game data set to use navigation";
-            LocationRateText = string.Empty;
             return;
         }
-        // Full room display name + key; the session exp rate rides its own
-        // non-trimming slot beside it. TextTrimming on the status-bar TextBlock
-        // clips long names down to the column's actual width at render time —
-        // which must not swallow the rate. The VM stays a faithful mirror of
-        // game state.
+        // Map/room number + the session exp rate — no room name. Names run long
+        // ("Newhaven, Arena", …) and were overflowing the narrow status slot,
+        // pushing the rate behind an ellipsis exactly when the name was longest.
+        // The map/room key is always short and identifies the room just as well
+        // for a player watching the strip.
         if (room is not null)
         {
             double xpHr = AppServices.Current.SessionActivity.Snapshot().ExperiencePerHour;
-            LocationText = $"{room.DisplayName} · {room.Key}";
-            LocationRateText = $"{Game.Combat.RateText.Compact(xpHr)}/hr";
+            LocationText = $"{room.Key} · {Game.Combat.RateText.Compact(xpHr)}/hr";
             return;
         }
         LocationText = state.Confidence switch
@@ -1316,7 +1305,6 @@ public partial class MainWindowViewModel : ObservableObject
             Game.Map.RoomConfidence.PendingRespawn => "Awaiting respawn…",
             _                                      => "Unknown location",
         };
-        LocationRateText = string.Empty;
     }
 
     private void RefreshStatusBarTicks()
