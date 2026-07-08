@@ -2,6 +2,17 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.22.0
+
+- Followers auto-rejoin their party after an unexpected disconnect: on re-entering the game they telepath @comeback to the leader they were following, who then owns the pickup (our room key attached when the map position is confirmed)
+- The followed leader is remembered across a client crash but forgotten on a clean quit or deliberate leave, so only an unexpected drop rearms the rejoin
+- Leaders also recover a dropped member on their own: when the member re-enters, the leader probes @where and walks out to collect them
+- New Settings → Party "return distance" (default 30 rooms) caps how far a leader walks to recover; a farther-off member is declined and told why
+- A leader who backfilled the party to its 6-member cap while a member was gone declines the return and tells them why
+- @forget is now bidirectional: either side drops the other from the party and clears the rejoin memory; the leader uses it to decline a recovery
+- Remembering a former leader overrides the per-player "join if invited" flag, so their re-invite is auto-accepted on reconnect
+- bug reports addressed: stock-20260707-210828
+
 ## 1.21.0
 
 - Leading party now holds in place when a follower drops connection, instead of sprinting off without them

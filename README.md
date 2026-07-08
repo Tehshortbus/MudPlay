@@ -1,11 +1,14 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.21.0**
-> - Leading party now holds in place when a follower drops connection, instead of sprinting off without them
-> - Hold lasts the "If leading, wait only" window, then resumes; the returning member re-parties in place if they reconnect first
-> - Settings → BBS gains an optional board disconnect line (literal `{name}`/`*` syntax) for boards whose logoff wording isn't the built-in one
-> - Player game-data table gains an optional account-name override, so a board that logs off by account name still maps the drop to the right party member
+> **Version 1.22.0**
+> - Followers auto-rejoin their party after an unexpected disconnect: on re-entering the game they telepath @comeback to the leader they were following, who then owns the pickup (our room key attached when the map position is confirmed)
+> - The followed leader is remembered across a client crash but forgotten on a clean quit or deliberate leave, so only an unexpected drop rearms the rejoin
+> - Leaders also recover a dropped member on their own: when the member re-enters, the leader probes @where and walks out to collect them
+> - New Settings → Party "return distance" (default 30 rooms) caps how far a leader walks to recover; a farther-off member is declined and told why
+> - A leader who backfilled the party to its 6-member cap while a member was gone declines the return and tells them why
+> - @forget is now bidirectional: either side drops the other from the party and clears the rejoin memory; the leader uses it to decline a recovery
+> - Remembering a former leader overrides the per-player "join if invited" flag, so their re-invite is auto-accepted on reconnect
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

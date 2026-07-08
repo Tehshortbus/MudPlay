@@ -310,6 +310,12 @@ public sealed class AppServices
     // Settings → Other.
     public Game.Remote.ComebackRequester ComebackRequest { get; private set; } = null!;
 
+    // Follower-side reconnect auto-rejoin. Remembers the leader we follow
+    // (crash-survivable in the profile) and, on the first in-game room display
+    // after a reconnect, telepaths @comeback then @invite to walk us back into
+    // the party. Cleared on a deliberate leave or clean shutdown.
+    public Game.Remote.PartyRejoinCoordinator PartyRejoin { get; private set; } = null!;
+
     // Drives the @trap <direction> auto-disarm flow:
     // search → disarm state machine + FIFO request queue + Stats-
     // skill gate. Bound by TrapRemote's handler at
@@ -3272,7 +3278,7 @@ public sealed class AppServices
         // then resumes the captured engine. MaxBacktrackRooms is pushed
         // from Settings → Other by ApplyOtherFromActiveProfile on load.
         PartyComeback = new Game.Remote.PartyComebackManager(
-            RemoteCommands, Party, RoomTracker, RoomClassifier, Walker, LoopRunner, AutoLair, Log);
+            RemoteCommands, Party, RoomTracker, RoomClassifier, Walker, LoopRunner, AutoLair, Router, Bfs, Log);
 
         // Auto-deposit reroute. Built here
         // (after the movement engines) so it can snapshot / stop / restart
@@ -3381,6 +3387,43 @@ public sealed class AppServices
         // left behind — and telepaths @comeback to the leader. Enabled is
         // pushed from Settings → Other by ApplyOtherFromActiveProfile.
         ComebackRequest = new Game.Remote.ComebackRequester(Router, RoomTracker, Log);
+
+        // Follower-side reconnect auto-rejoin. Mirrors live follower membership
+        // into the profile (crash-survivable) and, on the first in-game room
+        // after a reconnect, telepaths @comeback + @invite to re-form the party.
+        // Gated by the Auto-All kill switch like MainMenuEntry — a manual-play
+        // character that silenced automation won't auto-rejoin.
+        PartyRejoin = new Game.Remote.PartyRejoinCoordinator(
+            Router, PartyState, RoomTracker,
+            isAutoEnabled: () => !AutoModeController.KillSwitchEngaged,
+            log: Log);
+        // Write-through: whenever follower membership changes, stamp the loaded
+        // profile and persist immediately so a crash at any moment retains the
+        // right leader. Save() no-ops on a blank draft (nothing to write).
+        PartyRejoin.PersistLeader = leader =>
+        {
+            if (Profile.Current is not { } current) return;
+            if (string.Equals(current.PendingReconnectLeader, leader, StringComparison.Ordinal)) return;
+            current.PendingReconnectLeader = leader;
+            Profile.Save();
+        };
+        // Hydrate the crash-survivable memory on every profile load / swap.
+        Profile.ProfileLoaded += p => PartyRejoin.HydrateRememberedLeader(p.PendingReconnectLeader);
+
+        // Reconnect-recovery cross-wiring — done here (after PartyRejoin exists)
+        // because these hooks bridge the leader-side comeback manager and the
+        // follower-side rejoin memory:
+        //   - A remembered leader's re-invite auto-follows even without a
+        //     per-player "join if invited" grant (remembering we were in their
+        //     party is the standing consent).
+        //   - A @forget from a recently-partied member OR a remembered leader is
+        //     authorised even though neither is a live party member any more.
+        //   - When we receive @forget from a leader we remembered, clear the
+        //     crash-rejoin memory so a later reconnect stops telepathing them.
+        AutoParty.ForceAcceptFrom = PartyRejoin.IsRememberedLeader;
+        RemoteCommands.ForgetEligibility = s =>
+            Party.WasRecentlyPartied(s) || PartyRejoin.IsRememberedLeader(s);
+        PartyComeback.ForgetLeaderCallback = PartyRejoin.ForgetRememberedLeader;
 
         // EventManager. Holds the loaded character's
         // scheduled / lifecycle events, dispatches actions into the
@@ -4091,6 +4134,9 @@ public sealed class AppServices
         // Same window holds movement for a dropped follower to reconnect and
         // re-party before we resume.
         PartyDisconnectMovement.GraceWindow = TimeSpan.FromSeconds(Math.Clamp(dto.IfLeadingWaitTotalSec, 0, 3600));
+        // Leader-side recovery reach — the farthest we'll BFS-walk to re-collect a
+        // returning member before declining via @forget.
+        PartyComeback.ReturnDistanceRooms = Math.Clamp(dto.ReturnDistanceRooms, 1, 500);
         Party.LocalRankPreference = dto.Rank;
         PartyBroadcaster.AutoExpResetEnabled = dto.ResetStatisticsOnLoopStart;
         // Shared nag cadence — same Settings.Party knobs feed both the
@@ -4119,6 +4165,7 @@ public sealed class AppServices
         AutoParty.InviteWaitWindow = TimeSpan.FromSeconds(defaults.IfLeadingWaitTotalSec);
         PartyWaitMovement.WaitWindow = TimeSpan.FromSeconds(defaults.IfLeadingWaitTotalSec);
         PartyDisconnectMovement.GraceWindow = TimeSpan.FromSeconds(defaults.IfLeadingWaitTotalSec);
+        PartyComeback.ReturnDistanceRooms = defaults.ReturnDistanceRooms;
         Party.LocalRankPreference = defaults.Rank;
         PartyBroadcaster.AutoExpResetEnabled = defaults.ResetStatisticsOnLoopStart;
         TimeSpan nagInitial = TimeSpan.FromSeconds(defaults.JoinNagInitialDelaySec);

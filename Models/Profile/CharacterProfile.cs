@@ -202,4 +202,13 @@ public sealed class CharacterProfile
     // the per-slot editor, and trigger evaluation. null means nothing configured
     // yet.
     public EquipmentSettings? Equipment { get; set; }
+
+    // Given name of the party leader we were following, remembered so a
+    // follower can auto-rejoin after an unexpected drop. Written through by
+    // PartyRejoinCoordinator whenever follower membership changes (set on
+    // follow, cleared on a deliberate leave) and cleared on clean shutdown, so a
+    // populated value on the next launch means the client crashed mid-party —
+    // the cue to telepath @comeback and let the leader own the pickup. null
+    // means no party to rejoin.
+    public string? PendingReconnectLeader { get; set; }
 }

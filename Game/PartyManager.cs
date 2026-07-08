@@ -99,6 +99,15 @@ public sealed partial class PartyManager : IDisposable
     // movement is already held by FollowerGate). See ApplyMemberDisconnect.
     public event Action<string>? MemberDisconnected;
 
+    // Fires with the given name of a dropped member re-entering the realm inside
+    // the grace window while we're positioned to re-collect them (leading or
+    // solo-fallback, auto-invite on) — the leader-side reconnect signal
+    // PartyComebackManager rides to run its @where probe + recovery walk. Raised
+    // from OnPlayerEnters before the grace entry is cleared, alongside the bare
+    // `invite X` fast path, so a co-located return is handled by the invite and
+    // the probe short-circuits. Not fired when we're a follower of someone else.
+    public event Action<string>? MemberReturned;
+
     // Board-specific disconnect line support. The provider returns the active
     // BBS's raw DisconnectPattern (literal {name}/* syntax, empty/null when the
     // board uses only the standard lines); the resolver maps a captured presence
@@ -256,6 +265,26 @@ public sealed partial class PartyManager : IDisposable
         byte[] bytes = System.Text.Encoding.Latin1.GetBytes($"invite {given}\r");
         LastSentForTests.Add(bytes);
         _wireSender?.Invoke(bytes);
+    }
+
+    // Reconnect-recovery teardown for the @forget flow (PartyComebackManager) —
+    // drop a player from the roster AND clear their disconnect grace entry, so a
+    // returning member is neither re-invited by OnPlayerEnters nor chased by the
+    // recovery walk. Given-name keyed to match both the grace map (which stores a
+    // mix of short + long forms) and the roster comparison. Local state only — no
+    // wire command; the server already dropped a reconnect-lost member.
+    public void ForgetReconnectMember(string playerGiven)
+    {
+        if (string.IsNullOrWhiteSpace(playerGiven)) return;
+        string given = GivenNameOf(playerGiven);
+        if (string.IsNullOrEmpty(given)) return;
+        List<string>? stale = null;
+        foreach (string key in _recentlyDisconnected.Keys)
+            if (GivenNameOf(key).Equals(given, StringComparison.OrdinalIgnoreCase))
+                (stale ??= new()).Add(key);
+        if (stale is not null)
+            foreach (string key in stale) _recentlyDisconnected.Remove(key);
+        RemoveMember(given);
     }
 
     // Test seam — most recent bytes the manager asked to write to the wire.
@@ -746,6 +775,10 @@ public sealed partial class PartyManager : IDisposable
         _recentlyDisconnected.Remove(name);
         if (State.IsInParty && !State.SelfIsLeader) return;
         if (!AutoInviteEnabled) return;
+        // Signal the recovery manager before the bare invite: if they came back
+        // far away, it probes @where and walks to collect them; a co-located
+        // return is handled by the invite below and the probe short-circuits.
+        MemberReturned?.Invoke(GivenNameOf(name));
         // Send the invite if we have a wire-sender wired. The wire
         // command is the plain MajorMUD "invite <name>" — the server
         // does the rest.

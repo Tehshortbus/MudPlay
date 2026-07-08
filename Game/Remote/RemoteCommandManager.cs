@@ -104,6 +104,16 @@ public sealed class RemoteCommandManager : IDisposable
     // stands.
     public Func<string, bool>? ComebackEligibility { get; set; }
 
+    // Leader- and follower-side eligibility hook for a @forget teardown. Like
+    // @comeback, a @forget can travel between two parties who no longer share a
+    // server-side party row: a follower dropped on reconnect (WasRecentlyPartied
+    // on the leader) or a leader we still remember across our own drop
+    // (PartyRejoinCoordinator.IsRememberedLeader on the follower). AppServices
+    // wires this to the OR of those two predicates. Consulted ONLY for @forget
+    // (see IsAuthorised); null = no extra allowance, so the plain party-whitelist
+    // gate stands.
+    public Func<string, bool>? ForgetEligibility { get; set; }
+
     // Drop @-commands arriving on the Telepath channel.
     public bool DisableTelepathChannel { get; set; }
 
@@ -543,6 +553,11 @@ public sealed class RemoteCommandManager : IDisposable
             // recently and we didn't uninvite them.
             if (command.Equals("@comeback", StringComparison.OrdinalIgnoreCase))
                 return ComebackEligibility?.Invoke(sender) ?? false;
+            // @forget mirrors @comeback: both ends of a reconnect-recovery pair
+            // may no longer share a server-side party row, so honour the teardown
+            // for a recently-partied member or a remembered leader.
+            if (command.Equals("@forget", StringComparison.OrdinalIgnoreCase))
+                return ForgetEligibility?.Invoke(sender) ?? false;
             return false;
         }
 

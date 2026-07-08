@@ -95,6 +95,11 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
     //       and free-text entry for non-multiples of 10. Default 90.
     [ObservableProperty] private int _ifLeadingWaitTotalSec = 90;
 
+    // ----- "Return distance" — leader-side recovery reach in BFS room-hops.
+    //       The farthest we'll walk to re-collect a returning member before
+    //       declining via @forget. 1..500; default 30.
+    [ObservableProperty] private int _returnDistanceRooms = 30;
+
     // ----- Party-cast heal pickers (consumed by CastingDirector) -----
     // Each Minor / Major slot owns a single-target spell AND an AOE / party
     // spell sharing one threshold; CastingDirector picks single vs AOE at
@@ -193,6 +198,7 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
             SendJoinToInvited        = SendJoinToInvited,
             SendHealthToMembers      = SendHealthToMembers,
             IfLeadingWaitTotalSec    = Math.Clamp(IfLeadingWaitTotalSec,  0, 3600),
+            ReturnDistanceRooms      = Math.Clamp(ReturnDistanceRooms,    1, 500),
 
             MinorPartyHealSpell    = NullIfBlank(MinorPartyHealSpell),
             MinorPartyHealAoeSpell = NullIfBlank(MinorPartyHealAoeSpell),
@@ -256,6 +262,7 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
         SendJoinToInvited          = dto.SendJoinToInvited;
         SendHealthToMembers        = dto.SendHealthToMembers;
         IfLeadingWaitTotalSec      = dto.IfLeadingWaitTotalSec;
+        ReturnDistanceRooms        = dto.ReturnDistanceRooms;
 
         MinorPartyHealSpell    = dto.MinorPartyHealSpell;
         MinorPartyHealAoeSpell = dto.MinorPartyHealAoeSpell;
@@ -383,6 +390,7 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
         svcs.PartyPoller.HealthNagMaxTotal     = nagMax;
         svcs.PartyPoller.HealthNagEnabled      = dto.SendHealthToMembers;
         svcs.Party.DisconnectGraceWindow   = TimeSpan.FromSeconds(Math.Clamp(dto.IfLeadingWaitTotalSec,  0, 3600));
+        svcs.PartyComeback.ReturnDistanceRooms = Math.Clamp(dto.ReturnDistanceRooms, 1, 500);
     }
 
     // ----- IsDirty plumbing -----
@@ -405,6 +413,7 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
     partial void OnSendJoinToInvitedChanged(bool value)         => MarkDirty();
     partial void OnSendHealthToMembersChanged(bool value)       => MarkDirty();
     partial void OnIfLeadingWaitTotalSecChanged(int value)      => MarkDirty();
+    partial void OnReturnDistanceRoomsChanged(int value)        => MarkDirty();
     partial void OnMinorPartyHealSpellChanged(string? value)    => MarkDirty();
     partial void OnMinorPartyHealAoeSpellChanged(string? value) => MarkDirty();
     partial void OnMajorPartyHealSpellChanged(string? value)    => MarkDirty();

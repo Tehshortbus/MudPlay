@@ -257,7 +257,7 @@
 
             <!-- ============ Capacity + cadence ============ -->
             <TextBlock Classes="SectionHeader" Text="Capacity + cadence"/>
-            <Grid ColumnDefinitions="240,*" RowDefinitions="Auto,Auto,Auto,Auto" Margin="0,2,0,0">
+            <Grid ColumnDefinitions="240,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto" Margin="0,2,0,0">
                 <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Max. monsters when partying"/>
                 <NumericUpDown Grid.Row="0" Grid.Column="1"
                                Value="{Binding MaxMonstersWhenPartying, Mode=TwoWay}"
@@ -280,8 +280,14 @@
                                Width="120" MinWidth="120" HorizontalAlignment="Left"
                                ToolTip.Tip="Grace window in seconds for a lost party member to re-enter the realm before we stop watching for them. Used by the Re-invite lost party members flow. Arrows step by 10; type a value directly for finer control (e.g. 94 for 1 m 34 s). Default 90."/>
 
-                <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="`par` poll frequency (s)"/>
+                <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="Return distance (rooms)"/>
                 <NumericUpDown Grid.Row="3" Grid.Column="1"
+                               Value="{Binding ReturnDistanceRooms, Mode=TwoWay}"
+                               Minimum="1" Maximum="500" Width="120" MinWidth="120" HorizontalAlignment="Left"
+                               ToolTip.Tip="Leader-side recovery reach: the farthest, in map room-hops from where we are, we'll walk to re-collect a reconnecting party member before declining (telepathing @forget instead). Gates both the follower @comeback pickup and the leader-initiated @where probe. Default 30."/>
+
+                <TextBlock Grid.Row="4" Grid.Column="0" Classes="FieldLabel" Text="`par` poll frequency (s)"/>
+                <NumericUpDown Grid.Row="4" Grid.Column="1"
                                Value="{Binding ParPollFrequencySec, Mode=TwoWay}"
                                Minimum="1" Maximum="60" Width="120" HorizontalAlignment="Left"
                                ToolTip.Tip="Cadence for the par poll — MegaMUD default is 5."/>
