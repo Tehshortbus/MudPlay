@@ -102,9 +102,66 @@ it isn't here and you're unsure, ask.
 - **[OBSERVED]** Any NPC in the room prevents a sneak from taking — an `sn` is wasted while a
   monster shares the room.
 
-**Backstab requires sneaking** *([OBSERVED])*
-- Backstab needs the **sneaking** state specifically (approaching an unseen target while moving
-  silently) — being merely *hidden* is not enough.
+**Sneak vs hide — both enable backstab** *([CONFIRMED])*
+- **Sneaking** and **hidden** are distinct stealth states and **either one enables a backstab**:
+  - *Sneaking* lets you **move** silently and open on a target you approach, but does **not** remove
+    your name from the room's `Also here:` line — others still see you listed there.
+  - *Hidden* removes your name from `Also here:` (you're invisible in the room) but you **cannot
+    move** while hidden. A **player** has to `search` the room to reveal (unhide) you; **monsters do
+    not search rooms**, so a monster that walks into a room you're hidden in never reveals you — it
+    just becomes a backstab target. (A monster's passive **see-hidden** ability is a separate thing:
+    it reveals a stealthed character to the whole room on sight, defeating the opener — see below.)
+
+**Hide state machine** *(lines all [CONFIRMED] — from paired two-character POV captures)*
+- `Attempting to hide...` (alone, no suffix) — the attempt fired and the server ran a hide check,
+  but the outcome is **NOT reported to you**. This line is **ambiguous**: it means "a check
+  happened," not "you are hidden." You cannot tell success from failure off this line alone.
+- `Attempting to hide...You don't think you are hidden.` — explicit hide **FAILURE**. This is the
+  only self-observable failure signal.
+- **Hide SUCCESS is not self-observable.** There is no self-side "you are now hidden" confirmation.
+  The only 100%-reliable confirmation is **external**: another player displaying the room and finding
+  you **absent** from the `Also here:` line (or their `search` failing to turn you up). From your own
+  output stream, the best you can know is "an attempt fired" (`Attempting to hide...`) or "it
+  failed" (`...You don't think you are hidden.`) — never a positive success.
+- **Reveal (search) mechanic:**
+  - A player runs `search` / `sea`. On a hit they see `You see <name> hiding in the shadows.` and the
+    hidden character is revealed (returned to `Also here:`); on a miss they see
+    `Your search revealed nothing.`.
+  - The hidden character sees `<name> is searching the area.` while someone searches — i.e. you get
+    a warning that a reveal attempt is in progress.
+- **Party warning [CONFIRMED]:** **do not hide while in a party.** A hidden member is removed from
+  `Also here:`, and a player who isn't listed there **cannot be single-target-targeted** by other
+  players — including party heals and buffs — until revealed. Only room-wide spells (relevant in PvP)
+  and possibly party-wide spells still reach a hidden member. Auto-hide must therefore be suppressed
+  whenever the character is in a party.
+
+- **Client note:** the engine arms the opening `bs` off **either** stealth state (sneaking OR
+  hidden — the backstab gate reads `StealthManager.IsStealthed`). Because hide success is **not**
+  self-observable, the hidden side is handled **optimistically**: a bare `Attempting to hide...`
+  latches `Hidden = true` on faith, and the backstab surprise-round resolver confirms or denies it
+  after the opener swings (a real hide lands the `surprise`; a false one whiffs and, with
+  `RunIfBackstabFails`, flees). The one ground-truth signal, `...You don't think you are hidden.`,
+  drops the optimistic state. A move breaks hide (you can't move while hidden). A fresh in-place
+  hide re-arms the surprise round, so a hidden character that kills one monster and re-hides can
+  backstab the next one that wanders in. **Auto-hide is suppressed while in a party** — a hidden
+  member falls off the Also-here line and can't be single-target-healed/buffed until revealed.
+
+**ShadowRest** *([CONFIRMED] — user, Paradigm; not present in stock)*
+- Some Paradigm classes have a **ShadowRest** class ability. It is not a stock MajorMUD mechanic.
+  In the imported game data it is **class-ability code 1103** on the Classes table (`AbilityNames`
+  maps `1103 → "ShadowRest"`); a class row carrying that code in any `Abil-N` slot has the ability.
+- **What it does:** while **hidden or sneaking**, the character can `rest` (or meditate) and **stay
+  stealthed while resting in the room** — monsters in the room **do not attack** the resting
+  stealthed character. Normally a hostile in the room means you can't safely rest; ShadowRest lets a
+  stealthed character rest right there without being engaged.
+- Some ShadowRest classes gain an **HP-regen bonus** while resting this way (e.g. thief gets extra
+  regen). The bonus is server-side; the client's `RegenTracker` measures the actual rate off the
+  stat line, so it needs no separate model of the magnitude.
+- **No special messages** mark the state. The only observable sequence is a successful hide/sneak
+  followed by `rest` — there is no "you shadow-rest" line. So the client can't detect ShadowRest
+  from the stream; it gates on the **class ability (code 1103) + the user setting** instead.
+- **Ideally used solo.** Resting while hidden un-targets you from party single-target heals/buffs
+  (same reason auto-hide is party-suppressed above), so ShadowRest resting is a solo behavior.
 
 ## Combat & backstab
 
@@ -120,23 +177,37 @@ it isn't here and you're unsure, ask.
 - **[CONFIRMED]** **Success line:** a landed backstab is a **single** swing containing the word
   **`surprise`** — e.g. `You surprise punch large wild dog for 36 damage!`. A surprise line making
   it through **proves the sneak did not fail** — the opener connected.
-- **[OBSERVED, mechanism unconfirmed]** Only the **opener** needs to be `bs`. In one live capture
-  the opener `bs large wild dog` was followed by two client-sent `pu large wild dog` during the
-  `*Combat Off*` / `*Combat Engaged*` interrupt bounce, and `You surprise punch ... for 36 damage!`
-  still landed. **Do not read this as "the engine continues the backstab through follow-on
-  attacks"** — the likelier explanation is timing: the `pu` commands simply hadn't registered
-  server-side before the `bs` surprise round resolved. So a well-timed follow-on `pu` *could* have
-  sabotaged the surprise. Practical rule for the client: send `bs` as the opener, then stay quiet —
-  don't spam follow-on attack commands that might register and clobber the surprise (let the
-  server's auto-repeat carry the fight). Never send a second `bs`.
+- **[CONFIRMED]** **The opener is always `bs`, never `pu`.** The stock realm has been observed to
+  still run the surprise round even when the opener was a normal `pu` on the mystic — but that
+  leeway is **realm-specific** and must not be relied on; other game types may require the literal
+  `bs` opener to trigger the surprise at all. So whenever backstab is enabled and the character is
+  armed (a successful sneak, or hidden with a monster in the room), the opening command is
+  **always** `bs <target>` — the client must never substitute `pu` and hope the surprise still fires.
+- **[OBSERVED, mechanism unconfirmed]** Only the **opener** needs to be `bs`, and follow-on attacks
+  must stay quiet. In one live capture the opener `bs large wild dog` was followed by two
+  client-sent `pu large wild dog` during the `*Combat Off*` / `*Combat Engaged*` interrupt bounce,
+  and `You surprise punch ... for 36 damage!` still landed. **Do not read this as "the engine
+  continues the backstab through follow-on attacks"** — the likelier explanation is timing: the
+  `pu` commands simply hadn't registered server-side before the `bs` surprise round resolved. So a
+  well-timed follow-on `pu` *could* have sabotaged the surprise. Practical rule for the client:
+  send `bs` as the opener, then stay quiet — don't spam follow-on attack commands that might
+  register and clobber the surprise (let the server's auto-repeat carry the fight). Never send a
+  second `bs`. **The client enforces this by suppressing all Attack-Order re-fire while a `bs` is
+  pending resolution.**
 - **[CONFIRMED]** **Attack announce, and its backstab exception.** Any normal attack command
   against an NPC produces a public announce: the attacker sees `*Combat Engaged*` and everyone
   else in the room sees `<player> moves to attack <target>`. A **backstab round is silent** — it
   emits no `moves to attack` line to other players, so the surprise opener doesn't tip off
   onlookers. (Consequence for the client: it can't confirm its own backstab landed from a
   `moves to attack` echo — there won't be one; use the `surprise` swing line instead.)
-- **[CONFIRMED]** **Failure signals:** after `bs`, **more than one swing** means the backstab
-  failed (no surprise round); a **dark-cyan miss line** likewise means it failed.
+- **[CONFIRMED]** **Failure signals — the reliable single-line tell.** The surprise round is a
+  **single** swing, so the **first** of the player's own combat-result lines after the `bs` settles
+  the outcome: it either **carries `surprise`** (landed) or **lacks it** (failed). A failure surfaces
+  either as a **whiff** (`You swing at <target>!` — no "for N damage", renders dark-cyan) or as a
+  **folded normal round** (`You punch <target> for N damage!` with no "surprise"). Detection is
+  **text-only** — the `surprise` token, not the color. The client keys off this first-line tell and,
+  when *Run if BS fails* is on, flees on a detected failure (routed through the normal
+  break-before-flee escape path).
 - **[CONFIRMED]** `You cannot backstab with this weapon.` — you tried to `bs` while sneaking with a
   weapon that isn't backstab-capable. (No weapon-type flag in the game data exposes this ahead of
   time; it is only knowable reactively from this line.)
@@ -249,9 +320,18 @@ comes from the stat screen / who line (`AlignmentTracker` / `PlayerStats`).
 - Each **BBS sets its own negative-HP death threshold**; not every BBS advertises the number. When
   HP **reaches or passes** it (at, or more negative than, the threshold), the character **dies**:
   - loses a **life**,
-  - **all non-loyal items drop to the ground** (loyal items stay on the corpse/player),
+  - **all non-loyal items are lost from the player** (loyal items stay on the player); *where* the
+    dropped items land is realm-type dependent — see the deathpile/corpse note below,
   - the character is **teleported to the graveyard room** appropriate to the **map** they died on.
-- Graveyard rooms are **per-map**; one known graveyard is **`1/2189`** (map 1, room 2189).
+- Graveyard rooms are **per-map**; two known graveyards are **`1/2189`** (map 1, room 2189) and
+  **`16/542`** (map 16, room 542).
+- **[CONFIRMED]** **Deathpile vs corpse depends on the realm type.**
+  - **Stock** realms have **no corpse object**: non-loyal items and coins drop **loose to the
+    ground** of the death room, and **loyal items stay on the player**. Anyone in the room can pick
+    the loose pile up.
+  - **Paradigm** realms put the dropped items into a **container "corpse"** rather than loose on the
+    ground — recoverable only by the **owning player**, or by another player who has that player's
+    **corpse password**.
 
 **Death readout & overkill** *([CONFIRMED])*
 - There is **no "overkill" message**. The HP figure visible at death is just the value HP was driven
@@ -300,8 +380,8 @@ comes from the stat screen / who line (`AlignmentTracker` / `PlayerStats`).
   "remaining" form misses every miracle-save death. The **reliable death marker across all forms** is
   the `You have been killed!` line (DoT / no-named-killer deaths) alongside `You have been slain by
   <killer>.` (attacker-named deaths) — capture off those, not off the lives readout.
-- **Coins on hand drop into the deathpile** too, alongside the non-loyal items — they're recoverable
-  from the corpse like the rest of the pile. The five denominations (largest first) are `runic coin`,
+- **Coins on hand drop into the deathpile** too, alongside the non-loyal items — recoverable
+  from the deathpile / corpse like the rest of the drop (per the stock-vs-paradigm note above). The five denominations (largest first) are `runic coin`,
   `platinum piece`, `gold crown`, `silver noble`, `copper farthing`, at the 1 000 000 / 10 000 / 100 /
   10 / 1 copper-farthing ratio ladder. The deathpile display lists each denomination the character
   held by its own count (e.g. `100 gold crowns` + `1 platinum piece`), **not** re-bucketed into a

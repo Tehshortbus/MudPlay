@@ -1246,7 +1246,7 @@ public sealed class CombatManagerTests
         using Harness h = new();
         h.Settings.DoBackstab = true;
         h.AddMonster(1, "giant rat", killable: true);
-        h.Combat.SetBackstabHooks(isSneaking: () => true, hasSeeHidden: _ => false);
+        h.Combat.SetBackstabHooks(isStealthed: () => true, hasSeeHidden: _ => false);
 
         h.Feed("Also here: giant rat.");
 
@@ -1268,7 +1268,7 @@ public sealed class CombatManagerTests
         // attack, not a backstab.
         HashSet<int> seeHidden = new() { 2 };
         h.Combat.SetBackstabHooks(
-            isSneaking: () => true,
+            isStealthed: () => true,
             hasSeeHidden: n => seeHidden.Contains(n));
 
         h.Feed("Also here: giant rat, crystal golem.");
@@ -1282,7 +1282,7 @@ public sealed class CombatManagerTests
         using Harness h = new();
         h.Settings.DoBackstab = false;
         h.AddMonster(1, "giant rat", killable: true);
-        h.Combat.SetBackstabHooks(isSneaking: () => true, hasSeeHidden: _ => false);
+        h.Combat.SetBackstabHooks(isStealthed: () => true, hasSeeHidden: _ => false);
 
         h.Feed("Also here: giant rat.");
 
@@ -1295,7 +1295,7 @@ public sealed class CombatManagerTests
         using Harness h = new();
         h.Settings.DoBackstab = true;
         h.AddMonster(1, "giant rat", killable: true);
-        h.Combat.SetBackstabHooks(isSneaking: () => false, hasSeeHidden: _ => false);
+        h.Combat.SetBackstabHooks(isStealthed: () => false, hasSeeHidden: _ => false);
 
         h.Feed("Also here: giant rat.");
 
@@ -1328,7 +1328,7 @@ public sealed class CombatManagerTests
         h.Settings.DoBackstab = true;
         h.AddMonster(1, "giant rat", killable: true);
         h.AddMonster(2, "goblin", killable: true);
-        h.Combat.SetBackstabHooks(isSneaking: () => true, hasSeeHidden: _ => false);
+        h.Combat.SetBackstabHooks(isStealthed: () => true, hasSeeHidden: _ => false);
 
         // Room A: opener fires, then is consumed.
         h.Feed("Also here: giant rat.");
@@ -1340,6 +1340,162 @@ public sealed class CombatManagerTests
         h.Feed("Also here: goblin.");
 
         Assert.Equal("bs goblin", h.LastSent);
+    }
+
+    // ----- Backstab surprise-round resolution ------------------------
+
+    [Fact]
+    public void Backstab_Failure_FoldedNormalRound_TriggersFlee()
+    {
+        using Harness h = new();
+        h.Settings.DoBackstab = true;
+        h.Settings.RunIfBackstabFails = true;
+        h.AddMonster(1, "dark cultist", killable: true);
+        h.Combat.SetBackstabHooks(isStealthed: () => true, hasSeeHidden: _ => false);
+        bool fled = false;
+        h.Combat.SetBackstabFailureFlee(() => fled = true);
+
+        h.Feed("Also here: dark cultist.");
+        Assert.Equal("bs dark cultist", h.LastSent);
+
+        // First swing after bs lacks "surprise" — a folded normal round means
+        // the backstab failed, so the flee hook fires.
+        h.Feed("You punch dark cultist for 2 damage!");
+        Assert.True(fled);
+    }
+
+    [Fact]
+    public void Backstab_Failure_Whiff_TriggersFlee()
+    {
+        using Harness h = new();
+        h.Settings.DoBackstab = true;
+        h.Settings.RunIfBackstabFails = true;
+        h.AddMonster(1, "dark cultist", killable: true);
+        h.Combat.SetBackstabHooks(isStealthed: () => true, hasSeeHidden: _ => false);
+        bool fled = false;
+        h.Combat.SetBackstabFailureFlee(() => fled = true);
+
+        h.Feed("Also here: dark cultist.");
+        // A whiff ("You swing at X!", no "for N damage") is also a failure.
+        h.Feed("You swing at dark cultist!");
+        Assert.True(fled);
+    }
+
+    [Fact]
+    public void Backstab_Success_SurpriseLine_NoFlee()
+    {
+        using Harness h = new();
+        h.Settings.DoBackstab = true;
+        h.Settings.RunIfBackstabFails = true;
+        h.AddMonster(1, "orc rogue", killable: true);
+        h.Combat.SetBackstabHooks(isStealthed: () => true, hasSeeHidden: _ => false);
+        bool fled = false;
+        h.Combat.SetBackstabFailureFlee(() => fled = true);
+
+        h.Feed("Also here: orc rogue.");
+        // The surprise line proves the opener landed — no flee.
+        h.Feed("You surprise punch orc rogue for 30 damage!");
+        Assert.False(fled);
+    }
+
+    [Fact]
+    public void Backstab_Failure_NoFlee_WhenSettingOff()
+    {
+        using Harness h = new();
+        h.Settings.DoBackstab = true;
+        h.Settings.RunIfBackstabFails = false;   // opt-out
+        h.AddMonster(1, "dark cultist", killable: true);
+        h.Combat.SetBackstabHooks(isStealthed: () => true, hasSeeHidden: _ => false);
+        bool fled = false;
+        h.Combat.SetBackstabFailureFlee(() => fled = true);
+
+        h.Feed("Also here: dark cultist.");
+        h.Feed("You punch dark cultist for 2 damage!");
+        Assert.False(fled);
+    }
+
+    [Fact]
+    public void Backstab_SelfEmoteDuringWindow_DoesNotResolve()
+    {
+        using Harness h = new();
+        h.Settings.DoBackstab = true;
+        h.Settings.RunIfBackstabFails = true;
+        h.AddMonster(1, "dark cultist", killable: true);
+        h.Combat.SetBackstabHooks(isStealthed: () => true, hasSeeHidden: _ => false);
+        bool fled = false;
+        h.Combat.SetBackstabFailureFlee(() => fled = true);
+
+        h.Feed("Also here: dark cultist.");
+
+        // A self-emote also matches the broad UserMisses pattern, but it doesn't
+        // name the target — it must NOT be read as the resolution swing.
+        h.Feed("You feel much better!");
+        Assert.False(fled);
+
+        // The watch is still armed, so the real failure line that follows still
+        // triggers the flee.
+        h.Feed("You punch dark cultist for 2 damage!");
+        Assert.True(fled);
+    }
+
+    [Fact]
+    public void Backstab_SuppressesRefire_UntilResolved()
+    {
+        // The surprise round must stay quiet — a party announce that would
+        // normally re-fire our attack is held while the bs is pending, so the
+        // repositioning `pu` can't clobber the surprise (the over-send report).
+        using Harness h = new() { DeferUi = true };
+        h.Settings.DoBackstab = true;
+        h.Settings.AttackTiming = AttackTiming.AttackLastRoom;
+        h.AddMonster(1, "giant rat", killable: true);
+        h.Combat.SetBackstabHooks(isStealthed: () => true, hasSeeHidden: _ => false);
+
+        h.Feed("Also here: giant rat.");          // opener: bs (synchronous)
+        Assert.Single(h.Sent);
+
+        // Announce during the pending surprise round — no re-fire scheduled.
+        h.Feed("Bob moves to attack giant rat.");
+        h.PumpUi();
+        Assert.Single(h.Sent);
+
+        // The surprise round resolves (success) — re-fire suppression lifts.
+        h.Feed("You surprise punch giant rat for 30 damage!");
+
+        // A later announce now re-fires normally.
+        h.Feed("Bob moves to attack giant rat.");
+        h.PumpUi();
+        Assert.Equal(2, h.Sent.Count);
+        Assert.Equal("a giant rat", h.LastSent);
+    }
+
+    [Fact]
+    public void Backstab_RearmForHide_ReopensOpenerWithoutRoomChange()
+    {
+        // The stationary hidden opener: a hidden character opens on a monster that
+        // walks in, spends the surprise round, then re-hides IN PLACE (no room
+        // change) and a new monster wanders in. RearmBackstabForHide re-opens the
+        // surprise round off the fresh hide so the newcomer is a backstab target,
+        // even though the RoomChange re-arm never fired.
+        using Harness h = new();
+        h.Settings.DoBackstab = true;
+        h.AddMonster(1, "giant rat", killable: true);
+        h.AddMonster(2, "goblin", killable: true);
+        h.AddMonster(3, "dark elf", killable: true);
+        h.Combat.SetBackstabHooks(isStealthed: () => true, hasSeeHidden: _ => false);
+
+        // First arrival: opener fires, then is consumed.
+        h.Feed("Also here: giant rat.");
+        Assert.Equal("bs giant rat", h.LastSent);
+
+        // A different monster in the SAME room (no room change) — opener spent, so
+        // it falls back to a normal attack.
+        h.Feed("Also here: goblin.");
+        Assert.Equal("a goblin", h.LastSent);
+
+        // Re-hide in place re-arms the surprise round; the next arrival opens `bs`.
+        h.Combat.RearmBackstabForHide();
+        h.Feed("Also here: dark elf.");
+        Assert.Equal("bs dark elf", h.LastSent);
     }
 
     // ----- seehidden clear override (PR 4.c-b) -----------------------

@@ -154,6 +154,13 @@ public sealed partial class CombatManager
                 // when none is configured we backstab with whatever is equipped.
                 SendAttack("bs", picked.RawName, picked.Priority);
                 _currentTarget = picked.RawName;
+                // Arm the surprise-round watch: the first of our combat-result
+                // lines naming this species decides landed-vs-failed. Species
+                // (unflavored) is the substring the combat line reliably carries.
+                _awaitingBackstabResolution = true;
+                _pendingBackstabSpecies = string.IsNullOrEmpty(picked.ResolvedName)
+                    ? picked.RawName
+                    : picked.ResolvedName;
                 break;
 
             default:

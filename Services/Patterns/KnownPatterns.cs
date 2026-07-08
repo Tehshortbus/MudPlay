@@ -15,6 +15,12 @@ public static class KnownPatterns
     public const string UserSneakFailed   = "stealth.user-sneak-failed";
     public const string UserSneakInitiate = "stealth.user-sneak-initiate";
     public const string UserCantSneak     = "stealth.user-cant-sneak";
+    // Hide has no positive self-confirmation: a clean "Attempting to hide..."
+    // means the server ran a hide check but does NOT report the outcome, so the
+    // client treats it as *optimistically* hidden. The only knowable failure is
+    // the suffixed "...You don't think you are hidden." line.
+    public const string UserHideInitiate  = "stealth.user-hide-initiate";
+    public const string UserHideFailed    = "stealth.user-hide-failed";
 
     // ----- Movement ------------------------------------------------------
     public const string DirectionFailed   = "movement.direction-failed";

@@ -83,6 +83,8 @@ public sealed partial class CombatManager : IDisposable
     private readonly IDisposable _fistsNoEffectSub;
     private readonly IDisposable _spellNoEffectSub;
     private readonly IDisposable _combatStatusSub;
+    private readonly IDisposable _bsResolveHitsSub;
+    private readonly IDisposable _bsResolveMissesSub;
 
     // Minimum gap between safety-net `l` refreshes. Keeps a flurry of miss/hit
     // lines from spamming the server.
@@ -106,10 +108,29 @@ public sealed partial class CombatManager : IDisposable
     // not the actuation).
     private Action<string?, string?>? _swapWeapon;
     private Action? _prepBackstabArmor;
-    private Func<bool>? _isSneaking;
+    private Func<bool>? _isStealthed;
     private Func<int, bool>? _hasSeeHidden;
     private Func<bool>? _seeHiddenClearActive;
+    private Func<bool>? _shadowRestHolding;
     private string? _currentTarget;
+
+    // Backstab flee-on-failure action, bound in AppServices to
+    // HealthManager.RunFromBackstabFailure. null until wired; even when wired it
+    // fires only on a detected failure AND when CombatSettings.RunIfBackstabFails
+    // is on, so a failed backstab otherwise just logs and the fight continues.
+    private Action? _backstabFailureFlee;
+
+    // Surprise-round resolution watch. Armed the instant a `bs` goes out
+    // (DispatchRoundAction) and disarmed by the first of OUR own combat-result
+    // lines that names the target: a line carrying "surprise" means the opener
+    // landed; a line without it (a whiff, or a folded normal round) means the
+    // backstab failed. Kept tight — also cleared on room change / target death /
+    // room clear / target-gone so a missed resolution line can't leave the
+    // re-fire suppression latched forever. _pendingBackstabSpecies is the resolved
+    // species the line must name, which rejects the broad UserMisses pattern's
+    // self-emote false positives ("You feel much better!").
+    private bool _awaitingBackstabResolution;
+    private string? _pendingBackstabSpecies;
 
     // Spell-vs-weapon mode bridge (combat-spell economy, opt-in via
     // SetCombatSpellCaster). Non-null = the current round's action is a combat
@@ -259,6 +280,14 @@ public sealed partial class CombatManager : IDisposable
         _fistsNoEffectSub  = router.Subscribe(KnownPatterns.FistsNoEffect,  OnFistsNoEffect);
         _spellNoEffectSub  = router.Subscribe(KnownPatterns.SpellNoEffect,  OnSpellNoEffect);
         _combatStatusSub   = router.Subscribe(KnownPatterns.CombatStatus,   OnCombatStatus);
+
+        // Backstab surprise-round resolution rides on our own hit / miss lines.
+        // Separate subscriptions from OnCombatLine (fan-out) so the resolution
+        // watch doesn't perturb the resume/refresh net. UserMisses is otherwise
+        // unsubscribed here; the handler self-gates on _awaitingBackstabResolution,
+        // so its breadth (it also matches self-emotes) is harmless.
+        _bsResolveHitsSub   = router.Subscribe(KnownPatterns.UserHits,   OnBackstabResolutionLine);
+        _bsResolveMissesSub = router.Subscribe(KnownPatterns.UserMisses, OnBackstabResolutionLine);
     }
 
     // Bind the wire sender — typically the TelnetClient.SendAsync wrapper that
@@ -292,22 +321,40 @@ public sealed partial class CombatManager : IDisposable
     // engine-state dump. The believed-worn weapon is no longer shadowed here —
     // live inventory is authoritative (the actuator diffs against it), so the
     // report reads the worn weapon straight from the inventory snapshot instead.
-    public readonly record struct DebugState(string? CurrentTarget, bool UsingAlternateWeapon);
+    public readonly record struct DebugState(
+        string? CurrentTarget,
+        bool UsingAlternateWeapon,
+        bool AwaitingBackstabResolution,
+        string? PendingBackstabSpecies);
 
     // UI-thread only (router handlers + the capture both run there), so no lock.
-    public DebugState Snapshot() => new(_currentTarget, _usingAlternateWeapon);
+    public DebugState Snapshot() => new(
+        _currentTarget, _usingAlternateWeapon,
+        _awaitingBackstabResolution, _pendingBackstabSpecies);
 
-    // Wire the backstab gating delegates: isSneaking reports whether the
-    // character is in the sneaking stealth state (StealthManager.IsSneaking) and
-    // hasSeeHidden reports whether a given monster Number carries the SeeHidden
-    // ability (SeeHiddenIndex). Until set, backstab never fires — the engine
-    // sends the normal attack regardless of CombatSettings.DoBackstab.
-    public void SetBackstabHooks(Func<bool> isSneaking, Func<int, bool> hasSeeHidden)
+    // Wire the backstab gating delegates: isStealthed reports whether the character
+    // holds any stealth that opens a backstab — sneaking OR (optimistically) hidden
+    // (StealthManager.IsStealthed) — and hasSeeHidden reports whether a given
+    // monster Number carries the SeeHidden ability (SeeHiddenIndex). Until set,
+    // backstab never fires — the engine sends the normal attack regardless of
+    // CombatSettings.DoBackstab.
+    public void SetBackstabHooks(Func<bool> isStealthed, Func<int, bool> hasSeeHidden)
     {
-        ArgumentNullException.ThrowIfNull(isSneaking);
+        ArgumentNullException.ThrowIfNull(isStealthed);
         ArgumentNullException.ThrowIfNull(hasSeeHidden);
-        _isSneaking = isSneaking;
+        _isStealthed = isStealthed;
         _hasSeeHidden = hasSeeHidden;
+    }
+
+    // Wire the "backstab failed → flee" action — bound in AppServices to
+    // HealthManager.RunFromBackstabFailure. Invoked only when the surprise round
+    // is detected as failed (no `surprise` on the first swing) AND
+    // CombatSettings.RunIfBackstabFails is on. TryFlee itself no-ops without an
+    // active movement engine, so a hand-walked failure just logs.
+    public void SetBackstabFailureFlee(Action flee)
+    {
+        ArgumentNullException.ThrowIfNull(flee);
+        _backstabFailureFlee = flee;
     }
 
     // Wire the combat-off "clear hostiles when seen Hidden" override:
@@ -322,6 +369,29 @@ public sealed partial class CombatManager : IDisposable
     {
         ArgumentNullException.ThrowIfNull(seeHiddenClearActive);
         _seeHiddenClearActive = seeHiddenClearActive;
+    }
+
+    // Wire the ShadowRest combat hold: shadowRestHolding reports whether
+    // HealthManager is mid-ShadowRest-recovery (a solo, stealthed ShadowRest
+    // character resting toward rest-max — see GAME_MECHANICS "ShadowRest"). While
+    // it returns true we stand down before dispatching a round so the character
+    // stays hidden and the rest isn't broken by our own swing; the opener stays
+    // unspent. HealthManager fires ResumeAfterShadowRest once recovery tops off,
+    // which re-runs the room and opens with the held-back backstab. Until set, the
+    // hold never engages.
+    public void SetShadowRestSuppression(Func<bool> shadowRestHolding)
+    {
+        ArgumentNullException.ThrowIfNull(shadowRestHolding);
+        _shadowRestHolding = shadowRestHolding;
+    }
+
+    // Resume normal combat after a ShadowRest recovery completes — re-run the last
+    // observation so the target re-picks and the backstab opener fires now that the
+    // hold has lifted. No-op when combat is off or no observation is cached.
+    public void ResumeAfterShadowRest()
+    {
+        if (!_isEnabled()) return;
+        if (_classifier.Current is { } live) OnEntitiesObserved(live);
     }
 
     // Called by the MonsterDeath subscriber when a death-line match resolves to a
@@ -349,6 +419,7 @@ public sealed partial class CombatManager : IDisposable
             _log?.Combat(LogCategory,
                 $"target died — clearing _currentTarget='{current}' (raw-name match)");
             _currentTarget = null;
+            ClearBackstabResolution();
             return;
         }
 
@@ -369,6 +440,7 @@ public sealed partial class CombatManager : IDisposable
                 _log?.Combat(LogCategory,
                     $"target died — clearing _currentTarget='{current}' (resolved-name match)");
                 _currentTarget = null;
+                ClearBackstabResolution();
                 return;
             }
         }
@@ -415,9 +487,15 @@ public sealed partial class CombatManager : IDisposable
         // signal that fires on EVERY transition, so keying the reset off it makes
         // manual moves re-arm the backstab too. Runs before the AlsoHere emit for
         // the new room, so the opener is already false when that dispatch reads
-        // BackstabPending. Flag-only; _isSneaking still gates whether bs fires.
+        // BackstabPending. Flag-only; the stealth gate still decides whether bs fires.
         if (obs.Source == RoomObservationSource.RoomChange)
+        {
             _backstabOpenerConsumed = false;
+            // The old room's surprise round is moot once we've moved on — drop any
+            // unresolved watch so a missed resolution line can't strand the re-fire
+            // suppression across rooms.
+            ClearBackstabResolution();
+        }
 
         // Combat-off override for stealth runners. Normally combat-off
         // means we don't engage at all. But a stealth character sprinting
@@ -632,6 +710,21 @@ public sealed partial class CombatManager : IDisposable
                 $"{string.Join(",", engageable.Select(e => e.RawName))}])");
         }
 
+        // ShadowRest hold: a solo, stealthed ShadowRest character below a rest
+        // floor stays hidden and rests instead of engaging. Stand down before any
+        // dispatch so stealth holds and the backstab opener stays unspent — once
+        // HealthManager tops off to rest-max it fires ResumeAfterShadowRest, which
+        // re-runs this observation with the hold lifted and opens with the bs.
+        // Placed after the empty-room / clear handling so a mob leaving mid-rest
+        // still tears down cleanly.
+        if (_shadowRestHolding?.Invoke() == true)
+        {
+            _log?.Combat(LogCategory,
+                $"combat held — shadowrest recovering (would engage {picked.RawName})");
+            _currentTarget = null;
+            return;
+        }
+
         // Decide + dispatch this round's action. The chooser owns the full
         // per-round category ordering (Backstab / Debuffing / Spells /
         // Physical) in the user-configured priority; DispatchRoundAction
@@ -650,7 +743,7 @@ public sealed partial class CombatManager : IDisposable
     // chooser context so both agree on the gate.
     private bool BackstabPending(CombatSettings settings, RoomEntitiesObservation obs) =>
         settings.DoBackstab && !_backstabOpenerConsumed
-            && _isSneaking?.Invoke() == true && !RoomHasSeeHidden(obs);
+            && _isStealthed?.Invoke() == true && !RoomHasSeeHidden(obs);
 
     // Equip the normal/alternate weapon and send the weapon attack command
     // against targetRaw. Sets CurrentTarget; SendAttack clears the spell-mode
@@ -670,8 +763,8 @@ public sealed partial class CombatManager : IDisposable
     }
 
     // True when any monster currently in the room carries SeeHidden — which
-    // defeats the sneaking character's backstab for the whole room. No-op (false)
-    // until the backstab hooks are wired.
+    // defeats a stealthed character's backstab (sneak or hide) for the whole room.
+    // No-op (false) until the backstab hooks are wired.
     private bool RoomHasSeeHidden(RoomEntitiesObservation obs)
     {
         if (_hasSeeHidden is null) return false;
@@ -695,6 +788,7 @@ public sealed partial class CombatManager : IDisposable
     private void OnRoomCleared(CombatSettings settings)
     {
         _normalWeaponFailedMonsters.Clear();
+        ClearBackstabResolution();
 
         // Reset the combat-spell room economy — per-room debuff-once /
         // cast-cap / multi-attack counters + the damage-immunity map all
@@ -736,6 +830,19 @@ public sealed partial class CombatManager : IDisposable
         _swapWeapon?.Invoke(settings.BackstabWeapon, settings.BackstabOffHand);
         _prepBackstabArmor?.Invoke();
         _usingAlternateWeapon = false;
+    }
+
+    // Re-arm the surprise round for a fresh hide established in the current room —
+    // the stationary hidden opener (a monster walks into a room the character is
+    // hidden in). Unlike PrepBackstabForMove there's NO gear swap: equipping breaks
+    // hide, so the backstab loadout must already be on before the `hid`. Flag-only,
+    // so a hidden character re-hiding after a kill re-opens the surprise round for
+    // the next monster that wanders in. Bound in AppServices to
+    // StealthManager.StateChanged on the AttemptingHide/Idle -> Hidden edge.
+    public void RearmBackstabForHide()
+    {
+        if (!_readSettings().DoBackstab) return;
+        _backstabOpenerConsumed = false;
     }
 
     // Decide which weapon should be on for the next attack and hand it to the
@@ -955,6 +1062,12 @@ public sealed partial class CombatManager : IDisposable
     {
         if (_currentTarget is not { } target) return;   // nothing to re-fire at
 
+        // Hold all re-fires while a backstab's surprise round is still pending — a
+        // repositioning `pu` fired now can register server-side before the `bs`
+        // resolves and clobber the surprise (open with bs, then stay quiet). Once
+        // the opener settles the watch clears and normal re-fire resumes.
+        if (_awaitingBackstabResolution) return;
+
         // Only reposition against OUR priority target — ignore announces on
         // any other monster in the room.
         if (!string.Equals(announcedTarget, target, StringComparison.OrdinalIgnoreCase))
@@ -1082,6 +1195,52 @@ public sealed partial class CombatManager : IDisposable
         _wireSender(Encoding.Latin1.GetBytes("\r"));
     }
 
+    // Backstab surprise-round resolver. The opener swings exactly once; the first
+    // of OUR combat-result lines naming the target settles the outcome:
+    //   * carries "surprise" (e.g. "You surprise punch orc rogue for 30 damage!")
+    //     → the backstab landed.
+    //   * lacks it — a whiff ("You swing at dark cultist!") or a folded normal
+    //     round ("You punch nasty dark cultist for 2 damage!") → it failed.
+    // Self-gated on the armed watch, so lines outside the bs window are ignored.
+    // The "You " prefix filters party members' hits (UserHits fires for them too),
+    // and requiring the target's species in the line rejects the broad UserMisses
+    // pattern's self-emote matches ("You feel much better!").
+    private void OnBackstabResolutionLine(MatchResult match)
+    {
+        if (!_awaitingBackstabResolution) return;
+
+        string text = match.Text;
+        if (!text.StartsWith("You ", StringComparison.Ordinal)) return;
+
+        string species = _pendingBackstabSpecies ?? string.Empty;
+        if (species.Length == 0
+            || text.IndexOf(species, StringComparison.OrdinalIgnoreCase) < 0)
+            return;
+
+        // First qualifying swing resolves the round exactly once.
+        ClearBackstabResolution();
+
+        if (text.IndexOf("surprise", StringComparison.OrdinalIgnoreCase) >= 0)
+        {
+            _log?.Combat(LogCategory, $"backstab landed (surprise) vs '{species}'");
+            return;
+        }
+
+        _log?.Info(LogCategory, $"backstab failed (no surprise) vs '{species}'");
+        if (_readSettings().RunIfBackstabFails)
+            _backstabFailureFlee?.Invoke();
+    }
+
+    // Disarm the surprise-round watch. Called on resolution and on every signal
+    // that the fight has moved past the opener (room change, target death, room
+    // clear, target-gone) so a resolution line we never saw can't leave the watch
+    // (and its re-fire suppression) latched.
+    private void ClearBackstabResolution()
+    {
+        _awaitingBackstabResolution = false;
+        _pendingBackstabSpecies = null;
+    }
+
     // "You don't see <X> here!" — server can't find the target we just attacked.
     // Different from MonsterDeathWatcher's path: catches cases where the death
     // line was missed, the mob fled, or a partymate killed it between our send
@@ -1096,6 +1255,7 @@ public sealed partial class CombatManager : IDisposable
         _log?.Combat(LogCategory,
             $"target-not-here — dropping target={_currentTarget} + refreshing room");
         _currentTarget = null;
+        ClearBackstabResolution();
 
         // Force a refresh (debounce shared with OnCombatLine so a
         // simultaneous miss-line + target-not-here doesn't double-send).
@@ -1324,6 +1484,8 @@ public sealed partial class CombatManager : IDisposable
         _fistsNoEffectSub.Dispose();
         _spellNoEffectSub.Dispose();
         _combatStatusSub.Dispose();
+        _bsResolveHitsSub.Dispose();
+        _bsResolveMissesSub.Dispose();
     }
 
     private readonly record struct EngageableCandidate(

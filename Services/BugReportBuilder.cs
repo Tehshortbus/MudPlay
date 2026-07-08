@@ -219,6 +219,12 @@ public static class BugReportBuilder
         Kv(sb, "Worn weapon", WornSlot(inv, "Weapon Hand") ?? "(none)");
         Kv(sb, "Worn off-hand", WornSlot(inv, "Off-Hand") ?? "(none)");
         Kv(sb, "Using alternate weapon", combat.UsingAlternateWeapon.ToString());
+        Kv(sb, "Awaiting backstab resolution", combat.AwaitingBackstabResolution
+            ? $"yes (target={combat.PendingBackstabSpecies ?? "(none)"})"
+            : "no");
+        // ShadowRest hold explains a stealthed character resting instead of
+        // engaging a monster in the room (combat stands down while true).
+        Kv(sb, "ShadowRest holding", svc.Health.ShadowRestHolding.ToString());
 
         return sb.ToString();
     }

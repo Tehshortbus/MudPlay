@@ -2,6 +2,17 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.20.0
+
+- Backstab surprise round is now tracked to resolution: the first swing after `bs` is read for the `surprise` tell, so a landed vs failed opener is detected reliably
+- Attack-order re-fire is held while a backstab is pending, so a party attack announcement can't fire a follow-up `pu` that clobbers the surprise round
+- "Run if BS fails" now works: a detected backstab failure flees via the normal break-before-flee escape (previously the setting did nothing)
+- Hidden characters now open with `bs` when a monster walks in: hide is tracked optimistically (its success isn't self-observable) and the surprise resolver confirms or flees
+- A fresh in-place hide re-arms the surprise round, so a hidden character can backstab each monster that wanders in after a kill
+- Auto-hide is now suppressed while in a party, so a member can't hide itself out of reach of party heals and buffs
+- ShadowRest (Paradigm): solo, stealthed classes with the ability can now rest through a monster in the room — combat stands down while recovering, then re-opens with a backstab at rest-max
+- New Settings → Health → Resting Options → "Utilize shadowrest" toggle (the category was renamed from "Meditation")
+
 ## 1.19.4
 
 - Backstab re-opens on every confirmed room change, so hand-walking (not just the walk-to/loop engines) re-arms the surprise round instead of falling back to a normal attack after the session's first backstab

@@ -109,4 +109,26 @@ public sealed class AbilityNamesTests
     {
         Assert.False(AbilityNames.HasTrapAbility(JsonDocument.Parse("{}").RootElement));
     }
+
+    // ----- HasShadowRest --------------------------------------------------
+
+    [Fact]
+    public void HasShadowRest_RowWithAbility1103_ReturnsTrue()
+    {
+        // Ability code 1103 (ShadowRest, Paradigm) embedded among unrelated
+        // slots — the scan must hit any slot, not just the first.
+        Assert.True(AbilityNames.HasShadowRest(Row(103, 37, 1103, 31)));
+    }
+
+    [Fact]
+    public void HasShadowRest_RowWithoutAbility1103_ReturnsFalse()
+    {
+        Assert.False(AbilityNames.HasShadowRest(Row(103, 37, 39, 31)));
+    }
+
+    [Fact]
+    public void HasShadowRest_EmptyRow_ReturnsFalse()
+    {
+        Assert.False(AbilityNames.HasShadowRest(JsonDocument.Parse("{}").RootElement));
+    }
 }

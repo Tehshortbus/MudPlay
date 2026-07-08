@@ -27,6 +27,18 @@ namespace FujinTerm.Game.Stealth;
 //   * UserCantSneak ("You may not sneak right now!") → StealthState.Failed. Hard
 //     block — no auto-retry.
 //
+// Hide is a separate, thinner FSM because its success is NOT self-observable —
+// the server runs a hide check but never reports that it landed:
+//   * UserHideInitiate (bare "Attempting to hide...") is treated as
+//     OPTIMISTICALLY hidden: StealthState.Hidden + IsHidden=true. The backstab
+//     surprise-round resolver (CombatManager) confirms or denies after the opener
+//     swings — a real hide lands the surprise, a false one whiffs and flees.
+//   * UserHideFailed ("...You don't think you are hidden.") is the one ground-truth
+//     failure line → drop the optimistic hidden state.
+//   * A move (NoteRoomChanged) breaks hide — you can't move while hidden.
+// Auto-hide (NoteIdleOpportunity) is suppressed while in a party: a hidden member
+// falls off the room's Also-here line and can't be targeted by party heals/buffs.
+//
 // Silent-loss detection: in MajorMUD, sneak silently breaks when a move is
 // observed (or a stealth-breaking action fires) without the "Sneaking..." line.
 // The watchdog flag _sneakConfirmedThisRoom is set on every positive signal
@@ -52,11 +64,14 @@ public sealed class StealthManager : IDisposable
     private readonly IDisposable _sneakInitiateSub;
     private readonly IDisposable _sneakFailedSub;
     private readonly IDisposable _cantSneakSub;
+    private readonly IDisposable _hideInitiateSub;
+    private readonly IDisposable _hideFailedSub;
 
     private Action<byte[]>? _wireSender;
     private Func<bool>? _isAutoSneakEnabled;
     private Func<bool>? _isAutoHideEnabled;
     private Func<bool>? _isSneakBlockedByRoom;
+    private Func<bool>? _isInParty;
 
     private StealthState _stateValue;
     private bool _sneakConfirmedThisRoom;
@@ -92,6 +107,8 @@ public sealed class StealthManager : IDisposable
         _sneakInitiateSub = router.Subscribe(KnownPatterns.UserSneakInitiate, OnSneakInitiate);
         _sneakFailedSub   = router.Subscribe(KnownPatterns.UserSneakFailed,   OnSneakFailed);
         _cantSneakSub     = router.Subscribe(KnownPatterns.UserCantSneak,     OnCantSneak);
+        _hideInitiateSub  = router.Subscribe(KnownPatterns.UserHideInitiate,  OnHideInitiate);
+        _hideFailedSub    = router.Subscribe(KnownPatterns.UserHideFailed,    OnHideFailed);
     }
 
     // Bind the wire sender for the auto-sneak / auto-hide engines. Until set, the
@@ -123,16 +140,27 @@ public sealed class StealthManager : IDisposable
         _isSneakBlockedByRoom = isSneakBlockedByRoom;
     }
 
+    // Wire the "currently in a party" predicate. Auto-hide is suppressed while in a
+    // party: a hidden member drops off the room's Also-here line and can no longer
+    // be single-target-healed or buffed by other members until revealed (only
+    // room-wide / party-wide spells reach them). Manual hide the user types is NOT
+    // gated — only the automatic idle-hide. When null, no party suppression occurs.
+    public void SetPartyCheck(Func<bool> isInParty)
+    {
+        ArgumentNullException.ThrowIfNull(isInParty);
+        _isInParty = isInParty;
+    }
+
     // True while we hold any active stealth (Sneaking or Hidden). Read by
-    // CastingDirector to suppress buff casts that would break stealth, and
-    // (future) by CombatManager to pick backstab over normal attack.
+    // CastingDirector to suppress buff casts that would break stealth, and by
+    // CombatManager's backstab gate to open with bs instead of a normal attack.
     public bool IsStealthed =>
         _stateValue == StealthState.Sneaking || _stateValue == StealthState.Hidden;
 
-    // True only while actively StealthState.Sneaking (not Hidden). Backstab
-    // requires the sneaking state specifically — you approach an unseen target
-    // while moving silently — so CombatManager gates its opening bs on this rather
-    // than IsStealthed.
+    // True only while actively StealthState.Sneaking (not Hidden). Kept distinct
+    // from IsStealthed because sneak carries a per-room re-confirm + silent-loss
+    // watchdog that hide doesn't. The backstab opener gates on IsStealthed (either
+    // state opens), so consumers wanting "sneaking specifically" use this.
     public bool IsSneaking => _stateValue == StealthState.Sneaking;
 
     // Called by an external observer (RoomTracker via AppServices) when the
@@ -144,6 +172,13 @@ public sealed class StealthManager : IDisposable
     // "Sneaking..." emit (if any) has already updated _sneakConfirmedThisRoom.
     public void NoteRoomChanged()
     {
+        // Moving breaks hide — you can't move while hidden, so a confirmed room
+        // change means any optimistic hidden state is gone. Cleared before the
+        // auto-sneak re-attempt below so a hand-move out of a hidden room can
+        // re-establish sneak for the next leg.
+        if (_stateValue == StealthState.Hidden)
+            NoteHideBroken();
+
         if (_stateValue == StealthState.Sneaking && !_sneakConfirmedThisRoom)
         {
             _log?.Info(LogCategory, "silent sneak loss — new room without 'Sneaking...' confirm");
@@ -213,8 +248,19 @@ public sealed class StealthManager : IDisposable
     {
         if (_isAutoHideEnabled?.Invoke() != true) return;
         if (_state.InCombat) return;
-        if (_stateValue == StealthState.Hidden) return;
+        // Already hidden, or a hid is in flight waiting on the ambiguous
+        // "Attempting to hide..." line — don't stack another attempt.
+        if (_stateValue == StealthState.Hidden || _stateValue == StealthState.AttemptingHide) return;
+        // Never auto-hide in a party: a hidden member is removed from the room's
+        // Also-here line and can't be single-target-healed/buffed by the party
+        // until revealed. Manual hide is the user's call; auto-hide must not.
+        if (_isInParty?.Invoke() == true)
+        {
+            _log?.Info(LogCategory, "auto-hide suppressed: in a party");
+            return;
+        }
         _log?.Info(LogCategory, "auto-hide triggered");
+        Transition(StealthState.AttemptingHide);
         Send("hid");
     }
 
@@ -224,19 +270,24 @@ public sealed class StealthManager : IDisposable
         _wireSender(System.Text.Encoding.Latin1.GetBytes(text + "\r"));
     }
 
-    // Mark hide as confirmed — invoked when the caller observes the server's
-    // confirmation line for a successful hide. Hide doesn't have the room-by-room
-    // re-confirm that sneak has, so v1 keeps the watch surface narrow: callers
-    // explicitly mark hide on/off. (Auto-hide engine follow-up will wire the
-    // actual line parse.)
+    // Optimistically establish hidden — driven by the bare "Attempting to hide..."
+    // line (OnHideInitiate). Hide success is NOT self-observable: the server runs a
+    // check but never tells us it landed, so we assume hidden and let the backstab
+    // surprise-round resolver confirm or deny after the opener swings. The
+    // AttemptingHide -> Hidden transition is what re-arms the backstab opener (via
+    // StateChanged), so a fresh hide re-opens the surprise round for a monster that
+    // walks into the room.
     public void NoteHideConfirmed()
     {
         Transition(StealthState.Hidden);
         _state.IsHidden = true;
+        // Mutually exclusive with sneaking — clear the sneak flag so both
+        // observables never read true at once (hiding after a sneak-approach).
+        _state.IsSneaking = false;
     }
 
-    // Clear hide — invoked when the caller observes a hide-breaking event (move,
-    // attack, cast).
+    // Clear hide — the explicit failure line, a move (NoteRoomChanged), or any
+    // other hide-breaking event.
     public void NoteHideBroken()
     {
         if (_stateValue == StealthState.Hidden)
@@ -271,6 +322,10 @@ public sealed class StealthManager : IDisposable
         if (_stateValue == StealthState.Sneaking) return;
         Transition(StealthState.Sneaking);
         _state.IsSneaking = true;
+        // Sneaking and hidden are mutually exclusive — establishing one clears the
+        // other so the two observables never read true at once (e.g. hiding, then
+        // a sneak re-establishes on the next approach).
+        _state.IsHidden = false;
     }
 
     private void OnNotSneaking(MatchResult _)
@@ -300,6 +355,25 @@ public sealed class StealthManager : IDisposable
 
     private void OnCantSneak(MatchResult _) => Transition(StealthState.Failed);
 
+    private void OnHideInitiate(MatchResult _)
+    {
+        // Bare "Attempting to hide..." — the server ran a hide check but does NOT
+        // report the outcome. Treat it as optimistically hidden; a real hide lands
+        // the backstab surprise round and a failed one whiffs (RunIfBackstabFails
+        // then flees). Fires for a manual `hid` too, which is correct — we track
+        // the game's hide state regardless of who issued the command.
+        NoteHideConfirmed();
+    }
+
+    private void OnHideFailed(MatchResult _)
+    {
+        // "Attempting to hide...You don't think you are hidden." — the one
+        // ground-truth failure signal. Drop the optimistic hidden state.
+        if (_stateValue == StealthState.Hidden || _stateValue == StealthState.AttemptingHide)
+            Transition(StealthState.Idle);
+        _state.IsHidden = false;
+    }
+
     private void Transition(StealthState next)
     {
         if (_stateValue == next) return;
@@ -318,5 +392,7 @@ public sealed class StealthManager : IDisposable
         _sneakInitiateSub.Dispose();
         _sneakFailedSub.Dispose();
         _cantSneakSub.Dispose();
+        _hideInitiateSub.Dispose();
+        _hideFailedSub.Dispose();
     }
 }

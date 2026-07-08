@@ -70,10 +70,11 @@ public sealed partial class HealthSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private int _runIfBelowMa     = 10;
     [ObservableProperty] private int _blessIfAboveMa   = 70;
 
-    // ----- Meditation -----------------------------------------------
+    // ----- Resting Options ------------------------------------------
 
     [ObservableProperty] private bool _useMeditateAbility;
     [ObservableProperty] private bool _meditateBeforeResting;
+    [ObservableProperty] private bool _utilizeShadowRest;
 
     // ----- Resting commands -----------------------------------------
 
@@ -232,6 +233,7 @@ public sealed partial class HealthSectionViewModel : SettingsSectionViewModel
 
             UseMeditateAbility     = UseMeditateAbility,
             MeditateBeforeResting  = MeditateBeforeResting,
+            UtilizeShadowRest      = UtilizeShadowRest,
 
             PreRestCommand         = PreRestCommand  ?? string.Empty,
             PostRestCommand        = PostRestCommand ?? string.Empty,
@@ -301,6 +303,7 @@ public sealed partial class HealthSectionViewModel : SettingsSectionViewModel
 
         UseMeditateAbility    = dto.UseMeditateAbility;
         MeditateBeforeResting = dto.MeditateBeforeResting;
+        UtilizeShadowRest     = dto.UtilizeShadowRest;
 
         PreRestCommand  = dto.PreRestCommand  ?? string.Empty;
         PostRestCommand = dto.PostRestCommand ?? string.Empty;
@@ -414,9 +417,10 @@ public sealed partial class HealthSectionViewModel : SettingsSectionViewModel
         OnPropertyChanged(nameof(BlessIfAboveMaConverted));
     }
 
-    // Meditation
+    // Resting Options
     partial void OnUseMeditateAbilityChanged(bool value)      => MarkDirty();
     partial void OnMeditateBeforeRestingChanged(bool value)   => MarkDirty();
+    partial void OnUtilizeShadowRestChanged(bool value)       => MarkDirty();
 
     // Resting commands
     partial void OnPreRestCommandChanged(string value)        => MarkDirty();
