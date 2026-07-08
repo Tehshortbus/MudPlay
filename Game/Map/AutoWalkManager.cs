@@ -101,8 +101,35 @@ public sealed class AutoWalkManager : IRecoverableEngine
                 return Array.Empty<RoomKey>();
 
             var keys = new List<RoomKey>(_path.Count - _index + 1);
-            if (_tracker.State.CurrentRoom is { } current) keys.Add(current.Key);
-            for (int i = _index; i < _path.Count; i++)
+
+            int start = _index;
+            if (_tracker.State.CurrentRoom is { } current)
+            {
+                keys.Add(current.Key);
+
+                // Trim the display past the leg already walked. While the
+                // walker is paused (combat, resting, user gate),
+                // OnTrackerStateChanged bails without advancing _index, so
+                // the index keeps pointing at a step whose ExpectedTarget the
+                // player has already reached — the drawn line would loop back
+                // through the room just entered until the walk resumes and
+                // TryReconcileIndexAfterResume fast-forwards _index. Skip
+                // forward to the first planned target the player hasn't
+                // reached yet so the overlay always starts at the CURRENT
+                // room, even mid-combat. (Earliest match, mirroring the
+                // resume reconciliation, so a route that revisits a room
+                // later still renders that later leg.)
+                for (int i = _index; i < _path.Count; i++)
+                {
+                    if (_path[i] is MoveStep move && move.ExpectedTarget.Equals(current.Key))
+                    {
+                        start = i + 1;
+                        break;
+                    }
+                }
+            }
+
+            for (int i = start; i < _path.Count; i++)
             {
                 if (_path[i] is MoveStep move) keys.Add(move.ExpectedTarget);
             }
@@ -902,7 +929,11 @@ public sealed class AutoWalkManager : IRecoverableEngine
             _log?.Warn("Walker", $"wire sender not bound; suppressed: {reasonForLog}");
         else
             _wireSender(bytes);
-        _log?.Info("Walker", $"step {_index + 1}/{_path!.Count}: {reasonForLog}");
+        // Tier-3 recovery backtracks (SendBacktrackMove) route through here with no
+        // active walk plan, so _path is null — the step counter only makes sense
+        // when a planned path exists.
+        string progress = _path is { } path ? $"step {_index + 1}/{path.Count}: " : string.Empty;
+        _log?.Info("Walker", $"{progress}{reasonForLog}");
     }
 
     private void OnTrackerStateChanged(RoomTransition transition)

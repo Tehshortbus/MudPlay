@@ -208,22 +208,38 @@ public sealed class CashManager : IDisposable
         AuditHeldForDiscard();
     }
 
-    // Walk held tallies; for any currency whose policy is Discard AND we hold
-    // > 0, emit "drop <amount> <type>" (the MajorMUD syntax for currency drops).
-    // The CashDropped subscription decrements _held when the server confirms; we
-    // don't optimistically decrement so the audit retries on the next firing if
-    // the drop fails.
+    // For any currency whose policy is Discard AND we hold > 0, emit
+    // "drop <amount> <type>" (the MajorMUD syntax for currency drops).
+    //
+    // Holdings come from the authoritative InventorySnapshot.Currency, NOT the
+    // local pickup tally (_held): the tally only counts coin observed via
+    // CashPickedUp / CashDropped this session, so a carried-over / starting
+    // balance it never saw (the exact case a retroactive Collect→Discard flip
+    // must handle) would read as zero and never drop. The snapshot is the
+    // 'i'-seeded, delta-tracked truth. We still max in the tally so a fresh
+    // pickup drops immediately even if the parser's snapshot hasn't yet applied
+    // the confirming line. The CashDropped subscription decrements state when
+    // the server confirms; we don't optimistically decrement so the audit
+    // retries on the next firing if the drop fails.
     private void AuditHeldForDiscard()
     {
         if (!_isEnabled()) return;
         CashSettings settings = _readSettings();
-        foreach ((string currency, long count) in _held.ToList())
-        {
-            if (count <= 0) continue;
-            if (ResolvePolicy(settings, currency) != CashPolicy.Discard) continue;
-            _log?.Info(LogCategory, $"discard drop currency={currency} count={count}");
-            Send($"drop {count} {currency}");
-        }
+        CurrencyHoldings snap = _getSnapshot().Currency;
+        AuditDenominationForDiscard(settings, "copper",   snap.Copper);
+        AuditDenominationForDiscard(settings, "silver",   snap.Silver);
+        AuditDenominationForDiscard(settings, "gold",     snap.Gold);
+        AuditDenominationForDiscard(settings, "platinum", snap.Platinum);
+        AuditDenominationForDiscard(settings, "runic",    snap.Runic);
+    }
+
+    private void AuditDenominationForDiscard(CashSettings settings, string currency, long snapshotCount)
+    {
+        if (ResolvePolicy(settings, currency) != CashPolicy.Discard) return;
+        long count = Math.Max(snapshotCount, HeldCoin(currency));
+        if (count <= 0) return;
+        _log?.Info(LogCategory, $"discard drop currency={currency} count={count}");
+        Send($"drop {count} {currency}");
     }
 
     // ----- handlers ----------------------------------------------------

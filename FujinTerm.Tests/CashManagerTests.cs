@@ -444,6 +444,27 @@ public sealed class CashManagerTests
         Assert.Contains("drop 100 gold", lines);
     }
 
+    // A currency flipped Collect→Discard must drop coin the character is
+    // actually carrying — including a starting / carried-over balance the
+    // session pickup tally never observed. Regression: 71 carried copper stayed
+    // put after the flip because the audit consulted only the pickup tally
+    // (zero for coin it never saw picked up) instead of the authoritative
+    // inventory snapshot.
+    [Fact]
+    public void Discard_OnSettingsChange_DropsCarriedCoinFromSnapshot()
+    {
+        using Harness h = new();
+        // Snapshot shows 71 copper on hand, but no CashPickedUp line ever ran,
+        // so the session tally is zero for copper.
+        h.Snapshot = Wealth(71, copper: 71);
+        Assert.Equal(0, h.Cash.HeldCoin("copper"));
+
+        h.Settings.CopperPolicy = CashPolicy.Discard;
+        h.Cash.OnSettingsChanged();
+
+        Assert.Contains("drop 71 copper", h.AllSent);
+    }
+
     [Fact]
     public void Discard_NoHeldOfFlaggedCurrency_NoDrop()
     {

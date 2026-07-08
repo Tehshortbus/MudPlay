@@ -55,17 +55,30 @@ public sealed partial class RoomDisplayParser : IDisposable
             HandleLine(new LineExtractor.EmittedLine(text, [], stamp, false));
     }
 
-    // Test seam — feed pre-built EmittedLines so the colour-anchored detection
-    // path can be exercised.
+    // Test seam — feed pre-built EmittedLines through the real emit entry point
+    // so the colour-anchored detection and prompt-boundary handling are both
+    // exercised.
     internal void FeedTestEmittedLines(IEnumerable<LineExtractor.EmittedLine> lines)
     {
         foreach (LineExtractor.EmittedLine line in lines)
-            HandleLine(line);
+            OnLineEmitted(line);
     }
 
     private void OnLineEmitted(LineExtractor.EmittedLine line)
     {
-        if (line.IsPromptLine) return;
+        if (line.IsPromptLine)
+        {
+            // A prompt ends one server-output block and begins the next, so it
+            // is a hard boundary for room-name recovery. Clear the buffer rather
+            // than silently dropping the line — otherwise output preceding the
+            // prompt (e.g. a `look <monster>` examination, whose first line is
+            // the monster's name) survives into the next block and gets grabbed
+            // as the room name. That misparse ("dark goblin archer" instead of
+            // "Darkwood Forest") desynced the tracker to Suspect and froze the
+            // walker until a manual locate.
+            _buffer.Clear();
+            return;
+        }
         HandleLine(line);
     }
 

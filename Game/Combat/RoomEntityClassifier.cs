@@ -418,14 +418,26 @@ public sealed class RoomEntityClassifier : IDisposable
         // exits line. So by the time this confirmed transition fires, the
         // new room's occupants have ALREADY been parsed into Current. A
         // blind wipe here nulls CombatManager's just-picked target and
-        // burns a second attack when the room re-displays. Only wipe when
-        // Current is genuinely STALE — observed before the move that
-        // produced this transition. A post-move observation is the new
-        // room's own data; keep it. (DateTimeOffset comparison is
-        // offset-aware, so the classifier's local .Now timestamps and the
-        // tracker's UTC move time compare on the same absolute instant.)
+        // burns a second attack when the room re-displays. Only keep when
+        // Current is the new room's OWN room-display data — an "Also here:"
+        // observation (Source == AlsoHere) that post-dates the move.
+        //
+        // An Arrival ("<mob> walks in from <dir>.") is always relative to
+        // the room the player currently stands in, so one that lands after
+        // the move command is sent but before the move resolves belongs to
+        // the OLD room, not the new one — its timestamp is post-move yet it
+        // is stale. Keeping it stranded a walked-in monster in Current when
+        // the player stepped into a fresh, empty room: the Combat gate
+        // stayed asserted, the client kept firing the attack command, and
+        // the game answered "Your command had no effect." while the map's
+        // fighting chip hung with no monster in the room. Restricting the
+        // keep to AlsoHere-sourced observations wipes that ghost. (Death /
+        // RoomChange sources are likewise stale old-room data and fall
+        // through to the wipe.) DateTimeOffset comparison is offset-aware,
+        // so the classifier's local .Now timestamps and the tracker's UTC
+        // move time compare on the same absolute instant.
         if (_roomTracker is { LastMoveSentAt: { } moveAt }
-            && Current is { Entities.Count: > 0 } cur
+            && Current is { Entities.Count: > 0, Source: RoomObservationSource.AlsoHere } cur
             && cur.At >= moveAt)
         {
             return;

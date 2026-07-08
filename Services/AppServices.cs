@@ -2067,6 +2067,11 @@ public sealed class AppServices
         RoundDamage = new Game.Combat.RoundDamageTracker(
             Router, PlayerState, Log,
             shouldWriteTrace: () => LogDiagnostics.CombatDiagnostics);
+        // Drive round boundaries off the 5-second combat heartbeat so each round
+        // closes (and is counted) in real time rather than lagging until the next
+        // damage line or *Combat Off*. Both are app-lifetime singletons, so no
+        // unsubscribe is needed.
+        Tick.CombatTickElapsed += RoundDamage.OnCombatTick;
         // Reset round counter + ring on BBS connect to match
         // CombatSessionTracker's session-boundary convention — the
         // reset hook lives here on the data producer.

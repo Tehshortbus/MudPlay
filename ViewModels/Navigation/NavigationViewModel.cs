@@ -630,6 +630,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     [NotifyPropertyChangedFor(nameof(QueuedDestinationLabel))]
     [NotifyPropertyChangedFor(nameof(HasQueuedDestination))]
     [NotifyPropertyChangedFor(nameof(CanRun))]
+    [NotifyPropertyChangedFor(nameof(RunStopLabel))]
     private RoomKey? _queuedDestination;
 
     partial void OnQueuedDestinationChanged(RoomKey? value) => RefreshPreviewPath();
@@ -1818,6 +1819,13 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     {
         RefreshFromTracker();
         RefreshAutoLairApproachPath();
+        // Re-trim the walk-to overlay to the room we just confirmed. The
+        // walker itself only refires on its own step events, which are
+        // suppressed while it's paused (combat, resting) — so without this
+        // the drawn route kept showing the leg already walked until the walk
+        // resumed. RemainingRoomKeys reads the tracker's current room, so it
+        // trims correctly even while the walker is gated.
+        RefreshFromWalker();
         RefreshDerivedState();
     }
 
@@ -2185,6 +2193,12 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     {
         get
         {
+            // A queued destination overrides the engine faces: clicking Run walks
+            // there (see RunStop). Present a stable "Run" even while a loop or
+            // lair cycles its state machine, so the chip stops flickering
+            // Pause/Run under the armed destination.
+            if (QueuedDestination is not null) return "Run";
+
             Game.Map.LoopRunner runner = _services.LoopRunner;
             if (runner.State is Game.Map.LoopState.Running
                               or Game.Map.LoopState.Approaching
@@ -2463,6 +2477,24 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     private void RunStop()
     {
         Game.Map.LoopRunner runner = _services.LoopRunner;
+
+        // A queued destination is an explicit "go here now" and outranks the
+        // loop/lair pause-resume cycle: stop whatever engine is running and walk
+        // there. SelectSearchResult's arm-comment promises "clicking Run walks
+        // there", which the running-engine branches below would otherwise
+        // preempt — so the check has to come first. Mirrors GoToFavorite, plus a
+        // ClearGate so a lingering user-pause (loop paused when the destination
+        // was queued) doesn't block the walker from sending.
+        if (QueuedDestination is { } queued)
+        {
+            if (runner.State != Game.Map.LoopState.Idle)
+                runner.Stop("user walk-to queued destination");
+            if (_services.AutoLair.IsActive) _services.AutoLair.Stop();
+            _services.MovementCoordinator.ClearGate(Game.Map.MovementCoordinator.UserGate);
+            _services.Walker.WalkTo(queued);
+            QueuedDestination = null;
+            return;
+        }
 
         // Loop paused → resume (clear the user-pause gate). If the
         // builder was auto-opened by Pause AND the user edited the

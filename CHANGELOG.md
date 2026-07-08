@@ -2,6 +2,16 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.18.7
+
+- Fixed walker crash when backtracking a room that had no active path
+- Combat round counter now closes each round on the 5-second heartbeat instead of lagging a line behind
+- Stuck "fighting" chip after walking into a new room clears — a stale walk-in no longer carries past the move
+- Walk-to route overlay trims to the current room mid-combat instead of waiting for the whole room to clear
+- Flipping a currency from Collect to Discard now drops the already-carried balance, not just fresh pickups
+- Starting a manual run while auto-looping hands off to walk-to cleanly, without the destination chip flickering
+- Examining a monster no longer misreads its name as the room name, so position stays in sync
+
 ## 1.18.0
 
 - Item Game Data now prices each shop the item is bought/sold at — a line under every shop shows `@<charm>cha BUY: … SELL: …` for the character's charm (or retail 50 when unknown), branched to the active realm's stock/paradigm formula

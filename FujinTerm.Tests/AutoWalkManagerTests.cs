@@ -395,6 +395,34 @@ public sealed class AutoWalkManagerTests : IDisposable
     }
 
     [Fact]
+    public void RemainingRoomKeys_TrimsToCurrentRoom_WhilePausedMidStep()
+    {
+        // Report 203928: stepping into a room that starts combat pauses the
+        // walker before the move-confirming exits line lands, so
+        // OnTrackerStateChanged bails without advancing _index. The drawn
+        // walk-to route then kept looping back through the room just entered
+        // until combat ended and the walk resumed. RemainingRoomKeys must
+        // trim to the CURRENT room even while paused with a stale _index.
+        Harness h = NewHarness();
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Walker.WalkTo(new RoomKey(1, 3));      // 2-step path: A→N→B→N→C
+
+        h.Coordinator.AssertGate("Combat");      // combat pauses the walker
+        Assert.Equal(WalkState.Paused, h.Walker.State);
+
+        // The in-flight step resolves during the pause — tracker confirms B
+        // (1/2) but the walker leaves _index pointing at the leg just walked.
+        h.Tracker.NoteRoomObserved(new RoomObservation("B",
+            new HashSet<Direction> { Direction.N, Direction.S }));
+
+        // Overlay starts at B (current) and shows ONLY the untraversed leg to
+        // C — not [B, B, C], which would redraw the leg already walked.
+        Assert.Equal(
+            new[] { new RoomKey(1, 2), new RoomKey(1, 3) },
+            h.Walker.RemainingRoomKeys);
+    }
+
+    [Fact]
     public void Resume_PlayerStillAtSourceRoom_SendsCurrentStep_NoReplan()
     {
         // Pause + resume with no room arrival in between — walker
@@ -1194,5 +1222,22 @@ public sealed class AutoWalkManagerTests : IDisposable
         // LastSentForTests captures bytes even with no wire bound, so
         // tests can validate the wire payload without a network.
         Assert.Single(walker.LastSentForTests);
+    }
+
+    [Fact]
+    public void SendBacktrackMove_WithNoActivePlan_DoesNotThrow()
+    {
+        // Tier-3 health-recovery backtracks route through the same WriteBytes
+        // choke point as planned moves, but with no walk plan in flight
+        // (_path == null). Regression: the step-counter log line used to
+        // deref _path! and crash with a NullReferenceException.
+        Harness h = NewHarness();
+        h.Tracker.SetLocated(new RoomKey(1, 2));
+
+        h.Walker.SendBacktrackMove(Direction.S);
+
+        Assert.Equal(WalkState.Idle, h.Walker.State);
+        Assert.Single(h.Sent);
+        Assert.Equal("s\r", Encoding.Latin1.GetString(h.Sent[0]));
     }
 }

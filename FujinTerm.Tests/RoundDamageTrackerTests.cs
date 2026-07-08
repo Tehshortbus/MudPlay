@@ -112,6 +112,69 @@ public sealed class RoundDamageTrackerTests
         Assert.Equal(2, h.Completed[0].Misses);
     }
 
+    // ----- tick-driven round boundaries ------------------------------
+
+    [Fact]
+    public void CombatTick_ClosesOpenRound_CountsInRealTime()
+    {
+        // The 5-second heartbeat closes the open round without waiting for
+        // *Combat Off* — this is the real-time counting the session-stats
+        // round count depends on.
+        using Harness h = new();
+        h.Feed("Fujin hits a giant rat for 5 damage!");
+        Assert.Empty(h.Completed);
+
+        h.Tracker.OnCombatTick();
+        Assert.Single(h.Completed);
+        Assert.Equal(5, h.Completed[0].DamageDealt);
+        Assert.Equal(1, h.Completed[0].RoundNumber);
+    }
+
+    [Fact]
+    public void CombatTick_NoOpenRound_ClosesNothing()
+    {
+        // Idle ticks between fights must not fabricate empty rounds.
+        using Harness h = new();
+        h.Tracker.OnCombatTick();
+        h.Tracker.OnCombatTick();
+        Assert.Empty(h.Completed);
+        Assert.Equal(0, h.Tracker.RoundCount);
+    }
+
+    [Fact]
+    public void BurstOfSwings_OneTick_CollapsesToSingleRound()
+    {
+        // A whole 5-second window's worth of swings belongs to ONE round;
+        // the boundary is the tick, not the damage lines.
+        using Harness h = new();
+        h.Feed("Fujin hits a giant rat for 4 damage!");
+        h.Feed("Fujin hits a giant rat for 6 damage!");
+        h.Feed("Fujin hits a giant rat for 7 damage!");
+        h.Tracker.OnCombatTick();
+
+        Assert.Single(h.Completed);
+        Assert.Equal(17, h.Completed[0].DamageDealt);
+        Assert.Equal(3,  h.Completed[0].Hits);
+    }
+
+    [Fact]
+    public void SuccessiveTicks_EachWindowIsOwnRound()
+    {
+        // Two ticks with damage between them => two rounds, each carrying
+        // only its own window's damage.
+        using Harness h = new();
+        h.Feed("Fujin hits a giant rat for 5 damage!");
+        h.Tracker.OnCombatTick();
+        h.Feed("Fujin hits a giant rat for 8 damage!");
+        h.Tracker.OnCombatTick();
+
+        Assert.Equal(2, h.Completed.Count);
+        Assert.Equal(5, h.Completed[0].DamageDealt);
+        Assert.Equal(8, h.Completed[1].DamageDealt);
+        Assert.Equal(1, h.Completed[0].RoundNumber);
+        Assert.Equal(2, h.Completed[1].RoundNumber);
+    }
+
     // ----- round-counter monotonicity --------------------------------
 
     [Fact]
