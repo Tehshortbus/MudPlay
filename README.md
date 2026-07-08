@@ -1,10 +1,9 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.20.3**
-> - Attack-last re-fire opens with `bs <target>` when the surprise round is still armed, instead of firing the normal attack and wasting the backstab — the re-fire still lands us last in line, just with the opener
-> - Kill re-pick no longer double-swings: the interrupt-resume stands down when a fresh attack just went out, so the surviving mob isn't attacked twice in the same round
-> - Utilize-shadowrest toggle is now hidden on realms without the ability (stock), showing only where the active game data ships a ShadowRest class
+> **Version 1.20.4**
+> - A monster that pursues us into the next room is now fought instead of dragged: its walk-in arrival no longer gets wiped on the room change, so the walker holds and we stop to kill it
+> - The pursuer-keep is suppressed while fleeing, so a monster that chases us mid-flee doesn't turn us around to fight — we keep running
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->
