@@ -163,12 +163,11 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
             PoliteMode.AttackDifferent,
         };
 
-    // ----- Room-skip + failure --------------------------------------
+    // ----- Room-skip ------------------------------------------------
 
     [ObservableProperty] private int _minMonstersInRoom;
     [ObservableProperty] private int _maxMonstersInRoom = 20;
-    [ObservableProperty] private int _runDistance = 3;
-    [ObservableProperty] private int _noEffectFailureThreshold = 1;
+    [ObservableProperty] private int _runDistance = 2;
 
     // ----- Run-away (flee) behaviour --------------------------------
     // Graduated from the Other tab — they coordinate with RunDistance
@@ -280,8 +279,6 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
             RunDistance       = Math.Clamp(RunDistance, 1, 100),
             RunDirection      = GoBackwardsIfRunning ? RunDirection.Backward : RunDirection.Forward,
             BreakBeforeFleeing = BreakBeforeFleeing,
-
-            NoEffectFailureThreshold = Math.Clamp(NoEffectFailureThreshold, 1, 20),
 
             SpellManaThresholdMode = SpellManaModeAbsolute
                                      ? ThresholdMode.Absolute
@@ -403,8 +400,6 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
         GoBackwardsIfRunning = dto.RunDirection == RunDirection.Backward;
         BreakBeforeFleeing   = dto.BreakBeforeFleeing;
 
-        NoEffectFailureThreshold = dto.NoEffectFailureThreshold;
-
         SpellManaModePercentage = dto.SpellManaThresholdMode == ThresholdMode.Percentage;
         SpellManaModeAbsolute   = dto.SpellManaThresholdMode == ThresholdMode.Absolute;
 
@@ -502,13 +497,12 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
     partial void OnAttackAfterPlayerNameChanged(string value)    => MarkDirty();
     partial void OnPoliteModeChanged(PoliteMode value)           => MarkDirty();
 
-    // Room-skip + failure
+    // Room-skip
     partial void OnMinMonstersInRoomChanged(int value)           => MarkDirty();
     partial void OnMaxMonstersInRoomChanged(int value)           => MarkDirty();
     partial void OnRunDistanceChanged(int value)                 => MarkDirty();
     partial void OnGoBackwardsIfRunningChanged(bool value)       => MarkDirty();
     partial void OnBreakBeforeFleeingChanged(bool value)         => MarkDirty();
-    partial void OnNoEffectFailureThresholdChanged(int value)    => MarkDirty();
 
     // Spell mana mode
     partial void OnSpellManaModePercentageChanged(bool value)

@@ -34,11 +34,18 @@ namespace FujinTerm.Game.Health;
 //
 // Run-if-below: when PlayerState.Hp drops to or below HealthSettings.RunIfBelowHp
 // mid-combat AND a movement engine is active, the active engine is paused and the
-// character flees CombatSettings.RunDistance rooms (Backward = inverse of last
-// sent direction; Forward = engine's next planned), optionally preceded by
-// `break`. The engine resumes via IRecoverableEngine.ResumeAfterRecovery once HP
-// climbs back above the run-trigger. Multi-step flee advances one room per
-// NoteRoomChanged.
+// character flees CombatSettings.RunDistance rooms, optionally preceded by
+// `break`. Backward mode (the default) runs BFS from the current room back to the
+// active engine's JourneyOrigin and walks the first RunDistance directions of that
+// path — the reverse of the trail we came in on. Anchoring on the fixed origin is
+// what keeps the retreat heading away from the fight instead of bouncing back into
+// it. When the reverse path can't be computed (no origin / unknown room / no graph)
+// it falls back to inverting the last sent direction for a single step. Forward
+// mode ("go backwards if running" off) instead keeps pressing along the engine's
+// own planned route toward its destination — the next RunDistance moves it would
+// have sent anyway. The engine resumes via IRecoverableEngine.ResumeAfterRecovery
+// once HP climbs back above the run-trigger. Multi-step flee advances one queued
+// direction per NoteRoomChanged.
 //
 // Hang-if-below: PlayerState.Hp at or below HealthSettings.HangIfBelowHp fires a
 // single-shot hard disconnect via the configured exit command. Setting the
@@ -66,6 +73,7 @@ public sealed class HealthManager : IDisposable
     private readonly Func<string>? _readHangupCommand;
     private readonly Func<Map.IRecoverableEngine?>? _getActiveMovementEngine;
     private readonly Func<Map.Direction?>? _getLastSentDirection;
+    private readonly Func<Map.RoomKey, Map.RoomKey, IReadOnlyList<Map.Direction>?>? _findReversePath;
     private readonly Func<Models.Profile.CombatSettings>? _readCombatSettings;
     private readonly Func<Models.Profile.GeneralSettings>? _readGeneralSettings;
     private readonly Func<bool>? _hasEngageableHostiles;
@@ -89,8 +97,7 @@ public sealed class HealthManager : IDisposable
     private bool _fledThisCombat;        // reacted to run-trigger (flee OR @heal), awaiting combat end
     private bool _hangFired;             // emergency-hangup latch; re-arms when danger passes
     private Map.IRecoverableEngine? _fleeEngine;     // engine we paused mid-flee
-    private Map.Direction _fleeDirection;             // sustained direction for multi-step flee
-    private int _fleeStepsRemaining;                 // moves left before flee completes
+    private readonly Queue<Map.Direction> _fleeQueue = new(); // remaining flee steps, one per room arrival
     private Map.RoomKey? _lastKnownRoom;             // updated on every NoteRoomChanged
     private bool _disposed;
 
@@ -129,8 +136,12 @@ public sealed class HealthManager : IDisposable
     //     engine is active — flee then no-ops, since flee-if-below only fires
     //     while a movement engine is running.
     //   getLastSentDirection — most recent outbound direction, inverted for the
-    //     Backward flee mode. Typically wired to the last entry on
-    //     EngineRecoveryGate.ExecutedSinceAnchor.
+    //     Backward flee fallback when no reverse path can be computed. Typically
+    //     wired to the last entry on EngineRecoveryGate.ExecutedSinceAnchor.
+    //   findReversePath — (from, to) → the BFS direction list from one room to
+    //     another, or null when unreachable. The Backward flee calls this with
+    //     (current room, engine JourneyOrigin) to lay the reverse trail. Wired to
+    //     BfsMapper.FindPath; left null in tests that exercise the fallback.
     //   readCombatSettings — for the flee knobs CombatSettings.RunDirection,
     //     BreakBeforeFleeing and RunDistance.
     //   readGeneralSettings — for GeneralSettings.AllowHangupInAllOffMode, the
@@ -171,7 +182,8 @@ public sealed class HealthManager : IDisposable
         Func<int>? readDeathFloor = null,
         LogService? log = null,
         HangupSignal? hangupSignal = null,
-        Func<bool>? hasHostileInRoom = null)
+        Func<bool>? hasHostileInRoom = null,
+        Func<Map.RoomKey, Map.RoomKey, IReadOnlyList<Map.Direction>?>? findReversePath = null)
     {
         ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(coordinator);
@@ -184,6 +196,7 @@ public sealed class HealthManager : IDisposable
         _readHangupCommand = readHangupCommand;
         _getActiveMovementEngine = getActiveMovementEngine;
         _getLastSentDirection = getLastSentDirection;
+        _findReversePath = findReversePath;
         _readCombatSettings = readCombatSettings;
         _readGeneralSettings = readGeneralSettings;
         _hasEngageableHostiles = hasEngageableHostiles;
@@ -468,12 +481,14 @@ public sealed class HealthManager : IDisposable
         // Run-if-below: HP-only per user direction. Fires only when a
         // movement engine is active — "if you aren't running a
         // movement engine, the flee-if-below wouldn't fire". On
-        // trigger: optionally send `break` to disengage combat,
-        // then begin a multi-step flee over CombatSettings.RunDistance
-        // (Backward = inverse of last sent direction; Forward = engine's
-        // next planned). Subsequent steps advance one per
-        // NoteRoomChanged; the paused engine auto-resumes once HP climbs
-        // back above the run-trigger (recovery branch below).
+        // trigger: optionally send `break` to disengage combat, then
+        // begin a multi-step flee over CombatSettings.RunDistance rooms
+        // (Backward = the reverse-BFS trail toward the engine's
+        // JourneyOrigin; Forward = the engine's own next planned moves
+        // toward its destination). Subsequent
+        // steps advance one per NoteRoomChanged; the paused engine
+        // auto-resumes once HP climbs back above the run-trigger
+        // (recovery branch below).
         if (!_state.InCombat)
         {
             _fledThisCombat = false;
@@ -510,7 +525,7 @@ public sealed class HealthManager : IDisposable
         // are queued, hand control back to the engine. Backward
         // mode retraces its path from the current room; Forward
         // continues toward the original destination.
-        if (_fleeEngine is not null && _fleeStepsRemaining <= 0 && _state.MaxHp > 0)
+        if (_fleeEngine is not null && _fleeQueue.Count == 0 && _state.MaxHp > 0)
         {
             int hpRunTrigger = PoolThreshold.Resolve(s.HpThresholdMode, s.RunIfBelowHp, _state.MaxHp);
             if (_state.Hp > hpRunTrigger && _lastKnownRoom is { } room)
@@ -693,9 +708,10 @@ public sealed class HealthManager : IDisposable
         return true;
     }
 
-    // Try to dispatch a single flee step. No-ops (with a log line) when no
-    // movement engine is active, when the configured direction can't be resolved,
-    // or when the flee selectors weren't wired by the consumer.
+    // Try to begin a flee. No-ops (with a log line) when no movement engine is
+    // active or when no flee direction can be resolved. On success it pauses the
+    // engine, queues the full flee route, optionally sends `break`, and dispatches
+    // the first step; the remaining steps advance one per NoteRoomChanged.
     private void TryFlee(string reason)
     {
         Map.IRecoverableEngine? engine = _getActiveMovementEngine?.Invoke();
@@ -709,16 +725,11 @@ public sealed class HealthManager : IDisposable
         Models.Profile.CombatSettings combat = _readCombatSettings?.Invoke()
             ?? new Models.Profile.CombatSettings();
 
-        Map.Direction? step = combat.RunDirection switch
-        {
-            Models.Profile.RunDirection.Forward  => engine.PeekNextPlannedDirection(),
-            Models.Profile.RunDirection.Backward => Reverse(_getLastSentDirection?.Invoke()),
-            _ => null,
-        };
-        if (step is not { } direction)
+        List<Map.Direction> steps = BuildFleeSteps(engine, combat);
+        if (steps.Count == 0)
         {
             _log?.Warn(LogCategory,
-                $"flee skipped (couldn't resolve {combat.RunDirection} direction) — {reason}");
+                $"flee skipped (couldn't resolve {combat.RunDirection} route) — {reason}");
             return;
         }
 
@@ -728,25 +739,64 @@ public sealed class HealthManager : IDisposable
         // run-trigger (handled in Evaluate's recovery branch).
         engine.PauseForRecovery($"flee — {reason}");
 
-        int distance = combat.RunDistance;
-        if (distance < 1) distance = 1;
-
-        // Capture sustained flee state — same direction across all
-        // remaining steps. The walker's corridor + room layout will
-        // tell us if a turn is required (path-aware multi-direction
-        // flee is a follow-up).
         _fleeEngine = engine;
-        _fleeDirection = direction;
-        _fleeStepsRemaining = distance;
+        _fleeQueue.Clear();
+        foreach (Map.Direction d in steps) _fleeQueue.Enqueue(d);
 
         if (combat.BreakBeforeFleeing)
             SendCommand("break");
 
+        Map.Direction first = _fleeQueue.Dequeue();
         _log?.Combat(LogCategory,
-            $"flee start engine={engine.Name} mode={combat.RunDirection} dir={direction} " +
-            $"distance={distance} ({reason})");
-        engine.SendBacktrackMove(direction);
-        _fleeStepsRemaining--;
+            $"flee start engine={engine.Name} mode={combat.RunDirection} " +
+            $"route=[{string.Join(",", steps)}] first={first} ({reason})");
+        engine.SendBacktrackMove(first);
+    }
+
+    // Resolve the ordered list of directions the flee will walk. Backward mode
+    // (the default) runs BFS from the current room back to the engine's fixed
+    // JourneyOrigin and takes the first RunDistance directions — the reverse of
+    // the trail we came in on, which always heads away from the fight. It falls
+    // back to a single inverted last-move when the reverse path can't be computed
+    // (no origin, unknown current room, or no reverse-path selector / graph).
+    // Forward mode walks the engine's own next RunDistance planned moves — it
+    // keeps heading toward the destination instead of retreating.
+    private List<Map.Direction> BuildFleeSteps(
+        Map.IRecoverableEngine engine, Models.Profile.CombatSettings combat)
+    {
+        int distance = combat.RunDistance;
+        if (distance < 1) distance = 1;
+
+        var steps = new List<Map.Direction>();
+        switch (combat.RunDirection)
+        {
+            case Models.Profile.RunDirection.Backward:
+                if (_findReversePath is not null
+                    && _lastKnownRoom is { } from
+                    && engine.JourneyOrigin is { } origin
+                    && !from.Equals(origin)
+                    && _findReversePath(from, origin) is { Count: > 0 } path)
+                {
+                    for (int i = 0; i < path.Count && i < distance; i++)
+                        steps.Add(path[i]);
+                }
+                else if (Reverse(_getLastSentDirection?.Invoke()) is { } back)
+                {
+                    // No map to plan a multi-room retreat — step back into the
+                    // room we just left (known to exist) and stop there rather
+                    // than blindly repeating one direction into a wall.
+                    steps.Add(back);
+                }
+                break;
+            case Models.Profile.RunDirection.Forward:
+                // "Go backwards if running" is OFF — keep pressing along the
+                // engine's own planned route toward its destination. Walk the
+                // next RunDistance moves it would have sent anyway rather than
+                // repeating a single direction into a wall on the first turn.
+                steps.AddRange(engine.PeekPlannedDirections(distance));
+                break;
+        }
+        return steps;
     }
 
     private static Map.Direction? Reverse(Map.Direction? d) => d switch
@@ -830,13 +880,13 @@ public sealed class HealthManager : IDisposable
         // Flee step continuation — fire BEFORE the rest-latch reset
         // so the engine's pause flag doesn't get cleared by a
         // racing post-flee rest cycle.
-        if (_fleeEngine is not null && _fleeStepsRemaining > 0)
+        if (_fleeEngine is not null && _fleeQueue.Count > 0)
         {
-            _fleeEngine.SendBacktrackMove(_fleeDirection);
-            _fleeStepsRemaining--;
+            Map.Direction next = _fleeQueue.Dequeue();
+            _fleeEngine.SendBacktrackMove(next);
             _log?.Combat(LogCategory,
-                $"flee step engine={_fleeEngine.Name} dir={_fleeDirection} " +
-                $"remaining={_fleeStepsRemaining}");
+                $"flee step engine={_fleeEngine.Name} dir={next} " +
+                $"remaining={_fleeQueue.Count}");
         }
 
         if (!_restInFlight) return;

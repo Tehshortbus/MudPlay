@@ -139,8 +139,8 @@ public sealed class CombatSettings
     // (rooms cap at 20 NPCs). Default 20.
     public int MaxMonstersInRoom { get; set; } = 20;
 
-    // Rooms to flee before re-evaluating. Range 1–100. Default 3.
-    public int RunDistance { get; set; } = 3;
+    // Rooms to flee before re-evaluating. Range 1–100. Default 2.
+    public int RunDistance { get; set; } = 2;
 
     // Direction strategy when fleeing. Forward continues along the active walker
     // path (away from where we entered); Backward retraces the steps we just
@@ -155,12 +155,6 @@ public sealed class CombatSettings
     // we're still engaged — fast option for users who'd rather take the chance
     // than waste a round on break.
     public bool BreakBeforeFleeing { get; set; } = true;
-
-    // ----- Failure tracking -----------------------------------------
-
-    // How many consecutive "no effect" lines move a target to the room-scoped
-    // unhittable set. Default 1.
-    public int NoEffectFailureThreshold { get; set; } = 1;
 
     // ----- Spell combat ---------------------------------------------
 

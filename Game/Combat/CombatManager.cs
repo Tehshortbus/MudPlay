@@ -188,13 +188,6 @@ public sealed partial class CombatManager : IDisposable
     private readonly HashSet<string> _normalWeaponFailedMonsters =
         new(StringComparer.OrdinalIgnoreCase);
 
-    // How many no-effect lines a monster species needs to produce before we add
-    // it to _normalWeaponFailedMonsters. Mirrors
-    // CombatSettings.NoEffectFailureThreshold; cached here to track per-species
-    // count.
-    private readonly Dictionary<string, int> _noEffectCounts =
-        new(StringComparer.OrdinalIgnoreCase);
-
     public CombatManager(
         MessageRouter router,
         RoomEntityClassifier classifier,
@@ -657,7 +650,6 @@ public sealed partial class CombatManager : IDisposable
     private void OnRoomCleared(CombatSettings settings)
     {
         _normalWeaponFailedMonsters.Clear();
-        _noEffectCounts.Clear();
 
         // Reset the combat-spell room economy — per-room debuff-once /
         // cast-cap / multi-attack counters + the damage-immunity map all
@@ -724,11 +716,13 @@ public sealed partial class CombatManager : IDisposable
 
     // ----- No-effect handlers -----------------------------------------
 
-    // Server says our weapon has no effect against the current target. Count the
-    // species; once the count crosses CombatSettings.NoEffectFailureThreshold,
-    // add it to the room-scoped fail-set so the next pick swaps preemptively. If
-    // we're already on the alternate weapon when this fires, the monster is
-    // genuinely unhittable for us — log + leave it.
+    // Server says our normal weapon has no effect against the current target.
+    // Swap to the alternate immediately — the message won't stop just because we
+    // keep swinging the same weapon, so there's nothing to gain by tolerating a
+    // few before switching. Add the species to the room-scoped fail-set so the
+    // next target pick chooses the alternate preemptively. If we're already on
+    // the alternate when this fires, the monster is genuinely unhittable for us
+    // — log + leave it.
     private void OnWeaponNoEffect(MatchResult _)
     {
         if (!_isEnabled()) return;
@@ -745,17 +739,6 @@ public sealed partial class CombatManager : IDisposable
         {
             _log?.Warn(LogCategory,
                 $"weapon-no-effect on ALT against {species} — monster unhittable for us");
-            return;
-        }
-
-        int threshold = Math.Max(1, settings.NoEffectFailureThreshold);
-        _noEffectCounts.TryGetValue(species, out int count);
-        count++;
-        _noEffectCounts[species] = count;
-        if (count < threshold)
-        {
-            _log?.Combat(LogCategory,
-                $"weapon-no-effect species={species} count={count}/{threshold}");
             return;
         }
 

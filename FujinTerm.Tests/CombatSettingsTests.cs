@@ -43,14 +43,12 @@ public sealed class CombatSettingsTests
 
         Assert.Equal(0,  dto.MinMonstersInRoom);
         Assert.Equal(20, dto.MaxMonstersInRoom);
-        Assert.Equal(3,  dto.RunDistance);
+        Assert.Equal(2,  dto.RunDistance);
 
         // Flee defaults (graduated from the Other tab): retrace the way we
         // came (Backward) and break combat before the first flee move.
         Assert.Equal(RunDirection.Backward, dto.RunDirection);
         Assert.True(dto.BreakBeforeFleeing);
-
-        Assert.Equal(1, dto.NoEffectFailureThreshold);
 
         Assert.Equal(ThresholdMode.Percentage, dto.SpellManaThresholdMode);
 
@@ -127,7 +125,6 @@ public sealed class CombatSettingsTests
             RunDistance                = 5,
             RunDirection               = RunDirection.Forward,
             BreakBeforeFleeing         = false,
-            NoEffectFailureThreshold   = 3,
             SpellManaThresholdMode     = ThresholdMode.Absolute,
             ShowCombatRoundTotals      = true,
         };
@@ -162,7 +159,6 @@ public sealed class CombatSettingsTests
         Assert.Equal(dto.RunDistance,               round.RunDistance);
         Assert.Equal(dto.RunDirection,              round.RunDirection);
         Assert.Equal(dto.BreakBeforeFleeing,        round.BreakBeforeFleeing);
-        Assert.Equal(dto.NoEffectFailureThreshold,  round.NoEffectFailureThreshold);
         Assert.Equal(dto.SpellManaThresholdMode,    round.SpellManaThresholdMode);
         Assert.Equal(dto.ShowCombatRoundTotals,     round.ShowCombatRoundTotals);
     }

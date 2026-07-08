@@ -16,12 +16,33 @@ public interface IRecoverableEngine
     // "AutoLair".
     string Name { get; }
 
+    // The room this engine's current run started from — the anchor a flee
+    // retreats toward. HealthManager's Backward flee runs BFS from the
+    // current room to this origin and walks the first RunDistance directions
+    // of that path (the "reverse flee trail"). Anchoring on a FIXED origin is
+    // what keeps the retreat from bouncing back toward the fight: retracing
+    // the freshest movement history instead would, on each re-trigger, point
+    // the newest step straight back the way we just fled. Null when the engine
+    // has no meaningful origin (idle, or a legacy loop with no circle anchor)
+    // — flee then falls back to inverting the last sent direction.
+    RoomKey? JourneyOrigin { get; }
+
     // Direction the engine would send NEXT as part of its planned path, or
     // null when the engine has nothing planned (idle, or next step is a
     // non-move command). Used by the gate's tier-2 → tier-3 trigger that
     // fires when the next planned direction isn't available on the current
     // room's exits.
     Direction? PeekNextPlannedDirection();
+
+    // The next up-to-count directions the engine has planned, in order — the
+    // forward escape route a Forward-mode flee walks (RunDirection.Forward:
+    // keep pressing along our own route toward its destination rather than
+    // retreating). Fewer than count when the plan is shorter; empty when
+    // nothing move-shaped is planned. Collection STOPS at the first non-move
+    // step (a command / door / delay) so a flee only ever sends plain cardinal
+    // moves — it can't drive a door FSM mid-escape. A loop wraps around its
+    // circuit to fill the count.
+    IReadOnlyList<Direction> PeekPlannedDirections(int count);
 
     // Send a single direction directly — bypassing the engine's planning
     // queue — and call RoomTracker.NoteMoveSent so the tracker stays in

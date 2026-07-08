@@ -83,8 +83,9 @@ public static class KnownPatterns
 
     // "Your weapon has no effect against this monster!" — server's signal that
     // the currently-equipped weapon can't damage the current target.
-    // CombatManager swaps to the AlternateWeapon (or marks the monster
-    // unhittable if already on alt) per CombatSettings.NoEffectFailureThreshold.
+    // CombatManager swaps to the AlternateWeapon on the first such line (or
+    // marks the monster unhittable if already on alt) — continuing to swing the
+    // same weapon can't turn a no-effect into a hit.
     public const string WeaponNoEffect       = "combat.weapon-no-effect";
 
     // "Your fists have no effect against this monster!" — our weapon fell off

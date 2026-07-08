@@ -1,14 +1,10 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.18.7**
-> - Fixed walker crash when backtracking a room that had no active path
-> - Combat round counter now closes each round on the 5-second heartbeat instead of lagging a line behind
-> - Stuck "fighting" chip after walking into a new room clears — a stale walk-in no longer carries past the move
-> - Walk-to route overlay trims to the current room mid-combat instead of waiting for the whole room to clear
-> - Flipping a currency from Collect to Discard now drops the already-carried balance, not just fresh pickups
-> - Starting a manual run while auto-looping hands off to walk-to cleanly, without the destination chip flickering
-> - Examining a monster no longer misreads its name as the room name, so position stays in sync
+> **Version 1.19.0**
+> - Auto-flee now walks the real graph path instead of repeating one direction into a wall — backward retraces the reverse trail toward the run's start, forward keeps heading along the planned route
+> - Flee distance default lowered from 3 rooms to 2
+> - Auto-attack swaps to the alternate weapon on the first "no effect" against a monster — the No-effect threshold picker is gone
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

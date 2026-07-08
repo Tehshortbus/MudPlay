@@ -152,6 +152,28 @@ public sealed class AutoWalkManagerTests : IDisposable
         Assert.Equal(2, h.Events.Count(e => e.Kind == WalkEventKind.StepCompleted));
     }
 
+    [Fact]
+    public void JourneyOrigin_TracksWalkSource_AndClearsWhenIdle()
+    {
+        // The flee anchor: JourneyOrigin is null while idle, becomes the room
+        // the walk was planned from once a walk starts, and clears back to null
+        // when the walk finishes.
+        Harness h = NewHarness();
+        Assert.Null(h.Walker.JourneyOrigin);
+
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Walker.WalkTo(new RoomKey(1, 3));
+        Assert.Equal(new RoomKey(1, 1), h.Walker.JourneyOrigin);
+
+        // Walk to completion — origin clears when the walker returns to Idle.
+        h.Tracker.NoteRoomObserved(new RoomObservation("B",
+            new HashSet<Direction> { Direction.N, Direction.S }));
+        h.Tracker.NoteRoomObserved(new RoomObservation("C",
+            new HashSet<Direction> { Direction.S }));
+        Assert.Equal(WalkState.Idle, h.Walker.State);
+        Assert.Null(h.Walker.JourneyOrigin);
+    }
+
     // ----- blocked retry --------------------------------------------
 
     [Fact]
