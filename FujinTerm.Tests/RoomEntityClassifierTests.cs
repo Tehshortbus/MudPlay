@@ -731,6 +731,75 @@ public sealed class RoomEntityClassifierTests
         Assert.Equal(RoomObservationSource.RoomChange, h.Observations[1].Source);
     }
 
+    [Fact]
+    public void MoveConfirm_PursuerArrivalAfterNewRoomAlsoHere_Kept_StopAndFight()
+    {
+        // Live repro (stock-20260708-000606): a monster that PURSUES us into the
+        // new room announces itself with the same "<mob> walks in from <dir>."
+        // arrival line. When that line lands in the window between the new room's
+        // "Also here:" parse and its exits line (which confirms the move), it flips
+        // Current.Source AlsoHere → Arrival right as the move-confirm decides
+        // keep-vs-wipe. The old rule wiped it — the gate oscillated and the walker
+        // grabbed a step, dragging us + the pursuer onward. Because a NEW-room
+        // Also-here parsed before the arrival (_lastAlsoHereAt >= moveAt), this is a
+        // genuine new-room pursuer and must be KEPT so combat holds (stop & fight).
+        using TrackerHarness h = new();
+        h.AddMonster(1, "forest spider");
+
+        h.Tracker.NoteRoomObserved(
+            new RoomObservation("Town Gates", new HashSet<Direction> { Direction.N }));
+
+        DateTimeOffset moveAt = DateTimeOffset.UtcNow.AddSeconds(-1);
+        h.Tracker.NoteMoveSent(Direction.N, moveAt);
+
+        // New room's occupants parse (spider present), THEN the pursue-arrival
+        // line lands before the exits line confirms.
+        h.FeedAlsoHere("Also here: forest spider.");
+        RoomEntity spider = new("forest spider", "forest spider", EntityKind.Monster, 1);
+        h.Classifier.AppendArrivalEntity(spider, "A forest spider walks in from the south.");
+        Assert.Equal(RoomObservationSource.Arrival, h.Classifier.Current!.Value.Source);
+
+        int before = h.Observations.Count;
+        h.Tracker.NoteRoomObserved(
+            new RoomObservation("North Square", new HashSet<Direction> { Direction.S }));
+
+        // No wipe: the pursuer survives, combat stays engaged.
+        Assert.Equal(before, h.Observations.Count);
+        Assert.Equal(RoomObservationSource.Arrival, h.Classifier.Current!.Value.Source);
+        Assert.NotEmpty(h.Classifier.Current.Value.Entities);
+    }
+
+    [Fact]
+    public void MoveConfirm_PursuerArrival_WhileFleeing_Wiped_KeepRunning()
+    {
+        // Same shape as the stop-and-fight case, but we're actively fleeing. A
+        // pursuer caught mid-flee must NOT re-arm the gate — we keep running
+        // instead of turning to fight the thing we're fleeing. The flee probe
+        // returning true suppresses the pursuer-keep, so the wipe stands.
+        using TrackerHarness h = new();
+        h.AddMonster(1, "forest spider");
+        h.Classifier.FleeProbe = () => true;
+
+        h.Tracker.NoteRoomObserved(
+            new RoomObservation("Town Gates", new HashSet<Direction> { Direction.N }));
+
+        DateTimeOffset moveAt = DateTimeOffset.UtcNow.AddSeconds(-1);
+        h.Tracker.NoteMoveSent(Direction.N, moveAt);
+
+        h.FeedAlsoHere("Also here: forest spider.");
+        RoomEntity spider = new("forest spider", "forest spider", EntityKind.Monster, 1);
+        h.Classifier.AppendArrivalEntity(spider, "A forest spider walks in from the south.");
+
+        int before = h.Observations.Count;
+        h.Tracker.NoteRoomObserved(
+            new RoomObservation("North Square", new HashSet<Direction> { Direction.S }));
+
+        // Wipe fires: pursuer dropped so we don't re-engage mid-flee.
+        Assert.Equal(before + 1, h.Observations.Count);
+        Assert.Empty(h.Observations[^1].Entities);
+        Assert.Equal(RoomObservationSource.RoomChange, h.Observations[^1].Source);
+    }
+
     // ----- look-direction peek suppression ---------------------------
     //
     // A `look <dir>` peek renders a FULL room display (name, "You notice…",

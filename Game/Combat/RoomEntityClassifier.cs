@@ -47,7 +47,16 @@ public sealed class RoomEntityClassifier : IDisposable
     private Terminal.LineExtractor? _lines;
     private string? _alsoHereBuffer;     // multi-line continuation
     private string? _alsoHereRawFirst;   // raw line that started the buffer
+    private DateTimeOffset? _lastAlsoHereAt;  // when the last real "Also here:" parsed
     private bool _disposed;
+
+    // Late-wired flee probe (HealthManager is constructed after this classifier,
+    // so it can't come through the ctor). Returns true while we're actively
+    // fleeing — in that window a pursuing monster must NOT be kept across the room
+    // change, so the confirmed-move wipe stands and we keep running rather than
+    // halting to fight. Null/unset reads as "not fleeing" (stop-and-fight), the
+    // normal case.
+    public Func<bool>? FleeProbe { get; set; }
 
     // Fires after each successful "Also here:" parse. Subscribers run on the
     // MessageRouter's marshalled thread — the UI thread in normal app use; the
@@ -175,6 +184,7 @@ public sealed class RoomEntityClassifier : IDisposable
 
         RoomEntitiesObservation obs = new(rawFirst, entities, DateTimeOffset.Now);
         Current = obs;
+        _lastAlsoHereAt = obs.At;
         EntitiesObserved?.Invoke(obs);
     }
 
@@ -203,6 +213,7 @@ public sealed class RoomEntityClassifier : IDisposable
 
         RoomEntitiesObservation obs = new(rawLine, entities, DateTimeOffset.Now);
         Current = obs;
+        _lastAlsoHereAt = obs.At;
         EntitiesObserved?.Invoke(obs);
     }
 
@@ -430,16 +441,47 @@ public sealed class RoomEntityClassifier : IDisposable
         // the player stepped into a fresh, empty room: the Combat gate
         // stayed asserted, the client kept firing the attack command, and
         // the game answered "Your command had no effect." while the map's
-        // fighting chip hung with no monster in the room. Restricting the
-        // keep to AlsoHere-sourced observations wipes that ghost. (Death /
-        // RoomChange sources are likewise stale old-room data and fall
-        // through to the wipe.) DateTimeOffset comparison is offset-aware,
-        // so the classifier's local .Now timestamps and the tracker's UTC
-        // move time compare on the same absolute instant.
+        // fighting chip hung with no monster in the room. So the base keep
+        // is AlsoHere-sourced observations only. (Death / RoomChange sources
+        // are likewise stale old-room data and fall through to the wipe.)
+        // DateTimeOffset comparison is offset-aware, so the classifier's
+        // local .Now timestamps and the tracker's UTC move time compare on
+        // the same absolute instant.
         if (_roomTracker is { LastMoveSentAt: { } moveAt }
             && Current is { Entities.Count: > 0, Source: RoomObservationSource.AlsoHere } cur
             && cur.At >= moveAt)
         {
+            return;
+        }
+
+        // But a monster that PURSUES us into the new room announces itself with
+        // the same "<mob> walks in from <dir>." arrival line, and when that line
+        // lands in the narrow window between the new room's "Also here:" parse and
+        // its "Obvious exits:" line (which confirms the move and fires this
+        // handler), it flips Current.Source AlsoHere → Arrival right as we decide
+        // keep-vs-wipe. The base rule above then wipes a monster that is genuinely
+        // in the room with us — the gate oscillates, and the walker grabs a step
+        // in the clear-window, dragging us (and the pursuer) onward.
+        //
+        // Distinguish a pursuer from the stale old-room arrival by whether a
+        // NEW-room "Also here:" parsed before the arrival: _lastAlsoHereAt >=
+        // moveAt means the new room already displayed its occupants, so this
+        // arrival is a new-room pursuer → keep it (stop and fight). A stale
+        // old-room arrival has no post-move Also-Here anchoring it (empty new
+        // rooms never emit one), so _lastAlsoHereAt stays pre-move and it still
+        // wipes. Suppressed while fleeing: a pursuer caught mid-flee must NOT
+        // re-arm the gate — we keep running instead of turning to fight it.
+        if (_roomTracker is { LastMoveSentAt: { } confirmedMoveAt }
+            && Current is { Entities.Count: > 0, Source: RoomObservationSource.Arrival } arr
+            && arr.At >= confirmedMoveAt
+            && _lastAlsoHereAt is { } alsoHereAt
+            && alsoHereAt >= confirmedMoveAt
+            && alsoHereAt <= arr.At
+            && !(FleeProbe?.Invoke() ?? false))
+        {
+            _log?.Debug(LogCategory,
+                "kept pursuer across room change (stop-and-fight) — arrival " +
+                "post-dates new-room Also-here, not fleeing");
             return;
         }
 

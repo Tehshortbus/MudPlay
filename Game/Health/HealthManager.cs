@@ -339,6 +339,15 @@ public sealed class HealthManager : IDisposable
     // can't burn the reaction on every HP-changed event.
     public bool FledThisCombat => _fledThisCombat;
 
+    // True while an HP-triggered flee retreat is actively in progress — the
+    // engine is paused and we're walking (or parked awaiting HP recovery on) the
+    // flee route. Drops back to false once HP climbs above the run-trigger and
+    // the engine resumes. The room-entity classifier reads this so a monster that
+    // pursues us mid-flee does NOT re-arm the combat gate: we keep running instead
+    // of turning to fight the thing we're fleeing. Distinct from FledThisCombat,
+    // which stays true for the rest of the combat even after the retreat ends.
+    public bool IsFleeing => _fleeEngine is not null;
+
     private void OnStateChanged(object? sender, PropertyChangedEventArgs e)
     {
         switch (e.PropertyName)

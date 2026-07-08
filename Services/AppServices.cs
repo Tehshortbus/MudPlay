@@ -2269,6 +2269,12 @@ public sealed class AppServices
             // escape — a flee just needs to physically retreat along the graph.
             findReversePath: (from, to) => Bfs.FindPath(from, to));
 
+        // Late-wire the classifier's flee probe now that Health exists (it's
+        // built after RoomClassifier). While fleeing, a monster that pursues us
+        // into the next room must not re-arm the Combat gate — the classifier
+        // reads this to keep running instead of halting to fight the pursuer.
+        RoomClassifier.FleeProbe = () => Health.IsFleeing;
+
         // Re-check the emergency hangup whenever the room's occupants change: a
         // hostile that wanders in or spawns while we're already below the trigger
         // won't touch our own PlayerState, so nothing else would drive the check.
