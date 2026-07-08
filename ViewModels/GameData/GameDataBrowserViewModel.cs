@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
+using FujinTerm.Game;
 using FujinTerm.Game.Map;
 using FujinTerm.Services;
 using FujinTerm.ViewModels.GameData.Tables;
@@ -58,9 +59,10 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject, IDispos
     private readonly KeybindingStore? _keybindings;
     private readonly ProfileService? _profile;
     private readonly RoomGraphManager? _roomGraph;
+    private readonly PlayerStats? _playerStats;
 
     public GameDataBrowserViewModel(GameDataCache gameData, string? initialSectionId = null)
-        : this(gameData, triggers: null, aliases: null, players: null, macros: null, messages: null, monsterMessages: null, monsterOverlaySeed: null, itemOverlaySeed: null, resolver: null, dialogs: null, keybindings: null, profile: null, roomGraph: null, initialSectionId: initialSectionId) { }
+        : this(gameData, triggers: null, aliases: null, players: null, macros: null, messages: null, monsterMessages: null, monsterOverlaySeed: null, itemOverlaySeed: null, resolver: null, dialogs: null, keybindings: null, profile: null, roomGraph: null, playerStats: null, initialSectionId: initialSectionId) { }
 
     public GameDataBrowserViewModel(
         GameDataCache gameData,
@@ -77,6 +79,7 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject, IDispos
         KeybindingStore? keybindings = null,
         ProfileService? profile = null,
         RoomGraphManager? roomGraph = null,
+        PlayerStats? playerStats = null,
         string? initialSectionId = null)
     {
         ArgumentNullException.ThrowIfNull(gameData);
@@ -94,6 +97,7 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject, IDispos
         _keybindings = keybindings;
         _profile = profile;
         _roomGraph = roomGraph;
+        _playerStats = playerStats;
         _gameData.ActiveSetChanged += OnActiveSetChanged;
 
         SeedSections();
@@ -205,7 +209,7 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject, IDispos
         // ----- MDB-derived (bottom group) ---------------------------------
 
         Sections.Add(new MonstersSectionViewModel(_gameData, _resolver, _dialogs, _monsterMessages, _monsterOverlaySeed, _roomGraph));
-        Sections.Add(new ItemsSectionViewModel(_gameData, _resolver, _dialogs, _itemOverlaySeed));
+        Sections.Add(new ItemsSectionViewModel(_gameData, _resolver, _dialogs, _itemOverlaySeed, _playerStats));
         Sections.Add(new SpellsSectionViewModel(_gameData, _resolver, _messages, _dialogs));
         Sections.Add(new RoomsSectionViewModel(_gameData, _resolver));
         Sections.Add(new LairsSectionViewModel(_gameData, _resolver));
@@ -224,6 +228,12 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject, IDispos
         void AddPlaceholder(string id, string title, string phase, string description)
             => Sections.Add(new PlaceholderGameDataSectionViewModel(id, title, phase, description));
     }
+
+    // External entry point (e.g. the Item Finder's row double-click) to jump the browser
+    // to a specific record in a table section. Shares the same activate-then-defer routing
+    // as an in-browser cross-section navigation.
+    public void NavigateToRecord(string targetSectionId, Func<Tables.GameDataRow, bool> rowSelector)
+        => OnNavigationRequested(new NavigationRequest(targetSectionId, rowSelector));
 
     // Route a section's NavigationRequested event to the named target: activate the
     // target tab, then defer the row-selection one dispatcher tick so the DataGrid has a

@@ -3,6 +3,8 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.Input;
+using FujinTerm.Game;
+using FujinTerm.Game.Calculators;
 using FujinTerm.Game.GameData;
 using FujinTerm.Game.Spells;
 using FujinTerm.Models.GameData;
@@ -26,6 +28,7 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
     private readonly DialogService? _dialogs;
     private readonly SettingsResolver? _resolverRef;
     private readonly ItemOverlaySeedStore? _overlaySeed;
+    private readonly PlayerStats? _playerStats;
 
     public override string Id => "items";
     public override string Title => "Items";
@@ -77,13 +80,15 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
         GameDataCache cache,
         SettingsResolver? resolver = null,
         DialogService? dialogs = null,
-        ItemOverlaySeedStore? overlaySeed = null)
+        ItemOverlaySeedStore? overlaySeed = null,
+        PlayerStats? playerStats = null)
         : base(cache, resolver)
     {
         _cache = cache;
         _dialogs = dialogs;
         _resolverRef = resolver;
         _overlaySeed = overlaySeed;
+        _playerStats = playerStats;
         OpenEditAsyncCommand = new AsyncRelayCommand<GameDataRow?>(OpenEditAsync);
     }
 
@@ -106,8 +111,8 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
             "Items", wcc, seedDefaults)
             ?? seedDefaults;
 
-        // MDB-derived display fields that don't roundtrip through the
-        // overlay — the dialog renders them as read-only.
+        // MDB-derived display rows that don't roundtrip through the overlay —
+        // the dialog renders them as the read-only "Other Info" pane.
         ItemMdbView mdb = BuildMdbView(wcc);
 
         ItemEditDialogViewModel vm = new(
@@ -115,11 +120,7 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
             mdbName:      row.Get("Name") ?? string.Empty,
             existing:     existing,
             currentTier:  row.SourceTier,
-            mdbInfo:      mdb.OtherInfo,
-            weight:       mdb.Weight,
-            price:        mdb.Price,
-            itemTypeText: mdb.ItemTypeText,
-            bodyLocation: mdb.BodyLocation);
+            mdbInfo:      mdb.OtherInfo);
 
         ItemEditResult? result = await _dialogs.OpenWindowAsync<ItemEditDialogViewModel, ItemEditResult>(vm);
         if (result is null) return;
@@ -157,15 +158,13 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
     private ItemMdbView BuildMdbView(string wccNoStr)
     {
         List<KeyValuePair<string, string>> otherInfo = new();
-        string weight = string.Empty, price = string.Empty;
-        string itemTypeText = string.Empty, bodyLocation = "None";
 
         if (!int.TryParse(wccNoStr, out int wccNo))
-            return new ItemMdbView(otherInfo, weight, price, itemTypeText, bodyLocation);
+            return new ItemMdbView(otherInfo);
 
         JsonDocument? doc = _cache.GetRawTable("Items");
         if (doc is null)
-            return new ItemMdbView(otherInfo, weight, price, itemTypeText, bodyLocation);
+            return new ItemMdbView(otherInfo);
 
         // Spell-effect renderer for weapon use-cast / proc rows. An item's
         // cast spell scales to the item's required level (ability code 135 =
@@ -199,17 +198,16 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
             if (numProp.GetInt32() != wccNo) continue;
 
             int itemType = ReadInt(el, "ItemType");
-            int worn     = ReadInt(el, "Worn");
             string obtainedFrom = ReadString(el, "Obtained From");
-
-            // ----- Details section (left pane) -----
-            weight       = ReadString(el, "Encum");
-            price        = FormatPrice(el);
-            itemTypeText = LookupEnums.FormatItemType(ReadString(el, "ItemType")) ?? string.Empty;
-            bodyLocation = worn == 0 ? "None" : (LookupEnums.FormatWornSlot(ReadString(el, "Worn")) ?? "None");
 
             // ----- Other Info pane (right pane) -----
             otherInfo.Add(new KeyValuePair<string, string>("WCC No", wccNoStr));
+
+            // Weight (Encum) — item type and body slot are obvious from the
+            // rows/columns above, so only weight moves to this pane.
+            string weight = ReadString(el, "Encum");
+            if (!string.IsNullOrEmpty(weight))
+                otherInfo.Add(new KeyValuePair<string, string>("Weight", weight));
 
             int limit = ReadInt(el, "Limit");
             if (limit > 0)
@@ -369,17 +367,19 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
             if (!string.IsNullOrEmpty(droppedBy))
                 otherInfo.Add(new KeyValuePair<string, string>("Dropped By", droppedBy));
 
-            // Bought / sold — shop buy/sell locations. Read-only MDB info
-            // (the user can't assign which shops carry an item), so it
-            // lives in this "Other Info" pane rather than the editable
-            // Details section.
-            string boughtSold = ResolveBoughtSold(obtainedFrom);
+            // Bought / sold — shop buy/sell locations, each followed by an
+            // "@<charm>cha BUY: … SELL: …" line priced for the current
+            // character's charm (or the neutral retail charm of 50 when it's
+            // unknown) under the active realm's formula.
+            double baseCopper = ShopPriceCalculator.ToCopper(ReadInt(el, "Price"), ReadInt(el, "Currency"));
+            int charm = (_playerStats?.Charm ?? 0) > 0 ? _playerStats!.Charm : 50;
+            string boughtSold = ResolveBoughtSold(obtainedFrom, baseCopper, charm, _cache.ActiveRealm);
             if (!string.IsNullOrEmpty(boughtSold))
                 otherInfo.Add(new KeyValuePair<string, string>("Bought / sold", boughtSold));
 
             break;
         }
-        return new ItemMdbView(otherInfo, weight, price, itemTypeText, bodyLocation);
+        return new ItemMdbView(otherInfo);
     }
 
     // ----- Ability-row formatting helpers -----
@@ -503,15 +503,6 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
         };
     }
 
-    // Renders "5 Silver" / "1 Gold" from the (Price, Currency) pair.
-    private static string FormatPrice(JsonElement el)
-    {
-        string price = ReadString(el, "Price");
-        if (string.IsNullOrWhiteSpace(price) || price == "0") return "Free";
-        string currency = LookupEnums.FormatCurrency(ReadString(el, "Currency")) ?? string.Empty;
-        return string.IsNullOrEmpty(currency) ? price : $"{price} {currency}";
-    }
-
     // Bought/sold: enumerate every Shop #N / Shop(flag) #N reference in Obtained From, look
     // each shop's host room up via Shops.AssignedTo + Rooms.json, and render one line per shop
     // in the form:
@@ -520,9 +511,14 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
     //   {RoomName} (NO GEN)     - {map}/{room}      // for Shop(nogen) #N
     // Plain Shop #N (no flag) is normal buy + sell, no suffix. Falls back to the raw shop
     // token when the shop / room isn't in the active set.
-    private string ResolveBoughtSold(string obtainedFrom)
+    private string ResolveBoughtSold(string obtainedFrom, double baseCopper, int charm, RealmType realm)
     {
         if (string.IsNullOrWhiteSpace(obtainedFrom)) return string.Empty;
+
+        // SELL ignores shop markup, so it's identical at every shop for a given
+        // charm — compute it once and reuse on each shop's price line.
+        double sellCopper = ShopPriceCalculator.SellCopper(baseCopper, charm, realm);
+
         List<string> lines = new();
         foreach (string token in obtainedFrom.Split(','))
         {
@@ -541,13 +537,22 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
 
             string? flag = ExtractShopFlag(prefix);
 
-            // Resolve shop → room.
-            (string? roomName, int mapNo, int roomNo) = LookupShopRoom(shopId);
+            // Resolve shop → room + markup.
+            (string? roomName, int mapNo, int roomNo, int markup) = LookupShopRoom(shopId);
             string suffix = flag is null ? string.Empty : $" ({flag.ToUpperInvariant()})";
             string locator = mapNo > 0 ? $"{mapNo}/{roomNo}" : "?";
             string name = string.IsNullOrEmpty(roomName) ? $"Shop #{shopId}" : roomName;
 
             lines.Add($"{name}{suffix} - {locator}");
+
+            // Priced line under the shop — only meaningful when the item
+            // carries a value (Free items have no buy/sell figure).
+            if (baseCopper > 0)
+            {
+                double buyCopper = ShopPriceCalculator.BuyCopper(baseCopper, markup, charm);
+                lines.Add($"@{charm}cha BUY: {ShopPriceCalculator.FormatCopper(buyCopper)} " +
+                          $"SELL: {ShopPriceCalculator.FormatCopper(sellCopper)}");
+            }
         }
         return string.Join("\n", lines);
     }
@@ -569,39 +574,41 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
         };
     }
 
-    // Resolves a Shop.Number → (Room.Name, map, room) via the active set's Shops.json
-    // (AssignedTo = "Room {map}/{room}") + Rooms.json. Returns (null, 0, 0) when any lookup
-    // misses.
-    private (string? RoomName, int Map, int Room) LookupShopRoom(int shopId)
+    // Resolves a Shop.Number → (Room.Name, map, room, markup%) via the active set's Shops.json
+    // (AssignedTo = "Room {map}/{room}", Markup% = the shop's buy surcharge) + Rooms.json.
+    // Returns (null, 0, 0, 0) when the shop lookup misses.
+    private (string? RoomName, int Map, int Room, int Markup) LookupShopRoom(int shopId)
     {
         JsonDocument? shopsDoc = _cache.GetRawTable("Shops");
-        if (shopsDoc is null) return (null, 0, 0);
+        if (shopsDoc is null) return (null, 0, 0, 0);
 
         string? assigned = null;
+        int markup = 0;
         foreach (JsonElement el in shopsDoc.RootElement.EnumerateArray())
         {
             if (!el.TryGetProperty("Number", out JsonElement n)) continue;
             if (n.ValueKind != JsonValueKind.Number) continue;
             if (n.GetInt32() != shopId) continue;
             assigned = ReadString(el, "Assigned To");
+            markup = ReadInt(el, "Markup%");
             break;
         }
-        if (string.IsNullOrWhiteSpace(assigned)) return (null, 0, 0);
+        if (string.IsNullOrWhiteSpace(assigned)) return (null, 0, 0, markup);
 
         // AssignedTo format: "Room {map}/{room}" (e.g. "Room 1/2334"); a shop
         // can host out of several rooms, listed comma-separated ("Room 1/169,
         // Room 1/291"). Resolve the first — it's the canonical coordinate the
         // game reports and what the bought/sold line shows.
         string firstRoom = assigned.Split(',')[0].Trim();
-        if (!firstRoom.StartsWith("Room ", StringComparison.Ordinal)) return (null, 0, 0);
+        if (!firstRoom.StartsWith("Room ", StringComparison.Ordinal)) return (null, 0, 0, markup);
         string remainder = firstRoom[5..].Trim();
         int slash = remainder.IndexOf('/');
-        if (slash <= 0) return (null, 0, 0);
-        if (!int.TryParse(remainder[..slash], out int mapNo)) return (null, 0, 0);
-        if (!int.TryParse(remainder[(slash + 1)..], out int roomNo)) return (null, 0, 0);
+        if (slash <= 0) return (null, 0, 0, markup);
+        if (!int.TryParse(remainder[..slash], out int mapNo)) return (null, 0, 0, markup);
+        if (!int.TryParse(remainder[(slash + 1)..], out int roomNo)) return (null, 0, 0, markup);
 
         JsonDocument? roomsDoc = _cache.GetRawTable("Rooms");
-        if (roomsDoc is null) return (null, mapNo, roomNo);
+        if (roomsDoc is null) return (null, mapNo, roomNo, markup);
 
         foreach (JsonElement el in roomsDoc.RootElement.EnumerateArray())
         {
@@ -610,9 +617,9 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
             if (m.ValueKind != JsonValueKind.Number || r.ValueKind != JsonValueKind.Number) continue;
             if (m.GetInt32() != mapNo || r.GetInt32() != roomNo) continue;
             string name = ReadString(el, "Name");
-            return (string.IsNullOrEmpty(name) ? null : name, mapNo, roomNo);
+            return (string.IsNullOrEmpty(name) ? null : name, mapNo, roomNo, markup);
         }
-        return (null, mapNo, roomNo);
+        return (null, mapNo, roomNo, markup);
     }
 
     // Comma-joined list of monster names parsed from Obtained From's "Monster #N(X%)" tokens.
@@ -657,9 +664,5 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
 
     // Bundle returned by BuildMdbView.
     private sealed record ItemMdbView(
-        IReadOnlyList<KeyValuePair<string, string>> OtherInfo,
-        string Weight,
-        string Price,
-        string ItemTypeText,
-        string BodyLocation);
+        IReadOnlyList<KeyValuePair<string, string>> OtherInfo);
 }

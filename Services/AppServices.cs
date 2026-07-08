@@ -34,6 +34,15 @@ public sealed class AppServices
     // Modeless-only window spawner (no ShowDialog wrapper).
     public DialogService Dialogs { get; }
 
+    // Opens the single-instance Game Data Browser at the Items section,
+    // pre-selected to a given item's record. Only MainWindowViewModel can
+    // spawn / toggle that window, so it registers the opener here and deep
+    // VMs (the Item Finder's row double-click) reach it without a back-
+    // reference to the main VM. No-op until the main VM binds it.
+    private Action<int>? _itemGameDataOpener;
+    public void SetItemGameDataOpener(Action<int> opener) => _itemGameDataOpener = opener;
+    public void OpenItemGameData(int itemNumber) => _itemGameDataOpener?.Invoke(itemNumber);
+
     // Single source of truth for "are you sure?" prompts (exit /
     // hangup / save / delete). Lives at Global tier; mirrored from
     // SettingsService on startup and every save.

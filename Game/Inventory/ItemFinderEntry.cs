@@ -123,6 +123,10 @@ public sealed record ItemFinderEntry
     // for the lifetime of the cached Items JsonDocument.
     public required JsonElement Row { get; init; }
 
+    // The item's MDB record number — the key the Game Data Browser selects on
+    // when the finder double-clicks through to the item's record.
+    public int Number => GetInt(Row, "Number");
+
     // ----- grid display (blank-on-zero so the dense grid stays readable) -----
 
     // Weapon damage as "min-max", blank for non-weapons.

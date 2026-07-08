@@ -11,12 +11,12 @@ namespace FujinTerm.ViewModels.GameData.Edit;
 // the editable overlay fields (Use-tier, Name, the 11 Options checkboxes, Min/Max carry
 // policy, IfNeededDo action) alongside a read-only MDB info pane on the right.
 //
-// The Details section mixes MDB-derived read-only fields (Weight, Price, Item type, Body
-// location) with overlay-editable carry-policy fields; the read-only Bought/sold shop
-// list lives in the right-pane "Other Info" with the rest of the non-assignable MDB
-// data. MDB-canonical stats (ItemType, Worn slot, ArmourType, ArmourClass, etc.) are
-// deliberately not user-overridable — every BBS supplies a concrete MDB so the MDB is
-// the source of truth; only behaviour fields flow through the overlay.
+// The Details section holds only the overlay-editable carry-policy fields (Min/Max);
+// every read-only MDB fact — weight, item type, body slot, and the charm-priced
+// bought/sold shop list — lives in the right-pane "Other Info". MDB-canonical stats
+// (ItemType, Worn slot, ArmourType, ArmourClass, etc.) are deliberately not
+// user-overridable — every BBS supplies a concrete MDB so the MDB is the source of
+// truth; only behaviour fields flow through the overlay.
 public sealed partial class ItemEditDialogViewModel : ObservableObject, IDialogViewModel<ItemEditResult>
 {
     public event Action<ItemEditResult?>? CloseRequested;
@@ -46,12 +46,6 @@ public sealed partial class ItemEditDialogViewModel : ObservableObject, IDialogV
     // "All" is a legit MegaMUD sentinel here, so stored as a free string.
     [ObservableProperty] private string _maxToGet = string.Empty;
 
-    // ----- Read-only MDB-derived display (Details section) -----
-    public string Weight       { get; }
-    public string Price        { get; }
-    public string ItemTypeText { get; }
-    public string BodyLocation { get; }
-
     // Right-pane "Other Info" key/value list (read-only MDB fields).
     public IReadOnlyList<KeyValuePair<string, string>> MdbInfo { get; }
 
@@ -65,20 +59,12 @@ public sealed partial class ItemEditDialogViewModel : ObservableObject, IDialogV
         string mdbName,
         ItemOverlay? existing,
         SettingsTier currentTier,
-        IReadOnlyList<KeyValuePair<string, string>> mdbInfo,
-        string weight,
-        string price,
-        string itemTypeText,
-        string bodyLocation)
+        IReadOnlyList<KeyValuePair<string, string>> mdbInfo)
     {
         WccNoStr     = wccNoStr;
         Name         = existing?.Name ?? mdbName;
         UseTier      = currentTier;
         MdbInfo      = mdbInfo;
-        Weight       = weight;
-        Price        = price;
-        ItemTypeText = itemTypeText;
-        BodyLocation = bodyLocation;
 
         AutoCollect     = existing?.AutoCollect     ?? false;
         AutoDiscard     = existing?.AutoDiscard     ?? false;

@@ -2,6 +2,12 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.18.0
+
+- Item Game Data now prices each shop the item is bought/sold at — a line under every shop shows `@<charm>cha BUY: … SELL: …` for the character's charm (or retail 50 when unknown), branched to the active realm's stock/paradigm formula
+- Weight moved into the right-hand info pane; the redundant read-only Body location / Item type / Price fields dropped from the left edit pane
+- Double-clicking an Item Finder row opens the Game Data Browser at that item's record
+
 ## 1.17.4
 
 - No more speculative `eq` on logon — the weapon-swap fast path waits for the first inventory dump instead of drawing "You do not have X left unequipped." for gear that's already worn
