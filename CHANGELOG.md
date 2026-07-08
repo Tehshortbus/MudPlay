@@ -2,6 +2,13 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.20.3
+
+- Attack-last re-fire opens with `bs <target>` when the surprise round is still armed, instead of firing the normal attack (`pu`) and wasting the backstab — the re-fire still lands us last in line, just with the opener
+- Kill re-pick no longer double-swings: the interrupt-resume stands down when a fresh attack just went out, so the surviving mob isn't attacked twice in the same round
+- Utilize-shadowrest toggle is now hidden on realms without the ability (stock), showing only where the active game data ships a ShadowRest class
+- bug reports addressed: stock-20260707-203503, stock-20260708-074641
+
 ## 1.20.0
 
 - Backstab surprise round is now tracked to resolution: the first swing after `bs` is read for the `surprise` tell, so a landed vs failed opener is detected reliably
@@ -12,24 +19,29 @@ Notable changes per merged PR, **newest first**. The top of the [README](README.
 - Auto-hide is now suppressed while in a party, so a member can't hide itself out of reach of party heals and buffs
 - ShadowRest (Paradigm): solo, stealthed classes with the ability can now rest through a monster in the room — combat stands down while recovering, then re-opens with a backstab at rest-max
 - New Settings → Health → Resting Options → "Utilize shadowrest" toggle (the category was renamed from "Meditation")
+- bug reports addressed: stock-20260708-074756, stock-20260708-074918, stock-20260708-075121
 
 ## 1.19.4
 
 - Backstab re-opens on every confirmed room change, so hand-walking (not just the walk-to/loop engines) re-arms the surprise round instead of falling back to a normal attack after the session's first backstab
+- bug reports addressed: stock-20260707-235708
 
 ## 1.19.3
 
 - Attack-last now sends one re-fire per round instead of one per party member — a round's burst of party attack announcements on our target coalesces into a single attack command, landing after the last announce so we stay last without spamming the wire
+- bug reports addressed: stock-20260708-000134, stock-20260708-000419
 
 ## 1.19.1
 
 - Backstab fires only on a room's true opening round — after the first action (including a cast-interrupt re-attack or a target re-pick) it falls back to the normal attack priority instead of re-sending `bs` into a fight already underway
+- bug reports addressed: stock-20260707-235548
 
 ## 1.19.0
 
 - Auto-flee now walks the real graph path instead of repeating one direction into a wall — backward retraces the reverse trail toward the run's start, forward keeps heading along the planned route
 - Flee distance default lowered from 3 rooms to 2
 - Auto-attack swaps to the alternate weapon on the first "no effect" against a monster — the No-effect threshold picker is gone (swinging the same weapon can't turn a no-effect into a hit)
+- bug reports addressed: stock-20260707-205136
 
 ## 1.18.7
 
@@ -40,6 +52,7 @@ Notable changes per merged PR, **newest first**. The top of the [README](README.
 - Flipping a currency from Collect to Discard now drops the already-carried balance, not just fresh pickups
 - Starting a manual run while auto-looping hands off to walk-to cleanly, without the destination chip flickering
 - Examining a monster no longer misreads its name as the room name, so position stays in sync
+- bug reports addressed: Crash-20260707-210804, stock-20260707-203425, stock-20260707-203928, stock-20260707-204056, stock-20260707-205556
 
 ## 1.18.0
 

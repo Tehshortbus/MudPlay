@@ -215,6 +215,7 @@
                           ToolTip.Tip="Sit and meditate first when MA is also low; rest only after MA tops off."/>
                 <CheckBox Content="Utilize shadowrest"
                           IsChecked="{Binding UtilizeShadowRest, Mode=TwoWay}"
+                          IsVisible="{Binding ShadowRestAvailable}"
                           ToolTip.Tip="For ShadowRest classes (Paradigm): when solo and hidden/sneaking, rest in place even with a monster in the room — the game keeps you un-attacked while stealthed. Inert on classes without the ability."/>
 
                 <!-- ============ Resting commands ============ -->

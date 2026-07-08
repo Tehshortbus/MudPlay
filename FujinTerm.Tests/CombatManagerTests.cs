@@ -1469,6 +1469,44 @@ public sealed class CombatManagerTests
     }
 
     [Fact]
+    public void Backstab_ArmedOpener_AttackLastRefiresWithBs()
+    {
+        // Report 074641/074756: attack-last + a re-armed surprise round. When a
+        // party announce triggers the attack-last re-fire while the backstab
+        // opener is still ARMED (stealthed, unspent), the re-fire IS the opener
+        // — it must send `bs <target>`, not the configured normal attack. The
+        // mystic was re-firing `pu giant rat` and wasting the surprise; the
+        // re-fire now opens with bs while still landing us last in initiative.
+        using Harness h = new() { DeferUi = true };
+        h.Settings.DoBackstab = true;
+        h.Settings.NormalAttackCommand = "pu";
+        h.Settings.AttackTiming = AttackTiming.AttackLastRoom;
+        h.AddMonster(1, "giant rat", killable: true);
+        h.Combat.SetBackstabHooks(isStealthed: () => true, hasSeeHidden: _ => false);
+
+        // Opener fires bs and is consumed; the target is held.
+        h.Feed("Also here: giant rat.");
+        Assert.Equal("bs giant rat", h.LastSent);
+
+        // Opener lands — the surprise-resolution watch clears so the re-fire
+        // path is no longer suppressed.
+        h.Feed("You surprise punch giant rat for 30 damage!");
+
+        // A fresh sneak-approach re-arms the surprise round for the same target
+        // (a same-name mob still in view keeps _currentTarget across the re-arm).
+        h.Combat.PrepBackstabForMove();
+        int before = h.Sent.Count;
+
+        // Party member announces — attack-last re-fires to reclaim last, but the
+        // opener is armed, so the re-fire opens with bs, never `pu`.
+        h.Feed("Bob moves to attack giant rat.");
+        h.PumpUi();
+
+        Assert.Equal(before + 1, h.Sent.Count);
+        Assert.Equal("bs giant rat", h.LastSent);
+    }
+
+    [Fact]
     public void Backstab_RearmForHide_ReopensOpenerWithoutRoomChange()
     {
         // The stationary hidden opener: a hidden character opens on a monster that
@@ -1674,6 +1712,11 @@ public sealed class CombatManagerTests
         Assert.Equal("a acid slime", h.LastSent);
         Assert.Equal("acid slime", h.Combat.CurrentTarget);
 
+        // A full round elapsed before the interrupting cast — backdate the
+        // swing stamp so the resume isn't mistaken for a redundant double on
+        // the heels of a fresh swing (see ResumeAfterAttackGuard).
+        BackdateLastAttack(h.Combat);
+
         // In-between cast turns combat off; no room re-display, no Engaged.
         // No resume yet — Off by itself is ambiguous.
         h.Feed("*Combat Off*");
@@ -1700,6 +1743,10 @@ public sealed class CombatManagerTests
         h.Feed("Also here: giant rat.");
         Assert.Single(h.Sent);
 
+        // Resume happens a round later — backdate so the guard doesn't read it
+        // as a double on a fresh swing (see ResumeAfterAttackGuard).
+        BackdateLastAttack(h.Combat);
+
         // In-between cast: Off, no Engaged. No resume on the Off line.
         h.Feed("*Combat Off*");
         Assert.Single(h.Sent);
@@ -1724,6 +1771,11 @@ public sealed class CombatManagerTests
         h.Feed("Also here: cave bear.");
         Assert.Single(h.Sent);
         Assert.Equal("a cave bear", h.LastSent);
+
+        // The heal fires a round into the fight — backdate the swing stamp so
+        // the resume isn't suppressed as a fresh-swing double (see
+        // ResumeAfterAttackGuard).
+        BackdateLastAttack(h.Combat);
 
         // CastingDirector sent a heal; the server stops our auto-attack.
         h.Combat.NoteBetweenRoundCast();
@@ -1774,6 +1826,40 @@ public sealed class CombatManagerTests
         Assert.Single(h.Sent);             // resume disarmed — no extra swing
     }
 
+    [Fact]
+    public void KillThenReObserve_CombatOffAndMobLine_DoesNotDoubleSwing()
+    {
+        // Report 203503: a solo double-send. On a kill the death→re-observe
+        // path re-engages the surviving mob, but the kill's *Combat Off*
+        // arrives a beat later and re-arms the interrupt flag; the next mob
+        // swing line then fired a SECOND, redundant attack at the same target
+        // (the 0-dmg/1-miss ghost round in the report log). The resume must see
+        // the just-sent swing and stand down.
+        using Harness h = new();
+        h.AddMonster(1, "dark goblin archer", killable: true);
+        h.AddMonster(2, "nasty thug", killable: true);
+
+        h.Feed("Also here: dark goblin archer, nasty thug.");
+        Assert.Single(h.Sent);
+        Assert.Equal("a dark goblin archer", h.LastSent);
+
+        // Archer dies — the death path clears the target, and the room
+        // re-display re-picks + swings at the surviving thug (send #2).
+        h.Combat.NoteMonsterDied("dark goblin archer");
+        h.Feed("Also here: nasty thug.");
+        Assert.Equal(2, h.Sent.Count);
+        Assert.Equal("a nasty thug", h.LastSent);
+
+        // The kill's delayed *Combat Off* re-arms the interrupt, then the thug
+        // swings. Without the guard this resumes and doubles the swing; with it,
+        // the fresh send #2 keeps the resume from firing.
+        h.Feed("*Combat Off*");
+        h.Feed("The nasty thug swings at you but misses!");
+
+        Assert.Equal(2, h.Sent.Count);          // no double — resume stood down
+        Assert.Equal("nasty thug", h.Combat.CurrentTarget);
+    }
+
     // ----- engage-verification safety net ------------------------------
 
     /// <summary>Backdate the private engage-wait timestamp so the next
@@ -1787,6 +1873,20 @@ public sealed class CombatManagerTests
             System.Reflection.BindingFlags.NonPublic)!;
         Assert.NotNull(f.GetValue(combat));   // must actually be awaiting
         f.SetValue(combat, DateTimeOffset.Now - TimeSpan.FromSeconds(30));
+    }
+
+    /// <summary>Backdate the last-swing stamp so the interrupt-resume guard
+    /// sees the attack as a full round old — the real timing when a mob swing
+    /// or between-round cast resumes. The guard only suppresses a resume that
+    /// lands right on the heels of a fresh swing (see ResumeAfterAttackGuard),
+    /// so time-compressed tests must age the stamp to exercise a real resume.</summary>
+    private static void BackdateLastAttack(CombatManager combat)
+    {
+        System.Reflection.FieldInfo f = typeof(CombatManager).GetField(
+            "_lastAttackSentAt",
+            System.Reflection.BindingFlags.Instance |
+            System.Reflection.BindingFlags.NonPublic)!;
+        f.SetValue(combat, DateTimeOffset.Now - TimeSpan.FromSeconds(5));
     }
 
     [Fact]

@@ -249,6 +249,20 @@ public static class AbilityNames
         return false;
     }
 
+    // True when any class in the given Classes table carries ShadowRest — the
+    // realm-level capability gate (Paradigm ships classes with 1103; stock ships
+    // none). Lets the UI hide the Utilize-shadowrest toggle entirely on a realm
+    // where no class could ever use it. classesTable is the raw imported "Classes"
+    // JSON array; null/non-array (no set imported) reads as "not available".
+    public static bool AnyClassHasShadowRest(System.Text.Json.JsonDocument? classesTable)
+    {
+        if (classesTable is null) return false;
+        if (classesTable.RootElement.ValueKind != System.Text.Json.JsonValueKind.Array) return false;
+        foreach (System.Text.Json.JsonElement row in classesTable.RootElement.EnumerateArray())
+            if (HasShadowRest(row)) return true;
+        return false;
+    }
+
     // Render one decoded ability slot — "AC +10", "Slowness -5", or "RaceStealth"
     // (name only, value 0).
     private static string FormatPart(string name, int value)

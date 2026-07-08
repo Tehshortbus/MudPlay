@@ -131,4 +131,40 @@ public sealed class AbilityNamesTests
     {
         Assert.False(AbilityNames.HasShadowRest(JsonDocument.Parse("{}").RootElement));
     }
+
+    // ----- AnyClassHasShadowRest ------------------------------------------
+
+    [Fact]
+    public void AnyClassHasShadowRest_TableWithShadowRestClass_ReturnsTrue()
+    {
+        // Paradigm-shaped Classes table: one class carries 1103, others don't —
+        // the realm ships the ability, so the toggle should show.
+        using JsonDocument table = JsonDocument.Parse(
+            "[{\"Abil-0\":31},{\"Abil-0\":37,\"Abil-1\":1103}]");
+        Assert.True(AbilityNames.AnyClassHasShadowRest(table));
+    }
+
+    [Fact]
+    public void AnyClassHasShadowRest_TableWithoutShadowRestClass_ReturnsFalse()
+    {
+        // Stock-shaped Classes table: no class carries 1103, so the toggle hides.
+        using JsonDocument table = JsonDocument.Parse(
+            "[{\"Abil-0\":31},{\"Abil-0\":37,\"Abil-1\":39}]");
+        Assert.False(AbilityNames.AnyClassHasShadowRest(table));
+    }
+
+    [Fact]
+    public void AnyClassHasShadowRest_NullTable_ReturnsFalse()
+    {
+        // No game-data set loaded — GetRawTable returns null.
+        Assert.False(AbilityNames.AnyClassHasShadowRest(null));
+    }
+
+    [Fact]
+    public void AnyClassHasShadowRest_NonArrayRoot_ReturnsFalse()
+    {
+        // A malformed / object-rooted table must read as "not available", not throw.
+        using JsonDocument table = JsonDocument.Parse("{\"Abil-0\":1103}");
+        Assert.False(AbilityNames.AnyClassHasShadowRest(table));
+    }
 }
