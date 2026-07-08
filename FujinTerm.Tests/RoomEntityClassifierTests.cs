@@ -692,6 +692,45 @@ public sealed class RoomEntityClassifierTests
         Assert.Equal(RoomObservationSource.RoomChange, h.Observations[1].Source);
     }
 
+    [Fact]
+    public void MoveConfirm_PostMoveArrival_Wiped_BelongsToOldRoom()
+    {
+        // Live repro (stuck "fighting" chip): the player sends a move, and
+        // WHILE it is in flight a monster walks into the room being left.
+        // Its Arrival timestamp is post-move, so the old freshness guard —
+        // which kept any post-move observation — stranded that walk-in in
+        // Current after the player stepped into a fresh, EMPTY room (no
+        // "Also here:" line to overwrite it). The Combat gate stayed
+        // asserted, the client kept firing the attack command, and the game
+        // answered "Your command had no effect." An Arrival is always
+        // relative to the room the player currently occupies, so a post-move
+        // walk-in belongs to the OLD room and must be wiped on the room
+        // change.
+        using TrackerHarness h = new();
+        h.AddMonster(1, "bandit");
+
+        h.Tracker.NoteRoomObserved(
+            new RoomObservation("Town Gates", new HashSet<Direction> { Direction.N }));
+
+        DateTimeOffset moveAt = DateTimeOffset.UtcNow.AddSeconds(-1);
+        h.Tracker.NoteMoveSent(Direction.N, moveAt);
+
+        // Monster walks into the room being left — post-move timestamp, but
+        // stale the instant we confirm the new room.
+        RoomEntity bandit = new("bandit", "bandit", EntityKind.Monster, 1);
+        h.Classifier.AppendArrivalEntity(bandit, "A bandit walks in from the south.");
+        Assert.Single(h.Observations);
+        Assert.Equal(RoomObservationSource.Arrival, h.Observations[0].Source);
+
+        // New room confirms empty (no occupants displayed).
+        h.Tracker.NoteRoomObserved(
+            new RoomObservation("North Square", new HashSet<Direction> { Direction.S }));
+
+        Assert.Equal(2, h.Observations.Count);
+        Assert.Empty(h.Observations[1].Entities);
+        Assert.Equal(RoomObservationSource.RoomChange, h.Observations[1].Source);
+    }
+
     // ----- look-direction peek suppression ---------------------------
     //
     // A `look <dir>` peek renders a FULL room display (name, "You notice…",

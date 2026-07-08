@@ -358,6 +358,36 @@ public sealed class RoomDisplayParserTests : IDisposable
         Assert.Equal(new RoomKey(1, 1), tracker.State.CurrentRoom!.Key);
     }
 
+    [Fact]
+    public void PromptLine_ClearsBuffer_MonsterLookHeaderNotGrabbedAsRoomName()
+    {
+        // 205936: `lo ar` examines a monster; its first line is the monster's
+        // name ("dark goblin archer"). The real prompt that ends the look
+        // output has IsPromptLine set, so LineExtractor never routes it to the
+        // buffer — but it must still clear the buffer, otherwise the monster
+        // header survives into the next block and gets picked as the room name.
+        (RoomTracker tracker, RoomDisplayParser parser) = NewParser();
+
+        // Establish a confirmed starting room first.
+        parser.FeedTestLines(new[] { "Town Gates", "Obvious exits: north." });
+        Assert.Equal(new RoomKey(1, 1), tracker.State.CurrentRoom!.Key);
+
+        DateTimeOffset t = DateTimeOffset.UtcNow;
+        parser.FeedTestEmittedLines(new[]
+        {
+            new LineExtractor.EmittedLine("dark goblin archer", Array.Empty<CellAttributes>(), t, false),
+            new LineExtractor.EmittedLine("It appears to be a vile creature of the dark.", Array.Empty<CellAttributes>(), t, false),
+            new LineExtractor.EmittedLine("[HP=72/KAI=5]: ", Array.Empty<CellAttributes>(), t, true),
+            new LineExtractor.EmittedLine("North Square", Array.Empty<CellAttributes>(), t, false),
+            new LineExtractor.EmittedLine("Obvious exits: south.", Array.Empty<CellAttributes>(), t, false),
+        });
+
+        // The prompt cleared the monster-look header out of the buffer, so the
+        // room display resolves to the real room, not the archer's name.
+        Assert.Equal(RoomConfidence.Confirmed, tracker.State.Confidence);
+        Assert.Equal(new RoomKey(1, 2), tracker.State.CurrentRoom!.Key);
+    }
+
     // ----- colour-anchored detection --------------------------------
 
     private static LineExtractor.EmittedLine ColoredLine(string text, CellAttributes attr)

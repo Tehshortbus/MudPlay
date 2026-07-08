@@ -1,10 +1,14 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.18.0**
-> - Item Game Data now prices each shop the item is bought/sold at — a line under every shop shows `@<charm>cha BUY: … SELL: …` for the character's charm (or retail 50 when unknown), branched to the active realm's stock/paradigm formula
-> - Weight moved into the right-hand info pane; the redundant read-only Body location / Item type / Price fields dropped from the left edit pane
-> - Double-clicking an Item Finder row opens the Game Data Browser at that item's record
+> **Version 1.18.7**
+> - Fixed walker crash when backtracking a room that had no active path
+> - Combat round counter now closes each round on the 5-second heartbeat instead of lagging a line behind
+> - Stuck "fighting" chip after walking into a new room clears — a stale walk-in no longer carries past the move
+> - Walk-to route overlay trims to the current room mid-combat instead of waiting for the whole room to clear
+> - Flipping a currency from Collect to Discard now drops the already-carried balance, not just fresh pickups
+> - Starting a manual run while auto-looping hands off to walk-to cleanly, without the destination chip flickering
+> - Examining a monster no longer misreads its name as the room name, so position stays in sync
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

@@ -3,19 +3,30 @@ using FujinTerm.Services.Patterns;
 
 namespace FujinTerm.Game.Combat;
 
-// Aggregates combat-line observations into RoundSummary records on a ~5-second
-// cadence. Keeps a ring buffer of the last 50 rounds and emits RoundComplete at
-// each round boundary.
+// Aggregates combat-line observations into RoundSummary records, one per
+// 5-second MajorMUD combat round. Keeps a ring buffer of the last 50 rounds and
+// emits RoundComplete at each round boundary.
 //
-// Round boundary = 5+ seconds since the current round started, observed at the
-// next damage line. *Combat Off* closes the current round explicitly via
-// MarkCombatEnded. Timer-free: a stale round (no damage lines after combat ends)
-// closes on the next combat encounter, on an explicit MarkCombatEnded, or on
-// Reset.
+// Round boundaries are driven by TickEngine's CombatTickElapsed heartbeat (wired
+// in AppServices), NOT by the damage lines themselves. OnCombatTick closes
+// whatever round is open, so every 5-second tick with activity yields exactly
+// one round in real time: a burst of swings inside one window collapses into a
+// single round, and a fight's final round closes on the next tick instead of
+// lingering (open and uncounted) until the next combat. Damage lines only
+// accumulate into the open round. *Combat Off* and local death close the current
+// round early via MarkCombatEnded.
 //
-// Subscribers: CastingDirector reads per-round HP/MA deltas to score routine
-// heals; CombatSessionTracker aggregates into session observed-accuracy
-// counters.
+// The heartbeat has two sources (see TickEngine): a 100 ms timer that fires the
+// tick exactly 5 s after the round's first hit, and the damage lines themselves
+// (debounced to at most one tick per round). In practice the timer wins — the
+// next round's server output arrives a full 5 s + network latency later, so the
+// open round is already closed by the timer tick before that line lands. Because
+// OnCombatTick is a no-op when no round is open, the round COUNT is correct
+// regardless of which source fires or how the router happens to order same-line
+// handlers; only a same-line tie could nudge one hit across the boundary.
+//
+// Sole subscriber: CombatSessionTracker aggregates each RoundSummary into the
+// session observed-accuracy / per-round-damage counters.
 //
 // The opt-in combat-{sessionStart}.log file (Settings.Other →
 // WriteCombatRoundTrace) is wired here: when the shouldWriteTrace delegate
@@ -27,9 +38,6 @@ public sealed class RoundDamageTracker : IDisposable
     // LogService category — appears as [Round] info-severity rows on each closed
     // round.
     public const string LogCategory = "Round";
-
-    // 5-second canonical MajorMUD round length.
-    public static readonly TimeSpan RoundDuration = TimeSpan.FromSeconds(5);
 
     // Capacity of the in-memory ring buffer of recent rounds.
     public const int RingCapacity = 50;
@@ -118,26 +126,30 @@ public sealed class RoundDamageTracker : IDisposable
             MarkCombatEnded();
     }
 
-    // Append a damage observation to the current round, starting a new round when
-    // none is open or when the current one has been open for at least
-    // RoundDuration.
+    // Append a damage observation to the open round, opening a fresh one when none
+    // is in flight. Round boundaries come from OnCombatTick, not from here — so a
+    // whole 5-second window's worth of swings lands in the same round.
     private void StartOrAppend(int damageDealt, int damageTaken, bool miss)
     {
-        DateTimeOffset now = DateTimeOffset.Now;
-        if (_current is null || now - _current.StartedAt >= RoundDuration)
+        _current ??= new RoundAccumulator
         {
-            if (_current is not null) CloseCurrent(now);
-            _current = new RoundAccumulator
-            {
-                StartedAt = now,
-                HpStart   = _state.Hp,
-                MaStart   = _state.Ma,
-            };
-        }
+            StartedAt = DateTimeOffset.Now,
+            HpStart   = _state.Hp,
+            MaStart   = _state.Ma,
+        };
         if (damageDealt > 0) _current.DamageDealt += damageDealt;
         if (damageTaken > 0) _current.DamageTaken += damageTaken;
         if (damageDealt > 0 || damageTaken > 0) _current.Hits++;
         if (miss) _current.Misses++;
+    }
+
+    // The 5-second round heartbeat (TickEngine.CombatTickElapsed). Close the open
+    // round so it's counted in real time; a no-op between fights, when no round is
+    // in flight. This is what makes the session-stats round count advance once per
+    // ticker fire instead of lagging until the next damage line or *Combat Off*.
+    public void OnCombatTick()
+    {
+        if (_current is not null) CloseCurrent(DateTimeOffset.Now);
     }
 
     // Explicitly close the current round (no-op when none is open) — driven
