@@ -118,7 +118,23 @@ it isn't here and you're unsure, ask.
   re-engage (a cast interrupt's re-attack, a target re-pick) wastes the round. The client tracks
   the spent opener per room and re-arms it only on the next sneak-approach.
 - **[CONFIRMED]** **Success line:** a landed backstab is a **single** swing containing the word
-  **`surprise`** — e.g. `You surprise punch large wild dog for 36 damage!`.
+  **`surprise`** — e.g. `You surprise punch large wild dog for 36 damage!`. A surprise line making
+  it through **proves the sneak did not fail** — the opener connected.
+- **[OBSERVED, mechanism unconfirmed]** Only the **opener** needs to be `bs`. In one live capture
+  the opener `bs large wild dog` was followed by two client-sent `pu large wild dog` during the
+  `*Combat Off*` / `*Combat Engaged*` interrupt bounce, and `You surprise punch ... for 36 damage!`
+  still landed. **Do not read this as "the engine continues the backstab through follow-on
+  attacks"** — the likelier explanation is timing: the `pu` commands simply hadn't registered
+  server-side before the `bs` surprise round resolved. So a well-timed follow-on `pu` *could* have
+  sabotaged the surprise. Practical rule for the client: send `bs` as the opener, then stay quiet —
+  don't spam follow-on attack commands that might register and clobber the surprise (let the
+  server's auto-repeat carry the fight). Never send a second `bs`.
+- **[CONFIRMED]** **Attack announce, and its backstab exception.** Any normal attack command
+  against an NPC produces a public announce: the attacker sees `*Combat Engaged*` and everyone
+  else in the room sees `<player> moves to attack <target>`. A **backstab round is silent** — it
+  emits no `moves to attack` line to other players, so the surprise opener doesn't tip off
+  onlookers. (Consequence for the client: it can't confirm its own backstab landed from a
+  `moves to attack` echo — there won't be one; use the `surprise` swing line instead.)
 - **[CONFIRMED]** **Failure signals:** after `bs`, **more than one swing** means the backstab
   failed (no surprise round); a **dark-cyan miss line** likewise means it failed.
 - **[CONFIRMED]** `You cannot backstab with this weapon.` — you tried to `bs` while sneaking with a
