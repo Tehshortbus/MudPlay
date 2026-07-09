@@ -928,6 +928,10 @@ public partial class MainWindowViewModel : ObservableObject
             AppServices.Current.AutoParty.NotePartySplitTeleport);
         AppServices.Current.LoopRunner.SetPartySplitHandler(
             AppServices.Current.AutoParty.NotePartySplitTeleport);
+        // Stopping the walk mid-reform drops the re-invite hold so the user
+        // isn't pinned by the PartyInvite gate until the group rejoins.
+        AppServices.Current.Walker.SetPartySplitAbortHandler(
+            () => AppServices.Current.AutoParty.AbortReformWaits("walk stopped"));
         // Walker + loop runner — gate-wrapped so a long walk doesn't
         // blast moves through a password-entry prompt.
         AppServices.Current.Walker.SetWireSender(engineSend);

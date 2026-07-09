@@ -46,6 +46,7 @@ public sealed class AutoWalkManager : IRecoverableEngine
     private Func<RoomKey, RoomKey, string?>? _teleportResolver;
     private Func<bool>? _isLeaderWithFollowers;
     private Action? _onLeaderPartySplit;
+    private Action? _onPartySplitAbort;
     private Action? _preMoveHook;
     private Action<IReadOnlyList<int>>? _pathItemAnnouncer;
     private Action<IReadOnlyList<RoomKey>>? _routeAnnouncer;
@@ -380,6 +381,17 @@ public sealed class AutoWalkManager : IRecoverableEngine
         _onLeaderPartySplit = handler;
     }
 
+    // Party-reform abort — invoked when the user stops the walk. A party-
+    // splitting teleport re-invites the group and holds the movement gate until
+    // they rejoin; if the user stops mid-reform, that hold would otherwise pin
+    // the gate until the members rejoin or the 90s window elapses. AppServices
+    // binds this to AutoPartyManager.AbortReformWaits so a stop frees movement.
+    public void SetPartySplitAbortHandler(Action handler)
+    {
+        ArgumentNullException.ThrowIfNull(handler);
+        _onPartySplitAbort = handler;
+    }
+
     // Pre-move stealth hook — invoked by the walker immediately before
     // each move's bytes go out, AFTER any door / trap / hidden /
     // multi-action pre-steps, so sn is the last command before the move
@@ -615,6 +627,9 @@ public sealed class AutoWalkManager : IRecoverableEngine
         if (State == WalkState.Idle) return;
         RoomKey? dest = _destination;
         Reset();
+        // Free any party-reform gate this walk was holding so a stopped user
+        // isn't pinned by an in-progress chime-teleport re-invite.
+        _onPartySplitAbort?.Invoke();
         Raise(new WalkEvent(WalkEventKind.Stopped, reason, dest));
     }
 
@@ -1131,6 +1146,26 @@ public sealed class AutoWalkManager : IRecoverableEngine
         {
             State = WalkState.Walking;
             Raise(new WalkEvent(WalkEventKind.Resumed, "coordinator resumed", _destination));
+
+            // In-flight guard: a move was already on the wire when the pause
+            // hit and its confirmation hasn't landed yet (tracker still Pending
+            // on it). Re-sending it on resume would put a duplicate on the wire
+            // AND wedge the tracker's pending queue — the walker would hang on a
+            // Confirmed it never gets. This is the party-split (chime) teleport
+            // case: the PartyInvite reform gate asserts then clears mid-teleport
+            // (followers relay through and rejoin faster than the destination
+            // room render lands), so resume fires before arrival confirms.
+            // Re-sending re-teleported and re-fired the reform, spamming @join
+            // at already-rejoined members and stranding the walk. Keep the step
+            // in flight instead; the resumed tracker events confirm it and
+            // advance us. (Mirrors the LoopRunner resume guard.)
+            if (_stepInFlight && _tracker.State.Confidence == RoomConfidence.Pending)
+            {
+                _log?.Info("Walker",
+                    $"resume: step {_index + 1} still in flight (tracker Pending); awaiting confirmation, not re-sending");
+                return;
+            }
+
             _stepInFlight = false;
             _awaitingPromptForCommand = false;
 

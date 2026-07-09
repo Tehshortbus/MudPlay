@@ -2,6 +2,13 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.23.4
+
+- Leader crossing a chime teleport no longer re-fires the teleport or spams `@join` at members who already rejoined — the walker waits for the destination room to confirm before it treats the step as done
+- The reformed party's walk continues on arrival instead of freezing at "waiting for invitee to join"
+- Stopping a walk mid-reform now clears the party-invite hold, so you can start walking elsewhere without being pinned by a stuck gate
+- bug reports addressed: stock-20260708-171842
+
 ## 1.23.3
 
 - `@party <command>` now relays any command to the whole party (the party-bound analogue of `@do`), not just a fixed verb whitelist — so `@party use chime` / `@party ring chime` / `@party .hi` actually fire on followers

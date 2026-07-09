@@ -862,6 +862,32 @@ public sealed class AutoPartyManagerTests
         Assert.False(coord.IsPaused);
     }
 
+    [Fact]
+    public void AbortReformWaits_ReleasesGate_AfterReformHold()
+    {
+        // Stopping the walk mid-reform must drop the re-invite hold so the
+        // PartyInvite gate releases — otherwise the user stays pinned by a
+        // "waiting for invitee to join" gate they can never clear and can't
+        // start a fresh walk elsewhere.
+        var (engine, _, _, party) = Setup();
+        MovementCoordinator coord = new();
+        engine.InviteWaitWindow = TimeSpan.FromSeconds(90);
+        engine.SetMovementGate(coord, isLooping: () => false);
+
+        party.SelfIsLeader = true;
+        party.Members.Add(new PartyMember { Name = "Fujin", IsSelf = true });
+        party.Members.Add(new PartyMember { Name = "Raijin" });
+
+        engine.NotePartySplitTeleport();
+        Assert.True(coord.IsPaused);
+        Assert.Contains(MovementCoordinator.PartyInviteGate, coord.AssertedGates);
+
+        engine.AbortReformWaits("walk stopped");
+
+        Assert.False(coord.IsPaused);
+        Assert.DoesNotContain(MovementCoordinator.PartyInviteGate, coord.AssertedGates);
+    }
+
     // ===== Uninvite suppression =====
 
     [Fact]

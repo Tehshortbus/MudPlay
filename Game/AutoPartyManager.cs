@@ -112,6 +112,14 @@ public sealed class AutoPartyManager : IDisposable
     private readonly Dictionary<string, DateTime> _inviteWaits =
         new(StringComparer.OrdinalIgnoreCase);
 
+    // Subset of _inviteWaits whose hold came from a party-splitting teleport
+    // reform (BeginReformWait) rather than a loop auto-invite (BeginInviteWait).
+    // Lets a user movement-stop drop just the reform holds via AbortReformWaits
+    // so the gate releases and they can walk elsewhere, without disturbing a
+    // loop's own invite-wait.
+    private readonly HashSet<string> _reformGiven =
+        new(StringComparer.OrdinalIgnoreCase);
+
     // Members whose IsInvited we're watching so a pending invite flipping
     // accepted releases the loop hold.
     private readonly HashSet<PartyMember> _watchedMembers = new();
@@ -727,7 +735,7 @@ public sealed class AutoPartyManager : IDisposable
         if (_coordinator is null) return;
         if (InviteWaitWindow <= TimeSpan.Zero) return;
         if (_isLooping?.Invoke() != true) return;
-        HoldInviteWait(given, invitedAt, "loop");
+        HoldInviteWait(given, invitedAt, "loop", isReform: false);
     }
 
     // Engage the movement hold for a member being re-invited after a
@@ -739,12 +747,13 @@ public sealed class AutoPartyManager : IDisposable
     {
         if (_coordinator is null) return;
         if (InviteWaitWindow <= TimeSpan.Zero) return;
-        HoldInviteWait(given, invitedAt, "movement");
+        HoldInviteWait(given, invitedAt, "movement", isReform: true);
     }
 
-    private void HoldInviteWait(string given, DateTime invitedAt, string engineLabel)
+    private void HoldInviteWait(string given, DateTime invitedAt, string engineLabel, bool isReform)
     {
         _inviteWaits[given] = invitedAt;
+        if (isReform) _reformGiven.Add(given);
         RefreshInviteGate();
         EnsureNagTimerRunning();
         _log?.Log(LogSeverity.Info, "AutoParty",
@@ -789,8 +798,28 @@ public sealed class AutoPartyManager : IDisposable
     private void EndInviteWait(string given, string reason)
     {
         if (!_inviteWaits.Remove(given)) return;
+        _reformGiven.Remove(given);
         _log?.Log(LogSeverity.Info, "AutoParty",
             $"Released loop hold for {given} — {reason}.");
+        RefreshInviteGate();
+        if (_activeNags.Count == 0 && _inviteWaits.Count == 0) StopNagTimer();
+    }
+
+    // User stopped movement mid-reform. Drop just the re-invite holds engaged by
+    // a party-splitting teleport (and their @join nags) so the PartyInvite gate
+    // releases and the user can walk elsewhere immediately, rather than being
+    // pinned until every re-invited member rejoins or the 90s window elapses. A
+    // loop's own invite-waits are left untouched. Bound to the walker's stop.
+    public void AbortReformWaits(string reason)
+    {
+        if (_reformGiven.Count == 0) return;
+        foreach (string given in _reformGiven.ToArray())
+        {
+            _inviteWaits.Remove(given);
+            CancelNag(given, reason);
+        }
+        _reformGiven.Clear();
+        _log?.Log(LogSeverity.Info, "AutoParty", $"Aborted party-reform holds — {reason}.");
         RefreshInviteGate();
         if (_activeNags.Count == 0 && _inviteWaits.Count == 0) StopNagTimer();
     }
@@ -834,6 +863,7 @@ public sealed class AutoPartyManager : IDisposable
     {
         if (_inviteWaits.Count == 0) return;
         _inviteWaits.Clear();
+        _reformGiven.Clear();
         _log?.Log(LogSeverity.Info, "AutoParty", $"Released all loop holds — {reason}.");
         RefreshInviteGate();
         if (_activeNags.Count == 0) StopNagTimer();
