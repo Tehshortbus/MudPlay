@@ -2,6 +2,13 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.23.3
+
+- `@party <command>` now relays any command to the whole party (the party-bound analogue of `@do`), not just a fixed verb whitelist — so `@party use chime` / `@party ring chime` / `@party .hi` actually fire on followers
+- Chime-teleport party reform now works end-to-end: followers relay-teleport with the leader, so the leader's re-invite reaches every member instead of stranding the ones who never crossed
+- `@party` refuses only `set suicide` and `reroll`; every other command passes through
+- bug reports addressed: stock-20260708-163726, stock-20260708-163814, stock-20260708-163926
+
 ## 1.23.0
 
 - Navigation re-latches a name-unique room through a closed door: a swung-shut door dropping an exit from the display no longer freezes position until a manual reposition

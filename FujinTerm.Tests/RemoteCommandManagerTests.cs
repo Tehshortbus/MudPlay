@@ -525,12 +525,14 @@ public sealed class RemoteCommandManagerTests
     // password contract.
 
     [Fact]
-    public void ForcibleSuicide_PartySuicide_AlwaysBlockedWithRedirect()
+    public void PartySuicide_PlainSuicideRelays_NotBlocked()
     {
+        // Per user policy @party is a passthrough that blocks only the `set
+        // suicide` phrase and reroll. A plain `suicide` is NOT force-blocked —
+        // it reaches the @party handler like any other relayed command, even at
+        // low lives + a strict threshold (those gate @suicide, not the relay).
         var (engine, party, _) = Setup();
         SeedPartyMember(party, "Buddy");
-        // Even with high lives + permissive threshold, @party suicide
-        // is unconditionally blocked.
         engine.LivesProvider = () => 99;
         engine.MaxSuicideLivesThreshold = 0;
 
@@ -539,10 +541,8 @@ public sealed class RemoteCommandManagerTests
 
         engine.DispatchForTests(Telepath("Buddy", "@party suicide"));
 
-        Assert.False(fired);
-        // Redirect reply landed on Buddy's telepath.
-        string reply = Encoding.Latin1.GetString(engine.LastSentForTests[^1]);
-        Assert.Contains("@party suicide is not allowed, use @suicide", reply);
+        Assert.True(fired);
+        Assert.Empty(engine.LastSentForTests);  // no redirect, no denial
     }
 
     [Fact]
@@ -627,8 +627,8 @@ public sealed class RemoteCommandManagerTests
     [Fact]
     public void DirectSuicide_NotCaughtByRedirect_PolicyGateAppliesNormally()
     {
-        // The redirect only fires for @do and @party prefixes. Direct
-        // @suicide flows through to the lives-threshold policy block.
+        // The redirect only fires for the @do prefix. Direct @suicide
+        // flows through to the lives-threshold policy block.
         var (engine, _, players) = Setup();
         SeedPlayer(players, "Trusted", PlayerRemoteControls.All);
         engine.LivesProvider = () => 5;
@@ -1023,7 +1023,7 @@ public sealed class RemoteCommandManagerTests
     [Fact]
     public void WarnOnDenial_StaysSilentOnHardBlock()
     {
-        // Unconditional hard-blocks (reroll, @party suicide) must
+        // Unconditional hard-blocks (reroll, @party set suicide) must
         // never produce a reply — never advertise the block to a
         // malicious caller. Sender has every flag; engine
         // WarnOnDenial is on. The user-configured suicide lives
@@ -1142,23 +1142,22 @@ public sealed class RemoteCommandManagerTests
     }
 
     [Fact]
-    public void PartySuicide_AlwaysBlocked_RedirectsToSuicideHandler()
+    public void PartySetSuicide_HardBlockedSilently()
     {
-        // @party suicide is the unconditional forcible-block path —
-        // even at high lives + permissive threshold, the @party
-        // handler never runs. Reply text redirects the sender to the
-        // dedicated @suicide handler (which has its own elevated
-        // SysopCommands grant + lives gate).
-        var (engine, _, players) = Setup();
-        SeedPlayer(players, "Trusted", PlayerRemoteControls.All);
-        engine.MaxSuicideLivesThreshold = 0;
-        engine.LivesProvider = () => 99;
-        engine.RegisterHandler("@party", PlayerRemoteControls.None, _ => { });
+        // `set suicide` is the one suicide payload @party refuses — it arms
+        // unattended auto-suicide, so it's an unconditional silent hard-block
+        // (like reroll): the handler never runs and nothing is replied, even
+        // with every flag granted and WarnOnDenial on.
+        var (engine, party, _) = Setup();
+        SeedPartyMember(party, "Buddy");
 
-        engine.DispatchForTests(Telepath("Trusted", "@party suicide"));
+        bool fired = false;
+        engine.RegisterHandler("@party", PlayerRemoteControls.None, _ => fired = true);
 
-        string reply = Encoding.Latin1.GetString(engine.LastSentForTests[^1]);
-        Assert.Contains("@party suicide is not allowed, use @suicide", reply);
+        engine.DispatchForTests(Telepath("Buddy", "@party set suicide hunter2"));
+
+        Assert.False(fired);
+        Assert.Empty(engine.LastSentForTests);
     }
 
     [Fact]

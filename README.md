@@ -1,11 +1,10 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.23.0**
-> - Navigation re-latches a name-unique room through a closed door: a swung-shut door dropping an exit from the display no longer freezes position until a manual reposition
-> - Auto-sneak re-fires after a silently lost sneak attempt, instead of stranding stealth for the rest of the run
-> - "Ring chime"-style CMD teleports are now walkable — navigation routes and crosses them like any other exit
-> - A party leader crossing a chime teleport relays the whole party through, then re-invites and waits in place for them to reform
+> **Version 1.23.3**
+> - `@party <command>` now relays any command to the whole party (the party-bound analogue of `@do`), not just a fixed verb whitelist — so `@party use chime` / `@party ring chime` / `@party .hi` actually fire on followers
+> - Chime-teleport party reform now works end-to-end: followers relay-teleport with the leader, so the leader's re-invite reaches every member instead of stranding the ones who never crossed
+> - `@party` refuses only `set suicide` and `reroll`; every other command passes through
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

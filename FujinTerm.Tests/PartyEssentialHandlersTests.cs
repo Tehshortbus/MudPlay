@@ -485,12 +485,89 @@ public sealed class PartyEssentialHandlersTests
         Assert.Equal("par\r",  Encoding.Latin1.GetString(relay[2]));
     }
 
+    // @party <command> is a party-membership-gated passthrough (the party
+    // analogue of @do): anything outside the two token rewrites relays verbatim.
+    // A follower who never executes the leader's `use chime` never teleports, so
+    // the whole CMD-teleport reform choreography hinged on this passthrough.
     [Fact]
-    public void PartyUnknownSub_IsIgnored()
+    public void PartyUseChime_RelaysVerbatim()
     {
         var (engine, _, _, party, _, relay) = Setup();
         SeedPartyMember(party, "Leader", isLeader: true);
-        engine.DispatchForTests(Say("Leader", "@party doSomethingWeird"));
+        engine.DispatchForTests(Say("Leader", "@party use chime"));
+
+        Assert.Single(relay);
+        Assert.Equal("use chime\r", Encoding.Latin1.GetString(relay[0]));
+    }
+
+    [Fact]
+    public void PartyRingChime_RelaysVerbatim()
+    {
+        var (engine, _, _, party, _, relay) = Setup();
+        SeedPartyMember(party, "Leader", isLeader: true);
+        engine.DispatchForTests(Say("Leader", "@party ring chime"));
+
+        Assert.Single(relay);
+        Assert.Equal("ring chime\r", Encoding.Latin1.GetString(relay[0]));
+    }
+
+    // A say-precursor'd command (`.hi` = say "hi") relays verbatim too — the
+    // reported case where @party stat worked (whitelisted) but @party .hi didn't.
+    [Fact]
+    public void PartySayPrecursor_RelaysVerbatim()
+    {
+        var (engine, _, _, party, _, relay) = Setup();
+        SeedPartyMember(party, "Leader", isLeader: true);
+        engine.DispatchForTests(Say("Leader", "@party .hi"));
+
+        Assert.Single(relay);
+        Assert.Equal(".hi\r", Encoding.Latin1.GetString(relay[0]));
+    }
+
+    // A multi-word arbitrary command survives whole (single-space collapsed).
+    [Fact]
+    public void PartyMultiWordCommand_RelaysVerbatim()
+    {
+        var (engine, _, _, party, _, relay) = Setup();
+        SeedPartyMember(party, "Leader", isLeader: true);
+        engine.DispatchForTests(Say("Leader", "@party cast heal raijin"));
+
+        Assert.Single(relay);
+        Assert.Equal("cast heal raijin\r", Encoding.Latin1.GetString(relay[0]));
+    }
+
+    // Plain `suicide` relays like any other passthrough — only the `set suicide`
+    // phrase and reroll are refused (both blocked at engine level before this
+    // handler runs, verified below and in RemoteCommandManagerTests).
+    [Fact]
+    public void PartyPlainSuicide_RelaysVerbatim()
+    {
+        var (engine, _, _, party, _, relay) = Setup();
+        SeedPartyMember(party, "Leader", isLeader: true);
+        engine.DispatchForTests(Say("Leader", "@party suicide"));
+
+        Assert.Single(relay);
+        Assert.Equal("suicide\r", Encoding.Latin1.GetString(relay[0]));
+    }
+
+    // The two engine-level hard-blocks never reach the wire relay: `set suicide`
+    // arms unattended auto-suicide and reroll wipes the build.
+    [Fact]
+    public void PartySetSuicide_NotRelayed()
+    {
+        var (engine, _, _, party, _, relay) = Setup();
+        SeedPartyMember(party, "Leader", isLeader: true);
+        engine.DispatchForTests(Say("Leader", "@party set suicide hunter2"));
+
+        Assert.Empty(relay);
+    }
+
+    [Fact]
+    public void PartyReroll_NotRelayed()
+    {
+        var (engine, _, _, party, _, relay) = Setup();
+        SeedPartyMember(party, "Leader", isLeader: true);
+        engine.DispatchForTests(Say("Leader", "@party reroll"));
 
         Assert.Empty(relay);
     }
