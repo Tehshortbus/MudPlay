@@ -577,6 +577,47 @@ public sealed class RoomTrackerTests : IDisposable
         Assert.Equal(new RoomKey(1, 4), tracker.State.CurrentRoom!.Key);
     }
 
+    // ----- door-tolerant name re-anchor (205936 / 075501) ------------
+
+    [Fact]
+    public void FirstObservation_ClosedDoorDropsExitBit_ReanchorsByUniqueName()
+    {
+        // Town Gates is {N, E(Door)} in the graph. Observing it with only {N}
+        // (the E door swung shut, so the "Obvious exits:" line drops the bit)
+        // misses the exact (Name, ExitMask) candidate search. But the name is
+        // unique in the graph and {N} ⊆ {N,E}, so the door-tolerant re-anchor
+        // latches Confirmed at 1/1 instead of freezing the marker at Lost.
+        RoomTracker tracker = NewTracker();
+        tracker.NoteRoomObserved(Obs("Town Gates", Direction.N));
+
+        Assert.Equal(RoomConfidence.Confirmed, tracker.State.Confidence);
+        Assert.Equal(new RoomKey(1, 1), tracker.State.CurrentRoom!.Key);
+    }
+
+    [Fact]
+    public void SuspectStrikeLimit_UniqueNameThroughDoor_ReanchorsInsteadOfLost()
+    {
+        // A player parked in ambiguity ("Hallway" resolves to 2/1 + 2/3) strikes
+        // out to the Suspect limit with no anchor. The redisplay that finally
+        // trips the limit is a name-unique room seen through a closed door
+        // (Town Gates with only {N}) — the exact search still misses and replay
+        // has no confirmed history to project, but the door-tolerant re-anchor
+        // recovers to 1/1 rather than declaring the player Lost.
+        RoomTracker tracker = NewTracker();
+        DateTimeOffset t = DateTimeOffset.UnixEpoch;
+
+        tracker.NoteRoomObserved(Obs("Hallway", Direction.N), t);              // Suspect, no anchor
+        tracker.NoteMoveSent(Direction.N, t.AddSeconds(1));
+        tracker.NoteRoomObserved(Obs("Hallway", Direction.N), t.AddSeconds(2)); // strike 1
+        tracker.NoteMoveSent(Direction.N, t.AddSeconds(3));
+        tracker.NoteRoomObserved(Obs("Hallway", Direction.N), t.AddSeconds(4)); // strike 2
+        tracker.NoteMoveSent(Direction.N, t.AddSeconds(5));
+        tracker.NoteRoomObserved(Obs("Town Gates", Direction.N), t.AddSeconds(6)); // strike limit → re-anchor
+
+        Assert.Equal(RoomConfidence.Confirmed, tracker.State.Confidence);
+        Assert.Equal(new RoomKey(1, 1), tracker.State.CurrentRoom!.Key);
+    }
+
     // ----- go-path (text-exit) resolution ----------------------------
 
     [Fact]

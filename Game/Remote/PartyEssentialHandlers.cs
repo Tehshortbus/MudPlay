@@ -11,10 +11,12 @@ namespace FujinTerm.Game.Remote;
 //   - Query-tier — @version, @health, @status, @lives, @where. Each replies via
 //     the channel the command arrived on with a short response derived from local
 //     state (PlayerState, PartyState, PlayerStats).
-//   - Party whitelist — @party <sub>. Dispatches on the first arg token to
-//     translate the leader's directive (attack / rest / meditate / go <dir> /
-//     stat / i / par) into the corresponding local command sent via the engine's
-//     wire-sender.
+//   - Party passthrough — @party <command>. A party-membership-gated relay of
+//     the leader's directive to the follower's wire (the party analogue of @do,
+//     but authorised by active party membership rather than the per-player
+//     ExecuteCommands grant). Any command is sent verbatim so the whole party
+//     moves in lock-step; `meditate`→`medi` and `go <dir>`→bare-direction are the
+//     only token rewrites.
 //   - Receive-only signalling — @wait / @ok. Recorded in WaitingMembers, which
 //     the pause-gate reads to decide whether to hold automation.
 //
@@ -321,26 +323,32 @@ public sealed class PartyEssentialHandlers : IDisposable
         return false;
     }
 
-    // Map the leader's @party <sub> directive onto the local command a follower
-    // would type to perform the action. Unknown sub-commands are silently ignored
-    // — they're not party-essentials and shouldn't trip the wire from a typo.
+    // Relay the leader's @party <command> directive to the follower's wire. This
+    // is a party-membership-gated passthrough — the party analogue of @do, but
+    // authorised by active party membership rather than the per-player
+    // ExecuteCommands grant. Whatever the leader broadcasts (`use chime`,
+    // `ring chime`, `.hi`, `stat`, …) is sent verbatim so the whole party can be
+    // driven in lock-step. A fixed sub-command whitelist used to drop everything
+    // else silently, which stranded the CMD-teleport choreography (a follower who
+    // never got `use chime` never teleported, so the leader's re-invite couldn't
+    // reach them). The two rewrites below survive because the token the leader
+    // speaks isn't the verb the follower must type. The only payloads @party
+    // refuses — `set suicide` (arms unattended auto-suicide) and `reroll` (wipes
+    // the build) — are stopped at engine level before this handler runs
+    // (RemoteCommandManager.IsHardBlocked); a plain `suicide` relays like anything
+    // else.
     private void DispatchPartySubCommand(RemoteCommandContext ctx)
     {
         if (_wireSender is null) return;
         string sub = ctx.Args[0].ToLowerInvariant();
-        string? local = sub switch
+        string local = sub switch
         {
-            "attack"   => "attack",
-            "rest"     => "rest",
-            "meditate" => "medi",     // MajorMUD's canonical short form
-            "stat"     => "stat",
-            "i"        => "i",
-            "par"      => "par",
-            // @party go <dir> — forward the direction token; "go n" → "n"
-            "go" when ctx.Args.Count >= 2 => ctx.Args[1].ToLowerInvariant(),
-            _ => null,
+            "meditate" => "medi",                                  // MajorMUD's canonical short form
+            // @party go <dir> — drop the "go", send the bare direction verb
+            // (MajorMUD moves on the direction token alone).
+            "go" when ctx.Args.Count >= 2 => string.Join(" ", ctx.Args.Skip(1)),
+            _ => string.Join(" ", ctx.Args),
         };
-        if (local is null) return;
         byte[] bytes = Encoding.Latin1.GetBytes(local + "\r");
         _wireSender(bytes);
     }

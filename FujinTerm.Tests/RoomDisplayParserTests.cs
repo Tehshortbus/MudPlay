@@ -121,9 +121,17 @@ public sealed class RoomDisplayParserTests : IDisposable
             "Obvious exits: none."
         });
 
-        // Town Gates has N in the graph; with exits={}, no candidate
-        // matches → Lost.
-        Assert.Equal(RoomConfidence.Lost, tracker.State.Confidence);
+        // The parser must turn "Obvious exits: none." into an empty exit set —
+        // the mirrored ObservedExitDirections is the direct proof.
+        Assert.NotNull(tracker.State.ObservedExitDirections);
+        Assert.Empty(tracker.State.ObservedExitDirections!);
+
+        // Town Gates has N in the graph, so the exact (Name, ExitMask) search
+        // misses on exits={}. But the name is unique in the graph and {} is a
+        // subset of every room's exits, so the door-tolerant re-anchor latches
+        // the name-unique room at 1/1 rather than freezing at Lost.
+        Assert.Equal(RoomConfidence.Confirmed, tracker.State.Confidence);
+        Assert.Equal(new RoomKey(1, 1), tracker.State.CurrentRoom!.Key);
     }
 
     [Fact]

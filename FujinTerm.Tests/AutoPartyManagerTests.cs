@@ -809,6 +809,85 @@ public sealed class AutoPartyManagerTests
         Assert.False(coord.IsPaused);
     }
 
+    // ===== Party-split teleport reform (000851) =====
+
+    [Fact]
+    public void NotePartySplitTeleport_LeaderReinvitesEveryFollower_AndHoldsGate()
+    {
+        // A chime-style CMD teleport relays every follower through `.@party ring
+        // chime` but dissolves the follow chain on arrival. The leader must
+        // re-invite each former member and hold the movement gate until they
+        // reform — even mid one-shot walk-to (isLooping false), because a split
+        // can happen while walking into the mansion, not just under a loop.
+        var (engine, _, _, party) = Setup();
+        MovementCoordinator coord = new();
+        engine.InviteWaitWindow = TimeSpan.FromSeconds(90);
+        engine.SetMovementGate(coord, isLooping: () => false);
+
+        party.SelfIsLeader = true;
+        party.Members.Add(new PartyMember { Name = "Fujin", IsSelf = true });
+        party.Members.Add(new PartyMember { Name = "Raijin" });
+        party.Members.Add(new PartyMember { Name = "Forged" });
+
+        engine.NotePartySplitTeleport();
+
+        // Every non-self member is re-invited; self is skipped.
+        Assert.Equal(2, engine.LastSentForTests.Count);
+        Assert.Contains(engine.LastSentForTests,
+            b => Encoding.Latin1.GetString(b) == "invite Raijin\r");
+        Assert.Contains(engine.LastSentForTests,
+            b => Encoding.Latin1.GetString(b) == "invite Forged\r");
+
+        // Gate holds despite not looping — the walker must pause for the reform.
+        Assert.True(coord.IsPaused);
+        Assert.Contains(MovementCoordinator.PartyInviteGate, coord.AssertedGates);
+    }
+
+    [Fact]
+    public void NotePartySplitTeleport_NonLeader_NoReform()
+    {
+        // A follower who crossed the same teleport has nobody to re-invite —
+        // only the leader reforms the party.
+        var (engine, _, _, party) = Setup();
+        MovementCoordinator coord = new();
+        engine.InviteWaitWindow = TimeSpan.FromSeconds(90);
+        engine.SetMovementGate(coord, isLooping: () => false);
+
+        party.SelfIsLeader = false;
+        party.Members.Add(new PartyMember { Name = "Raijin" });
+
+        engine.NotePartySplitTeleport();
+
+        Assert.Empty(engine.LastSentForTests);
+        Assert.False(coord.IsPaused);
+    }
+
+    [Fact]
+    public void AbortReformWaits_ReleasesGate_AfterReformHold()
+    {
+        // Stopping the walk mid-reform must drop the re-invite hold so the
+        // PartyInvite gate releases — otherwise the user stays pinned by a
+        // "waiting for invitee to join" gate they can never clear and can't
+        // start a fresh walk elsewhere.
+        var (engine, _, _, party) = Setup();
+        MovementCoordinator coord = new();
+        engine.InviteWaitWindow = TimeSpan.FromSeconds(90);
+        engine.SetMovementGate(coord, isLooping: () => false);
+
+        party.SelfIsLeader = true;
+        party.Members.Add(new PartyMember { Name = "Fujin", IsSelf = true });
+        party.Members.Add(new PartyMember { Name = "Raijin" });
+
+        engine.NotePartySplitTeleport();
+        Assert.True(coord.IsPaused);
+        Assert.Contains(MovementCoordinator.PartyInviteGate, coord.AssertedGates);
+
+        engine.AbortReformWaits("walk stopped");
+
+        Assert.False(coord.IsPaused);
+        Assert.DoesNotContain(MovementCoordinator.PartyInviteGate, coord.AssertedGates);
+    }
+
     // ===== Uninvite suppression =====
 
     [Fact]

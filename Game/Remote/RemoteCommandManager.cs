@@ -86,9 +86,9 @@ public sealed class RemoteCommandManager : IDisposable
     // TalkSettings.DisallowAllRemoteCommands.
     public bool MasterDisable { get; set; }
 
-    // Disallows the @party <sub> directive path only. When true, an active party
-    // member's @party attack / rest / meditate / go / stat / i / par is denied
-    // unless the sender carries an explicit per-player grant. Does NOT affect the
+    // Disallows the @party <command> directive path only. When true, an active
+    // party member's @party <command> relay is denied unless the sender carries an
+    // explicit per-player grant. Does NOT affect the
     // rest of the party-whitelist (@wait / @ok / @comeback / @share) — those stay
     // allowed for active members regardless. Pushed from
     // TalkSettings.DisallowPartyCommands.
@@ -444,6 +444,18 @@ public sealed class RemoteCommandManager : IDisposable
             reason = "reroll hard-block (always denied)";
             return true;
         }
+        // @party is a party-membership-gated passthrough (the @do analogue). Per
+        // user policy its ONLY forbidden payloads are the `set suicide` phrase and
+        // reroll (caught above); everything else relays, including a plain
+        // `suicide`. `set suicide` is two adjacent tokens, so match the phrase
+        // rather than the lone "suicide" token the @do redirect uses. Silent like
+        // reroll — never advertise the block to a caller probing for it.
+        if (command.Equals("@party", StringComparison.OrdinalIgnoreCase)
+            && ContainsAdjacent(args, "set", "suicide"))
+        {
+            reason = "@party set-suicide hard-block (always denied)";
+            return true;
+        }
         reason = null;
         return false;
     }
@@ -470,11 +482,12 @@ public sealed class RemoteCommandManager : IDisposable
     private static string? GetForcedSuicideRedirectReply(string command, string[] args)
     {
         if (!ContainsToken(command, args, "suicide")) return null;
-        bool isDo    = command.Equals("@do",    StringComparison.OrdinalIgnoreCase);
-        bool isParty = command.Equals("@party", StringComparison.OrdinalIgnoreCase);
-        if (!isDo && !isParty) return null;
-        string verb = isDo ? "@do" : "@party";
-        return $"{verb} suicide is not allowed, use @suicide";
+        // Only @do routes forcible death to the dedicated @suicide handler. @party
+        // is a passthrough whose suicide policy is enforced entirely by
+        // IsHardBlocked (only the `set suicide` phrase is refused); a plain
+        // @party suicide relays like any other command, so it must NOT redirect.
+        if (!command.Equals("@do", StringComparison.OrdinalIgnoreCase)) return null;
+        return "@do suicide is not allowed, use @suicide";
     }
 
     // User-configured policy block for direct @suicide based on the lives
@@ -492,6 +505,10 @@ public sealed class RemoteCommandManager : IDisposable
     private string? GetSuicidePolicyBlockReply(string command, string[] args)
     {
         if (!ContainsToken(command, args, "suicide")) return null;
+        // @party's suicide policy lives entirely in IsHardBlocked (only `set
+        // suicide` is forbidden). Don't let the lives-threshold policy re-block a
+        // plain @party suicide passthrough — that would defeat the passthrough.
+        if (command.Equals("@party", StringComparison.OrdinalIgnoreCase)) return null;
         int? lives = LivesProvider?.Invoke();
         if (lives is null)
             return "suicide blocked, lives unknown to client";
@@ -505,6 +522,19 @@ public sealed class RemoteCommandManager : IDisposable
         if (command.Contains(token, StringComparison.OrdinalIgnoreCase)) return true;
         foreach (string a in args)
             if (a.Contains(token, StringComparison.OrdinalIgnoreCase)) return true;
+        return false;
+    }
+
+    // Whole-phrase match: true when args contains first immediately followed by
+    // second (case-insensitive). Used for the `set suicide` @party hard-block,
+    // where the two adjacent tokens carry the meaning a lone "suicide" token
+    // doesn't — a bare `suicide` is a permitted @party passthrough.
+    private static bool ContainsAdjacent(string[] args, string first, string second)
+    {
+        for (int i = 0; i + 1 < args.Length; i++)
+            if (args[i].Equals(first, StringComparison.OrdinalIgnoreCase)
+                && args[i + 1].Equals(second, StringComparison.OrdinalIgnoreCase))
+                return true;
         return false;
     }
 

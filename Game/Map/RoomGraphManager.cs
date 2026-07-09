@@ -30,6 +30,12 @@ public sealed class RoomGraphManager
 {
     private readonly GameDataCache _cache;
     private readonly LogService? _log;
+
+    // TBInfo source consulted at build time to promote CMD-teleport-shadowed
+    // door exits (see PromoteCmdTeleportExits). Null in test / no-teleport
+    // configurations, in which case the promotion pass is skipped.
+    private readonly TBInfoStore? _tbinfo;
+
     private readonly Dictionary<RoomKey, Room> _rooms = new();
     private readonly Dictionary<string, List<Room>> _byName = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<(string Name, uint ExitMask), List<RoomKey>> _byNameAndExits = new();
@@ -54,11 +60,12 @@ public sealed class RoomGraphManager
 
     public RoomGraphManager(GameDataCache cache) : this(cache, log: null) { }
 
-    public RoomGraphManager(GameDataCache cache, LogService? log)
+    public RoomGraphManager(GameDataCache cache, LogService? log, TBInfoStore? tbinfo = null)
     {
         ArgumentNullException.ThrowIfNull(cache);
         _cache = cache;
         _log = log;
+        _tbinfo = tbinfo;
     }
 
     // Direct lookup by primary key. Returns null when the key doesn't resolve
@@ -191,6 +198,34 @@ public sealed class RoomGraphManager
             _log.Debug("RoomGraph",
                 $"FindCandidates('{name}', mask={mask:X}): dropped {keys.Count - filtered.Count} unreachable of {keys.Count}; {filtered.Count} left.");
         return filtered;
+    }
+
+    // Door-tolerant re-anchor fallback: same-name rooms whose graph ExitMask is
+    // a SUPERSET of the observed exit set — every observed exit is a known graph
+    // exit, but the graph may carry extra exits the observation hid (a closed
+    // door, an unsearched hidden exit). Excludes unreachable rooms (see
+    // ConfigureUnreachable). Distinct from FindCandidates, which demands an EXACT
+    // (Name, ExitMask) match: a single closed door drops one bit from the
+    // observed mask and defeats the exact lookup even for a room that's unique by
+    // name. RoomTracker calls this when the exact search misses and re-latches
+    // only on a 1-of-1 reachable result, so a name-unique room recovers through a
+    // door instead of freezing at Lost.
+    public IReadOnlyList<RoomKey> FindByNameCoveringExits(string name, IReadOnlySet<Direction> exits)
+    {
+        if (string.IsNullOrEmpty(name)) return Array.Empty<RoomKey>();
+        ArgumentNullException.ThrowIfNull(exits);
+        if (!_byName.TryGetValue(name, out List<Room>? rooms)) return Array.Empty<RoomKey>();
+
+        uint observedMask = MaskFromSet(exits);
+        List<RoomKey>? result = null;
+        foreach (Room room in rooms)
+        {
+            // Every observed exit must be present in the graph room's mask.
+            if ((observedMask & room.ExitMask) != observedMask) continue;
+            if (_isUnreachable is { } excluded && excluded(room.Key)) continue;
+            (result ??= new List<RoomKey>()).Add(room.Key);
+        }
+        return result is null ? Array.Empty<RoomKey>() : result;
     }
 
     // Read-only snapshot of every room in the active set, in load order. The
@@ -334,6 +369,7 @@ public sealed class RoomGraphManager
             _rooms[roomKey] = room with { Exits = rebuilt };
         }
 
+        PromoteCmdTeleportExits();
         BuildSecondaryIndexes();
 
         // Free the raw JSON; the typed graph is the source of truth now.
@@ -351,6 +387,45 @@ public sealed class RoomGraphManager
         _rooms.Clear();
         _byName.Clear();
         _byNameAndExits.Clear();
+    }
+
+    // Re-hint the cardinal exits a room's CMD teleport shadows. A room with
+    // Room.Cmd > 0 whose TBInfo Action chain teleports to a room that is ALSO
+    // the target of a hard cardinal exit — a stat-gated Door or a KeyLocked
+    // exit — gets that exit re-hinted Teleport, so the walker crosses it with
+    // the CMD keyword (e.g. `ring chime`) via SpecialExitDispatch instead of
+    // trying to bash / pick a door it may not be able to open. TryReadRoom's
+    // Item->Teleport promotion covers the (Item: N) variant; this covers the
+    // door-bypass variant, which the exit cell alone can't detect — it needs the
+    // TBInfo destination to know WHICH exit the teleport stands in for. Reusing
+    // the existing cardinal slot (rather than synthesising a directionless edge)
+    // keeps graph connectivity and the planar map layout unchanged. No-op
+    // without a TBInfo source (parameterless / test construction).
+    private void PromoteCmdTeleportExits()
+    {
+        if (_tbinfo is null) return;
+
+        foreach (RoomKey key in _rooms.Keys.ToArray())
+        {
+            Room room = _rooms[key];
+            if (room.Cmd <= 0) continue;
+
+            HashSet<RoomKey>? destinations = null;
+            foreach (var (_, dest, _) in TBInfoTeleportResolver.EnumerateTeleports(_tbinfo, room.Cmd))
+                (destinations ??= new()).Add(dest);
+            if (destinations is null) continue;
+
+            Dictionary<Direction, RoomExit>? rebuilt = null;
+            foreach ((Direction dir, RoomExit exit) in room.Exits)
+            {
+                if (exit.Hint is not (RoomExitHint.Door or RoomExitHint.KeyLocked)) continue;
+                if (!destinations.Contains(exit.Target)) continue;
+                (rebuilt ??= new(room.Exits))[dir] = exit with { Hint = RoomExitHint.Teleport };
+                _log?.Log(LogSeverity.Debug, "RoomGraph",
+                    $"Room {key} {dir} → {exit.Target}: door re-hinted Teleport (CMD {room.Cmd} teleport bypass).");
+            }
+            if (rebuilt is not null) _rooms[key] = room with { Exits = rebuilt };
+        }
     }
 
     private void BuildSecondaryIndexes()

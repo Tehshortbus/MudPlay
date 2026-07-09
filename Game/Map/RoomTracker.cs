@@ -842,8 +842,9 @@ public sealed class RoomTracker
         if (State.SuspectStrikes + 1 >= SuspectStrikeLimit)
         {
             if (TryReplayRecover(observation, when)) return;
+            if (TryReanchorByName(observation, when, "suspect strike limit")) return;
             SetRoom(room: null, RoomConfidence.Lost, when,
-                $"suspect strike limit ({SuspectStrikeLimit}) reached; replay failed");
+                $"suspect strike limit ({SuspectStrikeLimit}) reached; replay + name re-anchor failed");
             return;
         }
 
@@ -886,7 +887,8 @@ public sealed class RoomTracker
 
             case 0:
                 if (TryReplayRecover(observation, when)) return;
-                SetRoom(room: null, RoomConfidence.Lost, when, "no graph candidate; replay failed");
+                if (TryReanchorByName(observation, when, "no exact candidate")) return;
+                SetRoom(room: null, RoomConfidence.Lost, when, "no graph candidate; replay + name re-anchor failed");
                 break;
 
             default:
@@ -973,6 +975,27 @@ public sealed class RoomTracker
 
         ClearPendingAndSteps();
         SetRoom(cursor, RoomConfidence.Confirmed, when, "replay-from-last-Confirmed succeeded");
+        return true;
+    }
+
+    // Last-ditch re-anchor before Lost: when the exact (Name, ExitMask) search
+    // misses because a closed door / hidden exit changed the observed mask, fall
+    // back to the name bucket and accept a 1-of-1 reachable room whose graph
+    // exits COVER the observation. A name that's unique in the reachable graph
+    // re-latches through the door instead of freezing the marker at Lost.
+    // Ambiguous (>1) or empty results defer to the caller's Lost/Suspect path.
+    // Deliberately NOT a strict anchor — like replay-recovery, this is a
+    // deduction, so it updates in-memory state without overwriting the stronger
+    // on-disk LastKnownRoom.
+    private bool TryReanchorByName(RoomObservation observation, DateTimeOffset when, string context)
+    {
+        IReadOnlyList<RoomKey> covering = _graph.FindByNameCoveringExits(observation.Name, observation.Exits);
+        if (covering.Count != 1) return false;
+        if (_graph.GetRoom(covering[0]) is not { } room) return false;
+
+        ClearPendingAndSteps();
+        SetRoom(room, RoomConfidence.Confirmed, when,
+            $"name-unique re-anchor ({context}); observed exits subset of graph exits");
         return true;
     }
 

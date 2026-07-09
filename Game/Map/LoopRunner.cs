@@ -39,6 +39,11 @@ public sealed class LoopRunner : IRecoverableEngine
     // AutoWalkManager.SetPartyLeaderCheck. Null until wired.
     private Func<bool>? _isLeaderWithFollowers;
 
+    // Fired after a leading character crosses a party-splitting CMD teleport so
+    // the party engine reforms the dissolved group. Mirrors the walker's
+    // AutoWalkManager.SetPartySplitHandler. Null until wired.
+    private Action? _onLeaderPartySplit;
+
     private Loop? _loop;
     private int _index;
 
@@ -354,6 +359,15 @@ public sealed class LoopRunner : IRecoverableEngine
     {
         ArgumentNullException.ThrowIfNull(isLeaderWithFollowers);
         _isLeaderWithFollowers = isLeaderWithFollowers;
+    }
+
+    // Wire the party-split-teleport handler so a leading character reforms the
+    // party after a party-splitting CMD teleport. Mirrors
+    // AutoWalkManager.SetPartySplitHandler.
+    public void SetPartySplitHandler(Action handler)
+    {
+        ArgumentNullException.ThrowIfNull(handler);
+        _onLeaderPartySplit = handler;
     }
 
     // Start running loop. If a loop is already running, it is stopped first. Returns
@@ -776,7 +790,8 @@ public sealed class LoopRunner : IRecoverableEngine
             emitMove: (b, msg) => { _preMoveHook?.Invoke(); Write(b, msg); },
             writeAux: Write,
             _teleportResolver, _isLeaderWithFollowers,
-            out string? syncFail);
+            out string? syncFail,
+            onLeaderPartySplitTeleport: _onLeaderPartySplit);
         if (sync == SpecialExitSend.Sent) return;
         if (sync == SpecialExitSend.Failed)
         {

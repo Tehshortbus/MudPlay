@@ -445,23 +445,36 @@ public sealed class AutoWalkManagerTests : IDisposable
     }
 
     [Fact]
-    public void Resume_PlayerStillAtSourceRoom_SendsCurrentStep_NoReplan()
+    public void Resume_StepStillInFlight_DoesNotResend_ConfirmsOnArrival()
     {
-        // Pause + resume with no room arrival in between — walker
-        // should just re-send the in-flight step (the player hasn't
-        // moved). This is the trivial case the prior code already
-        // handled; pin it down so the reconciliation rewrite doesn't
-        // regress it.
+        // Pause + resume with the in-flight move's confirmation not yet
+        // landed (tracker still Pending on it, no room arrival during the
+        // pause). The old walker blindly re-sent _path[_index] on resume —
+        // a duplicate move on the wire that wedged the tracker's pending
+        // queue. The party-split (chime) teleport hit this: the PartyInvite
+        // reform gate asserts then clears mid-teleport (followers relay
+        // through and rejoin faster than the destination room render lands),
+        // so resume fired before arrival confirmed and the teleport re-sent —
+        // re-firing the reform (spamming @join at already-rejoined members)
+        // and stranding the walk. Fix: keep the step in flight; the resumed
+        // tracker events confirm it and advance.
         Harness h = NewHarness();
         h.Tracker.SetLocated(new RoomKey(1, 1));
-        h.Walker.WalkTo(new RoomKey(1, 3));
-        Assert.Single(h.Sent);
+        h.Walker.WalkTo(new RoomKey(1, 3));      // 2-step path: N, N
+        Assert.Single(h.Sent);                   // step 1 sent; tracker Pending
 
         h.Coordinator.AssertGate("user");
         h.Coordinator.ClearGate("user");
 
-        // Resume re-sends the step (walker doesn't know whether the
-        // already-sent bytes will land, so a clean re-send is correct).
+        // No arrival during the pause — the step is still in flight, so
+        // resume must NOT re-send it.
+        Assert.Single(h.Sent);
+        Assert.Equal(WalkState.Walking, h.Walker.State);
+
+        // The destination render finally lands — the walker advances and
+        // sends the next step, so the walk continues rather than stalling.
+        h.Tracker.NoteRoomObserved(new RoomObservation("B",
+            new HashSet<Direction> { Direction.N, Direction.S }));
         Assert.Equal(2, h.Sent.Count);
         Assert.Equal("n\r", System.Text.Encoding.Latin1.GetString(h.Sent[1]));
     }
@@ -1041,6 +1054,49 @@ public sealed class AutoWalkManagerTests : IDisposable
 
         Assert.Single(h.Sent);
         Assert.Equal("go arch\r", Encoding.Latin1.GetString(h.Sent[0]));
+    }
+
+    [Fact]
+    public void Walker_TeleportPartySplit_GateAssertClearMidTeleport_DoesNotResend()
+    {
+        // Report 171842: a chime-teleport reform asserts the PartyInvite gate
+        // the instant the leader teleports, and the followers relay through and
+        // rejoin so fast the gate clears before the destination room render
+        // lands. The walker's resume then re-sent the in-flight teleport —
+        // re-teleporting and re-firing the reform (spamming @join at the
+        // already-rejoined group) and stranding the walk. The in-flight guard
+        // keeps the step pending across the assert/clear so the teleport fires
+        // exactly once and the walk continues on arrival.
+        Harness h = NewHarness(TeleportGraphJson);
+        h.Tracker.SetLocated(new RoomKey(1, 10));
+        h.Walker.SetTeleportResolver((_, _) => "go arch");
+        h.Walker.SetPartyLeaderCheck(() => true);
+
+        int splitFires = 0;
+        h.Walker.SetPartySplitHandler(() =>
+        {
+            splitFires++;
+            // Simulate the reform racing the arrival: gate asserts (invite
+            // hold) then clears (members rejoin) before the teleport confirms.
+            h.Coordinator.AssertGate(MovementCoordinator.PartyInviteGate);
+            h.Coordinator.ClearGate(MovementCoordinator.PartyInviteGate);
+        });
+
+        h.Walker.WalkTo(new RoomKey(7, 131));
+
+        // Teleport fired exactly once — .@party relay + self keyword — and the
+        // reform handler ran once, with no duplicate re-send on gate resume.
+        Assert.Equal(1, splitFires);
+        Assert.Equal(2, h.Sent.Count);
+        Assert.Equal(".@party go arch\r", Encoding.Latin1.GetString(h.Sent[0]));
+        Assert.Equal("go arch\r",         Encoding.Latin1.GetString(h.Sent[1]));
+        Assert.Equal(WalkState.Walking, h.Walker.State);
+
+        // The destination render finally lands — the walk advances to its
+        // destination rather than stalling on the in-flight teleport.
+        h.Tracker.NoteRoomObserved(new RoomObservation("Stone Arch",
+            new HashSet<Direction>()));
+        Assert.Contains(h.Events, e => e.Kind == WalkEventKind.Finished);
     }
 
     // ----- multi-action hidden exits (commit 6) ---------------------

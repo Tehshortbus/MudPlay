@@ -186,6 +186,19 @@ public sealed class StealthManager : IDisposable
             _state.IsSneaking = false;
             SilentSneakLost?.Invoke();
         }
+        else if (_stateValue == StealthState.AttemptingSneak && !_sneakConfirmedThisRoom)
+        {
+            // An in-flight sneak attempt whose ACK ("Attempting to sneak...") and
+            // room "Sneaking..." confirm both went unobserved before the room
+            // changed. The attempt is now stale — reset to Idle so the re-attempt
+            // below isn't blocked by TryBeginAutoSneak's in-flight guard
+            // (!= Idle && != Failed). Without this the FSM strands in
+            // AttemptingSneak and auto-sneak silently stops re-firing for the
+            // rest of the run. Not a SilentSneakLost — we never established sneak,
+            // so there's no armed state for consumers to unwind.
+            _log?.Info(LogCategory, "stale sneak attempt — room changed before confirm; resetting to re-attempt");
+            Transition(StealthState.Idle);
+        }
         _sneakConfirmedThisRoom = false;
 
         // Auto-sneak: fires after the silent-loss check so a just-lost

@@ -44,7 +44,11 @@ internal static class SpecialExitDispatch
     // the teleport party-relay) — no pre-move hook. teleportResolver maps
     // (source, dest) → keyword, or null when unwired. isLeaderWithFollowers is
     // true when the local character should relay the teleport keyword to
-    // followers. failReason is populated when the return value is Failed.
+    // followers. onLeaderPartySplitTeleport (optional) fires right after a
+    // leader crosses a party-splitting CMD teleport (chime-style): the relayed
+    // `.@party <kw>` sends every follower through, but teleporting dissolves the
+    // follow chain, so the party engine must re-invite to reform. failReason is
+    // populated when the return value is Failed.
     public static SpecialExitSend TrySendSynchronous(
         RoomExit exit,
         Direction direction,
@@ -55,7 +59,8 @@ internal static class SpecialExitDispatch
         Action<byte[], string> writeAux,
         Func<RoomKey, RoomKey, string?>? teleportResolver,
         Func<bool>? isLeaderWithFollowers,
-        out string? failReason)
+        out string? failReason,
+        Action? onLeaderPartySplitTeleport = null)
     {
         ArgumentNullException.ThrowIfNull(tracker);
         ArgumentNullException.ThrowIfNull(emitMove);
@@ -117,7 +122,8 @@ internal static class SpecialExitDispatch
                 return SpecialExitSend.Failed;
             }
 
-            if (isLeaderWithFollowers?.Invoke() == true)
+            bool leaderRelay = isLeaderWithFollowers?.Invoke() == true;
+            if (leaderRelay)
             {
                 writeAux(Encoding.Latin1.GetBytes($".@party {keyword}\r"), $"teleport party-relay '.@party {keyword}'");
             }
@@ -125,6 +131,10 @@ internal static class SpecialExitDispatch
             tracker.NoteMoveSent(keyword, cardinal: direction);
             recovery?.NoteEngineStepSent(direction);
             emitMove(Encoding.Latin1.GetBytes(keyword + "\r"), $"teleport '{keyword}' → {exit.Target}");
+
+            // The teleport dissolved the follow chain even though every follower
+            // was relayed through — reform the party once we land.
+            if (leaderRelay) onLeaderPartySplitTeleport?.Invoke();
             return SpecialExitSend.Sent;
         }
 

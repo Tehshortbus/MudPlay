@@ -2,6 +2,28 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.23.4
+
+- Leader crossing a chime teleport no longer re-fires the teleport or spams `@join` at members who already rejoined — the walker waits for the destination room to confirm before it treats the step as done
+- The reformed party's walk continues on arrival instead of freezing at "waiting for invitee to join"
+- Stopping a walk mid-reform now clears the party-invite hold, so you can start walking elsewhere without being pinned by a stuck gate
+- bug reports addressed: stock-20260708-171842
+
+## 1.23.3
+
+- `@party <command>` now relays any command to the whole party (the party-bound analogue of `@do`), not just a fixed verb whitelist — so `@party use chime` / `@party ring chime` / `@party .hi` actually fire on followers
+- Chime-teleport party reform now works end-to-end: followers relay-teleport with the leader, so the leader's re-invite reaches every member instead of stranding the ones who never crossed
+- `@party` refuses only `set suicide` and `reroll`; every other command passes through
+- bug reports addressed: stock-20260708-163726, stock-20260708-163814, stock-20260708-163926
+
+## 1.23.0
+
+- Navigation re-latches a name-unique room through a closed door: a swung-shut door dropping an exit from the display no longer freezes position until a manual reposition
+- Auto-sneak re-fires after a silently lost sneak attempt, instead of stranding stealth for the rest of the run
+- "Ring chime"-style CMD teleports are now walkable — navigation routes and crosses them like any other exit
+- A party leader crossing a chime teleport relays the whole party through, then re-invites and waits in place for them to reform
+- bug reports addressed: stock-20260707-205936, stock-20260708-075501, stock-20260707-235341, stock-20260708-000851
+
 ## 1.22.0
 
 - Followers auto-rejoin their party after an unexpected disconnect: on re-entering the game they telepath @comeback to the leader they were following, who then owns the pickup (our room key attached when the map position is confirmed)
