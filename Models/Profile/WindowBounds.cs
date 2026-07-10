@@ -4,10 +4,10 @@ namespace FujinTerm.Models.Profile;
 // CharacterProfile.WindowBounds keyed by a stable window id ("main",
 // "backscroll", etc.).
 //
-// All values are device-independent pixels. X / Y are the window's Position in
-// screen coordinates. If the saved position would land off-screen on the
-// current monitor layout the window manager clamps it on Show; we don't
-// second-guess.
+// Width / Height are device-independent pixels; X / Y are the window's Position
+// (physical screen pixels). WindowLayoutStore validates the position against the
+// live monitor layout on restore — a spot on a now-disconnected monitor, or one
+// that falls off every screen, gets re-anchored next to the main UI.
 public sealed class WindowBounds
 {
     public double X { get; set; }

@@ -1,9 +1,10 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.26.1**
-> - Walker now halts instead of walking deeper when an in-flight move carries it out of a room with a hostile it had just engaged
-> - A movement step can no longer slip onto the wire in the instant between combat engaging and the walk pausing
+> **Version 1.27.0**
+> - Window positions now restore when you switch character profiles, instead of staying where they were
+> - A window whose saved monitor is gone, or that would open off-screen, re-anchors next to the main window
+> - Windows still visible on a connected second monitor keep reopening there
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

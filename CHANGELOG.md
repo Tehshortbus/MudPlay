@@ -2,6 +2,12 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.27.0
+
+- Window positions now restore when you switch character profiles, instead of staying where they were
+- A window whose saved monitor is gone, or that would open off-screen, re-anchors next to the main window
+- Windows still visible on a connected second monitor keep reopening there
+
 ## 1.26.1
 
 - Walker now halts instead of walking deeper when an in-flight move carries it out of a room with a hostile it had just engaged
