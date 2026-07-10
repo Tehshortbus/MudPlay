@@ -499,6 +499,10 @@ public partial class MainWindowViewModel : ObservableObject
         // instance Game Data Browser at a specific item — only this VM can
         // spawn / toggle that window.
         AppServices.Current.SetItemGameDataOpener(OpenItemGameData);
+        // Same for the room-detail popup: monster names jump to a monster
+        // record, and the room title / exits centre the Nav map on a room.
+        AppServices.Current.SetMonsterGameDataOpener(OpenMonsterGameData);
+        AppServices.Current.SetNavigateToRoomOpener(FocusNavigationOnRoom);
 
         // Engine-state chip — same shape as the Navigation window's
         // top-bar badge (IDLE / WALKING / LOOPING / AUTO-LAIR). Lives
@@ -3022,6 +3026,17 @@ public partial class MainWindowViewModel : ObservableObject
             row => string.Equals(row.Get("Number"), numStr, StringComparison.Ordinal));
     }
 
+    // Registered on AppServices so the room-detail popup's clickable monster
+    // names jump straight to a monster's Game Data record. Opens (or
+    // re-focuses) the browser at the Monsters section and selects the row whose
+    // "Number" matches.
+    private void OpenMonsterGameData(int monsterNumber)
+    {
+        string numStr = monsterNumber.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        ShowGameDataBrowser("monsters",
+            row => string.Equals(row.Get("Number"), numStr, StringComparison.Ordinal));
+    }
+
     // Game Data menu → "Modify Blacklist…". Staged editor over the
     // per-BBS room blacklist. Save commits + redraws the map; Cancel
     // discards.
@@ -3290,15 +3305,27 @@ public partial class MainWindowViewModel : ObservableObject
     [RelayCommand]
     private void OpenNavigation()
     {
-        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
-            return;
-
         if (_navigationWindow is { } existing) { existing.Close(); return; }
+        EnsureNavigationWindow();
+    }
 
-        Views.Navigation.NavigationWindow window = new()
+    // Opens the Navigation window if it isn't already up and returns its VM.
+    // Unlike OpenNavigation this never toggles closed — callers that want to
+    // act on the live map (e.g. the room-detail popup's "centre here") must not
+    // dismiss an already-open window.
+    private ViewModels.Navigation.NavigationViewModel? EnsureNavigationWindow()
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
+            return null;
+
+        if (_navigationWindow is { } existing)
         {
-            DataContext = new ViewModels.Navigation.NavigationViewModel(AppServices.Current),
-        };
+            existing.Activate();
+            return existing.DataContext as ViewModels.Navigation.NavigationViewModel;
+        }
+
+        ViewModels.Navigation.NavigationViewModel vm = new(AppServices.Current);
+        Views.Navigation.NavigationWindow window = new() { DataContext = vm };
         window.Closed += (_, _) =>
         {
             if (window.DataContext is IDisposable d) d.Dispose();
@@ -3306,7 +3333,14 @@ public partial class MainWindowViewModel : ObservableObject
         };
         _navigationWindow = window;
         window.Show(main);
+        return vm;
     }
+
+    // Registered on AppServices — the room-detail popup's clickable room title
+    // and exit destinations route here to open/focus the map and re-root it on
+    // the chosen room.
+    private void FocusNavigationOnRoom(Game.Map.RoomKey key)
+        => EnsureNavigationWindow()?.OnFloorChangeRequested(key);
 
     // Guards against a second standalone Manage dialog opening while one is up.
     private bool _manageDialogOpen;

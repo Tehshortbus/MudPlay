@@ -285,7 +285,7 @@
                                                     IsVisible="{Binding HasActions}">
                                                 <Button.Flyout>
                                                     <Flyout Placement="Bottom">
-                                                        <StackPanel MaxWidth="500">
+                                                        <StackPanel MaxWidth="560">
                                                             <TextBlock Classes="SectionHeader"
                                                                        Text="Responds to (indented lines are the effects that fire)"/>
                                                             <!-- Right padding reserves a gutter so the overlay
