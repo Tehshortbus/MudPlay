@@ -259,6 +259,69 @@ public sealed class CombatStateTrackerTests
         Assert.Equal(historyAfterFirst, h.Coordinator.History.Count);
     }
 
+    // ----- engaged-target abandonment on room change -----------------
+
+    [Fact]
+    public void RoomChangeWhileGated_FiresEngagedTargetAbandoned_AndClearsGate()
+    {
+        // An in-flight move confirmed and swapped rooms while the combat gate
+        // was held on a live hostile — we left a fight we hadn't finished. The
+        // tracker must signal abandonment (so the walker halts) yet still clear
+        // the gate for the new room (holding would deadlock — an empty room
+        // emits no further observation to release it).
+        using Harness h = new();
+        h.AddMonster(1, "giant rat", killable: true);
+
+        h.Feed("Also here: giant rat.");
+        Assert.True(h.CombatGateHeld);
+
+        string? reason = null;
+        h.Tracker.EngagedTargetAbandoned += r => reason = r;
+
+        h.Classifier.NoteRoomChanged();          // move confirmed → synthetic wipe
+
+        Assert.NotNull(reason);                  // abandonment signalled
+        Assert.False(h.CombatGateHeld);          // gate cleared → no deadlock
+    }
+
+    [Fact]
+    public void DeathClearWhileGated_DoesNotFireAbandonment()
+    {
+        // Killing the last hostile empties the room via a Death observation —
+        // that's a room we cleared by winning, NOT an abandoned fight. The
+        // abandonment signal must stay silent so the walker keeps its route.
+        using Harness h = new();
+        h.AddMonster(1, "giant rat", killable: true);
+
+        h.Feed("Also here: giant rat.");
+        Assert.True(h.CombatGateHeld);
+
+        bool fired = false;
+        h.Tracker.EngagedTargetAbandoned += _ => fired = true;
+
+        h.Classifier.RemoveDeadEntity("giant rat");   // killed it → Death wipe
+
+        Assert.False(fired);                     // victory, not abandonment
+        Assert.False(h.CombatGateHeld);          // gate cleared normally
+    }
+
+    [Fact]
+    public void RoomChangeWithGateDown_DoesNotFireAbandonment()
+    {
+        // Normal walking through an empty room (no hostile engaged, gate never
+        // held) must not trip the abandonment signal on every room change.
+        using Harness h = new();
+        h.Feed("Also here: Bob.");               // player only — gate down
+        Assert.False(h.CombatGateHeld);
+
+        bool fired = false;
+        h.Tracker.EngagedTargetAbandoned += _ => fired = true;
+
+        h.Classifier.NoteRoomChanged();
+
+        Assert.False(fired);
+    }
+
     // ----- HasRoomNpc (PR 4.b decision #1) ---------------------------
 
     [Fact]

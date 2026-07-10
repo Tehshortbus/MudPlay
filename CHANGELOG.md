@@ -2,6 +2,12 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.26.1
+
+- Walker now halts instead of walking deeper when an in-flight move carries it out of a room with a hostile it had just engaged
+- A movement step can no longer slip onto the wire in the instant between combat engaging and the walk pausing
+- bug reports addressed: stock-20260710-002816
+
 ## 1.26.0
 
 - Backscroll drag-select now spans multiple rows and Ctrl+C copies the exact character range across lines

@@ -1,12 +1,9 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.26.0**
-> - Backscroll drag-select now spans multiple rows and Ctrl+C copies the exact character range across lines
-> - Timestamps moved to an aligned gutter, kept out of the copied text
-> - Backscroll opens parked just above the live line on the newest scrollback instead of jumping to the tail
-> - Transcript renders with the terminal's aliased VGA font — no colour fringing on glyph edges
-> - Fixes a crash when opening the Backscroll window
+> **Version 1.26.1**
+> - Walker now halts instead of walking deeper when an in-flight move carries it out of a room with a hostile it had just engaged
+> - A movement step can no longer slip onto the wire in the instant between combat engaging and the walk pausing
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

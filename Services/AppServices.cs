@@ -3112,6 +3112,13 @@ public sealed class AppServices
         // unchanged.
         Walker.SetPathItemAnnouncer(PartyPathItemGate.OnPathItemsRequired);
 
+        // If an in-flight move carried us out of a room where combat had just
+        // engaged an actionable hostile (the move confirms + wipes the room
+        // before the kill lands), halt the walk so it doesn't keep going deeper
+        // past the abandoned fight. Both engines are rebuilt together in this
+        // method, so the subscription dies with them — no explicit unsubscribe.
+        CombatTracker.EngagedTargetAbandoned += reason => Walker.HaltForAbandonedCombat(reason);
+
         // Active auto-light engine — announced the same planned route as the
         // item gate above. It scans for the darkest room and readies a covering
         // carried light before we walk into the dark. `wornIllu` is the worn-only
