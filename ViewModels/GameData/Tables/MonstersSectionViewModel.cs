@@ -323,16 +323,18 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
             int greetTxt = ReadInt(el, "GreetTXT");
             if (greetTxt > 0)
             {
-                // Surface the command keywords the greet textblock (and its
-                // LinkTo chain) responds to so the row is click-through in the
-                // dialog. Null actions keep the row plain when the block has no
-                // player keywords (pure message/teleport greet).
-                IReadOnlyList<string> greetActions =
-                    TBInfoActionInspector.CollectActionKeywords(AppServices.Current.TBInfo, greetTxt);
-                kv.Add(new MdbInfoRow(
-                    "Greet",
-                    $"Textblock #{greetTxt}",
-                    greetActions.Count > 0 ? greetActions : null));
+                // Decode the greet textblock into the "what can I ask, and what
+                // flags fire when I do" tree so the row is click-through in the
+                // dialog. Depth becomes leading spaces so the popup reads as an
+                // outline. Null actions keep the row plain when the block has no
+                // player keywords (a pure dialogue greet).
+                IReadOnlyList<TBInfoActionLine> decoded =
+                    TBInfoActionDecoder.DecodeGreet(
+                        AppServices.Current.TBInfo, _cache, _roomGraph, greetTxt);
+                IReadOnlyList<string>? greetActions = decoded.Count > 0
+                    ? decoded.Select(l => new string(' ', l.Depth * 2) + l.Text).ToList()
+                    : null;
+                kv.Add(new MdbInfoRow("Greet", $"Textblock #{greetTxt}", greetActions));
             }
 
             AddRowIfNonZero(kv, "BS Defense", ReadInt(el, "BSDefense"));

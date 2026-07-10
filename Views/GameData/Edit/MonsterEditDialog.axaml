@@ -265,18 +265,23 @@
                                                     IsVisible="{Binding HasActions}">
                                                 <Button.Flyout>
                                                     <Flyout Placement="Bottom">
-                                                        <StackPanel MaxWidth="260">
-                                                            <TextBlock Classes="SectionHeader" Text="Responds to"/>
-                                                            <ItemsControl ItemsSource="{Binding Actions}">
-                                                                <ItemsControl.ItemTemplate>
-                                                                    <DataTemplate x:DataType="x:String">
-                                                                        <TextBlock Text="{Binding}"
-                                                                                   FontFamily="{StaticResource FontMono}"
-                                                                                   FontSize="11"
-                                                                                   TextWrapping="Wrap" Margin="0,2"/>
-                                                                    </DataTemplate>
-                                                                </ItemsControl.ItemTemplate>
-                                                            </ItemsControl>
+                                                        <StackPanel MaxWidth="460">
+                                                            <TextBlock Classes="SectionHeader"
+                                                                       Text="Responds to (indented lines are the effects that fire)"/>
+                                                            <ScrollViewer MaxHeight="360"
+                                                                          VerticalScrollBarVisibility="Auto"
+                                                                          HorizontalScrollBarVisibility="Auto">
+                                                                <ItemsControl ItemsSource="{Binding Actions}">
+                                                                    <ItemsControl.ItemTemplate>
+                                                                        <DataTemplate x:DataType="x:String">
+                                                                            <TextBlock Text="{Binding}"
+                                                                                       FontFamily="{StaticResource FontMono}"
+                                                                                       FontSize="11"
+                                                                                       TextWrapping="NoWrap" Margin="0,1"/>
+                                                                        </DataTemplate>
+                                                                    </ItemsControl.ItemTemplate>
+                                                                </ItemsControl>
+                                                            </ScrollViewer>
                                                         </StackPanel>
                                                     </Flyout>
                                                 </Button.Flyout>

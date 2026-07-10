@@ -3,7 +3,7 @@
 <!-- current-version:start -->
 > **Version 1.24.0**
 > - Session Statistics shows time-to-level, honoring banked levels — "N levels gained · HH:MM:SS until level X" at the session's exp/hour rate
-> - Game Data monster Greet rows are click-through — the popup lists the command keywords that textblock (and its linked chain) responds to
+> - Game Data monster Greet rows are click-through — the popup decodes the textblock chain like MegaMUD, listing each keyword the monster responds to and the effects it fires (Cast, Item give/take, Ability, Class/Race gate, AddExp, Learn/Checkspell, Summon, Random branches, Cost/Givecoins, Teleport, Remote Action, Testskill)
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->
