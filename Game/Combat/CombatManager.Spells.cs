@@ -28,6 +28,11 @@ public sealed partial class CombatManager
     private Func<(int Ma, int MaxMa)>? _readMana;
     private Func<bool>? _autoNukeGate;
 
+    // Resolves a Spell.Number to its Short cast-code (the per-monster override
+    // slots store a Number, but casts go out as the Short). Optional: until wired
+    // no per-monster spell override is ever substituted.
+    private Func<int, string?>? _spellShortByNumber;
+
     // ----- In-between debuff bridge (CastingDirector-driven) -----------
     // A debuff is an in-between action, not a combat action, so it casts
     // through the shared in-between window owned by CastingDirector rather
@@ -115,6 +120,16 @@ public sealed partial class CombatManager
         _autoNukeGate = gate;
     }
 
+    // Wire the Spell.Number → Short cast-code resolver used to substitute a
+    // per-monster spell override (Monster overlay stores the override as a
+    // Number; the chooser needs the Short to cast it). Until called, no override
+    // is ever substituted and the global Combat-tab spell slots are used as-is.
+    public void SetSpellShortResolver(Func<int, string?> resolver)
+    {
+        ArgumentNullException.ThrowIfNull(resolver);
+        _spellShortByNumber = resolver;
+    }
+
     // True once SetCombatSpellCaster has wired both the coordinator and the mana
     // reader. Gates every chooser call.
     private bool CombatSpellsWired => _cast is not null && _readMana is not null;
@@ -133,7 +148,17 @@ public sealed partial class CombatManager
     {
         CombatSpellContext ctx = CombatSpellsWired
             ? BuildContext(settings, obs, picked.RawName, enemyCount, picked.MonsterNumber)
-            : BuildWeaponContext(settings, obs, picked.RawName, enemyCount);
+            : BuildWeaponContext(settings, obs, picked.RawName, enemyCount, picked.MonsterNumber);
+
+        // Announce an active per-monster spell override once at target-pick time
+        // (not on the per-round heartbeat) so a log read shows why the cast-code
+        // differs from the Combat-tab slot for this species.
+        if (ctx.OverrideAttackSpell is { } atkOverride)
+            _log?.Combat(LogCategory,
+                $"per-monster attack override {atkOverride} (#{picked.MonsterNumber}) — bypassing effectiveness gates");
+        if (ctx.OverridePreAttackSpell is { } preOverride)
+            _log?.Combat(LogCategory,
+                $"per-monster pre-attack override {preOverride} (#{picked.MonsterNumber})");
 
         CombatSpellDecision decision = _spellChooser.Choose(settings, ctx);
 
@@ -398,6 +423,8 @@ public sealed partial class CombatManager
         int enemyCount, int monsterNumber)
     {
         (int ma, int maxMa) = _readMana!();
+        (string? attackOverride, int? attackCap) = AttackOverrideFor(monsterNumber);
+        (string? preAttackOverride, int? preAttackCap) = PreAttackOverrideFor(monsterNumber);
         return new CombatSpellContext(
             EnemyCount:          enemyCount,
             TargetRawName:       target,
@@ -408,7 +435,54 @@ public sealed partial class CombatManager
             SpellsAvailable:     true,
             LevelBlockedActions: LevelBlockedFor(settings, monsterNumber),
             AllowNukes:          _autoNukeGate?.Invoke() ?? true,
-            ResistBlockedActions: ResistBlockedFor(settings, monsterNumber));
+            ResistBlockedActions: ResistBlockedFor(settings, monsterNumber),
+            TargetDontBackstab:  IsDontBackstab(monsterNumber),
+            OverrideAttackSpell:       attackOverride,
+            OverrideAttackMaxCasts:    attackCap,
+            OverridePreAttackSpell:    preAttackOverride,
+            OverridePreAttackMaxCasts: preAttackCap);
+    }
+
+    // The current target's per-monster DontBackstab overlay flag — the backstab
+    // opener must skip a flagged target and open with a normal attack instead.
+    // Fail-safe false for an unknown monster number (nothing to resolve).
+    private bool IsDontBackstab(int monsterNumber) =>
+        monsterNumber >= 0 && (ResolveOverlay(monsterNumber).DontBackstab ?? false);
+
+    // Resolve this monster's override attack spell to a (cast-code, cap) pair, or
+    // (null, null) when there's no active override. Delegates to the shared
+    // resolver — see ResolveSpellOverride for the "active" conditions.
+    private (string? Spell, int? Cap) AttackOverrideFor(int monsterNumber)
+    {
+        if (monsterNumber < 0) return (null, null);
+        MonsterOverlay overlay = ResolveOverlay(monsterNumber);
+        return ResolveSpellOverride(overlay.OverrideAttackSpellId, overlay.OverrideAttackCount);
+    }
+
+    // Resolve this monster's override pre-attack spell to a (cast-code, cap) pair,
+    // or (null, null) when there's no active override.
+    private (string? Spell, int? Cap) PreAttackOverrideFor(int monsterNumber)
+    {
+        if (monsterNumber < 0) return (null, null);
+        MonsterOverlay overlay = ResolveOverlay(monsterNumber);
+        return ResolveSpellOverride(overlay.OverridePreAttackSpellId, overlay.OverridePreAttackCount);
+    }
+
+    // Turn a per-monster override slot (Spell.Number + configured cast count) into
+    // the Short cast-code and per-room cap the chooser needs, or (null, null) when
+    // the override is inactive. An override is active only when it's fully
+    // configured: the resolver is wired, a positive Spell.Number is set, the count
+    // is a positive cap (a null/zero count means "not really configured" — the
+    // overlay documents null = 0 — so we fall back to the global slot), and the
+    // number maps to a real Short cast-code (unknown number → fall back).
+    private (string? Spell, int? Cap) ResolveSpellOverride(int? spellId, int? count)
+    {
+        if (_spellShortByNumber is null) return (null, null);
+        if (spellId is not { } number || number <= 0) return (null, null);
+        int cap = count ?? 0;
+        if (cap <= 0) return (null, null);
+        string? code = _spellShortByNumber(number);
+        return string.IsNullOrWhiteSpace(code) ? (null, null) : (code, cap);
     }
 
     // Choose the alternate weapon when (a) this species already produced a "no
@@ -576,14 +650,16 @@ public sealed partial class CombatManager
     // vs Physical — and reads no mana (none is available without the wired
     // reader).
     private CombatSpellContext BuildWeaponContext(
-        CombatSettings settings, RoomEntitiesObservation obs, string target, int enemyCount) =>
+        CombatSettings settings, RoomEntitiesObservation obs, string target,
+        int enemyCount, int monsterNumber) =>
         new(EnemyCount:      enemyCount,
             TargetRawName:   target,
             Mana:            0,
             MaxMana:         0,
             BackstabPending: BackstabPending(settings, obs),
             ImmuneAttackSpells: null,
-            SpellsAvailable: false);
+            SpellsAvailable: false,
+            TargetDontBackstab: IsDontBackstab(monsterNumber));
 
     // The single-target attack-spell actions the species of target has proven
     // immune to this room, or null when nothing is immune (the common case).

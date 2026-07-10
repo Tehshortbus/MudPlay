@@ -20,7 +20,7 @@ namespace FujinTerm.Models.GameData;
 // relationship, target priority, per-monster spell preferences (the
 // override-pre-attack and override-attack-spell slots take priority over
 // the global Combat-tab spell choices for this specific monster), plus the
-// NotHostile / DontBackstab flags. All fields nullable so a partial-tier
+// DontBackstab flag. All fields nullable so a partial-tier
 // override only carries the keys the user actually set — the resolver
 // overlays them onto the next-lower tier's values, preserving lower-tier
 // values for fields the user didn't touch.
@@ -53,9 +53,6 @@ public sealed record MonsterOverlay
 
     // Cast count for OverrideAttackSpellId; null = 0.
     public int? OverrideAttackCount { get; init; }
-
-    // Don't attack unless attacked first.
-    public bool? NotHostile { get; init; }
 
     // Suppress auto-BS attempts on this target.
     public bool? DontBackstab { get; init; }

@@ -593,7 +593,8 @@ public sealed partial class CombatManager : IDisposable
                 ResolvedName:    e.ResolvedName,
                 MonsterNumber:   n,
                 Priority:        overlay.Priority ?? MonsterAttackPriority.Normal,
-                AppearanceIndex: i));
+                AppearanceIndex: i,
+                DontBackstab:    overlay.DontBackstab ?? false));
         }
 
         if (engageable.Count == 0)
@@ -718,7 +719,14 @@ public sealed partial class CombatManager : IDisposable
                 ? Enumerable.Reverse(engageable).ToList()
                 : engageable;
 
+        // On the backstab opener, prefer the highest-priority actionable monster
+        // NOT flagged DontBackstab so the surprise round doesn't land on a
+        // never-BS target. If every actionable monster is flagged we don't skip
+        // the room — fall back to the highest-priority actionable one and open
+        // with a normal attack (the chooser's BS gate suppresses the bs there).
+        bool backstabPending = BackstabPending(settings, obs);
         EngageableCandidate? choice = null;
+        EngageableCandidate? actionableFallback = null;
         foreach (EngageableCandidate cand in ordered)
         {
             if (UnengageableReason(settings, cand.MonsterNumber) is { } reason)
@@ -727,9 +735,15 @@ public sealed partial class CombatManager : IDisposable
                     $"skip un-actionable {cand.RawName} (#{cand.MonsterNumber}) — {reason}");
                 continue;
             }
+            actionableFallback ??= cand;
+            if (backstabPending && cand.DontBackstab)
+                continue;                 // prefer a non-flagged backstab target
             choice = cand;
             break;
         }
+        // Backstab pending but every actionable monster is DontBackstab-flagged —
+        // take the highest-priority actionable one and attack it normally.
+        choice ??= actionableFallback;
 
         // No engageable hostile is actionable — we can neither hit nor spell
         // anything left in the room. Move past: clear the target and dispatch
@@ -1288,7 +1302,8 @@ public sealed partial class CombatManager : IDisposable
                 ResolvedName:    e.ResolvedName,
                 MonsterNumber:   n,
                 Priority:        overlay.Priority ?? MonsterAttackPriority.Normal,
-                AppearanceIndex: i);
+                AppearanceIndex: i,
+                DontBackstab:    overlay.DontBackstab ?? false);
         }
         return null;
     }
@@ -1678,5 +1693,6 @@ public sealed partial class CombatManager : IDisposable
         string ResolvedName,
         int MonsterNumber,
         MonsterAttackPriority Priority,
-        int AppearanceIndex);
+        int AppearanceIndex,
+        bool DontBackstab);
 }

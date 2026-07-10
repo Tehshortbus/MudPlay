@@ -225,6 +225,34 @@ it isn't here and you're unsure, ask.
   (`Spells.Short`) directly (`swan`, `swan rat`), with no `c` verb precursor, so the client
   recognises a manual cast by that cast-code on the wire.
 
+### Per-monster overlay automation *([CONFIRMED] 2026-07-10, user design)*
+
+Client-side automation policy for the Game Data → Monster overlay flags (not engine
+behaviour — how the client's auto-combat interprets the per-monster overrides):
+
+- **DontBackstab** — a monster flagged DontBackstab is never the backstab opener. On the
+  opening (armed) round the target picker **prefers the highest-priority non-flagged**
+  actionable monster to backstab; a flagged monster is only chosen when **every** actionable
+  monster in the room is flagged, in which case the room is **still cleared** — the opener just
+  falls through to a normal attack instead of `bs` (never skip the room over the flag).
+- **Override attack spell / Override pre-attack spell** — a per-monster spell (stored as a
+  `Spells.Number`, resolved to the `Spells.Short` cast-code) that **substitutes** for the global
+  Combat-tab choice **for that species only**. The attack override occupies the *Normal Attack
+  Spell* rung; the pre-attack override occupies the *Single-Target Debuff* rung (cast through the
+  in-between window). Because only two single-target chooser slots exist, this mapping is
+  structurally forced.
+  - **Gate bypass:** when an override is set the client **bypasses the effectiveness gates**
+    (observed "no effect" immunity, SpellImmu level-block, and ≥100% elemental resist) — the
+    rationale is that a user who hand-picks a spell for a specific monster has done the due
+    diligence that it works. The **physical constraints still apply**: the rung's mana floor,
+    the once-per-target guard (pre-attack), and the override's own per-room cast cap.
+  - **Count = per-room cast cap.** The override's configured count is the cap; the overlay
+    documents **null = 0**, so a spell set with **no positive count is treated as inactive** and
+    the client falls back to the global slot (likewise if the number doesn't resolve to a known
+    cast-code). This "null/zero count ⇒ fall back to global" reading is the client's
+    interpretation of the ambiguous count field — **flag for user confirmation** if override
+    behaviour is ever questioned.
+
 ## Monster aggression — who opens on you unprovoked
 
 A monster is **hostile** (attacks without being engaged first) as a function of the **monster's

@@ -133,7 +133,6 @@
                                         BorderThickness="1" CornerRadius="3" Padding="8">
                                     <StackPanel>
                                         <TextBlock Classes="SectionHeader" Text="Options"/>
-                                        <CheckBox Content="Not hostile"    IsChecked="{Binding NotHostile, Mode=TwoWay}"/>
                                         <CheckBox Content="Don't backstab" IsChecked="{Binding DontBackstab, Mode=TwoWay}"/>
                                     </StackPanel>
                                 </Border>

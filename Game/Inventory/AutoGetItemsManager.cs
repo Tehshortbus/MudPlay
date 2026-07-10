@@ -38,9 +38,11 @@ public sealed class AutoGetItemsManager : IDisposable
     // LogService category — [AutoGet] rows per collected / deferred item.
     public const string LogCategory = "AutoGet";
 
-    // One resolved room entry: the canonical name to send to the game and
-    // whether the user flagged it for auto-collection.
-    public sealed record ResolvedItem(string Name, bool AutoCollect);
+    // One resolved room entry: the canonical name to send to the game,
+    // whether the user flagged it for auto-collection, and whether the item
+    // is marked CannotBeTaken (a hard never-pick-up flag that wins over
+    // AutoCollect — the engine never sends get for it).
+    public sealed record ResolvedItem(string Name, bool AutoCollect, bool CannotBeTaken);
 
     private readonly Func<string, ResolvedItem?> _resolve;
     private readonly Func<bool> _isEnabled;
@@ -217,6 +219,11 @@ public sealed class AutoGetItemsManager : IDisposable
         {
             ResolvedItem? item = _resolve(entry);
             if (item is null) continue;          // not an item / not in game data
+            if (item.CannotBeTaken)              // hard never-pick-up flag wins over AutoCollect
+            {
+                _log?.Debug(LogCategory, $"skipped item={item.Name} (cannot be taken)");
+                continue;
+            }
             if (!item.AutoCollect) continue;     // user didn't flag it
 
             if (deferMode)

@@ -36,6 +36,16 @@ public sealed partial class ItemEditDialogViewModel : ObservableObject, IDialogV
     public string? BuySellTooltip =>
         CanBuySell ? null : "LIGHT items are managed by Auto-light — Auto-buy / Auto-sell don't apply.";
 
+    // Auto-open only applies to container items — the engine sends `open <item>`
+    // when a flagged container enters inventory, which is meaningless for a
+    // non-container. The dialog greys the toggle off for anything that isn't a
+    // container; the runtime resolver enforces the same container gate.
+    public bool CanAutoOpen { get; }
+
+    // Non-null only when Auto-open is greyed (non-container) — explains why.
+    public string? AutoOpenTooltip =>
+        CanAutoOpen ? null : "Auto-open applies to container items only.";
+
     // Guards the Auto-buy MaxToGet seed so it fires on a live user tick, not
     // during the ctor's initial load of a saved overlay.
     private readonly bool _initialized;
@@ -85,6 +95,7 @@ public sealed partial class ItemEditDialogViewModel : ObservableObject, IDialogV
         SettingsTier currentTier,
         IReadOnlyList<KeyValuePair<string, string>> mdbInfo,
         bool isLight = false,
+        bool isContainer = false,
         ChestContents? chest = null)
     {
         WccNoStr     = wccNoStr;
@@ -92,13 +103,16 @@ public sealed partial class ItemEditDialogViewModel : ObservableObject, IDialogV
         UseTier      = currentTier;
         MdbInfo      = mdbInfo;
         CanBuySell   = !isLight;
+        CanAutoOpen  = isContainer;
 
         (ChestDrops, ChestSummary) = BuildChest(chest);
 
         AutoCollect     = existing?.AutoCollect     ?? false;
         AutoDiscard     = existing?.AutoDiscard     ?? false;
         AutoFind        = existing?.AutoFind        ?? false;
-        AutoOpen        = existing?.AutoOpen        ?? false;
+        // Container-gated: a non-container never shows (or persists) Auto-open,
+        // even if a stale overlay carried the flag.
+        AutoOpen        = isContainer && (existing?.AutoOpen ?? false);
         AutoBuy         = existing?.AutoBuy         ?? false;
         AutoSell        = existing?.AutoSell        ?? false;
         AutoStash       = existing?.AutoStash       ?? false;

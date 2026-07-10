@@ -48,6 +48,11 @@ public sealed class ItemNameStore
     // (see WornCodeOf).
     private readonly Dictionary<int, int> _wornByNumber = new();
 
+    // Item Number → ItemType (MDB slot/kind code). Lets the auto-open engine
+    // confirm a flagged item is actually a container (ItemType == 8) before
+    // sending open (see ItemTypeOf).
+    private readonly Dictionary<int, int> _itemTypeByNumber = new();
+
     public string? ActiveSet { get; private set; }
 
     // Alphabetically-sorted, distinct names of every weapon (ItemType == 1)
@@ -125,6 +130,11 @@ public sealed class ItemNameStore
            && _wornByNumber.TryGetValue(number, out int worn)
             ? worn : null;
 
+    // ItemType (MDB kind code) of the item id, or null when the id isn't in
+    // the active set. Used by the auto-open engine's container gate.
+    public int? ItemTypeOf(int number)
+        => _itemTypeByNumber.TryGetValue(number, out int t) ? t : null;
+
     // Lower-case, trim, and strip a leading article / count token so a loose
     // room phrasing collapses to the canonical item name shape. Shared by the
     // reverse-index build and the FindByName lookup so both sides agree on
@@ -189,6 +199,7 @@ public sealed class ItemNameStore
         _byNormalizedName.Clear();
         _encumByNumber.Clear();
         _wornByNumber.Clear();
+        _itemTypeByNumber.Clear();
         _weaponNames = Array.Empty<string>();
         _offHandNames = Array.Empty<string>();
         ActiveSet = setName;
@@ -232,8 +243,10 @@ public sealed class ItemNameStore
             _encumByNumber[number] = ReadInt(row, "Encum");
             int worn = ReadInt(row, "Worn");
             _wornByNumber[number] = worn;
+            int itemType = ReadInt(row, "ItemType");
+            _itemTypeByNumber[number] = itemType;
 
-            if (ReadInt(row, "ItemType") == 1) weapons.Add(name);
+            if (itemType == 1) weapons.Add(name);
             if (worn == 12) offHands.Add(name);
 
             parsed++;

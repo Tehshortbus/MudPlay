@@ -1,13 +1,12 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.31.0**
-> - Merchant shops in the room-detail popup now show a stock table: item, max, restock, and buy/sell prices
-> - Training rooms in the room-detail popup now show the class and level band they train
-> - The item dialog decodes a chest's loot table — each possible drop with its % chance, plus the min/max items an open yields
-> - Chest drop names are clickable, jumping the Game Data browser to that item; the % column aligns with a separator beside the name
-> - Double-clicking another item row now swaps the open item menu to that item instead of stacking a second window
-> - Item dialog's Name/Use fields sit left with the pane splitter defaulting to their right edge
+> **Version 1.32.0**
+> - Items flagged CannotBeTaken are never auto-collected, even with AutoCollect set
+> - Containers flagged AutoOpen now auto-`open` once when picked up
+> - Monsters flagged DontBackstab are skipped as the backstab opener — a non-flagged target is preferred, and the room still clears via a normal opener when all are flagged
+> - Per-monster override attack / pre-attack spells now substitute for the global Combat-tab choice for that species, bypassing the immunity/level/resist gates while keeping mana and cast-count limits
+> - Removed the redundant NotHostile monster flag (alignment + guard flags already cover it)
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

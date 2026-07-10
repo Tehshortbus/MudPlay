@@ -139,7 +139,7 @@ public static class AppPaths
 
     // User-writable MonsterOverlay seed JSON for the given realm flavor, hosted
     // in the XDG-resolved Data/Global/ folder. Holds the Defaults-tier baseline
-    // for relationship / priority / NotHostile / DontBackstab — decoded from
+    // for relationship / priority / DontBackstab — decoded from
     // the realm's stock MegaMUD Monsters.md. The active game-data set's
     // Info.json[0].Legit picks which realm seed to apply (0/1 = stock, 2 =
     // paradigm). Bootstrapped from the matching BundledMonsterOverlaySeedFile
