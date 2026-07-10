@@ -1,9 +1,9 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.29.0**
-> - A BBS that renames the runic coin (e.g. "quatloos") is now honored everywhere: coin parsing, get/drop/hide/give commands, wealth math, and every wealth display
-> - Cash pickup, auto-deposit, stash, @share, and the Session Stats / Player Workshop coin readouts no longer break on a renamed-runic realm
+> **Version 1.30.0**
+> - Clicking an obvious exit in a Game Data room-detail popup now walks the popup to that neighbouring room
+> - An already-open Navigation map follows the exit click; a closed map is left closed instead of being forced open
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

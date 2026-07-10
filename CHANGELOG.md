@@ -2,6 +2,11 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.30.0
+
+- Clicking an obvious exit in a Game Data room-detail popup now walks the popup to that neighbouring room
+- An already-open Navigation map follows the exit click; a closed map is left closed instead of being forced open
+
 ## 1.29.0
 
 - A BBS that renames the runic coin (e.g. "quatloos") is now honored everywhere: coin parsing, get/drop/hide/give commands, wealth math, and every wealth display
