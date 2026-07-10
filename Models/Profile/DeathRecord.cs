@@ -113,6 +113,12 @@ public sealed class DeathRecord
     // "100 gold crowns" + "1 platinum piece" stays split rather than being
     // re-bucketed into a consolidated total, so the player sees exactly what
     // coins the deathpile holds. All-zero (or null) holdings yield nothing.
+    //
+    // The runic rung keeps the stock "runic coin" label even on a board that
+    // renames runic: this is a Models-layer DTO with no access to the live
+    // CurrencyNaming (reserved for the Game/ layer), and the record is a frozen
+    // historical snapshot, so the board word isn't threaded in here. The other
+    // four denominations are never renameable, so only this one rung is affected.
     private static IEnumerable<string> DescribeCoins(CurrencyHoldings? coins)
     {
         if (coins is not { } c) yield break;

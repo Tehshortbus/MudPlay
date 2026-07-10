@@ -47,4 +47,22 @@ public sealed class CurrencyFormatTests
     {
         Assert.Equal(expected, CurrencyFormat.Full(copper));
     }
+
+    // Only the top (runic) rung takes the board-renamed word; every lower rung keeps
+    // its stock label, and a blank/whitespace name falls back to "runic".
+    [Fact]
+    public void Denominate_UsesRenamedRunicWordOnTopRungOnly()
+    {
+        Assert.Equal("1 quatloos", CurrencyFormat.Denominate(1_000_000, "quatloos"));
+        Assert.Equal("10 gold", CurrencyFormat.Denominate(1000, "quatloos")); // lower rung unchanged
+        Assert.Equal("1 runic", CurrencyFormat.Denominate(1_000_000, "  "));  // blank → stock word
+    }
+
+    [Fact]
+    public void Full_UsesRenamedRunicWordOnTopRungOnly()
+    {
+        Assert.Equal(
+            "1 quatloos 93 platinum 5 gold 6 copper",
+            CurrencyFormat.Full(1_930_506, "quatloos"));
+    }
 }

@@ -1,4 +1,5 @@
 using System.Text;
+using FujinTerm.Game.Cash;
 using FujinTerm.Game.Inventory;
 using FujinTerm.Models.GameData;
 using FujinTerm.Models.Profile;
@@ -37,6 +38,7 @@ public sealed class InventoryActionHandler : IDisposable
     private readonly GroundItemTracker _ground;
     private readonly PartyState _party;
     private readonly Func<CashSettings> _readCash;
+    private readonly CurrencyNaming _naming;
     private Action<byte[]>? _wireSender;
     private bool _disposed;
 
@@ -45,18 +47,21 @@ public sealed class InventoryActionHandler : IDisposable
         InventoryManager inventory,
         GroundItemTracker ground,
         PartyState party,
-        Func<CashSettings> readCash)
+        Func<CashSettings> readCash,
+        CurrencyNaming naming)
     {
         ArgumentNullException.ThrowIfNull(engine);
         ArgumentNullException.ThrowIfNull(inventory);
         ArgumentNullException.ThrowIfNull(ground);
         ArgumentNullException.ThrowIfNull(party);
         ArgumentNullException.ThrowIfNull(readCash);
+        ArgumentNullException.ThrowIfNull(naming);
         _engine = engine;
         _inventory = inventory;
         _ground = ground;
         _party = party;
         _readCash = readCash;
+        _naming = naming;
 
         Register("@drop-all", OnDropAll);
         Register("@deposit-all", OnDepositAll);
@@ -198,13 +203,15 @@ public sealed class InventoryActionHandler : IDisposable
         // table currently lists a self row.
         int partySize = recipients.Count + 1;
         CurrencyHoldings c = _inventory.Snapshot.Currency;
+        // Runic carries the board's wire word so `give N <word>` is a command the
+        // server accepts; the other four denominations are stable.
         (string Denom, int Count)[] denominations =
         {
             ("copper", c.Copper),
             ("silver", c.Silver),
             ("gold", c.Gold),
             ("platinum", c.Platinum),
-            ("runic", c.Runic),
+            (_naming.RunicName, c.Runic),
         };
 
         bool anyShared = false;

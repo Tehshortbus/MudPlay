@@ -51,6 +51,7 @@ public sealed class StashRoomManager : IDisposable
     private readonly Func<string, string?> _resolveAutoStashItem;
     private readonly Func<bool> _isEnabled;
     private readonly LogService? _log;
+    private readonly CurrencyNaming _naming;
 
     private Action<byte[]>? _wireSender;
     private bool _disposed;
@@ -65,7 +66,8 @@ public sealed class StashRoomManager : IDisposable
         Func<InventorySnapshot> getSnapshot,
         Func<string, string?> resolveAutoStashItem,
         Func<bool> isEnabled,
-        LogService? log = null)
+        LogService? log = null,
+        CurrencyNaming? naming = null)
     {
         ArgumentNullException.ThrowIfNull(profile);
         ArgumentNullException.ThrowIfNull(readCash);
@@ -78,6 +80,9 @@ public sealed class StashRoomManager : IDisposable
         _resolveAutoStashItem = resolveAutoStashItem;
         _isEnabled = isEnabled;
         _log = log;
+        // Resolves the per-BBS runic word; unbound (tests) falls back to stock
+        // "runic" so the stable-realm behaviour is unchanged.
+        _naming = naming ?? new CurrencyNaming();
     }
 
     // Bind the wire sender — typically the gate-wrapped engine pipeline from
@@ -125,7 +130,9 @@ public sealed class StashRoomManager : IDisposable
         DispatchOne("silver",   held.Silver,   cash.KeepSilverOnHand,   dispatched);
         DispatchOne("gold",     held.Gold,     cash.KeepGoldOnHand,     dispatched);
         DispatchOne("platinum", held.Platinum, cash.KeepPlatinumOnHand, dispatched);
-        DispatchOne("runic",    held.Runic,    cash.KeepRunicOnHand,    dispatched);
+        // Wire runic word so the emitted `hide N <word>` matches what the server
+        // accepts; the StashExecuted consumer canonicalizes for value math.
+        DispatchOne(_naming.RunicName, held.Runic, cash.KeepRunicOnHand, dispatched);
 
         // Stash rooms hold items too (banks are cash-only). Hide every
         // carried, unworn item flagged AutoStash by its canonical name.

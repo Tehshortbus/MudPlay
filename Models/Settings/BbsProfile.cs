@@ -136,6 +136,16 @@ public sealed class BbsProfile
     //   ►►► [{name}] logs OFF*
     public string? DisconnectPattern { get; set; }
 
+    // Per-BBS name for the top (runic) denomination. Some realms relabel
+    // "runic" to a board-specific word — which changes the coin wording the
+    // server sends AND the bare keyword the client keys currency commands on
+    // (get/drop/deposit). Only the runic token varies; the "coin"/"coins"
+    // noun-suffix and the other four denominations are stable. Stored per-BBS
+    // because it's a realm property, not a per-character one. Blank/whitespace
+    // falls back to "runic". Consumed via CurrencyNaming, which every coin
+    // parser/formatter/command-builder reads instead of a hardcoded literal.
+    public string RunicCurrencyName { get; set; } = "runic";
+
     // ----- Terminal dimensions (NAWS, RFC 1073) -----
 
     // Terminal columns to advertise via Telnet NAWS at connect-time.

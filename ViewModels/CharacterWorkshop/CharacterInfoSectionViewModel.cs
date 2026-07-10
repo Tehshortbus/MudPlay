@@ -9,6 +9,7 @@ using Avalonia.Controls;
 using CommunityToolkit.Mvvm.ComponentModel;
 using FujinTerm.Game;
 using FujinTerm.Game.Calculators;
+using FujinTerm.Game.Cash;
 using FujinTerm.Game.GameData;
 using FujinTerm.Game.Inventory;
 using FujinTerm.Game.Quests;
@@ -42,6 +43,8 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
     private readonly PlayerDatabase _playerDb;
     private readonly AlignmentTracker _alignmentTracker;
     private readonly QuestBonusState _questBonuses;
+    // Resolves the per-BBS runic word for the carried-coins readout.
+    private readonly CurrencyNaming _naming;
     private Control? _view;
 
     public override string Id => "characterinfo";
@@ -151,7 +154,7 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
     // False until the first `i` dump is parsed — drives the "type i to load" hint.
     [ObservableProperty] private bool _inventoryLoaded;
 
-    public CharacterInfoSectionViewModel(PlayerStats stats, GameDataCache gameData, InventoryManager inventory, PlayerDatabase playerDb, AlignmentTracker alignmentTracker, QuestBonusState questBonuses)
+    public CharacterInfoSectionViewModel(PlayerStats stats, GameDataCache gameData, InventoryManager inventory, PlayerDatabase playerDb, AlignmentTracker alignmentTracker, QuestBonusState questBonuses, CurrencyNaming naming)
     {
         ArgumentNullException.ThrowIfNull(stats);
         ArgumentNullException.ThrowIfNull(gameData);
@@ -159,12 +162,14 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
         ArgumentNullException.ThrowIfNull(playerDb);
         ArgumentNullException.ThrowIfNull(alignmentTracker);
         ArgumentNullException.ThrowIfNull(questBonuses);
+        ArgumentNullException.ThrowIfNull(naming);
         _stats = stats;
         _gameData = gameData;
         _inventory = inventory;
         _playerDb = playerDb;
         _alignmentTracker = alignmentTracker;
         _questBonuses = questBonuses;
+        _naming = naming;
 
         _stats.PropertyChanged += OnStatsChanged;
         _inventory.Changed += OnInventoryChanged;
@@ -470,10 +475,10 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
     }
 
     // Per-denomination coins currently carried, high → low, nonzero only.
-    private static string FormatCoins(CurrencyHoldings c)
+    private string FormatCoins(CurrencyHoldings c)
     {
         var parts = new List<string>(5);
-        if (c.Runic > 0) parts.Add($"{c.Runic:N0} runic");
+        if (c.Runic > 0) parts.Add($"{c.Runic:N0} {_naming.RunicName}");
         if (c.Platinum > 0) parts.Add($"{c.Platinum:N0} platinum");
         if (c.Gold > 0) parts.Add($"{c.Gold:N0} gold");
         if (c.Silver > 0) parts.Add($"{c.Silver:N0} silver");

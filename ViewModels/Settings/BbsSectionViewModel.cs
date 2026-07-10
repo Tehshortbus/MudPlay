@@ -103,6 +103,11 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     // "just hung up" forms are watched.
     [ObservableProperty] private string? _disconnectPattern;
 
+    // Per-BBS label for the top (runic) denomination — some realms rename it,
+    // which changes both the coin wording the server sends and the keyword the
+    // client keys currency commands on. Blank falls back to "runic" on save.
+    [ObservableProperty] private string _runicCurrencyName = "runic";
+
     // ----- Per-character credentials -----
     // True when any character profile is loaded — including unsaved drafts.
     // Credentials, sysop flag, and menu nav all bind against the in-memory
@@ -589,6 +594,7 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         PlayerDiesAtHp = profile.PlayerDiesAtHp;
         AutoRefineDeathFloor = profile.AutoRefineDeathFloor;
         DisconnectPattern = profile.DisconnectPattern;
+        RunicCurrencyName = profile.RunicCurrencyName;
     }
 
     private void LoadCredentialsFor(string bbsName)
@@ -721,6 +727,7 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         PlayerDiesAtHp = defaults.PlayerDiesAtHp;
         AutoRefineDeathFloor = defaults.AutoRefineDeathFloor;
         DisconnectPattern = defaults.DisconnectPattern;
+        RunicCurrencyName = defaults.RunicCurrencyName;
     }
 
     private void Dirty()
@@ -769,6 +776,8 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         profile.AutoRefineDeathFloor = AutoRefineDeathFloor;
         profile.DisconnectPattern = string.IsNullOrWhiteSpace(DisconnectPattern)
             ? null : DisconnectPattern.Trim();
+        profile.RunicCurrencyName = string.IsNullOrWhiteSpace(RunicCurrencyName)
+            ? new BbsProfile().RunicCurrencyName : RunicCurrencyName.Trim();
     }
 
     partial void OnNameChanged(string value)                    { Dirty(); }
@@ -830,6 +839,7 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     partial void OnPlayerDiesAtHpChanged(int value)             { PushToCache(); Dirty(); }
     partial void OnAutoRefineDeathFloorChanged(bool value)      { PushToCache(); Dirty(); }
     partial void OnDisconnectPatternChanged(string? value)      { PushToCache(); Dirty(); }
+    partial void OnRunicCurrencyNameChanged(string value)       { PushToCache(); Dirty(); }
 
     // Confirm flags are Global-tier, not per-BBS — they don't push into
     // the per-BBS cache, just mark the section dirty so Apply commits

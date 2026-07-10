@@ -34,6 +34,9 @@ public sealed class BbsProfileFieldsTests
         // E to enter the realm, =x to log off from the main menu.
         Assert.Equal("E",  dto.GameEntryCommand);
         Assert.Equal("=x", dto.GameExitCommand);
+
+        // Runic denomination defaults to the stock label until a realm renames it.
+        Assert.Equal("runic", dto.RunicCurrencyName);
     }
 
     [Fact]
@@ -59,6 +62,7 @@ public sealed class BbsProfileFieldsTests
             ScrollbackLines = 50_000,
             GameEntryCommand = "enter",
             GameExitCommand = "bye",
+            RunicCurrencyName = "quatloos",
         };
 
         string json = JsonSerializer.Serialize(original);
@@ -83,6 +87,7 @@ public sealed class BbsProfileFieldsTests
         Assert.Equal(original.ScrollbackLines,          round.ScrollbackLines);
         Assert.Equal(original.GameEntryCommand,         round.GameEntryCommand);
         Assert.Equal(original.GameExitCommand,          round.GameExitCommand);
+        Assert.Equal(original.RunicCurrencyName,        round.RunicCurrencyName);
     }
 
     [Fact]

@@ -1,10 +1,9 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.28.0**
-> - New Settings → General toggle scales the terminal font to fill the window, keeping the fixed cell grid
-> - Scaling is capped so a maximised window enlarges the text reasonably instead of absurdly
-> - Off by default: the grid keeps its configured font size and sits centred in a larger window
+> **Version 1.29.0**
+> - A BBS that renames the runic coin (e.g. "quatloos") is now honored everywhere: coin parsing, get/drop/hide/give commands, wealth math, and every wealth display
+> - Cash pickup, auto-deposit, stash, @share, and the Session Stats / Player Workshop coin readouts no longer break on a renamed-runic realm
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

@@ -1,4 +1,5 @@
 using System.Reflection;
+using FujinTerm.Game.Cash;
 using FujinTerm.Game.Inventory;
 using FujinTerm.Services;
 using FujinTerm.Services.Patterns;
@@ -19,7 +20,7 @@ public sealed class GroundItemTrackerTests
     {
         MessageRouter router = new();
         DefaultPatterns.Seed(router);
-        GroundItemTracker ground = new(router);
+        GroundItemTracker ground = new(router, new CurrencyNaming());
         LineExtractor lines = new(new TerminalEmulator(80, 24));
         ground.AttachLineExtractor(lines);
         return (ground, router, lines);

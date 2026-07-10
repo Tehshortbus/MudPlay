@@ -8,10 +8,14 @@ namespace FujinTerm.Game.Cash;
 //
 // The ladder mirrors CurrencyHoldings.ToCopper — copper 1, silver 10, gold 100,
 // platinum 10 000, runic 1 000 000 — the single source of truth for the ratio.
-// Names are the stock denomination words; per-realm renames (Settings → BBS)
-// aren't threaded here yet.
+// Names are the stock denomination words; callers on a realm that renames the
+// runic word (Settings → BBS) pass it through the optional runicName argument so
+// the top rung reads the board's label instead of "runic".
 public static class CurrencyFormat
 {
+    // Copper worth of the top (runic) rung — the only denomination whose label
+    // is board-renameable.
+    private const long RunicWorth = 1_000_000;
     // Largest denomination first, so the flip-up scan takes the first rung the
     // amount clears.
     private static readonly (long Worth, string Name)[] Ladder =
@@ -27,13 +31,13 @@ public static class CurrencyFormat
     // showing the largest denomination that has at least one whole unit
     // (1000 copper -> "10 gold", 1050 -> "10.5 gold"). Fits the narrow table
     // columns where a full itemised wealth line wouldn't. Negatives clamp to 0.
-    public static string Denominate(double copper)
+    public static string Denominate(double copper, string? runicName = null)
     {
         if (copper <= 0) return "0 copper";
         foreach ((long worth, string name) in Ladder)
         {
             if (copper >= worth)
-                return string.Create(CultureInfo.InvariantCulture, $"{Trim(copper / worth)} {name}");
+                return string.Create(CultureInfo.InvariantCulture, $"{Trim(copper / worth)} {LabelFor(worth, name, runicName)}");
         }
         return "0 copper"; // unreachable: any copper >= 1 clears the copper rung
     }
@@ -41,7 +45,7 @@ public static class CurrencyFormat
     // Fully itemised wealth line, largest denomination first, zero rungs skipped
     // (1_930_506 -> "1 runic 93 platinum 5 gold 6 copper"). Mirrors the game's
     // wealth breakdown; used as the exact-value tooltip behind the compact text.
-    public static string Full(long copper)
+    public static string Full(long copper, string? runicName = null)
     {
         if (copper <= 0) return "0 copper";
         List<string> parts = new();
@@ -51,12 +55,17 @@ public static class CurrencyFormat
             long count = remaining / worth;
             if (count > 0)
             {
-                parts.Add(string.Create(CultureInfo.InvariantCulture, $"{count} {name}"));
+                parts.Add(string.Create(CultureInfo.InvariantCulture, $"{count} {LabelFor(worth, name, runicName)}"));
                 remaining -= count * worth;
             }
         }
         return string.Join(" ", parts);
     }
+
+    // Board-renamed label for the top rung; every other rung keeps its stock
+    // word. Blank/whitespace runicName falls back to the stock "runic".
+    private static string LabelFor(long worth, string stockName, string? runicName) =>
+        worth == RunicWorth && !string.IsNullOrWhiteSpace(runicName) ? runicName : stockName;
 
     // Integer when whole, else one decimal — keeps "10 gold" clean while still
     // distinguishing "10.5 gold" / "1.2 runic".

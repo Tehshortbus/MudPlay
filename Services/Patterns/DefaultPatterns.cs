@@ -170,21 +170,25 @@ public static class DefaultPatterns
             @"^There (?:is a (?<currency>\w+) piece|are (?<count>\d+) (?<currency2>\w+) pieces) here\.");
         // Pickup / drop / stash confirmations. The coin is named in full —
         // "copper farthings", "silver nobles", "gold crowns", "platinum
-        // pieces", "runic coins" (runic renamed per-BBS on some realms) —
-        // NOT a generic "pieces", and the pickup line carries no trailing
-        // period. Capture the keyword (the denomination-defining first word)
-        // and anchor on the specific coin noun so a shared-verb item line
-        // ("You dropped a silver key.") can't be misread as coin — item
-        // pickups use "You took", but item drops / hides share the verb. Coin
-        // nouns mirror InventoryManager's currency regexes; the plural `s?`
-        // covers count==1 singulars ("1 silver noble"). "piece" stays in the
-        // noun set so synthetic "N gold pieces" fixtures still resolve.
+        // pieces", "runic coins" — NOT a generic "pieces", and the pickup line
+        // carries no trailing period. The leading currency word is captured as
+        // `\w+` (not a fixed keyword list) because a board can rename the runic
+        // word per-BBS ("quatloos coins"); the denomination is actually pinned
+        // by the trailing coin NOUN, so anchoring on the specific noun set
+        // (farthing|noble|crown|piece|coin) is what keeps a shared-verb item
+        // line ("You dropped a silver key.") from being misread as coin — item
+        // pickups use "You took", but item drops / hides share the verb.
+        // CurrencyNaming.Canonicalize maps the captured word back to a
+        // denomination downstream. Coin nouns mirror InventoryManager's
+        // currency regexes; the plural `s?` covers count==1 singulars
+        // ("1 silver noble"). "piece" stays in the noun set so synthetic
+        // "N gold pieces" fixtures still resolve.
         yield return new RegexPattern(KnownPatterns.CashPickedUp,
-            @"^You pick(?:ed)? up (?:a (?<currency>copper|silver|gold|platinum|runic)|(?<count>\d+) (?<currency2>copper|silver|gold|platinum|runic)) (?:farthing|noble|crown|piece|coin)s?\b");
+            @"^You pick(?:ed)? up (?:a (?<currency>\w+)|(?<count>\d+) (?<currency2>\w+)) (?:farthing|noble|crown|piece|coin)s?\b");
         yield return new RegexPattern(KnownPatterns.CashDropped,
-            @"^You drop(?:ped)? (?:a (?<currency>copper|silver|gold|platinum|runic)|(?<count>\d+) (?<currency2>copper|silver|gold|platinum|runic)) (?:farthing|noble|crown|piece|coin)s?\b");
+            @"^You drop(?:ped)? (?:a (?<currency>\w+)|(?<count>\d+) (?<currency2>\w+)) (?:farthing|noble|crown|piece|coin)s?\b");
         yield return new RegexPattern(KnownPatterns.CashHidden,
-            @"^You hid (?:a (?<currency>copper|silver|gold|platinum|runic)|(?<count>\d+) (?<currency2>copper|silver|gold|platinum|runic)) (?:farthing|noble|crown|piece|coin)s?\b");
+            @"^You hid (?:a (?<currency>\w+)|(?<count>\d+) (?<currency2>\w+)) (?:farthing|noble|crown|piece|coin)s?\b");
         // Corpse loot — "N <currency> drop to the ground." emitted
         // after the kill announce. Verb agreement is `drop` for plural
         // counts; tolerating `drops?` covers any singular-1 variant
