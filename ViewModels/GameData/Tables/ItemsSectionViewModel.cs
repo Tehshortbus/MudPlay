@@ -94,7 +94,12 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
         _resolverRef = resolver;
         _overlaySeed = overlaySeed;
         _playerStats = playerStats;
-        OpenEditAsyncCommand = new AsyncRelayCommand<GameDataRow?>(OpenEditAsync);
+        // AllowConcurrentExecutions: the first double-click parks at the open
+        // dialog's await, so without this the command reports IsRunning and
+        // CanExecute=false — a second double-click on another row would be
+        // silently dropped instead of swapping the open item menu.
+        OpenEditAsyncCommand = new AsyncRelayCommand<GameDataRow?>(
+            OpenEditAsync, AsyncRelayCommandOptions.AllowConcurrentExecutions);
     }
 
     private async Task OpenEditAsync(GameDataRow? row)
