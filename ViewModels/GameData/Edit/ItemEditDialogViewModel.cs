@@ -1,7 +1,9 @@
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using FujinTerm.Game.GameData;
 using FujinTerm.Models.GameData;
 using FujinTerm.Services;
 
@@ -64,6 +66,13 @@ public sealed partial class ItemEditDialogViewModel : ObservableObject, IDialogV
     // Right-pane "Other Info" key/value list (read-only MDB fields).
     public IReadOnlyList<KeyValuePair<string, string>> MdbInfo { get; }
 
+    // Chest-contents readout (containers only) — the decoded loot table's
+    // per-item drop chances plus a one-line yield summary. Empty for any item
+    // that isn't a container wired to a loot textblock.
+    public IReadOnlyList<ChestDropRow> ChestDrops { get; }
+    public bool HasChestContents => ChestDrops.Count > 0;
+    public string ChestSummary { get; }
+
     public IReadOnlyList<SettingsTier> AvailableTiers { get; } =
         Enum.GetValues<SettingsTier>().ToArray();
 
@@ -75,13 +84,16 @@ public sealed partial class ItemEditDialogViewModel : ObservableObject, IDialogV
         ItemOverlay? existing,
         SettingsTier currentTier,
         IReadOnlyList<KeyValuePair<string, string>> mdbInfo,
-        bool isLight = false)
+        bool isLight = false,
+        ChestContents? chest = null)
     {
         WccNoStr     = wccNoStr;
         Name         = existing?.Name ?? mdbName;
         UseTier      = currentTier;
         MdbInfo      = mdbInfo;
         CanBuySell   = !isLight;
+
+        (ChestDrops, ChestSummary) = BuildChest(chest);
 
         AutoCollect     = existing?.AutoCollect     ?? false;
         AutoDiscard     = existing?.AutoDiscard     ?? false;
@@ -109,6 +121,35 @@ public sealed partial class ItemEditDialogViewModel : ObservableObject, IDialogV
         if (_initialized && value && string.IsNullOrWhiteSpace(MaxToGet))
             MaxToGet = "10";
     }
+
+    // Turn the decoded loot table into display rows + a yield summary. Chances
+    // render as whole-percent (a <1% drop clamps to "<1%" so a real-but-rare
+    // item never reads as "0%"); the summary is "Yields N items" or "Yields
+    // N–M items" when a draw can land on a message / failitem bracket.
+    private static (IReadOnlyList<ChestDropRow> Rows, string Summary) BuildChest(ChestContents? chest)
+    {
+        if (chest is null || chest.Drops.Count == 0)
+            return (Array.Empty<ChestDropRow>(), string.Empty);
+
+        var rows = new List<ChestDropRow>(chest.Drops.Count);
+        foreach (ChestDrop d in chest.Drops)
+            rows.Add(new ChestDropRow(d.ItemId, d.ItemName, FormatChance(d.Probability)));
+
+        string summary = chest.MinItems == chest.MaxItems
+            ? $"Yields {chest.MinItems} {Plural(chest.MaxItems)}"
+            : $"Yields {chest.MinItems}–{chest.MaxItems} items";
+        return (rows, summary);
+    }
+
+    private static string FormatChance(double p)
+    {
+        int pct = (int)System.Math.Round(p * 100.0);
+        if (pct <= 0 && p > 0.0) return "<1%";
+        if (pct >= 100) return "100%";
+        return pct.ToString(CultureInfo.InvariantCulture) + "%";
+    }
+
+    private static string Plural(int n) => n == 1 ? "item" : "items";
 
     [RelayCommand]
     private void Save()

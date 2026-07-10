@@ -51,11 +51,19 @@ public sealed class AppServices
     public void OpenMonsterGameData(int monsterNumber) => _monsterGameDataOpener?.Invoke(monsterNumber);
 
     // Opens (or re-focuses) the Navigation window and centres the map on a
-    // given room. Used by the room-detail popup's clickable room title + exit
-    // destinations. No-op until the main VM binds it.
+    // given room. Used by the room-detail popup's clickable room title. No-op
+    // until the main VM binds it.
     private Action<Game.Map.RoomKey>? _navigateToRoomOpener;
     public void SetNavigateToRoomOpener(Action<Game.Map.RoomKey> opener) => _navigateToRoomOpener = opener;
     public void NavigateToRoom(Game.Map.RoomKey key) => _navigateToRoomOpener?.Invoke(key);
+
+    // Centres the map on a room ONLY if the Navigation window is already open —
+    // never force-opens it. Used by the room-detail popup's exit clicks, which
+    // walk the popup itself to the neighbour and let an open map follow along
+    // without hijacking the screen when it's closed.
+    private Action<Game.Map.RoomKey>? _centerNavigationIfOpenOpener;
+    public void SetCenterNavigationIfOpenOpener(Action<Game.Map.RoomKey> opener) => _centerNavigationIfOpenOpener = opener;
+    public void CenterNavigationIfOpen(Game.Map.RoomKey key) => _centerNavigationIfOpenOpener?.Invoke(key);
 
     // Single source of truth for "are you sure?" prompts (exit /
     // hangup / save / delete). Lives at Global tier; mirrored from

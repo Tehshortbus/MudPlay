@@ -30,6 +30,11 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
     private readonly ItemOverlaySeedStore? _overlaySeed;
     private readonly PlayerStats? _playerStats;
 
+    // The item menu currently open (null when none). Only one exists at a time:
+    // double-clicking another row closes this one and opens the new item, rather
+    // than stacking a second modeless window.
+    private ItemEditDialogViewModel? _openItemVm;
+
     public override string Id => "items";
     public override string Title => "Items";
 
@@ -89,7 +94,12 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
         _resolverRef = resolver;
         _overlaySeed = overlaySeed;
         _playerStats = playerStats;
-        OpenEditAsyncCommand = new AsyncRelayCommand<GameDataRow?>(OpenEditAsync);
+        // AllowConcurrentExecutions: the first double-click parks at the open
+        // dialog's await, so without this the command reports IsRunning and
+        // CanExecute=false — a second double-click on another row would be
+        // silently dropped instead of swapping the open item menu.
+        OpenEditAsyncCommand = new AsyncRelayCommand<GameDataRow?>(
+            OpenEditAsync, AsyncRelayCommandOptions.AllowConcurrentExecutions);
     }
 
     private async Task OpenEditAsync(GameDataRow? row)
@@ -97,6 +107,13 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
         if (row is null || _dialogs is null) return;
         string? wcc = row.Get("Number");
         if (string.IsNullOrEmpty(wcc)) return;
+
+        // Re-double-clicking the item already showing in the open menu is a
+        // no-op — don't tear down the user's in-progress edits to reopen the
+        // same record.
+        if (_openItemVm is not null &&
+            string.Equals(_openItemVm.WccNoStr, wcc, StringComparison.Ordinal))
+            return;
 
         // 4-tier merged overlay — Char → BBS → Global → Defaults. The
         // Defaults-tier baseline comes from the realm-flavoured
@@ -115,15 +132,39 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
         // the dialog renders them as the read-only "Other Info" pane.
         ItemMdbView mdb = BuildMdbView(wcc);
 
+        // Container loot table (null for a non-chest) — the dialog shows it as a
+        // read-only "Chest Contents" section below "Other Info".
+        ChestContents? chest = int.TryParse(wcc, out int chestNum)
+            ? ChestContentsReader.Read(_cache, chestNum)
+            : null;
+
         ItemEditDialogViewModel vm = new(
             wccNoStr:     wcc,
             mdbName:      row.Get("Name") ?? string.Empty,
             existing:     existing,
             currentTier:  row.SourceTier,
             mdbInfo:      mdb.OtherInfo,
-            isLight:      mdb.IsLight);
+            isLight:      mdb.IsLight,
+            chest:        chest);
 
-        ItemEditResult? result = await _dialogs.OpenWindowAsync<ItemEditDialogViewModel, ItemEditResult>(vm);
+        // Replace any open item menu with the new one: a double-click on another
+        // row swaps the shown item instead of opening a second window. Closing
+        // the previous dialog discards its uncommitted edits — switching items is
+        // a navigate gesture, not a save (the user reaches for OK to commit).
+        ItemEditDialogViewModel? previous = _openItemVm;
+        _openItemVm = vm;
+        previous?.CancelCommand.Execute(null);
+
+        ItemEditResult? result;
+        try
+        {
+            result = await _dialogs.OpenWindowAsync<ItemEditDialogViewModel, ItemEditResult>(vm);
+        }
+        finally
+        {
+            if (ReferenceEquals(_openItemVm, vm))
+                _openItemVm = null;
+        }
         if (result is null) return;
 
         // Defaults tier is read-only (MDB is the source of truth) — fall

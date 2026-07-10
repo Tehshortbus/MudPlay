@@ -7,8 +7,8 @@
         x:Class="FujinTerm.Views.GameData.Edit.RoomDetailDialog"
         x:DataType="vm:RoomDetailDialogViewModel"
         Title="{Binding Title}"
-        Width="460" Height="540"
-        MinWidth="380" MinHeight="360"
+        Width="560" Height="560"
+        MinWidth="420" MinHeight="360"
         WindowStartupLocation="CenterOwner">
 
     <Window.Styles>
@@ -79,6 +79,14 @@
             <Setter Property="FontFamily" Value="{StaticResource FontMono}"/>
             <Setter Property="Foreground" Value="{StaticResource ChromeFgBrush}"/>
         </Style>
+
+        <!-- Shop stock table cell — a touch smaller than Body so a wide row fits. -->
+        <Style Selector="TextBlock.ShopCell">
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontFamily" Value="{StaticResource FontMono}"/>
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgBrush}"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
     </Window.Styles>
 
     <Border Background="{StaticResource ChromeBgBrush}" Padding="14">
@@ -128,6 +136,69 @@
                                         <TextBlock Classes="Note" Text="{Binding Detail}"
                                                    IsVisible="{Binding HasDetail}"/>
                                     </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+
+                    <!-- Shop section — merchant stock table (item · max · regen ·
+                         buy · sell, modelled on the in-game `list` readout) or, for
+                         a training room, a level band. The name/subtitle header is
+                         shared; the stock table shows only when there's stock. -->
+                    <StackPanel IsVisible="{Binding HasShopSection}" Spacing="4"
+                                Grid.IsSharedSizeScope="True">
+                        <StackPanel Spacing="1">
+                            <TextBlock Classes="SectionHeader" Text="{Binding ShopName}"/>
+                            <TextBlock Classes="Sub" Text="{Binding ShopSubtitle}"/>
+                        </StackPanel>
+
+                        <!-- Trainer level band (training rooms only). -->
+                        <TextBlock Classes="Body" Margin="8,0,0,0"
+                                   IsVisible="{Binding HasTrainer}"
+                                   Text="{Binding TrainerBand}"/>
+
+                        <!-- Column headers -->
+                        <Grid Margin="8,2,0,0" IsVisible="{Binding HasShop}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto" SharedSizeGroup="ShopMax"/>
+                                <ColumnDefinition Width="Auto" SharedSizeGroup="ShopRegen"/>
+                                <ColumnDefinition Width="Auto" SharedSizeGroup="ShopBuy"/>
+                                <ColumnDefinition Width="Auto" SharedSizeGroup="ShopSell"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Classes="SectionHeader" Text="Item"/>
+                            <TextBlock Grid.Column="1" Classes="SectionHeader" Text="Max"
+                                       TextAlignment="Right" Margin="10,0,0,0"/>
+                            <TextBlock Grid.Column="2" Classes="SectionHeader" Text="Regen"
+                                       Margin="12,0,0,0"/>
+                            <TextBlock Grid.Column="3" Classes="SectionHeader" Text="Buy"
+                                       TextAlignment="Right" Margin="12,0,0,0"/>
+                            <TextBlock Grid.Column="4" Classes="SectionHeader" Text="Sell"
+                                       TextAlignment="Right" Margin="12,0,0,0"/>
+                        </Grid>
+
+                        <ItemsControl ItemsSource="{Binding ShopStock}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="vm:ShopStockRow">
+                                    <Grid Margin="8,0,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto" SharedSizeGroup="ShopMax"/>
+                                            <ColumnDefinition Width="Auto" SharedSizeGroup="ShopRegen"/>
+                                            <ColumnDefinition Width="Auto" SharedSizeGroup="ShopBuy"/>
+                                            <ColumnDefinition Width="Auto" SharedSizeGroup="ShopSell"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Button Grid.Column="0" Classes="MdbLink"
+                                                Content="{Binding Name}" Command="{Binding Open}"/>
+                                        <TextBlock Grid.Column="1" Classes="ShopCell" Text="{Binding Max}"
+                                                   TextAlignment="Right" Margin="10,0,0,0"/>
+                                        <TextBlock Grid.Column="2" Classes="ShopCell" Text="{Binding Regen}"
+                                                   Margin="12,0,0,0"/>
+                                        <TextBlock Grid.Column="3" Classes="ShopCell" Text="{Binding Buy}"
+                                                   TextAlignment="Right" Margin="12,0,0,0"/>
+                                        <TextBlock Grid.Column="4" Classes="ShopCell" Text="{Binding Sell}"
+                                                   TextAlignment="Right" Margin="12,0,0,0"/>
+                                    </Grid>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>

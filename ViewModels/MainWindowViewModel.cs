@@ -509,6 +509,7 @@ public partial class MainWindowViewModel : ObservableObject
         // record, and the room title / exits centre the Nav map on a room.
         AppServices.Current.SetMonsterGameDataOpener(OpenMonsterGameData);
         AppServices.Current.SetNavigateToRoomOpener(FocusNavigationOnRoom);
+        AppServices.Current.SetCenterNavigationIfOpenOpener(CenterNavigationOnRoomIfOpen);
 
         // Engine-state chip — same shape as the Navigation window's
         // top-bar badge (IDLE / WALKING / LOOPING / AUTO-LAIR). Lives
@@ -3359,6 +3360,15 @@ public partial class MainWindowViewModel : ObservableObject
     // the chosen room.
     private void FocusNavigationOnRoom(Game.Map.RoomKey key)
         => EnsureNavigationWindow()?.OnFloorChangeRequested(key);
+
+    // Room-detail exit clicks re-root the popup on the neighbour and let an
+    // already-open map follow — but must not summon the map if it's closed,
+    // so this centres only when the window is up (no EnsureNavigationWindow).
+    private void CenterNavigationOnRoomIfOpen(Game.Map.RoomKey key)
+    {
+        if (_navigationWindow?.DataContext is ViewModels.Navigation.NavigationViewModel vm)
+            vm.OnFloorChangeRequested(key);
+    }
 
     // Guards against a second standalone Manage dialog opening while one is up.
     private bool _manageDialogOpen;

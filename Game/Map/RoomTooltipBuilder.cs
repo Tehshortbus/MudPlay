@@ -175,16 +175,22 @@ public static class RoomTooltipBuilder
     // max regen. Name / Also-Here / exits are rendered as clickable controls in
     // the popup, so they're deliberately excluded here. Reuses the same private
     // helpers the map tooltip's Build() uses, so the two never drift.
+    //
+    // includeShop drops the plain "Shop: <name>" line when the popup renders the
+    // shop richly instead — a merchant with stock (its own table) or a trainer
+    // (its level band) owns that section, so the redundant line would double up.
+    // Banks with no stock keep the plain line (includeShop stays true for them).
     public static string BuildDetailExtras(Room room, RoomGraphManager graph,
         GameDataCache? data = null, TBInfoStore? tbinfo = null,
-        Game.Spells.KnownSpellCatalog? spellCatalog = null, int charIllu = 0)
+        Game.Spells.KnownSpellCatalog? spellCatalog = null, int charIllu = 0,
+        bool includeShop = true)
     {
         ArgumentNullException.ThrowIfNull(room);
         ArgumentNullException.ThrowIfNull(graph);
 
         var parts = new List<string>();
 
-        if (room.Shop > 0)
+        if (includeShop && room.Shop > 0)
             parts.Add("Shop: " + (LookupName(data, "Shops", room.Shop) ?? $"#{room.Shop}"));
         if (room.Spell > 0)
             parts.Add("Room Spell: " + (LookupName(data, "Spells", room.Spell) ?? $"#{room.Spell}"));

@@ -855,6 +855,29 @@ in the data means "unknown," so the client prices unknown Charm at 50.
 - **[CONFIRMED]** **Chests.** Some monsters drop a `chest`; `open chest` **dumps a set of random
   items straight into inventory** that the player does not get to choose. This is the case AutoDiscard
   exists to clean up (drop the unwanted dumped items down to the keep band).
+- **[CONFIRMED — verified against the 1.11p / Paradigm / Euphoria data, 2026-07-10]** **A chest's loot
+  table is data-driven through a three-hop chain.** A container is `Items.ItemType == 8`. Its
+  `open` behaviour is an ability pair `Abil == 43` (CastSpell) whose `AbilVal` is a **Spells** row; that
+  spell carries `Abil == 148` (castsp) whose `AbilVal` is a **TBInfo** row. That top TBInfo entry's
+  `Action` is a **single colon-separated directive line** — `message N` (flavour, ignore), `giveitem I`
+  (a **guaranteed** drop), and `random T` tokens. **Each `random T` token is one independent draw** from
+  weighted table `T`; the token is **repeated once per draw** (oak chest = `random 898` ×3 + `random 874`
+  ×3 = six draws). A weighted table's lines are `threshold:directives`, the thresholds **cumulative**
+  (per-bracket chance = `thisThreshold − prevThreshold`, tables normally ending at 100); the selected
+  bracket runs its own directives — `giveitem I`, a nested `random M` (a sub-draw, possibly repeated
+  within the bracket), or `message`/`failitem`/`price` (no item). **`failitem` yields nothing** (a dud).
+  The **per-item drop chance** is therefore *at-least-once across all draws* — `1 − ∏(1 − p_draw)` — and
+  the **item count** a single open yields is fixed by the number of draws (a bracket that only messages
+  or fails contributes 0, so min ≤ draws ≤ max). Chests **do** drop coins in-game, but the loot tables
+  in the imported data carry **no `givecoins` token in any installed set** — the coin amount isn't
+  encoded, so it can't be derived from the data (the readout shows items only).
+- **[CONFIRMED — verified against the 1.11p Shops table, 2026-07-10]** **Trainers carry a level band.**
+  A training room is `Shops.ShopType == 8`; its `MinLVL` / `MaxLVL` fields are the **level range it can
+  train** and `ClassRest` the single class it serves (a `Classes` row, `0` = any class). The range is
+  one contiguous band per shop — the schema has no way to express a gap, so a trainer never splits into
+  multiple bands. A trainer **can also stock items** (the Bard Training Room sells songsheets, the Thief
+  Training Room lockpicks) — same 20-slot stock table as a merchant — so a training room is a trainer
+  *and* a merchant at once, not either/or.
 - **[CONFIRMED — verified against the 1.11p Shops table]** Each of the twenty stock slots is **five
   fields**, not one: `Item-N` (item id), `Max-N` (the shop's stock **cap** for that item), `Time-N`
   (restock **period**), `Amount-N` (units replenished per period), `%-N` (restock **chance** per
@@ -863,6 +886,12 @@ in the data means "unknown," so the client prices unknown Charm at 50.
   in stock when a player sold one to the shop (330 slots), everything between = a probabilistic
   trickle (e.g. 35 / 25 / 5). `ShopType` 10 is the ordinary buy/sell merchant (7 = bank, 8 = trainer);
   `Markup%` is the buy markup fed to *Shop prices* above.
+- **[CONFIRMED — MMUD Explorer Shops tab rendering, 2026-07-10]** `Time-N` is in **minutes**. The
+  reference client renders each slot's restock in a **Regen** column as `<%-N>% for <Amount-N> per
+  <Time-N humanised>` — humanising the minutes into `10m`, `2h` (120), `4h` (240), `12h` (720), etc.
+  A `%-N = 0` slot renders as **`no regen`** regardless of its `Max-N` (the cap still shows in its own
+  column, but nothing spawns on its own). The reference's stock table columns are `# | Name | Max |
+  Regen | Cost`, Cost being the buy price at the chosen Charm with `Markup%` applied.
 - **Data-model gap for the loot feature.** `ShopStockIndex` today reads only `Item-N` (item → shops
   that *can* carry it — the candidate list). AutoBuy/AutoSell that reason about real availability need
   `Max/Time/Amount/%-N` read too; but since live stock count isn't knowable from static data, the

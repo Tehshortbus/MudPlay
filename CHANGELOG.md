@@ -2,6 +2,20 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.31.0
+
+- Merchant shops in the room-detail popup now show a stock table: item, max, restock, and buy/sell prices
+- Training rooms in the room-detail popup now show the class and level band they train
+- The item dialog decodes a chest's loot table — each possible drop with its % chance, plus the min/max items an open yields
+- Chest drop names are clickable, jumping the Game Data browser to that item; the % column aligns with a separator beside the name
+- Double-clicking another item row now swaps the open item menu to that item instead of stacking a second window
+- Item dialog's Name/Use fields sit left with the pane splitter defaulting to their right edge
+
+## 1.30.0
+
+- Clicking an obvious exit in a Game Data room-detail popup now walks the popup to that neighbouring room
+- An already-open Navigation map follows the exit click; a closed map is left closed instead of being forced open
+
 ## 1.29.0
 
 - A BBS that renames the runic coin (e.g. "quatloos") is now honored everywhere: coin parsing, get/drop/hide/give commands, wealth math, and every wealth display
