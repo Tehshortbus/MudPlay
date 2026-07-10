@@ -855,10 +855,19 @@ in the data means "unknown," so the client prices unknown Charm at 50.
 - **[CONFIRMED]** **Chests.** Some monsters drop a `chest`; `open chest` **dumps a set of random
   items straight into inventory** that the player does not get to choose. This is the case AutoDiscard
   exists to clean up (drop the unwanted dumped items down to the keep band).
-- **[UNVERIFIED — needs MMUD Explorer cross-check + data-model work]** Which Shops-table fields
-  encode the restock **percentage** and **period**, and the **no-stock** marker. Our `ShopStockIndex`
-  currently reads only the Item-0..19 membership (item → shops that can carry it) and models neither
-  restock nor no-stock; wiring AutoBuy/AutoSell against real availability needs that added first.
+- **[CONFIRMED — verified against the 1.11p Shops table]** Each of the twenty stock slots is **five
+  fields**, not one: `Item-N` (item id), `Max-N` (the shop's stock **cap** for that item), `Time-N`
+  (restock **period**), `Amount-N` (units replenished per period), `%-N` (restock **chance** per
+  period). So the restock rate is fully data-driven. In the shipped set `%-N` splits cleanly: **100**
+  = always restocks (344 slots), **0** = never self-restocks → the **no-stock** items that only exist
+  in stock when a player sold one to the shop (330 slots), everything between = a probabilistic
+  trickle (e.g. 35 / 25 / 5). `ShopType` 10 is the ordinary buy/sell merchant (7 = bank, 8 = trainer);
+  `Markup%` is the buy markup fed to *Shop prices* above.
+- **Data-model gap for the loot feature.** `ShopStockIndex` today reads only `Item-N` (item → shops
+  that *can* carry it — the candidate list). AutoBuy/AutoSell that reason about real availability need
+  `Max/Time/Amount/%-N` read too; but since live stock count isn't knowable from static data, the
+  engines should treat the index as "shops capable of stocking X" and confirm off the **live buy/sell
+  result** (a `%-N = 0` item may simply be out until someone sells one).
 
 ---
 
