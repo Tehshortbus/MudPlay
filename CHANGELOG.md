@@ -6,6 +6,8 @@ Notable changes per merged PR, **newest first**. The top of the [README](README.
 
 - Session Statistics shows time-to-level, honoring banked levels — "N levels gained · HH:MM:SS until level X" at the session's exp/hour rate
 - Game Data monster Greet rows are click-through — the popup decodes the textblock chain like MegaMUD, listing each keyword the monster responds to and the effects it fires (Cast, Item give/take, Ability, Class/Race gate, AddExp, Learn/Checkspell, Summon, Random branches, Cost/Givecoins, Teleport, Remote Action, Testskill)
+- Game Data monster record spawn/placed/summoned room lists are now clickable chips — click a map/room to open that room's detail popup
+- Double-clicking a Rooms-table row opens a room-detail popup — exits + requirements, illumination, shop, room spell, placed/spawned monsters, and room commands (the Navigation map's hover text)
 
 ## 1.23.19
 

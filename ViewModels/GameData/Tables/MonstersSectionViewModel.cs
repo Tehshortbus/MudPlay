@@ -766,14 +766,18 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
         return targets;
     }
 
-    // Append a "label (N)" row listing every room as a map/room pair. Not truncated — the
-    // Other Info pane scrolls and a truncated list has no expand affordance, so show them all.
-    // No-op when rooms is empty.
-    private static void AddRoomList(List<MdbInfoRow> kv, string label, IReadOnlyList<RoomKey> rooms)
+    // Append a "label (N)" row listing every room as a clickable map/room chip that opens
+    // the room-detail popup. Not truncated — the Other Info pane scrolls and a truncated
+    // list has no expand affordance, so show them all. Falls back to a plain comma-joined
+    // string when no DialogService is available (design-time). No-op when rooms is empty.
+    private void AddRoomList(List<MdbInfoRow> kv, string label, IReadOnlyList<RoomKey> rooms)
     {
         if (rooms.Count == 0) return;
         string list = string.Join(", ", rooms.Select(k => $"{k.Map}/{k.Room}"));
-        AddRow(kv, $"{label} ({rooms.Count})", list);
+        IReadOnlyList<RoomLink>? links = _dialogs is { } dialogs
+            ? rooms.Select(k => new RoomLink($"{k.Map}/{k.Room}", k, dialogs)).ToList()
+            : null;
+        kv.Add(new MdbInfoRow($"{label} ({rooms.Count})", list, Rooms: links));
     }
 
     // True when a Room.RawLairTag lists wccNo as one of its spawn monsters. v1.11p tags are

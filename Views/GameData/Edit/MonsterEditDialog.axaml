@@ -254,7 +254,27 @@
                                             <!-- Plain rows render the value as text. -->
                                             <TextBlock Grid.Column="1" Classes="MdbValue"
                                                        Text="{Binding Value}" TextWrapping="Wrap"
-                                                       IsVisible="{Binding !HasActions}"/>
+                                                       IsVisible="{Binding IsPlain}"/>
+
+                                            <!-- Room-list rows (Spawns In / Placed In / Summoned
+                                                 In) render each map/room as a clickable chip that
+                                                 opens the room-detail popup. -->
+                                            <ItemsControl Grid.Column="1" ItemsSource="{Binding Rooms}"
+                                                          IsVisible="{Binding HasRooms}">
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <WrapPanel/>
+                                                    </ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate x:DataType="vm:RoomLink">
+                                                        <Button Classes="MdbLink"
+                                                                Content="{Binding Label}"
+                                                                Command="{Binding Open}"
+                                                                Margin="0,0,10,2"/>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
 
                                             <!-- Textblock-backed rows (Greet) render a clickable
                                                  value that pops the command keywords the block
