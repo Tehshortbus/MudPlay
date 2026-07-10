@@ -1,12 +1,12 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.24.0**
-> - Session Statistics shows time-to-level, honoring banked levels — "N levels gained · HH:MM:SS until level X" at the session's exp/hour rate
-> - Game Data monster Greet rows are click-through — the popup decodes the textblock chain like MegaMUD, listing each keyword the monster responds to and the effects it fires (Cast, Item give/take, Ability, Class/Race gate, AddExp, Learn/Checkspell, Summon, Random branches, Cost/Givecoins, Teleport, Remote Action, Testskill)
-> - Game Data monster record spawn/placed/summoned room lists are now clickable chips — click a map/room to open that room's detail popup
-> - The room-detail popup (Rooms-table double-click or a monster room chip) is now interactive — click the room title or any exit to open/centre the Navigation map on that room, click a monster name to jump to its Game Data record, and Add/Remove the room from the blacklist inline
-> - Modify Room Blacklist editor columns (Map, Room, Name, Can't reach) are click-to-sort, ascending/descending; a "Toggle can't reach" button inverts the flag on every highlighted row at once
+> **Version 1.25.0**
+> - Auto-discard drops flagged items down to their keep floor whenever inventory changes — clears chest dumps and unwanted auto-collected loot
+> - Auto-buy restocks flagged items at a shop `list` up to their Max-to-get cap, honoring live stock and reading affordability off the live result
+> - Auto-sell offloads flagged items at a shop `list` down to their keep floor, one `sell` per copy
+> - All three engines are driven by the item-edit dialog's Auto-buy / Auto-sell / Auto-discard flags and gated by the existing Auto-get items master toggle — no new toggles
+> - Auto-buy / Auto-sell are greyed for LIGHT items (Auto-light owns those); first ticking Auto-buy seeds a Max-to-get of 10
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

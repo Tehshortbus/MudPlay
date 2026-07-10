@@ -23,6 +23,21 @@ public sealed partial class ItemEditDialogViewModel : ObservableObject, IDialogV
 
     public string WccNoStr { get; }
 
+    // LIGHT items are owned by Auto-light — Auto-buy / Auto-sell never act on
+    // them, so the dialog greys those two toggles for a light. The runtime
+    // resolver enforces the same exclusion regardless; this just keeps the UI
+    // honest about what the flags will do.
+    public bool CanBuySell { get; }
+
+    // Only surfaces (non-null) for a light, where the two toggles are greyed —
+    // explains why. Null on a normal item so no tooltip shows on the enabled box.
+    public string? BuySellTooltip =>
+        CanBuySell ? null : "LIGHT items are managed by Auto-light — Auto-buy / Auto-sell don't apply.";
+
+    // Guards the Auto-buy MaxToGet seed so it fires on a live user tick, not
+    // during the ctor's initial load of a saved overlay.
+    private readonly bool _initialized;
+
     [ObservableProperty] private string _name = string.Empty;
     [ObservableProperty] private SettingsTier _useTier = SettingsTier.Character;
 
@@ -59,12 +74,14 @@ public sealed partial class ItemEditDialogViewModel : ObservableObject, IDialogV
         string mdbName,
         ItemOverlay? existing,
         SettingsTier currentTier,
-        IReadOnlyList<KeyValuePair<string, string>> mdbInfo)
+        IReadOnlyList<KeyValuePair<string, string>> mdbInfo,
+        bool isLight = false)
     {
         WccNoStr     = wccNoStr;
         Name         = existing?.Name ?? mdbName;
         UseTier      = currentTier;
         MdbInfo      = mdbInfo;
+        CanBuySell   = !isLight;
 
         AutoCollect     = existing?.AutoCollect     ?? false;
         AutoDiscard     = existing?.AutoDiscard     ?? false;
@@ -79,6 +96,18 @@ public sealed partial class ItemEditDialogViewModel : ObservableObject, IDialogV
 
         MinToKeep = existing?.MinToKeep ?? string.Empty;
         MaxToGet  = existing?.MaxToGet  ?? string.Empty;
+
+        _initialized = true;
+    }
+
+    // Seed a MegaMUD-parity default cap the first time Auto-buy is ticked so the
+    // engine buys a sane quantity rather than the whole affordable stock. An
+    // existing (non-blank) cap is left untouched; the guard skips the ctor's
+    // initial load so a saved "unbounded" (blank) cap isn't clobbered to 10.
+    partial void OnAutoBuyChanged(bool value)
+    {
+        if (_initialized && value && string.IsNullOrWhiteSpace(MaxToGet))
+            MaxToGet = "10";
     }
 
     [RelayCommand]

@@ -85,8 +85,12 @@
                                         <CheckBox Content="Auto-discard"         IsChecked="{Binding AutoDiscard,     Mode=TwoWay}"/>
                                         <CheckBox Content="Auto-find"            IsChecked="{Binding AutoFind,        Mode=TwoWay}"/>
                                         <CheckBox Content="Auto-open"            IsChecked="{Binding AutoOpen,        Mode=TwoWay}"/>
-                                        <CheckBox Content="Auto-buy"             IsChecked="{Binding AutoBuy,         Mode=TwoWay}"/>
-                                        <CheckBox Content="Auto-sell"            IsChecked="{Binding AutoSell,        Mode=TwoWay}"/>
+                                        <CheckBox Content="Auto-buy"             IsChecked="{Binding AutoBuy,         Mode=TwoWay}"
+                                                  IsEnabled="{Binding CanBuySell}"
+                                                  ToolTip.Tip="{Binding BuySellTooltip}"/>
+                                        <CheckBox Content="Auto-sell"            IsChecked="{Binding AutoSell,        Mode=TwoWay}"
+                                                  IsEnabled="{Binding CanBuySell}"
+                                                  ToolTip.Tip="{Binding BuySellTooltip}"/>
                                         <CheckBox Content="Auto-stash"           IsChecked="{Binding AutoStash,       Mode=TwoWay}"/>
                                     </StackPanel>
                                     <StackPanel Grid.Column="2" Spacing="2">

@@ -2,6 +2,14 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.25.0
+
+- Auto-discard drops flagged items down to their keep floor whenever inventory changes — clears chest dumps and unwanted auto-collected loot
+- Auto-buy restocks flagged items at a shop `list` up to their Max-to-get cap, honoring live stock and reading affordability off the live result
+- Auto-sell offloads flagged items at a shop `list` down to their keep floor, one `sell` per copy
+- All three engines are driven by the item-edit dialog's Auto-buy / Auto-sell / Auto-discard flags and gated by the existing Auto-get items master toggle — no new toggles
+- Auto-buy / Auto-sell are greyed for LIGHT items (Auto-light owns those); first ticking Auto-buy seeds a Max-to-get of 10
+
 ## 1.24.0
 
 - Session Statistics shows time-to-level, honoring banked levels — "N levels gained · HH:MM:SS until level X" at the session's exp/hour rate

@@ -277,8 +277,18 @@ public static class DefaultPatterns
             @"^You notice (?<items>.*)(?:\r\n| )");
         yield return new RegexPattern(KnownPatterns.ShopListHeader,
             @"^The following items are for sale here:$");
+        // Buy / sell result lines (any currency, or "nothing"/"0 copper farthings").
+        // The auto-buy / auto-sell engines advance their per-item transaction
+        // pumps off these; the price tail is captured but the engines gate on the
+        // live result, not a predicted price.
         yield return new RegexPattern(KnownPatterns.UserBuys,
-            @"^You just bought (?:(?<qty>\d+) )?(?<item>[\w ]+) for (?<price>\d+) copper farthings\.$");
+            @"^You (?:just )?bought (?:(?<qty>\d+) )?(?<item>.+?) for (?<price>.+)\.$");
+        yield return new RegexPattern(KnownPatterns.UserSells,
+            @"^You (?:just )?sold (?<item>.+?) for (?<price>.+)\.$");
+        yield return new RegexPattern(KnownPatterns.UserBuyFailed,
+            @"^You cannot afford (?<item>.+)\.$");
+        yield return new RegexPattern(KnownPatterns.UserSellRefused,
+            @"^You cannot sell (?<item>.+) here\.$");
 
         // ----- Room -----------------------------------------------------
         // Room-parser consumer: before splitting `exits` on comma, strip the
