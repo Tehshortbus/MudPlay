@@ -133,7 +133,7 @@ public sealed partial class ItemEditDialogViewModel : ObservableObject, IDialogV
 
         var rows = new List<ChestDropRow>(chest.Drops.Count);
         foreach (ChestDrop d in chest.Drops)
-            rows.Add(new ChestDropRow(d.ItemName, FormatChance(d.Probability)));
+            rows.Add(new ChestDropRow(d.ItemId, d.ItemName, FormatChance(d.Probability)));
 
         string summary = chest.MinItems == chest.MaxItems
             ? $"Yields {chest.MinItems} {Plural(chest.MaxItems)}"

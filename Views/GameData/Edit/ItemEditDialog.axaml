@@ -31,6 +31,21 @@
             <Setter Property="FontSize" Value="11"/>
             <Setter Property="FontFamily" Value="{StaticResource FontMono}"/>
         </Style>
+        <!-- Clickable item link — matches the room-detail popup's shop rows;
+             sized to the MdbValue rows it sits beside. -->
+        <Style Selector="Button.MdbLink">
+            <Setter Property="Foreground" Value="{StaticResource AccentCyanBrush}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontFamily" Value="{StaticResource FontMono}"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style Selector="Button.MdbLink:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="TextBlock.TextDecorations" Value="Underline"/>
+        </Style>
     </Window.Styles>
 
     <Border Background="{StaticResource ChromeBgBrush}" Padding="14">
@@ -38,15 +53,14 @@
 
             <!-- ===== Two panes: editable left + read-only MDB right =====
                  Same shape as MonsterEditDialog — GridSplitter persists
-                 the column ratio per profile via SplitterLayoutStore
-                 (id = "ItemEditDialog"). The initial split is skewed
-                 toward the left (1.3* / 1*) because the editable side
-                 carries the Item / Options / Details boxes which need
-                 ~460px to render without clipping; a true 50/50 starts
-                 the dialog with the left content overlaying the
-                 splitter on first open. SplitterLayoutStore restores
-                 the user's last-dragged ratio over this default. -->
-            <Grid Grid.Row="0" x:Name="PanesGrid" ColumnDefinitions="1.3*,6,*">
+                 the column ratio per profile via SplitterLayoutStore. The
+                 default split (0.75* / 1*) sits the splitter just past the
+                 editable side's right edge: the Name / Options / Details
+                 boxes are all left-aligned and none is wider than ~360px,
+                 so the extra room belongs to the read-only MDB / chest
+                 pane on the right. SplitterLayoutStore restores the user's
+                 last-dragged ratio over this default. -->
+            <Grid Grid.Row="0" x:Name="PanesGrid" ColumnDefinitions="0.75*,6,*">
 
                 <!-- Editable -->
                 <Border Grid.Column="0"
@@ -57,8 +71,9 @@
                         <StackPanel Spacing="6">
 
                             <!-- Item Name + Use tier — kept narrow and left-aligned
-                                 so they don't reach the splitter. -->
-                            <Grid ColumnDefinitions="110,280" RowDefinitions="Auto,Auto"
+                                 so they sit at the pane's left edge, up against
+                                 the splitter's default position. -->
+                            <Grid ColumnDefinitions="46,280" RowDefinitions="Auto,Auto"
                                   ColumnSpacing="8" RowSpacing="6"
                                   HorizontalAlignment="Left">
                                 <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Name"/>
@@ -168,10 +183,18 @@
                                 <ItemsControl ItemsSource="{Binding ChestDrops}">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate DataType="vm:ChestDropRow">
-                                            <Grid ColumnDefinitions="*,Auto" Margin="0,1">
-                                                <TextBlock Grid.Column="0" Classes="MdbValue" Text="{Binding Name}" TextWrapping="Wrap"/>
-                                                <TextBlock Grid.Column="1" Classes="MdbValue" Text="{Binding Chance}"
-                                                           TextAlignment="Right" Margin="10,0,0,0"/>
+                                            <Grid ColumnDefinitions="200,10,46" Margin="0,1">
+                                                <Button Grid.Column="0" Classes="MdbLink"
+                                                        Content="{Binding Name}"
+                                                        Command="{Binding Open}"
+                                                        HorizontalAlignment="Left"
+                                                        ToolTip.Tip="Open this item in the Game Data browser"/>
+                                                <Border Grid.Column="1" Width="1"
+                                                        Background="{StaticResource ChromeBorderBrush}"
+                                                        VerticalAlignment="Stretch"
+                                                        HorizontalAlignment="Center"/>
+                                                <TextBlock Grid.Column="2" Classes="MdbValue" Text="{Binding Chance}"
+                                                           TextAlignment="Right"/>
                                             </Grid>
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>

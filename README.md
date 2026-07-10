@@ -5,6 +5,8 @@
 > - Merchant shops in the room-detail popup now show a stock table: item, max, restock, and buy/sell prices
 > - Training rooms in the room-detail popup now show the class and level band they train
 > - The item dialog decodes a chest's loot table — each possible drop with its % chance, plus the min/max items an open yields
+> - Chest drop names are clickable, jumping the Game Data browser to that item; the % column aligns with a separator beside the name
+> - Item dialog's Name/Use fields sit left with the pane splitter defaulting to their right edge
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->
