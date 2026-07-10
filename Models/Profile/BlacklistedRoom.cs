@@ -1,3 +1,6 @@
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
+
 namespace FujinTerm.Models.Profile;
 
 // One entry in a BBS's room-blacklist side-file. Hides the targeted room from
@@ -19,12 +22,27 @@ namespace FujinTerm.Models.Profile;
 // the room from position-candidate resolution entirely. It's separate from the
 // blacklist bit because a normally-reachable room can be blacklisted purely to
 // tidy the render while still being a legitimate position.
-public sealed class BlacklistedRoom
+public sealed class BlacklistedRoom : INotifyPropertyChanged
 {
     public int Map { get; set; }
     public int Room { get; set; }
     public string Name { get; set; } = "???";
-    public bool CannotBeReached { get; set; }
+
+    // Notifying so the Modify-Blacklist dialog's per-row checkbox reflects a
+    // programmatic flip (the "Toggle can't reach" bulk button), not just direct
+    // clicks. The (Map, Room, Name) fields are set once at construction and
+    // never edited in-place, so they stay plain auto-properties.
+    private bool _cannotBeReached;
+    public bool CannotBeReached
+    {
+        get => _cannotBeReached;
+        set
+        {
+            if (_cannotBeReached == value) return;
+            _cannotBeReached = value;
+            OnPropertyChanged();
+        }
+    }
 
     public BlacklistedRoom() { }
 
@@ -33,6 +51,11 @@ public sealed class BlacklistedRoom
         Map = map;
         Room = room;
         Name = name;
-        CannotBeReached = cannotBeReached;
+        _cannotBeReached = cannotBeReached;
     }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    private void OnPropertyChanged([CallerMemberName] string? name = null)
+        => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
 }

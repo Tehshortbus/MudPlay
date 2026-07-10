@@ -166,6 +166,17 @@ public sealed partial class BlacklistEditorDialogViewModel
         OnPropertyChanged(nameof(AddNamePreview));
     }
 
+    // Bulk per-row flip of the "Can't reach" flag across the current multi-
+    // selection — each highlighted row inverts its own state (checked → off,
+    // unchecked → on). Notifying model property means the checkboxes update in
+    // place; no rebuild, so the selection highlight survives.
+    [RelayCommand]
+    private void ToggleCannotBeReachedSelected()
+    {
+        foreach (BlacklistedRoom sel in SelectedEntries)
+            sel.CannotBeReached = !sel.CannotBeReached;
+    }
+
     [RelayCommand]
     private void RemoveSelected()
     {

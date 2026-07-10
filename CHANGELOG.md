@@ -8,7 +8,7 @@ Notable changes per merged PR, **newest first**. The top of the [README](README.
 - Game Data monster Greet rows are click-through — the popup decodes the textblock chain like MegaMUD, listing each keyword the monster responds to and the effects it fires (Cast, Item give/take, Ability, Class/Race gate, AddExp, Learn/Checkspell, Summon, Random branches, Cost/Givecoins, Teleport, Remote Action, Testskill)
 - Game Data monster record spawn/placed/summoned room lists are now clickable chips — click a map/room to open that room's detail popup
 - The room-detail popup (Rooms-table double-click or a monster room chip) is now interactive — click the room title or any exit to open/centre the Navigation map on that room, click a monster name to jump to its Game Data record, and Add/Remove the room from the blacklist inline
-- Modify Room Blacklist editor columns (Map, Room, Name, Can't reach) are click-to-sort, ascending/descending
+- Modify Room Blacklist editor columns (Map, Room, Name, Can't reach) are click-to-sort, ascending/descending; a "Toggle can't reach" button inverts the flag on every highlighted row at once
 
 ## 1.23.19
 

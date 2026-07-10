@@ -94,9 +94,13 @@
             </Grid>
         </Border>
 
-        <!-- Remove selected -->
+        <!-- Bulk actions on the current multi-selection -->
         <StackPanel Grid.Row="2" Orientation="Horizontal"
-                    HorizontalAlignment="Right" Margin="0,8,0,8">
+                    HorizontalAlignment="Right" Spacing="8" Margin="0,8,0,8">
+            <Button Content="Toggle can't reach"
+                    Command="{Binding ToggleCannotBeReachedSelectedCommand}"
+                    IsEnabled="{Binding CanRemoveSelected}"
+                    ToolTip.Tip="Invert the Can't-reach flag on every highlighted row (each flips its own state)."/>
             <Button Content="Remove selected"
                     Command="{Binding RemoveSelectedCommand}"
                     IsEnabled="{Binding CanRemoveSelected}"/>
