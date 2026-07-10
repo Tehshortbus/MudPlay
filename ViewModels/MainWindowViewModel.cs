@@ -714,6 +714,9 @@ public partial class MainWindowViewModel : ObservableObject
         // Same survey line drives item auto-get — its own buffer
         // stitches wrapped rows so the multi-line "You notice" parses.
         AppServices.Current.AutoGetItems.AttachLineExtractor(Lines);
+        // Auto-buy watches the same emitted-line stream for the shop `list`
+        // readout and stitches its stock table off the wrapped rows.
+        AppServices.Current.AutoBuy.AttachLineExtractor(Lines);
         // And the @what / @get-all ground-item snapshot off the same survey.
         AppServices.Current.GroundItems.AttachLineExtractor(Lines);
         // Inventory parser reads the full `i` dump (carried currency,
@@ -849,6 +852,11 @@ public partial class MainWindowViewModel : ObservableObject
         // AutoGetItemsManager's `get <name>` commands ride the same
         // gate-wrapped pipeline.
         AppServices.Current.AutoGetItems.SetWireSender(engineSend);
+        // The loot-automation engines — AutoDiscard's `drop`, AutoBuy's `buy`,
+        // AutoSell's `sell` — all ride the same gate-wrapped pipeline.
+        AppServices.Current.AutoDiscard.SetWireSender(engineSend);
+        AppServices.Current.AutoBuy.SetWireSender(engineSend);
+        AppServices.Current.AutoSell.SetWireSender(engineSend);
         // Base auto-search — the per-room `sea` rides the same gate-wrapped
         // pipeline so it can't land mid-password-prompt.
         AppServices.Current.AutoSearch.SetWireSender(engineSend);

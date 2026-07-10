@@ -1,52 +1,23 @@
 using System.Collections.Generic;
 using System.Text;
-using Avalonia;
-using Avalonia.Controls;
 using Avalonia.Controls.Documents;
 using Avalonia.Media;
 using FujinTerm.Terminal;
-using FujinTerm.ViewModels;
 
 namespace FujinTerm.Controls;
 
-// Renders one Backscroll row's cells as coloured inline Runs inside a
-// SelectableTextBlock, so within-row drag-select + Ctrl+C copy work natively.
-// One instance per visible row: the Backscroll's ListBox virtualizes, so only
-// the ~screenful of rows actually on screen ever build inlines — which is why
-// a 10k-row transcript opens instantly instead of laying out one giant text
-// block. Timestamps live in the sibling gutter column of the row template so
-// the character selection here never picks them up.
-public sealed class TranscriptRow : SelectableTextBlock
+// Turns a Backscroll row's Cell[] into coloured inline Runs. Shared by the
+// Backscroll window, which renders the whole transcript into one
+// SelectableTextBlock so native drag-select spans lines and Ctrl+C copies the
+// exact character range. Trailing plain-background spaces are dropped so a
+// selection that runs to end-of-line doesn't drag a tail of blanks.
+public static class TranscriptInlineBuilder
 {
-    public static readonly StyledProperty<BackscrollRowViewModel?> RowProperty =
-        AvaloniaProperty.Register<TranscriptRow, BackscrollRowViewModel?>(nameof(Row));
-
-    public BackscrollRowViewModel? Row
+    // Append one row's runs to inlines and return the plain-text length that was
+    // emitted (the trimmed cell count) — the caller uses it to track per-line
+    // character offsets for find-highlighting.
+    public static int AppendRow(InlineCollection inlines, Cell[] cells)
     {
-        get => GetValue(RowProperty);
-        set => SetValue(RowProperty, value);
-    }
-
-    static TranscriptRow()
-    {
-        RowProperty.Changed.AddClassHandler<TranscriptRow>((c, _) => c.Rebuild());
-    }
-
-    public TranscriptRow()
-    {
-        UseLayoutRounding = true;
-        RenderOptions.SetEdgeMode(this, EdgeMode.Aliased);
-        Background = Brushes.Transparent;
-        TextWrapping = TextWrapping.NoWrap;
-        SelectionBrush = new SolidColorBrush(Color.FromArgb(0x80, 0x4F, 0x8F, 0xD0));
-    }
-
-    private void Rebuild()
-    {
-        InlineCollection inlines = new();
-        if (Row is not { } row) { Inlines = inlines; return; }
-
-        Cell[] cells = row.Cells;
         int end = cells.Length;
         while (end > 0 && cells[end - 1].Char == ' ' && IsPlainBackground(cells[end - 1].Attr))
             end--;
@@ -59,8 +30,7 @@ public sealed class TranscriptRow : SelectableTextBlock
             do { i++; } while (i < end && cells[i].Attr.Equals(attr));
             inlines.Add(BuildRun(cells, runStart, i, attr));
         }
-
-        Inlines = inlines;
+        return end;
     }
 
     private static bool IsPlainBackground(CellAttributes attr)

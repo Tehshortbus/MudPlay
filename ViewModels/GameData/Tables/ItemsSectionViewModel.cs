@@ -120,7 +120,8 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
             mdbName:      row.Get("Name") ?? string.Empty,
             existing:     existing,
             currentTier:  row.SourceTier,
-            mdbInfo:      mdb.OtherInfo);
+            mdbInfo:      mdb.OtherInfo,
+            isLight:      mdb.IsLight);
 
         ItemEditResult? result = await _dialogs.OpenWindowAsync<ItemEditDialogViewModel, ItemEditResult>(vm);
         if (result is null) return;
@@ -158,6 +159,7 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
     private ItemMdbView BuildMdbView(string wccNoStr)
     {
         List<KeyValuePair<string, string>> otherInfo = new();
+        bool isLight = false;
 
         if (!int.TryParse(wccNoStr, out int wccNo))
             return new ItemMdbView(otherInfo);
@@ -198,6 +200,7 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
             if (numProp.GetInt32() != wccNo) continue;
 
             int itemType = ReadInt(el, "ItemType");
+            isLight = itemType == 6;
             string obtainedFrom = ReadString(el, "Obtained From");
 
             // ----- Other Info pane (right pane) -----
@@ -379,7 +382,7 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
 
             break;
         }
-        return new ItemMdbView(otherInfo);
+        return new ItemMdbView(otherInfo, isLight);
     }
 
     // ----- Ability-row formatting helpers -----
@@ -662,7 +665,9 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
     internal IReadOnlyList<KeyValuePair<string, string>> BuildOtherInfoForTests(string itemNumber)
         => BuildMdbView(itemNumber).OtherInfo;
 
-    // Bundle returned by BuildMdbView.
+    // Bundle returned by BuildMdbView. IsLight flags an ItemType==6 light so the
+    // edit dialog can grey Auto-buy / Auto-sell (Auto-light owns lights).
     private sealed record ItemMdbView(
-        IReadOnlyList<KeyValuePair<string, string>> OtherInfo);
+        IReadOnlyList<KeyValuePair<string, string>> OtherInfo,
+        bool IsLight = false);
 }

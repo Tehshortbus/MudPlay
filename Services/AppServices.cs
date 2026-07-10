@@ -942,6 +942,26 @@ public sealed class AppServices
     // the Settings → Items tab.
     public Game.Inventory.AutoGetItemsManager AutoGetItems { get; private set; } = null!;
 
+    // Auto-discard engine. On every inventory change, drops each carried item
+    // flagged Models.GameData.ItemOverlay.AutoDiscard down to its keep floor —
+    // one drop <name> per excess copy. Cleans chest dumps and unwanted collected
+    // loot. Gated by the AutoDiscard master toggle; a LoyalItem is never dropped.
+    public Game.Inventory.AutoDiscardManager AutoDiscard { get; private set; } = null!;
+
+    // Auto-buy engine. Watches the emitted line stream for a shop `list` readout,
+    // parses its stock table, and buys each stocked item flagged
+    // Models.GameData.ItemOverlay.AutoBuy up to its MaxToGet cap — one buy <name>
+    // per unit, advancing off the live purchase / can't-afford result. Gated by
+    // the AutoBuy master toggle; LIGHT items are excluded (Auto-light owns them).
+    public Game.Inventory.AutoBuyManager AutoBuy { get; private set; } = null!;
+
+    // Auto-sell engine. When a shop `list` readout surfaces, sells each carried
+    // item flagged Models.GameData.ItemOverlay.AutoSell down to its keep floor at
+    // the merchant standing in — one sell <name> per unit, advancing off the live
+    // sold / can't-sell-here result. Gated by the AutoSell master toggle; a
+    // LoyalItem and LIGHT items are never sold.
+    public Game.Inventory.AutoSellManager AutoSell { get; private set; } = null!;
+
     // Base auto-search engine — sends a bare sea on each room
     // entry while the AutoSearch master toggle is on, revealing hidden
     // items so AutoGetItems / Cash can
@@ -2904,6 +2924,32 @@ public sealed class AppServices
         // the deferred queue (CombatStateTracker's handler ran first, so
         // the hostile flag is current).
         RoomClassifier.EntitiesObserved += _ => AutoGetItems.OnRoomObserved();
+
+        // Loot-automation engines (auto-discard / auto-buy / auto-sell). All
+        // three share the single AutoGetItems master toggle — the per-item
+        // ItemOverlay flags (AutoDiscard / AutoBuy / AutoSell) are the real
+        // per-item gate; "Auto Get Items" is the umbrella item-automation
+        // switch and the group has no separate Action-menu toggles.
+        AutoDiscard = new Game.Inventory.AutoDiscardManager(Router,
+            carriedItems: () => Inventory.Snapshot.CarriedItems,
+            resolve: ResolveAutoDiscardItem,
+            isEnabled: () => ReadAutoModeFlag(d => d.AutoGetItems),
+            log: Log);
+        // Auto-discard re-evaluates the pack on every inventory change — the
+        // seam that surfaces chest dumps and freshly collected loot.
+        Inventory.Changed += AutoDiscard.OnInventoryChanged;
+
+        AutoBuy = new Game.Inventory.AutoBuyManager(Router,
+            resolve: ResolveAutoBuyItem,
+            countCarried: CountItemCarried,
+            isEnabled: () => ReadAutoModeFlag(d => d.AutoGetItems),
+            log: Log);
+
+        AutoSell = new Game.Inventory.AutoSellManager(Router,
+            carriedItems: () => Inventory.Snapshot.CarriedItems,
+            resolve: ResolveAutoSellItem,
+            isEnabled: () => ReadAutoModeFlag(d => d.AutoGetItems),
+            log: Log);
         // Settings → Talk auto-greet. Self name resolves through the
         // PartyManager's LocalCharacterName first (set on connect), then
         // the loaded profile name as a fallback. Wire-sender bound by
@@ -3065,6 +3111,13 @@ public sealed class AppServices
         // so with "defer to party inventory" off (or solo) the behaviour is
         // unchanged.
         Walker.SetPathItemAnnouncer(PartyPathItemGate.OnPathItemsRequired);
+
+        // If an in-flight move carried us out of a room where combat had just
+        // engaged an actionable hostile (the move confirms + wipes the room
+        // before the kill lands), halt the walk so it doesn't keep going deeper
+        // past the abandoned fight. Both engines are rebuilt together in this
+        // method, so the subscription dies with them — no explicit unsubscribe.
+        CombatTracker.EngagedTargetAbandoned += reason => Walker.HaltForAbandonedCombat(reason);
 
         // Active auto-light engine — announced the same planned route as the
         // item gate above. It scans for the darkest room and readies a covering
@@ -4137,13 +4190,88 @@ public sealed class AppServices
         string? name = ItemNames.GetName(number);
         if (string.IsNullOrWhiteSpace(name)) return null;
 
-        Models.GameData.ItemOverlay overlay = Resolver.ResolveGameData<Models.GameData.ItemOverlay>(
+        Models.GameData.ItemOverlay overlay = ResolveItemOverlay(number);
+        return new Game.Inventory.AutoGetItemsManager.ResolvedItem(name, overlay.AutoCollect ?? false);
+    }
+
+    // Resolve a carried entry for AutoDiscard: map the loose carry wording to an
+    // item Number, read its verbatim Name, and resolve the AutoDiscard flag plus
+    // keep floor. A LoyalItem is never discarded — loyalty (never-drop) wins over
+    // a stray AutoDiscard flag. Returns null only when the entry isn't an item in
+    // the active set (so the engine skips scenery / cash lines).
+    private Game.Inventory.AutoDiscardManager.ResolvedDiscard? ResolveAutoDiscardItem(string entry)
+    {
+        if (ItemNames.FindByName(entry) is not int number) return null;
+        string? name = ItemNames.GetName(number);
+        if (string.IsNullOrWhiteSpace(name)) return null;
+
+        Models.GameData.ItemOverlay overlay = ResolveItemOverlay(number);
+        bool discard = (overlay.AutoDiscard ?? false) && !(overlay.LoyalItem ?? false);
+        return new Game.Inventory.AutoDiscardManager.ResolvedDiscard(
+            number, name, discard, KeepFloor(overlay));
+    }
+
+    // Resolve a shop stock-row name for AutoBuy: map it to an item Number, read
+    // the verbatim Name, and resolve the AutoBuy flag plus MaxToGet cap. LIGHT
+    // items are excluded — Auto-light owns their acquisition. Returns null when
+    // the row name isn't an item in the active set.
+    private Game.Inventory.AutoBuyManager.ResolvedBuy? ResolveAutoBuyItem(string entry)
+    {
+        if (ItemNames.FindByName(entry) is not int number) return null;
+        string? name = ItemNames.GetName(number);
+        if (string.IsNullOrWhiteSpace(name)) return null;
+
+        Models.GameData.ItemOverlay overlay = ResolveItemOverlay(number);
+        bool buy = (overlay.AutoBuy ?? false) && Lights.FindByName(name) is null;
+        return new Game.Inventory.AutoBuyManager.ResolvedBuy(
+            number, name, buy, MaxCap(overlay));
+    }
+
+    // Resolve a carried entry for AutoSell: map the loose carry wording to an item
+    // Number, read the verbatim Name, and resolve the AutoSell flag plus keep
+    // floor. A LoyalItem is never sold, and LIGHT items are excluded (Auto-light
+    // owns them). Returns null only when the entry isn't an item in the active set.
+    private Game.Inventory.AutoSellManager.ResolvedSell? ResolveAutoSellItem(string entry)
+    {
+        if (ItemNames.FindByName(entry) is not int number) return null;
+        string? name = ItemNames.GetName(number);
+        if (string.IsNullOrWhiteSpace(name)) return null;
+
+        Models.GameData.ItemOverlay overlay = ResolveItemOverlay(number);
+        bool sell = (overlay.AutoSell ?? false)
+            && !(overlay.LoyalItem ?? false)
+            && Lights.FindByName(name) is null;
+        return new Game.Inventory.AutoSellManager.ResolvedSell(
+            number, name, sell, KeepFloor(overlay));
+    }
+
+    // The 4-tier ItemOverlay for an item Number (Defaults seed → Global → BBS →
+    // Char). Shared by the auto-collect / stash / discard / buy / sell resolvers.
+    private Models.GameData.ItemOverlay ResolveItemOverlay(int number) =>
+        Resolver.ResolveGameData<Models.GameData.ItemOverlay>(
             "Items",
             number.ToString(System.Globalization.CultureInfo.InvariantCulture),
             ItemOverlaySeed.GetOverlay(number));
 
-        return new Game.Inventory.AutoGetItemsManager.ResolvedItem(name, overlay.AutoCollect ?? false);
-    }
+    // Keep floor for the discard / sell engines: MinToKeep when the user set
+    // MustHaveMinimum, else zero (unbanded → drain to nothing). "None", blank, and
+    // non-numeric strings resolve to zero.
+    private static int KeepFloor(Models.GameData.ItemOverlay overlay) =>
+        (overlay.MustHaveMinimum ?? false) ? ParseCount(overlay.MinToKeep, 0) : 0;
+
+    // Acquisition cap for the buy engine: MaxToGet as an int, with the "All"
+    // sentinel and blank / non-numeric strings meaning unbounded (int.MaxValue →
+    // buy the whole affordable stock).
+    private static int MaxCap(Models.GameData.ItemOverlay overlay) =>
+        ParseCount(overlay.MaxToGet, int.MaxValue);
+
+    // Parse a carry-policy count string (MinToKeep / MaxToGet). Non-negative
+    // numeric strings yield their value; blank, null, and the MegaMUD sentinels
+    // ("None" / "All") fall back to the caller's default.
+    private static int ParseCount(string? raw, int fallback) =>
+        int.TryParse(raw, System.Globalization.NumberStyles.Integer,
+            System.Globalization.CultureInfo.InvariantCulture, out int v) && v >= 0
+            ? v : fallback;
 
     // Resolve a single carried-inventory entry for Stash:
     // map the loose carry wording to an item Number, read its verbatim
@@ -4159,11 +4287,7 @@ public sealed class AppServices
         string? name = ItemNames.GetName(number);
         if (string.IsNullOrWhiteSpace(name)) return null;
 
-        Models.GameData.ItemOverlay overlay = Resolver.ResolveGameData<Models.GameData.ItemOverlay>(
-            "Items",
-            number.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            ItemOverlaySeed.GetOverlay(number));
-
+        Models.GameData.ItemOverlay overlay = ResolveItemOverlay(number);
         return overlay.AutoStash ?? false ? name : null;
     }
 

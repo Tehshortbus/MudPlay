@@ -2,6 +2,29 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.26.1
+
+- Walker now halts instead of walking deeper when an in-flight move carries it out of a room with a hostile it had just engaged
+- A movement step can no longer slip onto the wire in the instant between combat engaging and the walk pausing
+- bug reports addressed: stock-20260710-002816
+
+## 1.26.0
+
+- Backscroll drag-select now spans multiple rows and Ctrl+C copies the exact character range across lines
+- Timestamps moved to an aligned gutter, kept out of the copied text
+- Backscroll opens parked just above the live line on the newest scrollback instead of jumping to the tail
+- Transcript renders with the terminal's aliased VGA font — no colour fringing on glyph edges
+- Fixes a crash when opening the Backscroll window
+- bug reports addressed: Crash-20260710-021530
+
+## 1.25.0
+
+- Auto-discard drops flagged items down to their keep floor whenever inventory changes — clears chest dumps and unwanted auto-collected loot
+- Auto-buy restocks flagged items at a shop `list` up to their Max-to-get cap, honoring live stock and reading affordability off the live result
+- Auto-sell offloads flagged items at a shop `list` down to their keep floor, one `sell` per copy
+- All three engines are driven by the item-edit dialog's Auto-buy / Auto-sell / Auto-discard flags and gated by the existing Auto-get items master toggle — no new toggles
+- Auto-buy / Auto-sell are greyed for LIGHT items (Auto-light owns those); first ticking Auto-buy seeds a Max-to-get of 10
+
 ## 1.24.0
 
 - Session Statistics shows time-to-level, honoring banked levels — "N levels gained · HH:MM:SS until level X" at the session's exp/hour rate

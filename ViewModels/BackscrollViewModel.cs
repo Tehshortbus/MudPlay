@@ -33,15 +33,18 @@ public sealed partial class BackscrollViewModel : ObservableObject, IDisposable
     private string _lastMatchSearchText = string.Empty;
     // Coalesces many ScreenUpdated events into a single RefreshLiveTail per
     // dispatcher tick — without this, every byte echoed during typing fires
-    // a full live-tail refresh (which replaces ~25 rows in Rows). The
-    // virtualizing ListBox only re-renders the realised tail rows, but the
-    // coalescing still spares the collection churn on keystroke bursts.
+    // a full live-tail refresh (which replaces ~25 rows in Rows), and the
+    // window rebuilds the whole transcript on each collection change.
     private bool _refreshScheduled;
     // Set when a ScreenUpdated arrived while mirroring was suspended
     // (see AutoFollow) so we can catch the tail up on resume.
     private bool _liveTailDeferred;
 
     public ObservableCollection<BackscrollRowViewModel> Rows { get; } = new();
+
+    // Count of historical (scrollback) rows at the front of Rows — the window
+    // reads this to draw the history/live divider at the boundary index.
+    public int ScrollbackCount => _scrollbackCount;
 
     [ObservableProperty] private string _searchText = string.Empty;
 
@@ -60,9 +63,9 @@ public sealed partial class BackscrollViewModel : ObservableObject, IDisposable
         => $"{_scrollbackCount:N0} scrollback  •  {Rows.Count - _scrollbackCount:N0} live  •  {MatchCount:N0} matches";
 
     // Fired when Find Next lands on a match. Payload: (rowIndex,
-    // columnOffsetWithinRowText, matchLength). The window selects the matched
-    // row in the ListBox and scrolls it into view (row-granular — the column
-    // and length are reported for completeness but unused by the window).
+    // columnOffsetWithinRowText, matchLength). The window translates it into a
+    // character selection in the single transcript block and scrolls it into
+    // view.
     public event Action<int, int, int>? FindMatchRequested;
 
     // Fired when the user requests Go to live (scroll to bottom).
@@ -155,15 +158,6 @@ public sealed partial class BackscrollViewModel : ObservableObject, IDisposable
         {
             Cell[] cells = screen.Row(y).ToArray();
             liveRows.Add(new BackscrollRowViewModel(new ScrollbackBuffer.Row(now, cells)));
-        }
-
-        // Flag the first live row so the window draws a divider above it,
-        // marking where frozen history ends and the live tail begins. Only
-        // when history actually exists above — a session with an empty
-        // scrollback is all-live, so there's no boundary to mark.
-        if (liveRows.Count > 0 && _scrollbackCount > 0)
-        {
-            liveRows[0].ShowLiveSeparator = true;
         }
 
         int currentLive = Rows.Count - _scrollbackCount;

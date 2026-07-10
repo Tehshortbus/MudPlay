@@ -869,6 +869,48 @@ in the data means "unknown," so the client prices unknown Charm at 50.
   engines should treat the index as "shops capable of stocking X" and confirm off the **live buy/sell
   result** (a `%-N = 0` item may simply be out until someone sells one).
 
+### `list` — live shop stock readout *([CONFIRMED] 2026-07-10, in-game capture)*
+
+In a shop, `list` prints a three-column table — this is the **live** stock, so real availability *is*
+readable at runtime (parse `list`; don't predict from the static `%-N` restock data):
+
+```
+The following items are for sale here:
+
+Item                    Quantity        Price
+-----------------------------------------------
+torch                   250             Free
+lantern                 40              4 gold crowns
+rope and grapple        56              10 gold crowns
+iron ration             430             10 silver nobles
+crowbar                 35              6 gold crowns (You can't use)
+glass jug               5               2 gold crowns
+```
+
+- **Item** = the name to feed `buy <item>`. **Quantity** = current stock count. **Price** = formatted
+  currency (or `Free`), with a trailing **`(You can't use)`** suffix when the character's class / stats
+  bar the item from being *used*. This suffix is **informational only** — it does **not** gate auto-buy.
+  If the user flagged the item AutoBuy, buy it regardless; the player may want it for a mule, a party
+  member, resale, or a quest. User intent (the AutoBuy flag) always wins over the usability hint.
+
+### Buy / sell result lines *([CONFIRMED] 2026-07-10)*
+
+| Event | Line |
+|---|---|
+| Buy OK | `You just bought <item> for <amount> <currency>.` |
+| Buy — free item | `You just bought <item> for nothing.` |
+| Buy — can't afford | `You cannot afford <item>.` |
+| Sell OK | `You sold <item> for <amount> <currency>.` |
+| Sell — worthless | `You sold <item> for 0 copper farthings.` |
+| Sell — shop refuses | `You cannot sell <item> here.` |
+
+### Auto-buy / auto-discard band semantics *([CONFIRMED] 2026-07-10, user design)*
+
+- **Auto-discard, no Min/Max band set → discard *all*** of that item (drop every copy).
+- **Auto-buy, no band → buy as many as affordable**; but when the user first ticks Auto-buy on in the
+  item-edit dialog, **default `MaxToGet` to 10** (they change it from there). So a freshly-flagged
+  auto-buy item is bounded at 10 by default, never unbounded-by-accident.
+
 ---
 
 ## Message catalogue (lines the client parses)

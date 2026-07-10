@@ -189,7 +189,10 @@ public static class KnownPatterns
     public const string UserRemoved       = "item.user-removed";
     public const string HiddenItems       = "item.hidden-items";
     public const string ShopListHeader    = "item.shop-list-header";
-    public const string UserBuys          = "item.user-buys";
+    public const string UserBuys          = "item.user-buys";        // "You just bought X for <price>." (any currency, incl. "nothing")
+    public const string UserSells         = "item.user-sells";       // "You sold X for <price>."
+    public const string UserBuyFailed     = "item.user-buy-failed";  // "You cannot afford X."
+    public const string UserSellRefused   = "item.user-sell-refused";// "You cannot sell X here."
 
     // ----- Room light ----------------------------------------------------
     // The two "can't see" room-light lines drive auto-light to post a

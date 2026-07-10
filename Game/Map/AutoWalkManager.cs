@@ -636,12 +636,31 @@ public sealed class AutoWalkManager : IRecoverableEngine
     public void Pause() => _coordinator.AssertGate(MovementCoordinator.UserGate);
     public void Resume() => _coordinator.ClearGate(MovementCoordinator.UserGate);
 
+    // A move already on the wire carried us out of a room where we'd engaged a
+    // hostile (combat gate was held) before it died. The step can't be recalled,
+    // but we must not keep walking the route deeper past a fight we committed to.
+    // Halt on the manual (User) gate so the path is preserved and the user
+    // resumes once the situation is handled (mirrors the death halt). Fired from
+    // CombatStateTracker.EngagedTargetAbandoned. No-op when no walk is active.
+    public void HaltForAbandonedCombat(string reason)
+    {
+        if (State == WalkState.Idle) return;
+        _coordinator.AssertGate(MovementCoordinator.UserGate, "AutoWalkManager", reason);
+        Raise(new WalkEvent(WalkEventKind.Paused, reason, _destination));
+    }
+
     // ----- internals -------------------------------------------------
 
     private void SendNextStep()
     {
         if (_path is null || _index >= _path.Count) return;
         if (_stepInFlight) return;
+
+        // Never put a step on the wire while any gate is asserted. The pause
+        // signal is async (OnCoordinatorPauseChanged), so without this guard a
+        // step can slip out in the window between a gate asserting — e.g. combat
+        // engaging a monster that just crept in — and the pause landing.
+        if (_coordinator.IsPaused) return;
 
         // Tier-3 gate may have escalated; if so don't queue a new step.
         if (_recovery is not null && !_recovery.MayProceedWithPlannedStep()) return;

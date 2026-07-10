@@ -92,6 +92,14 @@ public sealed class CombatStateTracker : IDisposable
     // CombatManager reads this to engage despite combat-off.
     public bool SeeHiddenClearActive => _seeHiddenClearLatch;
 
+    // Fires when a confirmed room change happens while the combat gate is held —
+    // an in-flight move carried us out of a room where we'd engaged an
+    // actionable hostile before it died. The walker subscribes and halts so the
+    // route doesn't keep going deeper past a fight we committed to. The argument
+    // is a human-readable reason for the log / walk event. (The gate itself is
+    // still cleared for the new room — see OnEntitiesObserved's RoomChange arm.)
+    public event Action<string>? EngagedTargetAbandoned;
+
     public CombatStateTracker(
         MessageRouter router,
         MovementCoordinator coordinator,
@@ -275,6 +283,20 @@ public sealed class CombatStateTracker : IDisposable
         }
         else
         {
+            // A confirmed room change (synthetic empty wipe) while the gate is
+            // held means an in-flight move carried us OUT of a room where we'd
+            // engaged an actionable hostile — we didn't kill it (a real kill
+            // clears the gate on the Death observation first), we left it. That's
+            // an abandoned fight, not a room we cleared by winning: signal the
+            // walker to halt so it doesn't keep walking the route deeper past a
+            // fight we committed to. We still clear the gate below — the new room
+            // is genuinely empty of the old target and holding would deadlock (an
+            // empty room emits no further observation to release it); if the
+            // monster followed, its arrival observation re-asserts within
+            // milliseconds.
+            if (obs.Source == RoomObservationSource.RoomChange && _gateAsserted)
+                EngagedTargetAbandoned?.Invoke("left a room with an engaged target still alive");
+
             // targetable>0 here means hostiles remain but none are killable —
             // release the gate and move past (per the move-past rule). The
             // "room cleared" wording stays for the genuine empty-room case.
