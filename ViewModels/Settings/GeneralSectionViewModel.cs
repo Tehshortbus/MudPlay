@@ -35,6 +35,7 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
         "General", "Data files", "Open Data folder", "Change data directory",
         "Auto-connect", "Default task", "Do nothing",
         "Begin loop", "Begin Auto-Lair", "Backup profile",
+        "Terminal display", "Scale terminal to window",
         "Manual-Mode Defaults", "Auto-Mode Defaults",
         "Auto-Engines enabled on start",
         "Auto-Combat", "Auto-Nuke",
@@ -86,6 +87,7 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private string? _defaultAutoLairName;
     [ObservableProperty] private bool _autoConnect;
     [ObservableProperty] private bool _backupOnSave;
+    [ObservableProperty] private bool _scaleTerminalToWindow;
 
     // PlayerCleanupDays moved to Settings → Other per user direction.
     // GlobalSettings.PlayerCleanupDays remains the canonical store —
@@ -184,6 +186,7 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
             DefaultAutoLairName = string.IsNullOrWhiteSpace(DefaultAutoLairName) ? null : DefaultAutoLairName,
             AutoConnect = AutoConnect,
             BackupOnSave = BackupOnSave,
+            ScaleTerminalToWindow = ScaleTerminalToWindow,
             AutoMode   = SnapshotAuto(),
             AllowHangupInAllOffMode         = AllowHangupInAllOffMode,
             ReEnableAutoCombatOnReconnect   = ReEnableAutoCombatOnReconnect,
@@ -201,6 +204,12 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
         profile.Settings ??= new();
         profile.Settings[TabKey] = JsonSerializer.SerializeToElement(dto);
         _profile.Save(backup: BackupOnSave);
+
+        // Push the terminal-scaling toggle into the live DisplayConfig — a plain
+        // profile Save fires neither ProfileLoaded nor ProfileMutated, so the
+        // AppServices seed path won't run; this is what makes the change reach
+        // the live canvas on Apply.
+        AppServices.Current.Display.ScaleToWindow = ScaleTerminalToWindow;
 
         ClearDirty();
     }
@@ -236,6 +245,7 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
         DefaultAutoLairName  = dto.DefaultAutoLairName;
         AutoConnect          = dto.AutoConnect;
         BackupOnSave         = dto.BackupOnSave;
+        ScaleTerminalToWindow = dto.ScaleTerminalToWindow;
 
         AutoActionDefaults a = dto.AutoMode;
         AmAutoCombat   = a.AutoCombat;
@@ -309,6 +319,7 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
     partial void OnDefaultAutoLairNameChanged(string? value) => Dirty();
     partial void OnAutoConnectChanged(bool value)            => Dirty();
     partial void OnBackupOnSaveChanged(bool value)           => Dirty();
+    partial void OnScaleTerminalToWindowChanged(bool value)  => Dirty();
     partial void OnAmAutoCombatChanged(bool value)           => Dirty();
     partial void OnAmAutoNukeChanged(bool value)             => Dirty();
     partial void OnAmAutoHealRestChanged(bool value)         => Dirty();

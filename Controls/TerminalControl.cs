@@ -39,6 +39,21 @@ public sealed class TerminalControl : Control
     public static readonly StyledProperty<double> FontSizeProperty =
         AvaloniaProperty.Register<TerminalControl, double>(nameof(FontSize), 16.0);
 
+    // When true, scale the glyphs up to fill ViewportSize while keeping the
+    // fixed cell grid (cols/rows unchanged — a purely visual zoom). Bound from
+    // MainWindowViewModel.ScaleTerminalToWindow.
+    public static readonly StyledProperty<bool> ScaleToFitProperty =
+        AvaloniaProperty.Register<TerminalControl, bool>(nameof(ScaleToFit));
+
+    // The area the terminal should fill when ScaleToFit is on — fed from the
+    // hosting ScrollViewer's bounds by MainWindow code-behind. The control lives
+    // inside a ScrollViewer, so MeasureOverride can't read the window size
+    // itself (it's measured with infinite available size); this property is how
+    // the viewport reaches the scaling math. Zero size means "unknown" → no
+    // scaling.
+    public static readonly StyledProperty<Size> ViewportSizeProperty =
+        AvaloniaProperty.Register<TerminalControl, Size>(nameof(ViewportSize));
+
     public TerminalEmulator? Emulator
     {
         get => GetValue(EmulatorProperty);
@@ -57,6 +72,18 @@ public sealed class TerminalControl : Control
         set => SetValue(FontSizeProperty, value);
     }
 
+    public bool ScaleToFit
+    {
+        get => GetValue(ScaleToFitProperty);
+        set => SetValue(ScaleToFitProperty, value);
+    }
+
+    public Size ViewportSize
+    {
+        get => GetValue(ViewportSizeProperty);
+        set => SetValue(ViewportSizeProperty, value);
+    }
+
     // Raised on the UI thread with bytes to send to the host.
     public event Action<byte[]>? UserInput;
 
@@ -69,9 +96,23 @@ public sealed class TerminalControl : Control
     // keystroke straight to the wire.
     public LocalInputBuffer? InputBuffer { get; set; }
 
+    // Hard ceiling on the ScaleToFit zoom: the effective font never exceeds
+    // FontSize × this. Keeps a maximised window on a big monitor from blowing
+    // the glyphs up to an absurd size — "reasonably larger", not billboard.
+    private const double MaxScale = 2.0;
+
     private Typeface _typeface;
+    // Cell box at the effective (possibly scaled) font — what everything draws
+    // and measures against.
     private double _cellW = 8;
     private double _cellH = 16;
+    // Cell box at the base (unscaled) FontSize — the natural grid size the
+    // ScaleToFit math fits into the viewport.
+    private double _baseCellW = 8;
+    private double _baseCellH = 16;
+    // Font size the glyphs are actually rendered at: FontSize when ScaleToFit
+    // is off, a larger capped value when on.
+    private double _effectiveFontSize = 16;
     private bool _cursorBlinkOn = true;
     private DispatcherTimer? _blinkTimer;
     private Action? _onBufferChanged;
@@ -115,6 +156,10 @@ public sealed class TerminalControl : Control
             (TerminalEmulator?)e.OldValue, (TerminalEmulator?)e.NewValue));
         FontFamilyProperty.Changed.AddClassHandler<TerminalControl>((c, _) => c.RecalculateMetrics());
         FontSizeProperty.Changed.AddClassHandler<TerminalControl>((c, _) => c.RecalculateMetrics());
+        // Scaling inputs don't change the base metrics — only which scale factor
+        // applies — so they re-fit rather than re-measure the base cell.
+        ScaleToFitProperty.Changed.AddClassHandler<TerminalControl>((c, _) => c.ApplyScale());
+        ViewportSizeProperty.Changed.AddClassHandler<TerminalControl>((c, _) => c.ApplyScale());
         AffectsRender<TerminalControl>(EmulatorProperty);
     }
 
@@ -132,8 +177,9 @@ public sealed class TerminalControl : Control
             newEm.ScreenUpdated += OnScreenUpdated;
             newEm.ScreenResized += OnScreenResized;
         }
-        InvalidateMeasure();
-        InvalidateVisual();
+        // A different emulator may carry a different grid size, changing the
+        // natural dimensions the ScaleToFit math fits — re-fit before repaint.
+        ApplyScale();
     }
 
     // ScreenUpdated may fire on any thread; invalidation must happen on the
@@ -150,13 +196,10 @@ public sealed class TerminalControl : Control
         Dispatcher.UIThread.Post(InvalidateVisual);
     }
 
-    // ScreenResized only fires on Emulator.Resize. Re-measure so the
-    // canvas grows / shrinks to match the new cell grid.
-    private void OnScreenResized() => Dispatcher.UIThread.Post(() =>
-    {
-        InvalidateMeasure();
-        InvalidateVisual();
-    });
+    // ScreenResized only fires on Emulator.Resize. Re-fit (the new cols/rows
+    // change the natural grid the ScaleToFit math targets) then re-measure so
+    // the canvas grows / shrinks to match the new cell grid.
+    private void OnScreenResized() => Dispatcher.UIThread.Post(ApplyScale);
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
@@ -189,23 +232,80 @@ public sealed class TerminalControl : Control
         }
     }
 
-    // Measure the width and height of the chosen font's "M" glyph and snap the
-    // result to whole pixels. Used as the per-cell box size.
+    // Rebuild the cell metrics: measure the base cell at FontSize, then re-fit
+    // the effective (possibly scaled) cell. Runs when the font or family
+    // changes.
     private void RecalculateMetrics()
     {
         _typeface = new Typeface(FontFamily);
-        var probe = new FormattedText("M", CultureInfo.InvariantCulture, FlowDirection.LeftToRight,
-            _typeface, FontSize, Brushes.White);
-        // Snap to integer pixels so adjacent cell BG fills meet exactly and
-        // glyph advances align with cell grid. Without this, sub-pixel
-        // residue shows up as 1px gaps/overlaps across cell boundaries.
-        _cellW = Math.Max(1, Math.Round(probe.WidthIncludingTrailingWhitespace));
-        _cellH = Math.Max(1, Math.Round(probe.Height));
+        (_baseCellW, _baseCellH) = MeasureCell(FontSize);
+        RecomputeScale();
         InvalidateMeasure();
         InvalidateVisual();
     }
 
-    // Tell layout the control wants exactly cols × rows × cell pixels.
+    // Re-fit the effective cell to the current ScaleToFit / ViewportSize / grid
+    // without re-measuring the base cell (those inputs don't move it).
+    private void ApplyScale()
+    {
+        RecomputeScale();
+        InvalidateMeasure();
+        InvalidateVisual();
+    }
+
+    // Measure the width and height of the chosen font's "M" glyph at a given
+    // point size and snap the result to whole pixels. Used as the per-cell box
+    // size. Integer snapping keeps adjacent cell BG fills meeting exactly and
+    // glyph advances aligned to the grid — without it, sub-pixel residue shows
+    // up as 1px gaps/overlaps across cell boundaries.
+    private (double w, double h) MeasureCell(double fontSize)
+    {
+        var probe = new FormattedText("M", CultureInfo.InvariantCulture, FlowDirection.LeftToRight,
+            _typeface, fontSize, Brushes.White);
+        return (Math.Max(1, Math.Round(probe.WidthIncludingTrailingWhitespace)),
+                Math.Max(1, Math.Round(probe.Height)));
+    }
+
+    // Decide the effective font size and cell box. When ScaleToFit is off (or
+    // the viewport is unknown) it's just the base cell at FontSize. When on, fit
+    // the natural grid (base cell × cols/rows) into the viewport, cap the zoom
+    // at MaxScale, floor to a whole point for crisp bitmap-style rasterisation,
+    // then step down until the scaled grid actually fits — integer cell
+    // rounding can otherwise nudge it a hair past the viewport and trip a
+    // scrollbar. Never scales below the base font, so a small window keeps the
+    // configured size (and scrolls) rather than shrinking the grid.
+    private void RecomputeScale()
+    {
+        double effFont = FontSize;
+
+        if (ScaleToFit)
+        {
+            Size vp = ViewportSize;
+            int cols = Emulator?.Screen.Cols ?? 80;
+            int rows = Emulator?.Screen.Rows ?? 25;
+            double naturalW = _baseCellW * cols;
+            double naturalH = _baseCellH * rows;
+            if (vp.Width > 0 && vp.Height > 0 && naturalW > 0 && naturalH > 0)
+            {
+                double raw = Math.Min(vp.Width / naturalW, vp.Height / naturalH);
+                double target = Math.Clamp(FontSize * raw, FontSize, FontSize * MaxScale);
+                effFont = Math.Max(FontSize, Math.Floor(target));
+                while (effFont > FontSize)
+                {
+                    (double cw, double ch) = MeasureCell(effFont);
+                    if (cw * cols <= vp.Width && ch * rows <= vp.Height) break;
+                    effFont -= 1;
+                }
+            }
+        }
+
+        _effectiveFontSize = effFont;
+        (_cellW, _cellH) = MeasureCell(effFont);
+    }
+
+    // Tell layout the control wants exactly cols × rows × (effective) cell
+    // pixels. In ScaleToFit mode the effective cell already fits the viewport,
+    // so this fills the window; otherwise it's the natural grid size.
     protected override Size MeasureOverride(Size availableSize)
     {
         var em = Emulator;
@@ -327,7 +427,7 @@ public sealed class TerminalControl : Control
                         CultureInfo.InvariantCulture,
                         FlowDirection.LeftToRight,
                         _typeface,
-                        FontSize,
+                        _effectiveFontSize,
                         Brushes.LightGray);
                     context.DrawText(glyph, new Point(px, py));
                     col++;
@@ -403,7 +503,7 @@ public sealed class TerminalControl : Control
             char ch = screen[i, y].Char;
             if (ch == ' ') continue;
             var ft = new FormattedText(ch.ToString(), CultureInfo.InvariantCulture,
-                FlowDirection.LeftToRight, typeface, FontSize, fg);
+                FlowDirection.LeftToRight, typeface, _effectiveFontSize, fg);
             context.DrawText(ft, new Point(x0 == i ? left : i * _cellW, top));
         }
 

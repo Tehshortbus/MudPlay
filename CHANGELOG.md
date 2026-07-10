@@ -2,6 +2,12 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.28.0
+
+- New Settings → General toggle scales the terminal font to fill the window, keeping the fixed cell grid
+- Scaling is capped so a maximised window enlarges the text reasonably instead of absurdly
+- Off by default: the grid keeps its configured font size and sits centred in a larger window
+
 ## 1.27.0
 
 - Window positions now restore when you switch character profiles, instead of staying where they were
