@@ -148,7 +148,7 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
         if (string.IsNullOrEmpty(wcc)) return;
 
         // Pull the MDB row for the right-pane "Other Info" pane.
-        IReadOnlyList<KeyValuePair<string, string>> mdbInfo = BuildMdbInfo(wcc);
+        IReadOnlyList<MdbInfoRow> mdbInfo = BuildMdbInfo(wcc);
 
         // Existing overlay — always merged across all 4 tiers (Char →
         // BBS → Global → Defaults). The Defaults-tier baseline comes
@@ -236,9 +236,9 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
     //      the header.
     // Per user spec we deliberately omit combat-sim outputs (predicted damage etc. — Workshop
     // COMBAT Preview territory) and the alignment-derived [Hostile]/[Not-Hostile] tag.
-    private IReadOnlyList<KeyValuePair<string, string>> BuildMdbInfo(string wccNoStr)
+    private IReadOnlyList<MdbInfoRow> BuildMdbInfo(string wccNoStr)
     {
-        List<KeyValuePair<string, string>> kv = new();
+        List<MdbInfoRow> kv = new();
         if (!int.TryParse(wccNoStr, out int wccNo)) return kv;
 
         JsonDocument? doc = _cache.GetRawTable("Monsters");
@@ -321,7 +321,19 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
             if (deathSpell > 0) AddRow(kv, "Death Spell",  ResolveSpellWithEffect(deathSpell));
 
             int greetTxt = ReadInt(el, "GreetTXT");
-            if (greetTxt > 0) AddRow(kv, "Greet", $"Textblock #{greetTxt}");
+            if (greetTxt > 0)
+            {
+                // Surface the command keywords the greet textblock (and its
+                // LinkTo chain) responds to so the row is click-through in the
+                // dialog. Null actions keep the row plain when the block has no
+                // player keywords (pure message/teleport greet).
+                IReadOnlyList<string> greetActions =
+                    TBInfoActionInspector.CollectActionKeywords(AppServices.Current.TBInfo, greetTxt);
+                kv.Add(new MdbInfoRow(
+                    "Greet",
+                    $"Textblock #{greetTxt}",
+                    greetActions.Count > 0 ? greetActions : null));
+            }
 
             AddRowIfNonZero(kv, "BS Defense", ReadInt(el, "BSDefense"));
 
@@ -755,7 +767,7 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
     // Append a "label (N)" row listing every room as a map/room pair. Not truncated — the
     // Other Info pane scrolls and a truncated list has no expand affordance, so show them all.
     // No-op when rooms is empty.
-    private static void AddRoomList(List<KeyValuePair<string, string>> kv, string label, IReadOnlyList<RoomKey> rooms)
+    private static void AddRoomList(List<MdbInfoRow> kv, string label, IReadOnlyList<RoomKey> rooms)
     {
         if (rooms.Count == 0) return;
         string list = string.Join(", ", rooms.Select(k => $"{k.Map}/{k.Room}"));
@@ -820,15 +832,15 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
         };
     }
 
-    private static void AddRow(List<KeyValuePair<string, string>> kv, string label, string value)
-        => kv.Add(new KeyValuePair<string, string>(label, value));
+    private static void AddRow(List<MdbInfoRow> kv, string label, string value)
+        => kv.Add(new MdbInfoRow(label, value));
 
-    private static void AddRowIfPresent(List<KeyValuePair<string, string>> kv, string label, string? value)
+    private static void AddRowIfPresent(List<MdbInfoRow> kv, string label, string? value)
     {
         if (!string.IsNullOrEmpty(value)) AddRow(kv, label, value);
     }
 
-    private static void AddRowIfNonZero(List<KeyValuePair<string, string>> kv, string label, int value)
+    private static void AddRowIfNonZero(List<MdbInfoRow> kv, string label, int value)
     {
         if (value != 0) AddRow(kv, label, value.ToString(System.Globalization.CultureInfo.InvariantCulture));
     }

@@ -66,6 +66,14 @@
             <Setter Property="FontSize" Value="9"/>
             <Setter Property="HorizontalAlignment" Value="Right"/>
         </Style>
+        <!-- Time-to-level countdown under the Exp/hour graph. -->
+        <Style Selector="TextBlock.ttl">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontFamily" Value="{StaticResource FontMono}"/>
+            <Setter Property="FontSize" Value="10"/>
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="0,1,0,0"/>
+        </Style>
         <Style Selector="Expander">
             <Setter Property="Margin" Value="0"/>
         </Style>
@@ -216,6 +224,7 @@
                         </Grid>
                     </Grid>
                 </Border>
+                <TextBlock Classes="ttl" Text="{Binding TimeToLevelText}"/>
             </StackPanel>
 
             <!-- ===== Player Statistics ===== -->

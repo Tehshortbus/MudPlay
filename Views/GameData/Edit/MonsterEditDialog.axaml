@@ -31,6 +31,21 @@
             <Setter Property="FontSize" Value="11"/>
             <Setter Property="FontFamily" Value="{StaticResource FontMono}"/>
         </Style>
+        <!-- A textblock-backed value (Greet) that pops its command keywords on
+             click. Styled to read as a link, not a chrome button. -->
+        <Style Selector="Button.MdbLink">
+            <Setter Property="Foreground" Value="{StaticResource AccentCyanBrush}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontFamily" Value="{StaticResource FontMono}"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style Selector="Button.MdbLink:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="TextBlock.TextDecorations" Value="Underline"/>
+        </Style>
     </Window.Styles>
 
     <Border Background="{StaticResource ChromeBgBrush}" Padding="14">
@@ -232,10 +247,40 @@
                             <TextBlock Classes="SectionHeader" Text="Other Info (from MDB)"/>
                             <ItemsControl ItemsSource="{Binding MdbInfo}">
                                 <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
+                                    <DataTemplate x:DataType="vm:MdbInfoRow">
                                         <Grid ColumnDefinitions="140,*" Margin="0,1">
-                                            <TextBlock Grid.Column="0" Classes="MdbKey"   Text="{Binding Key}"/>
-                                            <TextBlock Grid.Column="1" Classes="MdbValue" Text="{Binding Value}" TextWrapping="Wrap"/>
+                                            <TextBlock Grid.Column="0" Classes="MdbKey" Text="{Binding Key}"/>
+
+                                            <!-- Plain rows render the value as text. -->
+                                            <TextBlock Grid.Column="1" Classes="MdbValue"
+                                                       Text="{Binding Value}" TextWrapping="Wrap"
+                                                       IsVisible="{Binding !HasActions}"/>
+
+                                            <!-- Textblock-backed rows (Greet) render a clickable
+                                                 value that pops the command keywords the block
+                                                 responds to. -->
+                                            <Button Grid.Column="1" Classes="MdbLink"
+                                                    Content="{Binding Value}"
+                                                    HorizontalAlignment="Left"
+                                                    IsVisible="{Binding HasActions}">
+                                                <Button.Flyout>
+                                                    <Flyout Placement="Bottom">
+                                                        <StackPanel MaxWidth="260">
+                                                            <TextBlock Classes="SectionHeader" Text="Responds to"/>
+                                                            <ItemsControl ItemsSource="{Binding Actions}">
+                                                                <ItemsControl.ItemTemplate>
+                                                                    <DataTemplate x:DataType="x:String">
+                                                                        <TextBlock Text="{Binding}"
+                                                                                   FontFamily="{StaticResource FontMono}"
+                                                                                   FontSize="11"
+                                                                                   TextWrapping="Wrap" Margin="0,2"/>
+                                                                    </DataTemplate>
+                                                                </ItemsControl.ItemTemplate>
+                                                            </ItemsControl>
+                                                        </StackPanel>
+                                                    </Flyout>
+                                                </Button.Flyout>
+                                            </Button>
                                         </Grid>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>

@@ -2,6 +2,11 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.24.0
+
+- Session Statistics shows time-to-level, honoring banked levels — "N levels gained · HH:MM:SS until level X" at the session's exp/hour rate
+- Game Data monster Greet rows are click-through — the popup lists the command keywords that textblock (and its linked chain) responds to
+
 ## 1.23.19
 
 - Dropped/dragged ally stays a heal target — the client keeps polling their health and name-heals them through a re-invite instead of abandoning them
