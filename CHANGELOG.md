@@ -2,6 +2,15 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.26.0
+
+- Backscroll drag-select now spans multiple rows and Ctrl+C copies the exact character range across lines
+- Timestamps moved to an aligned gutter, kept out of the copied text
+- Backscroll opens parked just above the live line on the newest scrollback instead of jumping to the tail
+- Transcript renders with the terminal's aliased VGA font — no colour fringing on glyph edges
+- Fixes a crash when opening the Backscroll window
+- bug reports addressed: Crash-20260710-021530
+
 ## 1.25.0
 
 - Auto-discard drops flagged items down to their keep floor whenever inventory changes — clears chest dumps and unwanted auto-collected loot

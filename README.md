@@ -1,12 +1,12 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.25.0**
-> - Auto-discard drops flagged items down to their keep floor whenever inventory changes — clears chest dumps and unwanted auto-collected loot
-> - Auto-buy restocks flagged items at a shop `list` up to their Max-to-get cap, honoring live stock and reading affordability off the live result
-> - Auto-sell offloads flagged items at a shop `list` down to their keep floor, one `sell` per copy
-> - All three engines are driven by the item-edit dialog's Auto-buy / Auto-sell / Auto-discard flags and gated by the existing Auto-get items master toggle — no new toggles
-> - Auto-buy / Auto-sell are greyed for LIGHT items (Auto-light owns those); first ticking Auto-buy seeds a Max-to-get of 10
+> **Version 1.26.0**
+> - Backscroll drag-select now spans multiple rows and Ctrl+C copies the exact character range across lines
+> - Timestamps moved to an aligned gutter, kept out of the copied text
+> - Backscroll opens parked just above the live line on the newest scrollback instead of jumping to the tail
+> - Transcript renders with the terminal's aliased VGA font — no colour fringing on glyph edges
+> - Fixes a crash when opening the Backscroll window
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

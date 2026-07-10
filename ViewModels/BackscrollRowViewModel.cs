@@ -4,8 +4,9 @@ namespace FujinTerm.ViewModels;
 
 // One row in the BackscrollViewModel's displayed list. Carries the
 // timestamp prefix string and the raw Cell[] the row was captured at;
-// Controls.TranscriptRow reads the cells to compose the coloured inline
-// display and the timestamp renders in the sibling gutter column.
+// the window feeds the cells to TranscriptInlineBuilder to compose the
+// coloured inline display and renders the timestamp in the sibling gutter
+// column.
 public sealed class BackscrollRowViewModel
 {
     private string? _plainText;
@@ -13,12 +14,6 @@ public sealed class BackscrollRowViewModel
     public ScrollbackBuffer.Row Source { get; }
     public string TimestampText { get; }
     public Cell[] Cells => Source.Cells;
-
-    // Marks the first live-mirror row so the window can draw a divider above it,
-    // anchoring the boundary between frozen scrollback history and the live tail
-    // that updates in place. Set by BackscrollViewModel.RefreshLiveTail before
-    // the row enters the collection; only ever true when history exists above.
-    public bool ShowLiveSeparator { get; set; }
 
     // Plain-text projection of the row, used by search + export. Built on
     // first access and cached — the transcript renders straight from Cells,
