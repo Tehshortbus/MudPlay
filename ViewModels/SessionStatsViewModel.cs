@@ -41,6 +41,9 @@ public sealed partial class SessionStatsViewModel : ObservableObject, IDisposabl
     private readonly TransactionHistoryTracker _transactionTracker;
     private readonly SessionStatsLayoutStore _layoutStore;
 
+    // Resolves the per-BBS runic word for the currency denomination labels.
+    private readonly CurrencyNaming _naming;
+
     // Live progression + game data for the time-to-level readout: PlayerStats
     // supplies level / exp / class / race, GameDataCache supplies the exp chart
     // and active realm. Read-only here — the trackers own all session state.
@@ -127,6 +130,7 @@ public sealed partial class SessionStatsViewModel : ObservableObject, IDisposabl
         SessionStatsLayoutStore layout,
         PlayerStats stats,
         GameDataCache gameData,
+        CurrencyNaming naming,
         Action openTransactionHistory)
     {
         ArgumentNullException.ThrowIfNull(combat);
@@ -136,6 +140,7 @@ public sealed partial class SessionStatsViewModel : ObservableObject, IDisposabl
         ArgumentNullException.ThrowIfNull(layout);
         ArgumentNullException.ThrowIfNull(stats);
         ArgumentNullException.ThrowIfNull(gameData);
+        ArgumentNullException.ThrowIfNull(naming);
         ArgumentNullException.ThrowIfNull(openTransactionHistory);
         _combatTracker = combat;
         _timeTracker = time;
@@ -144,6 +149,7 @@ public sealed partial class SessionStatsViewModel : ObservableObject, IDisposabl
         _layoutStore = layout;
         _stats = stats;
         _gameData = gameData;
+        _naming = naming;
         _openTransactionHistory = openTransactionHistory;
 
         LoadLayout();
@@ -252,11 +258,11 @@ public sealed partial class SessionStatsViewModel : ObservableObject, IDisposabl
     // (1000 copper/hr -> "10 gold/hr"). The exact itemised wealth line rides
     // along as a tooltip for the total/stashed figures.
 
-    public string CurrencyCollectedText => CurrencyFormat.Denominate(Activity.CurrencyCollected);
-    public string CurrencyCollectedTip  => CurrencyFormat.Full(Activity.CurrencyCollected);
-    public string CurrencyPerHourText   => CurrencyFormat.Denominate(Activity.CurrencyPerHour);
-    public string CurrencyStashedText   => CurrencyFormat.Denominate(Activity.CurrencyStashed);
-    public string CurrencyStashedTip    => CurrencyFormat.Full(Activity.CurrencyStashed);
+    public string CurrencyCollectedText => CurrencyFormat.Denominate(Activity.CurrencyCollected, _naming.RunicName);
+    public string CurrencyCollectedTip  => CurrencyFormat.Full(Activity.CurrencyCollected, _naming.RunicName);
+    public string CurrencyPerHourText   => CurrencyFormat.Denominate(Activity.CurrencyPerHour, _naming.RunicName);
+    public string CurrencyStashedText   => CurrencyFormat.Denominate(Activity.CurrencyStashed, _naming.RunicName);
+    public string CurrencyStashedTip    => CurrencyFormat.Full(Activity.CurrencyStashed, _naming.RunicName);
 
     // ----- Rate-graph scales -------------------------------------------
     // The sparklines normalise each series to its own min–max, so the plot is

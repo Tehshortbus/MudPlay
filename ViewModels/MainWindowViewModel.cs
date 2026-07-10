@@ -3460,6 +3460,7 @@ public partial class MainWindowViewModel : ObservableObject
                 AppServices.Current.SessionStatsLayout,
                 AppServices.Current.PlayerStats,
                 AppServices.Current.GameData,
+                AppServices.Current.Currency,
                 OpenTransactionHistory),
         };
         window.Closed += (_, _) => _sessionStats = null;

@@ -188,6 +188,24 @@ public sealed class InventoryManagerTests
         Assert.Equal(10, h.Inv.Snapshot.Encumbrance.CurrentWeight);
     }
 
+    // A BBS can rename the runic word (e.g. "quatloos"), but the coin noun stays.
+    // Parsing is noun-keyed, so the renamed leading word still lands as Runic —
+    // no CurrencyNaming injection needed on the parser.
+    [Fact]
+    public void PickupRenamedRunic_LandsAsRunicByNoun()
+    {
+        using Harness h = new();
+        h.Feed("You are carrying nothing.");
+        h.Feed("Wealth:    0 copper farthings");
+        h.Feed("Encumbrance:    0/2880  -  None  [0%]");
+
+        h.Feed("You picked up 6 quatloos coins.");
+
+        CurrencyHoldings c = h.Inv.Snapshot.Currency;
+        Assert.Equal(6, c.Runic);
+        Assert.Equal(6_000_000, c.TotalCopperValue);   // 6 * 1_000_000
+    }
+
     [Fact]
     public void DropCurrency_RemovesCoinsClampedAtZero()
     {

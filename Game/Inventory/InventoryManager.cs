@@ -689,8 +689,11 @@ public sealed partial class InventoryManager : IDisposable
     {
         long oldCoins = TotalCoins();
 
+        // Key on the denomination's noun (the trailing word), not its leading
+        // word — every noun is unique, so "coin" identifies runic even when a
+        // board renames the runic word (e.g. "quatloos coin").
         string normalized = coinType.TrimEnd('s');
-        if (normalized.StartsWith("runic coin", StringComparison.OrdinalIgnoreCase))
+        if (normalized.EndsWith("coin", StringComparison.OrdinalIgnoreCase))
             _runic = Math.Max(0, _runic + amount);
         else if (normalized.StartsWith("platinum piece", StringComparison.OrdinalIgnoreCase))
             _platinum = Math.Max(0, _platinum + amount);
@@ -821,12 +824,14 @@ public sealed partial class InventoryManager : IDisposable
         Match m = CurrencyTokenRegex().Match(token);
         if (!m.Success || m.Index != 0 || m.Length != token.Length) return false;
         if (!int.TryParse(m.Groups[1].Value, out count)) return false;
-        denom = m.Groups[2].Value switch
+        // Match on the denomination's unique noun so a board-renamed runic word
+        // still resolves to the canonical "runic" key.
+        denom = m.Groups[2].Value.TrimEnd('s') switch
         {
-            string s when s.StartsWith("runic", StringComparison.Ordinal) => "runic",
-            string s when s.StartsWith("platinum", StringComparison.Ordinal) => "platinum",
-            string s when s.StartsWith("gold", StringComparison.Ordinal) => "gold",
-            string s when s.StartsWith("silver", StringComparison.Ordinal) => "silver",
+            string s when s.EndsWith("coin", StringComparison.Ordinal) => "runic",
+            string s when s.EndsWith("piece", StringComparison.Ordinal) => "platinum",
+            string s when s.EndsWith("crown", StringComparison.Ordinal) => "gold",
+            string s when s.EndsWith("noble", StringComparison.Ordinal) => "silver",
             _ => "copper",
         };
         return true;
@@ -844,11 +849,11 @@ public sealed partial class InventoryManager : IDisposable
             string denom = m.Groups[2].Value.TrimEnd('s');
             total += denom switch
             {
-                "runic coin" => count * 1_000_000L,
-                "platinum piece" => count * 10_000L,
-                "gold crown" => count * 100L,
-                "silver noble" => count * 10L,
-                "copper farthing" => count,
+                var d when d.EndsWith("coin", StringComparison.Ordinal) => count * 1_000_000L,
+                var d when d.EndsWith("piece", StringComparison.Ordinal) => count * 10_000L,
+                var d when d.EndsWith("crown", StringComparison.Ordinal) => count * 100L,
+                var d when d.EndsWith("noble", StringComparison.Ordinal) => count * 10L,
+                var d when d.EndsWith("farthing", StringComparison.Ordinal) => count,
                 _ => 0,
             };
         }
@@ -867,11 +872,11 @@ public sealed partial class InventoryManager : IDisposable
             if (!int.TryParse(m.Groups[1].Value, out int count)) continue;
             switch (m.Groups[2].Value.TrimEnd('s'))
             {
-                case "runic coin": r += count; break;
-                case "platinum piece": p += count; break;
-                case "gold crown": g += count; break;
-                case "silver noble": s += count; break;
-                case "copper farthing": c += count; break;
+                case var d when d.EndsWith("coin", StringComparison.Ordinal): r += count; break;
+                case var d when d.EndsWith("piece", StringComparison.Ordinal): p += count; break;
+                case var d when d.EndsWith("crown", StringComparison.Ordinal): g += count; break;
+                case var d when d.EndsWith("noble", StringComparison.Ordinal): s += count; break;
+                case var d when d.EndsWith("farthing", StringComparison.Ordinal): c += count; break;
             }
         }
         return (c, s, g, p, r);
@@ -887,7 +892,7 @@ public sealed partial class InventoryManager : IDisposable
 
     // ----- regexes -----------------------------------------------------
 
-    [GeneratedRegex(@"^(\d+) (runic coins?|platinum pieces?|gold crowns?|silver nobles?|copper farthings?)$")]
+    [GeneratedRegex(@"^(\d+) (\w+ coins?|platinum pieces?|gold crowns?|silver nobles?|copper farthings?)$")]
     private static partial Regex CurrencyTokenRegex();
 
     [GeneratedRegex(@"^Wealth:\s+(\d+)\s+copper farthings?$")]
@@ -896,13 +901,13 @@ public sealed partial class InventoryManager : IDisposable
     [GeneratedRegex(@"^Encumbrance:\s+(\d+)/(\d+)\s+-\s+(\w+)\s+\[(\d+)%\]$")]
     private static partial Regex EncumbranceRegex();
 
-    [GeneratedRegex(@"^You picked up (\d+) (runic coins?|platinum pieces?|gold crowns?|silver nobles?|copper farthings?)\.?$")]
+    [GeneratedRegex(@"^You picked up (\d+) (\w+ coins?|platinum pieces?|gold crowns?|silver nobles?|copper farthings?)\.?$")]
     private static partial Regex PickedUpCurrencyRegex();
 
-    [GeneratedRegex(@"^You dropped (\d+) (runic coins?|platinum pieces?|gold crowns?|silver nobles?|copper farthings?)\.?$")]
+    [GeneratedRegex(@"^You dropped (\d+) (\w+ coins?|platinum pieces?|gold crowns?|silver nobles?|copper farthings?)\.?$")]
     private static partial Regex DroppedCurrencyRegex();
 
-    [GeneratedRegex(@"^You hid (\d+) (runic coins?|platinum pieces?|gold crowns?|silver nobles?|copper farthings?)\.?$")]
+    [GeneratedRegex(@"^You hid (\d+) (\w+ coins?|platinum pieces?|gold crowns?|silver nobles?|copper farthings?)\.?$")]
     private static partial Regex HidCurrencyRegex();
 
     [GeneratedRegex(@"^You deposit (\d.+)\.$")]
@@ -919,7 +924,7 @@ public sealed partial class InventoryManager : IDisposable
     [GeneratedRegex(@"^You (?:just )?sold (.+) for (.+)\.$")]
     private static partial Regex SoldRegex();
 
-    [GeneratedRegex(@"(\d+)\s+(runic coins?|platinum pieces?|gold crowns?|silver nobles?|copper farthings?)")]
+    [GeneratedRegex(@"(\d+)\s+(\w+ coins?|platinum pieces?|gold crowns?|silver nobles?|copper farthings?)")]
     private static partial Regex PriceSegmentRegex();
 
     // Worn-item suffix. 21-slot model plus the weapon/off-hand labels; the two

@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Text;
 using FujinTerm.Game;
+using FujinTerm.Game.Cash;
 using FujinTerm.Game.Inventory;
 using FujinTerm.Game.Remote;
 using FujinTerm.Models.GameData;
@@ -48,10 +49,10 @@ public sealed class InventoryActionHandlerTests
         InventoryManager inv = new(log: null, itemWeightResolver: null, slotResolver: null);
         LineExtractor lines = new(new TerminalEmulator(80, 24));
         inv.AttachLineExtractor(lines);
-        GroundItemTracker ground = new(router);
+        GroundItemTracker ground = new(router, new CurrencyNaming());
         CashSettings cash = new();
         List<byte[]> wire = new();
-        InventoryActionHandler handler = new(engine, inv, ground, party, () => cash);
+        InventoryActionHandler handler = new(engine, inv, ground, party, () => cash, new CurrencyNaming());
         handler.SetWireSender(wire.Add);
         return new Harness
         {

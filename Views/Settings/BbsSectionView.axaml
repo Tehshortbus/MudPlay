@@ -396,23 +396,21 @@
                                   ToolTip.Tip="Prompt before destructive list-row removes (toolbar rows, BBS profiles, future game-data records)."/>
                     </StackPanel>
 
-                    <!-- ===== Realm-specific naming (Phase 4 PR 4.8 stub) =====
-                         Per-BBS / per-realm label. Default is "runic"; users
-                         edit when they're playing on a realm that relabels
-                         the runic currency. Wires alongside the Phase 13
-                         CashManager bits that consume the name. -->
-                    <TextBlock Classes="GroupHeader" Text="Realm naming"
-                               Margin="0,18,0,4"/>
-
-                    <Grid ColumnDefinitions="220,*" Margin="0,4,0,0">
+                    <!-- ===== Realm-specific naming (per-BBS) =====
+                         Per-BBS label for the runic currency. Some realms
+                         relabel "runic" to a board-specific word, which
+                         changes the coin wording the server sends — so the
+                         pickup/drop/hide parsers have to match the custom
+                         name, not the literal "runic". -->
+                    <Grid ColumnDefinitions="220,*" Margin="0,18,0,0">
                         <TextBlock Grid.Column="0" Text="Name of runic currency"
                                    Foreground="{StaticResource ChromeFgSecBrush}"
                                    FontSize="{StaticResource FontSizeMd}"
                                    VerticalAlignment="Center"/>
-                        <TextBox Grid.Column="1" IsEnabled="False"
-                                 Text="runic"
+                        <TextBox Grid.Column="1"
+                                 Text="{Binding RunicCurrencyName, Mode=TwoWay}"
                                  Width="220" HorizontalAlignment="Left"
-                                 ToolTip.Tip="Stub (Phase 4 PR 4.8). Saved to the BBS settings — different realms relabel the runic currency, so this is per-BBS, not per-character."/>
+                                 ToolTip.Tip="Saved to the BBS settings — different realms relabel the runic currency, so this is per-BBS, not per-character. Blank falls back to 'runic'."/>
                     </Grid>
 
                 </StackPanel>

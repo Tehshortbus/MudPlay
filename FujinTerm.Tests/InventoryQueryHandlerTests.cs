@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Text;
 using FujinTerm.Game;
+using FujinTerm.Game.Cash;
 using FujinTerm.Game.Inventory;
 using FujinTerm.Game.Remote;
 using FujinTerm.Models.GameData;
@@ -36,7 +37,7 @@ public sealed class InventoryQueryHandlerTests
         InventoryManager inv = new(log: null, itemWeightResolver: null, slotResolver: null);
         LineExtractor lines = new(new TerminalEmulator(80, 24));
         inv.AttachLineExtractor(lines);
-        GroundItemTracker ground = new(router);
+        GroundItemTracker ground = new(router, new CurrencyNaming());
         _ = new InventoryQueryHandler(engine, inv, ground);
         return (engine, inv, lines, players, router, ground);
     }

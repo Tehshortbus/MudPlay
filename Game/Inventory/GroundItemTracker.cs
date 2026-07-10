@@ -1,3 +1,4 @@
+using FujinTerm.Game.Cash;
 using FujinTerm.Services;
 using FujinTerm.Services.Patterns;
 
@@ -22,22 +23,27 @@ namespace FujinTerm.Game.Inventory;
 // canonical "a <denom> piece" singular is filtered.
 public sealed class GroundItemTracker : IDisposable
 {
-    private static readonly HashSet<string> CashDenominations =
+    // The four stable single-word denominations; the fifth (runic) is
+    // recognised via _naming because a board can rename the runic word.
+    private static readonly HashSet<string> StableDenominations =
         new(StringComparer.OrdinalIgnoreCase)
         {
-            "copper", "silver", "gold", "platinum", "runic",
+            "copper", "silver", "gold", "platinum",
         };
 
     private readonly IDisposable _noticeSub;
     private readonly List<string> _items = new();
+    private readonly CurrencyNaming _naming;
 
     private Terminal.LineExtractor? _lines;
     private string? _noticeBuffer;            // multi-line continuation
     private bool _disposed;
 
-    public GroundItemTracker(MessageRouter router)
+    public GroundItemTracker(MessageRouter router, CurrencyNaming naming)
     {
         ArgumentNullException.ThrowIfNull(router);
+        ArgumentNullException.ThrowIfNull(naming);
+        _naming = naming;
         _noticeSub = router.Subscribe(KnownPatterns.YouNoticeRoom, OnYouNoticeRoom);
     }
 
@@ -154,17 +160,17 @@ public sealed class GroundItemTracker : IDisposable
     // items always carry an article, never a leading count); the singular "a
     // <denom> ..." only counts as cash when it ends in the canonical coin noun
     // "piece(s)", leaving material-adjective items intact.
-    private static bool IsCashEntry(string entry)
+    private bool IsCashEntry(string entry)
     {
         string[] words = entry.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         if (words.Length < 2) return false;
 
         if (int.TryParse(words[0], out _))
-            return CashDenominations.Contains(words[1]);
+            return IsCashWord(words[1]);
 
         if ((string.Equals(words[0], "a", StringComparison.OrdinalIgnoreCase)
              || string.Equals(words[0], "an", StringComparison.OrdinalIgnoreCase))
-            && CashDenominations.Contains(words[1]))
+            && IsCashWord(words[1]))
         {
             return string.Equals(words[^1], "piece", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(words[^1], "pieces", StringComparison.OrdinalIgnoreCase);
@@ -172,6 +178,11 @@ public sealed class GroundItemTracker : IDisposable
 
         return false;
     }
+
+    // True when word names any cash denomination — one of the stable four or
+    // the active board's runic word (stock "runic" included).
+    private bool IsCashWord(string word) =>
+        StableDenominations.Contains(word) || _naming.IsRunic(word);
 
     public void Dispose()
     {

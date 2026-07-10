@@ -1,3 +1,4 @@
+using FujinTerm.Game.Cash;
 using FujinTerm.Game.Inventory;
 using FujinTerm.Models.GameData;
 
@@ -22,10 +23,12 @@ public sealed class InventoryQueryHandler : IDisposable
     private readonly RemoteCommandManager _engine;
     private readonly InventoryManager _inventory;
     private readonly GroundItemTracker _ground;
+    private readonly CurrencyNaming _naming;
     private bool _disposed;
 
     public InventoryQueryHandler(
-        RemoteCommandManager engine, InventoryManager inventory, GroundItemTracker ground)
+        RemoteCommandManager engine, InventoryManager inventory, GroundItemTracker ground,
+        CurrencyNaming? naming = null)
     {
         ArgumentNullException.ThrowIfNull(engine);
         ArgumentNullException.ThrowIfNull(inventory);
@@ -33,6 +36,8 @@ public sealed class InventoryQueryHandler : IDisposable
         _engine = engine;
         _inventory = inventory;
         _ground = ground;
+        // Unbound (tests) falls back to stock "runic".
+        _naming = naming ?? new CurrencyNaming();
 
         Register("@wealth", OnWealth);
         Register("@enc", OnEnc);
@@ -109,10 +114,10 @@ public sealed class InventoryQueryHandler : IDisposable
         ctx.Reply($"on the ground: {string.Join(", ", items)}");
     }
 
-    private static string FormatCoins(CurrencyHoldings c)
+    private string FormatCoins(CurrencyHoldings c)
     {
         List<string> parts = new(5);
-        if (c.Runic > 0) parts.Add($"{c.Runic:N0} runic");
+        if (c.Runic > 0) parts.Add($"{c.Runic:N0} {_naming.RunicName}");
         if (c.Platinum > 0) parts.Add($"{c.Platinum:N0} platinum");
         if (c.Gold > 0) parts.Add($"{c.Gold:N0} gold");
         if (c.Silver > 0) parts.Add($"{c.Silver:N0} silver");

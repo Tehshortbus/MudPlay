@@ -34,11 +34,14 @@ namespace FujinTerm.Game.Cash;
 //     the gate. Subscribers (the walker reroute) decide what to do — this layer
 //     only signals.
 //
+// Per-realm runic naming: the runic denomination's word varies per-BBS
+// (Settings → BBS tab). CurrencyNaming resolves the active word; every
+// denomination check here folds through _naming.IsRunic, and outgoing
+// drop/get commands carry the wire word so the server accepts them.
+//
 // Not yet handled:
 //   - Walker-driven auto-deposit reroute (snapshot activity → pause → walk to
 //     bank → deposit → walk back → resume).
-//   - Per-realm currency naming (runic in particular varies by BBS — the stock
-//     set is hardcoded here; per-realm renames live on the Settings → BBS tab).
 //   - Realm-resolved bracket percentages — the gate currently hardcodes the
 //     Stock 17 / 34 / 67 starts.
 //
@@ -54,6 +57,7 @@ public sealed class CashManager : IDisposable
     private readonly Func<InventorySnapshot> _getSnapshot;
     private readonly Func<bool> _isPeekSuppressed;
     private readonly LogService? _log;
+    private readonly CurrencyNaming _naming;
     private readonly IDisposable _groundSub;
     private readonly IDisposable _pickedUpSub;
     private readonly IDisposable _droppedSub;
@@ -64,13 +68,19 @@ public sealed class CashManager : IDisposable
     private string? _noticeBuffer;       // multi-line continuation
     private string? _noticeRawFirst;     // raw first row that started the buffer
 
-    // Recognised cash denomination words (case-insensitive). Expand by adding
-    // more entries here when realms use unique denomination words.
-    private static readonly HashSet<string> CashDenominations =
+    // The four stable single-word denominations (case-insensitive). The fifth,
+    // runic, is recognised separately through _naming because a board can rename
+    // the runic word per-BBS — IsCashWord folds both checks.
+    private static readonly HashSet<string> StableDenominations =
         new(StringComparer.OrdinalIgnoreCase)
         {
-            "copper", "silver", "gold", "platinum", "runic",
+            "copper", "silver", "gold", "platinum",
         };
+
+    // True when word names any cash denomination — one of the stable four or
+    // the active board's runic word (stock "runic" included).
+    private bool IsCashWord(string word) =>
+        StableDenominations.Contains(word) || _naming.IsRunic(word);
 
     private Action<byte[]>? _wireSender;
     private Game.Inventory.AcquisitionGate? _gate;
@@ -129,13 +139,17 @@ public sealed class CashManager : IDisposable
         Func<bool> isEnabled,
         Func<InventorySnapshot>? getSnapshot = null,
         Func<bool>? isPeekSuppressed = null,
-        LogService? log = null)
+        LogService? log = null,
+        CurrencyNaming? naming = null)
     {
         ArgumentNullException.ThrowIfNull(router);
         ArgumentNullException.ThrowIfNull(readSettings);
         ArgumentNullException.ThrowIfNull(isEnabled);
         _readSettings = readSettings;
         _isEnabled = isEnabled;
+        // Resolves the per-BBS runic word; unbound (tests) falls back to stock
+        // "runic" so the stable-realm behaviour is unchanged.
+        _naming = naming ?? new CurrencyNaming();
         // No snapshot bound (or before an `i` parse) → the encumbrance gate
         // is inert and collection runs the full-pickup path.
         _getSnapshot = getSnapshot ?? (static () => InventorySnapshot.Empty);
@@ -230,7 +244,9 @@ public sealed class CashManager : IDisposable
         AuditDenominationForDiscard(settings, "silver",   snap.Silver);
         AuditDenominationForDiscard(settings, "gold",     snap.Gold);
         AuditDenominationForDiscard(settings, "platinum", snap.Platinum);
-        AuditDenominationForDiscard(settings, "runic",    snap.Runic);
+        // Wire runic word so the emitted `drop N <word>` matches what the server
+        // accepts; ResolvePolicy/HeldCoin recognise it via _naming.IsRunic.
+        AuditDenominationForDiscard(settings, _naming.RunicName, snap.Runic);
     }
 
     private void AuditDenominationForDiscard(CashSettings settings, string currency, long snapshotCount)
@@ -291,7 +307,7 @@ public sealed class CashManager : IDisposable
         if (!int.TryParse(m.Groups[0], out int count)) return;
         string currency = m.Groups[1].Trim();
         if (currency.Length == 0) return;
-        if (!CashDenominations.Contains(currency)) return;
+        if (!IsCashWord(currency)) return;
         currency = currency.ToLowerInvariant();
 
         CashSettings settings = _readSettings();
@@ -552,16 +568,18 @@ public sealed class CashManager : IDisposable
 
     // Slot index (0=copper..4=runic) for a single-word currency, or -1 for an
     // unrecognised denomination.
-    private static int SlotForCurrency(string currency) =>
-        currency.ToLowerInvariant() switch
+    private int SlotForCurrency(string currency)
+    {
+        if (_naming.IsRunic(currency)) return 4;
+        return currency.ToLowerInvariant() switch
         {
             "copper"   => 0,
             "silver"   => 1,
             "gold"     => 2,
             "platinum" => 3,
-            "runic"    => 4,
             _          => -1,
         };
+    }
 
     // Tightest encumbrance cap weight across the enabled gate flags. Each gate
     // caps collection at the highest weight that still displays one bracket below
@@ -631,7 +649,7 @@ public sealed class CashManager : IDisposable
     // Recognise "N {denomination} ..." as cash — requires a leading integer + the
     // second word being a CashDenominations entry. Singular form "a gold piece"
     // is also tolerated (count = 1).
-    private static bool TryParseCashEntry(string raw, out string? currency, out int count)
+    private bool TryParseCashEntry(string raw, out string? currency, out int count)
     {
         currency = null;
         count = 0;
@@ -640,7 +658,7 @@ public sealed class CashManager : IDisposable
 
         // "a <denomination> ..." singular variant
         if (string.Equals(words[0], "a", StringComparison.OrdinalIgnoreCase)
-         && CashDenominations.Contains(words[1]))
+         && IsCashWord(words[1]))
         {
             currency = words[1].ToLowerInvariant();
             count = 1;
@@ -649,7 +667,7 @@ public sealed class CashManager : IDisposable
 
         // "N <denomination> ..." plural variant
         if (int.TryParse(words[0], out int n) && words.Length >= 2
-         && CashDenominations.Contains(words[1]))
+         && IsCashWord(words[1]))
         {
             currency = words[1].ToLowerInvariant();
             count = n;
@@ -686,15 +704,15 @@ public sealed class CashManager : IDisposable
         return (string.IsNullOrEmpty(currency) ? null : currency, count);
     }
 
-    private static CashPolicy ResolvePolicy(CashSettings s, string currency)
+    private CashPolicy ResolvePolicy(CashSettings s, string currency)
     {
+        if (_naming.IsRunic(currency)) return s.RunicPolicy;
         return currency.ToLowerInvariant() switch
         {
             "copper"   => s.CopperPolicy,
             "silver"   => s.SilverPolicy,
             "gold"     => s.GoldPolicy,
             "platinum" => s.PlatinumPolicy,
-            "runic"    => s.RunicPolicy,
             _          => CashPolicy.Ignore,    // unknown currency name → don't touch
         };
     }

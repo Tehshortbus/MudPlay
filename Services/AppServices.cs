@@ -933,6 +933,11 @@ public sealed class AppServices
     // driven reroute is follow-up work.
     public Game.Cash.CashManager Cash { get; private set; } = null!;
 
+    // Runtime source-of-truth for the per-BBS runic-currency word. Read live by
+    // every cash parser / command builder (Cash, Stash, GroundItems) and
+    // refreshed on profile / BBS swap; defaults to stock "runic".
+    public Game.Cash.CurrencyNaming Currency { get; private set; } = null!;
+
     // Auto-get items engine. Parses the room
     // "You notice ... here." survey, resolves each entry against the
     // active set's items + the per-character
@@ -2775,15 +2780,23 @@ public sealed class AppServices
         ExperienceQuery = new Game.Remote.ExperienceQueryHandler(
             RemoteCommands, PlayerStats, SessionActivity);
 
+        // Per-BBS runic-currency naming. Reads the active BBS's RunicCurrencyName
+        // live (via ResolveActiveBbs) and re-reads on profile / BBS swap. Injected
+        // into every cash parser / command builder so a board-renamed runic word
+        // is matched on the wire and sent back on outgoing get/drop/hide commands.
+        Currency = new Game.Cash.CurrencyNaming(() => ResolveActiveBbs()?.RunicCurrencyName);
+        Profile.ProfileLoaded += _ => Currency.Refresh();
+        Profile.BbsPinApplied += _ => Currency.Refresh();
+
         // Room-floor loot snapshot from the "You notice <list> here." survey,
         // cash filtered out. Feeds @what (read) and @get-all (get each).
         // LineExtractor attached + OnRoomChanged wired below (and in MainWindowVM).
-        GroundItems = new Game.Inventory.GroundItemTracker(Router);
+        GroundItems = new Game.Inventory.GroundItemTracker(Router, Currency);
 
         // Read-only inventory queries — @wealth / @enc / @have report off the
         // InventoryManager snapshot; @what reports the GroundItems survey. No
         // wire output either.
-        InventoryQuery = new Game.Remote.InventoryQueryHandler(RemoteCommands, Inventory, GroundItems);
+        InventoryQuery = new Game.Remote.InventoryQueryHandler(RemoteCommands, Inventory, GroundItems, Currency);
 
         // Write-side inventory / cash actions — @get-all / @drop-all /
         // @deposit-all / @share emit get / drop / dep / with / give on the wire.
@@ -2794,7 +2807,8 @@ public sealed class AppServices
             Inventory,
             GroundItems,
             PartyState,
-            readCash: () => ReadSection<Models.Profile.CashSettings>(Profile.Current, "Cash"));
+            readCash: () => ReadSection<Models.Profile.CashSettings>(Profile.Current, "Cash"),
+            naming: Currency);
 
         // Receive side of @heal — a configured party-healer polls `par` on
         // request so CastingDirector re-evaluates its party-heal thresholds
@@ -2860,7 +2874,8 @@ public sealed class AppServices
             isEnabled: () => ReadAutoModeFlag(d => d.AutoGetCash),
             getSnapshot: () => Inventory.Snapshot,
             isPeekSuppressed: () => RoomTracker.IsPeekSuppressed(),
-            log: Log);
+            log: Log,
+            naming: Currency);
         // Reset held tallies on profile swap — prior character's
         // counts aren't relevant to the new one.
         Profile.ProfileLoaded += _ => Cash.ResetTallies();
@@ -2870,7 +2885,7 @@ public sealed class AppServices
         // value so mixed currency streams fold into one figure.
         Cash.CoinCollected += (currency, count) =>
             SessionActivity.NoteCurrencyCollected(
-                Game.Inventory.CurrencyHoldings.ToCopper(currency, count));
+                Game.Inventory.CurrencyHoldings.ToCopper(Currency.Canonicalize(currency), count));
         // The auto-deposit gates read the authoritative inventory snapshot
         // (wealth value + coin count), so re-evaluate whenever the parser
         // updates holdings — this is the only path that catches buy / sell
@@ -2888,7 +2903,8 @@ public sealed class AppServices
             getSnapshot: () => Inventory.Snapshot,
             resolveAutoStashItem: ResolveAutoStashItem,
             isEnabled: () => ReadAutoModeFlag(d => d.AutoGetCash),
-            log: Log);
+            log: Log,
+            naming: Currency);
         // Count stash-room hides toward the Session Stats
         // stashed/deposited figure (copper value across the dispatched coins).
         // Also record the hide (coins + items) in the transaction
@@ -2897,7 +2913,7 @@ public sealed class AppServices
         {
             long copper = 0;
             foreach ((string currency, long amount) in dispatch.Currencies)
-                copper += Game.Inventory.CurrencyHoldings.ToCopper(currency, amount);
+                copper += Game.Inventory.CurrencyHoldings.ToCopper(Currency.Canonicalize(currency), amount);
             SessionActivity.NoteCurrencyStashed(copper);
             TransactionHistory.NoteStash(dispatch.Currencies, dispatch.Items);
         };

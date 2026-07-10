@@ -1,10 +1,9 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.27.0**
-> - Window positions now restore when you switch character profiles, instead of staying where they were
-> - A window whose saved monitor is gone, or that would open off-screen, re-anchors next to the main window
-> - Windows still visible on a connected second monitor keep reopening there
+> **Version 1.28.0**
+> - A BBS that renames the runic coin (e.g. "quatloos") is now honored everywhere: coin parsing, get/drop/hide/give commands, wealth math, and every wealth display
+> - Cash pickup, auto-deposit, stash, @share, and the Session Stats / Player Workshop coin readouts no longer break on a renamed-runic realm
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->
