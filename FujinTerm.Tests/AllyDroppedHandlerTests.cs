@@ -270,6 +270,25 @@ public sealed class AllyDroppedHandlerTests
     }
 
     [Fact]
+    public void InvitedPlaceholder_DoesNotReleaseHold()
+    {
+        // Re-inviting a still-mortally-wounded ally adds an [Invited] placeholder
+        // row — but they can't accept while down. That bare invite is NOT a rejoin;
+        // the rescue must stay live so we keep polling + heal-targeting them.
+        using Harness h = new();
+        h.Party.Members.Add(new PartyMember { Name = "Fujin WuzHere" });
+        h.Drop("Fujin");
+        h.Aid("Fujin");
+        Assert.True(h.GateAsserted);
+
+        h.Party.Members.Add(new PartyMember { Name = "Fujin WuzHere", IsInvited = true });
+
+        Assert.True(h.GateAsserted);
+        Assert.True(h.Handler.IsTrackingForTests("Fujin"));
+        Assert.Contains("Fujin", h.Handler.AidedDownedGivenNames());
+    }
+
+    [Fact]
     public void RescueTimeout_ReleasesHold()
     {
         using Harness h = new();

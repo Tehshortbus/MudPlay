@@ -82,6 +82,7 @@ public sealed partial class CombatManager : IDisposable
     private readonly IDisposable _weaponNoEffectSub;
     private readonly IDisposable _fistsNoEffectSub;
     private readonly IDisposable _spellNoEffectSub;
+    private readonly IDisposable _commandNoEffectSub;
     private readonly IDisposable _combatStatusSub;
     private readonly IDisposable _bsResolveHitsSub;
     private readonly IDisposable _bsResolveMissesSub;
@@ -113,6 +114,21 @@ public sealed partial class CombatManager : IDisposable
     private Func<bool>? _seeHiddenClearActive;
     private Func<bool>? _shadowRestHolding;
     private string? _currentTarget;
+
+    // Target-Priority follow deferral. When we're partied, in a multi-mob room,
+    // and configured to follow the leader's / a member's target, we hold our own
+    // room-entry pick and wait for that player's "moves to attack X" announce so
+    // we engage THEIR target — priority/order settings never change HOW we engage
+    // (verb/spell/weapon still come from the pickers), only WHICH mob and WHEN.
+    // _awaitingFollowAnnounce latches while we're holding; TryFollowTargetPriority
+    // clears it when the followed announce lands, and OnCombatTick clears it with
+    // a fallback to our own game-data pick if no announce arrives that round.
+    private bool _awaitingFollowAnnounce;
+
+    // Set only for the duration of the tick fallback's re-entrant
+    // OnEntitiesObserved call so the defer branch doesn't re-latch and strand us
+    // — the fallback's whole point is to make our OWN independent pick this round.
+    private bool _followDeferBypass;
 
     // Backstab flee-on-failure action, bound in AppServices to
     // HealthManager.RunFromBackstabFailure. null until wired; even when wired it
@@ -298,6 +314,7 @@ public sealed partial class CombatManager : IDisposable
         _weaponNoEffectSub = router.Subscribe(KnownPatterns.WeaponNoEffect, OnWeaponNoEffect);
         _fistsNoEffectSub  = router.Subscribe(KnownPatterns.FistsNoEffect,  OnFistsNoEffect);
         _spellNoEffectSub  = router.Subscribe(KnownPatterns.SpellNoEffect,  OnSpellNoEffect);
+        _commandNoEffectSub = router.Subscribe(KnownPatterns.CommandNoEffect, OnCommandNoEffect);
         _combatStatusSub   = router.Subscribe(KnownPatterns.CombatStatus,   OnCombatStatus);
 
         // Backstab surprise-round resolution rides on our own hit / miss lines.
@@ -499,6 +516,11 @@ public sealed partial class CombatManager : IDisposable
     {
         CombatSettings settings = _readSettings();
 
+        // Fresh observation of the room — any pending follow-deferral from a
+        // previous observation is stale. Re-evaluated below once we know the
+        // engageable set (a re-observe of the SAME room re-arms it if still apt).
+        _awaitingFollowAnnounce = false;
+
         // A confirmed room change re-opens the surprise round for the room we're
         // entering. The pre-move hook (PrepBackstabForMove) already resets the
         // opener when a movement engine drives the walk, but hand-walking leaves
@@ -665,6 +687,22 @@ public sealed partial class CombatManager : IDisposable
             engageable.Any(e => string.Equals(e.RawName, current,
                                               StringComparison.OrdinalIgnoreCase)))
         {
+            return;
+        }
+
+        // Target-Priority follow deferral: when we're partied in a multi-mob room
+        // and configured to follow the leader's / a member's target, hold our own
+        // pick and wait for that player's announce (TryFollowTargetPriority engages
+        // their target; OnCombatTick falls back to our own pick if none arrives).
+        // Skipped during the fallback's re-entrant call (_followDeferBypass) and
+        // once we already hold a target (mid-fight re-observe — don't stall).
+        if (!_followDeferBypass && _currentTarget is null &&
+            ShouldWaitForFollow(settings, engageable.Count, obs))
+        {
+            _awaitingFollowAnnounce = true;
+            _log?.Combat(LogCategory,
+                $"target-priority {settings.TargetPriority} — holding own pick, " +
+                $"awaiting follow announce (engageable={engageable.Count})");
             return;
         }
 
@@ -1005,6 +1043,39 @@ public sealed partial class CombatManager : IDisposable
         HandleAttackOrderRefire(settings, announcer, announcedTarget);
     }
 
+    // True when the room-entry picker should hold our own target and wait for the
+    // followed player's attack announce instead of engaging independently. Only
+    // applies while the priority/order settings are actually in force: we must be
+    // in a party (disband / leaving reverts to our own game-data pick), configured
+    // to follow the leader or a named member, that player must actually be in the
+    // room with us (following someone not here is meaningless), and there must be a
+    // choice to make (more than one engageable mob — with a single mob there's
+    // nothing to coordinate, so we just take it). When any condition fails we fall
+    // straight through to the normal independent pick.
+    private bool ShouldWaitForFollow(CombatSettings settings, int engageableCount, RoomEntitiesObservation obs)
+    {
+        if (!_party.IsInParty) return false;
+        if (engageableCount <= 1) return false;
+
+        string? followName = settings.TargetPriority switch
+        {
+            TargetPriority.FollowLeader => _party.LeaderName,
+            TargetPriority.FollowMember => settings.TargetPriorityMemberName,
+            _                           => null,
+        };
+        if (followName is not { Length: > 0 }) return false;
+
+        string followGiven = GivenName(followName);
+        for (int i = 0; i < obs.Entities.Count; i++)
+        {
+            RoomEntity e = obs.Entities[i];
+            if (e.Kind != EntityKind.Player) continue;
+            if (string.Equals(GivenName(e.ResolvedName), followGiven, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
+    }
+
     // Target Priority (the "who"): when configured to follow the party leader
     // (FollowLeader) or a named member (FollowMember), and THIS announce is from
     // that player, switch our target to their announced monster and dispatch this
@@ -1016,6 +1087,12 @@ public sealed partial class CombatManager : IDisposable
     private bool TryFollowTargetPriority(
         CombatSettings settings, string announcer, string announcedTarget)
     {
+        // Target Priority is a party-coordination knob — it only follows while
+        // we're actually partied. Disband / leave reverts us to our own game-data
+        // pick (the announce falls through to Attack Order, which owns its own
+        // party scoping per mode).
+        if (!_party.IsInParty) return false;
+
         string? followName = settings.TargetPriority switch
         {
             TargetPriority.FollowLeader => _party.LeaderName,
@@ -1027,6 +1104,11 @@ public sealed partial class CombatManager : IDisposable
         // user-typed name; the announcer is always a given name — normalise both.
         if (!string.Equals(GivenName(announcer), GivenName(followName), StringComparison.OrdinalIgnoreCase))
             return false;
+
+        // The followed player just announced — our deferral is resolved either way
+        // (we engage their target below, or the un-actionable failback re-picks our
+        // own), so drop the hold before OnCombatTick's fallback can also fire.
+        _awaitingFollowAnnounce = false;
 
         if (_classifier.Current is { } liveObs)
         {
@@ -1047,6 +1129,17 @@ public sealed partial class CombatManager : IDisposable
             // the per-round chooser against that specific instance.
             if (TryBuildCandidate(liveObs, announcedTarget) is { } cand)
             {
+                // Same-target guard: the server already auto-swings at a target
+                // once we've engaged it, so re-issuing the attack because the
+                // followed player announced against the SAME mob we're on burns a
+                // redundant command (the reported double re-attack). Hold.
+                if (string.Equals(_currentTarget, cand.RawName, StringComparison.OrdinalIgnoreCase))
+                {
+                    _log?.Combat(LogCategory,
+                        $"target-priority {settings.TargetPriority} follow={announcer} " +
+                        $"→ {cand.RawName} already engaged; no re-fire");
+                    return true;
+                }
                 _log?.Combat(LogCategory,
                     $"target-priority {settings.TargetPriority} follow={announcer} " +
                     $"→ {cand.RawName}");
@@ -1056,7 +1149,15 @@ public sealed partial class CombatManager : IDisposable
         }
 
         // No room view (or the announced entity isn't in it) — literal attack
-        // against the announced name; the server resolves the instance.
+        // against the announced name; the server resolves the instance. Same-target
+        // guard applies here too: if we're already on this name, don't re-fire.
+        if (string.Equals(_currentTarget, announcedTarget, StringComparison.OrdinalIgnoreCase))
+        {
+            _log?.Combat(LogCategory,
+                $"target-priority {settings.TargetPriority} follow={announcer} " +
+                $"→ {announcedTarget} already engaged; no re-fire");
+            return true;
+        }
         _currentTarget = announcedTarget;
         SendAttack(settings.NormalAttackCommand, announcedTarget, refire: true,
                    refireReason: $"target-priority {settings.TargetPriority} follow={announcer}");
@@ -1311,6 +1412,34 @@ public sealed partial class CombatManager : IDisposable
         _wireSender(Encoding.Latin1.GetBytes("\r"));
     }
 
+    // "Your command had no effect." — a generic failure the server emits when the
+    // action we just sent did nothing. Mid-fight it means the attack we fired
+    // didn't land: a stale target reference, or a partymate engaged/killed the mob
+    // between our send and the server's resolve (report: a leader-announce follow
+    // swing that no-op'd). VerifyEngagement doesn't cover this because it only
+    // arms for the FIRST unconfirmed swing — once the fight is Engaged, later
+    // no-op swings go unguarded and combat sits idle until a manual redisplay.
+    // Same remedy as target-not-here: drop the target and force a short room
+    // re-display so OnEntitiesObserved re-picks and re-engages. Gated on an active
+    // fight (_currentTarget set) so an unrelated no-effect command outside combat
+    // is ignored.
+    private void OnCommandNoEffect(MatchResult _)
+    {
+        if (!_isEnabled()) return;
+        if (_wireSender is null) return;
+        if (_currentTarget is null) return;
+
+        _log?.Combat(LogCategory,
+            $"command-no-effect — dropping target={_currentTarget} + refreshing room");
+        _currentTarget = null;
+        ClearBackstabResolution();
+
+        DateTimeOffset now = DateTimeOffset.Now;
+        if (now - _lastRoomRefreshAt < RoomRefreshCooldown) return;
+        _lastRoomRefreshAt = now;
+        _wireSender(Encoding.Latin1.GetBytes("\r"));
+    }
+
     // Re-engage the room after an interrupt turned our auto-attack off (an
     // in-between self-heal / buff cast, a stun, etc.) while an engageable mob is
     // still present. Disarms the interrupt flag, drops the stale target so
@@ -1538,6 +1667,7 @@ public sealed partial class CombatManager : IDisposable
         _weaponNoEffectSub.Dispose();
         _fistsNoEffectSub.Dispose();
         _spellNoEffectSub.Dispose();
+        _commandNoEffectSub.Dispose();
         _combatStatusSub.Dispose();
         _bsResolveHitsSub.Dispose();
         _bsResolveMissesSub.Dispose();

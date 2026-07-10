@@ -1160,20 +1160,28 @@ public sealed class LoopRunner : IRecoverableEngine
                 StartOrResumeDelayTimer();
                 return;
             }
-            // Overshoot guard: while paused we ignore tracker events,
-            // so an in-flight move whose confirmation arrived during
-            // the pause window leaves _index stale. Detect that here:
-            // if the tracker is now Confirmed at the expected target,
-            // the step actually completed — advance the index before
-            // SendNextStep so we don't re-send the same direction and
-            // walk one extra room (the user-reported "overshoot").
+            // Arrived-while-paused guard: while paused we ignore tracker events,
+            // so an in-flight move whose arrival landed during the pause window
+            // leaves _index stale. Detect it by position, not posture — if the
+            // tracker's current room is already the step's expected target, the
+            // move physically completed, so advance the index before SendNextStep
+            // rather than re-sending the same direction and walking one extra room
+            // (the user-reported "overshoot"). Accept Pending as well as Confirmed:
+            // when the arrival confirmed with a stale entry still in the pending
+            // queue (a leftover from a just-stopped loop / an unconsumed echo) the
+            // tracker lands CurrentRoom at the target but holds Pending posture,
+            // and the OnTrackerStateChanged advance that normally handles this was
+            // skipped because it fired while we were Paused. Without accepting the
+            // Pending-at-target case here the loop falls through to the "still in
+            // flight, awaiting confirmation" return below and hangs in the cleared
+            // room until a manual redisplay flushes the queue.
             if (_stepInFlight
                 && _expectedMoveTarget is { } expected
-                && _tracker.State.Confidence == RoomConfidence.Confirmed
+                && _tracker.State.Confidence is RoomConfidence.Confirmed or RoomConfidence.Pending
                 && _tracker.State.CurrentRoom?.Key.Equals(expected) == true)
             {
                 _log?.Info("LoopRunner",
-                    $"resume: step {_index + 1} completed during pause (tracker at {expected}); advancing");
+                    $"resume: step {_index + 1} arrived during pause (tracker at {expected}, {_tracker.State.Confidence}); advancing");
                 _stepInFlight = false;
                 _expectedMoveTarget = null;
                 AdvanceStep();

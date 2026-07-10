@@ -53,9 +53,6 @@ public sealed partial class EquipmentSectionViewModel : WorkshopSectionViewModel
     private readonly EquipmentManager _equipment;
     private readonly PlayerStats _stats;
     private readonly PlayerDatabase _players;
-    private readonly SettingsResolver _resolver;
-    private readonly ItemNameStore _itemNames;
-    private readonly ItemOverlaySeedStore _overlaySeed;
     private Control? _view;
     // Gates the edit callbacks while rows / selection are seeded programmatically,
     // so a profile load or set switch doesn't re-persist what it just read.
@@ -65,16 +62,11 @@ public sealed partial class EquipmentSectionViewModel : WorkshopSectionViewModel
     public override string Title => "Equipment Manager";
     public override Control View => _view ??= new EquipmentSectionView { DataContext = this };
 
-    // The four fixed trigger-purposed sets plus the synthetic Inventory row, in
-    // roster order.
+    // The four fixed trigger-purposed sets, in roster order.
     public ObservableCollection<EquipmentSetRowViewModel> SetRows { get; } = new();
 
     // The slot rows, in EquipmentSlotMap.DisplayOrder.
     public ObservableCollection<EquipmentSlotRowViewModel> Rows { get; } = new();
-
-    // Carried-item rows shown when the Inventory row is selected — one per distinct
-    // pack item, with its weight and the loot-automation toggles.
-    public ObservableCollection<InventoryItemRowViewModel> InventoryRows { get; } = new();
 
     // Aggregate bonuses of the selected set's physical-slot items, one row per
     // non-zero stat with a per-item hover breakdown.
@@ -83,7 +75,6 @@ public sealed partial class EquipmentSectionViewModel : WorkshopSectionViewModel
     // The row being viewed; null when no character is loaded.
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasSet))]
-    [NotifyPropertyChangedFor(nameof(IsInventory))]
     [NotifyPropertyChangedFor(nameof(ShowEmptyState))]
     [NotifyCanExecuteChangedFor(nameof(EnableCommand))]
     [NotifyCanExecuteChangedFor(nameof(DisableCommand))]
@@ -102,15 +93,8 @@ public sealed partial class EquipmentSectionViewModel : WorkshopSectionViewModel
     // True when the bonuses panel has at least one non-zero stat row.
     [ObservableProperty] private bool _hasBonuses;
 
-    // True when the Inventory row holds at least one carried item.
-    [ObservableProperty] private bool _hasInventoryItems;
-
     // True when a gear set is selected — gates the slot grid and per-set actions.
-    // False for the Inventory row.
-    public bool HasSet => SelectedSetRow is { IsInventory: false };
-
-    // True when the Inventory row is selected — gates the carried-item view.
-    public bool IsInventory => SelectedSetRow is { IsInventory: true };
+    public bool HasSet => SelectedSetRow is not null;
 
     // True when nothing is selected (no character loaded) — shows the empty prompt.
     public bool ShowEmptyState => SelectedSetRow is null;
@@ -123,9 +107,7 @@ public sealed partial class EquipmentSectionViewModel : WorkshopSectionViewModel
     public EquipmentSectionViewModel(
         ProfileService profile, InventoryManager inventory,
         GameDataCache gameData, EquipmentManager equipment,
-        PlayerStats stats, PlayerDatabase players,
-        SettingsResolver resolver, ItemNameStore itemNames,
-        ItemOverlaySeedStore overlaySeed)
+        PlayerStats stats, PlayerDatabase players)
     {
         ArgumentNullException.ThrowIfNull(profile);
         ArgumentNullException.ThrowIfNull(inventory);
@@ -133,18 +115,12 @@ public sealed partial class EquipmentSectionViewModel : WorkshopSectionViewModel
         ArgumentNullException.ThrowIfNull(equipment);
         ArgumentNullException.ThrowIfNull(stats);
         ArgumentNullException.ThrowIfNull(players);
-        ArgumentNullException.ThrowIfNull(resolver);
-        ArgumentNullException.ThrowIfNull(itemNames);
-        ArgumentNullException.ThrowIfNull(overlaySeed);
         _profile = profile;
         _inventory = inventory;
         _gameData = gameData;
         _equipment = equipment;
         _stats = stats;
         _players = players;
-        _resolver = resolver;
-        _itemNames = itemNames;
-        _overlaySeed = overlaySeed;
 
         BuildRows();
         ReloadFromProfile();
@@ -153,7 +129,6 @@ public sealed partial class EquipmentSectionViewModel : WorkshopSectionViewModel
         _gameData.ActiveSetChanged += OnActiveSetChanged;
         _stats.PropertyChanged += OnStatsChanged;
         _players.ObservationRecorded += OnObservationRecorded;
-        _inventory.Changed += OnInventoryChanged;
     }
 
     // ----- enable / disable / apply ---------------------------------------
@@ -166,8 +141,8 @@ public sealed partial class EquipmentSectionViewModel : WorkshopSectionViewModel
     [RelayCommand(CanExecute = nameof(CanDisable))]
     private void Disable() => SetEnabled(false);
 
-    private bool CanEnable => SelectedSetRow is { IsInventory: false, Enabled: false };
-    private bool CanDisable => SelectedSetRow is { IsInventory: false, Enabled: true };
+    private bool CanEnable => SelectedSetRow is { Enabled: false };
+    private bool CanDisable => SelectedSetRow is { Enabled: true };
 
     private void SetEnabled(bool enabled)
     {
@@ -239,10 +214,7 @@ public sealed partial class EquipmentSectionViewModel : WorkshopSectionViewModel
     partial void OnSelectedSetRowChanged(EquipmentSetRowViewModel? value)
     {
         if (_suppress) return;
-        if (value is { IsInventory: true })
-            RefreshInventoryRows();
-        else
-            LoadSelectedSetIntoRows();
+        LoadSelectedSetIntoRows();
         ApplyStatus = string.Empty;
     }
 
@@ -310,9 +282,6 @@ public sealed partial class EquipmentSectionViewModel : WorkshopSectionViewModel
                 if (EnsureSets(cfg)) _profile.Save();
                 foreach (EquipmentSet s in cfg.Sets)
                     SetRows.Add(new EquipmentSetRowViewModel(s));
-                // The Inventory row trails the gear sets — a live view of the pack,
-                // not a persisted set, so it's appended here rather than in EnsureSets.
-                SetRows.Add(new EquipmentSetRowViewModel("Inventory"));
             }
             SelectedSetRow = SetRows.FirstOrDefault();
         }
@@ -523,72 +492,6 @@ public sealed partial class EquipmentSectionViewModel : WorkshopSectionViewModel
         return sb.ToString();
     }
 
-    // ----- inventory ------------------------------------------------------
-
-    // Rebuild the carried-item rows from the last 'i' dump. Identical names are
-    // grouped (the overlay is keyed by item type, not instance), so three torches
-    // become one row + one set of toggles with a ×3 badge. Weight and the toggle
-    // states come from the active game data; an unresolved name still lists (weight
-    // "—", toggles disabled) so the player sees the whole pack.
-    private void RefreshInventoryRows()
-    {
-        InventoryRows.Clear();
-        foreach (IGrouping<string, string> group in _inventory.Snapshot.CarriedItems
-                     .GroupBy(n => n, StringComparer.OrdinalIgnoreCase))
-        {
-            string name = group.Key;
-            int count = group.Count();
-            int number = _itemNames.FindByName(name) ?? 0;
-            string weight = _itemNames.WeightOf(name) is int w
-                ? w.ToString(CultureInfo.InvariantCulture)
-                : "—";   // em dash — weight unknown for this name
-
-            (bool stash, bool collect, bool discard) = ResolveInventoryFlags(number);
-            InventoryRows.Add(new InventoryItemRowViewModel(
-                number, name, count, weight, stash, collect, discard, OnInventoryFlagToggled));
-        }
-        HasInventoryItems = InventoryRows.Count > 0;
-    }
-
-    // Effective (seed + all-tier override) automation flags for the checkbox
-    // initial state, so each toggle shows what the loot engines actually see.
-    private (bool Stash, bool Collect, bool Discard) ResolveInventoryFlags(int number)
-    {
-        if (number <= 0) return (false, false, false);
-        string id = number.ToString(CultureInfo.InvariantCulture);
-        ItemOverlay seed = _overlaySeed.GetOverlay(number);
-        ItemOverlay eff = _resolver.ResolveGameData<ItemOverlay>("Items", id, seed);
-        return (eff.AutoStash == true, eff.AutoCollect == true, eff.AutoDiscard == true);
-    }
-
-    // Persist a toggled loot flag onto the item's game-data overlay at the Character
-    // tier. The write base is the item's own override layer (empty seed defaults),
-    // so only the deltas the user actually sets land in the character override — the
-    // decoded realm baseline stays in Defaults rather than being copied up. When any
-    // loot flag is on and the item carries no policy yet, seed keep-none / get-all
-    // (MegaMUD "None" / "All" sentinels); the player refines it in the Game Data
-    // browser. Mirrors the item editor's write semantics (a flag stores true or null;
-    // there is no explicit false override).
-    private void OnInventoryFlagToggled(InventoryItemRowViewModel row)
-    {
-        if (row.Number <= 0) return;
-
-        string id = row.Number.ToString(CultureInfo.InvariantCulture);
-        ItemOverlay existing = _resolver.ResolveGameData<ItemOverlay>("Items", id, new ItemOverlay());
-
-        bool anyAuto = row.AutoStash || row.AutoCollect || row.AutoDiscard;
-        ItemOverlay updated = existing with
-        {
-            AutoStash   = row.AutoStash   ? true : null,
-            AutoCollect = row.AutoCollect ? true : null,
-            AutoDiscard = row.AutoDiscard ? true : null,
-            MinToKeep   = anyAuto ? existing.MinToKeep ?? "None" : existing.MinToKeep,
-            MaxToGet    = anyAuto ? existing.MaxToGet  ?? "All"  : existing.MaxToGet,
-        };
-
-        _resolver.WriteGameDataAt(SettingsTier.Character, "Items", id, updated);
-    }
-
     // ----- service signals ------------------------------------------------
 
     private void OnProfileLoaded(CharacterProfile _) => ReloadFromProfile();
@@ -598,14 +501,6 @@ public sealed partial class EquipmentSectionViewModel : WorkshopSectionViewModel
         BuildRows();                // new item table → rebuild rows
         LoadSelectedSetIntoRows();
         RefreshAvailableItems();
-        if (IsInventory) RefreshInventoryRows();   // new item table → new weights / flags
-    }
-
-    // A full 'i' dump (or an incremental item line) landed — refresh the carried
-    // list when it's the view on screen.
-    private void OnInventoryChanged()
-    {
-        if (IsInventory) RefreshInventoryRows();
     }
 
     private void OnStatsChanged(object? sender, PropertyChangedEventArgs e)
@@ -632,6 +527,5 @@ public sealed partial class EquipmentSectionViewModel : WorkshopSectionViewModel
         _gameData.ActiveSetChanged -= OnActiveSetChanged;
         _stats.PropertyChanged -= OnStatsChanged;
         _players.ObservationRecorded -= OnObservationRecorded;
-        _inventory.Changed -= OnInventoryChanged;
     }
 }

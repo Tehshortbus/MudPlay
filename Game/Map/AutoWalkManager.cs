@@ -1147,6 +1147,27 @@ public sealed class AutoWalkManager : IRecoverableEngine
             State = WalkState.Walking;
             Raise(new WalkEvent(WalkEventKind.Resumed, "coordinator resumed", _destination));
 
+            // Stranded-deferred-walk dispatch: a WalkTo issued while a move was
+            // still in flight parks the target in _deferredWalkTarget with no
+            // plan yet, then waits for a Confirmed transition to plan + send.
+            // If the coordinator paused (combat) before that transition landed,
+            // it flipped us Walking → Paused, so OnTrackerStateChanged's deferred
+            // dispatch (gated on State == Walking) skipped the Confirmed that
+            // arrived while paused — leaving the target planned-but-unsent. Now
+            // that we're Walking again, plan + send it here instead of hanging
+            // until some unrelated tracker event (which the user only forces via
+            // a manual redisplay). If the settle move is still Pending, stay
+            // deferred: State is Walking again, so the next Confirmed dispatches.
+            if (_deferredWalkTarget is { } deferred && _path is null)
+            {
+                if (_tracker.State.Confidence == RoomConfidence.Confirmed)
+                {
+                    _deferredWalkTarget = null;
+                    WalkToImmediate(deferred);
+                }
+                return;
+            }
+
             // In-flight guard: a move was already on the wire when the pause
             // hit and its confirmation hasn't landed yet (tracker still Pending
             // on it). Re-sending it on resume would put a duplicate on the wire

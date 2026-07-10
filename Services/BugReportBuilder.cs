@@ -61,7 +61,8 @@ public static class BugReportBuilder
             new("Special room markers", SafeSection(() => BuildRoomMarkers(svc))),
             new("Auto-mode", SafeSection(() => BuildAutoMode(svc))),
             new("Live engine state", SafeSection(() => BuildEngineState(svc))),
-            new("Settings (excluding BBS + Display)", SafeSection(() => BuildSettings(svc))),
+            new("Effective settings (resolved)", SafeSection(() => BuildEffectiveSettings(svc))),
+            new("Settings overrides (deltas, excluding BBS + Display)", SafeSection(() => BuildSettings(svc))),
             new("Program log", SafeSection(() => BuildLog(svc))),
             new("Scrollback", SafeSection(() => BuildScrollback(emulator))),
         ];
@@ -158,6 +159,13 @@ public static class BugReportBuilder
         // next reconnect (crash-survivable). A "didn't auto-rejoin after a drop"
         // report hinges on whether the leader was remembered at all.
         Kv(sb, "Reconnect rejoin leader", svc.PartyRejoin.RememberedLeader ?? "(none remembered)");
+        // Leader-side reconnect reform state — the followers we snapshotted at the
+        // last drop and will wait for on reconnect. A "leader sprinted off / didn't
+        // wait after a nightly-cleanup reconnect" report hinges on whether they
+        // were captured at all.
+        IReadOnlyList<string> pendingReform = svc.PartyReform.PendingReform;
+        Kv(sb, "Reconnect reform followers",
+            pendingReform.Count > 0 ? string.Join(", ", pendingReform) : "(none pending)");
         // Leader-side recovery state — who (if anyone) we're currently walking to
         // re-collect, and the reach cap that gates it. A "leader never came back
         // for me" report needs both.
@@ -390,6 +398,51 @@ public static class BugReportBuilder
         Kv(sb, "All wired engines off", svc.AutoModeController.AllWiredOff.ToString());
         sb.Append("\nPer-engine toggles live in the `General` settings block below (`AutoMode`).\n");
         return sb.ToString();
+    }
+
+    // Fully-resolved effective values for every gameplay / automation section,
+    // merged across all four tiers. The delta-only per-tier dump below hides any
+    // knob left at its default — but "what behavior should be happening" is
+    // exactly those defaults (combat target order/priority, attack timing, flee
+    // thresholds, etc.). A triager can't reason about a combat report without
+    // seeing the effective priority even when the user never overrode it, so we
+    // dump the resolved DTO for each section here regardless of override state.
+    private static string BuildEffectiveSettings(AppServices svc)
+    {
+        StringBuilder sb = new();
+        sb.Append("Merged Defaults → Global → BBS → Character values — the actual knobs the engines read, ")
+          .Append("including ones left at their defaults. The per-tier override deltas are in the next section.\n\n");
+
+        AppendResolved<Models.Profile.CombatSettings>(sb, svc, "Combat");
+        AppendResolved<Models.Profile.PartySettings>(sb, svc, "Party");
+        AppendResolved<Models.Profile.HealthSettings>(sb, svc, "Health");
+        AppendResolved<Models.Profile.SpellsSettings>(sb, svc, "Spells");
+        AppendResolved<Models.Profile.GeneralSettings>(sb, svc, "General");
+        AppendResolved<Models.Profile.OtherSettings>(sb, svc, "Other");
+        AppendResolved<Models.Profile.CashSettings>(sb, svc, "Cash");
+        AppendResolved<Models.Profile.TalkSettings>(sb, svc, "Talk");
+        AppendResolved<Models.Profile.AutoLightSettings>(sb, svc, "AutoLight");
+        AppendResolved<Models.Profile.AutoLairSettings>(sb, svc, "AutoLair");
+        AppendResolved<Models.Profile.AutoTrainerSettings>(sb, svc, "AutoTrainer");
+        return sb.ToString();
+    }
+
+    // Resolve one tab-keyed section across the tier hierarchy and emit it as a
+    // labelled JSON block. Isolated per-section so one section failing to
+    // resolve leaves the rest intact.
+    private static void AppendResolved<T>(StringBuilder sb, AppServices svc, string tabKey)
+        where T : class, new()
+    {
+        sb.Append("**").Append(tabKey).Append("**\n\n");
+        try
+        {
+            sb.Append(Json(svc.Resolver.Resolve<T>(tabKey)));
+        }
+        catch (Exception ex)
+        {
+            sb.Append("_(could not resolve: ").Append(ex.Message).Append(")_\n");
+        }
+        sb.Append('\n');
     }
 
     private static string BuildSettings(AppServices svc)

@@ -119,7 +119,7 @@ public sealed partial class PartyPoller : IDisposable
         // BaselineHp stays 0, and PartyPoller's nag retries until
         // max-total instead of cancelling on first valid reply.
         // Max halves stay `\d+` — max HP / MA are always positive.
-        @"^\{?HP=(?<hp>-?\d+)/(?<hpmax>\d+)(?:,(?:MA|KAI)=(?<mp>-?\d+)/(?<mpmax>\d+))?(?:,\s*\w+)?\}?\s*$",
+        @"^\{?HP=(?<hp>-?\d+)/(?<hpmax>\d+)(?:,(?<mpkind>MA|KAI)=(?<mp>-?\d+)/(?<mpmax>\d+))?(?:,\s*\w+)?\}?\s*$",
         RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
     private static partial Regex HealthReply();
 
@@ -305,7 +305,8 @@ public sealed partial class PartyPoller : IDisposable
         int hpMax = int.Parse(m.Groups["hpmax"].Value, inv);
         int mpCur = m.Groups["mp"].Success    ? int.Parse(m.Groups["mp"].Value,    inv) : 0;
         int mpMax = m.Groups["mpmax"].Success ? int.Parse(m.Groups["mpmax"].Value, inv) : 0;
-        _manager.SetMemberHealthSnapshot(entry.Speaker, hpCur, hpMax, mpCur, mpMax);
+        bool isKai = m.Groups["mpkind"].Value.Equals("KAI", StringComparison.OrdinalIgnoreCase);
+        _manager.SetMemberHealthSnapshot(entry.Speaker, hpCur, hpMax, mpCur, mpMax, isKai);
         // Baseline now on file — kill the @health nag for this sender.
         CancelHealthNag(GivenName(entry.Speaker));
     }

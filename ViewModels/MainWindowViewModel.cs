@@ -965,9 +965,6 @@ public partial class MainWindowViewModel : ObservableObject
         AppServices.Current.CleanupLogout.SetConnectedCheck(() => IsConnected);
         AppServices.Current.CleanupLogout.SetAutoLogoutEnabledCheck(
             () => ResolveActiveBbs()?.ReconnectAfterCleanup ?? false);
-        AppServices.Current.CleanupLogout.SetHangupsDisabledCheck(
-            () => AppServices.Current.Profile.Current is { } p
-                && ReadGeneralFromProfile(p).DisableHangups);
         AppServices.Current.CleanupLogout.SetDisconnectCallback(
             () => _ = DisconnectInternalAsync());
 
@@ -2183,6 +2180,10 @@ public partial class MainWindowViewModel : ObservableObject
                 // only fires (@comeback + @invite) on the first in-game room if
                 // a party leader is remembered from before the drop.
                 AppServices.Current.PartyRejoin.Arm();
+                // Arm the leader-side reconnect party-reform latch too. Fires on
+                // the first in-game room only if we snapshotted followers at the
+                // preceding drop — reforms the party and holds the loop for them.
+                AppServices.Current.PartyReform.Arm();
                 // Re-enable any auto-actions the user opted into reviving on
                 // reconnect (Settings → Other). Only on a reconnect — a
                 // connect following a prior in-session disconnect — never on
@@ -2205,6 +2206,12 @@ public partial class MainWindowViewModel : ObservableObject
                 // failed connect attempt fires Disconnected with
                 // wasConnected=false and must NOT arm this.
                 if (wasConnected) _hadDisconnectThisSession = true;
+                // Snapshot the followers we were leading while PartyState is still
+                // intact — par reconciliation after the reconnect wipes the roster,
+                // so the leader-side reform must capture them now. Only on a real
+                // in-game drop; a failed redial (wasConnected=false) keeps the good
+                // snapshot from the preceding drop rather than overwriting it empty.
+                if (wasConnected) AppServices.Current.PartyReform.NoteDisconnected();
                 // Cancel any pending stable-window reset — this drop
                 // happened before the 30s threshold, so the connect
                 // didn't earn a counter reset.
@@ -2890,8 +2897,7 @@ public partial class MainWindowViewModel : ObservableObject
         }
         var workshopVm = new ViewModels.CharacterWorkshop.CharacterWorkshopViewModel(
             svc.DeathRecovery, svc.Profile, svc.PlayerStats, svc.GameData, svc.Inventory, svc.Players,
-            svc.Alignment, svc.TrainerWalk, svc.Quests, svc.Equipment,
-            svc.Resolver, svc.ItemNames, svc.ItemOverlaySeed, sectionId);
+            svc.Alignment, svc.TrainerWalk, svc.Quests, svc.Equipment, sectionId);
         Views.CharacterWorkshop.CharacterWorkshopWindow window = new() { DataContext = workshopVm };
         // The Workshop VM + its sections are rebuilt on every open, so dispose
         // them on close to detach their long-lived service-event subscriptions.
@@ -3782,7 +3788,7 @@ public partial class MainWindowViewModel : ObservableObject
 
     partial void OnIsAutoCombatActiveChanged(bool value)
     {
-        PersistAutoModeFlag(d => d.AutoCombat = value);
+        PersistAutoModeFlag("AutoCombat", value, d => d.AutoCombat = value);
         // A profile reseed sets this without a real user toggle — skip the
         // re-eval (the tracker gets its own observations). A genuine flip
         // re-evaluates the combat gate at once so toggling off mid-round
@@ -3793,11 +3799,11 @@ public partial class MainWindowViewModel : ObservableObject
     }
 
     partial void OnIsAutoNukeActiveChanged(bool value)
-        => PersistAutoModeFlag(d => d.AutoNuke = value);
+        => PersistAutoModeFlag("AutoNuke", value, d => d.AutoNuke = value);
 
     partial void OnIsAutoHealRestActiveChanged(bool value)
     {
-        PersistAutoModeFlag(d => d.AutoHealRest = value);
+        PersistAutoModeFlag("AutoHealRest", value, d => d.AutoHealRest = value);
         // Mirror the AutoCombat path: a genuine flip must re-evaluate the
         // health engine at once. Toggling off releases a held HP/MA recovery
         // gate immediately (Evaluate's disabled branch clears it) so the walker
@@ -3809,30 +3815,31 @@ public partial class MainWindowViewModel : ObservableObject
     }
 
     partial void OnIsAutoBlessActiveChanged(bool value)
-        => PersistAutoModeFlag(d => d.AutoBless = value);
+        => PersistAutoModeFlag("AutoBless", value, d => d.AutoBless = value);
 
     partial void OnIsAutoLightActiveChanged(bool value)
-        => PersistAutoModeFlag(d => d.AutoLight = value);
+        => PersistAutoModeFlag("AutoLight", value, d => d.AutoLight = value);
 
     partial void OnIsAutoGetItemsActiveChanged(bool value)
-        => PersistAutoModeFlag(d => d.AutoGetItems = value);
+        => PersistAutoModeFlag("AutoGetItems", value, d => d.AutoGetItems = value);
 
     partial void OnIsAutoGetCashActiveChanged(bool value)
-        => PersistAutoModeFlag(d => d.AutoGetCash = value);
+        => PersistAutoModeFlag("AutoGetCash", value, d => d.AutoGetCash = value);
 
     partial void OnIsAutoSneakActiveChanged(bool value)
-        => PersistAutoModeFlag(d => d.AutoSneak = value);
+        => PersistAutoModeFlag("AutoSneak", value, d => d.AutoSneak = value);
 
     partial void OnIsAutoHideActiveChanged(bool value)
-        => PersistAutoModeFlag(d => d.AutoHide = value);
+        => PersistAutoModeFlag("AutoHide", value, d => d.AutoHide = value);
 
     partial void OnIsAutoSearchActiveChanged(bool value)
-        => PersistAutoModeFlag(d => d.AutoSearch = value);
+        => PersistAutoModeFlag("AutoSearch", value, d => d.AutoSearch = value);
 
     partial void OnIsDisableHangupsActiveChanged(bool value)
-        => PersistGeneralFlag(g => g.DisableHangups = value);
+        => PersistGeneralFlag("DisableHangups", value, g => g.DisableHangups = value);
 
-    private void PersistAutoModeFlag(Action<Models.Profile.AutoActionDefaults> mutator)
+    private void PersistAutoModeFlag(string flag, bool value,
+                                     Action<Models.Profile.AutoActionDefaults> mutator)
     {
         if (_suppressAutoEngineWriteback) return;
         if (AppServices.Current.Profile.Current is not { } profile) return;
@@ -3842,13 +3849,15 @@ public partial class MainWindowViewModel : ObservableObject
         profile.Settings["General"] =
             System.Text.Json.JsonSerializer.SerializeToElement(dto);
         AppServices.Current.Profile.Save();
+        AppServices.Current.Log.Info("AutoMode", $"User turned {flag} {(value ? "on" : "off")}.");
     }
 
     // Persist a top-level Models.Profile.GeneralSettings field (vs
     // PersistAutoModeFlag's nested AutoMode bits). Same suppress guard so a
     // profile-load reseed of the observable doesn't re-persist what it just
     // read.
-    private void PersistGeneralFlag(Action<Models.Profile.GeneralSettings> mutator)
+    private void PersistGeneralFlag(string flag, bool value,
+                                    Action<Models.Profile.GeneralSettings> mutator)
     {
         if (_suppressAutoEngineWriteback) return;
         if (AppServices.Current.Profile.Current is not { } profile) return;
@@ -3858,6 +3867,7 @@ public partial class MainWindowViewModel : ObservableObject
         profile.Settings["General"] =
             System.Text.Json.JsonSerializer.SerializeToElement(dto);
         AppServices.Current.Profile.Save();
+        AppServices.Current.Log.Info("General", $"User turned {flag} {(value ? "on" : "off")}.");
     }
 
     // On profile load (or close), reseed the toggle observables from the

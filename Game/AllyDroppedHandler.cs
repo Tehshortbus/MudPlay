@@ -336,11 +336,15 @@ public sealed partial class AllyDroppedHandler : IDisposable
     {
         if (e.Action != NotifyCollectionChangedAction.Add) return;
         if (e.NewItems is null) return;
-        // A downed ally reappearing on the roster means they've been re-invited and
-        // rejoined — the rescue is over; normal party-heal covers them from here.
+        // A downed ally genuinely rejoining the roster ends the rescue — normal
+        // party-heal covers them from here. A bare [Invited] placeholder is NOT a
+        // rejoin: a mortally-wounded ally can't accept the invite, so releasing the
+        // rescue on it would stop the @health poll and name-heal targeting while
+        // they're still down. Hold until they actually join / recover / time out.
         foreach (object? item in e.NewItems)
         {
             if (item is not PartyMember m) continue;
+            if (m.IsInvited) continue;
             if (string.IsNullOrEmpty(m.Name)) continue;
             Resolve(GivenName(m.Name), "rejoined roster");
         }

@@ -36,9 +36,6 @@ public sealed partial class CharacterWorkshopViewModel : ObservableObject, IDisp
         TrainerWalkManager trainerWalk,
         QuestStore quests,
         EquipmentManager equipment,
-        SettingsResolver resolver,
-        ItemNameStore itemNames,
-        ItemOverlaySeedStore overlaySeed,
         string? initialSectionId = null)
     {
         ArgumentNullException.ThrowIfNull(recovery);
@@ -51,9 +48,6 @@ public sealed partial class CharacterWorkshopViewModel : ObservableObject, IDisp
         ArgumentNullException.ThrowIfNull(trainerWalk);
         ArgumentNullException.ThrowIfNull(quests);
         ArgumentNullException.ThrowIfNull(equipment);
-        ArgumentNullException.ThrowIfNull(resolver);
-        ArgumentNullException.ThrowIfNull(itemNames);
-        ArgumentNullException.ThrowIfNull(overlaySeed);
         _profile = profile;
         _gameData = gameData;
 
@@ -74,7 +68,7 @@ public sealed partial class CharacterWorkshopViewModel : ObservableObject, IDisp
 
         Sections.Add(new QuestSectionViewModel(playerStats, gameData, profile, quests, questBonuses));
 
-        Sections.Add(new EquipmentSectionViewModel(profile, inventory, gameData, equipment, playerStats, players, resolver, itemNames, overlaySeed));
+        Sections.Add(new EquipmentSectionViewModel(profile, inventory, gameData, equipment, playerStats, players));
 
         Sections.Add(new CalculatorsSectionViewModel(playerStats, gameData, inventory, questBonuses, profile));
 

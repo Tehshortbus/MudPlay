@@ -946,7 +946,7 @@ public sealed class PartyManagerTests
         var (router, p) = Setup(localCharacterName: "Raijin");
         router.Dispatch(Line("You are now following Fujin."));
         // @health round-trip gives Fujin a known mana pool (BaselineMp > 0).
-        p.SetMemberHealthSnapshot("Fujin WuzHere", hpCur: 200, hpMax: 200, mpCur: 300, mpMax: 300);
+        p.SetMemberHealthSnapshot("Fujin WuzHere", hpCur: 200, hpMax: 200, mpCur: 300, mpMax: 300, isKai: false);
         PartyMember fujin = p.State.Members.First(m => m.Name.StartsWith("Fujin", StringComparison.Ordinal));
 
         // Poll 1: mana present at 40%.
@@ -1065,6 +1065,27 @@ public sealed class PartyManagerTests
     {
         PartyMember m = new() { BaselineMp = 580, MpPercent = 98 };
         Assert.Equal("M:568/580 98%", m.MaRichDisplay);
+    }
+
+    [Fact]
+    public void MaRichDisplay_LabelsKaiWithK_NotM()
+    {
+        // Mystic / monk secondary pool is kai — the row must read K:, not M:.
+        PartyMember m = new() { BaselineMp = 200, MpPercent = 60, IsKai = true };
+        Assert.Equal("K:120/200 60%", m.MaRichDisplay);
+    }
+
+    [Fact]
+    public void ParPoll_MysticHealthReply_LabelsSecondaryAsKai()
+    {
+        // A Mystic member's @health reply carries KAI= (not MA=); the party row
+        // must pick that up and label the bar K:.
+        var (router, p) = Setup(localCharacterName: "Raijin");
+        router.Dispatch(Line("You are now following Fujin."));
+        p.SetMemberHealthSnapshot("Fujin WuzHere", hpCur: 200, hpMax: 200, mpCur: 120, mpMax: 200, isKai: true);
+        PartyMember fujin = p.State.Members.First(m => m.Name.StartsWith("Fujin", StringComparison.Ordinal));
+        Assert.True(fujin.IsKai);
+        Assert.Equal("K:120/200 60%", fujin.MaRichDisplay);
     }
 
     [Fact]

@@ -200,6 +200,15 @@ public sealed partial class PartyManager : IDisposable
         // remove-and-grace-window treatment as a connection drop; the
         // re-invite path works identically.
         _subs.Add(_router.Subscribe(KnownPatterns.PlayerHungUp,             OnPlayerDisconnects));
+        // "X just left the Realm." — a member ducking out to the main menu
+        // (train / train stats / quit) drops from the party exactly like a
+        // disconnect: a follower who trains is removed server-side and only
+        // rejoins on a fresh leader invite, and a LEADER who trains dissolves
+        // the whole party (MajorMUD leadership rule, same as a leader drop). So
+        // route it through the same correlation — stamp the grace window on a
+        // follower's exit so the re-entry ("X just entered the Realm") auto-
+        // re-invites them, and fall through to full dissolution on a leader's.
+        _subs.Add(_router.Subscribe(KnownPatterns.PlayerExits,              OnPlayerDisconnects));
         _subs.Add(_router.Subscribe(KnownPatterns.PlayerEnters,             OnPlayerEnters));
         _subs.Add(_router.Subscribe(KnownPatterns.PartyMemberDeath,         OnMemberDeath));
         // Dissolution signals — the per-row evictions we already had
@@ -329,6 +338,7 @@ public sealed partial class PartyManager : IDisposable
             case nameof(PlayerState.MaxHp):
             case nameof(PlayerState.Ma):
             case nameof(PlayerState.MaxMa):
+            case nameof(PlayerState.ManaType):
                 SyncSelfFromPlayerState();
                 break;
         }
@@ -361,6 +371,7 @@ public sealed partial class PartyManager : IDisposable
             m.MpPercent  = _playerState.MaxMa > 0
                 ? _playerState.Ma * 100 / _playerState.MaxMa
                 : 0;
+            m.IsKai = _playerState.ManaType == ManaType.Kai;
             return;
         }
     }
@@ -842,6 +853,55 @@ public sealed partial class PartyManager : IDisposable
         return false;
     }
 
+    // Given names of the followers we're currently leading (self + pending
+    // invitees excluded). Snapshotted at disconnect by PartyReformCoordinator so
+    // the leader-side reconnect reform knows who to wait for — the live roster is
+    // wiped by par reconciliation after the reconnect, so it can't be read back
+    // then. Empty when we aren't the leader.
+    public IReadOnlyList<string> SnapshotLedFollowers()
+    {
+        if (!State.SelfIsLeader) return Array.Empty<string>();
+        List<string> givens = new();
+        foreach (PartyMember m in State.Members)
+        {
+            if (m.IsSelf || m.IsInvited) continue;
+            string given = GivenNameOf(m.Name);
+            if (!string.IsNullOrEmpty(given)) givens.Add(given);
+        }
+        return givens;
+    }
+
+    // Leader-side reconnect party reform. A disconnect dissolves our party
+    // server-side (leadership doesn't survive a drop; a nightly-cleanup reconnect
+    // is the common case), so on reconnect the roster is stale and any returning
+    // follower's @comeback would be denied. PartyReformCoordinator hands us the
+    // followers we were leading (captured at disconnect) once we're back in-game;
+    // we reset our tracked roster to solo (the game's own par output would too, but
+    // this keeps the PartyWindow honest immediately) and, for each follower, rebase
+    // the reconnect grace window to now — which re-authorises their @comeback
+    // (WasRecentlyPartied) and re-enables their auto-invite-on-return
+    // (OnPlayerEnters) — then fire MemberDisconnected so PartyDisconnectMovementGate
+    // holds the movement loop for the wait window, resuming when they re-party or
+    // when the window elapses. Mirrors the grace snapshot OnPartyDissolved takes.
+    public void BeginLeaderReconnectReform(IReadOnlyList<string> followerGivens)
+    {
+        ArgumentNullException.ThrowIfNull(followerGivens);
+        if (followerGivens.Count == 0) return;
+
+        _parState = ParState.Idle;
+        _parBlockNames.Clear();
+        ResetPartyMembership();
+
+        DateTimeOffset now = NowProvider();
+        foreach (string name in followerGivens)
+        {
+            string given = GivenNameOf(name);
+            if (string.IsNullOrEmpty(given)) continue;
+            _recentlyDisconnected[given] = now;
+            MemberDisconnected?.Invoke(given);
+        }
+    }
+
     // End-of-par-block reconciliation — any member the par output omitted has
     // left the travel party, so drop the roster row. This is the authoritative
     // membership correction: `par` is the game's own list, so a member missing
@@ -1227,7 +1287,9 @@ public sealed partial class PartyManager : IDisposable
     // No-op when the named member isn't in the roster. mpMax = 0 marks a
     // no-mana class (Warriors) — both baseline and percent stay 0 and the
     // PartyWindow hides the MA sub-row entirely via GreaterThanZeroConverter.
-    public void SetMemberHealthSnapshot(string name, int hpCur, int hpMax, int mpCur, int mpMax)
+    // isKai flags a kai pool (reply carried KAI= rather than MA=) so the row
+    // labels the secondary bar K: instead of M:.
+    public void SetMemberHealthSnapshot(string name, int hpCur, int hpMax, int mpCur, int mpMax, bool isKai)
     {
         if (string.IsNullOrEmpty(name)) return;
         string given = GivenNameOf(name);
@@ -1238,6 +1300,7 @@ public sealed partial class PartyManager : IDisposable
             m.BaselineMp = mpMax;
             m.HpPercent  = hpMax > 0 ? hpCur * 100 / hpMax : 0;
             m.MpPercent  = mpMax > 0 ? mpCur * 100 / mpMax : 0;
+            m.IsKai      = isKai;
             return;
         }
     }

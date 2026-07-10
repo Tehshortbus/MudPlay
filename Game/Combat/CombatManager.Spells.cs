@@ -207,6 +207,28 @@ public sealed partial class CombatManager
         // recovery. Must precede the CombatSpellsWired gate below.
         VerifyEngagement();
 
+        // Follow-deferral fallback: we held our own room-entry pick waiting for the
+        // followed player's attack announce (ShouldWaitForFollow), but a full round
+        // elapsed with no announce (the tick is the round heartbeat, driven by the
+        // combat-damage lines). Per the spec, no announce → fall back to our own
+        // game-data pick. Re-run the observation with the defer branch bypassed so
+        // we make an independent choice this round. Guard on _currentTarget still
+        // null — if a target got set meanwhile (announce landed, manual attack) the
+        // hold already resolved.
+        if (_awaitingFollowAnnounce
+            && _isEnabled()
+            && _currentTarget is null
+            && _classifier.Current is { } followFallback)
+        {
+            _awaitingFollowAnnounce = false;
+            _log?.Combat(LogCategory,
+                "target-priority follow — no announce this round; falling back to own pick");
+            _followDeferBypass = true;
+            try { OnEntitiesObserved(followFallback); }
+            finally { _followDeferBypass = false; }
+            return;
+        }
+
         // Deterministic interrupt-resume: the combat tick is the round
         // heartbeat, so this re-issues a weapon attack at most once per
         // round after an in-between cast (CastingDirector self-heal / buff)

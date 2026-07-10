@@ -178,68 +178,6 @@
                 </Border>
             </Grid>
 
-            <!-- Inventory view — the live carried-item list with per-item weight
-                 and the three loot-automation toggles. -->
-            <Border Grid.Row="2" IsVisible="{Binding IsInventory}"
-                    Background="{StaticResource ChromeBgSunkenBrush}"
-                    BorderBrush="{StaticResource ChromeBorderBrush}"
-                    BorderThickness="1" CornerRadius="4">
-                <Grid RowDefinitions="Auto,*">
-                    <Grid Grid.Row="0" ColumnDefinitions="*,64,64,64,64" Margin="10,8,10,4">
-                        <TextBlock Grid.Column="0" Classes="ColHead" Text="Item"/>
-                        <TextBlock Grid.Column="1" Classes="ColHead" Text="Weight"
-                                   HorizontalAlignment="Right"/>
-                        <TextBlock Grid.Column="2" Classes="ColHead" Text="Stash"
-                                   HorizontalAlignment="Center"/>
-                        <TextBlock Grid.Column="3" Classes="ColHead" Text="Collect"
-                                   HorizontalAlignment="Center"/>
-                        <TextBlock Grid.Column="4" Classes="ColHead" Text="Discard"
-                                   HorizontalAlignment="Center"/>
-                    </Grid>
-
-                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
-                                  HorizontalScrollBarVisibility="Disabled"
-                                  IsVisible="{Binding HasInventoryItems}">
-                        <ItemsControl ItemsSource="{Binding InventoryRows}" Margin="10,0,10,8">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate DataType="vm:InventoryItemRowViewModel">
-                                    <Grid ColumnDefinitions="*,64,64,64,64" Margin="0,2">
-                                        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6">
-                                            <TextBlock Classes="Field" Text="{Binding Name}"/>
-                                            <TextBlock Text="{Binding CountText}"
-                                                       Foreground="{StaticResource ChromeFgMutedBrush}"
-                                                       FontSize="{StaticResource FontSizeSm}"
-                                                       VerticalAlignment="Center"/>
-                                        </StackPanel>
-                                        <TextBlock Grid.Column="1" Classes="Field" Text="{Binding Weight}"
-                                                   FontFamily="{StaticResource FontMono}"
-                                                   HorizontalAlignment="Right"/>
-                                        <CheckBox Grid.Column="2" IsChecked="{Binding AutoStash, Mode=TwoWay}"
-                                                  IsEnabled="{Binding CanToggle}"
-                                                  HorizontalAlignment="Center"
-                                                  ToolTip.Tip="Auto-stash this item at the stash room."/>
-                                        <CheckBox Grid.Column="3" IsChecked="{Binding AutoCollect, Mode=TwoWay}"
-                                                  IsEnabled="{Binding CanToggle}"
-                                                  HorizontalAlignment="Center"
-                                                  ToolTip.Tip="Auto-collect this item from rooms while walking."/>
-                                        <CheckBox Grid.Column="4" IsChecked="{Binding AutoDiscard, Mode=TwoWay}"
-                                                  IsEnabled="{Binding CanToggle}"
-                                                  HorizontalAlignment="Center"
-                                                  ToolTip.Tip="Auto-discard this item when picked up."/>
-                                    </Grid>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </ScrollViewer>
-
-                    <TextBlock Grid.Row="1" IsVisible="{Binding !HasInventoryItems}"
-                               HorizontalAlignment="Center" VerticalAlignment="Center"
-                               TextWrapping="Wrap" MaxWidth="380" TextAlignment="Center"
-                               Foreground="{StaticResource ChromeFgMutedBrush}"
-                               Text="No carried items. Type 'i' in-game to pull your inventory and populate this list."/>
-                </Grid>
-            </Border>
-
             <!-- Empty state — no character loaded (so no sets to edit). -->
             <TextBlock Grid.Row="2"
                        IsVisible="{Binding ShowEmptyState}"
