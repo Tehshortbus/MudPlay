@@ -115,13 +115,20 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
         // the dialog renders them as the read-only "Other Info" pane.
         ItemMdbView mdb = BuildMdbView(wcc);
 
+        // Container loot table (null for a non-chest) — the dialog shows it as a
+        // read-only "Chest Contents" section below "Other Info".
+        ChestContents? chest = int.TryParse(wcc, out int chestNum)
+            ? ChestContentsReader.Read(_cache, chestNum)
+            : null;
+
         ItemEditDialogViewModel vm = new(
             wccNoStr:     wcc,
             mdbName:      row.Get("Name") ?? string.Empty,
             existing:     existing,
             currentTier:  row.SourceTier,
             mdbInfo:      mdb.OtherInfo,
-            isLight:      mdb.IsLight);
+            isLight:      mdb.IsLight,
+            chest:        chest);
 
         ItemEditResult? result = await _dialogs.OpenWindowAsync<ItemEditDialogViewModel, ItemEditResult>(vm);
         if (result is null) return;

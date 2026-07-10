@@ -158,6 +158,25 @@
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
+
+                            <!-- Chest Contents — containers only. Decoded loot table:
+                                 item · at-least-once drop chance for one `open`, plus a
+                                 yield summary. Read-only; hidden for non-containers. -->
+                            <StackPanel IsVisible="{Binding HasChestContents}">
+                                <TextBlock Classes="SectionHeader" Text="Chest Contents"/>
+                                <TextBlock Classes="MdbKey" Text="{Binding ChestSummary}" Margin="0,0,0,3"/>
+                                <ItemsControl ItemsSource="{Binding ChestDrops}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate DataType="vm:ChestDropRow">
+                                            <Grid ColumnDefinitions="*,Auto" Margin="0,1">
+                                                <TextBlock Grid.Column="0" Classes="MdbValue" Text="{Binding Name}" TextWrapping="Wrap"/>
+                                                <TextBlock Grid.Column="1" Classes="MdbValue" Text="{Binding Chance}"
+                                                           TextAlignment="Right" Margin="10,0,0,0"/>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
                         </StackPanel>
                     </ScrollViewer>
                 </Border>

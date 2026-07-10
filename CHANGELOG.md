@@ -2,6 +2,12 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.31.0
+
+- Merchant shops in the room-detail popup now show a stock table: item, max, restock, and buy/sell prices
+- Training rooms in the room-detail popup now show the class and level band they train
+- The item dialog decodes a chest's loot table — each possible drop with its % chance, plus the min/max items an open yields
+
 ## 1.30.0
 
 - Clicking an obvious exit in a Game Data room-detail popup now walks the popup to that neighbouring room

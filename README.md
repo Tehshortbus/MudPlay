@@ -1,9 +1,10 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.30.0**
-> - Clicking an obvious exit in a Game Data room-detail popup now walks the popup to that neighbouring room
-> - An already-open Navigation map follows the exit click; a closed map is left closed instead of being forced open
+> **Version 1.31.0**
+> - Merchant shops in the room-detail popup now show a stock table: item, max, restock, and buy/sell prices
+> - Training rooms in the room-detail popup now show the class and level band they train
+> - The item dialog decodes a chest's loot table — each possible drop with its % chance, plus the min/max items an open yields
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->
