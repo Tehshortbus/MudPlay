@@ -27,6 +27,14 @@ public sealed class GeneralSettings
     // hand-edits or settings churn can flip it on.
     public bool BackupOnSave { get; set; }
 
+    // Auto-scale the terminal glyphs up to fill the window while keeping the
+    // fixed cell grid (cols/rows unchanged — this is a purely visual zoom, no
+    // NAWS effect). Off by default: the grid renders at the configured font
+    // size and sits centred with empty margin when the window is larger. On:
+    // TerminalControl fits the font to the viewport, capped so it never grows
+    // absurdly large. Char-tier; surfaced in Settings → General.
+    public bool ScaleTerminalToWindow { get; set; }
+
     // Master on/off state for every auto-engine. Each flag gates whether the
     // matching engine actually fires: AutoActionDefaults.AutoCombat gates
     // Game.Combat.CombatManager + the Game.Combat.CombatStateTracker's

@@ -1,8 +1,10 @@
 using System.Collections.Specialized;
 using System.ComponentModel;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Data;
 using Avalonia.Input;
+using Avalonia.Reactive;
 using Avalonia.Threading;
 using FujinTerm.Models.Settings;
 using FujinTerm.Services;
@@ -41,6 +43,14 @@ public partial class MainWindow : Window
         // auto-sends (par poll, AutoParty invite, @health round-trip)
         // can fire freely without interleaving into half-typed input.
         Terminal.InputBuffer = AppServices.Current.InputBuffer;
+
+        // Feed the terminal-host viewport size into the control so its
+        // ScaleToFit math can grow the font to fill the window. The control is
+        // measured with infinite available size inside the ScrollViewer, so it
+        // can't read the window size itself — this is the channel. The observable
+        // fires the current bounds on subscribe, so the initial size is seeded.
+        TerminalScroll.GetObservable(Visual.BoundsProperty)
+            .Subscribe(new AnonymousObserver<Rect>(b => Terminal.ViewportSize = b.Size));
 
         // Subscribe to VM PropertyChanged so we can react to IsConnected.
         // Hooking via DataContextChanged covers the case where the VM is

@@ -1,10 +1,10 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.27.0**
-> - Window positions now restore when you switch character profiles, instead of staying where they were
-> - A window whose saved monitor is gone, or that would open off-screen, re-anchors next to the main window
-> - Windows still visible on a connected second monitor keep reopening there
+> **Version 1.28.0**
+> - New Settings → General toggle scales the terminal font to fill the window, keeping the fixed cell grid
+> - Scaling is capped so a maximised window enlarges the text reasonably instead of absurdly
+> - Off by default: the grid keeps its configured font size and sits centred in a larger window
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

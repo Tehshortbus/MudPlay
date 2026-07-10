@@ -484,11 +484,13 @@
         </Border>
 
         <!-- ============ Terminal canvas ============ -->
-        <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
+        <ScrollViewer x:Name="TerminalScroll"
+                      HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
                       Background="{StaticResource ChromeBgSunkenBrush}">
             <ctl:TerminalControl x:Name="Terminal"
                                  Emulator="{Binding Emulator}"
                                  FontSize="{Binding TerminalFontSize}"
+                                 ScaleToFit="{Binding ScaleTerminalToWindow}"
                                  HorizontalAlignment="Center"
                                  VerticalAlignment="Center">
                 <ctl:TerminalControl.ContextMenu>
