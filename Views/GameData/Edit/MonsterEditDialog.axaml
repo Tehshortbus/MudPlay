@@ -265,10 +265,13 @@
                                                     IsVisible="{Binding HasActions}">
                                                 <Button.Flyout>
                                                     <Flyout Placement="Bottom">
-                                                        <StackPanel MaxWidth="460">
+                                                        <StackPanel MaxWidth="500">
                                                             <TextBlock Classes="SectionHeader"
                                                                        Text="Responds to (indented lines are the effects that fire)"/>
+                                                            <!-- Right padding reserves a gutter so the overlay
+                                                                 vertical scrollbar doesn't sit on top of the text. -->
                                                             <ScrollViewer MaxHeight="360"
+                                                                          Padding="0,0,16,0"
                                                                           VerticalScrollBarVisibility="Auto"
                                                                           HorizontalScrollBarVisibility="Auto">
                                                                 <ItemsControl ItemsSource="{Binding Actions}">
