@@ -4570,6 +4570,15 @@ public sealed class AppServices
         Display.TerminalCols = values.TerminalCols;
         Display.TerminalRows = values.TerminalRows;
 
+        // The terminal-scaling toggle is char-tier (General), not BBS-tier, but
+        // it shares this method's ProfileLoaded / ProfileMutated triggers — so
+        // seed it here from the active profile. The Settings → General Apply
+        // path also writes Display.ScaleToWindow live, since a plain profile
+        // Save fires neither event.
+        Display.ScaleToWindow =
+            ReadSection<Models.Profile.GeneralSettings>(Profile.Current, "General")
+                .ScaleTerminalToWindow;
+
         // Game-menu commands are BBS-tier too — HangupHandler consumes
         // ExitCommand synchronously on @hangup; MainMenuEntryAutomation +
         // the cleanup-logout flow consume both. Blank entries fall back to
@@ -4591,6 +4600,7 @@ public sealed class AppServices
         Display.ScrollbackLines = defaults.ScrollbackLines;
         Display.TerminalCols = defaults.TerminalCols;
         Display.TerminalRows = defaults.TerminalRows;
+        Display.ScaleToWindow = false;
         GameCommands.EntryCommand = defaults.GameEntryCommand;
         GameCommands.ExitCommand = defaults.GameExitCommand;
     }

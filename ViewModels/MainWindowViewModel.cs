@@ -84,6 +84,12 @@ public partial class MainWindowViewModel : ObservableObject
     // through a save cycle.
     public double TerminalFontSize => AppServices.Current.Display.FontSize;
 
+    // Whether the terminal auto-fits its font to the window (keeping the fixed
+    // cell grid). Forwarded from AppServices.Display like TerminalFontSize so a
+    // Settings → General edit reaches the live canvas immediately. Bound to
+    // TerminalControl.ScaleToFit.
+    public bool ScaleTerminalToWindow => AppServices.Current.Display.ScaleToWindow;
+
     // Live mirror of the Global-tier toolbar visibility settings. Each
     // toolbar Button in the XAML binds its IsVisible to a property on this so
     // edits in Settings → Toolbar apply immediately on Apply / OK.
@@ -1174,6 +1180,10 @@ public partial class MainWindowViewModel : ObservableObject
         if (e.PropertyName == nameof(Services.DisplayConfig.FontSize))
         {
             OnPropertyChanged(nameof(TerminalFontSize));
+        }
+        else if (e.PropertyName == nameof(Services.DisplayConfig.ScaleToWindow))
+        {
+            OnPropertyChanged(nameof(ScaleTerminalToWindow));
         }
         else if (e.PropertyName == nameof(Services.DisplayConfig.ScrollbackLines))
         {

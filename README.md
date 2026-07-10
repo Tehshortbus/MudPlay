@@ -1,7 +1,7 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.28.0**
+> **Version 1.29.0**
 > - A BBS that renames the runic coin (e.g. "quatloos") is now honored everywhere: coin parsing, get/drop/hide/give commands, wealth math, and every wealth display
 > - Cash pickup, auto-deposit, stash, @share, and the Session Stats / Player Workshop coin readouts no longer break on a renamed-runic realm
 >
