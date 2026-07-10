@@ -56,6 +56,17 @@ public sealed partial class PartyMember : ObservableObject
     [NotifyPropertyChangedFor(nameof(MaRichDisplay))]
     private int _mpPercent;
 
+    // True when this member's secondary pool is kai (Mystic / monk family)
+    // rather than mana — kai operates differently and the party row must label
+    // it K:, not M:. Set alongside BaselineMp (the field that gates whether the
+    // secondary bar renders at all): the self row reads it from
+    // PlayerState.ManaType, other members from their @health reply's KAI=/MA=
+    // keyword.
+    [ObservableProperty]
+    [field: Owner(typeof(PartyManager))]
+    [NotifyPropertyChangedFor(nameof(MaRichDisplay))]
+    private bool _isKai;
+
     // PartyWindow display string for HP. When BaselineHp is known (the on-join
     // `@health` exchange completed and we captured this member's max), shows
     // "current/max" computed from BaselineHp * HpPercent / 100. Until the
@@ -87,9 +98,10 @@ public sealed partial class PartyMember : ObservableObject
         : $"H:{HpPercent}%";
 
     // PartyWindow rich display string for MA / KAI — symmetric with HpRichDisplay.
+    // Prefix is K: for kai (Mystic / monk), M: for mana.
     public string MaRichDisplay => BaselineMp > 0
-        ? $"M:{BaselineMp * MpPercent / 100}/{BaselineMp} {MpPercent}%"
-        : $"M:{MpPercent}%";
+        ? $"{(IsKai ? "K" : "M")}:{BaselineMp * MpPercent / 100}/{BaselineMp} {MpPercent}%"
+        : $"{(IsKai ? "K" : "M")}:{MpPercent}%";
 
     // Stance / position observed on the most recent `par` row.
     [ObservableProperty] [field: Owner(typeof(PartyManager))] private PlayerPosition _position;

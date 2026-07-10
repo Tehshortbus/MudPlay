@@ -30,7 +30,13 @@ namespace FujinTerm.Game;
 // ReconnectAfterCleanup toggle (queried via SetAutoLogoutEnabledCheck). That
 // switch already means "manage the cleanup cycle for me" — auto-logging-off
 // before the BBS yanks us is the front half of the same cycle whose back half
-// (auto-redial) it already governs.
+// (auto-redial) it already governs. That per-BBS opt-in deliberately overrides
+// the character's master "Disable hangups" kill-switch: a user who asked us to
+// manage the cleanup cycle wants the graceful exit even though it ends in a
+// carrier drop, so — unlike the panic @hangup / low-HP-emergency paths — this
+// log-off is exempt from DisableHangups. Without the exemption a party member
+// with the kill-switch on lingers in the realm while the rest of the party
+// exits, then gets yanked by the BBS at the worst moment.
 //
 // Sending `x` to reach the menu mid-session does NOT re-trigger
 // MainMenuEntryAutomation's auto-entry: that engine's latch is closed except in
@@ -47,7 +53,6 @@ public sealed class CleanupLogoutOrchestrator : IDisposable
     private Func<bool>? _isSafe;
     private Func<bool>? _isConnected;
     private Func<bool>? _autoLogoutEnabled;
-    private Func<bool>? _hangupsDisabled;
     private Action? _disconnect;
 
     private Avalonia.Threading.DispatcherTimer? _tick;
@@ -110,12 +115,6 @@ public sealed class CleanupLogoutOrchestrator : IDisposable
     // Supply the opt-in gate (active BBS's ReconnectAfterCleanup).
     public void SetAutoLogoutEnabledCheck(Func<bool> enabled) => _autoLogoutEnabled = enabled;
 
-    // Supply the master "Disable hangups" check. When it returns true the
-    // cleanup log-off never arms — and stands down if toggled on mid-flow —
-    // since dropping the carrier ourselves counts as an automatic hangup the
-    // user has opted out of.
-    public void SetHangupsDisabledCheck(Func<bool> disabled) => _hangupsDisabled = disabled;
-
     // Supply the disconnect action invoked once we reach the main menu (the
     // host's user-initiated disconnect path).
     public void SetDisconnectCallback(Action disconnect) => _disconnect = disconnect;
@@ -143,7 +142,6 @@ public sealed class CleanupLogoutOrchestrator : IDisposable
         // One logout per cleanup cycle — ignore the 5m / 2m follow-ups
         // once the first warning has armed us.
         if (Phase != CleanupLogoutPhase.Idle) return;
-        if (_hangupsDisabled?.Invoke() ?? false) return;
         if (!(_autoLogoutEnabled?.Invoke() ?? false)) return;
         if (!(_isConnected?.Invoke() ?? false)) return;
 
@@ -177,14 +175,6 @@ public sealed class CleanupLogoutOrchestrator : IDisposable
         if (!(_isConnected?.Invoke() ?? false))
         {
             Abort("connection dropped before logout completed");
-            return;
-        }
-
-        // User flipped "Disable hangups" on after we armed — stand down
-        // before sending the exit or dropping the carrier.
-        if (_hangupsDisabled?.Invoke() ?? false)
-        {
-            Abort("hangups disabled mid-flow");
             return;
         }
 

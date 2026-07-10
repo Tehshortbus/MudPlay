@@ -2,6 +2,25 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.23.19
+
+- Dropped/dragged ally stays a heal target — the client keeps polling their health and name-heals them through a re-invite instead of abandoning them
+- Auto-combat re-engages after the leader announces an attack instead of sitting idle
+- Party-leader target priority + attack-last now hits the leader's target, not the first monster in the room
+- No redundant re-attack when we're already on the leader's chosen target
+- `Your command had no effect.` drops the vanished target and re-evaluates instead of stalling until a manual room redisplay
+- Loop advances in a cleared room without a manual room redisplay
+- Selecting a room and pressing Run seamlessly swaps modes (walk-to ↔ loop ↔ auto-lair) and starts immediately
+- Starting a loop resets the session statistics and `@reset`s the party
+- Hand-typed hidden-exit moves like `move wall` re-anchor navigation position
+- Cleanup now exits and disconnects every party member — none left behind
+- After cleanup, the leader reforms the party (waiting up to the wait period) and resumes the loop, instead of stalling until a manual re-invite
+- Follow works after training — a trained follower is re-invited as they re-enter the realm, no manual re-invite/re-join
+- Mystic kai shows `K` in the party menu instead of `M`
+- Equipment Manager no longer carries loot toggles or a synthetic Inventory row; the item-edit dialog is the sole editor of auto-collect/stash/discard flags
+- Bug reports capture resolved effective settings; the program log now records settings changes and engine commands
+- bug reports addressed: stock-20260708-212146, stock-20260708-212316, stock-20260708-212647, stock-20260708-212732, stock-20260708-212931, stock-20260708-213015, stock-20260708-213610, stock-20260708-231716, stock-20260708-231759, stock-20260709-001417, stock-20260709-001547, stock-20260709-001623, stock-20260709-005001, stock-20260709-094623, stock-20260709-094822
+
 ## 1.23.4
 
 - Leader crossing a chime teleport no longer re-fires the teleport or spams `@join` at members who already rejoined — the walker waits for the destination room to confirm before it treats the step as done

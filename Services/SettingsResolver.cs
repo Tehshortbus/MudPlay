@@ -29,6 +29,12 @@ public sealed class SettingsResolver
     private readonly Func<string?>? _activeSetProvider;
     private BbsProfile? _activeBbs;
 
+    // Set post-construction by AppServices (same pattern as GameData.Log /
+    // Profile.Log). Every tier write / clear logs an Info line so a bug report's
+    // program log shows what the user actually changed — the effective-settings
+    // dump is only a point-in-time snapshot, this is the audit trail of edits.
+    public LogService? Log { get; set; }
+
     // Per-path cache of override side-files. Keyed by the absolute path returned
     // from AppPaths.OverrideFile; value is null when the file is absent or empty
     // so we can distinguish "checked, missing" from "not yet checked." Without
@@ -121,6 +127,8 @@ public sealed class SettingsResolver
                 _profile.Save();
                 break;
         }
+
+        Log?.Info("Settings", $"write: '{tabName}' → {tier} tier");
     }
 
     // Remove the override for tabName at the specified tier so the next-lower
@@ -133,17 +141,29 @@ public sealed class SettingsResolver
                 throw new InvalidOperationException("Defaults tier is read-only.");
 
             case SettingsTier.Global:
-                if (_settings.Current.Settings?.Remove(tabName) == true) _settings.Save();
+                if (_settings.Current.Settings?.Remove(tabName) == true)
+                {
+                    _settings.Save();
+                    Log?.Info("Settings", $"clear: '{tabName}' override at Global tier");
+                }
                 break;
 
             case SettingsTier.Bbs:
                 BbsProfile? bbs = _activeBbs;
-                if (bbs?.Settings?.Remove(tabName) == true) _bbsStore.Save(bbs);
+                if (bbs?.Settings?.Remove(tabName) == true)
+                {
+                    _bbsStore.Save(bbs);
+                    Log?.Info("Settings", $"clear: '{tabName}' override at Bbs tier");
+                }
                 break;
 
             case SettingsTier.Character:
                 CharacterProfile? chr = _profile.Current;
-                if (chr?.Settings?.Remove(tabName) == true) _profile.Save();
+                if (chr?.Settings?.Remove(tabName) == true)
+                {
+                    _profile.Save();
+                    Log?.Info("Settings", $"clear: '{tabName}' override at Character tier");
+                }
                 break;
         }
     }
@@ -203,6 +223,7 @@ public sealed class SettingsResolver
         Dictionary<string, JsonElement> records = LoadOverrideFile(tier, scope, table, set);
         records[recordId] = asJson;
         SaveOverrideFile(tier, scope, table, set, records);
+        Log?.Info("Settings", $"game-data write: {table} #{recordId} → {tier} tier");
         GameDataChanged?.Invoke(new GameDataChange(table, recordId, tier));
     }
 
@@ -218,6 +239,7 @@ public sealed class SettingsResolver
         if (records.Remove(recordId))
         {
             SaveOverrideFile(tier, scope, table, set, records);
+            Log?.Info("Settings", $"game-data clear: {table} #{recordId} at {tier} tier");
             GameDataChanged?.Invoke(new GameDataChange(table, recordId, tier));
         }
     }

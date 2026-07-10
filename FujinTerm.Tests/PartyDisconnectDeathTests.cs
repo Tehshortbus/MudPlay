@@ -372,6 +372,75 @@ public sealed class PartyDisconnectDeathTests
         Assert.DoesNotContain(mgr.State.Members, m => m.Name.StartsWith("Helper"));
     }
 
+    // ===== Left-the-Realm (train / train stats / quit) =====
+
+    [Fact]
+    public void LeftRealm_OfFollower_RemovesAndStartsGraceWindow()
+    {
+        // "X just left the Realm." is what a follower's `train stats` excursion
+        // emits to the rest of the party — the game drops them server-side
+        // exactly like a disconnect, so route it through the same
+        // remove-and-grace-window path.
+        var (router, mgr, _) = Setup();
+        router.Dispatch(Line("Helper started to follow you."));
+        Assert.Single(mgr.State.Members);
+
+        router.Dispatch(Line("Helper just left the Realm."));
+
+        Assert.Empty(mgr.State.Members);
+        Assert.Contains("Helper", mgr.RecentlyDisconnected.Keys, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void LeftRealm_OfFollower_AndReturnsWithinWindow_AndWeLead_SendsInvite()
+    {
+        // The reported bug: a follower trains, comes back, and is stuck
+        // "partied but not following." The re-entry must auto-re-invite.
+        var (router, mgr, wire) = Setup();
+        router.Dispatch(Line("Helper started to follow you."));
+        Assert.True(mgr.State.SelfIsLeader);
+
+        router.Dispatch(Line("Helper just left the Realm."));
+        wire.Clear();
+
+        router.Dispatch(Line("Helper just entered the Realm."));
+
+        byte[] sent = Assert.Single(wire);
+        Assert.Equal("invite Helper\r", Encoding.Latin1.GetString(sent));
+    }
+
+    [Fact]
+    public void LeftRealm_OfLeader_DissolvesEntireParty()
+    {
+        // MajorMUD leadership rule: a leader's `train stats` excursion (leave +
+        // re-enter the realm) disbands the whole party, same as a leader
+        // disconnect. Every follower row clears; the leader is not stamped
+        // recoverable (a returning leader has no party to be invited into).
+        MessageRouter router = new();
+        DefaultPatterns.Seed(router);
+        PartyState state = new();
+        PartyManager mgr = new(router, state) { LocalCharacterName = "Raijin" };
+
+        router.Dispatch(Line("You are now following Fujin."));
+        mgr.TestEnterParBlock();
+        mgr.FeedTestLines(new[]
+        {
+            "  Fujin  WuzHere                  (Mystic)        [M:100%] [H:100%]   - Frontrank",
+            "  Raijin WuzHere                  (Priest)        [M:100%] [H:100%]   - Midrank",
+            "  Helper WuzHere                  (Cleric)        [M:100%] [H:100%]   - Backrank",
+            string.Empty,
+        });
+        Assert.Equal(3, mgr.State.Members.Count);
+        Assert.Equal("Fujin", mgr.State.LeaderName);
+
+        router.Dispatch(Line("Fujin just left the Realm."));
+
+        Assert.Empty(mgr.State.Members);
+        Assert.False(mgr.State.IsInParty);
+        Assert.Null(mgr.State.LeaderName);
+        Assert.DoesNotContain("Fujin", mgr.RecentlyDisconnected.Keys, StringComparer.OrdinalIgnoreCase);
+    }
+
     // ===== Board-specific (custom) disconnect line =====
 
     private const string LogoffPattern = "►►► [{name}] logs OFF*";

@@ -316,6 +316,12 @@ public sealed class AppServices
     // the party. Cleared on a deliberate leave or clean shutdown.
     public Game.Remote.PartyRejoinCoordinator PartyRejoin { get; private set; } = null!;
 
+    // Leader-side reconnect party reform — the mirror of PartyRejoin. Snapshots the
+    // followers we're leading at disconnect and, on the first in-game room after the
+    // reconnect, rebases the grace window + holds the loop so a nightly-cleanup
+    // reconnect waits for them to return and re-party instead of stranding them.
+    public Game.Remote.PartyReformCoordinator PartyReform { get; private set; } = null!;
+
     // Drives the @trap <direction> auto-disarm flow:
     // search → disarm state machine + FIFO request queue + Stats-
     // skill gate. Bound by TrapRemote's handler at
@@ -1341,6 +1347,7 @@ public sealed class AppServices
         // The active-set provider lets game-data override I/O target the
         // currently active MDB set's per-set side-files.
         Resolver = new SettingsResolver(Settings, Bbs, Profile, () => GameData.ActiveSet);
+        Resolver.Log = bootstrapLog;
 
         Dialogs = new DialogService();
         Confirm = new ConfirmService(Dialogs);
@@ -3208,6 +3215,29 @@ public sealed class AppServices
         // Stop+Start cycle so the new filter applies on the next BFS.
         Movement.AvoidedChanged += () => LoopRunner.NotifyAvoidedChanged();
 
+        // Loop-start session reset. ReachedFirstWaypoint fires once per loop
+        // session at the moment the circle actually begins (after any walker
+        // approach), which is the point a lap's stats should re-anchor. Gated by
+        // Settings.Party.ResetStatisticsOnLoopStart (mirrored onto
+        // PartyBroadcaster.AutoExpResetEnabled): when on, zero our own
+        // session-stats trackers — the same wipe the Session Stats window button
+        // and the inbound @reset handler perform — and telepath @reset to the
+        // party so every follower re-anchors to the new circuit. This consumer
+        // was described in the PartyBroadcaster wiring comment but never built,
+        // so loop starts silently skipped the reset.
+        LoopRunner.Event += e =>
+        {
+            if (e.Kind != Game.Map.LoopEventKind.ReachedFirstWaypoint) return;
+            if (!PartyBroadcaster.AutoExpResetEnabled) return;
+            CombatSession.Reset();
+            TimeAnalysis.Reset();
+            SessionActivity.Reset();
+            TransactionHistory.Reset();
+            Log.Info("LoopRunner",
+                "loop start: session stats reset; broadcasting @reset to party.");
+            PartyBroadcaster.BroadcastExpReset();
+        };
+
         // Invite-as-wait-signal — AutoPartyManager holds the loop (via the
         // PartyInvite gate) while waiting for an auto-invited player to join,
         // and uninvites + resumes if they miss the wait window. Wired here
@@ -3413,6 +3443,15 @@ public sealed class AppServices
         };
         // Hydrate the crash-survivable memory on every profile load / swap.
         Profile.ProfileLoaded += p => PartyRejoin.HydrateRememberedLeader(p.PendingReconnectLeader);
+
+        // Leader-side reconnect party reform (mirror of PartyRejoin). No
+        // crash-survivable memory: the reform recovers an in-process reconnect
+        // (nightly cleanup drops + redials while the app stays up), so the
+        // disconnect snapshot lives only for the session. Same kill-switch gate.
+        PartyReform = new Game.Remote.PartyReformCoordinator(
+            Router, Party,
+            isAutoEnabled: () => !AutoModeController.KillSwitchEngaged,
+            log: Log);
 
         // Reconnect-recovery cross-wiring — done here (after PartyRejoin exists)
         // because these hooks bridge the leader-side comeback manager and the

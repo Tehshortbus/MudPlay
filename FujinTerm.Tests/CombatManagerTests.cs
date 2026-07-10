@@ -104,6 +104,24 @@ public sealed class CombatManagerTests
                 Links: new[] { new GameDataLink("Monsters", number) }));
         }
 
+        // Register a player so RoomEntityClassifier tags a matching "Also here:"
+        // token as EntityKind.Player (needed for the follow-deferral tests, which
+        // only defer when the followed player is visible in the room).
+        public void AddPlayer(string givenName)
+        {
+            Players.Players.Add(new PlayerRecord(
+                GivenName: givenName,
+                FamilyName: string.Empty,
+                Class: "Warrior",
+                Race: "Human",
+                Alignment: "Neutral",
+                Title: null,
+                Gang: null,
+                Role: null,
+                FirstSeenUtc: DateTime.UtcNow,
+                LastSeenUtc: DateTime.UtcNow));
+        }
+
         public void Feed(string line)
         {
             LineExtractor.EmittedLine emitted = new(
@@ -810,6 +828,7 @@ public sealed class CombatManagerTests
         // Default pick is angry; party leader announces the LARGE one.
         // FollowLeader switches our target to match the leader's instance.
         using Harness h = new();
+        h.Party.IsInParty = true;
         h.Settings.TargetPriority = TargetPriority.FollowLeader;
         h.Party.LeaderName = "Boss";
         h.Party.Members.Add(new PartyMember { Name = "Boss" });
@@ -833,6 +852,7 @@ public sealed class CombatManagerTests
         // name. FollowLeader must normalise both to the given name or it never
         // recognises a full-named leader's target announce.
         using Harness h = new();
+        h.Party.IsInParty = true;
         h.Settings.TargetPriority = TargetPriority.FollowLeader;
         h.Party.LeaderName = "Boss McBossface";
         h.Party.Members.Add(new PartyMember { Name = "Boss McBossface" });
@@ -855,6 +875,7 @@ public sealed class CombatManagerTests
         // Only the leader's announce drives the switch. A non-leader
         // party member shouting a different target is ignored.
         using Harness h = new();
+        h.Party.IsInParty = true;
         h.Settings.TargetPriority = TargetPriority.FollowLeader;
         h.Party.LeaderName = "Boss";
         h.Party.Members.Add(new PartyMember { Name = "Boss" });
@@ -874,6 +895,7 @@ public sealed class CombatManagerTests
     public void TargetPriorityFollowMember_SwitchesToNamedMembersTarget()
     {
         using Harness h = new();
+        h.Party.IsInParty = true;
         h.Settings.TargetPriority = TargetPriority.FollowMember;
         h.Settings.TargetPriorityMemberName = "Healer";
         h.Party.Members.Add(new PartyMember { Name = "Healer" });
@@ -894,6 +916,7 @@ public sealed class CombatManagerTests
     public void TargetPriorityFollowMember_IgnoresOtherAnnouncers()
     {
         using Harness h = new();
+        h.Party.IsInParty = true;
         h.Settings.TargetPriority = TargetPriority.FollowMember;
         h.Settings.TargetPriorityMemberName = "Healer";
         h.AddMonster(1, "kobold thief", killable: true, allowNoPrefix: false,
@@ -913,6 +936,7 @@ public sealed class CombatManagerTests
     {
         // FollowLeader with no leader set has nothing to follow.
         using Harness h = new();
+        h.Party.IsInParty = true;
         h.Settings.TargetPriority = TargetPriority.FollowLeader;
         h.AddMonster(1, "kobold thief", killable: true, allowNoPrefix: false,
             "angry", "large");
@@ -933,6 +957,7 @@ public sealed class CombatManagerTests
         // view (e.g. abbreviated / unseen). We still follow by sending a
         // literal attack against the announced name so we don't desync.
         using Harness h = new();
+        h.Party.IsInParty = true;
         h.Settings.TargetPriority = TargetPriority.FollowMember;
         h.Settings.TargetPriorityMemberName = "Healer";
         h.AddMonster(1, "giant rat", killable: true);
@@ -945,6 +970,119 @@ public sealed class CombatManagerTests
         Assert.Equal(2, h.Sent.Count);
         Assert.Equal("a cave bear", h.LastSent);
         Assert.Equal("cave bear", h.Combat.CurrentTarget);
+    }
+
+    // ----- Target Priority: follow deferral (hold own pick, wait for announce) -
+
+    [Fact]
+    public void FollowLeader_InPartyLeaderPresent_DefersOwnPickUntilAnnounce()
+    {
+        // In a party, FollowLeader, leader in the room, multiple mobs: we must
+        // NOT eagerly burst-attack our own pick. Hold, wait for the leader's
+        // announce, then engage THAT mob — no wasted swing on the wrong monster.
+        using Harness h = new();
+        h.Party.IsInParty = true;
+        h.Settings.TargetPriority = TargetPriority.FollowLeader;
+        h.Party.LeaderName = "Boss";
+        h.Party.Members.Add(new PartyMember { Name = "Boss" });
+        h.AddPlayer("Boss");
+        h.AddMonster(1, "kobold thief", killable: true, allowNoPrefix: false,
+            "angry", "large");
+
+        h.Feed("Also here: Boss, angry kobold thief, large kobold thief.");
+        Assert.Empty(h.Sent);                       // held — nothing sent yet
+        Assert.Null(h.Combat.CurrentTarget);
+
+        h.Feed("Boss moves to attack large kobold thief.");
+        Assert.Single(h.Sent);                      // first swing is the leader's mob
+        Assert.Equal("a large kobold thief", h.LastSent);
+        Assert.Equal("large kobold thief", h.Combat.CurrentTarget);
+    }
+
+    [Fact]
+    public void FollowLeader_DeferNoAnnounce_TickFallsBackToOwnPick()
+    {
+        // Held awaiting a leader announce, but the round elapses with none — the
+        // combat tick falls back to our own game-data pick so we don't stall.
+        using Harness h = new();
+        h.Party.IsInParty = true;
+        h.Settings.TargetPriority = TargetPriority.FollowLeader;
+        h.Party.LeaderName = "Boss";
+        h.Party.Members.Add(new PartyMember { Name = "Boss" });
+        h.AddPlayer("Boss");
+        h.AddMonster(1, "kobold thief", killable: true, allowNoPrefix: false,
+            "angry", "large");
+
+        h.Feed("Also here: Boss, angry kobold thief, large kobold thief.");
+        Assert.Empty(h.Sent);                       // held
+
+        h.Combat.OnCombatTick();                     // round heartbeat, no announce
+        Assert.Single(h.Sent);
+        Assert.Equal("a angry kobold thief", h.LastSent);   // own pick (highest priority / first)
+        Assert.Equal("angry kobold thief", h.Combat.CurrentTarget);
+    }
+
+    [Fact]
+    public void FollowLeader_AnnounceOnAlreadyEngaged_NoRedundantRefire()
+    {
+        // Once we're on the leader's target, a repeat announce against that SAME
+        // mob must not re-issue the attack — the server already auto-swings at it.
+        using Harness h = new();
+        h.Party.IsInParty = true;
+        h.Settings.TargetPriority = TargetPriority.FollowLeader;
+        h.Party.LeaderName = "Boss";
+        h.Party.Members.Add(new PartyMember { Name = "Boss" });
+        h.AddPlayer("Boss");
+        h.AddMonster(1, "kobold thief", killable: true, allowNoPrefix: false,
+            "angry", "large");
+
+        h.Feed("Also here: Boss, angry kobold thief, large kobold thief.");
+        h.Feed("Boss moves to attack large kobold thief.");
+        Assert.Single(h.Sent);
+        Assert.Equal("large kobold thief", h.Combat.CurrentTarget);
+
+        h.Feed("Boss moves to attack large kobold thief.");   // repeat on same mob
+        Assert.Single(h.Sent);                                // suppressed
+        Assert.Equal("large kobold thief", h.Combat.CurrentTarget);
+    }
+
+    [Fact]
+    public void FollowLeader_NotInParty_NoDeferNoFollow()
+    {
+        // Party disbanded / we left: TargetPriority reverts to our own game-data
+        // pick. No deferral, and the ex-leader's announce no longer switches us.
+        using Harness h = new();
+        h.Settings.TargetPriority = TargetPriority.FollowLeader;
+        h.Party.LeaderName = "Boss";
+        h.AddPlayer("Boss");
+        h.AddMonster(1, "kobold thief", killable: true, allowNoPrefix: false,
+            "angry", "large");
+
+        h.Feed("Also here: Boss, angry kobold thief, large kobold thief.");
+        Assert.Single(h.Sent);                      // eager own pick, no hold
+        Assert.Equal("a angry kobold thief", h.LastSent);
+
+        h.Feed("Boss moves to attack large kobold thief.");
+        Assert.Single(h.Sent);                      // no follow — not partied
+        Assert.Equal("angry kobold thief", h.Combat.CurrentTarget);
+    }
+
+    [Fact]
+    public void FollowLeader_SingleMob_NoDefer()
+    {
+        // One engageable mob — nothing to coordinate, so we take it immediately
+        // rather than holding for an announce.
+        using Harness h = new();
+        h.Party.IsInParty = true;
+        h.Settings.TargetPriority = TargetPriority.FollowLeader;
+        h.Party.LeaderName = "Boss";
+        h.Party.Members.Add(new PartyMember { Name = "Boss" });
+        h.AddPlayer("Boss");
+        h.AddMonster(1, "giant rat", killable: true);
+
+        h.Feed("Also here: Boss, giant rat.");
+        Assert.Single(h.Sent);
+        Assert.Equal("a giant rat", h.LastSent);
     }
 
     // ----- room change drops current target ----------------------------

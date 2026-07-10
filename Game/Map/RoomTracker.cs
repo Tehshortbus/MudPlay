@@ -690,6 +690,15 @@ public sealed class RoomTracker
         // returns false and we fall through to Suspect exactly as before.
         if (TryReplayRecover(observation, when)) return;
 
+        // A hand-typed hidden-exit move / CMD teleport / drag lands us in a room
+        // whose live display hides exits the graph knows about (the hidden exit we
+        // just crossed, a closed door), so the exact (Name, ExitMask) search above
+        // misses even though the destination is unique by name. The door-tolerant
+        // covering-exits re-anchor otherwise only runs after three Suspect strikes;
+        // a uniquely-named destination should re-latch on the first display rather
+        // than freezing the marker at the source until the strike limit trips.
+        if (TryReanchorByName(observation, when, "covering-exits into name-unique room")) return;
+
         EnterSuspect(when, $"observation mismatched from Confirmed; candidates={candidates.Count}");
     }
 

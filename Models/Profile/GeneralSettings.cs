@@ -52,13 +52,19 @@ public sealed class GeneralSettings
 
     // When true, NO automatic hangup mechanic may drop the carrier — the client
     // disconnects only when the user explicitly asks (hotkey / toolbar / menu).
-    // Suppresses all four automatic paths: the @hangup and @relog remote
-    // commands, the Game.Health.HealthManager low-HP emergency hangup, and the
-    // Game.CleanupLogoutOrchestrator nightly-cleanup log-off. Hard-overrides
+    // Suppresses the @hangup and @relog remote commands and the
+    // Game.Health.HealthManager low-HP emergency hangup. Hard-overrides
     // AllowHangupInAllOffMode — if the user has explicitly disabled hangups, the
-    // emergency carve-out stays silenced too. Default false. Char-tier; surfaced
-    // as the "Disable hangups" toolbar toggle whose pressed state is remembered
-    // per character, like the auto-mode toggles.
+    // emergency carve-out stays silenced too. The one carve-out is the
+    // Game.CleanupLogoutOrchestrator nightly-cleanup log-off: when the active
+    // BBS's ReconnectAfterCleanup opt-in is on, that graceful exit runs even
+    // with hangups disabled, because opting into "manage the cleanup cycle for
+    // me" already asks the client to exit the realm and drop the carrier at
+    // shutdown — otherwise a kill-switch party member lingers in the realm while
+    // the rest of the party exits, then gets yanked by the BBS at the worst
+    // moment. Default false. Char-tier; surfaced as the "Disable hangups"
+    // toolbar toggle whose pressed state is remembered per character, like the
+    // auto-mode toggles.
     public bool DisableHangups { get; set; }
 
     // ----- Re-enable auto-actions on reconnect -----------------------

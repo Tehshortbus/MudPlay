@@ -127,17 +127,17 @@ public sealed partial class SettingsWindowViewModel : ObservableObject, IDisposa
 
     private void ApplyAll()
     {
-        int wrote = 0;
+        List<string> applied = new();
         foreach (SettingsSectionViewModel s in Sections)
         {
             if (!s.IsDirty) continue;
             s.Apply();
-            wrote++;
+            applied.Add(s.Title);
         }
-        if (wrote > 0)
+        if (applied.Count > 0)
         {
             _log.Info("Settings",
-                $"Applied {wrote} section(s) to profile '{_profile.CurrentProfileName ?? "(none)"}'.");
+                $"User saved {applied.Count} section(s) to profile '{_profile.CurrentProfileName ?? "(none)"}': {string.Join(", ", applied)}.");
         }
     }
 

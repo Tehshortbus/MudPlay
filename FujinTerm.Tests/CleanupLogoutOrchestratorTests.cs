@@ -26,7 +26,6 @@ public sealed class CleanupLogoutOrchestratorTests
         public bool Safe { get; set; }
         public bool Connected { get; set; } = true;
         public bool Enabled { get; set; } = true;
-        public bool HangupsDisabled { get; set; }
         public int DisconnectCalls { get; set; }
         public DateTime Clock { get; set; } = Now;
     }
@@ -49,7 +48,6 @@ public sealed class CleanupLogoutOrchestratorTests
         engine.SetSafePredicate(() => h.Safe);
         engine.SetConnectedCheck(() => h.Connected);
         engine.SetAutoLogoutEnabledCheck(() => h.Enabled);
-        engine.SetHangupsDisabledCheck(() => h.HangupsDisabled);
         engine.SetDisconnectCallback(() => h.DisconnectCalls++);
         return h;
     }
@@ -96,38 +94,20 @@ public sealed class CleanupLogoutOrchestratorTests
     }
 
     [Fact]
-    public void Warning_WhenHangupsDisabled_StaysIdle()
+    public void Warning_ReconnectAfterCleanupOnly_ArmsIndependentOfHangups()
     {
-        // Master "Disable hangups" on → the cleanup log-off never arms,
-        // even with a safe room ready to exit. Dropping the carrier
-        // ourselves is an automatic hangup the user opted out of.
+        // The cleanup log-off is gated on ReconnectAfterCleanup alone — it is
+        // deliberately exempt from the master "Disable hangups" kill-switch, so
+        // a safe room exits at shutdown even when the user has hangups disabled.
+        // The orchestrator no longer knows about DisableHangups at all; this
+        // pins that the opt-in is the sole arming gate.
         Harness h = Setup();
         h.Safe = true;
-        h.HangupsDisabled = true;
 
         FireWarning(h);
 
-        Assert.Equal(CleanupLogoutPhase.Idle, h.Engine.Phase);
-        Assert.Empty(h.Engine.LastSentForTests);
-    }
-
-    [Fact]
-    public void Pending_HangupsDisabledMidFlow_StandsDown()
-    {
-        // Armed while hangups were allowed, then the user flips the switch
-        // on mid-wait → stand down before sending the exit / dropping the
-        // carrier.
-        Harness h = Setup();
-        FireWarning(h);   // Pending (unsafe)
-        Assert.Equal(CleanupLogoutPhase.Pending, h.Engine.Phase);
-
-        h.HangupsDisabled = true;
-        h.Safe = true;     // would otherwise exit on this tick
-        h.Engine.EvaluateForTests();
-
-        Assert.Equal(CleanupLogoutPhase.Done, h.Engine.Phase);
-        Assert.Empty(h.Engine.LastSentForTests);
-        Assert.Equal(0, h.DisconnectCalls);
+        Assert.Equal(CleanupLogoutPhase.Exiting, h.Engine.Phase);
+        Assert.Equal("x\r", LastSent(h.Engine));
     }
 
     [Fact]

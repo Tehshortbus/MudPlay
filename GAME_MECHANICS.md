@@ -780,6 +780,16 @@ flag). These are hard eligibility gates, independent of resistance and level imm
 - **[CONFIRMED]** Losing the leader disbands the whole party — whether the leader **disconnects or
   dies**. No grace-window auto-invite for a lost leader; on the leader's own death the party is gone
   by the time they respawn in the graveyard.
+- **[CONFIRMED]** **Training (`train` / `train stats`) is a realm excursion — it briefly drops you
+  out of and back into the realm**, emitting `<Name> just left the Realm.` then `<Name> just entered
+  the Realm.` to everyone in the room. Its party effect matches who trained: a **follower's** train
+  drops only that follower (same as a disconnect — removed server-side, requires a fresh leader
+  invite to rejoin; they do **not** auto-rejoin on return), while the **leader's** train disbands the
+  whole party (leader-loss rule above — the leader sees `You are not in a party at the present time.`
+  on return). Consequence for automation: route `<Name> just left the Realm.` through the same
+  member-drop correlation as a disconnect so a trained follower is stamped into the reconnect grace
+  window and auto-re-invited on their `just entered the Realm.` — and members who train at staggered
+  times each re-invite as they individually re-enter within the window.
 - **[CONFIRMED]** When a **non-leader party member dies**, they leave the active party — but in the
   leader's `par` the name shows as an **invited** (pending) slot **indistinguishable from a genuine
   pending invite**. So a member death is recognized **not** from `par` but from the room line
@@ -829,6 +839,26 @@ in the data means "unknown," so the client prices unknown Charm at 50.
   ~half base at Charm 50.
 - The reference client wraps charm-scaled totals above 4,294,967,295 copper (a legacy 32-bit
   overflow bug); the client deliberately does **not** replicate that wrap.
+
+## Shop stock & restock
+
+- **[CONFIRMED]** Each shop carries a **fixed list of items it can stock** (the Shops table's
+  Item-0..19 slots). Every stocked item has one of two replenishment behaviours:
+  - **Restocking** — regenerates on its own, a **percentage chance over a time period**, so it
+    trickles back into stock without player involvement.
+  - **No-stock** — never spawns on its own; the shop only has one to sell **if a player sold one to
+    that shop**. Player sells are what seed a no-stock item.
+- **[CONFIRMED]** **One item per command.** `buy <item>` and `sell <item>` each transact exactly one
+  unit. Selling ten daggers means sending `sell dagger` ten times; there is no quantity argument.
+- **[CONFIRMED]** Sell nets money by **shop + character charm**; buy takes the item's **stock price**
+  with a **charm-based markup or discount** — both already formalised under *Shop prices* above.
+- **[CONFIRMED]** **Chests.** Some monsters drop a `chest`; `open chest` **dumps a set of random
+  items straight into inventory** that the player does not get to choose. This is the case AutoDiscard
+  exists to clean up (drop the unwanted dumped items down to the keep band).
+- **[UNVERIFIED — needs MMUD Explorer cross-check + data-model work]** Which Shops-table fields
+  encode the restock **percentage** and **period**, and the **no-stock** marker. Our `ShopStockIndex`
+  currently reads only the Item-0..19 membership (item → shops that can carry it) and models neither
+  restock nor no-stock; wiring AutoBuy/AutoSell against real availability needs that added first.
 
 ---
 
