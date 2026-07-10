@@ -5,6 +5,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Media.Immutable;
+using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using FujinTerm.Terminal;
 
@@ -102,17 +103,18 @@ public sealed class TerminalControl : Control
     private const double MaxScale = 2.0;
 
     private Typeface _typeface;
-    // Cell box at the effective (possibly scaled) font — what everything draws
-    // and measures against.
+    // Native cell box at FontSize. Glyphs are ALWAYS drawn at this size; any
+    // window fitting happens by upscaling the rendered bitmap, never by
+    // rasterising the bitmap font at a fractional point size (which smears
+    // block-drawing glyphs and stems).
     private double _cellW = 8;
     private double _cellH = 16;
-    // Cell box at the base (unscaled) FontSize — the natural grid size the
-    // ScaleToFit math fits into the viewport.
-    private double _baseCellW = 8;
-    private double _baseCellH = 16;
-    // Font size the glyphs are actually rendered at: FontSize when ScaleToFit
-    // is off, a larger capped value when on.
-    private double _effectiveFontSize = 16;
+    // Fractional zoom applied to the native render to fill the viewport when
+    // ScaleToFit is on (1.0 = no zoom). Clamped to [1, MaxScale].
+    private double _fitScale = 1.0;
+    // Offscreen native-size buffer the grid renders into when zooming, then
+    // gets blitted nearest-neighbour to the control bounds. Null when unscaled.
+    private RenderTargetBitmap? _scaleBitmap;
     private bool _cursorBlinkOn = true;
     private DispatcherTimer? _blinkTimer;
     private Action? _onBufferChanged;
@@ -225,6 +227,8 @@ public sealed class TerminalControl : Control
         base.OnDetachedFromVisualTree(e);
         _blinkTimer?.Stop();
         _blinkTimer = null;
+        _scaleBitmap?.Dispose();
+        _scaleBitmap = null;
         if (_onBufferChanged is not null && InputBuffer is { } buf)
         {
             buf.Changed -= _onBufferChanged;
@@ -232,20 +236,19 @@ public sealed class TerminalControl : Control
         }
     }
 
-    // Rebuild the cell metrics: measure the base cell at FontSize, then re-fit
-    // the effective (possibly scaled) cell. Runs when the font or family
-    // changes.
+    // Rebuild the native cell metrics at FontSize, then re-fit the window zoom.
+    // Runs when the font or family changes.
     private void RecalculateMetrics()
     {
         _typeface = new Typeface(FontFamily);
-        (_baseCellW, _baseCellH) = MeasureCell(FontSize);
+        (_cellW, _cellH) = MeasureCell(FontSize);
         RecomputeScale();
         InvalidateMeasure();
         InvalidateVisual();
     }
 
-    // Re-fit the effective cell to the current ScaleToFit / ViewportSize / grid
-    // without re-measuring the base cell (those inputs don't move it).
+    // Re-fit the window zoom to the current ScaleToFit / ViewportSize / grid
+    // without re-measuring the native cell (those inputs don't move it).
     private void ApplyScale()
     {
         RecomputeScale();
@@ -266,51 +269,48 @@ public sealed class TerminalControl : Control
                 Math.Max(1, Math.Round(probe.Height)));
     }
 
-    // Decide the effective font size and cell box. When ScaleToFit is off (or
-    // the viewport is unknown) it's just the base cell at FontSize. When on, fit
-    // the natural grid (base cell × cols/rows) into the viewport, cap the zoom
-    // at MaxScale, floor to a whole point for crisp bitmap-style rasterisation,
-    // then step down until the scaled grid actually fits — integer cell
-    // rounding can otherwise nudge it a hair past the viewport and trip a
-    // scrollbar. Never scales below the base font, so a small window keeps the
-    // configured size (and scrolls) rather than shrinking the grid.
+    // Decide the fractional window zoom. When ScaleToFit is off (or the
+    // viewport is unknown) it's 1.0 (native). When on, fit the native grid
+    // (cell × cols/rows) into the viewport, capped at MaxScale, never below 1.
+    //
+    // The zoom is applied by upscaling the native render bitmap
+    // nearest-neighbour (see Render) — NOT by rasterising the glyphs at a
+    // larger point size. The CP437 face is a bitmap font: rasterising it at a
+    // fractional size smears stems and leaves hairline gaps in the full-cell
+    // block-drawing glyphs MajorMUD uses for borders/statline (the "color
+    // bleed" fractional zoom produced). Nearest-neighbour upscaling introduces
+    // no new colours and no gaps, so the grid fills any window size while
+    // staying crisp.
     private void RecomputeScale()
     {
-        double effFont = FontSize;
+        double fit = 1.0;
 
         if (ScaleToFit)
         {
             Size vp = ViewportSize;
             int cols = Emulator?.Screen.Cols ?? 80;
             int rows = Emulator?.Screen.Rows ?? 25;
-            double naturalW = _baseCellW * cols;
-            double naturalH = _baseCellH * rows;
+            double naturalW = _cellW * cols;
+            double naturalH = _cellH * rows;
             if (vp.Width > 0 && vp.Height > 0 && naturalW > 0 && naturalH > 0)
             {
                 double raw = Math.Min(vp.Width / naturalW, vp.Height / naturalH);
-                double target = Math.Clamp(FontSize * raw, FontSize, FontSize * MaxScale);
-                effFont = Math.Max(FontSize, Math.Floor(target));
-                while (effFont > FontSize)
-                {
-                    (double cw, double ch) = MeasureCell(effFont);
-                    if (cw * cols <= vp.Width && ch * rows <= vp.Height) break;
-                    effFont -= 1;
-                }
+                fit = Math.Clamp(raw, 1.0, MaxScale);
             }
         }
 
-        _effectiveFontSize = effFont;
-        (_cellW, _cellH) = MeasureCell(effFont);
+        _fitScale = fit;
     }
 
-    // Tell layout the control wants exactly cols × rows × (effective) cell
-    // pixels. In ScaleToFit mode the effective cell already fits the viewport,
-    // so this fills the window; otherwise it's the natural grid size.
+    // Tell layout the control wants the native grid times the window zoom. At
+    // zoom 1 that's the natural grid size; when fitting, it's the enlarged size
+    // that fills the viewport (the render upscales the native bitmap to match).
     protected override Size MeasureOverride(Size availableSize)
     {
         var em = Emulator;
-        if (em is null) return new Size(_cellW * 80, _cellH * 25);
-        return new Size(_cellW * em.Screen.Cols, _cellH * em.Screen.Rows);
+        int cols = em?.Screen.Cols ?? 80;
+        int rows = em?.Screen.Rows ?? 25;
+        return new Size(_cellW * cols * _fitScale, _cellH * rows * _fitScale);
     }
 
     public override void Render(DrawingContext context)
@@ -323,6 +323,64 @@ public sealed class TerminalControl : Control
         context.FillRectangle(Brushes.Black, bounds);
         if (em is null) return;
 
+        // Zoomed: render the grid at native size into an offscreen bitmap, then
+        // blit it nearest-neighbour to the (larger) control bounds. This keeps
+        // the bitmap font on its native pixel grid — the upscale duplicates
+        // whole pixels rather than re-rasterising glyphs at a fractional size,
+        // so no colour bleed or block-glyph gaps. The unscaled path draws
+        // straight to the context (no bitmap round-trip) to stay cheap.
+        if (_fitScale > 1.0)
+        {
+            RenderScaled(context, em);
+            return;
+        }
+
+        DrawScreen(context, em);
+    }
+
+    // Native-size render into the offscreen buffer, then a nearest-neighbour
+    // blit to fill the control bounds.
+    private void RenderScaled(DrawingContext context, TerminalEmulator em)
+    {
+        var screen = em.Screen;
+        int nativeW = Math.Max(1, (int)Math.Round(_cellW * screen.Cols));
+        int nativeH = Math.Max(1, (int)Math.Round(_cellH * screen.Rows));
+        EnsureScaleBitmap(nativeW, nativeH);
+
+        using (var bctx = _scaleBitmap!.CreateDrawingContext())
+        {
+            bctx.FillRectangle(Brushes.Black, new Rect(0, 0, nativeW, nativeH));
+            DrawScreen(bctx, em);
+        }
+
+        var src = new Rect(0, 0, nativeW, nativeH);
+        var dest = new Rect(0, 0, nativeW * _fitScale, nativeH * _fitScale);
+        using (context.PushRenderOptions(new RenderOptions
+        {
+            BitmapInterpolationMode = BitmapInterpolationMode.None,
+            EdgeMode = EdgeMode.Aliased,
+        }))
+        {
+            context.DrawImage(_scaleBitmap!, src, dest);
+        }
+    }
+
+    // (Re)allocate the offscreen buffer to the native grid size. RenderTarget
+    // bitmaps aren't resizable, so a grid-size change drops and rebuilds it.
+    private void EnsureScaleBitmap(int width, int height)
+    {
+        if (_scaleBitmap is { } b &&
+            b.PixelSize.Width == width && b.PixelSize.Height == height)
+            return;
+        _scaleBitmap?.Dispose();
+        _scaleBitmap = new RenderTargetBitmap(new PixelSize(width, height), new Vector(96, 96));
+    }
+
+    // Draw the whole screen (cell runs + input overlay + caret) at native cell
+    // size into the given context. Used directly for the unscaled path and into
+    // the offscreen buffer for the zoomed path.
+    private void DrawScreen(DrawingContext context, TerminalEmulator em)
+    {
         var screen = em.Screen;
 
         // Resolve the local-line-edit overlay (buffered, not-yet-sent text)
@@ -427,7 +485,7 @@ public sealed class TerminalControl : Control
                         CultureInfo.InvariantCulture,
                         FlowDirection.LeftToRight,
                         _typeface,
-                        _effectiveFontSize,
+                        FontSize,
                         Brushes.LightGray);
                     context.DrawText(glyph, new Point(px, py));
                     col++;
@@ -503,7 +561,7 @@ public sealed class TerminalControl : Control
             char ch = screen[i, y].Char;
             if (ch == ' ') continue;
             var ft = new FormattedText(ch.ToString(), CultureInfo.InvariantCulture,
-                FlowDirection.LeftToRight, typeface, _effectiveFontSize, fg);
+                FlowDirection.LeftToRight, typeface, FontSize, fg);
             context.DrawText(ft, new Point(x0 == i ? left : i * _cellW, top));
         }
 
