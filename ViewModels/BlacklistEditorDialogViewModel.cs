@@ -88,8 +88,69 @@ public sealed partial class BlacklistEditorDialogViewModel
         foreach (BlacklistedRoom e in _store.Entries)
             Entries.Add(new BlacklistedRoom(e.Map, e.Room, e.Name, e.CannotBeReached));
 
+        // Land the initial view in the default (Map, Room) order so the header
+        // glyph reflects the sort from the first render.
+        ApplySort();
+
         // The Remove-selected button enables off the live selection count.
         SelectedEntries.CollectionChanged += (_, _) => OnPropertyChanged(nameof(CanRemoveSelected));
+    }
+
+    // ----- Column sorting ------------------------------------------------
+    // The entries list is a plain ListBox (not a DataGrid), so column sorting is
+    // driven by hand: clicking a header re-orders Entries in place and toggles
+    // ascending/descending on a repeat click of the same column.
+    private string _sortColumn = "Map";
+    private bool _sortAscending = true;
+
+    // Header captions carry the active-sort direction glyph so the user can see
+    // which column drives the order.
+    public string MapHeader   => HeaderText("Map",   "Map");
+    public string RoomHeader  => HeaderText("Room",  "Room");
+    public string NameHeader  => HeaderText("Name",  "Name");
+    public string ReachHeader => HeaderText("Reach", "Can't reach");
+
+    private string HeaderText(string column, string label)
+        => _sortColumn == column ? $"{label} {(_sortAscending ? "▲" : "▼")}" : label;
+
+    [RelayCommand]
+    private void Sort(string? column)
+    {
+        if (string.IsNullOrEmpty(column)) return;
+        if (_sortColumn == column) _sortAscending = !_sortAscending;
+        else { _sortColumn = column; _sortAscending = true; }
+        ApplySort();
+        OnPropertyChanged(nameof(MapHeader));
+        OnPropertyChanged(nameof(RoomHeader));
+        OnPropertyChanged(nameof(NameHeader));
+        OnPropertyChanged(nameof(ReachHeader));
+    }
+
+    // Re-order Entries in place per the active column + direction. Map/Room keep
+    // the (Map, Room) tuple as the tiebreaker so rooms group by map; Name sorts
+    // case-insensitively; Reach sorts unticked-before-ticked ascending. Rebuild
+    // rather than move so the checkbox two-way bindings re-attach to the same
+    // instances (values preserved) and stay in sync.
+    private void ApplySort()
+    {
+        List<BlacklistedRoom> sorted = _sortColumn switch
+        {
+            "Room" => _sortAscending
+                ? Entries.OrderBy(e => e.Room).ThenBy(e => e.Map).ToList()
+                : Entries.OrderByDescending(e => e.Room).ThenByDescending(e => e.Map).ToList(),
+            "Name" => _sortAscending
+                ? Entries.OrderBy(e => e.Name, StringComparer.OrdinalIgnoreCase).ToList()
+                : Entries.OrderByDescending(e => e.Name, StringComparer.OrdinalIgnoreCase).ToList(),
+            "Reach" => _sortAscending
+                ? Entries.OrderBy(e => e.CannotBeReached).ThenBy(e => e.Map).ThenBy(e => e.Room).ToList()
+                : Entries.OrderByDescending(e => e.CannotBeReached).ThenBy(e => e.Map).ThenBy(e => e.Room).ToList(),
+            _ => _sortAscending
+                ? Entries.OrderBy(e => e.Map).ThenBy(e => e.Room).ToList()
+                : Entries.OrderByDescending(e => e.Map).ThenByDescending(e => e.Room).ToList(),
+        };
+
+        Entries.Clear();
+        foreach (BlacklistedRoom e in sorted) Entries.Add(e);
     }
 
     [RelayCommand]
@@ -103,6 +164,17 @@ public sealed partial class BlacklistEditorDialogViewModel
         AddRoom = string.Empty;
         OnPropertyChanged(nameof(CanAdd));
         OnPropertyChanged(nameof(AddNamePreview));
+    }
+
+    // Bulk per-row flip of the "Can't reach" flag across the current multi-
+    // selection — each highlighted row inverts its own state (checked → off,
+    // unchecked → on). Notifying model property means the checkboxes update in
+    // place; no rebuild, so the selection highlight survives.
+    [RelayCommand]
+    private void ToggleCannotBeReachedSelected()
+    {
+        foreach (BlacklistedRoom sel in SelectedEntries)
+            sel.CannotBeReached = !sel.CannotBeReached;
     }
 
     [RelayCommand]

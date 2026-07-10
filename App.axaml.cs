@@ -55,6 +55,12 @@ public partial class App : Application
             AppServices.Current.Dialogs.RegisterWindow<
                 FujinTerm.ViewModels.GameData.Edit.ItemEditDialogViewModel,
                 FujinTerm.Views.GameData.Edit.ItemEditDialog>();
+            // Interactive room-detail popup — Rooms tab double-click + Monsters
+            // tab room chips. Clickable title/exits centre the Nav map, monster
+            // names jump to their record, Add/Remove toggle the blacklist.
+            AppServices.Current.Dialogs.RegisterWindow<
+                FujinTerm.ViewModels.GameData.Edit.RoomDetailDialogViewModel,
+                FujinTerm.Views.GameData.Edit.RoomDetailDialog>();
             AppServices.Current.Dialogs.RegisterWindow<
                 FujinTerm.ViewModels.GameData.Edit.PlayerEditDialogViewModel,
                 FujinTerm.Views.GameData.Edit.PlayerEditDialog>();

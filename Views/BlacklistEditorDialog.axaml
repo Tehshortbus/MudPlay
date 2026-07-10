@@ -24,6 +24,22 @@
             <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
             <Setter Property="Margin" Value="0,4,0,4"/>
         </Style>
+        <!-- Clickable column header — reads as a header caption but re-sorts the
+             list on click, carrying the active-sort direction glyph. -->
+        <Style Selector="Button.ColHeader">
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="4"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style Selector="Button.ColHeader:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource ChromeBgHoverBrush}"/>
+        </Style>
     </Window.Styles>
 
     <Grid RowDefinitions="Auto,*,Auto,Auto,Auto" Margin="16">
@@ -41,14 +57,18 @@
                 BorderThickness="1"
                 CornerRadius="3">
             <Grid RowDefinitions="Auto,*">
-                <!-- Column headers -->
+                <!-- Column headers — click to sort (toggles asc/desc). -->
                 <Grid Grid.Row="0"
                       ColumnDefinitions="60,70,*,90"
-                      Background="{StaticResource ChromeBgAltBrush}">
-                    <TextBlock Grid.Column="0" Classes="SectionHeader" Text="Map"        Margin="8,4"/>
-                    <TextBlock Grid.Column="1" Classes="SectionHeader" Text="Room"       Margin="0,4"/>
-                    <TextBlock Grid.Column="2" Classes="SectionHeader" Text="Name"       Margin="0,4"/>
-                    <TextBlock Grid.Column="3" Classes="SectionHeader" Text="Can't reach" Margin="0,4"/>
+                      Background="{StaticResource ChromeBgElevBrush}">
+                    <Button Grid.Column="0" Classes="ColHeader" Content="{Binding MapHeader}"
+                            Command="{Binding SortCommand}" CommandParameter="Map"/>
+                    <Button Grid.Column="1" Classes="ColHeader" Content="{Binding RoomHeader}"
+                            Command="{Binding SortCommand}" CommandParameter="Room"/>
+                    <Button Grid.Column="2" Classes="ColHeader" Content="{Binding NameHeader}"
+                            Command="{Binding SortCommand}" CommandParameter="Name"/>
+                    <Button Grid.Column="3" Classes="ColHeader" Content="{Binding ReachHeader}"
+                            Command="{Binding SortCommand}" CommandParameter="Reach"/>
                 </Grid>
                 <ListBox Grid.Row="1"
                          x:Name="EntriesList"
@@ -74,9 +94,13 @@
             </Grid>
         </Border>
 
-        <!-- Remove selected -->
+        <!-- Bulk actions on the current multi-selection -->
         <StackPanel Grid.Row="2" Orientation="Horizontal"
-                    HorizontalAlignment="Right" Margin="0,8,0,8">
+                    HorizontalAlignment="Right" Spacing="8" Margin="0,8,0,8">
+            <Button Content="Toggle can't reach"
+                    Command="{Binding ToggleCannotBeReachedSelectedCommand}"
+                    IsEnabled="{Binding CanRemoveSelected}"
+                    ToolTip.Tip="Invert the Can't-reach flag on every highlighted row (each flips its own state)."/>
             <Button Content="Remove selected"
                     Command="{Binding RemoveSelectedCommand}"
                     IsEnabled="{Binding CanRemoveSelected}"/>

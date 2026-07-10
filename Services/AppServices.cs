@@ -43,6 +43,20 @@ public sealed class AppServices
     public void SetItemGameDataOpener(Action<int> opener) => _itemGameDataOpener = opener;
     public void OpenItemGameData(int itemNumber) => _itemGameDataOpener?.Invoke(itemNumber);
 
+    // Same indirection for the Monsters section — lets the room-detail popup's
+    // clickable monster names jump to a monster's Game Data record without a
+    // back-reference to the main VM.
+    private Action<int>? _monsterGameDataOpener;
+    public void SetMonsterGameDataOpener(Action<int> opener) => _monsterGameDataOpener = opener;
+    public void OpenMonsterGameData(int monsterNumber) => _monsterGameDataOpener?.Invoke(monsterNumber);
+
+    // Opens (or re-focuses) the Navigation window and centres the map on a
+    // given room. Used by the room-detail popup's clickable room title + exit
+    // destinations. No-op until the main VM binds it.
+    private Action<Game.Map.RoomKey>? _navigateToRoomOpener;
+    public void SetNavigateToRoomOpener(Action<Game.Map.RoomKey> opener) => _navigateToRoomOpener = opener;
+    public void NavigateToRoom(Game.Map.RoomKey key) => _navigateToRoomOpener?.Invoke(key);
+
     // Single source of truth for "are you sure?" prompts (exit /
     // hangup / save / delete). Lives at Global tier; mirrored from
     // SettingsService on startup and every save.

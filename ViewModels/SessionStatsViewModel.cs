@@ -1,6 +1,9 @@
+using System.Text.Json;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using FujinTerm.Game;
+using FujinTerm.Game.Calculators;
 using FujinTerm.Game.Cash;
 using FujinTerm.Game.Combat;
 using FujinTerm.Services;
@@ -28,11 +31,21 @@ public sealed partial class SessionStatsViewModel : ObservableObject, IDisposabl
     // Bucket count for the kills/hour sparkline across the rolling window.
     private const int SparklineBuckets = 30;
 
+    // Upper bound on the banked-level scan — same cap the auto-trainer and
+    // level-up announcer use, so the time-to-level count stays in lock-step.
+    private const int MaxLevelScan = 60;
+
     private readonly CombatSessionTracker _combatTracker;
     private readonly TimeAnalysisTracker _timeTracker;
     private readonly SessionActivityTracker _activityTracker;
     private readonly TransactionHistoryTracker _transactionTracker;
     private readonly SessionStatsLayoutStore _layoutStore;
+
+    // Live progression + game data for the time-to-level readout: PlayerStats
+    // supplies level / exp / class / race, GameDataCache supplies the exp chart
+    // and active realm. Read-only here — the trackers own all session state.
+    private readonly PlayerStats _stats;
+    private readonly GameDataCache _gameData;
 
     // Opens the Transaction history window. Routed back to
     // MainWindowViewModel so the window follows the modeless toggle-window
@@ -63,7 +76,7 @@ public sealed partial class SessionStatsViewModel : ObservableObject, IDisposabl
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CurrencyCollectedText), nameof(CurrencyCollectedTip),
         nameof(CurrencyPerHourText), nameof(CurrencyStashedText), nameof(CurrencyStashedTip),
-        nameof(KillsRateText), nameof(ExpRateText))]
+        nameof(KillsRateText), nameof(ExpRateText), nameof(TimeToLevelText))]
     private SessionActivityStats _activity;
 
     // Kills/hour series feeding the kills sparkline; reassigned each refresh.
@@ -112,6 +125,8 @@ public sealed partial class SessionStatsViewModel : ObservableObject, IDisposabl
         SessionActivityTracker activity,
         TransactionHistoryTracker transactions,
         SessionStatsLayoutStore layout,
+        PlayerStats stats,
+        GameDataCache gameData,
         Action openTransactionHistory)
     {
         ArgumentNullException.ThrowIfNull(combat);
@@ -119,12 +134,16 @@ public sealed partial class SessionStatsViewModel : ObservableObject, IDisposabl
         ArgumentNullException.ThrowIfNull(activity);
         ArgumentNullException.ThrowIfNull(transactions);
         ArgumentNullException.ThrowIfNull(layout);
+        ArgumentNullException.ThrowIfNull(stats);
+        ArgumentNullException.ThrowIfNull(gameData);
         ArgumentNullException.ThrowIfNull(openTransactionHistory);
         _combatTracker = combat;
         _timeTracker = time;
         _activityTracker = activity;
         _transactionTracker = transactions;
         _layoutStore = layout;
+        _stats = stats;
+        _gameData = gameData;
         _openTransactionHistory = openTransactionHistory;
 
         LoadLayout();
@@ -256,6 +275,47 @@ public sealed partial class SessionStatsViewModel : ObservableObject, IDisposabl
     public string KillsRateText => $"{Activity.KillsPerHour:F1}/hr";
     public string ExpRateText   => $"{RateLabel(Activity.ExperiencePerHour, compact: true)}/hr";
 
+    // ----- Time to level -----------------------------------------------
+    // Countdown to the next level the running exp hasn't reached yet, at the
+    // session exp/hour rate — honouring MajorMUD level banking, where exp keeps
+    // accruing past the trained level. "N level(s) gained" is the count of
+    // banked-but-untrained levels; the ETA then targets the first level above
+    // that ceiling. So at trained level 5 with enough banked to train to 6 this
+    // reads "1 level gained · HH:MM:SS until level 7". Rate comes from the same
+    // whole-session average ExpRateText prints, so the two stay consistent.
+    public string TimeToLevelText
+    {
+        get
+        {
+            int level = _stats.Level;
+            if (level <= 0) return "level unknown — type stat";
+
+            // Chart resolves from the class + race exp tables. Mirrors the
+            // caller-resolves-chart convention the trainer / level-projection
+            // paths use — the pure exp calculator never reads game data.
+            int chart = ExperienceTableCalculator.CalcExpChart(
+                GetInt(_gameData.FindRowByName("Classes", _stats.Class), "ExpTable"),
+                GetInt(_gameData.FindRowByName("Races", _stats.Race), "ExpTable"));
+            if (chart <= 0) return "exp chart unavailable — import game data";
+
+            RealmType realm = _gameData.ActiveRealm;
+            long exp = _stats.Exp;
+
+            int banked = TrainBudgetCalculator.BankableLevels(exp, level, chart, realm, MaxLevelScan);
+            int target = level + banked + 1;
+            string bankedPart = $"{banked} level{(banked == 1 ? "" : "s")} gained";
+
+            double rate = Activity.ExperiencePerHour;
+            TimeSpan? eta = ExperienceTableCalculator.CalcTimeToLevel(
+                ExperienceTableCalculator.CalcExpNeeded(target, chart, realm), exp, (long)rate);
+            string etaPart = eta is null
+                ? "rate unknown"
+                : eta.Value <= TimeSpan.Zero ? "ready to level" : $"{Fmt(eta.Value)} until level {target}";
+
+            return $"{bankedPart} · {etaPart}";
+        }
+    }
+
     private static double Peak(IReadOnlyList<double> s)  => s.Count > 0 ? s.Max() : 0;
     private static double Floor(IReadOnlyList<double> s) => s.Count > 0 ? s.Min() : 0;
 
@@ -327,6 +387,10 @@ public sealed partial class SessionStatsViewModel : ObservableObject, IDisposabl
         Activity = _activityTracker.Snapshot();
         KillsPerHour = _activityTracker.KillsPerHourSeries(SparklineBuckets);
         ExperiencePerHour = _activityTracker.ExperiencePerHourSeries(SparklineBuckets);
+
+        // The countdown reads live PlayerStats + the wall clock, so it must
+        // re-fire every tick even when the Activity snapshot compares equal.
+        OnPropertyChanged(nameof(TimeToLevelText));
     }
 
     private static string Fmt(TimeSpan t) =>
@@ -334,6 +398,14 @@ public sealed partial class SessionStatsViewModel : ObservableObject, IDisposabl
 
     private static string Range(int min, int max) =>
         max <= 0 ? "—" : $"{min}–{max}";
+
+    // Read an int field off an optional game-data row (missing row / field → 0).
+    private static int GetInt(JsonElement? rowOpt, string property)
+    {
+        if (rowOpt is not JsonElement row || row.ValueKind != JsonValueKind.Object) return 0;
+        if (!row.TryGetProperty(property, out JsonElement v)) return 0;
+        return v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out int n) ? n : 0;
+    }
 
     public void Dispose()
     {

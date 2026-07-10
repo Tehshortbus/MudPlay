@@ -111,39 +111,53 @@ public static class RoomTooltipBuilder
 
     // ----- Also Here -------------------------------------------------
 
-    private static string BuildAlsoHere(Room room, GameDataCache? data, MonsterSpawnIndex? spawnIndex)
+    // A monster present in a room, resolved to its record Number + display name.
+    public readonly record struct RoomMonsterRef(int Id, string Name);
+
+    // Resolves the "Also Here" set — lair-tag members plus boss / script-spawn
+    // monsters whose presence lives on the monster's "Summoned By" field — into
+    // ordered, name-deduped refs. `max` carries the lair tag's Max-N (null when
+    // the room has no lair). Shared by the map tooltip text and the interactive
+    // room-detail popup so the two never drift.
+    public static IReadOnlyList<RoomMonsterRef> ResolveAlsoHere(
+        Room room, GameDataCache? data, MonsterSpawnIndex? spawnIndex, out int? max)
     {
-        var names = new List<string>();
-        int? max = null;
+        ArgumentNullException.ThrowIfNull(room);
+        max = null;
+
+        var refs = new List<RoomMonsterRef>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+
+        void Add(int id)
+        {
+            string? name = LookupName(data, "Monsters", id);
+            if (string.IsNullOrEmpty(name) || !seen.Add(name)) return;
+            refs.Add(new RoomMonsterRef(id, name));
+        }
 
         if (!string.IsNullOrEmpty(room.RawLairTag))
         {
             ParseLairTag(room.RawLairTag, out max, out IReadOnlyList<int> monsterIds);
-            foreach (int id in monsterIds)
-            {
-                string? name = LookupName(data, "Monsters", id);
-                if (!string.IsNullOrEmpty(name) && !names.Contains(name)) names.Add(name);
-            }
+            foreach (int id in monsterIds) Add(id);
         }
 
-        // Append boss / script-spawn monsters whose presence in this
-        // room lives on the monster's "Summoned By" field instead of
-        // (or in addition to) the room's lair tag. These don't count
-        // against the lair tag's Max-N — they're separate respawn
-        // mechanics — so the count prefix stays driven by the lair tag.
+        // Boss / script-spawn monsters don't count against the lair tag's
+        // Max-N — separate respawn mechanic — so the count prefix stays driven
+        // by the lair tag alone.
         if (spawnIndex is not null)
-        {
             foreach (int id in spawnIndex.MonsterIdsSummonedAt(room.Key))
-            {
-                string? name = LookupName(data, "Monsters", id);
-                if (!string.IsNullOrEmpty(name) && !names.Contains(name)) names.Add(name);
-            }
-        }
+                Add(id);
 
-        if (names.Count == 0) return string.Empty;
+        return refs;
+    }
+
+    private static string BuildAlsoHere(Room room, GameDataCache? data, MonsterSpawnIndex? spawnIndex)
+    {
+        IReadOnlyList<RoomMonsterRef> refs = ResolveAlsoHere(room, data, spawnIndex, out int? max);
+        if (refs.Count == 0) return string.Empty;
 
         string prefix = max is { } m ? $"Also Here ({m}): " : "Also Here: ";
-        return prefix + string.Join(", ", names);
+        return prefix + string.Join(", ", refs.Select(r => r.Name));
     }
 
     // ----- Light description ---------------------------------------
@@ -156,7 +170,61 @@ public static class RoomTooltipBuilder
         // predictor never drift.
         => LightModel.Describe(LightModel.Classify(charIllu, roomLight: light));
 
+    // Renders the non-interactive tail of the room-detail popup — shop, room
+    // spell, room commands (teleports), room light + descriptive phrase, and
+    // max regen. Name / Also-Here / exits are rendered as clickable controls in
+    // the popup, so they're deliberately excluded here. Reuses the same private
+    // helpers the map tooltip's Build() uses, so the two never drift.
+    public static string BuildDetailExtras(Room room, RoomGraphManager graph,
+        GameDataCache? data = null, TBInfoStore? tbinfo = null,
+        Game.Spells.KnownSpellCatalog? spellCatalog = null, int charIllu = 0)
+    {
+        ArgumentNullException.ThrowIfNull(room);
+        ArgumentNullException.ThrowIfNull(graph);
+
+        var parts = new List<string>();
+
+        if (room.Shop > 0)
+            parts.Add("Shop: " + (LookupName(data, "Shops", room.Shop) ?? $"#{room.Shop}"));
+        if (room.Spell > 0)
+            parts.Add("Room Spell: " + (LookupName(data, "Spells", room.Spell) ?? $"#{room.Spell}"));
+
+        string commandsBlock = BuildRoomCommandsBlock(room, graph, tbinfo, spellCatalog);
+        if (commandsBlock.Length > 0) parts.Add(commandsBlock);
+
+        if (room.Light != 0)
+        {
+            StringBuilder light = new();
+            light.Append("Room Light: ").Append(room.Light > 0 ? "+" : "").Append(room.Light);
+            string lightDesc = BuildLightDescription(room.Light, charIllu);
+            if (lightDesc.Length > 0) light.Append('\n').Append(lightDesc);
+            parts.Add(light.ToString());
+        }
+
+        if (TryParseLairMax(room.RawLairTag, out int maxRegen))
+        {
+            StringBuilder regen = new();
+            regen.Append("Max Regen: ").Append(maxRegen);
+            string regenTime = BuildRegenTime(room.Delay);
+            if (regenTime.Length > 0) regen.Append(" @ ").Append(regenTime);
+            parts.Add(regen.ToString());
+        }
+
+        return string.Join("\n\n", parts);
+    }
+
     // ----- Exits block ---------------------------------------------
+
+    // Room exits in the canonical compass order (N, NE, … U, D), skipping
+    // directions the room doesn't have. Lets the room-detail popup render one
+    // clickable row per exit using the same ordering as the map tooltip.
+    public static IEnumerable<(Direction Dir, RoomExit Exit)> OrderedExits(Room room)
+    {
+        ArgumentNullException.ThrowIfNull(room);
+        foreach (Direction dir in s_exitOrder)
+            if (room.Exits.TryGetValue(dir, out RoomExit exit))
+                yield return (dir, exit);
+    }
 
     private static readonly Direction[] s_exitOrder =
     {
@@ -276,7 +344,7 @@ public static class RoomTooltipBuilder
     // KeyLocked → Items table (the key is itself an Item record per MDB
     // convention). Falls back to the raw hint string for unclassified modifiers
     // so diagnostic info still shows.
-    private static string FormatExitHint(RoomExit exit, GameDataCache? data)
+    public static string FormatExitHint(RoomExit exit, GameDataCache? data)
     {
         switch (exit.Hint)
         {
@@ -353,7 +421,7 @@ public static class RoomTooltipBuilder
         }
     }
 
-    private static string DirectionLabel(Direction d) => d switch
+    public static string DirectionLabel(Direction d) => d switch
     {
         Direction.N  => "north",
         Direction.S  => "south",

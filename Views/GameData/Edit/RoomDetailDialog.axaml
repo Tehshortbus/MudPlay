@@ -1,0 +1,158 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:FujinTerm.ViewModels.GameData.Edit"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="460" d:DesignHeight="540"
+        x:Class="FujinTerm.Views.GameData.Edit.RoomDetailDialog"
+        x:DataType="vm:RoomDetailDialogViewModel"
+        Title="{Binding Title}"
+        Width="460" Height="540"
+        MinWidth="380" MinHeight="360"
+        WindowStartupLocation="CenterOwner">
+
+    <Window.Styles>
+        <!-- Clickable room title — reads as a heading link. -->
+        <Style Selector="Button.TitleLink">
+            <Setter Property="Foreground" Value="{StaticResource AccentCyanBrush}"/>
+            <Setter Property="FontSize" Value="15"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="HorizontalAlignment" Value="Left"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style Selector="Button.TitleLink:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="TextBlock.TextDecorations" Value="Underline"/>
+        </Style>
+
+        <!-- Muted map/room caption that is itself clickable (centres the map). -->
+        <Style Selector="Button.SubLink">
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="HorizontalAlignment" Value="Left"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style Selector="Button.SubLink:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="TextBlock.TextDecorations" Value="Underline"/>
+        </Style>
+
+        <!-- Monster / exit clickable link — matches the Game Data edit dialogs. -->
+        <Style Selector="Button.MdbLink">
+            <Setter Property="Foreground" Value="{StaticResource AccentCyanBrush}"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontFamily" Value="{StaticResource FontMono}"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style Selector="Button.MdbLink:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="TextBlock.TextDecorations" Value="Underline"/>
+        </Style>
+
+        <Style Selector="TextBlock.SectionHeader">
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+        </Style>
+        <Style Selector="TextBlock.Sub">
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+        </Style>
+        <Style Selector="TextBlock.Note">
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="TextBlock.Body">
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontFamily" Value="{StaticResource FontMono}"/>
+            <Setter Property="Foreground" Value="{StaticResource ChromeFgBrush}"/>
+        </Style>
+    </Window.Styles>
+
+    <Border Background="{StaticResource ChromeBgBrush}" Padding="14">
+        <Grid RowDefinitions="Auto,*,Auto">
+
+            <!-- Header: clickable title + map/room caption. -->
+            <StackPanel Grid.Row="0" Spacing="2" Margin="0,0,0,10">
+                <Button Classes="TitleLink"
+                        Content="{Binding Title}"
+                        Command="{Binding OpenInNavigationCommand}"
+                        ToolTip.Tip="Open the Navigation map centred on this room"/>
+                <Button Classes="SubLink"
+                        Content="{Binding KeyLabel}"
+                        Command="{Binding OpenInNavigationCommand}"/>
+            </StackPanel>
+
+            <!-- Body -->
+            <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel Spacing="12">
+
+                    <!-- Monsters -->
+                    <StackPanel IsVisible="{Binding HasMonsters}" Spacing="3">
+                        <TextBlock Classes="SectionHeader" Text="{Binding MonsterHeader}"/>
+                        <ItemsControl ItemsSource="{Binding Monsters}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="vm:RoomDetailLink">
+                                    <StackPanel Orientation="Horizontal" Spacing="6" Margin="8,0,0,0">
+                                        <Button Classes="MdbLink" Content="{Binding Text}"
+                                                Command="{Binding Open}"/>
+                                        <TextBlock Classes="Note" Text="{Binding Detail}"
+                                                   IsVisible="{Binding HasDetail}"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+
+                    <!-- Exits -->
+                    <StackPanel IsVisible="{Binding HasExits}" Spacing="3">
+                        <TextBlock Classes="SectionHeader" Text="Obvious exits:"/>
+                        <ItemsControl ItemsSource="{Binding Exits}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="vm:RoomDetailLink">
+                                    <StackPanel Orientation="Horizontal" Spacing="6" Margin="8,0,0,0">
+                                        <Button Classes="MdbLink" Content="{Binding Text}"
+                                                Command="{Binding Open}"/>
+                                        <TextBlock Classes="Note" Text="{Binding Detail}"
+                                                   IsVisible="{Binding HasDetail}"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+
+                    <!-- Descriptive tail (shop / room spell / room commands / light / regen). -->
+                    <TextBlock IsVisible="{Binding HasExtras}"
+                               Classes="Body"
+                               Text="{Binding ExtrasText}"
+                               TextWrapping="Wrap"/>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- Bottom actions -->
+            <Grid Grid.Row="2" ColumnDefinitions="Auto,Auto,*,Auto" Margin="0,12,0,0">
+                <Button Grid.Column="0" Content="Add to blacklist"
+                        Command="{Binding AddToBlacklistCommand}"
+                        IsEnabled="{Binding CanAddToBlacklist}"/>
+                <Button Grid.Column="1" Content="Remove from blacklist"
+                        Command="{Binding RemoveFromBlacklistCommand}"
+                        IsEnabled="{Binding CanRemoveFromBlacklist}"
+                        Margin="6,0,0,0"/>
+                <Button Grid.Column="3" Content="Close"
+                        Command="{Binding CloseCommand}" MinWidth="80"/>
+            </Grid>
+        </Grid>
+    </Border>
+</Window>

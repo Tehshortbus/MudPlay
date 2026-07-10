@@ -62,7 +62,7 @@ public sealed partial class MonsterEditDialogViewModel : ObservableObject, IDial
     // "nasty, angry, large, fat, thin, big, small, (no prefix)".
     [ObservableProperty] private string _flavorPrefixesCsv = string.Empty;
 
-    public IReadOnlyList<KeyValuePair<string, string>> MdbInfo { get; }
+    public IReadOnlyList<MdbInfoRow> MdbInfo { get; }
 
     public IReadOnlyList<MonsterRelationship> AvailableRelationships { get; } =
         Enum.GetValues<MonsterRelationship>().ToArray();
@@ -83,7 +83,7 @@ public sealed partial class MonsterEditDialogViewModel : ObservableObject, IDial
         string mdbName,
         MonsterOverlay? existing,
         SettingsTier currentTier,
-        IReadOnlyList<KeyValuePair<string, string>> mdbInfo,
+        IReadOnlyList<MdbInfoRow> mdbInfo,
         MonsterMessageRecord? messages = null,
         IReadOnlyList<SettingsTier>? writableTiers = null)
     {

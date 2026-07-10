@@ -1,22 +1,12 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.23.19**
-> - Dropped/dragged ally stays a heal target — the client keeps polling their health and name-heals them through a re-invite instead of abandoning them
-> - Auto-combat re-engages after the leader announces an attack instead of sitting idle
-> - Party-leader target priority + attack-last now hits the leader's target, not the first monster in the room
-> - No redundant re-attack when we're already on the leader's chosen target
-> - `Your command had no effect.` drops the vanished target and re-evaluates instead of stalling until a manual room redisplay
-> - Loop advances in a cleared room without a manual room redisplay
-> - Selecting a room and pressing Run seamlessly swaps modes (walk-to ↔ loop ↔ auto-lair) and starts immediately
-> - Starting a loop resets the session statistics and `@reset`s the party
-> - Hand-typed hidden-exit moves like `move wall` re-anchor navigation position
-> - Cleanup now exits and disconnects every party member — none left behind
-> - After cleanup, the leader reforms the party (waiting up to the wait period) and resumes the loop, instead of stalling until a manual re-invite
-> - Follow works after training — a trained follower is re-invited as they re-enter the realm, no manual re-invite/re-join
-> - Mystic kai shows `K` in the party menu instead of `M`
-> - Equipment Manager no longer carries loot toggles or a synthetic Inventory row; the item-edit dialog is the sole editor of auto-collect/stash/discard flags
-> - Bug reports capture resolved effective settings; the program log now records settings changes and engine commands
+> **Version 1.24.0**
+> - Session Statistics shows time-to-level, honoring banked levels — "N levels gained · HH:MM:SS until level X" at the session's exp/hour rate
+> - Game Data monster Greet rows are click-through — the popup decodes the textblock chain like MegaMUD, listing each keyword the monster responds to and the effects it fires (Cast, Item give/take, Ability, Class/Race gate, AddExp, Learn/Checkspell, Summon, Random branches, Cost/Givecoins, Teleport, Remote Action, Testskill)
+> - Game Data monster record spawn/placed/summoned room lists are now clickable chips — click a map/room to open that room's detail popup
+> - The room-detail popup (Rooms-table double-click or a monster room chip) is now interactive — click the room title or any exit to open/centre the Navigation map on that room, click a monster name to jump to its Game Data record, and Add/Remove the room from the blacklist inline
+> - Modify Room Blacklist editor columns (Map, Room, Name, Can't reach) are click-to-sort, ascending/descending; a "Toggle can't reach" button inverts the flag on every highlighted row at once
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->
