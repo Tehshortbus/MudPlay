@@ -24,12 +24,9 @@ public sealed class CombatSettingsTests
         Assert.Equal("a", dto.NormalAttackCommand);
         Assert.Equal("a", dto.AlternateAttackCommand);
 
-        // Priority defaults reproduce the previously hard-coded round order:
-        // Backstab → Debuffing → Spells → Physical.
-        Assert.Equal(1, dto.PriorityBackstab);
-        Assert.Equal(2, dto.PriorityDebuffing);
-        Assert.Equal(3, dto.PrioritySpells);
-        Assert.Equal(4, dto.PriorityPhysical);
+        // Action order defaults to SpellsFirst — the previously hard-coded
+        // spell-before-swing order.
+        Assert.Equal(CombatActionOrder.SpellsFirst, dto.ActionOrder);
         Assert.Equal(TargetOrder.Normal, dto.TargetOrder);
 
         // Target Priority defaults to following our own game data; no party
@@ -86,6 +83,15 @@ public sealed class CombatSettingsTests
     }
 
     [Fact]
+    public void CombatActionOrder_HasBothModes()
+    {
+        // Locks the enum names + integer order — CombatSpellChooser keys off
+        // these identifiers and the JSON storage serialises them as strings.
+        Assert.Equal(CombatActionOrder.SpellsFirst,   (CombatActionOrder)0);
+        Assert.Equal(CombatActionOrder.PhysicalFirst, (CombatActionOrder)1);
+    }
+
+    [Fact]
     public void PoliteMode_HasAllFourModes()
     {
         Assert.Equal(PoliteMode.Off,             (PoliteMode)0);
@@ -101,10 +107,7 @@ public sealed class CombatSettingsTests
         {
             NormalAttackCommand        = "attack",
             AlternateAttackCommand     = "swing",
-            PriorityBackstab           = 4,
-            PriorityDebuffing          = 3,
-            PrioritySpells             = 2,
-            PriorityPhysical           = 1,
+            ActionOrder                = CombatActionOrder.PhysicalFirst,
             NormalWeapon               = "long sword",
             NormalOffHand              = "kite shield",
             AlternateWeapon            = "two-handed axe",
@@ -135,10 +138,7 @@ public sealed class CombatSettingsTests
         Assert.NotNull(round);
         Assert.Equal(dto.NormalAttackCommand,       round!.NormalAttackCommand);
         Assert.Equal(dto.AlternateAttackCommand,    round.AlternateAttackCommand);
-        Assert.Equal(dto.PriorityBackstab,          round.PriorityBackstab);
-        Assert.Equal(dto.PriorityDebuffing,         round.PriorityDebuffing);
-        Assert.Equal(dto.PrioritySpells,            round.PrioritySpells);
-        Assert.Equal(dto.PriorityPhysical,          round.PriorityPhysical);
+        Assert.Equal(dto.ActionOrder,               round.ActionOrder);
         Assert.Equal(dto.NormalWeapon,              round.NormalWeapon);
         Assert.Equal(dto.NormalOffHand,             round.NormalOffHand);
         Assert.Equal(dto.AlternateWeapon,           round.AlternateWeapon);

@@ -247,6 +247,14 @@ public sealed partial class CombatManager : IDisposable
     private readonly HashSet<string> _normalWeaponFailedMonsters =
         new(StringComparer.OrdinalIgnoreCase);
 
+    // Canonical species that also produced a no-effect line against our ALTERNATE
+    // weapon — the weapon path is then exhausted for that species. Room-scoped and
+    // cleared alongside the normal fail-set. Feeds WeaponPathExhausted so a
+    // Physical-first round falls back to the attack-spell cascade instead of
+    // swinging uselessly.
+    private readonly HashSet<string> _alternateWeaponFailedMonsters =
+        new(StringComparer.OrdinalIgnoreCase);
+
     // Backstab only lands on the surprise round — the very first action taken in
     // a freshly-approached room. Once ANY combat action fires here (bs, spell, or
     // swing) the surprise is spent, so re-picking `bs` on a re-engage (interrupt
@@ -859,6 +867,7 @@ public sealed partial class CombatManager : IDisposable
     private void OnRoomCleared(CombatSettings settings)
     {
         _normalWeaponFailedMonsters.Clear();
+        _alternateWeaponFailedMonsters.Clear();
         ClearBackstabResolution();
 
         // Reset the combat-spell room economy — per-room debuff-once /
@@ -967,8 +976,20 @@ public sealed partial class CombatManager : IDisposable
 
         if (_usingAlternateWeapon)
         {
+            // Both weapons are out against this species — the weapon path is
+            // exhausted. Remember the alternate failure (mirrors the normal
+            // fail-set) and, when a caster is wired, re-run the round so a
+            // Physical-first build falls back to the attack-spell cascade instead
+            // of swinging uselessly. Guard the re-dispatch on a first-time Add so a
+            // spell that also can't fire can't spin us in a swing → no-effect →
+            // re-dispatch loop; the server's auto-repeat then just logs quietly.
+            if (_alternateWeaponFailedMonsters.Add(species))
+            {
+                _log?.Combat(LogCategory, $"adding {species} to alternate-weapon fail-set");
+                if (TryFallBackToSpellAfterWeaponFail(settings)) return;
+            }
             _log?.Warn(LogCategory,
-                $"weapon-no-effect on ALT against {species} — monster unhittable for us");
+                $"weapon-no-effect on ALT against {species} — weapon path exhausted");
             return;
         }
 

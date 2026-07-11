@@ -26,33 +26,21 @@ public sealed class CombatSettings
     // character doesn't have to configure both fields.
     public string AlternateAttackCommand { get; set; } = "a";
 
-    // ----- Combat priority order ------------------------------------
+    // ----- Combat action order --------------------------------------
 
-    // Per-round category order. The engine evaluates the four combat categories
-    // in ascending priority value — lowest number fires first; the first
-    // applicable category owns the round (one action per round).
-    // Game.Combat.CombatSpellChooser resolves the order; ties keep the canonical
-    // Backstab → Debuffing → Spells → Physical fallback so duplicate numbers
-    // stay deterministic. Defaults (1/2/3/4) reproduce the previously hard-coded
-    // order. Physical is the terminal fallback (the weapon swing always
-    // applies), so placing it above another category suppresses that category
-    // whenever a swing is possible. Backstab only fires when ranked at priority
-    // 1 (and DoBackstab is set + the opener is still eligible); at any other
-    // rank it is ignored entirely.
-    public int PriorityBackstab { get; set; } = 1;
-
-    // Priority of the debuffing category (area / single-target debuff). Labelled
-    // "Debuffing" in the UI to match the Spells tab's spell-priority list. See
-    // PriorityBackstab.
-    public int PriorityDebuffing { get; set; } = 2;
-
-    // Priority of the attack-spell category (multi / normal / alternate). See
-    // PriorityBackstab.
-    public int PrioritySpells { get; set; } = 3;
-
-    // Priority of the physical weapon swing. Terminal category — always
-    // applicable. See PriorityBackstab.
-    public int PriorityPhysical { get; set; } = 4;
+    // Which action the engine prefers as the round's one combat action.
+    // SpellsFirst casts the attack-spell cascade (multi → normal → alternate)
+    // when one applies and swings only when none can fire this round;
+    // PhysicalFirst swings the weapon and reverts to that cascade only when the
+    // weapon path is proven ineffective against the target (the normal weapon
+    // can't damage it and there's no working alternate).
+    // Game.Combat.CombatSpellChooser reads it. Two things sit OUTSIDE this
+    // choice: the backstab opener always fires first when enabled + eligible
+    // (see DoBackstab), and debuffs are in-between casts scheduled by
+    // CastingDirector against buffs / heals via the Spells tab's priority list —
+    // so they land alongside the round's action regardless of this setting.
+    // Default SpellsFirst (the previously hard-coded spell-before-swing order).
+    public CombatActionOrder ActionOrder { get; set; } = CombatActionOrder.SpellsFirst;
 
     // ----- Weapon slots ---------------------------------------------
 
@@ -207,6 +195,22 @@ public sealed class CombatSpellSlot
     // Minimum mana required to cast — interpreted per
     // CombatSettings.SpellManaThresholdMode.
     public int MinManaPerCast { get; set; }
+}
+
+// Which action the auto-attack engine prefers as the round's one combat action.
+// The backstab opener and debuffs sit outside this choice — the opener always
+// fires first when enabled, and debuffs are in-between casts — so it governs
+// only the main action of the round.
+public enum CombatActionOrder
+{
+    // Cast the attack-spell cascade (multi → normal → alternate) when one
+    // applies; swing the weapon only when no attack spell can fire. Default.
+    SpellsFirst,
+
+    // Swing the weapon; revert to the attack-spell cascade only when the weapon
+    // path is proven ineffective against the target (normal can't damage it and
+    // there's no working alternate).
+    PhysicalFirst,
 }
 
 // Direction strategy for the auto-flee path.

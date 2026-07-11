@@ -51,18 +51,14 @@ public sealed class CombatSpellChooserTests
     }
 
     [Fact]
-    public void Choose_PhysicalPriorityAboveSpells_SuppressesSpell()
+    public void Choose_PhysicalFirst_SuppressesSpell()
     {
         CombatSpellChooser sut = new();
         CombatSettings settings = new()
         {
             NormalAttackSpell = Slot("harm"),
-            // Physical ahead of Spells — a swing is always possible, so it
-            // owns the round and the attack spell never fires.
-            PriorityPhysical = 1,
-            PrioritySpells = 2,
-            PriorityBackstab = 3,
-            PriorityDebuffing = 4,
+            // Physical first — always swing, never cast an attack spell.
+            ActionOrder = CombatActionOrder.PhysicalFirst,
         };
 
         CombatSpellDecision d = sut.Choose(settings, Ctx(enemies: 1));
@@ -72,43 +68,114 @@ public sealed class CombatSpellChooserTests
     }
 
     [Fact]
-    public void Choose_SpellsPriorityAboveBackstab_CastsBeforeBackstab()
+    public void Choose_BackstabPending_FiresEvenWhenPhysicalFirst()
     {
         CombatSpellChooser sut = new();
         CombatSettings settings = new()
         {
             NormalAttackSpell = Slot("harm"),
-            // Spells ahead of Backstab — the attack spell pre-empts the opener.
-            PrioritySpells = 1,
-            PriorityBackstab = 2,
-            PriorityDebuffing = 3,
-            PriorityPhysical = 4,
+            // The backstab opener sits outside the ActionOrder choice — it fires
+            // first when pending regardless of Physical-first.
+            ActionOrder = CombatActionOrder.PhysicalFirst,
         };
 
         CombatSpellDecision d = sut.Choose(settings, Ctx(enemies: 1, backstabPending: true));
+
+        Assert.Equal(CombatSpellAction.Backstab, d.Action);
+        Assert.Null(d.Spell);
+    }
+
+    // ----- 1b. Physical-first weapon-ineffective fallback ----------------
+    // PhysicalFirst normally swings; it reaches for the attack-spell cascade only
+    // when the engine reports the weapon path exhausted (WeaponIneffective) — the
+    // normal weapon can't damage the target and there's no working alternate.
+
+    private static CombatSpellContext PhysCtx(
+        bool weaponIneffective, bool backstabPending = false) =>
+        new(EnemyCount: 1, TargetRawName: "a rat", Mana: 100, MaxMana: 100,
+            BackstabPending: backstabPending, WeaponIneffective: weaponIneffective);
+
+    [Fact]
+    public void Choose_PhysicalFirst_WeaponIneffective_FallsToSpell()
+    {
+        CombatSpellChooser sut = new();
+        CombatSettings settings = new()
+        {
+            NormalAttackSpell = Slot("harm"),
+            ActionOrder = CombatActionOrder.PhysicalFirst,
+        };
+
+        // Weapon path exhausted → the cascade fires even under Physical-first.
+        CombatSpellDecision d = sut.Choose(settings, PhysCtx(weaponIneffective: true));
 
         Assert.Equal(CombatSpellAction.NormalAttackSpell, d.Action);
         Assert.Equal("harm", d.Spell);
     }
 
     [Fact]
-    public void Choose_BackstabPending_ButNotPriorityOne_DoesNotBackstab()
+    public void Choose_PhysicalFirst_WeaponEffective_Swings()
     {
         CombatSpellChooser sut = new();
         CombatSettings settings = new()
         {
-            // Backstab ranked 2 (not 1) → ignored even while pending. Spells
-            // has no slot configured, so the round falls to the weapon swing.
-            PriorityPhysical = 3,
-            PriorityBackstab = 2,
-            PrioritySpells = 1,
-            PriorityDebuffing = 4,
+            NormalAttackSpell = Slot("harm"),
+            ActionOrder = CombatActionOrder.PhysicalFirst,
         };
 
-        CombatSpellDecision d = sut.Choose(settings, Ctx(enemies: 1, backstabPending: true));
+        // Weapon still hits → swing, spell stays suppressed.
+        CombatSpellDecision d = sut.Choose(settings, PhysCtx(weaponIneffective: false));
 
         Assert.Equal(CombatSpellAction.WeaponAttack, d.Action);
         Assert.Null(d.Spell);
+    }
+
+    [Fact]
+    public void Choose_PhysicalFirst_WeaponIneffective_NoSpell_Swings()
+    {
+        CombatSpellChooser sut = new();
+        // No attack spell configured — nothing to fall back to, so even with the
+        // weapon path exhausted the round stays a (useless) swing.
+        CombatSettings settings = new() { ActionOrder = CombatActionOrder.PhysicalFirst };
+
+        CombatSpellDecision d = sut.Choose(settings, PhysCtx(weaponIneffective: true));
+
+        Assert.Equal(CombatSpellAction.WeaponAttack, d.Action);
+        Assert.Null(d.Spell);
+    }
+
+    [Fact]
+    public void Choose_PhysicalFirst_WeaponIneffective_BackstabStillFirst()
+    {
+        CombatSpellChooser sut = new();
+        CombatSettings settings = new()
+        {
+            NormalAttackSpell = Slot("harm"),
+            ActionOrder = CombatActionOrder.PhysicalFirst,
+        };
+
+        // The opener outranks the weapon-ineffective fallback too.
+        CombatSpellDecision d = sut.Choose(
+            settings, PhysCtx(weaponIneffective: true, backstabPending: true));
+
+        Assert.Equal(CombatSpellAction.Backstab, d.Action);
+    }
+
+    [Fact]
+    public void Choose_SpellsFirst_IgnoresWeaponIneffective()
+    {
+        CombatSpellChooser sut = new();
+        CombatSettings settings = new()
+        {
+            NormalAttackSpell = Slot("harm"),
+            ActionOrder = CombatActionOrder.SpellsFirst,
+        };
+
+        // SpellsFirst casts regardless of the weapon flag — the flag only gates
+        // the Physical-first path.
+        Assert.Equal(CombatSpellAction.NormalAttackSpell,
+            sut.Choose(settings, PhysCtx(weaponIneffective: false)).Action);
+        Assert.Equal(CombatSpellAction.NormalAttackSpell,
+            sut.Choose(settings, PhysCtx(weaponIneffective: true)).Action);
     }
 
     // ----- 2. In-between debuff: area once-per-room, excludes single -----

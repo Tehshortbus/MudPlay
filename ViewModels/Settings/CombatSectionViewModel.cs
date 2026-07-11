@@ -44,8 +44,7 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
     public override IEnumerable<string> SearchableLabels => new[]
     {
         "Combat",
-        "Combat priority", "Priority order", "Backstab priority",
-        "Debuffing priority", "Spells priority", "Physical priority",
+        "Combat action order", "Spells first", "Physical first",
         "Normal weapon attack command", "Alternate weapon attack command",
         "Attack command",
         "Do BS attacks", "Don't BS if multi-attack", "Run if BS fails",
@@ -69,25 +68,19 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private string _normalAttackCommand = "a";
     [ObservableProperty] private string _alternateAttackCommand = "a";
 
-    // ----- Combat priority order ------------------------------------
+    // ----- Combat action order --------------------------------------
 
-    // The four combat categories in their fixed key order; the ranking VM reorders
-    // them and reports each category's 1-based rank.
-    private static readonly (string Key, string Label, string? Tip)[] _priorityDefs =
-    {
-        ("Backstab", "Backstab",
-            "Priority of the backstab opener. Backstab only fires when ranked 1 (and Do BS attacks is on, we're sneaking, and the room has no SeeHidden monster); at any other rank it is ignored."),
-        ("Debuffing", "Debuffing",
-            "Priority of the debuffing category (area debuff, else single-target debuff)."),
-        ("Spells", "Spells",
-            "Priority of the attack-spell category (multi → normal → alternate attack spell cascade)."),
-        ("Physical", "Physical",
-            "Priority of the physical weapon swing — the terminal fallback that always applies. Placing it above another category suppresses that category whenever a swing is possible."),
-    };
+    // Bound to the Combat action-order ComboBox: which action to prefer as the
+    // round's one combat action. Default SpellsFirst.
+    [ObservableProperty] private CombatActionOrder _actionOrder = CombatActionOrder.SpellsFirst;
 
-    // Reorderable per-round action order. Row position is the rank, so the four
-    // categories always form a clean 1..4 permutation.
-    public PriorityRankingViewModel Priority { get; }
+    // Dropdown rows — friendly labels paired with the enum value.
+    public IReadOnlyList<ActionOrderOption> ActionOrderOptions { get; } =
+        new[]
+        {
+            new ActionOrderOption(CombatActionOrder.SpellsFirst,   "Spells first"),
+            new ActionOrderOption(CombatActionOrder.PhysicalFirst, "Physical first"),
+        };
 
     // ----- Weapon slots --------------------------------------------
     // The weapon-swap matrix (normal / alternate / backstab + off-hands) is
@@ -225,7 +218,6 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
         ArgumentNullException.ThrowIfNull(profile);
         _profile = profile;
         _spellbook = AppServices.Current.Spellbook;
-        Priority = new PriorityRankingViewModel(MarkDirty);
         _profile.ProfileLoaded += OnProfileChanged;
         _profile.ProfileClosed += OnProfileClosedExternally;
         _spellbook.Changed += OnSpellbookChanged;
@@ -249,10 +241,7 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
             NormalAttackCommand        = NormalAttackCommand ?? "a",
             AlternateAttackCommand     = AlternateAttackCommand ?? "a",
 
-            PriorityBackstab  = Priority.RankOf("Backstab"),
-            PriorityDebuffing = Priority.RankOf("Debuffing"),
-            PrioritySpells    = Priority.RankOf("Spells"),
-            PriorityPhysical  = Priority.RankOf("Physical"),
+            ActionOrder = ActionOrder,
 
             // Weapon fields (NormalWeapon / AlternateWeapon / BackstabWeapon +
             // off-hands) are owned by the Equipment Manager gear sets and
@@ -370,14 +359,7 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
         NormalAttackCommand     = dto.NormalAttackCommand ?? "a";
         AlternateAttackCommand  = dto.AlternateAttackCommand ?? "a";
 
-        Priority.Load(_priorityDefs, key => key switch
-        {
-            "Backstab"  => dto.PriorityBackstab,
-            "Debuffing" => dto.PriorityDebuffing,
-            "Spells"    => dto.PrioritySpells,
-            "Physical"  => dto.PriorityPhysical,
-            _           => 99,
-        });
+        ActionOrder = dto.ActionOrder;
 
         DoBackstab                  = dto.DoBackstab;
         SkipBackstabIfMultiAttack   = dto.SkipBackstabIfMultiAttack;
@@ -464,6 +446,9 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
     partial void OnNormalAttackCommandChanged(string value)      => MarkDirty();
     partial void OnAlternateAttackCommandChanged(string value)   => MarkDirty();
 
+    // Combat action order
+    partial void OnActionOrderChanged(CombatActionOrder value)   => MarkDirty();
+
     // BS options
     partial void OnDoBackstabChanged(bool value)                    => MarkDirty();
     partial void OnSkipBackstabIfMultiAttackChanged(bool value)     => MarkDirty();
@@ -548,4 +533,7 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
 
     // One Target Priority dropdown row — pairs the enum value with its friendly label.
     public sealed record TargetPriorityOption(TargetPriority Value, string Label);
+
+    // One Combat action-order dropdown row — pairs the enum value with its label.
+    public sealed record ActionOrderOption(CombatActionOrder Value, string Label);
 }
