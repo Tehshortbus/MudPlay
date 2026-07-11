@@ -6,7 +6,8 @@ namespace FujinTerm.Game.Inventory;
 
 // Auto-open containers engine. When a container item (ItemType == Container)
 // flagged ItemOverlay.AutoOpen newly enters the pack, sends open <item name>
-// once so its contents spill without the player opening it by hand.
+// once so its contents spill without the player opening it by hand, then a
+// single 'i' so the client re-parses the post-open pack.
 //
 // Trigger: InventoryManager.Changed. Each change groups the current carried
 // list by resolved item Number and diffs the flagged-container counts against
@@ -109,6 +110,7 @@ public sealed class AutoOpenManager : IDisposable
             return;
         }
 
+        bool openedAny = false;
         foreach ((int number, (ResolvedOpen item, int count)) in current)
         {
             int delta = count - _prevCounts.GetValueOrDefault(number);
@@ -116,8 +118,17 @@ public sealed class AutoOpenManager : IDisposable
             {
                 _log?.Info(LogCategory, $"open container item={item.Name}");
                 Send($"open {item.Name}");
+                openedAny = true;
             }
         }
+
+        // A container's contents don't surface in the parsed pack until a fresh
+        // inventory dump, so request one 'i' after any auto-open (a single
+        // refresh covers every container opened this pass). Its re-parse fires
+        // Changed again, but the baseline rebased below already accounts for the
+        // opened containers, so that echo can't re-open or re-request.
+        if (openedAny)
+            Send("i");
 
         RebaseTo(current);
     }
