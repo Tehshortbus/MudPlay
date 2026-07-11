@@ -149,6 +149,23 @@ public sealed class DoorOpenManager : IDisposable
         Action<DoorOpenResult> reply)
     {
         ArgumentNullException.ThrowIfNull(reply);
+
+        // Idempotent per-direction: a request for a direction already in
+        // flight or waiting in the queue is a duplicate — drop it rather than
+        // stacking it. Callers share a single-in-flight await model (the
+        // walker keys off one _awaitingDoorOpen flag), so the live request's
+        // terminal callback resolves the caller; a stacked duplicate would
+        // instead fire a stray verb once the FSM dequeues it in a room we've
+        // since moved past, whose non-door reply matches no subscribed
+        // pattern and sticks the FSM — stranding every later door behind it.
+        if ((_current is { } cur && cur.Direction == direction)
+            || _queue.Any(q => q.Direction == direction))
+        {
+            _log?.Info("Door",
+                $"open {DirectionShort(direction)} already in progress — ignoring duplicate (sender={sender}).");
+            return;
+        }
+
         _queue.Enqueue(new DoorRequest(direction, statRequirement, canBash, keyItemId, sender, reply));
         _log?.Info("Door",
             $"open {DirectionShort(direction)} queued (sender={sender}, key={keyItemId}, depth={_queue.Count}).");

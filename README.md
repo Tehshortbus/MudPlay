@@ -1,8 +1,13 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.34.1**
-> - Party re-invite after a chime/CMD teleport now waits until each member materializes, so no one is left behind by a "you don't see them here" invite
+> **Version 1.34.7**
+> - Walker no longer strands at a bashable/pickable door mid-route — a sub-FSM step is no longer double-driven into a duplicate, stray-verb door request
+> - Duplicate per-direction door requests are dropped instead of stacking behind a live one
+> - Combat resyncs the room immediately when a kill's death line can't be pinned to a roster mob, instead of stalling ~5s until the next swing no-ops
+> - Nav tooltips now list standalone room actions ("pull drawer", etc.) under Room commands for rooms with no multi-action exit
+> - A non-followed party member's attack announce no longer drives a duplicate re-fire under a Follow-target priority
+> - Between-round self-heal now resumes the attack in the same round instead of waiting a full round for a follow announce that never comes
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

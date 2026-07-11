@@ -2,6 +2,16 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.34.7
+
+- Walker no longer strands at a bashable/pickable door mid-route — a sub-FSM step is no longer double-driven into a duplicate, stray-verb door request
+- Duplicate per-direction door requests are dropped instead of stacking behind a live one
+- Combat resyncs the room immediately when a kill's death line can't be pinned to a roster mob, instead of stalling ~5s until the next swing no-ops
+- Nav tooltips now list standalone room actions ("pull drawer", etc.) under Room commands for rooms with no multi-action exit
+- A non-followed party member's attack announce no longer drives a duplicate re-fire under a Follow-target priority
+- Between-round self-heal now resumes the attack in the same round instead of waiting a full round for a follow announce that never comes
+- bug reports addressed: stock-20260710-221533, stock-20260710-221612, stock-20260710-221703, stock-20260710-221836, stock-20260710-222050, stock-20260710-222610
+
 ## 1.34.1
 
 - Party re-invite after a chime/CMD teleport now waits until each member materializes, so no one is left behind by a "you don't see them here" invite

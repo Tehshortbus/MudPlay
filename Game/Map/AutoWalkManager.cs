@@ -1082,6 +1082,19 @@ public sealed class AutoWalkManager : IRecoverableEngine
         if (_path is null || _index >= _path.Count) return;
         if (_path[_index] is not MoveStep) return;
 
+        // A door / trap / hidden-exit sub-FSM owns this step until its own
+        // reply callback (OnDoorReply / OnTrapReply / OnHiddenSearchReply)
+        // fires the move and advances. While one is pending, the bash / pick /
+        // search output re-observes the CURRENT room; letting the block below
+        // act on that transition treats the still-in-progress step as
+        // completed-or-blocked, clears _stepInFlight, and re-drives the step —
+        // enqueuing a duplicate door request that later fires a stray verb in
+        // the room we've since moved into. The sub-FSM clears its flag before
+        // emitting the real move, so the genuine arrival transition still lands
+        // here normally.
+        if (_awaitingDoorOpen || _awaitingTrapDisarm || _awaitingHiddenReveal)
+            return;
+
         // Tracker lost confidence mid-step — defer to the
         // EngineRecoveryGate. The gate will either keep watching
         // (tier 2: 15-step budget + planned-direction-available

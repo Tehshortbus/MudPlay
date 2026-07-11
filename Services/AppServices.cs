@@ -2281,6 +2281,7 @@ public sealed class AppServices
                     $"fallback death — no entity removed");
                 return;
             }
+            bool removedAny = false;
             foreach (Game.Combat.MonsterDeathIdentity id in evt.Candidates)
             {
                 // Order matters: drop CombatManager's _currentTarget
@@ -2300,9 +2301,19 @@ public sealed class AppServices
                 {
                     Log.Info(Game.Combat.MonsterDeathWatcher.LogCategory,
                         $"removed dead entity name={id.Name}");
+                    removedAny = true;
                     break;     // remove one — multiple candidates are alt-names for the same death
                 }
             }
+
+            // A death we matched but couldn't pin to a roster slot (flavored /
+            // shared wording: dead line "spectre" vs roster "shadow spectre")
+            // leaves the entity list stale. RemoveDeadEntity never fired
+            // EntitiesObserved, so combat would otherwise sit on the dead mob
+            // until its next swing no-ops a tick later. Nudge a room re-display
+            // now so the true roster (possibly empty) lands immediately.
+            if (!removedAny)
+                Combat.NoteUnattributedDeath();
         };
 
         Combat = new Game.Combat.CombatManager(

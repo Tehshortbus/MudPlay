@@ -1073,6 +1073,19 @@ public sealed partial class CombatManager : IDisposable
         if (TryFollowTargetPriority(settings, announcer, announcedTarget))
             return;
 
+        // Under a Follow* priority the leader coordination above already owns our
+        // target and holds when we're already engaged (the server auto-repeats
+        // the fight — GAME_MECHANICS "let the server's auto-repeat carry it").
+        // A *non*-followed member announcing that same mob must NOT additionally
+        // drive an Attack-Order re-fire: it would re-announce ("moves to attack")
+        // a target we're already swinging at — the redundant double from the
+        // report where the leader's announce logged "already engaged; no re-fire"
+        // yet another member's announce still re-fired. Attack Order only owns
+        // "when" when we're picking independently (Default priority).
+        if (settings.TargetPriority is TargetPriority.FollowLeader
+                                     or TargetPriority.FollowMember)
+            return;
+
         // Attack Order owns WHEN — re-fire our own current target to stay
         // last in initiative; never switches the monster.
         HandleAttackOrderRefire(settings, announcer, announcedTarget);
@@ -1476,6 +1489,30 @@ public sealed partial class CombatManager : IDisposable
         _wireSender(Encoding.Latin1.GetBytes("\r"));
     }
 
+    // A specific death-line matched, but the classifier couldn't attribute it to
+    // any monster in the current room view (shared / suffix-flavored wordings:
+    // the death line resolved to "spectre" while the roster holds "shadow
+    // spectre", so RemoveDeadEntity found nothing to drop). The roster is now
+    // stale — a mob is gone but our list still shows it. Without a nudge, combat
+    // only learns the room emptied on the NEXT tick, when its swing at the ghost
+    // target no-ops through OnCommandNoEffect — a ~5s stall before the walker can
+    // resume. Force the same debounced room re-display those paths use so the
+    // server hands us the true roster now: if the room's empty the Combat gate
+    // clears immediately; if a survivor remains we re-pick it a beat sooner.
+    public void NoteUnattributedDeath()
+    {
+        if (!_isEnabled()) return;
+        if (_wireSender is null) return;
+        if (_currentTarget is null) return;
+
+        DateTimeOffset now = DateTimeOffset.Now;
+        if (now - _lastRoomRefreshAt < RoomRefreshCooldown) return;
+        _lastRoomRefreshAt = now;
+        _log?.Combat(LogCategory,
+            "unattributed death — forcing room re-display to resync roster");
+        _wireSender(Encoding.Latin1.GetBytes("\r"));
+    }
+
     // Re-engage the room after an interrupt turned our auto-attack off (an
     // in-between self-heal / buff cast, a stun, etc.) while an engageable mob is
     // still present. Disarms the interrupt flag, drops the stale target so
@@ -1486,7 +1523,19 @@ public sealed partial class CombatManager : IDisposable
         _combatOff = false;
         _log?.Combat(LogCategory, "combat resumed after interrupt — re-engaging room");
         _currentTarget = null;     // force a fresh pick + equip
-        OnEntitiesObserved(live);
+
+        // Bypass the follow-announce hold on this re-pick. We only get here mid-
+        // fight (an interrupt turned OUR auto-attack off while already engaged),
+        // so the party has already converged and the followed leader is swinging
+        // at a mob it won't re-announce ("already engaged; no re-fire"). Leaving
+        // ShouldWaitForFollow armed would park us awaiting an announce that never
+        // comes, and OnCombatTick's fallback would only rescue us a full round
+        // later (the reported "re-attack missed a combat round" after a between-
+        // round heal). Picking our own target now lands on the same mob that
+        // fallback would have chosen, minus the wasted round.
+        _followDeferBypass = true;
+        try { OnEntitiesObserved(live); }
+        finally { _followDeferBypass = false; }
     }
 
     // Round-paced wrapper over ResumeEngage: re-engages at most once per
