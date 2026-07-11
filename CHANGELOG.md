@@ -2,6 +2,13 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.35.0
+
+- Backscroll now shows a frozen snapshot from the moment it opens instead of live-appending, so it no longer lags while following a fast party leader
+- New output keeps recording in the background; close and reopen to catch up with nothing missed
+- The "Go to live" button is now "Jump to end" — scrolls to the newest captured row
+- bug reports addressed: stock-20260711-090329
+
 ## 1.34.15
 
 - Character Info's Inventory box now shows the coins line and a keys list, parsed from the pack readout

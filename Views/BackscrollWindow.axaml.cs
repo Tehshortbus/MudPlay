@@ -1,4 +1,3 @@
-using System.Collections.Specialized;
 using System.Text;
 using Avalonia;
 using Avalonia.Controls;
@@ -13,12 +12,13 @@ using FujinTerm.ViewModels;
 
 namespace FujinTerm.Views;
 
-// Modeless terminal-history window. Bound to BackscrollViewModel.
-// The transcript is rendered as one SelectableTextBlock (Content) plus an
-// aligned timestamp gutter, so native drag-select spans lines and Ctrl+C copies
-// the exact character range. The code-behind rebuilds both from the VM's Rows,
-// positions the live/history divider against the scroll offset, follows the live
-// tail, and drives Find-next / Go-to-live by scrolling the viewer.
+// Modeless terminal-history window. Bound to BackscrollViewModel, which holds a
+// frozen snapshot captured when the window opened (the window never tracks the
+// live terminal). The transcript is rendered as one SelectableTextBlock (Content)
+// plus an aligned timestamp gutter, so native drag-select spans lines and Ctrl+C
+// copies the exact character range. The code-behind builds both from the VM's
+// Rows once, positions the history/screen divider against the scroll offset, and
+// drives Find-next / Jump-to-end by scrolling the viewer.
 public partial class BackscrollWindow : Window
 {
     // Fallback line height before the first layout pass measures the real one.
@@ -31,7 +31,6 @@ public partial class BackscrollWindow : Window
     // text begins — translates a Find hit's (row, column) into a selection.
     private int[] _lineStartOffsets = [];
     private int _lineCount;
-    private bool _rebuildScheduled;
 
     // Named controls resolved from the XAML name scope after load. This project
     // hand-rolls InitializeComponent, so Avalonia's generated x:Name fields are
@@ -49,7 +48,7 @@ public partial class BackscrollWindow : Window
         _scroll     = this.FindControl<ScrollViewer>("OuterScroll")!;
         _transcript = this.FindControl<SelectableTextBlock>("Transcript")!;
         _gutter     = this.FindControl<TextBlock>("Gutter")!;
-        _separator  = this.FindControl<Border>("LiveSeparator")!;
+        _separator  = this.FindControl<Border>("HistoryDivider")!;
         GlobalHotkeys.Attach(this);
         FujinTerm.Services.AppServices.Current.WindowLayouts.AttachWindow(this, "backscroll");
         Opened += OnOpened;
@@ -67,60 +66,35 @@ public partial class BackscrollWindow : Window
     {
         if (DataContext is not BackscrollViewModel vm) return;
 
-        vm.Rows.CollectionChanged += OnRowsChanged;
         vm.FindMatchRequested += OnFindMatch;
-        vm.GoToLiveRequested  += OnGoToLive;
+        vm.JumpToEndRequested += OnJumpToEnd;
 
         _scroll.ScrollChanged += OnScrollChanged;
-        Activated   += OnActivationChanged;
-        Deactivated += OnActivationChanged;
 
         // Build once the template + first layout exist, then park at the
-        // history/live boundary (not the absolute tail) so the window opens on
-        // the newest scrollback with the live line just in view.
+        // history/screen boundary (not the absolute tail) so the window opens on
+        // the newest scrollback with the screen-snapshot line just in view.
         Dispatcher.UIThread.Post(() =>
         {
             Rebuild();
-            // Opening off the bottom means we're not following the tail; clear
-            // AutoFollow now so Rebuild's post-layout callback doesn't yank us
-            // down to live before ScrollToLiveBoundary runs.
-            vm.AutoFollow = false;
-            Dispatcher.UIThread.Post(ScrollToLiveBoundary, DispatcherPriority.Background);
+            Dispatcher.UIThread.Post(ScrollToScreenBoundary, DispatcherPriority.Background);
         }, DispatcherPriority.Background);
     }
 
     private void OnClosed(object? sender, EventArgs e)
     {
         _scroll.ScrollChanged -= OnScrollChanged;
-        Activated   -= OnActivationChanged;
-        Deactivated -= OnActivationChanged;
         if (DataContext is BackscrollViewModel vm)
         {
-            vm.Rows.CollectionChanged -= OnRowsChanged;
             vm.FindMatchRequested -= OnFindMatch;
-            vm.GoToLiveRequested  -= OnGoToLive;
-            vm.Dispose();
+            vm.JumpToEndRequested -= OnJumpToEnd;
         }
     }
 
-    private void OnRowsChanged(object? sender, NotifyCollectionChangedEventArgs e) => ScheduleRebuild();
-
-    // Coalesce the many CollectionChanged events a single live-tail refresh emits
-    // (replace ~25 rows + add/remove) into one rebuild per dispatcher tick.
-    private void ScheduleRebuild()
-    {
-        if (_rebuildScheduled) return;
-        _rebuildScheduled = true;
-        Dispatcher.UIThread.Post(() =>
-        {
-            _rebuildScheduled = false;
-            Rebuild();
-        }, DispatcherPriority.Background);
-    }
-
-    // Rebuild the whole transcript: colour runs into Transcript, timestamps into
-    // the gutter, and record each line's start offset. Expensive by design — the
-    // ring is capped, and one text block is what lets a selection span rows.
+    // Build the whole transcript once: colour runs into Transcript, timestamps
+    // into the gutter, and record each line's start offset. Expensive by design —
+    // the snapshot is frozen and capped, and one text block is what lets a
+    // selection span rows.
     private void Rebuild()
     {
         if (DataContext is not BackscrollViewModel vm) return;
@@ -149,13 +123,8 @@ public partial class BackscrollWindow : Window
         _lineStartOffsets = offsets;
         _lineCount = vm.Rows.Count;
 
-        // After layout settles: keep the tail in view while following, and
-        // re-place the divider for the new content height.
-        Dispatcher.UIThread.Post(() =>
-        {
-            if (DataContext is BackscrollViewModel v && v.AutoFollow) OnGoToLive();
-            UpdateSeparator();
-        }, DispatcherPriority.Background);
+        // After layout settles, re-place the divider for the content height.
+        Dispatcher.UIThread.Post(UpdateSeparator, DispatcherPriority.Background);
     }
 
     private double LineHeight()
@@ -163,29 +132,11 @@ public partial class BackscrollWindow : Window
             ? _transcript.Bounds.Height / _lineCount
             : FallbackLineHeight;
 
-    private void OnScrollChanged(object? sender, ScrollChangedEventArgs e)
-    {
-        UpdateAutoFollow();
-        UpdateSeparator();
-    }
+    private void OnScrollChanged(object? sender, ScrollChangedEventArgs e) => UpdateSeparator();
 
-    private void OnActivationChanged(object? sender, EventArgs e) => UpdateAutoFollow();
-
-    // Mirror the live screen only while the user is actually watching the tail —
-    // window focused AND scrolled to the bottom. Otherwise the VM defers the
-    // live-tail refresh so a review of history isn't yanked down.
-    private void UpdateAutoFollow()
-    {
-        if (DataContext is not BackscrollViewModel vm) return;
-        double maxOffset = _scroll.Extent.Height - _scroll.Viewport.Height;
-        double lh = LineHeight();
-        bool atBottom = maxOffset <= lh || _scroll.Offset.Y >= maxOffset - lh * 2;
-        vm.AutoFollow = IsActive && atBottom;
-    }
-
-    // Position the amber history/live divider at the boundary row, offset by the
-    // scroll. Hidden when the boundary is scrolled out of view or there's no
-    // history above the live tail.
+    // Position the amber history/screen divider at the boundary row, offset by
+    // the scroll. Hidden when the boundary is scrolled out of view or there's no
+    // history above the screen snapshot.
     private void UpdateSeparator()
     {
         if (DataContext is not BackscrollViewModel vm) { _separator.IsVisible = false; return; }
@@ -218,20 +169,21 @@ public partial class BackscrollWindow : Window
         _scroll.Offset = _scroll.Offset.WithY(targetY);
     }
 
-    private void OnGoToLive()
+    private void OnJumpToEnd()
     {
         double maxY = Math.Max(0, _scroll.Extent.Height - _scroll.Viewport.Height);
         _scroll.Offset = _scroll.Offset.WithY(maxY);
     }
 
-    // Open parked at the history/live boundary rather than the absolute tail:
+    // Open parked at the history/screen boundary rather than the absolute tail:
     // land the amber divider a couple of lines up from the viewport bottom so
-    // the newest scrollback fills the view and the live line is just in sight.
-    private void ScrollToLiveBoundary()
+    // the newest scrollback fills the view and the screen snapshot is just in
+    // sight.
+    private void ScrollToScreenBoundary()
     {
-        if (DataContext is not BackscrollViewModel vm) { OnGoToLive(); return; }
+        if (DataContext is not BackscrollViewModel vm) { OnJumpToEnd(); return; }
         int boundary = vm.ScrollbackCount;
-        if (boundary <= 0 || boundary >= vm.Rows.Count) { OnGoToLive(); return; }
+        if (boundary <= 0 || boundary >= vm.Rows.Count) { OnJumpToEnd(); return; }
 
         double lh = LineHeight();
         double dividerY = ContentPaddingTop + boundary * lh;

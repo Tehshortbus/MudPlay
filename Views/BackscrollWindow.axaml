@@ -22,8 +22,8 @@
                 Padding="10,6">
             <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto" VerticalAlignment="Center">
                 <Button Grid.Column="0"
-                        Content="Go to live"
-                        Command="{Binding GoToLiveCommand}"/>
+                        Content="Jump to end"
+                        Command="{Binding JumpToEndCommand}"/>
                 <TextBox Grid.Column="2" x:Name="SearchBox" MinWidth="240"
                          PlaceholderText="Search…"
                          Text="{Binding SearchText, Mode=TwoWay}">
@@ -88,11 +88,11 @@
                 </Grid>
             </ScrollViewer>
 
-            <!-- Live/history divider: an amber rule the code-behind positions at
-                 the boundary between frozen scrollback and the live tail, offset
-                 by the vertical scroll. Non-hit-testing so it never blocks a
-                 drag-select. -->
-            <Border x:Name="LiveSeparator"
+            <!-- History/screen divider: an amber rule the code-behind positions
+                 at the boundary between scrolled-off history and the screen
+                 snapshot captured at open, offset by the vertical scroll.
+                 Non-hit-testing so it never blocks a drag-select. -->
+            <Border x:Name="HistoryDivider"
                     Height="1"
                     HorizontalAlignment="Stretch"
                     VerticalAlignment="Top"
