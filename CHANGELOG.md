@@ -2,6 +2,12 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.33.0
+
+- Combat priority is now a simple "Spells first / Physical first" dropdown, replacing the reorderable priority list
+- Backstab and debuffs no longer sit in the reorder list — the backstab opener always leads when enabled, debuffs queue alongside buffs/heals
+- Physical first falls back to the attack-spell cascade when no configured weapon can damage the target (magical creature), instead of swinging uselessly
+
 ## 1.32.0
 
 - Items flagged CannotBeTaken are never auto-collected, even with AutoCollect set

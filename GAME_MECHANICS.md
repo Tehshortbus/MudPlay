@@ -215,6 +215,17 @@ it isn't here and you're unsure, ask.
   hurt this monster; the client swaps to the configured alternate weapon.
 - **[OBSERVED]** `Your fists have no effect against this monster!` — you're swinging bare-handed
   (no weapon in hand, or it left your hand).
+- **[CONFIRMED]** **A magical creature needs a magical weapon (or a spell) to be damaged.**
+  Physical un-hittability is deterministic from game data: a weapon can damage a monster iff the
+  weapon's magical "hit" level is at least the monster's magical-defense level
+  (`ItemMagic.HitMagic(weapon) >= MonsterMagic.MagicalLevel(monster)`; a monster whose
+  `MagicalLevel <= 0` is hittable by any weapon). When the deterministic check can't decide
+  (weapon unknown to the tables), the `Your weapon has no effect` line is the reactive backstop —
+  the client records the species as un-hittable by that weapon. **Spells are not bound by this
+  physical gate** — an attack spell can damage a magical creature that no configured weapon can
+  touch. So when the whole weapon path is exhausted (normal weapon can't hit, and either no
+  alternate is configured or the alternate also can't hit), the *Physical first* action order
+  falls back to the attack-spell cascade for that target rather than swinging uselessly.
 - **[CONFIRMED]** **Casting a spell mid-fight drops the auto-attack for that round** — the server
   emits `*Combat Off*` because a cast is a distinct action that interrupts the sustained weapon
   swing. If the target is **still alive** after the cast, the desired behaviour is to **re-attack

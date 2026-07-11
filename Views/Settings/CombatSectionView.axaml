@@ -1,7 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:FujinTerm.ViewModels.Settings"
-             xmlns:settings="using:FujinTerm.Views.Settings"
              xmlns:spells="using:FujinTerm.Game.Spells"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -66,16 +65,24 @@
                      toolbar Toggle button). This tab configures HOW
                      to attack, not WHETHER to. -->
 
-                <!-- ============ Combat priority order ============ -->
-                <TextBlock Classes="SectionHeader" Text="Combat priority order (per-round action order)"/>
-                <TextBlock Text="Use the arrows to reorder. Higher in the list = acts earlier. The engine evaluates these four categories top-to-bottom each round; the first applicable one owns the round. Physical is the terminal fallback (a swing is always possible)."
+                <!-- ============ Combat action order ============ -->
+                <TextBlock Classes="SectionHeader" Text="Combat action order"/>
+                <TextBlock Text="Which action to prefer as the round's one combat action. Spells first casts the attack-spell cascade (multi → normal → alternate) when one applies and swings only when none can fire; Physical first swings the weapon and reverts to spells only when the weapon can't damage the target (normal weapon has no effect and there's no working alternate). The backstab opener (when enabled) and debuff casts sit outside this choice."
                            Foreground="{StaticResource ChromeFgMutedBrush}"
                            FontSize="{StaticResource FontSizeSm}"
                            FontStyle="Italic"
                            TextWrapping="Wrap"
                            Margin="0,0,0,4"/>
-                <settings:PriorityRankingView DataContext="{Binding Priority}"
-                                              HorizontalAlignment="Left"/>
+                <Grid ColumnDefinitions="180,*">
+                    <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Action order"/>
+                    <ComboBox Grid.Column="1"
+                              ItemsSource="{Binding ActionOrderOptions}"
+                              SelectedValue="{Binding ActionOrder, Mode=TwoWay}"
+                              SelectedValueBinding="{Binding Value}"
+                              DisplayMemberBinding="{Binding Label}"
+                              Width="220" HorizontalAlignment="Left"
+                              ToolTip.Tip="Spells first = cast the attack-spell cascade when applicable, else swing. Physical first = swing the weapon, reverting to spells only when neither the normal nor alternate weapon can damage the target."/>
+                </Grid>
 
                 <Grid ColumnDefinitions="240,*" Margin="0,4,0,0">
                     <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Normal weapon attack command"/>

@@ -13,19 +13,24 @@ namespace FujinTerm.Game.Combat;
 // attack spell — a spell IS the round's action, it does not stack with a
 // swing). Debuffing is an in-between action (≤1/round), resolved separately by
 // ChooseDebuff and cast through the shared in-between window, so it never
-// appears in the combat-action walk below.
+// appears in the combat-action decision below.
 //
-// 1. Backstab gate — only when ranked at PriorityBackstab 1 AND a backstab is
-//    still pending (sneaking + DoBackstab). The opener is the round's action or
-//    nothing — a mid-round BS attempt is a guaranteed fail, so at any other rank
-//    the category is ignored entirely. When it fires the chooser returns
-//    Backstab so the engine's BS path owns the swing and no spell goes out.
-// 2. Attack — MultiAttackSpell while its conditions hold (room count ≥
-//    MinEnemies, mana, cast cap); it stays selected round after round until a
-//    condition fails (mana runs out, cap reached, or the room thins below
-//    MinEnemies as mobs die). When multi-attack no longer qualifies, fall to
-//    NormalAttackSpell, then AlternateAttackSpell, then the engine's weapon
-//    attack command.
+// 1. Backstab opener — fires when a backstab is still pending (DoBackstab on +
+//    sneaking + surprise round unspent, folded into ctx.BackstabPending) and the
+//    target isn't flagged DontBackstab. The opener is the round's action or
+//    nothing — a mid-round BS attempt is a guaranteed fail — so it always fires
+//    FIRST when eligible, ahead of the spell-vs-physical choice. When it fires
+//    the chooser returns Backstab so the engine's BS path owns the swing and no
+//    spell goes out.
+// 2. Round action — CombatSettings.ActionOrder picks between spells and the
+//    weapon. SpellsFirst runs the attack-spell cascade: MultiAttackSpell while
+//    its conditions hold (room count ≥ MinEnemies, mana, cast cap), then
+//    NormalAttackSpell, then AlternateAttackSpell, then the weapon; a spell that
+//    can't fire this round falls through to the swing. PhysicalFirst swings the
+//    weapon and reaches for that same cascade only when the weapon path is proven
+//    ineffective against this target (ctx.WeaponIneffective — the normal weapon
+//    can't damage it and there's no working alternate), so a spell-less build
+//    still just swings.
 //
 // Mana gating reads SpellManaThresholdMode: Percentage treats MinManaPerCast as
 // a 0–100 share of max MA; Absolute treats it as raw points. A debuff that can't
@@ -64,61 +69,39 @@ public sealed class CombatSpellChooser
         _singleDebuffedTargets.Clear();
     }
 
-    // The four combat categories in canonical order. Used as the tie-break when
-    // two categories share a priority value, so duplicate numbers resolve to the
-    // historical Backstab → Debuffing → Spells → Physical fallback.
-    private static readonly CombatCategory[] Canonical =
-    {
-        CombatCategory.Backstab,
-        CombatCategory.Debuffing,
-        CombatCategory.Spells,
-        CombatCategory.Physical,
-    };
-
-    // Pick the next combat action for the current round. Pure — does not mutate
-    // counters; the caller commits the choice via MarkCast only when the cast
-    // actually reaches the wire. Walks the four categories in the user-configured
-    // priority order (PriorityBackstab etc.); the first applicable category owns
-    // the round. Physical (the weapon swing) is the terminal category — always
-    // applicable — so the loop always resolves.
+    // Pick the round's combat action. Pure — does not mutate counters; the caller
+    // commits the choice via MarkCast only when the cast actually reaches the
+    // wire. The backstab opener fires first when eligible; otherwise
+    // CombatSettings.ActionOrder decides between the attack-spell cascade and the
+    // weapon swing (the swing is always available, so the method always resolves).
     public CombatSpellDecision Choose(CombatSettings settings, in CombatSpellContext ctx)
     {
         ArgumentNullException.ThrowIfNull(settings);
 
-        ThresholdMode mode = settings.SpellManaThresholdMode;
+        // Backstab is the round's opener or nothing — a mid-round attempt is a
+        // guaranteed fail — so it fires only as the engagement's very first
+        // action, gated upstream by DoBackstab + stealth + eligibility
+        // (ctx.BackstabPending) and suppressed on a DontBackstab target. It sits
+        // outside the spells-vs-physical choice below; when it fires the engine's
+        // BS path owns the swing and no spell goes out.
+        if (ctx.BackstabPending && !ctx.TargetDontBackstab)
+            return CombatSpellDecision.Backstab;
 
-        // Stable-sort the four categories by configured priority; the
-        // canonical-index tie-break keeps equal priorities deterministic.
-        Span<CombatCategory> order = stackalloc CombatCategory[Canonical.Length];
-        Canonical.CopyTo(order);
-        SortByPriority(order, settings);
-
-        foreach (CombatCategory cat in order)
-        {
-            CombatSpellDecision? decision = cat switch
-            {
-                // Backstab is the round's opener or nothing: it only fires when
-                // the user ranks it at priority 1. At any other rank we ignore
-                // it entirely (a mid-round BS attempt is a guaranteed fail). A
-                // target flagged DontBackstab is never BS'd — fall through to the
-                // next category so the opener becomes a normal attack.
-                CombatCategory.Backstab =>
-                    (settings.PriorityBackstab == 1 && ctx.BackstabPending
-                        && !ctx.TargetDontBackstab)
-                        ? CombatSpellDecision.Backstab : null,
-                // Debuffing is an in-between action, NOT a combat action —
-                // it's resolved by ChooseDebuff and cast through the shared
-                // in-between window (CastingDirector), so the combat-action
-                // walk skips it. The category stays in the sort only to keep
-                // the other three priorities ordering deterministically.
-                CombatCategory.Debuffing => null,
-                CombatCategory.Spells =>
-                    ctx.SpellsAvailable ? TryAttackSpell(settings, ctx, mode) : null,
-                CombatCategory.Physical => CombatSpellDecision.Weapon,
-                _ => null,
-            };
-            if (decision is { } d) return d;
-        }
+        // SpellsFirst always reaches for the attack-spell cascade (multi → normal
+        // → alternate); PhysicalFirst swings and reaches for it only when the
+        // weapon path is proven ineffective against this target
+        // (ctx.WeaponIneffective — normal can't hit and there's no working
+        // alternate). Either way a cascade that can't fire this round falls
+        // through to the swing. Debuffs are NOT resolved here; they're in-between
+        // casts handled by ChooseDebuff / CastingDirector (ranked against heals &
+        // buffs by the Spells tab), so they land alongside the round's action
+        // regardless of this choice.
+        bool preferSpell = settings.ActionOrder == CombatActionOrder.SpellsFirst
+                           || ctx.WeaponIneffective;
+        if (preferSpell
+            && ctx.SpellsAvailable
+            && TryAttackSpell(settings, ctx, settings.SpellManaThresholdMode) is { } spell)
+            return spell;
 
         return CombatSpellDecision.Weapon;
     }
@@ -232,48 +215,6 @@ public sealed class CombatSpellChooser
         return null;
     }
 
-    // In-place insertion sort of the four categories by configured priority
-    // (ascending), tie-breaking on canonical index. Four elements, so insertion
-    // sort is both the simplest and the fastest stable option.
-    private static void SortByPriority(Span<CombatCategory> order, CombatSettings settings)
-    {
-        for (int i = 1; i < order.Length; i++)
-        {
-            CombatCategory key = order[i];
-            int keyPri = PriorityOf(settings, key);
-            int j = i - 1;
-            while (j >= 0 && IsHigher(order[j], PriorityOf(settings, order[j]), key, keyPri))
-            {
-                order[j + 1] = order[j];
-                j--;
-            }
-            order[j + 1] = key;
-        }
-    }
-
-    // True when category a should sort AFTER b (i.e. b fires first): higher
-    // priority value, or equal value with a later canonical index.
-    private static bool IsHigher(CombatCategory a, int aPri, CombatCategory b, int bPri) =>
-        aPri > bPri || (aPri == bPri && CanonicalIndex(a) > CanonicalIndex(b));
-
-    private static int PriorityOf(CombatSettings s, CombatCategory cat) => cat switch
-    {
-        CombatCategory.Backstab  => s.PriorityBackstab,
-        CombatCategory.Debuffing => s.PriorityDebuffing,
-        CombatCategory.Spells    => s.PrioritySpells,
-        CombatCategory.Physical  => s.PriorityPhysical,
-        _ => int.MaxValue,
-    };
-
-    private static int CanonicalIndex(CombatCategory cat) => cat switch
-    {
-        CombatCategory.Backstab  => 0,
-        CombatCategory.Debuffing => 1,
-        CombatCategory.Spells    => 2,
-        CombatCategory.Physical  => 3,
-        _ => int.MaxValue,
-    };
-
     // Record that the engine successfully sent the cast for decision against
     // targetRawName. No-op for WeaponAttack. Keeps the per-room counters in step
     // with what actually went to the server, so a cast blocked by
@@ -370,16 +311,6 @@ public enum CombatSpellAction
     Backstab,
 }
 
-// The four orderable combat categories. Each maps to a CombatSettings priority
-// field; the chooser walks them in ascending priority order.
-internal enum CombatCategory
-{
-    Backstab,
-    Debuffing,
-    Spells,
-    Physical,
-}
-
 // One round's chosen combat action plus the cast-code to send (null for
 // WeaponAttack and Backstab).
 public readonly record struct CombatSpellDecision(CombatSpellAction Action, string? Spell)
@@ -413,7 +344,12 @@ public readonly record struct CombatSpellDecision(CombatSpellAction Action, stri
 // nothing is resist-blocked — elemental only; M.R. and poison spells never
 // appear here. TargetDontBackstab is the current target's per-monster
 // DontBackstab overlay flag — when set the backstab gate is suppressed and the
-// opener falls through to a normal attack.
+// opener falls through to a normal attack. WeaponIneffective is true when neither
+// configured weapon can damage the current target (normal is out and there's no
+// working alternate — proven by game-data HitMagic or a "no effect" line this
+// room); it only matters for PhysicalFirst, where it flips the round from a
+// useless swing to the attack-spell cascade. Defaults false so SpellsFirst and
+// unwired callers / tests behave as before.
 //
 // The four Override* fields carry the current target's per-monster spell
 // overrides (game-data Monster overlay), already resolved from Spell.Number to
@@ -440,4 +376,5 @@ public readonly record struct CombatSpellContext(
     string? OverrideAttackSpell = null,
     int? OverrideAttackMaxCasts = null,
     string? OverridePreAttackSpell = null,
-    int? OverridePreAttackMaxCasts = null);
+    int? OverridePreAttackMaxCasts = null,
+    bool WeaponIneffective = false);

@@ -440,7 +440,9 @@ public sealed partial class CombatManager
             OverrideAttackSpell:       attackOverride,
             OverrideAttackMaxCasts:    attackCap,
             OverridePreAttackSpell:    preAttackOverride,
-            OverridePreAttackMaxCasts: preAttackCap);
+            OverridePreAttackMaxCasts: preAttackCap,
+            WeaponIneffective:   WeaponPathExhausted(
+                settings, ResolveSpeciesByName(target), monsterNumber));
     }
 
     // The current target's per-monster DontBackstab overlay flag — the backstab
@@ -507,6 +509,63 @@ public sealed partial class CombatManager
 
         // Normal can't hit. Swap only if the alternate actually clears the bar.
         return _itemMagic.HitMagic(settings.AlternateWeapon) >= magical;
+    }
+
+    // True when neither configured weapon can damage the current target, so a
+    // Physical-first round should fall back to the attack-spell cascade rather
+    // than swing uselessly. The path is exhausted when the normal weapon is out
+    // AND the alternate is out (or unconfigured); if either weapon can still hit,
+    // it isn't (ShouldUseAlternateWeapon owns the swap to a working alternate).
+    // Fails closed — keep swinging — when nothing proves ineffectiveness, so we
+    // never divert to spells on missing data.
+    private bool WeaponPathExhausted(
+        CombatSettings settings, string resolvedSpecies, int monsterNumber)
+    {
+        if (!WeaponCannotHit(settings.NormalWeapon, resolvedSpecies, monsterNumber,
+                _normalWeaponFailedMonsters))
+            return false;
+
+        if (!string.IsNullOrWhiteSpace(settings.AlternateWeapon)
+            && !WeaponCannotHit(settings.AlternateWeapon, resolvedSpecies, monsterNumber,
+                _alternateWeaponFailedMonsters))
+            return false;
+
+        return true;
+    }
+
+    // One weapon's effectiveness verdict against the current target: out when the
+    // room fail-set already names this species OR game data's HitMagic can't clear
+    // the monster's Magical level. Fails open (effective) when the eligibility
+    // indexes aren't wired or the weapon / monster levels are unknown — we don't
+    // second-guess a swing on missing data.
+    private bool WeaponCannotHit(
+        string? weapon, string resolvedSpecies, int monsterNumber, HashSet<string> failSet)
+    {
+        if (!string.IsNullOrEmpty(resolvedSpecies) && failSet.Contains(resolvedSpecies))
+            return true;
+        if (_monsterMagic is null || _itemMagic is null) return false;
+        int magical = _monsterMagic.MagicalLevel(monsterNumber);
+        if (magical <= 0) return false;                 // any weapon hits
+        int hit = _itemMagic.HitMagic(weapon);
+        if (hit < 0) return false;                       // unknown weapon → don't assume
+        return hit < magical;
+    }
+
+    // Both configured weapons proved ineffective against the current target (a "no
+    // effect" line landed on the alternate too). When a combat-spell caster is
+    // wired, re-run the round decision — the context now reports WeaponIneffective
+    // via both fail-sets, so Choose offers a spell under Physical-first (SpellsFirst
+    // would already have tried spells). Returns true when the re-decision entered
+    // spell mode. No-op (false) with no caster / target / live room.
+    private bool TryFallBackToSpellAfterWeaponFail(CombatSettings settings)
+    {
+        if (!CombatSpellsWired) return false;
+        if (_currentTarget is not { } target) return false;
+        if (_classifier.Current is not { } obs) return false;
+        if (TryBuildCandidate(obs, target) is not { } cand) return false;
+
+        DispatchRoundAction(settings, cand, CountEngageable(obs), obs);
+        return _castingSpellTarget is not null;
     }
 
     // The single-target spell actions the monster's SpellImmu level
