@@ -44,7 +44,8 @@ public sealed record ItemOverlay
     // Treat this item as a search target for auto-find behaviour.
     public bool? AutoFind { get; init; }
 
-    // Auto-open this item (containers, scrolls, etc.) when acquired.
+    // Auto-open this container item (ItemType == Container) once it enters
+    // inventory — the engine sends `open <item>` on acquisition.
     public bool? AutoOpen { get; init; }
 
     // Auto-buy this item from shops when wealth permits.
@@ -56,7 +57,8 @@ public sealed record ItemOverlay
     // Auto-stash this item at the configured stash room.
     public bool? AutoStash { get; init; }
 
-    // Cannot be taken — the combat / loot engines treat this as quest-bound.
+    // Cannot be taken — a hard never-pick-up flag. The auto-get engine never
+    // sends get for an item marked this way, even when AutoCollect is set.
     public bool? CannotBeTaken { get; init; }
 
     // Must keep at least MinToKeep of this item; engines won't drop below.

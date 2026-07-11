@@ -9,7 +9,7 @@ namespace FujinTerm.ViewModels.GameData.Edit;
 
 // View-model for the Game Data Browser → Monsters tab's per-record edit dialog.
 // Surfaces the editable overlay fields (Use-tier, Name, Relationship, Priority, override
-// spell slots, NotHostile / DontBackstab) plus the per-monster combat-message bundle
+// spell slots, DontBackstab) plus the per-monster combat-message bundle
 // (9 perspective lines + flavor prefixes) the combat manager will use to recognise lines
 // this monster produces in play.
 //
@@ -42,7 +42,6 @@ public sealed partial class MonsterEditDialogViewModel : ObservableObject, IDial
     [ObservableProperty] private string _attackSpellId = string.Empty;
     [ObservableProperty] private string _attackCount = string.Empty;
 
-    [ObservableProperty] private bool _notHostile;
     [ObservableProperty] private bool _dontBackstab;
 
     // ----- Messages section (9 line slots + flavor) -----
@@ -109,7 +108,6 @@ public sealed partial class MonsterEditDialogViewModel : ObservableObject, IDial
         AttackSpellId    = (existing?.OverrideAttackSpellId    is { } ai) ? ai.ToString() : string.Empty;
         AttackCount      = (existing?.OverrideAttackCount      is { } ac) ? ac.ToString() : string.Empty;
 
-        NotHostile   = existing?.NotHostile   ?? false;
         DontBackstab = existing?.DontBackstab ?? false;
 
         // Hydrate the Messages section.
@@ -140,7 +138,6 @@ public sealed partial class MonsterEditDialogViewModel : ObservableObject, IDial
             OverridePreAttackCount   = ParseNullableInt(PreAttackCount),
             OverrideAttackSpellId    = ParseNullableInt(AttackSpellId),
             OverrideAttackCount      = ParseNullableInt(AttackCount),
-            NotHostile               = NotHostile,
             DontBackstab             = DontBackstab,
         };
 

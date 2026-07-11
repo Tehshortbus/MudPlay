@@ -28,6 +28,10 @@ public sealed class AutoGetItemsManagerTests
         public Dictionary<string, bool> Flags { get; } =
             new(StringComparer.OrdinalIgnoreCase);
 
+        // canonical name -> CannotBeTaken. Absent means not flagged.
+        public Dictionary<string, bool> NoTake { get; } =
+            new(StringComparer.OrdinalIgnoreCase);
+
         public bool Enabled { get; set; } = true;
         public bool CollectAfterCombat { get; set; }
         public bool HasHostiles { get; set; }
@@ -50,7 +54,8 @@ public sealed class AutoGetItemsManagerTests
         {
             string key = Strip(entry);
             if (!Flags.TryGetValue(key, out bool auto)) return null;
-            return new AutoGetItemsManager.ResolvedItem(key, auto);
+            bool noTake = NoTake.GetValueOrDefault(key);
+            return new AutoGetItemsManager.ResolvedItem(key, auto, noTake);
         }
 
         private static string Strip(string raw)
@@ -98,6 +103,18 @@ public sealed class AutoGetItemsManagerTests
     {
         using Harness h = new();
         h.Flags["long sword"] = false;
+
+        h.Feed("You notice a long sword here.");
+
+        Assert.Empty(h.Sent);
+    }
+
+    [Fact]
+    public void CannotBeTaken_NeverSends_EvenWhenAutoCollect()
+    {
+        using Harness h = new();
+        h.Flags["long sword"] = true;      // user wants auto-collect...
+        h.NoTake["long sword"] = true;     // ...but the item is never-take.
 
         h.Feed("You notice a long sword here.");
 

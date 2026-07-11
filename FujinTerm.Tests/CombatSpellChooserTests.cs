@@ -728,6 +728,176 @@ public sealed class CombatSpellChooserTests
         Assert.Null(d.Spell);
     }
 
+    // ----- Per-monster spell overrides ----------------------------------
+    // A per-monster override substitutes its cast-code at the matching rung
+    // (attack → NormalAttackSpell, pre-attack → SingleTargetDebuffSpell),
+    // bypassing the effectiveness gates (immunity / level / resist) but keeping
+    // the physical constraints (mana floor, once-per-target, cast cap).
+
+    private static CombatSpellContext OverrideCtx(
+        string? attackOverride = null, int? attackCap = null,
+        string? preOverride = null, int? preCap = null,
+        string target = "a rat", int mana = 100, int maxMana = 100,
+        IReadOnlySet<CombatSpellAction>? immune = null,
+        IReadOnlySet<CombatSpellAction>? levelBlocked = null,
+        IReadOnlySet<CombatSpellAction>? resistBlocked = null) =>
+        new(EnemyCount: 1, TargetRawName: target, Mana: mana, MaxMana: maxMana,
+            BackstabPending: false,
+            ImmuneAttackSpells: immune,
+            LevelBlockedActions: levelBlocked,
+            ResistBlockedActions: resistBlocked,
+            OverrideAttackSpell: attackOverride,
+            OverrideAttackMaxCasts: attackCap,
+            OverridePreAttackSpell: preOverride,
+            OverridePreAttackMaxCasts: preCap);
+
+    [Fact]
+    public void Choose_AttackOverride_SubstitutesForNormalSlot()
+    {
+        CombatSpellChooser sut = new();
+        CombatSettings settings = new() { NormalAttackSpell = Slot("harm") };
+
+        CombatSpellDecision d = sut.Choose(
+            settings, OverrideCtx(attackOverride: "fireball", attackCap: 3));
+
+        Assert.Equal(CombatSpellAction.NormalAttackSpell, d.Action);
+        Assert.Equal("fireball", d.Spell);   // the override, not the configured "harm"
+    }
+
+    [Fact]
+    public void Choose_AttackOverride_BypassesImmuneLevelResistGates()
+    {
+        CombatSpellChooser sut = new();
+        CombatSettings settings = new()
+        {
+            NormalAttackSpell = Slot("harm"),
+            AlternateAttackSpell = Slot("flame"),
+        };
+
+        // The normal rung is flagged immune AND level-blocked AND resist-blocked
+        // — all three would push a configured slot down the cascade. The override
+        // ignores them and fires anyway (the user vouched it works).
+        CombatSpellContext ctx = OverrideCtx(
+            attackOverride: "fireball", attackCap: 5,
+            immune: new HashSet<CombatSpellAction> { CombatSpellAction.NormalAttackSpell },
+            levelBlocked: new HashSet<CombatSpellAction> { CombatSpellAction.NormalAttackSpell },
+            resistBlocked: new HashSet<CombatSpellAction> { CombatSpellAction.NormalAttackSpell });
+
+        CombatSpellDecision d = sut.Choose(settings, ctx);
+
+        Assert.Equal(CombatSpellAction.NormalAttackSpell, d.Action);
+        Assert.Equal("fireball", d.Spell);
+    }
+
+    [Fact]
+    public void Choose_AttackOverride_HonoursCap_ThenFallsToAlternate()
+    {
+        CombatSpellChooser sut = new();
+        CombatSettings settings = new()
+        {
+            NormalAttackSpell = Slot("harm"),
+            AlternateAttackSpell = Slot("flame"),
+        };
+        CombatSpellContext ctx = OverrideCtx(attackOverride: "fireball", attackCap: 1);
+
+        CombatSpellDecision r1 = sut.Choose(settings, ctx);
+        Assert.Equal("fireball", r1.Spell);
+        sut.MarkCast(r1, "a rat");
+
+        // Override cap (1) reached → the configured normal slot is skipped
+        // (mutually exclusive with the override) → alternate.
+        CombatSpellDecision r2 = sut.Choose(settings, ctx);
+        Assert.Equal(CombatSpellAction.AlternateAttackSpell, r2.Action);
+        Assert.Equal("flame", r2.Spell);
+    }
+
+    [Fact]
+    public void Choose_AttackOverride_HonoursNormalSlotManaFloor()
+    {
+        CombatSpellChooser sut = new();
+        CombatSettings settings = new()
+        {
+            SpellManaThresholdMode = ThresholdMode.Absolute,
+            NormalAttackSpell = Slot("harm", minMana: 30),
+        };
+
+        // Below the rung's mana floor → override can't fire → weapon.
+        Assert.Equal(CombatSpellAction.WeaponAttack,
+            sut.Choose(settings, OverrideCtx(
+                attackOverride: "fireball", attackCap: 5, mana: 20, maxMana: 200)).Action);
+
+        // At/above the floor → override fires.
+        Assert.Equal("fireball",
+            sut.Choose(settings, OverrideCtx(
+                attackOverride: "fireball", attackCap: 5, mana: 40, maxMana: 200)).Spell);
+    }
+
+    [Fact]
+    public void ChooseDebuff_PreAttackOverride_SubstitutesForSingleSlot()
+    {
+        CombatSpellChooser sut = new();
+        CombatSettings settings = new() { SingleTargetDebuffSpell = Slot("weaken") };
+
+        CombatSpellDecision? d = sut.ChooseDebuff(
+            settings, OverrideCtx(preOverride: "curse", preCap: 3));
+
+        Assert.Equal(CombatSpellAction.SingleDebuff, d?.Action);
+        Assert.Equal("curse", d?.Spell);
+    }
+
+    [Fact]
+    public void ChooseDebuff_PreAttackOverride_BypassesLevelBlock()
+    {
+        CombatSpellChooser sut = new();
+        CombatSettings settings = new() { SingleTargetDebuffSpell = Slot("weaken") };
+
+        CombatSpellContext ctx = OverrideCtx(
+            preOverride: "curse", preCap: 3,
+            levelBlocked: new HashSet<CombatSpellAction> { CombatSpellAction.SingleDebuff });
+
+        CombatSpellDecision? d = sut.ChooseDebuff(settings, ctx);
+
+        Assert.Equal(CombatSpellAction.SingleDebuff, d?.Action);
+        Assert.Equal("curse", d?.Spell);
+    }
+
+    [Fact]
+    public void ChooseDebuff_PreAttackOverride_FiresOncePerTarget()
+    {
+        CombatSpellChooser sut = new();
+        CombatSettings settings = new() { SingleTargetDebuffSpell = Slot("weaken") };
+
+        CombatSpellDecision? a1 = sut.ChooseDebuff(
+            settings, OverrideCtx(preOverride: "curse", preCap: 5, target: "a rat"));
+        Assert.Equal("curse", a1?.Spell);
+        sut.MarkCast(a1!.Value, "a rat");
+
+        // Same target → already debuffed → nothing.
+        Assert.Null(sut.ChooseDebuff(
+            settings, OverrideCtx(preOverride: "curse", preCap: 5, target: "a rat")));
+
+        // New target → override fires again.
+        CombatSpellDecision? b1 = sut.ChooseDebuff(
+            settings, OverrideCtx(preOverride: "curse", preCap: 5, target: "a kobold"));
+        Assert.Equal("curse", b1?.Spell);
+    }
+
+    [Fact]
+    public void ChooseDebuff_PreAttackOverride_HonoursCap()
+    {
+        CombatSpellChooser sut = new();
+        CombatSettings settings = new() { SingleTargetDebuffSpell = Slot("weaken") };
+
+        CombatSpellDecision? a = sut.ChooseDebuff(
+            settings, OverrideCtx(preOverride: "curse", preCap: 1, target: "a rat"));
+        Assert.Equal("curse", a?.Spell);
+        sut.MarkCast(a!.Value, "a rat");
+
+        // Room-wide cap (1) reached → a new target gets nothing.
+        Assert.Null(sut.ChooseDebuff(
+            settings, OverrideCtx(preOverride: "curse", preCap: 1, target: "a kobold")));
+    }
+
     // ----- Full per-room ordering walk-through ---------------------------
 
     [Fact]

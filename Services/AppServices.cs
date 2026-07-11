@@ -781,6 +781,11 @@ public sealed class AppServices
     // game-data set. Paired with MonsterResist for the resist guard.
     public Game.Combat.SpellAttackTypeIndex SpellAttackType { get; private set; } = null!;
 
+    // Lookup of each spell's Short cast-code by its Spells.Number in the active
+    // set — bridges the per-monster override slots (which store a Number) to the
+    // Short the combat engine casts.
+    public Game.Combat.SpellShortIndex SpellShort { get; private set; } = null!;
+
     // Catalogue of every light-source item (ItemType 6) in the
     // active set — projected illumination (IlluTarget) + burn budget —
     // for computing carried illumination and provisioning a dark route.
@@ -975,6 +980,12 @@ public sealed class AppServices
     // LoyalItem and LIGHT items are never sold.
     public Game.Inventory.AutoSellManager AutoSell { get; private set; } = null!;
 
+    // Auto-open engine. On every inventory change, sends open <name> once for
+    // each container item (ItemType == Container) flagged
+    // Models.GameData.ItemOverlay.AutoOpen that newly entered the pack. Shares
+    // the AutoGetItems master toggle; the per-item AutoOpen flag is the real gate.
+    public Game.Inventory.AutoOpenManager AutoOpen { get; private set; } = null!;
+
     // Base auto-search engine — sends a bare sea on each room
     // entry while the AutoSearch master toggle is on, revealing hidden
     // items so AutoGetItems / Cash can
@@ -1079,7 +1090,7 @@ public sealed class AppServices
 
     // Active set's MonsterOverlay seed — Defaults-tier baseline for
     // per-monster automation behavior (relationship / priority /
-    // NotHostile / DontBackstab). Realm flavor is auto-picked from
+    // DontBackstab). Realm flavor is auto-picked from
     // the active set's Info.json[0].Legit; bundled seeds for
     // each realm ship at Defaults/MonsterOverlay.{realm}.seed.json
     // and bootstrap to the per-install Data/Global/ copy at
@@ -2616,6 +2627,12 @@ public sealed class AppServices
         Combat.SetMagicEligibility(
             MonsterMagic, ItemMagic, SpellReqLevel, MonsterResist, SpellAttackType);
 
+        // Per-monster spell overrides store a Spell.Number; the engine casts the
+        // Short. Wire the resolver so the chooser can substitute a numbered
+        // override in place of the global Combat-tab cast-code slot.
+        SpellShort = new Game.Combat.SpellShortIndex(GameData);
+        Combat.SetSpellShortResolver(SpellShort.ShortByNumber);
+
         // Light catalogue + live carried illumination. The snapshot provider is
         // deferred (Inventory is assigned later in this method), so reading
         // PlayerIllumination.Current at tooltip / route time sees the live dump.
@@ -2974,6 +2991,16 @@ public sealed class AppServices
             resolve: ResolveAutoSellItem,
             isEnabled: () => ReadAutoModeFlag(d => d.AutoGetItems),
             log: Log);
+
+        AutoOpen = new Game.Inventory.AutoOpenManager(
+            carriedItems: () => Inventory.Snapshot.CarriedItems,
+            resolve: ResolveAutoOpenItem,
+            isEnabled: () => ReadAutoModeFlag(d => d.AutoGetItems),
+            isLoaded: () => Inventory.IsLoaded,
+            log: Log);
+        // Auto-open re-evaluates the pack on every inventory change — the seam
+        // that surfaces a container the moment it enters inventory.
+        Inventory.Changed += AutoOpen.OnInventoryChanged;
         // Settings → Talk auto-greet. Self name resolves through the
         // PartyManager's LocalCharacterName first (set on connect), then
         // the loaded profile name as a fallback. Wire-sender bound by
@@ -4215,7 +4242,8 @@ public sealed class AppServices
         if (string.IsNullOrWhiteSpace(name)) return null;
 
         Models.GameData.ItemOverlay overlay = ResolveItemOverlay(number);
-        return new Game.Inventory.AutoGetItemsManager.ResolvedItem(name, overlay.AutoCollect ?? false);
+        return new Game.Inventory.AutoGetItemsManager.ResolvedItem(
+            name, overlay.AutoCollect ?? false, overlay.CannotBeTaken ?? false);
     }
 
     // Resolve a carried entry for AutoDiscard: map the loose carry wording to an
@@ -4267,6 +4295,26 @@ public sealed class AppServices
             && Lights.FindByName(name) is null;
         return new Game.Inventory.AutoSellManager.ResolvedSell(
             number, name, sell, KeepFloor(overlay));
+    }
+
+    // MDB ItemType for a container — the only kind auto-open acts on.
+    private const int ContainerItemType = 8;
+
+    // Resolve a carried entry for AutoOpen: map the loose carry wording to an
+    // item Number, read the verbatim Name, and resolve the AutoOpen flag gated
+    // on the item actually being a container (ItemType == 8) — a stale overlay
+    // flag on a non-container never opens. Returns null only when the entry
+    // isn't an item in the active set.
+    private Game.Inventory.AutoOpenManager.ResolvedOpen? ResolveAutoOpenItem(string entry)
+    {
+        if (ItemNames.FindByName(entry) is not int number) return null;
+        string? name = ItemNames.GetName(number);
+        if (string.IsNullOrWhiteSpace(name)) return null;
+
+        Models.GameData.ItemOverlay overlay = ResolveItemOverlay(number);
+        bool open = (overlay.AutoOpen ?? false)
+            && ItemNames.ItemTypeOf(number) == ContainerItemType;
+        return new Game.Inventory.AutoOpenManager.ResolvedOpen(number, name, open);
     }
 
     // The 4-tier ItemOverlay for an item Number (Defaults seed → Global → BBS →

@@ -99,9 +99,12 @@ public sealed class CombatSpellChooser
             {
                 // Backstab is the round's opener or nothing: it only fires when
                 // the user ranks it at priority 1. At any other rank we ignore
-                // it entirely (a mid-round BS attempt is a guaranteed fail).
+                // it entirely (a mid-round BS attempt is a guaranteed fail). A
+                // target flagged DontBackstab is never BS'd — fall through to the
+                // next category so the opener becomes a normal attack.
                 CombatCategory.Backstab =>
-                    (settings.PriorityBackstab == 1 && ctx.BackstabPending)
+                    (settings.PriorityBackstab == 1 && ctx.BackstabPending
+                        && !ctx.TargetDontBackstab)
                         ? CombatSpellDecision.Backstab : null,
                 // Debuffing is an in-between action, NOT a combat action —
                 // it's resolved by ChooseDebuff and cast through the shared
@@ -156,6 +159,20 @@ public sealed class CombatSpellChooser
         }
 
         CombatSpellSlot single = settings.SingleTargetDebuffSpell;
+        if (ctx.OverridePreAttackSpell is { } preAttackOverride)
+        {
+            // Per-monster pre-attack override occupies the single-target debuff
+            // rung: bypass the level gate (user vouched for it) but keep the
+            // once-per-target guard, the slot's mana floor, and the override's
+            // own per-room cast cap. Shares the single-debuff counter / target
+            // set (override and configured slot are mutually exclusive here).
+            if (!_singleDebuffedTargets.Contains(ctx.TargetRawName)
+                && CastsOk(ctx.OverridePreAttackMaxCasts, _singleDebuffCasts)
+                && ManaOk(single, ctx, mode))
+                return new CombatSpellDecision(CombatSpellAction.SingleDebuff, preAttackOverride);
+            return null;
+        }
+
         if (IsConfigured(single)
             && !IsLevelBlocked(ctx, CombatSpellAction.SingleDebuff)
             && !_singleDebuffedTargets.Contains(ctx.TargetRawName)
@@ -183,7 +200,19 @@ public sealed class CombatSpellChooser
             return new CombatSpellDecision(CombatSpellAction.MultiAttack, multi.SpellName!);
 
         CombatSpellSlot normal = settings.NormalAttackSpell;
-        if (IsConfigured(normal)
+        if (ctx.OverrideAttackSpell is { } attackOverride)
+        {
+            // Per-monster attack-spell override occupies the normal-attack rung:
+            // bypass the effectiveness gates (observed immunity / level / element
+            // resist) — the user vouched this spell works on the species — but
+            // keep the physical constraints: the slot's mana floor and the
+            // override's own per-room cast cap. Shares the normal-attack counter
+            // (override and configured slot are mutually exclusive per monster).
+            if (CastsOk(ctx.OverrideAttackMaxCasts, _normalAttackCasts)
+                && ManaOk(normal, ctx, mode))
+                return new CombatSpellDecision(CombatSpellAction.NormalAttackSpell, attackOverride);
+        }
+        else if (IsConfigured(normal)
             && !IsImmune(ctx, CombatSpellAction.NormalAttackSpell)
             && !IsLevelBlocked(ctx, CombatSpellAction.NormalAttackSpell)
             && !IsResistBlocked(ctx, CombatSpellAction.NormalAttackSpell)
@@ -310,7 +339,10 @@ public sealed class CombatSpellChooser
     // Under the per-room cast cap. null = no limit; 0 = never cast (explicit
     // off); N = fire until N reached.
     private static bool CastsOk(CombatSpellSlot slot, int castsSoFar) =>
-        slot.MaxCastsPerRoom is not { } cap || castsSoFar < cap;
+        CastsOk(slot.MaxCastsPerRoom, castsSoFar);
+
+    private static bool CastsOk(int? cap, int castsSoFar) =>
+        cap is not { } c || castsSoFar < c;
 
     private static bool ManaOk(CombatSpellSlot slot, in CombatSpellContext ctx, ThresholdMode mode)
     {
@@ -379,7 +411,20 @@ public readonly record struct CombatSpellDecision(CombatSpellAction Action, stri
 // ResistBlockedActions is the set of single-target attack actions whose damage
 // *element* the current target resists ≥ 100% (0 damage or heal), or null when
 // nothing is resist-blocked — elemental only; M.R. and poison spells never
-// appear here.
+// appear here. TargetDontBackstab is the current target's per-monster
+// DontBackstab overlay flag — when set the backstab gate is suppressed and the
+// opener falls through to a normal attack.
+//
+// The four Override* fields carry the current target's per-monster spell
+// overrides (game-data Monster overlay), already resolved from Spell.Number to
+// the Short cast-code. OverrideAttackSpell substitutes at the NormalAttackSpell
+// rung and OverridePreAttackSpell at the SingleTargetDebuffSpell rung; when set,
+// the effectiveness gates (observed immunity / level / element resist) are
+// bypassed — the user hand-picked the spell for this species — while the
+// physical constraints (the slot's mana floor, once-per-target for the debuff)
+// still apply. The paired *MaxCasts values are the per-room cast caps the user
+// configured (always positive when the spell is set; a null/zero configured
+// count leaves the override spell null so the global slot is used unchanged).
 public readonly record struct CombatSpellContext(
     int EnemyCount,
     string TargetRawName,
@@ -390,4 +435,9 @@ public readonly record struct CombatSpellContext(
     bool SpellsAvailable = true,
     IReadOnlySet<CombatSpellAction>? LevelBlockedActions = null,
     bool AllowNukes = true,
-    IReadOnlySet<CombatSpellAction>? ResistBlockedActions = null);
+    IReadOnlySet<CombatSpellAction>? ResistBlockedActions = null,
+    bool TargetDontBackstab = false,
+    string? OverrideAttackSpell = null,
+    int? OverrideAttackMaxCasts = null,
+    string? OverridePreAttackSpell = null,
+    int? OverridePreAttackMaxCasts = null);

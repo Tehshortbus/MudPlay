@@ -6,7 +6,7 @@ namespace FujinTerm.Services;
 
 // In-memory cache of the active game-data set's MonsterOverlay seed — the
 // Defaults-tier baseline for per-monster automation behavior (relationship /
-// priority / NotHostile / DontBackstab) before any user Global / BBS /
+// priority / DontBackstab) before any user Global / BBS /
 // Character override is applied.
 //
 // Seeds are realm-flavored. Each realm family (stock MajorMUD, Paradigm, …)
@@ -92,7 +92,6 @@ public sealed class MonsterOverlaySeedStore
                 {
                     Relationship = rec.Relationship,
                     Priority     = rec.Priority,
-                    NotHostile   = rec.NotHostile,
                     DontBackstab = rec.DontBackstab,
                 };
             }
@@ -151,7 +150,7 @@ public sealed class MonsterOverlaySeedStore
     }
 
     // Wire shape on disk. Mirrors Defaults/MonsterOverlay.{realm}.seed.json's
-    // JSON layout — Number + Name + the four overridable fields. Name is kept
+    // JSON layout — Number + Name + the overridable seed fields. Name is kept
     // on the wire for human inspection but discarded on load.
     private sealed record SeedRecord
     {
@@ -159,7 +158,6 @@ public sealed class MonsterOverlaySeedStore
         public string?                Name         { get; init; }
         public MonsterRelationship?   Relationship { get; init; }
         public MonsterAttackPriority? Priority     { get; init; }
-        public bool?                  NotHostile   { get; init; }
         public bool?                  DontBackstab { get; init; }
     }
 }

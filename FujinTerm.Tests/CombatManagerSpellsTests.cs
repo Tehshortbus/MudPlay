@@ -38,6 +38,11 @@ public sealed class CombatManagerSpellsTests
         };
 
         public Dictionary<int, MonsterOverlay> Overlays { get; } = new();
+
+        // Spell.Number → Short cast-code, feeding the per-monster override
+        // resolver. An unmapped number resolves to null (unknown → fall back).
+        public Dictionary<int, string> SpellShorts { get; } = new();
+
         public bool AutoCombatEnabled { get; set; } = true;
         public bool AutoNukeEnabled { get; set; } = true;
         public int Ma { get; set; } = 100;
@@ -63,6 +68,8 @@ public sealed class CombatManagerSpellsTests
             Combat.SetWireSender(b => Sent.Add(b));
             Combat.SetBackstabHooks(() => Sneaking, n => SeeHidden.Contains(n));
             Combat.SetAutoNukeGate(() => AutoNukeEnabled);
+            Combat.SetSpellShortResolver(
+                n => SpellShorts.TryGetValue(n, out string? s) ? s : null);
             if (wireCaster)
                 Combat.SetCombatSpellCaster(Cast, () => (Ma, MaxMa));
         }
@@ -225,6 +232,71 @@ public sealed class CombatManagerSpellsTests
         // in-between debuff window stays empty.
         Assert.Equal("a giant rat", h.LastSent);
         Assert.Null(h.Combat.PickInBetweenDebuff());
+    }
+
+    // ----- per-monster spell overrides (Number → Short resolution) -----
+
+    [Fact]
+    public void AttackOverride_CastsOverrideSpell_NotConfiguredNormal()
+    {
+        using Harness h = new();
+        h.Settings.NormalAttackSpell = new CombatSpellSlot { SpellName = "harm", MinEnemies = 1 };
+        h.SpellShorts[42] = "fireball";
+        h.Overlays[1] = new MonsterOverlay { OverrideAttackSpellId = 42, OverrideAttackCount = 3 };
+        h.AddMonster(1, "giant rat");
+
+        h.Feed("Also here: giant rat.");
+
+        // The Spell.Number override (42) resolves to its Short and replaces the
+        // configured normal-attack cast-code for this monster.
+        Assert.Equal("fireball giant rat", h.LastSent);
+        Assert.DoesNotContain("harm giant rat", h.AllSent);
+    }
+
+    [Fact]
+    public void AttackOverride_NullCount_FallsBackToConfiguredSlot()
+    {
+        using Harness h = new();
+        h.Settings.NormalAttackSpell = new CombatSpellSlot { SpellName = "harm", MinEnemies = 1 };
+        h.SpellShorts[42] = "fireball";
+        // Spell set but no count (overlay documents null = 0) → not active.
+        h.Overlays[1] = new MonsterOverlay { OverrideAttackSpellId = 42 };
+        h.AddMonster(1, "giant rat");
+
+        h.Feed("Also here: giant rat.");
+
+        Assert.Equal("harm giant rat", h.LastSent);
+        Assert.DoesNotContain("fireball giant rat", h.AllSent);
+    }
+
+    [Fact]
+    public void AttackOverride_UnknownNumber_FallsBackToConfiguredSlot()
+    {
+        using Harness h = new();
+        h.Settings.NormalAttackSpell = new CombatSpellSlot { SpellName = "harm", MinEnemies = 1 };
+        // Resolver has no entry for 99 → override can't resolve → configured slot.
+        h.Overlays[1] = new MonsterOverlay { OverrideAttackSpellId = 99, OverrideAttackCount = 2 };
+        h.AddMonster(1, "giant rat");
+
+        h.Feed("Also here: giant rat.");
+
+        Assert.Equal("harm giant rat", h.LastSent);
+    }
+
+    [Fact]
+    public void PreAttackOverride_OfferedAsInBetweenDebuff()
+    {
+        using Harness h = new();
+        h.SpellShorts[7] = "curse";
+        h.Overlays[1] = new MonsterOverlay { OverridePreAttackSpellId = 7, OverridePreAttackCount = 2 };
+        h.AddMonster(1, "giant rat");
+
+        h.Feed("Also here: giant rat.");   // engages, sets the current target
+
+        (string Spell, string? Target)? debuff = h.Combat.PickInBetweenDebuff();
+        Assert.NotNull(debuff);
+        Assert.Equal("curse", debuff!.Value.Spell);
+        Assert.Equal("giant rat", debuff.Value.Target);
     }
 
     // ----- heartbeat keeps the cast going each round -------------------

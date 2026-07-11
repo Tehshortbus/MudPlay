@@ -145,6 +145,7 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
             currentTier:  row.SourceTier,
             mdbInfo:      mdb.OtherInfo,
             isLight:      mdb.IsLight,
+            isContainer:  mdb.IsContainer,
             chest:        chest);
 
         // Replace any open item menu with the new one: a double-click on another
@@ -201,6 +202,7 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
     {
         List<KeyValuePair<string, string>> otherInfo = new();
         bool isLight = false;
+        bool isContainer = false;
 
         if (!int.TryParse(wccNoStr, out int wccNo))
             return new ItemMdbView(otherInfo);
@@ -242,6 +244,7 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
 
             int itemType = ReadInt(el, "ItemType");
             isLight = itemType == 6;
+            isContainer = itemType == 8;
             string obtainedFrom = ReadString(el, "Obtained From");
 
             // ----- Other Info pane (right pane) -----
@@ -423,7 +426,7 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
 
             break;
         }
-        return new ItemMdbView(otherInfo, isLight);
+        return new ItemMdbView(otherInfo, isLight, isContainer);
     }
 
     // ----- Ability-row formatting helpers -----
@@ -707,8 +710,11 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
         => BuildMdbView(itemNumber).OtherInfo;
 
     // Bundle returned by BuildMdbView. IsLight flags an ItemType==6 light so the
-    // edit dialog can grey Auto-buy / Auto-sell (Auto-light owns lights).
+    // edit dialog can grey Auto-buy / Auto-sell (Auto-light owns lights);
+    // IsContainer flags an ItemType==8 container so it can grey Auto-open
+    // (only containers can be opened).
     private sealed record ItemMdbView(
         IReadOnlyList<KeyValuePair<string, string>> OtherInfo,
-        bool IsLight = false);
+        bool IsLight = false,
+        bool IsContainer = false);
 }
