@@ -9,8 +9,11 @@ namespace FujinTerm.Game.Map;
 // walk-start item announcer and PathItemDemandTracker: when a planned route
 // crosses an (Item: N) / (Ticket: N) gate whose per-member item the party might
 // lack, this consults the party (via PartyInventoryProbe) before spending a
-// search / shop detour on it. Backs the Settings → Other "defer to party
-// inventory" affordance.
+// search / shop detour on it. Backs the item record's "Auto-obtain for path →
+// provision party" flag (ItemOverlay.ProvisionPartyForPath under the
+// AutoObtainForPath master opt-in) — a per-item gate, so the announced list is
+// partitioned: flagged items go through the party pool, the rest pass straight
+// through to the per-item demand pipeline unchanged.
 //
 // The behaviour splits on who's driving:
 //
@@ -37,10 +40,10 @@ namespace FujinTerm.Game.Map;
 // holder keeps one), it asks for a single hand-off to itself rather than
 // posting a search / shop need.
 //
-// Both paths degrade to forwarding the announced list unchanged when the
-// feature is off or we're solo. The probe round-trip is async (a telepath each
-// way), so the decision is deferred off the walker's WalkTo call stack through
-// _post.
+// Both paths degrade to forwarding an item unchanged when it isn't flagged for
+// party provisioning or we're solo. The probe round-trip is async (a telepath
+// each way), so the decision is deferred off the walker's WalkTo call stack
+// through _post.
 //
 // Scope: multiple copies are acquired by the forwarded shortfall count — a shop
 // detour buys that many, and auto-search stays armed (until the pool is whole)
@@ -63,7 +66,7 @@ public sealed class PartyPathItemGate
     private readonly Func<int, int> _selfCount;
     private readonly Func<int, string, Task<PartyInventoryProbe.PartyItemResult>> _query;
     private readonly Func<int, string?> _itemName;
-    private readonly Func<bool> _isEnabled;
+    private readonly Func<int, bool> _isEnabled;
     private readonly Func<bool> _searchEnabled;
     private readonly Func<bool> _inParty;
     private readonly Func<bool> _selfIsLeader;
@@ -80,7 +83,7 @@ public sealed class PartyPathItemGate
         Func<int, int> selfCount,
         Func<int, string, Task<PartyInventoryProbe.PartyItemResult>> query,
         Func<int, string?> itemName,
-        Func<bool> isEnabled,
+        Func<int, bool> isEnabled,
         Func<bool> searchEnabled,
         Func<bool> inParty,
         Func<bool> selfIsLeader,
@@ -138,23 +141,31 @@ public sealed class PartyPathItemGate
 
     // Walk-start callback (re-points AutoWalkManager.SetPathItemAnnouncer ahead
     // of the demand tracker): every item id gating an Item / Ticket exit along
-    // the planned route. Off / solo forwards unchanged; the leader provisions
-    // the party per distinct id, a follower borrows a spare for any it
-    // personally lacks.
+    // the planned route. Solo forwards unchanged. In a party the list is
+    // partitioned by the per-item provision-party flag: flagged items go through
+    // the pool (the leader provisions the whole party, a follower borrows a
+    // spare for any it personally lacks); unflagged items pass straight through
+    // to the per-item demand pipeline as a self-only copy.
     public void OnPathItemsRequired(IReadOnlyList<int> itemIds)
     {
         ArgumentNullException.ThrowIfNull(itemIds);
-        if (!_isEnabled() || !_inParty())
+        if (!_inParty())
         {
-            _forward(itemIds, 1);   // solo / off: one copy for self, unchanged behaviour
+            _forward(itemIds, 1);   // solo: one copy for self, unchanged behaviour
             return;
         }
 
         bool leader = _selfIsLeader();
         var considered = new HashSet<int>();
+        List<int>? passthrough = null;   // items not flagged for party provisioning
         foreach (int id in itemIds)
         {
             if (id <= 0 || !considered.Add(id)) continue;
+            if (!_isEnabled(id))
+            {
+                (passthrough ??= new()).Add(id);   // self-only demand, per-item routers handle it
+                continue;
+            }
             if (leader)
             {
                 // The leader provisions even for an item it already carries —
@@ -171,6 +182,7 @@ public sealed class PartyPathItemGate
                 _post(() => _ = TryBorrowSpareAsync(id));
             }
         }
+        if (passthrough is not null) _forward(passthrough, 1);
     }
 
     // Inventory-change callback (wired to InventoryManager.Changed): re-checks

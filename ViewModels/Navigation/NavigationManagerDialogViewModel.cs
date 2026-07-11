@@ -607,7 +607,7 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
     // text. Stops any running loop / Auto-Lair first so the explicit walk-to
     // takes precedence over background automation.
     [RelayCommand(CanExecute = nameof(CanRunSearch))]
-    private void RunSearch()
+    private async Task RunSearch()
     {
         if (_walker is null) return;
 
@@ -622,8 +622,11 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
         if (dest is not { } target) return;
 
         _movement?.Stop();
-        _walker.WalkTo(target);
+        // Close this manager first, then hand off — the route picker (when a
+        // shorter gated shortcut exists) opens as its own modeless window rather
+        // than stacking on the closing dialog.
         Close();
+        await RouteChoicePrompt.WalkAsync(AppServices.Current, target);
     }
 
     // ----- close -----------------------------------------------------

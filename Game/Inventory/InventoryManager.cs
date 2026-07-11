@@ -75,6 +75,11 @@ public sealed partial class InventoryManager : IDisposable
     // The lit light source, if the last dump listed one as "… (Readied/N)".
     // Rebased by each full 'i': a dump with no readied light clears it.
     private ReadiedLight? _readiedLight;
+    // Key-ring contents from the dump's "You have the following keys: …" trailer.
+    // The game tracks keys as a separate carry list, so they never appear in the
+    // "You are carrying …" items sentence — parsed here from their own line and
+    // rebased by each full 'i' ("You have no keys." clears it).
+    private IReadOnlyList<string> _keys = Array.Empty<string>();
 
     // ----- full-'i' capture FSM (single-threaded — OnLine only) --------
     private bool _capturing;
@@ -118,7 +123,8 @@ public sealed partial class InventoryManager : IDisposable
                     _equipped,
                     _carried,
                     _lastUpdated,
-                    _readiedLight);
+                    _readiedLight,
+                    _keys);
             }
         }
     }
@@ -465,6 +471,7 @@ public sealed partial class InventoryManager : IDisposable
     {
         string? wealthLine = null;
         string? encumbranceLine = null;
+        string? keysLine = null;
         var currencyTokens = new List<string>();
 
         foreach (string raw in _captureBuffer)
@@ -474,6 +481,8 @@ public sealed partial class InventoryManager : IDisposable
                 wealthLine = trimmed;
             else if (trimmed.StartsWith("Encumbrance:", StringComparison.Ordinal))
                 encumbranceLine = trimmed;
+            else if (trimmed.StartsWith("You have the following keys:", StringComparison.Ordinal))
+                keysLine = trimmed;
         }
 
         // Reconstruct the word-wrapped items text and pull currency tokens out
@@ -565,6 +574,18 @@ public sealed partial class InventoryManager : IDisposable
             }
         }
 
+        // "You have the following keys:  black star key, brass key." → individual
+        // names. Absent line (or "You have no keys.") leaves the list empty.
+        var keys = new List<string>();
+        if (keysLine is not null)
+        {
+            const string keyPrefix = "You have the following keys:";
+            string keyBody = keysLine[keyPrefix.Length..].Trim().TrimEnd('.', ' ');
+            foreach (string name in keyBody.Split(", ",
+                         StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                if (name.Length > 0) keys.Add(name);
+        }
+
         lock (_lock)
         {
             _copper = copper;
@@ -580,12 +601,13 @@ public sealed partial class InventoryManager : IDisposable
             _equipped = equipped;
             _carried = carried;
             _readiedLight = readiedLight;
+            _keys = keys;
             _loaded = true;
             _lastUpdated = DateTimeOffset.Now;
         }
 
         _log?.Debug(LogCategory,
-            $"parsed: wealth={wealthCopper} copper, enc={curWeight}/{maxWeight} {category} [{percentage}%], worn={equipped.Count}, carried={carried.Count}"
+            $"parsed: wealth={wealthCopper} copper, enc={curWeight}/{maxWeight} {category} [{percentage}%], worn={equipped.Count}, carried={carried.Count}, keys={keys.Count}"
             + (readiedLight is { } rl ? $", lit={rl.Name} (Readied/{rl.Readied})" : ""));
         Changed?.Invoke();
     }

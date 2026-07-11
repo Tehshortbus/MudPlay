@@ -2172,6 +2172,145 @@ public sealed class HealthManagerTests
         Assert.False(h.Health.RestInFlight);
     }
 
+    // ----- leader-waited rest + poison gate ------------------------
+
+    [Fact]
+    public void LeaderWaited_NotPoisoned_RestsAboveOwnTrigger()
+    {
+        // WE lead and a member has @wait-held us; not poisoned, HP above our
+        // own floor but below rest-max → use the forced downtime to top off.
+        using Harness h = new();
+        h.Health.SetPartyRoleSync(
+            isPartyFollower: () => false,
+            requestPartyWait: () => { },
+            requestPartyOk: () => { },
+            isLeaderWaited: () => true,
+            isSelfPoisoned: () => false);
+        h.SetPrompt(hp: 150, maxHp: 200);   // 75% — above trigger, below rest-max
+
+        Assert.False(h.HealthGateHeld);     // no floor breach → no gate
+        Assert.Contains("rest", h.SentLines);
+    }
+
+    [Fact]
+    public void LeaderWaited_Poisoned_DoesNotRest()
+    {
+        // Same held state, but poisoned → skip the downtime rest (poison ticks
+        // would just keep breaking it).
+        using Harness h = new();
+        h.Health.SetPartyRoleSync(
+            isPartyFollower: () => false,
+            requestPartyWait: () => { },
+            requestPartyOk: () => { },
+            isLeaderWaited: () => true,
+            isSelfPoisoned: () => true);
+        h.SetPrompt(hp: 150, maxHp: 200);
+
+        Assert.DoesNotContain("rest", h.SentLines);
+        Assert.DoesNotContain("meditate", h.SentLines);
+    }
+
+    [Fact]
+    public void LeaderNotWaited_DoesNotRest()
+    {
+        // Not held → no forced downtime, so a leader above its floor stays up.
+        using Harness h = new();
+        h.Health.SetPartyRoleSync(
+            isPartyFollower: () => false,
+            requestPartyWait: () => { },
+            requestPartyOk: () => { },
+            isLeaderWaited: () => false,
+            isSelfPoisoned: () => false);
+        h.SetPrompt(hp: 150, maxHp: 200);
+
+        Assert.DoesNotContain("rest", h.SentLines);
+    }
+
+    [Fact]
+    public void LeaderWaited_NoWaitSelector_DoesNotRest()
+    {
+        // Backward-compat: without isLeaderWaited wired, a leader never rests
+        // just because it's paused.
+        using Harness h = new();
+        h.Health.SetPartyRoleSync(
+            isPartyFollower: () => false,
+            requestPartyWait: () => { },
+            requestPartyOk: () => { });
+        h.SetPrompt(hp: 150, maxHp: 200);
+
+        Assert.DoesNotContain("rest", h.SentLines);
+    }
+
+    [Fact]
+    public void LeaderWaited_AtRestMax_DoesNotRest()
+    {
+        // Held but already topped off → nothing to recover, so no rest.
+        using Harness h = new();
+        h.Health.SetPartyRoleSync(
+            isPartyFollower: () => false,
+            requestPartyWait: () => { },
+            requestPartyOk: () => { },
+            isLeaderWaited: () => true,
+            isSelfPoisoned: () => false);
+        h.SetPrompt(hp: 200, maxHp: 200);
+
+        Assert.DoesNotContain("rest", h.SentLines);
+        Assert.DoesNotContain("meditate", h.SentLines);
+    }
+
+    [Fact]
+    public void Opportunistic_Poisoned_DoesNotRest()
+    {
+        // Follower mirroring the leader's rest, but poisoned → the poison gate
+        // blocks the downtime rest.
+        using Harness h = new();
+        h.Health.SetPartyRoleSync(
+            isPartyFollower: () => true,
+            requestPartyWait: () => { },
+            requestPartyOk: () => { },
+            isLeaderResting: () => true,
+            isSelfPoisoned: () => true);
+        h.SetPrompt(hp: 150, maxHp: 200);
+
+        Assert.DoesNotContain("rest", h.SentLines);
+        Assert.DoesNotContain("meditate", h.SentLines);
+    }
+
+    [Fact]
+    public void Opportunistic_PoisonSelectorFalse_StillRests()
+    {
+        // Poison selector wired but reporting false → the follower still rides
+        // the leader's downtime (guards against the gate being inverted).
+        using Harness h = new();
+        h.Health.SetPartyRoleSync(
+            isPartyFollower: () => true,
+            requestPartyWait: () => { },
+            requestPartyOk: () => { },
+            isLeaderResting: () => true,
+            isSelfPoisoned: () => false);
+        h.SetPrompt(hp: 150, maxHp: 200);
+
+        Assert.Contains("rest", h.SentLines);
+    }
+
+    [Fact]
+    public void Poisoned_BelowFloor_StillRestsThroughGate()
+    {
+        // The poison gate only blocks the downtime paths — a poisoned character
+        // below its own HP floor still rests through the normal gated branch.
+        using Harness h = new();
+        h.Health.SetPartyRoleSync(
+            isPartyFollower: () => true,
+            requestPartyWait: () => { },
+            requestPartyOk: () => { },
+            isLeaderResting: () => false,
+            isSelfPoisoned: () => true);
+        h.SetPrompt(hp: 50, maxHp: 200);    // 25% — below the 60% rest floor
+
+        Assert.True(h.HealthGateHeld);
+        Assert.Contains("rest", h.SentLines);
+    }
+
     // ----- gate-history captures asserter --------------------------
 
     [Fact]

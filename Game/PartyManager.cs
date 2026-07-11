@@ -223,6 +223,10 @@ public sealed partial class PartyManager : IDisposable
         // catches up.
         _subs.Add(_router.Subscribe(KnownPatterns.PartyMemberRankChanged,    OnMemberRankChanged));
         _subs.Add(_router.Subscribe(KnownPatterns.PartySelfRankChanged,      OnSelfRankChanged));
+        // Live rest observation — flips a member's Resting flag the moment we
+        // see "X stops to rest.", ahead of the 5s par poll, so a follower's
+        // HealthManager can mirror the leader's rest immediately.
+        _subs.Add(_router.Subscribe(KnownPatterns.PartyMemberRestObserved,   OnMemberRestObserved));
     }
 
     // Bind the wire-sender used for auto-invite of a reconnecting disconnected
@@ -985,6 +989,26 @@ public sealed partial class PartyManager : IDisposable
         foreach (PartyMember m in State.Members)
         {
             if (m.IsSelf) { m.Rank = rank; return; }
+        }
+    }
+
+    // "X stops to rest." — flip the matching roster member's Resting flag now,
+    // instead of waiting for the next par poll to catch the posture change. The
+    // pattern matches any resting player in the room; scoping to roster members
+    // here makes a non-party bystander's rest a safe no-op. Only ever sets true —
+    // the par poll owns the clear when the member stands. A non-member match
+    // finds no row and does nothing.
+    private void OnMemberRestObserved(MatchResult result)
+    {
+        if (result.Groups.Count == 0) return;
+        string name = result.Groups[0];
+        if (string.IsNullOrEmpty(name)) return;
+        string given = GivenNameOf(name);
+        foreach (PartyMember m in State.Members)
+        {
+            if (!GivenNameOf(m.Name).Equals(given, StringComparison.OrdinalIgnoreCase)) continue;
+            m.Resting = true;
+            return;
         }
     }
 

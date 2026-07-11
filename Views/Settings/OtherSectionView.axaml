@@ -136,36 +136,11 @@
                       Margin="0,12,0,0"
                       ToolTip.Tip="When checked: if the walker plans a route through an exit that requires an item you're not carrying (a boat for the Silver River, a rope-and-grapple for a climb, a ticket, etc.), FujinTerm searches every room you enter (`sea`) to reveal the missing item, and stops once it's found. Works even when the Auto-Search master toggle is off. Applies only for this character."/>
 
-            <!-- Shop-source routing. When checked, a walk-to that needs an
-                 item we're not carrying detours to the fewest-added-steps
-                 shop that stocks it, buys it, then resumes. Aborts if the
-                 item turns up first; falls back to search on a failed buy.
-                 Only plain walk-to's detour (not loops / auto-lair). -->
-            <CheckBox Content="Buy item if needed"
-                      IsChecked="{Binding BuyNeededPathItems, Mode=TwoWay}"
-                      Margin="0,8,0,0"
-                      ToolTip.Tip="When checked: if a walk-to crosses an exit that requires an item you're not carrying and a shop sells that item, FujinTerm detours to the shop that adds the fewest steps to your trip, buys the item, then continues to your original destination. If the item turns up first (e.g. from `Search rooms if item needed`) the detour is cancelled; if the buy fails (no gold, out of stock) it resumes and lets search keep hunting. Only detours for a direct walk-to — not for loops or auto-lair. Applies only for this character."/>
-
-            <!-- Monster-drop reroute. When checked, a walk-to that needs an
-                 item no shop sells prompts to reroute to the nearest room a
-                 monster that drops it spawns in, then resumes once the drop
-                 lands. Complements "Buy item if needed" (shop-sold items).
-                 Only plain walk-to's reroute (not loops / auto-lair). -->
-            <CheckBox Content="Hunt item if needed"
-                      IsChecked="{Binding HuntNeededPathItems, Mode=TwoWay}"
-                      Margin="0,8,0,0"
-                      ToolTip.Tip="When checked: if a walk-to crosses an exit that requires an item you're not carrying and NO shop sells it, but some monster drops it, FujinTerm asks whether to reroute to the nearest room that monster spawns in. If you confirm, it walks there so you can hunt the monster, then continues to your original destination once the item drops. If the item turns up first (e.g. from `Search rooms if item needed`) the reroute is cancelled. Only asks for a direct walk-to — not for loops or auto-lair. Applies only for this character."/>
-
-            <!-- Party-inventory deferral. When checked, a walk-to that needs a
-                 per-member item we lack asks the party (@have) before searching
-                 / buying / hunting; if a member has a spare it's handed over
-                 (give) and no demand need is posted. Only a shortfall (no one
-                 has a spare) falls through to the search / shop / hunt sources.
-                 No-op when solo. Runs ahead of the three sources above. -->
-            <CheckBox Content="Defer to party inventory"
-                      IsChecked="{Binding DeferToPartyInventory, Mode=TwoWay}"
-                      Margin="0,8,0,0"
-                      ToolTip.Tip="When checked: if a walk-to crosses an exit that requires an item each party member needs (a rope-and-grapple, a boat, a ticket, etc.) and you're not carrying it, FujinTerm first asks the party `@have` for it. If a member is holding a spare (two or more), they're asked to `give` you one — a single holder via the permission-free `@party give`, or a specific holder via `@do give` when several have copies — and no search / shop / hunt is started. Only if no member has a spare does it fall through to `Search rooms if item needed` / `Buy item if needed` / `Hunt item if needed`. Does nothing when you're solo. Applies only for this character."/>
+            <!-- Note: the former Buy/Hunt/Defer path-item checkboxes moved to
+                 per-item game-data flags on the item record (item-edit dialog:
+                 Auto-obtain for path + its buy / source-from-drops / provision-
+                 party sub-flags). A path-enabling item is marked once there, so
+                 there's no global toggle for it on this tab anymore. -->
 
             <!-- Party level-gate avoidance. When checked and leading a party,
                  the walker routes AROUND (Level: MIN to MAX) gates the whole

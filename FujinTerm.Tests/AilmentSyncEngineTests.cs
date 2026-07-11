@@ -11,12 +11,13 @@ namespace FujinTerm.Tests;
 
 /// <summary>
 /// Outbound ailment-sync (<see cref="AilmentSyncEngine"/>): on a local
-/// curable ailment, announce <c>.@poisoned</c> etc. on say (so other
+/// curable ailment, announce <c>.@poisoned on</c> etc. on say (so other
 /// FujinTerm clients mirror our state) and <c>@wait</c> the leader; on
-/// clear, <c>@ok</c> the leader. The say only fires when in a party AND no
-/// cure spell is configured for that ailment; DoNotAnnounce* further gates
-/// the say, Ignore* gates the @wait — independently. Held announces
-/// <c>.@held</c> but never telepaths <c>@wait</c> (its pause rides the say).
+/// clear, say the balanced <c>.@poisoned off</c> and <c>@ok</c> the leader.
+/// The say only fires when in a party AND no cure spell is configured for that
+/// ailment; DoNotAnnounce* further gates the say, Ignore* gates the @wait —
+/// independently. Held announces bare <c>.@held</c> (no off-signal) and never
+/// telepaths <c>@wait</c> (its pause rides the say, released by @ok).
 /// </summary>
 public sealed class AilmentSyncEngineTests
 {
@@ -106,14 +107,14 @@ public sealed class AilmentSyncEngineTests
 
         h.Feed("You have been poisoned!");
 
-        Assert.Equal(".@poisoned\r", Assert.Single(h.Say));
+        Assert.Equal(".@poisoned on\r", Assert.Single(h.Say));
         Assert.Equal("/Leader @wait\r", Assert.Single(h.Telepath));
     }
 
     [Theory]
-    [InlineData("blinded!",  ".@blind\r")]
-    [InlineData("confused!", ".@confused\r")]
-    [InlineData("diseased!", ".@diseased\r")]
+    [InlineData("blinded!",  ".@blind on\r")]
+    [InlineData("confused!", ".@confused on\r")]
+    [InlineData("diseased!", ".@diseased on\r")]
     public void EachAilment_UsesItsSayToken(string applied, string expected)
     {
         using Harness h = new();
@@ -146,7 +147,7 @@ public sealed class AilmentSyncEngineTests
 
         h.Feed("You have been poisoned!");
 
-        Assert.Equal(".@poisoned\r", Assert.Single(h.Say));
+        Assert.Equal(".@poisoned on\r", Assert.Single(h.Say));
         Assert.Empty(h.Telepath);
     }
 
@@ -159,13 +160,14 @@ public sealed class AilmentSyncEngineTests
         h.Feed("You have been poisoned!");
         h.Feed("The poison wears off.");
 
-        // @wait then @ok; no clear-side say announce.
+        // @wait then @ok on the telepath channel.
         Assert.Equal(new[] { "/Leader @wait\r", "/Leader @ok\r" }, h.Telepath);
-        Assert.Single(h.Say);   // only the apply-side announce
+        // Paired say toggle: '.@poisoned on' on apply, '.@poisoned off' on clear.
+        Assert.Equal(new[] { ".@poisoned on\r", ".@poisoned off\r" }, h.Say);
     }
 
     [Fact]
-    public void Cleared_WhenWaitWasIgnored_NoOk()
+    public void Cleared_WhenWaitWasIgnored_StillSaysOff()
     {
         using Harness h = new();
         SeedAll(h);
@@ -174,8 +176,11 @@ public sealed class AilmentSyncEngineTests
         h.Feed("You have been poisoned!");
         h.Feed("The poison wears off.");
 
-        // Never @waited (ignored), so nothing to @ok.
+        // @wait was ignored, so no telepath at all — the pre-fix stuck-chip bug
+        // (no @ok ever sent). The paired say toggle still fires, so the receiver
+        // clears the chip on '.@poisoned off' regardless of the @wait gate.
         Assert.Empty(h.Telepath);
+        Assert.Equal(new[] { ".@poisoned on\r", ".@poisoned off\r" }, h.Say);
     }
 
     [Fact]

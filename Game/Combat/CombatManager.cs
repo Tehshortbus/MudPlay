@@ -75,6 +75,7 @@ public sealed partial class CombatManager : IDisposable
     private readonly Action<Action> _post;
 
     private readonly IDisposable _announceSub;
+    private readonly IDisposable _castAnnounceSub;
     private readonly IDisposable _userHitsSub;
     private readonly IDisposable _mobHitsSub;
     private readonly IDisposable _mobMissesSub;
@@ -315,6 +316,7 @@ public sealed partial class CombatManager : IDisposable
 
         _classifier.EntitiesObserved += OnEntitiesObserved;
         _announceSub  = router.Subscribe(KnownPatterns.PartyAttackAnnounce, OnAttackAnnounce);
+        _castAnnounceSub = router.Subscribe(KnownPatterns.PartyCastAnnounce, OnCastAnnounce);
         _userHitsSub  = router.Subscribe(KnownPatterns.UserHits,  OnCombatLine);
         _mobHitsSub   = router.Subscribe(KnownPatterns.MobHits,   OnCombatLine);
         _mobMissesSub = router.Subscribe(KnownPatterns.MobMisses, OnCombatLine);
@@ -1073,9 +1075,43 @@ public sealed partial class CombatManager : IDisposable
         if (TryFollowTargetPriority(settings, announcer, announcedTarget))
             return;
 
-        // Attack Order owns WHEN — re-fire our own current target to stay
-        // last in initiative; never switches the monster.
+        // Attack Order owns WHEN — re-fire our own current target to reclaim last
+        // position in initiative; never switches the monster. It runs under EVERY
+        // Target Priority mode: following the leader's target (who) and attacking
+        // last (when) are independent knobs, and a user who sets an attack-last
+        // mode wants our *Combat Engaged* to land after the party's announces even
+        // while following the leader's pick. HandleAttackOrderRefire no-ops for
+        // Default AttackTiming, so a non-followed member's announce only drives a
+        // re-fire when an explicit attack-last mode is on — the earlier "redundant
+        // re-fire under a Default follow-priority" case stays fixed. (The leader's
+        // own announce is consumed by the Target-Priority branch above, which
+        // schedules the same re-fire on its already-engaged hold so a two-member
+        // party still lands us last.)
         HandleAttackOrderRefire(settings, announcer, announcedTarget);
+    }
+
+    // "X moves to cast <spell> upon Y." — a caster's round action. GAME_MECHANICS:
+    // a party member has "gone" for the round via EITHER a melee "moves to attack"
+    // OR this spell form, so attack-last coordination must treat them as equivalent
+    // per-member announce signals or it misses every spellcaster. This drives ONLY
+    // the WHEN (Attack-Order re-fire) knob, never target-follow: a heal/buff names a
+    // *player* ("... upon Fujin"), and following onto that name would swing us at a
+    // teammate. HandleAttackOrderRefire's "must equal our current target" guard
+    // makes a non-mob cast a safe no-op; an offensive cast on our mob re-fires.
+    private void OnCastAnnounce(MatchResult match)
+    {
+        if (match.Groups.Count < 2) return;
+        string announcer = match.Groups[0];
+        string announcedTarget = match.Groups[1].Trim();
+        if (announcer.Length == 0 || announcedTarget.Length == 0) return;
+
+        string? ownName = _readOwnGivenName();
+        if (ownName is { Length: > 0 } &&
+            string.Equals(announcer, ownName, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        if (!_isEnabled()) return;
+        HandleAttackOrderRefire(_readSettings(), announcer, announcedTarget);
     }
 
     // True when the room-entry picker should hold our own target and wait for the
@@ -1165,14 +1201,18 @@ public sealed partial class CombatManager : IDisposable
             if (TryBuildCandidate(liveObs, announcedTarget) is { } cand)
             {
                 // Same-target guard: the server already auto-swings at a target
-                // once we've engaged it, so re-issuing the attack because the
-                // followed player announced against the SAME mob we're on burns a
-                // redundant command (the reported double re-attack). Hold.
+                // once we've engaged it, so re-issuing purely to FOLLOW the same
+                // mob would burn a redundant command. Hold the follow — but under
+                // an attack-last mode this followed announce is still one the party
+                // "went" on, so schedule the coalesced Attack-Order re-fire so our
+                // *Combat Engaged* re-lands after it (ScheduleAttackOrderRefire
+                // no-ops for Default AttackTiming).
                 if (string.Equals(_currentTarget, cand.RawName, StringComparison.OrdinalIgnoreCase))
                 {
                     _log?.Combat(LogCategory,
                         $"target-priority {settings.TargetPriority} follow={announcer} " +
-                        $"→ {cand.RawName} already engaged; no re-fire");
+                        $"→ {cand.RawName} already engaged; no follow re-fire");
+                    ScheduleAttackOrderRefire(settings, announcer);
                     return true;
                 }
                 _log?.Combat(LogCategory,
@@ -1185,12 +1225,14 @@ public sealed partial class CombatManager : IDisposable
 
         // No room view (or the announced entity isn't in it) — literal attack
         // against the announced name; the server resolves the instance. Same-target
-        // guard applies here too: if we're already on this name, don't re-fire.
+        // guard applies here too: if we're already on this name, don't re-follow —
+        // but still schedule the attack-last re-fire (no-op under Default timing).
         if (string.Equals(_currentTarget, announcedTarget, StringComparison.OrdinalIgnoreCase))
         {
             _log?.Combat(LogCategory,
                 $"target-priority {settings.TargetPriority} follow={announcer} " +
-                $"→ {announcedTarget} already engaged; no re-fire");
+                $"→ {announcedTarget} already engaged; no follow re-fire");
+            ScheduleAttackOrderRefire(settings, announcer);
             return true;
         }
         _currentTarget = announcedTarget;
@@ -1217,6 +1259,32 @@ public sealed partial class CombatManager : IDisposable
     {
         if (_currentTarget is not { } target) return;   // nothing to re-fire at
 
+        // Only reposition against OUR priority target — ignore announces on
+        // any other monster in the room. This also makes a caster's heal/buff
+        // announce ("... upon <player>") a safe no-op on the OnCastAnnounce path.
+        if (!string.Equals(announcedTarget, target, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        ScheduleAttackOrderRefire(settings, announcer);
+    }
+
+    // Qualify the announcer against the AttackTiming mode and, when they qualify,
+    // record a coalesced re-fire of our CURRENT target. Shared by the Attack-Order
+    // path (a member announces our target) and the Target-Priority already-engaged
+    // hold (the leader re-announces the target we already follow) — both need our
+    // *Combat Engaged* to re-land after the announce so attack-last stays true even
+    // in a two-member party. Modes:
+    //   - AttackLastParty — any party member.
+    //   - AttackLastRoom  — any player.
+    //   - AttackAfter     — the named player only.
+    //   - Default         — never (own cadence).
+    // The "after us" condition is implicit: we only hold a target once we've
+    // announced, so an announce arriving while _currentTarget is set is by
+    // definition after ours; an announce that preceded ours never reaches here.
+    private void ScheduleAttackOrderRefire(CombatSettings settings, string announcer)
+    {
+        if (_currentTarget is not { } target) return;
+
         // Hold the re-fire while a bs we already sent is still resolving — a
         // repositioning swing fired now can register server-side before the `bs`
         // resolves and double on top of the surprise (open with bs, then stay
@@ -1225,11 +1293,6 @@ public sealed partial class CombatManager : IDisposable
         // the re-fire is upgraded to the bs itself in FlushAttackOrderRefire rather
         // than suppressed, so attack-last still lands us last, opening with bs.
         if (_awaitingBackstabResolution) return;
-
-        // Only reposition against OUR priority target — ignore announces on
-        // any other monster in the room.
-        if (!string.Equals(announcedTarget, target, StringComparison.OrdinalIgnoreCase))
-            return;
 
         bool fire = settings.AttackTiming switch
         {
@@ -1476,6 +1539,30 @@ public sealed partial class CombatManager : IDisposable
         _wireSender(Encoding.Latin1.GetBytes("\r"));
     }
 
+    // A specific death-line matched, but the classifier couldn't attribute it to
+    // any monster in the current room view (shared / suffix-flavored wordings:
+    // the death line resolved to "spectre" while the roster holds "shadow
+    // spectre", so RemoveDeadEntity found nothing to drop). The roster is now
+    // stale — a mob is gone but our list still shows it. Without a nudge, combat
+    // only learns the room emptied on the NEXT tick, when its swing at the ghost
+    // target no-ops through OnCommandNoEffect — a ~5s stall before the walker can
+    // resume. Force the same debounced room re-display those paths use so the
+    // server hands us the true roster now: if the room's empty the Combat gate
+    // clears immediately; if a survivor remains we re-pick it a beat sooner.
+    public void NoteUnattributedDeath()
+    {
+        if (!_isEnabled()) return;
+        if (_wireSender is null) return;
+        if (_currentTarget is null) return;
+
+        DateTimeOffset now = DateTimeOffset.Now;
+        if (now - _lastRoomRefreshAt < RoomRefreshCooldown) return;
+        _lastRoomRefreshAt = now;
+        _log?.Combat(LogCategory,
+            "unattributed death — forcing room re-display to resync roster");
+        _wireSender(Encoding.Latin1.GetBytes("\r"));
+    }
+
     // Re-engage the room after an interrupt turned our auto-attack off (an
     // in-between self-heal / buff cast, a stun, etc.) while an engageable mob is
     // still present. Disarms the interrupt flag, drops the stale target so
@@ -1486,7 +1573,19 @@ public sealed partial class CombatManager : IDisposable
         _combatOff = false;
         _log?.Combat(LogCategory, "combat resumed after interrupt — re-engaging room");
         _currentTarget = null;     // force a fresh pick + equip
-        OnEntitiesObserved(live);
+
+        // Bypass the follow-announce hold on this re-pick. We only get here mid-
+        // fight (an interrupt turned OUR auto-attack off while already engaged),
+        // so the party has already converged and the followed leader is swinging
+        // at a mob it won't re-announce ("already engaged; no re-fire"). Leaving
+        // ShouldWaitForFollow armed would park us awaiting an announce that never
+        // comes, and OnCombatTick's fallback would only rescue us a full round
+        // later (the reported "re-attack missed a combat round" after a between-
+        // round heal). Picking our own target now lands on the same mob that
+        // fallback would have chosen, minus the wasted round.
+        _followDeferBypass = true;
+        try { OnEntitiesObserved(live); }
+        finally { _followDeferBypass = false; }
     }
 
     // Round-paced wrapper over ResumeEngage: re-engages at most once per
@@ -1696,6 +1795,7 @@ public sealed partial class CombatManager : IDisposable
         _disposed = true;
         _classifier.EntitiesObserved -= OnEntitiesObserved;
         _announceSub.Dispose();
+        _castAnnounceSub.Dispose();
         _userHitsSub.Dispose();
         _mobHitsSub.Dispose();
         _mobMissesSub.Dispose();

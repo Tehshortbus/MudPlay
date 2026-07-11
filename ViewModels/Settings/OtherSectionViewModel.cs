@@ -50,9 +50,6 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             yield return "Attempt pick-lock";
             yield return "Lockpicks";
             yield return "Search rooms if item needed";
-            yield return "Buy item if needed";
-            yield return "Hunt item if needed";
-            yield return "Defer to party inventory";
             yield return "Avoid party-impassable level gates";
             yield return "Max comeback backtrack rooms";
             yield return "@comeback";
@@ -112,27 +109,12 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     // Auto-Search master toggle off. Read live by PathItemDemandTracker.
     [ObservableProperty] private bool _searchRoomsIfItemNeeded;
 
-    // When checked, actively buy a missing route item: a one-shot walk-to
-    // that crosses an Item/Ticket exit whose item we lack detours to the
-    // fewest-added-steps shop that stocks it, buys it, then resumes. Aborts
-    // if the item turns up first; falls back to search on a failed buy.
-    // Read live by PathItemShopRouter.
-    [ObservableProperty] private bool _buyNeededPathItems;
-
-    // When checked, source a missing route item that no shop sells: a one-shot
-    // walk-to that crosses an Item/Ticket exit whose item we lack (and which no
-    // shop stocks) reroutes to the nearest room a monster that drops it spawns
-    // in, then resumes once the drop lands. Complements "Buy item if needed"
-    // (shop-sold items). Read live by MonsterDropRouter.
-    [ObservableProperty] private bool _huntNeededPathItems;
-
-    // When checked, ask the party before searching / buying / hunting a
-    // missing route item: a walk-to that crosses an Item/Ticket exit whose
-    // per-member item we lack broadcasts @have, and if a member has a spare
-    // it's handed over (give) instead of posting a demand need. Only a genuine
-    // shortfall falls through to the search / shop / hunt sources. No-op when
-    // solo. Read live by PartyPathItemGate.
-    [ObservableProperty] private bool _deferToPartyInventory;
+    // Note: the former Buy/Hunt/Defer path-item toggles moved to per-item
+    // game-data flags on the item record (ItemOverlay.BuyIfNeededForPath /
+    // SourceFromDropsForPath / ProvisionPartyForPath, gated by the master
+    // AutoObtainForPath opt-in). The item-edit dialog is their sole editor —
+    // a path-enabling item is marked once and every route through it obeys the
+    // mark, so there's no global toggle here anymore.
 
     // When checked and leading a party, route around level gates the whole
     // party can't clear instead of walking the leader through and leaving a
@@ -256,9 +238,6 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             MaxPickAttempts       = Math.Clamp(MaxPickAttempts,       1, 100),
             PicklocksOverBash     = PicklocksOverBash,
             SearchRoomsIfItemNeeded = SearchRoomsIfItemNeeded,
-            BuyNeededPathItems    = BuyNeededPathItems,
-            HuntNeededPathItems   = HuntNeededPathItems,
-            DeferToPartyInventory = DeferToPartyInventory,
             AvoidPartyImpassableLevelGates = AvoidPartyImpassableLevelGates,
             LogMovementHopTiming  = LogMovementHopTiming,
             MaxComebackBacktrackRooms = Math.Clamp(MaxComebackBacktrackRooms, 1, 50),
@@ -314,9 +293,6 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
         MaxPickAttempts       = dto.MaxPickAttempts;
         PicklocksOverBash     = dto.PicklocksOverBash;
         SearchRoomsIfItemNeeded = dto.SearchRoomsIfItemNeeded;
-        BuyNeededPathItems    = dto.BuyNeededPathItems;
-        HuntNeededPathItems   = dto.HuntNeededPathItems;
-        DeferToPartyInventory = dto.DeferToPartyInventory;
         AvoidPartyImpassableLevelGates = dto.AvoidPartyImpassableLevelGates;
         LogMovementHopTiming  = dto.LogMovementHopTiming;
         MaxComebackBacktrackRooms = dto.MaxComebackBacktrackRooms;
@@ -378,9 +354,6 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     partial void OnMaxPickAttemptsChanged(int value)       => MarkDirty();
     partial void OnPicklocksOverBashChanged(bool value)    => MarkDirty();
     partial void OnSearchRoomsIfItemNeededChanged(bool value) => MarkDirty();
-    partial void OnBuyNeededPathItemsChanged(bool value) => MarkDirty();
-    partial void OnHuntNeededPathItemsChanged(bool value) => MarkDirty();
-    partial void OnDeferToPartyInventoryChanged(bool value) => MarkDirty();
     partial void OnAvoidPartyImpassableLevelGatesChanged(bool value) => MarkDirty();
     partial void OnLogMovementHopTimingChanged(bool value) => MarkDirty();
     partial void OnMaxComebackBacktrackRoomsChanged(int value) => MarkDirty();

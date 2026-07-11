@@ -1,3 +1,5 @@
+using System;
+
 namespace FujinTerm.Game.Map;
 
 // Pathing-time room filter — when supplied to BfsMapper.FindPath, any
@@ -31,4 +33,19 @@ public interface IRoomFilter
     // triggers a poll. Default is a no-op; only the wealth-aware filter
     // overrides it.
     void WarmForRoute(BfsMapper bfs, RoomKey source, RoomKey destination) { }
+
+    // Stands the acquirable gates (item / ticket / key-door / hazard) down for
+    // a single planning pass, so a caller can compute the route the crosser
+    // WOULD take with every gate item in hand — the "gated" alternative the
+    // route picker compares against the free route. Dispose to restore gating.
+    // Default is a no-op scope for filters that don't model acquirable gates;
+    // only Services.MovementFilter suspends anything real.
+    IDisposable SuspendAcquirableGates() => NoGateSuspension.Instance;
+
+    // The default-implementation's inert scope — disposing it does nothing.
+    private sealed class NoGateSuspension : IDisposable
+    {
+        public static readonly NoGateSuspension Instance = new();
+        public void Dispose() { }
+    }
 }

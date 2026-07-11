@@ -211,6 +211,12 @@ public partial class App : Application
                 FujinTerm.ViewModels.Navigation.MpAnchorPickerDialogViewModel,
                 FujinTerm.Views.Navigation.MpAnchorPickerDialog>();
 
+            // Free-vs-direct route picker — fires on a user-initiated walk when a
+            // shorter route crosses an acquirable gate the crosser can't yet pass.
+            AppServices.Current.Dialogs.RegisterWindow<
+                FujinTerm.ViewModels.Navigation.RouteChoiceDialogViewModel,
+                FujinTerm.Views.Navigation.RouteChoiceDialog>();
+
             // Settings → General → "Change data directory" confirm + execute dialog.
             AppServices.Current.Dialogs.RegisterWindow<
                 FujinTerm.ViewModels.Settings.DataDirectoryRelocateDialogViewModel,

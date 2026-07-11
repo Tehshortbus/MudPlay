@@ -708,4 +708,303 @@ public sealed class MovementFilterTests
             Assert.True(filter.IsExitBlocked(TollExit(5)));
         });
     }
+
+    // ----- IsExitBlocked: item / ticket / key-door acquirable gates ---
+
+    private static RoomExit ItemExit(int keyItemId) =>
+        new(new RoomKey(1, 2), RoomExitHint.Item, RawHint: null, KeyItemId: keyItemId);
+
+    private static RoomExit TicketExit(int keyItemId) =>
+        new(new RoomKey(1, 2), RoomExitHint.Ticket, RawHint: null, KeyItemId: keyItemId);
+
+    // A key-locked door: opens with the key item, or by pick/bash meeting statReq.
+    private static RoomExit KeyLockedExit(int keyItemId, int statReq = 0, bool canBash = true) =>
+        new(new RoomKey(1, 2), RoomExitHint.KeyLocked, RawHint: null,
+            StatRequirement: statReq, CanBash: canBash, KeyItemId: keyItemId);
+
+    // Marks the crosser's inventory as parsed and holding exactly the given ids.
+    private static void SetInventory(MovementFilter filter, params int[] held)
+    {
+        filter.InventoryReadyProbe = () => true;
+        filter.ItemCarriedProbe = id => held.Contains(id);
+    }
+
+    [Fact]
+    public void IsExitBlocked_Item_InventoryUnknown_DoesNotBlock()
+    {
+        (_, MovementFilter filter) = NewPair();
+        filter.InventoryReadyProbe = () => false;   // no dump parsed yet
+        filter.ItemCarriedProbe = _ => false;
+        Assert.False(filter.IsExitBlocked(ItemExit(5)));
+    }
+
+    [Fact]
+    public void IsExitBlocked_Item_NoCarriedProbe_DoesNotBlock()
+    {
+        (_, MovementFilter filter) = NewPair();
+        filter.InventoryReadyProbe = () => true;
+        // ItemCarriedProbe unset → can't evaluate → don't gate.
+        Assert.False(filter.IsExitBlocked(ItemExit(5)));
+    }
+
+    [Fact]
+    public void IsExitBlocked_Item_Lacking_Blocks()
+    {
+        (_, MovementFilter filter) = NewPair();
+        SetInventory(filter);   // parsed, holding nothing
+        Assert.True(filter.IsExitBlocked(ItemExit(5)));
+    }
+
+    [Fact]
+    public void IsExitBlocked_Item_Held_Allows()
+    {
+        (_, MovementFilter filter) = NewPair();
+        SetInventory(filter, 5);
+        Assert.False(filter.IsExitBlocked(ItemExit(5)));
+    }
+
+    [Fact]
+    public void IsExitBlocked_Item_ZeroKeyItem_DoesNotBlock()
+    {
+        (_, MovementFilter filter) = NewPair();
+        SetInventory(filter);
+        // No item id on the modifier → nothing to require.
+        Assert.False(filter.IsExitBlocked(ItemExit(0)));
+    }
+
+    [Fact]
+    public void IsExitBlocked_Ticket_Lacking_Blocks()
+    {
+        (_, MovementFilter filter) = NewPair();
+        SetInventory(filter);
+        Assert.True(filter.IsExitBlocked(TicketExit(9)));
+    }
+
+    [Fact]
+    public void IsExitBlocked_Ticket_Held_Allows()
+    {
+        (_, MovementFilter filter) = NewPair();
+        SetInventory(filter, 9);
+        Assert.False(filter.IsExitBlocked(TicketExit(9)));
+    }
+
+    [Fact]
+    public void IsExitBlocked_KeyDoor_KeyHeld_Allows()
+    {
+        (_, MovementFilter filter) = NewPair();
+        SetInventory(filter, 7);
+        // Key in hand → passable regardless of pick/bash skill (both unset).
+        Assert.False(filter.IsExitBlocked(KeyLockedExit(7, statReq: 80, canBash: false)));
+    }
+
+    [Fact]
+    public void IsExitBlocked_KeyDoor_NoStats_DoesNotBlock()
+    {
+        (_, MovementFilter filter) = NewPair();
+        SetInventory(filter);   // key not held
+        // Strength / Picklocks providers unset → leave the door to the FSM.
+        Assert.False(filter.IsExitBlocked(KeyLockedExit(7, statReq: 80, canBash: true)));
+    }
+
+    [Fact]
+    public void IsExitBlocked_KeyDoor_Bashable_Allows()
+    {
+        (_, MovementFilter filter) = NewPair();
+        SetInventory(filter);   // key not held
+        filter.StrengthProvider = () => 60;
+        filter.PicklocksProvider = () => 0;
+        filter.MaxBashableStrengthProvider = () => 200;
+        // statReq 50, bashable, strength 60 ≥ 50 → openable by bash.
+        Assert.False(filter.IsExitBlocked(KeyLockedExit(7, statReq: 50, canBash: true)));
+    }
+
+    [Fact]
+    public void IsExitBlocked_KeyDoor_PickSufficient_Allows()
+    {
+        (_, MovementFilter filter) = NewPair();
+        SetInventory(filter);
+        filter.StrengthProvider = () => 0;
+        filter.PicklocksProvider = () => 40;
+        filter.MaxBashableStrengthProvider = () => 200;
+        // pick-only door, picks 40 ≥ statReq 40 → openable.
+        Assert.False(filter.IsExitBlocked(KeyLockedExit(7, statReq: 40, canBash: false)));
+    }
+
+    [Fact]
+    public void IsExitBlocked_KeyDoor_PickOnlyInsufficient_Blocks()
+    {
+        (_, MovementFilter filter) = NewPair();
+        SetInventory(filter);
+        filter.StrengthProvider = () => 200;   // strong, but bash is barred
+        filter.PicklocksProvider = () => 50;
+        filter.MaxBashableStrengthProvider = () => 200;
+        // pick-only door (canBash false), picks 50 < statReq 80 → no way in.
+        Assert.True(filter.IsExitBlocked(KeyLockedExit(7, statReq: 80, canBash: false)));
+    }
+
+    [Fact]
+    public void IsExitBlocked_KeyDoor_AboveBashCeiling_Blocks()
+    {
+        (_, MovementFilter filter) = NewPair();
+        SetInventory(filter);
+        filter.StrengthProvider = () => 300;
+        filter.PicklocksProvider = () => 0;
+        filter.MaxBashableStrengthProvider = () => 200;   // realm bash ceiling
+        // statReq 250 exceeds the set-wide bash ceiling → unbashable by anyone,
+        // and picks 0 can't pick → blocked even for a maxed-strength build.
+        Assert.True(filter.IsExitBlocked(KeyLockedExit(7, statReq: 250, canBash: true)));
+    }
+
+    [Fact]
+    public void SuspendAcquirableGates_SuspendsItemGate_ThenRestores()
+    {
+        (_, MovementFilter filter) = NewPair();
+        SetInventory(filter);   // lacking the raft
+        RoomExit raft = ItemExit(5);
+
+        Assert.True(filter.IsExitBlocked(raft));       // gated before
+
+        using (filter.SuspendAcquirableGates())
+            Assert.False(filter.IsExitBlocked(raft));  // planned-through during
+
+        Assert.True(filter.IsExitBlocked(raft));       // restored after
+    }
+
+    [Fact]
+    public void SuspendAcquirableGates_LeavesLevelGateActive()
+    {
+        (_, MovementFilter filter) = NewPair();
+        filter.LevelProvider = () => 19;
+        // Level / class / toll aren't acquired on demand, so the planning
+        // suspend must not relax them.
+        using (filter.SuspendAcquirableGates())
+            Assert.True(filter.IsExitBlocked(GatedExit(20, 0)));
+    }
+
+    // ----- IsExitBlocked: room-entry hazard gates --------------------
+
+    // Spell 700 damages on entry; item 42 negates it — the minimal shape of a
+    // protectable room-entry hazard (see RoomHazardIndex).
+    private const string HazardRoomsJson = """
+        [ { "Map Number": 1, "Room Number": 2, "Name": "Hazard", "Spell": 700,
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" } ]
+        """;
+    private const string HazardSpellsJson = """
+        [ { "Number": 700, "Abil-0": 1, "AbilVal-0": 25 } ]
+        """;
+    private const string HazardItemsJson = """
+        [ { "Number": 42, "NegateSpell-0": 700 } ]
+        """;
+
+    private static void WithHazards(Action<RoomHazardIndex> body)
+    {
+        string root = Path.Combine(Path.GetTempPath(),
+            "fujinterm-hazards-" + Path.GetRandomFileName());
+        try
+        {
+            string setDir = Path.Combine(root, "alpha");
+            Directory.CreateDirectory(setDir);
+            File.WriteAllText(Path.Combine(setDir, "Rooms.json"), HazardRoomsJson);
+            File.WriteAllText(Path.Combine(setDir, "Spells.json"), HazardSpellsJson);
+            File.WriteAllText(Path.Combine(setDir, "Items.json"), HazardItemsJson);
+            GameDataCache cache = new(root);
+            cache.SwitchSet("alpha");
+            RoomHazardIndex index = new(cache);
+            index.OnActiveSetChanged("alpha");
+            body(index);
+        }
+        finally
+        {
+            try { Directory.Delete(root, recursive: true); }
+            catch { /* best-effort */ }
+        }
+    }
+
+    private static RoomExit PlainExitTo(RoomKey target) =>
+        new(target, RoomExitHint.None, RawHint: null);
+
+    [Fact]
+    public void IsExitBlocked_Hazard_CounterLacking_Blocks()
+    {
+        WithHazards(index =>
+        {
+            (_, MovementFilter filter) = NewPair();
+            filter.Hazards = index;
+            filter.RoomEntrySpellProbe = key => key == new RoomKey(1, 2) ? 700 : 0;
+            SetInventory(filter);   // no negator held
+            Assert.True(filter.IsExitBlocked(PlainExitTo(new RoomKey(1, 2))));
+        });
+    }
+
+    [Fact]
+    public void IsExitBlocked_Hazard_CounterHeld_Allows()
+    {
+        WithHazards(index =>
+        {
+            (_, MovementFilter filter) = NewPair();
+            filter.Hazards = index;
+            filter.RoomEntrySpellProbe = key => key == new RoomKey(1, 2) ? 700 : 0;
+            SetInventory(filter, 42);   // carries the negator
+            Assert.False(filter.IsExitBlocked(PlainExitTo(new RoomKey(1, 2))));
+        });
+    }
+
+    [Fact]
+    public void IsExitBlocked_Hazard_BenignRoom_DoesNotBlock()
+    {
+        WithHazards(index =>
+        {
+            (_, MovementFilter filter) = NewPair();
+            filter.Hazards = index;
+            filter.RoomEntrySpellProbe = _ => 0;   // room casts nothing on entry
+            SetInventory(filter);
+            Assert.False(filter.IsExitBlocked(PlainExitTo(new RoomKey(1, 2))));
+        });
+    }
+
+    [Fact]
+    public void IsExitBlocked_Hazard_InventoryUnknown_DoesNotBlock()
+    {
+        WithHazards(index =>
+        {
+            (_, MovementFilter filter) = NewPair();
+            filter.Hazards = index;
+            filter.RoomEntrySpellProbe = _ => 700;
+            filter.InventoryReadyProbe = () => false;   // unparsed
+            filter.ItemCarriedProbe = _ => false;
+            Assert.False(filter.IsExitBlocked(PlainExitTo(new RoomKey(1, 2))));
+        });
+    }
+
+    [Fact]
+    public void IsExitBlocked_Hazard_NoIndex_DoesNotBlock()
+    {
+        (_, MovementFilter filter) = NewPair();
+        // Hazards unset (AppServices wires it; a bare filter has none).
+        filter.RoomEntrySpellProbe = _ => 700;
+        SetInventory(filter);
+        Assert.False(filter.IsExitBlocked(PlainExitTo(new RoomKey(1, 2))));
+    }
+
+    [Fact]
+    public void SuspendAcquirableGates_SuspendsHazardGate()
+    {
+        WithHazards(index =>
+        {
+            (_, MovementFilter filter) = NewPair();
+            filter.Hazards = index;
+            filter.RoomEntrySpellProbe = _ => 700;
+            SetInventory(filter);   // no counter
+
+            RoomExit into = PlainExitTo(new RoomKey(1, 2));
+            Assert.True(filter.IsExitBlocked(into));
+
+            using (filter.SuspendAcquirableGates())
+                Assert.False(filter.IsExitBlocked(into));
+
+            Assert.True(filter.IsExitBlocked(into));
+        });
+    }
 }

@@ -439,6 +439,70 @@ public sealed class RoomTracker
         SetRoom(expected, target, when, $"dark-room advance via {moveLabel}", isStrictAnchor: false);
     }
 
+    // A move issued while blinded SUCCEEDS but starves the room display: the
+    // server prints only "You are blind." (period) — no name, no "Obvious
+    // exits:", no description (CONFIRMED capture, see GAME_MECHANICS.md).
+    // Structurally this is the dark-room case (a traversed move with no
+    // confirming render), so we dead-reckon the same way: if a move is pending
+    // and its graph edge resolves to a mapped neighbour, advance there — never
+    // as a strict anchor, since this is a pure prediction with no name/exit
+    // match. Unlike NoteDarkRoomEntered this does NOT set IsInDarkRoom: it's the
+    // player who can't see, not the room, so carried light can't help and the
+    // dark-room attack-line combat path must stay off. The refusal form ("You
+    // can't see well enough to move.") is a bonk handled elsewhere; only the
+    // succeeded-move "You are blind." reaches here.
+    public void NoteBlindMove(DateTimeOffset? whenUtc = null)
+    {
+        DateTimeOffset when = whenUtc ?? DateTimeOffset.UtcNow;
+
+        // A look-direction peek while blind can render this same line from the
+        // lit room we're standing in. Drop it as a preview and consume the
+        // window, exactly as NoteDarkRoomEntered / NoteRoomObserved do.
+        if (_suppressObservationUntil is { } until)
+        {
+            _suppressObservationUntil = null;
+            if (when <= until)
+            {
+                _log?.Log(LogSeverity.Info, "RoomTracker",
+                    "Dropped peeked blind-move line (look-direction preview).");
+                return;
+            }
+            // window expired — fall through and treat as our own move
+        }
+
+        // Only a pending move can be advanced by the blind line. A blind echo
+        // while Confirmed (a passive re-render, standing still) or with nothing
+        // in flight carries nothing to advance on.
+        if (State.Confidence != RoomConfidence.Pending) return;
+        if (State.CurrentRoom is not { } source) return;
+        if (!_pending.TryPeek(out PendingMove head)) return;
+        if (!TryResolvePendingExit(source, head, out RoomExit exit))
+        {
+            _log?.Log(LogSeverity.Info, "RoomTracker",
+                $"Blind move '{DescribeMove(head)}' has no mapped exit from {source.Key} ({source.Name}) — " +
+                "holding position; map may drift until a lit room re-anchors.");
+            return;
+        }
+        if (_graph.GetRoom(exit.Target) is not { } expected)
+        {
+            _log?.Log(LogSeverity.Info, "RoomTracker",
+                $"Blind move '{DescribeMove(head)}' targets {exit.Target}, absent from the graph — holding position.");
+            return;
+        }
+
+        // Predicted neighbour is mapped — the move traversed. Dequeue the head
+        // and land there, non-strict (same contract as the dark-room advance:
+        // a deduction must not overwrite the persisted LastKnownRoom and keeps
+        // RecentSteps intact for replay recovery).
+        _pending.TryDequeue(out _);
+        State.SuspectStrikes = 0;
+        string moveLabel = DescribeMove(head);
+        RoomConfidence target = _pending.IsEmpty
+            ? RoomConfidence.Confirmed
+            : RoomConfidence.Pending;
+        SetRoom(expected, target, when, $"blind-move advance via {moveLabel}", isStrictAnchor: false);
+    }
+
     // Read-only peek check: true when a look-direction peek is currently armed
     // (a look <dir> was sent within the suppression window and its preview
     // display hasn't been consumed yet). Unlike NoteRoomObserved, this does NOT

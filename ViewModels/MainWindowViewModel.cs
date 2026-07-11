@@ -1155,19 +1155,23 @@ public partial class MainWindowViewModel : ObservableObject
             case "MovementStart":
             {
                 // Always visible; enabled when idle (open Manage / run staged)
-                // or paused (doubles as Resume for the paused nav mode).
+                // or USER-paused (doubles as Resume). Keyed off IsUserPaused, not
+                // IsPaused — an engine wait (a mid-walk fight, a rest) must not
+                // flip this to "Resume"; only the user's own pause does.
                 Game.Map.MovementController ctl = AppServices.Current.MovementControl;
-                row.IsActionEnabled = ctl.IsIdle || ctl.IsPaused;
-                row.Tooltip = ctl.IsPaused
+                row.IsActionEnabled = ctl.IsIdle || ctl.IsUserPaused;
+                row.Tooltip = ctl.IsUserPaused
                     ? "Resume movement"
                     : "Start movement — run the staged loop, or open Manage to pick one";
                 break;
             }
             case "MovementPause":
             {
-                // Pure pause: enabled only while an engine is actively running.
+                // Pure pause: enabled while an engine is active and the user
+                // hasn't already paused it. Stays enabled through engine waits so
+                // the user can stack a manual pause on top of a fight/rest.
                 Game.Map.MovementController ctl = AppServices.Current.MovementControl;
-                row.IsActionEnabled = ctl.IsActive && !ctl.IsPaused;
+                row.IsActionEnabled = ctl.IsActive && !ctl.IsUserPaused;
                 break;
             }
             case "MovementStop":
@@ -3382,7 +3386,7 @@ public partial class MainWindowViewModel : ObservableObject
     private async Task MovementStartAsync()
     {
         Game.Map.MovementController ctl = AppServices.Current.MovementControl;
-        if (ctl.IsPaused)
+        if (ctl.IsUserPaused)
         {
             ctl.Resume();
             return;

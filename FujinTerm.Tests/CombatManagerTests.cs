@@ -761,6 +761,163 @@ public sealed class CombatManagerTests
         Assert.Equal(2, h.Sent.Count);
     }
 
+    // ----- Attack-last works UNDER a Follow priority (who + when are
+    // independent knobs) + caster announces count -----------------------
+
+    [Fact]
+    public void AttackLastParty_UnderFollowLeader_MemberAnnounceRefires()
+    {
+        // Report: attack-last stopped working under a Follow priority. Following
+        // the leader's TARGET (who) and attacking LAST (when) are independent — a
+        // non-leader member announcing our target must still re-fire so our
+        // *Combat Engaged* lands after them. (Regression: the Follow* early-return
+        // skipped Attack Order entirely, so this never re-fired.)
+        using Harness h = new();
+        h.Party.IsInParty = true;
+        h.Settings.TargetPriority = TargetPriority.FollowLeader;
+        h.Settings.AttackTiming = AttackTiming.AttackLastParty;
+        h.Party.LeaderName = "Boss";
+        h.Party.Members.Add(new PartyMember { Name = "Boss" });
+        h.Party.Members.Add(new PartyMember { Name = "Sidekick" });
+        h.AddMonster(1, "giant rat", killable: true);
+
+        h.Feed("Also here: giant rat.");
+        Assert.Single(h.Sent);
+        Assert.Equal("giant rat", h.Combat.CurrentTarget);
+
+        h.Feed("Sidekick moves to attack giant rat.");
+        Assert.Equal(2, h.Sent.Count);
+        Assert.Equal("a giant rat", h.LastSent);
+        Assert.Equal("giant rat", h.Combat.CurrentTarget);   // never switched
+    }
+
+    [Fact]
+    public void AttackLastParty_UnderFollowLeader_LeaderReannounceRefires()
+    {
+        // Two-member party: the leader is the ONLY other member, so attack-last
+        // must re-fire on the leader's own announce. Its already-engaged follow
+        // hold now schedules the coalesced re-fire; without it a duo could never
+        // land after the leader.
+        using Harness h = new();
+        h.Party.IsInParty = true;
+        h.Settings.TargetPriority = TargetPriority.FollowLeader;
+        h.Settings.AttackTiming = AttackTiming.AttackLastParty;
+        h.Party.LeaderName = "Boss";
+        h.Party.Members.Add(new PartyMember { Name = "Boss" });
+        h.AddMonster(1, "giant rat", killable: true);
+
+        h.Feed("Also here: giant rat.");
+        Assert.Single(h.Sent);
+        Assert.Equal("giant rat", h.Combat.CurrentTarget);
+
+        h.Feed("Boss moves to attack giant rat.");
+        Assert.Equal(2, h.Sent.Count);
+        Assert.Equal("a giant rat", h.LastSent);
+        Assert.Equal("giant rat", h.Combat.CurrentTarget);   // held, not switched
+    }
+
+    [Fact]
+    public void AttackLastParty_UnderFollowLeader_BurstCoalescesToOneRefire()
+    {
+        // Leader + member both announce our target in one round burst. The
+        // leader's follow-hold and the member's attack-order path share the
+        // coalescing guard, so the whole burst still collapses to a SINGLE
+        // re-fire landing last.
+        using Harness h = new() { DeferUi = true };
+        h.Party.IsInParty = true;
+        h.Settings.TargetPriority = TargetPriority.FollowLeader;
+        h.Settings.AttackTiming = AttackTiming.AttackLastParty;
+        h.Party.LeaderName = "Boss";
+        h.Party.Members.Add(new PartyMember { Name = "Boss" });
+        h.Party.Members.Add(new PartyMember { Name = "Sidekick" });
+        h.AddMonster(1, "giant rat", killable: true);
+
+        h.Feed("Also here: giant rat.");            // initial swing (synchronous)
+        Assert.Single(h.Sent);
+
+        h.Feed("Boss moves to attack giant rat.");
+        h.Feed("Sidekick moves to attack giant rat.");
+        Assert.Single(h.Sent);                       // flush deferred
+
+        h.PumpUi();
+        Assert.Equal(2, h.Sent.Count);               // one coalesced re-fire
+        Assert.Equal("a giant rat", h.LastSent);
+    }
+
+    [Fact]
+    public void FollowLeader_DefaultTiming_MemberAnnounceOnOurTarget_NoRefire()
+    {
+        // The earlier fix (ac11796) stopped a redundant re-fire when a member
+        // announced our target under a Follow priority with Default (own-cadence)
+        // timing. That stays fixed: re-fire only wakes for an explicit attack-last
+        // mode, so Default never re-fires even under FollowLeader.
+        using Harness h = new();
+        h.Party.IsInParty = true;
+        h.Settings.TargetPriority = TargetPriority.FollowLeader;   // AttackTiming left Default
+        h.Party.LeaderName = "Boss";
+        h.Party.Members.Add(new PartyMember { Name = "Boss" });
+        h.Party.Members.Add(new PartyMember { Name = "Sidekick" });
+        h.AddMonster(1, "giant rat", killable: true);
+
+        h.Feed("Also here: giant rat.");
+        Assert.Single(h.Sent);
+
+        h.Feed("Sidekick moves to attack giant rat.");
+        Assert.Single(h.Sent);                       // Default timing — no re-fire
+    }
+
+    [Fact]
+    public void CastAnnounce_PartyMemberOnOurTarget_Refires()
+    {
+        // GAME_MECHANICS: a caster's "moves to cast <spell> upon <mob>" is an
+        // equivalent per-member round announce. Under attack-last it re-fires just
+        // like a melee announce so we still land after the party's casters.
+        using Harness h = new();
+        h.Settings.AttackTiming = AttackTiming.AttackLastParty;
+        h.Party.Members.Add(new PartyMember { Name = "Priest" });
+        h.AddMonster(1, "giant rat", killable: true);
+
+        h.Feed("Also here: giant rat.");
+        Assert.Single(h.Sent);
+
+        h.Feed("Priest moves to cast lightning bolt upon giant rat.");
+        Assert.Equal(2, h.Sent.Count);
+        Assert.Equal("a giant rat", h.LastSent);
+    }
+
+    [Fact]
+    public void CastAnnounce_HealOnPlayer_NoRefire()
+    {
+        // A heal/buff cast names a PLAYER ("... upon Boss"). It must never re-fire
+        // — that would swing us at a teammate. The "must equal our current target"
+        // guard makes a non-mob cast a safe no-op.
+        using Harness h = new();
+        h.Settings.AttackTiming = AttackTiming.AttackLastParty;
+        h.Party.Members.Add(new PartyMember { Name = "Priest" });
+        h.AddMonster(1, "giant rat", killable: true);
+
+        h.Feed("Also here: giant rat.");
+        Assert.Single(h.Sent);
+
+        h.Feed("Priest moves to cast heal upon Boss.");
+        Assert.Single(h.Sent);                       // heal target ≠ our mob → no-op
+        Assert.Equal("giant rat", h.Combat.CurrentTarget);
+    }
+
+    [Fact]
+    public void CastAnnounce_OwnCast_NeverRefires()
+    {
+        using Harness h = new() { OwnName = "Fujin" };
+        h.Settings.AttackTiming = AttackTiming.AttackLastRoom;
+        h.AddMonster(1, "giant rat", killable: true);
+
+        h.Feed("Also here: giant rat.");
+        Assert.Single(h.Sent);
+
+        h.Feed("Fujin moves to cast lightning bolt upon giant rat.");
+        Assert.Single(h.Sent);                       // our own cast — no re-fire
+    }
+
     // ----- Attack Order: re-fire OUR target, ONLY on announces against
     // that same target — never switches the monster -------------------
 

@@ -50,6 +50,7 @@ public sealed class AutoWalkManager : IRecoverableEngine
     private Action? _preMoveHook;
     private Action<IReadOnlyList<int>>? _pathItemAnnouncer;
     private Action<IReadOnlyList<RoomKey>>? _routeAnnouncer;
+    private Func<RoomKey, IReadOnlyList<int>>? _hazardItemResolver;
     private readonly LogService? _log;
 
     private List<WalkStep>? _path;
@@ -60,6 +61,7 @@ public sealed class AutoWalkManager : IRecoverableEngine
     private bool _stepInFlight;
     private bool _awaitingPromptForCommand;
     private bool _awaitingTrapDisarm;
+    private bool _abandonHold;                               // AbandonedCombat gate is ours to release
     private int _retryCount;
     private const int MaxRetriesPerStep = 1;
 
@@ -238,6 +240,7 @@ public sealed class AutoWalkManager : IRecoverableEngine
 
         _tracker.StateChanged += OnTrackerStateChanged;
         _coordinator.PauseStateChanged += OnCoordinatorPauseChanged;
+        _coordinator.GatesChanged += OnGatesChangedForAbandon;
         if (_promptScanner is not null)
             _promptScanner.PromptObserved += OnPromptObserved;
     }
@@ -419,6 +422,19 @@ public sealed class AutoWalkManager : IRecoverableEngine
         _pathItemAnnouncer = announcer;
     }
 
+    // Hazard counter-item resolver. Given a room the route enters, returns the
+    // item ids that make that room safe and MUST be carried (no in-group
+    // substitute) — the RoomHazardIndex mandatory set. Folded into the same
+    // walk-start item announce as the exit gates above so a route the user
+    // chose to run through a hazard room (planThroughAcquirableGates) provisions
+    // its counter the same way an Item/Ticket gate does. Any-of hazard groups
+    // are deliberately omitted upstream; the route picker surfaces those.
+    public void SetHazardItemResolver(Func<RoomKey, IReadOnlyList<int>> resolver)
+    {
+        ArgumentNullException.ThrowIfNull(resolver);
+        _hazardItemResolver = resolver;
+    }
+
     // Planned-route room announcer. Invoked once at walk-start with the
     // ordered RoomKey sequence of the freshly-planned path (source first,
     // then each hop's target). Bound to the auto-light provisioner, which
@@ -448,7 +464,16 @@ public sealed class AutoWalkManager : IRecoverableEngine
     // Stop or supersede invalidates the deferral.
     private RoomKey? _deferredWalkTarget;
 
-    public bool WalkTo(RoomKey destination)
+    // Companion to _deferredWalkTarget: preserves the route picker's
+    // "plan through acquirable gates" choice across the tracker-Pending
+    // deferral so the deferred dispatch replans the same gated route.
+    private bool _deferredWalkThroughGates;
+
+    // planThroughAcquirableGates: when true, BFS plans the route as if every
+    // acquirable gate item (raft / ticket / door key / hazard counter) were
+    // already carried — the route picker's "direct" choice. Default false
+    // keeps every existing caller on the free-preferring route.
+    public bool WalkTo(RoomKey destination, bool planThroughAcquirableGates = false)
     {
         if (State is WalkState.Walking or WalkState.Paused)
             Stop(reason: "superseded by new walk");
@@ -466,6 +491,7 @@ public sealed class AutoWalkManager : IRecoverableEngine
                 return false;
             }
             _deferredWalkTarget = destination;
+            _deferredWalkThroughGates = planThroughAcquirableGates;
             _destination = destination;       // populated so status surfaces show the target
             State = WalkState.Walking;
             Raise(new WalkEvent(WalkEventKind.Started,
@@ -474,10 +500,10 @@ public sealed class AutoWalkManager : IRecoverableEngine
             return true;
         }
 
-        return WalkToImmediate(destination);
+        return WalkToImmediate(destination, planThroughAcquirableGates);
     }
 
-    private bool WalkToImmediate(RoomKey destination)
+    private bool WalkToImmediate(RoomKey destination, bool planThroughAcquirableGates = false)
     {
         // Callers may arrive here from the WalkTo entry (Idle) OR from
         // the deferred dispatch in OnTrackerStateChanged (Walking with
@@ -509,27 +535,41 @@ public sealed class AutoWalkManager : IRecoverableEngine
         // tolls-permitted route actually crosses a toll (no-op otherwise).
         _filter?.WarmForRoute(_bfs, source.Key, destination);
 
-        IReadOnlyList<Direction>? path = _bfs.FindPath(source.Key, destination, _filter);
-        if (path is null || path.Count == 0)
+        // The route picker's "direct" choice plans as if every acquirable gate
+        // item were already carried — suspend those gates for the FindPath +
+        // Expand pass so BFS returns the gated shortcut rather than the free
+        // detour. Level / toll / class gates stay active regardless. Disposed
+        // before any stepping so the live filter re-gates for mid-walk replans.
+        IDisposable? gateScope = planThroughAcquirableGates
+            ? _filter?.SuspendAcquirableGates()
+            : null;
+        IReadOnlyList<Direction>? path;
+        IReadOnlyList<WalkStep> expanded;
+        try
         {
-            // Distinguish "all routes blocked by an exit gate" from a
-            // genuinely disconnected target: re-probe with the exit gates
-            // ignored. A path that appears only when gates are off means
-            // every route there is gated beyond the player — a level
-            // window they fall outside, a toll they can't afford, or a
-            // class hall closed to their class — surface that reason so
-            // the user understands why we won't move.
-            IReadOnlyList<Direction>? ungated =
-                _bfs.FindPath(source.Key, destination, _filter, ignoreExitGates: true);
-            string reason = ungated is { Count: > 0 }
-                ? "all routes blocked by a level, toll, or class requirement"
-                : "no path";
-            Raise(new WalkEvent(WalkEventKind.Failed, reason, destination));
-            return false;
-        }
+            path = _bfs.FindPath(source.Key, destination, _filter);
+            if (path is null || path.Count == 0)
+            {
+                // Distinguish "all routes blocked by an exit gate" from a
+                // genuinely disconnected target: re-probe with the exit gates
+                // ignored. A path that appears only when gates are off means
+                // every route there is gated beyond the player — a level
+                // window they fall outside, a toll they can't afford, or a
+                // class hall closed to their class — surface that reason so
+                // the user understands why we won't move.
+                IReadOnlyList<Direction>? ungated =
+                    _bfs.FindPath(source.Key, destination, _filter, ignoreExitGates: true);
+                string reason = ungated is { Count: > 0 }
+                    ? "all routes blocked by a level, toll, or class requirement"
+                    : "no path";
+                Raise(new WalkEvent(WalkEventKind.Failed, reason, destination));
+                return false;
+            }
 
-        IReadOnlyList<WalkStep> expanded =
-            RemoteActionPathExpander.Expand(_graph, source.Key, path);
+            expanded = RemoteActionPathExpander.Expand(_graph, source.Key, path, _bfs, _filter);
+        }
+        finally { gateScope?.Dispose(); }
+
         if (expanded.Count == 0)
         {
             Raise(new WalkEvent(WalkEventKind.Failed, "path expansion empty", destination));
@@ -574,10 +614,11 @@ public sealed class AutoWalkManager : IRecoverableEngine
     }
 
     // Walk the graph along the planned directions, collecting the item id of
-    // every possession-gated exit (Item / Ticket) crossed. The result is the
-    // set of items the route requires the character to carry; the demand
-    // tracker decides which are missing. Cheap (one dictionary lookup per hop)
-    // and side-effect-free — skipped entirely when no announcer is bound.
+    // every possession-gated exit (Item / Ticket) crossed AND the mandatory
+    // counter item of every hazard room entered. The result is the set of items
+    // the route requires the character to carry; the demand tracker decides
+    // which are missing. Cheap (one dictionary lookup per hop) and
+    // side-effect-free — skipped entirely when no announcer is bound.
     private void AnnouncePlannedItemRequirements(RoomKey source, IReadOnlyList<Direction> path)
     {
         if (_pathItemAnnouncer is null) return;
@@ -592,6 +633,13 @@ public sealed class AutoWalkManager : IRecoverableEngine
             if (exit.KeyItemId > 0
                 && exit.Hint is RoomExitHint.Item or RoomExitHint.Ticket)
                 (required ??= new List<int>()).Add(exit.KeyItemId);
+            // The hazard sits on the room being entered, so resolve the hop's
+            // target — a free route never crosses hazard rooms (the filter
+            // blocks them), so this only fires on a chosen gated route.
+            if (_hazardItemResolver is { } hazardOf)
+                foreach (int itemId in hazardOf(exit.Target))
+                    if (itemId > 0)
+                        (required ??= new List<int>()).Add(itemId);
             cur = exit.Target;
         }
 
@@ -639,14 +687,36 @@ public sealed class AutoWalkManager : IRecoverableEngine
     // A move already on the wire carried us out of a room where we'd engaged a
     // hostile (combat gate was held) before it died. The step can't be recalled,
     // but we must not keep walking the route deeper past a fight we committed to.
-    // Halt on the manual (User) gate so the path is preserved and the user
-    // resumes once the situation is handled (mirrors the death halt). Fired from
+    // Halt on the engine-owned AbandonedCombat gate — NOT the manual User gate —
+    // so this is an engine wait the walker manages itself, never a user pause the
+    // toolbar/nav mistakes for a manual stop. It auto-releases the moment the
+    // room is clear of hostiles (see OnGatesChangedForAbandon): if the monster
+    // didn't follow, the Combat gate is already clearing this same tick and we
+    // resume onward; if it followed, its arrival re-asserts Combat and that gate
+    // holds us for the fight instead. Fired from
     // CombatStateTracker.EngagedTargetAbandoned. No-op when no walk is active.
     public void HaltForAbandonedCombat(string reason)
     {
         if (State == WalkState.Idle) return;
-        _coordinator.AssertGate(MovementCoordinator.UserGate, "AutoWalkManager", reason);
+        _abandonHold = true;
+        _coordinator.AssertGate(MovementCoordinator.AbandonedCombatGate, "AutoWalkManager", reason);
         Raise(new WalkEvent(WalkEventKind.Paused, reason, _destination));
+    }
+
+    // Auto-release for the AbandonedCombat hold. The halt only ever fires from a
+    // room that's clear of actionable hostiles (see CombatStateTracker), so the
+    // Combat gate is cleared in the same observation right after we assert ours;
+    // this handler catches that clear and drops our hold, resuming the onward
+    // route with no manual Resume. While the Combat gate is still asserted we
+    // keep holding — a followed monster re-asserts Combat and the fight takes
+    // precedence — so we never sprint away from a fight that's actually engaged.
+    private void OnGatesChangedForAbandon()
+    {
+        if (!_abandonHold) return;
+        if (_coordinator.AssertedGates.Contains(MovementCoordinator.CombatGate)) return;
+        _abandonHold = false;
+        _coordinator.ClearGate(MovementCoordinator.AbandonedCombatGate, "AutoWalkManager",
+            "room clear of hostiles — resuming route");
     }
 
     // ----- internals -------------------------------------------------
@@ -774,20 +844,28 @@ public sealed class AutoWalkManager : IRecoverableEngine
         // both engines cross them identically. The async door/hidden
         // hints are NOT covered here; they fall through to their own
         // FSMs below.
-        SpecialExitSend sync = SpecialExitDispatch.TrySendSynchronous(
-            exit, step.Direction, _tracker.State.CurrentRoom,
-            _tracker, _recovery,
-            emitMove: EmitMoveBytes,
-            writeAux: WriteBytes,
-            _teleportResolver, _isLeaderWithFollowers,
-            out string? syncFail,
-            onLeaderPartySplitTeleport: _onLeaderPartySplit);
-        if (sync == SpecialExitSend.Sent) return;
-        if (sync == SpecialExitSend.Failed)
+        //
+        // SkipSpecialDispatch marks the final cardinal of a cross-room
+        // multi-action exit whose prerequisite commands the expander already
+        // emitted as CommandSteps — dispatching multi-action logic again would
+        // re-issue them, so cross it as a plain cardinal below.
+        if (!step.SkipSpecialDispatch)
         {
-            Raise(new WalkEvent(WalkEventKind.Failed, syncFail!, _destination));
-            Reset();
-            return;
+            SpecialExitSend sync = SpecialExitDispatch.TrySendSynchronous(
+                exit, step.Direction, _tracker.State.CurrentRoom,
+                _tracker, _recovery,
+                emitMove: EmitMoveBytes,
+                writeAux: WriteBytes,
+                _teleportResolver, _isLeaderWithFollowers,
+                out string? syncFail,
+                onLeaderPartySplitTeleport: _onLeaderPartySplit);
+            if (sync == SpecialExitSend.Sent) return;
+            if (sync == SpecialExitSend.Failed)
+            {
+                Raise(new WalkEvent(WalkEventKind.Failed, syncFail!, _destination));
+                Reset();
+                return;
+            }
         }
 
         // SearchableHidden — `(Hidden)` modifier. Send `sea <dir>`
@@ -1016,8 +1094,10 @@ public sealed class AutoWalkManager : IRecoverableEngine
             && State == WalkState.Walking
             && _path is null)
         {
+            bool throughGates = _deferredWalkThroughGates;
             _deferredWalkTarget = null;
-            WalkToImmediate(deferred);
+            _deferredWalkThroughGates = false;
+            WalkToImmediate(deferred, throughGates);
             return;
         }
 
@@ -1025,6 +1105,19 @@ public sealed class AutoWalkManager : IRecoverableEngine
         if (!_stepInFlight) return;
         if (_path is null || _index >= _path.Count) return;
         if (_path[_index] is not MoveStep) return;
+
+        // A door / trap / hidden-exit sub-FSM owns this step until its own
+        // reply callback (OnDoorReply / OnTrapReply / OnHiddenSearchReply)
+        // fires the move and advances. While one is pending, the bash / pick /
+        // search output re-observes the CURRENT room; letting the block below
+        // act on that transition treats the still-in-progress step as
+        // completed-or-blocked, clears _stepInFlight, and re-drives the step —
+        // enqueuing a duplicate door request that later fires a stray verb in
+        // the room we've since moved into. The sub-FSM clears its flag before
+        // emitting the real move, so the genuine arrival transition still lands
+        // here normally.
+        if (_awaitingDoorOpen || _awaitingTrapDisarm || _awaitingHiddenReveal)
+            return;
 
         // Tracker lost confidence mid-step — defer to the
         // EngineRecoveryGate. The gate will either keep watching
@@ -1181,8 +1274,10 @@ public sealed class AutoWalkManager : IRecoverableEngine
             {
                 if (_tracker.State.Confidence == RoomConfidence.Confirmed)
                 {
+                    bool throughGates = _deferredWalkThroughGates;
                     _deferredWalkTarget = null;
-                    WalkToImmediate(deferred);
+                    _deferredWalkThroughGates = false;
+                    WalkToImmediate(deferred, throughGates);
                 }
                 return;
             }
@@ -1308,8 +1403,17 @@ public sealed class AutoWalkManager : IRecoverableEngine
         _awaitingDoorOpen = false;
         _awaitingHiddenReveal = false;
         _deferredWalkTarget = null;
+        _deferredWalkThroughGates = false;
         _retryCount = 0;
         _replanCount = 0;
+        // Drop any AbandonedCombat hold this walk was carrying so a stopped /
+        // completed walk never strands the gate asserted (the auto-release only
+        // fires on a Combat-gate transition, which may not come once we're Idle).
+        if (_abandonHold)
+        {
+            _abandonHold = false;
+            _coordinator.ClearGate(MovementCoordinator.AbandonedCombatGate, "AutoWalkManager", "walk reset");
+        }
         State = WalkState.Idle;
     }
 

@@ -88,6 +88,8 @@ public sealed class HealthManager : IDisposable
     private Action? _requestPartyWait;          // ping leader to halt (PartyRestSync)
     private Action? _requestPartyOk;            // release leader
     private Func<bool>? _isLeaderResting;       // follower + leader is resting/meditating
+    private Func<bool>? _isLeaderWaited;        // WE lead + a member has @wait-held us
+    private Func<bool>? _isSelfPoisoned;        // local character is currently poisoned
     private Action? _requestPartyHeal;          // follower flee-substitute: broadcast @heal
     private Func<bool>? _shadowRestClass;       // class has the ShadowRest ability (code 1103)
     private Func<bool>? _shadowRestStealthed;   // currently hidden or sneaking
@@ -253,8 +255,23 @@ public sealed class HealthManager : IDisposable
     // isLeaderResting (optional) reports whether we're a follower and the party
     // leader is currently resting / meditating. When true and no recovery gate is
     // held, Evaluate opportunistically tops off to rest-max during the leader's
-    // downtime — inherent behavior, gated only by the auto-heal master switch.
-    // Left null preserves the old gate-only rest behavior.
+    // downtime — a follower mirrors the leader's rest, gated on the auto-heal
+    // master switch AND not being poisoned (isSelfPoisoned). Left null preserves
+    // the old gate-only rest behavior.
+    //
+    // isLeaderWaited (optional) reports whether WE lead the party and a member has
+    // telepathed @wait, so our movement is held. When true and not poisoned, the
+    // leader uses the forced downtime to top off to rest-max — same "rest to use
+    // the wait" behavior as the follower's opportunistic path, just triggered by
+    // our own held state instead of the leader's posture. Left null: leaders never
+    // rest just because they're waited.
+    //
+    // isSelfPoisoned (optional) reports whether the local character is poisoned.
+    // Gates BOTH downtime-rest paths (leader-waited and follower-mirrors-leader):
+    // a poisoned character skips the opportunistic rest (poison ticks break rest
+    // and waste the downtime). Does NOT gate the normal threshold-driven rest —
+    // a poisoned character below its floor still needs to recover. Left null
+    // treats us as never poisoned (the pre-gate behavior).
     //
     // requestPartyHeal (optional) is the follower's flee-substitute: when the
     // run-if-below HP trigger fires AND we're a follower, Evaluate invokes this
@@ -267,7 +284,9 @@ public sealed class HealthManager : IDisposable
         Action requestPartyWait,
         Action requestPartyOk,
         Func<bool>? isLeaderResting = null,
-        Action? requestPartyHeal = null)
+        Action? requestPartyHeal = null,
+        Func<bool>? isLeaderWaited = null,
+        Func<bool>? isSelfPoisoned = null)
     {
         ArgumentNullException.ThrowIfNull(isPartyFollower);
         ArgumentNullException.ThrowIfNull(requestPartyWait);
@@ -277,6 +296,8 @@ public sealed class HealthManager : IDisposable
         _requestPartyOk = requestPartyOk;
         _isLeaderResting = isLeaderResting;
         _requestPartyHeal = requestPartyHeal;
+        _isLeaderWaited = isLeaderWaited;
+        _isSelfPoisoned = isSelfPoisoned;
     }
 
     // Wire ShadowRest (Paradigm): classes with the ability can rest while
@@ -606,6 +627,13 @@ public sealed class HealthManager : IDisposable
         // is what actually exits the (resting) state.
         bool anyGate = _hpGateAsserted || _maGateAsserted;
 
+        // A poisoned character skips the downtime-rest paths below: poison ticks
+        // keep breaking rest, so sitting during the leader's / our own wait just
+        // burns wire round-trips without recovering. This gate applies ONLY to the
+        // opportunistic paths — a poisoned character below its own rest floor still
+        // rests through the anyGate branch, since it needs the recovery to survive.
+        bool selfPoisoned = _isSelfPoisoned?.Invoke() ?? false;
+
         // Opportunistic follower rest: the leader has stopped to rest /
         // meditate, so we use the downtime to top off too — even above our
         // own rest-trigger floors, up to rest-max. No gate is asserted (we're
@@ -615,9 +643,23 @@ public sealed class HealthManager : IDisposable
         // hit rest-max NeedsOpportunisticTopOff goes false and the post-rest
         // chain fires through the shared !shouldRest recovery branch.
         bool opportunistic = !anyGate
+            && !selfPoisoned
             && (_isLeaderResting?.Invoke() ?? false)
             && NeedsOpportunisticTopOff(s);
-        bool shouldRest = anyGate || opportunistic;
+
+        // Leader-waited rest: WE lead and a member has @wait-held us, so we're
+        // stuck in this room anyway — use the forced downtime to top off. Same
+        // rest-max target and poison gate as the follower's opportunistic path;
+        // the only difference is the trigger (our own held state, not a leader's
+        // posture). A single `rest` emit is enough: the movement gate keeps us
+        // sitting until the @wait clears, at which point the resumed engine's next
+        // move stands us back up.
+        bool leaderWaitedRest = !anyGate
+            && !selfPoisoned
+            && (_isLeaderWaited?.Invoke() ?? false)
+            && NeedsOpportunisticTopOff(s);
+
+        bool shouldRest = anyGate || opportunistic || leaderWaitedRest;
 
         // Don't even try to rest while the room contains an engageable
         // hostile — every combat round breaks rest, so spamming `rest`
@@ -660,10 +702,13 @@ public sealed class HealthManager : IDisposable
                 ? ChooseRestCommand(s)
                 : ChooseOpportunisticRestCommand(s);
 
+            string restReason = anyGate ? ""
+                : leaderWaitedRest ? " (waited — resting to use the downtime)"
+                : " (opportunistic, leader resting)";
             SendChained(s.PreRestCommand);
             SendCommand(command);
             _log?.Combat(LogCategory,
-                $"{command}{(anyGate ? "" : " (opportunistic, leader resting)")} " +
+                $"{command}{restReason} " +
                 $"hp={_state.Hp}/{_state.MaxHp} ma={_state.Ma}/{_state.MaxMa}");
             _restInFlight = true;
         }

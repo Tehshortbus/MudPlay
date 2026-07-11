@@ -380,8 +380,22 @@
                         Classes="ActionChip"
                         Content="Save"
                         ToolTip.Tip="Save the current loop / lair setup."
+                        IsVisible="{Binding !EngineActionIsWalking}"
                         Command="{Binding SaveCurrentCommand}"
                         IsEnabled="{Binding CanSaveCurrent}"/>
+
+                <!-- Walk-to has no savable setup, so its Save slot becomes the
+                     walk's Pause/Resume chip (parity with the loop/lair
+                     pause affordance). Keys off the user-override tier, so a
+                     mid-walk fight doesn't flip it to Resume. -->
+                <Button Grid.Column="4"
+                        Classes="ActionChip"
+                        Classes.Run="{Binding IsWalkUserPaused}"
+                        Classes.Pause="{Binding !IsWalkUserPaused}"
+                        Content="{Binding WalkPauseLabel}"
+                        ToolTip.Tip="Pause / resume the walk-to."
+                        IsVisible="{Binding EngineActionIsWalking}"
+                        Command="{Binding PauseOrResumeCommand}"/>
 
                 <!-- Run / Pause — loop running shows "Pause" (assert
                      user gate + open builder seeded from running loop);

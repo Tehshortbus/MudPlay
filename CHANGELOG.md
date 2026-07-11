@@ -2,6 +2,43 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.34.15
+
+- Character Info's Inventory box now shows the coins line and a keys list, parsed from the pack readout
+- Discard currency drops are re-audited after banking, buying, or selling so stale held-cash flags clear
+- Combat's "attack last" now fires only after every party melee and cast announce, under the Follow-target priority
+- A "no effect" result no longer forces a manual Resume — the engine wait auto-clears
+- Toolbar and nav pause controls read only the user-override tier, never engine-owned waits
+- Walk-to now shows a Save→Pause chip so a queued route is visible before it starts
+- A @wait-held, un-poisoned leader rests to use the downtime, and a follower mirrors the leader's rest unless it's poisoned
+- Movement while blinded dead-reckons position through the room graph, re-anchoring when sight returns
+- Curable-ailment on/off say pairs clear their chip authoritatively, and a @status reply pulls a fresh chip resync
+- Party-window health/mana bars now align across rows regardless of which status chips a row shows
+- bug reports addressed: stock-20260711-083241, stock-20260711-083306, stock-20260711-083614, stock-20260711-083759, stock-20260711-084637, stock-20260711-090022, stock-20260711-091137
+
+## 1.34.7
+
+- Walker no longer strands at a bashable/pickable door mid-route — a sub-FSM step is no longer double-driven into a duplicate, stray-verb door request
+- Duplicate per-direction door requests are dropped instead of stacking behind a live one
+- Combat resyncs the room immediately when a kill's death line can't be pinned to a roster mob, instead of stalling ~5s until the next swing no-ops
+- Nav tooltips now list standalone room actions ("pull drawer", etc.) under Room commands for rooms with no multi-action exit
+- A non-followed party member's attack announce no longer drives a duplicate re-fire under a Follow-target priority
+- Between-round self-heal now resumes the attack in the same round instead of waiting a full round for a follow announce that never comes
+- bug reports addressed: stock-20260710-221533, stock-20260710-221612, stock-20260710-221703, stock-20260710-221836, stock-20260710-222050, stock-20260710-222610
+
+## 1.34.1
+
+- Party re-invite after a chime/CMD teleport now waits until each member materializes, so no one is left behind by a "you don't see them here" invite
+- bug reports addressed: stock-20260710-221344
+
+## 1.34.0
+
+- Navigation routes around item-gated exits and hazard rooms it can't safely cross, instead of walking into them
+- Room-entry hazards (damage/drown spells, raft crossings) are recognized off the game data; a room is avoided unless a counter item is carried
+- User-initiated walks with a shorter gated shortcut now pop a free-vs-direct route picker listing what each route needs
+- Cross-room multi-action exits (act in one room to open an exit in another) are planned and executed in step order
+- Choosing the direct route provisions its missing gate/hazard items through the existing acquire pipeline
+
 ## 1.33.0
 
 - Combat priority is now a simple "Spells first / Physical first" dropdown, replacing the reorderable priority list

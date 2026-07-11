@@ -1134,39 +1134,112 @@ public sealed class AutoWalkManagerTests : IDisposable
         Assert.Equal("n\r",           Encoding.Latin1.GetString(h.Sent[2]));
     }
 
-    // Cross-room multi-action — same shape but the Action#N cell
-    // references room 1/2 instead of "this room". Walker should
-    // fail fast with the cross-room reason.
+    // Cross-room multi-action — the gated exit (1/2's N → 1/9) needs a command
+    // typed in room 1/5, one E hop off the host room. The round-trip host↔issue
+    // is routable, so the walker walks to the lever room, pulls it, walks back,
+    // and crosses. Start is 1/1 (one N hop into the host 1/2).
+    //
+    //   1/1 ──N──▶ 1/2 ──N (Hidden/Needs 1 Actions)──▶ 1/9
+    //              │E
+    //              ▼
+    //             1/5  (D slot carries Action#1 for 1/2's N exit)
     private const string MultiActionCrossRoomJson = """
         [
-          { "Map Number": 1, "Room Number": 1, "Name": "Chamber",
+          { "Map Number": 1, "Room Number": 1, "Name": "Start",
             "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
-            "N": "1/2 (Hidden/Needs 1 Actions, any order)",
-            "S": "0",
-            "E": "Action#1 [on the N exit of room 1/3]: pull lever",
-            "W": "0",
+            "N": "1/2", "S": "0", "E": "0", "W": "0",
             "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
-          { "Map Number": 1, "Room Number": 2, "Name": "Vault",
+          { "Map Number": 1, "Room Number": 2, "Name": "Hub",
             "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
-            "N": "0", "S": "1/1", "E": "0", "W": "0",
+            "N": "1/9 (Hidden/Needs 1 Actions, specific order)", "S": "1/1", "E": "1/5", "W": "0",
             "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
-          { "Map Number": 1, "Room Number": 3, "Name": "Switch",
+          { "Map Number": 1, "Room Number": 5, "Name": "Lever",
             "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
-            "N": "1/2 (Hidden/Needs 1 Actions, any order)", "S": "0", "E": "0", "W": "0",
+            "N": "0", "S": "0", "E": "0", "W": "1/2",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0",
+            "D": "Action#1 [on the N exit of room 1/2]: pull lever" },
+          { "Map Number": 1, "Room Number": 9, "Name": "Vault",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "1/2", "E": "0", "W": "0",
             "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
         ]
         """;
 
     [Fact]
-    public void Walker_MultiActionExit_CrossRoom_FailsWithReason()
+    public void Walker_MultiActionExit_CrossRoom_WalksActsThenCrosses()
     {
         Harness h = NewHarness(MultiActionCrossRoomJson);
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Walker.WalkTo(new RoomKey(1, 9));
+
+        // Step 0: n → 1/2 (into the hub).
+        Assert.Equal("n\r", Encoding.Latin1.GetString(h.Sent[^1]));
+        h.Tracker.NoteRoomObserved(new RoomObservation("Hub",
+            new HashSet<Direction> { Direction.S, Direction.E }));
+
+        // Step 1: e → 1/5 (detour to the lever room).
+        Assert.Equal("e\r", Encoding.Latin1.GetString(h.Sent[^1]));
+        h.Tracker.NoteRoomObserved(new RoomObservation("Lever",
+            new HashSet<Direction> { Direction.W }));
+
+        // Step 2: the fire-and-forget prerequisite command.
+        Assert.Equal("pull lever\r", Encoding.Latin1.GetString(h.Sent[^1]));
+        h.Walker.FirePromptForTests();
+
+        // Step 3: w → 1/2 (walk back to the host room).
+        Assert.Equal("w\r", Encoding.Latin1.GetString(h.Sent[^1]));
+        h.Tracker.NoteRoomObserved(new RoomObservation("Hub",
+            new HashSet<Direction> { Direction.S, Direction.E }));
+
+        // Step 4: n → 1/9, the primed cross. SkipSpecialDispatch means it goes
+        // out as a plain cardinal — NOT re-running the multi-action dispatch
+        // (which would re-issue "pull lever").
+        Assert.Equal("n\r", Encoding.Latin1.GetString(h.Sent[^1]));
+        h.Tracker.NoteRoomObserved(new RoomObservation("Vault",
+            new HashSet<Direction> { Direction.S }));
+
+        Assert.Equal(WalkState.Idle, h.Walker.State);
+        Assert.Contains(h.Events, e => e.Kind == WalkEventKind.Finished);
+
+        // Exactly one "pull lever" — the prereq isn't double-issued on the cross.
+        Assert.Equal(1, h.Sent.Count(b => Encoding.Latin1.GetString(b) == "pull lever\r"));
+        Assert.Equal(new[] { "n\r", "e\r", "pull lever\r", "w\r", "n\r" },
+            h.Sent.Select(b => Encoding.Latin1.GetString(b)).ToArray());
+    }
+
+    // Cross-room multi-action whose command room (1/7) is isolated — nothing
+    // connects to it, so the host→issue detour is unroutable. The action data
+    // lives in 1/7's row but references "the N exit of room 1/3", so the command
+    // must be typed in 1/7 (a room the walker can't reach). Expansion truncates
+    // and the walker fails cleanly rather than crossing an un-primed exit.
+    private const string MultiActionCrossRoomUnroutableJson = """
+        [
+          { "Map Number": 1, "Room Number": 3, "Name": "Switch",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "1/2 (Hidden/Needs 1 Actions, any order)", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 2, "Name": "Vault",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "1/3", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 7, "Name": "Faraway",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "0", "E": "0",
+            "W": "Action#1 [on the N exit of room 1/3]: pull lever",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+        ]
+        """;
+
+    [Fact]
+    public void Walker_MultiActionExit_CrossRoom_UnroutableDetour_FailsCleanly()
+    {
+        Harness h = NewHarness(MultiActionCrossRoomUnroutableJson);
         h.Tracker.SetLocated(new RoomKey(1, 3));
         h.Walker.WalkTo(new RoomKey(1, 2));
 
         Assert.Equal(WalkState.Idle, h.Walker.State);
-        Assert.Contains(h.Events,
-            e => e.Kind == WalkEventKind.Failed && e.Detail.Contains("cross-room"));
+        Assert.Contains(h.Events, e => e.Kind == WalkEventKind.Failed);
+        Assert.Empty(h.Sent);
     }
 
     // ----- trapped exits (PR 7.22) -----------------------------------

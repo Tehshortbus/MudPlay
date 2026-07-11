@@ -472,7 +472,28 @@ public static class RoomTooltipBuilder
         // west" / "jump east" → bridge jump) collapse to one entry.
         List<CastTeleportGroup> castGroups = ResolveCastGroups(room, tbinfo, spellCatalog);
 
-        if (byDest.Count == 0 && castGroups.Count == 0) return string.Empty;
+        // Room-action keywords (`remoteaction` CMD lines — "pull drawer",
+        // "clear rubble", etc.) that change the world in place rather than
+        // teleporting. These already surface beneath a MultiActionHidden exit
+        // via AppendTbInfoActionFallback, so only list them here when no such
+        // exit claimed them — otherwise a room with both would render the same
+        // keyword twice. A room whose only special interaction is a standalone
+        // room action (e.g. 1/381's "pull drawer", with just a normal door
+        // exit) has no MultiActionHidden exit, so the fallback never fired and
+        // the keyword would go unshown without this.
+        List<string> actionKeywords = new();
+        bool shownByExit = room.Exits.Values.Any(e =>
+            e.Hint == RoomExitHint.MultiActionHidden
+            && e.MultiAction is not { Actions.Count: > 0 });
+        if (!shownByExit)
+        {
+            foreach (string kw in TBInfoActionResolver.EnumerateRemoteActionKeywords(tbinfo, room.Cmd))
+                if (!actionKeywords.Contains(kw, StringComparer.OrdinalIgnoreCase))
+                    actionKeywords.Add(kw);
+        }
+
+        if (byDest.Count == 0 && castGroups.Count == 0 && actionKeywords.Count == 0)
+            return string.Empty;
 
         StringBuilder sb = new();
         sb.Append("Room commands:");
@@ -510,6 +531,9 @@ public static class RoomTooltipBuilder
                     sb.Append('\n').Append("      ").Append(FormatDest(graph, d));
             }
         }
+        if (actionKeywords.Count > 0)
+            sb.Append('\n').Append("  ").Append(string.Join(" / ", actionKeywords))
+              .Append(" (room action)");
         return sb.ToString();
     }
 

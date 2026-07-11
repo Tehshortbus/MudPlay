@@ -23,7 +23,8 @@ public sealed class PartyEssentialHandlersTests
         FujinTerm.Game.Map.Room? currentRoom = null,
         IReadOnlyList<FujinTerm.Game.Combat.RoomEntity>? roomEntities = null,
         MovementStatus? movement = null,
-        Func<string?>? readDraggedBy = null)
+        Func<string?>? readDraggedBy = null,
+        MessageFlags ailments = MessageFlags.None)
     {
         MessageRouter router = new();
         DefaultPatterns.Seed(router);
@@ -36,7 +37,8 @@ public sealed class PartyEssentialHandlersTests
             readCurrentRoom: () => currentRoom,
             readRoomEntities: () => roomEntities,
             readMovement: () => movement ?? default,
-            readDraggedBy: readDraggedBy);
+            readDraggedBy: readDraggedBy,
+            readAilments: () => ailments);
         List<byte[]> relayCapture = new();
         handlers.SetWireSender(relayCapture.Add);
         return (engine, handlers, player, party, players, relayCapture);
@@ -201,7 +203,7 @@ public sealed class PartyEssentialHandlersTests
     }
 
     [Fact]
-    public void Status_EmitsCurrentPosition()
+    public void Status_EmitsPositionNavAndAilments()
     {
         var (engine, _, player, _, players, _) = Setup();
         SeedPlayer(players, "Friend", PlayerRemoteControls.QueryHealthStatus);
@@ -209,7 +211,50 @@ public sealed class PartyEssentialHandlersTests
         player.HasPromptData = true;
 
         engine.DispatchForTests(Telepath("Friend", "@status"));
-        Assert.Contains("Meditating", LastReply(engine));
+        // Position; nav-engine phrase; ailment clause — all three present.
+        Assert.Equal("/Friend {Meditating; not moving; no ailments}\r", LastReply(engine));
+    }
+
+    [Fact]
+    public void Status_WhenWalking_ReportsMovementEngine()
+    {
+        MovementStatus mv = new(MovementKind.Walking, "5/1141", CurrentStep: 0, TotalSteps: 4);
+        var (engine, _, player, _, players, _) = Setup(movement: mv);
+        SeedPlayer(players, "Friend", PlayerRemoteControls.QueryHealthStatus);
+        player.Position = PlayerPosition.Standing;
+        player.HasPromptData = true;
+
+        engine.DispatchForTests(Telepath("Friend", "@status"));
+        Assert.Contains("walking to 5/1141", LastReply(engine));
+    }
+
+    [Fact]
+    public void Status_ListsActiveCurableAilments_InTableOrder()
+    {
+        var (engine, _, player, _, players, _) = Setup(
+            ailments: MessageFlags.Blinded | MessageFlags.Poisoned);
+        SeedPlayer(players, "Friend", PlayerRemoteControls.QueryHealthStatus);
+        player.Position = PlayerPosition.Standing;
+        player.HasPromptData = true;
+
+        engine.DispatchForTests(Telepath("Friend", "@status"));
+        // Table order is poison, blind, confused, diseased.
+        Assert.Contains("ailments: poisoned, blind", LastReply(engine));
+    }
+
+    [Fact]
+    public void Status_HeldIsNotReportedAsAnAilment()
+    {
+        // Held is excluded from the @status clause — its chip rides @ok, so the
+        // pull-based reconcile must not see it and clear it independently.
+        var (engine, _, player, _, players, _) = Setup(
+            ailments: MessageFlags.MovementPrevented);
+        SeedPlayer(players, "Friend", PlayerRemoteControls.QueryHealthStatus);
+        player.Position = PlayerPosition.Standing;
+        player.HasPromptData = true;
+
+        engine.DispatchForTests(Telepath("Friend", "@status"));
+        Assert.Contains("no ailments", LastReply(engine));
     }
 
     [Fact]

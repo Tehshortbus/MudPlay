@@ -81,15 +81,32 @@ public sealed class MovementController : IDisposable
     // True when an engine is driving (running or paused).
     public bool IsActive => State != MovementEngineState.Idle;
 
-    // True when the active engine is paused.
+    // True when the active engine is paused for ANY reason — a user pause OR an
+    // engine wait (combat, resting, abandoned-combat, party hold, …). This is
+    // the coalesced run-state, not the toolbar's pause signal.
     public bool IsPaused => State == MovementEngineState.Paused;
 
-    // Suspend the active engine without tearing it down. Auto-Lair pauses
-    // itself (also halting its scheduler); walker + loop pause via the shared
-    // user gate. No-op when idle or already paused.
+    // True only when the pause is the USER's manual override — the highest-level
+    // pause tier. Engine waits (Combat / HealthRecovery / AbandonedCombat / …)
+    // are excluded: those hold the engines transparently and auto-clear, so the
+    // toolbar's Start/Pause buttons must NOT flip on them (that was the bug —
+    // every mid-walk fight showed "Resume"). Auto-Lair owns its own user pause
+    // flag; walker + loop user-pause ride the UserGate (also asserted by the
+    // death halt and remote @pause, both of which are legitimately "resume is
+    // now the user's call"). This is what the toolbar keys off.
+    public bool IsUserPaused =>
+        _autoLair.IsActive
+            ? _autoLair.IsPaused
+            : _coordinator.AssertedGates.Contains(MovementCoordinator.UserGate);
+
+    // Suspend the active engine as a user override. This is the highest-level
+    // pause: it stacks on top of any engine wait, so a walk paused mid-combat
+    // stays paused after the fight clears until the user resumes. Auto-Lair
+    // pauses itself (also halting its scheduler); walker + loop pause via the
+    // shared user gate. No-op when idle or already user-paused.
     public void Pause()
     {
-        if (State != MovementEngineState.Running) return;
+        if (IsIdle || IsUserPaused) return;
         if (_autoLair.IsActive)
         {
             _autoLair.Pause();
@@ -98,10 +115,12 @@ public sealed class MovementController : IDisposable
         _coordinator.AssertGate(MovementCoordinator.UserGate, nameof(MovementController));
     }
 
-    // Inverse of Pause. No-op when not paused.
+    // Inverse of Pause — lifts the user override only. Any engine wait still
+    // asserted (an active fight, a rest) keeps the engine paused on its own
+    // gate; we just clear the user's hold. No-op when not user-paused.
     public void Resume()
     {
-        if (State != MovementEngineState.Paused) return;
+        if (!IsUserPaused) return;
         if (_autoLair.IsActive)
         {
             _autoLair.Resume();
@@ -110,12 +129,11 @@ public sealed class MovementController : IDisposable
         _coordinator.ClearGate(MovementCoordinator.UserGate, nameof(MovementController));
     }
 
-    // Pause when running, resume when paused. Backs the single toolbar
-    // Pause/Resume button.
+    // Toggle the user override. Backs the single toolbar Pause/Resume button.
     public void TogglePause()
     {
-        if (IsPaused) Resume();
-        else if (State == MovementEngineState.Running) Pause();
+        if (IsUserPaused) Resume();
+        else if (IsActive) Pause();
     }
 
     // Fully back out of whichever engine is running — same intent as the

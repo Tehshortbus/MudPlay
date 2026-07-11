@@ -82,20 +82,18 @@
                     <Border BorderBrush="{StaticResource ChromeBorderSoftBrush}"
                             BorderThickness="0,0,0,1"
                             Padding="6,4">
-                        <!-- Fixed-pixel widths on every column whose presence
-                             varies per row (leader-star, rank-chip, HP, MA,
-                             position). Auto columns wouldn't sync across
-                             rows so a leaderless follower row had its HP bar
-                             land at a different X than the leader's. Only the
-                             name column (*) and the status-chip column (Auto)
-                             vary — both come BEFORE/AFTER the bars so they
-                             don't affect HP/MA alignment. -->
-                        <!-- Column layout matches the header Border above.
-                             Position text column dropped — stance is covered by
-                             the REST / MED status chips. HP + MA collapsed into
-                             one stacked column (HEALTH · MANA) per the skeleton
-                             design — each row renders bar + "X:cur/max pct%". -->
-                        <Grid ColumnDefinitions="20,28,*,190,Auto,Auto"
+                        <!-- Every column LEFT of the bars is fixed-pixel so the
+                             bars land at the same X on every row. The name
+                             column must be fixed too (not *): a flexible column
+                             before the bars flexes against the Auto status-chip
+                             column after them, so adding/removing a chip shifted
+                             the bars sideways. The single * now sits AFTER the
+                             chips as a spacer — it absorbs window slack and pins
+                             the uninvite button to the right edge without ever
+                             touching the bars' position. HP + MA are stacked in
+                             one column (bar + "X:cur/max pct%"); the MA sub-row
+                             hides for no-mana classes. -->
+                        <Grid ColumnDefinitions="20,28,150,190,Auto,*,Auto"
                               VerticalAlignment="Center">
 
                             <!-- (0) Leader star — visible only on the leader -->
@@ -134,6 +132,7 @@
                                         VerticalAlignment="Center" Margin="6,0,0,0">
                                 <TextBlock Text="{Binding Name}"
                                            FontSize="12"
+                                           TextTrimming="CharacterEllipsis"
                                            Foreground="{StaticResource ChromeFgBrush}"/>
                                 <TextBlock Text="{Binding Class}"
                                            FontSize="9"
@@ -258,7 +257,7 @@
                                  follow you." echo), so this gate covers BOTH
                                  the kick-a-follower and withdraw-a-pending-
                                  invite paths with one binding. -->
-                            <Button Grid.Column="5"
+                            <Button Grid.Column="6"
                                     Content="⨯"
                                     Width="22" Height="22"
                                     Padding="0"

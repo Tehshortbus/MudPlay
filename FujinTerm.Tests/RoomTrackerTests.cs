@@ -790,6 +790,90 @@ public sealed class RoomTrackerTests : IDisposable
         Assert.False(tracker.IsInDarkRoom);
     }
 
+    // ----- blind-move advance (starved display, player-blind not room-dark) --
+
+    [Fact]
+    public void BlindMove_PendingMoveToMappedNeighbour_Advances_DoesNotFlagDark()
+    {
+        // A move made while blinded prints only "You are blind." — no name, no
+        // exits — yet the move traverses. Project onto the graph edge exactly
+        // like a dark room, but the room isn't dark: IsInDarkRoom stays false.
+        RoomTracker tracker = NewTracker();
+        tracker.SetLocated(new RoomKey(1, 1));       // Town Gates, N → 1/3
+        tracker.NoteMoveSent(Direction.N);
+        Assert.Equal(RoomConfidence.Pending, tracker.State.Confidence);
+
+        tracker.NoteBlindMove();
+
+        Assert.Equal(RoomConfidence.Confirmed, tracker.State.Confidence);
+        Assert.Equal(new RoomKey(1, 3), tracker.State.CurrentRoom!.Key);
+        Assert.False(tracker.IsInDarkRoom);
+    }
+
+    [Fact]
+    public void BlindMove_MultipleMovesInFlight_LandsAtHead_StaysPending()
+    {
+        // Two moves queued; the blind line confirms only the head (N → 1/3),
+        // leaving the second in flight, so posture stays Pending at the new room.
+        RoomTracker tracker = NewTracker();
+        tracker.SetLocated(new RoomKey(1, 1));
+        tracker.NoteMoveSent(Direction.N);           // head — Town Gates → 1/3
+        tracker.NoteMoveSent(Direction.E);           // still queued
+
+        tracker.NoteBlindMove();
+
+        Assert.Equal(RoomConfidence.Pending, tracker.State.Confidence);
+        Assert.Equal(new RoomKey(1, 3), tracker.State.CurrentRoom!.Key);
+        Assert.False(tracker.IsInDarkRoom);
+    }
+
+    [Fact]
+    public void BlindMove_UnmappedEdge_HoldsSource()
+    {
+        // The pending move has no graph edge out of the source — we can't
+        // fabricate a landing, so hold the last anchor and stay Pending.
+        RoomTracker tracker = NewTracker();
+        tracker.SetLocated(new RoomKey(1, 1));       // Town Gates has no S exit
+        tracker.NoteMoveSent(Direction.S);
+
+        tracker.NoteBlindMove();
+
+        Assert.Equal(RoomConfidence.Pending, tracker.State.Confidence);
+        Assert.Equal(new RoomKey(1, 1), tracker.State.CurrentRoom!.Key);
+        Assert.False(tracker.IsInDarkRoom);
+    }
+
+    [Fact]
+    public void BlindMove_WhileConfirmedNoMove_HoldsRoom()
+    {
+        // A blind echo while standing still (no pending move) carries nothing to
+        // advance on — keep the confirmed room intact, never flag darkness.
+        RoomTracker tracker = NewTracker();
+        tracker.SetLocated(new RoomKey(1, 1));
+
+        tracker.NoteBlindMove();
+
+        Assert.Equal(RoomConfidence.Confirmed, tracker.State.Confidence);
+        Assert.Equal(new RoomKey(1, 1), tracker.State.CurrentRoom!.Key);
+        Assert.False(tracker.IsInDarkRoom);
+    }
+
+    [Fact]
+    public void BlindMove_AsLookPeek_Dropped_NoAdvance()
+    {
+        // A look-direction peek while blind renders the same line from the lit
+        // room we stand in. The peek window drops it — no advance.
+        RoomTracker tracker = NewTracker();
+        DateTimeOffset t = DateTimeOffset.UnixEpoch;
+        tracker.SetLocated(new RoomKey(1, 1));
+        tracker.NoteLookSent(t);
+
+        tracker.NoteBlindMove(t.AddMilliseconds(100));
+
+        Assert.Equal(RoomConfidence.Confirmed, tracker.State.Confidence);
+        Assert.Equal(new RoomKey(1, 1), tracker.State.CurrentRoom!.Key);
+    }
+
     // ----- move-echo consume-once claim ------------------------------
 
     [Fact]

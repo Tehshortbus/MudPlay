@@ -1,10 +1,17 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.33.0**
-> - Combat priority is now a simple "Spells first / Physical first" dropdown, replacing the reorderable priority list
-> - Backstab and debuffs no longer sit in the reorder list — the backstab opener always leads when enabled, debuffs queue alongside buffs/heals
-> - Physical first falls back to the attack-spell cascade when no configured weapon can damage the target (magical creature), instead of swinging uselessly
+> **Version 1.34.15**
+> - Character Info's Inventory box now shows the coins line and a keys list, parsed from the pack readout
+> - Discard currency drops are re-audited after banking, buying, or selling so stale held-cash flags clear
+> - Combat's "attack last" now fires only after every party melee and cast announce, under the Follow-target priority
+> - A "no effect" result no longer forces a manual Resume — the engine wait auto-clears
+> - Toolbar and nav pause controls read only the user-override tier, never engine-owned waits
+> - Walk-to now shows a Save→Pause chip so a queued route is visible before it starts
+> - A @wait-held, un-poisoned leader rests to use the downtime, and a follower mirrors the leader's rest unless it's poisoned
+> - Movement while blinded dead-reckons position through the room graph, re-anchoring when sight returns
+> - Curable-ailment on/off say pairs clear their chip authoritatively, and a @status reply pulls a fresh chip resync
+> - Party-window health/mana bars now align across rows regardless of which status chips a row shows
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

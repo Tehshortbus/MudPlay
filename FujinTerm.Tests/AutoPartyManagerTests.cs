@@ -812,14 +812,17 @@ public sealed class AutoPartyManagerTests
     // ===== Party-split teleport reform (000851) =====
 
     [Fact]
-    public void NotePartySplitTeleport_LeaderReinvitesEveryFollower_AndHoldsGate()
+    public void NotePartySplitTeleport_HoldsGate_ButDefersInviteUntilArrival()
     {
         // A chime-style CMD teleport relays every follower through `.@party ring
         // chime` but dissolves the follow chain on arrival. The leader must
         // re-invite each former member and hold the movement gate until they
         // reform — even mid one-shot walk-to (isLooping false), because a split
         // can happen while walking into the mansion, not just under a loop.
-        var (engine, _, _, party) = Setup();
+        // Crucially the invite is DEFERRED: the teleport lands the leader first
+        // and flashes the followers in a beat later, so inviting at cross-time
+        // races ahead of their arrival ("You don't see X here!") and is lost.
+        var (engine, router, _, party) = Setup();
         MovementCoordinator coord = new();
         engine.InviteWaitWindow = TimeSpan.FromSeconds(90);
         engine.SetMovementGate(coord, isLooping: () => false);
@@ -831,16 +834,87 @@ public sealed class AutoPartyManagerTests
 
         engine.NotePartySplitTeleport();
 
-        // Every non-self member is re-invited; self is skipped.
+        // Gate holds immediately (the walker must pause for the reform), but
+        // NOTHING is invited yet — the members haven't materialised.
+        Assert.True(coord.IsPaused);
+        Assert.Contains(MovementCoordinator.PartyInviteGate, coord.AssertedGates);
+        Assert.Empty(engine.LastSentForTests);
+
+        // Each member's teleport-arrival line fires their withheld invite.
+        Dispatch(router, "Raijin appears in a blinding flash of light!");
+        Dispatch(router, "Forged appears in a blinding flash of light!");
+
         Assert.Equal(2, engine.LastSentForTests.Count);
         Assert.Contains(engine.LastSentForTests,
             b => Encoding.Latin1.GetString(b) == "invite Raijin\r");
         Assert.Contains(engine.LastSentForTests,
             b => Encoding.Latin1.GetString(b) == "invite Forged\r");
+    }
 
-        // Gate holds despite not looping — the walker must pause for the reform.
-        Assert.True(coord.IsPaused);
-        Assert.Contains(MovementCoordinator.PartyInviteGate, coord.AssertedGates);
+    [Fact]
+    public void SplitReform_StrangerFlashLine_DoesNotInvite()
+    {
+        // "appears in a blinding flash of light!" fires for any player recalling
+        // into the room, not just reforming members. Only the snapshotted former
+        // members get the deferred invite; a stranger's flash is ignored.
+        var (engine, router, _, party) = Setup();
+        MovementCoordinator coord = new();
+        engine.SetMovementGate(coord, isLooping: () => false);
+
+        party.SelfIsLeader = true;
+        party.Members.Add(new PartyMember { Name = "Fujin", IsSelf = true });
+        party.Members.Add(new PartyMember { Name = "Raijin" });
+
+        engine.NotePartySplitTeleport();
+        Dispatch(router, "Wanderer appears in a blinding flash of light!");
+
+        Assert.Empty(engine.LastSentForTests);
+    }
+
+    [Fact]
+    public void SplitReform_MemberAlreadyPresent_InvitesOnAlsoHere()
+    {
+        // A member who teleported in AHEAD of the leader emits no flash line the
+        // leader can see, so the "Also here:" room listing is their arrival
+        // signal and must fire the withheld invite — even without the per-player
+        // InviteToPartyIfSeen flag that the ordinary auto-invite path requires.
+        var (engine, router, _, party) = Setup();
+        MovementCoordinator coord = new();
+        engine.SetMovementGate(coord, isLooping: () => false);
+
+        party.SelfIsLeader = true;
+        party.Members.Add(new PartyMember { Name = "Fujin", IsSelf = true });
+        party.Members.Add(new PartyMember { Name = "Raijin" });
+
+        engine.NotePartySplitTeleport();
+        Assert.Empty(engine.LastSentForTests);
+
+        Dispatch(router, "Also here: Raijin.");
+
+        byte[] sent = Assert.Single(engine.LastSentForTests);
+        Assert.Equal("invite Raijin\r", Encoding.Latin1.GetString(sent));
+    }
+
+    [Fact]
+    public void SplitReform_ArrivalFiresInviteOnce_NoDoubleInvite()
+    {
+        // A member can be both listed "Also here:" and emit a flash line. The
+        // deferred invite must go out exactly once — the pending-set removal
+        // makes the second signal a no-op.
+        var (engine, router, _, party) = Setup();
+        MovementCoordinator coord = new();
+        engine.SetMovementGate(coord, isLooping: () => false);
+
+        party.SelfIsLeader = true;
+        party.Members.Add(new PartyMember { Name = "Fujin", IsSelf = true });
+        party.Members.Add(new PartyMember { Name = "Raijin" });
+
+        engine.NotePartySplitTeleport();
+        Dispatch(router, "Raijin appears in a blinding flash of light!");
+        Dispatch(router, "Also here: Raijin.");
+
+        byte[] sent = Assert.Single(engine.LastSentForTests);
+        Assert.Equal("invite Raijin\r", Encoding.Latin1.GetString(sent));
     }
 
     [Fact]
