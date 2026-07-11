@@ -65,6 +65,22 @@ public sealed partial class ItemEditDialogViewModel : ObservableObject, IDialogV
     [ObservableProperty] private bool _mustHaveMinimum;
     [ObservableProperty] private bool _loyalItem;
 
+    // ----- Navigation path provisioning (FujinTerm) -----
+    // Master opt-in; when off, the three method sub-flags are greyed and never
+    // fire. When a planned route needs this item to cross a gate or survive a
+    // hazard and we lack it, CHECKED means "go get it (via the enabled methods),
+    // then walk"; UNCHECKED surfaces the requirement in the route-picker instead.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(PathMethodsEnabled))]
+    private bool _autoObtainForPath;
+    [ObservableProperty] private bool _buyIfNeededForPath;
+    [ObservableProperty] private bool _sourceFromDropsForPath;
+    [ObservableProperty] private bool _provisionPartyForPath;
+
+    // Method sub-flags only act while the master opt-in is set — the view greys
+    // them out when it's off.
+    public bool PathMethodsEnabled => AutoObtainForPath;
+
     // ----- Carry policy (overlay-editable) -----
 
     // "None" sentinel for the MegaMUD-parity blank state.
@@ -119,6 +135,11 @@ public sealed partial class ItemEditDialogViewModel : ObservableObject, IDialogV
         CannotBeTaken   = existing?.CannotBeTaken   ?? false;
         MustHaveMinimum = existing?.MustHaveMinimum ?? false;
         LoyalItem       = existing?.LoyalItem       ?? false;
+
+        AutoObtainForPath      = existing?.AutoObtainForPath      ?? false;
+        BuyIfNeededForPath     = existing?.BuyIfNeededForPath     ?? false;
+        SourceFromDropsForPath = existing?.SourceFromDropsForPath ?? false;
+        ProvisionPartyForPath  = existing?.ProvisionPartyForPath  ?? false;
 
         MinToKeep = existing?.MinToKeep ?? string.Empty;
         MaxToGet  = existing?.MaxToGet  ?? string.Empty;
@@ -181,6 +202,13 @@ public sealed partial class ItemEditDialogViewModel : ObservableObject, IDialogV
             CannotBeTaken   = CannotBeTaken   ? true : null,
             MustHaveMinimum = MustHaveMinimum ? true : null,
             LoyalItem       = LoyalItem       ? true : null,
+            AutoObtainForPath      = AutoObtainForPath ? true : null,
+            // Method sub-flags only persist while the master opt-in is set — an
+            // orphaned sub-flag would resolve to false anyway (the runtime gate
+            // AND-s the master in), so drop it to keep the delta clean.
+            BuyIfNeededForPath     = AutoObtainForPath && BuyIfNeededForPath     ? true : null,
+            SourceFromDropsForPath = AutoObtainForPath && SourceFromDropsForPath ? true : null,
+            ProvisionPartyForPath  = AutoObtainForPath && ProvisionPartyForPath  ? true : null,
             MinToKeep       = string.IsNullOrWhiteSpace(MinToKeep) ? null : MinToKeep,
             MaxToGet        = string.IsNullOrWhiteSpace(MaxToGet)  ? null : MaxToGet,
         };

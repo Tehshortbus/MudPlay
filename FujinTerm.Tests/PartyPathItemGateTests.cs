@@ -51,7 +51,7 @@ public sealed class PartyPathItemGateTests
                         : PartyInventoryProbe.PartyItemResult.Empty(id));
                 },
                 itemName: id => Names.TryGetValue(id, out string? n) ? n : null,
-                isEnabled: () => Enabled,
+                isEnabled: _ => Enabled,
                 searchEnabled: () => SearchEnabled,
                 inParty: () => InParty,
                 selfIsLeader: () => IsLeader,

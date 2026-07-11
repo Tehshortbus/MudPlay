@@ -22,6 +22,13 @@ public abstract record WalkStep
 // opens) — those still display the direction.
 public sealed record MoveStep(Direction Direction, RoomKey ExpectedTarget, string? CommandLabel = null) : WalkStep
 {
+    // Cross this as a plain cardinal even when the exit is a synchronous
+    // special exit. The cross-room multi-action expander sets it on the final
+    // cardinal of an exit whose prerequisite commands it already emitted as
+    // explicit CommandSteps — letting the send-side multi-action dispatch run
+    // again would double-issue those commands (and choke on the remote ones).
+    public bool SkipSpecialDispatch { get; init; }
+
     public override string Display => CommandLabel ?? Direction switch
     {
         Map.Direction.N  => "north",

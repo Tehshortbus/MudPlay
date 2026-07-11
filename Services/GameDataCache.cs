@@ -203,6 +203,25 @@ public sealed class GameDataCache
         return null;
     }
 
+    // Return the full row in tableName whose Number field equals number, or
+    // null when the table isn't in the active set or no row matches. Mirrors
+    // FindNameByNumber but hands back the whole JsonElement so a caller can
+    // read arbitrary fields (Abil-N / NegateSpell-N / Action …), not just Name.
+    // The returned JsonElement stays valid until the next SwitchSet / EvictTable.
+    // Backs the room-hazard index's Spells / Items / TBInfo record reads.
+    public JsonElement? FindRowByNumber(string tableName, int number)
+    {
+        JsonDocument? doc = GetRawTable(tableName);
+        if (doc is null) return null;
+        foreach (JsonElement row in doc.RootElement.EnumerateArray())
+        {
+            if (!row.TryGetProperty("Number", out JsonElement numEl)) continue;
+            if (numEl.ValueKind != JsonValueKind.Number) continue;
+            if (numEl.TryGetInt32(out int rowNum) && rowNum == number) return row;
+        }
+        return null;
+    }
+
     // Return the row in tableName whose Name field equals name (case-insensitive),
     // or null when the table isn't in the active set or no row matches. The
     // returned JsonElement stays valid for the lifetime of the cached

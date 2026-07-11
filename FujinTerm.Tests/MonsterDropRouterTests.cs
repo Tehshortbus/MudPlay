@@ -49,7 +49,7 @@ public sealed class MonsterDropRouterTests
             distancesFrom: _ => Distances,
             isCarried: Carried.Contains,
             itemName: id => Names.TryGetValue(id, out string? n) ? n : null,
-            isEnabled: () => Enabled,
+            isEnabled: _ => Enabled,
             engineWalkActive: () => EngineWalk,
             confirm: (title, body) =>
             {

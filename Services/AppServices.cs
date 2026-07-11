@@ -1019,6 +1019,12 @@ public sealed class AppServices
     // GameDataCache.ActiveSetChanged.
     public MonsterDropIndex MonsterDrops { get; private set; } = null!;
 
+    // Index of the active set's room-entry hazards — a room's cast-on-enter
+    // Spell mapped to the item(s) that make the room safe (fish-helm negator,
+    // failitem rafts, checkspell buff sources). Feeds the navigation
+    // hazard-gating pass; rebuilt on GameDataCache.ActiveSetChanged.
+    public RoomHazardIndex RoomHazards { get; private set; } = null!;
+
     // Active fulfiller for NeedKind.PathItem needs no shop can
     // satisfy: on a one-shot walk-to that needs an uncarried item no shop
     // sells, prompts to reroute to the nearest room a monster that drops it
@@ -1963,6 +1969,13 @@ public sealed class AppServices
         if (GameData.ActiveSet is not null)
             MonsterDrops.OnActiveSetChanged(GameData.ActiveSet);
 
+        // RoomHazardIndex — room-entry Spell → item(s) that make the room safe,
+        // from Rooms/Spells/Items/TBInfo. Feeds the walker's hazard-gating pass.
+        RoomHazards = new RoomHazardIndex(GameData, Log);
+        GameData.ActiveSetChanged += RoomHazards.OnActiveSetChanged;
+        if (GameData.ActiveSet is not null)
+            RoomHazards.OnActiveSetChanged(GameData.ActiveSet);
+
         // Room tracker. Resets to Unknown on every
         // graph reload because per-room references are invalidated
         // when the active set rebuilds.
@@ -2078,6 +2091,19 @@ public sealed class AppServices
                 .ResolveClassProfile(GameData, PlayerStats.Class).ClassNumber;
             return n > 0 ? n : (int?)null;
         };
+        // Acquirable-gate providers — feed inventory / stats / hazard data into
+        // item, ticket, locked-door, and hazard-room routing. Inventory readiness
+        // and stat parsing gate each check so an unknown build walks unrestricted
+        // (same rule as level / wealth / class above).
+        Movement.InventoryReadyProbe = () => Inventory.IsLoaded;
+        Movement.ItemCarriedProbe = IsItemCarried;
+        Movement.StrengthProvider = () => Stats.HasParsed ? PlayerStats.Strength : (int?)null;
+        Movement.PicklocksProvider = () => Stats.HasParsed ? PlayerStats.Picklocks : (int?)null;
+        // Same bash ceiling the door FSM uses, so the filter and DoorOpenManager
+        // never disagree on whether a strength-gated door is bashable.
+        Movement.MaxBashableStrengthProvider = () => MaxStrength.MaxAchievableStrength;
+        Movement.RoomEntrySpellProbe = key => RoomGraph.GetRoom(key)?.Spell ?? 0;
+        Movement.Hazards = RoomHazards;
         Favorites = new FavoritesStore(Profile, Log);
 
         // Coordinator + walker. Coordinator is the
@@ -3024,22 +3050,21 @@ public sealed class AppServices
 
         // Party-inventory awareness (PR E). The probe broadcasts @have and
         // aggregates the party's replies; the gate sits ahead of the demand
-        // tracker on the walker's announce seam. When "defer to party
-        // inventory" is on and we're grouped, a needed per-member item we lack
-        // is probed first — if a member has a spare it's handed over (give)
-        // and no need is posted; a shortfall forwards to PathItemDemand so
-        // search / shop / hunt still cover it. Solo / feature-off passes the
-        // announced list straight through. The probe self-subscribes to
-        // ChatRouter for replies; the give hand-off's wire-sender is bound by
-        // MainWindowViewModel after connect.
+        // tracker on the walker's announce seam. For an item flagged
+        // "auto-obtain for path → provision party" (per-item overlay), when
+        // grouped a needed per-member copy we lack is probed first — if a member
+        // has a spare it's handed over (give) and no need is posted; a shortfall
+        // forwards to PathItemDemand so search / shop / drops still cover it.
+        // Solo, or an unflagged item, passes straight through. The probe
+        // self-subscribes to ChatRouter for replies; the give hand-off's
+        // wire-sender is bound by MainWindowViewModel after connect.
         PartyInventory = new Game.Remote.PartyInventoryProbe(PartyBroadcaster, Chat, PartyState, Log);
         PartyPathItemGate = new Game.Map.PartyPathItemGate(
             isCarried: IsItemCarried,
             selfCount: CountItemCarried,
             query: (id, name) => PartyInventory.QueryAsync(id, name),
             itemName: ItemNames.GetName,
-            isEnabled: () =>
-                Resolver.Resolve<Models.Profile.OtherSettings>("Other").DeferToPartyInventory,
+            isEnabled: id => ShouldAutoObtainForPath(id, o => o.ProvisionPartyForPath),
             searchEnabled: () =>
                 Resolver.Resolve<Models.Profile.OtherSettings>("Other").SearchRoomsIfItemNeeded,
             inParty: () => PartyState.IsInParty,
@@ -3162,6 +3187,16 @@ public sealed class AppServices
         // so with "defer to party inventory" off (or solo) the behaviour is
         // unchanged.
         Walker.SetPathItemAnnouncer(PartyPathItemGate.OnPathItemsRequired);
+
+        // Fold each entered hazard room's mandatory counter into the same
+        // walk-start item announce, so a route the user chose to run through a
+        // hazard room provisions its counter like an Item/Ticket gate. Only the
+        // single-counter (no-substitute) items are announced — any-of hazard
+        // groups can't be expressed to the each-required demand pipeline, so
+        // they stay a manual choice the route picker surfaces.
+        Walker.SetHazardItemResolver(key =>
+            RoomHazards.HazardForSpell(RoomGraph.GetRoom(key)?.Spell ?? 0)?.MandatoryItems
+                ?? Array.Empty<int>());
 
         // If an in-flight move carried us out of a room where combat had just
         // engaged an actionable hostile (the move confirms + wipes the room
@@ -3476,8 +3511,9 @@ public sealed class AppServices
 
         // Shop-source routing (PR C). On a one-shot walk-to that needs an
         // uncarried Item/Ticket-gate item a shop sells, detour to the
-        // fewest-added-steps shop, buy it, and resume — gated by Settings →
-        // Other "buy item if needed". Distances use the same movement filter
+        // fewest-added-steps shop, buy it, and resume — gated per-item by the
+        // item record's "auto-obtain for path → buy if needed" flag
+        // (ItemOverlay). Distances use the same movement filter
         // the walker routes with so the estimate matches the real walk; the
         // shop lookup joins ShopStock (who sells it) against the live graph
         // (which rooms host those shops). engineWalkActive suppresses the
@@ -3492,8 +3528,7 @@ public sealed class AppServices
             distanceBetween: (a, b) => Bfs.DistanceBetween(a, b, Movement),
             carriedCount: CountItemCarried,
             itemName: ItemNames.GetName,
-            isEnabled: () =>
-                Resolver.Resolve<Models.Profile.OtherSettings>("Other").BuyNeededPathItems,
+            isEnabled: id => ShouldAutoObtainForPath(id, o => o.BuyIfNeededForPath),
             engineWalkActive: () =>
                 AutoLair.IsActive || LoopRunner.State != Game.Map.LoopState.Idle,
             walkTo: key => Walker.WalkTo(key),
@@ -3507,8 +3542,9 @@ public sealed class AppServices
         // router: when a walk-to needs an uncarried Item/Ticket-gate item no
         // shop sells but a monster drops, prompt (ConfirmService) to reroute
         // to the nearest room that monster spawns in, then resume once the
-        // drop lands — gated by Settings → Other "hunt item if needed". The
-        // two routers are mutually exclusive via anyShopSells: this one acts
+        // drop lands — gated per-item by the item record's "auto-obtain for
+        // path → source from drops" flag (ItemOverlay). The two routers are
+        // mutually exclusive via anyShopSells: this one acts
         // only when no shop stocks the item. Nearest spawn is chosen with a
         // single forward BFS (ComputeDistancesFrom) since a common monster
         // spawns in hundreds of rooms; dropSpawnsForItem flattens the index's
@@ -3521,8 +3557,7 @@ public sealed class AppServices
             distancesFrom: src => Bfs.ComputeDistancesFrom(src, Movement),
             isCarried: IsItemCarried,
             itemName: ItemNames.GetName,
-            isEnabled: () =>
-                Resolver.Resolve<Models.Profile.OtherSettings>("Other").HuntNeededPathItems,
+            isEnabled: id => ShouldAutoObtainForPath(id, o => o.SourceFromDropsForPath),
             engineWalkActive: () =>
                 AutoLair.IsActive || LoopRunner.State != Game.Map.LoopState.Idle,
             confirm: (title, body) => Confirm.ConfirmAsync(title, body, "Reroute"),
@@ -4324,6 +4359,17 @@ public sealed class AppServices
             "Items",
             number.ToString(System.Globalization.CultureInfo.InvariantCulture),
             ItemOverlaySeed.GetOverlay(number));
+
+    // Per-item on-demand path acquisition gate: the master AutoObtainForPath
+    // opt-in AND the specific method flag must both be set on the item's overlay.
+    // Backs the three path-item routers' isEnabled predicates (buy / source-from-
+    // drops / provision-party) — each passes the method selector for its flag.
+    private bool ShouldAutoObtainForPath(int itemId, Func<Models.GameData.ItemOverlay, bool?> method)
+    {
+        if (itemId <= 0) return false;
+        Models.GameData.ItemOverlay overlay = ResolveItemOverlay(itemId);
+        return (overlay.AutoObtainForPath ?? false) && (method(overlay) ?? false);
+    }
 
     // Keep floor for the discard / sell engines: MinToKeep when the user set
     // MustHaveMinimum, else zero (unbanded → drain to nothing). "None", blank, and

@@ -2,6 +2,14 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.34.0
+
+- Navigation routes around item-gated exits and hazard rooms it can't safely cross, instead of walking into them
+- Room-entry hazards (damage/drown spells, raft crossings) are recognized off the game data; a room is avoided unless a counter item is carried
+- User-initiated walks with a shorter gated shortcut now pop a free-vs-direct route picker listing what each route needs
+- Cross-room multi-action exits (act in one room to open an exit in another) are planned and executed in step order
+- Choosing the direct route provisions its missing gate/hazard items through the existing acquire pipeline
+
 ## 1.33.0
 
 - Combat priority is now a simple "Spells first / Physical first" dropdown, replacing the reorderable priority list

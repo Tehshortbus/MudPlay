@@ -74,49 +74,6 @@ public sealed class OtherSettings
     // (opt-in). Char-tier; surfaced in Settings → Other.
     public bool SearchRoomsIfItemNeeded { get; set; }
 
-    // When true, actively source a missing route item from a shop: on a one-shot
-    // walk-to that crosses an (Item: N) / (Ticket: N) exit whose item we're not
-    // carrying, if any shop in the active set stocks that item,
-    // Game.Map.PathItemShopRouter detours to the shop adding the fewest steps
-    // (dist(cur,shop)+dist(shop,dest)), issues buy <item>, then resumes to the
-    // original destination. If the item turns up first (e.g. via demand-driven
-    // search) the detour is abandoned; a failed buy or unreachable shop falls
-    // back to search. Only plain walk-to's detour — loop / auto-lair runs don't.
-    // Independent of the Auto-Search master toggle. Read live by the router
-    // through the resolver. Default false (opt-in). Char-tier; surfaced in
-    // Settings → Other.
-    public bool BuyNeededPathItems { get; set; }
-
-    // When true, source a missing route item no shop sells by hunting for it: on
-    // a one-shot walk-to that crosses an (Item: N) / (Ticket: N) exit whose item
-    // we're not carrying and which no shop stocks, if some monster drops it,
-    // Game.Map.MonsterDropRouter prompts (via Services.ConfirmService) to
-    // reroute to the nearest room that monster spawns in; on confirmation it
-    // walks there, waits for the drop, then resumes to the original destination.
-    // Declining leaves the need to demand-driven search. Complements
-    // BuyNeededPathItems (which handles shop-sold items) — this covers only what
-    // no shop sells. Only plain walk-to's reroute — loop / auto-lair runs don't.
-    // Read live by the router through the resolver. Default false (opt-in).
-    // Char-tier; surfaced in Settings → Other.
-    public bool HuntNeededPathItems { get; set; }
-
-    // When true, consult the party for a missing route item before searching /
-    // buying / hunting for it: on a walk-to that crosses an (Item: N) /
-    // (Ticket: N) exit whose per-member item is in play,
-    // Game.Map.PartyPathItemGate broadcasts @have and acts on the reply. As
-    // leader it treats the party (self + everyone who answered) as one pool
-    // needing one copy each: members keep what they hold; only the net shortfall
-    // goes to the demand pipeline (search / shop / hunt, per the toggles below —
-    // auto-search stays armed until the pool is whole), then the leader
-    // coordinates the hand-off so each member ends with exactly one (give for
-    // our own spares, /<holder> @do give to direct others'). As a follower doing
-    // its own walk, it borrows a single spare (holder count ≥ 2) to itself
-    // instead of posting a need. A genuine shortfall falls through to the demand
-    // pipeline; no-op when solo. Complements the search / buy / hunt sources (it
-    // runs ahead of them). Read live by the gate through the resolver. Default
-    // false (opt-in). Char-tier; surfaced in Settings → Other.
-    public bool DeferToPartyInventory { get; set; }
-
     // When true and leading a party, route around (Level: MIN to MAX) gates the
     // whole party can't clear rather than walking the leader through and leaving
     // a member behind. BFS treats such a gate as non-traversable via

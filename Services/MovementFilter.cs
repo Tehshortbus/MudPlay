@@ -81,12 +81,57 @@ public sealed class MovementFilter : IRoomFilter
     // off-path toll edge inside the BFS frontier never triggers a poll.
     public Action? TollWealthProbe { get; set; }
 
+    // ----- Acquirable-gate providers (item / ticket / key-door / hazard) ----
+    // These four gates share a trait the level / class / toll gates don't: the
+    // thing that unblocks them (a raft, a ticket, a door key, a hazard-counter
+    // item) can be picked up, so BFS prefers a safe/free route by default but
+    // the route picker can still plan through them (SuspendAcquirableGates).
+
+    // Whether the crosser currently holds item id (carried or worn). Wired by
+    // AppServices to IsItemCarried. Only consulted while inventory is known
+    // (see InventoryReadyProbe) — an unparsed inventory never refuses a walk.
+    public Func<int, bool>? ItemCarriedProbe { get; set; }
+
+    // True once an inventory dump has parsed. Until then the item / hazard
+    // gates stand down — same "don't refuse on what we can't evaluate" rule as
+    // an unknown level. Wired by AppServices to Inventory.IsLoaded.
+    public Func<bool>? InventoryReadyProbe { get; set; }
+
+    // Crosser's Strength / Picklocks for locked-door achievability. null until
+    // stats parse → a locked door is left to the traversal-time door FSM
+    // rather than routed around on an unknown build.
+    public Func<int?>? StrengthProvider { get; set; }
+    public Func<int?>? PicklocksProvider { get; set; }
+
+    // The active set's highest reachable Strength (MaxStrengthIndex) — the
+    // bash ceiling DoorPolicy.IsAchievable uses to decide whether a door is
+    // bashable by anyone. Wired by AppServices to MaxStrength; falls back to
+    // DoorPolicy's own threshold when unset.
+    public Func<int>? MaxBashableStrengthProvider { get; set; }
+
+    // Resolves a room key to its cast-on-enter spell (Room.Spell), 0 when the
+    // room is benign or not in the live graph. Wired by AppServices to
+    // RoomGraph. Feeds hazard-room entry blocking.
+    public Func<RoomKey, int>? RoomEntrySpellProbe { get; set; }
+
+    // Room-entry hazard index — maps a harmful cast-on-enter spell to the
+    // item(s) that make the room survivable. null disables hazard avoidance.
+    public RoomHazardIndex? Hazards { get; set; }
+
     // While set, IsTollGateBlocked stands down (treats every toll as
     // crossable). WarmForRoute flips this on to plan the route the party WOULD
     // take if every toll were affordable, so it can tell whether a toll is
     // genuinely on the path before deciding to poll. Single-threaded planning
     // use — set and cleared inside WarmForRoute's own try/finally.
     private bool _tollGateSuspended;
+
+    // While set, the four acquirable gates (item / ticket / key-door / hazard)
+    // stand down so a planning pass can compute the route the crosser WOULD
+    // take with every gate item in hand — the "gated" alternative the route
+    // picker compares against the free route. Level / class / toll gates stay
+    // active (those aren't acquired on demand). Single-threaded planning use;
+    // set and cleared through SuspendAcquirableGates' disposable scope.
+    private bool _acquirableGateSuspended;
 
     // Read-only snapshot of the currently-avoided room keys.
     public IReadOnlyCollection<RoomKey> Avoided => _avoided;
@@ -117,12 +162,91 @@ public sealed class MovementFilter : IRoomFilter
     public bool IsAvoided(RoomKey key) => _avoided.Contains(key);
 
     // An exit is non-traversable for planning when its level window excludes
-    // the crosser, it's a toll the crosser can't afford, or it's a class gate
-    // for a class we aren't. The gate kinds are independent (a toll exit
-    // carries Hint=Toll; a level or class gate is a plain cardinal carrying a
-    // window / allowed-class), so each is checked.
+    // the crosser, it's a toll the crosser can't afford, it's a class gate for
+    // a class we aren't, it needs an item / ticket / door-key we can't produce,
+    // or it leads into a room whose cast-on-enter hazard we can't survive. The
+    // gate kinds are independent (a toll exit carries Hint=Toll; a level or
+    // class gate is a plain cardinal carrying a window / allowed-class), so
+    // each is checked.
     public bool IsExitBlocked(in RoomExit exit) =>
-        IsLevelGateBlocked(in exit) || IsTollGateBlocked(in exit) || IsClassGateBlocked(in exit);
+        IsLevelGateBlocked(in exit) || IsTollGateBlocked(in exit) || IsClassGateBlocked(in exit)
+        || IsItemGateBlocked(in exit) || IsHazardEntryBlocked(in exit);
+
+    // Item / ticket / key-locked-door gates. Suspended for the gated-route
+    // planning pass. Only evaluated once inventory is known — an unparsed
+    // inventory walks unrestricted rather than routing around gates we can't
+    // yet tell whether we satisfy.
+    private bool IsItemGateBlocked(in RoomExit exit)
+    {
+        if (_acquirableGateSuspended) return false;
+        if (!InventoryKnown || ItemCarriedProbe is not { } carries) return false;
+
+        switch (exit.Hint)
+        {
+            case RoomExitHint.Item:
+            case RoomExitHint.Ticket:
+                // A raft / ticket / held-item exit: the item must be in hand to
+                // cross — no bash or pick alternative. Route around when we
+                // lack it (or acquire it, per the item's path flags).
+                return exit.KeyItemId > 0 && !carries(exit.KeyItemId);
+
+            case RoomExitHint.KeyLocked:
+                return IsLockedDoorImpassable(in exit, carries);
+
+            default:
+                return false;
+        }
+    }
+
+    // A locked door is impassable only when we can neither key, pick, nor bash
+    // it. Reuses DoorPolicy.IsAchievable — the walker's own fail-fast door
+    // matrix — so the filter and the door FSM never disagree on whether a door
+    // opens; the key is the extra opener that matrix doesn't model. Stat inputs
+    // unknown → treat as passable and leave the door to the traversal-time FSM.
+    private bool IsLockedDoorImpassable(in RoomExit exit, Func<int, bool> carries)
+    {
+        if (exit.KeyItemId > 0 && carries(exit.KeyItemId)) return false;   // have the key
+        if (StrengthProvider?.Invoke() is not { } strength) return false;
+        if (PicklocksProvider?.Invoke() is not { } picks) return false;
+        int maxBash = MaxBashableStrengthProvider?.Invoke() ?? DoorPolicy.UnbashableStrengthThreshold;
+        return !DoorPolicy.IsAchievable(exit.StatRequirement, exit.CanBash, strength, picks, maxBash);
+    }
+
+    // Blocks stepping into a room whose cast-on-enter spell is a protectable
+    // hazard we can't currently survive (no counter item held). Suspended for
+    // the gated-route planning pass and skipped while inventory is unknown.
+    private bool IsHazardEntryBlocked(in RoomExit exit)
+    {
+        if (_acquirableGateSuspended) return false;
+        if (!InventoryKnown || ItemCarriedProbe is not { } carries) return false;
+        if (Hazards is null || RoomEntrySpellProbe is not { } spellOf) return false;
+
+        int spell = spellOf(exit.Target);
+        if (spell <= 0) return false;
+        RoomHazardIndex.RoomHazard? hazard = Hazards.HazardForSpell(spell);
+        return hazard is not null && !hazard.IsSatisfiedBy(carries);
+    }
+
+    private bool InventoryKnown => InventoryReadyProbe?.Invoke() == true;
+
+    // Suspends the four acquirable gates for a single planning pass so a caller
+    // can compute the route the crosser WOULD take with every gate item in hand
+    // (the "gated" alternative the route picker weighs against the free route).
+    // Dispose to restore gating. Single-threaded planning use. Returns the
+    // IRoomFilter-typed scope (boxes the struct) so a caller holding only the
+    // interface can suspend without knowing the concrete filter.
+    public IDisposable SuspendAcquirableGates() => new GateSuspensionScope(this);
+
+    public readonly struct GateSuspensionScope : IDisposable
+    {
+        private readonly MovementFilter _filter;
+        internal GateSuspensionScope(MovementFilter filter)
+        {
+            _filter = filter;
+            _filter._acquirableGateSuspended = true;
+        }
+        public void Dispose() => _filter._acquirableGateSuspended = false;
+    }
 
     // A "(Class: N OK)" exit only admits class Number N. Gate only when our
     // own class is known — an unparsed class never refuses a walk on a gate we

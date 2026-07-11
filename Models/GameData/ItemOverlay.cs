@@ -67,6 +67,31 @@ public sealed record ItemOverlay
     // Loyal item — never drop / discard / lose to PvP.
     public bool? LoyalItem { get; init; }
 
+    // ----- Navigation path provisioning (FujinTerm, not from MegaMUD's dialog) -----
+
+    // Master opt-in for on-demand path provisioning. When a planned route needs
+    // this item to cross a gate or survive a room-entry hazard and the player
+    // lacks it, CHECKED means "go get it, then walk" — silently, using whichever
+    // of the three method flags below are enabled, up to the MaxToGet cap.
+    // UNCHECKED means the route-picker menu surfaces the requirement instead, so
+    // the user chooses. This flag gates *whether* to auto-acquire; the method
+    // flags gate *how*.
+    public bool? AutoObtainForPath { get; init; }
+
+    // Method: buy the item from a shop that stocks it when a path needs it.
+    // Only acts while AutoObtainForPath is also set.
+    public bool? BuyIfNeededForPath { get; init; }
+
+    // Method: source the item from a monster that drops it (reroute to its lair)
+    // when no shop sells it and a path needs it. Only acts while AutoObtainForPath
+    // is also set.
+    public bool? SourceFromDropsForPath { get; init; }
+
+    // Method: provision the whole party — get a copy to every member who lacks one
+    // before crossing a per-member gate. Only acts while AutoObtainForPath is also
+    // set and we're grouped.
+    public bool? ProvisionPartyForPath { get; init; }
+
     // ----- Carry policy -----
 
     // Minimum count to retain in inventory. Stored as the raw string so

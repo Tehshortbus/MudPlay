@@ -1056,13 +1056,14 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
 
     // Click a favourite → walk there (stops loop/lair first).
     [RelayCommand]
-    private void GoToFavorite(FavoriteRowViewModel? row)
+    private async Task GoToFavorite(FavoriteRowViewModel? row)
     {
         if (row is null) return;
         if (_services.LoopRunner.State != Game.Map.LoopState.Idle)
             _services.LoopRunner.Stop("user walk-to from Favorites");
         if (_services.AutoLair.IsActive) _services.AutoLair.Stop();
-        _services.Walker.WalkTo(row.Key);
+        // User-initiated walk: offer the free-vs-direct route choice.
+        await RouteChoicePrompt.WalkAsync(_services, row.Key);
     }
 
     [RelayCommand]
@@ -1471,7 +1472,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
-    private void WalkToContextRoom()
+    private async Task WalkToContextRoom()
     {
         if (ContextRoomKey is not { } k) return;
         // If a loop or Auto-Lair is currently driving movement, stop
@@ -1490,7 +1491,10 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         // bottom builder strip collapses).
         if (CurrentMode == NavigationMode.LoopBuild) ToggleLoopMode();
         _loopBuilderOpenedByPause = false;
-        _services.Walker.WalkTo(k);
+        // User-initiated walk: offer the free-vs-direct route choice when a
+        // shorter gated shortcut exists (falls straight through to WalkTo when
+        // it doesn't).
+        await RouteChoicePrompt.WalkAsync(_services, k);
     }
 
     [RelayCommand]

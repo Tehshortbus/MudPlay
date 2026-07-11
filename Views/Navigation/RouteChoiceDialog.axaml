@@ -1,0 +1,61 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:FujinTerm.ViewModels.Navigation"
+        x:Class="FujinTerm.Views.Navigation.RouteChoiceDialog"
+        x:DataType="vm:RouteChoiceDialogViewModel"
+        Title="Choose a route"
+        Width="480" Height="300"
+        WindowStartupLocation="CenterOwner">
+
+    <Border Background="{StaticResource ChromeBgBrush}" Padding="14">
+        <Grid RowDefinitions="Auto,*,Auto,Auto" RowSpacing="12">
+            <TextBlock Grid.Row="0"
+                       Text="{Binding Heading}"
+                       FontSize="13" FontWeight="SemiBold"
+                       Foreground="{StaticResource ChromeFgBrush}"/>
+
+            <StackPanel Grid.Row="1" Spacing="10" VerticalAlignment="Center">
+                <Button Command="{Binding TakeFreeCommand}"
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Left"
+                        Padding="12,10">
+                    <TextBlock Text="{Binding FreeSummary}"
+                               FontSize="12"
+                               TextWrapping="Wrap"
+                               Foreground="{StaticResource ChromeFgBrush}"/>
+                </Button>
+
+                <Button Command="{Binding TakeGatedCommand}"
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Left"
+                        Padding="12,10">
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="{Binding GatedSummary}"
+                                   FontSize="12"
+                                   TextWrapping="Wrap"
+                                   Foreground="{StaticResource ChromeFgBrush}"/>
+                        <TextBlock Text="{Binding RequirementSummary}"
+                                   FontSize="11"
+                                   TextWrapping="Wrap"
+                                   Foreground="{StaticResource ChromeFgMutedBrush}"/>
+                    </StackPanel>
+                </Button>
+            </StackPanel>
+
+            <TextBlock Grid.Row="2"
+                       Text="The direct route arms the item pipeline for anything you're missing."
+                       FontSize="10"
+                       TextWrapping="Wrap"
+                       Foreground="{StaticResource ChromeFgMutedBrush}"/>
+
+            <StackPanel Grid.Row="3"
+                        Orientation="Horizontal"
+                        HorizontalAlignment="Right"
+                        Spacing="8">
+                <Button Content="Cancel"
+                        Command="{Binding CancelCommand}"
+                        IsCancel="True" MinWidth="80"/>
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>

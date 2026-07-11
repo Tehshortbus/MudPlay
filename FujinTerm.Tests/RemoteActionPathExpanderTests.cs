@@ -106,6 +106,137 @@ public sealed class RemoteActionPathExpanderTests : IDisposable
         Assert.Equal(Direction.N, ((MoveStep)steps[1]).Direction);
     }
 
+    // A cross-room multi-action layout. The gated exit lives on 1/2's E slot
+    // (target 1/9); its single prerequisite command must be typed in room 1/5,
+    // which is one N hop off the host room. Start is 1/1 (one E hop into 1/2).
+    //
+    //   1/1 ──E──▶ 1/2 ──E (Hidden/Needs 1 Actions)──▶ 1/9
+    //                │N
+    //                ▼
+    //               1/5  (D slot carries the Action#1 data → command typed here)
+    private const string RemoteActionGraphJson = """
+        [
+          { "Map Number": 1, "Room Number": 1, "Name": "Start",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "0", "E": "1/2", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 2, "Name": "Host",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "1/5", "S": "0", "E": "1/9 (Hidden/Needs 1 Actions, specific order)", "W": "1/1",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 5, "Name": "LeverRoom",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "1/2", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0",
+            "D": "Action#1 [on the E exit of room 1/2]: pull lever" },
+          { "Map Number": 1, "Room Number": 9, "Name": "Vault",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "0", "E": "0", "W": "1/2",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+        ]
+        """;
+
+    [Fact]
+    public void CrossRoomMultiAction_WithMapper_InjectsWalkActWalkBackCross()
+    {
+        RoomGraphManager graph = NewGraph(RemoteActionGraphJson);
+        BfsMapper bfs = new(graph);
+
+        // Path 1/1 → 1/9 is E then E (BFS crosses the multi-action exit freely).
+        var steps = RemoteActionPathExpander.Expand(
+            graph, new RoomKey(1, 1),
+            new[] { Direction.E, Direction.E }, bfs);
+
+        // E into host; N to lever room; pull lever; S back; final primed E cross.
+        Assert.Equal(5, steps.Count);
+
+        Assert.Equal(Direction.E, ((MoveStep)steps[0]).Direction);
+        Assert.Equal(new RoomKey(1, 2), ((MoveStep)steps[0]).ExpectedTarget);
+
+        Assert.Equal(Direction.N, ((MoveStep)steps[1]).Direction);
+        Assert.Equal(new RoomKey(1, 5), ((MoveStep)steps[1]).ExpectedTarget);
+
+        Assert.Equal("pull lever", ((CommandStep)steps[2]).Command);
+
+        Assert.Equal(Direction.S, ((MoveStep)steps[3]).Direction);
+        Assert.Equal(new RoomKey(1, 2), ((MoveStep)steps[3]).ExpectedTarget);
+
+        MoveStep cross = Assert.IsType<MoveStep>(steps[4]);
+        Assert.Equal(Direction.E, cross.Direction);
+        Assert.Equal(new RoomKey(1, 9), cross.ExpectedTarget);
+        Assert.True(cross.SkipSpecialDispatch);   // prerequisites already emitted
+    }
+
+    [Fact]
+    public void CrossRoomMultiAction_NoMapper_FallsBackToSingleStep()
+    {
+        // Without a mapper the expander can't route the detour — it emits the
+        // plain single MoveStep and leaves the send-side dispatcher to report
+        // the unsupported cross-room case (the loop-runner path).
+        RoomGraphManager graph = NewGraph(RemoteActionGraphJson);
+
+        var steps = RemoteActionPathExpander.Expand(
+            graph, new RoomKey(1, 2), new[] { Direction.E });
+
+        MoveStep only = Assert.IsType<MoveStep>(Assert.Single(steps));
+        Assert.Equal(Direction.E, only.Direction);
+        Assert.False(only.SkipSpecialDispatch);   // not a primed cross
+    }
+
+    // Same layout as the cross-room fixture, but the action cell lives in the
+    // host room's own D slot ("of this room") — so it's NOT remote.
+    private const string SameRoomActionGraphJson = """
+        [
+          { "Map Number": 1, "Room Number": 2, "Name": "Host",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "0", "E": "1/9 (Hidden/Needs 1 Actions, specific order)", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0",
+            "D": "Action#1 [on the E exit of this room]: pull lever" },
+          { "Map Number": 1, "Room Number": 9, "Name": "Vault",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "0", "E": "0", "W": "1/2",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+        ]
+        """;
+
+    [Fact]
+    public void SameRoomMultiAction_StaysSingleStep_DispatcherOwnsIt()
+    {
+        // Action lives in the host room ("this room"), so it isn't remote. The
+        // expander leaves it as one plain MoveStep — SpecialExitDispatch runs
+        // the prerequisite commands at send time. No detour, no CommandStep.
+        RoomGraphManager graph = NewGraph(SameRoomActionGraphJson);
+        BfsMapper bfs = new(graph);
+
+        var steps = RemoteActionPathExpander.Expand(
+            graph, new RoomKey(1, 2), new[] { Direction.E }, bfs);
+
+        MoveStep only = Assert.IsType<MoveStep>(Assert.Single(steps));
+        Assert.Equal(Direction.E, only.Direction);
+        Assert.Equal(new RoomKey(1, 9), only.ExpectedTarget);
+        Assert.False(only.SkipSpecialDispatch);
+    }
+
+    [Fact]
+    public void CrossRoomMultiAction_UnroutableDetour_TruncatesPath()
+    {
+        // Sever the host→lever link (drop 1/2's N exit) so the command room is
+        // unreachable. The detour can't be built, so expansion truncates before
+        // the gated hop — the walker then fails the walk as stale.
+        string severed = RemoteActionGraphJson.Replace("\"N\": \"1/5\"", "\"N\": \"0\"");
+        RoomGraphManager graph = NewGraph(severed);
+        BfsMapper bfs = new(graph);
+
+        var steps = RemoteActionPathExpander.Expand(
+            graph, new RoomKey(1, 1),
+            new[] { Direction.E, Direction.E }, bfs);
+
+        // Only the first plain hop survives; the multi-action hop is dropped.
+        MoveStep only = Assert.IsType<MoveStep>(Assert.Single(steps));
+        Assert.Equal(Direction.E, only.Direction);
+        Assert.Equal(new RoomKey(1, 2), only.ExpectedTarget);
+    }
+
     [Fact]
     public void UnknownSource_ReturnsEmpty()
     {

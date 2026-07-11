@@ -43,7 +43,7 @@ public sealed class PathItemShopRouterTests
             distanceBetween: (a, b) => Dist.TryGetValue((a, b), out int d) ? d : null,
             carriedCount: id => Carried.TryGetValue(id, out int c) ? c : 0,
             itemName: id => Names.TryGetValue(id, out string? n) ? n : null,
-            isEnabled: () => Enabled,
+            isEnabled: _ => Enabled,
             engineWalkActive: () => EngineWalk,
             walkTo: Walks.Add,
             post: a => a(),                          // synchronous in tests

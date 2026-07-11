@@ -16,7 +16,9 @@ public readonly record struct MonsterDropSpawn(
 // we're not carrying and no shop stocks it, find which monster drops it,
 // and — with the user's confirmation — reroute to the nearest room that
 // monster spawns in so they can hunt it, then resume to the original
-// destination. Backs the Settings → Other "hunt item if needed" affordance.
+// destination. Backs the item record's "Auto-obtain for path → source from
+// drops" flag (ItemOverlay.SourceFromDropsForPath under the AutoObtainForPath
+// master opt-in).
 //
 // Division of labour with PathItemShopRouter. Both react to the same
 // NeedsRegistry.NeedPosted event and are mutually exclusive: the shop router
@@ -66,7 +68,7 @@ public sealed class MonsterDropRouter
     private readonly Func<RoomKey, IReadOnlyDictionary<RoomKey, int>> _distancesFrom;
     private readonly Func<int, bool> _isCarried;
     private readonly Func<int, string?> _itemName;
-    private readonly Func<bool> _isEnabled;
+    private readonly Func<int, bool> _isEnabled;
     private readonly Func<bool> _engineWalkActive;
     private readonly Func<string, string, Task<bool>> _confirm;
     private readonly Action<RoomKey> _walkTo;
@@ -86,7 +88,7 @@ public sealed class MonsterDropRouter
         Func<RoomKey, IReadOnlyDictionary<RoomKey, int>> distancesFrom,
         Func<int, bool> isCarried,
         Func<int, string?> itemName,
-        Func<bool> isEnabled,
+        Func<int, bool> isEnabled,
         Func<bool> engineWalkActive,
         Func<string, string, Task<bool>> confirm,
         Action<RoomKey> walkTo,
@@ -124,20 +126,20 @@ public sealed class MonsterDropRouter
     public bool DetourActive => _phase != Phase.Idle;
 
     // New-need callback (wired to NeedsRegistry.NeedPosted). When the item
-    // warrants a hunt — feature on, no engine walk, no shop sells it, at least
-    // one dropper spawns in a reachable room — arms the confirmation prompt
-    // toward the nearest such spawn. A no-op otherwise.
+    // warrants a hunt — item flagged for source-from-drops, no engine walk, no
+    // shop sells it, at least one dropper spawns in a reachable room — arms the
+    // confirmation prompt toward the nearest such spawn. A no-op otherwise.
     public void OnNeedPosted(Need need)
     {
         if (need.Kind != NeedKind.PathItem) return;
         if (_phase != Phase.Idle) return;
-        if (!_isEnabled()) return;
         if (_engineWalkActive()) return;
 
         if (!int.TryParse(need.Descriptor, NumberStyles.Integer,
                 CultureInfo.InvariantCulture, out int itemId)
             || itemId <= 0)
             return;
+        if (!_isEnabled(itemId)) return;   // per-item auto-obtain (source-from-drops method) gate
         if (_isCarried(itemId)) return;
 
         string? name = _itemName(itemId);

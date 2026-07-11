@@ -10,8 +10,9 @@ namespace FujinTerm.Game.Map;
 // carrying, and a shop in the active set stocks that item, detour to the shop
 // that adds the fewest steps, buy the needed count (the whole party shortfall
 // the need carries — one buy per still-missing copy), then resume to the
-// original destination. Backs the Settings → Other "buy item if needed"
-// affordance.
+// original destination. Backs the item record's "Auto-obtain for path → buy if
+// needed" flag (ItemOverlay.BuyIfNeededForPath under the AutoObtainForPath
+// master opt-in).
 //
 // Trigger. PathItemDemandTracker posts a PathItem need at walk-start;
 // OnNeedPosted (wired to NeedsRegistry.NeedPosted) reacts. The event fires only
@@ -61,7 +62,7 @@ public sealed class PathItemShopRouter : IDisposable
     private readonly Func<RoomKey, RoomKey, int?> _distanceBetween;
     private readonly Func<int, int> _carriedCount;
     private readonly Func<int, string?> _itemName;
-    private readonly Func<bool> _isEnabled;
+    private readonly Func<int, bool> _isEnabled;
     private readonly Func<bool> _engineWalkActive;
     private readonly Action<RoomKey> _walkTo;
     private readonly Action<Action> _post;
@@ -83,7 +84,7 @@ public sealed class PathItemShopRouter : IDisposable
         Func<RoomKey, RoomKey, int?> distanceBetween,
         Func<int, int> carriedCount,
         Func<int, string?> itemName,
-        Func<bool> isEnabled,
+        Func<int, bool> isEnabled,
         Func<bool> engineWalkActive,
         Action<RoomKey> walkTo,
         Action<Action> post,
@@ -127,20 +128,20 @@ public sealed class PathItemShopRouter : IDisposable
 
     // New-need callback (wired to NeedsRegistry.NeedPosted). Decides whether the
     // item warrants a shop detour and, if so, arms one toward the
-    // fewest-added-steps shop. A no-op when the feature is off, an engine walk
-    // is driving, a detour is already running, no shop stocks the item, or we
-    // can't compute a route.
+    // fewest-added-steps shop. A no-op when the item isn't flagged for buy-on-
+    // demand, an engine walk is driving, a detour is already running, no shop
+    // stocks the item, or we can't compute a route.
     public void OnNeedPosted(Need need)
     {
         if (need.Kind != NeedKind.PathItem) return;
         if (_phase != Phase.Idle) return;
-        if (!_isEnabled()) return;
         if (_engineWalkActive()) return;
 
         if (!int.TryParse(need.Descriptor, NumberStyles.Integer,
                 CultureInfo.InvariantCulture, out int itemId)
             || itemId <= 0)
             return;
+        if (!_isEnabled(itemId)) return;   // per-item auto-obtain (buy method) gate
         int target = Math.Max(1, need.Quantity);
         if (_carriedCount(itemId) >= target) return;   // already hold the whole shortfall
 

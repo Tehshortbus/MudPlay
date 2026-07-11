@@ -1,10 +1,12 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.33.0**
-> - Combat priority is now a simple "Spells first / Physical first" dropdown, replacing the reorderable priority list
-> - Backstab and debuffs no longer sit in the reorder list — the backstab opener always leads when enabled, debuffs queue alongside buffs/heals
-> - Physical first falls back to the attack-spell cascade when no configured weapon can damage the target (magical creature), instead of swinging uselessly
+> **Version 1.34.0**
+> - Navigation routes around item-gated exits and hazard rooms it can't safely cross, instead of walking into them
+> - Room-entry hazards (damage/drown spells, raft crossings) are recognized off the game data; a room is avoided unless a counter item is carried
+> - User-initiated walks with a shorter gated shortcut now pop a free-vs-direct route picker listing what each route needs
+> - Cross-room multi-action exits (act in one room to open an exit in another) are planned and executed in step order
+> - Choosing the direct route provisions its missing gate/hazard items through the existing acquire pipeline
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

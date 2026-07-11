@@ -610,6 +610,83 @@ comes from the stat screen / who line (`AlignmentTracker` / `PlayerStats`).
   the peeked room, and the window is consumed when `NoteRoomObserved` fires on the exits line. The
   player's *own* room is unaffected: walking in for real re-renders the room outside the window and the
   automation runs normally.
+- **[CONFIRMED]** **Some rooms harm you on entry unless you carry (or wear, or drink) a protective
+  item — either exit-gated or room-spell-gated.** Encoding fully decoded off the 1.11p data set below.
+  There are TWO gate locations (exit vs room-spell) and, within room-spells, THREE distinct
+  protection encodings.
+
+  **A. Exit-gated** — the exit string itself carries the modifier; already parsed:
+  - `Item: (item#)` → `RoomExit.KeyItemId` + `RoomExitHint.Item`. Traversal needs the item in the pack.
+    Examples: `6/79 → 6/80` needs *rope and grapple* (item 191); `6/1549 → 6/1550` needs *climbing
+    harness* (item 930).
+  - `Level: X to Y` → `MinLevel`/`MaxLevel`. Example: `12/2369 → 12/2371` needs level 50+.
+  - A level-restricted *action* can also be `CMD`-driven (TBInfo), not a Spells hazard — e.g. `17/2854`
+    (`CMD:4328`), a min-level gate expressed as an action chain, not `Room.Spell`.
+
+  **B. Room-spell-gated** — the room carries a cast-on-enter spell (`Room.Spell` = a record number into
+  the Spells table). 3981 rooms carry an entry `Spell` but only ~82 distinct spell numbers are used,
+  and most are benign (light/ambiance/message). The hazardous ones use one of three shapes:
+
+  1. **Direct-damage spell, negated by an item's `NegateSpell-N`.** The entry spell has `Abil 1`
+     (Damage) directly, and may chain a death-timer via `Abil 151` (EndCast → follow-on spell).
+     Protection is a held/worn item whose `NegateSpell-0..9` list (an Items.json field) contains the
+     spell number. Worked example — the underwater/frozen passage:
+     - `6/1139` `Spell:511` "freezing water" = `Abil-0 1`(Damage) + `Abil-2 151`(EndCast→**512**
+       "holding breath", `Dur 25`). Spell 512 in turn `151`(EndCast→**513**) — that is the **death
+       timer**: hold-breath runs 25 ticks, then 513 drowns you.
+     - `8/647` Black Moat `Spell:453` "black water" = `Abil-0 1`(Damage), constant chip each entry.
+     - Protection: **gnomish fish-helm (item 929)**, `NegateSpell = [512, 513, 514, 453]`. Worn, it
+       negates the drown chain (512/513/514) and the black-water damage (453). You still take the minor
+       direct 511 chip but never drown.
+     - Timer cancel on exit: the `6/1139` up-exit is `(Cast: pre-516, post-0)` → spell **516**
+       `151`(EndCast→**515** "stop drowning"), and 515 `153`(KillSpell) **512** & **513** — leaving the
+       water cancels the drown timer. (`Cast: pre-N` = cast spell N *before* moving through the exit.)
+
+  2. **TextBlock action guarded by `failitem <itemNum>`.** The entry spell has `Abil 148`(TextBlock →
+     a `TBInfo.Number`); the TBInfo `Action` is a colon-separated command chain. A leading run of
+     `failitem N` tokens before a harmful `cast <spell>` means **"if you HOLD any listed item N, abort
+     the chain (safe); if you hold none, fall through to the damage cast."** Worked example — Silver
+     River: `Spell:753` → `Abil-0 148`(TextBlock **2750**). TBInfo 2750 `Action`:
+     `failitem 690:failitem 691:failitem 1181:message 2096:cast 754`. Items 690 *log raft* / 691
+     *wooden skiff* / 1181 *silverbark canoe* are the boats; holding any one aborts before `cast 754`.
+     (`failitem` is used 139× across TBInfo — many are quest "don't re-give" guards like
+     `failitem 622:giveitem 622`; only the ones ending in a harmful `cast` are hazards.)
+
+  3. **TextBlock action guarded by `checkspell <spellNum> <tbTarget>`** (a buff check, not an item
+     check). `checkspell S T` = "if effect/buff S is active, branch to TBInfo T (safe); else fall
+     through (damage)." Worked example — Scorching Desert `12/1047` `Spell:683` → TextBlock **2653**:
+     `checkspell 711 2654:random 2655`. Buff 711 "waterskin" (`Dur 600`) is conferred by **using** the
+     *waterskin* (item 283, `Abil 43` CastsSp→711, 3 uses). So the protection is "carry the waterskin
+     and re-drink periodically to keep buff 711 up." We can't guarantee a buff stays up mid-walk, so
+     for routing treat this as "carry the source item + auto-use on entry," else gate/ask.
+
+  - **Routing takeaway:** a room is *safe to route through* if, for its `Room.Spell` hazard, the
+    player satisfies the protection — holds a `failitem` item, wears/holds an item that `NegateSpell`s
+    the damage/timer spell (or its EndCast follow-on), or carries the buff-source item for a
+    `checkspell` gate. Otherwise the node is hazardous: avoid it, or offer acquire/ask, same as an
+    item-gated exit. Detecting a hazard therefore needs: (i) read `Room.Spell`; (ii) walk its
+    `Abil/AbilVal` for a direct `1`(Damage) or `151`(EndCast) chain, and for `148`(TextBlock) parse the
+    TBInfo `Action` for `failitem` / `checkspell` before a `cast`; (iii) resolve protective items via
+    Items `NegateSpell-N`, `failitem` item ids, and `checkspell` buff-source `CastsSp` items.
+- **[CONFIRMED]** **A cross-room multi-action exit opens for a timed window (~3–5 min) after its
+  action(s) are performed, and each action's server response is unique + not in the game data.**
+  A `(Hidden, Needs N Actions, {any|specific} order)` exit unlocks by issuing the listed command(s)
+  from the named room + exit direction. The action room can differ from the room the exit lives in
+  (the "cross-room" case): e.g. pull a lever in room A to open an exit in room B. Confirmed behaviour:
+  - **Persistence.** Once the required action opens an exit, that exit **stays open for a set window —
+    roughly 3–5 minutes — that is NOT encoded anywhere in the game data.** Long enough to walk from the
+    action room to the exit room and cross without racing a re-lock.
+  - **Specific-order across rooms.** For "Needs 2 Actions, specific order," performing action #1 (in its
+    room) stays satisfied through the same ~3–5 min timer; you then walk to action #2's room and perform
+    it, which opens the target exit, and *that* exit then stays open another ~3–5 min. So the sequence is
+    tolerant of the walk time between steps — no tight contiguous-run requirement.
+  - **Confirmation is unmatchable.** Each unlock action **does** produce a visible server response, but
+    the wording is **different per action** and those TextBlocks are **not shipped in the game data**, so
+    the client cannot await a known confirmation string. Treat each action command as **fire-and-forget**:
+    send it, don't wait for a specific reply, then proceed to the next step / the cardinal.
+  - **Walker takeaway:** walk-to-action-room → send the command(s) in `StepNumber` order → walk-back to
+    the exit's room → send the cardinal. The generous open window makes normal walk distances safe; do
+    not gate on a data-supplied timer (there isn't one) or on parsing a confirmation line.
 
 ## Attack spells: why one fails to damage a monster
 
