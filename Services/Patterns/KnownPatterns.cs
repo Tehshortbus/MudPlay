@@ -32,6 +32,11 @@ public static class KnownPatterns
     // left-behind (auto-`@comeback`) from a deliberate uninvite/unfollow.
     public const string MovementFailedStuck = "movement.failed-stuck";   // "You can't seem to move anywhere!" — a prevents-movement gamedata flag blocked us
     public const string MovementFailedHeavy = "movement.failed-heavy";   // "...too heavy to move" — over-encumbered (system line; never inside a chat channel)
+    // "You are blind." (period) — a move issued while blinded SUCCEEDS but
+    // starves the room display, exactly like a dark room. Distinct from the
+    // affliction-onset "You are blind!" (exclamation) and from the refusal
+    // "You can't see well enough to move." (a bonk). Drives dead-reckoning.
+    public const string BlindMoveStarved  = "movement.blind-move-starved";
 
     // ----- Failure -------------------------------------------------------
     public const string CommandNoEffect   = "failure.command-no-effect";
@@ -79,6 +84,14 @@ public static class KnownPatterns
     // ("[HP=100/MA=50]:X moves to attack Y.") plus a bare colon prefix; the
     // announcer name + target are positional captures.
     public const string PartyAttackAnnounce  = "combat.party-attack-announce";
+
+    // "X moves to cast <spell> upon Y." — a caster's round action. GAME_MECHANICS:
+    // a party member has "gone" for the round via EITHER the melee "moves to attack"
+    // form OR this spell form, so attack-last coordination treats both as equivalent
+    // per-member announce signals. CombatManager routes this to the Attack-Order
+    // re-fire only (never target-follow, so a heal can't make us swing at a mate).
+    // Same prefix tolerance + positional announcer/target captures as the melee form.
+    public const string PartyCastAnnounce    = "combat.party-cast-announce";
 
     // "You don't see <X> here!" — server's response when our `attack X` resolves
     // against a target that left or died between our send and the server's
@@ -261,6 +274,12 @@ public static class KnownPatterns
     // update PartyMember.Rank live instead of waiting for the next par poll.
     public const string PartyMemberRankChanged    = "party.member-rank-changed";    // "X just moved to the {front|back} rank in your group." / "X just moved to the middle of your group."
     public const string PartySelfRankChanged      = "party.self-rank-changed";      // "You have moved to the {front|middle|back} ranks of your group." — self's own rerank confirmation
+    // "X stops to rest." — a party member (roster-scoped by the handler) sat down
+    // to rest. Flips PartyMember.Resting the moment it's seen, ahead of the 5s par
+    // poll, so a follower can mirror the leader's rest immediately. (The meditate
+    // observation line isn't confirmed yet — add its const + pattern beside this
+    // when the wording is known.)
+    public const string PartyMemberRestObserved   = "party.member-rest-observed";   // "X stops to rest."
 
     // ----- Alignment -----------------------------------------------------
     // "A dark cloud passes over you" — MajorMUD's signal that the local

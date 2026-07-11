@@ -1808,14 +1808,19 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void StopWalk() => _services.Walker.Stop("user stop from Navigation");
 
+    // Backs the walk-to Pause/Resume chip (col 4, replacing the disabled Save
+    // button during a walk-to). Routes through the shared controller so it keys
+    // off the user-override tier, NOT the coalesced pause state — a mid-walk
+    // fight (an engine wait) must not flip this into "Resume".
     [RelayCommand]
-    private void PauseOrResume()
-    {
-        if (_services.MovementCoordinator.IsPaused)
-            _services.Walker.Resume();
-        else
-            _services.Walker.Pause();
-    }
+    private void PauseOrResume() => _services.MovementControl.TogglePause();
+
+    // Walk-to's Pause/Resume face. "Resume" once the user has manually paused
+    // the walk; "Pause" while it's running (including through engine waits, so
+    // the user can stack a manual pause on a fight/rest). Engine waits never
+    // change this label — only the user's own pause does.
+    public bool IsWalkUserPaused => _services.MovementControl.IsUserPaused;
+    public string WalkPauseLabel => IsWalkUserPaused ? "Resume" : "Pause";
 
     // ----- handlers --------------------------------------------------
 
@@ -1888,7 +1893,16 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     // even when the overall paused state doesn't flip (Combat → Resting keeps
     // IsPaused true). RefreshActivityStatus is a no-op when nothing actually
     // changed, so refiring on each transition is cheap.
-    private void OnGatesChanged() => RefreshActivityStatus();
+    private void OnGatesChanged()
+    {
+        RefreshActivityStatus();
+        // The walk-to Pause/Resume chip reads the user-override tier, which only
+        // moves on a gate transition — refresh its face here so it flips the
+        // instant the user pauses/resumes (RefreshDerivedState covers the engine
+        // start/stop path).
+        OnPropertyChanged(nameof(IsWalkUserPaused));
+        OnPropertyChanged(nameof(WalkPauseLabel));
+    }
 
     // Our own "held" ailment stops movement server-side without asserting any
     // client gate, so the chip watches the condition flags directly to surface
@@ -1958,6 +1972,11 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
                 : ("Paused", NavActivityKind.Paused);
         if (gates.Contains(Game.Map.MovementCoordinator.CombatGate))
             return ("Fighting", NavActivityKind.Fighting);
+        // Engine-owned hold right after a walk left a room with an engaged
+        // hostile — auto-clears the instant the room settles, so this rarely
+        // lingers, but name it so it never falls through to the raw-gate label.
+        if (gates.Contains(Game.Map.MovementCoordinator.AbandonedCombatGate))
+            return ("Waiting — leaving a fight", NavActivityKind.Waiting);
 
         // Our own held/entangled state stops movement at the server; no gate is
         // asserted for it, so a stuck loop would otherwise read "Moving".
@@ -2456,6 +2475,8 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         RefreshActivityStatus();
         OnPropertyChanged(nameof(EngineActionIsIdle));
         OnPropertyChanged(nameof(EngineActionIsWalking));
+        OnPropertyChanged(nameof(IsWalkUserPaused));
+        OnPropertyChanged(nameof(WalkPauseLabel));
         OnPropertyChanged(nameof(EngineActionIsLooping));
         OnPropertyChanged(nameof(EngineActionIsLair));
         OnPropertyChanged(nameof(LoopModeButtonLabel));

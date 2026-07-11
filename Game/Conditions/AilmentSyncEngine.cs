@@ -8,13 +8,16 @@ namespace FujinTerm.Game.Conditions;
 
 // Outbound ailment-sync: when the local character catches a curable ailment
 // (poison / blindness / confusion / disease) or is held (movement-prevented),
-// this engine (1) announces it on the say channel — .@poisoned / .@blind /
-// .@confused / .@diseased / .@held — so other clients in the room can mirror our
-// state on their party window (and a member with a cure-holds spell can free
-// us), and (2) for the four curable ailments telepaths an @wait to the party
-// leader so the party pauses while we're afflicted. On clear it telepaths the
-// matching @ok (only when the last wait reason releases — see PartyRestSync). No
-// clear-side say announce.
+// this engine (1) announces it on the say channel — the curable four as a paired
+// toggle '.@poisoned on' … '.@poisoned off', held as a bare '.@held' — so other
+// clients in the room can mirror our state on their party window (and a member
+// with a cure-holds spell can free us), and (2) for the four curable ailments
+// telepaths an @wait to the party leader so the party pauses while we're
+// afflicted. On clear it (a) says the matching '.@X off' for the curable four —
+// the authoritative chip-clear the receiver keys on, so a natural wear-off with
+// no cure line still clears — and (b) telepaths @ok (only when the last wait
+// reason releases — see PartyRestSync), which releases held's say-driven pause.
+// Held has no off-signal; its release rides @ok alone.
 //
 // Transitions are read off ConditionTracker.ActiveFlags directly — we diff the
 // added / removed bits per change rather than subscribing to
@@ -63,6 +66,10 @@ public sealed class AilmentSyncEngine : IDisposable
     private readonly LogService? _log;
 
     private MessageFlags _lastFlags;
+    // Flags we've actually announced an ON for (say-gated by ShouldAnnounce). Used
+    // to emit a BALANCED '.@X off' on clear only when the room heard the '.@X on' —
+    // a self-cured / DoNotAnnounce'd ailment set no chip, so it needs no off.
+    private MessageFlags _announcedFlags;
     private Action<byte[]>? _wireSender;
     private bool _disposed;
 
@@ -114,11 +121,21 @@ public sealed class AilmentSyncEngine : IDisposable
 
         foreach ((MessageFlags flag, string token, WaitReason reason, bool telepathWait) in Ailments)
         {
+            // Held is the lone non-toggle: it announces bare '.@held' (on only)
+            // and its leader-pause release rides @ok. The curable four ride a
+            // paired '.@X on' / '.@X off' toggle so the receiver can clear the
+            // chip on the matching 'off' without witnessing a cure — the case
+            // that broke the reported stuck-blind chip (blindness wore off with
+            // no cure line, and no @ok because its @wait was ignored).
+            bool paired = flag != MessageFlags.MovementPrevented;
             if (added.HasFlag(flag))
             {
                 bool announced = ShouldAnnounce(flag, spells, inParty);
                 if (announced)
-                    Say(token);
+                {
+                    Say(paired ? token + " on" : token);
+                    _announcedFlags |= flag;
+                }
 
                 if (telepathWait)
                 {
@@ -136,6 +153,12 @@ public sealed class AilmentSyncEngine : IDisposable
             }
             else if (removed.HasFlag(flag))
             {
+                // Paired off-signal — only when we announced the on (so the
+                // room actually set a chip to clear), and never for held.
+                if (paired && _announcedFlags.HasFlag(flag))
+                    Say(token + " off");
+                _announcedFlags &= ~flag;
+
                 // Balance any wait we placed for this ailment. RequestOk
                 // is a no-op when no matching reason is held, so calling
                 // it unconditionally (even when the wait was suppressed)

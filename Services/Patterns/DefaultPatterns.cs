@@ -68,6 +68,12 @@ public static class DefaultPatterns
             @"^You can't seem to move anywhere!");
         yield return new RegexPattern(KnownPatterns.MovementFailedHeavy,
             @"^[^""]*too heavy to move");
+        // Fully anchored to the standalone period form — a move made while
+        // blind renders exactly this line and nothing else. The exclamation
+        // onset ("You are blind!") ends in '!' so it can't match, and the
+        // full-line anchor keeps a quoted chat echo of the phrase out.
+        yield return new RegexPattern(KnownPatterns.BlindMoveStarved,
+            @"^You are blind\.$");
 
         // ----- Failures --------------------------------------------------
         yield return new RegexPattern(KnownPatterns.CommandNoEffect, @"^Your command had no effect\.$");
@@ -211,6 +217,13 @@ public static class DefaultPatterns
         // before the name. Captures the announcer's name + the target.
         yield return new RegexPattern(KnownPatterns.PartyAttackAnnounce,
             @"^(?:\[[^\]]*\]:|:)*(?<player>\w+) moves to attack (?<target>.+?)\.");
+
+        // Caster round action — "X moves to cast <spell> upon Y." The spell name is
+        // skipped (non-capturing) and the target after "upon" is captured, so the
+        // announcer + target stay positional like the melee form. Attack-last treats
+        // this as an equivalent per-member "gone this round" announce.
+        yield return new RegexPattern(KnownPatterns.PartyCastAnnounce,
+            @"^(?:\[[^\]]*\]:|:)*(?<player>\w+) moves to cast .+? upon (?<target>.+?)\.");
 
         // Room-entry arrival. Anchored on "in… from <dir>"
         // so a wide alternation of verbs (crawls, walks, slithers, lumbers,
@@ -468,6 +481,12 @@ public static class DefaultPatterns
         // across all three (front/middle/back).
         yield return new RegexPattern(KnownPatterns.PartySelfRankChanged,
             @"^You have moved to the (?<rank>front|middle|back) ranks of your group\.?\s*$");
+        // "X stops to rest." — third-person rest observation. Given-name only
+        // (matches roster matching); the handler scopes it to party members.
+        // Self's own action reads "You stop to rest." (different verb), so this
+        // never matches our own row.
+        yield return new RegexPattern(KnownPatterns.PartyMemberRestObserved,
+            @"^(?<player>\w+) stops to rest\.?\s*$");
 
         // ----- Main menu (BBS-customisable but options are stable) -----
         // The "Enter the Realm" row is the universal signature — every

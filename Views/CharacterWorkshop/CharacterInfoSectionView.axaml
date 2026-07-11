@@ -288,6 +288,33 @@
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
                             </StackPanel>
+
+                            <!-- Keys: the ring's contents, tracked apart from the pack. -->
+                            <StackPanel Spacing="2" IsVisible="{Binding HasKeys}">
+                                <TextBlock Text="Keys"
+                                           Foreground="{StaticResource ChromeFgSecBrush}"
+                                           FontSize="{StaticResource FontSizeMd}"
+                                           FontWeight="SemiBold"/>
+                                <ItemsControl ItemsSource="{Binding Keys}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="sys:String">
+                                            <TextBlock Classes="FieldValue" Text="{Binding}" TextWrapping="Wrap" Margin="0,0,0,1"/>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+
+                            <!-- Coins: held currency, surfaced in the carry list where
+                                 players look for their cash (also summarised in the
+                                 stat grid's Coins / Wealth rows). -->
+                            <StackPanel Spacing="2" IsVisible="{Binding HasCoins}">
+                                <TextBlock Text="Coins"
+                                           Foreground="{StaticResource ChromeFgSecBrush}"
+                                           FontSize="{StaticResource FontSizeMd}"
+                                           FontWeight="SemiBold"/>
+                                <TextBlock Classes="FieldValue" Text="{Binding CurrencyHeld}"
+                                           TextWrapping="Wrap" Margin="0,0,0,1"/>
+                            </StackPanel>
                         </StackPanel>
                     </Border>
                 </StackPanel>

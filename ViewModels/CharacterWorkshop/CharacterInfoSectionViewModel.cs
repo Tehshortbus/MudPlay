@@ -147,10 +147,20 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
     public ObservableCollection<EquippedItemRow> EquippedItems { get; } = new();
     // Carried-but-unworn item names harvested from the last inventory dump.
     public ObservableCollection<string> CarriedItems { get; } = new();
+    // Key-ring contents from the dump's "You have the following keys: …" trailer.
+    // The game tracks keys apart from the pack, so they get their own list in the
+    // Inventory box rather than mixing into CarriedItems.
+    public ObservableCollection<string> Keys { get; } = new();
     // True once at least one worn item is known — gates the equipped list.
     [ObservableProperty] private bool _hasEquipped;
     // True once at least one carried item is known — gates the carried list.
     [ObservableProperty] private bool _hasCarried;
+    // True once at least one key is known — gates the keys list in the Inventory box.
+    [ObservableProperty] private bool _hasKeys;
+    // True when any coin is held — gates the coins line in the Inventory box (the
+    // same held-currency the stat grid's Coins/Wealth rows summarise, surfaced in
+    // the carry list where players expect their cash to show).
+    [ObservableProperty] private bool _hasCoins;
     // False until the first `i` dump is parsed — drives the "type i to load" hint.
     [ObservableProperty] private bool _inventoryLoaded;
 
@@ -465,6 +475,7 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
 
         CurrencyHoldings coins = snap.Currency;
         CurrencyHeld = FormatCoins(coins);
+        HasCoins = coins.TotalCopperValue > 0;
         // The wealth line mirrors the game's own "Wealth:  N copper farthings"
         // summary — the consolidated value in the base denomination, ungrouped
         // like the game (no thousands separator) and not decomposed (the Coins
@@ -504,8 +515,14 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
         foreach (string name in snap.CarriedItems)
             CarriedItems.Add(name);
 
+        Keys.Clear();
+        if (snap.Keys is { } keys)
+            foreach (string name in keys)
+                Keys.Add(name);
+
         HasEquipped = EquippedItems.Count > 0;
         HasCarried = CarriedItems.Count > 0;
+        HasKeys = Keys.Count > 0;
         InventoryLoaded = _inventory.IsLoaded;
     }
 

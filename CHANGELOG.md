@@ -2,6 +2,20 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.34.15
+
+- Character Info's Inventory box now shows the coins line and a keys list, parsed from the pack readout
+- Discard currency drops are re-audited after banking, buying, or selling so stale held-cash flags clear
+- Combat's "attack last" now fires only after every party melee and cast announce, under the Follow-target priority
+- A "no effect" result no longer forces a manual Resume — the engine wait auto-clears
+- Toolbar and nav pause controls read only the user-override tier, never engine-owned waits
+- Walk-to now shows a Save→Pause chip so a queued route is visible before it starts
+- A @wait-held, un-poisoned leader rests to use the downtime, and a follower mirrors the leader's rest unless it's poisoned
+- Movement while blinded dead-reckons position through the room graph, re-anchoring when sight returns
+- Curable-ailment on/off say pairs clear their chip authoritatively, and a @status reply pulls a fresh chip resync
+- Party-window health/mana bars now align across rows regardless of which status chips a row shows
+- bug reports addressed: stock-20260711-083241, stock-20260711-083306, stock-20260711-083614, stock-20260711-083759, stock-20260711-084637, stock-20260711-090022, stock-20260711-091137
+
 ## 1.34.7
 
 - Walker no longer strands at a bashable/pickable door mid-route — a sub-FSM step is no longer double-driven into a duplicate, stray-verb door request

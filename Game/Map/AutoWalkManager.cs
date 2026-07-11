@@ -61,6 +61,7 @@ public sealed class AutoWalkManager : IRecoverableEngine
     private bool _stepInFlight;
     private bool _awaitingPromptForCommand;
     private bool _awaitingTrapDisarm;
+    private bool _abandonHold;                               // AbandonedCombat gate is ours to release
     private int _retryCount;
     private const int MaxRetriesPerStep = 1;
 
@@ -239,6 +240,7 @@ public sealed class AutoWalkManager : IRecoverableEngine
 
         _tracker.StateChanged += OnTrackerStateChanged;
         _coordinator.PauseStateChanged += OnCoordinatorPauseChanged;
+        _coordinator.GatesChanged += OnGatesChangedForAbandon;
         if (_promptScanner is not null)
             _promptScanner.PromptObserved += OnPromptObserved;
     }
@@ -685,14 +687,36 @@ public sealed class AutoWalkManager : IRecoverableEngine
     // A move already on the wire carried us out of a room where we'd engaged a
     // hostile (combat gate was held) before it died. The step can't be recalled,
     // but we must not keep walking the route deeper past a fight we committed to.
-    // Halt on the manual (User) gate so the path is preserved and the user
-    // resumes once the situation is handled (mirrors the death halt). Fired from
+    // Halt on the engine-owned AbandonedCombat gate — NOT the manual User gate —
+    // so this is an engine wait the walker manages itself, never a user pause the
+    // toolbar/nav mistakes for a manual stop. It auto-releases the moment the
+    // room is clear of hostiles (see OnGatesChangedForAbandon): if the monster
+    // didn't follow, the Combat gate is already clearing this same tick and we
+    // resume onward; if it followed, its arrival re-asserts Combat and that gate
+    // holds us for the fight instead. Fired from
     // CombatStateTracker.EngagedTargetAbandoned. No-op when no walk is active.
     public void HaltForAbandonedCombat(string reason)
     {
         if (State == WalkState.Idle) return;
-        _coordinator.AssertGate(MovementCoordinator.UserGate, "AutoWalkManager", reason);
+        _abandonHold = true;
+        _coordinator.AssertGate(MovementCoordinator.AbandonedCombatGate, "AutoWalkManager", reason);
         Raise(new WalkEvent(WalkEventKind.Paused, reason, _destination));
+    }
+
+    // Auto-release for the AbandonedCombat hold. The halt only ever fires from a
+    // room that's clear of actionable hostiles (see CombatStateTracker), so the
+    // Combat gate is cleared in the same observation right after we assert ours;
+    // this handler catches that clear and drops our hold, resuming the onward
+    // route with no manual Resume. While the Combat gate is still asserted we
+    // keep holding — a followed monster re-asserts Combat and the fight takes
+    // precedence — so we never sprint away from a fight that's actually engaged.
+    private void OnGatesChangedForAbandon()
+    {
+        if (!_abandonHold) return;
+        if (_coordinator.AssertedGates.Contains(MovementCoordinator.CombatGate)) return;
+        _abandonHold = false;
+        _coordinator.ClearGate(MovementCoordinator.AbandonedCombatGate, "AutoWalkManager",
+            "room clear of hostiles — resuming route");
     }
 
     // ----- internals -------------------------------------------------
@@ -1382,6 +1406,14 @@ public sealed class AutoWalkManager : IRecoverableEngine
         _deferredWalkThroughGates = false;
         _retryCount = 0;
         _replanCount = 0;
+        // Drop any AbandonedCombat hold this walk was carrying so a stopped /
+        // completed walk never strands the gate asserted (the auto-release only
+        // fires on a Combat-gate transition, which may not come once we're Idle).
+        if (_abandonHold)
+        {
+            _abandonHold = false;
+            _coordinator.ClearGate(MovementCoordinator.AbandonedCombatGate, "AutoWalkManager", "walk reset");
+        }
         State = WalkState.Idle;
     }
 

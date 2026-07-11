@@ -730,7 +730,16 @@ public sealed class CashManager : IDisposable
     // CashManager's own patterns never observe — a buy or sell — still arms the
     // gate, and so a get / drop the snapshot processes after our pattern handler
     // (subscription-order dependent) is re-checked once the snapshot is fresh.
-    public void OnInventoryChanged() => CheckAutoDeposit();
+    public void OnInventoryChanged()
+    {
+        CheckAutoDeposit();
+        // Re-audit discard against the fresh holdings too. A bank withdrawal /
+        // buy / sell changes the coin snapshot without ever emitting a
+        // CashPickedUp line, so without this a currency marked Discard whose
+        // balance grew off-pattern (the reported "withdrew 9 copper, Discard set,
+        // never dropped") would sit un-audited until the next ground pickup.
+        AuditHeldForDiscard();
+    }
 
     private void CheckAutoDeposit()
     {

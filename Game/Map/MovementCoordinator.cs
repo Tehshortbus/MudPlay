@@ -30,6 +30,15 @@ public sealed class MovementCoordinator
     // *Combat Off*).
     public const string CombatGate = "Combat";
 
+    // Asserted by AutoWalkManager when a walk-to leaves a room with an engaged
+    // target still alive — the walker holds so we don't sprint away from a fight
+    // that followed us. Distinct from UserGate so an abandoned-combat hold is an
+    // engine wait, NOT a user pause: it auto-clears the moment the room is clear
+    // of hostiles (Combat gate drops), without the user pressing Resume. Kept
+    // out of the manual-override tier so the toolbar's Start/Pause/Stop never
+    // flip on it.
+    public const string AbandonedCombatGate = "AbandonedCombat";
+
     // Asserted by HealthManager when HP drops below the configured rest
     // trigger; clears when HP recovers past the configured rest target.
     public const string HealthRecoveryGate = "HealthRecovery";

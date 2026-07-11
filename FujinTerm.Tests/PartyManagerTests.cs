@@ -1384,4 +1384,50 @@ public sealed class PartyManagerTests
         Assert.DoesNotContain(p.State.Members, m => m.Name == "Stranger");
         Assert.All(p.State.Members, m => Assert.False(m.Diseased));
     }
+
+    // ===== "X stops to rest." observed-rest line =====
+
+    [Fact]
+    public void MemberRestObserved_FlipsRestingFlag()
+    {
+        // We follow Fujin (leader). Seeing "Fujin stops to rest." flips the
+        // leader's Resting flag immediately, ahead of the next par poll.
+        var (router, p) = Setup(localCharacterName: "Raijin");
+        router.Dispatch(Line("You are now following Fujin."));
+        PartyMember leader = p.State.Members.Single(m => m.Name == "Fujin");
+        Assert.False(leader.Resting);
+
+        router.Dispatch(Line("Fujin stops to rest."));
+
+        Assert.True(leader.Resting);
+    }
+
+    [Fact]
+    public void MemberRestObserved_GivenNameMatchesFamilyRoster()
+    {
+        // Roster row carries a family name; the observed line has only the given
+        // name — GivenNameOf matching still resolves it.
+        var (router, p) = Setup(localCharacterName: "Raijin");
+        router.Dispatch(Line("You are now following Fujin."));
+        PartyMember leader = p.State.Members.Single(m => m.Name == "Fujin");
+        leader.Name = "Fujin WuzHere";
+
+        router.Dispatch(Line("Fujin stops to rest."));
+
+        Assert.True(leader.Resting);
+    }
+
+    [Fact]
+    public void MemberRestObserved_NonMember_IsNoOp()
+    {
+        // A bystander resting in the room isn't on the roster → no phantom row,
+        // no flag change on existing members.
+        var (router, p) = Setup(localCharacterName: "Raijin");
+        router.Dispatch(Line("You are now following Fujin."));
+
+        router.Dispatch(Line("Stranger stops to rest."));
+
+        Assert.DoesNotContain(p.State.Members, m => m.Name == "Stranger");
+        Assert.All(p.State.Members, m => Assert.False(m.Resting));
+    }
 }

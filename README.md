@@ -1,13 +1,17 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.34.7**
-> - Walker no longer strands at a bashable/pickable door mid-route — a sub-FSM step is no longer double-driven into a duplicate, stray-verb door request
-> - Duplicate per-direction door requests are dropped instead of stacking behind a live one
-> - Combat resyncs the room immediately when a kill's death line can't be pinned to a roster mob, instead of stalling ~5s until the next swing no-ops
-> - Nav tooltips now list standalone room actions ("pull drawer", etc.) under Room commands for rooms with no multi-action exit
-> - A non-followed party member's attack announce no longer drives a duplicate re-fire under a Follow-target priority
-> - Between-round self-heal now resumes the attack in the same round instead of waiting a full round for a follow announce that never comes
+> **Version 1.34.15**
+> - Character Info's Inventory box now shows the coins line and a keys list, parsed from the pack readout
+> - Discard currency drops are re-audited after banking, buying, or selling so stale held-cash flags clear
+> - Combat's "attack last" now fires only after every party melee and cast announce, under the Follow-target priority
+> - A "no effect" result no longer forces a manual Resume — the engine wait auto-clears
+> - Toolbar and nav pause controls read only the user-override tier, never engine-owned waits
+> - Walk-to now shows a Save→Pause chip so a queued route is visible before it starts
+> - A @wait-held, un-poisoned leader rests to use the downtime, and a follower mirrors the leader's rest unless it's poisoned
+> - Movement while blinded dead-reckons position through the room graph, re-anchoring when sight returns
+> - Curable-ailment on/off say pairs clear their chip authoritatively, and a @status reply pulls a fresh chip resync
+> - Party-window health/mana bars now align across rows regardless of which status chips a row shows
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

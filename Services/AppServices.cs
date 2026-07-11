@@ -1546,7 +1546,8 @@ public sealed class AppServices
             readCurrentRoom: () => RoomTracker?.State.CurrentRoom,
             readRoomEntities: () => RoomClassifier?.Current?.Entities,
             readMovement: () => Game.Remote.MovementStatus.Capture(Walker, LoopRunner, AutoLair),
-            readDraggedBy: () => Dragged.DraggedBy);
+            readDraggedBy: () => Dragged.DraggedBy,
+            readAilments: () => Conditions?.ActiveFlags ?? Models.GameData.MessageFlags.None);
         // Drives the on-join @health exchange + the
         // periodic par poll. Wire-sender + cadence-from-settings hookup
         // happens in MainWindowViewModel.
@@ -2038,6 +2039,15 @@ public sealed class AppServices
         Router.Subscribe(Services.Patterns.KnownPatterns.RoomVeryDark,
             _ => RoomTracker.NoteDarkRoomEntered());
 
+        // Blind-move position tracking. A move made while blinded succeeds but
+        // starves the room display, printing only "You are blind." (see
+        // GAME_MECHANICS.md) — so the move-confirming observation never fires
+        // and the map freezes at the source room. NoteBlindMove dead-reckons
+        // along the pending move's mapped edge exactly like the dark-room path,
+        // but leaves IsInDarkRoom untouched (the player is blind, not the room).
+        Router.Subscribe(Services.Patterns.KnownPatterns.BlindMoveStarved,
+            _ => RoomTracker.NoteBlindMove());
+
         // Follower-drag → tracker bridge. When the party leader walks, the game
         // drags us one room and prints " -- Following your Party leader <dir> --";
         // a follower types no move, so without turning that line into a
@@ -2433,12 +2443,20 @@ public sealed class AppServices
         // trigger a follower broadcasts @heal (via PartyRest) instead of running
         // off alone. Leader / solo still flee. The HealCommandHandler below is
         // the receive side that turns that broadcast into a party heal.
+        // isLeaderWaited drives the leader's own "rest while a member @wait-held
+        // us" downtime rest; isSelfPoisoned gates BOTH downtime-rest paths off the
+        // self-ailment tracker (Conditions is constructed below, so the closure
+        // defers the read until Evaluate runs). PartyEssentials.IsPaused is the
+        // inbound-@wait state (already honours the leader opt-out upstream); scope
+        // it to SelfIsLeader so only the leader rests on a wait.
         Health.SetPartyRoleSync(
             isPartyFollower: () => PartyState.IsInParty && !PartyState.SelfIsLeader,
             requestPartyWait: () => PartyRest.RequestWait(Game.WaitReason.Health),
             requestPartyOk: () => PartyRest.RequestOk(Game.WaitReason.Health),
             isLeaderResting: () => PartyLeaderRest.LeaderIsResting,
-            requestPartyHeal: () => PartyRest.RequestHeal());
+            requestPartyHeal: () => PartyRest.RequestHeal(),
+            isLeaderWaited: () => PartyState.SelfIsLeader && PartyEssentials.IsPaused,
+            isSelfPoisoned: () => Conditions.IsPoisoned);
 
         // Server-side resting state clears on move; drop our latch
         // too so the next threshold breach actually fires `rest`

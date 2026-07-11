@@ -200,6 +200,13 @@ it isn't here and you're unsure, ask.
   emits no `moves to attack` line to other players, so the surprise opener doesn't tip off
   onlookers. (Consequence for the client: it can't confirm its own backstab landed from a
   `moves to attack` echo — there won't be one; use the `surprise` swing line instead.)
+- **[CONFIRMED]** **A round action is announced by ONE of two lines — melee OR spell.** A party
+  member has "gone" for the round when the room shows *either* `<player> moves to attack <target>.`
+  (melee/ranged) *or* `<player> moves to cast <spell name> upon <target>.` (a combat spell). Both
+  forms count as that member's announce; a caster's turn produces the second form only. So
+  attack-last coordination (waiting until every other member has committed before our own
+  `*Combat Engaged*` lands) must treat the two lines as equivalent per-member announce signals —
+  keying only on `moves to attack` misses every spellcaster in the party.
 - **[CONFIRMED]** **Failure signals — the reliable single-line tell.** The surprise round is a
   **single** swing, so the **first** of the player's own combat-result lines after the `bs` settles
   the outcome: it either **carries `surprise`** (landed) or **lacks it** (failed). A failure surfaces
@@ -554,6 +561,20 @@ comes from the stat screen / who line (`AlignmentTracker` / `PlayerStats`).
   advances there; when the edge is unmapped it holds the last position (stays Pending) rather
   than guessing. Only the *very dark* / *pitch black* forms starve the display this way — a
   normally-lit room always prints its name + exits.
+- **[CONFIRMED, capture 2026-07-11]** **A move made while *blinded* succeeds but starves the room
+  display, printing only `You are blind.`** — same shape as the dark-room case, but it's the
+  player who can't see, not the room. A blinded player who sends a move gets no name, no
+  `Obvious exits:`, no description — just the single line `You are blind.` (period) — yet the
+  move **traverses** (party followers are dragged in the sent direction). Distinguish three
+  lines that all mention blindness: the **onset** `You are blind!` (exclamation, applies the
+  Blinded flag), the **move-succeeded** `You are blind.` (period, starves the display), and the
+  **refusal** `You can't see well enough to move.` (a bonk — the move did *not* happen, caught
+  as an impairment refusal). Only the period form drives dead-reckoning: `RoomTracker.NoteBlindMove`
+  advances along the pending move's mapped edge just like `NoteDarkRoomEntered`, but leaves
+  `IsInDarkRoom` untouched (carried light can't cure blindness, and the dark-room attack-line
+  combat path must not switch on). Verified from a live capture: `:s` → `You are blind.` →
+  `Suijin walks into the room from the north.` (the party followed south) with no room render;
+  the map had frozen at the source room until this path landed.
 - **[CONFIRMED]** **A party follower is dragged one room per leader step, announced by
   ` -- Following your Party leader <dir> --`.** Movement is leader-driven: when the party
   leader walks, the game moves every follower one room the same way and prints this line
@@ -945,6 +966,17 @@ flag). These are hard eligibility gates, independent of resistance and level imm
   `.@held` say routes through the same pause (a held member can't move, so the party waits for
   them) and releases via that member's `@ok` on cure. The leader-side "ignore @wait when leading"
   opt-out drops inbound `@wait` before it ever pauses.
+- **[CONFIRMED]** A party member sitting down to rest is announced to everyone else in the room as
+  **`<name> stops to rest.`** (`<name>` is the given name). The actor's own view uses a different
+  verb form (`You stop to rest.`), so the third-person line never matches the resting player's own
+  row. Used to flip `PartyMember.Resting` the instant it's seen, ahead of the 5-second `par` poll,
+  so a follower can mirror the leader's rest immediately. *(The equivalent meditate-observation line
+  is not yet confirmed — do not guess it.)*
+- **[DESIGN]** *(user directive, 2026-07-11)* Rest-to-use-the-wait: when the party **leader** is
+  `@wait`-held and **not poisoned**, the leader rests (or meditates) to use the forced downtime,
+  until the wait clears. A **follower** that sees the leader rest/meditate rests/meditates too —
+  **unless the follower is poisoned** (poison ticks break rest and waste the downtime). The normal
+  below-threshold rest is unaffected by poison; only these two downtime-rest paths gate on it.
 
 ## Talk / chat
 

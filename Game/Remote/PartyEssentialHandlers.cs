@@ -41,8 +41,23 @@ public sealed class PartyEssentialHandlers : IDisposable
     private readonly Func<IReadOnlyList<RoomEntity>?>? _readRoomEntities;
     private readonly Func<MovementStatus>? _readMovement;
     private readonly Func<string?>? _readDraggedBy;
+    private readonly Func<MessageFlags>? _readAilments;
     private Action<byte[]>? _wireSender;
     private bool _disposed;
+
+    // The curable ailments @status reports, paired with the plain word the reply
+    // spells them as. Mirrors the say-toggle token table (PartyAilmentTracker.Tokens)
+    // minus the '@' — the asking client's PartyAilmentTracker parses these exact
+    // words to reconcile the responder's chips. Held is excluded: its chip clear is
+    // tied to the @ok / leader-pause lifecycle, so a @status reconcile must not
+    // touch it.
+    private static readonly (MessageFlags Flag, string Word)[] StatusAilments =
+    {
+        (MessageFlags.Poisoned, "poisoned"),
+        (MessageFlags.Blinded,  "blind"),
+        (MessageFlags.Confused, "confused"),
+        (MessageFlags.Diseased, "diseased"),
+    };
 
     // Player names currently asking the party to @wait. Removed when the same
     // player sends @ok. The pause-gate reads this set to decide whether the
@@ -67,7 +82,8 @@ public sealed class PartyEssentialHandlers : IDisposable
         Func<Room?>? readCurrentRoom = null,
         Func<IReadOnlyList<RoomEntity>?>? readRoomEntities = null,
         Func<MovementStatus>? readMovement = null,
-        Func<string?>? readDraggedBy = null)
+        Func<string?>? readDraggedBy = null,
+        Func<MessageFlags>? readAilments = null)
     {
         ArgumentNullException.ThrowIfNull(engine);
         ArgumentNullException.ThrowIfNull(player);
@@ -80,6 +96,7 @@ public sealed class PartyEssentialHandlers : IDisposable
         _readRoomEntities = readRoomEntities;
         _readMovement = readMovement;
         _readDraggedBy = readDraggedBy;
+        _readAilments = readAilments;
 
         // Categories sourced from RemoteCommandCatalog — single source of truth
         // for every documented @-command's required permission category.
@@ -164,11 +181,43 @@ public sealed class PartyEssentialHandlers : IDisposable
         ctx.Reply($"HP={_player.Hp}/{_player.MaxHp}{mana}{position}");
     }
 
+    // @status — reply with three semicolon-separated clauses the party can act on:
+    // our stance (Standing / Resting / Meditating), whether a movement engine is
+    // running (the same phrase @path opens with), and our curable-ailment set
+    // ("no ailments" or "ailments: blind, poisoned"). The ailment clause doubles
+    // as a pull-based resync: the asking client's PartyAilmentTracker reconciles
+    // our chips against it, so a chip missed by the push-based .@X on/off say still
+    // clears the next time someone asks @status. The engine wraps the payload in
+    // { } at SendReply time.
     private void OnStatus(RemoteCommandContext ctx)
     {
         if (!_player.HasPromptData) { ctx.Reply("Status unknown"); return; }
-        ctx.Reply(_player.Position.ToString());
+        string nav = MovementEnginePhrase(_readMovement?.Invoke() ?? default);
+        ctx.Reply($"{_player.Position}; {nav}; {DescribeAilments()}");
     }
+
+    // The curable ailments currently active on us, as the @status ailment clause.
+    // Absent = "no ailments"; otherwise "ailments: <word>, <word>" in table order.
+    private string DescribeAilments()
+    {
+        MessageFlags flags = _readAilments?.Invoke() ?? MessageFlags.None;
+        List<string> words = new();
+        foreach ((MessageFlags flag, string word) in StatusAilments)
+            if (flags.HasFlag(flag)) words.Add(word);
+        return words.Count == 0 ? "no ailments" : $"ailments: {string.Join(", ", words)}";
+    }
+
+    // The leading engine phrase shared by @status and @path: "not moving", or a
+    // short description of the topmost running movement engine. @path appends the
+    // room and step progress on top; @status stops here.
+    private static string MovementEnginePhrase(MovementStatus mv) => mv.Kind switch
+    {
+        MovementKind.Loop    => $"running loop '{mv.Label}'",
+        MovementKind.Lair    => "auto-lair",
+        MovementKind.Walking => $"walking to {mv.Label}",
+        MovementKind.None    => "not moving",
+        _                    => "moving",
+    };
 
     // Status form of @party (no args, or any channel other than Local). Three
     // exclusive outcomes:
@@ -252,13 +301,7 @@ public sealed class PartyEssentialHandlers : IDisposable
         MovementStatus mv = _readMovement?.Invoke() ?? default;
         if (mv.Kind == MovementKind.None) { ctx.Reply("not moving"); return; }
 
-        string engine = mv.Kind switch
-        {
-            MovementKind.Loop    => $"running loop '{mv.Label}'",
-            MovementKind.Lair    => "auto-lair",
-            MovementKind.Walking => $"walking to {mv.Label}",
-            _                    => "moving",
-        };
+        string engine = MovementEnginePhrase(mv);
 
         Room? room = _readCurrentRoom?.Invoke();
         string where = room is null

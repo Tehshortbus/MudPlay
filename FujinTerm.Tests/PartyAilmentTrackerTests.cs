@@ -104,6 +104,34 @@ public sealed class PartyAilmentTrackerTests
     }
 
     [Fact]
+    public void InboundBlindOn_SetsMemberChip()
+    {
+        using Harness h = new();
+        PartyMember mage = h.AddMember("Mage");
+
+        // Explicit 'on' suffix (the paired-toggle apply form) sets the chip
+        // exactly like the bare token.
+        h.Say(@"Mage says ""@blind on""");
+
+        Assert.True(mage.Blinded);
+    }
+
+    [Fact]
+    public void InboundBlindOff_ClearsMemberChip()
+    {
+        using Harness h = new();
+        PartyMember mage = h.AddMember("Mage");
+        h.Say(@"Mage says ""@blind on""");
+        Assert.True(mage.Blinded);
+
+        // The paired-toggle 'off' clears the chip with no cure witnessed — the
+        // natural-wear-off case that left the chip stuck before.
+        h.Say(@"Mage says ""@blind off""");
+
+        Assert.False(mage.Blinded);
+    }
+
+    [Fact]
     public void InboundConfused_SetsMemberChip()
     {
         using Harness h = new();
@@ -112,6 +140,96 @@ public sealed class PartyAilmentTrackerTests
         h.Say(@"Druid says ""@confused""");
 
         Assert.True(druid.Confused);
+    }
+
+    // ----- RECONCILE path (@status reply → chip resync) --------------
+
+    [Fact]
+    public void StatusReply_NoAilments_ClearsStuckChip()
+    {
+        using Harness h = new();
+        PartyMember mage = h.AddMember("Mage");
+        h.Say(@"Mage says ""@blind on""");
+        Assert.True(mage.Blinded);
+
+        // A @status reply reporting no ailments clears a chip a dropped 'off'
+        // left stuck — the pull-based resync.
+        h.Say(@"Mage telepaths: {Standing; not moving; no ailments}");
+
+        Assert.False(mage.Blinded);
+    }
+
+    [Fact]
+    public void StatusReply_ListsAilments_SetsChips()
+    {
+        using Harness h = new();
+        PartyMember mage = h.AddMember("Mage");
+
+        h.Say(@"Mage telepaths: {Standing; not moving; ailments: blind, poisoned}");
+
+        Assert.True(mage.Blinded);
+        Assert.True(mage.Poisoned);
+        Assert.False(mage.Confused);
+        Assert.False(mage.Diseased);
+    }
+
+    [Fact]
+    public void StatusReply_Reconciles_ClearsAbsentAndSetsPresent()
+    {
+        using Harness h = new();
+        PartyMember mage = h.AddMember("Mage");
+        h.Say(@"Mage says ""@poisoned on""");
+        Assert.True(mage.Poisoned);
+
+        // Reply reports blind but not poison: blind set, poison cleared — the
+        // reconcile matches the chips to exactly the reported set.
+        h.Say(@"Mage telepaths: {Standing; not moving; ailments: blind}");
+
+        Assert.True(mage.Blinded);
+        Assert.False(mage.Poisoned);
+    }
+
+    [Fact]
+    public void StatusReply_OverSay_AlsoReconciles()
+    {
+        using Harness h = new();
+        PartyMember mage = h.AddMember("Mage");
+        h.Say(@"Mage says ""@blind on""");
+        Assert.True(mage.Blinded);
+
+        // The reply can ride the say channel too (a leader broadcasting @status).
+        h.Say(@"Mage says ""{Standing; not moving; no ailments}""");
+
+        Assert.False(mage.Blinded);
+    }
+
+    [Fact]
+    public void StatusReply_NoAilments_LeavesHeldChipUntouched()
+    {
+        using Harness h = new();
+        PartyMember mage = h.AddMember("Mage");
+        h.Say(@"Mage says ""@held""");
+        Assert.True(mage.Held);
+
+        // Held is never in the @status clause, so a "no ailments" reply must not
+        // clear the held chip — its lifecycle rides @ok, not the reconcile.
+        h.Say(@"Mage telepaths: {Standing; not moving; no ailments}");
+
+        Assert.True(mage.Held);
+    }
+
+    [Fact]
+    public void NonStatusTelepath_LeavesChipsUntouched()
+    {
+        using Harness h = new();
+        PartyMember mage = h.AddMember("Mage");
+        h.Say(@"Mage says ""@poisoned on""");
+        Assert.True(mage.Poisoned);
+
+        // A telepath with no ailment clause isn't a @status reply — no-op.
+        h.Say(@"Mage telepaths: {HP=200/200, Resting}");
+
+        Assert.True(mage.Poisoned);
     }
 
     [Fact]

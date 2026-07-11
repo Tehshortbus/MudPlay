@@ -255,6 +255,11 @@ public static class BugReportBuilder
         StringBuilder sb = new();
         sb.Append("**Live vitals (PlayerState)**\n\n");
         sb.Append(Json(svc.PlayerState)).Append('\n');
+        // Self ailment flags (ConditionTracker) — the authoritative self view that
+        // gates poison-sensitive behavior (e.g. the downtime-rest paths skip a
+        // poisoned character). Distinct from the party self-row's broadcast flags.
+        Kv(sb, "Active conditions (self)", svc.Conditions.ActiveFlags.ToString());
+        sb.Append('\n');
         sb.Append("**Stat screen (PlayerStats)**\n\n");
         sb.Append(Json(svc.PlayerStats));
         return sb.ToString();
