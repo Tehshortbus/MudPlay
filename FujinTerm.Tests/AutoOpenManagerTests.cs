@@ -28,11 +28,14 @@ public sealed class AutoOpenManagerTests
 
         public Harness()
         {
+            // useTimer: false — no Avalonia dispatcher in unit tests; the debounced
+            // 'i' is driven explicitly via FlushInventoryForTests.
             Open = new AutoOpenManager(
                 carriedItems: () => Carried,
                 resolve: Resolve,
                 isEnabled: () => Enabled,
-                isLoaded: () => Loaded);
+                isLoaded: () => Loaded,
+                useTimer: false);
             Open.SetWireSender(b => Sent.Add(b));
         }
 
@@ -66,22 +69,36 @@ public sealed class AutoOpenManagerTests
         h.Carried.Add("small sack");        // sack picked up
         h.Open.OnInventoryChanged();
 
+        Assert.Equal(new[] { "open small sack" }, h.SentText);   // 'i' still pending
+
+        h.Open.FlushInventoryForTests();    // debounce window elapses
         Assert.Equal(new[] { "open small sack", "i" }, h.SentText);
     }
 
     [Fact]
-    public void MultipleContainers_OpenEach_ThenSingleInventory()
+    public void MultipleContainers_SeparatePasses_OpenEach_ThenSingleInventory()
     {
         using Harness h = new();
         h.Items["small sack"] = (100, true);
         h.Items["leather pouch"] = (101, true);
 
         h.SeedThenChange();
+
+        // Each pickup arrives as its own inventory change (separate "You took"
+        // lines), even with different names — the real get-burst shape.
         h.Carried.Add("small sack");
+        h.Open.OnInventoryChanged();
         h.Carried.Add("leather pouch");
         h.Open.OnInventoryChanged();
 
-        // One 'i' total, after both opens — not one per container.
+        // Both opens went out immediately; the 'i' is debounced to the end.
+        Assert.Equal(
+            new[] { "open small sack", "open leather pouch" },
+            h.SentText);
+
+        h.Open.FlushInventoryForTests();
+
+        // A single 'i' at the end — not one per container.
         Assert.Equal(
             new[] { "open small sack", "open leather pouch", "i" },
             h.SentText);
@@ -96,6 +113,7 @@ public sealed class AutoOpenManagerTests
         h.SeedThenChange();
         h.Carried.Add("torch");
         h.Open.OnInventoryChanged();
+        h.Open.FlushInventoryForTests();    // nothing pending — no 'i'
 
         Assert.Empty(h.Sent);
     }

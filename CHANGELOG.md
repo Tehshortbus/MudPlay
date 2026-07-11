@@ -5,7 +5,7 @@ Notable changes per merged PR, **newest first**. The top of the [README](README.
 ## 1.32.0
 
 - Items flagged CannotBeTaken are never auto-collected, even with AutoCollect set
-- Containers flagged AutoOpen now auto-`open` once when picked up, then re-read the pack with an `i`
+- Containers flagged AutoOpen now auto-`open` once when picked up, then re-read the pack with a single `i` even when several arrive at once
 - Monsters flagged DontBackstab are skipped as the backstab opener — a non-flagged target is preferred, and the room still clears via a normal opener when all are flagged
 - Per-monster override attack / pre-attack spells now substitute for the global Combat-tab choice for that species, bypassing the immunity/level/resist gates while keeping mana and cast-count limits
 - Removed the redundant NotHostile monster flag (alignment + guard flags already cover it)

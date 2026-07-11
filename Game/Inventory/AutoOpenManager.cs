@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Text;
+using Avalonia.Threading;
 using FujinTerm.Services;
 
 namespace FujinTerm.Game.Inventory;
@@ -18,6 +19,13 @@ namespace FujinTerm.Game.Inventory;
 // after firing stops the open's own inventory-change echo (its contents
 // pouring in) from re-firing.
 //
+// Inventory refresh is DEBOUNCED, not sent per open: picking up several
+// containers at once arrives as separate "You took" lines — one Changed (and
+// one open) per container — so firing an 'i' inside each pass would spam one
+// dump per container. Instead each open (re)starts a short timer and a single
+// 'i' goes out once the burst settles, re-parsing the whole post-open pack in
+// one shot.
+//
 // Master switch: AutoActionDefaults.AutoGetItems — the umbrella item-automation
 // toggle shared with auto-get / discard / buy / sell. The per-item AutoOpen
 // overlay flag is the real per-item gate. Runs UI-thread only (Inventory.Changed
@@ -31,6 +39,12 @@ public sealed class AutoOpenManager : IDisposable
     // game, and whether it's a flagged container the engine should auto-open.
     public sealed record ResolvedOpen(int Number, string Name, bool AutoOpen);
 
+    // Debounce window for the post-open inventory refresh — long enough to span
+    // the gaps between the "You took" lines of a single get-burst, short enough
+    // that the trailing 'i' still feels immediate.
+    private static readonly TimeSpan InventoryRefreshDebounce =
+        TimeSpan.FromMilliseconds(500);
+
     private readonly Func<IReadOnlyList<string>> _carried;
     private readonly Func<string, ResolvedOpen?> _resolve;
     private readonly Func<bool> _isEnabled;
@@ -42,14 +56,31 @@ public sealed class AutoOpenManager : IDisposable
     private readonly Dictionary<int, int> _prevCounts = new();
     private bool _seeded;
 
+    // Coalesces the post-open 'i' across a burst of pickups. Null in tests
+    // (useTimer: false) — FlushInventoryForTests drives the refresh instead.
+    private readonly DispatcherTimer? _refreshTimer;
+    private bool _inventoryPending;
+
     private Action<byte[]>? _wireSender;
     private bool _disposed;
 
+    // Default constructor — wires the in-process debounce timer. Use the
+    // test-seam ctor (useTimer: false) for unit tests, where no Avalonia
+    // dispatcher is running.
     public AutoOpenManager(
         Func<IReadOnlyList<string>> carriedItems,
         Func<string, ResolvedOpen?> resolve,
         Func<bool> isEnabled,
         Func<bool> isLoaded,
+        LogService? log = null)
+        : this(carriedItems, resolve, isEnabled, isLoaded, useTimer: true, log) { }
+
+    internal AutoOpenManager(
+        Func<IReadOnlyList<string>> carriedItems,
+        Func<string, ResolvedOpen?> resolve,
+        Func<bool> isEnabled,
+        Func<bool> isLoaded,
+        bool useTimer,
         LogService? log = null)
     {
         ArgumentNullException.ThrowIfNull(carriedItems);
@@ -61,6 +92,15 @@ public sealed class AutoOpenManager : IDisposable
         _isEnabled = isEnabled;
         _isLoaded = isLoaded;
         _log = log;
+
+        if (useTimer)
+        {
+            _refreshTimer = new DispatcherTimer(DispatcherPriority.Background)
+            {
+                Interval = InventoryRefreshDebounce,
+            };
+            _refreshTimer.Tick += (_, _) => FlushInventoryRefresh();
+        }
     }
 
     // Bind the wire sender — the gate-wrapped engine pipeline from
@@ -123,12 +163,14 @@ public sealed class AutoOpenManager : IDisposable
         }
 
         // A container's contents don't surface in the parsed pack until a fresh
-        // inventory dump, so request one 'i' after any auto-open (a single
-        // refresh covers every container opened this pass). Its re-parse fires
-        // Changed again, but the baseline rebased below already accounts for the
-        // opened containers, so that echo can't re-open or re-request.
+        // inventory dump, so schedule one 'i' after any auto-open. The refresh is
+        // debounced (see ScheduleInventoryRefresh) so a burst of container
+        // pickups — each its own Changed/open — collapses to a single trailing
+        // 'i'. Its eventual re-parse fires Changed again, but the baseline rebased
+        // below already accounts for the opened containers, so that echo can't
+        // re-open or re-schedule.
         if (openedAny)
-            Send("i");
+            ScheduleInventoryRefresh();
 
         RebaseTo(current);
     }
@@ -142,6 +184,29 @@ public sealed class AutoOpenManager : IDisposable
             _prevCounts[number] = count;
     }
 
+    // Arm (or re-arm) the debounced inventory refresh. Each open restarts the
+    // window, so a run of pickups fires a single 'i' once the last one settles.
+    private void ScheduleInventoryRefresh()
+    {
+        _inventoryPending = true;
+        if (_refreshTimer is null) return;   // test path drives FlushInventoryForTests
+        _refreshTimer.Stop();
+        _refreshTimer.Start();
+    }
+
+    // Send the coalesced 'i' if one is pending. Idempotent — a spurious tick with
+    // nothing pending is a no-op.
+    private void FlushInventoryRefresh()
+    {
+        _refreshTimer?.Stop();
+        if (!_inventoryPending) return;
+        _inventoryPending = false;
+        Send("i");
+    }
+
+    // Test seam — fire the debounced 'i' as if the coalescing window elapsed.
+    internal void FlushInventoryForTests() => FlushInventoryRefresh();
+
     private void Send(string text)
     {
         if (_wireSender is null) return;
@@ -152,5 +217,6 @@ public sealed class AutoOpenManager : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        _refreshTimer?.Stop();
     }
 }
