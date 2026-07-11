@@ -4,9 +4,10 @@ Notable changes per merged PR, **newest first**. The top of the [README](README.
 
 ## 1.35.0
 
-- Backscroll now shows a frozen snapshot from the moment it opens instead of live-appending, so it no longer lags while following a fast party leader
+- Backscroll now shows a frozen snapshot of scrollback history from the moment it opens instead of live-appending, so it no longer lags while following a fast party leader
 - New output keeps recording in the background; close and reopen to catch up with nothing missed
 - The "Go to live" button is now "Jump to end" — scrolls to the newest captured row
+- Last history line clears the status bar and multi-line drag-select is snappier
 - bug reports addressed: stock-20260711-090329
 
 ## 1.34.15

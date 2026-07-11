@@ -25,7 +25,7 @@ public class BackscrollViewModelTests
     }
 
     [Fact]
-    public void Snapshot_IncludesScrollbackThenScreen()
+    public void Snapshot_IsScrollbackHistoryOnly()
     {
         TerminalEmulator emu = WithScrolledOffHistory(12);
         int scrolledOff = emu.Screen.Scrollback.Count;
@@ -33,8 +33,10 @@ public class BackscrollViewModelTests
 
         BackscrollViewModel vm = new(emu);
 
-        Assert.Equal(scrolledOff, vm.ScrollbackCount);
-        Assert.True(vm.Rows.Count > vm.ScrollbackCount, "the screen snapshot should follow the scrollback rows");
+        // The window mirrors the scrollback ring exactly — history that scrolled
+        // off the top — and never includes the still-on-screen lines.
+        Assert.Equal(scrolledOff, vm.Rows.Count);
+        Assert.DoesNotContain(vm.Rows, r => r.PlainText.Contains("line011"));
     }
 
     [Fact]
@@ -78,7 +80,10 @@ public class BackscrollViewModelTests
         for (int i = 0; i < 40; i++) Feed(emu, $"post{i:D3}\r\n");
 
         BackscrollViewModel reopened = new(emu);
+        // post000 and post030 have long since scrolled off the 5-row screen into
+        // the ring; the last handful (post039) may still be on-screen, so the
+        // scrollback-only snapshot need not contain them.
         Assert.Contains(reopened.Rows, r => r.PlainText.Contains("post000"));
-        Assert.Contains(reopened.Rows, r => r.PlainText.Contains("post039"));
+        Assert.Contains(reopened.Rows, r => r.PlainText.Contains("post030"));
     }
 }

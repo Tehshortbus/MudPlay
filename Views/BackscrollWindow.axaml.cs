@@ -17,15 +17,11 @@ namespace FujinTerm.Views;
 // live terminal). The transcript is rendered as one SelectableTextBlock (Content)
 // plus an aligned timestamp gutter, so native drag-select spans lines and Ctrl+C
 // copies the exact character range. The code-behind builds both from the VM's
-// Rows once, positions the history/screen divider against the scroll offset, and
-// drives Find-next / Jump-to-end by scrolling the viewer.
+// Rows once and drives Find-next / Jump-to-end by scrolling the viewer.
 public partial class BackscrollWindow : Window
 {
     // Fallback line height before the first layout pass measures the real one.
     private const double FallbackLineHeight = 16;
-    // _scroll.Padding top — the transcript's first line sits this far below
-    // the viewport top, so the divider math must add it back.
-    private const double ContentPaddingTop = 4;
 
     // Absolute character offset (into the transcript's text) where each row's
     // text begins — translates a Find hit's (row, column) into a selection.
@@ -40,7 +36,6 @@ public partial class BackscrollWindow : Window
     private readonly ScrollViewer _scroll;
     private readonly SelectableTextBlock _transcript;
     private readonly TextBlock _gutter;
-    private readonly Border _separator;
 
     public BackscrollWindow()
     {
@@ -48,7 +43,6 @@ public partial class BackscrollWindow : Window
         _scroll     = this.FindControl<ScrollViewer>("OuterScroll")!;
         _transcript = this.FindControl<SelectableTextBlock>("Transcript")!;
         _gutter     = this.FindControl<TextBlock>("Gutter")!;
-        _separator  = this.FindControl<Border>("HistoryDivider")!;
         GlobalHotkeys.Attach(this);
         FujinTerm.Services.AppServices.Current.WindowLayouts.AttachWindow(this, "backscroll");
         Opened += OnOpened;
@@ -69,21 +63,17 @@ public partial class BackscrollWindow : Window
         vm.FindMatchRequested += OnFindMatch;
         vm.JumpToEndRequested += OnJumpToEnd;
 
-        _scroll.ScrollChanged += OnScrollChanged;
-
-        // Build once the template + first layout exist, then park at the
-        // history/screen boundary (not the absolute tail) so the window opens on
-        // the newest scrollback with the screen-snapshot line just in view.
+        // Build once the template + first layout exist, then park at the newest
+        // captured row so the window opens on the tail of the history.
         Dispatcher.UIThread.Post(() =>
         {
             Rebuild();
-            Dispatcher.UIThread.Post(ScrollToScreenBoundary, DispatcherPriority.Background);
+            Dispatcher.UIThread.Post(OnJumpToEnd, DispatcherPriority.Background);
         }, DispatcherPriority.Background);
     }
 
     private void OnClosed(object? sender, EventArgs e)
     {
-        _scroll.ScrollChanged -= OnScrollChanged;
         if (DataContext is BackscrollViewModel vm)
         {
             vm.FindMatchRequested -= OnFindMatch;
@@ -122,36 +112,12 @@ public partial class BackscrollWindow : Window
         _gutter.Text = gutter.ToString();
         _lineStartOffsets = offsets;
         _lineCount = vm.Rows.Count;
-
-        // After layout settles, re-place the divider for the content height.
-        Dispatcher.UIThread.Post(UpdateSeparator, DispatcherPriority.Background);
     }
 
     private double LineHeight()
         => _lineCount > 0 && _transcript.Bounds.Height > 0
             ? _transcript.Bounds.Height / _lineCount
             : FallbackLineHeight;
-
-    private void OnScrollChanged(object? sender, ScrollChangedEventArgs e) => UpdateSeparator();
-
-    // Position the amber history/screen divider at the boundary row, offset by
-    // the scroll. Hidden when the boundary is scrolled out of view or there's no
-    // history above the screen snapshot.
-    private void UpdateSeparator()
-    {
-        if (DataContext is not BackscrollViewModel vm) { _separator.IsVisible = false; return; }
-        int boundary = vm.ScrollbackCount;
-        if (boundary <= 0 || boundary >= vm.Rows.Count) { _separator.IsVisible = false; return; }
-
-        double y = ContentPaddingTop + boundary * LineHeight() - _scroll.Offset.Y;
-        if (y < 0 || y > _scroll.Viewport.Height)
-        {
-            _separator.IsVisible = false;
-            return;
-        }
-        _separator.Margin = new Thickness(0, y, 0, 0);
-        _separator.IsVisible = true;
-    }
 
     // Highlight a Find-next hit by selecting its character range and scrolling it
     // into view (~a third down the viewport).
@@ -173,23 +139,6 @@ public partial class BackscrollWindow : Window
     {
         double maxY = Math.Max(0, _scroll.Extent.Height - _scroll.Viewport.Height);
         _scroll.Offset = _scroll.Offset.WithY(maxY);
-    }
-
-    // Open parked at the history/screen boundary rather than the absolute tail:
-    // land the amber divider a couple of lines up from the viewport bottom so
-    // the newest scrollback fills the view and the screen snapshot is just in
-    // sight.
-    private void ScrollToScreenBoundary()
-    {
-        if (DataContext is not BackscrollViewModel vm) { OnJumpToEnd(); return; }
-        int boundary = vm.ScrollbackCount;
-        if (boundary <= 0 || boundary >= vm.Rows.Count) { OnJumpToEnd(); return; }
-
-        double lh = LineHeight();
-        double dividerY = ContentPaddingTop + boundary * lh;
-        double maxY = Math.Max(0, _scroll.Extent.Height - _scroll.Viewport.Height);
-        double targetY = Math.Clamp(dividerY - _scroll.Viewport.Height + lh * 2, 0, maxY);
-        _scroll.Offset = _scroll.Offset.WithY(targetY);
     }
 
     private void OnKeyDown(object? sender, KeyEventArgs e)
