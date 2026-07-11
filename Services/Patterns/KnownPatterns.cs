@@ -215,6 +215,7 @@ public static class KnownPatterns
     public const string PlayerExits       = "presence.player-exits";
     public const string PlayerEnters      = "presence.player-enters";
     public const string RoomAlsoHere      = "presence.room-also-here";    // "Also here: A, B, and C." — per-room occupant list
+    public const string PlayerTeleportsIn = "presence.player-teleports-in"; // "X appears in a blinding flash of light!" — another player materialising in our room (recall / party-splitting chime teleport)
     public const string PartyInviteReceived = "presence.party-invite-received"; // "X has invited you to follow him/her." — incoming party invite from another player (Playpen-verified wording; MajorMUD player chars are male/female only)
 
     // ----- Party --------------------------------------------------------

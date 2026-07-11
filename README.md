@@ -1,12 +1,8 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.34.0**
-> - Navigation routes around item-gated exits and hazard rooms it can't safely cross, instead of walking into them
-> - Room-entry hazards (damage/drown spells, raft crossings) are recognized off the game data; a room is avoided unless a counter item is carried
-> - User-initiated walks with a shorter gated shortcut now pop a free-vs-direct route picker listing what each route needs
-> - Cross-room multi-action exits (act in one room to open an exit in another) are planned and executed in step order
-> - Choosing the direct route provisions its missing gate/hazard items through the existing acquire pipeline
+> **Version 1.34.1**
+> - Party re-invite after a chime/CMD teleport now waits until each member materializes, so no one is left behind by a "you don't see them here" invite
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

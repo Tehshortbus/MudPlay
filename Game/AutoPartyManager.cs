@@ -38,6 +38,7 @@ public sealed class AutoPartyManager : IDisposable
     private readonly IDisposable _telepathSub;
     private readonly IDisposable _followerRemovedSub;
     private readonly IDisposable _youInvitedSub;
+    private readonly IDisposable _teleportArrivalSub;
     private bool _disposed;
 
     // Per-recipient TTL on auto-invites. Subsequent room renders within this
@@ -118,6 +119,17 @@ public sealed class AutoPartyManager : IDisposable
     // so the gate releases and they can walk elsewhere, without disturbing a
     // loop's own invite-wait.
     private readonly HashSet<string> _reformGiven =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    // Members whose reform re-invite is deferred until they materialise in our
+    // room after a party-splitting teleport. A chime/CMD teleport moves the
+    // leader first and flashes the followers in a beat later, so inviting the
+    // instant we cross the teleport races ahead of their arrival — the server
+    // answers "You don't see X here!" and drops the invite. We hold the gate
+    // immediately (BeginReformWait) but withhold the `invite X` until X's
+    // "appears in a blinding flash of light!" (or an "Also here:" listing) shows
+    // they've landed. Names leave the set once their invite goes out.
+    private readonly HashSet<string> _reformPendingInvite =
         new(StringComparer.OrdinalIgnoreCase);
 
     // Members whose IsInvited we're watching so a pending invite flipping
@@ -210,6 +222,11 @@ public sealed class AutoPartyManager : IDisposable
         // nag here covers BOTH paths, so a manual invite escalates
         // the same way an auto-invite does.
         _youInvitedSub = _router.Subscribe(KnownPatterns.PartyYouInvited, OnYouInvited);
+        // "X appears in a blinding flash of light!" — a player teleporting into
+        // our room. Fires the deferred reform re-invite for a member we're
+        // waiting on after a party-splitting teleport, timed to their actual
+        // arrival rather than the instant the leader crossed.
+        _teleportArrivalSub = _router.Subscribe(KnownPatterns.PlayerTeleportsIn, OnTeleportArrival);
 
         // TTL housekeeping — drop the cooldown entry for any member that
         // leaves the roster (so a player who separates from us and then
@@ -382,6 +399,7 @@ public sealed class AutoPartyManager : IDisposable
         _telepathSub.Dispose();
         _followerRemovedSub.Dispose();
         _youInvitedSub.Dispose();
+        _teleportArrivalSub.Dispose();
         _party.Members.CollectionChanged -= OnPartyMembersChanged;
         _party.PropertyChanged           -= OnPartyPropertyChanged;
         foreach (PartyMember m in _watchedMembers) m.PropertyChanged -= OnMemberPropertyChanged;
@@ -405,6 +423,12 @@ public sealed class AutoPartyManager : IDisposable
         {
             string given = ExtractGiven(raw);
             if (string.IsNullOrEmpty(given)) continue;
+            // A reform member already listed at room-render (they teleported in
+            // ahead of the leader) never emits a flash line the leader can see,
+            // so the "Also here:" listing is their arrival signal — send the
+            // withheld invite. Returns early if they're not pending, so the
+            // normal auto-invite path below still runs for everyone else.
+            TrySendDeferredReformInvite(given);
             TryAutoInvite(given);
         }
     }
@@ -782,15 +806,43 @@ public sealed class AutoPartyManager : IDisposable
             if (m.IsSelf) continue;
             string given = ExtractGiven(m.Name);
             if (string.IsNullOrEmpty(given)) continue;
-            // Override the re-invite cooldown — the split is a deliberate reform
-            // trigger, not the rapid room re-render the cooldown guards against.
-            _recentlyInvited[given] = now;
-            _wire.Send($"invite {given}");
-            StartNag(given, now);
+            // Hold the movement gate NOW so the leader doesn't walk off, but
+            // DEFER the `invite X` until X materialises in the room. The
+            // teleport lands the leader first and flashes the followers in a
+            // beat later, so an immediate invite races ahead of their arrival
+            // ("You don't see X here!") and is lost. The invite goes out from
+            // OnTeleportArrival / OnRoomAlsoHere once X is actually present.
+            _reformPendingInvite.Add(given);
             BeginReformWait(given, now);
             _log?.Log(LogSeverity.Info, "AutoParty",
-                $"Re-inviting {given} after party-splitting teleport.");
+                $"Awaiting {given}'s arrival to re-invite after party-splitting teleport.");
         }
+    }
+
+    // A party member we're waiting to reform has materialised (teleport-arrival
+    // line or "Also here:" listing). Send the withheld `invite X` now that the
+    // server will actually see them in the room. No-op for anyone not pending —
+    // strangers recalling in, or a member already invited.
+    private void TrySendDeferredReformInvite(string given)
+    {
+        if (!_reformPendingInvite.Remove(given)) return;
+        if (!_wire.IsBound) return;
+        DateTime now = NowProvider();
+        // Override the re-invite cooldown — the split is a deliberate reform
+        // trigger, not the rapid room re-render the cooldown guards against.
+        _recentlyInvited[given] = now;
+        _wire.Send($"invite {given}");
+        StartNag(given, now);
+        _log?.Log(LogSeverity.Info, "AutoParty",
+            $"Re-inviting {given} on arrival after party-splitting teleport.");
+    }
+
+    private void OnTeleportArrival(MatchResult match)
+    {
+        if (match.Groups.Count == 0) return;
+        string given = ExtractGiven(match.Groups[0]);
+        if (string.IsNullOrEmpty(given)) return;
+        TrySendDeferredReformInvite(given);
     }
 
     // Drop the invite-wait for given (they joined, were uninvited, or the party
@@ -799,6 +851,7 @@ public sealed class AutoPartyManager : IDisposable
     {
         if (!_inviteWaits.Remove(given)) return;
         _reformGiven.Remove(given);
+        _reformPendingInvite.Remove(given);
         _log?.Log(LogSeverity.Info, "AutoParty",
             $"Released loop hold for {given} — {reason}.");
         RefreshInviteGate();
@@ -819,6 +872,7 @@ public sealed class AutoPartyManager : IDisposable
             CancelNag(given, reason);
         }
         _reformGiven.Clear();
+        _reformPendingInvite.Clear();
         _log?.Log(LogSeverity.Info, "AutoParty", $"Aborted party-reform holds — {reason}.");
         RefreshInviteGate();
         if (_activeNags.Count == 0 && _inviteWaits.Count == 0) StopNagTimer();
@@ -864,6 +918,7 @@ public sealed class AutoPartyManager : IDisposable
         if (_inviteWaits.Count == 0) return;
         _inviteWaits.Clear();
         _reformGiven.Clear();
+        _reformPendingInvite.Clear();
         _log?.Log(LogSeverity.Info, "AutoParty", $"Released all loop holds — {reason}.");
         RefreshInviteGate();
         if (_activeNags.Count == 0) StopNagTimer();

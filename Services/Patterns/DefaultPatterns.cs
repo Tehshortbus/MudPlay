@@ -328,6 +328,14 @@ public static class DefaultPatterns
             @"^(?<player>\w+) just left the Realm\.");
         yield return new RegexPattern(KnownPatterns.PlayerEnters,
             @"^(?<player>\w+) just entered the Realm\.");
+        // Another player materialising in our room by teleport — a recall
+        // spell or a party-splitting chime/CMD teleport. Distinct from the
+        // directional "walks in" arrival: teleport arrivals carry no
+        // direction, so a party reform waiting on a member's arrival keys off
+        // this line to time its re-invite (inviting before the member has
+        // flashed in draws "You don't see X here!" and the invite is lost).
+        yield return new RegexPattern(KnownPatterns.PlayerTeleportsIn,
+            @"^(?<player>\w+) appears in a blinding flash of light!");
 
         // Room-occupant list — fires on every room render that includes
         // visible non-mob players. Single capture group holds the full

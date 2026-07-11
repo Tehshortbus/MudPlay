@@ -593,6 +593,22 @@ comes from the stat screen / who line (`AlignmentTracker` / `PlayerStats`).
   2. fire the verb itself (`ring chime`), and
   3. because the teleport disbanded the party, **re-invite every member and wait for them to rejoin**
      before continuing the route.
+  **Arrival ordering [CONFIRMED, capture 2026-07-10]:** the leader teleports *first* (`You ring the
+  chime…` → `You find yourself…elsewhere.`), then each relayed follower materialises a beat later,
+  one per line: **`%name% appears in a blinding flash of light!`** (the generic teleport/recall
+  arrival line for another player entering your room — no direction). So a re-invite fired the instant
+  the leader crosses races **ahead** of the members' arrival and the server answers
+  **`You don't see %name% here!`** — the invite is silently lost and that member is left out of the
+  reformed party. The re-invite for each member must therefore wait until that member is observed in
+  the room (their `appears in a blinding flash of light!` line, or an `Also here:` listing if they
+  landed ahead of the leader). A member whose invite lands after arrival rejoins cleanly
+  (`You have invited %name% to follow you.` → `%name% started to follow you.`).
+- **[CONFIRMED, capture 2026-07-10]** A follower client that receives `@join` while it is **already
+  following someone** answers the telepath with **`I'm following someone; denied.`** — `@join` is not
+  idempotent against an existing follow. This surfaces as a downstream symptom when a reform re-invite
+  was lost (above): the leader's `@join` nag then telepaths a member who never dropped their follow
+  state, and the join is refused. Landing the re-invite at the right time (post-arrival) avoids the nag
+  path entirely.
 - **[NEEDS CONFIRMATION]** The believed general rule (user's inference, not yet verified across all
   cases): a teleport driven by a room **`CMD`** (TBInfo chain) splits the party and needs each member
   to execute it (→ `@party` relay + re-invite/wait), whereas a teleport/traversal that is **exit-driven**
