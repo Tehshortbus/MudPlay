@@ -155,8 +155,15 @@ public sealed class AutoDepositManagerTests : IDisposable
         public List<byte[]> Stashed { get; } = new();
         public List<long> DepositedValues { get; } = new();
 
-        public IEnumerable<string> DepositLines() =>
+        // Every command on the deposit wire — the bank path now sends `i` (the
+        // pre-deposit re-read) before its `dep`, so this carries both.
+        public IEnumerable<string> SentLines() =>
             Deposited.Select(b => Encoding.Latin1.GetString(b).TrimEnd('\r'));
+
+        // Just the `dep <value>` commands — filters out the `i` re-read the bank
+        // path fires on arrival.
+        public IEnumerable<string> DepositLines() =>
+            SentLines().Where(s => s.StartsWith("dep ", StringComparison.Ordinal));
 
         public IEnumerable<string> StashLines() =>
             Stashed.Select(b => Encoding.Latin1.GetString(b).TrimEnd('\r'));
@@ -165,13 +172,21 @@ public sealed class AutoDepositManagerTests : IDisposable
         /// that arms the auto-deposit gate.</summary>
         public void SetWealth(int copper, int silver, int gold, int platinum, int runic, long totalCopperValue)
         {
+            SetSnapshotOnly(copper, silver, gold, platinum, runic, totalCopperValue);
+            Cash.OnInventoryChanged();
+        }
+
+        /// <summary>Set holdings WITHOUT re-firing the Cash gate — models the
+        /// fresh `i` dump that lands at the bank (e.g. a lower figure after an
+        /// unobserved en-route toll).</summary>
+        public void SetSnapshotOnly(int copper, int silver, int gold, int platinum, int runic, long totalCopperValue)
+        {
             Snapshot = new InventorySnapshot(
                 new CurrencyHoldings(copper, silver, gold, platinum, runic, totalCopperValue),
                 EncumbranceReading.Empty,
                 Array.Empty<EquippedItem>(),
                 Array.Empty<string>(),
                 DateTimeOffset.UtcNow);
-            Cash.OnInventoryChanged();
         }
 
         public void Dispose()
@@ -386,9 +401,13 @@ public sealed class AutoDepositManagerTests : IDisposable
         Arrive(h, new RoomKey(1, 2));
         Arrive(h, new RoomKey(1, 3));
 
-        // Arrived → a single `dep <wealth - keep>`; keep floors are 0 here.
-        Assert.Single(h.Deposited);
-        Assert.Equal("dep 5000", h.DepositLines().Single());
+        // On arrival the manager re-reads holdings (`i`) and defers the `dep`
+        // until the fresh dump lands — no deposit yet.
+        Assert.Empty(h.DepositLines());
+        DeliverBankInventory(h);
+
+        // Now a single `dep <wealth - keep>`; keep floors are 0 here.
+        Assert.Equal("dep 5000", Assert.Single(h.DepositLines()));
         // ...and the Deposited event carries the same copper value for the
         // Session Stats stashed/deposited tally.
         Assert.Equal(5000L, Assert.Single(h.DepositedValues));
@@ -405,6 +424,32 @@ public sealed class AutoDepositManagerTests : IDisposable
     }
 
     [Fact]
+    public void BankArrival_ReReadsInventory_DepositsPostTollAmount()
+    {
+        using Harness h = NewHarness();
+        StartLair(h);
+        ArmBankGate(h);
+
+        // Gate arms on the pre-toll figure the loop last saw.
+        h.SetWealth(copper: 0, silver: 0, gold: 50, platinum: 0, runic: 0, totalCopperValue: 5000);
+
+        // A toll silently drains 500 copper en route — no pattern observes it,
+        // so the manager's snapshot still reads 5000 when it reaches the bank.
+        Arrive(h, new RoomKey(1, 2));
+        Arrive(h, new RoomKey(1, 3));
+
+        // On arrival it re-reads holdings and holds the deposit until the dump.
+        Assert.Contains("i", h.SentLines());
+        Assert.Empty(h.DepositLines());
+
+        // The fresh `i` reflects the post-toll balance; deposit tracks it, not
+        // the stale 5000 (a `dep 5000` would be rejected outright, banking nothing).
+        h.SetSnapshotOnly(copper: 0, silver: 0, gold: 45, platinum: 0, runic: 0, totalCopperValue: 4500);
+        DeliverBankInventory(h);
+        Assert.Equal("dep 4500", Assert.Single(h.DepositLines()));
+    }
+
+    [Fact]
     public void Deposit_SubtractsKeepOnHandFloors()
     {
         using Harness h = NewHarness();
@@ -415,10 +460,10 @@ public sealed class AutoDepositManagerTests : IDisposable
         h.SetWealth(copper: 0, silver: 0, gold: 50, platinum: 0, runic: 0, totalCopperValue: 5000);
         Arrive(h, new RoomKey(1, 2));
         Arrive(h, new RoomKey(1, 3));
+        DeliverBankInventory(h);
 
         // 5000 wealth − 1000 keep = 4000 deposited.
-        Assert.Single(h.Deposited);
-        Assert.Equal("dep 4000", h.DepositLines().Single());
+        Assert.Equal("dep 4000", Assert.Single(h.DepositLines()));
     }
 
     [Fact]
@@ -436,10 +481,11 @@ public sealed class AutoDepositManagerTests : IDisposable
         h.SetWealth(copper: 0, silver: 0, gold: 50, platinum: 0, runic: 0, totalCopperValue: 5000);
         Arrive(h, new RoomKey(1, 2));
         Arrive(h, new RoomKey(1, 3));
+        DeliverBankInventory(h);
 
         // 5000 ≤ 10000 keep → nothing to deposit, but the round-trip still
         // walks back and resumes.
-        Assert.Empty(h.Deposited);
+        Assert.Empty(h.DepositLines());
         Assert.Equal(new RoomKey(1, 1), h.Walker.Destination);
         Arrive(h, new RoomKey(1, 2));
         Arrive(h, new RoomKey(1, 1));
@@ -618,6 +664,11 @@ public sealed class AutoDepositManagerTests : IDisposable
         h.LightShopRooms.Add(new RoomKey(1, 4));
     }
 
+    // Commit the deferred bank deposit: on arrival the manager sends `i` and waits
+    // for inventory to re-sync before it fires `dep`. Stands in for
+    // InventoryManager.Changed firing after the fresh dump lands.
+    private static void DeliverBankInventory(Harness h) => h.AutoDeposit.OnInventoryChanged();
+
     // Simulate a bought copy landing in the pack and fire the inventory re-check
     // the manager listens on for its buy phase.
     private static void GiveTorch(Harness h)
@@ -639,9 +690,10 @@ public sealed class AutoDepositManagerTests : IDisposable
         h.SetWealth(copper: 0, silver: 0, gold: 50, platinum: 0, runic: 0, totalCopperValue: 5000);
         Assert.Equal(new RoomKey(1, 3), h.Walker.Destination);
 
-        // Walk to the bank (1/1 → 1/2 → 1/3) → deposit fires.
+        // Walk to the bank (1/1 → 1/2 → 1/3) → re-read, then deposit fires.
         Arrive(h, new RoomKey(1, 2));
         Arrive(h, new RoomKey(1, 3));
+        DeliverBankInventory(h);
         Assert.Equal("dep 5000", h.DepositLines().Single());
 
         // Return leg (1/3 → 1/2 → 1/1) runs dark and nothing is carried → detour
@@ -674,6 +726,7 @@ public sealed class AutoDepositManagerTests : IDisposable
         h.SetWealth(copper: 0, silver: 0, gold: 50, platinum: 0, runic: 0, totalCopperValue: 5000);
         Arrive(h, new RoomKey(1, 2));
         Arrive(h, new RoomKey(1, 3));
+        DeliverBankInventory(h);
         Assert.Equal("dep 5000", h.DepositLines().Single());
 
         // No light detour — straight back to origin, nothing bought.
@@ -697,6 +750,7 @@ public sealed class AutoDepositManagerTests : IDisposable
         h.SetWealth(copper: 0, silver: 0, gold: 50, platinum: 0, runic: 0, totalCopperValue: 5000);
         Arrive(h, new RoomKey(1, 2));
         Arrive(h, new RoomKey(1, 3));
+        DeliverBankInventory(h);
 
         // Buy verdict but no reachable shop → head home without light, don't stall.
         Assert.Equal(new RoomKey(1, 1), h.Walker.Destination);

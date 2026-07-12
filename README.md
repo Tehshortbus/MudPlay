@@ -1,11 +1,11 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.40.0**
-> - Fixed a freeze when a walk-to was queued during a loop whose auto-deposit route crossed a dark area — the reroute no longer lets two controllers drive one walker
-> - Auto-deposit bank runs that return through the dark now chain an errand: origin → bank → light shop → origin → resume loop, buying only the light the route needs
-> - The dark return leg falls through to a plain return without light when auto-light is off or no reachable shop stocks the needed light
-> - Bug report captures the auto-deposit reroute status
+> **Version 1.40.4**
+> - Movement refusals ending in `!` (Paradigm's "There is no exit in that direction!") now clear the pending move instead of stranding the walker
+> - Auto-deposit re-reads holdings at the bank before depositing, so an unobserved en-route toll no longer makes it try to bank a stale pre-toll amount and bank nothing
+> - A player failing a sneak into your room ("You notice X sneaking in…") is no longer mis-tagged as a monster that jams the combat gate and freezes the loop
+> - Conversation channel-filter toggles now repopulate in one pass instead of shuddering through the whole history line by line
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

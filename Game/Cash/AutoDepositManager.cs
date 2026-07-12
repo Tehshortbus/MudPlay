@@ -68,6 +68,17 @@ public sealed class AutoDepositManager : IDisposable
 {
     private const string LogCategory = "AutoDeposit";
 
+    // On arrival at a bank the deposit amount is re-read from a fresh `i` rather
+    // than the carried snapshot: a silent wealth change en route — a toll charge,
+    // which no pattern observes, so the snapshot never decrements for it — would
+    // otherwise deposit the stale pre-toll figure, and the game rejects a `dep`
+    // for more coin than is on hand (no partial), leaving the deposit un-done
+    // while the engine walks on. Requesting `i` and deferring the `dep` until the
+    // fresh dump lands also serialises the deposit ahead of the return leg, so the
+    // walk home can't queue moves between the `i` and the `dep`. Bounds the wait so
+    // a lost `i` reply can't wedge the engine at the bank.
+    private static readonly TimeSpan DepositSyncTimeout = TimeSpan.FromSeconds(4);
+
     private readonly CashManager _cash;
     private readonly Func<CashSettings> _readCash;
     private readonly Func<InventorySnapshot> _getSnapshot;
@@ -84,6 +95,10 @@ public sealed class AutoDepositManager : IDisposable
     private readonly Action<Action> _post;
     private readonly TimeSpan _buyTimeout;
     private readonly Timer _buyTimer;
+    // Bounds the wait for the fresh `i` on bank arrival (see DepositSyncTimeout).
+    // Fires on a threadpool thread, so its callback is posted back onto the UI
+    // thread — same marshalling as the buy timer.
+    private readonly Timer _depositSyncTimer;
     private readonly LogService? _log;
 
     private Action<byte[]>? _wireSender;
@@ -155,6 +170,8 @@ public sealed class AutoDepositManager : IDisposable
         _post = post;
         _buyTimeout = buyTimeout ?? TimeSpan.FromSeconds(8);
         _buyTimer = new Timer(_ => _post(OnBuyTimeout), null,
+            Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+        _depositSyncTimer = new Timer(_ => _post(OnDepositSyncTimeout), null,
             Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
         _log = log;
 
@@ -343,13 +360,38 @@ public sealed class AutoDepositManager : IDisposable
             // auto-deposit reroute (never on a manual walk-through).
             _log?.Info(LogCategory, "arrived at stash room — executing stash");
             _stash.ExecuteStash(_destination);
-        }
-        else
-        {
-            DepositAtBank();
+            BeginReturnLeg();
+            return;
         }
 
+        // Bank: re-read holdings with a fresh `i` before computing the deposit
+        // (see the DepositSyncTimeout note) and defer the `dep` + return leg until
+        // the dump lands (OnInventoryChanged) or the timeout elapses.
+        _log?.Info(LogCategory, "arrived at bank — requesting fresh inventory before deposit");
+        _phase = DepositPhase.AwaitingInventoryForDeposit;
+        Send("i");
+        _depositSyncTimer.Change(DepositSyncTimeout, Timeout.InfiniteTimeSpan);
+    }
+
+    // Fresh inventory landed while a bank deposit was waiting on the pre-deposit
+    // re-read — commit the deposit against the now-current holdings, then start the
+    // return leg.
+    private void CompleteBankDeposit()
+    {
+        _depositSyncTimer.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+        DepositAtBank();
         BeginReturnLeg();
+    }
+
+    // The fresh `i` reply never arrived within DepositSyncTimeout — deposit from
+    // the last-known snapshot (no worse than depositing without the re-read)
+    // rather than wedge the engine at the bank. Posted onto the UI thread from the
+    // timer.
+    private void OnDepositSyncTimeout()
+    {
+        if (_phase != DepositPhase.AwaitingInventoryForDeposit) return;
+        _log?.Warn(LogCategory, "no fresh inventory within timeout — depositing from last-known holdings");
+        CompleteBankDeposit();
     }
 
     // Decide the trip home. If the bank -> origin leg runs dark and no carried light
@@ -416,11 +458,18 @@ public sealed class AutoDepositManager : IDisposable
         _buyTimer.Change(_buyTimeout, Timeout.InfiniteTimeSpan);
     }
 
-    // Inventory-change poll (wired to InventoryManager.Changed). The first fresh
-    // copy landing resumes the walk home — one copy covers the dark leg even while
-    // the rest of the batch is still buying. A no-op outside the buy phase.
+    // Inventory-change poll (wired to InventoryManager.Changed). Drives two
+    // deferred phases: the pre-deposit re-read at the bank (any change commits the
+    // deposit against fresh holdings), and the light buy (the first fresh copy
+    // resumes the walk home — one copy covers the dark leg even while the rest of
+    // the batch is still buying). A no-op outside those phases.
     public void OnInventoryChanged()
     {
+        if (_phase == DepositPhase.AwaitingInventoryForDeposit)
+        {
+            CompleteBankDeposit();
+            return;
+        }
         if (_phase != DepositPhase.BuyingLight) return;
         if (_lightBuy is not { } buy) return;
         if (_carriedCount(buy.ItemId) <= _lightBaseCount) return;
@@ -545,6 +594,7 @@ public sealed class AutoDepositManager : IDisposable
     private void GoIdle()
     {
         _buyTimer.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+        _depositSyncTimer.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
         _lightBuy = null;
         _busy = false;
         _phase = DepositPhase.Idle;
@@ -564,12 +614,14 @@ public sealed class AutoDepositManager : IDisposable
         _walker.Event -= OnWalkEvent;
         _tracker.StateChanged -= OnRoomEntered;
         _buyTimer.Dispose();
+        _depositSyncTimer.Dispose();
     }
 
     private enum DepositPhase
     {
         Idle,
         WalkingToDestination,
+        AwaitingInventoryForDeposit,
         WalkingToLightShop,
         BuyingLight,
         WalkingBackToOrigin,

@@ -46,7 +46,10 @@ public sealed partial class MovementRefusalDetector : IDisposable
     }
 
     // Refusal patterns. Anchored to the whole line so quoted chat doesn't
-    // false-trigger. Add new variants here as we observe them in real sessions.
+    // false-trigger. Terminators tolerate both '.' and '!' — Paradigm ends its
+    // refusal lines with '!' ("There is no exit in that direction!") where stock
+    // uses '.', and a bonked move that never matched left the tracker's Pending
+    // move stranded. Add new variants here as we observe them in real sessions.
     private static readonly Regex[] Patterns =
     {
         CantMoveDirection(),
@@ -59,40 +62,40 @@ public sealed partial class MovementRefusalDetector : IDisposable
     };
 
     [GeneratedRegex(
-        @"^\s*You can't move (in )?that direction\.?\s*$",
+        @"^\s*You can't move (in )?that direction[.!]?\s*$",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex CantMoveDirection();
 
     [GeneratedRegex(
-        @"^\s*You can't go that way\.?\s*$",
+        @"^\s*You can't go that way[.!]?\s*$",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex CantGoThatWay();
 
     [GeneratedRegex(
-        @"^\s*There is no exit (in )?that direction\.?\s*$",
+        @"^\s*There is no exit (in )?that direction[.!]?\s*$",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex NoExitThatDirection();
 
     // Paralyzed / confused / stunned variants — "You are too <state> to move."
     [GeneratedRegex(
-        @"^\s*You are too (paralyzed|confused|stunned|dazed) to move\.?\s*$",
+        @"^\s*You are too (paralyzed|confused|stunned|dazed) to move[.!]?\s*$",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex TooImpairedToMove();
 
     [GeneratedRegex(
-        @"^\s*You can't see well enough to move\.?\s*$",
+        @"^\s*You can't see well enough to move[.!]?\s*$",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex CantSeeWellEnoughToMove();
 
     [GeneratedRegex(
-        @"^\s*You are too encumbered to move\.?\s*$",
+        @"^\s*You are too encumbered to move[.!]?\s*$",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex TooEncumberedToMove();
 
     // Door blocking — server returns this when the user issues a direction
     // whose exit has a closed door.
     [GeneratedRegex(
-        @"^\s*The door is closed\.?\s*$",
+        @"^\s*The door is closed[.!]?\s*$",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex DoorIsClosed();
 }

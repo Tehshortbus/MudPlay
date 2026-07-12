@@ -188,6 +188,15 @@ public static class KnownPatterns
     // Combat gate the mob was holding drops instead of freezing the walker.
     public const string RoomEntryDeparture   = "presence.room-entry-departure";
 
+    // Sneak-arrival notice — "You notice <name> sneaking in from the <dir>."
+    // Fires ONLY when a player fails a sneak into our room; monsters never emit
+    // it. Split out from RoomEntryArrival because that pattern greedily captured
+    // the whole "You notice <name>" as the arrival name and — the wire paints
+    // this line the monster hue — tagged it a null-numbered Monster that held
+    // the Combat gate open with no death/departure line to ever clear it.
+    // RoomEntryWatcher classifies this line Player unconditionally.
+    public const string SneakArrivalNotice   = "presence.sneak-arrival-notice";
+
     // ----- Conversation --------------------------------------------------
     public const string ConversationGossip      = "conversation.gossip";
     public const string ConversationBroadcast   = "conversation.broadcast";

@@ -222,6 +222,47 @@ public sealed class RoomEntryWatcherTests
         Assert.Equal("Bob", h.Arrivals[0].Name);
     }
 
+    // ----- sneak-arrival notice ----------------------------------------
+
+    [Fact]
+    public void SneakNotice_ClassifiedAsPlayer_EvenWithMonsterHue()
+    {
+        // "You notice <name> sneaking in from the <dir>." is always a player
+        // who failed a sneak into our room. The wire paints the line the
+        // monster hue (yellow), which previously mis-tagged it a null-numbered
+        // Monster that held the Combat gate open forever. It must classify
+        // Player regardless of the colour.
+        using Harness h = new();
+        string line = "You notice Gronx sneaking in from the north.";
+        h.Feed(line, h.AttrsWithFg(line, index: 11));     // bright yellow (monster hue)
+
+        Assert.Single(h.Arrivals);
+        Assert.Equal(EntityKind.Player, h.Arrivals[0].Kind);
+        Assert.Equal("Gronx", h.Arrivals[0].Name);
+        Assert.Equal("north", h.Arrivals[0].Direction);
+
+        // The bare player name is captured — not the polluted "You notice Gronx"
+        // the greedy RoomEntryArrival pattern used to grab — and it carries no
+        // monster number, so nothing engageable holds the gate.
+        RoomEntity appended = h.Observations[0].Entities[0];
+        Assert.Equal("Gronx", appended.ResolvedName);
+        Assert.Equal(EntityKind.Player, appended.Kind);
+        Assert.Null(appended.MonsterNumber);
+    }
+
+    [Fact]
+    public void SneakNotice_DoesNotDoubleFireAsMonsterArrival()
+    {
+        // RoomEntryArrival's (?!You notice ) guard must keep it from also
+        // matching the sneak line — MessageRouter is fan-out, so without the
+        // guard both patterns would fire and re-create the Monster phantom.
+        using Harness h = new();
+        h.Feed("You notice Gronx sneaking in from the north.");
+
+        Assert.Single(h.Arrivals);
+        Assert.DoesNotContain(h.Arrivals, a => a.Kind == EntityKind.Monster);
+    }
+
     // ----- direction tolerance -----------------------------------------
 
     [Theory]

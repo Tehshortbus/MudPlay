@@ -40,6 +40,7 @@ public sealed class RoomEntryWatcher : IDisposable
     private readonly RoomEntityClassifier _classifier;
     private readonly LogService? _log;
     private readonly IDisposable _arrivalSub;
+    private readonly IDisposable _sneakArrivalSub;
     private bool _disposed;
 
     // Fires after each arrival is parsed + classified + appended to the
@@ -58,6 +59,7 @@ public sealed class RoomEntryWatcher : IDisposable
         _classifier = classifier;
         _log = log;
         _arrivalSub = router.Subscribe(KnownPatterns.RoomEntryArrival, OnArrival);
+        _sneakArrivalSub = router.Subscribe(KnownPatterns.SneakArrivalNotice, OnSneakArrival);
     }
 
     private void OnArrival(MatchResult match)
@@ -142,6 +144,34 @@ public sealed class RoomEntryWatcher : IDisposable
             Name: name, Kind: finalKind, Direction: direction, At: DateTimeOffset.Now));
     }
 
+    // "You notice <name> sneaking in from the <dir>." — a player who failed a
+    // sneak into our room. Monsters never emit this line, so we classify Player
+    // unconditionally and ignore the colour hint: the wire paints this line the
+    // monster hue, which previously tagged the sneaker a null-numbered Monster
+    // whose fail-open engageability held the Combat gate open forever (no death
+    // or departure line ever arrives to clear it). A player never gates combat,
+    // so tracking it as Player is the fix.
+    private void OnSneakArrival(MatchResult match)
+    {
+        // (?<name>\w+) at positional 0, (?<direction>[\w-]+) at 1.
+        if (match.Groups.Count < 2) return;
+        string name = match.Groups[0];
+        string direction = match.Groups[1];
+        if (name.Length == 0) return;
+
+        RoomEntity player = new(
+            RawName:       name,
+            ResolvedName:  name,
+            Kind:          EntityKind.Player,
+            MonsterNumber: null);
+        _classifier.AppendArrivalEntity(player, rawWireLine: match.Text);
+
+        _log?.Info(LogCategory,
+            $"sneak arrival kind=Player name={name} direction={direction}");
+        ArrivalObserved?.Invoke(new RoomEntryArrivalEvent(
+            Name: name, Kind: EntityKind.Player, Direction: direction, At: DateTimeOffset.Now));
+    }
+
     // Read the foreground of the first non-space cell off the line's attribute
     // strip. Returns Monster for yellow (indexed 3 or 11), Player for red
     // (indexed 1 or 9), Unknown for anything else (including default-colour / RGB
@@ -185,5 +215,6 @@ public sealed class RoomEntryWatcher : IDisposable
         if (_disposed) return;
         _disposed = true;
         _arrivalSub.Dispose();
+        _sneakArrivalSub.Dispose();
     }
 }
