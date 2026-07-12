@@ -248,6 +248,14 @@ public static class DefaultPatterns
         yield return new RegexPattern(KnownPatterns.RoomEntryArrival,
             @"^(?<name>.+?) \w+ in(?:to)?(?: the room)? from (?:the )?(?<direction>[\w-]+)[.!]\s*$");
 
+        // Room-exit departure — mirror of the arrival line. "The orc rogue walks
+        // out of the room to the above!" is the canonical form seen when a
+        // fleeing player drags an engaged mob out with them. Only one departure
+        // wording is confirmed so far; add alternates here if the game emits
+        // others.
+        yield return new RegexPattern(KnownPatterns.RoomEntryDeparture,
+            @"^(?<name>.+?) walks out of the room to (?:the )?(?<direction>[\w-]+)[.!]\s*$");
+
         // ----- Conversation ---------------------------------------------
         // Auction lines share gossip's shape ("X auctions: ...") and the user
         // wants them filtered under the same Gossip toggle in the Conversation

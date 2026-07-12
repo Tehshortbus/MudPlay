@@ -38,7 +38,6 @@ public sealed partial class SessionStatsViewModel : ObservableObject, IDisposabl
     private readonly CombatSessionTracker _combatTracker;
     private readonly TimeAnalysisTracker _timeTracker;
     private readonly SessionActivityTracker _activityTracker;
-    private readonly TransactionHistoryTracker _transactionTracker;
     private readonly SessionStatsLayoutStore _layoutStore;
 
     // Resolves the per-BBS runic word for the currency denomination labels.
@@ -126,7 +125,6 @@ public sealed partial class SessionStatsViewModel : ObservableObject, IDisposabl
         CombatSessionTracker combat,
         TimeAnalysisTracker time,
         SessionActivityTracker activity,
-        TransactionHistoryTracker transactions,
         SessionStatsLayoutStore layout,
         PlayerStats stats,
         GameDataCache gameData,
@@ -136,7 +134,6 @@ public sealed partial class SessionStatsViewModel : ObservableObject, IDisposabl
         ArgumentNullException.ThrowIfNull(combat);
         ArgumentNullException.ThrowIfNull(time);
         ArgumentNullException.ThrowIfNull(activity);
-        ArgumentNullException.ThrowIfNull(transactions);
         ArgumentNullException.ThrowIfNull(layout);
         ArgumentNullException.ThrowIfNull(stats);
         ArgumentNullException.ThrowIfNull(gameData);
@@ -145,7 +142,6 @@ public sealed partial class SessionStatsViewModel : ObservableObject, IDisposabl
         _combatTracker = combat;
         _timeTracker = time;
         _activityTracker = activity;
-        _transactionTracker = transactions;
         _layoutStore = layout;
         _stats = stats;
         _gameData = gameData;
@@ -334,15 +330,15 @@ public sealed partial class SessionStatsViewModel : ObservableObject, IDisposabl
     // ----- Commands ----------------------------------------------------
 
     // Top-bar "Reset session" — wipes every session tracker's counters and
-    // restarts their clocks, and clears the transaction ledger. The resets
-    // raise Changed, which refreshes the bound figures.
+    // restarts their clocks. The transaction ledger is deliberately left intact:
+    // it is user-owned and cleared only from its own window's Clear button. The
+    // resets raise Changed, which refreshes the bound figures.
     [RelayCommand]
     private void Reset()
     {
         _combatTracker.Reset();
         _timeTracker.Reset();
         _activityTracker.Reset();
-        _transactionTracker.Reset();
     }
 
     // Per-section resets, one per collapsible. Each wipes only its own section's

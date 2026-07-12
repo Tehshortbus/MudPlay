@@ -2,6 +2,23 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.37.0
+
+- Auto-deposit bank runs no longer reset session statistics on the way back to a loop — the reset fires only on a genuine first start
+- Transaction history is user-owned — only its own Clear button (or connect / character switch) clears it, never a loop start or party @reset
+- Transaction History window gains a Clear button
+- Auto-deposit no longer wedges for the session when a bank run can't complete — an aborted reroute re-arms the gate and retries (throttled so an unreachable bank can't thrash the engine)
+- bug reports addressed: paradigm-20260711-235419
+
+## 1.36.0
+
+- Loops now open a closed door mid-circuit — bash / pick / key it like the walker does — instead of idling on it
+- Combat resumes right after a between-round heal fired the instant the fight engaged, instead of missing a round
+- A fleeing player dragging the engaged mob out of the room now clears the combat gate, so the walker stops swinging at empty air
+- Auto-light lights only rooms we can't see and puts the light away on entering one we can — no more over-lighting a lit town
+- A burned-out light re-readies a same-named carried spare instead of leaving the player stuck blind
+- bug reports addressed: paradigm-20260711-152210, paradigm-20260711-152453, paradigm-20260711-175844, paradigm-20260711-180449, paradigm-20260711-181619
+
 ## 1.35.9
 
 - Loop no longer stalls when a room refuses entry mid-combat — sends break, waits, then retries the move

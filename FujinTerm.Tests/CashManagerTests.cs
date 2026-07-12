@@ -377,6 +377,72 @@ public sealed class CashManagerTests
         Assert.Single(h.AutoDeposits);
     }
 
+    // A reroute that never deposited must re-arm the gate so it retries — but
+    // not on the very next inventory line. Regression: the single-fire guard
+    // latched on fire and only cleared when wealth fell below threshold, which a
+    // never-completed deposit never reaches, so auto-deposit stayed wedged for
+    // the whole session (reported: bank room configured, wealth over threshold,
+    // no bank trip ever ran).
+    [Fact]
+    public void AutoDeposit_NotifyAborted_ReArmsAfterCooldown()
+    {
+        using Harness h = new();
+        h.Settings.AutoDepositIfWealthExceeds = 100;
+        h.Settings.BankRoomKey = "bank";
+
+        DateTime now = DateTime.UtcNow;
+        h.Cash.AutoDepositClock = () => now;
+
+        h.Snapshot = Wealth(150);
+        h.Cash.OnInventoryChanged();
+        Assert.Single(h.AutoDeposits);
+
+        // Reroute couldn't deposit → subscriber re-arms the gate.
+        h.Cash.NotifyAutoDepositAborted();
+
+        // Still within the cooldown: an immediate re-check must not re-fire (no
+        // engine thrash while the bank stays unreachable).
+        h.Snapshot = Wealth(160);
+        h.Cash.OnInventoryChanged();
+        Assert.Single(h.AutoDeposits);
+
+        // Past the cooldown: the next inventory change retries.
+        now = now.AddMinutes(2);
+        h.Snapshot = Wealth(170);
+        h.Cash.OnInventoryChanged();
+        Assert.Equal(2, h.AutoDeposits.Count);
+    }
+
+    // The natural re-arm (both gates fall below threshold) clears any pending
+    // retry hold, so a genuine deposit that dips wealth then climbs back fires
+    // again immediately without waiting out a stale cooldown.
+    [Fact]
+    public void AutoDeposit_NaturalReArm_ClearsAbortCooldown()
+    {
+        using Harness h = new();
+        h.Settings.AutoDepositIfWealthExceeds = 100;
+        h.Settings.BankRoomKey = "bank";
+
+        DateTime now = DateTime.UtcNow;
+        h.Cash.AutoDepositClock = () => now;
+
+        h.Snapshot = Wealth(150);
+        h.Cash.OnInventoryChanged();
+        Assert.Single(h.AutoDeposits);
+
+        h.Cash.NotifyAutoDepositAborted();   // arms a cooldown
+
+        // Wealth drops below threshold → natural re-arm clears the hold.
+        h.Snapshot = Wealth(30);
+        h.Cash.OnInventoryChanged();
+
+        // Back above threshold, still inside the original cooldown window — must
+        // fire immediately because the natural re-arm dropped the hold.
+        h.Snapshot = Wealth(130);
+        h.Cash.OnInventoryChanged();
+        Assert.Equal(2, h.AutoDeposits.Count);
+    }
+
     // ----- reset tallies ----------------------------------------------
 
     [Fact]

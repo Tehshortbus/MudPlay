@@ -12,9 +12,10 @@ namespace FujinTerm.Tests;
 
 /// <summary>
 /// <see cref="SessionResetHandler"/> — <c>@reset</c> zeroes the session-stats
-/// trackers and clears the transaction ledger, the same wipe the window button
-/// performs. Pins the reset reaching every tracker, the ungated success ack,
-/// and the AlterSettings permission gate (an unauthorised sender resets
+/// trackers (combat / time / activity), the same wipe the window button performs,
+/// but leaves the user-owned transaction ledger untouched. Pins the reset
+/// reaching the stat trackers, the ledger staying intact, the ungated success
+/// ack, and the AlterSettings permission gate (an unauthorised sender resets
 /// nothing). An injected clock makes the trackers' time arithmetic
 /// deterministic.
 /// </summary>
@@ -51,7 +52,7 @@ public sealed class SessionResetHandlerTests
             Time = new TimeAnalysisTracker(() => Clock.Now);
             Activity = new SessionActivityTracker(() => Clock.Now);
             Transactions = new TransactionHistoryTracker(() => Clock.Now);
-            Handler = new SessionResetHandler(Engine, Combat, Time, Activity, Transactions);
+            Handler = new SessionResetHandler(Engine, Combat, Time, Activity);
         }
 
         public void Dispose() => Handler.Dispose();
@@ -82,8 +83,10 @@ public sealed class SessionResetHandlerTests
     }
 
     [Fact]
-    public void Reset_WithPermission_ClearsTransactionLedger()
+    public void Reset_WithPermission_LeavesTransactionLedgerIntact()
     {
+        // The ledger is user-owned: a party @reset re-anchors the stat trackers
+        // but must NOT wipe the deposit / stash history.
         using Setup s = new();
         SeedPlayer(s.Players, "Leader", PlayerRemoteControls.AlterSettings);
         s.Transactions.NoteBankDeposit(5000);
@@ -92,7 +95,7 @@ public sealed class SessionResetHandlerTests
 
         s.Engine.DispatchForTests(Telepath("Leader", "@reset"));
 
-        Assert.Empty(s.Transactions.Snapshot());
+        Assert.Equal(2, s.Transactions.Snapshot().Count);
     }
 
     [Fact]

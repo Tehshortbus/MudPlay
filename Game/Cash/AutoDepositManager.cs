@@ -139,6 +139,7 @@ public sealed class AutoDepositManager : IDisposable
         if (resume.Kind == ResumeKind.None)
         {
             _log?.Debug(LogCategory, "gate fired but no loop / auto-lair running — ignoring");
+            _cash.NotifyAutoDepositAborted();
             return;
         }
 
@@ -146,6 +147,7 @@ public sealed class AutoDepositManager : IDisposable
         if (!RoomKey.TryParseWire(cash.BankRoomKey, out RoomKey destination))
         {
             _log?.Warn(LogCategory, $"gate fired but BankRoomKey '{cash.BankRoomKey}' is unparseable — ignoring");
+            _cash.NotifyAutoDepositAborted();
             return;
         }
 
@@ -155,6 +157,7 @@ public sealed class AutoDepositManager : IDisposable
         if (_tracker.State.CurrentRoom is not { } current)
         {
             _log?.Warn(LogCategory, "gate fired but current room is unknown — can't reroute");
+            _cash.NotifyAutoDepositAborted();
             return;
         }
 
@@ -173,6 +176,7 @@ public sealed class AutoDepositManager : IDisposable
             _log?.Info(LogCategory,
                 $"BankRoomKey '{cash.BankRoomKey}' is neither a bank nor a marked stash "
                 + "room in the active set — no deposit destination, ignoring");
+            _cash.NotifyAutoDepositAborted();
             return;
         }
 
@@ -205,6 +209,7 @@ public sealed class AutoDepositManager : IDisposable
         if (!_walker.WalkTo(destination))
         {
             _log?.Warn(LogCategory, $"can't reach {destination} — resuming");
+            _cash.NotifyAutoDepositAborted();
             Resume();
         }
     }
@@ -235,6 +240,7 @@ public sealed class AutoDepositManager : IDisposable
                 else if (e.Kind == WalkEventKind.Failed)
                 {
                     _log?.Warn(LogCategory, "detour path failed — resuming");
+                    _cash.NotifyAutoDepositAborted();
                     Resume();
                 }
                 break;
@@ -357,7 +363,11 @@ public sealed class AutoDepositManager : IDisposable
                 _autoLair.Start();
                 break;
             case ResumeKind.Loop:
-                if (r.Loop is { } loop) _loopRunner.Start(loop);
+                // ResumeAfterDetour, not Start: the loop's first-waypoint reset
+                // (session stats + party @reset) already fired at the user's
+                // original Start. This bank detour is a continuation, so it must
+                // not re-fire that reset.
+                if (r.Loop is { } loop) _loopRunner.ResumeAfterDetour(loop);
                 break;
         }
     }

@@ -1,16 +1,11 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.35.9**
-> - Loop no longer stalls when a room refuses entry mid-combat — sends break, waits, then retries the move
-> - Walker holds for combat in a dark room instead of stepping through while a mob is still engaging
-> - Dark-corridor drift re-anchors on a uniquely-named lit room reached through a door instead of losing position
-> - Route planner won't buy a ferry skiff just to shave a single step off a free path
-> - Who-list parses rows with freeform guild names, so the players table no longer truncates on Paradigm
-> - Auto-light readies a carried light the moment a dark room is seen, even off a loop or a manual step
-> - A readied light burning out re-readies a carried spare instead of trusting the stale inventory
-> - Map no longer snaps back to the player mid-browse while panning another floor
-> - Club seed no longer carries an auto-collect flag
+> **Version 1.37.0**
+> - Auto-deposit bank runs no longer reset session statistics on the way back to a loop — the reset fires only on a genuine first start
+> - Transaction history is user-owned — only its own Clear button (or connect / character switch) clears it, never a loop start or party @reset
+> - Transaction History window gains a Clear button
+> - Auto-deposit no longer wedges for the session when a bank run can't complete — an aborted reroute re-arms the gate and retries (throttled so an unreachable bank can't thrash the engine)
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

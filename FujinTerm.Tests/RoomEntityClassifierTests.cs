@@ -449,6 +449,89 @@ public sealed class RoomEntityClassifierTests
         Assert.False(removed);
     }
 
+    // ----- RemoveDepartedEntity ----------------------------------------
+
+    [Fact]
+    public void RemoveDepartedEntity_DropsMatchingMonster_FiresDepartureObservation()
+    {
+        // The 180449 bug: a fleeing player drags the engaged mob out of the room.
+        // The departure line has no room re-display and no Also-Here, so the combat
+        // gate the mob held stays asserted forever unless we drop it here and re-fire
+        // the observation (tagged Departure) to re-evaluate the gate.
+        using Harness h = new();
+        h.AddMonster(1, "giant rat", allowNoPrefix: true);
+        h.AddMonster(2, "orc rogue", allowNoPrefix: true);
+
+        h.Feed("Also here: giant rat, orc rogue.");
+        Assert.Equal(2, h.Observations[0].Entities.Count);
+
+        bool removed = h.Classifier.RemoveDepartedEntity("orc rogue");
+
+        Assert.True(removed);
+        Assert.Equal(2, h.Observations.Count);
+        Assert.Single(h.Observations[1].Entities);
+        Assert.Equal("giant rat", h.Observations[1].Entities[0].ResolvedName);
+        Assert.Equal(RoomObservationSource.Departure, h.Observations[1].Source);
+    }
+
+    [Fact]
+    public void RemoveDepartedEntity_LastMonster_LeavesEmptyList()
+    {
+        // The gate-clearing case: the departed mob is the last hostile, so the
+        // re-fired observation carries an empty list — the combat gate re-evaluates
+        // to zero actionable hostiles and drops.
+        using Harness h = new();
+        h.AddMonster(2, "orc rogue", allowNoPrefix: true);
+
+        h.Feed("Also here: orc rogue.");
+        Assert.Single(h.Observations[0].Entities);
+
+        bool removed = h.Classifier.RemoveDepartedEntity("orc rogue");
+
+        Assert.True(removed);
+        Assert.Empty(h.Observations[1].Entities);
+        Assert.Equal(RoomObservationSource.Departure, h.Observations[1].Source);
+    }
+
+    [Fact]
+    public void RemoveDepartedEntity_NoMatch_ReturnsFalse_NoEmit()
+    {
+        using Harness h = new();
+        h.AddMonster(1, "giant rat", allowNoPrefix: true);
+        h.Feed("Also here: giant rat.");
+        int observationsBefore = h.Observations.Count;
+
+        bool removed = h.Classifier.RemoveDepartedEntity("goblin");
+
+        Assert.False(removed);
+        Assert.Equal(observationsBefore, h.Observations.Count);
+    }
+
+    [Fact]
+    public void RemoveDepartedEntity_NullCurrent_ReturnsFalse()
+    {
+        using Harness h = new();
+        bool removed = h.Classifier.RemoveDepartedEntity("orc rogue");
+        Assert.False(removed);
+    }
+
+    [Fact]
+    public void RemoveDepartedEntity_LeavesPlayer_Untouched()
+    {
+        // A departing player holds no combat gate, so a player's entry in Current is
+        // harmless — RemoveDepartedEntity is monster-kind only and must not drop the
+        // player, which would spuriously re-fire the observation.
+        using Harness h = new();
+        h.AddPlayer("Bob");
+        h.Feed("Also here: Bob.");
+        int observationsBefore = h.Observations.Count;
+
+        bool removed = h.Classifier.RemoveDepartedEntity("Bob");
+
+        Assert.False(removed);
+        Assert.Equal(observationsBefore, h.Observations.Count);
+    }
+
     [Fact]
     public void NoteRoomChanged_WipesCurrent_EmitsEmptyObservation()
     {

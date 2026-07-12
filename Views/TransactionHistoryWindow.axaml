@@ -31,6 +31,18 @@
             </Grid>
         </Border>
 
+        <!-- ============ Footer: user-driven clear ============ -->
+        <Border DockPanel.Dock="Bottom"
+                Background="{StaticResource ChromeBgElevBrush}"
+                BorderBrush="{StaticResource ChromeBorderSoftBrush}"
+                BorderThickness="0,1,0,0"
+                Padding="10,6">
+            <Button Content="Clear history"
+                    HorizontalAlignment="Right"
+                    Command="{Binding ClearCommand}"
+                    IsEnabled="{Binding !IsEmpty}"/>
+        </Border>
+
         <!-- ============ Entries list (+ empty placeholder) ============ -->
         <Grid Background="{StaticResource ChromeBgSunkenBrush}">
             <ListBox ItemsSource="{Binding Rows}"
