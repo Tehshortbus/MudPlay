@@ -2,6 +2,12 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.40.2
+
+- Movement refusals ending in `!` (Paradigm's "There is no exit in that direction!") now clear the pending move instead of stranding the walker
+- Auto-deposit re-reads holdings at the bank before depositing, so an unobserved en-route toll no longer makes it try to bank a stale pre-toll amount and bank nothing
+- bug reports addressed: paradigm-20260712-101344, paradigm-20260712-105506
+
 ## 1.40.0
 
 - Fixed a freeze when a walk-to was queued during a loop whose auto-deposit route crossed a dark area — the reroute no longer lets two controllers drive one walker
