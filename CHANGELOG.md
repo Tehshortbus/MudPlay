@@ -2,6 +2,12 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.39.0
+
+- Backscroll window now draws only the rows in view — drag-selecting and scrolling stay smooth on a deep history instead of bogging down
+- Program log is teed to a rolling on-disk file (Data/Logs/{timestamp}-program.log) so a hard hang or kill leaves a post-mortem trail the in-memory ring can't
+- bug reports addressed: paradigm-20260711-235738
+
 ## 1.37.0
 
 - Auto-deposit bank runs no longer reset session statistics on the way back to a loop — the reset fires only on a genuine first start

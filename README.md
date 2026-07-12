@@ -1,11 +1,9 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.37.0**
-> - Auto-deposit bank runs no longer reset session statistics on the way back to a loop — the reset fires only on a genuine first start
-> - Transaction history is user-owned — only its own Clear button (or connect / character switch) clears it, never a loop start or party @reset
-> - Transaction History window gains a Clear button
-> - Auto-deposit no longer wedges for the session when a bank run can't complete — an aborted reroute re-arms the gate and retries (throttled so an unreachable bank can't thrash the engine)
+> **Version 1.39.0**
+> - Backscroll window now draws only the rows in view — drag-selecting and scrolling stay smooth on a deep history instead of bogging down
+> - Program log is teed to a rolling on-disk file (Data/Logs/{timestamp}-program.log) so a hard hang or kill leaves a post-mortem trail the in-memory ring can't
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->
