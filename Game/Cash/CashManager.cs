@@ -86,6 +86,16 @@ public sealed class CashManager : IDisposable
     private Game.Inventory.AcquisitionGate? _gate;
     private readonly Dictionary<string, long> _held = new(StringComparer.OrdinalIgnoreCase);
     private bool _autoDepositFiredThisCrossing;
+    // When a fired gate crossing can't complete a deposit (aborted reroute) the
+    // single-fire guard re-arms, but retries are held off until this instant so a
+    // persistently-unreachable bank can't thrash the movement engine on every
+    // inventory line. See NotifyAutoDepositAborted.
+    private DateTime _autoDepositRetryNotBefore;
+    private const int AutoDepositRetryCooldownMs = 60_000;
+    // Clock behind the retry cooldown. Overridable in tests so the re-arm path
+    // can be exercised without a real 60-second wait; production reads the wall
+    // clock.
+    internal Func<DateTime> AutoDepositClock { get; set; } = static () => DateTime.UtcNow;
     private bool _disposed;
 
     // ----- Encumbrance-gated collection --------------------------------
@@ -207,6 +217,7 @@ public sealed class CashManager : IDisposable
     {
         _held.Clear();
         _autoDepositFiredThisCrossing = false;
+        _autoDepositRetryNotBefore = default;
         Array.Clear(_inFlightCoinDelta, 0, _inFlightCoinDelta.Length);
         Array.Clear(_inFlightCoinDeltaSetAt, 0, _inFlightCoinDeltaSetAt.Length);
     }
@@ -741,6 +752,22 @@ public sealed class CashManager : IDisposable
         AuditHeldForDiscard();
     }
 
+    // Called by the auto-deposit reroute subscriber when a fired gate crossing
+    // couldn't complete a deposit — no loop / lair to reroute, an unreachable or
+    // unrecognised bank, or a failed detour walk. Re-arms the single-fire guard
+    // so a later inventory change can retry; without it the guard stays latched
+    // (it clears only when wealth falls below threshold, which an aborted deposit
+    // never reaches) and auto-deposit is wedged for the rest of the session. A
+    // cooldown keeps a persistently-unreachable bank from re-firing on every
+    // subsequent inventory line and thrashing the movement engine.
+    public void NotifyAutoDepositAborted()
+    {
+        _autoDepositFiredThisCrossing = false;
+        _autoDepositRetryNotBefore = AutoDepositClock().AddMilliseconds(AutoDepositRetryCooldownMs);
+        _log?.Debug(LogCategory,
+            $"auto-deposit re-armed after aborted reroute (retry held {AutoDepositRetryCooldownMs / 1000}s)");
+    }
+
     private void CheckAutoDeposit()
     {
         CashSettings settings = _readSettings();
@@ -771,17 +798,30 @@ public sealed class CashManager : IDisposable
         // so a deposit that clears wealth but not coin count doesn't re-fire.
         if ((wealthGate || coinGate) && !_autoDepositFiredThisCrossing)
         {
+            // A recent reroute aborted without depositing; hold off re-firing
+            // until the cooldown elapses so an unreachable bank can't thrash the
+            // movement engine on every inventory line.
+            if (AutoDepositClock() < _autoDepositRetryNotBefore) return;
+
             _autoDepositFiredThisCrossing = true;
             _log?.Info(LogCategory,
                 $"auto-deposit triggered wealth={wealthValue} (gate={wealthThreshold}) " +
                 $"coins={coinCount} (gate={coinThreshold})");
             AutoDepositRequested?.Invoke(wealthValue);
         }
-        else if (!wealthGate && !coinGate && _autoDepositFiredThisCrossing)
+        else if (!wealthGate && !coinGate)
         {
-            _autoDepositFiredThisCrossing = false;
-            _log?.Debug(LogCategory,
-                $"auto-deposit re-armed wealth={wealthValue} coins={coinCount}");
+            // Both gates below threshold: this crossing is over. Drop any pending
+            // retry hold from an earlier aborted reroute (unconditionally — the
+            // abort already un-latched the guard, so keying off it would strand
+            // the cooldown), and reset the single-fire guard if it was latched.
+            _autoDepositRetryNotBefore = default;
+            if (_autoDepositFiredThisCrossing)
+            {
+                _autoDepositFiredThisCrossing = false;
+                _log?.Debug(LogCategory,
+                    $"auto-deposit re-armed wealth={wealthValue} coins={coinCount}");
+            }
         }
     }
 

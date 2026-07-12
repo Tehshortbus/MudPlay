@@ -7,6 +7,8 @@ Notable changes per merged PR, **newest first**. The top of the [README](README.
 - Auto-deposit bank runs no longer reset session statistics on the way back to a loop — the reset fires only on a genuine first start
 - Transaction history is user-owned — only its own Clear button (or connect / character switch) clears it, never a loop start or party @reset
 - Transaction History window gains a Clear button
+- Auto-deposit no longer wedges for the session when a bank run can't complete — an aborted reroute re-arms the gate and retries (throttled so an unreachable bank can't thrash the engine)
+- bug reports addressed: paradigm-20260711-235419
 
 ## 1.36.0
 

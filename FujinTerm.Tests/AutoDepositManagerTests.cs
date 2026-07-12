@@ -420,6 +420,42 @@ public sealed class AutoDepositManagerTests : IDisposable
         Assert.Empty(h.Deposited);
     }
 
+    // An aborted reroute (here an orphaned bank key that resolves to no valid
+    // destination) must re-arm the CashManager gate so a later inventory change
+    // retries — the regression was that the abort left the single-fire guard
+    // latched and auto-deposit never fired again for the session. The retry is
+    // held for a cooldown so a persistently-unreachable bank can't thrash the
+    // engine; advancing the clock past it lets the retry through.
+    [Fact]
+    public void AbortedReroute_ReArmsGate_RetriesAfterCooldown()
+    {
+        using Harness h = NewHarness();
+        StartLair(h);
+
+        int fires = 0;
+        h.Cash.AutoDepositRequested += _ => fires++;
+
+        DateTime now = DateTime.UtcNow;
+        h.Cash.AutoDepositClock = () => now;
+
+        // Parseable key that is neither a bank nor a marked stash → aborts.
+        h.Settings.BankRoomKey = "1/2";
+        h.Settings.AutoDepositIfWealthExceeds = 1000;
+
+        h.SetWealth(copper: 0, silver: 0, gold: 50, platinum: 0, runic: 0, totalCopperValue: 5000);
+        Assert.Equal(1, fires);
+        Assert.True(h.Lair.IsActive);   // never stopped for the phantom bank
+
+        // Within the cooldown — no re-fire on the next inventory line.
+        h.SetWealth(copper: 0, silver: 0, gold: 51, platinum: 0, runic: 0, totalCopperValue: 5100);
+        Assert.Equal(1, fires);
+
+        // Past the cooldown — the gate retries.
+        now = now.AddMinutes(2);
+        h.SetWealth(copper: 0, silver: 0, gold: 52, platinum: 0, runic: 0, totalCopperValue: 5200);
+        Assert.Equal(2, fires);
+    }
+
     [Fact]
     public void StashOnLoopCircuit_SkipsDetour_StashesOnPassThrough()
     {
