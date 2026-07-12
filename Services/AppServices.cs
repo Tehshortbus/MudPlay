@@ -3281,7 +3281,8 @@ public sealed class AppServices
             carriedCount: CountItemCarried,
             isEnabled: () => ReadAutoModeFlag(d => d.AutoLight),
             engineWalkActive: () =>
-                AutoLair.IsActive || LoopRunner.State != Game.Map.LoopState.Idle,
+                AutoLair.IsActive || LoopRunner.State != Game.Map.LoopState.Idle
+                || AutoDeposit.IsRerouting,
             walkTo: key => Walker.WalkTo(key),
             post: action => Avalonia.Threading.Dispatcher.UIThread.Post(action),
             log: Log);
@@ -3605,7 +3606,8 @@ public sealed class AppServices
             itemName: ItemNames.GetName,
             isEnabled: id => ShouldAutoObtainForPath(id, o => o.BuyIfNeededForPath),
             engineWalkActive: () =>
-                AutoLair.IsActive || LoopRunner.State != Game.Map.LoopState.Idle,
+                AutoLair.IsActive || LoopRunner.State != Game.Map.LoopState.Idle
+                || AutoDeposit.IsRerouting,
             walkTo: key => Walker.WalkTo(key),
             post: action => Avalonia.Threading.Dispatcher.UIThread.Post(action),
             log: Log);
@@ -3634,7 +3636,8 @@ public sealed class AppServices
             itemName: ItemNames.GetName,
             isEnabled: id => ShouldAutoObtainForPath(id, o => o.SourceFromDropsForPath),
             engineWalkActive: () =>
-                AutoLair.IsActive || LoopRunner.State != Game.Map.LoopState.Idle,
+                AutoLair.IsActive || LoopRunner.State != Game.Map.LoopState.Idle
+                || AutoDeposit.IsRerouting,
             confirm: (title, body) => Confirm.ConfirmAsync(title, body, "Reroute"),
             walkTo: key => Walker.WalkTo(key),
             post: action => Avalonia.Threading.Dispatcher.UIThread.Post(action),

@@ -118,6 +118,15 @@ public sealed class AutoDepositManager : IDisposable
         _tracker.StateChanged += OnRoomEntered;
     }
 
+    // True while a reroute owns the walker (bank/stash detour and the walk back).
+    // The reactive shop/drop routers gate their own detours on this: a reroute
+    // stops the loop (LoopState.Idle) and drives its own WalkTo legs, so those
+    // routers' engineWalkActive check would otherwise see plain walk-tos and
+    // hijack the detour — two controllers driving one walker, which spins into a
+    // re-announce/BFS loop that locks the UI. Suppressing them here keeps the
+    // reroute single-controller.
+    public bool IsRerouting => _busy;
+
     // Bind the wire sender — typically the gate-wrapped engine pipeline from
     // MainWindowViewModel. The bank `dep` command travels this path; the stash
     // path uses StashRoomManager's own sender.
