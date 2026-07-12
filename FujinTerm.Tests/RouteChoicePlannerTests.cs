@@ -74,6 +74,26 @@ public sealed class RouteChoicePlannerTests
         ]
         """;
 
+    // Item shortcut that saves only ONE room — a boat/skiff hop not worth buying.
+    // Direct: 1/1 ──E (Item: 5)── 1/9   (1 hop, gated on a boat).
+    // Free:   1/1 ──N── 1/2 ──E── 1/9   (2 hops, gate-free).
+    private const string ItemShortcutSavesOneJson = """
+        [
+          { "Map Number": 1, "Room Number": 1, "Name": "Start",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "1/2", "S": "0", "E": "1/9 (Item: 5)", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 2, "Name": "Mid1",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "1/1", "E": "1/9", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 9, "Name": "Vault",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "0", "E": "0", "W": "1/2",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+        ]
+        """;
+
     // Same layout as ItemShortcutJson, but the shortcut gate is a Ticket.
     private const string TicketShortcutJson = """
         [
@@ -262,6 +282,23 @@ public sealed class RouteChoicePlannerTests
                 bfs, filter, graph, new RoomKey(1, 1), new RoomKey(1, 9));
 
             Assert.Null(choice);   // gated 2 hops, free 2 hops — no bargain
+        });
+    }
+
+    [Fact]
+    public void NoChoice_WhenItemShortcutSavesOnlyOneStep()
+    {
+        WithGraph(ItemShortcutSavesOneJson, (bfs, graph, filter) =>
+        {
+            filter.InventoryReadyProbe = () => true;
+            filter.ItemCarriedProbe = _ => false;   // lacking the boat
+
+            RouteChoice? choice = RouteChoicePlanner.Evaluate(
+                bfs, filter, graph, new RoomKey(1, 1), new RoomKey(1, 9));
+
+            // Gated 1 hop, free 2 hops — a single room saved isn't worth buying
+            // the boat, so no picker; the caller just walks the free route.
+            Assert.Null(choice);
         });
     }
 

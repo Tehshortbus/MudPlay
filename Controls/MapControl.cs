@@ -777,17 +777,11 @@ public sealed class MapControl : Control
 
         // Home re-centres on the live current room and clears any
         // active auto-follow suppression so live movement starts
-        // following the player again. Centres explicitly — the
-        // selection-change handler no longer pans on its own (clicks
-        // shouldn't yank the view).
+        // following the player again. Re-roots the layout first when the
+        // player is off the browsed floor (see RecenterOnPlayer).
         if (e.Key == Key.Home)
         {
-            _autoFollowSuppressedUntil = DateTime.MinValue;
-            if (CurrentRoomKey is { } cur)
-            {
-                SelectedRoomKey = cur;
-                CenterOnRoom(cur);
-            }
+            RecenterOnPlayer();
             e.Handled = true;
             return;
         }
@@ -930,16 +924,25 @@ public sealed class MapControl : Control
 
     // Explicit "show me where I am right now" — clears the browse-suppression
     // window (so live moves resume centring), moves the crawler selection to
-    // the live current room, and centres on it. Same body as the Home key
-    // handler; exposed publicly so the right-click context menu "Center on
-    // Player" item can fire it from the VM via the window code-behind.
+    // the live current room, and centres on it. Drives both the Home key and
+    // the right-click "Center on Player" menu (fired from the VM via the
+    // window code-behind).
     public void RecenterOnPlayer()
     {
         _autoFollowSuppressedUntil = DateTime.MinValue;
-        if (CurrentRoomKey is { } cur)
+        if (CurrentRoomKey is not { } cur) return;
+        // On the displayed layout → just pan. Off it (the user floor-crawled
+        // away to browse, so movement-driven re-rooting was left suppressed)
+        // → ask the host to re-root the layout on the live room; a plain
+        // CenterOnRoom would no-op on a key the browsed layout doesn't hold.
+        if (Layout is { } layout && layout.Positions.ContainsKey(cur))
         {
             SelectedRoomKey = cur;
             CenterOnRoom(cur);
+        }
+        else
+        {
+            FloorChangeRequested?.Invoke(cur);
         }
     }
 

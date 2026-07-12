@@ -2029,6 +2029,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         // outside the cached layout (typical after a reconnect or a
         // big walk). The map control re-fits visually via its own
         // FitToCurrent helper when the binding changes.
+        RoomKey? previousRoom = CurrentRoomKey;
         CurrentRoomKey = state.CurrentRoom?.Key;
         if (state.CurrentRoom is { } here)
         {
@@ -2044,9 +2045,25 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
                 && !here.Key.Equals(Layout.Origin)
                 && _services.RoomBlacklist.IsBlacklisted(Layout.Origin)
                 && !_services.RoomBlacklist.IsBlacklisted(here.Key);
+
+            // Don't yank the layout back to the player mid-browse. When the
+            // player's PREVIOUS room wasn't on the displayed layout, the user
+            // has floor-crawled / searched off to look at a different part of
+            // the map, so a movement step must leave that view alone — the
+            // reported bug was the map re-rooting on the player every step
+            // while browsing elsewhere. Only re-root when the layout was
+            // actually following the player (previous room on it, or no fix
+            // yet) and this step walked off it — the usual stairs / reconnect
+            // / big-walk case. "Center on Player" (Home / context menu) is the
+            // way back; it rebuilds around the live room itself.
+            bool browsingOffPlayer =
+                Layout is not null
+                && previousRoom is { } prev
+                && !Layout.Positions.ContainsKey(prev);
+
             if (Layout is null
-                || !Layout.Positions.ContainsKey(here.Key)
-                || exitedBlacklistedOrigin)
+                || exitedBlacklistedOrigin
+                || (!browsingOffPlayer && !Layout.Positions.ContainsKey(here.Key)))
             {
                 Layout = _services.Bfs.BuildLayout(here.Key);
             }

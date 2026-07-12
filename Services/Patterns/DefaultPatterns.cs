@@ -48,6 +48,12 @@ public static class DefaultPatterns
         // punctuation / dash variants don't break the match.
         yield return new RegexPattern(KnownPatterns.RoomPitchBlack, @"^The room is pitch black");
         yield return new RegexPattern(KnownPatterns.RoomVeryDark,   @"^The room is very dark");
+        // A readied light burning out. Anchored to "Your ... flickers and goes
+        // out." so it can't collide with a quoted chat echo (which starts with a
+        // speaker/quote, never "Your"). The item name is captured but unused — the
+        // engine re-readies whatever spare it carries, not the same item by name.
+        yield return new RegexPattern(KnownPatterns.LightBurnedOut,
+            @"^Your .+ flickers and goes out\.$");
 
         // ----- Movement --------------------------------------------------
         // Two forms folded into one alternation: the no-exit line and the

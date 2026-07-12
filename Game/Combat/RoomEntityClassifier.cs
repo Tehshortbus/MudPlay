@@ -424,6 +424,18 @@ public sealed class RoomEntityClassifier : IDisposable
         if (ReferenceEquals(transition.PreviousRoom, transition.NewRoom)) return;
         if (transition.PreviousRoom.Key.Equals(transition.NewRoom.Key)) return;
 
+        // A dark-room advance carries NO occupant information: the room display
+        // shows no name, no exits, and no "Also here:" line (see
+        // GAME_MECHANICS.md), so an empty entity list here means "can't see",
+        // not "room is empty". Wiping Current would fire an empty
+        // EntitiesObserved that CombatStateTracker reads as "room cleared",
+        // dropping the Combat gate mid-fight — the walker then steps on through
+        // a dark room while a mob is still engaging us (the reported bug). Keep
+        // Current intact: dark-room combat is driven entirely by attack-line
+        // injection (DarkRoomCombatWatcher) and retracted by its "command had no
+        // effect" path, both already gated on IsInDarkRoom.
+        if (_roomTracker is { IsInDarkRoom: true }) return;
+
         // Wire order within a room display is name → "Also here:" →
         // "Obvious exits:", and RoomTracker only CONFIRMS the move on the
         // exits line. So by the time this confirmed transition fires, the

@@ -214,6 +214,12 @@ public static class KnownPatterns
     // Confirm the exact wording against a live capture before relying on it.
     public const string RoomPitchBlack   = "light.room-pitch-black";   // "The room is pitch black"
     public const string RoomVeryDark     = "light.room-very-dark";     // "The room is very dark - you can't see anything"
+    // "Your <light> flickers and goes out." — the readied light burned out. The
+    // inventory snapshot's ReadiedLight only refreshes on the next `i` dump, so
+    // this line is auto-light's live signal that the lit light is now gone, letting
+    // the next dark-room line re-ready a carried spare instead of being blocked by
+    // a stale readied-light value.
+    public const string LightBurnedOut   = "light.burned-out";
 
     // ----- Room & status -------------------------------------------------
     public const string RoomExits        = "room.exits";
