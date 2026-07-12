@@ -184,6 +184,99 @@ public sealed class TrainerMenuTrackerTests
     }
 
     [Fact]
+    public void OutboundTrainStats_ArmsInputMenuEntered_BeforeAnyMarker()
+    {
+        // The character-mode switch is driven by the command, not the marker:
+        // on a cursor-positioned full-screen menu the "Point Cost Chart" row
+        // completes too late (or never inline), so arming must happen the
+        // instant `train stats` goes out — before any line comes back.
+        var (tracker, router, _) = Setup();
+        int entered = 0;
+        tracker.InputMenuEntered += () => entered++;
+
+        tracker.ObserveOutbound(Encoding.Latin1.GetBytes("train stats\r"));
+
+        Assert.Equal(1, entered);
+    }
+
+    [Fact]
+    public void InputMenu_SkipsCommandEchoPrompt_ThenExitsOnNextPrompt()
+    {
+        // Arming a menu leaves two prompts in its wake: the command's own
+        // `[HP=...]:train stats` echo (which must NOT be read as an exit) and
+        // the bare prompt that returns when the user leaves the box.
+        var (tracker, router, _) = Setup();
+        int exited = 0;
+        tracker.InputMenuExited += () => exited++;
+
+        tracker.ObserveOutbound(Encoding.Latin1.GetBytes("train stats\r"));
+
+        // First prompt = the command echo — swallowed, no exit.
+        Dispatch(router, "[HP=33]:");
+        Assert.Equal(0, exited);
+
+        // Second prompt = the user left the box — line-mode resumes.
+        Dispatch(router, "[HP=33]:");
+        Assert.Equal(1, exited);
+    }
+
+    [Fact]
+    public void OutboundBareTrain_DoesNotArmInputMenu()
+    {
+        // Bare `train` opens a line-driven prompt, not the full-screen stat
+        // box, so it must not flip character-mode input.
+        var (tracker, router, _) = Setup();
+        int entered = 0;
+        tracker.InputMenuEntered += () => entered++;
+
+        tracker.ObserveOutbound(Encoding.Latin1.GetBytes("train\r"));
+
+        Assert.Equal(0, entered);
+    }
+
+    [Fact]
+    public void InputMenu_ReOpen_ArmsAgainAfterExit()
+    {
+        // A fresh `train stats` after the box was left re-arms input mode.
+        var (tracker, router, _) = Setup();
+        int entered = 0, exited = 0;
+        tracker.InputMenuEntered += () => entered++;
+        tracker.InputMenuExited += () => exited++;
+
+        tracker.ObserveOutbound(Encoding.Latin1.GetBytes("train stats\r"));
+        Dispatch(router, "[HP=33]:"); // echo skip
+        Dispatch(router, "[HP=33]:"); // exit
+        Assert.Equal(1, entered);
+        Assert.Equal(1, exited);
+
+        tracker.ObserveOutbound(Encoding.Latin1.GetBytes("train stats\r"));
+        Assert.Equal(2, entered);
+    }
+
+    [Fact]
+    public void InputMenu_DoubleTrainStatsBeforePrompt_EntersOnce()
+    {
+        // The observed Paradigm sequence sends `train stats` twice before the
+        // box settles; InputMenuEntered fires once, and both echoes are
+        // swallowed so the exit still lands on the real bare prompt.
+        var (tracker, router, _) = Setup();
+        int entered = 0, exited = 0;
+        tracker.InputMenuEntered += () => entered++;
+        tracker.InputMenuExited += () => exited++;
+
+        tracker.ObserveOutbound(Encoding.Latin1.GetBytes("train stats\r"));
+        tracker.ObserveOutbound(Encoding.Latin1.GetBytes("train stats\r"));
+        Assert.Equal(1, entered);
+
+        // Each `train stats` re-armed the echo skip, so one prompt is
+        // swallowed and the next is the exit.
+        Dispatch(router, "[HP=33]:");
+        Assert.Equal(0, exited);
+        Dispatch(router, "[HP=33]:");
+        Assert.Equal(1, exited);
+    }
+
+    [Fact]
     public void EntryToMenu_SnapshotsNonSelfRoster()
     {
         var (tracker, router, state) = Setup();

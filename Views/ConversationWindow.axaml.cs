@@ -1,6 +1,8 @@
+using System.Linq;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Markup.Xaml;
+using Avalonia.VisualTree;
 using FujinTerm.ViewModels;
 
 namespace FujinTerm.Views;
@@ -11,6 +13,7 @@ namespace FujinTerm.Views;
 public partial class ConversationWindow : Window
 {
     private ListBox? _rowsList;
+    private ScrollViewer? _rowsScroll;
 
     public ConversationWindow()
     {
@@ -70,9 +73,20 @@ public partial class ConversationWindow : Window
         // pass before the new container is measured and throws "Invalid Arrange
         // rectangle" — the same crash that hit the log pane. Posting lets the
         // panel finish its layout first.
-        Avalonia.Threading.Dispatcher.UIThread.Post(
-            () => _rowsList?.ScrollIntoView(row));
+        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+        {
+            _rowsList?.ScrollIntoView(row);
+            // ScrollIntoView only scrolls far enough to reveal the row, leaving
+            // the ListBox's bottom padding (and any extent growth from a line
+            // that landed mid-layout) between the last message and the viewport
+            // edge — so "auto-scroll" visibly stopped short of the true bottom.
+            // Pin the inner viewport to its end to close that gap.
+            ResolveRowsScroll()?.ScrollToEnd();
+        });
     }
+
+    private ScrollViewer? ResolveRowsScroll()
+        => _rowsScroll ??= _rowsList?.GetVisualDescendants().OfType<ScrollViewer>().FirstOrDefault();
 
     private void OnInputKeyDown(object? sender, KeyEventArgs e)
     {

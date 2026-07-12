@@ -19,9 +19,10 @@
                 BorderBrush="{StaticResource ChromeBorderSoftBrush}"
                 BorderThickness="0,0,0,1"
                 Padding="10,6">
-            <Grid ColumnDefinitions="*,Auto,Auto" VerticalAlignment="Center">
+            <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Top">
 
-                <WrapPanel Grid.Column="0" Orientation="Horizontal" ItemSpacing="6" LineSpacing="4">
+                <WrapPanel Grid.Column="0" Orientation="Horizontal" ItemSpacing="6" LineSpacing="4"
+                           VerticalAlignment="Center">
                     <CheckBox IsChecked="{Binding ShowGossip}"            Content="Gossip"
                               Foreground="{StaticResource AccentCyanBrush}"   FontSize="11"/>
                     <CheckBox IsChecked="{Binding ShowLocal}"             Content="Say"
@@ -38,14 +39,23 @@
                               Foreground="{StaticResource ChromeFgMutedBrush}" FontSize="11"/>
                 </WrapPanel>
 
-                <CheckBox Grid.Column="1" Margin="12,0,0,0"
-                          IsChecked="{Binding AutoScroll}"
-                          Content="Auto-scroll"
-                          Foreground="{StaticResource ChromeFgSecBrush}"
-                          FontSize="11"/>
-                <TextBox Grid.Column="2" Margin="10,0,0,0" MinWidth="200"
-                         PlaceholderText="Search speaker / message…"
-                         Text="{Binding SearchText, Mode=TwoWay}"/>
+                <!-- Search over auto-scroll in one fixed-width column: stacking
+                     them keeps the box at its natural height (no vertical
+                     stretch to match the wrapped checkbox rows) and reserves
+                     only one column of width, so the filter checkboxes can wrap
+                     freely as the window narrows without shoving these around. -->
+                <StackPanel Grid.Column="1" Margin="10,0,0,0" Spacing="4"
+                            VerticalAlignment="Top">
+                    <TextBox MinWidth="200"
+                             VerticalAlignment="Top"
+                             PlaceholderText="Search speaker / message…"
+                             Text="{Binding SearchText, Mode=TwoWay}"/>
+                    <CheckBox HorizontalAlignment="Right"
+                              IsChecked="{Binding AutoScroll}"
+                              Content="Auto-scroll"
+                              Foreground="{StaticResource ChromeFgSecBrush}"
+                              FontSize="11"/>
+                </StackPanel>
             </Grid>
         </Border>
 

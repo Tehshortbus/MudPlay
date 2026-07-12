@@ -257,6 +257,17 @@
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
 
+                <!-- Self-bless timing: when the self-buff path may recast. Both
+                     scoped to OUR OWN buffs (the party-bless equivalents live on
+                     the Party tab). Defaults reproduce the old behaviour — cast
+                     out of combat, including while resting — so a profile that
+                     leaves these alone is unchanged. -->
+                <TextBlock Classes="SectionHeader" Text="Bless timing"/>
+                <CheckBox Content="Bless self while resting" IsChecked="{Binding SelfBlessWhileResting, Mode=TwoWay}"
+                          ToolTip.Tip="When checked (default): keep self-buffs up while resting. Uncheck to hold self-bless casts during rest."/>
+                <CheckBox Content="Bless self during combat" IsChecked="{Binding SelfBlessDuringCombat, Mode=TwoWay}"
+                          ToolTip.Tip="When checked: recast self-buffs mid-fight — casting spends that combat round. Off by default; useful when a fast hunting loop rarely leaves combat long enough to bless between fights."/>
+
                 <!-- ============ Ailment handling / coordination ============ -->
                 <!-- Each ailment pairs its Ignore* (gates the @wait) with the
                      matching Don't-announce* (gates the ".@poisoned" say
