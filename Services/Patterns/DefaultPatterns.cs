@@ -245,8 +245,21 @@ public static class DefaultPatterns
         //  • Optional "the " before the direction — greet-text arrivals say
         //    "from the south" where canonical lines say bare "from east".
         //  • Terminator `.` or `!` — greet-text arrivals end on a bang.
+        // The leading (?!You notice ) guard keeps the sneak-arrival notice
+        // ("You notice <name> sneaking in from the <dir>.") out of this pattern:
+        // its greedy name capture would swallow "You notice <name>" and the
+        // wire's monster hue would tag the sneaker a null-numbered Monster that
+        // strands the Combat gate. SneakArrivalNotice handles that line instead.
         yield return new RegexPattern(KnownPatterns.RoomEntryArrival,
-            @"^(?<name>.+?) \w+ in(?:to)?(?: the room)? from (?:the )?(?<direction>[\w-]+)[.!]\s*$");
+            @"^(?!You notice )(?<name>.+?) \w+ in(?:to)?(?: the room)? from (?:the )?(?<direction>[\w-]+)[.!]\s*$");
+
+        // Sneak-arrival notice — a player who failed a sneak into our room.
+        // Monsters never emit this; RoomEntryWatcher classifies it Player
+        // unconditionally (the line's wire colour is the monster hue and can't
+        // be trusted here). Only the "in from the <dir>." wording is confirmed;
+        // add alternates here if the game emits others.
+        yield return new RegexPattern(KnownPatterns.SneakArrivalNotice,
+            @"^You notice (?<name>\w+) sneaking in from (?:the )?(?<direction>[\w-]+)[.!]\s*$");
 
         // Room-exit departure — mirror of the arrival line. "The orc rogue walks
         // out of the room to the above!" is the canonical form seen when a

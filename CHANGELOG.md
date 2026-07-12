@@ -2,11 +2,13 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
-## 1.40.2
+## 1.40.4
 
 - Movement refusals ending in `!` (Paradigm's "There is no exit in that direction!") now clear the pending move instead of stranding the walker
 - Auto-deposit re-reads holdings at the bank before depositing, so an unobserved en-route toll no longer makes it try to bank a stale pre-toll amount and bank nothing
-- bug reports addressed: paradigm-20260712-101344, paradigm-20260712-105506
+- A player failing a sneak into your room ("You notice X sneaking in…") is no longer mis-tagged as a monster that jams the combat gate and freezes the loop
+- Conversation channel-filter toggles now repopulate in one pass instead of shuddering through the whole history line by line
+- bug reports addressed: paradigm-20260712-101344, paradigm-20260712-105506, paradigm-20260712-114119, paradigm-20260712-144258
 
 ## 1.40.0
 

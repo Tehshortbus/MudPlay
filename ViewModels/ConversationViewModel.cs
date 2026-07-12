@@ -83,7 +83,7 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
         {
             foreach (ChatLogEntry entry in e.NewItems)
             {
-                if (Passes(entry)) AddRow(entry);
+                if (Passes(entry)) AddRow(entry, scrollIntoView: true);
             }
             return;
         }
@@ -107,15 +107,22 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
         Rows.Clear();
         foreach (ChatLogEntry entry in _history.Entries)
         {
-            if (Passes(entry)) AddRow(entry);
+            if (Passes(entry)) AddRow(entry, scrollIntoView: false);
         }
+        // A filter-toggle / search rebuild repopulates the whole list. Scroll
+        // once to the freshest row at the end rather than per row — invoking
+        // ScrollToRowRequested for every added row posts a deferred
+        // ScrollIntoView each time, so the virtualizing panel shudders down
+        // through the entire history before settling instead of a smooth
+        // hide / show.
+        if (Rows.Count > 0) ScrollToRowRequested?.Invoke(Rows[^1]);
     }
 
-    private void AddRow(ChatLogEntry entry)
+    private void AddRow(ChatLogEntry entry, bool scrollIntoView)
     {
         ConversationRowViewModel row = new(entry, ChannelBrush);
         Rows.Add(row);
-        ScrollToRowRequested?.Invoke(row);
+        if (scrollIntoView) ScrollToRowRequested?.Invoke(row);
     }
 
     // Filter predicate: channel toggle + substring search across speaker and
