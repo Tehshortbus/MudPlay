@@ -331,6 +331,7 @@ public static class BugReportBuilder
         Kv(sb, "Auto-Lair paused", svc.AutoLair.IsPaused.ToString());
         Kv(sb, "Auto-Lair target",
             svc.AutoLair.CurrentTarget is { } lair ? $"{lair.Map}/{lair.Room}" : "(none)");
+        Kv(sb, "Auto-deposit reroute", svc.AutoDeposit.RerouteStatus);
 
         var roomState = svc.RoomTracker.State;
         Kv(sb, "Current room",

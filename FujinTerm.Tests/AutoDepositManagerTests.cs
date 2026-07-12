@@ -70,9 +70,35 @@ public sealed class AutoDepositManagerTests : IDisposable
         [ { "GroupIndex": "1-1-1", "AvgDelay": 5 } ]
         """;
 
+    // Dark-route fixture for the light detour: origin 1/1 (lit) ─N─ 1/2 (very
+    // dark, Light -200) ─N─ 1/3 (bank, lit); a light shop hangs off the origin at
+    // 1/4 (1/1 ─E─ 1/4). The bank→origin return leg crosses the dark 1/2, so a
+    // character carrying no covering light must detour through the shop.
+    private const string DarkGraphJson = """
+        [
+          { "Map Number": 1, "Room Number": 1, "Name": "Origin",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "1/2", "S": "0", "E": "1/4", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 2, "Name": "Dark",
+            "Light": -200, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "1/3", "S": "1/1", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 3, "Name": "Bank",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "1/2", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 4, "Name": "Shop",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "0", "E": "0", "W": "1/1",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+        ]
+        """;
+
     private sealed class Harness : IDisposable
     {
         public required ProfileService Profile { get; init; }
+        public required RoomGraphManager Graph { get; init; }
         public required CashManager Cash { get; init; }
         public required RoomTracker Tracker { get; init; }
         public required AutoWalkManager Walker { get; init; }
@@ -80,6 +106,8 @@ public sealed class AutoDepositManagerTests : IDisposable
         public required AutoLairManager Lair { get; init; }
         public required LairTimerStore Timers { get; init; }
         public required StashRoomManager Stash { get; init; }
+        public required Game.Light.AutoLightProvisioner Provisioner { get; init; }
+        public required Game.Light.AutoLightShopRouter LightShop { get; init; }
         public required AutoDepositManager AutoDeposit { get; init; }
 
         // The shared mutable source of truth: the manager closures read these
@@ -87,6 +115,38 @@ public sealed class AutoDepositManagerTests : IDisposable
         // the inventory-changed re-check.
         public CashSettings Settings { get; } = new();
         public InventorySnapshot Snapshot { get; set; } = InventorySnapshot.Empty;
+
+        // Light-detour knobs read by the provisioner / shop-router closures. Off
+        // by default so the coin-only tests never take a light detour; a light
+        // test flips AutoLightEnabled and stocks the catalogue + shop.
+        public bool AutoLightEnabled { get; set; }
+        public int WornIllu { get; set; }
+        public Models.Profile.AutoLightSettings LightSettings { get; } = new();
+        public List<Game.Light.LightItem> Catalogue { get; } = new();
+        public List<RoomKey> LightShopRooms { get; } = new();
+        public List<byte[]> Bought { get; } = new();
+
+        public IEnumerable<string> BuyLines() =>
+            Bought.Where(b => Encoding.Latin1.GetString(b).TrimEnd('\r').StartsWith("buy "))
+                  .Select(b => Encoding.Latin1.GetString(b).TrimEnd('\r'));
+
+        // Count carried copies of an item id by matching the catalogue name in the
+        // snapshot's carried tokens (stacks strip their leading count).
+        public int CountCarried(int itemId)
+        {
+            string? name = Catalogue.FirstOrDefault(l => l.Number == itemId).Name;
+            if (string.IsNullOrEmpty(name)) return 0;
+            int count = 0;
+            foreach (string token in Snapshot.CarriedItems)
+            {
+                string t = token.Trim();
+                int i = 0;
+                while (i < t.Length && char.IsDigit(t[i])) i++;
+                string bare = i > 0 && i < t.Length && t[i] == ' ' ? t[(i + 1)..].TrimStart() : t;
+                if (string.Equals(bare, name, StringComparison.OrdinalIgnoreCase)) count++;
+            }
+            return count;
+        }
         // Rooms the deposit engine treats as real banks (Shops ShopType == 7).
         // The line-graph fixture ships no Shops.json, so a bank test registers
         // its destination here to stand in for the game-data lookup.
@@ -117,6 +177,7 @@ public sealed class AutoDepositManagerTests : IDisposable
         public void Dispose()
         {
             AutoDeposit.Dispose();
+            LightShop.Dispose();
             Stash.Dispose();
             Lair.Dispose();
             Timers.Dispose();
@@ -124,10 +185,10 @@ public sealed class AutoDepositManagerTests : IDisposable
         }
     }
 
-    private Harness NewHarness()
+    private Harness NewHarness(string? graphJson = null)
     {
         Directory.CreateDirectory(Path.Combine(_root, "alpha"));
-        File.WriteAllText(Path.Combine(_root, "alpha", "Rooms.json"), GraphJson);
+        File.WriteAllText(Path.Combine(_root, "alpha", "Rooms.json"), graphJson ?? GraphJson);
         File.WriteAllText(Path.Combine(_root, "alpha", "Lairs.json"), LairsJson);
 
         ProfileService profile = new();
@@ -163,6 +224,23 @@ public sealed class AutoDepositManagerTests : IDisposable
             getSnapshot: () => h.Snapshot,
             resolveAutoStashItem: _ => null,
             isEnabled: () => true);
+        Game.Light.AutoLightProvisioner provisioner = new(
+            isEnabled: () => h.AutoLightEnabled,
+            snapshot: () => h.Snapshot,
+            catalogue: () => h.Catalogue,
+            resolveRoom: graph.GetRoom,
+            wornIllu: () => h.WornIllu,
+            settings: () => h.LightSettings);
+        Game.Light.AutoLightShopRouter lightShop = new(
+            shopRoomsSellingItem: _ => h.LightShopRooms,
+            currentRoom: () => tracker.State.CurrentRoom?.Key,
+            walkDestination: () => walker.Destination,
+            distanceBetween: (a, b) => bfs.DistanceBetween(a, b),
+            carriedCount: id => h.CountCarried(id),
+            isEnabled: () => h.AutoLightEnabled,
+            engineWalkActive: () => false,
+            walkTo: k => walker.WalkTo(k),
+            post: action => action());
         AutoDepositManager autoDeposit = new(cash,
             readCash: () => h.Settings,
             getSnapshot: () => h.Snapshot,
@@ -172,11 +250,16 @@ public sealed class AutoDepositManagerTests : IDisposable
             walker: walker,
             loopRunner: loop,
             autoLair: lair,
-            stash: stash);
+            stash: stash,
+            provisioner: provisioner,
+            lightShop: lightShop,
+            carriedCount: id => h.CountCarried(id),
+            post: action => action());
 
         h = new Harness
         {
             Profile = profile,
+            Graph = graph,
             Cash = cash,
             Tracker = tracker,
             Walker = walker,
@@ -184,9 +267,17 @@ public sealed class AutoDepositManagerTests : IDisposable
             Lair = lair,
             Timers = timers,
             Stash = stash,
+            Provisioner = provisioner,
+            LightShop = lightShop,
             AutoDeposit = autoDeposit,
         };
-        autoDeposit.SetWireSender(b => h.Deposited.Add(b));
+        // Split the manager's single wire by command so `dep` assertions stay
+        // isolated from `buy`s the light detour issues on the same wire.
+        autoDeposit.SetWireSender(b =>
+        {
+            if (Encoding.Latin1.GetString(b).StartsWith("buy ")) h.Bought.Add(b);
+            else h.Deposited.Add(b);
+        });
         autoDeposit.Deposited += v => h.DepositedValues.Add(v);
         stash.SetWireSender(b => h.Stashed.Add(b));
         return h;
@@ -194,15 +285,13 @@ public sealed class AutoDepositManagerTests : IDisposable
 
     // ----- helpers ---------------------------------------------------
 
-    private static RoomObservation Obs(RoomKey room) => room switch
+    // Build the observation from the loaded graph so the same helper drives any
+    // fixture (the coin graph and the dark-route graph below).
+    private static void Arrive(Harness h, RoomKey room)
     {
-        { Map: 1, Room: 1 } => new RoomObservation("A", new HashSet<Direction> { Direction.N }),
-        { Map: 1, Room: 2 } => new RoomObservation("B", new HashSet<Direction> { Direction.N, Direction.S }),
-        { Map: 1, Room: 3 } => new RoomObservation("C", new HashSet<Direction> { Direction.S }),
-        _ => throw new ArgumentOutOfRangeException(nameof(room)),
-    };
-
-    private static void Arrive(Harness h, RoomKey room) => h.Tracker.NoteRoomObserved(Obs(room));
+        Room r = h.Graph.GetRoom(room) ?? throw new ArgumentOutOfRangeException(nameof(room));
+        h.Tracker.NoteRoomObserved(new RoomObservation(r.Name, new HashSet<Direction>(r.Exits.Keys)));
+    }
 
     /// <summary>Mark 1/1 + 1/3, locate at 1/1, start Auto-Lair — the
     /// resumable "running engine" for these tests.</summary>
@@ -516,5 +605,101 @@ public sealed class AutoDepositManagerTests : IDisposable
         Arrive(h, new RoomKey(1, 2));
 
         Assert.Empty(h.StashLines());
+    }
+
+    // Enable the light engine and stock a torch (Strength 100 covers the -200 dark
+    // room from a 0 worn baseline; ~6 h burn so a single copy meets the carry
+    // target). The shop that sells it sits at 1/4.
+    private static void EnableLightDetour(Harness h)
+    {
+        h.AutoLightEnabled = true;
+        h.WornIllu = 0;
+        h.Catalogue.Add(new Game.Light.LightItem(100, "torch", 100, 7200));
+        h.LightShopRooms.Add(new RoomKey(1, 4));
+    }
+
+    // Simulate a bought copy landing in the pack and fire the inventory re-check
+    // the manager listens on for its buy phase.
+    private static void GiveTorch(Harness h)
+    {
+        h.Snapshot = new InventorySnapshot(
+            h.Snapshot.Currency, EncumbranceReading.Empty,
+            Array.Empty<EquippedItem>(), new[] { "torch" }, DateTimeOffset.UtcNow);
+        h.AutoDeposit.OnInventoryChanged();
+    }
+
+    [Fact]
+    public void BankReturnLegRunsDark_DetoursToLightShopThenResumes()
+    {
+        using Harness h = NewHarness(DarkGraphJson);
+        StartLoop(h);                 // loop [1/1, 1/3], resumable engine
+        ArmBankGate(h);               // bank at 1/3
+        EnableLightDetour(h);
+
+        h.SetWealth(copper: 0, silver: 0, gold: 50, platinum: 0, runic: 0, totalCopperValue: 5000);
+        Assert.Equal(new RoomKey(1, 3), h.Walker.Destination);
+
+        // Walk to the bank (1/1 → 1/2 → 1/3) → deposit fires.
+        Arrive(h, new RoomKey(1, 2));
+        Arrive(h, new RoomKey(1, 3));
+        Assert.Equal("dep 5000", h.DepositLines().Single());
+
+        // Return leg (1/3 → 1/2 → 1/1) runs dark and nothing is carried → detour
+        // to the light shop at 1/4 instead of straight home.
+        Assert.Equal(new RoomKey(1, 4), h.Walker.Destination);
+
+        // Walk to the shop (1/3 → 1/2 → 1/1 → 1/4) → buy fires on arrival.
+        Arrive(h, new RoomKey(1, 2));
+        Arrive(h, new RoomKey(1, 1));
+        Arrive(h, new RoomKey(1, 4));
+        Assert.Equal("buy torch", h.BuyLines().Single());
+
+        // The bought torch lands → resume the walk home (shop 1/4 → origin 1/1).
+        GiveTorch(h);
+        Assert.Equal(new RoomKey(1, 1), h.Walker.Destination);
+
+        Arrive(h, new RoomKey(1, 1));
+        Assert.Equal(LoopState.Running, h.Loop.State);   // engine resumed
+    }
+
+    [Fact]
+    public void BankReturnLegRunsDark_AutoLightOff_NoDetour()
+    {
+        using Harness h = NewHarness(DarkGraphJson);
+        StartLoop(h);
+        ArmBankGate(h);
+        EnableLightDetour(h);
+        h.AutoLightEnabled = false;   // master toggle off gates the whole detour
+
+        h.SetWealth(copper: 0, silver: 0, gold: 50, platinum: 0, runic: 0, totalCopperValue: 5000);
+        Arrive(h, new RoomKey(1, 2));
+        Arrive(h, new RoomKey(1, 3));
+        Assert.Equal("dep 5000", h.DepositLines().Single());
+
+        // No light detour — straight back to origin, nothing bought.
+        Assert.Equal(new RoomKey(1, 1), h.Walker.Destination);
+        Assert.Empty(h.BuyLines());
+
+        Arrive(h, new RoomKey(1, 2));
+        Arrive(h, new RoomKey(1, 1));
+        Assert.Equal(LoopState.Running, h.Loop.State);
+    }
+
+    [Fact]
+    public void BankReturnLegRunsDark_NoStockingShop_ReturnsWithoutLight()
+    {
+        using Harness h = NewHarness(DarkGraphJson);
+        StartLoop(h);
+        ArmBankGate(h);
+        EnableLightDetour(h);
+        h.LightShopRooms.Clear();     // dark leg, but nothing sells the light
+
+        h.SetWealth(copper: 0, silver: 0, gold: 50, platinum: 0, runic: 0, totalCopperValue: 5000);
+        Arrive(h, new RoomKey(1, 2));
+        Arrive(h, new RoomKey(1, 3));
+
+        // Buy verdict but no reachable shop → head home without light, don't stall.
+        Assert.Equal(new RoomKey(1, 1), h.Walker.Destination);
+        Assert.Empty(h.BuyLines());
     }
 }
