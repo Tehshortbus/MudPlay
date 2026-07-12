@@ -51,6 +51,18 @@ public sealed class EngineRecoveryGate
     private readonly FootprintMatcher _tier3;
     private bool _tier3Backtracking;
 
+    // Set while we've paused the engine waiting on an authoritative `rm`
+    // position reply (Paradigm only). NoteAuthoritativePosition clears it on a
+    // successful re-anchor; OnAuthoritativeResyncFailed clears it and falls back
+    // to the heuristic backtrack. Nothing advances the tiers while it's set.
+    private bool _awaitingAuthoritative;
+
+    // Optional Paradigm re-sync hook. When set, NoteSuspectedMismatch asks it to
+    // fire `rm` before climbing the heuristic ladder; a true return means a
+    // request is in flight and we should pause + wait. Null (or a false return)
+    // keeps the pure heuristic path — the only behaviour on stock realms.
+    public Func<string, bool>? TryResync { get; set; }
+
     // Currently active engine, or null when nothing is attached.
     public IRecoverableEngine? AttachedEngine => _engine;
 
@@ -62,6 +74,9 @@ public sealed class EngineRecoveryGate
 
     // Read-only view of the executed-steps history since the current anchor.
     public IReadOnlyList<Direction> ExecutedSinceAnchor => _executedSinceAnchor;
+
+    // True while the engine is paused waiting on a Paradigm `rm` reply.
+    public bool AwaitingAuthoritativeResync => _awaitingAuthoritative;
 
     // Fires whenever CurrentTier changes. Payload carries previous/new + a reason.
     public event Action<RecoveryTierChangedEvent>? TierChanged;
@@ -108,6 +123,7 @@ public sealed class EngineRecoveryGate
         _executedSinceAnchor.Clear();
         _tier3.Clear();
         _tier3Backtracking = false;
+        _awaitingAuthoritative = false;
         CurrentTier = TierLevel.Tier1;
 
         Room? here = _tracker.State.CurrentRoom;
@@ -127,6 +143,7 @@ public sealed class EngineRecoveryGate
         _executedSinceAnchor.Clear();
         _tier3.Clear();
         _tier3Backtracking = false;
+        _awaitingAuthoritative = false;
         SetTier(TierLevel.Tier1, "detach");
     }
 
@@ -209,6 +226,23 @@ public sealed class EngineRecoveryGate
         // mismatch arriving while already in Tier2 would be invisible.
         _log?.Log(LogSeverity.Info, LogSource,
             $"NoteSuspectedMismatch (tier={CurrentTier}): {reason}");
+
+        // Paradigm fast-path: ask the game for our authoritative position via
+        // `rm` before climbing the heuristic ladder. Pause the engine while the
+        // reply round-trips so it reports a stationary room;
+        // NoteAuthoritativePosition resumes us from that anchor, and
+        // OnAuthoritativeResyncFailed falls back to the backtrack on a miss.
+        // TryResync returns false on stock realms / when throttled, leaving the
+        // heuristic escalation below untouched.
+        if (!_awaitingAuthoritative && TryResync?.Invoke(reason) == true)
+        {
+            _awaitingAuthoritative = true;
+            _engine.PauseForRecovery($"awaiting rm resync: {reason}");
+            _log?.Log(LogSeverity.Info, LogSource,
+                $"resync-wait: paused {_engine.Name}, awaiting authoritative rm position (tier={CurrentTier})");
+            return;
+        }
+
         if (CurrentTier == TierLevel.Tier1)
             SetTier(TierLevel.Tier2, $"mismatch: {reason}");
 
@@ -221,6 +255,54 @@ public sealed class EngineRecoveryGate
         }
     }
 
+    // The Paradigm resolver got an authoritative `rm` Location: reply and
+    // hard-located the tracker to `key`. Re-anchor the gate there by id
+    // (bypassing the 1-of-1 name-uniqueness wrinkle that a normal observation
+    // needs), drop to Tier1, and resume the engine from that anchor. If the key
+    // isn't in the active graph we can't anchor — fall back to the heuristic.
+    public void NoteAuthoritativePosition(RoomKey key)
+    {
+        if (_engine is null) return;
+        if (!_awaitingAuthoritative)
+        {
+            _log?.Log(LogSeverity.Debug, LogSource,
+                $"NoteAuthoritativePosition {key} ignored — not awaiting a resync");
+            return;
+        }
+        if (_graph.GetRoom(key) is null)
+        {
+            _log?.Log(LogSeverity.Warn, LogSource,
+                $"authoritative {key} not in active graph; falling back to heuristic backtrack");
+            OnAuthoritativeResyncFailed();
+            return;
+        }
+
+        _awaitingAuthoritative = false;
+        _anchor = key;
+        _executedSinceAnchor.Clear();
+        _tier3.Clear();
+        _tier3Backtracking = false;
+        SetTier(TierLevel.Tier1, "authoritative rm resync");
+        _log?.Log(LogSeverity.Info, LogSource, $"authoritative resync → anchored {key}");
+        Recovered?.Invoke(key);
+        _engine.ResumeAfterRecovery(key);
+    }
+
+    // The Paradigm resolver's `rm` request didn't land (timeout, or the reported
+    // room isn't in the graph). Drop the wait flag and fall back to the
+    // heuristic recovery ladder. The engine is already paused from the
+    // resync-wait, so the natural next rung is the Tier3 footprint backtrack —
+    // Tier2 is a non-paused watch we can't re-enter from a paused engine.
+    public void OnAuthoritativeResyncFailed()
+    {
+        if (_engine is null) return;
+        if (!_awaitingAuthoritative) return;
+        _awaitingAuthoritative = false;
+        _log?.Log(LogSeverity.Warn, LogSource,
+            "rm resync failed; falling back to heuristic backtrack");
+        EscalateToTier3("rm resync failed");
+    }
+
     // Check before sending the engine's next planned step. Returns true
     // when the gate is OK with the send. Returns false when the gate has
     // escalated to tier 3 — engine must stop and surrender control until
@@ -228,6 +310,14 @@ public sealed class EngineRecoveryGate
     public bool MayProceedWithPlannedStep()
     {
         if (_engine is null) return true;
+        if (_awaitingAuthoritative)
+        {
+            // Paused mid-flight on an `rm` resync — hold every planned step
+            // until NoteAuthoritativePosition resumes us or the fallback fires.
+            _log?.Log(LogSeverity.Info, LogSource,
+                $"MayProceed=false: awaiting authoritative rm resync; engine={_engine.Name} must wait");
+            return false;
+        }
         if (CurrentTier == TierLevel.Tier3)
         {
             _log?.Log(LogSeverity.Info, LogSource,

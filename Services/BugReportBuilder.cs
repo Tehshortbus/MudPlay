@@ -333,6 +333,23 @@ public static class BugReportBuilder
             svc.AutoLair.CurrentTarget is { } lair ? $"{lair.Map}/{lair.Room}" : "(none)");
         Kv(sb, "Auto-deposit reroute", svc.AutoDeposit.RerouteStatus);
 
+        // Recovery gate + Paradigm rm re-sync — a "walker got lost / stuck
+        // mid-walk" report needs the tier the gate climbed to, the anchor it
+        // last held, and whether an authoritative-position round-trip was
+        // pending (Paradigm). Without these a drift report can't tell a normal
+        // walk from one stalled waiting on an `rm` that never answered.
+        Kv(sb, "Recovery tier", svc.Recovery.CurrentTier.ToString());
+        Kv(sb, "Recovery anchor",
+            svc.Recovery.Anchor is { } anc ? $"{anc.Map}/{anc.Room}" : "(none)");
+        Kv(sb, "Awaiting rm resync", svc.Recovery.AwaitingAuthoritativeResync.ToString());
+        var resync = svc.ParadigmResync;
+        Kv(sb, "rm resync enabled", resync.Enabled.ToString());
+        Kv(sb, "rm request in flight", resync.RequestInFlight.ToString());
+        Kv(sb, "rm requested at",
+            resync.LastRequestedAt is { } req ? req.ToLocalTime().ToString("HH:mm:ss") : "(idle)");
+        Kv(sb, "rm last resolved",
+            resync.LastResolved is { } res ? $"{res.Map}/{res.Room}" : "(none)");
+
         var roomState = svc.RoomTracker.State;
         Kv(sb, "Current room",
             roomState.CurrentRoom is { } room ? $"{room.Key.Map}/{room.Key.Room} — {room.DisplayName}" : "(unknown)");

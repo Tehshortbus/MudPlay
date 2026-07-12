@@ -970,6 +970,9 @@ public partial class MainWindowViewModel : ObservableObject
         // blast moves through a password-entry prompt.
         AppServices.Current.Walker.SetWireSender(engineSend);
         AppServices.Current.LoopRunner.SetWireSender(engineSend);
+        // Paradigm position resolver — its `rm` re-sync ride the same
+        // gate-wrapped pipeline so it can't land mid-password-prompt.
+        AppServices.Current.ParadigmResync.SetWireSender(engineSend);
         // SuicideHandler — bypasses the engine gate because it OWNS
         // the suicide flow (and needs its `suicide` + password sends
         // to land even while SuicidePasswordTracker has the gate

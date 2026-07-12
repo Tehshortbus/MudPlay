@@ -2,6 +2,13 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.41.0
+
+- On Paradigm, a suspected position mismatch now asks the game where you are (`rm`) and re-anchors to the authoritative `Location: map,room` instead of dropping straight to the heuristic backtrack / "Lost" dialog
+- The navigation engine pauses during the `rm` round-trip so the reply reports a stationary room, then re-plans from the confirmed position
+- Heuristic backtrack recovery stays the fallback — used when the realm isn't Paradigm, the reply times out, or the reported room isn't in the map graph
+- Bug report captures the resync state (awaiting-rm flag, request in flight, last resolved room)
+
 ## 1.40.4
 
 - Movement refusals ending in `!` (Paradigm's "There is no exit in that direction!") now clear the pending move instead of stranding the walker

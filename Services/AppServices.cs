@@ -1177,6 +1177,11 @@ public sealed class AppServices
     // executed-step history + tier-3 backtrack logic.
     public Game.Map.EngineRecoveryGate Recovery { get; private set; } = null!;
 
+    // Paradigm-only authoritative position re-sync. Fires `rm` on the gate's
+    // request and re-anchors the tracker + gate from the Location: reply. Stock
+    // realms no-op it and keep the heuristic recovery ladder.
+    public Game.Map.ParadigmPositionResolver ParadigmResync { get; private set; } = null!;
+
     // Writer that persists tracker-learned room names back into the
     // active set's Rooms.json. Consumed by the
     // MainWindowViewModel name-learned prompt handler after the user
@@ -2007,6 +2012,17 @@ public sealed class AppServices
         // Shared engine-level recovery gate. Walker / LoopRunner /
         // AutoLair attach themselves on Start (next commits).
         Recovery = new Game.Map.EngineRecoveryGate(RoomGraph, RoomTracker, Log);
+
+        // Paradigm-only re-sync: on a suspected drift the gate asks this
+        // resolver to fire `rm`; its Location: reply hard-locates the tracker
+        // and re-anchors the gate, so navigation never falls to the heuristic
+        // backtrack / "Lost" dialog on Paradigm. Stock realms have no `rm`, so
+        // TryRequestResync returns false and the gate keeps its heuristic path.
+        // Reads GameData.ActiveRealm live per-request, so a mid-session set swap
+        // is honoured without re-wiring.
+        ParadigmResync = new Game.Map.ParadigmPositionResolver(Router, RoomTracker, Recovery, GameData, Log);
+        Recovery.TryResync = ParadigmResync.TryRequestResync;
+        ParadigmResync.ResyncFailed += Recovery.OnAuthoritativeResyncFailed;
 
         // Writer that persists tracker-learned names back to
         // Rooms.json. The MainWindowVM subscribes to NameLearned to

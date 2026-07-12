@@ -111,6 +111,16 @@ it isn't here and you're unsure, ask.
 - **[OBSERVED]** Any NPC in the room prevents a sneak from taking — an `sn` is wasted while a
   monster shares the room.
 
+**Observing another player's failed sneak into your room** *([CONFIRMED] 2026-07-12, user)*
+- `You notice <name> sneaking in from the <dir>.` — you *perceived* another player entering your
+  room while sneaking (their sneak failed against you). **This line is always a player, never a
+  monster** — monsters do not sneak-enter with this wording. The realm may paint the line the
+  monster hue (yellow), so wire colour is **not** a reliable kind hint here.
+- **Client note:** `SneakArrivalNotice` captures the bare `<name>` and `RoomEntryWatcher`
+  classifies it Player unconditionally. The generic `RoomEntryArrival` pattern carries a
+  `(?!You notice )` guard so it doesn't also grab `"You notice <name>"` as a null-numbered
+  Monster — which previously held the combat gate open and froze the loop.
+
 **Sneak vs hide — both enable backstab** *([CONFIRMED])*
 - **Sneaking** and **hidden** are distinct stealth states and **either one enables a backstab**:
   - *Sneaking* lets you **move** silently and open on a target you approach, but does **not** remove
@@ -536,6 +546,21 @@ comes from the stat screen / who line (`AlignmentTracker` / `PlayerStats`).
 
 ## Movement & navigation
 
+- **[CONFIRMED, capture 2026-07-12] Paradigm-only `rm` command prints authoritative position.**
+  On a ParaMud (Paradigm) realm, typing `rm` returns a fixed three-line block, each label
+  left-justified with the value padded to a column:
+  ```
+  Location:      1,1729
+  Regen Time:      2m 30s
+  Room Illu:      -100 (-100)
+  ```
+  `Location: <map>,<room>` is the authoritative (map, room) — no guessing needed. `Regen Time:`
+  is a duration, `Room Illu:` an illumination pair `<n> (<n>)`. The prompt returns immediately
+  after. **`rm` does NOT exist on stock realms** — stock keeps relying on the heuristic position
+  tracker. Because `rm` reports the *player's own* position it is correct for followers too (no
+  leader/follower divergence). The client keys on the `Location:` line to re-anchor `RoomTracker`
+  via `SetLocated`; if that (map,room) isn't in the imported graph, `SetLocated` logs a warning and
+  refuses rather than writing a stale anchor.
 - **[CONFIRMED]** **A refused ("bonked") move always prints an explicit line and never
   redisplays the room.** When a move command can't be honoured — no exit that way, a shut
   door, an impairment — the game emits a one-line refusal *instead of* a room display. The
