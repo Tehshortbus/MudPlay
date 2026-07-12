@@ -73,6 +73,10 @@ public sealed class AppServices
     // App-wide severity-tagged ring-buffer log. Status bar + log pane subscribe.
     public LogService Log { get; }
 
+    // Tees Log to a rolling on-disk file (Data/Logs/{ts}-program.log) so a
+    // hard hang / kill leaves a post-mortem trail the in-memory ring can't.
+    public ProgramLogFile ProgramLog { get; }
+
     // Session-only diagnostic switches surfaced in the Log pane menu
     // (combat-verbose / round-trace umbrella). Consumers
     // (e.g. Game.Combat.RoundDamageTracker) read this
@@ -1402,6 +1406,9 @@ public sealed class AppServices
         // per-character diagnostic toggles (applied from the profile below,
         // flipped from the Log pane).
         Log.Diagnostics = LogDiagnostics;
+        // Start teeing the program log to disk immediately so even the
+        // earliest startup entries survive a hang / kill.
+        ProgramLog = new ProgramLogFile(Log);
         // Late-bind the cache's log sink so SwitchSet emits the swap
         // audit entries (load / unload / swap) without coupling the
         // cache to AppServices construction order.
