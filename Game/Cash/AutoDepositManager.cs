@@ -1,5 +1,7 @@
 using System.Text;
+using System.Threading;
 using FujinTerm.Game.Inventory;
+using FujinTerm.Game.Light;
 using FujinTerm.Game.Map;
 using FujinTerm.Models.Profile;
 using FujinTerm.Services;
@@ -43,8 +45,22 @@ namespace FujinTerm.Game.Cash;
 // room still detours. A purely manual walk with no engine running never triggers
 // a pass-through stash.
 //
+// Light on the way home. The reroute is the sole controller of the walker for the
+// whole errand — the reactive light-shop router is suppressed while IsRerouting, so
+// it can't hijack the detour walk-tos (two controllers on one walker is what froze
+// the client). To still cover a dark return leg, this manager runs the light
+// provisioning itself as an extra phase: after offloading at the bank it scans the
+// bank -> origin leg (AutoLightProvisioner.PlanRouteBuy), and if that leg runs dark
+// with no carried light to cover it, detours through the fewest-added-steps light
+// shop (AutoLightShopRouter.TrySelectShop) — bank -> shop -> buy -> origin — before
+// resuming the loop. The whole light detour rides the AutoLight master toggle
+// (PlanRouteBuy returns null when it's off), so no separate opt-in. A shop it can't
+// reach or a buy that doesn't land in the buy window falls through to the plain
+// return walk — a missing light never strands the reroute.
+//
 // Everything runs on the UI thread (AutoWalkManager.Event and
-// CashManager.AutoDepositRequested both fire there), so no marshalling is needed.
+// CashManager.AutoDepositRequested both fire there), so no marshalling is needed —
+// except the buy-window timer, whose callback is posted back onto the UI thread.
 // Single-flight: a second gate crossing while a reroute is in progress is ignored
 // (the CashManager single-fire guard already suppresses re-fires until both gates
 // fall back below threshold).
@@ -62,11 +78,24 @@ public sealed class AutoDepositManager : IDisposable
     private readonly LoopRunner _loopRunner;
     private readonly AutoLairManager _autoLair;
     private readonly StashRoomManager _stash;
+    private readonly AutoLightProvisioner _provisioner;
+    private readonly AutoLightShopRouter _lightShop;
+    private readonly Func<int, int> _carriedCount;
+    private readonly Action<Action> _post;
+    private readonly TimeSpan _buyTimeout;
+    private readonly Timer _buyTimer;
     private readonly LogService? _log;
 
     private Action<byte[]>? _wireSender;
     private bool _disposed;
     private bool _busy;
+
+    // The light buy the return leg needs, remembered across the shop detour
+    // (WalkingToLightShop -> BuyingLight). Null outside a light detour.
+    private AutoLightBuyRequest? _lightBuy;
+    // Carried count of the buy item before the buys were sent — a rise past this
+    // means a fresh copy landed (BuyingLight resumes the walk home).
+    private int _lightBaseCount;
 
     // Fires when a bank `dep` is dispatched on arrival, carrying the deposited
     // copper value. Lets the Session Stats tracker count bank-deposited wealth
@@ -89,7 +118,12 @@ public sealed class AutoDepositManager : IDisposable
         LoopRunner loopRunner,
         AutoLairManager autoLair,
         StashRoomManager stash,
-        LogService? log = null)
+        AutoLightProvisioner provisioner,
+        AutoLightShopRouter lightShop,
+        Func<int, int> carriedCount,
+        Action<Action> post,
+        LogService? log = null,
+        TimeSpan? buyTimeout = null)
     {
         ArgumentNullException.ThrowIfNull(cash);
         ArgumentNullException.ThrowIfNull(readCash);
@@ -101,6 +135,10 @@ public sealed class AutoDepositManager : IDisposable
         ArgumentNullException.ThrowIfNull(loopRunner);
         ArgumentNullException.ThrowIfNull(autoLair);
         ArgumentNullException.ThrowIfNull(stash);
+        ArgumentNullException.ThrowIfNull(provisioner);
+        ArgumentNullException.ThrowIfNull(lightShop);
+        ArgumentNullException.ThrowIfNull(carriedCount);
+        ArgumentNullException.ThrowIfNull(post);
         _cash = cash;
         _readCash = readCash;
         _getSnapshot = getSnapshot;
@@ -111,6 +149,13 @@ public sealed class AutoDepositManager : IDisposable
         _loopRunner = loopRunner;
         _autoLair = autoLair;
         _stash = stash;
+        _provisioner = provisioner;
+        _lightShop = lightShop;
+        _carriedCount = carriedCount;
+        _post = post;
+        _buyTimeout = buyTimeout ?? TimeSpan.FromSeconds(8);
+        _buyTimer = new Timer(_ => _post(OnBuyTimeout), null,
+            Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
         _log = log;
 
         _cash.AutoDepositRequested += OnAutoDepositRequested;
@@ -126,6 +171,17 @@ public sealed class AutoDepositManager : IDisposable
     // re-announce/BFS loop that locks the UI. Suppressing them here keeps the
     // reroute single-controller.
     public bool IsRerouting => _busy;
+
+    // One-line reroute status for the bug report — the current phase, plus the
+    // light being bought while a return-leg light detour is in flight. "idle" when
+    // no reroute is running. Diagnoses a walker stuck mid-errand (the original
+    // freeze had no capture of which reroute phase owned the walker).
+    public string RerouteStatus =>
+        _phase == DepositPhase.Idle
+            ? "idle"
+            : _lightBuy is { } buy
+                ? $"{_phase} (light: {buy.LightName} x{buy.Count})"
+                : _phase.ToString();
 
     // Bind the wire sender — typically the gate-wrapped engine pipeline from
     // MainWindowViewModel. The bank `dep` command travels this path; the stash
@@ -253,6 +309,17 @@ public sealed class AutoDepositManager : IDisposable
                     Resume();
                 }
                 break;
+            case DepositPhase.WalkingToLightShop:
+                if (e.Kind == WalkEventKind.Finished) BeginBuyingLight();
+                else if (e.Kind == WalkEventKind.Failed)
+                {
+                    // Shop unreachable — the light stays unbought; don't strand
+                    // the reroute, just head home (dark leg pushed through
+                    // reactively, same as the trip out).
+                    _log?.Warn(LogCategory, "light-shop path failed — returning to origin without light");
+                    WalkBackToOrigin();
+                }
+                break;
             case DepositPhase.WalkingBackToOrigin:
                 if (e.Kind == WalkEventKind.Finished) Resume();
                 else if (e.Kind == WalkEventKind.Failed)
@@ -282,6 +349,100 @@ public sealed class AutoDepositManager : IDisposable
             DepositAtBank();
         }
 
+        BeginReturnLeg();
+    }
+
+    // Decide the trip home. If the bank -> origin leg runs dark and no carried light
+    // covers it, detour through the nearest light shop (bank -> shop -> buy ->
+    // origin) before resuming; otherwise walk straight back. The light detour rides
+    // the AutoLight master toggle (PlanRouteBuy returns null when it's off).
+    private void BeginReturnLeg()
+    {
+        if (TryPlanLightDetour(out RoomKey shop, out AutoLightBuyRequest buy))
+        {
+            _lightBuy = buy;
+            _phase = DepositPhase.WalkingToLightShop;
+            _log?.Info(LogCategory,
+                $"return leg runs dark — detouring to light shop {shop} for '{buy.LightName}' x{buy.Count}");
+            if (!_walker.WalkTo(shop))
+            {
+                _log?.Warn(LogCategory, $"can't reach light shop {shop} — returning to origin without light");
+                WalkBackToOrigin();
+            }
+            return;
+        }
+
+        WalkBackToOrigin();
+    }
+
+    // Whether the return leg needs a light we must shop for, and where to buy it.
+    // Scans the bank -> origin leg we're about to walk: no route (origin
+    // unreachable from here) leaves it to the plain return walk to surface;
+    // PlanRouteBuy null means lit / covered / AutoLight off; a Buy verdict with no
+    // reachable stocking shop returns false (head home, let the reactive need
+    // surface). Only a full Buy + reachable shop arms the detour.
+    private bool TryPlanLightDetour(out RoomKey shop, out AutoLightBuyRequest buy)
+    {
+        shop = default;
+        buy = default;
+        if (_walker.TryComputeRouteKeys(_destination, _origin) is not { } route) return false;
+        if (_provisioner.PlanRouteBuy(route) is not { } req) return false;
+        if (!_lightShop.TrySelectShop(_destination, _origin, req.ItemId, out shop))
+        {
+            _log?.Info(LogCategory,
+                $"return leg dark but no reachable shop stocks '{req.LightName}' — returning without light");
+            return false;
+        }
+        buy = req;
+        return true;
+    }
+
+    // At the light shop: buy the whole carry batch (one `buy <name>` per copy still
+    // short of the target) and arm the buy window. Movement resumes only once a
+    // fresh copy lands (OnInventoryChanged) or the window elapses (OnBuyTimeout),
+    // so the run of buys isn't cut short.
+    private void BeginBuyingLight()
+    {
+        if (_lightBuy is not { } buy)
+        {
+            WalkBackToOrigin();
+            return;
+        }
+        _lightBaseCount = _carriedCount(buy.ItemId);
+        int toBuy = Math.Max(1, buy.Count - _lightBaseCount);
+        _phase = DepositPhase.BuyingLight;
+        _log?.Info(LogCategory, $"at light shop — buying '{buy.LightName}' x{toBuy}");
+        for (int i = 0; i < toBuy; i++) Send($"buy {buy.LightName}");
+        _buyTimer.Change(_buyTimeout, Timeout.InfiniteTimeSpan);
+    }
+
+    // Inventory-change poll (wired to InventoryManager.Changed). The first fresh
+    // copy landing resumes the walk home — one copy covers the dark leg even while
+    // the rest of the batch is still buying. A no-op outside the buy phase.
+    public void OnInventoryChanged()
+    {
+        if (_phase != DepositPhase.BuyingLight) return;
+        if (_lightBuy is not { } buy) return;
+        if (_carriedCount(buy.ItemId) <= _lightBaseCount) return;
+        _log?.Info(LogCategory, $"'{buy.LightName}' acquired — returning to origin");
+        WalkBackToOrigin();
+    }
+
+    // Buy window elapsed. If no fresh copy landed the buy didn't take (no gold, out
+    // of stock) — head home anyway rather than stalling the reroute. Posted onto the
+    // UI thread from the timer.
+    private void OnBuyTimeout()
+    {
+        if (_phase != DepositPhase.BuyingLight) return;
+        if (_lightBuy is { } buy && _carriedCount(buy.ItemId) > _lightBaseCount) return; // race: handled
+        _log?.Info(LogCategory, "light buy did not complete in time — returning to origin");
+        WalkBackToOrigin();
+    }
+
+    private void WalkBackToOrigin()
+    {
+        _buyTimer.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+        _lightBuy = null;
         _phase = DepositPhase.WalkingBackToOrigin;
         if (!_walker.WalkTo(_origin))
         {
@@ -383,6 +544,8 @@ public sealed class AutoDepositManager : IDisposable
 
     private void GoIdle()
     {
+        _buyTimer.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+        _lightBuy = null;
         _busy = false;
         _phase = DepositPhase.Idle;
     }
@@ -400,12 +563,15 @@ public sealed class AutoDepositManager : IDisposable
         _cash.AutoDepositRequested -= OnAutoDepositRequested;
         _walker.Event -= OnWalkEvent;
         _tracker.StateChanged -= OnRoomEntered;
+        _buyTimer.Dispose();
     }
 
     private enum DepositPhase
     {
         Idle,
         WalkingToDestination,
+        WalkingToLightShop,
+        BuyingLight,
         WalkingBackToOrigin,
     }
 

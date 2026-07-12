@@ -168,6 +168,32 @@ public sealed class AutoLightProvisioner
         }
     }
 
+    // Advisor for an orchestrated errand (the auto-deposit reroute owns the walk):
+    // given a route the character is about to traverse, decide whether it must buy a
+    // light to cover it and, if so, what to buy. Unlike OnRoutePlanned this sends
+    // nothing on the wire and ignores the ready / reorder branches — the caller
+    // drives its own shop detour and buy. Returns null when no buy is warranted
+    // (route lit, provisioning off, covered by a carried / lit light, or the light
+    // has no catalogue id). Null too unless the AutoLight master toggle is on, so
+    // the whole errand rides that one gate exactly like the reactive path.
+    public AutoLightBuyRequest? PlanRouteBuy(IReadOnlyList<RoomKey> route)
+    {
+        ArgumentNullException.ThrowIfNull(route);
+        if (!_isEnabled()) return null;
+
+        InventorySnapshot snap = _snapshot();
+        int wornIllu = _wornIllu();
+        IReadOnlyList<LightItem> catalogue = _catalogue();
+        RouteLightScan scan = RouteLightScanner.Scan(route, _resolveRoom, wornIllu);
+        AutoLightPlan plan = AutoLightPlanner.Plan(
+            scan, wornIllu, snap.ReadiedLight,
+            CarriedLights(snap.CarriedItems, catalogue), catalogue, _settings());
+
+        return plan.Action == AutoLightAction.Buy
+            ? ResolveBuy(plan.LightName!, plan.BuyCount, catalogue)
+            : null;
+    }
+
     // Reorder poll bound to InventoryManager.Changed. An i dump is the only moment
     // the readied light's charge refreshes, so this is where a dwindling supply is
     // caught: it re-runs the planner against an empty route (the reorder verdict is
@@ -375,7 +401,18 @@ public sealed class AutoLightProvisioner
             _log?.Debug(LogCategory, $"buy deferred (no provisioner): {reason}");
             return false;
         }
+        if (ResolveBuy(name, count, catalogue) is not { } req) return false;
 
+        _log?.Info(LogCategory, $"provision requested: {reason}");
+        _provision(req);
+        return true;
+    }
+
+    // Resolve a light name + carry count into a buy request, looking up the light's
+    // MDB id from the catalogue (shop / carried-count lookups key on id). Null when
+    // the name isn't a catalogue light (no id to buy against).
+    private AutoLightBuyRequest? ResolveBuy(string name, int count, IReadOnlyList<LightItem> catalogue)
+    {
         int itemId = 0;
         foreach (LightItem light in catalogue)
             if (string.Equals(light.Name, name, StringComparison.OrdinalIgnoreCase))
@@ -386,12 +423,9 @@ public sealed class AutoLightProvisioner
         if (itemId <= 0)
         {
             _log?.Debug(LogCategory, $"buy skipped: no catalogue id for '{name}'");
-            return false;
+            return null;
         }
-
-        _log?.Info(LogCategory, $"provision requested: {reason}");
-        _provision(new AutoLightBuyRequest(itemId, name, Math.Max(1, count)));
-        return true;
+        return new AutoLightBuyRequest(itemId, name, Math.Max(1, count));
     }
 
     // The carried-but-unworn tokens from the last `i` dump that name a light in

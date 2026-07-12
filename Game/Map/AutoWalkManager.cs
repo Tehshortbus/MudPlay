@@ -646,16 +646,20 @@ public sealed class AutoWalkManager : IRecoverableEngine
         if (required is not null) _pathItemAnnouncer(required);
     }
 
-    // Walk the graph along the planned directions, collecting the room key of
-    // the source and every hop's target — the ordered route the character will
-    // traverse. Cheap (one dictionary lookup per hop) and side-effect-free;
-    // skipped entirely when no announcer is bound. A hop that can't be resolved
-    // (target outside the active graph) ends the walk early so the announced
-    // route stays a contiguous prefix of the plan.
+    // Announce the freshly-planned route to any bound listener (the auto-light
+    // provisioner scans it). Skipped entirely when no announcer is bound.
     private void AnnouncePlannedRoute(RoomKey source, IReadOnlyList<Direction> path)
     {
         if (_routeAnnouncer is null) return;
+        _routeAnnouncer(ExpandRouteKeys(source, path));
+    }
 
+    // Walk the graph along a planned direction list, collecting the source and
+    // every hop's target — the ordered RoomKeys the character will traverse. A hop
+    // that can't be resolved (target outside the active graph) ends the walk early
+    // so the returned route stays a contiguous prefix of the plan.
+    private IReadOnlyList<RoomKey> ExpandRouteKeys(RoomKey source, IReadOnlyList<Direction> path)
+    {
         List<RoomKey> route = new(path.Count + 1) { source };
         RoomKey cur = source;
         foreach (Direction dir in path)
@@ -666,8 +670,24 @@ public sealed class AutoWalkManager : IRecoverableEngine
             route.Add(exit.Target);
             cur = exit.Target;
         }
+        return route;
+    }
 
-        _routeAnnouncer(route);
+    // Expand the planned route between two known rooms into the ordered RoomKeys the
+    // character would traverse. Uses the same BFS + movement filter WalkTo plans
+    // with, so the result matches the walk a WalkTo(to) would take from `from`.
+    // Null when either room is outside the active graph or no route exists.
+    // Side-effect-free — nothing is sent and no walk state changes, so a caller can
+    // inspect a leg (e.g. a reroute deciding whether it runs dark) without
+    // committing to walk it.
+    public IReadOnlyList<RoomKey>? TryComputeRouteKeys(RoomKey from, RoomKey to)
+    {
+        if (_graph.GetRoom(from) is null || _graph.GetRoom(to) is null) return null;
+        if (from.Equals(to)) return new[] { from };
+
+        IReadOnlyList<Direction>? path = _bfs.FindPath(from, to, _filter);
+        if (path is null || path.Count == 0) return null;
+        return ExpandRouteKeys(from, path);
     }
 
     public void Stop(string reason = "user stop")

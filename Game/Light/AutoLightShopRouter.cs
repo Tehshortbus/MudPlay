@@ -263,8 +263,11 @@ public sealed class AutoLightShopRouter : IDisposable
 
     // Pick the shop room minimising dist(cur,shop)+dist(shop,dest) among the
     // rooms that stock the light and are reachable both ways. Ties break on the
-    // nearer shop, then room-key order — deterministic for testability.
-    private bool TrySelectShop(RoomKey cur, RoomKey dest, int itemId, out RoomKey best)
+    // nearer shop, then room-key order — deterministic for testability. Public so
+    // the auto-deposit reroute can reuse the same fewest-added-steps choice for its
+    // own single-controller light-shop leg (bank -> shop -> origin) rather than
+    // duplicating the selection; a pure query with no side effects.
+    public bool TrySelectShop(RoomKey cur, RoomKey dest, int itemId, out RoomKey best)
     {
         best = default;
         int bestTotal = int.MaxValue;

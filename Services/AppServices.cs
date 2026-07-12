@@ -3575,7 +3575,16 @@ public sealed class AppServices
             loopRunner: LoopRunner,
             autoLair: AutoLair,
             stash: Stash,
+            provisioner: AutoLightProvisioner,
+            lightShop: AutoLightShopRouter,
+            carriedCount: CountItemCarried,
+            post: action => Avalonia.Threading.Dispatcher.UIThread.Post(action),
             log: Log);
+        // Return-leg light provisioning: the reroute owns the walker end-to-end, so
+        // the reactive shop router is suppressed (IsRerouting) — this manager runs
+        // its own bank -> shop -> origin light detour and needs the `i` dump to
+        // notice the bought copy land.
+        Inventory.Changed += AutoDeposit.OnInventoryChanged;
         // Bank deposits (already a copper value) join stash hides in
         // the Session Stats stashed/deposited figure, and record the
         // deposit in the transaction ledger.

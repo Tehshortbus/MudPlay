@@ -2,6 +2,13 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.38.0
+
+- Fixed a freeze when a walk-to was queued during a loop whose auto-deposit route crossed a dark area — the reroute no longer lets two controllers drive one walker
+- Auto-deposit bank runs that return through the dark now chain an errand: origin → bank → light shop → origin → resume loop, buying only the light the route needs
+- The dark return leg falls through to a plain return without light when auto-light is off or no reachable shop stocks the needed light
+- Bug report captures the auto-deposit reroute status
+
 ## 1.37.0
 
 - Auto-deposit bank runs no longer reset session statistics on the way back to a loop — the reset fires only on a genuine first start
