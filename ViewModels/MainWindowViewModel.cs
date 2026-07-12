@@ -3495,7 +3495,6 @@ public partial class MainWindowViewModel : ObservableObject
                 AppServices.Current.CombatSession,
                 AppServices.Current.TimeAnalysis,
                 AppServices.Current.SessionActivity,
-                AppServices.Current.TransactionHistory,
                 AppServices.Current.SessionStatsLayout,
                 AppServices.Current.PlayerStats,
                 AppServices.Current.GameData,

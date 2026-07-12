@@ -357,7 +357,11 @@ public sealed class AutoDepositManager : IDisposable
                 _autoLair.Start();
                 break;
             case ResumeKind.Loop:
-                if (r.Loop is { } loop) _loopRunner.Start(loop);
+                // ResumeAfterDetour, not Start: the loop's first-waypoint reset
+                // (session stats + party @reset) already fired at the user's
+                // original Start. This bank detour is a continuation, so it must
+                // not re-fire that reset.
+                if (r.Loop is { } loop) _loopRunner.ResumeAfterDetour(loop);
                 break;
         }
     }

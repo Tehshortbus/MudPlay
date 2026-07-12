@@ -2866,7 +2866,7 @@ public sealed class AppServices
         // wipe as the window button / connect boundary). Constructed here, after
         // the session-stats trackers exist; RemoteCommands was built upstream.
         SessionReset = new Game.Remote.SessionResetHandler(
-            RemoteCommands, CombatSession, TimeAnalysis, SessionActivity, TransactionHistory, Log);
+            RemoteCommands, CombatSession, TimeAnalysis, SessionActivity, Log);
 
         // Read-only progression queries — @exp / @level report against the
         // PlayerStats snapshot (from `stat` / `exp`) and the session
@@ -3457,7 +3457,10 @@ public sealed class AppServices
             CombatSession.Reset();
             TimeAnalysis.Reset();
             SessionActivity.Reset();
-            TransactionHistory.Reset();
+            // Transaction history is deliberately NOT reset here: the ledger of
+            // bank/stash offloads is user-owned, cleared only by the user (its own
+            // Clear button) or the connect / character-switch boundary — never by a
+            // loop start.
             Log.Info("LoopRunner",
                 "loop start: session stats reset; broadcasting @reset to party.");
             PartyBroadcaster.BroadcastExpReset();

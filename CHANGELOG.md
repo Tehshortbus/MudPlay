@@ -2,6 +2,12 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.37.0
+
+- Auto-deposit bank runs no longer reset session statistics on the way back to a loop — the reset fires only on a genuine first start
+- Transaction history is user-owned — only its own Clear button (or connect / character switch) clears it, never a loop start or party @reset
+- Transaction History window gains a Clear button
+
 ## 1.36.0
 
 - Loops now open a closed door mid-circuit — bash / pick / key it like the walker does — instead of idling on it

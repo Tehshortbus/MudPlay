@@ -109,6 +109,14 @@ public sealed class LoopRunner : IRecoverableEngine
     // wrap).
     private bool _firstWaypointReached;
 
+    // One-shot, set by ResumeAfterDetour. An auto-deposit / bank detour fully
+    // Stop()s the loop (clearing _firstWaypointReached) then re-Starts it to walk
+    // the same circuit — but that is a continuation of the same hunting session,
+    // not a new one, so BeginCircle must NOT re-fire ReachedFirstWaypoint (whose
+    // side effect is a session-stats reset + a party @reset broadcast). Consumed
+    // in BeginCircle, cleared on Reset.
+    private bool _suppressFirstWaypointEvent;
+
     // Wall-clock anchor for the current lap. Set on LoopReachedFirstWaypoint and
     // refreshed on every wrap so CurrentLapTime reads correctly.
     private DateTimeOffset _lapStartedAt;
@@ -403,13 +411,20 @@ public sealed class LoopRunner : IRecoverableEngine
     // false when the loop is empty.
     public bool Start(Loop loop) => StartInternal(loop, isRecovery: false);
 
+    // Resume a loop after an auto-deposit / bank detour that Stop()ed it for its
+    // own walk. Re-plans from the current room exactly like a fresh Start, but
+    // suppresses the one-shot ReachedFirstWaypoint event — the session began at
+    // the user's original Start, so the session-stats reset and party @reset
+    // broadcast wired to that event must not re-fire on a mid-session detour.
+    public bool ResumeAfterDetour(Loop loop) => StartInternal(loop, isRecovery: false, suppressFirstWaypointEvent: true);
+
     // Shared engine for both a fresh user Start and an auto-recovery reroute. On a
     // recovery reroute (isRecovery) we deliberately keep the session-scoped state —
     // the bounded _recoverAttempts budget and the lap history / first-waypoint flag
     // — so the reroute continues the same lap instead of re-arming ReachedFirstWaypoint
     // (which would re-fire the party @reset side effect on every recovery). EnterRecovery
     // has already detached the gate + cleared the in-flight step by the time we land here.
-    private bool StartInternal(Loop loop, bool isRecovery)
+    private bool StartInternal(Loop loop, bool isRecovery, bool suppressFirstWaypointEvent = false)
     {
         ArgumentNullException.ThrowIfNull(loop);
         if (loop.Waypoints.Count < 2)
@@ -455,6 +470,9 @@ public sealed class LoopRunner : IRecoverableEngine
             _lapDurations.Clear();
             _completedLaps = 0;
         }
+        // Set after any supersede-Stop above (which routes through Reset and would
+        // otherwise clear it) so the one-shot survives to BeginCircle.
+        _suppressFirstWaypointEvent = suppressFirstWaypointEvent;
 
         RoomKey? currentKey = _tracker.State.CurrentRoom?.Key;
 
@@ -625,7 +643,10 @@ public sealed class LoopRunner : IRecoverableEngine
         {
             _firstWaypointReached = true;
             _lapStartedAt = DateTimeOffset.UtcNow;
-            Raise(new LoopEvent(LoopEventKind.ReachedFirstWaypoint, _loop.Name));
+            if (_suppressFirstWaypointEvent)
+                _suppressFirstWaypointEvent = false;   // consume the detour-resume suppression
+            else
+                Raise(new LoopEvent(LoopEventKind.ReachedFirstWaypoint, _loop.Name));
         }
 
         if (_coordinator.IsPaused)
@@ -1314,6 +1335,7 @@ public sealed class LoopRunner : IRecoverableEngine
         _approachTarget = null;
         _circleStartRoom = null;
         _firstWaypointReached = false;
+        _suppressFirstWaypointEvent = false;
         _pausedFromApproach = false;
         _approachFinishedWhilePaused = false;
         _recoverAttempts = 0;

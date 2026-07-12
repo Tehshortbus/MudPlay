@@ -1,15 +1,18 @@
 using System.Collections.ObjectModel;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using FujinTerm.Game.Cash;
 
 namespace FujinTerm.ViewModels;
 
-// Modeless Transaction history window VM — a pure projection over
+// Modeless Transaction history window VM — a projection over
 // TransactionHistoryTracker. Rebuilds Rows on the tracker's Changed signal
 // (marshalled to the dispatcher) in newest-first order so the latest deposit
-// / stash sits at the top. The tracker owns all the state and the
-// session-reset boundary, so this VM never mutates anything.
+// / stash sits at the top. The ledger is user-owned: nothing in the automation
+// path clears it (loop starts and party @reset no longer touch it), so the
+// window's Clear button — this VM's Clear command — is the sole in-app wipe
+// besides the connect / character-switch boundary.
 public sealed partial class TransactionHistoryViewModel : ObservableObject, IDisposable
 {
     private readonly TransactionHistoryTracker _tracker;
@@ -37,6 +40,11 @@ public sealed partial class TransactionHistoryViewModel : ObservableObject, IDis
     {
         if (!_disposed) Rebuild();
     });
+
+    // The only user-driven clear of the ledger. Resetting the tracker raises
+    // Changed, which rebuilds Rows empty via OnChanged.
+    [RelayCommand]
+    private void Clear() => _tracker.Reset();
 
     private void Rebuild()
     {

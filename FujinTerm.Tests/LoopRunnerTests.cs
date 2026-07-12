@@ -423,6 +423,45 @@ public sealed class LoopRunnerTests : IDisposable
     }
 
     [Fact]
+    public void ResumeAfterDetour_SuppressesReachedFirstWaypoint()
+    {
+        // Auto-deposit round-trip: a genuine Start fires the once-per-session
+        // ReachedFirstWaypoint (the stats-reset / party @reset trigger). The
+        // detour Stop()s and ResumeAfterDetour()s the loop — a continuation of the
+        // same session, so the event must NOT re-fire while the loop still Starts.
+        Harness h = NewHarness();
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Runner.Start(AbCycle());
+        Assert.Equal(1, h.Events.Count(e => e.Kind == LoopEventKind.ReachedFirstWaypoint));
+
+        h.Runner.Stop("auto-deposit reroute");
+        h.Events.Clear();
+
+        h.Runner.ResumeAfterDetour(AbCycle());
+
+        Assert.Contains(h.Events, e => e.Kind == LoopEventKind.Started);
+        Assert.DoesNotContain(h.Events, e => e.Kind == LoopEventKind.ReachedFirstWaypoint);
+    }
+
+    [Fact]
+    public void Start_AfterDetourResume_FiresReachedFirstWaypointAgain()
+    {
+        // The suppression is one-shot: after a detour resume, a genuine user Start
+        // begins a new hunting session, so ReachedFirstWaypoint fires again.
+        Harness h = NewHarness();
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Runner.Start(AbCycle());
+        h.Runner.Stop("auto-deposit reroute");
+        h.Runner.ResumeAfterDetour(AbCycle());
+        h.Runner.Stop("user stop");
+        h.Events.Clear();
+
+        h.Runner.Start(AbCycle());
+
+        Assert.Equal(1, h.Events.Count(e => e.Kind == LoopEventKind.ReachedFirstWaypoint));
+    }
+
+    [Fact]
     public void LapTime_RecordsOnWrap()
     {
         // Complete one full lap N + S returning to 1/1 — wrap fires
