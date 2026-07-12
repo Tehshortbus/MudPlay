@@ -73,6 +73,7 @@ public sealed partial class SpellsSectionViewModel : SettingsSectionViewModel
         "Max rerolls", "Reroll cap", "Nature tap", "Mana flux",
         "Other spells", "Cure Holds", "Cure poison", "Cure disease", "Cure blindness",
         "Room light", "Light", "Bless",
+        "Self bless while resting", "Self bless during combat", "Bless timing",
         "Ailment handling", "Coordination",
         "Ignore poison", "Ignore blindness", "Ignore confusion", "Ignore disease",
         "Don't announce poison", "Don't announce blindness",
@@ -141,6 +142,11 @@ public sealed partial class SpellsSectionViewModel : SettingsSectionViewModel
     // sparse map on load and whenever the game-data set (hence realm) changes.
     // Bound one-to-one to the tab's ItemsControl.
     public ObservableCollection<SelfBlessSlotViewModel> BlessSlots { get; } = new();
+
+    // Self-bless timing gates (default on/off preserve the historical
+    // out-of-combat-only behaviour). Govern the self-buff path in CastingDirector.
+    [ObservableProperty] private bool _selfBlessWhileResting = true;
+    [ObservableProperty] private bool _selfBlessDuringCombat;
 
     // ----- Ailment handling / coordination --------------------------
     // The four "Ignore X" gates suppress the @wait sent to the party
@@ -244,6 +250,9 @@ public sealed partial class SpellsSectionViewModel : SettingsSectionViewModel
 
             BlessSlots = CollectBlessSlots(),
 
+            SelfBlessWhileResting = SelfBlessWhileResting,
+            SelfBlessDuringCombat = SelfBlessDuringCombat,
+
             IgnorePoison    = IgnorePoison,
             IgnoreBlindness = IgnoreBlindness,
             IgnoreConfusion = IgnoreConfusion,
@@ -323,6 +332,9 @@ public sealed partial class SpellsSectionViewModel : SettingsSectionViewModel
         RoomLightSpell     = dto.RoomLightSpell;
 
         RebuildBlessSlots(dto.BlessSlots ?? new Dictionary<int, string>());
+
+        SelfBlessWhileResting = dto.SelfBlessWhileResting;
+        SelfBlessDuringCombat = dto.SelfBlessDuringCombat;
 
         IgnorePoison    = dto.IgnorePoison;
         IgnoreBlindness = dto.IgnoreBlindness;
@@ -427,6 +439,9 @@ public sealed partial class SpellsSectionViewModel : SettingsSectionViewModel
     partial void OnCureDiseaseSpellChanged(string? value)    => MarkDirty();
     partial void OnCureBlindnessSpellChanged(string? value)  => MarkDirty();
     partial void OnRoomLightSpellChanged(string? value)      => MarkDirty();
+
+    partial void OnSelfBlessWhileRestingChanged(bool value)  => MarkDirty();
+    partial void OnSelfBlessDuringCombatChanged(bool value)  => MarkDirty();
 
     partial void OnIgnorePoisonChanged(bool value)           => MarkDirty();
     partial void OnIgnoreBlindnessChanged(bool value)        => MarkDirty();

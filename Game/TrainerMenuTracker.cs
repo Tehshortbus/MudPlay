@@ -61,6 +61,13 @@ public sealed class TrainerMenuTracker : IDisposable
     private bool _inMenu;
     private List<string> _rosterSnapshot = new();
 
+    // Input-mode state, driven by the outbound `train stats` command rather
+    // than the marker (see InputMenuEntered). _skipNextInputPrompt swallows the
+    // command's own `[HP=...]:train stats` prompt echo so it isn't mistaken for
+    // the menu-exit prompt.
+    private bool _inputMenuActive;
+    private bool _skipNextInputPrompt;
+
     // True while we believe the trainer-stats menu is the active screen.
     public bool IsInTrainerMenu => _inMenu;
 
@@ -77,6 +84,21 @@ public sealed class TrainerMenuTracker : IDisposable
     // Fires once when the in-game prompt returns after an armed menu session —
     // the user has exited the trainer screen.
     public event Action? MenuExited;
+
+    // Input character-mode switch, driven by the outbound `train stats`
+    // command rather than the marker. A full-screen menu drawn with cursor
+    // positioning (Paradigm's stat box) never emits its "Point Cost Chart"
+    // marker row until it's torn down — the row only completes when it scrolls
+    // off or is overwritten on exit — so a marker-gated switch leaves arrow
+    // keys captured by history-recall for the whole session. Stock realms that
+    // render the marker inline still work, but the command is the realm-
+    // independent signal. Kept separate from MenuEntered/MenuExited so the
+    // party re-invite flow stays marker-confirmed (no false-positive invites).
+    public event Action? InputMenuEntered;
+
+    // Fires when the in-game prompt returns after the `train stats` screen —
+    // the screen has closed, so line-mode input should resume.
+    public event Action? InputMenuExited;
 
     public TrainerMenuTracker(MessageRouter router, PartyState party, LogService? log = null)
     {
@@ -109,6 +131,24 @@ public sealed class TrainerMenuTracker : IDisposable
         _expectingMenuSince = NowProvider();
         _log?.Log(LogSeverity.Info, "TrainerMenu",
             $"Observed outbound `{cmd}` — armed menu-marker watch for {ExpectingMenuWindow.TotalSeconds:0} s.");
+
+        // The full-screen stat box is driven by the `train stats` command, not
+        // its marker row (which on a cursor-positioned menu only completes on
+        // teardown — too late, and on some realms never inline at all). Arm
+        // character-mode input off the command itself so arrow keys reach the
+        // wire immediately, realm-independently. Bare `train` opens a different
+        // (line-driven) prompt, so it doesn't arm input.
+        if (cmd == "train stats")
+        {
+            _skipNextInputPrompt = true; // the command's own prompt echo isn't a menu exit
+            if (!_inputMenuActive)
+            {
+                _inputMenuActive = true;
+                _log?.Log(LogSeverity.Info, "TrainerMenu",
+                    "Armed character-mode input for `train stats` screen.");
+                InputMenuEntered?.Invoke();
+            }
+        }
     }
 
     private void OnMenuMarker(MatchResult match)
@@ -149,6 +189,25 @@ public sealed class TrainerMenuTracker : IDisposable
 
     private void OnPrompt(MatchResult _)
     {
+        // Input-mode teardown runs independently of the marker-confirmed party
+        // flow below: the first in-game prompt after arming is the command's own
+        // `[HP=...]:train stats` echo (skipped); the next one is the bare prompt
+        // that returns when the user leaves the stat box, so line-mode resumes.
+        if (_inputMenuActive)
+        {
+            if (_skipNextInputPrompt)
+            {
+                _skipNextInputPrompt = false;
+            }
+            else
+            {
+                _inputMenuActive = false;
+                _log?.Log(LogSeverity.Info, "TrainerMenu",
+                    "In-game prompt returned — firing InputMenuExited.");
+                InputMenuExited?.Invoke();
+            }
+        }
+
         if (!_inMenu) return;
         _inMenu = false;
         _expectingMenuSince = null;

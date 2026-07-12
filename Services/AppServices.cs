@@ -1592,10 +1592,16 @@ public sealed class AppServices
         // to re-fire `invite` for any party member that the trainer-
         // menu round-trip dropped from the follower's view.
         TrainerMenu = new Game.TrainerMenuTracker(Router, PartyState, Log);
-        // Full-screen forms (trainer stats / char creation) want
-        // character-at-a-time input with server echo, not client-side
-        // line buffering. Flip LocalInputBuffer into character-mode on
-        // menu entry and back to line-mode on exit.
+        // Full-screen forms want character-at-a-time input with server echo,
+        // not client-side line buffering. Two arming paths, both flip the same
+        // flag (idempotent): the command-armed InputMenuEntered/Exited pair
+        // covers `train stats` (whose "Point Cost Chart" marker on a cursor-
+        // positioned menu completes too late — or never inline — so the outbound
+        // command is the realm-independent signal), while the marker-confirmed
+        // MenuEntered/Exited pair covers character creation, which is reached
+        // from the class/race/alignment flow with no outbound command to arm on.
+        TrainerMenu.InputMenuEntered += () => InputBuffer.CharacterMode = true;
+        TrainerMenu.InputMenuExited  += () => InputBuffer.CharacterMode = false;
         TrainerMenu.MenuEntered += () => InputBuffer.CharacterMode = true;
         TrainerMenu.MenuExited  += () => InputBuffer.CharacterMode = false;
         // Silence the poller's wall-clock cadences (par poll + @health nag)
