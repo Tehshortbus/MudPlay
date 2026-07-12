@@ -513,6 +513,24 @@ public sealed class RoomEntityClassifier : IDisposable
     // no-prefix monster carries the same string in both fields. Returns true when
     // a matching entity was removed, false otherwise (defensive caller logging).
     public bool RemoveDeadEntity(string monsterName)
+        => RemoveMonsterEntity(monsterName, RoomObservationSource.Death);
+
+    // Remove ONE monster matching monsterName because it WALKED OUT of the room —
+    // a "<mob> walks out of the room to <dir>." departure line, most often when a
+    // fleeing player drags the mob we were engaged with out with them (see the
+    // 180449 capture). Without this, the Combat gate the departed mob held stays
+    // asserted forever: CombatStateTracker only re-evaluates on EntitiesObserved,
+    // and a departure produced no such re-fire, so the walker froze and the client
+    // kept swinging at empty air ("Your command had no effect."). Removing the
+    // entity + re-firing EntitiesObserved drops the gate when the last hostile
+    // leaves. Returns true when a matching entity was removed.
+    public bool RemoveDepartedEntity(string monsterName)
+        => RemoveMonsterEntity(monsterName, RoomObservationSource.Departure);
+
+    // Shared core for the death / departure removals: drop the first Monster-kind
+    // entity whose ResolvedName (then RawName) matches, re-fire EntitiesObserved
+    // tagged with the caller's source so consumers can tell why the list shrank.
+    private bool RemoveMonsterEntity(string monsterName, RoomObservationSource source)
     {
         if (string.IsNullOrWhiteSpace(monsterName)) return false;
         if (Current is not { } cur) return false;
@@ -536,7 +554,7 @@ public sealed class RoomEntityClassifier : IDisposable
             if (i != removeIndex) updated.Add(cur.Entities[i]);
 
         RoomEntitiesObservation obs = new(
-            cur.RawAlsoHereLine, updated, DateTimeOffset.Now, RoomObservationSource.Death);
+            cur.RawAlsoHereLine, updated, DateTimeOffset.Now, source);
         Current = obs;
         EntitiesObserved?.Invoke(obs);
         return true;

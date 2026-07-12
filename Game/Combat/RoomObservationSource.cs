@@ -18,6 +18,12 @@ public enum RoomObservationSource
     // May leave the list empty when the last monster dies.
     Death,
 
+    // One entity removed on a departure line — a mob (often dragged by a fleeing
+    // player) walks out of the room (RoomEntityClassifier.RemoveDepartedEntity).
+    // May leave the list empty when the last monster leaves, which clears the
+    // Combat gate the departed mob was holding asserted.
+    Departure,
+
     // Synthetic empty wipe on a confirmed room change
     // (RoomEntityClassifier.NoteRoomChanged).
     RoomChange,

@@ -181,6 +181,13 @@ public static class KnownPatterns
     // "nowhere" (script-spawn).
     public const string RoomEntryArrival     = "presence.room-entry-arrival";
 
+    // Room-exit departure — "<name> walks out of the room to <direction>." Fires
+    // when a monster leaves our room, most often when a fleeing player drags the
+    // mob we were engaged with out with them. RoomDepartureWatcher strips the
+    // article and removes the matching entity from the room observation so the
+    // Combat gate the mob was holding drops instead of freezing the walker.
+    public const string RoomEntryDeparture   = "presence.room-entry-departure";
+
     // ----- Conversation --------------------------------------------------
     public const string ConversationGossip      = "conversation.gossip";
     public const string ConversationBroadcast   = "conversation.broadcast";

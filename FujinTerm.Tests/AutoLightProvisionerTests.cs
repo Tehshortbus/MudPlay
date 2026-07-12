@@ -11,11 +11,13 @@ using Xunit;
 namespace FujinTerm.Tests;
 
 /// <summary>
-/// <see cref="AutoLightProvisioner"/> — the active engine that turns the pure
-/// <see cref="AutoLightPlanner"/> verdict into wire commands on a planned route.
-/// Exercises the master-toggle gate, the ready / swap sends, the deferred buy,
-/// and the pending latch that keeps a still-unconfirmed <c>use</c> from being
-/// re-sent on a stale inventory snapshot.
+/// <see cref="AutoLightProvisioner"/> — the active engine behind auto-light. A
+/// planned route only PROVISIONS the pack (deferred buy / reorder); predictive
+/// readying is suppressed. A light is `use`d reactively on the server's live
+/// can't-see line and `rem`d on stepping into a room seeable on worn gear alone.
+/// Exercises the master-toggle gate, the deferred buy / reorder, the reactive
+/// ready-and-rem, and the pending latch that keeps a still-unconfirmed `use` from
+/// being re-sent on a stale inventory snapshot.
 /// </summary>
 public sealed class AutoLightProvisionerTests
 {
@@ -81,6 +83,8 @@ public sealed class AutoLightProvisionerTests
 
         public void Expire() => Engine.OnReadiedLightExpired();
 
+        public void Enter(int roomLight) => Engine.OnRoomEntered(RoomAt(A, roomLight));
+
         public IReadOnlyList<string> Sent => Engine.LastSentForTests
             .Select(b => Encoding.Latin1.GetString(b).TrimEnd('\r'))
             .ToList();
@@ -95,27 +99,31 @@ public sealed class AutoLightProvisionerTests
     }
 
     [Fact]
-    public void DarkRoute_CoveringCarry_SendsUseNoRem()
+    public void DarkRoute_CoveringCarry_SuppressesPredictiveReady()
     {
-        // -300 room, worn 0 → need 150; carried lantern (175) covers, nothing lit.
+        // -300 room, worn 0, carried lantern covers — the planner returns a Ready
+        // verdict, but predictive readying is suppressed: a light is `use`d only on
+        // the server's live can't-see line, never ahead of a route.
         Harness h = new() { Snapshot = Snap(carried: new[] { "lantern" }) };
         h.Plan(A);
-        Assert.Equal(new[] { "use lantern" }, h.Sent);
+        Assert.Empty(h.Sent);
     }
 
     [Fact]
-    public void DarkRoute_WeakLitLight_SwapsWithRemThenUse()
+    public void DarkRoute_WeakLitLight_SuppressesPredictiveSwap()
     {
-        // Torch (100) lit but the -300 room needs 150 → put the torch away and
-        // ready the carried lantern that covers. Reorder off so the dwindling
-        // torch doesn't take the restock branch ahead of the swap.
+        // A weak torch is lit and the -300 room needs more — the planner would
+        // predictively swap to the carried lantern, but that Ready(-swap) verdict is
+        // suppressed too. The reactive dark path handles the swap when the game
+        // actually reports we can't see. Reorder off so the dwindling torch doesn't
+        // take the restock branch.
         Harness h = new()
         {
             Settings = new() { CarryHours = 12, ReorderThresholdMinutes = 0 },
             Snapshot = Snap(carried: new[] { "lantern" }, readied: new ReadiedLight("torch", 60)),
         };
         h.Plan(A);
-        Assert.Equal(new[] { "rem torch", "use lantern" }, h.Sent);
+        Assert.Empty(h.Sent);
     }
 
     [Fact]
@@ -165,41 +173,6 @@ public sealed class AutoLightProvisionerTests
         Assert.Equal("lantern", req.LightName);
         Assert.Equal(6, req.Count);             // CarryHours 12 / lantern 2 h burn
         Assert.Empty(h.Sent);
-    }
-
-    [Fact]
-    public void PendingLatch_SameStaleSnapshot_DoesNotDoubleSend()
-    {
-        // Two walk-starts before an `i` dump confirms the readied light: the
-        // second must not re-fire `use` on the same stale snapshot.
-        Harness h = new() { Snapshot = Snap(carried: new[] { "lantern" }, stamp: 1) };
-        h.Plan(A);
-        h.Plan(A);
-        Assert.Equal(new[] { "use lantern" }, h.Sent);
-    }
-
-    [Fact]
-    public void PendingLatch_NewerDumpWithoutLight_Resends()
-    {
-        // First send readies the lantern; a newer dump lands still not showing it
-        // (the `use` didn't take) → the latch retires and the engine retries.
-        Harness h = new() { Snapshot = Snap(carried: new[] { "lantern" }, stamp: 1) };
-        h.Plan(A);
-        h.Snapshot = Snap(carried: new[] { "lantern" }, stamp: 2);
-        h.Plan(A);
-        Assert.Equal(new[] { "use lantern", "use lantern" }, h.Sent);
-    }
-
-    [Fact]
-    public void PendingLatch_DumpConfirmsLight_ThenGuardHolds()
-    {
-        // First send readies the lantern; the next dump shows it lit and covering
-        // → the planner's "already covers" guard returns nothing, no re-send.
-        Harness h = new() { Snapshot = Snap(carried: new[] { "lantern" }, stamp: 1) };
-        h.Plan(A);
-        h.Snapshot = Snap(readied: new ReadiedLight("lantern", 200), stamp: 2);
-        h.Plan(A);
-        Assert.Equal(new[] { "use lantern" }, h.Sent);
     }
 
     [Fact]
@@ -341,6 +314,46 @@ public sealed class AutoLightProvisionerTests
     }
 
     [Fact]
+    public void Reactive_DarkObserved_NewerDumpWithoutLight_Resends()
+    {
+        // First dark line readies the lantern; a newer `i` dump lands still not
+        // showing it (the `use` didn't take) → the latch retires and a second dark
+        // line re-issues the `use`.
+        Harness h = new() { Snapshot = Snap(carried: new[] { "lantern" }, stamp: 1) };
+        h.Dark();
+        h.Snapshot = Snap(carried: new[] { "lantern" }, stamp: 2);
+        h.Dark();
+        Assert.Equal(new[] { "use lantern", "use lantern" }, h.Sent);
+    }
+
+    [Fact]
+    public void Reactive_DarkObserved_DumpConfirmsLight_ThenGuardHolds()
+    {
+        // First dark line readies the lantern; the next dump shows it readied (moved
+        // out of the carried list) → nothing carried is left to ready, so a following
+        // dark line sends nothing.
+        Harness h = new() { Snapshot = Snap(carried: new[] { "lantern" }, stamp: 1) };
+        h.Dark();
+        h.Snapshot = Snap(readied: new ReadiedLight("lantern", 200), stamp: 2);
+        h.Dark();
+        Assert.Equal(new[] { "use lantern" }, h.Sent);
+    }
+
+    [Fact]
+    public void Reactive_DarkObserved_WeakerCarried_DoesNotDowngradeLitLight()
+    {
+        // A healthy lantern (175) is lit and the room is dark; the only carried spare
+        // is a weaker torch (100). Readying it would only downgrade — the room is
+        // simply darker than anything we carry, so hold the lantern.
+        Harness h = new()
+        {
+            Snapshot = Snap(carried: new[] { "5 torch" }, readied: new ReadiedLight("lantern", 200)),
+        };
+        h.Dark();
+        Assert.Empty(h.Sent);
+    }
+
+    [Fact]
     public void Reactive_DarkObserved_PreferredNameWins()
     {
         // Both carried; preferred torch beats the stronger lantern on the reactive
@@ -424,6 +437,75 @@ public sealed class AutoLightProvisionerTests
         h.Expire();
         h.Enabled = true;
         h.Dark();
+        Assert.Empty(h.Sent);
+    }
+
+    [Fact]
+    public void Reactive_LightExpired_ClearsPendingLatch_ThenDarkRereadiesSameName()
+    {
+        // The 175844 stuck-blind bug: we auto-ready a torch (pending latch = "torch",
+        // no `i` dump has landed yet), it burns out, and the next dark room carries
+        // an identical spare torch on the SAME snapshot. The burnout must clear the
+        // pending latch — otherwise ReadyLight sees the stale same-name latch and
+        // skips the re-ready, leaving the player stuck in the dark. Same stamp
+        // throughout so no dump lands to retire the latch on its own.
+        Harness h = new() { Snapshot = Snap(carried: new[] { "5 torch" }, stamp: 5) };
+        h.Dark();       // readies the first torch, latches "torch"
+        h.Expire();     // burnout clears the pending latch
+        h.Dark();       // same snapshot — re-readies a carried spare
+        Assert.Equal(new[] { "use torch", "use torch" }, h.Sent);
+    }
+
+    // ----- Stepping into a seeable room (OnRoomEntered) ------------------------
+
+    [Fact]
+    public void RoomEntered_SeeableRoom_RemsAutoReadiedLight()
+    {
+        // We auto-readied a torch for a dark room; stepping into a room seeable on
+        // worn gear alone (worn 0 + room 0 clears the see threshold) puts it away —
+        // the "only use a light in rooms we can't see" half of the policy.
+        Harness h = new() { Snapshot = Snap(carried: new[] { "5 torch" }) };
+        h.Dark();
+        h.Enter(0);
+        Assert.Equal(new[] { "use torch", "rem torch" }, h.Sent);
+    }
+
+    [Fact]
+    public void RoomEntered_StillUnseeableRoom_KeepsLightLit()
+    {
+        // The entered room is itself unseeable on worn gear (worn 0 + room -300 is
+        // well below the see threshold) → keep the auto-readied light, no `rem`.
+        Harness h = new() { Snapshot = Snap(carried: new[] { "5 torch" }) };
+        h.Dark();
+        h.Enter(-300);
+        Assert.Equal(new[] { "use torch" }, h.Sent);
+    }
+
+    [Fact]
+    public void RoomEntered_NothingAutoReadied_SendsNothing()
+    {
+        // No light was auto-readied → entering a lit room is a no-op; we only put
+        // away what THIS engine lit.
+        Harness h = new() { Snapshot = Snap(carried: new[] { "5 torch" }) };
+        h.Enter(0);
+        Assert.Empty(h.Sent);
+    }
+
+    [Fact]
+    public void RoomEntered_ManualReadiedLight_NotRemmed()
+    {
+        // A light the player readied by hand (auto-readied name never set) is theirs
+        // to manage — entering a seeable room must not `rem` it out from under them.
+        Harness h = new() { Snapshot = Snap(readied: new ReadiedLight("lantern", 200)) };
+        h.Enter(0);
+        Assert.Empty(h.Sent);
+    }
+
+    [Fact]
+    public void RoomEntered_Disabled_SendsNothing()
+    {
+        Harness h = new() { Enabled = false, Snapshot = Snap(carried: new[] { "5 torch" }) };
+        h.Enter(0);
         Assert.Empty(h.Sent);
     }
 }

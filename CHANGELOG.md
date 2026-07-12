@@ -6,7 +6,10 @@ Notable changes per merged PR, **newest first**. The top of the [README](README.
 
 - Loops now open a closed door mid-circuit — bash / pick / key it like the walker does — instead of idling on it
 - Combat resumes right after a between-round heal fired the instant the fight engaged, instead of missing a round
-- bug reports addressed: paradigm-20260711-152210, paradigm-20260711-152453
+- A fleeing player dragging the engaged mob out of the room now clears the combat gate, so the walker stops swinging at empty air
+- Auto-light lights only rooms we can't see and puts the light away on entering one we can — no more over-lighting a lit town
+- A burned-out light re-readies a same-named carried spare instead of leaving the player stuck blind
+- bug reports addressed: paradigm-20260711-152210, paradigm-20260711-152453, paradigm-20260711-175844, paradigm-20260711-180449, paradigm-20260711-181619
 
 ## 1.35.9
 

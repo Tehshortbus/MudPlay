@@ -4,6 +4,9 @@
 > **Version 1.36.0**
 > - Loops now open a closed door mid-circuit — bash / pick / key it like the walker does — instead of idling on it
 > - Combat resumes right after a between-round heal fired the instant the fight engaged, instead of missing a round
+> - A fleeing player dragging the engaged mob out of the room now clears the combat gate, so the walker stops swinging at empty air
+> - Auto-light lights only rooms we can't see and puts the light away on entering one we can — no more over-lighting a lit town
+> - A burned-out light re-readies a same-named carried spare instead of leaving the player stuck blind
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

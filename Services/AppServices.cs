@@ -809,6 +809,14 @@ public sealed class AppServices
     // re-evaluates the Combat gate immediately on spawn.
     public Game.Combat.RoomEntryWatcher RoomEntry { get; private set; } = null!;
 
+    // Observes mid-room departure lines
+    // ("<name> walks out of the room to <dir>.")
+    // and removes the departing monster from RoomClassifier's
+    // observation so CombatStateTracker drops the Combat gate the
+    // departed mob was holding (fleeing player dragging our engaged
+    // mob out with them — see the 180449 capture).
+    public Game.Combat.RoomDepartureWatcher RoomDeparture { get; private set; } = null!;
+
     // Recognises monster deaths via the per-monster
     // Models.GameData.MonsterMessageRecord.DeathLine
     // patterns + the "experience + Combat Off" fallback. On a match,
@@ -2268,6 +2276,12 @@ public sealed class AppServices
         // Combat gate / CombatManager react to spawns immediately.
         RoomEntry = new Game.Combat.RoomEntryWatcher(Router, RoomClassifier, Log);
 
+        // Mid-room departure watcher. Subscribes to the
+        // RoomEntryDeparture pattern + removes the departing monster
+        // from the classifier so the Combat gate drops when a fleeing
+        // player drags our engaged mob out of the room.
+        RoomDeparture = new Game.Combat.RoomDepartureWatcher(Router, RoomClassifier, Log);
+
         // Monster death watcher. Specific-pattern matches
         // (per-monster DeathLine) + fallback (exp + Combat Off). On a
         // death event the classifier removes the dead entity so
@@ -3278,12 +3292,11 @@ public sealed class AppServices
         // refreshes, so the provisioner catches a dwindling supply here and hands
         // a restock to the same shop-detour router (once per readied instance).
         Inventory.Changed += AutoLightProvisioner.OnInventoryChanged;
-        // Reactive ready-carried-light fallback. The predictive OnRoutePlanned
-        // path only fires on a freshly-planned route through a graph-known dark
-        // room; a loop lap, a manual step, or a realm whose room data understates
-        // the dark slips past it and the player stands blind with a light in the
-        // pack. The same two "can't see" lines that drive NoteDarkRoomEntered
-        // poke the provisioner to ready a carried light now.
+        // Reactive readying — the authoritative "light this room" signal. The
+        // server's two "can't see" lines (the same ones that drive
+        // NoteDarkRoomEntered) are the ONLY trigger that lights a carried light:
+        // the provisioner never readies predictively off a route scan, so a room
+        // that renders fine can't be over-lit by a bad darkness guess.
         Router.Subscribe(Services.Patterns.KnownPatterns.RoomPitchBlack,
             _ => AutoLightProvisioner.OnDarkRoomObserved());
         Router.Subscribe(Services.Patterns.KnownPatterns.RoomVeryDark,
@@ -3295,6 +3308,19 @@ public sealed class AppServices
         // that follows re-readies a carried spare instead of seeing a stale light.
         Router.Subscribe(Services.Patterns.KnownPatterns.LightBurnedOut,
             _ => AutoLightProvisioner.OnReadiedLightExpired());
+
+        // The other half of the reactive light policy: putting the light away once
+        // we reach a room that renders without it. On each confirmed room entry —
+        // but never while the room is still dark (IsInDarkRoom guards against
+        // rem'ing the light we just lit for it) — hand the new room to the
+        // provisioner, which `rem`s an auto-readied light when the room is seeable
+        // on worn gear alone.
+        RoomTracker.StateChanged += t =>
+        {
+            if (RoomTracker.IsInDarkRoom) return;
+            if (t.NewRoom is { } room)
+                AutoLightProvisioner.OnRoomEntered(room);
+        };
 
         // Auto-equip trigger coordinator. Reads the same live
         // Equipment blob as the apply engine and the HealthManager's recovery gates

@@ -5,26 +5,31 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game.Light;
 
-// The active auto-light engine. On each freshly-planned route (announced by
-// AutoWalkManager.SetRouteAnnouncer) it scans the path for its darkest room, asks
-// the pure AutoLightPlanner what to do, and — while the AutoLight master toggle is
-// on — readies a carried light that clears the dark by sending use <light>
-// (removing any different light that's currently lit first with rem <old>).
-// Provisioning a light the pack doesn't hold (the planner's Buy verdict) is a shop
-// detour handed to AutoLightShopRouter; when no router is wired it's logged and
-// left for the reactive AutoLightManager need-poster to surface meanwhile.
+// The active auto-light engine, split across a predictive PROVISIONING path and a
+// reactive READYING path:
 //
-// Gating: every action — readying now, buying later — sits behind the single
-// AutoLight master toggle. There is deliberately no separate opt-in; a player who
-// doesn't want the client touching their light simply leaves AutoLight off.
+//  • Provisioning (predictive) — on each freshly-planned route (announced by
+//    AutoWalkManager.SetRouteAnnouncer) it scans the path for its darkest room and
+//    asks the pure AutoLightPlanner what's needed. A Buy / Reorder verdict (a light
+//    the pack lacks, or a dwindling readied charge) becomes a shop detour handed to
+//    AutoLightShopRouter. This keeps the pack HOLDING a covering light ahead of
+//    time; it deliberately never `use`s one predictively.
+//  • Readying (reactive) — a light is `use`d only when the game itself reports we
+//    can't see (OnDarkRoomObserved, driven by the "very dark" / "pitch black"
+//    lines), and `rem`d again the moment we step into a room seeable on worn gear
+//    alone (OnRoomEntered). The server's can't-see line is the single source of
+//    truth for WHEN a light is lit: we light a room exactly when the server says
+//    it's unseeable and put the light away otherwise, so a route predictor that
+//    wrongly guesses a lit room is dark can no longer over-light it.
 //
-// The planner's "already covers" guard means a route re-announced mid-run (a loop
-// crosses the same rooms each lap) is a no-op once a covering light is lit, so
-// this engine doesn't re-issue use on every hop. A readied light lands in the
-// snapshot only on the next i dump, though, so a local pending latch bridges the
-// gap between sending use and the dump confirming it — a second walk-start on the
-// same stale snapshot won't double-send, and a newer dump that lands without our
-// light retires the latch so a failed send retries.
+// Gating: every action sits behind the single AutoLight master toggle. There is
+// deliberately no separate opt-in; a player who doesn't want the client touching
+// their light simply leaves AutoLight off.
+//
+// A readied light lands in the snapshot only on the next i dump, so a local pending
+// latch bridges the gap between sending use and the dump confirming it — a repeated
+// can't-see line on the same stale snapshot won't double-send, and a newer dump
+// that lands without our light retires the latch so a failed send retries.
 public sealed class AutoLightProvisioner
 {
     // LogService category — [AutoLight] rows per ready / deferral.
@@ -58,12 +63,20 @@ public sealed class AutoLightProvisioner
     // unknowable until it's `use`d, so we never key the latch off the pack.
     private ReadiedLight? _reorderRequestedFor;
 
-    // Set when a "flickers and goes out" line reports the readied light burned out.
-    // The snapshot's ReadiedLight only clears on the next `i` dump, so until then
-    // it lies about a light that no longer exists — this flag lets the dark-room
-    // reactive path discount that stale value and re-ready a carried spare. Cleared
-    // the moment we ready a fresh light or a newer dump lands with ground truth.
-    private bool _readiedLightExpired;
+    // The name of the light THIS engine reactively `use`d for a dark room. Set in
+    // ReadyLight, cleared when we `rem` it on entering a seeable room (OnRoomEntered)
+    // or when it burns out (OnReadiedLightExpired). Only auto-readied lights are
+    // rem'd — a light the player readied by hand is theirs to manage, so we never
+    // put it away. Null when we hold no auto-readied light.
+    private string? _autoReadiedName;
+
+    // Set when "flickers and goes out" reports the readied light burned out. The
+    // snapshot's ReadiedLight only clears on the next `i` dump, so until then it
+    // lies about a light that no longer exists — this flag lets the dark-room path
+    // treat the currently-lit strength as 0 so a carried spare re-readies instead of
+    // being judged "already lit by something stronger". Cleared on the next dump
+    // (ground truth) or when we ready a fresh light.
+    private bool _readiedLightBurnedOut;
 
     public AutoLightProvisioner(
         Func<bool> isEnabled,
@@ -131,7 +144,14 @@ public sealed class AutoLightProvisioner
         switch (plan.Action)
         {
             case AutoLightAction.Ready:
-                ReadyLight(plan.LightName!, readiedName, snap.LastUpdated, plan.Reason);
+                // Predictive readying is deliberately suppressed. A light is lit
+                // only when the server reports we can't see (OnDarkRoomObserved),
+                // never ahead of a route whose darkness prediction can
+                // false-positive in a room that renders fine (the over-lit town
+                // report). The Buy / Reorder verdicts below still run — they only
+                // provision the pack, they don't `use` anything.
+                _log?.Debug(LogCategory,
+                    $"route-dark ready suppressed (reactive-only policy): {plan.Reason}");
                 break;
 
             case AutoLightAction.Buy:
@@ -161,8 +181,8 @@ public sealed class AutoLightProvisioner
         InventorySnapshot snap = _snapshot();
         // A fresh `i` dump is ground truth for what's readied, so the burned-out
         // bridge flag has served its purpose — retire it here so it can't linger
-        // and trigger a spurious re-ready on a later dark room.
-        _readiedLightExpired = false;
+        // and skew a later dark-room strength comparison.
+        _readiedLightBurnedOut = false;
         RetireReorderLatch(snap.ReadiedLight);
         if (snap.ReadiedLight is null) return;
 
@@ -177,45 +197,45 @@ public sealed class AutoLightProvisioner
 
     // Reactive handler for the "Your <light> flickers and goes out." line. The
     // readied light is gone, but the snapshot won't reflect that until the next `i`
-    // dump — so latch a flag that the dark-room path reads to discount the stale
-    // ReadiedLight. We don't ready here: if the room stays lit by ambient light no
-    // re-ready is wanted, and if it's dark the game re-emits its "can't see" line
-    // right after (the dark-room path then readies a carried spare). A no-op unless
-    // the AutoLight master toggle is on.
+    // dump. We don't ready here: if the room stays seeable no re-ready is wanted,
+    // and if it's dark the game re-emits its "can't see" line right after (the
+    // dark-room path then readies a carried spare). What we MUST do is drop both
+    // latches keyed on the now-gone light: _pendingReadyName so a re-ready of the
+    // same light name isn't blocked as "still in flight" (the stuck-blind report),
+    // and _autoReadiedName so OnRoomEntered doesn't later `rem` a light that no
+    // longer exists. A no-op unless the AutoLight master toggle is on.
     public void OnReadiedLightExpired()
     {
         if (!_isEnabled()) return;
-        _readiedLightExpired = true;
-        _log?.Info(LogCategory, "readied light burned out — awaiting dark-room re-ready");
+        _readiedLightBurnedOut = true;
+        _pendingReadyName = null;
+        _autoReadiedName = null;
+        _log?.Info(LogCategory, "readied light burned out — cleared latches for re-ready");
     }
 
-    // Reactive fallback for a live "can't see" room-light line: we're standing
-    // in the dark right now. The predictive OnRoutePlanned path readies a light
-    // ahead of a route's known-dark room, but it misses when the darkness isn't
-    // on a freshly-planned route (a loop lap, a manual step) or the room's graph
-    // Light understates it (a realm whose data leaves the room at 0). If
-    // AutoLight is on, nothing is lit, and we carry a usable light, ready it now
-    // via the same `use` path the route planner uses. Buying a light we don't
-    // carry stays with the reactive need-poster / get path; this only readies
-    // what's already in the pack.
+    // Reactive handler for a live "can't see" room-light line — the server is
+    // telling us this room is unseeable right now, which is the authoritative
+    // signal to light it. We ready the best carried light UNLESS what's already lit
+    // is at least as strong (readying a weaker torch over a lit lantern only
+    // downgrades — the room is simply darker than anything we carry). A burned-out
+    // light counts as strength 0 despite the stale snapshot, so a spare relights.
+    // The in-flight pending latch (ReadyLight's own guard) stops a repeated dark
+    // line on a stale snapshot from double-`use`ing. Buying a light we don't carry
+    // stays with the reactive need-poster / get path; this only readies what's
+    // already in the pack.
     public void OnDarkRoomObserved()
     {
         if (!_isEnabled()) return;
 
         InventorySnapshot snap = _snapshot();
 
-        // Retire a stale pending `use` so a failed send can retry, mirroring
-        // OnRoutePlanned: the dump now shows our light lit (confirmed) or a newer
-        // dump landed without it (the send didn't take).
+        // Retire a stale pending `use` so a failed send can retry: the dump now
+        // shows our light lit (confirmed) or a newer dump landed without it (the
+        // send didn't take).
         if (_pendingReadyName is not null
             && (string.Equals(snap.ReadiedLight?.Name, _pendingReadyName, StringComparison.OrdinalIgnoreCase)
                 || snap.LastUpdated > _pendingSnapshotTime))
             _pendingReadyName = null;
-
-        // A light is already lit — unless it just burned out, in which case the
-        // snapshot's ReadiedLight is stale until the next `i` dump and we must
-        // re-ready despite it.
-        if (snap.ReadiedLight is not null && !_readiedLightExpired) return;
 
         IReadOnlyList<LightItem> catalogue = _catalogue();
         IReadOnlyList<LightItem> carried = CarriedLights(snap.CarriedItems, catalogue);
@@ -225,8 +245,40 @@ public sealed class AutoLightProvisioner
             ?? StrongestCarried(carried);
         if (pick is not { } chosen) return;
 
-        ReadyLight(chosen.Name, readiedName: null, snap.LastUpdated,
+        // What's effectively lit right now: 0 if nothing readied or the readied
+        // light just burned out (stale snapshot), else its catalogue strength.
+        int litStrength = !_readiedLightBurnedOut && snap.ReadiedLight is { } lit
+            ? StrengthOf(lit.Name, catalogue)
+            : 0;
+        if (chosen.Strength <= litStrength) return;   // nothing carried beats what's lit
+
+        // Swap only when a genuinely-lit different light is being replaced; a
+        // burned-out light needs no `rem` (it's already gone).
+        string? swapFrom = _readiedLightBurnedOut ? null : snap.ReadiedLight?.Name;
+        ReadyLight(chosen.Name, swapFrom, snap.LastUpdated,
             "dark room observed: ready carried light");
+    }
+
+    // Reactive handler for stepping into a room the graph knows the light level of.
+    // Enforces the other half of the policy — "only use a light in rooms we can't
+    // see": if THIS engine has a light readied and the room is seeable on worn gear
+    // ALONE (the readied light excluded from _wornIllu()), put the light away with
+    // `rem`. Guarded upstream by !RoomTracker.IsInDarkRoom so a dark room the game
+    // hasn't rendered never reaches here — we never `rem` in the dark. A light the
+    // player readied by hand is left untouched (_autoReadiedName is null for it).
+    // Fail-safe: a room the graph can't resolve never fires this (the caller only
+    // passes a known room), so an unmapped room keeps the light lit.
+    public void OnRoomEntered(Room room)
+    {
+        ArgumentNullException.ThrowIfNull(room);
+        if (!_isEnabled()) return;
+        if (_autoReadiedName is not { } lit) return;
+        if (LightModel.IlluGapToSee(_wornIllu(), room.Light) != 0) return;
+
+        _wire.Send($"rem {lit}");
+        _autoReadiedName = null;
+        _pendingReadyName = null;
+        _log?.Info(LogCategory, $"removed auto-readied {lit} — room seeable without it");
     }
 
     // The preferred light if it's in the pack, else null. Kept local to the
@@ -246,6 +298,17 @@ public sealed class AutoLightProvisioner
         foreach (LightItem l in carried)
             if (best is not { } b || l.Strength > b.Strength) best = l;
         return best;
+    }
+
+    // The catalogue strength of a readied light by its parsed name, or 0 when the
+    // name isn't a catalogue light (unknown / user-curated). Used to compare what's
+    // lit against a carried candidate on the reactive dark path.
+    private static int StrengthOf(string name, IReadOnlyList<LightItem> catalogue)
+    {
+        foreach (LightItem l in catalogue)
+            if (string.Equals(l.Name, name, StringComparison.OrdinalIgnoreCase))
+                return l.Strength;
+        return 0;
     }
 
     // Fire a reorder detour once per readied-light instance. The route-dark Buy
@@ -290,9 +353,11 @@ public sealed class AutoLightProvisioner
         _wire.Send($"use {name}");
         _pendingReadyName = name;
         _pendingSnapshotTime = snapTime;
-        // A fresh light is now lit/pending, so the burned-out bridge flag no longer
-        // applies — clear it so the next dark room doesn't re-ready on stale state.
-        _readiedLightExpired = false;
+        // Track what we lit so OnRoomEntered can `rem` it once we reach a room that
+        // renders without it — the reactive-only "light only what we can't see" rule.
+        _autoReadiedName = name;
+        // A fresh light is now lit/pending, so the burned-out bridge no longer holds.
+        _readiedLightBurnedOut = false;
         _log?.Info(LogCategory, $"readied {name} ({reason})");
     }
 
