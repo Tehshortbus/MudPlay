@@ -130,6 +130,24 @@ public sealed class SpellsSettings
     public static int BlessSlotCountFor(RealmType realm) =>
         realm == RealmType.ParaMud ? ParaMudBlessSlotCount : StockBlessSlotCount;
 
+    // ----- Self-bless timing gates ----------------------------------
+    // Coarse gates the self-buff path (the bless slots above + the regen /
+    // when-full downtime buffs) honors before it recasts. Mirror the party-bless
+    // gates on PartySettings, but scoped to OUR OWN buffs — a user hunting a solo
+    // loop stays in and out of combat quickly, so a self-bless that only fires
+    // between fights can be starved for a window. Defaults reproduce the prior
+    // hard-coded behaviour (self-buffs cast out of combat, including while
+    // resting), so an existing profile sees no change until it opts in.
+
+    // When true (default), allow self-buff recasts while resting. Consumed by the
+    // self-buff path in Game.Spells.CastingDirector.
+    public bool SelfBlessWhileResting { get; set; } = true;
+
+    // When true, allow self-buff recasts during combat — casting spends that
+    // round, so it's OFF by default (the historical behaviour). Consumed by the
+    // self-buff path in Game.Spells.CastingDirector.
+    public bool SelfBlessDuringCombat { get; set; }
+
     // ----- Ailment handling / coordination ------------------------------
     // The four "Ignore X" gates suppress the automatic @wait that
     // AilmentSyncEngine telepaths to the party leader when we catch that

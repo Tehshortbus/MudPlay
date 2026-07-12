@@ -2,12 +2,21 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
-## 1.38.0
+## 1.40.0
 
 - Fixed a freeze when a walk-to was queued during a loop whose auto-deposit route crossed a dark area — the reroute no longer lets two controllers drive one walker
 - Auto-deposit bank runs that return through the dark now chain an errand: origin → bank → light shop → origin → resume loop, buying only the light the route needs
 - The dark return leg falls through to a plain return without light when auto-light is off or no reachable shop stocks the needed light
 - Bug report captures the auto-deposit reroute status
+
+## 1.39.0
+
+- Backscroll window now draws only the rows in view — drag-selecting and scrolling stay smooth on a deep history instead of bogging down
+- Program log is teed to a rolling on-disk file (Data/Logs/{timestamp}-program.log) so a hard hang or kill leaves a post-mortem trail the in-memory ring can't
+- `train stats` now switches to character-mode input the moment the command is sent, so arrow keys drive the full-screen stat box on realms whose menu marker arrives too late (Paradigm) — no longer captured by history recall
+- Conversation window: auto-scroll now pins to the true bottom, the search box no longer stretches its height, and it moved above the auto-scroll checkbox so the filter row can wrap freely as the window narrows
+- Spells & Ailments tab gains "Bless self while resting" / "Bless self during combat" toggles — a solo hunting loop that's rarely idle can now recast its own buffs during rest or combat instead of being starved between fights
+- bug reports addressed: paradigm-20260711-235738, paradigm-20260712-093615, paradigm-20260712-100737
 
 ## 1.37.0
 

@@ -720,6 +720,78 @@ public sealed class CastingDirectorTests
     }
 
     [Fact]
+    public void Buff_InCombat_DuringCombatOff_NoCast()
+    {
+        // Default: self-bless is out-of-combat only, so a live fight blocks it.
+        // Set InCombat FIRST so the Ma property-change cascade evaluates with
+        // the gate already in place, not through the default out-of-combat window.
+        using CureHarness h = new();
+        h.State.InCombat = true;
+        h.Spells.BlessSlots[1] = "bless";
+        h.Health.BlessIfAboveMa = 50;
+        h.State.MaxMa = 100;
+        h.State.Ma = 80;
+
+        h.Director.Evaluate();
+
+        Assert.Empty(h.CastsSent);
+    }
+
+    [Fact]
+    public void Buff_InCombat_DuringCombatOn_Casts()
+    {
+        // Opt-in: with SelfBlessDuringCombat the same fight allows the recast.
+        using CureHarness h = new();
+        h.State.InCombat = true;
+        h.Spells.SelfBlessDuringCombat = true;
+        h.Spells.BlessSlots[1] = "bless";
+        h.Health.BlessIfAboveMa = 50;
+        h.State.MaxMa = 100;
+        h.State.Ma = 80;
+
+        h.Director.Evaluate();
+
+        Assert.Single(h.CastsSent);
+        Assert.Equal("bless", h.CastsSent[0]);
+    }
+
+    [Fact]
+    public void Buff_Resting_WhileRestingOnByDefault_Casts()
+    {
+        using CureHarness h = new();
+        h.State.InCombat = false;
+        h.State.Position = PlayerPosition.Resting;
+        h.Spells.BlessSlots[1] = "bless";
+        h.Health.BlessIfAboveMa = 50;
+        h.State.MaxMa = 100;
+        h.State.Ma = 80;
+
+        h.Director.Evaluate();
+
+        Assert.Single(h.CastsSent);
+        Assert.Equal("bless", h.CastsSent[0]);
+    }
+
+    [Fact]
+    public void Buff_Resting_WhileRestingOff_NoCast()
+    {
+        // Set Position + gate FIRST so the Ma cascade evaluates while resting,
+        // not through the default standing window.
+        using CureHarness h = new();
+        h.State.InCombat = false;
+        h.State.Position = PlayerPosition.Resting;
+        h.Spells.SelfBlessWhileResting = false;
+        h.Spells.BlessSlots[1] = "bless";
+        h.Health.BlessIfAboveMa = 50;
+        h.State.MaxMa = 100;
+        h.State.Ma = 80;
+
+        h.Director.Evaluate();
+
+        Assert.Empty(h.CastsSent);
+    }
+
+    [Fact]
     public void Buff_AutoBlessOff_NoCast()
     {
         using CureHarness h = new();

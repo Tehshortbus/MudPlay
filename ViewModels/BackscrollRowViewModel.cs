@@ -4,9 +4,8 @@ namespace FujinTerm.ViewModels;
 
 // One row in the BackscrollViewModel's displayed list. Carries the
 // timestamp prefix string and the raw Cell[] the row was captured at;
-// the window feeds the cells to TranscriptInlineBuilder to compose the
-// coloured inline display and renders the timestamp in the sibling gutter
-// column.
+// the window's BackscrollView draws the cells as a coloured cell grid and
+// renders the timestamp in its own gutter.
 public sealed class BackscrollRowViewModel
 {
     private string? _plainText;

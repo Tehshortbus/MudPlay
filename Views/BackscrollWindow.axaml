@@ -1,6 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:FujinTerm.ViewModels"
+        xmlns:ctrl="using:FujinTerm.Controls"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d" d:DesignWidth="725" d:DesignHeight="580"
@@ -52,41 +53,19 @@
         </Border>
 
         <!-- ============ Transcript ============ -->
-        <!-- The whole transcript is one SelectableTextBlock so drag-select spans
-             lines and Ctrl+C copies the exact character range across rows —
-             virtualization is dropped deliberately (the ring is capped, and a
-             per-row ListBox can't span a text selection across its rows).
-             Timestamps sit in a sibling gutter column so they align line-for-line
-             (identical monospace metrics) yet stay out of the copied text. The
-             code-behind rebuilds both from the VM's Rows.
-             Aliased text + edges (matching TerminalControl): the VGA bitmap
-             font fringes coloured pixels at glyph edges when anti-aliased,
-             which reads as colour bleeding off letters. Inherits down to the
-             gutter + transcript. -->
+        <!-- BackscrollView is a virtualized canvas: it draws only the rows in
+             view and owns its own (row, col) selection, so drag-select and copy
+             stay flat no matter how deep the history runs. It implements
+             ILogicalScrollable, so this ScrollViewer hands scrolling straight to
+             it (only the visible slice is realized) instead of translating one
+             tall bitmap. The timestamp gutter is drawn inside the control. -->
         <ScrollViewer x:Name="OuterScroll"
                       Background="Black"
-                      TextOptions.TextRenderingMode="Alias"
-                      RenderOptions.EdgeMode="Aliased"
                       HorizontalScrollBarVisibility="Auto"
-                      VerticalScrollBarVisibility="Auto"
-                      Padding="4">
-            <!-- Bottom margin gives the final row clearance above the status
-                 footer / horizontal scrollbar when parked at the tail. -->
-            <Grid ColumnDefinitions="Auto,*" Margin="0,0,0,20">
-                <TextBlock Grid.Column="0"
-                           x:Name="Gutter"
-                           Foreground="#808080"
-                           FontFamily="avares://FujinTerm/Assets/Fonts/Mx437_IBM_VGA_8x16.ttf#Mx437 IBM VGA 8x16"
-                           FontSize="16"
-                           Margin="0,0,12,0"/>
-                <SelectableTextBlock Grid.Column="1"
-                                     x:Name="Transcript"
-                                     Foreground="White"
-                                     Background="Transparent"
-                                     FontFamily="avares://FujinTerm/Assets/Fonts/Mx437_IBM_VGA_8x16.ttf#Mx437 IBM VGA 8x16"
-                                     FontSize="16"
-                                     TextWrapping="NoWrap"/>
-            </Grid>
+                      VerticalScrollBarVisibility="Auto">
+            <ctrl:BackscrollView x:Name="Transcript"
+                                 FontFamily="avares://FujinTerm/Assets/Fonts/Mx437_IBM_VGA_8x16.ttf#Mx437 IBM VGA 8x16"
+                                 FontSize="16"/>
         </ScrollViewer>
 
     </DockPanel>

@@ -1,7 +1,7 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.38.0**
+> **Version 1.40.0**
 > - Fixed a freeze when a walk-to was queued during a loop whose auto-deposit route crossed a dark area — the reroute no longer lets two controllers drive one walker
 > - Auto-deposit bank runs that return through the dark now chain an errand: origin → bank → light shop → origin → resume loop, buying only the light the route needs
 > - The dark return leg falls through to a plain return without light when auto-light is off or no reachable shop stocks the needed light
