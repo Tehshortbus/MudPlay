@@ -2,6 +2,12 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.36.0
+
+- Loops now open a closed door mid-circuit — bash / pick / key it like the walker does — instead of idling on it
+- Combat resumes right after a between-round heal fired the instant the fight engaged, instead of missing a round
+- bug reports addressed: paradigm-20260711-152210, paradigm-20260711-152453
+
 ## 1.35.9
 
 - Loop no longer stalls when a room refuses entry mid-combat — sends break, waits, then retries the move

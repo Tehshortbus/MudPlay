@@ -2082,6 +2082,34 @@ public sealed class CombatManagerTests
     }
 
     [Fact]
+    public void BetweenRoundCast_FreshSwing_StillResumes()
+    {
+        // Report 152453: the director's heal fired within a beat of the
+        // combat engine's own attack (heal armed as we engaged). The generic
+        // ResumeAfterAttackGuard read that fresh swing as "still going" and
+        // suppressed the cast-resume, so the engine idled a round until the
+        // NEXT heal (by then the swing was old enough to pass the guard). The
+        // between-round-cast branch must bypass that guard: the *Combat Off*
+        // is provably our cast interrupting the swing, not a swing in flight.
+        using Harness h = new();
+        h.AddMonster(1, "large orc rogue", killable: false);
+
+        h.Feed("Also here: large orc rogue.");
+        Assert.Single(h.Sent);
+        Assert.Equal("a large orc rogue", h.LastSent);
+
+        // No BackdateLastAttack — the swing is FRESH (within the guard). The
+        // director heals immediately after engaging, then the cast turns
+        // combat off. The resume must still fire on this Off line.
+        h.Combat.NoteBetweenRoundCast();
+        h.Feed("*Combat Off*");
+
+        Assert.Equal(2, h.Sent.Count);     // resumed despite the fresh swing
+        Assert.Equal("a large orc rogue", h.LastSent);
+        Assert.Equal("large orc rogue", h.Combat.CurrentTarget);
+    }
+
+    [Fact]
     public void NoCombatOff_MobLine_DoesNotReswing()
     {
         // Guard: a mob line while combat is live (server still swinging

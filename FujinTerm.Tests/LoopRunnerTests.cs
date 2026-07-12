@@ -589,4 +589,78 @@ public sealed class LoopRunnerTests : IDisposable
         Assert.Contains(h.Events,
             e => e.Kind == LoopEventKind.Failed && e.Detail.Contains("closed door"));
     }
+
+    [Fact]
+    public void Circuit_ClosedDoor_WithEnqueuer_OpensThenCrosses()
+    {
+        // Report 152210: a loop used to idle on a closed door mid-circuit. With
+        // a door enqueuer bound (as MainWindowViewModel wires it to the shared
+        // DoorOpenManager), the circuit routes the closed-door step through the
+        // FSM and — on Opened — crosses with the plain cardinal instead of
+        // detaching the whole lap. No cardinal reaches the wire until the door
+        // reports open.
+        Harness h = NewHarness(DoorGraphJson);
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+
+        Direction? requested = null;
+        Action<DoorOpenResult>? doorReply = null;
+        h.Runner.SetDoorEnqueuer((dir, _, _, _, _, reply) =>
+        {
+            requested = dir;
+            doorReply = reply;
+        });
+        h.Runner.SetDoorStopper(() => { });
+
+        h.Runner.Start(new Loop("house", new[] { new RoomKey(1, 1), new RoomKey(1, 2) }));
+
+        // Door enqueued, nothing on the wire yet, loop still driving.
+        Assert.Empty(h.Sent);
+        Assert.Equal(Direction.E, requested);
+        Assert.NotNull(doorReply);
+        Assert.Equal(LoopState.Running, h.Runner.State);
+
+        // FSM reports the door open — the circuit crosses with the cardinal.
+        doorReply!(DoorOpenResult.Opened.Instance);
+        Assert.Single(h.Sent);
+        Assert.Equal("e\r", Encoding.Latin1.GetString(h.Sent[0]));
+
+        // Landing at Foyer completes the step. The return west is ALSO a closed
+        // door, so it routes through the FSM again rather than firing a bare
+        // cardinal — nothing new on the wire until that door reports open.
+        h.Tracker.NoteRoomObserved(new RoomObservation("Foyer",
+            new HashSet<Direction> { Direction.W }));
+        Assert.Contains(h.Events, e => e.Kind == LoopEventKind.StepCompleted);
+        Assert.Equal(Direction.W, requested);
+        Assert.Single(h.Sent);
+
+        // The return door opens; the circuit crosses back west.
+        doorReply!(DoorOpenResult.Opened.Instance);
+        Assert.Equal(2, h.Sent.Count);
+        Assert.Equal("w\r", Encoding.Latin1.GetString(h.Sent[1]));
+    }
+
+    [Fact]
+    public void Circuit_ClosedDoor_WithEnqueuer_FailsLoud_WhenDoorWontOpen()
+    {
+        // The door FSM exhausting its verbs (bash/pick out, key missing) must
+        // surface as a loud Failed, not a silent stall — the same terminal
+        // outcome as the no-enqueuer path, just reached through the FSM.
+        Harness h = NewHarness(DoorGraphJson);
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+
+        Action<DoorOpenResult>? doorReply = null;
+        h.Runner.SetDoorEnqueuer((_, _, _, _, _, reply) => doorReply = reply);
+        h.Runner.SetDoorStopper(() => { });
+
+        h.Runner.Start(new Loop("house", new[] { new RoomKey(1, 1), new RoomKey(1, 2) }));
+        Assert.NotNull(doorReply);
+        Assert.Empty(h.Sent);
+
+        doorReply!(new DoorOpenResult.Failed("bash exhausted"));
+
+        Assert.Empty(h.Sent);
+        Assert.Equal(LoopState.Idle, h.Runner.State);
+        Assert.Contains(h.Events,
+            e => e.Kind == LoopEventKind.Failed && e.Detail.Contains("door open failed"));
+    }
 }

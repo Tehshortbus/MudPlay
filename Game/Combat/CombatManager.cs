@@ -1596,15 +1596,24 @@ public sealed partial class CombatManager : IDisposable
     // resume (OnCombatLine) and the deterministic tick resume (OnCombatTick) so
     // the two paths never double-fire in a single round. Returns true when it
     // actually resumed.
-    private bool TryResumeEngage(RoomEntitiesObservation live)
+    //
+    // bypassAttackGuard is set only by the between-round-cast resume: that Off is
+    // provably our own cast interrupting the swing (armed by NoteBetweenRoundCast
+    // within CastInterruptResumeWindow), so the "a fresh swing is still going"
+    // assumption behind ResumeAfterAttackGuard is false there — the cast just
+    // cancelled it, and skipping the resume would idle a full round (the reported
+    // heal-then-stall). ResumePacing still stands, so we never double-fire with
+    // the tick resume in the same round.
+    private bool TryResumeEngage(RoomEntitiesObservation live, bool bypassAttackGuard = false)
     {
         DateTimeOffset now = DateTimeOffset.Now;
         // A fresh swing already went out a beat ago — this resume is redundant
         // and would double on top of it. Happens on a kill: the death→re-observe
         // path re-engages the surviving mob, then the kill's *Combat Off* re-arms
         // _combatOff and the next mob swing line drops in here (the reported solo
-        // double-send). Skip while a real attack is still this recent.
-        if (now - _lastAttackSentAt < ResumeAfterAttackGuard) return false;
+        // double-send). Skip while a real attack is still this recent — unless a
+        // between-round cast is what produced this Off (see bypassAttackGuard).
+        if (!bypassAttackGuard && now - _lastAttackSentAt < ResumeAfterAttackGuard) return false;
         if (now - _lastInterruptResumeAt < ResumePacing) return false;
         _lastInterruptResumeAt = now;
         ResumeEngage(live);
@@ -1644,7 +1653,7 @@ public sealed partial class CombatManager : IDisposable
                 && _classifier.Current is { } live
                 && HasEngageable(live))
             {
-                TryResumeEngage(live);
+                TryResumeEngage(live, bypassAttackGuard: true);
             }
         }
         else if (string.Equals(status, "Engaged", StringComparison.OrdinalIgnoreCase))

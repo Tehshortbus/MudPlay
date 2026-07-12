@@ -1,16 +1,9 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.35.9**
-> - Loop no longer stalls when a room refuses entry mid-combat — sends break, waits, then retries the move
-> - Walker holds for combat in a dark room instead of stepping through while a mob is still engaging
-> - Dark-corridor drift re-anchors on a uniquely-named lit room reached through a door instead of losing position
-> - Route planner won't buy a ferry skiff just to shave a single step off a free path
-> - Who-list parses rows with freeform guild names, so the players table no longer truncates on Paradigm
-> - Auto-light readies a carried light the moment a dark room is seen, even off a loop or a manual step
-> - A readied light burning out re-readies a carried spare instead of trusting the stale inventory
-> - Map no longer snaps back to the player mid-browse while panning another floor
-> - Club seed no longer carries an auto-collect flag
+> **Version 1.36.0**
+> - Loops now open a closed door mid-circuit — bash / pick / key it like the walker does — instead of idling on it
+> - Combat resumes right after a between-round heal fired the instant the fight engaged, instead of missing a round
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

@@ -922,6 +922,10 @@ public partial class MainWindowViewModel : ObservableObject
         AppServices.Current.LeaderDoorAssist.SetWireSender(engineSend);
         AppServices.Current.Walker.SetDoorEnqueuer(AppServices.Current.Door.Enqueue);
         AppServices.Current.Walker.SetDoorStopper(AppServices.Current.Door.StopAll);
+        // Loop runner shares the same door FSM so a closed door mid-circuit is
+        // bashed/picked/keyed instead of detaching the whole lap.
+        AppServices.Current.LoopRunner.SetDoorEnqueuer(AppServices.Current.Door.Enqueue);
+        AppServices.Current.LoopRunner.SetDoorStopper(AppServices.Current.Door.StopAll);
         // HiddenExitRevealManager — same gate-wrapped sender so the
         // sea loop can't land mid-password-prompt. Walker routes
         // SearchableHidden exits here.

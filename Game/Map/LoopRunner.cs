@@ -44,6 +44,17 @@ public sealed class LoopRunner : IRecoverableEngine
     // AutoWalkManager.SetPartySplitHandler. Null until wired.
     private Action? _onLeaderPartySplit;
 
+    // Door-open enqueuer — the runner calls this when a circuit step crosses a
+    // closed Door / KeyLocked exit, mirroring the walker's DoorOpenManager
+    // integration so a loop can bash/pick/key its way through instead of failing
+    // the lap. Null until wired (unit harnesses leave it unbound and keep the
+    // fail-loudly path). _doorStopAll drains the FSM when a run is torn down
+    // mid-open; _awaitingDoorOpen gates the tracker handler so the FSM's own
+    // bash/pick re-observations don't get mistaken for a landing.
+    private Action<Direction, int, bool, int, string, Action<DoorOpenResult>>? _doorEnqueuer;
+    private Action? _doorStopAll;
+    private bool _awaitingDoorOpen;
+
     private Loop? _loop;
     private int _index;
 
@@ -368,6 +379,24 @@ public sealed class LoopRunner : IRecoverableEngine
     {
         ArgumentNullException.ThrowIfNull(handler);
         _onLeaderPartySplit = handler;
+    }
+
+    // Door-open enqueuer — mirrors AutoWalkManager.SetDoorEnqueuer. AppServices
+    // binds both engines to the same DoorOpenManager.Enqueue so a loop crosses a
+    // closed door with the same bash / pick / key flow the walker uses.
+    public void SetDoorEnqueuer(Action<Direction, int, bool, int, string, Action<DoorOpenResult>> enqueuer)
+    {
+        ArgumentNullException.ThrowIfNull(enqueuer);
+        _doorEnqueuer = enqueuer;
+    }
+
+    // Door-FSM teardown — mirrors AutoWalkManager.SetDoorStopper. Called from
+    // Reset / recovery when a loop is superseded mid-door-FSM so a stale queued
+    // request can't fire a stray verb in a room we've since left.
+    public void SetDoorStopper(Action stopAll)
+    {
+        ArgumentNullException.ThrowIfNull(stopAll);
+        _doorStopAll = stopAll;
     }
 
     // Start running loop. If a loop is already running, it is stopped first. Returns
@@ -755,12 +784,13 @@ public sealed class LoopRunner : IRecoverableEngine
         _expectedMoveTarget = exit.Target;
         _stepInFlight = true;
 
-        // Door / KeyLocked: a loop circuit has no door-open FSM (that
-        // stays walker-owned). If the latest room observation shows the
-        // door already open, cross with the plain cardinal. Otherwise
-        // fail loudly rather than sending a cardinal into a closed door
-        // and desyncing — the user can re-run once the door is dealt
-        // with, or route the loop through the walker's approach phase.
+        // Door / KeyLocked: if the latest room observation already shows the
+        // door open, cross with the plain cardinal. Otherwise route through the
+        // same DoorOpenManager the walker uses (bash / pick / key) and cross
+        // from OnDoorReply once it opens — a loop should traverse a closed door
+        // mid-circuit rather than detach the whole lap. Only when an enqueuer is
+        // bound; unit harnesses without one keep the fail-loudly path rather
+        // than sending a cardinal into a shut door and desyncing.
         if (exit.Hint is RoomExitHint.Door or RoomExitHint.KeyLocked)
         {
             if (_tracker.State.OpenDoorDirections is { } openDoors
@@ -769,7 +799,19 @@ public sealed class LoopRunner : IRecoverableEngine
                 EmitCardinal(step.Direction, exit.Target, "door pre-open");
                 return;
             }
-            FailStep($"closed door {step.Direction} mid-circuit — loops don't open doors (run a walk-to through it first)");
+            if (_doorEnqueuer is not null)
+            {
+                _awaitingDoorOpen = true;
+                _log?.Info("LoopRunner",
+                    $"step {_index + 1}/{_expandedSteps.Count}: opening door {step.Direction}"
+                    + (exit.StatRequirement > 0
+                        ? $" (req {exit.StatRequirement}, canBash {exit.CanBash})"
+                        : "")
+                    + (exit.KeyItemId > 0 ? $" (key {exit.KeyItemId})" : ""));
+                _doorEnqueuer(step.Direction, exit.StatRequirement, exit.CanBash, exit.KeyItemId, "loop", OnDoorReply);
+                return;
+            }
+            FailStep($"closed door {step.Direction} mid-circuit — no door-open flow bound");
             return;
         }
 
@@ -823,6 +865,42 @@ public sealed class LoopRunner : IRecoverableEngine
     {
         _log?.Warn("LoopRunner", $"SendMove fail at step {_index + 1}/{_expandedSteps.Count}: {reason}");
         RaiseAfterReset(new LoopEvent(LoopEventKind.Failed, reason));
+    }
+
+    // Terminal callback from DoorOpenManager for a closed-door circuit step.
+    // Mirrors AutoWalkManager.OnDoorReply: on success re-fetch the exit (the
+    // step index hasn't advanced) and cross with the cardinal; on failure fail
+    // the lap. The _awaitingDoorOpen flag is cleared here before EmitCardinal so
+    // the arrival transition it triggers lands in OnTrackerStateChanged normally.
+    private void OnDoorReply(DoorOpenResult result)
+    {
+        if (!_awaitingDoorOpen) return;
+        _awaitingDoorOpen = false;
+
+        switch (result)
+        {
+            case DoorOpenResult.Opened:
+                if (_loop is null || State != LoopState.Running
+                    || _index >= _expandedSteps.Count
+                    || _expandedSteps[_index] is not MoveLoopStep step)
+                {
+                    return;
+                }
+                if (_tracker.State.CurrentRoom is not { } current
+                    || !current.Exits.TryGetValue(step.Direction, out RoomExit exit))
+                {
+                    FailStep($"post-door-open: no exit {step.Direction} from {_tracker.State.CurrentRoom?.Key.ToString() ?? "(unknown)"}");
+                    return;
+                }
+                _expectedMoveTarget = exit.Target;
+                _stepInFlight = true;
+                EmitCardinal(step.Direction, exit.Target, "post-door");
+                return;
+
+            case DoorOpenResult.Failed failed:
+                FailStep($"door open failed: {failed.Reason}");
+                return;
+        }
     }
 
     private void SendCommand(CommandLoopStep step)
@@ -924,6 +1002,13 @@ public sealed class LoopRunner : IRecoverableEngine
         if (State != LoopState.Running || !_stepInFlight) return;
         if (_loop is null || _index >= _expandedSteps.Count) return;
         if (_expandedSteps[_index] is not MoveLoopStep) return;
+
+        // A door sub-FSM owns this step until OnDoorReply fires the cardinal. Its
+        // bash / pick output re-observes the current (source) room; acting on that
+        // transition here would treat the in-progress step as blocked-at-source
+        // and spuriously enter recovery. The FSM clears _awaitingDoorOpen before
+        // emitting the real move, so the genuine arrival still lands here.
+        if (_awaitingDoorOpen) return;
 
         // Suspect / Lost / Unknown are real confidence drops we forward
         // to the recovery gate. Pending is the normal Confirmed →
@@ -1035,6 +1120,7 @@ public sealed class LoopRunner : IRecoverableEngine
         // Drop the gate + any in-flight step; we're re-planning from scratch.
         _recovery?.Detach();
         StopDelayTimer();
+        if (_awaitingDoorOpen) { _doorStopAll?.Invoke(); _awaitingDoorOpen = false; }
         _stepInFlight = false;
         _awaitingPromptForCommand = false;
         _expectedMoveTarget = null;
@@ -1213,6 +1299,12 @@ public sealed class LoopRunner : IRecoverableEngine
     {
         _recovery?.Detach();
         StopDelayTimer();
+        // Drain a door FSM that was opening on our behalf — otherwise its
+        // internal state sticks and the next run's enqueue sits in the queue
+        // forever (DoorOpenManager.TryStartNext bails on non-Idle state).
+        // Clearing _awaitingDoorOpen also makes any late OnDoorReply a no-op.
+        if (_awaitingDoorOpen) _doorStopAll?.Invoke();
+        _awaitingDoorOpen = false;
         _loop = null;
         _index = 0;
         _expandedSteps = new List<LoopStep>();
