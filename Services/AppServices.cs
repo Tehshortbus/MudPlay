@@ -3278,6 +3278,23 @@ public sealed class AppServices
         // refreshes, so the provisioner catches a dwindling supply here and hands
         // a restock to the same shop-detour router (once per readied instance).
         Inventory.Changed += AutoLightProvisioner.OnInventoryChanged;
+        // Reactive ready-carried-light fallback. The predictive OnRoutePlanned
+        // path only fires on a freshly-planned route through a graph-known dark
+        // room; a loop lap, a manual step, or a realm whose room data understates
+        // the dark slips past it and the player stands blind with a light in the
+        // pack. The same two "can't see" lines that drive NoteDarkRoomEntered
+        // poke the provisioner to ready a carried light now.
+        Router.Subscribe(Services.Patterns.KnownPatterns.RoomPitchBlack,
+            _ => AutoLightProvisioner.OnDarkRoomObserved());
+        Router.Subscribe(Services.Patterns.KnownPatterns.RoomVeryDark,
+            _ => AutoLightProvisioner.OnDarkRoomObserved());
+
+        // A readied light burning out ("Your <light> flickers and goes out.")
+        // clears in the snapshot only on the next `i` dump; this live line lets the
+        // provisioner treat the readied light as gone now, so the dark-room line
+        // that follows re-readies a carried spare instead of seeing a stale light.
+        Router.Subscribe(Services.Patterns.KnownPatterns.LightBurnedOut,
+            _ => AutoLightProvisioner.OnReadiedLightExpired());
 
         // Auto-equip trigger coordinator. Reads the same live
         // Equipment blob as the apply engine and the HealthManager's recovery gates

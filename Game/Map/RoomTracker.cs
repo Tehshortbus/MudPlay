@@ -472,10 +472,32 @@ public sealed class RoomTracker
 
         // Only a pending move can be advanced by the blind line. A blind echo
         // while Confirmed (a passive re-render, standing still) or with nothing
-        // in flight carries nothing to advance on.
-        if (State.Confidence != RoomConfidence.Pending) return;
-        if (State.CurrentRoom is not { } source) return;
-        if (!_pending.TryPeek(out PendingMove head)) return;
+        // in flight carries nothing to advance on. These guards used to bail
+        // silently; a "You are blind." that fires here yet leaves the map frozen
+        // is exactly the failure a bug report captures, so surface WHY at Info —
+        // one line only fires per blind move (rare), so there's no spam risk, and
+        // the log distinguishes "handler never ran" (no line at all) from "ran
+        // but state wasn't right" (one of these lines) in the next capture.
+        if (State.Confidence != RoomConfidence.Pending)
+        {
+            _log?.Log(LogSeverity.Info, "RoomTracker",
+                $"Blind-move line seen but confidence is {State.Confidence}, not Pending — " +
+                "no in-flight move to dead-reckon; holding position.");
+            return;
+        }
+        if (State.CurrentRoom is not { } source)
+        {
+            _log?.Log(LogSeverity.Info, "RoomTracker",
+                "Blind-move line seen but no current room anchor — holding position.");
+            return;
+        }
+        if (!_pending.TryPeek(out PendingMove head))
+        {
+            _log?.Log(LogSeverity.Info, "RoomTracker",
+                $"Blind-move line seen at {source.Key} ({source.Name}) but the pending-move " +
+                "queue is empty — the move never registered; holding position.");
+            return;
+        }
         if (!TryResolvePendingExit(source, head, out RoomExit exit))
         {
             _log?.Log(LogSeverity.Info, "RoomTracker",
@@ -868,6 +890,16 @@ public sealed class RoomTracker
             SetRoom(single, RoomConfidence.Confirmed, when, "1-of-1 candidate after Pending miss", isStrictAnchor: true);
             return;
         }
+
+        // Exact (name, exits) missed — but a dark-corridor drift usually surfaces
+        // in a uniquely-named lit room whose observed exits are a SUBSET of the
+        // graph's (a closed door or unsearched hidden exit drops a bit, so the
+        // exact search returns 0 even for a name-unique landmark). Re-latch on
+        // that room via the same door-tolerant lookup the Confirmed and Suspect
+        // paths already use, instead of accruing Suspect strikes — this is what
+        // snaps the map back the moment the player leaves a dark maze for a named
+        // room, rather than staying frozen at the last dead-reckoned anchor.
+        if (TryReanchorByName(observation, when, "name-unique after Pending miss")) return;
 
         EnterSuspect(when, $"Pending observation didn't match queue head; candidates={candidates.Count}");
     }

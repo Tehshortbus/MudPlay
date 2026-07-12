@@ -148,7 +148,6 @@
   {
     "Number": 90,
     "Name": "club",
-    "AutoCollect": true,
     "MaxToGet": 256
   },
   {

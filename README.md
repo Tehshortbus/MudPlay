@@ -1,11 +1,16 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.35.0**
-> - Backscroll now shows a frozen snapshot of scrollback history from the moment it opens instead of live-appending, so it no longer lags while following a fast party leader
-> - New output keeps recording in the background; close and reopen to catch up with nothing missed
-> - The "Go to live" button is now "Jump to end" — scrolls to the newest captured row
-> - Last history line clears the status bar and multi-line drag-select is snappier
+> **Version 1.35.9**
+> - Loop no longer stalls when a room refuses entry mid-combat — sends break, waits, then retries the move
+> - Walker holds for combat in a dark room instead of stepping through while a mob is still engaging
+> - Dark-corridor drift re-anchors on a uniquely-named lit room reached through a door instead of losing position
+> - Route planner won't buy a ferry skiff just to shave a single step off a free path
+> - Who-list parses rows with freeform guild names, so the players table no longer truncates on Paradigm
+> - Auto-light readies a carried light the moment a dark room is seen, even off a loop or a manual step
+> - A readied light burning out re-readies a carried spare instead of trusting the stale inventory
+> - Map no longer snaps back to the player mid-browse while panning another floor
+> - Club seed no longer carries an auto-collect flag
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

@@ -199,6 +199,46 @@ public sealed class WhoListParserTests
         Assert.Equal(later, db.Players[0].LastSeenUtc);
     }
 
+    /// <summary>
+    /// Real Paradigm "who" output. Differs from the stock/Newhaven format in two
+    /// ways the parser must tolerate: (a) NO alignment column, and (b) freeform,
+    /// player-chosen guild names that carry punctuation and digits —
+    /// "harsh.beast", "MakingTheLogosGay!", "Fuck Commies", "House of Rage".
+    /// Before the gang class was widened, the first punctuation guild
+    /// ("harsh.beast") failed to match and aborted the block, so only the three
+    /// rows above it were recorded.
+    /// </summary>
+    [Fact]
+    public void ParsesParadigmSample_FreeformGuilds_NoAlignmentColumn()
+    {
+        WhoListParser p = Build(out PlayerDatabase db);
+        p.FeedTestLines(new[]
+        {
+            "         Current Adventurers",
+            "         ===================",
+            "",
+            "         Aberama Gold          -  Scallywag of Harsh Yeast",
+            "         Ace                   -  Ninja Novice",
+            "         Angruin               -  Footpad of The Coma Machine",
+            "         Arax Spindreft        x  Dabbler of harsh.beast",
+            "         Barry                 -  Menace of Fuck Commies",
+            "         Dumpster OfCum        -  Apprentice of The Coma Machine",
+            "         Rust Oleum            -  Grunt",
+            "         Titus Anaga           -  Witchunter Novice of House of Rage",
+            "         Xeeg Stat             -  Cutthroat of MakingTheLogosGay!",
+            "",
+        }, Now);
+
+        Assert.Equal(9, db.Players.Count);
+        // The row that used to abort the block, and everything after it.
+        AssertHas(db, given: "Arax",  family: "Spindreft", align: "Neutral", title: "Dabbler",          gang: "harsh.beast");
+        AssertHas(db, given: "Barry", family: "",          align: "Neutral", title: "Menace",           gang: "Fuck Commies");
+        AssertHas(db, given: "Titus", family: "Anaga",     align: "Neutral", title: "Witchunter Novice", gang: "House of Rage");
+        AssertHas(db, given: "Xeeg",  family: "Stat",      align: "Neutral", title: "Cutthroat",        gang: "MakingTheLogosGay!");
+        // Single-word name, no family, no guild.
+        AssertHas(db, given: "Rust",  family: "Oleum",     align: "Neutral", title: "Grunt",            gang: null);
+    }
+
     private static void AssertHas(
         PlayerDatabase db,
         string given,

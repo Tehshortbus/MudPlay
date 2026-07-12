@@ -693,6 +693,39 @@ public sealed class RoomEntityClassifierTests
     }
 
     [Fact]
+    public void DarkRoomAdvance_DoesNotWipe_KeepsInjectedCombatState()
+    {
+        // Dark-room regression: a dark room prints no name / exits / "Also
+        // here:" line, so an empty entity list there means "can't see", not
+        // "room is empty". Advancing through the dark must NOT fire the empty
+        // RoomChange wipe — that empty observation is read as "room cleared" and
+        // drops the Combat gate mid-fight, letting the walker step on through a
+        // dark room while a mob is engaging us. Same setup as the stale-wipe
+        // test (pre-move occupant that the freshness guard would normally wipe);
+        // the ONLY difference is the advance is a dark-room advance, so it's
+        // kept.
+        using TrackerHarness h = new();
+        h.AddMonster(1, "giant rat");
+
+        h.Tracker.NoteRoomObserved(new RoomObservation("Town Gates", new HashSet<Direction> { Direction.N }));
+        h.FeedAlsoHere("Also here: giant rat.");
+        Assert.Single(h.Observations);
+
+        // Move N sent, then the move resolves as a DARK-room advance (1/1 → 1/3).
+        DateTimeOffset moveAt = DateTimeOffset.UtcNow.AddSeconds(1);
+        h.Tracker.NoteMoveSent(Direction.N, moveAt);
+        h.Tracker.NoteDarkRoomEntered();
+
+        Assert.True(h.Tracker.IsInDarkRoom);
+        // No wipe: Current still holds the injected mob and no empty
+        // RoomChange observation was emitted.
+        Assert.Single(h.Observations);
+        Assert.NotNull(h.Classifier.Current);
+        Assert.Single(h.Classifier.Current!.Value.Entities);
+        Assert.Equal("giant rat", h.Classifier.Current.Value.Entities[0].ResolvedName);
+    }
+
+    [Fact]
     public void MoveConfirm_PostMoveArrival_Wiped_BelongsToOldRoom()
     {
         // Live repro (stuck "fighting" chip): the player sends a move, and

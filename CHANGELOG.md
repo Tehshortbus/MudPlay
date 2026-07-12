@@ -2,6 +2,19 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.35.9
+
+- Loop no longer stalls when a room refuses entry mid-combat — sends break, waits, then retries the move
+- Walker holds for combat in a dark room instead of stepping through while a mob is still engaging
+- Dark-corridor drift re-anchors on a uniquely-named lit room reached through a door instead of losing position
+- Route planner won't buy a ferry skiff just to shave a single step off a free path
+- Who-list parses rows with freeform guild names, so the players table no longer truncates on Paradigm
+- Auto-light readies a carried light the moment a dark room is seen, even off a loop or a manual step
+- A readied light burning out re-readies a carried spare instead of trusting the stale inventory
+- Map no longer snaps back to the player mid-browse while panning another floor
+- Club seed no longer carries an auto-collect flag
+- bug reports addressed: paradigm-20260711-140923, paradigm-20260711-141409, paradigm-20260711-141605, paradigm-20260711-141644, paradigm-20260711-145959, paradigm-20260711-150847, paradigm-20260711-151442, paradigm-20260711-154537, paradigm-20260711-154840
+
 ## 1.35.0
 
 - Backscroll now shows a frozen snapshot of scrollback history from the moment it opens instead of live-appending, so it no longer lags while following a fast party leader

@@ -215,8 +215,18 @@ public sealed partial class WhoListParser : IDisposable
     // One player row. Optional alignment word, given + optional family, marker,
     // title (greedy-but-trimmed), optional of {gang}, optional trailing role
     // letter. No realm-specific title whitelist — we want to work on every realm.
+    //
+    // The gang group is deliberately permissive (\S then any non-newline run,
+    // lazy): on Paradigm the alignment column is absent and guild names are
+    // player-chosen freeform text — "harsh.beast", "MakingTheLogosGay!",
+    // "Fuck Commies", "House of Rage" — so a letters-and-digits-only class
+    // dropped those rows. A dropped row used to abort the whole block (the
+    // Reading state ends on the first non-row line), so one such guild
+    // truncated the table after a handful of names. The lazy quantifier still
+    // peels a trailing single-letter role (M/S/V) off the end for realms that
+    // print one; .Trim() in TryParseRow strips any edge whitespace.
     [GeneratedRegex(
-        @"^\s*(?:(?<align>Saint|Lawful|Good|Seedy|Outlaw|Criminal|Villain|Fiend)\s+)?(?<given>[A-Za-z][A-Za-z'\-]*)(?:\s+(?<family>[A-Za-z][A-Za-z0-9'\-]*))?\s*[-x]\s+(?<title>[A-Za-z][A-Za-z '\-]*?)(?:\s+of\s+(?<gang>[A-Za-z][A-Za-z0-9 '\-]*?))?(?:\s+(?<role>[MSV]))?\s*$",
+        @"^\s*(?:(?<align>Saint|Lawful|Good|Seedy|Outlaw|Criminal|Villain|Fiend)\s+)?(?<given>[A-Za-z][A-Za-z'\-]*)(?:\s+(?<family>[A-Za-z][A-Za-z0-9'\-]*))?\s*[-x]\s+(?<title>[A-Za-z][A-Za-z '\-]*?)(?:\s+of\s+(?<gang>\S[^\r\n]*?))?(?:\s+(?<role>[MSV]))?\s*$",
         RegexOptions.CultureInvariant)]
     private static partial Regex PlayerRowPattern();
 

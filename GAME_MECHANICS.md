@@ -65,6 +65,15 @@ it isn't here and you're unsure, ask.
 - **[CONFIRMED]** `use <item>` readies a light (torch, lantern); `rem <item>` removes it.
   Lights follow the same trade-places rule as `eq` — `use`-ing a new light swaps out the
   current one (if usable).
+- **[CONFIRMED, capture 2026-07-11]** **A readied light burning out prints exactly
+  `Your <item> flickers and goes out.`** (e.g. `Your torch flickers and goes out.`) — one line,
+  period-terminated, no name/exits. It is the *only* signal the light is gone: the inventory
+  `i` dump still lists the item as readied until the next dump lands, so the display lies about
+  a light that no longer exists in the meantime. The auto-light path latches on this line
+  (`AutoLightProvisioner.OnReadiedLightExpired`, pattern `^Your .+ flickers and goes out\.$`)
+  to discount the stale readied value and re-ready a carried spare once the room's "can't see"
+  line confirms it went dark. Anchored full-line so a mob-flavour "flickers" elsewhere can't
+  false-trigger.
 - **[CONFIRMED]** **A monster in a dark room is invisible to the room display but still
   attacks — engage it by the name in its attack line.** With no `Also here:` line (the dark
   room prints only the "can't see" line, see *Movement & navigation*), the only evidence a
@@ -575,6 +584,15 @@ comes from the stat screen / who line (`AlignmentTracker` / `PlayerStats`).
   combat path must not switch on). Verified from a live capture: `:s` → `You are blind.` →
   `Suijin walks into the room from the north.` (the party followed south) with no room render;
   the map had frozen at the source room until this path landed.
+- **[CONFIRMED, capture 2026-07-11]** **A water crossing keyed `borrow skiff` is a *free*
+  text-exit ferry, not an item gate.** At a shore room the exit is a Text exit whose command is
+  `borrow skiff`; sending it prints `You climb into one of the skiffs, and row to <place>.` and
+  lands the player in the far room (e.g. Silvermere at 1/2335). It costs nothing — the capture
+  crossed with `Gold: 0` — so it's a *borrow*, distinct from the buy-a-raft `(Item: N)` carry
+  gates the route picker weighs elsewhere. The client crosses it like any other text exit
+  (`RoomTracker` Confirmed → Pending on the sent command; the walker resolves the Text exit's
+  deterministic target), so `borrow skiff` must be treated as a plain traversal command, never
+  a purchase or a carried-item requirement.
 - **[CONFIRMED]** **A party follower is dragged one room per leader step, announced by
   ` -- Following your Party leader <dir> --`.** Movement is leader-driven: when the party
   leader walks, the game moves every follower one room the same way and prints this line

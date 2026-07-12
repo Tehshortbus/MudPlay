@@ -40,6 +40,12 @@ public sealed record RouteChoice(
 // direct route never routes through a gate the crosser fundamentally can't pass.
 public static class RouteChoicePlanner
 {
+    // Minimum rooms a shorter item / ticket / key shortcut must save before the
+    // picker offers it. Below this, the acquisition (often purchase) detour isn't
+    // worth the saving, so the free route wins outright. Hazard-only shortcuts
+    // ignore this floor.
+    private const int MinItemGateSavings = 2;
+
     public static RouteChoice? Evaluate(
         BfsMapper bfs,
         MovementFilter filter,
@@ -71,6 +77,18 @@ public static class RouteChoicePlanner
 
         List<RouteRequirement> reqs = CollectRequirements(graph, filter, source, gated);
         if (reqs.Count == 0) return null;   // shorter but needs nothing acquirable → not a gated choice
+
+        // A shortcut that shaves only a single room isn't worth a detour to
+        // acquire — and usually to buy from a shop — the gate item: a player
+        // won't sail to a boatman and spend gold on a skiff to save one step.
+        // Suppress the offer for such a marginal item / ticket / key shortcut and
+        // just walk the free route. Hazard-only shortcuts are exempt (walking a
+        // warded room you can counter is a fair trade even for one room, and
+        // nothing needs buying).
+        int saved = free.Count - gated.Count;
+        if (saved < MinItemGateSavings
+            && reqs.Any(r => r.Kind != RouteRequirementKind.HazardProtection))
+            return null;
 
         return new RouteChoice(free.Count, gated.Count, reqs);
     }

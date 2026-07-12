@@ -58,6 +58,13 @@ public sealed class AutoLightProvisioner
     // unknowable until it's `use`d, so we never key the latch off the pack.
     private ReadiedLight? _reorderRequestedFor;
 
+    // Set when a "flickers and goes out" line reports the readied light burned out.
+    // The snapshot's ReadiedLight only clears on the next `i` dump, so until then
+    // it lies about a light that no longer exists — this flag lets the dark-room
+    // reactive path discount that stale value and re-ready a carried spare. Cleared
+    // the moment we ready a fresh light or a newer dump lands with ground truth.
+    private bool _readiedLightExpired;
+
     public AutoLightProvisioner(
         Func<bool> isEnabled,
         Func<InventorySnapshot> snapshot,
@@ -152,6 +159,10 @@ public sealed class AutoLightProvisioner
         if (!_isEnabled()) return;
 
         InventorySnapshot snap = _snapshot();
+        // A fresh `i` dump is ground truth for what's readied, so the burned-out
+        // bridge flag has served its purpose — retire it here so it can't linger
+        // and trigger a spurious re-ready on a later dark room.
+        _readiedLightExpired = false;
         RetireReorderLatch(snap.ReadiedLight);
         if (snap.ReadiedLight is null) return;
 
@@ -162,6 +173,79 @@ public sealed class AutoLightProvisioner
 
         if (plan.Action == AutoLightAction.Reorder)
             RequestReorder(plan, snap.ReadiedLight, catalogue);
+    }
+
+    // Reactive handler for the "Your <light> flickers and goes out." line. The
+    // readied light is gone, but the snapshot won't reflect that until the next `i`
+    // dump — so latch a flag that the dark-room path reads to discount the stale
+    // ReadiedLight. We don't ready here: if the room stays lit by ambient light no
+    // re-ready is wanted, and if it's dark the game re-emits its "can't see" line
+    // right after (the dark-room path then readies a carried spare). A no-op unless
+    // the AutoLight master toggle is on.
+    public void OnReadiedLightExpired()
+    {
+        if (!_isEnabled()) return;
+        _readiedLightExpired = true;
+        _log?.Info(LogCategory, "readied light burned out — awaiting dark-room re-ready");
+    }
+
+    // Reactive fallback for a live "can't see" room-light line: we're standing
+    // in the dark right now. The predictive OnRoutePlanned path readies a light
+    // ahead of a route's known-dark room, but it misses when the darkness isn't
+    // on a freshly-planned route (a loop lap, a manual step) or the room's graph
+    // Light understates it (a realm whose data leaves the room at 0). If
+    // AutoLight is on, nothing is lit, and we carry a usable light, ready it now
+    // via the same `use` path the route planner uses. Buying a light we don't
+    // carry stays with the reactive need-poster / get path; this only readies
+    // what's already in the pack.
+    public void OnDarkRoomObserved()
+    {
+        if (!_isEnabled()) return;
+
+        InventorySnapshot snap = _snapshot();
+
+        // Retire a stale pending `use` so a failed send can retry, mirroring
+        // OnRoutePlanned: the dump now shows our light lit (confirmed) or a newer
+        // dump landed without it (the send didn't take).
+        if (_pendingReadyName is not null
+            && (string.Equals(snap.ReadiedLight?.Name, _pendingReadyName, StringComparison.OrdinalIgnoreCase)
+                || snap.LastUpdated > _pendingSnapshotTime))
+            _pendingReadyName = null;
+
+        // A light is already lit — unless it just burned out, in which case the
+        // snapshot's ReadiedLight is stale until the next `i` dump and we must
+        // re-ready despite it.
+        if (snap.ReadiedLight is not null && !_readiedLightExpired) return;
+
+        IReadOnlyList<LightItem> catalogue = _catalogue();
+        IReadOnlyList<LightItem> carried = CarriedLights(snap.CarriedItems, catalogue);
+        if (carried.Count == 0) return;   // nothing carried — leave buying to the need-poster
+
+        LightItem? pick = PreferredCarried(carried, _settings().PreferredLightName)
+            ?? StrongestCarried(carried);
+        if (pick is not { } chosen) return;
+
+        ReadyLight(chosen.Name, readiedName: null, snap.LastUpdated,
+            "dark room observed: ready carried light");
+    }
+
+    // The preferred light if it's in the pack, else null. Kept local to the
+    // reactive path — the route planner does its own preferred/coverage pick.
+    private static LightItem? PreferredCarried(IReadOnlyList<LightItem> carried, string? preferredName)
+    {
+        if (string.IsNullOrWhiteSpace(preferredName)) return null;
+        foreach (LightItem l in carried)
+            if (string.Equals(l.Name, preferredName.Trim(), StringComparison.OrdinalIgnoreCase))
+                return l;
+        return null;
+    }
+
+    private static LightItem? StrongestCarried(IReadOnlyList<LightItem> carried)
+    {
+        LightItem? best = null;
+        foreach (LightItem l in carried)
+            if (best is not { } b || l.Strength > b.Strength) best = l;
+        return best;
     }
 
     // Fire a reorder detour once per readied-light instance. The route-dark Buy
@@ -206,6 +290,9 @@ public sealed class AutoLightProvisioner
         _wire.Send($"use {name}");
         _pendingReadyName = name;
         _pendingSnapshotTime = snapTime;
+        // A fresh light is now lit/pending, so the burned-out bridge flag no longer
+        // applies — clear it so the next dark room doesn't re-ready on stale state.
+        _readiedLightExpired = false;
         _log?.Info(LogCategory, $"readied {name} ({reason})");
     }
 
@@ -243,16 +330,17 @@ public sealed class AutoLightProvisioner
     }
 
     // The carried-but-unworn tokens from the last `i` dump that name a light in
-    // the active catalogue. Tokens are bare item names (the readied light and
-    // worn gear are split out upstream), so a trimmed case-insensitive match
-    // against the catalogue is enough.
+    // the active catalogue. A stack keeps its leading count in the dump ("5
+    // torch"), but the catalogue keys on the bare name, so the count is stripped
+    // before a case-insensitive match — otherwise a pack of torches reads as
+    // zero carried lights and the engine never readies (or, worse, buys more).
     private static IReadOnlyList<LightItem> CarriedLights(
         IReadOnlyList<string> carried, IReadOnlyList<LightItem> catalogue)
     {
         List<LightItem>? lights = null;
         foreach (string token in carried)
         {
-            string trimmed = token.Trim();
+            string trimmed = StripLeadingCount(token.Trim());
             foreach (LightItem light in catalogue)
                 if (string.Equals(light.Name, trimmed, StringComparison.OrdinalIgnoreCase))
                 {
@@ -261,5 +349,16 @@ public sealed class AutoLightProvisioner
                 }
         }
         return (IReadOnlyList<LightItem>?)lights ?? Array.Empty<LightItem>();
+    }
+
+    // Drop a stack's leading "<n> " count ("5 torch" -> "torch"). Item names
+    // never start with a digit, so a leading digit-run followed by a space is
+    // always a count; anything else is returned untouched.
+    private static string StripLeadingCount(string token)
+    {
+        int i = 0;
+        while (i < token.Length && char.IsDigit(token[i])) i++;
+        if (i == 0 || i >= token.Length || token[i] != ' ') return token;
+        return token[(i + 1)..].TrimStart();
     }
 }

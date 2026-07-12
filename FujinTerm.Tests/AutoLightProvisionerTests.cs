@@ -77,6 +77,10 @@ public sealed class AutoLightProvisionerTests
 
         public void Poll() => Engine.OnInventoryChanged();
 
+        public void Dark() => Engine.OnDarkRoomObserved();
+
+        public void Expire() => Engine.OnReadiedLightExpired();
+
         public IReadOnlyList<string> Sent => Engine.LastSentForTests
             .Select(b => Encoding.Latin1.GetString(b).TrimEnd('\r'))
             .ToList();
@@ -282,5 +286,144 @@ public sealed class AutoLightProvisionerTests
         h.Poll();
         Assert.Single(h.BuyRequests);
         Assert.Empty(h.Sent);           // reorder never readies — the lantern stays lit
+    }
+
+    // ----- Reactive dark-room fallback (OnDarkRoomObserved) --------------------
+
+    [Fact]
+    public void Reactive_DarkObserved_CountPrefixedTorch_ReadiesTorch()
+    {
+        // The live "can't see" path with a stack-counted pack ("5 torch") and
+        // nothing lit → strip the count, ready the carried torch. This is the
+        // path the predictive route planner misses on a loop lap / manual step.
+        Harness h = new() { Snapshot = Snap(carried: new[] { "5 torch" }) };
+        h.Dark();
+        Assert.Equal(new[] { "use torch" }, h.Sent);
+    }
+
+    [Fact]
+    public void Reactive_DarkObserved_AlreadyLit_SendsNothing()
+    {
+        Harness h = new()
+        {
+            Snapshot = Snap(carried: new[] { "5 torch" }, readied: new ReadiedLight("lantern", 200)),
+        };
+        h.Dark();
+        Assert.Empty(h.Sent);
+    }
+
+    [Fact]
+    public void Reactive_DarkObserved_Disabled_SendsNothing()
+    {
+        Harness h = new() { Enabled = false, Snapshot = Snap(carried: new[] { "5 torch" }) };
+        h.Dark();
+        Assert.Empty(h.Sent);
+    }
+
+    [Fact]
+    public void Reactive_DarkObserved_NothingCarried_SendsNothing()
+    {
+        // No light in the pack → leave buying/getting to the reactive need-poster.
+        Harness h = new() { Snapshot = Snap(carried: new[] { "5 dagger" }) };
+        h.Dark();
+        Assert.Empty(h.Sent);
+    }
+
+    [Fact]
+    public void Reactive_DarkObserved_PendingLatch_DoesNotDoubleSend()
+    {
+        // Two "can't see" lines before an `i` dump confirms the readied light: the
+        // second must not re-fire `use` on the same stale snapshot.
+        Harness h = new() { Snapshot = Snap(carried: new[] { "5 torch" }, stamp: 1) };
+        h.Dark();
+        h.Dark();
+        Assert.Equal(new[] { "use torch" }, h.Sent);
+    }
+
+    [Fact]
+    public void Reactive_DarkObserved_PreferredNameWins()
+    {
+        // Both carried; preferred torch beats the stronger lantern on the reactive
+        // pick, mirroring the route planner's preferred-first policy.
+        Harness h = new()
+        {
+            Settings = new() { CarryHours = 12, ReorderThresholdMinutes = 60, PreferredLightName = "torch" },
+            Snapshot = Snap(carried: new[] { "5 torch", "lantern" }),
+        };
+        h.Dark();
+        Assert.Equal(new[] { "use torch" }, h.Sent);
+    }
+
+    [Fact]
+    public void Reactive_DarkObserved_NoPreference_PicksStrongest()
+    {
+        // No preferred name → the strongest carried light (lantern 175 > torch 100).
+        Harness h = new() { Snapshot = Snap(carried: new[] { "5 torch", "lantern" }) };
+        h.Dark();
+        Assert.Equal(new[] { "use lantern" }, h.Sent);
+    }
+
+    // ----- Readied light burning out (OnReadiedLightExpired) -------------------
+
+    [Fact]
+    public void Reactive_LightExpired_ThenDark_RereadiesDespiteStaleReadied()
+    {
+        // The 154840 case: a torch burned out ("flickers and goes out") but the
+        // snapshot still shows it readied (no `i` dump has landed since). The dark
+        // room that follows must re-ready a carried spare, discounting the stale
+        // readied value — no `rem` first since the light already went out.
+        Harness h = new()
+        {
+            Snapshot = Snap(carried: new[] { "4 torch" }, readied: new ReadiedLight("torch", 10)),
+        };
+        h.Expire();
+        h.Dark();
+        Assert.Equal(new[] { "use torch" }, h.Sent);
+    }
+
+    [Fact]
+    public void Reactive_LightExpired_NoDark_SendsNothing()
+    {
+        // Expiry alone must not ready: if the room is lit by ambient light no spare
+        // is wanted. The re-ready waits for the dark-room "can't see" line.
+        Harness h = new()
+        {
+            Snapshot = Snap(carried: new[] { "4 torch" }, readied: new ReadiedLight("torch", 10)),
+        };
+        h.Expire();
+        Assert.Empty(h.Sent);
+    }
+
+    [Fact]
+    public void Reactive_LightExpired_FreshDumpRetiresFlag_NoRereadyOverLitLight()
+    {
+        // Expiry latches the bridge flag, but the next `i` dump is ground truth:
+        // it shows a light genuinely lit, so the flag retires and a later dark
+        // room must NOT stomp the lit light with a redundant re-ready.
+        Harness h = new()
+        {
+            Snapshot = Snap(carried: new[] { "4 torch" }, readied: new ReadiedLight("torch", 240)),
+        };
+        h.Expire();
+        h.Poll();   // fresh dump — ground truth, retires the bridge flag
+        h.Dark();
+        Assert.Empty(h.Sent);
+    }
+
+    [Fact]
+    public void Reactive_LightExpired_WhileDisabled_LeavesNoLatentFlag()
+    {
+        // Expiry seen with AutoLight off must not latch: re-enabling then hitting a
+        // dark room with a (stale) readied light stays a no-op, so a toggle can't
+        // resurrect a re-ready the user never wanted.
+        Harness h = new()
+        {
+            Enabled = false,
+            Snapshot = Snap(carried: new[] { "4 torch" }, readied: new ReadiedLight("torch", 10)),
+        };
+        h.Expire();
+        h.Enabled = true;
+        h.Dark();
+        Assert.Empty(h.Sent);
     }
 }

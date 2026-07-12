@@ -618,6 +618,29 @@ public sealed class RoomTrackerTests : IDisposable
         Assert.Equal(new RoomKey(1, 1), tracker.State.CurrentRoom!.Key);
     }
 
+    [Fact]
+    public void PendingMiss_UniqueNameThroughDoor_ReanchorsInsteadOfStriking()
+    {
+        // 141605: dark-corridor dead reckoning drifts, then the player surfaces
+        // in a uniquely-named lit room whose visible exits are a SUBSET of the
+        // graph's (a door dropped a bit). Here the tracker predicted Cellar
+        // (Inn + N → 1/5) but actually lands on name-unique "Town Gates" seen
+        // with only {N}. The exact (Name, ExitMask) search misses (graph Town
+        // Gates is {N,E}); the Pending path used to just bump a Suspect strike
+        // and leave the map frozen at the Inn. It now falls back to the same
+        // door-tolerant name-unique re-anchor the Confirmed / Suspect paths use
+        // and latches Confirmed at 1/1.
+        RoomTracker tracker = NewTracker();
+        tracker.SetLocated(new RoomKey(1, 4));    // Inn — N predicts Cellar (1/5)
+        tracker.NoteMoveSent(Direction.N);
+        Assert.Equal(RoomConfidence.Pending, tracker.State.Confidence);
+
+        tracker.NoteRoomObserved(Obs("Town Gates", Direction.N));
+
+        Assert.Equal(RoomConfidence.Confirmed, tracker.State.Confidence);
+        Assert.Equal(new RoomKey(1, 1), tracker.State.CurrentRoom!.Key);
+    }
+
     // ----- go-path (text-exit) resolution ----------------------------
 
     [Fact]
