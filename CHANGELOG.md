@@ -2,6 +2,12 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.44.0
+
+- Auto-light equips a carried light one room ahead — stepping toward a room the map knows is dark lights it before the move, so it renders on arrival instead of a blind step or two later
+- One-room lookahead only, so a light's burn timer isn't spent early; the reactive can't-see path still covers unmapped rooms
+- bug reports addressed: paradigm-20260712-211917
+
 ## 1.43.0
 
 - Session Stats abbreviates cash denominations in the compact total / per-hour / stashed cells — platinum→plat, silver→silv, copper→copp; the itemised tooltip keeps the full words

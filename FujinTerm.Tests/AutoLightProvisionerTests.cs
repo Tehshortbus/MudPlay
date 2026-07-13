@@ -12,12 +12,14 @@ namespace FujinTerm.Tests;
 
 /// <summary>
 /// <see cref="AutoLightProvisioner"/> — the active engine behind auto-light. A
-/// planned route only PROVISIONS the pack (deferred buy / reorder); predictive
-/// readying is suppressed. A light is `use`d reactively on the server's live
-/// can't-see line and `rem`d on stepping into a room seeable on worn gear alone.
-/// Exercises the master-toggle gate, the deferred buy / reorder, the reactive
-/// ready-and-rem, and the pending latch that keeps a still-unconfirmed `use` from
-/// being re-sent on a stale inventory snapshot.
+/// planned route only PROVISIONS the pack (deferred buy / reorder); the route-scan's
+/// own Ready verdict is suppressed. A light is `use`d predictively one room ahead
+/// (OnApproachingRoom, off the target room's mapped light) or reactively on the
+/// server's live can't-see line (OnDarkRoomObserved, the fallback for an unmapped
+/// room), and `rem`d on stepping into a room seeable on worn gear alone. Exercises
+/// the master-toggle gate, the deferred buy / reorder, the predictive + reactive
+/// ready and the rem, and the pending latch that keeps a still-unconfirmed `use`
+/// from being re-sent on a stale inventory snapshot.
 /// </summary>
 public sealed class AutoLightProvisionerTests
 {
@@ -27,6 +29,10 @@ public sealed class AutoLightProvisionerTests
     private static readonly IReadOnlyList<LightItem> Catalogue = new[] { Torch, Lantern };
 
     private static readonly RoomKey A = new(1, 100);
+    // Target rooms for the predictive-lookahead tests, resolved via the harness graph.
+    private static readonly RoomKey DarkAhead = new(1, 200);
+    private static readonly RoomKey LitAhead = new(1, 201);
+    private static readonly RoomKey Unmapped = new(1, 999);
 
     private static Room RoomAt(RoomKey key, int light) => new()
     {
@@ -80,6 +86,8 @@ public sealed class AutoLightProvisionerTests
         public void Poll() => Engine.OnInventoryChanged();
 
         public void Dark() => Engine.OnDarkRoomObserved();
+
+        public void Approach(RoomKey target) => Engine.OnApproachingRoom(target);
 
         public void Expire() => Engine.OnReadiedLightExpired();
 
@@ -374,6 +382,140 @@ public sealed class AutoLightProvisionerTests
         Harness h = new() { Snapshot = Snap(carried: new[] { "5 torch", "lantern" }) };
         h.Dark();
         Assert.Equal(new[] { "use lantern" }, h.Sent);
+    }
+
+    // ----- Predictive one-room lookahead (OnApproachingRoom) -------------------
+
+    [Fact]
+    public void Approach_DarkMappedRoom_ReadiesLightAheadOfStep()
+    {
+        // The room we're about to step into is mapped dark (worn 0 + -300 well below
+        // the see threshold) → `use` the carried torch now, before the move, so the
+        // room is lit on arrival instead of one blind step late.
+        Harness h = new()
+        {
+            Graph = GraphOf(RoomAt(DarkAhead, -300)),
+            Snapshot = Snap(carried: new[] { "5 torch" }),
+        };
+        h.Approach(DarkAhead);
+        Assert.Equal(new[] { "use torch" }, h.Sent);
+    }
+
+    [Fact]
+    public void Approach_SeeableMappedRoom_SendsNothing()
+    {
+        // The next room reads lit on worn gear alone (worn 0 + 0 clears the
+        // threshold) → no predictive `use`. This is the one-room horizon that keeps
+        // the burn timer from being spent on a room that renders fine.
+        Harness h = new()
+        {
+            Graph = GraphOf(RoomAt(LitAhead, 0)),
+            Snapshot = Snap(carried: new[] { "5 torch" }),
+        };
+        h.Approach(LitAhead);
+        Assert.Empty(h.Sent);
+    }
+
+    [Fact]
+    public void Approach_UnmappedRoom_SendsNothing()
+    {
+        // The next room isn't in the active graph → nothing to predict from; the
+        // reactive OnDarkRoomObserved catches it one room late instead.
+        Harness h = new()
+        {
+            Graph = GraphOf(RoomAt(DarkAhead, -300)),
+            Snapshot = Snap(carried: new[] { "5 torch" }),
+        };
+        h.Approach(Unmapped);
+        Assert.Empty(h.Sent);
+    }
+
+    [Fact]
+    public void Approach_WornIlluCoversDarkRoom_SendsNothing()
+    {
+        // +250 worn illu against a -300 room clears the threshold (-50 >= -150) →
+        // the room reads seeable, so no light is readied ahead of it.
+        Harness h = new()
+        {
+            WornIllu = 250,
+            Graph = GraphOf(RoomAt(DarkAhead, -300)),
+            Snapshot = Snap(carried: new[] { "5 torch" }),
+        };
+        h.Approach(DarkAhead);
+        Assert.Empty(h.Sent);
+    }
+
+    [Fact]
+    public void Approach_Disabled_SendsNothing()
+    {
+        Harness h = new()
+        {
+            Enabled = false,
+            Graph = GraphOf(RoomAt(DarkAhead, -300)),
+            Snapshot = Snap(carried: new[] { "5 torch" }),
+        };
+        h.Approach(DarkAhead);
+        Assert.Empty(h.Sent);
+    }
+
+    [Fact]
+    public void Approach_AlreadyLitCovers_SendsNothing()
+    {
+        // A healthy lantern is lit and covers the dark room ahead → don't downgrade
+        // to a weaker carried torch.
+        Harness h = new()
+        {
+            Graph = GraphOf(RoomAt(DarkAhead, -300)),
+            Snapshot = Snap(carried: new[] { "5 torch" }, readied: new ReadiedLight("lantern", 200)),
+        };
+        h.Approach(DarkAhead);
+        Assert.Empty(h.Sent);
+    }
+
+    [Fact]
+    public void Approach_PreferredNameWins()
+    {
+        // Both carried; the preferred torch beats the stronger lantern, same policy
+        // as the reactive pick.
+        Harness h = new()
+        {
+            Settings = new() { CarryHours = 12, ReorderThresholdMinutes = 60, PreferredLightName = "torch" },
+            Graph = GraphOf(RoomAt(DarkAhead, -300)),
+            Snapshot = Snap(carried: new[] { "5 torch", "lantern" }),
+        };
+        h.Approach(DarkAhead);
+        Assert.Equal(new[] { "use torch" }, h.Sent);
+    }
+
+    [Fact]
+    public void Approach_PendingLatch_DoesNotDoubleSend()
+    {
+        // Two steps toward dark rooms before an `i` dump confirms the readied light
+        // (same snapshot) → the pending latch stops the second `use`.
+        Harness h = new()
+        {
+            Graph = GraphOf(RoomAt(DarkAhead, -300)),
+            Snapshot = Snap(carried: new[] { "5 torch" }, stamp: 1),
+        };
+        h.Approach(DarkAhead);
+        h.Approach(DarkAhead);
+        Assert.Equal(new[] { "use torch" }, h.Sent);
+    }
+
+    [Fact]
+    public void Approach_ThenSeeableRoomEntered_RemsLight()
+    {
+        // End-to-end: predictively light for the dark room ahead, then `rem` it on
+        // stepping into a room seeable on worn gear — the predictive equip feeds the
+        // same auto-readied latch the removal path keys on.
+        Harness h = new()
+        {
+            Graph = GraphOf(RoomAt(DarkAhead, -300)),
+            Snapshot = Snap(carried: new[] { "5 torch" }),
+        };
+        h.Approach(DarkAhead);
+        h.Enter(0);
+        Assert.Equal(new[] { "use torch", "rem torch" }, h.Sent);
     }
 
     // ----- Readied light burning out (OnReadiedLightExpired) -------------------

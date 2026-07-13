@@ -5,22 +5,29 @@ using FujinTerm.Services;
 
 namespace FujinTerm.Game.Light;
 
-// The active auto-light engine, split across a predictive PROVISIONING path and a
-// reactive READYING path:
+// The active auto-light engine, split across a PROVISIONING path (keeps a covering
+// light in the pack) and a READYING path (lights / puts one away):
 //
 //  • Provisioning (predictive) — on each freshly-planned route (announced by
 //    AutoWalkManager.SetRouteAnnouncer) it scans the path for its darkest room and
 //    asks the pure AutoLightPlanner what's needed. A Buy / Reorder verdict (a light
 //    the pack lacks, or a dwindling readied charge) becomes a shop detour handed to
 //    AutoLightShopRouter. This keeps the pack HOLDING a covering light ahead of
-//    time; it deliberately never `use`s one predictively.
-//  • Readying (reactive) — a light is `use`d only when the game itself reports we
-//    can't see (OnDarkRoomObserved, driven by the "very dark" / "pitch black"
-//    lines), and `rem`d again the moment we step into a room seeable on worn gear
-//    alone (OnRoomEntered). The server's can't-see line is the single source of
-//    truth for WHEN a light is lit: we light a room exactly when the server says
-//    it's unseeable and put the light away otherwise, so a route predictor that
-//    wrongly guesses a lit room is dark can no longer over-light it.
+//    time; the route-scan's own Ready verdict is deliberately suppressed (it readied
+//    for the darkest room ANYWHERE on the route and over-lit the lit rooms between —
+//    the over-lit-town report), so provisioning never `use`s a light itself.
+//  • Readying — a light is `use`d two ways, both scoped to one room:
+//     – Predictive lookahead (OnApproachingRoom) — the walker / loop-runner hand
+//       over the room they're about to step into; if its mapped Rooms.Light reads
+//       dark on worn gear, the light goes out ahead of the move on the same
+//       dispatch, so the room is lit on arrival. A one-room horizon lights only in
+//       the last lit room before the dark one, sparing the burn timer, and a
+//       mis-mapped room self-corrects via the OnRoomEntered `rem`.
+//     – Reactive (OnDarkRoomObserved, driven by the "very dark" / "pitch black"
+//       lines) — the fallback for an UNMAPPED next room the graph can't score, one
+//       room late.
+//    Either way the light is `rem`d the moment we step into a room seeable on worn
+//    gear alone (OnRoomEntered), so a light never lingers past the dark it covered.
 //
 // Gating: every action sits behind the single AutoLight master toggle. There is
 // deliberately no separate opt-in; a player who doesn't want the client touching
@@ -241,18 +248,48 @@ public sealed class AutoLightProvisioner
 
     // Reactive handler for a live "can't see" room-light line — the server is
     // telling us this room is unseeable right now, which is the authoritative
-    // signal to light it. We ready the best carried light UNLESS what's already lit
-    // is at least as strong (readying a weaker torch over a lit lantern only
-    // downgrades — the room is simply darker than anything we carry). A burned-out
-    // light counts as strength 0 despite the stale snapshot, so a spare relights.
-    // The in-flight pending latch (ReadyLight's own guard) stops a repeated dark
-    // line on a stale snapshot from double-`use`ing. Buying a light we don't carry
-    // stays with the reactive need-poster / get path; this only readies what's
-    // already in the pack.
+    // signal to light it. Fallback for a room the graph can't score: an UNMAPPED
+    // next room never reaches OnApproachingRoom's predictive path, so the server's
+    // dark line is the only cue there (one room late, as before). For mapped rooms
+    // OnApproachingRoom usually lights ahead of the step, so this rarely fires.
     public void OnDarkRoomObserved()
     {
         if (!_isEnabled()) return;
+        TryReadyBestCarried("dark room observed: ready carried light");
+    }
 
+    // Predictive one-room-lookahead equip. The walker / loop-runner call this the
+    // instant they commit to a step, with the room about to be entered. If that
+    // room reads dark on worn gear alone (per its mapped Rooms.Light), we `use` a
+    // carried light NOW — ahead of the move bytes on the same dispatch, so MajorMUD
+    // lights it before the step lands and the room renders on arrival (no reactive
+    // "very dark" round-trip, no blind step). A one-room horizon lights only in the
+    // last lit room before the dark one, so the light's burn timer isn't spent
+    // early. Distinct from the route-scan Ready in OnRoutePlanned, which stays
+    // suppressed: that readied for the darkest room ANYWHERE on the route and
+    // over-lit the lit rooms between (the over-lit-town report); this reads the one
+    // room we're stepping into, and a mis-mapped-dark room self-corrects when
+    // OnRoomEntered `rem`s it on arrival. A room the graph can't resolve is left to
+    // the reactive OnDarkRoomObserved. No-op unless the AutoLight master toggle is on.
+    public void OnApproachingRoom(RoomKey target)
+    {
+        if (!_isEnabled()) return;
+        if (_resolveRoom(target) is not { } room) return;   // unmapped — reactive path covers it
+        if (LightModel.IlluGapToSee(_wornIllu(), room.Light) == 0) return;   // seeable on worn gear
+        TryReadyBestCarried("approaching dark room: ready carried light");
+    }
+
+    // Ready the best carried light for a room we can't see on worn gear alone —
+    // shared by the reactive dark-line path (OnDarkRoomObserved) and the predictive
+    // lookahead (OnApproachingRoom). Readies UNLESS what's already lit is at least
+    // as strong (a weaker torch over a lit lantern only downgrades — the room is
+    // simply darker than anything we carry). A burned-out light counts as strength 0
+    // despite the stale snapshot, so a spare relights. The in-flight pending latch
+    // (ReadyLight's own guard) stops a repeated trigger on a stale snapshot from
+    // double-`use`ing. Buying a light we don't carry stays with the reactive
+    // need-poster / get path; this only readies what's already in the pack.
+    private void TryReadyBestCarried(string reason)
+    {
         InventorySnapshot snap = _snapshot();
 
         // Retire a stale pending `use` so a failed send can retry: the dump now
@@ -281,8 +318,7 @@ public sealed class AutoLightProvisioner
         // Swap only when a genuinely-lit different light is being replaced; a
         // burned-out light needs no `rem` (it's already gone).
         string? swapFrom = _readiedLightBurnedOut ? null : snap.ReadiedLight?.Name;
-        ReadyLight(chosen.Name, swapFrom, snap.LastUpdated,
-            "dark room observed: ready carried light");
+        ReadyLight(chosen.Name, swapFrom, snap.LastUpdated, reason);
     }
 
     // Reactive handler for stepping into a room the graph knows the light level of.

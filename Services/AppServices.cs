@@ -3292,6 +3292,10 @@ public sealed class AppServices
             settings:    () => ReadSection<Models.Profile.AutoLightSettings>(Profile.Current, "AutoLight"),
             log:         Log);
         Walker.SetRouteAnnouncer(AutoLightProvisioner.OnRoutePlanned);
+        // Predictive one-room-lookahead equip: the walker hands the room it's about
+        // to enter to the provisioner, which `use`s a carried light ahead of the
+        // move when that room reads dark (LoopRunner gets the same hook below).
+        Walker.SetApproachLightHook(AutoLightProvisioner.OnApproachingRoom);
 
         // Auto-light provisioning detour. When the provisioner's planner returns
         // Buy (route dark, nothing carried covers), detour to the fewest-added-
@@ -3466,6 +3470,9 @@ public sealed class AppServices
             Combat.PrepBackstabForMove();
             Stealth.RequestPreMoveStealth();
         });
+        // Predictive equip on loop laps — same hook the walker uses, so a circuit
+        // step lights a dark room ahead of the move too.
+        LoopRunner.SetApproachLightHook(AutoLightProvisioner.OnApproachingRoom);
         // Avoid-list mutation mid-loop → LoopRunner re-routes via a
         // Stop+Start cycle so the new filter applies on the next BFS.
         Movement.AvoidedChanged += () => LoopRunner.NotifyAvoidedChanged();

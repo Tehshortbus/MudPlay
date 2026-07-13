@@ -1,9 +1,9 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.43.0**
-> - Session Stats abbreviates cash denominations in the compact total / per-hour / stashed cells — platinum→plat, silver→silv, copper→copp; the itemised tooltip keeps the full words
-> - `lo <dir>` / `loo <dir>` are now recognised as look-direction peeks (like `l` / `look`), so glancing into an adjacent room no longer walks the tracker onto the peeked room
+> **Version 1.44.0**
+> - Auto-light equips a carried light one room ahead — stepping toward a room the map knows is dark lights it before the move, so it renders on arrival instead of a blind step or two later
+> - One-room lookahead only, so a light's burn timer isn't spent early; the reactive can't-see path still covers unmapped rooms
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->
