@@ -60,6 +60,7 @@ public static class BugReportBuilder
             new("Movement engine", SafeSection(() => BuildMovement(svc))),
             new("Special room markers", SafeSection(() => BuildRoomMarkers(svc))),
             new("Auto-mode", SafeSection(() => BuildAutoMode(svc))),
+            new("Keybindings", SafeSection(() => BuildKeybindings(svc))),
             new("Live engine state", SafeSection(() => BuildEngineState(svc))),
             new("Effective settings (resolved)", SafeSection(() => BuildEffectiveSettings(svc))),
             new("Settings overrides (deltas, excluding BBS + Display)", SafeSection(() => BuildSettings(svc))),
@@ -420,6 +421,30 @@ public static class BugReportBuilder
         Kv(sb, "Kill-switch engaged", svc.AutoModeController.KillSwitchEngaged.ToString());
         Kv(sb, "All wired engines off", svc.AutoModeController.AllWiredOff.ToString());
         sb.Append("\nPer-engine toggles live in the `General` settings block below (`AutoMode`).\n");
+        return sb.ToString();
+    }
+
+    // Per-character built-in keybindings — the chord bound to each app action,
+    // flagged where it deviates from the shipped default. A "hotkey does
+    // nothing" or "my Ctrl+S rebind stopped reaching the terminal" report hinges
+    // on whether the user rebound the chord, which only lives in this per-
+    // character store (deltas persist to CharacterProfile.BuiltInKeybindings).
+    private static string BuildKeybindings(AppServices svc)
+    {
+        KeybindingStore store = svc.Keybindings;
+        StringBuilder sb = new();
+        foreach (Models.Profile.BuiltInAction action in Enum.GetValues<Models.Profile.BuiltInAction>())
+        {
+            Models.Profile.KeyChord chord = store.Get(action);
+            Models.Profile.KeyChord def =
+                KeybindingStore.DefaultBindings.TryGetValue(action, out Models.Profile.KeyChord d)
+                    ? d : Models.Profile.KeyChord.Empty;
+            string bound = chord.IsEmpty ? "(unbound)" : chord.Label;
+            string suffix = chord.Equals(def)
+                ? string.Empty
+                : $"  — changed (default: {(def.IsEmpty ? "(unbound)" : def.Label)})";
+            Kv(sb, KeybindingStore.ActionLabel(action), bound + suffix);
+        }
         return sb.ToString();
     }
 

@@ -300,6 +300,30 @@ public sealed class AutoWalkManagerTests : IDisposable
     }
 
     [Fact]
+    public void Walker_InternalReplan_DoesNotRaiseStopped()
+    {
+        // Regression: a mid-step Suspect re-plan re-issues the walk to the
+        // SAME destination through WalkTo, whose supersede branch used to
+        // Stop() the in-flight walk and raise a Stopped event. A driving
+        // reroute (AutoDepositManager and the shop routers subscribe to the
+        // walker) read that Stopped as an external abort and tore itself
+        // down mid-detour — the client reached the bank but never deposited
+        // or returned. The re-plan must surface Retrying (and keep walking),
+        // never Stopped: Stopped is reserved for a genuine external halt.
+        Harness h = NewHarness(AmbiguousGraphJson);
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Walker.WalkTo(new RoomKey(1, 2));
+        Assert.Equal(WalkState.Walking, h.Walker.State);
+
+        h.Tracker.NoteRoomObserved(new RoomObservation("Hall",
+            new HashSet<Direction> { Direction.S }));
+
+        Assert.Contains(h.Events, e => e.Kind == WalkEventKind.Retrying);
+        Assert.DoesNotContain(h.Events, e => e.Kind == WalkEventKind.Stopped);
+        Assert.Equal(WalkState.Walking, h.Walker.State);
+    }
+
+    [Fact]
     public void Walker_TrackerEntersLostMidStep_FailsCleanly()
     {
         // Lost clears the tracker's CurrentRoom — re-planning isn't

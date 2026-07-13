@@ -1,9 +1,11 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.41.1**
-> - Faster loop step-off after a cleared room — the loot settle window drops from 600 ms to 400 ms
-> - Navigation routes around a door the character can't pick or bash, taking a traversable alternate entrance instead of walking the loop into a door it can only bonk on
+> **Version 1.42.0**
+> - Settings → Toolbar + Shortcuts now lists the File-menu actions (New / Open / Save / Save As / Quit) so their keybinds are editable
+> - Keybind-only rows show no icon and can't be added to the toolbar — only actions with a toolbar button can be promoted
+> - Bug report captures every built-in keybinding, flagging any that differ from the default
+> - Auto-deposit no longer bails out at the bank: a mid-walk route re-plan on the way there stopped aborting the reroute, so it deposits and returns to the loop as intended
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

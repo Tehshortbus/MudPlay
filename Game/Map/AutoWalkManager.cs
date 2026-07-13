@@ -73,6 +73,16 @@ public sealed class AutoWalkManager : IRecoverableEngine
     private int _replanCount;
     private const int MaxReplansPerWalk = 2;
 
+    // Set only while TryReplanOrFail re-issues the walk to the SAME destination
+    // after a mid-step tracker surprise. The re-plan reuses the WalkTo entry,
+    // whose supersede branch would otherwise Stop() the in-flight walk and raise
+    // a Stopped event — which downstream reroute FSMs (AutoDepositManager, the
+    // shop routers) read as an external abort and tear themselves down, even
+    // though the walker is about to keep heading to the very same room. This
+    // flag tells the supersede branch to Reset() silently instead: no Stopped,
+    // no party-split abort. The re-plan still surfaces Retrying → Started/Failed.
+    private bool _replanningInPlace;
+
     public IReadOnlyList<byte[]> LastSentForTests => _sentForTests;
     private readonly List<byte[]> _sentForTests = new();
 
@@ -476,7 +486,15 @@ public sealed class AutoWalkManager : IRecoverableEngine
     public bool WalkTo(RoomKey destination, bool planThroughAcquirableGates = false)
     {
         if (State is WalkState.Walking or WalkState.Paused)
-            Stop(reason: "superseded by new walk");
+        {
+            // Internal re-plan to the same destination: clear state silently so
+            // we don't emit a Stopped that reroute FSMs mistake for an external
+            // abort (see _replanningInPlace). A genuine new WalkTo Stops loudly.
+            if (_replanningInPlace)
+                Reset();
+            else
+                Stop(reason: "superseded by new walk");
+        }
 
         // In-flight moves still on the wire (typical when the user
         // clicks a new "walk to" before the current step has confirmed):
@@ -1226,9 +1244,18 @@ public sealed class AutoWalkManager : IRecoverableEngine
             $"tracker entered {newConfidence} mid-step; re-planning from {here.Key} (attempt {_replanCount}/{MaxReplansPerWalk})",
             _destination));
         // Re-source the path from the tracker's best-guess current
-        // room. WalkTo handles the existing Walking state by stopping
-        // and re-planning.
-        WalkTo(dest);
+        // room. WalkTo handles the existing Walking state by clearing
+        // it — silently, since _replanningInPlace suppresses the
+        // supersede Stopped that would otherwise abort a driving reroute.
+        _replanningInPlace = true;
+        try
+        {
+            WalkTo(dest);
+        }
+        finally
+        {
+            _replanningInPlace = false;
+        }
     }
 
     private void OnPromptObserved(PromptObservation _) => OnPromptObservedCore();

@@ -300,10 +300,11 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
     }
 
     // Rebuild the lower "Shortcuts" list: every catalogue action whose button
-    // isn't currently placed on the toolbar. These stay keybindable even with
-    // no toolbar button — that's the whole point of the unified pool. Preserves
-    // the current selection by action id so a rebuild (after add/remove) doesn't
-    // clear the highlight.
+    // isn't currently placed on the toolbar, plus every keybind-only action that
+    // has no catalogue entry at all (the File-menu actions). All of these stay
+    // keybindable even with no toolbar button — that's the whole point of the
+    // unified pool. Preserves the current selection by action id so a rebuild
+    // (after add/remove) doesn't clear the highlight.
     private void RefreshShortcutRows()
     {
         HashSet<string> placed = new(
@@ -321,6 +322,17 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
                 row.RefreshShortcutHint(_keybindings.Get(a));
             ShortcutRows.Add(row);
         }
+        // Keybind-only actions (no catalogue entry ⇒ no toolbar button, e.g. the
+        // File-menu New/Open/Save/Save As/Quit) surface here so their chords are
+        // still editable. Absorbs any future menu-only action automatically.
+        foreach (BuiltInAction action in Enum.GetValues<BuiltInAction>())
+        {
+            string id = action.ToString();
+            if (ToolbarItemCatalogue.Find(id) is not null) continue;
+            ToolbarRowViewModel row = new(ToolbarItemKind.Button, id);
+            row.RefreshShortcutHint(_keybindings.Get(action));
+            ShortcutRows.Add(row);
+        }
         if (keepSelected is not null)
             SelectedShortcutRow = ShortcutRows.FirstOrDefault(
                 r => string.Equals(r.ActionId, keepSelected, StringComparison.OrdinalIgnoreCase));
@@ -332,7 +344,7 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
     [RelayCommand(CanExecute = nameof(CanAddToToolbar))]
     private void AddToToolbar()
     {
-        if (SelectedShortcutRow?.ActionId is not { } actionId) return;
+        if (SelectedShortcutRow is not { IsToolbarEligible: true, ActionId: { } actionId }) return;
         ToolbarRowViewModel newRow = new(ToolbarItemKind.Button, actionId);
         if (newRow.BoundAction is BuiltInAction a)
             newRow.RefreshShortcutHint(_keybindings.Get(a));
@@ -342,7 +354,9 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
         Dirty();
     }
 
-    private bool CanAddToToolbar() => SelectedShortcutRow is not null;
+    // Only catalogue-backed rows can be promoted; keybind-only rows (File-menu
+    // actions) have no toolbar button, so the button stays disabled for them.
+    private bool CanAddToToolbar() => SelectedShortcutRow?.IsToolbarEligible == true;
 
     // Append a separator to the toolbar (separators are toolbar-only).
     [RelayCommand]
@@ -710,10 +724,14 @@ public sealed partial class ToolbarRowViewModel : ObservableObject
     public string? ActionId { get; }
 
     // The BuiltInAction this row binds to, when the action id parses as one of
-    // the rebindable enum members. Non-rebindable rows (separators,
-    // ToggleCapture, ActionGetAll, …) return null; the editor uses this to gate
-    // the Change / Reset keybind commands.
+    // the enum members. Only separators and unrecognised action ids return null;
+    // the editor uses this to gate the Change / Reset keybind commands.
     public BuiltInAction? BoundAction { get; }
+
+    // True only for rows backed by a ToolbarItemCatalogue entry — i.e. actions
+    // that can carry a toolbar button. Keybind-only rows (File-menu actions with
+    // no catalogue entry) are false, so "Add to toolbar" can't promote them.
+    public bool IsToolbarEligible { get; }
 
     public bool IsButton => Kind == ToolbarItemKind.Button;
     public bool IsSeparator => Kind == ToolbarItemKind.Separator;
@@ -735,18 +753,35 @@ public sealed partial class ToolbarRowViewModel : ObservableObject
             return;
         }
 
-        ToolbarItemCatalogue.Entry? entry = ToolbarItemCatalogue.Find(actionId);
-        DisplayLabel = entry?.Label ?? $"(unknown action: {actionId})";
-        IconResourceKey = entry?.IconResourceKey;
-        // Catalogue ShortcutHint is the seed display; the section VM
-        // replaces it with the live KeybindingStore label once it
-        // resolves the row's BuiltInAction.
-        ShortcutHint = entry?.ShortcutHint is { } s ? $"({s})" : null;
-
         if (actionId is not null
             && Enum.TryParse(actionId, ignoreCase: false, out BuiltInAction parsed))
         {
             BoundAction = parsed;
+        }
+
+        ToolbarItemCatalogue.Entry? entry = ToolbarItemCatalogue.Find(actionId);
+        IsToolbarEligible = entry is not null;
+        if (entry is { } catalogued)
+        {
+            DisplayLabel = catalogued.Label;
+            IconResourceKey = catalogued.IconResourceKey;
+            // Catalogue ShortcutHint is the seed display; the section VM
+            // replaces it with the live KeybindingStore label once it
+            // resolves the row's BuiltInAction.
+            ShortcutHint = catalogued.ShortcutHint is { } s ? $"({s})" : null;
+        }
+        else if (BoundAction is { } keybindOnly)
+        {
+            // Keybind-only action (File-menu New/Open/Save/Save As/Quit): no
+            // catalogue entry, so no toolbar button and no icon, but it's still
+            // rebindable from the Shortcuts list.
+            DisplayLabel = KeybindingStore.ActionLabel(keybindOnly);
+            IconResourceKey = null;
+        }
+        else
+        {
+            DisplayLabel = $"(unknown action: {actionId})";
+            IconResourceKey = null;
         }
     }
 
