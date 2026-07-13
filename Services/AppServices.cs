@@ -4813,19 +4813,22 @@ public sealed class AppServices
     private void ApplyDisplayFromActiveBbs()
     {
         Models.Settings.BbsProfile values = ResolveActiveBbs() ?? new Models.Settings.BbsProfile();
-        Display.FontSize = values.FontSize;
         Display.ScrollbackLines = values.ScrollbackLines;
         Display.TerminalCols = values.TerminalCols;
         Display.TerminalRows = values.TerminalRows;
 
-        // The terminal-scaling toggle is char-tier (General), not BBS-tier, but
-        // it shares this method's ProfileLoaded / ProfileMutated triggers — so
-        // seed it here from the active profile. The Settings → General Apply
-        // path also writes Display.ScaleToWindow live, since a plain profile
-        // Save fires neither event.
-        Display.ScaleToWindow =
-            ReadSection<Models.Profile.GeneralSettings>(Profile.Current, "General")
-                .ScaleTerminalToWindow;
+        // Font family / size and the terminal-scaling toggle are all char-tier
+        // (General), not BBS-tier, but they share this method's ProfileLoaded /
+        // ProfileMutated triggers — so seed them here from the active profile.
+        // The Settings → General Apply path also writes these live, since a plain
+        // profile Save fires neither event.
+        Models.Profile.GeneralSettings general =
+            ReadSection<Models.Profile.GeneralSettings>(Profile.Current, "General");
+        Display.FontFamily = string.IsNullOrWhiteSpace(general.TerminalFontFamily)
+            ? DisplayConfig.DefaultFontFamily
+            : general.TerminalFontFamily;
+        Display.FontSize = general.TerminalFontSize ?? DisplayConfig.DefaultFontSize;
+        Display.ScaleToWindow = general.ScaleTerminalToWindow;
 
         // Game-menu commands are BBS-tier too — HangupHandler consumes
         // ExitCommand synchronously on @hangup; MainMenuEntryAutomation +
@@ -4844,7 +4847,8 @@ public sealed class AppServices
     private void ResetDisplayToDefaults()
     {
         Models.Settings.BbsProfile defaults = new();
-        Display.FontSize = defaults.FontSize;
+        Display.FontFamily = DisplayConfig.DefaultFontFamily;
+        Display.FontSize = DisplayConfig.DefaultFontSize;
         Display.ScrollbackLines = defaults.ScrollbackLines;
         Display.TerminalCols = defaults.TerminalCols;
         Display.TerminalRows = defaults.TerminalRows;

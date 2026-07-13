@@ -35,6 +35,15 @@ public sealed class GeneralSettings
     // absurdly large. Char-tier; surfaced in Settings → General.
     public bool ScaleTerminalToWindow { get; set; }
 
+    // Terminal canvas font family as an avares:// URI. Null = the bundled MX437
+    // CP437 bitmap font (the default). Char-tier — the font choice follows the
+    // character, not the board it happens to be connected to.
+    public string? TerminalFontFamily { get; set; }
+
+    // Terminal canvas font size in points. Null = 16 (the default). Char-tier;
+    // relocated here from the per-BBS Display settings.
+    public double? TerminalFontSize { get; set; }
+
     // Master on/off state for every auto-engine. Each flag gates whether the
     // matching engine actually fires: AutoActionDefaults.AutoCombat gates
     // Game.Combat.CombatManager + the Game.Combat.CombatStateTracker's

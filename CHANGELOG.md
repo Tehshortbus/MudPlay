@@ -2,8 +2,10 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
-## 1.46.0
+## 1.47.0
 
+- Settings → General gains a terminal font-family + font-size picker (per-character); MX437 and size 16 are marked {default}
+- Terminal font size relocated from the per-BBS Display tab to the per-character General tab, so the font choice follows the character
 - Default item seed curated: only a hand-picked list auto-collects (with per-item caps) or auto-discards — every other item is left unmarked
 - Chests/containers and Leo's steel key auto-collect by default; junk gems (azurite, agate, moonstone, …) auto-discard
 - Auto-collect honours each item's Max-to-get cap, counting key-ring keys, instead of grabbing every copy in a room

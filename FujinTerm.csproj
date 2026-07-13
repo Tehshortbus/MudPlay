@@ -27,7 +27,7 @@
          the next build. Semver policy (post-1.0), by change type: MAJOR =
          whole-program refactor, MINOR = a new feature or enhancement,
          PATCH = bug fixes (one bump per report handled). -->
-    <Version>1.46.0</Version>
+    <Version>1.47.0</Version>
 
     <!-- Memory footprint: pin the Workstation GC (one small heap) rather than
          the Server GC (a heap + background thread per core), which on a

@@ -75,6 +75,44 @@
                             ToolTip.Tip="Move every file under the data folder to a different location; the app restarts at the new path."/>
                 </Grid>
 
+                <TextBlock Classes="SectionHeader" Text="Terminal font"/>
+
+                <Grid ColumnDefinitions="120,*" RowDefinitions="Auto,Auto" RowSpacing="6">
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Font:"
+                               Foreground="{StaticResource ChromeFgSecBrush}"
+                               FontSize="{StaticResource FontSizeMd}"
+                               VerticalAlignment="Center"/>
+                    <ComboBox Grid.Row="0" Grid.Column="1"
+                              Width="240"
+                              HorizontalAlignment="Left"
+                              ItemsSource="{Binding FontFamilyOptions}"
+                              SelectedItem="{Binding SelectedFontFamily, Mode=TwoWay}"
+                              ToolTip.Tip="Font the terminal canvas renders with. MX437 is the bundled CP437 bitmap font that matches classic BBS output; JetBrains Mono is a modern monospace with box-drawing coverage. Applies on Save.">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate x:DataType="vm:FontFamilyOption">
+                                <TextBlock Text="{Binding Label}"/>
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Font size:"
+                               Foreground="{StaticResource ChromeFgSecBrush}"
+                               FontSize="{StaticResource FontSizeMd}"
+                               VerticalAlignment="Center"/>
+                    <ComboBox Grid.Row="1" Grid.Column="1"
+                              Width="240"
+                              HorizontalAlignment="Left"
+                              ItemsSource="{Binding FontSizeOptions}"
+                              SelectedItem="{Binding SelectedFontSize, Mode=TwoWay}"
+                              ToolTip.Tip="Terminal canvas font size in points. Applies on Save.">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate x:DataType="vm:FontSizeOption">
+                                <TextBlock Text="{Binding Label}"/>
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                </Grid>
+
                 <TextBlock Classes="SectionHeader" Text="Initial"/>
 
                 <Grid ColumnDefinitions="120,*">

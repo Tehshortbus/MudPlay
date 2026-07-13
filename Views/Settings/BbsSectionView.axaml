@@ -146,7 +146,7 @@
 
                     <TextBlock Classes="GroupHeader" Text="Display"/>
 
-                    <Grid ColumnDefinitions="160,*" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="6">
+                    <Grid ColumnDefinitions="160,*" RowDefinitions="Auto,Auto,Auto" RowSpacing="6">
                         <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Columns:"/>
                         <NumericUpDown Grid.Row="0" Grid.Column="1"
                                        Value="{Binding TerminalCols, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
@@ -161,16 +161,8 @@
                                        FormatString="0" Width="140"
                                        HorizontalAlignment="Left"/>
 
-                        <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Font size:"/>
+                        <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Scrollback (lines):"/>
                         <NumericUpDown Grid.Row="2" Grid.Column="1"
-                                       Value="{Binding FontSize, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
-                                       Minimum="8" Maximum="32" Increment="1"
-                                       FormatString="0" Width="140"
-                                       HorizontalAlignment="Left"
-                                       ToolTip.Tip="Live-previews on the terminal canvas while you tweak."/>
-
-                        <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="Scrollback (lines):"/>
-                        <NumericUpDown Grid.Row="3" Grid.Column="1"
                                        Value="{Binding ScrollbackLines, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
                                        Minimum="100" Maximum="100000" Increment="500"
                                        FormatString="0" Width="140"
