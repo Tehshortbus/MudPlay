@@ -137,7 +137,7 @@
                                            IsVisible="{Binding AlignmentStale}"
                                            Foreground="{StaticResource AccentAmberBrush}"
                                            Text="(stale — type ‘who’ to refresh)"/>
-                                <TextBlock Classes="FieldLabel" VerticalAlignment="Center" Text="Encumbrance" Margin="24,0,0,0"/>
+                                <TextBlock Classes="FieldLabel" VerticalAlignment="Center" Text="Enc" Margin="24,0,0,0"/>
                                 <TextBlock Classes="FieldValue" VerticalAlignment="Center" Text="{Binding Encumbrance}"/>
                             </StackPanel>
 
@@ -183,25 +183,25 @@
                                            IsVisible="{Binding ShowBackstab}"/>
 
                                 <TextBlock Grid.Row="5" Grid.Column="0" Classes="FieldLabel" Text="Punch" Margin="0,0,18,3"
-                                           IsVisible="{Binding ShowMartialArts}"/>
+                                           IsVisible="{Binding ShowPunch}"/>
                                 <TextBlock Grid.Row="5" Grid.Column="1" Classes="FieldValue" Text="{Binding PunchAccuracy}" Margin="0,0,16,3"
-                                           IsVisible="{Binding ShowMartialArts}"/>
+                                           IsVisible="{Binding ShowPunch}"/>
                                 <TextBlock Grid.Row="5" Grid.Column="2" Classes="FieldValue" Text="{Binding PunchDamage}" Margin="0,0,0,3"
-                                           IsVisible="{Binding ShowMartialArts}"/>
+                                           IsVisible="{Binding ShowPunch}"/>
 
                                 <TextBlock Grid.Row="6" Grid.Column="0" Classes="FieldLabel" Text="Kick" Margin="0,0,18,3"
-                                           IsVisible="{Binding ShowMartialArts}"/>
+                                           IsVisible="{Binding ShowKick}"/>
                                 <TextBlock Grid.Row="6" Grid.Column="1" Classes="FieldValue" Text="{Binding KickAccuracy}" Margin="0,0,16,3"
-                                           IsVisible="{Binding ShowMartialArts}"/>
+                                           IsVisible="{Binding ShowKick}"/>
                                 <TextBlock Grid.Row="6" Grid.Column="2" Classes="FieldValue" Text="{Binding KickDamage}" Margin="0,0,0,3"
-                                           IsVisible="{Binding ShowMartialArts}"/>
+                                           IsVisible="{Binding ShowKick}"/>
 
                                 <TextBlock Grid.Row="7" Grid.Column="0" Classes="FieldLabel" Text="Jumpkick" Margin="0,0,18,3"
-                                           IsVisible="{Binding ShowMartialArts}"/>
+                                           IsVisible="{Binding ShowJumpKick}"/>
                                 <TextBlock Grid.Row="7" Grid.Column="1" Classes="FieldValue" Text="{Binding JumpKickAccuracy}" Margin="0,0,16,3"
-                                           IsVisible="{Binding ShowMartialArts}"/>
+                                           IsVisible="{Binding ShowJumpKick}"/>
                                 <TextBlock Grid.Row="7" Grid.Column="2" Classes="FieldValue" Text="{Binding JumpKickDamage}" Margin="0,0,0,3"
-                                           IsVisible="{Binding ShowMartialArts}"/>
+                                           IsVisible="{Binding ShowJumpKick}"/>
                             </Grid>
                         </StackPanel>
                     </Border>

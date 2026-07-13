@@ -55,6 +55,52 @@ public sealed partial class SpellsSectionViewModel : SettingsSectionViewModel
     // Refreshes when the spellbook rebuilds (class swap / reroll).
     public IReadOnlyList<Game.Spells.SpellPick> SpellSuggestions => _spellbook.AvailablePicks;
 
+    private IReadOnlyList<Game.Spells.SpellPick>? _blessSuggestions;
+
+    // Suggestions for the Bless-slot typeahead only: the class's learnable spells
+    // (same list as SpellSuggestions) PLUS its unlimited-use cast-on-use items
+    // whose use-level we meet. Each item entry commits its "#item name" token,
+    // which the CastingDirector fires via ItemCastSequencer (equip → use →
+    // re-equip) on the on-use spell's duration. Kept separate from
+    // SpellSuggestions so the heal / cure / roll pickers stay spell-only. Rebuilt
+    // on a class / level change (level gates the item list).
+    public IReadOnlyList<Game.Spells.SpellPick> BlessSpellSuggestions
+        => _blessSuggestions ??= ComposeBlessSuggestions(
+            _spellbook.AvailablePicks, _spellbook.GetCastItems(), _spellbook.Level);
+
+    // Compose the Bless suggestion list. Static + pure so the unlimited-only /
+    // level-gate / token-format logic is unit-tested without the AppServices-bound
+    // spellbook. Limited-charge items are excluded — they can't sustain a recast
+    // loop, so they stay a manual-use affair. Items are appended after the spells,
+    // ordered by their use-level (lowest first) then name.
+    internal static IReadOnlyList<Game.Spells.SpellPick> ComposeBlessSuggestions(
+        IReadOnlyList<Game.Spells.SpellPick> spellPicks,
+        IReadOnlyList<Game.Spells.ClassCastItem> castItems,
+        int level)
+    {
+        List<Game.Spells.SpellPick> picks = new(spellPicks);
+        IEnumerable<Game.Spells.ClassCastItem> usable = castItems
+            .Where(item => item.Unlimited)
+            .Where(item => level <= 0 || item.MinLevel <= level)
+            .OrderBy(item => item.MinLevel)
+            .ThenBy(item => item.ItemName, StringComparer.OrdinalIgnoreCase);
+        foreach (Game.Spells.ClassCastItem item in usable)
+            picks.Add(new Game.Spells.SpellPick(
+                Game.Spells.ItemCastToken.Format(item.ItemName), BlessItemLabel(item)));
+        return picks;
+    }
+
+    // The dropdown sub-label for a cast-on-use item entry: the spell it casts,
+    // its use-level, and whether using it draws mana. The token itself (the
+    // committed value) leads the row via SpellPick.Display's "code — name" form.
+    internal static string BlessItemLabel(Game.Spells.ClassCastItem item)
+    {
+        string spell = item.SpellName.Length > 0 ? item.SpellName : $"spell #{item.SpellNumber}";
+        string levelPart = item.MinLevel > 0 ? $" · Lv {item.MinLevel}" : string.Empty;
+        string manaPart = item.CostsMana ? $" · {item.ManaCost} mana" : " · free";
+        return $"casts {spell}{levelPart}{manaPart}";
+    }
+
     public override Control View => _view ??= new SpellsSectionView { DataContext = this };
 
     public override IEnumerable<string> SearchableLabels =>
@@ -192,7 +238,9 @@ public sealed partial class SpellsSectionViewModel : SettingsSectionViewModel
 
     private void OnSpellbookChanged()
     {
+        _blessSuggestions = null; // a level change re-gates the cast-item entries
         OnPropertyChanged(nameof(SpellSuggestions));
+        OnPropertyChanged(nameof(BlessSpellSuggestions));
         // Class / level swap rescales the roll range shown in the reroll hint.
         OnPropertyChanged(nameof(ManaRegenRerollHint));
     }

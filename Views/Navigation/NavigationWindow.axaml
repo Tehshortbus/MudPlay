@@ -909,6 +909,7 @@
                                               ItemsSource="{Binding FavoriteTree}"
                                               IsVisible="{Binding HasFavoriteTree}"
                                               Background="Transparent"
+                                              Margin="0,0,8,0"
                                               ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                               DragDrop.AllowDrop="True">
                                         <!-- Right-click empty tree space → create a
@@ -928,6 +929,21 @@
                                             </Style>
                                             <Style Selector="TreeViewItem" x:DataType="vm:NavFolderNodeViewModel">
                                                 <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}"/>
+                                            </Style>
+                                            <!-- Reclaim the Fluent chevron gutter. The default
+                                                 TreeViewItem template reserves a fixed 36px left
+                                                 column (12px chevron + 12,0,12,0 margin) on EVERY
+                                                 row — leaves included — which is why favourite
+                                                 rows start far from the rail edge. Tighten it for
+                                                 folders and collapse it to zero for leaves; the
+                                                 per-level indent lives on PART_Header's own margin,
+                                                 so hierarchy nesting is unaffected. -->
+                                            <Style Selector="TreeViewItem /template/ Panel#PART_ExpandCollapseChevronContainer">
+                                                <Setter Property="Margin" Value="0,0,4,0"/>
+                                            </Style>
+                                            <Style Selector="TreeViewItem:empty /template/ Panel#PART_ExpandCollapseChevronContainer">
+                                                <Setter Property="Width" Value="0"/>
+                                                <Setter Property="Margin" Value="0"/>
                                             </Style>
                                         </TreeView.Styles>
                                         <TreeView.DataTemplates>
@@ -1051,6 +1067,7 @@
                                               ItemsSource="{Binding NavTree}"
                                               IsVisible="{Binding HasNavTree}"
                                               Background="Transparent"
+                                              Margin="0,0,8,0"
                                               ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                               DragDrop.AllowDrop="True">
                                         <TreeView.Styles>
@@ -1063,6 +1080,20 @@
                                             </Style>
                                             <Style Selector="TreeViewItem" x:DataType="vm:NavFolderNodeViewModel">
                                                 <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}"/>
+                                            </Style>
+                                            <!-- Reclaim the Fluent chevron gutter so loop /
+                                                 Auto-Lair names hug the rail edge. The default
+                                                 template reserves a fixed 36px left column (12px
+                                                 chevron + 12,0,12,0 margin) on EVERY row, leaves
+                                                 included; tighten it for folders and zero it for
+                                                 leaves. Per-level indent is on PART_Header's own
+                                                 margin, so nesting still reads. -->
+                                            <Style Selector="TreeViewItem /template/ Panel#PART_ExpandCollapseChevronContainer">
+                                                <Setter Property="Margin" Value="0,0,4,0"/>
+                                            </Style>
+                                            <Style Selector="TreeViewItem:empty /template/ Panel#PART_ExpandCollapseChevronContainer">
+                                                <Setter Property="Width" Value="0"/>
+                                                <Setter Property="Margin" Value="0"/>
                                             </Style>
                                         </TreeView.Styles>
                                         <TreeView.DataTemplates>

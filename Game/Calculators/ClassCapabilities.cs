@@ -18,6 +18,11 @@ public static class ClassCapabilities
     private const int SmashAbilityId = 32;
     private const int RaceStealthAbilityId = 102;
     private const int ClassStealthAbilityId = 103;
+    // Martial-arts strikes are class-innate abilities (Mystic carries all three);
+    // a class grants a strike when it lists that ability in an Abil-0..9 slot.
+    private const int PunchAbilityId = 29;
+    private const int KickAbilityId = 30;
+    private const int JumpKickAbilityId = 35;
     private const int MaxRecordAbilSlots = 10;
 
     // Class names that can learn Smash, or null meaning "assume every class can"
@@ -96,6 +101,12 @@ public static class ClassCapabilities
 
     // True if the class row grants innate stealth (Abil-0..9 == 103).
     public static bool ClassHasStealth(JsonElement? classRow) => HasAbility(classRow, ClassStealthAbilityId);
+
+    // Martial-arts strikes the class innately grants (Abil-0..9 == 29 / 30 / 35).
+    // Only classes that carry the ability get the strike row in the combat panel.
+    public static bool ClassHasPunch(JsonElement? classRow) => HasAbility(classRow, PunchAbilityId);
+    public static bool ClassHasKick(JsonElement? classRow) => HasAbility(classRow, KickAbilityId);
+    public static bool ClassHasJumpKick(JsonElement? classRow) => HasAbility(classRow, JumpKickAbilityId);
 
     private static bool HasAbility(JsonElement? row, int abilityId)
     {

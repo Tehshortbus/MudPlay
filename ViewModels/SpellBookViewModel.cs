@@ -139,15 +139,18 @@ public sealed partial class SpellBookViewModel : ObservableObject, IDisposable
         // gear. (The casting automation still consumes the full usable set from
         // the book; this narrowing is display-only.)
         CastItems.Clear();
-        foreach (ClassCastItem item in _allCastItems)
-        {
-            if (!item.ClassRestricted) continue;
-            if (filter.Length > 0
-                && !item.ItemName.Contains(filter, StringComparison.OrdinalIgnoreCase)
-                && !item.SpellName.Contains(filter, StringComparison.OrdinalIgnoreCase))
-                continue;
+        // Ordered by the item's level requirement, lowest first, so the caster
+        // reads the earliest-usable cast source at the top; item name breaks
+        // ties (0-level items sort ahead of any gated one).
+        IEnumerable<ClassCastItem> visibleCastItems = _allCastItems
+            .Where(item => item.ClassRestricted)
+            .Where(item => filter.Length == 0
+                || item.ItemName.Contains(filter, StringComparison.OrdinalIgnoreCase)
+                || item.SpellName.Contains(filter, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(item => item.MinLevel)
+            .ThenBy(item => item.ItemName, StringComparer.OrdinalIgnoreCase);
+        foreach (ClassCastItem item in visibleCastItems)
             CastItems.Add(new SpellBookItemRowViewModel(item));
-        }
 
         OnPropertyChanged(nameof(StatusText));
         OnPropertyChanged(nameof(HasCastItems));

@@ -245,6 +245,10 @@ public sealed class KnownSpellCatalog
     // AbilVal is the Spells.Number the item casts when used.
     private const int CastsSpAbilityCode = 43;
 
+    // MajorMUD ability code for the item's minimum-level gate ("MinLevel"): the
+    // slot's AbilVal is the character level required to wear / use the item.
+    private const int MinLevelAbilityCode = 135;
+
     // Items carry 20 ability slots (Abil-0..19) vs the 10 on Spells / Classes.
     private const int ItemAbilSlots = 20;
 
@@ -285,13 +289,19 @@ public sealed class KnownSpellCatalog
             if (!ItemUsableByClass(row, classNumber)) continue;
             if (!IsEquippableCastItem(row)) continue;
 
-            // First CastsSp (code 43) slot wins — an item casts a single use-spell.
+            // One scan of the 20 ability slots pulls both facts we need: the
+            // first CastsSp (code 43) slot names the use-spell, and a MinLevel
+            // (code 135) slot names the level gate. An item casts a single
+            // use-spell, so the first CastsSp wins.
             int spellNumber = 0;
+            int minLevel = 0;
             for (int i = 0; i < ItemAbilSlots; i++)
             {
-                if (ReadInt(row, $"Abil-{i}") != CastsSpAbilityCode) continue;
-                spellNumber = ReadInt(row, $"AbilVal-{i}");
-                break;
+                int code = ReadInt(row, $"Abil-{i}");
+                if (code == CastsSpAbilityCode && spellNumber <= 0)
+                    spellNumber = ReadInt(row, $"AbilVal-{i}");
+                else if (code == MinLevelAbilityCode)
+                    minLevel = ReadInt(row, $"AbilVal-{i}");
             }
             if (spellNumber <= 0) continue;
 
@@ -311,7 +321,8 @@ public sealed class KnownSpellCatalog
                 ManaCost: manaCost,
                 UseCount: ReadInt(row, "UseCount"),
                 IsTwoHanded: LookupEnums.IsTwoHandedWeaponType(ReadInt(row, "WeaponType")),
-                ClassRestricted: ItemClassRestricted(row, classNumber)));
+                ClassRestricted: ItemClassRestricted(row, classNumber),
+                MinLevel: minLevel));
         }
 
         results.Sort(static (a, b) =>

@@ -15,10 +15,11 @@ namespace FujinTerm.Game.Spells;
 // off-hand before wielding it to use it. ClassRestricted is true when the item's
 // ClassRest list names this class specifically (as opposed to a universal item
 // anyone can use) — the Spell Book display lists only the class-specific sources,
-// while the casting automation still consumes the full usable set.
+// while the casting automation still consumes the full usable set. MinLevel is the
+// item's wear/use level gate (Items ability code 135's AbilVal); 0 = no requirement.
 public readonly record struct ClassCastItem(
     int ItemNumber, string ItemName, int SpellNumber, string SpellName, int ManaCost, int UseCount,
-    bool IsTwoHanded = false, bool ClassRestricted = false)
+    bool IsTwoHanded = false, bool ClassRestricted = false, int MinLevel = 0)
 {
     // True when the item has unlimited uses (UseCount 0).
     public bool Unlimited => UseCount == 0;

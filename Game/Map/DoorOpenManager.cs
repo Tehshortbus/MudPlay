@@ -342,11 +342,21 @@ public sealed class DoorOpenManager : IDisposable
 
     private void OnPickNotLocked(MatchResult _)
     {
-        if (_state != DoorState.WaitingPick) return;
         if (_current is null) return;
-        // Pick on an already-unlocked door — go straight to open.
-        _log?.Info("Door", $"pick {_current.DirectionShort}: door wasn't locked — sending open.");
-        SendOpen();
+        // "The door was not locked." — the door needs no unlock, whichever
+        // breach verb we were mid-attempt on. A keyed door's use-key path
+        // (WaitingUseKey) and a bash both hit this same line on an
+        // already-unlocked door; gating only on WaitingPick stranded the FSM
+        // there, so the walker stalled until a manual room reparse. Skip
+        // straight to open — an already-open door then resolves via OnOpened.
+        if (_state is DoorState.WaitingPick
+                   or DoorState.WaitingBash
+                   or DoorState.WaitingUseKey)
+        {
+            _log?.Info("Door",
+                $"door {_current.DirectionShort} wasn't locked — sending open (was {_state}).");
+            SendOpen();
+        }
     }
 
     private void OnOpened(MatchResult _)
