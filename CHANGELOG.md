@@ -9,6 +9,7 @@ Notable changes per merged PR, **newest first**. The top of the [README](README.
 - Character Info encumbrance shows the carry-load percent beside the bracket word; the label is shortened to "Enc"
 - Punch / Kick / Jumpkick combat rows show only for classes that innately grant the strike (Mystic), not any character with a trained Martial Arts skill
 - Navigation no longer stalls on "The door was not locked." mid-breach — the door is taken as unlocked and opened regardless of which verb (bash / pick / use-key) was in flight
+- Spell Book cast-on-use items show each item's level requirement and are ordered by it, lowest first
 
 ## 1.51.0
 

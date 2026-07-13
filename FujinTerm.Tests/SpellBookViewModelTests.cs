@@ -255,6 +255,31 @@ public sealed class SpellBookViewModelTests : IDisposable
     }
 
     [Fact]
+    public void CastItems_SortedByLevelRequirement_LowestFirst()
+    {
+        // Names are deliberately reverse-alphabetical to the level order so a
+        // by-name sort would produce the wrong sequence — the display must
+        // order by the item's MinLevel gate, lowest first, with a 0-level
+        // (ungated) item ahead of every gated one.
+        object[] items =
+        [
+            CastItemWithLevel(210, "Zeta Wand", minLevel: 20, classRest: 12),
+            CastItemWithLevel(211, "Alpha Rod", minLevel: 5, classRest: 12),
+            CastItemWithLevel(212, "Mid Charm", minLevel: 12, classRest: 12),
+            CastItemWithLevel(213, "Ungated Wand", minLevel: 0, classRest: 12),
+        ];
+        SpellbookState book = NewBook(classNumber: 12, level: 5, items: items); // Mage
+        using SpellBookViewModel vm = new(book);
+
+        Assert.Equal(new[] { "Ungated Wand", "Alpha Rod", "Mid Charm", "Zeta Wand" },
+            vm.CastItems.Select(r => r.ItemName));
+
+        Assert.Equal("Lv —", vm.CastItems[0].LevelText);
+        Assert.Equal("Lv 5", vm.CastItems[1].LevelText);
+        Assert.Equal(20, vm.CastItems[3].MinLevel);
+    }
+
+    [Fact]
     public void CastItems_ExcludeUniversalItems_ButAutomationKeepsThem()
     {
         SpellbookState book = NewBook(classNumber: 12, level: 5, items: _items); // Mage
@@ -340,6 +365,17 @@ public sealed class SpellBookViewModelTests : IDisposable
             row[$"Abil-{i}"] = i == 0 ? 43 : 0;
             row[$"AbilVal-{i}"] = i == 0 ? castSpell : 0;
         }
+        return row;
+    }
+
+    // A class-restricted cast item carrying a MinLevel gate (Items ability code
+    // 135 in slot 1) on top of the CastsSp slot 0 that ItemRow already sets.
+    private static Dictionary<string, object> CastItemWithLevel(
+        int number, string name, int minLevel, int classRest)
+    {
+        Dictionary<string, object> row = ItemRow(number, name, castSpell: 100, useCount: 0, classRest);
+        row["Abil-1"] = 135;
+        row["AbilVal-1"] = minLevel;
         return row;
     }
 

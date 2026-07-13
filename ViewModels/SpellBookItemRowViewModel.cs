@@ -15,6 +15,13 @@ public sealed class SpellBookItemRowViewModel
     // The carrier item's display name.
     public string ItemName => _item.ItemName;
 
+    // The item's minimum-level gate, for the display's ascending sort.
+    public int MinLevel => _item.MinLevel;
+
+    // Level-requirement badge: "Lv N" for a gated item, "Lv —" when the item
+    // has no level requirement (MinLevel 0).
+    public string LevelText => _item.MinLevel > 0 ? $"Lv {_item.MinLevel}" : "Lv —";
+
     // The cast spell's name, or a #number fallback when it didn't resolve.
     public string SpellName => _item.SpellName.Length > 0 ? _item.SpellName : $"spell #{_item.SpellNumber}";
 
