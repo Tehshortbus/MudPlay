@@ -2,7 +2,7 @@
 
 <!-- current-version:start -->
 > **Version 1.45.0**
-> - Conversation window logs paradigm's server PvP-kill announcements ("Server PvP Message: X just killed Y!") as a new red SERVER channel, with its own filter toggle; realm-gated so only paradigm realms surface it
+> - Conversation window logs paradigm's server PvP-kill announcements ("Server PvP Message: X just killed Y!") as a red SERVER entry under the Realm filter; realm-gated so only paradigm realms surface it
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

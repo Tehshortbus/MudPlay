@@ -37,8 +37,6 @@
                               Foreground="{StaticResource AccentAmberBrush}"  FontSize="11"/>
                     <CheckBox IsChecked="{Binding ShowRealmEvent}"        Content="Realm"
                               Foreground="{StaticResource ChromeFgMutedBrush}" FontSize="11"/>
-                    <CheckBox IsChecked="{Binding ShowServer}"            Content="Server"
-                              Foreground="{StaticResource AccentRedBrush}"    FontSize="11"/>
                 </WrapPanel>
 
                 <!-- Search over auto-scroll in one fixed-width column: stacking
