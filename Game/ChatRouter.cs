@@ -79,9 +79,9 @@ public sealed class ChatRouter : IDisposable
         SubscribeRealmEvent(router, KnownPatterns.PlayerExits,        "left the Realm");
         SubscribeRealmEvent(router, KnownPatterns.PlayerDisconnects,  "disconnected");
 
-        // Paradigm server PvP-kill announcement — realm-gated. Speaker is null
-        // (the server, not a player); the captured body is the whole
-        // "X just killed Y!" line.
+        // Paradigm server PvP announcements (kills and other "Server PvP
+        // Message: …" lines) — realm-gated. Speaker is null (the server, not a
+        // player); the captured body is the whole line after the prefix.
         _subs.Add(router.Subscribe(KnownPatterns.ConversationServerPvp, result =>
         {
             if (_isParadigmRealm is not null && !_isParadigmRealm()) return;

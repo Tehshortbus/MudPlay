@@ -4,7 +4,7 @@ Notable changes per merged PR, **newest first**. The top of the [README](README.
 
 ## 1.45.0
 
-- Conversation window logs paradigm's server PvP-kill announcements ("Server PvP Message: X just killed Y!") as a red SERVER entry under the Realm filter; realm-gated so only paradigm realms surface it
+- Conversation window logs paradigm's server PvP announcements (any "Server PvP Message: …" line, e.g. "X just killed Y!") as a red SERVER entry under the Realm filter; realm-gated so only paradigm realms surface it
 
 ## 1.44.0
 

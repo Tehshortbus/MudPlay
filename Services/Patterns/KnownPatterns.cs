@@ -212,8 +212,9 @@ public static class KnownPatterns
     public const string ConversationTelepathOut = "conversation.telepath-out";   // outgoing "--- Telepath sent to X ---"
     public const string ConversationYell        = "conversation.yell";           // both "X yells" and "You yell"
     public const string ConversationLocal       = "conversation.local";
-    // Paradigm-only server PvP kill announcement — "Server PvP Message: X just
-    // killed Y!". ChatRouter realm-gates this to paradigm before emitting.
+    // Paradigm-only server PvP announcements — every one leads with the
+    // "Server PvP Message: " prefix (a kill, "X just killed Y!", is one form).
+    // ChatRouter realm-gates these to paradigm before emitting.
     public const string ConversationServerPvp   = "conversation.server-pvp";
     // UserEmote intentionally omitted — the emote line is distinguished purely
     // by ANSI colour bytes the LineExtractor consumes. Re-add when
