@@ -1,14 +1,10 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.52.0**
-> - Navigation loop / Auto-Lair and GOTO favourite rows hug the rail edge — reclaimed the tree's fixed left chevron gutter
-> - Nav loop / Auto-Lair Run buttons no longer sit under the overlay scrollbar (right inset added to the trees)
-> - Character Info encumbrance shows the carry-load percent beside the bracket word; the label is shortened to "Enc"
-> - Punch / Kick / Jumpkick combat rows show only for classes that innately grant the strike (Mystic), not any character with a trained Martial Arts skill
-> - Navigation no longer stalls on "The door was not locked." mid-breach — the door is taken as unlocked and opened regardless of which verb (bash / pick / use-key) was in flight
-> - Spell Book cast-on-use items show each item's level requirement and are ordered by it, lowest first
-> - Bless-slot dropdown now lists the class's unlimited-use cast-on-use items (as `#item` tokens showing the cast spell, level, and mana), gated to items usable at your level — pick one to auto-schedule its `use` buff
+> **Version 1.53.0**
+> - Memory footprint is now sampled once a minute to its own Data/Logs/{ts}-memory.log (working set, private, managed heap, GC heap, fragmentation, collection counts) — kept out of the program log
+> - Session Stats per-hour rates (kills, exp, currency) now measure over a rolling window capped at 4 hours, so an all-night loop reports its recent pace instead of the whole night blended — the kill/exp histories are trimmed to that window so they no longer grow unbounded
+> - Party window disposes its view-model on close, releasing its subscriptions to the app-lifetime party state
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

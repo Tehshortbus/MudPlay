@@ -1,3 +1,4 @@
+using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Linq;
 using System.Text.Json;
@@ -81,21 +82,14 @@ public sealed partial class PartyViewModel : ObservableObject, IDisposable
         // Membership churn → refresh HeaderText AND adjust per-member
         // PropertyChanged subscriptions so leader-HP changes refresh
         // the header live (header reads "{LeaderGiven} ({LeaderHpPercent}%)").
-        State.Members.CollectionChanged += (_, e) =>
-        {
-            if (e.OldItems is not null)
-                foreach (object? o in e.OldItems)
-                    if (o is PartyMember m) m.PropertyChanged -= OnMemberPropertyChanged;
-            if (e.NewItems is not null)
-                foreach (object? o in e.NewItems)
-                    if (o is PartyMember m) m.PropertyChanged += OnMemberPropertyChanged;
-            OnPropertyChanged(nameof(HeaderText));
-        };
+        // Named handlers (not lambdas) so Dispose can detach them — PartyState
+        // outlives this VM, so a lambda sub would pin the VM for the app's life.
+        State.Members.CollectionChanged += OnMembersChanged;
         // Existing members at construction time also need a sub —
         // CollectionChanged only fires for subsequent additions.
         foreach (PartyMember m in State.Members)
             m.PropertyChanged += OnMemberPropertyChanged;
-        State.PropertyChanged += (_, _) => OnPropertyChanged(nameof(HeaderText));
+        State.PropertyChanged += OnStatePropertyChanged;
 
         if (_profile is not null)
         {
@@ -110,6 +104,12 @@ public sealed partial class PartyViewModel : ObservableObject, IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        // Detach every subscription to app-lifetime PartyState / its members,
+        // else this VM (and the closed PartyWindow it backs) can't be collected.
+        State.Members.CollectionChanged -= OnMembersChanged;
+        foreach (PartyMember m in State.Members)
+            m.PropertyChanged -= OnMemberPropertyChanged;
+        State.PropertyChanged -= OnStatePropertyChanged;
         if (_profile is not null)
         {
             _profile.ProfileLoaded -= OnProfileLoaded;
@@ -117,6 +117,20 @@ public sealed partial class PartyViewModel : ObservableObject, IDisposable
             _profile.ProfileClosed -= OnProfileClosed;
         }
     }
+
+    private void OnMembersChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (e.OldItems is not null)
+            foreach (object? o in e.OldItems)
+                if (o is PartyMember m) m.PropertyChanged -= OnMemberPropertyChanged;
+        if (e.NewItems is not null)
+            foreach (object? o in e.NewItems)
+                if (o is PartyMember m) m.PropertyChanged += OnMemberPropertyChanged;
+        OnPropertyChanged(nameof(HeaderText));
+    }
+
+    private void OnStatePropertyChanged(object? sender, PropertyChangedEventArgs e) =>
+        OnPropertyChanged(nameof(HeaderText));
 
     private void OnMemberPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {

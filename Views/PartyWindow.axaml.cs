@@ -1,3 +1,4 @@
+using System;
 using Avalonia.Controls;
 using Avalonia.Markup.Xaml;
 
@@ -14,6 +15,14 @@ public partial class PartyWindow : Window
         InitializeComponent();
         GlobalHotkeys.Attach(this);
         FujinTerm.Services.AppServices.Current.WindowLayouts.AttachWindow(this, "party");
+        Closed += OnClosed;
+    }
+
+    // Dispose the VM so it detaches from app-lifetime PartyState — otherwise the
+    // closed window's VM lingers, re-created fresh on every reopen (a slow leak).
+    private void OnClosed(object? sender, EventArgs e)
+    {
+        if (DataContext is ViewModels.PartyViewModel vm) vm.Dispose();
     }
 
     private void InitializeComponent() => AvaloniaXamlLoader.Load(this);
