@@ -1,9 +1,13 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.45.2**
-> - Auto-collect now honours each item's Max-to-get cap instead of grabbing every copy in a room
-> - Held count includes key-ring keys, so key-type items stop collecting once the cap is reached
+> **Version 1.46.0**
+> - Default item seed curated: only a hand-picked list auto-collects (with per-item caps) or auto-discards — every other item is left unmarked
+> - Chests/containers and Leo's steel key auto-collect by default; junk gems auto-discard
+> - Auto-collect honours each item's Max-to-get cap, counting key-ring keys, instead of grabbing every copy in a room
+> - Existing cannot-be-taken and loyal-item flags preserved; stale auto-buy / auto-sell / auto-stash defaults cleared
+> - Dead "Auto-find" checkbox removed from the item editor
+> - A door that shuts mid-combat no longer traps the walker/loop bonking a "closed door" — the refusal now re-opens it
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

@@ -56,7 +56,6 @@ public sealed partial class ItemEditDialogViewModel : ObservableObject, IDialogV
     // ----- Options flags -----
     [ObservableProperty] private bool _autoCollect;
     [ObservableProperty] private bool _autoDiscard;
-    [ObservableProperty] private bool _autoFind;
     [ObservableProperty] private bool _autoOpen;
     [ObservableProperty] private bool _autoBuy;
     [ObservableProperty] private bool _autoSell;
@@ -125,7 +124,6 @@ public sealed partial class ItemEditDialogViewModel : ObservableObject, IDialogV
 
         AutoCollect     = existing?.AutoCollect     ?? false;
         AutoDiscard     = existing?.AutoDiscard     ?? false;
-        AutoFind        = existing?.AutoFind        ?? false;
         // Container-gated: a non-container never shows (or persists) Auto-open,
         // even if a stale overlay carried the flag.
         AutoOpen        = isContainer && (existing?.AutoOpen ?? false);
@@ -194,7 +192,6 @@ public sealed partial class ItemEditDialogViewModel : ObservableObject, IDialogV
             Name            = string.IsNullOrWhiteSpace(Name) ? null : Name,
             AutoCollect     = AutoCollect     ? true : null,
             AutoDiscard     = AutoDiscard     ? true : null,
-            AutoFind        = AutoFind        ? true : null,
             AutoOpen        = AutoOpen        ? true : null,
             AutoBuy         = AutoBuy         ? true : null,
             AutoSell        = AutoSell        ? true : null,

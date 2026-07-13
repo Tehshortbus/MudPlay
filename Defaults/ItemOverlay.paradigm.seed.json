@@ -1,179 +1,5 @@
 [
   {
-    "Number": 11,
-    "Name": "large sign",
-    "MaxToGet": 768
-  },
-  {
-    "Number": 29,
-    "Name": "small sign",
-    "MaxToGet": 768
-  },
-  {
-    "Number": 48,
-    "Name": "fist",
-    "MaxToGet": 256
-  },
-  {
-    "Number": 64,
-    "Name": "longsword",
-    "AutoCollect": true,
-    "MaxToGet": 256
-  },
-  {
-    "Number": 65,
-    "Name": "broadsword",
-    "AutoCollect": true,
-    "MaxToGet": 256
-  },
-  {
-    "Number": 67,
-    "Name": "shortsword",
-    "AutoCollect": true,
-    "MaxToGet": 256
-  },
-  {
-    "Number": 68,
-    "Name": "dagger",
-    "AutoCollect": true,
-    "MaxToGet": 256
-  },
-  {
-    "Number": 69,
-    "Name": "knife",
-    "AutoCollect": true,
-    "MaxToGet": 256
-  },
-  {
-    "Number": 70,
-    "Name": "stiletto",
-    "AutoCollect": true,
-    "MaxToGet": 256
-  },
-  {
-    "Number": 71,
-    "Name": "battle axe",
-    "AutoCollect": true,
-    "MaxToGet": 256
-  },
-  {
-    "Number": 72,
-    "Name": "scimitar",
-    "AutoCollect": true,
-    "MaxToGet": 256
-  },
-  {
-    "Number": 73,
-    "Name": "short-spear",
-    "AutoCollect": true,
-    "MaxToGet": 256
-  },
-  {
-    "Number": 74,
-    "Name": "sickle",
-    "AutoCollect": true,
-    "MaxToGet": 256
-  },
-  {
-    "Number": 75,
-    "Name": "hatchet",
-    "AutoCollect": true,
-    "MaxToGet": 256
-  },
-  {
-    "Number": 76,
-    "Name": "falchion",
-    "AutoCollect": true,
-    "MaxToGet": 256
-  },
-  {
-    "Number": 78,
-    "Name": "greatsword",
-    "MaxToGet": 256
-  },
-  {
-    "Number": 79,
-    "Name": "flamberge",
-    "MaxToGet": 256
-  },
-  {
-    "Number": 80,
-    "Name": "bastard sword",
-    "MaxToGet": 256
-  },
-  {
-    "Number": 81,
-    "Name": "greataxe",
-    "MaxToGet": 256
-  },
-  {
-    "Number": 82,
-    "Name": "halberd",
-    "MaxToGet": 256
-  },
-  {
-    "Number": 83,
-    "Name": "pike",
-    "MaxToGet": 256
-  },
-  {
-    "Number": 85,
-    "Name": "long-spear",
-    "AutoCollect": true,
-    "MaxToGet": 256
-  },
-  {
-    "Number": 86,
-    "Name": "glaive",
-    "MaxToGet": 256
-  },
-  {
-    "Number": 87,
-    "Name": "mace",
-    "AutoCollect": true,
-    "MaxToGet": 256
-  },
-  {
-    "Number": 88,
-    "Name": "morning-star",
-    "AutoCollect": true,
-    "MaxToGet": 256
-  },
-  {
-    "Number": 89,
-    "Name": "heavy-mace",
-    "AutoCollect": true,
-    "MaxToGet": 256
-  },
-  {
-    "Number": 90,
-    "Name": "club",
-    "MaxToGet": 256
-  },
-  {
-    "Number": 91,
-    "Name": "warhammer",
-    "AutoCollect": true,
-    "MaxToGet": 256
-  },
-  {
-    "Number": 92,
-    "Name": "spiked club",
-    "AutoCollect": true,
-    "MaxToGet": 256
-  },
-  {
-    "Number": 93,
-    "Name": "whip",
-    "MaxToGet": 256
-  },
-  {
-    "Number": 95,
-    "Name": "war mattock",
-    "AutoCollect": true,
-    "MaxToGet": 256
-  },
-  {
     "Number": 106,
     "Name": "wall",
     "CannotBeTaken": true
@@ -212,13 +38,7 @@
     "Number": 172,
     "Name": "black star key",
     "AutoCollect": true,
-    "AutoFind": true,
     "MaxToGet": 2
-  },
-  {
-    "Number": 175,
-    "Name": "torch",
-    "AutoBuy": true
   },
   {
     "Number": 181,
@@ -266,14 +86,15 @@
     "CannotBeTaken": true
   },
   {
-    "Number": 191,
-    "Name": "rope and grapple",
-    "AutoBuy": true
-  },
-  {
     "Number": 192,
     "Name": "red skull",
     "CannotBeTaken": true
+  },
+  {
+    "Number": 204,
+    "Name": "bloodstained shortsword",
+    "AutoCollect": true,
+    "MaxToGet": 1
   },
   {
     "Number": 206,
@@ -376,19 +197,9 @@
     "CannotBeTaken": true
   },
   {
-    "Number": 259,
-    "Name": "ruby key",
-    "AutoFind": true
-  },
-  {
     "Number": 271,
     "Name": "bulletin",
     "CannotBeTaken": true
-  },
-  {
-    "Number": 283,
-    "Name": "waterskin",
-    "AutoBuy": true
   },
   {
     "Number": 337,
@@ -411,24 +222,27 @@
     "CannotBeTaken": true
   },
   {
-    "Number": 474,
-    "Name": "darkwood ring",
-    "AutoFind": true
-  },
-  {
-    "Number": 475,
-    "Name": "green metal key",
-    "AutoFind": true
-  },
-  {
-    "Number": 476,
-    "Name": "large iron key",
-    "AutoFind": true
+    "Number": 420,
+    "Name": "shadow cloak",
+    "AutoCollect": true,
+    "MaxToGet": 1
   },
   {
     "Number": 477,
     "Name": "small sign",
     "CannotBeTaken": true
+  },
+  {
+    "Number": 479,
+    "Name": "cyclops eye",
+    "AutoCollect": true,
+    "MaxToGet": 1
+  },
+  {
+    "Number": 481,
+    "Name": "spider silk",
+    "AutoCollect": true,
+    "MaxToGet": 1
   },
   {
     "Number": 485,
@@ -441,29 +255,9 @@
     "CannotBeTaken": true
   },
   {
-    "Number": 490,
-    "Name": "cross key",
-    "AutoFind": true
-  },
-  {
-    "Number": 491,
-    "Name": "runed key",
-    "AutoFind": true
-  },
-  {
-    "Number": 492,
-    "Name": "skull key",
-    "AutoFind": true
-  },
-  {
     "Number": 495,
     "Name": "gleaming steel device",
     "CannotBeTaken": true
-  },
-  {
-    "Number": 496,
-    "Name": "dark temple key",
-    "AutoFind": true
   },
   {
     "Number": 500,
@@ -526,11 +320,6 @@
     "CannotBeTaken": true
   },
   {
-    "Number": 520,
-    "Name": "glass key",
-    "AutoFind": true
-  },
-  {
     "Number": 525,
     "Name": "altar",
     "CannotBeTaken": true
@@ -554,16 +343,6 @@
     "Number": 563,
     "Name": "grey leather-bound tome",
     "CannotBeTaken": true
-  },
-  {
-    "Number": 569,
-    "Name": "rusty iron key",
-    "AutoFind": true
-  },
-  {
-    "Number": 570,
-    "Name": "crowbar",
-    "AutoBuy": true
   },
   {
     "Number": 571,
@@ -654,6 +433,12 @@
     "Number": 588,
     "Name": "avalanche of jagged rubble",
     "CannotBeTaken": true
+  },
+  {
+    "Number": 589,
+    "Name": "displacer beast tentacle",
+    "AutoCollect": true,
+    "MaxToGet": 1
   },
   {
     "Number": 595,
@@ -1011,32 +796,6 @@
     "CannotBeTaken": true
   },
   {
-    "Number": 806,
-    "Name": "gate key",
-    "AutoFind": true
-  },
-  {
-    "Number": 807,
-    "Name": "bloodstone orb",
-    "AutoFind": true,
-    "MaxToGet": 1
-  },
-  {
-    "Number": 808,
-    "Name": "glowing key",
-    "AutoFind": true
-  },
-  {
-    "Number": 809,
-    "Name": "adamantite key",
-    "AutoFind": true
-  },
-  {
-    "Number": 811,
-    "Name": "opal brooch",
-    "AutoFind": true
-  },
-  {
     "Number": 812,
     "Name": "shelf and jars",
     "CannotBeTaken": true
@@ -1045,12 +804,6 @@
     "Number": 814,
     "Name": "wooden desk",
     "CannotBeTaken": true
-  },
-  {
-    "Number": 815,
-    "Name": "amber talisman",
-    "AutoFind": true,
-    "MaxToGet": 1
   },
   {
     "Number": 816,
@@ -1068,14 +821,15 @@
     "CannotBeTaken": true
   },
   {
-    "Number": 820,
-    "Name": "moldy key",
-    "AutoFind": true
-  },
-  {
     "Number": 827,
     "Name": "carved statues",
     "CannotBeTaken": true
+  },
+  {
+    "Number": 828,
+    "Name": "small glass flask",
+    "AutoCollect": true,
+    "MaxToGet": 1
   },
   {
     "Number": 837,
@@ -1125,7 +879,8 @@
   {
     "Number": 885,
     "Name": "obsidian stone",
-    "AutoDiscard": true
+    "AutoCollect": true,
+    "MaxToGet": 4
   },
   {
     "Number": 886,
@@ -1156,6 +911,63 @@
     "Number": 891,
     "Name": "piece of crystal",
     "AutoDiscard": true
+  },
+  {
+    "Number": 902,
+    "Name": "diamond",
+    "AutoCollect": true,
+    "MaxToGet": 8
+  },
+  {
+    "Number": 904,
+    "Name": "ruby",
+    "AutoCollect": true,
+    "MaxToGet": 2
+  },
+  {
+    "Number": 906,
+    "Name": "wooden box",
+    "AutoCollect": true
+  },
+  {
+    "Number": 907,
+    "Name": "oak chest",
+    "AutoCollect": true
+  },
+  {
+    "Number": 908,
+    "Name": "massive wooden chest",
+    "AutoCollect": true
+  },
+  {
+    "Number": 909,
+    "Name": "iron-banded chest",
+    "AutoCollect": true
+  },
+  {
+    "Number": 910,
+    "Name": "silver box",
+    "AutoCollect": true
+  },
+  {
+    "Number": 911,
+    "Name": "huge darkwood chest",
+    "AutoCollect": true
+  },
+  {
+    "Number": 912,
+    "Name": "golden box",
+    "AutoCollect": true
+  },
+  {
+    "Number": 913,
+    "Name": "steel chest",
+    "AutoCollect": true
+  },
+  {
+    "Number": 914,
+    "Name": "silverwood chest",
+    "AutoCollect": true
   },
   {
     "Number": 915,
@@ -1213,11 +1025,6 @@
     "CannotBeTaken": true
   },
   {
-    "Number": 942,
-    "Name": "mine pass",
-    "AutoBuy": true
-  },
-  {
     "Number": 946,
     "Name": "mine sign",
     "CannotBeTaken": true
@@ -1226,6 +1033,26 @@
     "Number": 951,
     "Name": "cracked obelisk",
     "CannotBeTaken": true
+  },
+  {
+    "Number": 956,
+    "Name": "golden chest",
+    "AutoCollect": true
+  },
+  {
+    "Number": 957,
+    "Name": "adamantite chest",
+    "AutoCollect": true
+  },
+  {
+    "Number": 958,
+    "Name": "black iron chest",
+    "AutoCollect": true
+  },
+  {
+    "Number": 960,
+    "Name": "small cloth pouch",
+    "AutoCollect": true
   },
   {
     "Number": 964,
@@ -1263,9 +1090,14 @@
     "CannotBeTaken": true
   },
   {
-    "Number": 976,
-    "Name": "skeleton key",
-    "AutoBuy": true
+    "Number": 974,
+    "Name": "alder chest",
+    "AutoCollect": true
+  },
+  {
+    "Number": 975,
+    "Name": "steel key",
+    "AutoCollect": true
   },
   {
     "Number": 977,
@@ -1298,11 +1130,6 @@
     "CannotBeTaken": true
   },
   {
-    "Number": 983,
-    "Name": "titanium fork",
-    "AutoBuy": true
-  },
-  {
     "Number": 984,
     "Name": "tree",
     "CannotBeTaken": true
@@ -1321,11 +1148,6 @@
     "Number": 990,
     "Name": "old parchment",
     "CannotBeTaken": true
-  },
-  {
-    "Number": 992,
-    "Name": "potion of levitation",
-    "AutoBuy": true
   },
   {
     "Number": 993,
@@ -1356,11 +1178,6 @@
     "Number": 1001,
     "Name": "mandible",
     "LoyalItem": true
-  },
-  {
-    "Number": 1002,
-    "Name": "wire key",
-    "AutoFind": true
   },
   {
     "Number": 1004,
@@ -1420,7 +1237,6 @@
   {
     "Number": 1017,
     "Name": "white parchment deed",
-    "AutoCollect": true,
     "CannotBeTaken": true
   },
   {
@@ -1664,6 +1480,12 @@
     "CannotBeTaken": true
   },
   {
+    "Number": 1149,
+    "Name": "stone hand",
+    "AutoCollect": true,
+    "MaxToGet": 1
+  },
+  {
     "Number": 1150,
     "Name": "jeweled altar",
     "CannotBeTaken": true
@@ -1779,12 +1601,6 @@
     "LoyalItem": true
   },
   {
-    "Number": 1244,
-    "Name": "cosmic staff",
-    "AutoCollect": true,
-    "AutoBuy": true
-  },
-  {
     "Number": 1245,
     "Name": "starhammer",
     "LoyalItem": true
@@ -1792,6 +1608,8 @@
   {
     "Number": 1246,
     "Name": "severed earth dragon claw",
+    "AutoCollect": true,
+    "MaxToGet": 1,
     "LoyalItem": true
   },
   {
@@ -1820,14 +1638,63 @@
     "CannotBeTaken": true
   },
   {
-    "Number": 1281,
-    "Name": "golden idol",
-    "AutoFind": true
+    "Number": 1261,
+    "Name": "glowing vine",
+    "AutoCollect": true,
+    "MaxToGet": 1
+  },
+  {
+    "Number": 1268,
+    "Name": "crocodile fang",
+    "AutoCollect": true,
+    "MaxToGet": 1
+  },
+  {
+    "Number": 1269,
+    "Name": "frozen shard",
+    "AutoCollect": true,
+    "MaxToGet": 2
+  },
+  {
+    "Number": 1270,
+    "Name": "pixie wings",
+    "AutoCollect": true,
+    "MaxToGet": 1
+  },
+  {
+    "Number": 1271,
+    "Name": "pulsating heart",
+    "AutoCollect": true,
+    "MaxToGet": 1
+  },
+  {
+    "Number": 1272,
+    "Name": "scorpion tail",
+    "AutoCollect": true,
+    "MaxToGet": 1
+  },
+  {
+    "Number": 1273,
+    "Name": "spider leg",
+    "AutoCollect": true,
+    "MaxToGet": 1
+  },
+  {
+    "Number": 1274,
+    "Name": "piece of shell",
+    "AutoCollect": true,
+    "MaxToGet": 1
   },
   {
     "Number": 1282,
     "Name": "sign",
     "CannotBeTaken": true
+  },
+  {
+    "Number": 1289,
+    "Name": "king crab claw",
+    "AutoCollect": true,
+    "MaxToGet": 1
   },
   {
     "Number": 1295,
@@ -1843,6 +1710,12 @@
     "Number": 1302,
     "Name": "fungus walls",
     "CannotBeTaken": true
+  },
+  {
+    "Number": 1305,
+    "Name": "behemoth hellhound hide",
+    "AutoCollect": true,
+    "MaxToGet": 1
   },
   {
     "Number": 1307,
@@ -1900,6 +1773,12 @@
     "LoyalItem": true
   },
   {
+    "Number": 1332,
+    "Name": "black diamond",
+    "AutoCollect": true,
+    "MaxToGet": 10
+  },
+  {
     "Number": 1333,
     "Name": "crystal",
     "CannotBeTaken": true
@@ -1925,6 +1804,11 @@
     "LoyalItem": true
   },
   {
+    "Number": 1344,
+    "Name": "ice chest",
+    "AutoCollect": true
+  },
+  {
     "Number": 1345,
     "Name": "withered tree",
     "CannotBeTaken": true
@@ -1943,6 +1827,16 @@
     "Number": 1350,
     "Name": "ice crystal falchion",
     "LoyalItem": true
+  },
+  {
+    "Number": 1352,
+    "Name": "smoking blackwood chest",
+    "AutoCollect": true
+  },
+  {
+    "Number": 1354,
+    "Name": "stone chest",
+    "AutoCollect": true
   },
   {
     "Number": 1355,
@@ -2265,6 +2159,11 @@
     "CannotBeTaken": true
   },
   {
+    "Number": 1444,
+    "Name": "bloodwood chest",
+    "AutoCollect": true
+  },
+  {
     "Number": 1445,
     "Name": "vorpal hatchet",
     "LoyalItem": true
@@ -2345,6 +2244,11 @@
     "LoyalItem": true
   },
   {
+    "Number": 1485,
+    "Name": "burnt iron chest",
+    "AutoCollect": true
+  },
+  {
     "Number": 1486,
     "Name": "elven longbow",
     "LoyalItem": true
@@ -2378,6 +2282,11 @@
     "Number": 1495,
     "Name": "dragonfang ninjato",
     "LoyalItem": true
+  },
+  {
+    "Number": 1496,
+    "Name": "great blackwood chest",
+    "AutoCollect": true
   },
   {
     "Number": 1497,
@@ -2445,11 +2354,6 @@
     "LoyalItem": true
   },
   {
-    "Number": 1518,
-    "Name": "brown leather boots",
-    "AutoCollect": true
-  },
-  {
     "Number": 1520,
     "Name": "bleeding main-gauche",
     "LoyalItem": true
@@ -2503,11 +2407,6 @@
     "Number": 1564,
     "Name": "mage statue",
     "CannotBeTaken": true
-  },
-  {
-    "Number": 1579,
-    "Name": "death shroud",
-    "AutoCollect": true
   },
   {
     "Number": 1580,
@@ -2710,6 +2609,11 @@
     "LoyalItem": true
   },
   {
+    "Number": 1667,
+    "Name": "ancient bone chest",
+    "AutoCollect": true
+  },
+  {
     "Number": 1676,
     "Name": "black dragon robes",
     "LoyalItem": true
@@ -2790,11 +2694,6 @@
     "CannotBeTaken": true
   },
   {
-    "Number": 1706,
-    "Name": "shining white talisman",
-    "AutoCollect": true
-  },
-  {
     "Number": 1709,
     "Name": "mithril dwarven axe",
     "LoyalItem": true
@@ -2808,6 +2707,22 @@
     "Number": 1726,
     "Name": "altar",
     "CannotBeTaken": true
+  },
+  {
+    "Number": 1727,
+    "Name": "large chest",
+    "AutoCollect": true
+  },
+  {
+    "Number": 1735,
+    "Name": "white dragon hide",
+    "AutoCollect": true,
+    "MaxToGet": 1
+  },
+  {
+    "Number": 1738,
+    "Name": "massive chest",
+    "AutoCollect": true
   },
   {
     "Number": 1739,
@@ -3055,6 +2970,11 @@
     "CannotBeTaken": true
   },
   {
+    "Number": 1801,
+    "Name": "wooden box",
+    "AutoCollect": true
+  },
+  {
     "Number": 1803,
     "Name": "adamantite scimitar",
     "LoyalItem": true
@@ -3085,6 +3005,11 @@
     "CannotBeTaken": true
   },
   {
+    "Number": 1819,
+    "Name": "magma rock chest",
+    "AutoCollect": true
+  },
+  {
     "Number": 1824,
     "Name": "sadamune",
     "LoyalItem": true
@@ -3103,6 +3028,16 @@
     "Number": 1833,
     "Name": "aged desk",
     "CannotBeTaken": true
+  },
+  {
+    "Number": 1834,
+    "Name": "silver casket",
+    "AutoCollect": true
+  },
+  {
+    "Number": 1840,
+    "Name": "sandstone chest",
+    "AutoCollect": true
   },
   {
     "Number": 1843,
@@ -3335,6 +3270,11 @@
     "LoyalItem": true
   },
   {
+    "Number": 2013,
+    "Name": "crimson chest",
+    "AutoCollect": true
+  },
+  {
     "Number": 2031,
     "Name": "altar",
     "CannotBeTaken": true
@@ -3377,7 +3317,6 @@
   {
     "Number": 2130,
     "Name": "iron parchment deed",
-    "AutoCollect": true,
     "CannotBeTaken": true
   },
   {
@@ -3393,7 +3332,6 @@
   {
     "Number": 2133,
     "Name": "bronze parchment deed",
-    "AutoCollect": true,
     "CannotBeTaken": true
   },
   {
@@ -3552,6 +3490,11 @@
     "CannotBeTaken": true
   },
   {
+    "Number": 3000,
+    "Name": "leather pouch",
+    "AutoCollect": true
+  },
+  {
     "Number": 3001,
     "Name": "black opal stud",
     "LoyalItem": true
@@ -3672,6 +3615,32 @@
     "CannotBeTaken": true
   },
   {
+    "Number": 3321,
+    "Name": "heavy bundle",
+    "AutoCollect": true
+  },
+  {
+    "Number": 3323,
+    "Name": "silken bag",
+    "AutoCollect": true
+  },
+  {
+    "Number": 3325,
+    "Name": "leather sack",
+    "AutoCollect": true
+  },
+  {
+    "Number": 3326,
+    "Name": "blue silk bag",
+    "AutoCollect": true
+  },
+  {
+    "Number": 3334,
+    "Name": "behemoth hide",
+    "AutoCollect": true,
+    "MaxToGet": 1
+  },
+  {
     "Number": 3338,
     "Name": "black-runed warhammer",
     "LoyalItem": true
@@ -3679,7 +3648,6 @@
   {
     "Number": 3339,
     "Name": "star of retribution",
-    "AutoCollect": true,
     "LoyalItem": true
   },
   {
@@ -3753,6 +3721,11 @@
     "LoyalItem": true
   },
   {
+    "Number": 3370,
+    "Name": "silver silk package",
+    "AutoCollect": true
+  },
+  {
     "Number": 3389,
     "Name": "shimmering portal",
     "CannotBeTaken": true
@@ -3820,7 +3793,6 @@
   {
     "Number": 3511,
     "Name": "Titanfist",
-    "AutoCollect": true,
     "LoyalItem": true
   },
   {
@@ -3829,14 +3801,19 @@
     "LoyalItem": true
   },
   {
+    "Number": 3517,
+    "Name": "corrupted reliquary",
+    "AutoCollect": true
+  },
+  {
+    "Number": 3518,
+    "Name": "inscribed coffer",
+    "AutoCollect": true
+  },
+  {
     "Number": 3520,
     "Name": "flowing cerulean sash",
     "LoyalItem": true
-  },
-  {
-    "Number": 3522,
-    "Name": "Volum's Insight",
-    "AutoCollect": true
   },
   {
     "Number": 3524,
@@ -3852,6 +3829,11 @@
     "Number": 3531,
     "Name": "ebony wrist guard",
     "LoyalItem": true
+  },
+  {
+    "Number": 3532,
+    "Name": "ancient granite chest",
+    "AutoCollect": true
   },
   {
     "Number": 3534,
@@ -3879,21 +3861,6 @@
     "CannotBeTaken": true
   },
   {
-    "Number": 3539,
-    "Name": "floating red sphere",
-    "AutoBuy": true
-  },
-  {
-    "Number": 3540,
-    "Name": "floating green sphere",
-    "AutoBuy": true
-  },
-  {
-    "Number": 3541,
-    "Name": "floating yellow sphere",
-    "AutoBuy": true
-  },
-  {
     "Number": 3542,
     "Name": "statue of a demigod",
     "CannotBeTaken": true
@@ -3914,14 +3881,19 @@
     "LoyalItem": true
   },
   {
+    "Number": 3551,
+    "Name": "void sphere",
+    "AutoCollect": true
+  },
+  {
+    "Number": 3552,
+    "Name": "void sphere",
+    "AutoCollect": true
+  },
+  {
     "Number": 3553,
     "Name": "ancient obelisk",
     "CannotBeTaken": true
-  },
-  {
-    "Number": 3560,
-    "Name": "celestial talisman",
-    "AutoCollect": true
   },
   {
     "Number": 3567,
@@ -4009,11 +3981,6 @@
     "LoyalItem": true
   },
   {
-    "Number": 3601,
-    "Name": "winged chapeau",
-    "AutoCollect": true
-  },
-  {
     "Number": 3602,
     "Name": "cincture of zeal",
     "LoyalItem": true
@@ -4049,6 +4016,11 @@
     "LoyalItem": true
   },
   {
+    "Number": 3618,
+    "Name": "weathered satchel",
+    "AutoCollect": true
+  },
+  {
     "Number": 3619,
     "Name": "bracelet of concealment",
     "LoyalItem": true
@@ -4057,6 +4029,11 @@
     "Number": 3628,
     "Name": "carved face",
     "CannotBeTaken": true
+  },
+  {
+    "Number": 3629,
+    "Name": "mold-covered chest",
+    "AutoCollect": true
   },
   {
     "Number": 3630,
@@ -4169,6 +4146,11 @@
     "CannotBeTaken": true
   },
   {
+    "Number": 3710,
+    "Name": "macabre coffer",
+    "AutoCollect": true
+  },
+  {
     "Number": 3711,
     "Name": "gryphon talons",
     "LoyalItem": true
@@ -4184,18 +4166,18 @@
     "CannotBeTaken": true
   },
   {
+    "Number": 3716,
+    "Name": "black marble chest",
+    "AutoCollect": true
+  },
+  {
     "Number": 3718,
     "Name": "carved ice sarcophagus",
     "CannotBeTaken": true
   },
   {
-    "Number": 3721,
-    "Name": "white wolf mantle",
-    "AutoCollect": true
-  },
-  {
-    "Number": 3725,
-    "Name": "celestial garb",
+    "Number": 3728,
+    "Name": "small stone box",
     "AutoCollect": true
   },
   {
@@ -4254,6 +4236,11 @@
     "LoyalItem": true
   },
   {
+    "Number": 3751,
+    "Name": "worn leather bag",
+    "AutoCollect": true
+  },
+  {
     "Number": 3754,
     "Name": "spectral tebukoro",
     "LoyalItem": true
@@ -4272,11 +4259,6 @@
     "Number": 3764,
     "Name": "reflex bow",
     "LoyalItem": true
-  },
-  {
-    "Number": 3772,
-    "Name": "Skorne",
-    "AutoCollect": true
   },
   {
     "Number": 3775,
@@ -4334,6 +4316,11 @@
     "LoyalItem": true
   },
   {
+    "Number": 3796,
+    "Name": "bogwood box",
+    "AutoCollect": true
+  },
+  {
     "Number": 3797,
     "Name": "dark sigil",
     "CannotBeTaken": true
@@ -4381,7 +4368,6 @@
   {
     "Number": 3818,
     "Name": "Manablade",
-    "AutoBuy": true,
     "LoyalItem": true
   },
   {
@@ -4400,19 +4386,8 @@
     "CannotBeTaken": true
   },
   {
-    "Number": 3822,
-    "Name": "ethereal defender",
-    "AutoBuy": true
-  },
-  {
-    "Number": 3823,
-    "Name": "kara of mortal striking",
-    "AutoBuy": true
-  },
-  {
     "Number": 3824,
     "Name": "planewalker's celerity",
-    "AutoBuy": true,
     "LoyalItem": true
   },
   {
@@ -4434,6 +4409,26 @@
     "Number": 3829,
     "Name": "elemental portal",
     "CannotBeTaken": true
+  },
+  {
+    "Number": 3835,
+    "Name": "rickety crate",
+    "AutoCollect": true
+  },
+  {
+    "Number": 3836,
+    "Name": "wooden crate",
+    "AutoCollect": true
+  },
+  {
+    "Number": 3837,
+    "Name": "salvage crate",
+    "AutoCollect": true
+  },
+  {
+    "Number": 3838,
+    "Name": "heavy salvage crate",
+    "AutoCollect": true
   },
   {
     "Number": 3839,
@@ -4461,36 +4456,13 @@
     "LoyalItem": true
   },
   {
-    "Number": 3847,
-    "Name": "crystalline greatstaff",
-    "AutoCollect": true,
-    "AutoBuy": true
-  },
-  {
-    "Number": 3848,
-    "Name": "crystal-woven vesture",
-    "AutoCollect": true
-  },
-  {
     "Number": 3849,
     "Name": "raven's eye",
-    "AutoCollect": true,
     "LoyalItem": true
-  },
-  {
-    "Number": 3850,
-    "Name": "pendant of primordial might",
-    "AutoCollect": true
-  },
-  {
-    "Number": 3851,
-    "Name": "macabre relic",
-    "AutoCollect": true
   },
   {
     "Number": 3852,
     "Name": "loremaster's monocle",
-    "AutoCollect": true,
     "LoyalItem": true
   },
   {
@@ -4499,20 +4471,9 @@
     "LoyalItem": true
   },
   {
-    "Number": 3855,
-    "Name": "partially digested amulet",
-    "AutoCollect": true
-  },
-  {
     "Number": 3856,
     "Name": "slime-covered gloves",
-    "AutoCollect": true,
     "LoyalItem": true
-  },
-  {
-    "Number": 3857,
-    "Name": "behemoth frog skin",
-    "AutoBuy": true
   },
   {
     "Number": 3858,
@@ -4523,6 +4484,11 @@
     "Number": 3859,
     "Name": "flame-runed rod",
     "LoyalItem": true
+  },
+  {
+    "Number": 3860,
+    "Name": "faded leather bag",
+    "AutoCollect": true
   },
   {
     "Number": 3861,
@@ -4538,5 +4504,60 @@
     "Number": 3863,
     "Name": "weighted bangle",
     "LoyalItem": true
+  },
+  {
+    "Number": 3866,
+    "Name": "tarnished strongbox",
+    "AutoCollect": true
+  },
+  {
+    "Number": 3869,
+    "Name": "small bristlewood chest",
+    "AutoCollect": true
+  },
+  {
+    "Number": 3876,
+    "Name": "brass-banded chest",
+    "AutoCollect": true
+  },
+  {
+    "Number": 3909,
+    "Name": "star-etched box",
+    "AutoCollect": true
+  },
+  {
+    "Number": 3916,
+    "Name": "void sphere",
+    "AutoCollect": true
+  },
+  {
+    "Number": 3918,
+    "Name": "void sphere",
+    "AutoCollect": true
+  },
+  {
+    "Number": 3926,
+    "Name": "sack of gems",
+    "AutoCollect": true
+  },
+  {
+    "Number": 3927,
+    "Name": "sack of coins",
+    "AutoCollect": true
+  },
+  {
+    "Number": 3928,
+    "Name": "jeweled box",
+    "AutoCollect": true
+  },
+  {
+    "Number": 3932,
+    "Name": "darksteel chest",
+    "AutoCollect": true
+  },
+  {
+    "Number": 3933,
+    "Name": "rusted lockbox",
+    "AutoCollect": true
   }
 ]

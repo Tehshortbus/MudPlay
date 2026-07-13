@@ -2,11 +2,15 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
-## 1.45.2
+## 1.46.0
 
-- Auto-collect now honours each item's Max-to-get cap instead of grabbing every copy in a room
-- Held count includes key-ring keys, so key-type items stop collecting once the cap is reached
-- bug reports addressed: paradigm-20260712-234614
+- Default item seed curated: only a hand-picked list auto-collects (with per-item caps) or auto-discards — every other item is left unmarked
+- Chests/containers and Leo's steel key auto-collect by default; junk gems (azurite, agate, moonstone, …) auto-discard
+- Auto-collect honours each item's Max-to-get cap, counting key-ring keys, instead of grabbing every copy in a room
+- Existing cannot-be-taken and loyal-item flags preserved; stale auto-buy / auto-sell / auto-stash defaults cleared
+- Dead "Auto-find" checkbox removed from the item editor
+- A door that shuts mid-combat no longer traps the walker/loop bonking a "closed door" — the refusal now re-opens it
+- bug reports addressed: paradigm-20260712-234614, paradigm-20260713-000204
 
 ## 1.45.1
 

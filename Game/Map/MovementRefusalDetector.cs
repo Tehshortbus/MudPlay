@@ -39,6 +39,17 @@ public sealed partial class MovementRefusalDetector : IDisposable
 
     private void HandleLine(string text, DateTimeOffset when)
     {
+        // A closed-door refusal reverts the move like any other, but ALSO clears
+        // the stale "door open" flag for the attempted direction — the door shut
+        // since we last saw the room, so the next attempt must re-open it rather
+        // than bonk the shut door again (the mid-combat door-closed bonk loop).
+        if (DoorIsClosed().IsMatch(text))
+        {
+            _tracker.NoteDoorClosed(when);
+            _log?.Info("MoveRefusal", $"door closed: {text.Trim()}");
+            return;
+        }
+
         if (!Patterns.Any(p => p.IsMatch(text))) return;
 
         _tracker.NoteMoveBlocked(when);
@@ -58,7 +69,6 @@ public sealed partial class MovementRefusalDetector : IDisposable
         TooImpairedToMove(),
         CantSeeWellEnoughToMove(),
         TooEncumberedToMove(),
-        DoorIsClosed(),
     };
 
     [GeneratedRegex(
