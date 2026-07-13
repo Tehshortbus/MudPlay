@@ -34,8 +34,11 @@ public sealed class AcquisitionGate : IDisposable
     // Quiet period after the last get before the gate releases. No server-side
     // item-pickup confirmation line exists, so get-clear is command-side: once
     // gets stop flowing for this long with no pending deferred items,
-    // collection is treated as done.
-    private static readonly TimeSpan SettleWindow = TimeSpan.FromMilliseconds(1200);
+    // collection is treated as done. Kept short so a cleared room's loop resumes
+    // promptly — consecutive corpse-drop gets arrive within the same server
+    // frame (tens of ms), so this only has to outlast that burst, not a full
+    // combat round.
+    private static readonly TimeSpan SettleWindow = TimeSpan.FromMilliseconds(600);
 
     private readonly MovementCoordinator _coordinator;
     private readonly LogService? _log;

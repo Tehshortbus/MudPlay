@@ -982,6 +982,72 @@ public sealed class CastingDirectorTests
     }
 
     [Fact]
+    public void SelfBuff_Fizzle_ClearsOptimisticTimer_RecastsNextRound()
+    {
+        // Repro of the bless uptime hole: the on-send optimistic timer marks the
+        // buff "active" for its whole assumed duration, but when the cast FIZZLES
+        // (never lands) that timer must be dropped so the next round re-attempts —
+        // otherwise a single fizzle leaves the buff DOWN for ~90s.
+        using CureHarness h = new();
+        h.Spells.BlessSlots[1] = "bles";
+        h.BuffInfo["bles"] = (string.Empty, 300);   // long duration → phantom timer would suppress
+        h.Health.BlessIfAboveMa = 50;
+        h.State.MaxMa = 100;
+        h.State.Ma = 80;
+        h.State.InCombat = false;
+        h.RecordCondition("bles", MessageFlags.None,
+            applied: "You are blessed!", endsWith: "Your blessing fades.");
+
+        h.Director.Evaluate();                 // first cast — optimistic 300s timer arms
+        Assert.Single(h.CastsSent);
+        Assert.Equal("bles", h.CastsSent[0]);
+
+        // Server fizzles the cast (through the router → CastCoordinator → CastFailed).
+        h.Router.Dispatch(new LineExtractor.EmittedLine(
+            "You attempt to cast bless, but fail.", Array.Empty<CellAttributes>(),
+            DateTimeOffset.UtcNow, IsPromptLine: false));
+
+        // Next round: the phantom timer is gone, so the buff re-attempts instead of
+        // sitting "active" for the full 300s.
+        h.CastsSent.Clear();
+        h.Cast.OnCombatTick();
+        h.Director.Evaluate();
+        Assert.Single(h.CastsSent);
+        Assert.Equal("bles", h.CastsSent[0]);
+    }
+
+    [Fact]
+    public void SelfBuff_Landed_SurvivesLaterCastFailure()
+    {
+        // Once a buff confirms (AppliedMessage), its real duration timer is
+        // authoritative — a later unrelated cast failure must NOT clear it and cause
+        // a needless recast inside the still-valid duration.
+        using CureHarness h = new();
+        h.Spells.BlessSlots[1] = "bles";
+        h.BuffInfo["bles"] = (string.Empty, 300);
+        h.Health.BlessIfAboveMa = 50;
+        h.State.MaxMa = 100;
+        h.State.Ma = 80;
+        h.State.InCombat = false;
+        h.RecordCondition("bles", MessageFlags.None,
+            applied: "You are blessed!", endsWith: "Your blessing fades.");
+
+        h.Director.Evaluate();                 // cast
+        h.FeedLine("You are blessed!");        // confirm → 300s timer, pending marker cleared
+        h.CastsSent.Clear();
+        h.Cast.OnCombatTick();
+
+        // A later (heal) cast fizzles — must not clear the confirmed bless timer.
+        h.Router.Dispatch(new LineExtractor.EmittedLine(
+            "You attempt to cast heal, but fail.", Array.Empty<CellAttributes>(),
+            DateTimeOffset.UtcNow, IsPromptLine: false));
+
+        h.Cast.OnCombatTick();
+        h.Director.Evaluate();
+        Assert.Empty(h.CastsSent);             // still active → no recast
+    }
+
+    [Fact]
     public void Buff_BlessIfAboveMa_AbsoluteMode_UsesRawMa()
     {
         // In Absolute mode BlessIfAboveMa is a raw kai count, not a percent —

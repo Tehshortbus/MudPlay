@@ -80,6 +80,12 @@ public static class DefaultPatterns
         // full-line anchor keeps a quoted chat echo of the phrase out.
         yield return new RegexPattern(KnownPatterns.BlindMoveStarved,
             @"^You are blind\.$");
+        // Paradigm `rm` reply — "Location:      1,1729". The label is padded to a
+        // column, so allow leading + inter-token whitespace; the trailing $ keeps
+        // the "Regen Time:" / "Room Illu:" siblings (and any quoted chat echo) out.
+        // Groups: [0]=map, [1]=room.
+        yield return new RegexPattern(KnownPatterns.ParadigmLocation,
+            @"^\s*Location:\s+(?<map>\d+),(?<room>\d+)\s*$");
 
         // ----- Failures --------------------------------------------------
         yield return new RegexPattern(KnownPatterns.CommandNoEffect, @"^Your command had no effect\.$");

@@ -37,6 +37,13 @@ public static class KnownPatterns
     // affliction-onset "You are blind!" (exclamation) and from the refusal
     // "You can't see well enough to move." (a bonk). Drives dead-reckoning.
     public const string BlindMoveStarved  = "movement.blind-move-starved";
+    // Paradigm-only `rm` reply — "Location:      <map>,<room>". The authoritative
+    // (map, room) the game reports for the player's own position; stock realms
+    // have no `rm`. ParadigmPositionResolver consumes this while it has an `rm`
+    // request in flight to re-anchor the tracker + recovery gate. The sibling
+    // "Regen Time:" / "Room Illu:" lines of the same block deliberately don't
+    // match (the pattern is anchored to the Location label + a numeric pair).
+    public const string ParadigmLocation  = "movement.paradigm-location";
 
     // ----- Failure -------------------------------------------------------
     public const string CommandNoEffect   = "failure.command-no-effect";

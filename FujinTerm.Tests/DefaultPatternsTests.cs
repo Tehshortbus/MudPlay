@@ -99,6 +99,27 @@ public sealed class DefaultPatternsTests
     }
 
     [Fact]
+    public void ParadigmLocationRegex_CapturesMapAndRoom()
+    {
+        IMessagePattern p = PatternById(KnownPatterns.ParadigmLocation);
+
+        // The label is padded to a column, so leading/inter-token whitespace varies.
+        Assert.True(p.TryMatch(Line("Location:      1,1729"), out MatchResult r));
+        Assert.Equal("1",    r.Groups[0]);
+        Assert.Equal("1729", r.Groups[1]);
+    }
+
+    [Fact]
+    public void ParadigmLocationRegex_IgnoresSiblingBlockLines()
+    {
+        IMessagePattern p = PatternById(KnownPatterns.ParadigmLocation);
+
+        // The other two lines of the `rm` block must not parse as a Location.
+        Assert.False(p.TryMatch(Line("Regen Time:      2m 30s"),     out _));
+        Assert.False(p.TryMatch(Line("Room Illu:      -100 (-100)"), out _));
+    }
+
+    [Fact]
     public void CombatStatusRegex_CapturesEngagedOrOff()
     {
         IMessagePattern p = PatternById(KnownPatterns.CombatStatus);

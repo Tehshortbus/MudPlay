@@ -82,6 +82,10 @@ public sealed class AutoDepositManager : IDisposable
     private readonly CashManager _cash;
     private readonly Func<CashSettings> _readCash;
     private readonly Func<InventorySnapshot> _getSnapshot;
+    // Applies the deposited copper to the on-hand tracker the instant `dep` is
+    // sent, so the return-leg router sees post-deposit wealth without waiting on
+    // the server echo (InventoryManager.NoteAutoDeposit).
+    private readonly Action<long> _noteAutoDeposit;
     private readonly Func<RoomKey, bool> _isBankRoom;
     private readonly ProfileService _profile;
     private readonly RoomTracker _tracker;
@@ -105,6 +109,14 @@ public sealed class AutoDepositManager : IDisposable
     private bool _disposed;
     private bool _busy;
 
+    // Set while the reroute is itself driving the walker (the initial engine stop
+    // + each WalkTo). WalkTo synchronously raises a Stopped event when it
+    // supersedes an in-flight walk, and stopping an Approaching loop halts the
+    // walker the same way — that churn is ours, not a user abort. OnWalkEvent
+    // treats a Stopped seen while this is clear as a genuine external halt
+    // (toolbar / nav / death / remote) and tears the reroute down.
+    private bool _drivingWalker;
+
     // The light buy the return leg needs, remembered across the shop detour
     // (WalkingToLightShop -> BuyingLight). Null outside a light detour.
     private AutoLightBuyRequest? _lightBuy;
@@ -126,6 +138,7 @@ public sealed class AutoDepositManager : IDisposable
         CashManager cash,
         Func<CashSettings> readCash,
         Func<InventorySnapshot> getSnapshot,
+        Action<long> noteAutoDeposit,
         Func<RoomKey, bool> isBankRoom,
         ProfileService profile,
         RoomTracker tracker,
@@ -143,6 +156,7 @@ public sealed class AutoDepositManager : IDisposable
         ArgumentNullException.ThrowIfNull(cash);
         ArgumentNullException.ThrowIfNull(readCash);
         ArgumentNullException.ThrowIfNull(getSnapshot);
+        ArgumentNullException.ThrowIfNull(noteAutoDeposit);
         ArgumentNullException.ThrowIfNull(isBankRoom);
         ArgumentNullException.ThrowIfNull(profile);
         ArgumentNullException.ThrowIfNull(tracker);
@@ -157,6 +171,7 @@ public sealed class AutoDepositManager : IDisposable
         _cash = cash;
         _readCash = readCash;
         _getSnapshot = getSnapshot;
+        _noteAutoDeposit = noteAutoDeposit;
         _isBankRoom = isBankRoom;
         _profile = profile;
         _tracker = tracker;
@@ -284,16 +299,30 @@ public sealed class AutoDepositManager : IDisposable
             $"kind={(_destinationIsStash ? "stash" : "bank")} resume={resume.Kind} origin={_origin}");
 
         // Stop the running engine so the detour walk owns the wire and
-        // runs without a competing command stream or asserted gate.
-        StopRunningEngine("auto-deposit reroute");
+        // runs without a competing command stream or asserted gate. Guarded:
+        // halting an Approaching loop stops the walker, whose Stopped event must
+        // not read as a user abort of the reroute we're mid-launch of.
+        _drivingWalker = true;
+        try { StopRunningEngine("auto-deposit reroute"); }
+        finally { _drivingWalker = false; }
 
         _phase = DepositPhase.WalkingToDestination;
-        if (!_walker.WalkTo(destination))
+        if (!RerouteWalkTo(destination))
         {
             _log?.Warn(LogCategory, $"can't reach {destination} — resuming");
             _cash.NotifyAutoDepositAborted();
             Resume();
         }
+    }
+
+    // Every reroute-initiated WalkTo goes through here so the Stopped event that
+    // WalkTo raises when it supersedes an in-flight walk is attributed to the
+    // reroute, not to a user halt (see _drivingWalker).
+    private bool RerouteWalkTo(RoomKey destination)
+    {
+        _drivingWalker = true;
+        try { return _walker.WalkTo(destination); }
+        finally { _drivingWalker = false; }
     }
 
     // Pass-through stash trigger. Fires when the character walks into a marked
@@ -315,6 +344,26 @@ public sealed class AutoDepositManager : IDisposable
     private void OnWalkEvent(WalkEvent e)
     {
         if (!_busy) return;
+
+        // The user manually stopped movement mid-reroute (toolbar / nav Stop),
+        // or a death / remote halt did — all of which stop the walker, raising
+        // Stopped. Tear the reroute down here: otherwise _busy stays set and a
+        // later walker Finished (from whatever the user starts next) fires
+        // Resume(), resurrecting the pre-detour loop and superseding the new run
+        // (the reported "built a new loop, it walked back to the old one").
+        // Re-arm the deposit guard too, so a stop mid-reroute can't leave the
+        // single-fire latch wedged for the rest of the session. _drivingWalker
+        // filters out the synchronous Stopped the reroute's own WalkTo /
+        // engine-stop churn raises.
+        if (e.Kind == WalkEventKind.Stopped)
+        {
+            if (_drivingWalker) return;
+            _log?.Info(LogCategory, $"reroute aborted — movement stopped externally ({e.Detail})");
+            GoIdle();
+            _cash.NotifyAutoDepositAborted();
+            return;
+        }
+
         switch (_phase)
         {
             case DepositPhase.WalkingToDestination:
@@ -406,7 +455,7 @@ public sealed class AutoDepositManager : IDisposable
             _phase = DepositPhase.WalkingToLightShop;
             _log?.Info(LogCategory,
                 $"return leg runs dark — detouring to light shop {shop} for '{buy.LightName}' x{buy.Count}");
-            if (!_walker.WalkTo(shop))
+            if (!RerouteWalkTo(shop))
             {
                 _log?.Warn(LogCategory, $"can't reach light shop {shop} — returning to origin without light");
                 WalkBackToOrigin();
@@ -493,7 +542,7 @@ public sealed class AutoDepositManager : IDisposable
         _buyTimer.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
         _lightBuy = null;
         _phase = DepositPhase.WalkingBackToOrigin;
-        if (!_walker.WalkTo(_origin))
+        if (!RerouteWalkTo(_origin))
         {
             _log?.Warn(LogCategory, $"can't return to {_origin} — resuming from here");
             Resume();
@@ -518,6 +567,12 @@ public sealed class AutoDepositManager : IDisposable
         }
         _log?.Info(LogCategory, $"depositing {depositValue} (wealth={held.TotalCopperValue} keep={keepValue})");
         Send($"dep {depositValue}");
+        // Decrement the on-hand tracker now — before BeginReturnLeg plans the trip
+        // home — so a toll on the return route is weighed against post-deposit
+        // wealth. Waiting for the server's "You deposit …" echo would let the
+        // route commit through a toll we just banked past (bug: return leg
+        // routed on the stale pre-deposit purse and stranded at the toll).
+        _noteAutoDeposit(depositValue);
         Deposited?.Invoke(depositValue);
     }
 

@@ -189,6 +189,30 @@ public sealed class AutoDepositManagerTests : IDisposable
                 DateTimeOffset.UtcNow);
         }
 
+        // Copper values the manager pushed to the on-hand tracker at `dep`
+        // dispatch. Models InventoryManager.NoteAutoDeposit: record the amount and
+        // decrement the snapshot immediately (greedy re-decompose, same as
+        // ApplyTransaction) so the manager's own getSnapshot reads post-deposit
+        // wealth the instant it plans the return leg.
+        public List<long> NotedDeposits { get; } = new();
+
+        public void NoteAutoDeposit(long copper)
+        {
+            if (copper <= 0) return;
+            NotedDeposits.Add(copper);
+            long wealth = Math.Max(0, Snapshot.Currency.TotalCopperValue - copper);
+            long total = wealth;
+            int runic = (int)(wealth / 1_000_000L); wealth %= 1_000_000L;
+            int plat = (int)(wealth / 10_000L); wealth %= 10_000L;
+            int gold = (int)(wealth / 100L); wealth %= 100L;
+            int silver = (int)(wealth / 10L); wealth %= 10L;
+            int cop = (int)wealth;
+            Snapshot = new InventorySnapshot(
+                new CurrencyHoldings(cop, silver, gold, plat, runic, total),
+                Snapshot.Encumbrance, Snapshot.EquippedItems, Snapshot.CarriedItems,
+                DateTimeOffset.UtcNow);
+        }
+
         public void Dispose()
         {
             AutoDeposit.Dispose();
@@ -259,6 +283,7 @@ public sealed class AutoDepositManagerTests : IDisposable
         AutoDepositManager autoDeposit = new(cash,
             readCash: () => h.Settings,
             getSnapshot: () => h.Snapshot,
+            noteAutoDeposit: v => h.NoteAutoDeposit(v),
             isBankRoom: k => h.Banks.Contains(k),
             profile: profile,
             tracker: tracker,
@@ -424,6 +449,50 @@ public sealed class AutoDepositManagerTests : IDisposable
     }
 
     [Fact]
+    public void Deposit_DecrementsOnHandTracker_BeforeReturnLeg()
+    {
+        using Harness h = NewHarness();
+        StartLair(h);
+        ArmBankGate(h);
+
+        h.SetWealth(copper: 0, silver: 0, gold: 50, platinum: 0, runic: 0, totalCopperValue: 5000);
+        Arrive(h, new RoomKey(1, 2));
+        Arrive(h, new RoomKey(1, 3));
+        DeliverBankInventory(h);
+
+        // The dep fired AND the on-hand tracker was decremented by the same value
+        // the moment the command went out — so the return leg (already destined
+        // for the origin) planned against post-deposit wealth, not the stale
+        // pre-deposit purse that would have routed through an unaffordable toll.
+        Assert.Equal("dep 5000", Assert.Single(h.DepositLines()));
+        Assert.Equal(5000L, Assert.Single(h.NotedDeposits));
+        Assert.Equal(0L, h.Snapshot.Currency.TotalCopperValue);
+        Assert.Equal(new RoomKey(1, 1), h.Walker.Destination);
+    }
+
+    [Fact]
+    public void Deposit_NothingAboveKeep_DoesNotTouchTracker()
+    {
+        using Harness h = NewHarness();
+        StartLair(h);
+        h.Settings.BankRoomKey = "1/3";
+        h.Banks.Add(new RoomKey(1, 3));
+        h.Settings.AutoDepositIfCoinsExceed = 1;
+        h.Settings.KeepGoldOnHand = 100; // keep 100 gold = 10000 copper
+
+        h.SetWealth(copper: 0, silver: 0, gold: 50, platinum: 0, runic: 0, totalCopperValue: 5000);
+        Arrive(h, new RoomKey(1, 2));
+        Arrive(h, new RoomKey(1, 3));
+        DeliverBankInventory(h);
+
+        // Nothing deposited (5000 ≤ 10000 keep) → the tracker is left alone; no
+        // spurious decrement can drop the return-leg wallet below a real toll.
+        Assert.Empty(h.DepositLines());
+        Assert.Empty(h.NotedDeposits);
+        Assert.Equal(5000L, h.Snapshot.Currency.TotalCopperValue);
+    }
+
+    [Fact]
     public void BankArrival_ReReadsInventory_DepositsPostTollAmount()
     {
         using Harness h = NewHarness();
@@ -586,6 +655,47 @@ public sealed class AutoDepositManagerTests : IDisposable
         Assert.Equal(1, fires);
 
         // Past the cooldown — the gate retries.
+        now = now.AddMinutes(2);
+        h.SetWealth(copper: 0, silver: 0, gold: 52, platinum: 0, runic: 0, totalCopperValue: 5200);
+        Assert.Equal(2, fires);
+    }
+
+    // Report #5 / #1: a manual Stop mid-reroute must tear the reroute down so a
+    // later walker Finished (from whatever the user starts next) can't fire
+    // Resume() and resurrect the pre-detour engine — and it must re-arm the
+    // CashManager gate so the single-fire guard isn't left wedged for the
+    // session. The walker's Stopped event is the abort signal.
+    [Fact]
+    public void UserStopMidReroute_TearsDownReroute_AndReArmsGate()
+    {
+        using Harness h = NewHarness();
+        StartLair(h);
+        ArmBankGate(h);
+
+        DateTime now = DateTime.UtcNow;
+        h.Cash.AutoDepositClock = () => now;
+        int fires = 0;
+        h.Cash.AutoDepositRequested += _ => fires++;
+
+        h.SetWealth(copper: 0, silver: 0, gold: 50, platinum: 0, runic: 0, totalCopperValue: 5000);
+        Assert.Equal(1, fires);
+        Assert.True(h.AutoDeposit.IsRerouting);
+        Assert.False(h.Lair.IsActive);                 // lair stopped for the detour
+        Assert.Equal(WalkState.Walking, h.Walker.State);
+
+        // User hits Stop mid-detour — the walker halts, raising Stopped.
+        h.Walker.Stop("user stop from Navigation");
+        Assert.False(h.AutoDeposit.IsRerouting);        // reroute torn down
+
+        // A fresh walk the user starts must run unimpeded: its Finished no longer
+        // triggers the dead reroute's Resume(), so the pre-detour lair stays down.
+        Assert.True(h.Walker.WalkTo(new RoomKey(1, 3)));
+        Arrive(h, new RoomKey(1, 2));
+        Arrive(h, new RoomKey(1, 3));
+        Assert.False(h.Lair.IsActive);
+
+        // The stop re-armed the gate (not wedged): past the retry cooldown a
+        // fresh crossing fires again instead of staying latched.
         now = now.AddMinutes(2);
         h.SetWealth(copper: 0, silver: 0, gold: 52, platinum: 0, runic: 0, totalCopperValue: 5200);
         Assert.Equal(2, fires);
