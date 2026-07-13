@@ -2589,6 +2589,11 @@ public sealed class AppServices
         // Auto-Bless auto-engine gate — when off, the Buffing category is
         // suppressed (no Bless / regen / when-full buff fires).
         CastDirector.SetAutoBlessGate(() => ReadAutoModeFlag(d => d.AutoBless));
+        // Suppress ALL auto-casts while the `train stats` full-screen menu has
+        // character-mode input armed — otherwise a cast's letters get typed raw
+        // into the character-creation form (the "bles" family-name corruption).
+        // IsInputMenuActive is the realm-independent (command-driven) signal.
+        CastDirector.SetInputCaptureGate(() => TrainerMenu.IsInputMenuActive);
         // Buff-duration recast model. A buff cast (self or
         // party) is confirmed, then suppressed until it's within the
         // pre-expiry recast window. BuffInfoByShort maps a 4-letter cast

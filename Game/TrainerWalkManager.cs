@@ -518,14 +518,13 @@ public sealed class TrainerWalkManager : IDisposable
     {
         if (_phase == Phase.ApplyingCp && !_autoTrain.IsBusy)
         {
-            // Normally OnCpPlanCommitted already cleared the rows the instant the
-            // keystrokes committed; this covers the path where that signal never
-            // fired (e.g. replay aborted before completing) but the run still idled.
+            // Rows are cleared only by OnCpPlanCommitted, which fires when the
+            // keystroke replay actually committed the raises + SAVE. Reaching idle
+            // without that signal means the replay never ran (trainer screen never
+            // opened / aborted) — keep the plan rows so a later attempt can retry,
+            // and leave _cpApplied false so the report reflects "CP not applied".
             if (!_cpApplied)
-            {
-                _cpApplied = true;
-                RemoveFulfilledPlanRows(_cpTargetLevel);
-            }
+                _log?.Info("AutoTrain", "CP plan not applied (trainer screen didn't open) — plan rows kept.");
             FinishWithReport();
             return;
         }

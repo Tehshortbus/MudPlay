@@ -6,6 +6,10 @@ Notable changes per merged PR, **newest first**. The top of the [README](README.
 
 - Selecting a recently-used profile no longer strands the File menu flyout at the window's old position — the profile load (and its window reposition) is deferred until the menu closes
 - CP earn math no longer over-pays at decade tops (level 10 counted 15 CP instead of 10, level 20 counted 20 instead of 15) — the allocation plan can no longer offer a stat point the level's CP can't actually afford
+- Auto-train now applies the CP plan on Paradigm's cursor-drawn stat box — the replay fires off the `train stats` command signal instead of the marker row that never scrolls there
+- A train run whose trainer screen never opens keeps the CP plan rows instead of clearing them
+- Auto-cast (bless / heal / cure) is held while the train-stats screen owns the keyboard, so a spell can't type its letters into the character-name field
+- bug reports addressed: paradigm-20260713-104450
 
 ## 1.53.0
 

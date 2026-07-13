@@ -221,6 +221,36 @@ public sealed class TrainerMenuTrackerTests
     }
 
     [Fact]
+    public void IsInputMenuActive_TracksArmThenExitLifecycle()
+    {
+        // The realm-independent "the stat box owns the keyboard" flag that the
+        // auto-train replay trigger and the auto-cast suppression gate both read.
+        // False before, true the instant `train stats` arms, false once the bare
+        // exit prompt returns (the echo prompt in between doesn't clear it).
+        var (tracker, router, _) = Setup();
+        Assert.False(tracker.IsInputMenuActive);
+
+        tracker.ObserveOutbound(Encoding.Latin1.GetBytes("train stats\r"));
+        Assert.True(tracker.IsInputMenuActive);
+
+        Dispatch(router, "[HP=33]:"); // command echo — swallowed, still active
+        Assert.True(tracker.IsInputMenuActive);
+
+        Dispatch(router, "[HP=33]:"); // exit prompt — box left, input released
+        Assert.False(tracker.IsInputMenuActive);
+    }
+
+    [Fact]
+    public void IsInputMenuActive_StaysFalseForBareTrain()
+    {
+        // Bare `train` is line-driven, not the full-screen box, so it never
+        // captures the keyboard — the gate/replay signals must stay clear.
+        var (tracker, _, _) = Setup();
+        tracker.ObserveOutbound(Encoding.Latin1.GetBytes("train\r"));
+        Assert.False(tracker.IsInputMenuActive);
+    }
+
+    [Fact]
     public void OutboundBareTrain_DoesNotArmInputMenu()
     {
         // Bare `train` opens a line-driven prompt, not the full-screen stat
