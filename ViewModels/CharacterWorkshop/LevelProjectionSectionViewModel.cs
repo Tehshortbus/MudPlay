@@ -230,7 +230,7 @@ public sealed partial class LevelProjectionSectionViewModel : WorkshopSectionVie
         int raceHpPerLevel = GetInt(raceRow, "HPPerLVL");
         bool isCaster = mageryType != 0;
 
-        // Trainer cost per row: the cheapest guild that serves each level/class.
+        // Trainer cost per row: the cheapest trainer that serves each level/class.
         // Enumerate once; the resolver picks min markup and the price formula
         // turns (level, markup) into copper.
         int classNumber = GetInt(classRow, "Number");

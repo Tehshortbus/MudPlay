@@ -27,7 +27,7 @@ namespace FujinTerm.Game;
 // character-mode switch: after a short render delay, if the input menu is still
 // active (full-screen menu owns the keyboard, no in-game prompt returned) we
 // begin the replay; if instead the in-game prompt came back (InputMenuExited —
-// we weren't at a guild) we abort cleanly. MenuExited is likewise marker-driven
+// we weren't at a trainer) we abort cleanly. MenuExited is likewise marker-driven
 // and never fires on Paradigm, so InputMenuExited is also our exit signal.
 //
 // The plan targets are recomputed against live unspent CP + race bounds via
@@ -132,7 +132,7 @@ public sealed class AutoTrainManager : IDisposable
         if (_sessionId == session && _phase == Phase.AwaitingMenu)
         {
             _phase = Phase.Idle;
-            _log?.Info("AutoTrain", "Trainer screen never opened (not at a guild?) — aborted.");
+            _log?.Info("AutoTrain", "Trainer screen never opened (not at a trainer?) — aborted.");
             StateChanged?.Invoke();
         }
     }
@@ -167,14 +167,14 @@ public sealed class AutoTrainManager : IDisposable
 
     // The in-game prompt returned after `train stats`. Realm-independent (it's
     // the command-driven signal, not the marker), so it's both our "not at a
-    // guild — abort" signal while awaiting the menu and our menu-exit signal
+    // trainer — abort" signal while awaiting the menu and our menu-exit signal
     // after the replay, on realms where the marker-driven MenuExited never fires.
     private void OnInputMenuExited()
     {
         if (_phase == Phase.AwaitingMenu)
         {
             _phase = Phase.Idle;
-            _log?.Info("AutoTrain", "Trainer screen didn't open (not at a guild?) — aborted.");
+            _log?.Info("AutoTrain", "Trainer screen didn't open (not at a trainer?) — aborted.");
             StateChanged?.Invoke();
         }
         else if (_phase == Phase.Replaying)

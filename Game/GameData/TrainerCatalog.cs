@@ -7,7 +7,7 @@ using FujinTerm.Services;
 namespace FujinTerm.Game.GameData;
 
 // One training-shop room discovered in the active set's Shops table. Number is
-// Shops.Number; Name is the shop name (usually the guild / role label, e.g.
+// Shops.Number; Name is the shop name (usually the trainer / role label, e.g.
 // "Training Room"); Map / Room come from Assigned To (0 when unresolved);
 // RoomName is the host room's display name from Rooms (empty when unresolved);
 // MinLevel / MaxLevel are MinLVL / MaxLVL; ClassRest is the class restriction
@@ -30,7 +30,7 @@ public readonly record struct TrainerShop(
     public bool ServesLevel(int level) => !(MinLevel > level + 1 || MaxLevel <= level);
 
     // True when this trainer serves classNumber: the universal Training Room
-    // (ClassRest == 0) serves every class; a guild trainer serves only its own
+    // (ClassRest == 0) serves every class; a class trainer serves only its own
     // class number.
     public bool ServesClass(int classNumber) => ClassRest == 0 || ClassRest == classNumber;
 }

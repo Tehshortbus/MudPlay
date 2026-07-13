@@ -197,8 +197,8 @@ public sealed partial class AutoTrainerSectionViewModel : SettingsSectionViewMod
     }
 
     // Rebuild the bound (filtered) view from _allRows. The filter is view-only —
-    // it never marks dirty or persists. Other classes' guild trainers are always
-    // hidden (a Mystic never needs to see the Warrior guild); the level filter is
+    // it never marks dirty or persists. Other classes' trainers are always
+    // hidden (a Mystic never needs to see the Warrior trainer); the level filter is
     // the optional user toggle on top of that.
     private void ApplyFilter()
     {
