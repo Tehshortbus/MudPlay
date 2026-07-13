@@ -60,6 +60,11 @@ public sealed partial class InventoryManager : IDisposable
     // ----- snapshot state (guarded by _lock) ---------------------------
     private int _copper, _silver, _gold, _platinum, _runic;
     private long _wealthCopper;
+    // Copper value of an auto-deposit already applied optimistically at `dep`
+    // dispatch (NoteAutoDeposit), still awaiting its server "You deposit …" echo.
+    // The echo reconciles against this instead of subtracting a second time, so
+    // the coin isn't double-counted. Re-based to 0 by every full 'i' dump.
+    private long _pendingDepositCopper;
     private int _curWeight, _maxWeight, _percentage;
     private EncumbranceLevel _category = EncumbranceLevel.Unknown;
     private bool _loaded;
@@ -148,6 +153,25 @@ public sealed partial class InventoryManager : IDisposable
     {
         lock (_lock) _loaded = false;
         _pendingMergeLine = "";
+    }
+
+    // Apply an auto-deposit the moment its `dep <value>` is dispatched at the
+    // bank. The amount is known exactly — it was computed from the fresh
+    // pre-deposit `i` — so the purse is decremented now rather than when the
+    // server's "You deposit …" echo lands. The reroute's return-leg router reads
+    // on-hand wealth synchronously right after the `dep`, and a stale
+    // (pre-deposit) figure would route it through a toll it can no longer afford.
+    // The echo, when it arrives, reconciles against _pendingDepositCopper so the
+    // coin isn't subtracted twice. A non-positive value is a no-op.
+    public void NoteAutoDeposit(long copperValue)
+    {
+        if (copperValue <= 0) return;
+        lock (_lock)
+        {
+            _pendingDepositCopper += copperValue;
+            ApplyTransaction(-copperValue);
+        }
+        Changed?.Invoke();
     }
 
     // ----- line processing ---------------------------------------------
@@ -340,7 +364,17 @@ public sealed partial class InventoryManager : IDisposable
         if (deposit.Success)
         {
             long amount = ParsePriceToCopper(deposit.Groups[1].Value);
-            lock (_lock) ApplyTransaction(-amount);
+            lock (_lock)
+            {
+                // An auto-deposit already decremented the purse optimistically at
+                // dispatch (NoteAutoDeposit); this echo just confirms it. Consume
+                // the pending amount rather than subtracting again. A manual
+                // deposit (no pending) subtracts here exactly as before.
+                long alreadyApplied = Math.Min(_pendingDepositCopper, amount);
+                _pendingDepositCopper -= alreadyApplied;
+                long residual = amount - alreadyApplied;
+                if (residual > 0) ApplyTransaction(-residual);
+            }
             Changed?.Invoke();
             return;
         }
@@ -594,6 +628,10 @@ public sealed partial class InventoryManager : IDisposable
             _platinum = platinum;
             _runic = runic;
             _wealthCopper = wealthCopper;
+            // The dump is the authoritative purse — any optimistic auto-deposit
+            // still awaiting its echo is now baked into this total, so drop the
+            // pending reconciliation to avoid suppressing a later real deposit.
+            _pendingDepositCopper = 0;
             _curWeight = curWeight;
             _maxWeight = maxWeight;
             _percentage = percentage;

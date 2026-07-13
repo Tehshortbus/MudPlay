@@ -8,6 +8,12 @@ Notable changes per merged PR, **newest first**. The top of the [README](README.
 - The navigation engine pauses during the `rm` round-trip so the reply reports a stationary room, then re-plans from the confirmed position
 - Heuristic backtrack recovery stays the fallback — used when the realm isn't Paradigm, the reply times out, or the reported room isn't in the map graph
 - Bug report captures the resync state (awaiting-rm flag, request in flight, last resolved room)
+- Auto-deposit fires again after a reroute torn down by an external stop — the guard re-arms instead of staying latched and looping past the deposit threshold forever
+- Manually stopping a loop cancels any in-flight auto-deposit reroute, so a freshly built loop isn't yanked back toward the old route
+- Carried wealth drops immediately after an auto-deposit, so a following toll gate isn't attempted on a stale pre-deposit balance
+- Navigation toolbar's resume button now enables whenever the engine is paused, matching the Run entry in the navigation menu
+- Shorter settle wait after a room is cleared and its loot collected, tightening the pause before the loop steps to the next room
+- bug reports addressed: paradigm-20260712-154401, paradigm-20260712-155542, paradigm-20260712-155734, paradigm-20260712-160302, paradigm-20260712-160504, paradigm-20260712-162342
 
 ## 1.40.4
 

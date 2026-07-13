@@ -53,7 +53,13 @@ public sealed class MovementController : IDisposable
         _loops.Event += OnLoopEvent;
         _autoLair.ActiveChanged += OnAutoLairBool;
         _autoLair.PausedChanged += OnAutoLairBool;
-        _coordinator.PauseStateChanged += OnCoordinatorPauseChanged;
+        // GatesChanged, not PauseStateChanged: the coarse signal stays silent
+        // when a gate stacks on an already-paused engine (e.g. the user pressing
+        // Pause during a fight asserts UserGate while CombatGate holds), so
+        // IsUserPaused flips true with no notification and the toolbar's
+        // Resume button never re-enables. The fine-grained signal fires on
+        // every assert/clear and is a superset of PauseStateChanged.
+        _coordinator.GatesChanged += OnCoordinatorGatesChanged;
     }
 
     // Coalesced run-state across all three engines. Priority mirrors
@@ -151,7 +157,7 @@ public sealed class MovementController : IDisposable
     private void OnWalkerEvent(WalkEvent _) => StateChanged?.Invoke();
     private void OnLoopEvent(LoopEvent _) => StateChanged?.Invoke();
     private void OnAutoLairBool(bool _) => StateChanged?.Invoke();
-    private void OnCoordinatorPauseChanged(bool _) => StateChanged?.Invoke();
+    private void OnCoordinatorGatesChanged() => StateChanged?.Invoke();
 
     public void Dispose()
     {
@@ -161,7 +167,7 @@ public sealed class MovementController : IDisposable
         _loops.Event -= OnLoopEvent;
         _autoLair.ActiveChanged -= OnAutoLairBool;
         _autoLair.PausedChanged -= OnAutoLairBool;
-        _coordinator.PauseStateChanged -= OnCoordinatorPauseChanged;
+        _coordinator.GatesChanged -= OnCoordinatorGatesChanged;
     }
 }
 

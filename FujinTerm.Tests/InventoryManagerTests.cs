@@ -312,6 +312,62 @@ public sealed class InventoryManagerTests
     }
 
     [Fact]
+    public void NoteAutoDeposit_DecrementsPurseImmediately()
+    {
+        using Harness h = new();
+        h.Feed("You are carrying 5 gold crowns.");   // 500 copper
+        h.Feed("Wealth:    500 copper farthings");
+        h.Feed("Encumbrance:    1/2880  -  None  [0%]");
+
+        // The reroute dispatches `dep 300` and tells the tracker at once, before
+        // the server's echo lands — the return-leg router must see the drained
+        // purse right away or it will route through a toll it can't afford.
+        h.Inv.NoteAutoDeposit(300);
+
+        Assert.Equal(200, h.Inv.Snapshot.Currency.TotalCopperValue);
+        Assert.Equal(2, h.Inv.Snapshot.Currency.Gold);
+    }
+
+    [Fact]
+    public void NoteAutoDeposit_ThenEcho_DoesNotDoubleCount()
+    {
+        using Harness h = new();
+        h.Feed("You are carrying 5 gold crowns.");   // 500 copper
+        h.Feed("Wealth:    500 copper farthings");
+        h.Feed("Encumbrance:    1/2880  -  None  [0%]");
+
+        h.Inv.NoteAutoDeposit(300);                  // optimistic → 200
+        h.Feed("You deposit 3 gold crowns.");        // echo of the SAME deposit
+
+        // The echo reconciles against the pending amount instead of subtracting
+        // again — the purse stays at 200, not 0.
+        Assert.Equal(200, h.Inv.Snapshot.Currency.TotalCopperValue);
+        Assert.Equal(2, h.Inv.Snapshot.Currency.Gold);
+    }
+
+    [Fact]
+    public void FullInventory_ClearsPendingAutoDeposit()
+    {
+        using Harness h = new();
+        h.Feed("You are carrying 5 gold crowns.");   // 500 copper
+        h.Feed("Wealth:    500 copper farthings");
+        h.Feed("Encumbrance:    1/2880  -  None  [0%]");
+
+        h.Inv.NoteAutoDeposit(300);                  // pending = 300, purse 200
+
+        // A fresh 'i' dump re-bases the purse authoritatively and drops any
+        // still-pending optimistic deposit; a genuinely later deposit must then
+        // subtract in full rather than being swallowed as an unseen echo.
+        h.Feed("You are carrying 2 gold crowns.");
+        h.Feed("Wealth:    200 copper farthings");
+        h.Feed("Encumbrance:    1/2880  -  None  [0%]");
+
+        h.Feed("You deposit 2 gold crowns.");        // a new, real deposit
+
+        Assert.Equal(0, h.Inv.Snapshot.Currency.TotalCopperValue);
+    }
+
+    [Fact]
     public void Buy_ExactDenoms_DeductsPerCoinKeepingMix()
     {
         using Harness h = new();

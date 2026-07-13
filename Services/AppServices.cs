@@ -3597,6 +3597,7 @@ public sealed class AppServices
             Cash,
             readCash: () => ReadSection<Models.Profile.CashSettings>(Profile.Current, "Cash"),
             getSnapshot: () => Inventory.Snapshot,
+            noteAutoDeposit: Inventory.NoteAutoDeposit,
             isBankRoom: key => Game.GameData.BankCatalog.IsBankRoom(GameData, key),
             profile: Profile,
             tracker: RoomTracker,
