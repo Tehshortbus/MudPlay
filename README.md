@@ -6,7 +6,7 @@
 > - One-room lookahead only, so a light's burn timer isn't spent early; the reactive can't-see path still covers unmapped rooms
 > - Main status bar shows a walk-to readout while travelling — `C: map/room  D: map/room  Steps: <remaining> - <exp/hr>`; a loop keeps this readout while approaching its start and only switches to the lap counter once it begins cycling
 > - CURRENT NAV lists the walk-to steps and the loop's own steps together while approaching, then collapses to just the loop steps once the walk-to finishes
-> - CURRENT NAV's description line moved up next to the "Navigation" title as a plain-English action line — e.g. "Walking to (map/room) - Name then looping <loop>"
+> - CURRENT NAV's description line moved up next to the "Navigation" title as a plain-English action line — "Walking to (map/room) - Name then looping <loop>" while approaching, "Looping <loop> - step X of Y on lap Z" while cycling
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

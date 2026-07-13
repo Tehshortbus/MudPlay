@@ -2257,8 +2257,9 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     // description of what the engine is doing right now. Building modes surface
     // the in-progress click/marker hint; a walk-to reads "Walking to (M/R) -
     // Name"; a loop that's still approaching its entry reads "Walking to (M/R) -
-    // Name then looping <loop>"; a running loop reads "Looping <loop>";
-    // auto-lair keeps its phase readout; Idle falls back to the located room.
+    // Name then looping <loop>"; a running loop reads "Looping <loop> - step X of
+    // Y on lap Z"; auto-lair keeps its phase readout; Idle falls back to the
+    // located room.
     public string TopBarStatusText
     {
         get
@@ -2311,7 +2312,13 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
                             : "first waypoint";
                         return $"Walking to {target} then looping {name}";
                     }
-                    return $"Looping {name}";
+                    // Running circle — spell out where in the cycle we are. Step
+                    // is CurrentIndex (next-to-send) as 1-based, clamped to the
+                    // step count; lap is completed-laps + 1 (the lap in flight).
+                    int total = lr.StepCount;
+                    if (total <= 0) return $"Looping {name}";
+                    int step = Math.Min(total, lr.CurrentIndex + 1);
+                    return $"Looping {name} - step {step} of {total} on lap {lr.CompletedLaps + 1}";
                 }
                 case NavigationEngineKind.AutoLair:
                 {
