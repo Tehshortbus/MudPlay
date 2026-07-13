@@ -14,12 +14,17 @@ public sealed class CharacterCalculatorTests
     // ----- CP --------------------------------------------------------------
 
     [Theory]
-    [InlineData(1, 10)]    // (1/10)*5+10
+    [InlineData(1, 0)]     // level 1 is the race BaseCP pool, not a training gain
+    [InlineData(2, 10)]
     [InlineData(9, 10)]
-    [InlineData(10, 15)]   // (10/10)*5+10
+    [InlineData(10, 10)]   // decade top still 10 — the step rises at 11, not 10
+    [InlineData(11, 15)]
     [InlineData(19, 15)]
-    [InlineData(20, 20)]
-    [InlineData(0, 0)]     // below level 1
+    [InlineData(20, 15)]   // decade top still 15 — the step rises at 21, not 20
+    [InlineData(21, 20)]
+    [InlineData(30, 20)]
+    [InlineData(31, 25)]
+    [InlineData(0, 0)]     // below level 2
     [InlineData(-5, 0)]
     public void CalcCpGainedAtLevel_MatchesStepFormula(int level, int expected)
     {
@@ -27,10 +32,12 @@ public sealed class CharacterCalculatorTests
     }
 
     [Fact]
-    public void CalcTotalCpAtLevel_SumsExclusiveUpperStep_PlusBase()
+    public void CalcTotalCpAtLevel_SumsTrainingGains_PlusBaseCp()
     {
-        // Levels 1..9 each give 10 → 90, plus baseCP 5.
+        // Levels 2..10 each give 10 → 90, plus baseCP 5.
         Assert.Equal(95, CharacterCalculator.CalcTotalCpAtLevel(10, baseCP: 5));
+        // A level-10 Kang (BaseCP 100) spending nothing has 190 CP total.
+        Assert.Equal(190, CharacterCalculator.CalcTotalCpAtLevel(10, baseCP: 100));
     }
 
     [Fact]

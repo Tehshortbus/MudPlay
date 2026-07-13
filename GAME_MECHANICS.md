@@ -60,6 +60,43 @@ it isn't here and you're unsure, ask.
   client must not fire a speculative `eq` before the first `i` dump lands — the desired gear is
   already worn, so a blind equip only draws the already-on refusal (or the EP-zap refusal).
 
+## Character points (CP) & training
+
+**Where CP comes from** *([CONFIRMED] — user rule, verified against a live level-10 build)*
+- **Level 1** grants the race's **BaseCP** pool — **100** for the standard races (the `BaseCP`
+  field on the race record; Kang = 100). This is character-creation seed, not a training gain.
+- **Training to each level 2+** grants a step that rises every decade:
+  - Levels **2–10** → **10** CP each
+  - Levels **11–20** → **15** each
+  - Levels **21–30** → **20** each
+  - Levels **31–40** → **25** each … (+5 CP per decade thereafter)
+- The step rises at the **first level of each new decade (11, 21, 31…)**, so a decade *top* pays
+  the lower rate: **level 10 grants 10** (not 15) and **level 20 grants 15** (not 20).
+- Formula for the per-level training gain (level ≥ 2): `((level - 1) / 10) * 5 + 10` (integer
+  division). Total CP on reaching a level, spending none: `BaseCP + Σ gains(2..level)`.
+- **A level-10 character who spent nothing has 190 CP** (100 base + 9×10). Confirmed by a
+  level-10 Kang who trained straight to 190 spent.
+
+**What CP costs to spend** *([CONFIRMED])*
+- Raising a stat one point costs `((currentStat - raceMin) / 10) + 1` CP — it escalates by 1 for
+  every full 10 the stat sits above its race minimum. **ParaMUD/Paradigm is uncapped; Stock caps
+  the per-point cost at 10.**
+- The in-game **Point Cost Chart** states the cumulative form: +10 above base = 10 CP, +20 = 30,
+  +30 = 60, +40 = 100, +50 = 150 CP (each is the running sum of the per-point costs above).
+- Worked example — Kang (mSTR 55, mAGL 30, mHEA 50) at level 10 with 190 CP: STR 55→99 = 120 CP,
+  AGI 30→60 = 60, HEA 50→60 = 10 → exactly 190. The **next** STR point (99→100) costs
+  `(99-55)/10 + 1 = 5` CP, which 190 can't afford, so **99 is the real ceiling** at that level —
+  a plan must not offer 100.
+
+**The `train stats` screen renders differently per realm** *([OBSERVED] — from a Paradigm capture)*
+- **Paradigm** draws a full-screen, cursor-positioned box titled **"Char. Creation"** with a
+  side **"Point Cost Chart"** panel (the banner reads `P A R A D I G M`, not `MAJOR MUD`). Because
+  it's cursor-positioned, the marker row never completes as a scrolled line until the screen
+  tears down — so a marker-gated "menu entered" detector never fires mid-session on Paradigm; the
+  realm-independent signal is the outbound `train stats` command itself.
+- **Stock** realms render the same screen inline (scrolling text), so the marker row is emitted
+  normally.
+
 ## Light sources
 
 - **[CONFIRMED]** `use <item>` readies a light (torch, lantern); `rem <item>` removes it.
