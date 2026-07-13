@@ -812,19 +812,20 @@ public sealed class HealthManagerTests
     }
 
     [Fact]
-    public void MaBelowRunTrigger_NoLatch_HpOnlyTrigger()
+    public void MaBelowRunTrigger_LatchesFlee_EvenWithHealthyHp()
     {
-        // Per user direction: run-if-below is HP-only. Low MA with
-        // healthy HP must not latch the flee detection.
+        // RunIfBelowMa is wired into the flee trigger: a caster whose pool
+        // drops below the run threshold flees even at full HP — out of mana
+        // means it can't cast, so standing there just gets it killed.
         using Harness h = new();
         h.State.MaxHp = 200;
         h.State.MaxMa = 100;
         h.State.InCombat = true;
         h.State.HasPromptData = true;
-        h.State.Hp = 150;
-        h.State.Ma = 5;
+        h.State.Hp = 150;      // healthy HP
+        h.State.Ma = 5;        // below the default 10% run trigger
 
-        Assert.False(h.Health.FledThisCombat);
+        Assert.True(h.Health.FledThisCombat);
     }
 
     [Fact]

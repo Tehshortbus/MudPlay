@@ -856,6 +856,9 @@ public partial class MainWindowViewModel : ObservableObject
         // the swing command from landing mid-password-entry on a stale
         // combat round.
         AppServices.Current.Combat.SetWireSender(engineSend);
+        // CombatStateTracker sends `break` before releasing the walker when the
+        // user toggles auto-attack off mid-fight (CombatSettings.BreakBeforeFleeing).
+        AppServices.Current.CombatTracker.SetWireSender(engineSend);
         // HealthManager sends rest / stand / pre- / post-rest commands
         // via the same gate-wrapped engine pipeline.
         AppServices.Current.Health.SetWireSender(engineSend);

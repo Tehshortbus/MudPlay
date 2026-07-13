@@ -49,6 +49,19 @@ public sealed class CombatStateTrackerTests
         public void WireActionabilityGate() =>
             Tracker.SetActionabilityGate(n => !Unactionable.Contains(n));
 
+        // ----- break-before-run gate (auto-combat-off flee courtesy) -----
+        // Commands the tracker pushes to the wire (decoded, trailing \r
+        // stripped) and the BreakBeforeFleeing setting the gate reads.
+        public List<string> Sent { get; } = new();
+        public bool BreakBeforeRunning { get; set; }
+
+        public void WireBreakBeforeRun()
+        {
+            Tracker.SetWireSender(bytes =>
+                Sent.Add(System.Text.Encoding.Latin1.GetString(bytes).TrimEnd('\r', '\n')));
+            Tracker.SetBreakBeforeRunGate(() => BreakBeforeRunning);
+        }
+
         public Harness()
         {
             Router = new MessageRouter();
@@ -439,6 +452,86 @@ public sealed class CombatStateTrackerTests
         using Harness h = new();
         h.AutoAttackEnabled = false;
         h.Tracker.OnAutoAttackChanged();
+        Assert.False(h.CombatGateHeld);
+    }
+
+    // ----- break-before-run on auto-combat toggle-off ----------------
+
+    [Fact]
+    public void OnAutoAttackChanged_Off_InCombat_BreakBeforeRunning_SendsBreak()
+    {
+        // BreakBeforeFleeing checked: toggling auto-combat off mid-fight must
+        // send "break" before the walker is released to run, so the game
+        // actually leaves combat instead of dragging the mob.
+        using Harness h = new();
+        h.WireBreakBeforeRun();
+        h.BreakBeforeRunning = true;
+        h.AddMonster(1, "giant rat", killable: true);
+
+        h.Feed("Also here: giant rat.");    // gate asserted on the hostile
+        h.Feed("*Combat Engaged*");         // InCombat true
+        Assert.True(h.CombatGateHeld);
+
+        h.AutoAttackEnabled = false;
+        h.Tracker.OnAutoAttackChanged();
+
+        Assert.Contains("break", h.Sent);
+        Assert.False(h.CombatGateHeld);     // then released to run
+    }
+
+    [Fact]
+    public void OnAutoAttackChanged_Off_BreakBeforeRunningOff_NoBreak()
+    {
+        // Setting unchecked: no courtesy break, the walker just runs.
+        using Harness h = new();
+        h.WireBreakBeforeRun();
+        h.BreakBeforeRunning = false;
+        h.AddMonster(1, "giant rat", killable: true);
+
+        h.Feed("Also here: giant rat.");
+        h.Feed("*Combat Engaged*");
+        Assert.True(h.CombatGateHeld);
+
+        h.AutoAttackEnabled = false;
+        h.Tracker.OnAutoAttackChanged();
+
+        Assert.DoesNotContain("break", h.Sent);
+        Assert.False(h.CombatGateHeld);
+    }
+
+    [Fact]
+    public void OnAutoAttackChanged_Off_NotInCombat_NoBreak()
+    {
+        // Toggling auto-combat off in a safe room (no gate, not in combat)
+        // must not emit a stray break.
+        using Harness h = new();
+        h.WireBreakBeforeRun();
+        h.BreakBeforeRunning = true;
+
+        h.Feed("Also here: Bob.");          // player only — no gate, no combat
+        Assert.False(h.CombatGateHeld);
+
+        h.AutoAttackEnabled = false;
+        h.Tracker.OnAutoAttackChanged();
+
+        Assert.DoesNotContain("break", h.Sent);
+    }
+
+    [Fact]
+    public void OnAutoAttackChanged_Off_NotWired_NoThrow()
+    {
+        // Without SetWireSender / SetBreakBeforeRunGate the toggle-off path is
+        // a no-op — no break, no throw.
+        using Harness h = new();
+        h.AddMonster(1, "giant rat", killable: true);
+
+        h.Feed("Also here: giant rat.");
+        h.Feed("*Combat Engaged*");
+
+        h.AutoAttackEnabled = false;
+        h.Tracker.OnAutoAttackChanged();
+
+        Assert.Empty(h.Sent);
         Assert.False(h.CombatGateHeld);
     }
 

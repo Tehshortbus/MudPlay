@@ -2,6 +2,13 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.50.0
+
+- Health "Run if below" mana threshold now triggers a flee — out-of-mana casters run, auto-resuming only once both HP and mana recover
+- Turning auto-combat off mid-fight sends a "break" before releasing the walker, when "Break combat if running" is checked
+- Custom board disconnect line now logs under the conversation window's realm category, not just the party roster
+- Navigation loop / auto-lair scrollbar no longer covers the per-row Run button
+
 ## 1.49.0
 
 - Item Finder gains an Attack-type picker (Attack / Bash / Smash / Punch / Kick / Jumpkick); the Swings column recomputes per type — Bash halves, Smash locks to one — and the martial-arts strikes add a bare-handed attack row

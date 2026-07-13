@@ -1,3 +1,4 @@
+using System.Text;
 using FujinTerm.Game.Map;
 using FujinTerm.Models.GameData;
 using FujinTerm.Services;
@@ -56,6 +57,9 @@ public sealed class CombatStateTracker : IDisposable
     private Func<int, bool>? _hasSeeHidden;
     private Func<int, bool>? _canEngage;
     private bool _seeHiddenClearLatch;
+
+    private Action<byte[]>? _wireSender;
+    private Func<bool>? _breakBeforeRunning;
 
     // True while the room currently contains at least one engageable
     // (Enemy-relationship, killable) monster. Drives the
@@ -184,6 +188,25 @@ public sealed class CombatStateTracker : IDisposable
         _canEngage = canEngage;
     }
 
+    // Wire path for the break-before-run disengage. Bound at connect time (the
+    // same gate-wrapped engineSend every other engine receives). Until set, the
+    // break-before-run step no-ops.
+    public void SetWireSender(Action<byte[]> sender)
+    {
+        ArgumentNullException.ThrowIfNull(sender);
+        _wireSender = sender;
+    }
+
+    // Wire the CombatSettings.BreakBeforeFleeing reader. When set and true,
+    // toggling auto-attack OFF mid-fight sends `break` before the Combat gate
+    // releases the walker, so the disengage lands ahead of the walker's next
+    // move. Until set, no break is ever sent (behaviour unchanged).
+    public void SetBreakBeforeRunGate(Func<bool> breakBeforeRunning)
+    {
+        ArgumentNullException.ThrowIfNull(breakBeforeRunning);
+        _breakBeforeRunning = breakBeforeRunning;
+    }
+
     // Re-evaluate the gate + InCombat the instant the auto-attack master toggle
     // flips, rather than waiting for the next room observation. Toggling
     // auto-attack OFF mid-round otherwise left the walker gate asserted (walker
@@ -193,7 +216,32 @@ public sealed class CombatStateTracker : IDisposable
     public void OnAutoAttackChanged()
     {
         if (_disposed) return;
+
+        // Turning auto-attack OFF mid-fight releases the Combat gate (in the
+        // re-run observation below), letting the walker resume. When the user
+        // wants a clean disengage first (CombatSettings.BreakBeforeFleeing), send
+        // `break` before that release so it lands ahead of the walker's next move.
+        // Gate on _gateAsserted so this only fires when we were actually holding
+        // the walker for a fight, and on InCombat so a routine walk never breaks.
+        // Fires once — this handler runs only on the toggle transition, not on
+        // every room observation.
+        if (!_isAutoAttackEnabled()
+            && _gateAsserted
+            && _state.InCombat
+            && (_breakBeforeRunning?.Invoke() ?? false))
+        {
+            _log?.Info(LogCategory,
+                "auto-attack off mid-combat — sending break before releasing walker (BreakBeforeFleeing)");
+            SendCommand("break");
+        }
+
         if (_classifier.Current is { } obs) OnEntitiesObserved(obs);
+    }
+
+    private void SendCommand(string text)
+    {
+        if (_wireSender is null) return;
+        _wireSender(Encoding.Latin1.GetBytes(text + "\r"));
     }
 
     private void OnEntitiesObserved(RoomEntitiesObservation obs)

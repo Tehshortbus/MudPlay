@@ -141,6 +141,58 @@ public sealed class ChatRouterTests
     }
 
     [Fact]
+    public void BuiltInDisconnect_ClassifiesAsRealmEvent()
+    {
+        // The built-in pattern requires the trailing period after "!!!".
+        var (router, _, entries) = Setup();
+        router.Dispatch(Line("Forged just disconnected!!!."));
+
+        ChatLogEntry e = Assert.Single(entries);
+        Assert.Equal(ChatChannel.RealmEvent, e.Channel);
+        Assert.Equal("Forged",               e.Speaker);
+        Assert.Equal("disconnected",         e.Message);
+    }
+
+    [Fact]
+    public void CustomDisconnectLine_NonStandardForm_ClassifiesAsRealmEvent()
+    {
+        // A board whose logoff line has no trailing period never matches the
+        // built-in pattern; the configured custom pattern must classify it so the
+        // conversation window logs the disconnect.
+        var (router, chat, entries) = Setup();
+        chat.DisconnectPatternProvider = () => "{name} just disconnected!!!";
+        router.Dispatch(Line("Forged just disconnected!!!"));
+
+        ChatLogEntry e = Assert.Single(entries);
+        Assert.Equal(ChatChannel.RealmEvent, e.Channel);
+        Assert.Equal("Forged",               e.Speaker);
+        Assert.Equal("disconnected",         e.Message);
+    }
+
+    [Fact]
+    public void CustomDisconnectLine_MultiWordName_CapturesFullName()
+    {
+        var (router, chat, entries) = Setup();
+        chat.DisconnectPatternProvider = () => "{name} just disconnected!!!";
+        router.Dispatch(Line("Fujin WuzHere just disconnected!!!"));
+
+        ChatLogEntry e = Assert.Single(entries);
+        Assert.Equal(ChatChannel.RealmEvent, e.Channel);
+        Assert.Equal("Fujin WuzHere",        e.Speaker);
+        Assert.Equal("disconnected",         e.Message);
+    }
+
+    [Fact]
+    public void NoCustomPattern_NonStandardDisconnect_Ignored()
+    {
+        // No custom pattern configured + a line the built-in can't match (no
+        // trailing period) → nothing classified.
+        var (router, _, entries) = Setup();
+        router.Dispatch(Line("Forged just disconnected!!!"));
+        Assert.Empty(entries);
+    }
+
+    [Fact]
     public void ServerPvp_KillOnParadigmRealm_ClassifiesAsServerWithFullBodyMessage()
     {
         var (router, _, entries) = Setup(isParadigmRealm: () => true);

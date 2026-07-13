@@ -1,12 +1,11 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.49.0**
-> - Item Finder gains an Attack-type picker (Attack / Bash / Smash / Punch / Kick / Jumpkick); the Swings column recomputes per type — Bash halves, Smash locks to one — and the martial-arts strikes add a bare-handed attack row
-> - Item Finder Slot dropdown drops its redundant Weapon entry (the Weapon-type filter already isolates weapons) and now sits below Armour type
-> - Item Finder hides worn-but-limited-use items (lights, potions, containers, signs, keys) that only matched a slot by coincidence — only real armour and weapons remain
-> - Item Finder wrist / finger slot labels drop the "(1)" position tag that carried no meaning there
-> - Equipment Bonuses' Hit Magic now reflects only weapon-granted hit magic, matching its per-item contribution list
+> **Version 1.50.0**
+> - Health "Run if below" mana threshold now triggers a flee — out-of-mana casters run, auto-resuming only once both HP and mana recover
+> - Turning auto-combat off mid-fight sends a "break" before releasing the walker, when "Break combat if running" is checked
+> - Custom board disconnect line now logs under the conversation window's realm category, not just the party roster
+> - Navigation loop / auto-lair scrollbar no longer covers the per-row Run button
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

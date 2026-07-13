@@ -1511,6 +1511,10 @@ public sealed class AppServices
         // player account-name overrides.
         Party.DisconnectPatternProvider = () => ResolveActiveBbs()?.DisconnectPattern;
         Party.PresenceNameResolver = Players.ResolveGivenNameFromPresenceName;
+        // Same custom-disconnect source feeds the conversation window's realm
+        // category — otherwise a board with a non-standard logoff line evicts the
+        // roster member but never logs the disconnect in the conversation.
+        Chat.DisconnectPatternProvider = () => ResolveActiveBbs()?.DisconnectPattern;
         // Engine only — other subsystems register additional
         // handlers without touching the engine.
         RemoteCommands = new Game.Remote.RemoteCommandManager(Chat, PartyState, Players, Log);
@@ -2766,6 +2770,12 @@ public sealed class AppServices
             isAutoSneakEnabled:  () => ReadAutoModeFlag(d => d.AutoSneak),
             hasSeeHidden:        n => SeeHidden.Has(n));
         Combat.SetSeeHiddenClearGate(() => CombatTracker.SeeHiddenClearActive);
+
+        // Break-before-run: turning auto-attack OFF mid-fight releases the Combat
+        // gate so the walker resumes — send `break` first when the user has
+        // CombatSettings.BreakBeforeFleeing on, mirroring the flee path's disengage.
+        CombatTracker.SetBreakBeforeRunGate(
+            () => ReadSection<Models.Profile.CombatSettings>(Profile.Current, "Combat").BreakBeforeFleeing);
         RoomTracker.StateChanged += t =>
         {
             if (t.PreviousRoom is null || t.NewRoom is null) return;
