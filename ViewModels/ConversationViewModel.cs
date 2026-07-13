@@ -147,6 +147,8 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
         ChatChannel.Broadcast         => ShowBroadcast,
         ChatChannel.Yell              => ShowYell,
         ChatChannel.RealmEvent        => ShowRealmEvent,
+        // Server PvP announcements share the Realm filter — no separate toggle.
+        ChatChannel.Server            => ShowRealmEvent,
         _ => true,
     };
 
@@ -216,6 +218,7 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
             [ChatChannel.Broadcast]         = Lookup("AccentYellowBrush"),
             [ChatChannel.Yell]              = Lookup("AccentAmberBrush"),
             [ChatChannel.RealmEvent]        = Lookup("ChromeFgMutedBrush"),
+            [ChatChannel.Server]            = Lookup("AccentRedBrush"),
             [ChatChannel.DaySeparator]      = Lookup("ChromeFgMutedBrush"),
         };
     }

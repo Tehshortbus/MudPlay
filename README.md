@@ -1,9 +1,10 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.43.0**
-> - Session Stats abbreviates cash denominations in the compact total / per-hour / stashed cells — platinum→plat, silver→silv, copper→copp; the itemised tooltip keeps the full words
-> - `lo <dir>` / `loo <dir>` are now recognised as look-direction peeks (like `l` / `look`), so glancing into an adjacent room no longer walks the tracker onto the peeked room
+> **Version 1.45.1**
+> - Renaming a BBS now moves its whole folder — nested character profiles, saved logon-nav steps, and passwords survive instead of being wiped and recreated empty
+> - The rename re-keys each character's per-BBS credentials, so logon-menu nav and password lookup keep working under the new name
+> - Recent-profiles list and the "import logon steps from another character" picker now follow the renamed BBS instead of showing the vanished old name
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

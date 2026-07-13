@@ -124,6 +124,29 @@ public sealed class RoomDepartureWatcherTests
     }
 
     [Fact]
+    public void ExitsVerbDepartureLine_RemovesMonster_FiresDepartureObservation()
+    {
+        // paradigm-20260712-220516: fleeing players dragged the engaged
+        // "dark goblin archer" out, which the server announced with the "exits
+        // the room to" verb (no leading article) rather than "walks out of". The
+        // stuck-combat bug was this line failing to match, so the gate the mob
+        // held never released. Verbatim from that capture's live screen.
+        using Harness h = new();
+        h.AddMonster(1, "giant rat");
+        h.AddMonster(2, "dark goblin archer");
+
+        h.Feed("Also here: giant rat, dark goblin archer.");
+        Assert.Equal(2, h.Observations[0].Entities.Count);
+
+        h.Feed("dark goblin archer exits the room to the northeast.");
+
+        Assert.Equal(2, h.Observations.Count);
+        Assert.Single(h.Observations[1].Entities);
+        Assert.Equal("giant rat", h.Observations[1].Entities[0].ResolvedName);
+        Assert.Equal(RoomObservationSource.Departure, h.Observations[1].Source);
+    }
+
+    [Fact]
     public void DepartureLine_StripsLeadingArticle_Cardinal()
     {
         // "A giant rat walks out of the room to north." — article stripped to the

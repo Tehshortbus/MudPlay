@@ -2,6 +2,29 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.45.1
+
+- Renaming a BBS now moves its whole folder — nested character profiles, saved logon-nav steps, and passwords survive instead of being wiped and recreated empty
+- The rename re-keys each character's per-BBS credentials, so logon-menu nav and password lookup keep working under the new name
+- Recent-profiles list and the "import logon steps from another character" picker now follow the renamed BBS instead of showing the vanished old name
+- bug reports addressed: paradigm-20260712-231015
+
+## 1.45.0
+
+- Conversation window logs paradigm's server PvP announcements (any "Server PvP Message: …" line, e.g. "X just killed Y!") as a red SERVER entry under the Realm filter; realm-gated so only paradigm realms surface it
+- CURRENT NAV's walking action line now reads "Walking to (map/room) - Name on step X of Y, remaining Z" instead of just the destination
+- Main status bar's walk-to readout no longer trims the destination — the room-name slot sizes to its content so `C/D/Steps` always fits
+
+## 1.44.0
+
+- Auto-light equips a carried light one room ahead — stepping toward a room the map knows is dark lights it before the move, so it renders on arrival instead of a blind step or two later
+- One-room lookahead only, so a light's burn timer isn't spent early; the reactive can't-see path still covers unmapped rooms
+- Main status bar shows a walk-to readout while travelling — `C: map/room  D: map/room  Steps: <remaining> - <exp/hr>`; a loop keeps this readout while approaching its start and only switches to the lap counter once it begins cycling
+- CURRENT NAV lists the walk-to steps and the loop's own steps together while approaching, then collapses to just the loop steps once the walk-to finishes
+- CURRENT NAV's description line moved up next to the "Navigation" title as a plain-English action line — "Walking to (map/room) - Name then looping <loop>" while approaching, "Looping <loop> - step X of Y on lap Z" while cycling
+- A monster dragged out by fleeing players ("<name> exits the room to …") now clears the fight — combat state, the fighting chip, and the paused walker all resume instead of hanging while the client swings at empty air
+- bug reports addressed: paradigm-20260712-211917, paradigm-20260712-220516
+
 ## 1.43.0
 
 - Session Stats abbreviates cash denominations in the compact total / per-hour / stashed cells — platinum→plat, silver→silv, copper→copp; the itemised tooltip keeps the full words

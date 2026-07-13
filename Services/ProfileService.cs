@@ -231,6 +231,63 @@ public sealed class ProfileService
             $"Re-homed profile '{fromName}' ({fromBbs}) → '{targetName}' ({newBbs}).");
     }
 
+    // Cascade a BBS rename across the character profiles stored under it. The
+    // BBS folder has already been moved to newBbs (BbsProfileStore.Rename), so
+    // the profiles now sit under the new name; this re-keys each profile's
+    // BbsCredentials entry from oldBbs to newBbs — credentials are keyed by BBS
+    // name, and a stale key breaks logon-nav / password lookup and shows the
+    // dead name in the "import logon steps" picker. When the loaded profile
+    // lives under the renamed BBS, its in-memory copy and CurrentBbsName are
+    // updated too so the live session keeps resolving credentials and the
+    // active-BBS link.
+    public void RenameBbs(string oldBbs, string newBbs)
+    {
+        if (string.IsNullOrWhiteSpace(oldBbs) || string.IsNullOrWhiteSpace(newBbs)) return;
+        if (string.Equals(oldBbs, newBbs, StringComparison.OrdinalIgnoreCase)) return;
+
+        bool currentAffected = string.Equals(CurrentBbsName, oldBbs, StringComparison.OrdinalIgnoreCase);
+        if (currentAffected) CurrentBbsName = newBbs;
+
+        foreach (ProfileRef reference in ListAll())
+        {
+            if (!string.Equals(reference.Bbs, newBbs, StringComparison.OrdinalIgnoreCase)) continue;
+
+            // The loaded profile's on-disk file is authored from its in-memory
+            // copy below — skip it here to avoid a lost update.
+            bool isCurrent = currentAffected
+                && CurrentProfileName is not null
+                && string.Equals(reference.Name, CurrentProfileName, StringComparison.Ordinal);
+            if (isCurrent) continue;
+
+            string path = AppPaths.CharacterProfileFile(newBbs, reference.Name);
+            CharacterProfile? profile = JsonStore.Load<CharacterProfile>(path);
+            if (profile is null) continue;
+            NormalizeForLoad(profile);
+            if (RekeyBbsCredentials(profile, oldBbs, newBbs))
+                JsonStore.Save(path, profile);
+        }
+
+        if (currentAffected && Current is not null)
+        {
+            RekeyBbsCredentials(Current, oldBbs, newBbs);
+            Save();
+        }
+    }
+
+    // Move a BbsCredentials entry from oldBbs to newBbs on a profile's
+    // case-insensitive credential map. Returns true if anything changed.
+    private static bool RekeyBbsCredentials(CharacterProfile profile, string oldBbs, string newBbs)
+    {
+        if (profile.BbsCredentials is not { Count: > 0 } creds) return false;
+        if (!creds.TryGetValue(oldBbs, out BbsCredentials? cred)) return false;
+        creds.Remove(oldBbs);
+        // TryAdd, not indexer: never clobber a pre-existing new-key entry. The
+        // destination BBS was clash-checked before the rename, so this only
+        // guards a corrupt double-keyed profile.
+        creds.TryAdd(newBbs, cred);
+        return true;
+    }
+
     // Persist the currently loaded profile back to disk. No-op when no profile
     // is loaded or the loaded profile is a blank draft (IsBlankDraft) — drafts
     // must be named via the File → Save profile flow before they can be saved.

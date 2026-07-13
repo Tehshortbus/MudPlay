@@ -16,11 +16,12 @@ public sealed class ChatRouterTests
     /// wired to it; collect every EntryClassified event into a list for
     /// assertions.
     /// </summary>
-    private static (MessageRouter router, ChatRouter chat, List<ChatLogEntry> entries) Setup()
+    private static (MessageRouter router, ChatRouter chat, List<ChatLogEntry> entries) Setup(
+        Func<bool>? isParadigmRealm = null)
     {
         MessageRouter router = new();
         DefaultPatterns.Seed(router);
-        ChatRouter chat = new(router);
+        ChatRouter chat = new(router, isParadigmRealm);
         List<ChatLogEntry> entries = new();
         chat.EntryClassified += entries.Add;
         return (router, chat, entries);
@@ -137,6 +138,53 @@ public sealed class ChatRouterTests
         Assert.Equal(ChatChannel.RealmEvent, e.Channel);
         Assert.Equal("Forged",               e.Speaker);
         Assert.Equal("entered the Realm",    e.Message);
+    }
+
+    [Fact]
+    public void ServerPvp_KillOnParadigmRealm_ClassifiesAsServerWithFullBodyMessage()
+    {
+        var (router, _, entries) = Setup(isParadigmRealm: () => true);
+        router.Dispatch(Line("Server PvP Message: Balgor just killed Fizznod!"));
+
+        ChatLogEntry e = Assert.Single(entries);
+        Assert.Equal(ChatChannel.Server, e.Channel);
+        Assert.Null(e.Speaker);
+        Assert.Equal("Balgor just killed Fizznod!", e.Message);
+    }
+
+    [Fact]
+    public void ServerPvp_NonKillBody_ClassifiesGenericallyByPrefix()
+    {
+        // The "Server PvP Message: " prefix covers PvP events beyond kills; any
+        // body after it must classify as Server, not just the "just killed" form.
+        var (router, _, entries) = Setup(isParadigmRealm: () => true);
+        router.Dispatch(Line("Server PvP Message: Balgor has declared war on Fizznod!"));
+
+        ChatLogEntry e = Assert.Single(entries);
+        Assert.Equal(ChatChannel.Server, e.Channel);
+        Assert.Null(e.Speaker);
+        Assert.Equal("Balgor has declared war on Fizznod!", e.Message);
+    }
+
+    [Fact]
+    public void ServerPvp_OnNonParadigmRealm_IsSuppressed()
+    {
+        var (router, _, entries) = Setup(isParadigmRealm: () => false);
+        router.Dispatch(Line("Server PvP Message: Balgor just killed Fizznod!"));
+
+        Assert.Empty(entries);
+    }
+
+    [Fact]
+    public void ServerPvp_NullGate_ClassifiesAsServer()
+    {
+        // Default Setup passes no gate (null) — the channel is open so bare-router
+        // tests still see the entry.
+        var (router, _, entries) = Setup();
+        router.Dispatch(Line("Server PvP Message: Balgor just killed Fizznod!"));
+
+        ChatLogEntry e = Assert.Single(entries);
+        Assert.Equal(ChatChannel.Server, e.Channel);
     }
 
     [Fact]

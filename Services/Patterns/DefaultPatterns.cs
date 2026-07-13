@@ -267,13 +267,13 @@ public static class DefaultPatterns
         yield return new RegexPattern(KnownPatterns.SneakArrivalNotice,
             @"^You notice (?<name>\w+) sneaking in from (?:the )?(?<direction>[\w-]+)[.!]\s*$");
 
-        // Room-exit departure — mirror of the arrival line. "The orc rogue walks
-        // out of the room to the above!" is the canonical form seen when a
-        // fleeing player drags an engaged mob out with them. Only one departure
-        // wording is confirmed so far; add alternates here if the game emits
-        // others.
+        // Room-exit departure — mirror of the arrival line. A fleeing player who
+        // drags an engaged mob out prints one of two confirmed wordings: "The orc
+        // rogue walks out of the room to the above!" or "dark goblin archer exits
+        // the room to the northeast.". Both share the "… the room to <dir>" tail;
+        // only the verb differs. Add more alternates here if the game emits others.
         yield return new RegexPattern(KnownPatterns.RoomEntryDeparture,
-            @"^(?<name>.+?) walks out of the room to (?:the )?(?<direction>[\w-]+)[.!]\s*$");
+            @"^(?<name>.+?) (?:walks out of|exits) the room to (?:the )?(?<direction>[\w-]+)[.!]\s*$");
 
         // ----- Conversation ---------------------------------------------
         // Auction lines share gossip's shape ("X auctions: ...") and the user
@@ -305,6 +305,15 @@ public static class DefaultPatterns
         // character's own speech as an inbound @-command.
         yield return new RegexPattern(KnownPatterns.ConversationLocal,
             @"^(?:(?<player>\w+) says|You say) ""(?<message>.+)""");
+        // Paradigm's server PvP announcements. Every one leads with the
+        // paradigm-specific "Server PvP Message: " literal — a kill is one form
+        // ("X just killed Y!") but there are others — so match the prefix and
+        // capture whatever body follows rather than the kill wording alone. The
+        // prefix can't false-fire on stock realms; ChatRouter still realm-gates
+        // it. The SERVER channel badge supplies the "who", so we drop the
+        // redundant prefix and keep only the body.
+        yield return new RegexPattern(KnownPatterns.ConversationServerPvp,
+            @"^Server PvP Message: (?<message>.+)$");
         // user-emote is distinguished purely by ANSI colour bytes the
         // LineExtractor strips, so it's omitted until attribute-aware matching
         // ships — see the class summary above.

@@ -27,6 +27,7 @@ public sealed class LoopRunner : IRecoverableEngine
     private readonly IRoomFilter? _filter;
     private Action<byte[]>? _wireSender;
     private Action? _preMoveHook;
+    private Action<RoomKey>? _approachLightHook;
 
     // (source, dest) → teleport keyword resolver, mirroring the walker's
     // AutoWalkManager.SetTeleportResolver. Lets the circuit cross a
@@ -361,6 +362,17 @@ public sealed class LoopRunner : IRecoverableEngine
     {
         ArgumentNullException.ThrowIfNull(hook);
         _preMoveHook = hook;
+    }
+
+    // Predictive auto-light hook — invoked the instant a circuit step commits, with
+    // the room about to be entered, before any crossing bytes go out. Mirrors
+    // AutoWalkManager.SetApproachLightHook; AppServices binds both to
+    // AutoLightProvisioner.OnApproachingRoom so a loop lap lights a dark room ahead
+    // of the step exactly like a walk-to does.
+    public void SetApproachLightHook(Action<RoomKey> hook)
+    {
+        ArgumentNullException.ThrowIfNull(hook);
+        _approachLightHook = hook;
     }
 
     // Wire the teleport-keyword resolver so circuit steps can cross
@@ -804,6 +816,12 @@ public sealed class LoopRunner : IRecoverableEngine
         // cardinal). _stepInFlight gates the confirmation handler.
         _expectedMoveTarget = exit.Target;
         _stepInFlight = true;
+
+        // Predictive auto-light: light a carried light NOW if the room this lap step
+        // enters reads dark, before any crossing bytes (door / cardinal / special)
+        // go out — so the `use` lands ahead of the move and the room is lit on
+        // arrival. No-op for a seeable / unmapped target.
+        _approachLightHook?.Invoke(exit.Target);
 
         // Door / KeyLocked: if the latest room observation already shows the
         // door open, cross with the plain cardinal. Otherwise route through the

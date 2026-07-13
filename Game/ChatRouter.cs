@@ -19,6 +19,7 @@ namespace FujinTerm.Game;
 public sealed class ChatRouter : IDisposable
 {
     private readonly MessageRouter _router;
+    private readonly Func<bool>? _isParadigmRealm;
     private readonly List<IDisposable> _subs = new();
     private bool _disposed;
 
@@ -31,10 +32,14 @@ public sealed class ChatRouter : IDisposable
     // Fired once per classified line.
     public event Action<ChatLogEntry>? EntryClassified;
 
-    public ChatRouter(MessageRouter router)
+    // isParadigmRealm gates the server-PvP channel: paradigm is the only realm
+    // that emits the "Server PvP Message:" line, so on any other realm the sub
+    // is a no-op. Optional (null → gate open) so tests can build a bare router.
+    public ChatRouter(MessageRouter router, Func<bool>? isParadigmRealm = null)
     {
         ArgumentNullException.ThrowIfNull(router);
         _router = router;
+        _isParadigmRealm = isParadigmRealm;
 
         Subscribe(router, KnownPatterns.ConversationGossip,
                   ChatChannel.Gossip,         groupPlayer: 0, groupMessage: 1);
@@ -73,6 +78,20 @@ public sealed class ChatRouter : IDisposable
         SubscribeRealmEvent(router, KnownPatterns.PlayerEnters,       "entered the Realm");
         SubscribeRealmEvent(router, KnownPatterns.PlayerExits,        "left the Realm");
         SubscribeRealmEvent(router, KnownPatterns.PlayerDisconnects,  "disconnected");
+
+        // Paradigm server PvP announcements (kills and other "Server PvP
+        // Message: …" lines) — realm-gated. Speaker is null (the server, not a
+        // player); the captured body is the whole line after the prefix.
+        _subs.Add(router.Subscribe(KnownPatterns.ConversationServerPvp, result =>
+        {
+            if (_isParadigmRealm is not null && !_isParadigmRealm()) return;
+            EntryClassified?.Invoke(new ChatLogEntry(
+                result.Line.Timestamp,
+                ChatChannel.Server,
+                null,
+                SafeGroup(result, 0) ?? result.Line.Text,
+                result.Line.Text));
+        }));
 
         // Sniff every dispatched line for the user's /recipient message
         // pattern so we can attribute the message text when the server's

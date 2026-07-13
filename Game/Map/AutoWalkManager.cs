@@ -48,6 +48,7 @@ public sealed class AutoWalkManager : IRecoverableEngine
     private Action? _onLeaderPartySplit;
     private Action? _onPartySplitAbort;
     private Action? _preMoveHook;
+    private Action<RoomKey>? _approachLightHook;
     private Action<IReadOnlyList<int>>? _pathItemAnnouncer;
     private Action<IReadOnlyList<RoomKey>>? _routeAnnouncer;
     private Func<RoomKey, IReadOnlyList<int>>? _hazardItemResolver;
@@ -416,6 +417,19 @@ public sealed class AutoWalkManager : IRecoverableEngine
     {
         ArgumentNullException.ThrowIfNull(hook);
         _preMoveHook = hook;
+    }
+
+    // Predictive auto-light hook — invoked the instant the walker commits to a step,
+    // with the room it's about to enter, BEFORE any door / trap / hidden / cardinal
+    // bytes go out. AppServices binds this to AutoLightProvisioner.OnApproachingRoom,
+    // which `use`s a carried light when that room's mapped light reads dark on worn
+    // gear — so the `use` precedes the move and the room is lit on arrival. No-op for
+    // a seeable or unmapped target; fires on every step (cheap) so the provisioner
+    // owns the dark/seeable decision.
+    public void SetApproachLightHook(Action<RoomKey> hook)
+    {
+        ArgumentNullException.ThrowIfNull(hook);
+        _approachLightHook = hook;
     }
 
     // Planned-route item-requirement announcer. Invoked once at walk-start
@@ -799,6 +813,12 @@ public sealed class AutoWalkManager : IRecoverableEngine
 
         _expectedAfterCurrentMove = exit.Target;
         _stepInFlight = true;
+
+        // Predictive auto-light: light a carried light NOW if the room we're
+        // stepping into reads dark, before any crossing bytes (door / trap / hidden
+        // / cardinal) go out — so the `use` lands ahead of the move and the room is
+        // lit on arrival. No-op for a seeable / unmapped target.
+        _approachLightHook?.Invoke(exit.Target);
 
         // Trapped exits — route through TrapDisarmManager before the move
         // bytes go out. The walker waits for the trap reply; the actual
