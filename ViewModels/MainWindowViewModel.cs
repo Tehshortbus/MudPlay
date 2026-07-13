@@ -1328,16 +1328,32 @@ public partial class MainWindowViewModel : ObservableObject
 
     private void RefreshLocationSlot()
     {
-        // Loop status takes over the location slot while a loop is active. The
-        // chip already reads "LOOPING", and the CURRENT NAV pane owns the
-        // per-step / loop-name detail — so the slot stays terse: just the lap
-        // the walker is on and the session's experience rate. Tracker fallback
-        // handles every other state.
+        // Loop status takes over the location slot while a loop is active. While
+        // the runner is still walking to the loop's entry (Approaching), the slot
+        // shows the same walk-to readout as a plain goto — current room,
+        // destination, remaining steps, rate — because we haven't begun the loop
+        // yet. Only once the circle is actually running does it collapse to the
+        // terse lap counter + rate (the CURRENT NAV pane owns per-step detail).
         Game.Map.LoopRunner runner = AppServices.Current.LoopRunner;
         if (runner.State != Game.Map.LoopState.Idle && runner.CurrentLoop is not null)
         {
+            if (runner.State == Game.Map.LoopState.Approaching)
+            {
+                LocationText = BuildWalkLocationText();
+                return;
+            }
             double xpHr = AppServices.Current.SessionActivity.Snapshot().ExperiencePerHour;
             LocationText = $"lap {runner.CompletedLaps + 1} · {Game.Combat.RateText.Compact(xpHr)}/hr";
+            return;
+        }
+
+        // A plain walk-to (goto / favourite) gets the same C/D/Steps/rate readout
+        // as a loop approach. Checked before the tracker fallback below, which
+        // would otherwise win (the current room is non-null throughout a walk).
+        if (AppServices.Current.Walker.State is Game.Map.WalkState.Walking or Game.Map.WalkState.Paused
+            && AppServices.Current.Walker.Destination is not null)
+        {
+            LocationText = BuildWalkLocationText();
             return;
         }
 
@@ -1371,6 +1387,20 @@ public partial class MainWindowViewModel : ObservableObject
             Game.Map.RoomConfidence.PendingRespawn => "Awaiting respawn…",
             _                                      => "Unknown location",
         };
+    }
+
+    // "C: M/R  D: M/R  Steps: N - rate/hr" — the walk-to readout shared by a
+    // plain goto and a loop's approach leg. Remaining steps = total path length
+    // minus the next-step index (CurrentStepIndex), clamped at 0.
+    private static string BuildWalkLocationText()
+    {
+        Game.Map.AutoWalkManager walker = AppServices.Current.Walker;
+        Game.Map.Room? here = AppServices.Current.RoomTracker.State.CurrentRoom;
+        string cur = here is { } r ? r.Key.ToString() : "?";
+        string dest = walker.Destination is { } d ? d.ToString() : "?";
+        int remaining = Math.Max(0, walker.StepCount - walker.CurrentStepIndex);
+        double xpHr = AppServices.Current.SessionActivity.Snapshot().ExperiencePerHour;
+        return $"C: {cur} D: {dest} Steps: {remaining} - {Game.Combat.RateText.Compact(xpHr)}/hr";
     }
 
     private void RefreshStatusBarTicks()

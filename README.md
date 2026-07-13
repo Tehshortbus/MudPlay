@@ -4,6 +4,9 @@
 > **Version 1.44.0**
 > - Auto-light equips a carried light one room ahead — stepping toward a room the map knows is dark lights it before the move, so it renders on arrival instead of a blind step or two later
 > - One-room lookahead only, so a light's burn timer isn't spent early; the reactive can't-see path still covers unmapped rooms
+> - Main status bar shows a walk-to readout while travelling — `C: map/room  D: map/room  Steps: <remaining> - <exp/hr>`; a loop keeps this readout while approaching its start and only switches to the lap counter once it begins cycling
+> - CURRENT NAV lists the walk-to steps and the loop's own steps together while approaching, then collapses to just the loop steps once the walk-to finishes
+> - CURRENT NAV's description line moved up next to the "Navigation" title as a plain-English action line — e.g. "Walking to (map/room) - Name then looping <loop>"
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

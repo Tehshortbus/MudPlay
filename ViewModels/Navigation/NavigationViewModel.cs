@@ -424,10 +424,9 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         RefreshLoopOverlays();
         RefreshEngineActionLabel();
         // The lap counter ticks over on the RepeatStarted wrap event, which
-        // isn't a tracker-state change — refresh the step/lap readouts here so
-        // the header and top bar advance the moment a lap closes, not only on
-        // the next room observation.
-        OnPropertyChanged(nameof(CurrentNavHeader));
+        // isn't a tracker-state change — refresh the top-bar readout here so
+        // the action line advances the moment a lap closes, not only on the
+        // next room observation.
         OnPropertyChanged(nameof(TopBarStatusText));
         OnPropertyChanged(nameof(CurrentNavProgress));
     }
@@ -1673,13 +1672,13 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
                 OnPropertyChanged(nameof(RunStopLabel));
                 OnPropertyChanged(nameof(CanSaveCurrent));
                 RebuildCurrentNavRows();
-                OnPropertyChanged(nameof(CurrentNavHeader));
+                OnPropertyChanged(nameof(TopBarStatusText));
                 break;
             case nameof(LoopBuilderSessionViewModel.Clicks):
             case nameof(LoopBuilderSessionViewModel.HasClicks):
             case nameof(LoopBuilderSessionViewModel.ProposedName):
                 RebuildCurrentNavRows();
-                OnPropertyChanged(nameof(CurrentNavHeader));
+                OnPropertyChanged(nameof(TopBarStatusText));
                 break;
         }
     }
@@ -2254,14 +2253,41 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     }
 
 
-    // Status text used by the top-bar status indicator. Idle →
-    // "Located: (M/R) - Name"; active → walking with destination formatted
-    // (M/R) - Name; looping with loop name; auto-lair with marked-lair
-    // count.
+    // The top-bar action line next to the "Navigation" title — a plain-English
+    // description of what the engine is doing right now. Building modes surface
+    // the in-progress click/marker hint; a walk-to reads "Walking to (M/R) -
+    // Name"; a loop that's still approaching its entry reads "Walking to (M/R) -
+    // Name then looping <loop>"; a running loop reads "Looping <loop>";
+    // auto-lair keeps its phase readout; Idle falls back to the located room.
     public string TopBarStatusText
     {
         get
         {
+            // Building modes override engine state — the user is laying down
+            // waypoints/markers before Run, so echo that progress here (the
+            // CURRENT NAV pane no longer carries a description line).
+            if (IsLoopBuilding && LoopBuilder is { } b)
+            {
+                string namePart = string.IsNullOrWhiteSpace(b.ProposedName) ? "Loop" : b.ProposedName;
+                int clicks = b.Clicks.Count;
+                string suffix = clicks switch
+                {
+                    0 => "click rooms on the map to add waypoints",
+                    1 => "1 room clicked — add at least one more",
+                    _ => $"{clicks} rooms clicked",
+                };
+                return $"Building loop: {namePart} · {suffix}";
+            }
+            if (IsLairBuilding)
+            {
+                int markers = _services.AutoLair.Marked.Count;
+                return markers switch
+                {
+                    0 => "Building lair setup · click rooms to add markers",
+                    1 => "Building lair setup · 1 lair marked",
+                    _ => $"Building lair setup · {markers} lairs marked",
+                };
+            }
             switch (EngineActionKind)
             {
                 case NavigationEngineKind.Walking:
@@ -2269,26 +2295,23 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
                     string dest = _services.Walker.Destination is { } k
                         ? FormatRoomRef(k)
                         : "?";
-                    int total = _services.Walker.StepCount;
-                    int idx = _services.Walker.CurrentStepIndex;
-                    return total > 0
-                        ? $"to {dest} {idx + 1}/{total}"
-                        : $"to {dest}";
+                    return $"Walking to {dest}";
                 }
                 case NavigationEngineKind.Looping:
                 {
                     Game.Map.LoopRunner lr = _services.LoopRunner;
                     string name = lr.CurrentLoop?.Name ?? "?";
-                    int total = lr.StepCount;
-                    if (total <= 0) return name;
-                    // CurrentIndex is the next step to send, clamped to
-                    // [0, total). Display as 1-based so the user reads
-                    // it the same way the LoopRunner logs its steps
-                    // ("step 14: move S"). Append the lap the walker is on
-                    // (completed laps + 1) so the top bar mirrors the
-                    // CURRENT NAV header's step + lap readout.
-                    int human = Math.Min(total, lr.CurrentIndex + 1);
-                    return $"{name} · step {human}/{total} · lap {lr.CompletedLaps + 1}";
+                    // Still walking to the loop's entry — spell out the whole
+                    // intent ("walk here, then loop that") so the user knows the
+                    // loop hasn't begun cycling yet.
+                    if (lr.State == Game.Map.LoopState.Approaching)
+                    {
+                        string target = lr.ApproachTarget is { } t
+                            ? FormatRoomRef(t)
+                            : "first waypoint";
+                        return $"Walking to {target} then looping {name}";
+                    }
+                    return $"Looping {name}";
                 }
                 case NavigationEngineKind.AutoLair:
                 {
@@ -2503,7 +2526,6 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(IsLairBuilding));
         OnPropertyChanged(nameof(LairBuildStatusText));
         OnPropertyChanged(nameof(CanSaveCurrent));
-        OnPropertyChanged(nameof(CurrentNavHeader));
         OnPropertyChanged(nameof(CurrentNavProgress));
         OnPropertyChanged(nameof(CurrentNavHasProgress));
         RebuildCurrentNavRows();
@@ -2746,91 +2768,6 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         }
     }
 
-    // Header sentence under the section title: "3 of 6 steps to
-    // (M/R) - Name" / "Cycling marked lairs".
-    public string CurrentNavHeader
-    {
-        get
-        {
-            // Building mode overrides engine state — surface the in-
-            // progress click list so the user sees what they're laying
-            // down before they hit Run.
-            if (IsLoopBuilding && LoopBuilder is { } b)
-            {
-                string namePart = string.IsNullOrWhiteSpace(b.ProposedName) ? "Loop" : b.ProposedName;
-                int clicks = b.Clicks.Count;
-                string suffix = clicks switch
-                {
-                    0 => "click rooms on the map to add waypoints",
-                    1 => "1 room clicked — add at least one more",
-                    _ => $"{clicks} rooms clicked",
-                };
-                return $"Building loop: {namePart} · {suffix}";
-            }
-            // Auto-Lair build mode mirrors the loop-builder line — show
-            // the marked-rooms hint instead of the default "No Active
-            // Navigation" placeholder so the CURRENT NAV section's
-            // header reflects the live work-in-progress.
-            if (IsLairBuilding)
-            {
-                int markers = _services.AutoLair.Marked.Count;
-                return markers switch
-                {
-                    0 => "Building lair setup · click rooms to add markers",
-                    1 => "Building lair setup · 1 lair marked",
-                    _ => $"Building lair setup · {markers} lairs marked",
-                };
-            }
-            return EngineActionKind switch
-            {
-                NavigationEngineKind.Walking =>
-                    _services.Walker.Destination is { } k
-                        ? $"{_services.Walker.CurrentStepIndex + 1} of {_services.Walker.StepCount} steps to {FormatRoomRef(k)}"
-                        : $"{_services.Walker.CurrentStepIndex + 1} of {_services.Walker.StepCount} steps",
-                NavigationEngineKind.Looping  => BuildLoopHeader(),
-                NavigationEngineKind.AutoLair => "Cycling marked lairs",
-                _ => EngineError is { Length: > 0 } err
-                    ? $"⚠ {err}"
-                    : "No Active Navigation",
-            };
-        }
-    }
-
-    private string BuildLoopHeader()
-    {
-        Game.Map.LoopRunner runner = _services.LoopRunner;
-        if (runner.CurrentLoop is not { } loop) return "Cycling loop steps";
-
-        // Approach phase: walker is driving toward the loop's chosen
-        // entry waypoint. The walker owns the step counter during this
-        // window; surface ITS progress, not the loop's.
-        if (runner.State == Game.Map.LoopState.Approaching)
-        {
-            string target = runner.ApproachTarget is { } t
-                ? FormatRoomRef(t)
-                : "first waypoint";
-            return $"Approaching {target} ({_services.Walker.CurrentStepIndex + 1}" +
-                   $"/{_services.Walker.StepCount})";
-        }
-
-        // Circle phase: show step N/K + lap counter + average lap. The lap the
-        // walker is on is completed-laps + 1; the average only exists once a lap
-        // has closed.
-        int laps = runner.CompletedLaps;
-        int total = runner.StepCount;
-        int stepNum = total == 0 ? 0 : runner.CurrentIndex + 1;
-        string lapPart = laps == 0
-            ? "lap 1"
-            : $"lap {laps + 1} · avg {FormatDuration(runner.AverageLapTime)}";
-        return $"{loop.Name} · step {stepNum}/{total} · {lapPart}";
-    }
-
-    private static string FormatDuration(TimeSpan t)
-    {
-        if (t.TotalMinutes >= 1) return $"{(int)t.TotalMinutes}m {t.Seconds}s";
-        return $"{t.Seconds}s";
-    }
-
     // Progress as a 0..1 fraction for the small inline bar; null when no
     // progress meter applies (e.g. Auto-Lair).
     public double? CurrentNavProgress
@@ -2903,9 +2840,14 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
                 Game.Map.LoopRunner runner = _services.LoopRunner;
                 if (runner.CurrentLoop is not { } loop) break;
 
-                // Approach phase: borrow the walker's step list so the
-                // user sees the actual moves driving them to the entry
-                // waypoint, not the dormant loop's circle.
+                // Approach phase: show the walker's approach steps FIRST,
+                // then the loop's own circle steps appended below (all
+                // Upcoming — the loop hasn't begun). The runner expands its
+                // circle up front, so ExpandedSteps is already the rotated
+                // cycle we'll run on arrival. Numbering continues across both
+                // so the user reads one itinerary: walk to the entry, then
+                // loop. Once the approach finishes the view drops to the
+                // loop-only branch below.
                 if (runner.State == Game.Map.LoopState.Approaching)
                 {
                     int idx = _services.Walker.CurrentStepIndex;
@@ -2917,6 +2859,14 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
                             : (i == idx ? CurrentNavRowStatus.Current : CurrentNavRowStatus.Upcoming);
                         CurrentNavRows.Add(new CurrentNavRowViewModel(
                             index: i + 1, label: steps[i].Display, status: status));
+                    }
+                    IReadOnlyList<LoopStep> circle = runner.ExpandedSteps;
+                    for (int i = 0; i < circle.Count; i++)
+                    {
+                        CurrentNavRows.Add(new CurrentNavRowViewModel(
+                            index: steps.Count + i + 1,
+                            label: circle[i].Display,
+                            status: CurrentNavRowStatus.Upcoming));
                     }
                     break;
                 }

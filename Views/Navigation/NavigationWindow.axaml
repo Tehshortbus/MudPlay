@@ -694,11 +694,9 @@
                 </StackPanel>
             </Border>
 
-            <!-- RIGHT RAIL — ClipToBounds keeps long text from overflowing
-                 the 290px column. Without it, a long CurrentNavHeader
-                 (e.g. "Looping {long name} on step 10 of 16") was
-                 measuring wider than the rail and rendering past the
-                 right edge, making the section look stretched relative
+            <!-- RIGHT RAIL — ClipToBounds keeps long step labels from
+                 overflowing the 290px column and rendering past the right
+                 edge, which would make the section look stretched relative
                  to GOTO/LOOPS. -->
             <Border Grid.Column="1"
                     ClipToBounds="True"
@@ -730,25 +728,9 @@
                                                Margin="0"/>
                                 </Expander.Header>
                                 <StackPanel Spacing="4" HorizontalAlignment="Stretch">
-                            <!-- TextTrimming + single-line + MaxWidth keeps
-                                 a long loop name ("Looping {name} on step
-                                 X of Y") from forcing a wrap or pushing
-                                 the StackPanel's MEASURED width past the
-                                 rail (trimming only affects rendering;
-                                 measure still reports the natural text
-                                 width unless we cap it).
-                                 250 ≈ 290 px rail – 10/10 padding – 20 px
-                                 safety so the text never reaches the
-                                 chevron column. Tooltip carries the
-                                 untrimmed value for users who hover. -->
-                            <TextBlock Text="{Binding CurrentNavHeader}"
-                                       Foreground="{StaticResource ChromeFgSecBrush}"
-                                       FontSize="11"
-                                       TextTrimming="CharacterEllipsis"
-                                       MaxWidth="250"
-                                       HorizontalAlignment="Left"
-                                       ToolTip.Tip="{Binding CurrentNavHeader}"
-                                       Margin="0,0,0,4"/>
+                            <!-- The section's description line lives up in the
+                                 top-bar action label (TopBarStatusText) now, so
+                                 CURRENT NAV holds only its step rows. -->
                             <!-- Building-loop click list — visible only while in LoopBuild mode.
                                  Click a row to remove that waypoint; drag a row to reorder. -->
                             <ListBox Name="BuilderClicksList"
@@ -915,8 +897,7 @@
                                     <!-- Empty-state hint — cap MaxWidth +
                                          keep wrapping so a long string
                                          can't push the rail wider than
-                                         the 290 px column (same gotcha
-                                         CurrentNavHeader hit). -->
+                                         the 290 px column. -->
                                     <TextBlock Text="No favourites — right-click a room → Add to favorites."
                                                Foreground="{StaticResource ChromeFgMutedBrush}"
                                                FontSize="11"
