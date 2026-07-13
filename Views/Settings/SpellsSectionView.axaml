@@ -246,11 +246,11 @@
                                 <TextBlock Grid.Column="0" Classes="FieldLabel" Text="{Binding Label}"/>
                                 <AutoCompleteBox Grid.Column="1"
                                                  Text="{Binding Spell, Mode=TwoWay}"
-                                                 ItemsSource="{Binding $parent[ItemsControl].((vm:SpellsSectionViewModel)DataContext).SpellSuggestions}"
+                                                 ItemsSource="{Binding $parent[ItemsControl].((vm:SpellsSectionViewModel)DataContext).BlessSpellSuggestions}"
                                                  ValueMemberBinding="{ReflectionBinding Short}"
                                                  ItemFilter="{Binding $parent[ItemsControl].((vm:SpellsSectionViewModel)DataContext).SpellSuggestionFilter}"
                                                  ItemTemplate="{StaticResource SpellPickItem}"
-                                                 PlaceholderText="Type code or name…"
+                                                 PlaceholderText="Type spell or #item…"
                                                  Width="260" HorizontalAlignment="Left"/>
                             </Grid>
                         </DataTemplate>
