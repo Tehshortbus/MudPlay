@@ -10,21 +10,23 @@ namespace FujinTerm.Game.Cash;
 // platinum 10 000, runic 1 000 000 — the single source of truth for the ratio.
 // Names are the stock denomination words; callers on a realm that renames the
 // runic word (Settings → BBS) pass it through the optional runicName argument so
-// the top rung reads the board's label instead of "runic".
+// the top rung reads the board's label instead of "runic". Denominate renders the
+// abbreviated column (plat / silv / copp) to fit the narrow Session Stats cells;
+// Full keeps the whole words so its tooltip still mirrors the game's wealth line.
 public static class CurrencyFormat
 {
     // Copper worth of the top (runic) rung — the only denomination whose label
     // is board-renameable.
     private const long RunicWorth = 1_000_000;
     // Largest denomination first, so the flip-up scan takes the first rung the
-    // amount clears.
-    private static readonly (long Worth, string Name)[] Ladder =
+    // amount clears. Short is Denominate's compact label; Name is Full's whole word.
+    private static readonly (long Worth, string Name, string Short)[] Ladder =
     {
-        (1_000_000, "runic"),
-        (10_000,    "platinum"),
-        (100,       "gold"),
-        (10,        "silver"),
-        (1,         "copper"),
+        (1_000_000, "runic",    "runic"),
+        (10_000,    "platinum", "plat"),
+        (100,       "gold",     "gold"),
+        (10,        "silver",   "silv"),
+        (1,         "copper",   "copp"),
     };
 
     // Compact single-denomination text: the coin "flips up" as the amount grows,
@@ -33,13 +35,13 @@ public static class CurrencyFormat
     // columns where a full itemised wealth line wouldn't. Negatives clamp to 0.
     public static string Denominate(double copper, string? runicName = null)
     {
-        if (copper <= 0) return "0 copper";
-        foreach ((long worth, string name) in Ladder)
+        if (copper <= 0) return "0 copp";
+        foreach ((long worth, _, string shrt) in Ladder)
         {
             if (copper >= worth)
-                return string.Create(CultureInfo.InvariantCulture, $"{Trim(copper / worth)} {LabelFor(worth, name, runicName)}");
+                return string.Create(CultureInfo.InvariantCulture, $"{Trim(copper / worth)} {LabelFor(worth, shrt, runicName)}");
         }
-        return "0 copper"; // unreachable: any copper >= 1 clears the copper rung
+        return "0 copp"; // unreachable: any copper >= 1 clears the copper rung
     }
 
     // Fully itemised wealth line, largest denomination first, zero rungs skipped
@@ -50,7 +52,7 @@ public static class CurrencyFormat
         if (copper <= 0) return "0 copper";
         List<string> parts = new();
         long remaining = copper;
-        foreach ((long worth, string name) in Ladder)
+        foreach ((long worth, string name, _) in Ladder)
         {
             long count = remaining / worth;
             if (count > 0)
