@@ -2891,17 +2891,26 @@ public partial class MainWindowViewModel : ObservableObject
             RecentProfiles.Remove(recent);
             return;
         }
-        try
+        // Defer the load off the menu-click call stack. Loading a profile
+        // repositions/resizes the main window (WindowLayoutStore restores the
+        // profile's saved bounds on ProfileLoaded); running that synchronously
+        // here moves the window while the File menu's popup is still open, so the
+        // flyout is left stranded at the window's old position until the click
+        // returns. Posting lets the menu close first, then the reposition lands.
+        Dispatcher.UIThread.Post(() =>
         {
-            profile.Load(recent.Bbs, recent.Name);
-            PromoteRecent(recent);
-            SyncProfileMenuState();
-        }
-        catch (Exception ex)
-        {
-            AppServices.Current.Log.Error("Profile",
-                $"Failed to load '{recent.Name}' on '{recent.Bbs}': {ex.Message}");
-        }
+            try
+            {
+                profile.Load(recent.Bbs, recent.Name);
+                PromoteRecent(recent);
+                SyncProfileMenuState();
+            }
+            catch (Exception ex)
+            {
+                AppServices.Current.Log.Error("Profile",
+                    $"Failed to load '{recent.Name}' on '{recent.Bbs}': {ex.Message}");
+            }
+        });
     }
 
     private void PromoteRecent(ProfileRef profileRef)

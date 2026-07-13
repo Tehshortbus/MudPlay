@@ -1,10 +1,8 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.53.0**
-> - Memory footprint is now sampled once a minute to its own Data/Logs/{ts}-memory.log (working set, private, managed heap, GC heap, fragmentation, collection counts) — kept out of the program log
-> - Session Stats per-hour rates (kills, exp, currency) now measure over a rolling window capped at 4 hours, so an all-night loop reports its recent pace instead of the whole night blended — the kill/exp histories are trimmed to that window so they no longer grow unbounded
-> - Party window disposes its view-model on close, releasing its subscriptions to the app-lifetime party state
+> **Version 1.53.1**
+> - Selecting a recently-used profile no longer strands the File menu flyout at the window's old position — the profile load (and its window reposition) is deferred until the menu closes
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->
