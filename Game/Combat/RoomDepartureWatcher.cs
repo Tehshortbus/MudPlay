@@ -4,9 +4,10 @@ using FujinTerm.Services.Patterns;
 namespace FujinTerm.Game.Combat;
 
 // Observes mid-room departure lines and removes the departing monster from
-// RoomEntityClassifier.Current. "<name> walks out of the room to <dir>." fires
-// when a monster leaves our room — most often when a fleeing player drags the
-// mob we were engaged with out with them (see the 180449 capture).
+// RoomEntityClassifier.Current. "<name> walks out of the room to <dir>." and
+// "<name> exits the room to <dir>." fire when a monster leaves our room — most
+// often when a fleeing player drags the mob we were engaged with out with them
+// (see the 180449 + paradigm drag-out captures).
 //
 // Critical for combat gating: CombatStateTracker only re-evaluates the Combat
 // gate on RoomEntityClassifier.EntitiesObserved. A departure produces no room

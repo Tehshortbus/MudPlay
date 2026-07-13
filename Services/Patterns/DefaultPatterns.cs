@@ -267,13 +267,13 @@ public static class DefaultPatterns
         yield return new RegexPattern(KnownPatterns.SneakArrivalNotice,
             @"^You notice (?<name>\w+) sneaking in from (?:the )?(?<direction>[\w-]+)[.!]\s*$");
 
-        // Room-exit departure — mirror of the arrival line. "The orc rogue walks
-        // out of the room to the above!" is the canonical form seen when a
-        // fleeing player drags an engaged mob out with them. Only one departure
-        // wording is confirmed so far; add alternates here if the game emits
-        // others.
+        // Room-exit departure — mirror of the arrival line. A fleeing player who
+        // drags an engaged mob out prints one of two confirmed wordings: "The orc
+        // rogue walks out of the room to the above!" or "dark goblin archer exits
+        // the room to the northeast.". Both share the "… the room to <dir>" tail;
+        // only the verb differs. Add more alternates here if the game emits others.
         yield return new RegexPattern(KnownPatterns.RoomEntryDeparture,
-            @"^(?<name>.+?) walks out of the room to (?:the )?(?<direction>[\w-]+)[.!]\s*$");
+            @"^(?<name>.+?) (?:walks out of|exits) the room to (?:the )?(?<direction>[\w-]+)[.!]\s*$");
 
         // ----- Conversation ---------------------------------------------
         // Auction lines share gossip's shape ("X auctions: ...") and the user

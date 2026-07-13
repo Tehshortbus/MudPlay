@@ -7,6 +7,7 @@
 > - Main status bar shows a walk-to readout while travelling — `C: map/room  D: map/room  Steps: <remaining> - <exp/hr>`; a loop keeps this readout while approaching its start and only switches to the lap counter once it begins cycling
 > - CURRENT NAV lists the walk-to steps and the loop's own steps together while approaching, then collapses to just the loop steps once the walk-to finishes
 > - CURRENT NAV's description line moved up next to the "Navigation" title as a plain-English action line — "Walking to (map/room) - Name then looping <loop>" while approaching, "Looping <loop> - step X of Y on lap Z" while cycling
+> - A monster dragged out by fleeing players ("<name> exits the room to …") now clears the fight — combat state, the fighting chip, and the paused walker all resume instead of hanging while the client swings at empty air
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->
