@@ -3,6 +3,7 @@
 <!-- current-version:start -->
 > **Version 1.41.1**
 > - Faster loop step-off after a cleared room — the loot settle window drops from 600 ms to 400 ms
+> - Navigation routes around a door the character can't pick or bash, taking a traversable alternate entrance instead of walking the loop into a door it can only bonk on
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

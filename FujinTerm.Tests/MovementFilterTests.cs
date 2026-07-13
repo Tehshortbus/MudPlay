@@ -881,6 +881,146 @@ public sealed class MovementFilterTests
             Assert.True(filter.IsExitBlocked(GatedExit(20, 0)));
     }
 
+    // ----- IsExitBlocked: plain (Door) pick/bash achievability gate ---
+
+    // A keyless "(Door [N picklocks/strength])" — opened only by pick or bash.
+    private static RoomExit DoorExit(int statReq, bool canBash = true) =>
+        new(new RoomKey(1, 2), RoomExitHint.Door, RawHint: null,
+            StatRequirement: statReq, CanBash: canBash);
+
+    [Fact]
+    public void IsExitBlocked_Door_NoStats_DoesNotBlock()
+    {
+        (_, MovementFilter filter) = NewPair();
+        // Strength / Picklocks providers unset → unknown build, leave to FSM.
+        Assert.False(filter.IsExitBlocked(DoorExit(251)));
+    }
+
+    [Fact]
+    public void IsExitBlocked_Door_Unopenable_Blocks()
+    {
+        // The Bandit Keep front door: req 251, str 96, picks 0, bashable but
+        // 251 sits above the realm bash ceiling → routed around at plan time.
+        (_, MovementFilter filter) = NewPair();
+        filter.StrengthProvider = () => 96;
+        filter.PicklocksProvider = () => 0;
+        filter.MaxBashableStrengthProvider = () => 200;
+        Assert.True(filter.IsExitBlocked(DoorExit(251)));
+    }
+
+    [Fact]
+    public void IsExitBlocked_Door_Bashable_Allows()
+    {
+        (_, MovementFilter filter) = NewPair();
+        filter.StrengthProvider = () => 60;
+        filter.PicklocksProvider = () => 0;
+        filter.MaxBashableStrengthProvider = () => 200;
+        Assert.False(filter.IsExitBlocked(DoorExit(50)));   // str 60 ≥ req 50
+    }
+
+    [Fact]
+    public void IsExitBlocked_Door_Pickable_Allows()
+    {
+        (_, MovementFilter filter) = NewPair();
+        filter.StrengthProvider = () => 0;
+        filter.PicklocksProvider = () => 60;
+        filter.MaxBashableStrengthProvider = () => 200;
+        Assert.False(filter.IsExitBlocked(DoorExit(50, canBash: false)));  // picks 60 ≥ 50
+    }
+
+    [Fact]
+    public void IsExitBlocked_Door_NoRequirement_Allows()
+    {
+        (_, MovementFilter filter) = NewPair();
+        filter.StrengthProvider = () => 10;
+        filter.PicklocksProvider = () => 0;
+        Assert.False(filter.IsExitBlocked(DoorExit(0)));   // "(Door)" — anyone opens
+    }
+
+    [Fact]
+    public void IsExitBlocked_Door_PickOnlyInsufficient_Blocks()
+    {
+        (_, MovementFilter filter) = NewPair();
+        filter.StrengthProvider = () => 300;   // strong, but bash is barred
+        filter.PicklocksProvider = () => 40;
+        filter.MaxBashableStrengthProvider = () => 200;
+        Assert.True(filter.IsExitBlocked(DoorExit(80, canBash: false)));  // picks 40 < 80
+    }
+
+    [Fact]
+    public void Door_Gate_StaysActive_UnderSuspendAcquirableGates()
+    {
+        // A strength door has no acquirable unlock, so the route picker's
+        // gated-route pass must NOT wave it through the way it does an item /
+        // key door — else the picker plans a route into a door it can't open.
+        (_, MovementFilter filter) = NewPair();
+        filter.StrengthProvider = () => 96;
+        filter.PicklocksProvider = () => 0;
+        filter.MaxBashableStrengthProvider = () => 200;
+        RoomExit door = DoorExit(251);
+
+        Assert.True(filter.IsExitBlocked(door));
+        using (filter.SuspendAcquirableGates())
+            Assert.True(filter.IsExitBlocked(door));   // still blocked during
+        Assert.True(filter.IsExitBlocked(door));       // restored after
+    }
+
+    [Fact]
+    public void BfsMapper_RoutesAroundUnopenableDoor()
+    {
+        // 1/1 ─E(Door [251 picklocks/strength])→ 1/2   (1 hop, unopenable)
+        // 1/1 ─N→ 1/3 ─E→ 1/2                          (2 hops, all plain)
+        // A build that can't open the door must take the longer plain route;
+        // a build that can takes the 1-hop door.
+        string root = Path.Combine(Path.GetTempPath(),
+            "fujinterm-door-routearound-" + Path.GetRandomFileName());
+        try
+        {
+            string setDir = Path.Combine(root, "alpha");
+            Directory.CreateDirectory(setDir);
+            File.WriteAllText(Path.Combine(setDir, "Rooms.json"), """
+                [
+                  { "Map Number": 1, "Room Number": 1, "Name": "Outside",
+                    "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+                    "N": "1/3", "S": "0", "E": "1/2 (Door [251 picklocks/strength])", "W": "0",
+                    "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+                  { "Map Number": 1, "Room Number": 2, "Name": "Inside",
+                    "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+                    "N": "0", "S": "0", "E": "0", "W": "1/1 (Door [251 picklocks/strength])",
+                    "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+                  { "Map Number": 1, "Room Number": 3, "Name": "Wall",
+                    "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+                    "N": "0", "S": "0", "E": "1/2", "W": "1/1",
+                    "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+                ]
+                """);
+            GameDataCache cache = new(root);
+            cache.SwitchSet("alpha");
+            RoomGraphManager graph = new(cache);
+            graph.OnActiveSetChanged("alpha");
+            BfsMapper bfs = new(graph);
+
+            (_, MovementFilter filter) = NewPair();
+            filter.PicklocksProvider = () => 0;
+            filter.MaxBashableStrengthProvider = () => 300;
+
+            filter.StrengthProvider = () => 96;   // can't muscle req 251
+            Assert.Equal(
+                new[] { Direction.N, Direction.E },
+                bfs.FindPath(new RoomKey(1, 1), new RoomKey(1, 2), filter));
+
+            filter.StrengthProvider = () => 255;  // now bashes req 251 (≤ ceiling 300)
+            Assert.Equal(
+                new[] { Direction.E },
+                bfs.FindPath(new RoomKey(1, 1), new RoomKey(1, 2), filter));
+        }
+        finally
+        {
+            try { Directory.Delete(root, recursive: true); }
+            catch { /* best-effort */ }
+        }
+    }
+
     // ----- IsExitBlocked: room-entry hazard gates --------------------
 
     // Spell 700 damages on entry; item 42 negates it — the minimal shape of a

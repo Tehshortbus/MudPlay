@@ -164,13 +164,13 @@ public sealed class MovementFilter : IRoomFilter
     // An exit is non-traversable for planning when its level window excludes
     // the crosser, it's a toll the crosser can't afford, it's a class gate for
     // a class we aren't, it needs an item / ticket / door-key we can't produce,
-    // or it leads into a room whose cast-on-enter hazard we can't survive. The
-    // gate kinds are independent (a toll exit carries Hint=Toll; a level or
-    // class gate is a plain cardinal carrying a window / allowed-class), so
-    // each is checked.
+    // it's a plain door the crosser can't pick or bash, or it leads into a room
+    // whose cast-on-enter hazard we can't survive. The gate kinds are
+    // independent (a toll exit carries Hint=Toll; a level or class gate is a
+    // plain cardinal carrying a window / allowed-class), so each is checked.
     public bool IsExitBlocked(in RoomExit exit) =>
         IsLevelGateBlocked(in exit) || IsTollGateBlocked(in exit) || IsClassGateBlocked(in exit)
-        || IsItemGateBlocked(in exit) || IsHazardEntryBlocked(in exit);
+        || IsItemGateBlocked(in exit) || IsImpassableDoorBlocked(in exit) || IsHazardEntryBlocked(in exit);
 
     // Item / ticket / key-locked-door gates. Suspended for the gated-route
     // planning pass. Only evaluated once inventory is known — an unparsed
@@ -199,17 +199,37 @@ public sealed class MovementFilter : IRoomFilter
     }
 
     // A locked door is impassable only when we can neither key, pick, nor bash
-    // it. Reuses DoorPolicy.IsAchievable — the walker's own fail-fast door
-    // matrix — so the filter and the door FSM never disagree on whether a door
-    // opens; the key is the extra opener that matrix doesn't model. Stat inputs
-    // unknown → treat as passable and leave the door to the traversal-time FSM.
+    // it. The key is the extra opener the stat matrix doesn't model; everything
+    // else defers to CanOpenByStat (shared with the plain-door gate).
     private bool IsLockedDoorImpassable(in RoomExit exit, Func<int, bool> carries)
     {
         if (exit.KeyItemId > 0 && carries(exit.KeyItemId)) return false;   // have the key
-        if (StrengthProvider?.Invoke() is not { } strength) return false;
-        if (PicklocksProvider?.Invoke() is not { } picks) return false;
+        return !CanOpenByStat(in exit);
+    }
+
+    // A plain "(Door)" carries no key — its only openers are pick and bash,
+    // both innate stats you can't pick up en route. So unlike a KeyLocked door
+    // it's NOT an acquirable gate: it stays active through the route picker's
+    // SuspendAcquirableGates pass (a route that assumes every gate item in hand
+    // still can't muscle a door the build lacks the strength / picklocks for),
+    // which is why it lives here and not in IsItemGateBlocked. Provably
+    // unopenable → routed around at plan time so BFS falls through to a
+    // traversable alternate instead of walking the loop into a door it can only
+    // bonk on.
+    private bool IsImpassableDoorBlocked(in RoomExit exit) =>
+        exit.Hint == RoomExitHint.Door && !CanOpenByStat(in exit);
+
+    // Can the crosser force this door open with innate stats alone (pick or
+    // bash)? Reuses DoorPolicy.IsAchievable — the walker's own fail-fast door
+    // matrix — so the filter and the door FSM never disagree on whether a door
+    // opens. Stat inputs unknown → treat as openable (passable) and leave the
+    // door to the traversal-time FSM rather than route around an unknown build.
+    private bool CanOpenByStat(in RoomExit exit)
+    {
+        if (StrengthProvider?.Invoke() is not { } strength) return true;
+        if (PicklocksProvider?.Invoke() is not { } picks) return true;
         int maxBash = MaxBashableStrengthProvider?.Invoke() ?? DoorPolicy.UnbashableStrengthThreshold;
-        return !DoorPolicy.IsAchievable(exit.StatRequirement, exit.CanBash, strength, picks, maxBash);
+        return DoorPolicy.IsAchievable(exit.StatRequirement, exit.CanBash, strength, picks, maxBash);
     }
 
     // Blocks stepping into a room whose cast-on-enter spell is a protectable

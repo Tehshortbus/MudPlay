@@ -5,6 +5,8 @@ Notable changes per merged PR, **newest first**. The top of the [README](README.
 ## 1.41.1
 
 - Faster loop step-off after a cleared room — the loot settle window drops from 600 ms to 400 ms
+- Navigation routes around a door the character can't pick or bash (a Bandit Keep front door needs far more strength than any build can reach), so a loop approach takes a traversable alternate entrance instead of walking into a door it can only bonk on
+- bug reports addressed: paradigm-20260712-172326
 
 ## 1.41.0
 
