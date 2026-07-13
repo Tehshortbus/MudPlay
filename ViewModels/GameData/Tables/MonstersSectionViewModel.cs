@@ -369,19 +369,19 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
                 AddRow(kv, "Guarded by", string.Join(", ", guardNames));
             }
 
-            // Item Drops — one row per non-zero DropItem-N slot. First
-            // row carries the "Item Drops" header label; subsequent
-            // rows use a blank key so they visually indent.
-            for (int i = 0, shown = 0; i < 10; i++)
+            // Item Drops — one clickable chip per non-zero DropItem-N slot,
+            // each jumping to the item's Items-tab record. Chip label is
+            // "name (pct%)" (pct omitted when the slot has no drop chance).
+            List<(int Id, string Text)> drops = new();
+            for (int i = 0; i < 10; i++)
             {
                 int itemId = ReadInt(el, $"DropItem-{i}");
                 if (itemId == 0) continue;
                 int pct = ReadInt(el, $"DropItem%-{i}");
                 string itemName = LookupItemName(itemId) ?? $"Item #{itemId}";
-                string row = pct > 0 ? $"{itemName} ({pct}%)" : itemName;
-                AddRow(kv, shown == 0 ? "Item Drops" : string.Empty, row);
-                shown++;
+                drops.Add((itemId, pct > 0 ? $"{itemName} ({pct}%)" : itemName));
             }
+            AddItemList(kv, "Item Drops", drops);
 
             // ----- Mob's Attacks (each AttType-N in 1..3 with Att%>0
             // gets its own header + sub-rows) -----
@@ -778,6 +778,18 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
             ? rooms.Select(k => new RoomLink($"{k.Map}/{k.Room}", k, dialogs)).ToList()
             : null;
         kv.Add(new MdbInfoRow($"{label} ({rooms.Count})", list, Rooms: links));
+    }
+
+    // Append an "Item Drops (N)" row listing every dropped item as a clickable
+    // chip that jumps the browser's Items tab to that item. Mirrors AddRoomList;
+    // the joined string is the plain-text fallback the row also carries. No-op
+    // when the monster drops nothing.
+    private static void AddItemList(List<MdbInfoRow> kv, string label, IReadOnlyList<(int Id, string Text)> items)
+    {
+        if (items.Count == 0) return;
+        string list = string.Join(", ", items.Select(i => i.Text));
+        IReadOnlyList<ItemLink> links = items.Select(i => new ItemLink(i.Text, i.Id)).ToList();
+        kv.Add(new MdbInfoRow($"{label} ({items.Count})", list, Items: links));
     }
 
     // True when a Room.RawLairTag lists wccNo as one of its spawn monsters. v1.11p tags are
