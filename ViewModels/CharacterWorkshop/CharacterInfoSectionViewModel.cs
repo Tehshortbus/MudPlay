@@ -113,8 +113,12 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
     [ObservableProperty] private string _kickDamage = "—";
     [ObservableProperty] private string _jumpKickAccuracy = "—";
     [ObservableProperty] private string _jumpKickDamage = "—";
-    // Punch/Kick/Jumpkick rows visible only for Stock characters with a positive Martial Arts skill.
-    [ObservableProperty] private bool _showMartialArts;
+    // Martial-arts strike rows are gated per-attack on the class innately granting
+    // that strike (Mystic carries Punch / Kick / Jumpkick); a trained Martial Arts
+    // skill alone doesn't grant the special strikes, so it no longer drives these.
+    [ObservableProperty] private bool _showPunch;
+    [ObservableProperty] private bool _showKick;
+    [ObservableProperty] private bool _showJumpKick;
 
     // ----- Box A: alignment standing -------------------------------------
     // Rendered on the last row of Box A (where the game prints "You are
@@ -357,12 +361,18 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
             BackstabDamage = string.Empty;
         }
 
-        // Martial-arts attacks — Mystic special attacks. Shown for any realm
-        // with a positive Martial Arts skill; the damage formula branches Stock
-        // vs GreaterMUD inside CalcMartialArtsDamage.
-        int maSkill = _stats.MartialArts;
-        bool showMa = maSkill > 0;
-        ShowMartialArts = showMa;
+        // Martial-arts attacks — Mystic special strikes. Each strike row is gated
+        // on the class innately granting that ability (Punch 29 / Kick 30 /
+        // Jumpkick 35); a trained Martial Arts skill from items/races doesn't
+        // unlock the strikes. The damage formula branches Stock vs GreaterMUD
+        // inside CalcMartialArtsDamage.
+        bool hasPunch = ClassCapabilities.ClassHasPunch(classRow);
+        bool hasKick = ClassCapabilities.ClassHasKick(classRow);
+        bool hasJumpKick = ClassCapabilities.ClassHasJumpKick(classRow);
+        ShowPunch = hasPunch;
+        ShowKick = hasKick;
+        ShowJumpKick = hasJumpKick;
+        bool showMa = hasPunch || hasKick || hasJumpKick;
         if (showMa && level > 0 && nCombatLevel > 0)
         {
             // MA accuracy is the normal-attack accuracy with weapon-hand accy
@@ -464,16 +474,16 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
     {
         InventorySnapshot snap = _inventory.Snapshot;
 
-        // Show the carry weight and the game's own bracket word (None / Light /
-        // Medium / Heavy / Encumbered) beside it, so the number carries the same
-        // gate the `enc` line reports. Drop the word only if the bracket is
-        // Unknown (no reading yet).
+        // Show the carry weight, the game's own bracket word (None / Light /
+        // Medium / Heavy / Encumbered), and its carry-load percent beside it, so
+        // the number carries the same gate the `enc` line reports. Drop the word +
+        // percent only if the bracket is Unknown (no reading yet).
         EncumbranceReading enc = snap.Encumbrance;
         Encumbrance = enc.MaxWeight <= 0
             ? "—"
             : enc.Category == EncumbranceLevel.Unknown
                 ? string.Create(CultureInfo.InvariantCulture, $"{enc.CurrentWeight} / {enc.MaxWeight}")
-                : string.Create(CultureInfo.InvariantCulture, $"{enc.CurrentWeight} / {enc.MaxWeight} — {enc.Category}");
+                : string.Create(CultureInfo.InvariantCulture, $"{enc.CurrentWeight} / {enc.MaxWeight} — {enc.Category} [{enc.Percentage}%]");
 
         CurrencyHoldings coins = snap.Currency;
         CurrencyHeld = FormatCoins(coins);

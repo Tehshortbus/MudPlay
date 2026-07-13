@@ -2,6 +2,13 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.52.0
+
+- Navigation loop / Auto-Lair and GOTO favourite rows hug the rail edge — reclaimed the tree's fixed left chevron gutter
+- Nav loop / Auto-Lair Run buttons no longer sit under the overlay scrollbar (right inset added to the trees)
+- Character Info encumbrance shows the carry-load percent beside the bracket word; the label is shortened to "Enc"
+- Punch / Kick / Jumpkick combat rows show only for classes that innately grant the strike (Mystic), not any character with a trained Martial Arts skill
+
 ## 1.51.0
 
 - Item Finder surfaces more per-item stats — attribute (+STR/INT/…), min & max damage, spell-damage, resists, and skills (stealth / picklocks / traps / …), plus carry weight and light — as filterable columns

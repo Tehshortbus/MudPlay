@@ -127,4 +127,36 @@ public sealed class ClassCapabilitiesTests : IDisposable
         Assert.False(ClassCapabilities.ClassHasStealth(null));
         Assert.False(ClassCapabilities.RaceHasStealth(null));
     }
+
+    [Fact]
+    public void MartialArtsStrikes_DetectsAbilities29_30_35()
+    {
+        // Mystic carries Punch (29), Kick (30), Jumpkick (35) in its Abil slots;
+        // a non-Mystic class carries none, so its strike rows stay hidden even if
+        // the character trained the Martial Arts skill via items/races.
+        GameDataCache cache = CacheWith(
+            ("Classes", new[]
+            {
+                Row(("Number", 15), ("Name", "Mystic"), ("Abil-2", 29), ("Abil-3", 30), ("Abil-4", 35)),
+                Row(("Number", 1), ("Name", "Warrior")),
+            }));
+
+        JsonElement? mystic = cache.FindRowByName("Classes", "Mystic");
+        Assert.True(ClassCapabilities.ClassHasPunch(mystic));
+        Assert.True(ClassCapabilities.ClassHasKick(mystic));
+        Assert.True(ClassCapabilities.ClassHasJumpKick(mystic));
+
+        JsonElement? warrior = cache.FindRowByName("Classes", "Warrior");
+        Assert.False(ClassCapabilities.ClassHasPunch(warrior));
+        Assert.False(ClassCapabilities.ClassHasKick(warrior));
+        Assert.False(ClassCapabilities.ClassHasJumpKick(warrior));
+    }
+
+    [Fact]
+    public void MartialArtsStrikes_NullRow_IsFalse()
+    {
+        Assert.False(ClassCapabilities.ClassHasPunch(null));
+        Assert.False(ClassCapabilities.ClassHasKick(null));
+        Assert.False(ClassCapabilities.ClassHasJumpKick(null));
+    }
 }

@@ -261,6 +261,12 @@ it isn't here and you're unsure, ask.
   an engine-issued between-round cast — in this realm a spell is cast by typing its cast-code
   (`Spells.Short`) directly (`swan`, `swan rat`), with no `c` verb precursor, so the client
   recognises a manual cast by that cast-code on the wire.
+- **[CONFIRMED]** **Martial-arts strikes (Punch / Kick / Jumpkick) are class-innate abilities, not a
+  function of the trained Martial Arts skill.** A class grants a strike by listing its ability id in
+  an `Abil-0..9` slot: **Punch = 29, Kick = 30, Jumpkick = 35** (Mystic carries all three at value 1
+  across every observed stock + Paradigm set; no other class carries any). The Martial Arts *skill*
+  stat can be raised by items/races without unlocking the strikes, so the Character Info combat panel
+  gates each strike row on the class ability — not on `MartialArts > 0`.
 
 ### Per-monster overlay automation *([CONFIRMED] 2026-07-10, user design)*
 
