@@ -2293,10 +2293,18 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
             {
                 case NavigationEngineKind.Walking:
                 {
-                    string dest = _services.Walker.Destination is { } k
+                    Game.Map.AutoWalkManager w = _services.Walker;
+                    string dest = w.Destination is { } k
                         ? FormatRoomRef(k)
                         : "?";
-                    return $"Walking to {dest}";
+                    // Spell out progress like the loop readout does: step is the
+                    // next-to-send index 1-based, clamped to the path length;
+                    // remaining counts that step and everything past it.
+                    int total = w.StepCount;
+                    if (total <= 0) return $"Walking to {dest}";
+                    int step = Math.Min(total, w.CurrentStepIndex + 1);
+                    int remaining = Math.Max(0, total - w.CurrentStepIndex);
+                    return $"Walking to {dest} on step {step} of {total}, remaining {remaining}";
                 }
                 case NavigationEngineKind.Looping:
                 {
