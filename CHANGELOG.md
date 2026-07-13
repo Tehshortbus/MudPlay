@@ -7,6 +7,8 @@ Notable changes per merged PR, **newest first**. The top of the [README](README.
 - Settings → Toolbar + Shortcuts now lists the File-menu actions (New / Open / Save / Save As / Quit) so their keybinds are editable
 - Keybind-only rows show no icon and can't be added to the toolbar — only actions with a toolbar button can be promoted
 - Bug report captures every built-in keybinding, flagging any that differ from the default
+- Auto-deposit no longer bails out at the bank: a mid-walk route re-plan on the way there stopped aborting the reroute, so it deposits and returns to the loop as intended
+- bug reports addressed: paradigm-20260712-185119
 
 ## 1.41.1
 
