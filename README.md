@@ -1,19 +1,8 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.41.0**
-> - On Paradigm, a suspected position mismatch now asks the game where you are (`rm`) and re-anchors to the authoritative `Location: map,room` instead of dropping straight to the heuristic backtrack / "Lost" dialog
-> - The navigation engine pauses during the `rm` round-trip so the reply reports a stationary room, then re-plans from the confirmed position
-> - Heuristic backtrack recovery stays the fallback — used when the realm isn't Paradigm, the reply times out, or the reported room isn't in the map graph
-> - Bug report captures the resync state (awaiting-rm flag, request in flight, last resolved room)
-> - Auto-deposit fires again after a reroute torn down by an external stop — the guard re-arms instead of staying latched and looping past the deposit threshold forever
-> - Manually stopping a loop cancels any in-flight auto-deposit reroute, so a freshly built loop isn't yanked back toward the old route
-> - Carried wealth drops immediately after an auto-deposit, so a following toll gate isn't attempted on a stale pre-deposit balance
-> - Navigation toolbar's resume button now enables whenever the engine is paused, matching the Run entry in the navigation menu
-> - Shorter settle wait after a room is cleared and its loot collected, tightening the pause before the loop steps to the next room
-> - A fizzled self-buff no longer counts as active for its full duration — the recast timer clears on the failure so the buff re-attempts each round and holds near-100% uptime
-> - Auto-light torch-shop detour no longer tears itself down when it supersedes the in-progress walk — it reaches the shop, buys, and resumes the route instead of re-detouring forever
-> - A hand-typed `rm` on Paradigm now re-anchors the position tracker to the reported room, not only an engine-requested resync
+> **Version 1.41.1**
+> - Faster loop step-off after a cleared room — the loot settle window drops from 600 ms to 400 ms
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

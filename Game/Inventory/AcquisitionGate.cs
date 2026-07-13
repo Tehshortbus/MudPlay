@@ -38,7 +38,7 @@ public sealed class AcquisitionGate : IDisposable
     // promptly — consecutive corpse-drop gets arrive within the same server
     // frame (tens of ms), so this only has to outlast that burst, not a full
     // combat round.
-    private static readonly TimeSpan SettleWindow = TimeSpan.FromMilliseconds(600);
+    private static readonly TimeSpan SettleWindow = TimeSpan.FromMilliseconds(400);
 
     private readonly MovementCoordinator _coordinator;
     private readonly LogService? _log;
