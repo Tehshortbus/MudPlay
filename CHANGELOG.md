@@ -2,6 +2,14 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.49.0
+
+- Item Finder gains an Attack-type picker (Attack / Bash / Smash / Punch / Kick / Jumpkick); the Swings column recomputes per type — Bash halves, Smash locks to one — and the martial-arts strikes add a bare-handed attack row
+- Item Finder Slot dropdown drops its redundant Weapon entry (the Weapon-type filter already isolates weapons) and now sits below Armour type
+- Item Finder hides worn-but-limited-use items (lights, potions, containers, signs, keys) that only matched a slot by coincidence — only real armour and weapons remain
+- Item Finder wrist / finger slot labels drop the "(1)" position tag that carried no meaning there
+- Equipment Bonuses' Hit Magic now reflects only weapon-granted hit magic, matching its per-item contribution list
+
 ## 1.48.0
 
 - Game Data monster records now show each dropped item as a clickable chip that jumps to the item's record in the Items tab

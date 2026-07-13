@@ -118,6 +118,11 @@ public sealed record ItemFinderEntry
     // and when the finder is opened without a usable character context.
     public double AvgSwings { get; init; }
 
+    // True for the bare-handed attack rows (Punch / Kick / Jumpkick) the catalog
+    // synthesises under a martial-arts attack type — these aren't real items, so
+    // they carry no slot / type / equip data and bypass the item filters.
+    public bool IsSynthetic { get; init; }
+
     // The backing Items row — kept so the finder's character filter can call
     // ItemEquipFilter.CanEquip against the live class / level / alignment. Valid
     // for the lifetime of the cached Items JsonDocument.
@@ -153,13 +158,21 @@ public sealed record ItemFinderEntry
     // Project every equippable item in the active set's Items table into a
     // catalog, sorted by slot then name. Items with no resolvable slot (non-equip
     // types, Worn 0) are skipped, as are items the realm doesn't actually put in
-    // play (see IsObtainable). Empty when no Items table is loaded. When a swing
-    // context is supplied, each weapon carries its modelled 10-round swing average.
-    public static IReadOnlyList<ItemFinderEntry> BuildCatalog(GameDataCache cache, SwingContext? swing = null)
+    // play (see IsObtainable) and worn-but-consumable types that only map to a slot
+    // by coincidence (lights, potions, containers, signs, keys — see the ItemType
+    // gate below). Empty when no Items table is loaded. When a swing context is
+    // supplied, each weapon carries its modelled 10-round swing average for the
+    // given attack type; a martial-arts attack type also appends a single
+    // bare-handed attack row (Punch / Kick / Jumpkick), since those don't use a
+    // weapon.
+    public static IReadOnlyList<ItemFinderEntry> BuildCatalog(
+        GameDataCache cache, SwingContext? swing = null, MudAttackType attackType = MudAttackType.Normal)
     {
         ArgumentNullException.ThrowIfNull(cache);
         JsonDocument? doc = cache.GetRawTable("Items");
         if (doc is null) return Array.Empty<ItemFinderEntry>();
+
+        bool martialArts = attackType is MudAttackType.Punch or MudAttackType.Kick or MudAttackType.Jumpkick;
 
         var list = new List<ItemFinderEntry>();
         foreach (JsonElement row in doc.RootElement.EnumerateArray())
@@ -172,6 +185,14 @@ public sealed record ItemFinderEntry
             int itemType = GetInt(row, "ItemType");
             bool isWeapon = itemType == WeaponItemType;
             bool isArmour = itemType == ArmourItemType;
+
+            // Only permanently-equippable gear belongs in the finder — armour
+            // (incl. jewellery) and weapons. Lights, potions, containers, signs,
+            // projectiles and keys can resolve to a worn slot via their Worn code
+            // (a torch reads as a wrist item, a key-amulet as a neck item) but are
+            // consumable / limited-use, not real equipment, so they're dropped even
+            // though a slot matched.
+            if (!isWeapon && !isArmour) continue;
 
             // The slot tag picks weapon-base vs off-hand vs generic-worn handling
             // inside the aggregation — the same tag InventoryManager emits.
@@ -186,15 +207,17 @@ public sealed record ItemFinderEntry
             int armourType = isArmour ? GetInt(row, "ArmourType") : -1;
 
             int strReq = GetInt(row, "StrReq");
-            double avgSwings = isWeapon && swing is { } ctx
-                ? ctx.AvgSwingsFor(GetInt(row, "Speed"), strReq)
+            // A martial-arts attack doesn't swing the weapon, so real items carry no
+            // swing count under those types — only the appended bare-handed row does.
+            double avgSwings = isWeapon && !martialArts && swing is { } ctx
+                ? ctx.AvgSwingsFor(GetInt(row, "Speed"), strReq, attackType)
                 : 0;
 
             list.Add(new ItemFinderEntry
             {
                 Name = name,
                 Slot = slot,
-                SlotLabel = EquipmentSlotMap.Label(slot),
+                SlotLabel = EquipmentSlotMap.FamilyLabel(slot),
                 WeaponTypeLabel = isWeapon
                     ? LookupEnums.FormatWeaponType(weaponType.ToString(CultureInfo.InvariantCulture))
                     : null,
@@ -225,6 +248,13 @@ public sealed record ItemFinderEntry
             });
         }
 
+        // A martial-arts attack doesn't swing a weapon, so no real item carries a
+        // swing count under it — instead append one bare-handed attack row (Punch /
+        // Kick / Jumpkick) modelling that attack's own swing rate. Only with a usable
+        // character context; without one there's no rate to show, so nothing is added.
+        if (martialArts && swing is { IsUsable: true } maCtx)
+            list.Add(BuildMartialArtsRow(attackType, maCtx));
+
         list.Sort(static (a, b) =>
         {
             int c = a.SlotOrder.CompareTo(b.SlotOrder);
@@ -248,6 +278,29 @@ public sealed record ItemFinderEntry
         }
         return (levelReq, backstab);
     }
+
+    // Synthesise the single bare-handed attack row for a martial-arts attack type.
+    // It's not a real item — no slot, damage, or equip data — just the attack's name
+    // and its modelled swing rate, so IsSynthetic lets it bypass every item filter and
+    // the double-click-to-record jump. Sorts among weapons (Slot = Weapon) by name.
+    private static ItemFinderEntry BuildMartialArtsRow(MudAttackType attackType, SwingContext ctx) => new()
+    {
+        Name = attackType switch
+        {
+            MudAttackType.Punch => "Punch",
+            MudAttackType.Kick => "Kick",
+            MudAttackType.Jumpkick => "Jumpkick",
+            _ => attackType.ToString(),
+        },
+        Slot = EquipmentSlot.Weapon,
+        SlotLabel = string.Empty,
+        WeaponTypeLabel = "Martial Arts",
+        WeaponType = -1,
+        ArmourType = -1,
+        AvgSwings = ctx.AvgSwingsForMartialArts(attackType),
+        IsSynthetic = true,
+        Row = default,
+    };
 
     // The MDB conversion stamps "In Game" = 1 on every item the realm actually
     // spawns, sells, drops, or gates behind a quest, and 0 on sysop-only,
@@ -292,13 +345,45 @@ public sealed record ItemFinderEntry
         public bool IsUsable => Level > 0 && CombatLevel > 0;
 
         // Mean swings per round across the 10-round energy-carry simulation for a
-        // weapon of the given speed / strength requirement, or 0 when unmodellable.
-        public double AvgSwingsFor(int weaponSpeed, int weaponStrReq)
+        // weapon of the given speed / strength requirement under a physical attack
+        // type, or 0 when unmodellable. Bash doubles the per-swing energy (halving the
+        // rate); Smash locks the round to exactly one swing regardless of speed; every
+        // other type (Normal / Attack) uses the plain energy-carry model.
+        public double AvgSwingsFor(int weaponSpeed, int weaponStrReq,
+                                   MudAttackType attackType = MudAttackType.Normal)
         {
             if (!IsUsable || weaponSpeed <= 0) return 0;
+            if (attackType == MudAttackType.Smash) return 1; // energy locked to 1000 ⇒ one swing
             SwingCalcResult res = CombatCalculator.CalcSwings(
                 CombatLevel, Level, weaponSpeed, Agility, Strength, weaponStrReq,
+                CurrentEncum, MaxEncum,
+                isBashing: attackType == MudAttackType.Bash, realmType: Realm);
+            return AverageSwings(res);
+        }
+
+        // Mean swings per round for a bare-handed martial-arts attack, whose fixed
+        // attack speed replaces a weapon's and which carries no strength requirement.
+        // Speeds are MajorMUD's: Punch 1150, Kick 1400. Jumpkick differs by realm —
+        // Stock is faster (1900) than the highest-version Paradigm/GreaterMUD build
+        // (2800); those are the two values the app models (older 2900 builds aside).
+        public double AvgSwingsForMartialArts(MudAttackType attackType)
+        {
+            int speed = attackType switch
+            {
+                MudAttackType.Punch => 1150,
+                MudAttackType.Kick => 1400,
+                MudAttackType.Jumpkick => Realm == RealmType.ParaMud ? 2800 : 1900,
+                _ => 0,
+            };
+            if (speed <= 0 || !IsUsable) return 0;
+            SwingCalcResult res = CombatCalculator.CalcSwings(
+                CombatLevel, Level, speed, Agility, Strength, weaponStrReq: 0,
                 CurrentEncum, MaxEncum, realmType: Realm);
+            return AverageSwings(res);
+        }
+
+        private static double AverageSwings(SwingCalcResult res)
+        {
             int[] rounds = res.SwingsPerRound;
             if (rounds.Length == 0) return 0;
             int total = 0;

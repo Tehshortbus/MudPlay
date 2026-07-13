@@ -116,6 +116,18 @@ public static class EquipmentSlotMap
     public static string Label(EquipmentSlot slot) =>
         Labels.TryGetValue(slot, out string? l) ? l : slot.ToString();
 
+    // The slot's family label without the physical-position disambiguator the
+    // equipment-manager grid needs. The Item Finder collapses the paired Finger /
+    // Wrist slots into one family (SlotForItem always resolves to slot 1), so the
+    // "(1)" that tells the two physical slots apart carries no meaning there —
+    // "Wrist", not "Wrist (1)".
+    public static string FamilyLabel(EquipmentSlot slot) => slot switch
+    {
+        EquipmentSlot.Wrist1 or EquipmentSlot.Wrist2 => "Wrist",
+        EquipmentSlot.Finger1 or EquipmentSlot.Finger2 => "Finger",
+        _ => Label(slot),
+    };
+
     // True for the two virtual slots (AlternateWeapon / AlternateOffHand) — they
     // never send a wire wear; applying a set writes CombatSettings instead.
     public static bool IsVirtual(EquipmentSlot slot) =>

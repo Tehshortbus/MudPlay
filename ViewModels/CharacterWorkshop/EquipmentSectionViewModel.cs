@@ -412,7 +412,7 @@ public sealed partial class EquipmentSectionViewModel : WorkshopSectionViewModel
         AddAccuracyRow(b, t);
         AddIntRow(b, "Max Damage", t.PlusMaxDamage);
         AddIntRow(b, "Spell Damage", t.SpellDamageBonus);
-        AddIntRow(b, "Hit Magic", t.PlusHitMagic);
+        AddIntRow(b, "Hit Magic", t.WeaponHitMagic);
         AddIntRow(b, "Dodge", t.PlusDodge);
         AddIntRow(b, "Magic Resist", t.PlusMagicResist);
         AddIntRow(b, "BS Accuracy", t.PlusBSAccuracy);

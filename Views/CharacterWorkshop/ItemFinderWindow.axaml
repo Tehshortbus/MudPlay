@@ -76,6 +76,13 @@
                                                    ToolTip.Tip="Show only items a character of this level can wear (0 = any)."/>
                                     <TextBlock Classes="FieldLabel" Text="Usable at level"/>
                                 </DockPanel>
+                                <StackPanel Spacing="2">
+                                    <TextBlock Classes="FieldLabel" Text="Attack type"/>
+                                    <ComboBox ItemsSource="{Binding AttackTypeOptions}"
+                                              SelectedItem="{Binding SelectedAttackType, Mode=TwoWay}"
+                                              HorizontalAlignment="Stretch"
+                                              ToolTip.Tip="Which attack the Swings column models. Bash / Smash recompute each weapon; Punch / Kick / Jumpkick add a bare-handed row."/>
+                                </StackPanel>
                             </StackPanel>
                         </Border>
 
@@ -83,12 +90,6 @@
                         <Border Classes="Group">
                             <StackPanel Spacing="6">
                                 <TextBlock Classes="Group" Text="Slot &amp; type"/>
-                                <StackPanel Spacing="2">
-                                    <TextBlock Classes="FieldLabel" Text="Slot"/>
-                                    <ComboBox ItemsSource="{Binding SlotOptions}"
-                                              SelectedItem="{Binding SelectedSlot, Mode=TwoWay}"
-                                              HorizontalAlignment="Stretch"/>
-                                </StackPanel>
                                 <StackPanel Spacing="2">
                                     <TextBlock Classes="FieldLabel" Text="Weapon type"/>
                                     <ComboBox ItemsSource="{Binding WeaponTypeOptions}"
@@ -99,6 +100,12 @@
                                     <TextBlock Classes="FieldLabel" Text="Armour type"/>
                                     <ComboBox ItemsSource="{Binding ArmourTypeOptions}"
                                               SelectedItem="{Binding SelectedArmourType, Mode=TwoWay}"
+                                              HorizontalAlignment="Stretch"/>
+                                </StackPanel>
+                                <StackPanel Spacing="2">
+                                    <TextBlock Classes="FieldLabel" Text="Slot"/>
+                                    <ComboBox ItemsSource="{Binding SlotOptions}"
+                                              SelectedItem="{Binding SelectedSlot, Mode=TwoWay}"
                                               HorizontalAlignment="Stretch"/>
                                 </StackPanel>
                                 <CheckBox Content="Backstab-capable only"

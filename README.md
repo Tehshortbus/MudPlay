@@ -1,16 +1,12 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.48.0**
-> - Game Data monster records now show each dropped item as a clickable chip that jumps to the item's record in the Items tab
-> - Settings → General gains a terminal font-family + font-size picker (per-character); MX437 and size 16 are marked {default}
-> - Terminal font size relocated from the per-BBS Display tab to the per-character General tab, so the font choice follows the character
-> - Default item seed curated: only a hand-picked list auto-collects (with per-item caps) or auto-discards — every other item is left unmarked
-> - Chests/containers and Leo's steel key auto-collect by default; junk gems auto-discard
-> - Auto-collect honours each item's Max-to-get cap, counting key-ring keys, instead of grabbing every copy in a room
-> - Existing cannot-be-taken and loyal-item flags preserved; stale auto-buy / auto-sell / auto-stash defaults cleared
-> - Dead "Auto-find" checkbox removed from the item editor
-> - A door that shuts mid-combat no longer traps the walker/loop bonking a "closed door" — the refusal now re-opens it
+> **Version 1.49.0**
+> - Item Finder gains an Attack-type picker (Attack / Bash / Smash / Punch / Kick / Jumpkick); the Swings column recomputes per type — Bash halves, Smash locks to one — and the martial-arts strikes add a bare-handed attack row
+> - Item Finder Slot dropdown drops its redundant Weapon entry (the Weapon-type filter already isolates weapons) and now sits below Armour type
+> - Item Finder hides worn-but-limited-use items (lights, potions, containers, signs, keys) that only matched a slot by coincidence — only real armour and weapons remain
+> - Item Finder wrist / finger slot labels drop the "(1)" position tag that carried no meaning there
+> - Equipment Bonuses' Hit Magic now reflects only weapon-granted hit magic, matching its per-item contribution list
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->
