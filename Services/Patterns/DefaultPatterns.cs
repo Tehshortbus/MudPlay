@@ -669,6 +669,13 @@ public static class DefaultPatterns
         yield return new RegexPattern(KnownPatterns.TrainAttainLevel,
             @"^You hand over .+ and you receive training to attain level (?<level>\d+)");
 
+        // Paradigm/ParaMud variant: "You hand over 350 copper farthings to train
+        // to the next level!" — a successful train with NO attained-level number.
+        // Mutually exclusive with the stock line above (that one says "and you
+        // receive training to attain level N"); auto-train infers current+1.
+        yield return new RegexPattern(KnownPatterns.TrainAttainNextLevel,
+            @"^You hand over .+ to train to the next level");
+
         // Trainer rejections that stop the @train multi-level loop. The first
         // means we've out-levelled this trainer (more levels may remain, but not
         // here); the second means we can't afford the next level's fee.

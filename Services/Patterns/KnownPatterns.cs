@@ -329,6 +329,12 @@ public static class KnownPatterns
     // Level Projection / CP-plan level sync.
     public const string TrainAttainLevel = "train.attain-level";
 
+    // "You hand over <cost> to train to the next level!" — the Paradigm/ParaMud
+    // train-success wording. Unlike the stock line it carries NO attained level
+    // number, so auto-train infers the new level as current+1. Same effect
+    // (a level was gained), different message.
+    public const string TrainAttainNextLevel = "train.attain-next-level";
+
     // "You have progressed too far to use the training provided here." — the
     // trainer rejecting a `train` because the character has out-levelled this
     // trainer's band. A hard stop for the `@train` multi-level loop: no further

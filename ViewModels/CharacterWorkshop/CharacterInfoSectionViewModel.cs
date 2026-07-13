@@ -157,10 +157,6 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
     [ObservableProperty] private bool _hasCarried;
     // True once at least one key is known — gates the keys list in the Inventory box.
     [ObservableProperty] private bool _hasKeys;
-    // True when any coin is held — gates the coins line in the Inventory box (the
-    // same held-currency the stat grid's Coins/Wealth rows summarise, surfaced in
-    // the carry list where players expect their cash to show).
-    [ObservableProperty] private bool _hasCoins;
     // False until the first `i` dump is parsed — drives the "type i to load" hint.
     [ObservableProperty] private bool _inventoryLoaded;
 
@@ -468,14 +464,19 @@ public sealed partial class CharacterInfoSectionViewModel : WorkshopSectionViewM
     {
         InventorySnapshot snap = _inventory.Snapshot;
 
+        // Show the carry weight and the game's own bracket word (None / Light /
+        // Medium / Heavy / Encumbered) beside it, so the number carries the same
+        // gate the `enc` line reports. Drop the word only if the bracket is
+        // Unknown (no reading yet).
         EncumbranceReading enc = snap.Encumbrance;
-        Encumbrance = enc.MaxWeight > 0
-            ? string.Create(CultureInfo.InvariantCulture, $"{enc.CurrentWeight} / {enc.MaxWeight}")
-            : "—";
+        Encumbrance = enc.MaxWeight <= 0
+            ? "—"
+            : enc.Category == EncumbranceLevel.Unknown
+                ? string.Create(CultureInfo.InvariantCulture, $"{enc.CurrentWeight} / {enc.MaxWeight}")
+                : string.Create(CultureInfo.InvariantCulture, $"{enc.CurrentWeight} / {enc.MaxWeight} — {enc.Category}");
 
         CurrencyHoldings coins = snap.Currency;
         CurrencyHeld = FormatCoins(coins);
-        HasCoins = coins.TotalCopperValue > 0;
         // The wealth line mirrors the game's own "Wealth:  N copper farthings"
         // summary — the consolidated value in the base denomination, ungrouped
         // like the game (no thousands separator) and not decomposed (the Coins

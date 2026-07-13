@@ -75,6 +75,18 @@ public sealed class ShopPriceCalculatorTests
         Assert.Equal(50, ShopPriceCalculator.SellCopper(100, 50, RealmType.ParaMud));
     }
 
+    // ----- Training cost (per-level guild fee, realm/charm-independent) ----
+
+    [Theory]
+    [InlineData(30, 9999, 151480)]  // reference #135: reach L31
+    [InlineData(51, 9999, 257520)]  // reference #135: reach L52
+    [InlineData(30, 0, 1500)]       // no-markup guild
+    [InlineData(1, 9999, 5040)]     // Fix() truncates the fractional copper
+    public void TrainCopper_MatchesReferenceGuildFee(int level, int markup, double expected)
+    {
+        Assert.Equal(expected, ShopPriceCalculator.TrainCopper(level, markup));
+    }
+
     // ----- Friendly denomination reduction --------------------------------
 
     [Theory]

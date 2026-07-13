@@ -37,13 +37,20 @@ public sealed class ItemFinderCatalogTests : IDisposable
     // - silver bracer: wrist armour (ItemType 0, Worn 14) — kept; SlotLabel "Wrist".
     // - bright torch : light (ItemType 6) worn on the wrist (Worn 14) — resolves to a
     //                  slot but is limited-use, so the ItemType gate drops it.
+    // - glowing amulet: neck armour carrying weight (Encum 12) and an illumination
+    //                   ability (Abil-13 = 75) — exercises the weight/illum columns.
+    // - runed pendant : neck armour stacking several bonus abilities — Strength (46),
+    //                   min-damage (1 "Damage"), max-damage (4), shadow-resist (9) and
+    //                   stealth (27) — exercises the attribute/damage/resist/skill columns.
     private const string Items =
         "[{\"Number\":1,\"Name\":\"keen dagger\",\"ItemType\":1,\"WeaponType\":2,\"Speed\":30,\"StrReq\":0,\"Min\":5,\"Max\":10,\"In Game\":1}," +
         " {\"Number\":2,\"Name\":\"phantom blade\",\"ItemType\":1,\"WeaponType\":3,\"Speed\":40,\"StrReq\":0,\"Min\":8,\"Max\":20,\"In Game\":0}," +
         " {\"Number\":3,\"Name\":\"legacy mace\",\"ItemType\":1,\"WeaponType\":0,\"Speed\":25,\"StrReq\":0,\"Min\":4,\"Max\":9}," +
         " {\"Number\":4,\"Name\":\"amber amulet\",\"ItemType\":0,\"Worn\":8,\"In Game\":1}," +
         " {\"Number\":5,\"Name\":\"silver bracer\",\"ItemType\":0,\"Worn\":14,\"In Game\":1}," +
-        " {\"Number\":6,\"Name\":\"bright torch\",\"ItemType\":6,\"Worn\":14,\"In Game\":1}]";
+        " {\"Number\":6,\"Name\":\"bright torch\",\"ItemType\":6,\"Worn\":14,\"In Game\":1}," +
+        " {\"Number\":7,\"Name\":\"glowing amulet\",\"ItemType\":0,\"Worn\":8,\"Encum\":12,\"Abil-0\":13,\"AbilVal-0\":75,\"In Game\":1}," +
+        " {\"Number\":8,\"Name\":\"runed pendant\",\"ItemType\":0,\"Worn\":8,\"Abil-0\":46,\"AbilVal-0\":3,\"Abil-1\":1,\"AbilVal-1\":2,\"Abil-2\":4,\"AbilVal-2\":5,\"Abil-3\":9,\"AbilVal-3\":10,\"Abil-4\":27,\"AbilVal-4\":4,\"In Game\":1}]";
 
     private static ItemFinderEntry.SwingContext UsableContext() => new(
         CombatLevel: 5, Level: 30, Agility: 60, Strength: 60,
@@ -144,6 +151,53 @@ public sealed class ItemFinderCatalogTests : IDisposable
         Assert.Contains("silver bracer", names);       // ItemType 0 armour -> kept
         Assert.Contains("keen dagger", names);         // ItemType 1 weapon -> kept
         Assert.DoesNotContain("bright torch", names);  // ItemType 6 light -> dropped
+    }
+
+    [Fact]
+    public void BuildCatalog_SurfacesWeightAndIllumination()
+    {
+        IReadOnlyList<ItemFinderEntry> catalog = ItemFinderEntry.BuildCatalog(SeededCache());
+
+        // Weight reads straight off Items."Encum"; illumination folds Abil-13/14
+        // through the same aggregation the character sheet uses.
+        ItemFinderEntry glow = catalog.Single(e => e.Name == "glowing amulet");
+        Assert.Equal(12, glow.Encum);
+        Assert.Equal("12", glow.EncumText);
+        Assert.Equal(75, glow.Illuminate);
+        Assert.Equal("+75", glow.IlluminateText);
+
+        // Gear that emits no light leaves the Illum column blank.
+        ItemFinderEntry dagger = catalog.Single(e => e.Name == "keen dagger");
+        Assert.Equal(0, dagger.Illuminate);
+        Assert.Equal(string.Empty, dagger.IlluminateText);
+    }
+
+    [Fact]
+    public void BuildCatalog_SurfacesAttributeDamageResistAndSkillBonuses()
+    {
+        IReadOnlyList<ItemFinderEntry> catalog = ItemFinderEntry.BuildCatalog(SeededCache());
+
+        // Every bonus folds through the same MapAbilityToStat the character sheet
+        // uses: attribute (Str 46), min-damage (1 "Damage"), max-damage (4),
+        // shadow-resist (9) and stealth (27).
+        ItemFinderEntry pendant = catalog.Single(e => e.Name == "runed pendant");
+        Assert.Equal(3, pendant.Strength);
+        Assert.Equal("+3", pendant.StrengthText);
+        Assert.Equal(2, pendant.MinDamageBonus);
+        Assert.Equal("+2", pendant.MinDamageBonusText);
+        Assert.Equal(5, pendant.MaxDamageBonus);
+        Assert.Equal("+5", pendant.MaxDamageBonusText);
+        Assert.Equal(10, pendant.ShadowResist);
+        Assert.Equal("+10", pendant.ShadowResistText);
+        Assert.Equal(4, pendant.Stealth);
+        Assert.Equal("+4", pendant.StealthText);
+
+        // Gear without those abilities leaves each column blank.
+        ItemFinderEntry dagger = catalog.Single(e => e.Name == "keen dagger");
+        Assert.Equal(0, dagger.Strength);
+        Assert.Equal(string.Empty, dagger.StrengthText);
+        Assert.Equal(string.Empty, dagger.MinDamageBonusText);
+        Assert.Equal(string.Empty, dagger.ShadowResistText);
     }
 
     [Fact]

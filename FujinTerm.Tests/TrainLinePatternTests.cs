@@ -48,6 +48,40 @@ public sealed class TrainLinePatternTests
         Assert.False(fired);
     }
 
+    // Paradigm/ParaMud train-success wording carries no level number.
+    [Fact]
+    public void TrainAttainNextLevel_MatchesParadigmWording()
+    {
+        MessageRouter router = SeededRouter();
+        bool fired = false;
+        router.Subscribe(KnownPatterns.TrainAttainNextLevel, _ => fired = true);
+
+        router.Dispatch(Line("You hand over 350 copper farthings to train to the next level!"));
+
+        Assert.True(fired);
+    }
+
+    // The two train-success wordings are mutually exclusive: the stock line
+    // (with an attained level) fires only TrainAttainLevel; the Paradigm line
+    // (level-less) fires only TrainAttainNextLevel.
+    [Fact]
+    public void TrainSuccessWordings_DontCross()
+    {
+        MessageRouter router = SeededRouter();
+        bool stock = false, paradigm = false;
+        router.Subscribe(KnownPatterns.TrainAttainLevel, _ => stock = true);
+        router.Subscribe(KnownPatterns.TrainAttainNextLevel, _ => paradigm = true);
+
+        router.Dispatch(Line("You hand over 1 gold crown and you receive training to attain level 3."));
+        Assert.True(stock);
+        Assert.False(paradigm);
+
+        stock = paradigm = false;
+        router.Dispatch(Line("You hand over 350 copper farthings to train to the next level!"));
+        Assert.True(paradigm);
+        Assert.False(stock);
+    }
+
     [Fact]
     public void TrainProgressedTooFar_MatchesTrainerRejection()
     {

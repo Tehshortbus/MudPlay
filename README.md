@@ -1,11 +1,16 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.50.0**
-> - Health "Run if below" mana threshold now triggers a flee — out-of-mana casters run, auto-resuming only once both HP and mana recover
-> - Turning auto-combat off mid-fight sends a "break" before releasing the walker, when "Break combat if running" is checked
-> - Custom board disconnect line now logs under the conversation window's realm category, not just the party roster
-> - Navigation loop / auto-lair scrollbar no longer covers the per-row Run button
+> **Version 1.51.0**
+> - Item Finder surfaces more per-item stats — attribute (+STR/INT/…), min & max damage, spell-damage, resists, and skills (stealth / picklocks / traps / …), plus carry weight and light — as filterable columns
+> - Level Projection tab adds a per-level "Train (copper)" column showing the cheapest eligible trainer's fee to reach each level
+> - Character sheet shows the encumbrance bracket word (None / Light / Medium / Heavy / Encumbered) beside the carry weight
+> - Equipment Manager's bonus panel refreshes the instant an item is picked from a slot's dropdown, not only on blur
+> - Backscroll window ends at the live screen — on open it appends the current on-screen rows after the scrolled-off history
+> - A room monster with an unrecorded flavor prefix ("vicious kobold") is now recognized via the Monsters table so auto-combat engages it; the log flags the missing prefix and its double-click opens the monster's record
+> - Auto-train on Paradigm (level-less "train to the next level" wording) now applies the CP allocation plan and trains stats instead of resuming early
+> - A door that shuts in your path ("The door to the <dir> just closed.") reverts the pending move so the next attempt routes through door handling instead of bonking the closed door
+> - Player workshop drops the duplicate coins/wealth block from the bottom Inventory box (already shown under character stats)
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

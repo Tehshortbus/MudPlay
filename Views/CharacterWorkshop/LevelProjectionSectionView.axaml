@@ -63,6 +63,9 @@
                 <DataGridTextColumn Header="Total XP" Binding="{ReflectionBinding TotalXp}"
                                     Width="150" FontFamily="{StaticResource FontMono}"
                                     Foreground="{StaticResource ChromeFgSecBrush}"/>
+                <DataGridTextColumn Header="Train (copper)" Binding="{ReflectionBinding Cost}"
+                                    Width="130" FontFamily="{StaticResource FontMono}"
+                                    Foreground="{StaticResource ChromeFgSecBrush}"/>
                 <DataGridTextColumn Header="HP" Binding="{ReflectionBinding HpRange}"
                                     Width="120" FontFamily="{StaticResource FontMono}"
                                     Foreground="{StaticResource ChromeFgBrush}"/>

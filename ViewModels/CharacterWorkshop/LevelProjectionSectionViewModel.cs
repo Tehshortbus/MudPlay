@@ -8,6 +8,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FujinTerm.Game;
 using FujinTerm.Game.Calculators;
+using FujinTerm.Game.GameData;
 using FujinTerm.Services;
 using FujinTerm.Views.CharacterWorkshop;
 
@@ -229,6 +230,12 @@ public sealed partial class LevelProjectionSectionViewModel : WorkshopSectionVie
         int raceHpPerLevel = GetInt(raceRow, "HPPerLVL");
         bool isCaster = mageryType != 0;
 
+        // Trainer cost per row: the cheapest guild that serves each level/class.
+        // Enumerate once; the resolver picks min markup and the price formula
+        // turns (level, markup) into copper.
+        int classNumber = GetInt(classRow, "Number");
+        var trainers = TrainerCatalog.Enumerate(_gameData);
+
         // Floor at level 2 — level 1 is the 0-exp starting point, not a row.
         int from = Math.Max(2, FromLevel);
         int to = Math.Max(from, ToLevel);
@@ -259,7 +266,9 @@ public sealed partial class LevelProjectionSectionViewModel : WorkshopSectionVie
             LevelProjection p = LevelProjectionCalculator.ProjectLevel(
                 lvl, chart, hea, intel, wil, chm,
                 minHits, maxHits, raceHpPerLevel, mageryType, mageryLevel, realm);
-            Rows.Add(new LevelProjectionRow(p, currentExp, lvl == currentLevel, isCaster));
+            int? markup = TrainerCatalog.CheapestMarkup(trainers, lvl, classNumber);
+            long? trainCost = markup is { } m ? (long)ShopPriceCalculator.TrainCopper(lvl - 1, m) : null;
+            Rows.Add(new LevelProjectionRow(p, currentExp, lvl == currentLevel, isCaster, trainCost));
         }
 
         HasProjection = Rows.Count > 0;

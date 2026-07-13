@@ -21,10 +21,13 @@ public sealed class LevelProjectionRow
     public string Mana { get; }
     // Mana/Kai regen per tick; "—" for non-casters.
     public string MpRegen { get; }
+    // Cheapest trainer's copper fee to reach this level; "—" when no trainer
+    // serves it for this class (quest-gated level or beyond the top trainer).
+    public string Cost { get; }
     // True when this row is the live character's current level.
     public bool IsCurrentLevel { get; }
 
-    public LevelProjectionRow(LevelProjection p, long currentExp, bool isCurrentLevel, bool isCaster)
+    public LevelProjectionRow(LevelProjection p, long currentExp, bool isCurrentLevel, bool isCaster, long? trainCost)
     {
         Level = p.Level;
         TotalXp = FormatExp(p.TotalXp);
@@ -38,6 +41,7 @@ public sealed class LevelProjectionRow
         HpRegen = p.HpRegen.ToString(CultureInfo.InvariantCulture);
         Mana = isCaster ? p.Mana.ToString("N0", CultureInfo.InvariantCulture) : "—";
         MpRegen = isCaster ? p.MpRegen.ToString(CultureInfo.InvariantCulture) : "—";
+        Cost = trainCost is { } c ? c.ToString("N0", CultureInfo.InvariantCulture) : "—";
         IsCurrentLevel = isCurrentLevel;
     }
 

@@ -11,9 +11,10 @@ namespace FujinTerm.Game.GameData;
 // "Training Room"); Map / Room come from Assigned To (0 when unresolved);
 // RoomName is the host room's display name from Rooms (empty when unresolved);
 // MinLevel / MaxLevel are MinLVL / MaxLVL; ClassRest is the class restriction
-// (0 = universal, like the Training Room).
+// (0 = universal, like the Training Room); Markup is the Shops.Markup% that
+// scales the per-level training fee.
 public readonly record struct TrainerShop(
-    int Number, string Name, int Map, int Room, string RoomName, int MinLevel, int MaxLevel, int ClassRest)
+    int Number, string Name, int Map, int Room, string RoomName, int MinLevel, int MaxLevel, int ClassRest, int Markup)
 {
     // True when a host room resolved from the shop's Assigned To.
     public bool HasRoom => Map > 0 && Room > 0;
@@ -74,11 +75,12 @@ public static class TrainerCatalog
             string name = GetString(el, "Name");
             int minLevel = GetInt(el, "MinLVL");
             int classRest = GetInt(el, "ClassRest");
+            int markup = GetInt(el, "Markup%");
 
             foreach ((int map, int room) in ShopRoomParser.ParseRooms(GetString(el, "Assigned To")))
             {
                 string roomName = roomNames.TryGetValue((map, room), out string? rn) ? rn : string.Empty;
-                trainers.Add(new TrainerShop(number, name, map, room, roomName, minLevel, maxLevel, classRest));
+                trainers.Add(new TrainerShop(number, name, map, room, roomName, minLevel, maxLevel, classRest, markup));
             }
         }
         return trainers;
@@ -113,6 +115,28 @@ public static class TrainerCatalog
             }
         }
         return best;
+    }
+
+    // Cheapest markup among trainers that can teach a character of classNumber up
+    // to targetLevel (MinLVL <= targetLevel <= MaxLVL, class-ok). Training cost
+    // rises monotonically with markup for a fixed level, so the lowest-markup
+    // trainer is always the cheapest — the caller feeds this into
+    // ShopPriceCalculator.TrainCopper. Ignores room reachability (cost is
+    // location-independent) and the auto-trainer disabled set (this is a price
+    // projection, not a walk target). Null when no trainer serves that
+    // level/class — e.g. a quest-gated level or a class with no super trainer.
+    public static int? CheapestMarkup(IReadOnlyList<TrainerShop> trainers, int targetLevel, int classNumber)
+    {
+        ArgumentNullException.ThrowIfNull(trainers);
+
+        int? cheapest = null;
+        foreach (TrainerShop t in trainers)
+        {
+            if (!t.ServesLevel(targetLevel - 1)) continue;
+            if (!t.ServesClass(classNumber)) continue;
+            if (cheapest is null || t.Markup < cheapest) cheapest = t.Markup;
+        }
+        return cheapest;
     }
 
     // Build a (map, room) → room-name index from the active set's Rooms table.

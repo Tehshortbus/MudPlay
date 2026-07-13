@@ -50,7 +50,7 @@ public sealed class LevelProjectionCalculatorTests
     {
         var p = new LevelProjection(Level: 4, TotalXp: 10000, HpMin: 1, HpMax: 1, HpRegen: 1, Mana: 0, MpRegen: 0);
         var row = new FujinTerm.ViewModels.CharacterWorkshop.LevelProjectionRow(
-            p, currentExp: 7000, isCurrentLevel: false, isCaster: false);
+            p, currentExp: 7000, isCurrentLevel: false, isCaster: false, trainCost: null);
 
         Assert.Equal("3,000", row.ExpToLevel);   // 10000 - 7000
         Assert.Equal("10,000", row.TotalXp);
@@ -61,7 +61,7 @@ public sealed class LevelProjectionCalculatorTests
     {
         var p = new LevelProjection(Level: 3, TotalXp: 5000, HpMin: 1, HpMax: 1, HpRegen: 1, Mana: 0, MpRegen: 0);
         var row = new FujinTerm.ViewModels.CharacterWorkshop.LevelProjectionRow(
-            p, currentExp: 7723, isCurrentLevel: false, isCaster: false);
+            p, currentExp: 7723, isCurrentLevel: false, isCaster: false, trainCost: null);
 
         Assert.Equal("0", row.ExpToLevel);   // already have enough → 0 remaining
     }

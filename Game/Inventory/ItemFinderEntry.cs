@@ -11,10 +11,10 @@ using FujinTerm.Services;
 namespace FujinTerm.Game.Inventory;
 
 // One equippable item projected into the searchable columns the Item Finder
-// lists — slot, type, the wear requirements (level / strength), the worn-stat
-// totals (HP / mana / regens / damage / accuracy / crits / hit-magic / backstab /
-// AC / DR), and — for weapons, when a character swing context is supplied — the
-// modelled 10-round swing average. The numbers come from the same aggregation
+// lists — slot, type, the wear requirements (level / strength), the item's weight,
+// the worn-stat totals (HP / mana / regens / damage / accuracy / crits / hit-magic /
+// backstab / AC / DR / illumination), and — for weapons, when a character swing
+// context is supplied — the modelled 10-round swing average. The numbers come from the same aggregation
 // Character Info uses (CharacterCalculator.AggregateItemRow), so a row's
 // AC/DR/bonuses match what the item grants once worn. Row is retained so the
 // finder's class / level / alignment filter can defer to ItemEquipFilter.CanEquip.
@@ -68,6 +68,9 @@ public sealed record ItemFinderEntry
     // Strength the item requires (weapon StrReq), 0 when none.
     public int StrReq { get; init; }
 
+    // Item weight (Items."Encum"), the encumbrance it adds to the carry load.
+    public int Encum { get; init; }
+
     // Weapon base minimum damage, 0 for non-weapons.
     public int MinDmg { get; init; }
 
@@ -113,6 +116,47 @@ public sealed record ItemFinderEntry
     // Mana-regen percent bonus (Abil-145).
     public int ManaRegen { get; init; }
 
+    // Illumination the item radiates when worn (Abil-13 + 14 sum) — a mining helm's
+    // +75, a glow-ring's few points. 0 for gear that emits no light.
+    public int Illuminate { get; init; }
+
+    // Core attribute bonuses the item grants when worn (Abil 46/44/45/48/47/49).
+    public int Strength { get; init; }
+    public int Intellect { get; init; }
+    public int Willpower { get; init; }
+    public int Agility { get; init; }
+    public int Health { get; init; }
+    public int Charm { get; init; }
+
+    // Flat damage bonuses — the low-end add (Abil 1) and the high-end add (Abil 4).
+    public int MinDamageBonus { get; init; }
+    public int MaxDamageBonus { get; init; }
+
+    // Spell-damage bonus (Abil 165).
+    public int SpellDamage { get; init; }
+
+    // Carry-capacity bonus (Abil 96) — distinct from the item's own weight (Encum).
+    public int EncumBonus { get; init; }
+
+    // Thief / caster skill bonuses (Abil 27 / 70 / 67 / 40+179 / 37+180).
+    public int Stealth { get; init; }
+    public int Spellcasting { get; init; }
+    public int Quickness { get; init; }
+    public int Traps { get; init; }
+    public int Picklocks { get; init; }
+
+    // Alignment protection (Abil 24 / 25).
+    public int ProtEvil { get; init; }
+    public int ProtGood { get; init; }
+
+    // Elemental / shadow resistances (Abil 3 / 5 / 65 / 66 / 147 / 9).
+    public int ColdResist { get; init; }
+    public int FireResist { get; init; }
+    public int StoneResist { get; init; }
+    public int LightningResist { get; init; }
+    public int WaterResist { get; init; }
+    public int ShadowResist { get; init; }
+
     // Mean swings per round over a 10-round simulation for the live character
     // wielding this weapon (energy carried forward each round). 0 for non-weapons
     // and when the finder is opened without a usable character context.
@@ -138,6 +182,7 @@ public sealed record ItemFinderEntry
     public string DamageText => MinDmg != 0 || MaxDmg != 0 ? $"{MinDmg}-{MaxDmg}" : string.Empty;
     public string LevelReqText => Plain(LevelReq);
     public string StrReqText => Plain(StrReq);
+    public string EncumText => Plain(Encum);
     public string AccuracyText => Signed(Accuracy);
     public string CritsText => Signed(Crits);
     public string HitMagicText => Signed(HitMagic);
@@ -149,6 +194,30 @@ public sealed record ItemFinderEntry
     public string HpRegenText => Signed(HpRegen);
     public string ManaText => Signed(Mana);
     public string ManaRegenText => Signed(ManaRegen);
+    public string IlluminateText => Signed(Illuminate);
+    public string StrengthText => Signed(Strength);
+    public string IntellectText => Signed(Intellect);
+    public string WillpowerText => Signed(Willpower);
+    public string AgilityText => Signed(Agility);
+    public string HealthText => Signed(Health);
+    public string CharmText => Signed(Charm);
+    public string MinDamageBonusText => Signed(MinDamageBonus);
+    public string MaxDamageBonusText => Signed(MaxDamageBonus);
+    public string SpellDamageText => Signed(SpellDamage);
+    public string EncumBonusText => Signed(EncumBonus);
+    public string StealthText => Signed(Stealth);
+    public string SpellcastingText => Signed(Spellcasting);
+    public string QuicknessText => Signed(Quickness);
+    public string TrapsText => Signed(Traps);
+    public string PicklocksText => Signed(Picklocks);
+    public string ProtEvilText => Signed(ProtEvil);
+    public string ProtGoodText => Signed(ProtGood);
+    public string ColdResistText => Signed(ColdResist);
+    public string FireResistText => Signed(FireResist);
+    public string StoneResistText => Signed(StoneResist);
+    public string LightningResistText => Signed(LightningResist);
+    public string WaterResistText => Signed(WaterResist);
+    public string ShadowResistText => Signed(ShadowResist);
     public string AvgSwingsText => AvgSwings > 0 ? AvgSwings.ToString("0.0", CultureInfo.InvariantCulture) : string.Empty;
 
     private static string Plain(int v) => v != 0 ? v.ToString(CultureInfo.InvariantCulture) : string.Empty;
@@ -228,6 +297,7 @@ public sealed record ItemFinderEntry
                 ArmourType = armourType,
                 LevelReq = levelReq,
                 StrReq = strReq,
+                Encum = GetInt(row, "Encum"),
                 MinDmg = isWeapon ? t.WeaponMin : 0,
                 MaxDmg = isWeapon ? t.WeaponMax : 0,
                 Accuracy = t.TotalWornAccy + t.PlusAccuracy,
@@ -243,6 +313,30 @@ public sealed record ItemFinderEntry
                 HpRegen = t.HpRegenPercent,
                 Mana = t.PlusMaxMana,
                 ManaRegen = t.MpRegenPercent,
+                Illuminate = t.PlusIlluminate,
+                Strength = t.PlusStrength,
+                Intellect = t.PlusIntellect,
+                Willpower = t.PlusWillpower,
+                Agility = t.PlusAgility,
+                Health = t.PlusHealth,
+                Charm = t.PlusCharm,
+                MinDamageBonus = t.PlusMinDamage,
+                MaxDamageBonus = t.PlusMaxDamage,
+                SpellDamage = t.SpellDamageBonus,
+                EncumBonus = t.PlusEncumbrance,
+                Stealth = t.PlusStealth,
+                Spellcasting = t.PlusSpellcasting,
+                Quickness = t.PlusQuickness,
+                Traps = t.PlusTraps,
+                Picklocks = t.PlusPicklocks,
+                ProtEvil = t.PlusProtEvil,
+                ProtGood = t.PlusProtGood,
+                ColdResist = t.PlusColdResist,
+                FireResist = t.PlusFireResist,
+                StoneResist = t.PlusStoneResist,
+                LightningResist = t.PlusLightningResist,
+                WaterResist = t.PlusWaterResist,
+                ShadowResist = t.PlusShadowResist,
                 AvgSwings = avgSwings,
                 Row = row,
             });

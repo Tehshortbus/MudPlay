@@ -160,4 +160,45 @@ public sealed class MovementRefusalDetectorTests : IDisposable
 
         Assert.Contains(Direction.N, tracker.State.OpenDoorDirections!);
     }
+
+    // "The door to the <dir> just closed." names its direction. When it matches
+    // the direction we're heading, it acts like the bare closed-door refusal:
+    // clear the stale open-door flag and revert the pending move so the retry
+    // re-opens the door via the FSM.
+    [Fact]
+    public void NamedDoorJustClosed_HeadingThatWay_ClearsFlagAndReverts()
+    {
+        (RoomTracker tracker, MovementRefusalDetector detector) = NewDetector();
+        tracker.SetLocated(new RoomKey(1, 1));
+        tracker.NoteRoomObserved(new RoomObservation(
+            "Origin",
+            new HashSet<Direction> { Direction.N },
+            new HashSet<Direction> { Direction.N }));
+        Assert.Contains(Direction.N, tracker.State.OpenDoorDirections!);
+
+        tracker.NoteMoveSent(Direction.N);
+        detector.FeedTestLine("The door to the north just closed.");
+
+        Assert.Null(tracker.State.OpenDoorDirections);
+        Assert.Equal(RoomConfidence.Confirmed, tracker.State.Confidence);
+    }
+
+    // A door closing in a direction we're NOT heading is someone else's door —
+    // leave the pending move and the open-door cache untouched.
+    [Fact]
+    public void NamedDoorJustClosed_NotHeadingThatWay_Ignored()
+    {
+        (RoomTracker tracker, MovementRefusalDetector detector) = NewDetector();
+        tracker.SetLocated(new RoomKey(1, 1));
+        tracker.NoteRoomObserved(new RoomObservation(
+            "Origin",
+            new HashSet<Direction> { Direction.N },
+            new HashSet<Direction> { Direction.N }));
+
+        tracker.NoteMoveSent(Direction.N);   // heading north
+        detector.FeedTestLine("The door to the south just closed.");
+
+        Assert.Contains(Direction.N, tracker.State.OpenDoorDirections!);
+        Assert.Equal(RoomConfidence.Pending, tracker.State.Confidence);
+    }
 }

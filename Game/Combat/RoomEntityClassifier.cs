@@ -1,4 +1,6 @@
 using System.Collections.Generic;
+using System.Globalization;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using FujinTerm.Game.Map;
 using FujinTerm.Models.GameData;
@@ -22,7 +24,14 @@ namespace FujinTerm.Game.Combat;
 // 3. If no monster match, fall through to player lookup: the entry's first
 //    whitespace token compared against every PlayerRecord.GivenName in the
 //    active per-BBS database (case-insensitive).
-// 4. Else Unknown — emit a Warn-severity log row with the raw "Also here:" line
+// 4. If still unmatched and the entry is multi-word, strip the FIRST word and
+//    match the remainder against the Monsters table by name — this catches a
+//    monster whose Monsters-table row exists but whose leading flavor word
+//    isn't recorded in any MonsterMessageRecord ("vicious kobold" → "kobold").
+//    On a hit, classify as that monster AND log the full name under
+//    MissingFlavorCategory so its LogPane double-click opens the monster record
+//    for a flavor-prefix edit.
+// 5. Else Unknown — emit a Warn-severity log row with the raw "Also here:" line
 //    carried as LogEntry.Context. The LogPane double-click handler opens the
 //    UnknownEntityFixDialogViewModel from this row.
 //
@@ -36,6 +45,14 @@ public sealed class RoomEntityClassifier : IDisposable
     // LogService category for all rows this classifier emits.
     public const string LogCategory = "RoomClassifier";
 
+    // LogService category for a room monster recognized only by stripping an
+    // unrecognized leading flavor word (e.g. "vicious kobold" resolved to the
+    // Monsters-table "kobold"). Distinct from LogCategory so its LogPane
+    // double-click opens the monster's Game Data record (to record the flavor
+    // prefix) rather than the unknown-entity fix dialog. The matched monster's
+    // Number rides in LogEntry.Context.
+    public const string MissingFlavorCategory = "RoomFlavorMissing";
+
     private static readonly Regex AndNormaliser = new(@"\s+and\s+", RegexOptions.Compiled);
 
     private readonly MessageRouter _router;
@@ -43,6 +60,7 @@ public sealed class RoomEntityClassifier : IDisposable
     private readonly PlayerDatabase _players;
     private readonly RoomTracker? _roomTracker;
     private readonly LogService? _log;
+    private readonly GameDataCache? _gameData;
     private readonly IDisposable _alsoHereSub;
     private Terminal.LineExtractor? _lines;
     private string? _alsoHereBuffer;     // multi-line continuation
@@ -77,13 +95,16 @@ public sealed class RoomEntityClassifier : IDisposable
     // Construct with a RoomTracker binding so the classifier wipes its
     // observation when the player moves rooms. Without this, a stale Also-Here
     // from the previous room would keep CombatManager swinging at a target that
-    // didn't follow us in — the "wasted combat round on move" scenario.
+    // didn't follow us in — the "wasted combat round on move" scenario. The
+    // optional GameDataCache backs the first-word-strip Monsters-table fallback
+    // (Pass 3); tests that don't exercise it pass null.
     public RoomEntityClassifier(
         MessageRouter router,
         MonsterMessageStore monsters,
         PlayerDatabase players,
         RoomTracker? roomTracker,
-        LogService? log = null)
+        LogService? log = null,
+        GameDataCache? gameData = null)
     {
         ArgumentNullException.ThrowIfNull(router);
         ArgumentNullException.ThrowIfNull(monsters);
@@ -93,6 +114,7 @@ public sealed class RoomEntityClassifier : IDisposable
         _players  = players;
         _roomTracker = roomTracker;
         _log      = log;
+        _gameData = gameData;
         _alsoHereSub = _router.Subscribe(KnownPatterns.RoomAlsoHere, OnRoomAlsoHere);
         if (_roomTracker is not null)
             _roomTracker.StateChanged += OnRoomTrackerStateChanged;
@@ -290,6 +312,27 @@ public sealed class RoomEntityClassifier : IDisposable
         if (given.Length > 0 && TryMatchPlayer(given, out PlayerRecord? pr))
             return new RoomEntity(entry, pr!.GivenName, EntityKind.Player, MonsterNumber: null);
 
+        // Pass 3 — unrecognized leading flavor word. A monster whose
+        // Monsters-table row exists but whose flavor prefix isn't recorded in
+        // any MonsterMessageRecord shows up as "<unknown-word> <base name>"
+        // ("vicious kobold"). Strip only the first word and match the remainder
+        // against the Monsters table; on a hit, treat the entry as that monster
+        // so combat engages it, and flag the FULL name in the log as needing its
+        // flavor prefix recorded — its double-click opens the monster record.
+        int sp = entry.IndexOf(' ');
+        if (sp > 0 && sp + 1 < entry.Length
+            && TryMatchMonstersTable(entry[(sp + 1)..], out int monsterNumber))
+        {
+            if (_log is not null && rawAlsoHereLine.Length > 0)
+            {
+                _log.Warn(MissingFlavorCategory,
+                    $"'{entry}' — flavor prefix not recorded for monster #{monsterNumber}; " +
+                    "double-click to open its record",
+                    context: monsterNumber.ToString(CultureInfo.InvariantCulture));
+            }
+            return new RoomEntity(entry, entry[(sp + 1)..], EntityKind.Monster, monsterNumber);
+        }
+
         // Unknown — surface to the LogPane so the user can double-click
         // to copy the raw line + open the fix dialog.
         if (_log is not null && rawAlsoHereLine.Length > 0)
@@ -299,6 +342,20 @@ public sealed class RoomEntityClassifier : IDisposable
                 context: rawAlsoHereLine);
         }
         return new RoomEntity(entry, entry, EntityKind.Unknown, MonsterNumber: null);
+    }
+
+    // Match name against the active set's Monsters table by Name (case-
+    // insensitive) and hand back its Number. Returns false when no GameDataCache
+    // is bound, the table isn't loaded, no row matches, or the row carries no
+    // numeric Number. Backs the first-word-strip flavor fallback in Classify.
+    private bool TryMatchMonstersTable(string name, out int number)
+    {
+        number = 0;
+        if (_gameData is null) return false;
+        if (_gameData.FindRowByName("Monsters", name) is not { } row) return false;
+        if (!row.TryGetProperty("Number", out JsonElement numEl)) return false;
+        if (numEl.ValueKind != JsonValueKind.Number) return false;
+        return numEl.TryGetInt32(out number);
     }
 
     private bool TryMatchMonster(string entry, out MonsterMessageRecord? hit)

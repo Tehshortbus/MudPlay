@@ -706,6 +706,21 @@ public sealed class RoomTracker
         NoteMoveBlocked(whenUtc);
     }
 
+    // "The door to the <dir> just closed." — an ambient door-shut announcement
+    // that names its own direction, unlike the bare "The door is closed!"
+    // refusal (which carries none and reads the direction off the pending move).
+    // Only act when the named direction is the one we're heading: a door shutting
+    // in our path must clear its stale "open" flag and revert the pending move
+    // exactly like NoteDoorClosed, so the next attempt routes through the
+    // door-open FSM (bash / pick / key) instead of bonking the now-closed door.
+    // A closure in any other direction is someone else's door — ignore it.
+    public void NoteNamedDoorClosed(Direction closedDir, DateTimeOffset? whenUtc = null)
+    {
+        if (MostRecentPendingCardinal() != closedDir) return;
+        ClearOpenDoorDirection(closedDir);
+        NoteMoveBlocked(whenUtc);
+    }
+
     // Tier-3 manual override — the user pointed at a room on the map and said
     // "I'm here". Hard sets the current room and promotes to Confirmed.
     public void SetLocated(RoomKey key, DateTimeOffset? whenUtc = null)

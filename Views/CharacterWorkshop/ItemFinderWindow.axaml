@@ -240,6 +240,7 @@
                         <DataGridTextColumn Header="Type"       Binding="{ReflectionBinding TypeLabel}"      SortMemberPath="TypeLabel"  Width="96"  Tag="TypeLabel"/>
                         <DataGridTextColumn Header="Lvl"        Binding="{ReflectionBinding LevelReqText}"   SortMemberPath="LevelReq"   Width="58"  Tag="LevelReqText"/>
                         <DataGridTextColumn Header="Str"        Binding="{ReflectionBinding StrReqText}"     SortMemberPath="StrReq"     Width="58"  Tag="StrReqText"/>
+                        <DataGridTextColumn Header="Enc"        Binding="{ReflectionBinding EncumText}"      SortMemberPath="Encum"      Width="58"  Tag="EncumText"/>
                         <DataGridTextColumn Header="Dmg"        Binding="{ReflectionBinding DamageText}"     SortMemberPath="MaxDmg"     Width="78"  Tag="DamageText"/>
                         <DataGridTextColumn Header="Swings"     Binding="{ReflectionBinding AvgSwingsText}"  SortMemberPath="AvgSwings"  Width="70"  Tag="AvgSwingsText"/>
                         <DataGridTextColumn Header="Accy"       Binding="{ReflectionBinding AccuracyText}"   SortMemberPath="Accuracy"   Width="66"  Tag="AccuracyText"/>
@@ -253,6 +254,30 @@
                         <DataGridTextColumn Header="HP Regen"   Binding="{ReflectionBinding HpRegenText}"    SortMemberPath="HpRegen"    Width="92"  Tag="HpRegenText"/>
                         <DataGridTextColumn Header="Mana"       Binding="{ReflectionBinding ManaText}"       SortMemberPath="Mana"       Width="66"  Tag="ManaText"/>
                         <DataGridTextColumn Header="MP Regen"   Binding="{ReflectionBinding ManaRegenText}"  SortMemberPath="ManaRegen"  Width="92"  Tag="ManaRegenText"/>
+                        <DataGridTextColumn Header="Illu"       Binding="{ReflectionBinding IlluminateText}" SortMemberPath="Illuminate" Width="70"  Tag="IlluminateText"/>
+                        <DataGridTextColumn Header="+Str"       Binding="{ReflectionBinding StrengthText}"   SortMemberPath="Strength"   Width="58"  Tag="StrengthText"/>
+                        <DataGridTextColumn Header="+Int"       Binding="{ReflectionBinding IntellectText}"  SortMemberPath="Intellect"  Width="58"  Tag="IntellectText"/>
+                        <DataGridTextColumn Header="+Wil"       Binding="{ReflectionBinding WillpowerText}"  SortMemberPath="Willpower"  Width="58"  Tag="WillpowerText"/>
+                        <DataGridTextColumn Header="+Agi"       Binding="{ReflectionBinding AgilityText}"    SortMemberPath="Agility"    Width="58"  Tag="AgilityText"/>
+                        <DataGridTextColumn Header="+Hlth"      Binding="{ReflectionBinding HealthText}"     SortMemberPath="Health"     Width="60"  Tag="HealthText"/>
+                        <DataGridTextColumn Header="+Chrm"      Binding="{ReflectionBinding CharmText}"      SortMemberPath="Charm"      Width="60"  Tag="CharmText"/>
+                        <DataGridTextColumn Header="+MinDmg"    Binding="{ReflectionBinding MinDamageBonusText}" SortMemberPath="MinDamageBonus" Width="76"  Tag="MinDamageBonusText"/>
+                        <DataGridTextColumn Header="+MaxDmg"    Binding="{ReflectionBinding MaxDamageBonusText}" SortMemberPath="MaxDamageBonus" Width="78"  Tag="MaxDamageBonusText"/>
+                        <DataGridTextColumn Header="Spell Dmg"  Binding="{ReflectionBinding SpellDamageText}" SortMemberPath="SpellDamage" Width="86"  Tag="SpellDamageText"/>
+                        <DataGridTextColumn Header="+Enc"       Binding="{ReflectionBinding EncumBonusText}" SortMemberPath="EncumBonus" Width="62"  Tag="EncumBonusText"/>
+                        <DataGridTextColumn Header="Stealth"    Binding="{ReflectionBinding StealthText}"    SortMemberPath="Stealth"    Width="72"  Tag="StealthText"/>
+                        <DataGridTextColumn Header="Casting"    Binding="{ReflectionBinding SpellcastingText}" SortMemberPath="Spellcasting" Width="78"  Tag="SpellcastingText"/>
+                        <DataGridTextColumn Header="Quick"      Binding="{ReflectionBinding QuicknessText}"  SortMemberPath="Quickness"  Width="64"  Tag="QuicknessText"/>
+                        <DataGridTextColumn Header="Traps"      Binding="{ReflectionBinding TrapsText}"      SortMemberPath="Traps"      Width="64"  Tag="TrapsText"/>
+                        <DataGridTextColumn Header="Locks"      Binding="{ReflectionBinding PicklocksText}"  SortMemberPath="Picklocks"  Width="64"  Tag="PicklocksText"/>
+                        <DataGridTextColumn Header="Prot Evil"  Binding="{ReflectionBinding ProtEvilText}"   SortMemberPath="ProtEvil"   Width="82"  Tag="ProtEvilText"/>
+                        <DataGridTextColumn Header="Prot Good"  Binding="{ReflectionBinding ProtGoodText}"   SortMemberPath="ProtGood"   Width="82"  Tag="ProtGoodText"/>
+                        <DataGridTextColumn Header="Cold"       Binding="{ReflectionBinding ColdResistText}" SortMemberPath="ColdResist" Width="60"  Tag="ColdResistText"/>
+                        <DataGridTextColumn Header="Fire"       Binding="{ReflectionBinding FireResistText}" SortMemberPath="FireResist" Width="60"  Tag="FireResistText"/>
+                        <DataGridTextColumn Header="Stone"      Binding="{ReflectionBinding StoneResistText}" SortMemberPath="StoneResist" Width="62"  Tag="StoneResistText"/>
+                        <DataGridTextColumn Header="Lightning"  Binding="{ReflectionBinding LightningResistText}" SortMemberPath="LightningResist" Width="86"  Tag="LightningResistText"/>
+                        <DataGridTextColumn Header="Water"      Binding="{ReflectionBinding WaterResistText}" SortMemberPath="WaterResist" Width="62"  Tag="WaterResistText"/>
+                        <DataGridTextColumn Header="Shadow"     Binding="{ReflectionBinding ShadowResistText}" SortMemberPath="ShadowResist" Width="68"  Tag="ShadowResistText"/>
                     </DataGrid.Columns>
                 </DataGrid>
             </Grid>

@@ -2221,7 +2221,7 @@ public sealed class AppServices
         // write the same flag; the delegate is queried on every
         // Also-Here line so toggling takes effect immediately.
         RoomClassifier = new Game.Combat.RoomEntityClassifier(
-            Router, MonsterMessages, Players, RoomTracker, Log);
+            Router, MonsterMessages, Players, RoomTracker, Log, GameData);
         CombatTracker = new Game.Combat.CombatStateTracker(
             Router, MovementCoordinator, RoomClassifier, MonsterMessages,
             PlayerState,
