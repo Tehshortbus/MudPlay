@@ -1,10 +1,9 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.45.1**
-> - Renaming a BBS now moves its whole folder — nested character profiles, saved logon-nav steps, and passwords survive instead of being wiped and recreated empty
-> - The rename re-keys each character's per-BBS credentials, so logon-menu nav and password lookup keep working under the new name
-> - Recent-profiles list and the "import logon steps from another character" picker now follow the renamed BBS instead of showing the vanished old name
+> **Version 1.45.2**
+> - Auto-collect now honours each item's Max-to-get cap instead of grabbing every copy in a room
+> - Held count includes key-ring keys, so key-type items stop collecting once the cap is reached
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

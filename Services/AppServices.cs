@@ -3060,6 +3060,7 @@ public sealed class AppServices
                     .CollectAfterCombatFinished,
             hasEngageableHostiles: () => CombatTracker.HasEngageableHostiles,
             isPeekSuppressed: () => RoomTracker.IsPeekSuppressed(),
+            heldCount: CountItemHeld,
             log: Log);
         AutoGetItems.SetAcquisitionGate(Acquisition);
         // Combat-finished flush: every room-entity observation re-checks
@@ -4353,6 +4354,24 @@ public sealed class AppServices
         return count;
     }
 
+    // How many copies of itemId the player holds, counting the key ring on top
+    // of carried + worn. KEY-type items live in the dump's separate "You have
+    // the following keys:" trailer (InventorySnapshot.Keys), not the pack, so
+    // CountItemCarried alone under-reads them — which let the auto-get MaxToGet
+    // cap collect past its limit. Backs AutoGetItemsManager's held-count seam.
+    private int CountItemHeld(int itemId)
+    {
+        int count = CountItemCarried(itemId);
+        Game.Inventory.InventorySnapshot snap = Inventory.Snapshot;
+        if (snap.Keys is { } keys)
+            foreach (string entry in keys)
+            {
+                (int quantity, string name) = Game.Inventory.InventorySnapshot.ParseKeyEntry(entry);
+                if (ItemNames.FindByName(name) == itemId) count += quantity;
+            }
+        return count;
+    }
+
     // Room keys of every shop in the live graph that stocks
     // itemId — the join of ShopStock (which
     // shops sell it) against RoomGraph (which rooms host those
@@ -4405,7 +4424,7 @@ public sealed class AppServices
 
         Models.GameData.ItemOverlay overlay = ResolveItemOverlay(number);
         return new Game.Inventory.AutoGetItemsManager.ResolvedItem(
-            name, overlay.AutoCollect ?? false, overlay.CannotBeTaken ?? false);
+            number, name, overlay.AutoCollect ?? false, overlay.CannotBeTaken ?? false, MaxCap(overlay));
     }
 
     // Resolve a carried entry for AutoDiscard: map the loose carry wording to an

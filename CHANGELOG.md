@@ -2,6 +2,12 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.45.2
+
+- Auto-collect now honours each item's Max-to-get cap instead of grabbing every copy in a room
+- Held count includes key-ring keys, so key-type items stop collecting once the cap is reached
+- bug reports addressed: paradigm-20260712-234614
+
 ## 1.45.1
 
 - Renaming a BBS now moves its whole folder — nested character profiles, saved logon-nav steps, and passwords survive instead of being wiped and recreated empty
