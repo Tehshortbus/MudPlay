@@ -957,7 +957,9 @@ flag). These are hard eligibility gates, independent of resistance and level imm
   first word (`copper`/`silver`/`gold`/`platinum`/`runic`); the second word is the flavour coin
   noun (`farthings`/`nobles`/`crowns`/`pieces`/`coins`). Some lines carry only the keyword,
   others the full pair — don't assume one form:
-  - **Get** command sends the bare keyword: `get 6 silver` (never `get 6 silver nobles`).
+  - **Get / drop** commands the **client** sends now name the coin **in full** (`get 6 silver noble`,
+    `drop 1 silver noble`) — a bare adjective collides with like-named items (see the item-collision
+    note below). Internally the client still keys policy/tally/parsing on the bare first word.
   - **Corpse loot** drops name the bare keyword: `6 silver drop to the ground.`
   - **Pickup confirmation** names the full coin **and carries NO trailing period**:
     `You picked up 6 silver nobles` (singular `You picked up 1 silver noble`).
@@ -969,6 +971,11 @@ flag). These are hard eligibility gates, independent of resistance and level imm
   with coins, so a colour-adjective item (`You dropped a silver key.`) is told apart from coin only
   by the trailing **coin noun** (`nobles`/`farthings`/…) and a numeric count. `You picked up …` is
   coin-exclusive (items never use it).
+- **[CONFIRMED]** **A get/drop target given as the bare denomination adjective binds to any
+  like-named item, not the coins.** `drop 1 silver` can resolve to a *silver ring* instead of a
+  silver noble; the game picks whichever object matches first. Emitting the **full two-word coin
+  noun** (`silver noble`, `gold crown`, `copper farthing`, `platinum piece`, runic `<word> coin`)
+  forces the currency match. The client sends the full noun on every outgoing get/drop as a result.
 
 ## Party
 
