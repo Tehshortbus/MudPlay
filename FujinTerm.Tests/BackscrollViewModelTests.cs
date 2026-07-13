@@ -25,7 +25,7 @@ public class BackscrollViewModelTests
     }
 
     [Fact]
-    public void Snapshot_IsScrollbackHistoryOnly()
+    public void Snapshot_IsHistoryFollowedByLiveScreen()
     {
         TerminalEmulator emu = WithScrolledOffHistory(12);
         int scrolledOff = emu.Screen.Scrollback.Count;
@@ -33,10 +33,13 @@ public class BackscrollViewModelTests
 
         BackscrollViewModel vm = new(emu);
 
-        // The window mirrors the scrollback ring exactly — history that scrolled
-        // off the top — and never includes the still-on-screen lines.
-        Assert.Equal(scrolledOff, vm.Rows.Count);
-        Assert.DoesNotContain(vm.Rows, r => r.PlainText.Contains("line011"));
+        // The snapshot is the scrolled-off history plus a one-shot copy of the
+        // still-on-screen rows, so the transcript ends where the live terminal
+        // sits. Both the earliest history line and the last on-screen line show.
+        Assert.True(vm.Rows.Count > scrolledOff,
+            "snapshot must append the on-screen rows after the scrolled-off history");
+        Assert.Contains(vm.Rows, r => r.PlainText.Contains("line000"));
+        Assert.Contains(vm.Rows, r => r.PlainText.Contains("line011"));
     }
 
     [Fact]

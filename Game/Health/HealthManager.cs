@@ -33,18 +33,19 @@ namespace FujinTerm.Game.Health;
 // fragment, send each as its own wire line.
 //
 // Run-if-below: when PlayerState.Hp drops to or below HealthSettings.RunIfBelowHp
-// mid-combat AND a movement engine is active, the active engine is paused and the
-// character flees CombatSettings.RunDistance rooms, optionally preceded by
-// `break`. Backward mode (the default) runs BFS from the current room back to the
-// active engine's JourneyOrigin and walks the first RunDistance directions of that
-// path — the reverse of the trail we came in on. Anchoring on the fixed origin is
-// what keeps the retreat heading away from the fight instead of bouncing back into
-// it. When the reverse path can't be computed (no origin / unknown room / no graph)
-// it falls back to inverting the last sent direction for a single step. Forward
-// mode ("go backwards if running" off) instead keeps pressing along the engine's
-// own planned route toward its destination — the next RunDistance moves it would
-// have sent anyway. The engine resumes via IRecoverableEngine.ResumeAfterRecovery
-// once HP climbs back above the run-trigger. Multi-step flee advances one queued
+// OR the caster pool drops to or below HealthSettings.RunIfBelowMa mid-combat AND
+// a movement engine is active, the active engine is paused and the character flees
+// CombatSettings.RunDistance rooms, optionally preceded by `break`. Backward mode
+// (the default) runs BFS from the current room back to the active engine's
+// JourneyOrigin and walks the first RunDistance directions of that path — the
+// reverse of the trail we came in on. Anchoring on the fixed origin is what keeps
+// the retreat heading away from the fight instead of bouncing back into it. When
+// the reverse path can't be computed (no origin / unknown room / no graph) it falls
+// back to inverting the last sent direction for a single step. Forward mode ("go
+// backwards if running" off) instead keeps pressing along the engine's own planned
+// route toward its destination — the next RunDistance moves it would have sent
+// anyway. The engine resumes via IRecoverableEngine.ResumeAfterRecovery once BOTH
+// pools climb back above their run-triggers. Multi-step flee advances one queued
 // direction per NoteRoomChanged.
 //
 // Hang-if-below: PlayerState.Hp at or below HealthSettings.HangIfBelowHp fires a
@@ -558,16 +559,16 @@ public sealed class HealthManager : IDisposable
         }
 
         // ----- flee on critical HP/MA mid-combat -------------------
-        // Run-if-below: HP-only per user direction. Fires only when a
-        // movement engine is active — "if you aren't running a
-        // movement engine, the flee-if-below wouldn't fire". On
-        // trigger: optionally send `break` to disengage combat, then
+        // Run-if-below: either pool triggers — HP at/below RunIfBelowHp OR the
+        // caster pool at/below RunIfBelowMa (an out-of-mana caster is as stuck
+        // as a low-HP fighter). Fires only when a movement engine is active —
+        // "if you aren't running a movement engine, the flee-if-below wouldn't
+        // fire". On trigger: optionally send `break` to disengage combat, then
         // begin a multi-step flee over CombatSettings.RunDistance rooms
-        // (Backward = the reverse-BFS trail toward the engine's
-        // JourneyOrigin; Forward = the engine's own next planned moves
-        // toward its destination). Subsequent
-        // steps advance one per NoteRoomChanged; the paused engine
-        // auto-resumes once HP climbs back above the run-trigger
+        // (Backward = the reverse-BFS trail toward the engine's JourneyOrigin;
+        // Forward = the engine's own next planned moves toward its destination).
+        // Subsequent steps advance one per NoteRoomChanged; the paused engine
+        // auto-resumes once BOTH pools climb back above their run-triggers
         // (recovery branch below).
         if (!_state.InCombat)
         {
@@ -576,22 +577,38 @@ public sealed class HealthManager : IDisposable
         else if (!_fledThisCombat)
         {
             int hpRunTrigger = PoolThreshold.Resolve(s.HpThresholdMode, s.RunIfBelowHp, _state.MaxHp);
+            int maRunTrigger = PoolThreshold.Resolve(s.MaThresholdMode, s.RunIfBelowMa, _state.MaxMa);
             bool hpRun = _state.MaxHp > 0 && _state.Hp > 0 && _state.Hp <= hpRunTrigger;
-            if (hpRun)
+            // No Ma>0 guard: 0 mana is itself a valid flee state (unlike 0 HP,
+            // which reads as dead/unknown and must not flee a corpse).
+            bool maRun = _state.MaxMa > 0 && _state.Ma <= maRunTrigger;
+            if (hpRun || maRun)
             {
                 _fledThisCombat = true;
-                string reason = $"HP {_state.Hp}/{_state.MaxHp} <= run-trigger={hpRunTrigger}";
+                string reason = hpRun
+                    ? $"HP {_state.Hp}/{_state.MaxHp} <= run-trigger={hpRunTrigger}"
+                    : $"MA {_state.Ma}/{_state.MaxMa} <= run-trigger={maRunTrigger}";
                 // A party follower must NOT run off alone — that breaks party
-                // formation and strands them. Instead broadcast @heal so the
-                // party healer tops us up; we stay put. The leader owns the
-                // party's run decision, and solo characters just flee. TryFlee
-                // itself already no-ops when no movement engine is active (i.e.
-                // when idle), so the leader/solo path only runs when "not idle".
+                // formation and strands them. On low HP we broadcast @heal so the
+                // party healer tops us up and stay put; the leader owns the party's
+                // run decision, and solo characters just flee. A mana-triggered
+                // flee on a follower has no valid action (running is forbidden and
+                // @heal can't restore mana), so it only logs. TryFlee itself no-ops
+                // when no movement engine is active (idle), so the leader/solo path
+                // only runs when "not idle".
                 if (_requestPartyHeal is not null && (_isPartyFollower?.Invoke() ?? false))
                 {
-                    _log?.Combat(LogCategory,
-                        $"party follower low HP — requesting heal instead of fleeing ({reason})");
-                    _requestPartyHeal();
+                    if (hpRun)
+                    {
+                        _log?.Combat(LogCategory,
+                            $"party follower low HP — requesting heal instead of fleeing ({reason})");
+                        _requestPartyHeal();
+                    }
+                    else
+                    {
+                        _log?.Combat(LogCategory,
+                            $"party follower low MA — holding (no solo flee; heal can't restore mana) ({reason})");
+                    }
                 }
                 else
                 {
@@ -600,19 +617,23 @@ public sealed class HealthManager : IDisposable
             }
         }
 
-        // Auto-resume — when a fled engine is paused AND HP has
-        // climbed back above the run-trigger AND no more flee steps
-        // are queued, hand control back to the engine. Backward
-        // mode retraces its path from the current room; Forward
-        // continues toward the original destination.
+        // Auto-resume — when a fled engine is paused AND BOTH pools have
+        // climbed back above their run-triggers AND no more flee steps
+        // are queued, hand control back to the engine. Requiring mana too
+        // (when the character has a caster pool) stops us resuming straight
+        // into another mana-triggered flee. Backward mode retraces its path
+        // from the current room; Forward continues toward the destination.
         if (_fleeEngine is not null && _fleeQueue.Count == 0 && _state.MaxHp > 0)
         {
             int hpRunTrigger = PoolThreshold.Resolve(s.HpThresholdMode, s.RunIfBelowHp, _state.MaxHp);
-            if (_state.Hp > hpRunTrigger && _lastKnownRoom is { } room)
+            int maRunTrigger = PoolThreshold.Resolve(s.MaThresholdMode, s.RunIfBelowMa, _state.MaxMa);
+            bool hpRecovered = _state.Hp > hpRunTrigger;
+            bool maRecovered = _state.MaxMa <= 0 || _state.Ma > maRunTrigger;
+            if (hpRecovered && maRecovered && _lastKnownRoom is { } room)
             {
                 _log?.Combat(LogCategory,
                     $"flee complete — resuming engine={_fleeEngine.Name} at {room} " +
-                    $"(HP {_state.Hp}/{_state.MaxHp} > run-trigger={hpRunTrigger})");
+                    $"(HP {_state.Hp}/{_state.MaxHp} > {hpRunTrigger}, MA {_state.Ma}/{_state.MaxMa} > {maRunTrigger})");
                 _fleeEngine.ResumeAfterRecovery(room);
                 _fleeEngine = null;
             }

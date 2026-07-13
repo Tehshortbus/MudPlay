@@ -359,6 +359,7 @@ public static class CharacterCalculator
 
             case 58: totals.PlusCrits += abilVal; statKey = "Crits"; break;
             case 22: case 105: case 106: totals.PlusAccuracy += abilVal; statKey = "Accuracy"; break;
+            case 1: totals.PlusMinDamage += abilVal; statKey = "Min Damage"; break;
             case 4: totals.PlusMaxDamage += abilVal; statKey = "Max Damage"; break;
             case 165: totals.SpellDamageBonus += abilVal; statKey = "Spell Damage"; break;
 
@@ -383,6 +384,7 @@ public static class CharacterCalculator
             case 65: totals.PlusStoneResist += abilVal; statKey = "Stone Resist"; break;
             case 66: totals.PlusLightningResist += abilVal; statKey = "Lightning Resist"; break;
             case 147: totals.PlusWaterResist += abilVal; statKey = "Water Resist"; break;
+            case 9: totals.PlusShadowResist += abilVal; statKey = "Shadow Resist"; break;
 
             case 24: totals.PlusProtEvil += abilVal; statKey = "Prot Evil"; break;
             case 25: totals.PlusProtGood += abilVal; statKey = "Prot Good"; break;

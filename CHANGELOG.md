@@ -2,6 +2,48 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.51.0
+
+- Item Finder surfaces more per-item stats — attribute (+STR/INT/…), min & max damage, spell-damage, resists, and skills (stealth / picklocks / traps / …), plus carry weight and light — as filterable columns
+- Level Projection tab adds a per-level "Train (copper)" column showing the cheapest eligible trainer's fee to reach each level
+- Character sheet shows the encumbrance bracket word (None / Light / Medium / Heavy / Encumbered) beside the carry weight
+- Equipment Manager's bonus panel refreshes the instant an item is picked from a slot's dropdown, not only on blur
+- Backscroll window ends at the live screen — on open it appends the current on-screen rows after the scrolled-off history
+- A room monster with an unrecorded flavor prefix ("vicious kobold") is now recognized via the Monsters table so auto-combat engages it; the log flags the missing prefix and its double-click opens the monster's record
+- Auto-train on Paradigm (level-less "train to the next level" wording) now applies the CP allocation plan and trains stats instead of resuming early
+- A door that shuts in your path ("The door to the <dir> just closed.") reverts the pending move so the next attempt routes through door handling instead of bonking the closed door
+- Player workshop drops the duplicate coins/wealth block from the bottom Inventory box (already shown under character stats)
+- Currency get/drop commands name the coin in full (silver noble, gold crown, copper farthing, platinum piece, runic coin) so a bare "drop 1 silver" can't ditch a like-named item instead of the coins
+- bug reports addressed: paradigm-20260713-025755, paradigm-20260713-033207
+
+## 1.50.0
+
+- Health "Run if below" mana threshold now triggers a flee — out-of-mana casters run, auto-resuming only once both HP and mana recover
+- Turning auto-combat off mid-fight sends a "break" before releasing the walker, when "Break combat if running" is checked
+- Custom board disconnect line now logs under the conversation window's realm category, not just the party roster
+- Navigation loop / auto-lair scrollbar no longer covers the per-row Run button
+
+## 1.49.0
+
+- Item Finder gains an Attack-type picker (Attack / Bash / Smash / Punch / Kick / Jumpkick); the Swings column recomputes per type — Bash halves, Smash locks to one — and the martial-arts strikes add a bare-handed attack row
+- Item Finder Slot dropdown drops its redundant Weapon entry (the Weapon-type filter already isolates weapons) and now sits below Armour type
+- Item Finder hides worn-but-limited-use items (lights, potions, containers, signs, keys) that only matched a slot by coincidence — only real armour and weapons remain
+- Item Finder wrist / finger slot labels drop the "(1)" position tag that carried no meaning there
+- Equipment Bonuses' Hit Magic now reflects only weapon-granted hit magic, matching its per-item contribution list
+
+## 1.48.0
+
+- Game Data monster records now show each dropped item as a clickable chip that jumps to the item's record in the Items tab
+- Settings → General gains a terminal font-family + font-size picker (per-character); MX437 and size 16 are marked {default}
+- Terminal font size relocated from the per-BBS Display tab to the per-character General tab, so the font choice follows the character
+- Default item seed curated: only a hand-picked list auto-collects (with per-item caps) or auto-discards — every other item is left unmarked
+- Chests/containers and Leo's steel key auto-collect by default; junk gems (azurite, agate, moonstone, …) auto-discard
+- Auto-collect honours each item's Max-to-get cap, counting key-ring keys, instead of grabbing every copy in a room
+- Existing cannot-be-taken and loyal-item flags preserved; stale auto-buy / auto-sell / auto-stash defaults cleared
+- Dead "Auto-find" checkbox removed from the item editor
+- A door that shuts mid-combat no longer traps the walker/loop bonking a "closed door" — the refusal now re-opens it
+- bug reports addressed: paradigm-20260712-234614, paradigm-20260713-000204
+
 ## 1.45.1
 
 - Renaming a BBS now moves its whole folder — nested character profiles, saved logon-nav steps, and passwords survive instead of being wiped and recreated empty

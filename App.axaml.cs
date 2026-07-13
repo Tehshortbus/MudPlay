@@ -311,6 +311,25 @@ public partial class App : Application
                             break;
                     }
                 });
+
+            // A monster the classifier recognized only by stripping an
+            // unrecognized leading flavor word (Monsters-table hit, no
+            // MonsterMessageRecord). Its LogEntry.Context carries the matched
+            // monster Number; double-click opens that Game Data record so the
+            // user can record the missing flavor prefix.
+            AppServices.Current.Log.RegisterDetailHandler(
+                FujinTerm.Game.Combat.RoomEntityClassifier.MissingFlavorCategory,
+                (entry) =>
+                {
+                    if (entry.Context is not { Length: > 0 } numText) return;
+                    if (int.TryParse(numText,
+                            System.Globalization.NumberStyles.Integer,
+                            System.Globalization.CultureInfo.InvariantCulture,
+                            out int monsterNumber))
+                    {
+                        AppServices.Current.OpenMonsterGameData(monsterNumber);
+                    }
+                });
         }
 
         base.OnFrameworkInitializationCompleted();

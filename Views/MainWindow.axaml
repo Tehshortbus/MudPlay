@@ -490,6 +490,7 @@
                       Background="{StaticResource ChromeBgSunkenBrush}">
             <ctl:TerminalControl x:Name="Terminal"
                                  Emulator="{Binding Emulator}"
+                                 FontFamily="{Binding TerminalFontFamily}"
                                  FontSize="{Binding TerminalFontSize}"
                                  ScaleToFit="{Binding ScaleTerminalToWindow}"
                                  HorizontalAlignment="Center"

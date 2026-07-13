@@ -98,7 +98,6 @@
                                     <StackPanel Grid.Column="0" Spacing="2">
                                         <CheckBox Content="Auto-collect"         IsChecked="{Binding AutoCollect,     Mode=TwoWay}"/>
                                         <CheckBox Content="Auto-discard"         IsChecked="{Binding AutoDiscard,     Mode=TwoWay}"/>
-                                        <CheckBox Content="Auto-find"            IsChecked="{Binding AutoFind,        Mode=TwoWay}"/>
                                         <CheckBox Content="Auto-open"            IsChecked="{Binding AutoOpen,        Mode=TwoWay}"
                                                   IsEnabled="{Binding CanAutoOpen}"
                                                   ToolTip.Tip="{Binding AutoOpenTooltip}"/>

@@ -1511,6 +1511,10 @@ public sealed class AppServices
         // player account-name overrides.
         Party.DisconnectPatternProvider = () => ResolveActiveBbs()?.DisconnectPattern;
         Party.PresenceNameResolver = Players.ResolveGivenNameFromPresenceName;
+        // Same custom-disconnect source feeds the conversation window's realm
+        // category — otherwise a board with a non-standard logoff line evicts the
+        // roster member but never logs the disconnect in the conversation.
+        Chat.DisconnectPatternProvider = () => ResolveActiveBbs()?.DisconnectPattern;
         // Engine only — other subsystems register additional
         // handlers without touching the engine.
         RemoteCommands = new Game.Remote.RemoteCommandManager(Chat, PartyState, Players, Log);
@@ -2217,7 +2221,7 @@ public sealed class AppServices
         // write the same flag; the delegate is queried on every
         // Also-Here line so toggling takes effect immediately.
         RoomClassifier = new Game.Combat.RoomEntityClassifier(
-            Router, MonsterMessages, Players, RoomTracker, Log);
+            Router, MonsterMessages, Players, RoomTracker, Log, GameData);
         CombatTracker = new Game.Combat.CombatStateTracker(
             Router, MovementCoordinator, RoomClassifier, MonsterMessages,
             PlayerState,
@@ -2766,6 +2770,12 @@ public sealed class AppServices
             isAutoSneakEnabled:  () => ReadAutoModeFlag(d => d.AutoSneak),
             hasSeeHidden:        n => SeeHidden.Has(n));
         Combat.SetSeeHiddenClearGate(() => CombatTracker.SeeHiddenClearActive);
+
+        // Break-before-run: turning auto-attack OFF mid-fight releases the Combat
+        // gate so the walker resumes — send `break` first when the user has
+        // CombatSettings.BreakBeforeFleeing on, mirroring the flee path's disengage.
+        CombatTracker.SetBreakBeforeRunGate(
+            () => ReadSection<Models.Profile.CombatSettings>(Profile.Current, "Combat").BreakBeforeFleeing);
         RoomTracker.StateChanged += t =>
         {
             if (t.PreviousRoom is null || t.NewRoom is null) return;
@@ -3060,6 +3070,7 @@ public sealed class AppServices
                     .CollectAfterCombatFinished,
             hasEngageableHostiles: () => CombatTracker.HasEngageableHostiles,
             isPeekSuppressed: () => RoomTracker.IsPeekSuppressed(),
+            heldCount: CountItemHeld,
             log: Log);
         AutoGetItems.SetAcquisitionGate(Acquisition);
         // Combat-finished flush: every room-entity observation re-checks
@@ -4353,6 +4364,24 @@ public sealed class AppServices
         return count;
     }
 
+    // How many copies of itemId the player holds, counting the key ring on top
+    // of carried + worn. KEY-type items live in the dump's separate "You have
+    // the following keys:" trailer (InventorySnapshot.Keys), not the pack, so
+    // CountItemCarried alone under-reads them — which let the auto-get MaxToGet
+    // cap collect past its limit. Backs AutoGetItemsManager's held-count seam.
+    private int CountItemHeld(int itemId)
+    {
+        int count = CountItemCarried(itemId);
+        Game.Inventory.InventorySnapshot snap = Inventory.Snapshot;
+        if (snap.Keys is { } keys)
+            foreach (string entry in keys)
+            {
+                (int quantity, string name) = Game.Inventory.InventorySnapshot.ParseKeyEntry(entry);
+                if (ItemNames.FindByName(name) == itemId) count += quantity;
+            }
+        return count;
+    }
+
     // Room keys of every shop in the live graph that stocks
     // itemId — the join of ShopStock (which
     // shops sell it) against RoomGraph (which rooms host those
@@ -4405,7 +4434,7 @@ public sealed class AppServices
 
         Models.GameData.ItemOverlay overlay = ResolveItemOverlay(number);
         return new Game.Inventory.AutoGetItemsManager.ResolvedItem(
-            name, overlay.AutoCollect ?? false, overlay.CannotBeTaken ?? false);
+            number, name, overlay.AutoCollect ?? false, overlay.CannotBeTaken ?? false, MaxCap(overlay));
     }
 
     // Resolve a carried entry for AutoDiscard: map the loose carry wording to an
@@ -4794,19 +4823,22 @@ public sealed class AppServices
     private void ApplyDisplayFromActiveBbs()
     {
         Models.Settings.BbsProfile values = ResolveActiveBbs() ?? new Models.Settings.BbsProfile();
-        Display.FontSize = values.FontSize;
         Display.ScrollbackLines = values.ScrollbackLines;
         Display.TerminalCols = values.TerminalCols;
         Display.TerminalRows = values.TerminalRows;
 
-        // The terminal-scaling toggle is char-tier (General), not BBS-tier, but
-        // it shares this method's ProfileLoaded / ProfileMutated triggers — so
-        // seed it here from the active profile. The Settings → General Apply
-        // path also writes Display.ScaleToWindow live, since a plain profile
-        // Save fires neither event.
-        Display.ScaleToWindow =
-            ReadSection<Models.Profile.GeneralSettings>(Profile.Current, "General")
-                .ScaleTerminalToWindow;
+        // Font family / size and the terminal-scaling toggle are all char-tier
+        // (General), not BBS-tier, but they share this method's ProfileLoaded /
+        // ProfileMutated triggers — so seed them here from the active profile.
+        // The Settings → General Apply path also writes these live, since a plain
+        // profile Save fires neither event.
+        Models.Profile.GeneralSettings general =
+            ReadSection<Models.Profile.GeneralSettings>(Profile.Current, "General");
+        Display.FontFamily = string.IsNullOrWhiteSpace(general.TerminalFontFamily)
+            ? DisplayConfig.DefaultFontFamily
+            : general.TerminalFontFamily;
+        Display.FontSize = general.TerminalFontSize ?? DisplayConfig.DefaultFontSize;
+        Display.ScaleToWindow = general.ScaleTerminalToWindow;
 
         // Game-menu commands are BBS-tier too — HangupHandler consumes
         // ExitCommand synchronously on @hangup; MainMenuEntryAutomation +
@@ -4825,7 +4857,8 @@ public sealed class AppServices
     private void ResetDisplayToDefaults()
     {
         Models.Settings.BbsProfile defaults = new();
-        Display.FontSize = defaults.FontSize;
+        Display.FontFamily = DisplayConfig.DefaultFontFamily;
+        Display.FontSize = DisplayConfig.DefaultFontSize;
         Display.ScrollbackLines = defaults.ScrollbackLines;
         Display.TerminalCols = defaults.TerminalCols;
         Display.TerminalRows = defaults.TerminalRows;

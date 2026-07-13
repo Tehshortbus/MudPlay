@@ -28,6 +28,7 @@ public sealed class EquipmentStatSummary
     // Combat offense.
     public int PlusCrits { get; set; }           // Abil 58
     public int PlusAccuracy { get; set; }        // Abil 22 + 105 + 106 (all sum)
+    public int PlusMinDamage { get; set; }       // Abil 1 (flat "Damage" add, the low-end bonus)
     public int PlusMaxDamage { get; set; }       // Abil 4
     public int SpellDamageBonus { get; set; }    // Abil 165
 
@@ -58,6 +59,7 @@ public sealed class EquipmentStatSummary
     public int PlusStoneResist { get; set; }     // Abil 65
     public int PlusLightningResist { get; set; } // Abil 66
     public int PlusWaterResist { get; set; }     // Abil 147
+    public int PlusShadowResist { get; set; }    // Abil 9
 
     // Protection.
     public int PlusProtEvil { get; set; }        // Abil 24

@@ -39,6 +39,27 @@ public sealed partial class MovementRefusalDetector : IDisposable
 
     private void HandleLine(string text, DateTimeOffset when)
     {
+        // A closed-door refusal reverts the move like any other, but ALSO clears
+        // the stale "door open" flag for the attempted direction — the door shut
+        // since we last saw the room, so the next attempt must re-open it rather
+        // than bonk the shut door again (the mid-combat door-closed bonk loop).
+        if (DoorIsClosed().IsMatch(text))
+        {
+            _tracker.NoteDoorClosed(when);
+            _log?.Info("MoveRefusal", $"door closed: {text.Trim()}");
+            return;
+        }
+
+        // Ambient "The door to the <dir> just closed." — the tracker gates on
+        // whether that direction is the one we're heading before reacting.
+        if (DoorToDirectionJustClosed().Match(text) is { Success: true } namedClose
+            && DirectionExtensions.TryFromLongName(namedClose.Groups[1].Value, out Direction closedDir))
+        {
+            _tracker.NoteNamedDoorClosed(closedDir, when);
+            _log?.Info("MoveRefusal", $"door to {closedDir.ToLongName()} just closed: {text.Trim()}");
+            return;
+        }
+
         if (!Patterns.Any(p => p.IsMatch(text))) return;
 
         _tracker.NoteMoveBlocked(when);
@@ -58,7 +79,6 @@ public sealed partial class MovementRefusalDetector : IDisposable
         TooImpairedToMove(),
         CantSeeWellEnoughToMove(),
         TooEncumberedToMove(),
-        DoorIsClosed(),
     };
 
     [GeneratedRegex(
@@ -98,4 +118,12 @@ public sealed partial class MovementRefusalDetector : IDisposable
         @"^\s*The door is closed[.!]?\s*$",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex DoorIsClosed();
+
+    // Ambient door-shut announcement carrying the direction — "The door to the
+    // north just closed." Captures the long-form direction word so the tracker
+    // can gate on whether we're heading that way.
+    [GeneratedRegex(
+        @"^\s*The door to the (\w+) just closed[.!]?\s*$",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex DoorToDirectionJustClosed();
 }

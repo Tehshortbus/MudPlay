@@ -17,8 +17,10 @@ namespace FujinTerm.Game;
 // The manual / armed entry point for "go train". Resolves the nearest
 // allowed, level-appropriate trainer (TrainerCatalog.SelectNearest + BFS
 // distance), detours a running loop / auto-lair to it, sends train on arrival,
-// and — once the "attain level N" line confirms the level-up — refreshes stats
-// and hands off to AutoTrainManager to apply the CP plan, then resumes the engine.
+// and — once a train-success line confirms the level-up (stock "attain level N"
+// or the level-less Paradigm "train to the next level" wording) — refreshes
+// stats and hands off to AutoTrainManager to apply the CP plan, then resumes
+// the engine.
 //
 // Can-level detection without polling. PlayerStats.Exp is the live experience
 // total — StatParser re-anchors it on every stat/exp poll and accrues each
@@ -65,6 +67,7 @@ public sealed class TrainerWalkManager : IDisposable
     private readonly LogService? _log;
     private readonly WireSender _wire = new();
     private readonly IDisposable _trainSub;
+    private readonly IDisposable _nextLevelSub;
     private readonly IDisposable _tooFarSub;
     private readonly IDisposable _noMoneySub;
 
@@ -131,6 +134,7 @@ public sealed class TrainerWalkManager : IDisposable
 
         _walker.Event += OnWalkEvent;
         _trainSub = router.Subscribe(KnownPatterns.TrainAttainLevel, OnTrained);
+        _nextLevelSub = router.Subscribe(KnownPatterns.TrainAttainNextLevel, OnTrainedNextLevel);
         _tooFarSub = router.Subscribe(KnownPatterns.TrainProgressedTooFar, OnProgressedTooFar);
         _noMoneySub = router.Subscribe(KnownPatterns.TrainNoMoney, OnNoMoney);
         _stats.PropertyChanged += OnStatsPropertyChanged;
@@ -374,7 +378,8 @@ public sealed class TrainerWalkManager : IDisposable
             StopLoop(StopReason.Timeout);
     }
 
-    // "...you receive training to attain level N." — level-up confirmation.
+    // Stock: "...you receive training to attain level N." — level-up confirmation
+    // carrying the attained level in group 1.
     private void OnTrained(MatchResult m)
     {
         if (_phase != Phase.Training) return;
@@ -383,15 +388,33 @@ public sealed class TrainerWalkManager : IDisposable
             Finish("Couldn't parse the trained level.");
             return;
         }
-        _attainedLevel = level;
+        RegisterTrainSuccess(level);
+    }
+
+    // Paradigm/ParaMud: "You hand over N copper farthings to train to the next
+    // level!" — a successful train with no level number, so infer current+1.
+    private void OnTrainedNextLevel(MatchResult m)
+    {
+        if (_phase != Phase.Training) return;
+        RegisterTrainSuccess(explicitLevel: null);
+    }
+
+    // Shared level-up bookkeeping for both train-success wordings. A level-less
+    // success (Paradigm) infers the new level as one past the last confirmed
+    // level (the prior attained level mid-loop, else the run's start level) —
+    // each success is exactly one level, so the running count stays accurate.
+    private void RegisterTrainSuccess(int? explicitLevel)
+    {
+        int prior = _attainedLevel > 0 ? _attainedLevel : _startLevel;
+        _attainedLevel = explicitLevel ?? prior + 1;
         _levelsTrained++;
-        _log?.Info("AutoTrain", $"Trained to level {level} ({_levelsTrained} this run).");
+        _log?.Info("AutoTrain", $"Trained to level {_attainedLevel} ({_levelsTrained} this run).");
 
         // Looping mode keeps training while banked exp can reach a level past the
         // reserve (and the safety cap holds). We never refresh stats between loop
         // steps — PlayerStats.Level lags, so the bankable check rides _stats.Exp
         // (fixed mid-loop) against the just-attained level.
-        if (_loopTrain && _trainSteps < MaxTrainLoopSteps && CountBankableAbove(level) > _keepLevels)
+        if (_loopTrain && _trainSteps < MaxTrainLoopSteps && CountBankableAbove(_attainedLevel) > _keepLevels)
         {
             SendTrain();
             return;
@@ -704,6 +727,7 @@ public sealed class TrainerWalkManager : IDisposable
     {
         _walker.Event -= OnWalkEvent;
         _trainSub.Dispose();
+        _nextLevelSub.Dispose();
         _tooFarSub.Dispose();
         _noMoneySub.Dispose();
         _stats.PropertyChanged -= OnStatsPropertyChanged;

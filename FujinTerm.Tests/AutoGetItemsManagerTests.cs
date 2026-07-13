@@ -32,6 +32,18 @@ public sealed class AutoGetItemsManagerTests
         public Dictionary<string, bool> NoTake { get; } =
             new(StringComparer.OrdinalIgnoreCase);
 
+        // canonical name -> MaxToGet cap. Absent means unbounded (int.MaxValue).
+        public Dictionary<string, int> Caps { get; } =
+            new(StringComparer.OrdinalIgnoreCase);
+
+        // canonical name -> assigned item Number, so the held-count map can key
+        // off the same identity the resolver emits.
+        public Dictionary<string, int> Numbers { get; } =
+            new(StringComparer.OrdinalIgnoreCase);
+
+        // item Number -> currently-held copies (carried + worn + key ring).
+        public Dictionary<int, int> Held { get; } = new();
+
         public bool Enabled { get; set; } = true;
         public bool CollectAfterCombat { get; set; }
         public bool HasHostiles { get; set; }
@@ -46,8 +58,22 @@ public sealed class AutoGetItemsManagerTests
                 collectAfterCombatFinished: () => CollectAfterCombat,
                 hasEngageableHostiles: () => HasHostiles,
                 isPeekSuppressed: () => PeekSuppressed,
+                heldCount: id => Held.GetValueOrDefault(id),
                 log: Log);
             Items.SetWireSender(b => Sent.Add(b));
+        }
+
+        // Give a name a stable item Number for cap tests. Non-cap tests never
+        // call this — everything resolves to Number 0 (fine, they set no cap).
+        public int NumberFor(string name)
+        {
+            string key = Strip(name);
+            if (!Numbers.TryGetValue(key, out int n))
+            {
+                n = Numbers.Count + 1;
+                Numbers[key] = n;
+            }
+            return n;
         }
 
         private AutoGetItemsManager.ResolvedItem? Resolve(string entry)
@@ -55,7 +81,9 @@ public sealed class AutoGetItemsManagerTests
             string key = Strip(entry);
             if (!Flags.TryGetValue(key, out bool auto)) return null;
             bool noTake = NoTake.GetValueOrDefault(key);
-            return new AutoGetItemsManager.ResolvedItem(key, auto, noTake);
+            int number = Numbers.GetValueOrDefault(key);
+            int cap = Caps.TryGetValue(key, out int c) ? c : int.MaxValue;
+            return new AutoGetItemsManager.ResolvedItem(number, key, auto, noTake, cap);
         }
 
         private static string Strip(string raw)
@@ -255,6 +283,93 @@ public sealed class AutoGetItemsManagerTests
         FeedLine(lines, "shield here.");
 
         Assert.Equal(new[] { "get long sword", "get shield" }, h.SentText);
+    }
+
+    [Fact]
+    public void MaxToGet_BelowCap_Collects()
+    {
+        using Harness h = new();
+        int n = h.NumberFor("black star key");
+        h.Flags["black star key"] = true;
+        h.Caps["black star key"] = 2;
+        h.Held[n] = 1;                          // hold one, cap is two
+
+        h.Feed("You notice black star key here.");
+
+        Assert.Single(h.Sent);
+        Assert.Equal("get black star key", h.SentText[0]);
+    }
+
+    [Fact]
+    public void MaxToGet_AtCap_Skips()
+    {
+        using Harness h = new();
+        int n = h.NumberFor("black star key");
+        h.Flags["black star key"] = true;
+        h.Caps["black star key"] = 2;
+        h.Held[n] = 2;                          // already at the cap (e.g. via key ring)
+
+        h.Feed("You notice black star key here.");
+
+        Assert.Empty(h.Sent);
+    }
+
+    [Fact]
+    public void MaxToGet_SameSurveyTwice_CapsWithinPass()
+    {
+        // One survey lists the item twice; the held snapshot won't move until
+        // the gets echo back, so the in-pass tally must enforce the cap.
+        using Harness h = new();
+        h.NumberFor("black star key");
+        h.Flags["black star key"] = true;
+        h.Caps["black star key"] = 1;           // want at most one
+
+        h.Feed("You notice black star key and black star key here.");
+
+        Assert.Single(h.Sent);
+        Assert.Equal("get black star key", h.SentText[0]);
+    }
+
+    [Fact]
+    public void MaxToGet_Unbounded_CollectsRegardlessOfHeld()
+    {
+        using Harness h = new();
+        int n = h.NumberFor("long sword");
+        h.Flags["long sword"] = true;           // no cap set → int.MaxValue
+        h.Held[n] = 99;
+
+        h.Feed("You notice a long sword here.");
+
+        Assert.Single(h.Sent);
+    }
+
+    [Fact]
+    public void MaxToGet_CapReached_DefersNothing()
+    {
+        using Harness h = new() { CollectAfterCombat = true, HasHostiles = true };
+        int n = h.NumberFor("black star key");
+        h.Flags["black star key"] = true;
+        h.Caps["black star key"] = 2;
+        h.Held[n] = 2;                          // at cap — nothing to defer
+
+        h.Feed("You notice black star key here.");
+        h.HasHostiles = false;
+        h.Items.OnRoomObserved();               // combat clears — flush
+
+        Assert.Empty(h.Sent);
+    }
+
+    [Theory]
+    [InlineData("black star key", 1, "black star key")]
+    [InlineData("3 black star key", 3, "black star key")]
+    [InlineData("12 brass key", 12, "brass key")]
+    [InlineData(" 2 runic key ", 2, "runic key")]      // surrounding whitespace trimmed
+    [InlineData("keyring", 1, "keyring")]              // single word, no count
+    public void ParseKeyEntry_SplitsLeadingCount(string entry, int expectQty, string expectName)
+    {
+        (int qty, string name) = InventorySnapshot.ParseKeyEntry(entry);
+        Assert.Equal(expectQty, qty);
+        Assert.Equal(expectName, name);
     }
 
     [Fact]

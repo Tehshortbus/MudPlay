@@ -35,7 +35,8 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
         "General", "Data files", "Open Data folder", "Change data directory",
         "Auto-connect", "Default task", "Do nothing",
         "Begin loop", "Begin Auto-Lair", "Backup profile",
-        "Terminal display", "Scale terminal to window",
+        "Terminal font", "Font", "Font family", "Font size",
+        "Scale terminal to window",
         "Manual-Mode Defaults", "Auto-Mode Defaults",
         "Auto-Engines enabled on start",
         "Auto-Combat", "Auto-Nuke",
@@ -99,6 +100,36 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
 
     // Names of saved Auto-Lair files available for the "Begin Auto-Lair" picker.
     public IReadOnlyList<string> AutoLairNames { get; } = Array.Empty<string>();
+
+    // ----- Terminal font (char-tier) -----
+    // Font family + size the terminal canvas renders with. Both used to live in
+    // the per-BBS Display settings; they moved here so the choice follows the
+    // character rather than whichever board it's connected to. Only the two
+    // bundled monospace fonts are offered — MX437 (the CP437 bitmap font that
+    // matches classic BBS output) and JetBrains Mono — since a proportional font
+    // would mangle the fixed cell grid. The default font and size 16 carry a
+    // "{default}" tag in the picker labels.
+    public IReadOnlyList<FontFamilyOption> FontFamilyOptions { get; } = new[]
+    {
+        new FontFamilyOption("MX437 IBM VGA {default}", DisplayConfig.DefaultFontFamily),
+        new FontFamilyOption("JetBrains Mono",
+            "avares://FujinTerm/Assets/Fonts/JetBrainsMono-Regular.ttf#JetBrains Mono"),
+    };
+
+    public IReadOnlyList<FontSizeOption> FontSizeOptions { get; } = BuildFontSizeOptions();
+
+    [ObservableProperty] private FontFamilyOption? _selectedFontFamily;
+    [ObservableProperty] private FontSizeOption? _selectedFontSize;
+
+    private static IReadOnlyList<FontSizeOption> BuildFontSizeOptions()
+    {
+        double[] sizes = { 8, 9, 10, 11, 12, 13, 14, 16, 18, 20, 22, 24, 28, 32 };
+        List<FontSizeOption> list = new(sizes.Length);
+        foreach (double s in sizes)
+            list.Add(new FontSizeOption(
+                s == DisplayConfig.DefaultFontSize ? $"{s:0} {{default}}" : $"{s:0}", s));
+        return list;
+    }
 
     // ----- Auto-engine master switches -----
     // Each AmXxx bool is the master on/off for the matching engine. Persisted to
@@ -187,6 +218,13 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
             AutoConnect = AutoConnect,
             BackupOnSave = BackupOnSave,
             ScaleTerminalToWindow = ScaleTerminalToWindow,
+            // Store null when the default is selected so the delta stays clean
+            // and follows the app default if it ever changes (the picker label
+            // literally reads "{default}").
+            TerminalFontFamily = SelectedFontFamily is { } ff
+                && ff.Uri != DisplayConfig.DefaultFontFamily ? ff.Uri : null,
+            TerminalFontSize = SelectedFontSize is { } fs
+                && fs.Value != DisplayConfig.DefaultFontSize ? fs.Value : null,
             AutoMode   = SnapshotAuto(),
             AllowHangupInAllOffMode         = AllowHangupInAllOffMode,
             ReEnableAutoCombatOnReconnect   = ReEnableAutoCombatOnReconnect,
@@ -205,11 +243,15 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
         profile.Settings[TabKey] = JsonSerializer.SerializeToElement(dto);
         _profile.Save(backup: BackupOnSave);
 
-        // Push the terminal-scaling toggle into the live DisplayConfig — a plain
-        // profile Save fires neither ProfileLoaded nor ProfileMutated, so the
-        // AppServices seed path won't run; this is what makes the change reach
-        // the live canvas on Apply.
+        // Push the char-tier display settings into the live DisplayConfig — a
+        // plain profile Save fires neither ProfileLoaded nor ProfileMutated, so
+        // the AppServices seed path won't run; this is what makes the change
+        // reach the live canvas on Apply.
         AppServices.Current.Display.ScaleToWindow = ScaleTerminalToWindow;
+        AppServices.Current.Display.FontFamily =
+            SelectedFontFamily?.Uri ?? DisplayConfig.DefaultFontFamily;
+        AppServices.Current.Display.FontSize =
+            SelectedFontSize?.Value ?? DisplayConfig.DefaultFontSize;
 
         ClearDirty();
     }
@@ -246,6 +288,12 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
         AutoConnect          = dto.AutoConnect;
         BackupOnSave         = dto.BackupOnSave;
         ScaleTerminalToWindow = dto.ScaleTerminalToWindow;
+
+        SelectedFontFamily = FontFamilyOptions.FirstOrDefault(o => o.Uri == dto.TerminalFontFamily)
+                             ?? FontFamilyOptions[0];
+        double size = dto.TerminalFontSize ?? DisplayConfig.DefaultFontSize;
+        SelectedFontSize = FontSizeOptions.FirstOrDefault(o => o.Value == size)
+                           ?? FontSizeOptions.First(o => o.Value == DisplayConfig.DefaultFontSize);
 
         AutoActionDefaults a = dto.AutoMode;
         AmAutoCombat   = a.AutoCombat;
@@ -320,6 +368,8 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
     partial void OnAutoConnectChanged(bool value)            => Dirty();
     partial void OnBackupOnSaveChanged(bool value)           => Dirty();
     partial void OnScaleTerminalToWindowChanged(bool value)  => Dirty();
+    partial void OnSelectedFontFamilyChanged(FontFamilyOption? value) => Dirty();
+    partial void OnSelectedFontSizeChanged(FontSizeOption? value)     => Dirty();
     partial void OnAmAutoCombatChanged(bool value)           => Dirty();
     partial void OnAmAutoNukeChanged(bool value)             => Dirty();
     partial void OnAmAutoHealRestChanged(bool value)         => Dirty();
@@ -352,3 +402,11 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
         if (keep != 2 && IsTaskBeginAutoLair) IsTaskBeginAutoLair = false;
     }
 }
+
+// Font-family picker row: the label shown in the General-tab dropdown and the
+// avares:// URI persisted into GeneralSettings.TerminalFontFamily.
+public sealed record FontFamilyOption(string Label, string Uri);
+
+// Font-size picker row: the label shown in the dropdown (with a "{default}" tag
+// on 16) and the point size persisted into GeneralSettings.TerminalFontSize.
+public sealed record FontSizeOption(string Label, double Value);

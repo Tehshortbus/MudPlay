@@ -133,6 +133,7 @@
                                                              FilterMode="ContainsOrdinal"
                                                              MinimumPrefixLength="1"
                                                              PlaceholderText="{}{no change}"
+                                                             SelectionChanged="OnSlotItemSelected"
                                                              Text="{Binding ItemName, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"/>
                                         </Grid>
                                     </DataTemplate>

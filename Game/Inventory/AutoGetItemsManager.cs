@@ -38,13 +38,15 @@ public sealed class AutoGetItemsManager : IDisposable
     // LogService category — [AutoGet] rows per collected / deferred item.
     public const string LogCategory = "AutoGet";
 
-    // One resolved room entry: the canonical name to send to the game,
-    // whether the user flagged it for auto-collection, and whether the item
-    // is marked CannotBeTaken (a hard never-pick-up flag that wins over
-    // AutoCollect — the engine never sends get for it).
-    public sealed record ResolvedItem(string Name, bool AutoCollect, bool CannotBeTaken);
+    // One resolved room entry: the item's canonical Number (for the held-count
+    // lookup), the name to send to the game, whether the user flagged it for
+    // auto-collection, whether it is marked CannotBeTaken (a hard never-pick-up
+    // flag that wins over AutoCollect — the engine never sends get for it), and
+    // the MaxToGet carry cap (int.MaxValue = unbounded).
+    public sealed record ResolvedItem(int Number, string Name, bool AutoCollect, bool CannotBeTaken, int MaxToGet);
 
     private readonly Func<string, ResolvedItem?> _resolve;
+    private readonly Func<int, int> _heldCount;
     private readonly Func<bool> _isEnabled;
     private readonly Func<bool> _collectAfterCombatFinished;
     private readonly Func<bool> _hasEngageableHostiles;
@@ -70,6 +72,7 @@ public sealed class AutoGetItemsManager : IDisposable
         Func<bool> collectAfterCombatFinished,
         Func<bool> hasEngageableHostiles,
         Func<bool>? isPeekSuppressed = null,
+        Func<int, int>? heldCount = null,
         LogService? log = null)
     {
         ArgumentNullException.ThrowIfNull(router);
@@ -78,6 +81,10 @@ public sealed class AutoGetItemsManager : IDisposable
         ArgumentNullException.ThrowIfNull(collectAfterCombatFinished);
         ArgumentNullException.ThrowIfNull(hasEngageableHostiles);
         _resolve = resolve;
+        // Null when unbound (tests without a cap case) → nothing is ever held,
+        // so a MaxToGet cap can still fire off the first pickup. Live wiring
+        // supplies the carried+worn+key-ring count.
+        _heldCount = heldCount ?? (static _ => 0);
         _isEnabled = isEnabled;
         _collectAfterCombatFinished = collectAfterCombatFinished;
         _hasEngageableHostiles = hasEngageableHostiles;
@@ -215,6 +222,11 @@ public sealed class AutoGetItemsManager : IDisposable
         bool deferMode = _collectAfterCombatFinished() && _hasEngageableHostiles();
         if (deferMode) _deferred.Clear();   // rebuild for this survey
 
+        // Copies decided in this survey, by item Number — so a MaxToGet cap
+        // holds even when a single "You notice" lists the same item twice
+        // (the held-count snapshot doesn't move until the get echoes back).
+        Dictionary<int, int>? decidedThisPass = null;
+
         foreach (string entry in SplitEntries(list))
         {
             ResolvedItem? item = _resolve(entry);
@@ -225,6 +237,22 @@ public sealed class AutoGetItemsManager : IDisposable
                 continue;
             }
             if (!item.AutoCollect) continue;     // user didn't flag it
+
+            // MaxToGet carry cap. Count what we already hold (carried + worn +
+            // key ring — key-type items land in the ring, not the pack) plus
+            // anything already decided in this same survey; stop at the cap.
+            if (item.MaxToGet != int.MaxValue)
+            {
+                decidedThisPass ??= new Dictionary<int, int>();
+                int have = _heldCount(item.Number) + decidedThisPass.GetValueOrDefault(item.Number);
+                if (have >= item.MaxToGet)
+                {
+                    _log?.Debug(LogCategory,
+                        $"skipped item={item.Name} (have {have} >= max {item.MaxToGet})");
+                    continue;
+                }
+                decidedThisPass[item.Number] = decidedThisPass.GetValueOrDefault(item.Number) + 1;
+            }
 
             if (deferMode)
             {

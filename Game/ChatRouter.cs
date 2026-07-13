@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using FujinTerm.Services;
 using FujinTerm.Services.Patterns;
 
@@ -28,6 +29,21 @@ public sealed class ChatRouter : IDisposable
     // correlate with the typed command on the line above. Cleared after each
     // consume so we don't re-attribute it to a later telepath.
     private string? _pendingTelepathMessage;
+
+    // Board-specific disconnect line, for the conversation window's realm
+    // category. Returns the active BBS's raw DisconnectPattern ({name}/* syntax,
+    // empty/null when the board uses only the standard lines). Set by AppServices
+    // — the same provider PartyManager uses for roster eviction. The built-in
+    // "just disconnected!!!." / "just hung up!!!" patterns only match a
+    // single-word name with a trailing period, so a board whose logoff line
+    // differs (no period, spaced name, account-name form) never reaches the
+    // realm-event subscriptions below; this additive sniff classifies it too.
+    public Func<string?>? DisconnectPatternProvider { get; set; }
+
+    // Compiled form of the current DisconnectPattern, cached against its raw
+    // source so we only recompile when the user edits the pattern or swaps BBS.
+    private string? _compiledDisconnectSource;
+    private Regex? _compiledDisconnect;
 
     // Fired once per classified line.
     public event Action<ChatLogEntry>? EntryClassified;
@@ -100,7 +116,68 @@ public sealed class ChatRouter : IDisposable
     }
 
     private void OnLineDispatched(Terminal.LineExtractor.EmittedLine line)
-        => TryCaptureTelepath(line.Text);
+    {
+        TryCaptureTelepath(line.Text);
+        TryCustomDisconnectLine(line);
+    }
+
+    // Match the active BBS's custom disconnect line against a freshly-emitted
+    // terminal line and, on a hit, emit a "disconnected" realm event so the
+    // conversation window logs it under the realm category — the same treatment
+    // the built-in PlayerDisconnects pattern gets. Additive to that built-in
+    // subscription; a board that only emits the custom form (the reason the user
+    // configured one) would otherwise never appear in the conversation.
+    private void TryCustomDisconnectLine(Terminal.LineExtractor.EmittedLine line)
+    {
+        string text = line.Text;
+        if (string.IsNullOrEmpty(text)) return;
+        Regex? rx = CurrentDisconnectRegex();
+        if (rx is null) return;
+        Match m = rx.Match(text);
+        if (!m.Success) return;
+        Group g = m.Groups["name"];
+        string captured = g.Success ? g.Value.Trim() : string.Empty;
+        if (captured.Length == 0) return;
+
+        EntryClassified?.Invoke(new ChatLogEntry(
+            line.Timestamp,
+            ChatChannel.RealmEvent,
+            captured,
+            "disconnected",
+            text));
+    }
+
+    // Lazily (re)compile the BBS DisconnectPattern into a Regex, caching against
+    // the raw source so recompilation only happens on an edit / BBS swap. Uses the
+    // same literal→regex translation the trigger engine applies ({name} → named
+    // capture, * → greedy run, everything else escaped). A malformed pattern
+    // disables the custom path rather than throwing on every line. Mirrors
+    // PartyManager.CurrentDisconnectRegex.
+    private Regex? CurrentDisconnectRegex()
+    {
+        string? raw = DisconnectPatternProvider?.Invoke();
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            _compiledDisconnectSource = null;
+            _compiledDisconnect = null;
+            return null;
+        }
+        if (!string.Equals(raw, _compiledDisconnectSource, StringComparison.Ordinal))
+        {
+            _compiledDisconnectSource = raw;
+            try
+            {
+                _compiledDisconnect = new Regex(
+                    TriggerEngine.LiteralToRegex(raw),
+                    RegexOptions.CultureInvariant);
+            }
+            catch (ArgumentException)
+            {
+                _compiledDisconnect = null;
+            }
+        }
+        return _compiledDisconnect;
+    }
 
     // Engine-sent telepaths (party @-command broadcasts, join nags) reach the
     // wire through SendUserInput without ever rendering on the terminal, so the

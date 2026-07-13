@@ -35,4 +35,21 @@ public readonly record struct InventorySnapshot(
         System.Array.Empty<EquippedItem>(),
         System.Array.Empty<string>(),
         System.DateTimeOffset.MinValue);
+
+    // Split a key-ring entry into its stack quantity and item name. The dump
+    // stacks duplicate keys behind a leading count ("3 black star key") and
+    // lists a lone key bare ("black star key"); a bare entry is quantity 1.
+    // Callers counting held keys against an item Number need the count broken
+    // out of the display string.
+    public static (int Quantity, string Name) ParseKeyEntry(string entry)
+    {
+        string name = (entry ?? string.Empty).Trim();
+        int space = name.IndexOf(' ');
+        if (space > 0
+            && int.TryParse(name.AsSpan(0, space), System.Globalization.NumberStyles.Integer,
+                System.Globalization.CultureInfo.InvariantCulture, out int n)
+            && n > 0)
+            return (n, name[(space + 1)..]);
+        return (1, name);
+    }
 }

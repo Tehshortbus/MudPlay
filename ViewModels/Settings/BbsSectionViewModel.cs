@@ -45,7 +45,7 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         "Auto-refine death floor", "Trace death floor", "Slow death", "Learn floor",
         "Disconnect pattern", "Party disconnect", "Logoff pattern", "Logs off",
         "Player disconnect line",
-        "Display", "Font", "Font size", "Scrollback", "Backscroll", "Buffer",
+        "Display", "Scrollback", "Backscroll", "Buffer",
         "Confirm", "Confirm exit", "Confirm hangup", "Confirm save", "Confirm delete",
     };
 
@@ -75,7 +75,6 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private bool _hasSysopPowers;
     [ObservableProperty] private int _terminalCols = 80;
     [ObservableProperty] private int _terminalRows = 25;
-    [ObservableProperty] private double _fontSize = 16.0;
     [ObservableProperty] private int _scrollbackLines = 4_000;
 
     // ----- Game-menu commands (per-BBS) -----
@@ -547,7 +546,6 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         string? activeName = _profile.CurrentBbsName;
         BbsProfile? active = string.IsNullOrEmpty(activeName) ? null : _bbsStore.Get(activeName);
         BbsProfile values = active ?? new BbsProfile();
-        _display.FontSize = values.FontSize;
         _display.ScrollbackLines = values.ScrollbackLines;
         _display.TerminalCols = values.TerminalCols;
         _display.TerminalRows = values.TerminalRows;
@@ -627,7 +625,6 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         ReconnectAfterCleanup = profile.ReconnectAfterCleanup;
         TerminalCols = profile.TerminalCols;
         TerminalRows = profile.TerminalRows;
-        FontSize = profile.FontSize;
         ScrollbackLines = profile.ScrollbackLines;
         GameEntryCommand = profile.GameEntryCommand;
         GameExitCommand = profile.GameExitCommand;
@@ -760,7 +757,6 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         ReconnectAfterCleanup = defaults.ReconnectAfterCleanup;
         TerminalCols = defaults.TerminalCols;
         TerminalRows = defaults.TerminalRows;
-        FontSize = defaults.FontSize;
         ScrollbackLines = defaults.ScrollbackLines;
         GameEntryCommand = defaults.GameEntryCommand;
         GameExitCommand = defaults.GameExitCommand;
@@ -804,7 +800,6 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         profile.ReconnectAfterCleanup = ReconnectAfterCleanup;
         profile.TerminalCols = TerminalCols;
         profile.TerminalRows = TerminalRows;
-        profile.FontSize = FontSize;
         profile.ScrollbackLines = ScrollbackLines;
         profile.GameEntryCommand = string.IsNullOrWhiteSpace(GameEntryCommand)
             ? new BbsProfile().GameEntryCommand : GameEntryCommand.Trim();
@@ -872,7 +867,6 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     partial void OnTerminalColsChanged(int value)               { PushToCache(); Dirty(); }
     partial void OnTerminalRowsChanged(int value)               { PushToCache(); Dirty(); }
 
-    partial void OnFontSizeChanged(double value)                { PushToCache(); Dirty(); }
     partial void OnScrollbackLinesChanged(int value)            { PushToCache(); Dirty(); }
     partial void OnGameEntryCommandChanged(string value)        { PushToCache(); Dirty(); }
     partial void OnGameExitCommandChanged(string value)         { PushToCache(); Dirty(); }

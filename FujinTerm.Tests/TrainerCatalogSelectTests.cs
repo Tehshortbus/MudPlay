@@ -13,10 +13,10 @@ public sealed class TrainerCatalogSelectTests
 {
     // Universal trainers; ranges chosen so coverage is 0–9 then 11–19, leaving
     // level 10 as a deliberate gap (mirrors a real quest-gated level).
-    private static readonly TrainerShop Newhaven  = new(1, "Newhaven",   1, 100, "", 1, 3, 0);   // serves 0–2
-    private static readonly TrainerShop Silver    = new(2, "Silvermere", 1, 200, "", 3, 10, 0);  // serves 2–9
-    private static readonly TrainerShop Aldreth   = new(3, "Aldreth",    1, 300, "", 12, 20, 0); // serves 11–19
-    private static readonly TrainerShop MageGuild = new(4, "Mage Guild", 1, 400, "", 1, 99, 7);  // class 7 only
+    private static readonly TrainerShop Newhaven  = new(1, "Newhaven",   1, 100, "", 1, 3, 0, 0);   // serves 0–2
+    private static readonly TrainerShop Silver    = new(2, "Silvermere", 1, 200, "", 3, 10, 0, 0);  // serves 2–9
+    private static readonly TrainerShop Aldreth   = new(3, "Aldreth",    1, 300, "", 12, 20, 0, 0); // serves 11–19
+    private static readonly TrainerShop MageGuild = new(4, "Mage Guild", 1, 400, "", 1, 99, 7, 0);  // class 7 only
 
     private static readonly IReadOnlyList<TrainerShop> All = new[] { Newhaven, Silver, Aldreth, MageGuild };
 
@@ -76,7 +76,36 @@ public sealed class TrainerCatalogSelectTests
     {
         // Drives the Settings → Auto-Trainer view filter (a Mystic shouldn't see
         // other classes' super trainers).
-        TrainerShop shop = new(1, "Trainer", 1, 100, "", 1, 99, classRest);
+        TrainerShop shop = new(1, "Trainer", 1, 100, "", 1, 99, classRest, 0);
         Assert.Equal(expected, shop.ServesClass(classNumber));
+    }
+
+    // ----- CheapestMarkup (drives the Level Projection train-cost column) --
+
+    [Fact]
+    public void CheapestMarkup_PicksLowestMarkupAmongServingTrainers()
+    {
+        // Two universal guilds both teach up to level 5; the lower markup wins.
+        TrainerShop dear  = new(1, "Dear",  1, 100, "", 1, 20, 0, 9999);
+        TrainerShop cheap = new(2, "Cheap", 1, 200, "", 1, 20, 0, 300);
+        var all = new[] { dear, cheap };
+
+        Assert.Equal(300, TrainerCatalog.CheapestMarkup(all, targetLevel: 5, classNumber: 3));
+    }
+
+    [Fact]
+    public void CheapestMarkup_IgnoresTrainersOutOfRangeOrOffClass()
+    {
+        // Reaching level 15: only Aldreth (serves reaching 12–20) qualifies; the
+        // class-7 Mage Guild is hidden from a class-3 char.
+        Assert.Equal(0, TrainerCatalog.CheapestMarkup(All, targetLevel: 15, classNumber: 3));
+    }
+
+    [Fact]
+    public void CheapestMarkup_ReturnsNullWhenNoTrainerServes()
+    {
+        // Reaching level 11 for a class-3 char: Silvermere tops out at 10 and
+        // Aldreth doesn't start until 12 — a quest-gated seam with no trainer.
+        Assert.Null(TrainerCatalog.CheapestMarkup(All, targetLevel: 11, classNumber: 3));
     }
 }

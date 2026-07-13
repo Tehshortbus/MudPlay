@@ -28,11 +28,12 @@ public sealed class RoomEntityClassifierTests
         public List<LogEntry> LogEntries { get; } = new();
         public List<RoomEntitiesObservation> Observations { get; } = new();
 
-        public Harness()
+        public Harness(GameDataCache? gameData = null)
         {
             Router = new MessageRouter();
             DefaultPatterns.Seed(Router);
-            Classifier = new RoomEntityClassifier(Router, Monsters, Players, Log);
+            Classifier = new RoomEntityClassifier(
+                Router, Monsters, Players, roomTracker: null, Log, gameData);
             Log.EntryAdded += LogEntries.Add;
             Classifier.EntitiesObserved += Observations.Add;
         }
@@ -298,6 +299,102 @@ public sealed class RoomEntityClassifierTests
         // observation still fires + classifies as Unknown.
         Assert.NotNull(classifier.Current);
         Assert.Equal(EntityKind.Unknown, classifier.Current!.Value.Entities[0].Kind);
+    }
+
+    // ----- first-word-strip Monsters-table fallback ------------------
+
+    // Build a GameDataCache backed by a temp set carrying just a Monsters
+    // table. Caller deletes the returned directory.
+    private static (GameDataCache cache, string dir) MonstersTable(string monstersJson)
+    {
+        string dir = Path.Combine(
+            Path.GetTempPath(), "fujinterm-classifier-tests-" + Path.GetRandomFileName());
+        Directory.CreateDirectory(Path.Combine(dir, "alpha"));
+        File.WriteAllText(Path.Combine(dir, "alpha", "Monsters.json"), monstersJson);
+        GameDataCache cache = new(dir);
+        cache.SwitchSet("alpha");
+        return (cache, dir);
+    }
+
+    // A monster whose Monsters-table row exists but whose leading flavor word
+    // isn't in any MonsterMessageRecord resolves by stripping the first word.
+    [Fact]
+    public void UnknownFlavorWord_ResolvesToMonstersTableRow()
+    {
+        (GameDataCache cache, string dir) = MonstersTable(
+            """[ { "Number": 82, "Name": "kobold" } ]""");
+        try
+        {
+            using Harness h = new(cache);
+
+            h.Feed("Also here: vicious kobold.");
+
+            Assert.Single(h.Observations);
+            RoomEntity ent = h.Observations[0].Entities[0];
+            Assert.Equal(EntityKind.Monster, ent.Kind);
+            Assert.Equal(82, ent.MonsterNumber);
+            Assert.Equal("vicious kobold", ent.RawName);
+            Assert.Equal("kobold", ent.ResolvedName);
+
+            // The full name is flagged for a flavor-prefix edit, with the
+            // matched monster Number carried in Context for the double-click.
+            LogEntry warn = h.LogEntries.Find(e =>
+                e.Source == RoomEntityClassifier.MissingFlavorCategory);
+            Assert.NotEqual(default, warn);
+            Assert.Contains("vicious kobold", warn.Message);
+            Assert.Equal("82", warn.Context);
+        }
+        finally { try { Directory.Delete(dir, true); } catch { /* best-effort */ } }
+    }
+
+    // The remainder after the first word must match a Monsters-table row —
+    // otherwise the entry stays Unknown.
+    [Fact]
+    public void UnknownFlavorWord_RemainderNotAMonster_StaysUnknown()
+    {
+        (GameDataCache cache, string dir) = MonstersTable(
+            """[ { "Number": 82, "Name": "kobold" } ]""");
+        try
+        {
+            using Harness h = new(cache);
+
+            h.Feed("Also here: vicious wombat.");
+
+            Assert.Equal(EntityKind.Unknown, h.Observations[0].Entities[0].Kind);
+            Assert.DoesNotContain(h.LogEntries, e =>
+                e.Source == RoomEntityClassifier.MissingFlavorCategory);
+        }
+        finally { try { Directory.Delete(dir, true); } catch { /* best-effort */ } }
+    }
+
+    // Only the FIRST word is stripped: a two-word flavor prefix won't reduce
+    // to the base name, so the fallback doesn't fire.
+    [Fact]
+    public void UnknownFlavorWord_OnlyStripsFirstWord()
+    {
+        (GameDataCache cache, string dir) = MonstersTable(
+            """[ { "Number": 82, "Name": "kobold" } ]""");
+        try
+        {
+            using Harness h = new(cache);
+
+            h.Feed("Also here: large vicious kobold.");
+
+            // Remainder "vicious kobold" isn't a Monsters-table name.
+            Assert.Equal(EntityKind.Unknown, h.Observations[0].Entities[0].Kind);
+        }
+        finally { try { Directory.Delete(dir, true); } catch { /* best-effort */ } }
+    }
+
+    // Without a GameDataCache the fallback is inert — the entry stays Unknown.
+    [Fact]
+    public void UnknownFlavorWord_NoGameData_StaysUnknown()
+    {
+        using Harness h = new();
+
+        h.Feed("Also here: vicious kobold.");
+
+        Assert.Equal(EntityKind.Unknown, h.Observations[0].Entities[0].Kind);
     }
 
     // ----- list-shape forms (commas, Oxford-and, mixed) --------------

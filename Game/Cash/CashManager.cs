@@ -266,7 +266,7 @@ public sealed class CashManager : IDisposable
         long count = Math.Max(snapshotCount, HeldCoin(currency));
         if (count <= 0) return;
         _log?.Info(LogCategory, $"discard drop currency={currency} count={count}");
-        Send($"drop {count} {currency}");
+        Send($"drop {count} {WireNoun(currency)}");
     }
 
     // ----- handlers ----------------------------------------------------
@@ -503,7 +503,7 @@ public sealed class CashManager : IDisposable
         {
             // Ungated path — nothing to gate against, collect the full amount.
             _gate?.NoteGetSent();
-            Send($"get {count} {currency}");
+            Send($"get {count} {WireNoun(currency)}");
             return;
         }
 
@@ -554,7 +554,7 @@ public sealed class CashManager : IDisposable
                 long canSwap = Math.Min(swapNeeded, held[j]);
                 _log?.Info(LogCategory,
                     $"cascade drop {canSwap} {SlotCurrencyNames[j]} for {canSwap} {currency}");
-                Send($"drop {canSwap} {SlotCurrencyNames[j]}");
+                Send($"drop {canSwap} {WireNoun(SlotCurrencyNames[j])}");
                 held[j] -= canSwap;
                 _inFlightCoinDelta[j] -= canSwap;
                 _inFlightCoinDeltaSetAt[j] = now;
@@ -572,7 +572,7 @@ public sealed class CashManager : IDisposable
         }
 
         _gate?.NoteGetSent();
-        Send($"get {totalPickup} {currency}");
+        Send($"get {totalPickup} {WireNoun(currency)}");
         _inFlightCoinDelta[slot] += totalPickup;
         _inFlightCoinDeltaSetAt[slot] = now;
     }
@@ -589,6 +589,25 @@ public sealed class CashManager : IDisposable
             "gold"     => 2,
             "platinum" => 3,
             _          => -1,
+        };
+    }
+
+    // Full two-word coin noun for an outgoing get / drop command. A bare
+    // denomination adjective binds ambiguously — MajorMUD resolves "drop 1
+    // silver" to a silver ring instead of the silver-noble coins — so every
+    // currency command names the coin in full to force a currency match. The
+    // four lower denominations have fixed nouns; the runic word's leading token
+    // is board-configurable while its "coin" suffix is stable.
+    private string WireNoun(string currency)
+    {
+        if (_naming.IsRunic(currency)) return $"{_naming.RunicName} coin";
+        return currency.ToLowerInvariant() switch
+        {
+            "copper"   => "copper farthing",
+            "silver"   => "silver noble",
+            "gold"     => "gold crown",
+            "platinum" => "platinum piece",
+            _          => currency,
         };
     }
 

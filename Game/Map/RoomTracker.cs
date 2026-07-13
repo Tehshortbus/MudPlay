@@ -692,6 +692,35 @@ public sealed class RoomTracker
         }
     }
 
+    // A "The door is closed!" refusal was seen. Beyond the generic move-blocked
+    // revert, this tells us the cached "door open" reading for the just-attempted
+    // direction is stale — the door shut (typically mid-combat) since we last saw
+    // the room. Clear that direction's open-door flag so the next attempt routes
+    // through the door-open FSM (bash / pick / key) instead of trusting the stale
+    // "already open" reading and bonking the shut door again. Reads the refused
+    // direction off the pending tail BEFORE NoteMoveBlocked drops it.
+    public void NoteDoorClosed(DateTimeOffset? whenUtc = null)
+    {
+        if (MostRecentPendingCardinal() is { } dir)
+            ClearOpenDoorDirection(dir);
+        NoteMoveBlocked(whenUtc);
+    }
+
+    // "The door to the <dir> just closed." — an ambient door-shut announcement
+    // that names its own direction, unlike the bare "The door is closed!"
+    // refusal (which carries none and reads the direction off the pending move).
+    // Only act when the named direction is the one we're heading: a door shutting
+    // in our path must clear its stale "open" flag and revert the pending move
+    // exactly like NoteDoorClosed, so the next attempt routes through the
+    // door-open FSM (bash / pick / key) instead of bonking the now-closed door.
+    // A closure in any other direction is someone else's door — ignore it.
+    public void NoteNamedDoorClosed(Direction closedDir, DateTimeOffset? whenUtc = null)
+    {
+        if (MostRecentPendingCardinal() != closedDir) return;
+        ClearOpenDoorDirection(closedDir);
+        NoteMoveBlocked(whenUtc);
+    }
+
     // Tier-3 manual override — the user pointed at a room on the map and said
     // "I'm here". Hard sets the current room and promotes to Confirmed.
     public void SetLocated(RoomKey key, DateTimeOffset? whenUtc = null)
@@ -1303,6 +1332,33 @@ public sealed class RoomTracker
         while (_pending.TryDequeue(out PendingMove m)) keep.Add(m);
         for (int i = 0; i < keep.Count - 1; i++) _pending.Enqueue(keep[i]);
         DropMostRecentStep();
+    }
+
+    // Peek (without dropping) the cardinal of the most-recently queued pending
+    // move — the one a just-seen refusal line pertains to. ConcurrentQueue has no
+    // tail-peek, so drain + reinsert. Null when the queue is empty or the tail was
+    // a text-command move carrying no cardinal.
+    private Direction? MostRecentPendingCardinal()
+    {
+        if (_pending.IsEmpty) return null;
+        var keep = new List<PendingMove>(_pending.Count);
+        while (_pending.TryDequeue(out PendingMove m)) keep.Add(m);
+        foreach (PendingMove m in keep) _pending.Enqueue(m);
+        return keep.Count > 0 ? keep[^1].Cardinal : null;
+    }
+
+    // Drop one direction from the cached open-door set (the door just reported
+    // closed). Rebuilds the immutable set minus that direction; nulls it when the
+    // last entry goes so the pre-open fast-path in both movement engines falls
+    // back to the door FSM instead of trusting a stale "already open" reading.
+    private void ClearOpenDoorDirection(Direction dir)
+    {
+        if (State.OpenDoorDirections is not { } open || !open.Contains(dir)) return;
+        var next = new HashSet<Direction>(open);
+        next.Remove(dir);
+        State.OpenDoorDirections = next.Count > 0 ? next : null;
+        _log?.Log(LogSeverity.Info, "RoomTracker",
+            $"Door {dir} reported closed — cleared stale open-door flag; next move will re-open it.");
     }
 
     private void AppendStep(DirectionDto step)

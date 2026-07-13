@@ -156,10 +156,6 @@ public sealed class BbsProfile
     // Terminal rows to advertise via Telnet NAWS. Defaults to 25.
     public int TerminalRows { get; set; } = 25;
 
-    // Terminal canvas font size in points. Per-BBS so a high-density door
-    // game and a chatty BBS can each get their own legibility tuning.
-    public double FontSize { get; set; } = 16.0;
-
     // How many scrolled-off rows the backscroll ring retains. Applies on
     // next launch — in-place ring resize would need to copy / drop rows and
     // is intentionally deferred.

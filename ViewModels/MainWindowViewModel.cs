@@ -91,6 +91,13 @@ public partial class MainWindowViewModel : ObservableObject
     // TerminalControl.ScaleToFit.
     public bool ScaleTerminalToWindow => AppServices.Current.Display.ScaleToWindow;
 
+    // Terminal-canvas font family — forwarded from AppServices.Display (stored
+    // there as an avares:// URI string) and wrapped into a FontFamily the
+    // TerminalControl binds to, so a Settings → General font change reaches the
+    // live canvas without a save/reload bounce.
+    public Avalonia.Media.FontFamily TerminalFontFamily =>
+        new(AppServices.Current.Display.FontFamily);
+
     // Live mirror of the Global-tier toolbar visibility settings. Each
     // toolbar Button in the XAML binds its IsVisible to a property on this so
     // edits in Settings → Toolbar apply immediately on Apply / OK.
@@ -849,6 +856,9 @@ public partial class MainWindowViewModel : ObservableObject
         // the swing command from landing mid-password-entry on a stale
         // combat round.
         AppServices.Current.Combat.SetWireSender(engineSend);
+        // CombatStateTracker sends `break` before releasing the walker when the
+        // user toggles auto-attack off mid-fight (CombatSettings.BreakBeforeFleeing).
+        AppServices.Current.CombatTracker.SetWireSender(engineSend);
         // HealthManager sends rest / stand / pre- / post-rest commands
         // via the same gate-wrapped engine pipeline.
         AppServices.Current.Health.SetWireSender(engineSend);
@@ -1209,6 +1219,10 @@ public partial class MainWindowViewModel : ObservableObject
         if (e.PropertyName == nameof(Services.DisplayConfig.FontSize))
         {
             OnPropertyChanged(nameof(TerminalFontSize));
+        }
+        else if (e.PropertyName == nameof(Services.DisplayConfig.FontFamily))
+        {
+            OnPropertyChanged(nameof(TerminalFontFamily));
         }
         else if (e.PropertyName == nameof(Services.DisplayConfig.ScaleToWindow))
         {

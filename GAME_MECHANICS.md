@@ -957,7 +957,9 @@ flag). These are hard eligibility gates, independent of resistance and level imm
   first word (`copper`/`silver`/`gold`/`platinum`/`runic`); the second word is the flavour coin
   noun (`farthings`/`nobles`/`crowns`/`pieces`/`coins`). Some lines carry only the keyword,
   others the full pair — don't assume one form:
-  - **Get** command sends the bare keyword: `get 6 silver` (never `get 6 silver nobles`).
+  - **Get / drop** commands the **client** sends now name the coin **in full** (`get 6 silver noble`,
+    `drop 1 silver noble`) — a bare adjective collides with like-named items (see the item-collision
+    note below). Internally the client still keys policy/tally/parsing on the bare first word.
   - **Corpse loot** drops name the bare keyword: `6 silver drop to the ground.`
   - **Pickup confirmation** names the full coin **and carries NO trailing period**:
     `You picked up 6 silver nobles` (singular `You picked up 1 silver noble`).
@@ -969,6 +971,11 @@ flag). These are hard eligibility gates, independent of resistance and level imm
   with coins, so a colour-adjective item (`You dropped a silver key.`) is told apart from coin only
   by the trailing **coin noun** (`nobles`/`farthings`/…) and a numeric count. `You picked up …` is
   coin-exclusive (items never use it).
+- **[CONFIRMED]** **A get/drop target given as the bare denomination adjective binds to any
+  like-named item, not the coins.** `drop 1 silver` can resolve to a *silver ring* instead of a
+  silver noble; the game picks whichever object matches first. Emitting the **full two-word coin
+  noun** (`silver noble`, `gold crown`, `copper farthing`, `platinum piece`, runic `<word> coin`)
+  forces the currency match. The client sends the full noun on every outgoing get/drop as a result.
 
 ## Party
 
@@ -1189,4 +1196,6 @@ glass jug               5               2 gold crowns
 | Monster leaves the room (e.g. dragged out by a fleeing player) | `<name> walks out of the room to <dir>.` **or** `<name> exits the room to <dir>.` — both confirmed; the "exits" form (no leading article) was the paradigm drag-out capture |
 | Attacked a target not in the room | `Your command had no effect.` |
 | Toll exit unaffordable | `You do not have enough to cover the toll of N gold crowns.` |
+| Train success — stock (carries the attained level) | `You hand over <cost> and you receive training to attain level N.` |
+| Train success — Paradigm/ParaMud (**level-less**) | `You hand over <cost> to train to the next level!` — a successful train with **no level number**; mutually exclusive with the stock line above, so auto-train infers the new level as current+1 |
 | Server PvP announcement (**Paradigm-only**) | `Server PvP Message: <body>` — realm-wide server broadcast for PvP events; the kill form is `Server PvP Message: <killer> just killed <victim>!`, but other PvP bodies share the same `Server PvP Message: ` prefix. Not emitted on stock realms |

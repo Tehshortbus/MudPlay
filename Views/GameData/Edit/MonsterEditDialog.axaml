@@ -275,6 +275,25 @@
                                                 </ItemsControl.ItemTemplate>
                                             </ItemsControl>
 
+                                            <!-- Item-drop rows render each dropped item as a
+                                                 clickable chip that jumps to the Items tab. -->
+                                            <ItemsControl Grid.Column="1" ItemsSource="{Binding Items}"
+                                                          IsVisible="{Binding HasItems}">
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <WrapPanel/>
+                                                    </ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate x:DataType="vm:ItemLink">
+                                                        <Button Classes="MdbLink"
+                                                                Content="{Binding Label}"
+                                                                Command="{Binding Open}"
+                                                                Margin="0,0,10,2"/>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+
                                             <!-- Textblock-backed rows (Greet) render a clickable
                                                  value that pops the command keywords the block
                                                  responds to. -->
