@@ -2,6 +2,12 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.53.0
+
+- Memory footprint is now sampled once a minute to its own Data/Logs/{ts}-memory.log (working set, private, managed heap, GC heap, fragmentation, collection counts) — kept out of the program log
+- Session Stats per-hour rates (kills, exp, currency) now measure over a rolling window capped at 4 hours, so an all-night loop reports its recent pace instead of the whole night blended — the kill/exp histories are trimmed to that window so they no longer grow unbounded
+- Party window disposes its view-model on close, releasing its subscriptions to the app-lifetime party state
+
 ## 1.52.0
 
 - Navigation loop / Auto-Lair and GOTO favourite rows hug the rail edge — reclaimed the tree's fixed left chevron gutter

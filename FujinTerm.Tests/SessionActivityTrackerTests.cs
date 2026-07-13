@@ -138,11 +138,11 @@ public sealed class SessionActivityTrackerTests
     {
         (SessionActivityTracker t, Clock c) = Make();
         t.NoteKill();        // t=0
-        c.Advance(70);       // 70 min later — a rolling window would have dropped it
+        c.Advance(70);       // 70 min later — still inside the 4-hour rate window
 
         SessionActivityStats s = t.Snapshot();
         Assert.Equal(1, s.MonstersKilled);
-        // The kill is kept for the whole session, so the curve stays non-zero and
+        // The kill is inside the 4-hour window, so the curve stays non-zero and
         // its right edge equals the headline kills/hour the panel prints.
         IReadOnlyList<double> series = t.KillsPerHourSeries(6);
         Assert.True(series[^1] > 0);
@@ -176,11 +176,11 @@ public sealed class SessionActivityTrackerTests
     {
         (SessionActivityTracker t, Clock c) = Make();
         t.NoteExperience(5000); // t=0
-        c.Advance(70);          // 70 min later — a rolling window would have dropped it
+        c.Advance(70);          // 70 min later — still inside the 4-hour rate window
 
         SessionActivityStats s = t.Snapshot();
         Assert.Equal(5000L, s.ExperienceEarned);
-        // The gain is kept for the whole session, so the curve stays non-zero and
+        // The gain is inside the 4-hour window, so the curve stays non-zero and
         // its right edge equals the headline exp/hour the panel prints.
         IReadOnlyList<double> series = t.ExperiencePerHourSeries(6);
         Assert.True(series[^1] > 0);
@@ -201,6 +201,64 @@ public sealed class SessionActivityTrackerTests
         (SessionActivityTracker t, Clock c) = Make();
         c.Advance(10);
         Assert.Empty(t.KillsPerHourSeries(0));
+    }
+
+    // ----- 4-hour rate window cap --------------------------------------
+
+    [Fact]
+    public void RateWindow_CapsAtFourHours_DropsOlderKills_LifetimeTotalKeepsThem()
+    {
+        (SessionActivityTracker t, Clock c) = Make();
+        t.NoteKill();          // t=0
+        c.Advance(5 * 60);     // +5 h — past the 4-hour window
+        t.NoteKill();          // t=5h; the eager trim drops the t=0 kill from the window
+
+        SessionActivityStats s = t.Snapshot();
+        Assert.Equal(2, s.MonstersKilled);                   // lifetime total keeps both
+        Assert.Equal(1, s.RateKills);                        // window kept only the recent one
+        Assert.Equal(TimeSpan.FromHours(4), s.TimeOnline);   // window (and TimeOnline) caps at 4 h
+        Assert.Equal(0.25d, s.KillsPerHour, 3);              // 1 kill / 4 h
+    }
+
+    [Fact]
+    public void TimeOnline_CapsAtFourHours_EvenWithNoEvents()
+    {
+        (SessionActivityTracker t, Clock c) = Make();
+        c.Advance(6 * 60); // +6 h idle
+        Assert.Equal(TimeSpan.FromHours(4), t.Snapshot().TimeOnline);
+    }
+
+    [Fact]
+    public void RateWindow_CapsCurrencyAtFourHours()
+    {
+        (SessionActivityTracker t, Clock c) = Make();
+        t.NoteCurrencyCollected(10_000); // t=0
+        c.Advance(5 * 60);               // +5 h
+        t.NoteCurrencyCollected(2_000);  // t=5h; old pickup trimmed from the window
+
+        SessionActivityStats s = t.Snapshot();
+        Assert.Equal(12_000L, s.CurrencyCollected); // lifetime keeps both
+        Assert.Equal(2_000L, s.RateCurrency);       // window kept only the recent one
+        Assert.Equal(500d, s.CurrencyPerHour, 3);   // 2,000 / 4 h
+    }
+
+    [Fact]
+    public void KillsPerHourSeries_RightEdgeMatchesHeadline_PastFourHours()
+    {
+        (SessionActivityTracker t, Clock c) = Make();
+        t.NoteKill();          // t=0 — will fall outside the trailing 4-hour window
+        c.Advance(3 * 60);     // t=3h
+        t.NoteKill();          // t=3h — inside the window at snapshot time
+        c.Advance(3 * 60);     // t=6h — window is now [2h, 6h]
+
+        SessionActivityStats s = t.Snapshot();
+        Assert.Equal(2, s.MonstersKilled); // lifetime total keeps both
+        Assert.Equal(1, s.RateKills);      // only the t=3h kill is inside [2h, 6h]
+        // Chart and headline share EffectiveStart as their origin, so the curve's
+        // right edge still equals the headline kills/hour even once the window trails.
+        IReadOnlyList<double> series = t.KillsPerHourSeries(6);
+        Assert.True(series[^1] > 0);
+        Assert.Equal(s.KillsPerHour, series[^1], 3);
     }
 
     // ----- reset / change ----------------------------------------------

@@ -77,6 +77,11 @@ public sealed class AppServices
     // hard hang / kill leaves a post-mortem trail the in-memory ring can't.
     public ProgramLogFile ProgramLog { get; }
 
+    // Samples the process memory footprint a-minute-at-a-time to its own
+    // Data/Logs/{ts}-memory.log, kept out of the program log, so an all-night
+    // session leaves a trail that tells a managed-heap leak from working-set creep.
+    public MemoryUsageLog MemoryLog { get; }
+
     // Session-only diagnostic switches surfaced in the Log pane menu
     // (combat-verbose / round-trace umbrella). Consumers
     // (e.g. Game.Combat.RoundDamageTracker) read this
@@ -1414,6 +1419,8 @@ public sealed class AppServices
         // Start teeing the program log to disk immediately so even the
         // earliest startup entries survive a hang / kill.
         ProgramLog = new ProgramLogFile(Log);
+        // Begin sampling memory to its own on-disk log for the whole process life.
+        MemoryLog = new MemoryUsageLog();
         // Late-bind the cache's log sink so SwitchSet emits the swap
         // audit entries (load / unload / swap) without coupling the
         // cache to AppServices construction order.
