@@ -106,6 +106,13 @@ public sealed class CastingDirector : IDisposable
     // The one outstanding party-buff cast awaiting CasterMessage
     // confirmation. CastCoordinator's cooldown guarantees ≤1 in flight.
     private (string Short, string Target, long DurationSec, CasterMessageMatcher Matcher)? _pendingPartyCast;
+    // The self-buff whose optimistic recast timer was armed on send but hasn't yet
+    // been confirmed landed. Cleared when its AppliedMessage confirms (the real
+    // duration timer takes over) OR when a server landing-failure arrives — a fizzle
+    // / interrupt / no-mana means the buff never landed, so the phantom timer must be
+    // dropped or the buff sits "active" for its whole assumed duration and never
+    // re-attempts (an ~90s uptime hole after a single fizzle).
+    private string? _pendingSelfBuffShort;
     private Func<string, (string Caster, long DurationSec)?>? _buffInfoByShort;
     private Func<MessageRecord, string?>? _shortFromAppliedRecord;
     private Func<int, string?>? _classNameByNumber;
@@ -161,6 +168,7 @@ public sealed class CastingDirector : IDisposable
         _log = log;
 
         _state.PropertyChanged += OnStateChanged;
+        _cast.CastFailed += OnCastFailed;
         if (_conditions is not null)
         {
             _conditions.ConditionApplied += OnConditionApplied;
@@ -358,6 +366,7 @@ public sealed class CastingDirector : IDisposable
     {
         _activeUntil.Clear();
         _pendingPartyCast = null;
+        _pendingSelfBuffShort = null;
         _lastSelfHealCast = null;
     }
 
@@ -393,6 +402,24 @@ public sealed class CastingDirector : IDisposable
             ? info.DurationSec
             : UnknownBuffRecastFallbackSec;
         _activeUntil[("", spellShort)] = _now().AddSeconds(seconds);
+        _pendingSelfBuffShort = spellShort;   // awaiting land / fail — cleared by either
+    }
+
+    // A cast the server rejected after it reached the wire (fizzle, interrupt,
+    // no-mana, already-cast-this-round) means an optimistically-timed self-buff never
+    // landed. Drop its phantom recast timer so the next tick re-attempts and the buff
+    // isn't left "active" for its whole assumed duration. Local Blocked rejections are
+    // ignored: they fire before the send / inside the same-round cooldown, so clearing
+    // on them would defeat the optimistic double-cast guard the timer exists for.
+    private void OnCastFailed(CastFailureReason reason, string detail)
+    {
+        if (reason == CastFailureReason.Blocked) return;
+        if (_pendingSelfBuffShort is not { } shortCode) return;
+        _activeUntil.Remove(("", shortCode));
+        _pendingSelfBuffShort = null;
+        _log?.Combat(LogCategory,
+            $"self-buff {shortCode} did not land (reason={reason}) — cleared optimistic " +
+            "recast timer for immediate retry");
     }
 
     private void OnConditionApplied(MessageRecord r)
@@ -404,6 +431,9 @@ public sealed class CastingDirector : IDisposable
         {
             if (_buffInfoByShort?.Invoke(shortCode) is { } info)
                 _activeUntil[("", shortCode)] = _now().AddSeconds(info.DurationSec);
+            // Landed — the real duration timer is now authoritative, so the pending
+            // optimistic marker mustn't later be treated as an unlanded cast.
+            if (_pendingSelfBuffShort == shortCode) _pendingSelfBuffShort = null;
             // Feed the reroll engine: a re-landed code-145 roll spell wants its
             // fresh roll read off abil 145. The sink filters for the roll spell
             // + Paradigm realm; here we just report the confirmed landing.
@@ -1056,6 +1086,7 @@ public sealed class CastingDirector : IDisposable
         if (_disposed) return;
         _disposed = true;
         _state.PropertyChanged -= OnStateChanged;
+        _cast.CastFailed -= OnCastFailed;
         if (_conditions is not null)
         {
             _conditions.ConditionApplied -= OnConditionApplied;

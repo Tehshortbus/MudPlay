@@ -13,7 +13,10 @@ Notable changes per merged PR, **newest first**. The top of the [README](README.
 - Carried wealth drops immediately after an auto-deposit, so a following toll gate isn't attempted on a stale pre-deposit balance
 - Navigation toolbar's resume button now enables whenever the engine is paused, matching the Run entry in the navigation menu
 - Shorter settle wait after a room is cleared and its loot collected, tightening the pause before the loop steps to the next room
-- bug reports addressed: paradigm-20260712-154401, paradigm-20260712-155542, paradigm-20260712-155734, paradigm-20260712-160302, paradigm-20260712-160504, paradigm-20260712-162342
+- A fizzled self-buff no longer counts as active for its full duration — the recast timer clears on the failure so the buff re-attempts each round and holds near-100% uptime
+- Auto-light torch-shop detour no longer tears itself down when it supersedes the in-progress walk — it reaches the shop, buys, and resumes the route instead of re-detouring forever
+- A hand-typed `rm` on Paradigm now re-anchors the position tracker to the reported room, not only an engine-requested resync
+- bug reports addressed: paradigm-20260712-154401, paradigm-20260712-155542, paradigm-20260712-155734, paradigm-20260712-160302, paradigm-20260712-160504, paradigm-20260712-162342, paradigm-20260712-164535, paradigm-20260712-165407, paradigm-20260712-170203
 
 ## 1.40.4
 

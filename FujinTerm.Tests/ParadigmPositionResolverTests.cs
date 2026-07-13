@@ -114,14 +114,19 @@ public sealed class ParadigmPositionResolverTests : IDisposable
     }
 
     [Fact]
-    public void Paradigm_LocationWhenNotInFlight_IsIgnored()
+    public void Paradigm_UnsolicitedLocation_StillLatchesTracker()
     {
+        // A user typing `rm` by hand after a bonk lost the heuristic position:
+        // no request is in flight, but `rm` is authoritative so the reply must
+        // still re-anchor the tracker.
         Harness h = Build(paradigm: true);
 
         h.Resolver.FeedLocationForTests(1, 1);
 
-        Assert.Null(h.Resolver.LastResolved);
-        Assert.Null(h.Tracker.State.CurrentRoom);
+        Assert.False(h.Resolver.RequestInFlight);
+        Assert.Equal(new RoomKey(1, 1), h.Resolver.LastResolved);
+        Assert.Equal(new RoomKey(1, 1), h.Tracker.State.CurrentRoom?.Key);
+        Assert.Equal(RoomConfidence.Confirmed, h.Tracker.State.Confidence);
     }
 
     [Fact]

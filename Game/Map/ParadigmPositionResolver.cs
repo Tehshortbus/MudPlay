@@ -134,26 +134,28 @@ public sealed class ParadigmPositionResolver : IDisposable
 
     private void OnLocationObserved(MatchResult match)
     {
-        if (!_inFlight)
-        {
-            // A Location: line we didn't ask for (user typed `rm` manually, or a
-            // stale reply after we already timed out). Not ours to act on.
-            _log?.Log(LogSeverity.Debug, LogSource, "Location: observed while no `rm` in flight — ignored");
-            return;
-        }
         if (match.Groups.Count < 2
             || !int.TryParse(match.Groups[0], out int map)
             || !int.TryParse(match.Groups[1], out int room))
         {
-            _log?.Log(LogSeverity.Warn, LogSource, $"Location: reply unparseable: '{match.Text}'");
+            if (_inFlight)
+                _log?.Log(LogSeverity.Warn, LogSource, $"Location: reply unparseable: '{match.Text}'");
             return;
         }
 
+        // `rm` is authoritative no matter who fired it. A reply we asked for
+        // (recovery resync) additionally clears the wait and re-anchors the gate;
+        // an unsolicited one — the user typing `rm` by hand after a bonk lost the
+        // heuristic position — still hard-locates the tracker so the manual `rm`
+        // re-anchors too. NoteAuthoritativePosition no-ops unless the gate is
+        // actually awaiting a resync, so it's safe on the unsolicited path.
+        bool solicited = _inFlight;
         _timeout?.Stop();
         _inFlight = false;
         RoomKey key = new(map, room);
         _lastResolved = key;
-        _log?.Log(LogSeverity.Info, LogSource, $"authoritative position resolved → {key}");
+        _log?.Log(LogSeverity.Info, LogSource,
+            $"authoritative position resolved → {key} ({(solicited ? "rm resync" : "manual rm")})");
 
         // Hard-locate the tracker first (refuses + warns if the key isn't in the
         // active graph, leaving state untouched), then re-anchor the gate. The

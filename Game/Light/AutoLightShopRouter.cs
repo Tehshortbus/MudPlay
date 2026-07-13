@@ -66,6 +66,13 @@ public sealed class AutoLightShopRouter : IDisposable
     private readonly Timer _buyTimer;
 
     private Phase _phase = Phase.Idle;
+
+    // Set while THIS router is issuing a walk. WalkTo pre-empts any in-progress
+    // walk with Stop("superseded by new walk"), which raises a Stopped event —
+    // without this flag our own detour-start would deliver that Stopped back into
+    // Phase.WalkingToShop and tear the detour down before it moves, re-detouring
+    // forever without ever buying. Mirrors the auto-deposit reroute's guard.
+    private bool _drivingWalk;
     private int _itemId;
     private string _lightName = string.Empty;
     private int _targetCount = 1;
@@ -162,7 +169,7 @@ public sealed class AutoLightShopRouter : IDisposable
         _phase = Phase.WalkingToShop;
         _log?.Info(LogCategory,
             $"provisioning '{req.LightName}' x{_targetCount} — detouring to shop at {shopRoom}");
-        _post(() => _walkTo(shopRoom));
+        _post(() => DriveWalk(shopRoom));
     }
 
     // Walker-event callback (wired to AutoWalkManager.Event). Arrival at the shop
@@ -181,14 +188,20 @@ public sealed class AutoLightShopRouter : IDisposable
                     FailAndResume();
                 }
                 else if (e.Kind == WalkEventKind.Stopped)
-                    Reset(); // user / another engine took over — abandon quietly
+                {
+                    if (_drivingWalk) return; // our own supersede of the prior walk, not a takeover
+                    Reset();                  // user / another engine took over — abandon quietly
+                }
                 break;
 
             case Phase.Buying:
                 // Walker idles at the shop while buying. A fresh walk means the
                 // user redirected — drop the buy and let them drive.
                 if (e.Kind is WalkEventKind.Started or WalkEventKind.Stopped)
+                {
+                    if (_drivingWalk) return;
                     Reset();
+                }
                 break;
         }
     }
@@ -238,7 +251,17 @@ public sealed class AutoLightShopRouter : IDisposable
         DisarmBuyTimer();
         RoomKey dest = _origDest;
         _phase = Phase.Idle;
-        _post(() => _walkTo(dest));
+        _post(() => DriveWalk(dest));
+    }
+
+    // Issue a router-driven walk with the self-supersede guard raised, so the
+    // Stopped that WalkTo emits when it pre-empts the in-progress walk isn't
+    // mistaken for a user takeover.
+    private void DriveWalk(RoomKey dest)
+    {
+        _drivingWalk = true;
+        try { _walkTo(dest); }
+        finally { _drivingWalk = false; }
     }
 
     // Resume after a failure (unreachable shop / buy didn't land) and suppress a

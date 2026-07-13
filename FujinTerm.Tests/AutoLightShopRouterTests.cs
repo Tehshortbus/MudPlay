@@ -328,6 +328,51 @@ public sealed class AutoLightShopRouterTests
         Assert.Equal(ShopA, h.Walks[0]);
     }
 
+    [Fact]
+    public void OnBuyRequested_WalkToSupersedeStopped_DetourSurvivesAndBuys()
+    {
+        // AutoWalkManager.WalkTo pre-empts the in-progress walk with a
+        // Stopped("superseded by new walk") event. Delivered back into
+        // Phase.WalkingToShop it must NOT be read as a user takeover — otherwise
+        // the router tears down the detour it just armed, the re-announced dark
+        // route re-fires the Buy verdict, and it re-detours forever without ever
+        // buying (the report's symptom).
+        var shops = new List<RoomKey> { ShopA };
+        var dist = new Dictionary<(RoomKey, RoomKey), int>
+        {
+            [(Cur, ShopA)] = 3,
+            [(ShopA, Dest)] = 4,
+        };
+        AutoLightShopRouter? router = null;
+        var walks = new List<RoomKey>();
+
+        router = new AutoLightShopRouter(
+            shopRoomsSellingItem: _ => shops,
+            currentRoom: () => Cur,
+            walkDestination: () => Dest,
+            distanceBetween: (a, b) => dist.TryGetValue((a, b), out int d) ? d : (int?)null,
+            carriedCount: _ => 0,
+            isEnabled: () => true,
+            engineWalkActive: () => false,
+            walkTo: d =>
+            {
+                walks.Add(d);
+                // Mimic WalkTo superseding the prior in-flight walk.
+                router!.OnWalkEvent(new WalkEvent(WalkEventKind.Stopped, "superseded by new walk", Dest));
+            },
+            post: a => a(),
+            log: null,
+            buyTimeout: TimeSpan.FromHours(1));
+
+        router.OnBuyRequested(Buy());
+
+        Assert.True(router.DetourActive);              // survived the supersede-Stopped
+        Assert.Equal(ShopA, Assert.Single(walks));
+
+        router.OnWalkEvent(new WalkEvent(WalkEventKind.Finished, "reached", ShopA));
+        Assert.Equal("buy lantern", Decode(Assert.Single(router.LastSentForTests)));
+    }
+
     // ----- Failure suppression: the re-announced dark route can't loop -------
 
     [Fact]
