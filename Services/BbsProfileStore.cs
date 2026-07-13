@@ -41,6 +41,34 @@ public sealed class BbsProfileStore
             Directory.Delete(folder, recursive: true);
     }
 
+    // Rename a BBS in place: move the whole Data/BBS/{old}/ folder — bbs.json,
+    // every override side-file, AND every nested character profile — to the new
+    // name, then rewrite the primary file's Name field. A folder move keeps the
+    // nested profiles intact; a Delete(old)+Save(new) would recursively destroy
+    // them. No-op if the source folder is missing; throws if the destination
+    // already exists (the caller resolves clashes first). Case-only renames
+    // never reach here — the Settings Apply path gates on an OrdinalIgnoreCase
+    // inequality, and Directory.Move can't do a case-only move on a
+    // case-insensitive filesystem.
+    public void Rename(string oldName, string newName)
+    {
+        if (string.IsNullOrWhiteSpace(oldName) || string.IsNullOrWhiteSpace(newName)) return;
+        string oldFolder = AppPaths.BbsFolder(oldName);
+        string newFolder = AppPaths.BbsFolder(newName);
+        if (!Directory.Exists(oldFolder)) return;
+        if (Directory.Exists(newFolder))
+            throw new IOException($"A BBS folder already exists at '{newFolder}'.");
+
+        Directory.Move(oldFolder, newFolder);
+
+        // The moved bbs.json still carries the old Name — bring it in line.
+        if (Get(newName) is { } profile)
+        {
+            profile.Name = newName;
+            JsonStore.Save(AppPaths.BbsProfileFile(newName), profile);
+        }
+    }
+
     // Enumerate every BBS that has a primary bbs.json on disk. The folder name
     // (= BBS name) is yielded, alphabetical order optional at the caller.
     // Folders missing a bbs.json are skipped — they aren't fully initialised yet.

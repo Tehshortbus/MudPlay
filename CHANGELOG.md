@@ -2,6 +2,13 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.45.1
+
+- Renaming a BBS now moves its whole folder — nested character profiles, saved logon-nav steps, and passwords survive instead of being wiped and recreated empty
+- The rename re-keys each character's per-BBS credentials, so logon-menu nav and password lookup keep working under the new name
+- Recent-profiles list and the "import logon steps from another character" picker now follow the renamed BBS instead of showing the vanished old name
+- bug reports addressed: paradigm-20260712-231015
+
 ## 1.45.0
 
 - Conversation window logs paradigm's server PvP announcements (any "Server PvP Message: …" line, e.g. "X just killed Y!") as a red SERVER entry under the Realm filter; realm-gated so only paradigm realms surface it

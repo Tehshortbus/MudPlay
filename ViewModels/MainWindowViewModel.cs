@@ -590,7 +590,13 @@ public partial class MainWindowViewModel : ObservableObject
         // global-settings Save so the Toolbar + Shortcuts editor's changes land
         // in the menu without a relaunch.
         RefreshHelpLinks();
-        AppServices.Current.Settings.GlobalSettingsChanged += _ => RefreshHelpLinks();
+        AppServices.Current.Settings.GlobalSettingsChanged += _ =>
+        {
+            RefreshHelpLinks();
+            // A BBS rename rewrites the recent-profiles refs in the Global tier
+            // — re-mirror so the File → Recent menu drops the old BBS name.
+            RebuildRecentProfiles();
+        };
 
         // Cleanup-warning banner: when the BBS announces nightly shutdown
         // on the wire, drop a yellow banner into the terminal canvas so

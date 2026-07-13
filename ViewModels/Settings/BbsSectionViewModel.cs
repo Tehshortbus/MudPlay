@@ -466,16 +466,56 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         // Don't trample an existing BBS with the new name.
         if (_loaded.ContainsKey(newName) || _bbsStore.Get(newName) is not null) return;
 
+        // Move the whole Data/BBS/{old}/ subtree — bbs.json, side-files, and
+        // every nested character profile — to the new name. The old
+        // Delete+Save pair recursively destroyed the nested profiles and left
+        // every reference to the BBS name (credentials, recent list) dangling.
+        _bbsStore.Rename(oldName, newName);
         profile.Name = newName;
-        _bbsStore.Delete(oldName);
-        _bbsStore.Save(profile);
         _loaded.Remove(oldName);
         _loaded[newName] = profile;
+
+        // The BBS name keys per-character credentials and the recent-profiles
+        // refs — cascade the rename so logon-nav / passwords, the File → Recent
+        // menu, and the "import logon steps" picker follow the new name.
+        _profile.RenameBbs(oldName, newName);
+        CascadeRecentProfiles(oldName, newName);
 
         _suppressDirty = true;
         ReloadBbsList();
         SelectedBbsName = newName;
         _suppressDirty = false;
+    }
+
+    // Rewrite the Global-tier recent-profiles + last-used pointers that named
+    // the old BBS. They're (bbs, char) refs; without the rewrite the File →
+    // Recent menu and startup auto-load point at a BBS folder that no longer
+    // exists. Saving fires GlobalSettingsChanged so the live menu rebuilds.
+    private void CascadeRecentProfiles(string oldName, string newName)
+    {
+        GlobalSettings settings = _globalSettings.Current;
+        bool changed = false;
+
+        if (settings.RecentProfiles is { } recents)
+        {
+            for (int i = 0; i < recents.Count; i++)
+            {
+                if (string.Equals(recents[i].Bbs, oldName, StringComparison.OrdinalIgnoreCase))
+                {
+                    recents[i] = recents[i] with { Bbs = newName };
+                    changed = true;
+                }
+            }
+        }
+
+        if (settings.LastUsedProfile is { } last
+            && string.Equals(last.Bbs, oldName, StringComparison.OrdinalIgnoreCase))
+        {
+            settings.LastUsedProfile = last with { Bbs = newName };
+            changed = true;
+        }
+
+        if (changed) _globalSettings.Save();
     }
 
     public override void Discard()

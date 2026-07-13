@@ -1,10 +1,10 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.45.0**
-> - Conversation window logs paradigm's server PvP announcements (any "Server PvP Message: …" line, e.g. "X just killed Y!") as a red SERVER entry under the Realm filter; realm-gated so only paradigm realms surface it
-> - CURRENT NAV's walking action line now reads "Walking to (map/room) - Name on step X of Y, remaining Z" instead of just the destination
-> - Main status bar's walk-to readout no longer trims the destination — the room-name slot sizes to its content so `C/D/Steps` always fits
+> **Version 1.45.1**
+> - Renaming a BBS now moves its whole folder — nested character profiles, saved logon-nav steps, and passwords survive instead of being wiped and recreated empty
+> - The rename re-keys each character's per-BBS credentials, so logon-menu nav and password lookup keep working under the new name
+> - Recent-profiles list and the "import logon steps from another character" picker now follow the renamed BBS instead of showing the vanished old name
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->
