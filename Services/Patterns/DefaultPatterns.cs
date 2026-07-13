@@ -305,6 +305,13 @@ public static class DefaultPatterns
         // character's own speech as an inbound @-command.
         yield return new RegexPattern(KnownPatterns.ConversationLocal,
             @"^(?:(?<player>\w+) says|You say) ""(?<message>.+)""");
+        // Paradigm's server PvP-kill announcement. The "Server PvP Message: "
+        // prefix is a paradigm-specific literal, so the match can't false-fire
+        // on stock realms; ChatRouter still realm-gates it before emitting. The
+        // full body ("X just killed Y!") is captured as the message; the SERVER
+        // channel badge supplies the "who", so we drop the redundant prefix.
+        yield return new RegexPattern(KnownPatterns.ConversationServerPvp,
+            @"^Server PvP Message: (?<message>.+)$");
         // user-emote is distinguished purely by ANSI colour bytes the
         // LineExtractor strips, so it's omitted until attribute-aware matching
         // ships — see the class summary above.

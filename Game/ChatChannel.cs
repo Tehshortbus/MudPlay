@@ -28,6 +28,11 @@ public enum ChatChannel
     // Player entrance / exit / disconnect notices.
     RealmEvent,
 
+    // Server-authored announcements — paradigm's PvP-kill notice
+    // ("Server PvP Message: X just killed Y!"). Realm-gated at the router,
+    // so only paradigm realms ever produce this channel.
+    Server,
+
     // Synthetic separator inserted by ChatHistoryStore when the wall-clock date
     // rolls over mid-session. Not produced by ChatRouter; the Conversation
     // window renders these as a horizontal rule. ChatLogEntry.Message carries

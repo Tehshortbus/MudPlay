@@ -31,6 +31,10 @@ public sealed class ConversationRowViewModel
     {
         if (entry.Channel == ChatChannel.DaySeparator) return string.Empty;
 
+        // Server announcements have no speaker — the SERVER badge is the "who",
+        // and the message is a full sentence. No prefix column at all.
+        if (entry.Channel == ChatChannel.Server) return string.Empty;
+
         // Speaker is null for self-actions whose regex didn't capture a
         // name (e.g. "You yell ..." — the Megamind regex matches the verb
         // shape literally). Surface those as "You" so every chat row has
@@ -53,6 +57,7 @@ public sealed class ConversationRowViewModel
         ChatChannel.Broadcast         => "BCAST",
         ChatChannel.Yell              => "YELL",
         ChatChannel.RealmEvent        => "REALM",
+        ChatChannel.Server            => "SERVER",
         ChatChannel.DaySeparator      => string.Empty,
         _ => "?",
     };

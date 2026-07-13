@@ -42,6 +42,7 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
     [ObservableProperty] private bool _showBroadcast  = true;
     [ObservableProperty] private bool _showYell       = true;
     [ObservableProperty] private bool _showRealmEvent = true;
+    [ObservableProperty] private bool _showServer     = true;
 
     [ObservableProperty] private string _searchText = string.Empty;
     [ObservableProperty] private bool _autoScroll   = true;
@@ -100,6 +101,7 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
     partial void OnShowBroadcastChanged(bool value)   => Rebuild();
     partial void OnShowYellChanged(bool value)        => Rebuild();
     partial void OnShowRealmEventChanged(bool value)  => Rebuild();
+    partial void OnShowServerChanged(bool value)      => Rebuild();
     partial void OnSearchTextChanged(string value)    => Rebuild();
 
     private void Rebuild()
@@ -147,6 +149,7 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
         ChatChannel.Broadcast         => ShowBroadcast,
         ChatChannel.Yell              => ShowYell,
         ChatChannel.RealmEvent        => ShowRealmEvent,
+        ChatChannel.Server            => ShowServer,
         _ => true,
     };
 
@@ -216,6 +219,7 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
             [ChatChannel.Broadcast]         = Lookup("AccentYellowBrush"),
             [ChatChannel.Yell]              = Lookup("AccentAmberBrush"),
             [ChatChannel.RealmEvent]        = Lookup("ChromeFgMutedBrush"),
+            [ChatChannel.Server]            = Lookup("AccentRedBrush"),
             [ChatChannel.DaySeparator]      = Lookup("ChromeFgMutedBrush"),
         };
     }

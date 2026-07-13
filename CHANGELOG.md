@@ -2,6 +2,10 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.45.0
+
+- Conversation window logs paradigm's server PvP-kill announcements ("Server PvP Message: X just killed Y!") as a new red SERVER channel, with its own filter toggle; realm-gated so only paradigm realms surface it
+
 ## 1.44.0
 
 - Auto-light equips a carried light one room ahead — stepping toward a room the map knows is dark lights it before the move, so it renders on arrival instead of a blind step or two later

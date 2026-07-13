@@ -1189,3 +1189,4 @@ glass jug               5               2 gold crowns
 | Monster leaves the room (e.g. dragged out by a fleeing player) | `<name> walks out of the room to <dir>.` **or** `<name> exits the room to <dir>.` — both confirmed; the "exits" form (no leading article) was the paradigm drag-out capture |
 | Attacked a target not in the room | `Your command had no effect.` |
 | Toll exit unaffordable | `You do not have enough to cover the toll of N gold crowns.` |
+| Server PvP-kill announcement (**Paradigm-only**) | `Server PvP Message: <killer> just killed <victim>!` — realm-wide server broadcast when one player kills another; not emitted on stock realms |

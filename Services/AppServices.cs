@@ -1458,7 +1458,10 @@ public sealed class AppServices
         // First MessageRouter consumer — subscribes to the conversation +
         // realm-event patterns. ChatHistoryStore + ConversationWindow
         // subscribe to its EntryClassified event.
-        Chat = new Game.ChatRouter(Router);
+        // The server-PvP channel is paradigm-only; the closure is evaluated
+        // lazily at line-match time, so GameData being assigned later in the
+        // ctor is safe.
+        Chat = new Game.ChatRouter(Router, () => GameData.ActiveRealm == Game.RealmType.ParaMud);
         ChatHistory = new Game.ChatHistoryStore(Chat);
         PlayerState = new Game.PlayerState();
         PromptScanner = new WirePromptScanner();
