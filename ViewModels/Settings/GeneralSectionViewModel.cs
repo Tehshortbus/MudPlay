@@ -36,7 +36,7 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
         "Auto-connect", "Default task", "Do nothing",
         "Begin loop", "Begin Auto-Lair", "Backup profile",
         "Terminal font", "Font", "Font family", "Font size",
-        "Terminal display", "Scale terminal to window",
+        "Scale terminal to window",
         "Manual-Mode Defaults", "Auto-Mode Defaults",
         "Auto-Engines enabled on start",
         "Auto-Combat", "Auto-Nuke",

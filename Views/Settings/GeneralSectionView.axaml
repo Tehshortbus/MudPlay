@@ -113,6 +113,11 @@
                     </ComboBox>
                 </Grid>
 
+                <CheckBox Margin="0,2,0,0"
+                          IsChecked="{Binding ScaleTerminalToWindow, Mode=TwoWay}"
+                          Content="Scale terminal output to fill the window"
+                          ToolTip.Tip="When checked, the terminal font grows to fill the window while keeping the fixed 80×25 (or configured) cell grid — no extra rows or columns, just a larger, still-crisp picture. Capped so it never becomes absurdly large. When unchecked, the grid renders at its configured font size and sits centred with empty margin in a larger window."/>
+
                 <TextBlock Classes="SectionHeader" Text="Initial"/>
 
                 <Grid ColumnDefinitions="120,*">
@@ -179,12 +184,6 @@
                 <CheckBox IsChecked="{Binding BackupOnSave, Mode=TwoWay}"
                           Content="Backup profile when making changes"
                           ToolTip.Tip="Copy the existing profile JSON to {name}.json.bak before each save."/>
-
-                <TextBlock Classes="SectionHeader" Text="Terminal display"/>
-
-                <CheckBox IsChecked="{Binding ScaleTerminalToWindow, Mode=TwoWay}"
-                          Content="Scale terminal output to fill the window"
-                          ToolTip.Tip="When checked, the terminal font grows to fill the window while keeping the fixed 80×25 (or configured) cell grid — no extra rows or columns, just a larger, still-crisp picture. Capped so it never becomes absurdly large. When unchecked, the grid renders at its configured font size and sits centred with empty margin in a larger window."/>
 
                 <!-- Player auto-delete window moved to Settings → Other per user direction. -->
 
