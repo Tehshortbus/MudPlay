@@ -77,7 +77,7 @@ public sealed class CashManagerTests
         h.Feed("There are 50 gold pieces here.");
 
         Assert.Single(h.Sent);
-        Assert.Equal("get 50 gold", h.LastSent);
+        Assert.Equal("get 50 gold crown", h.LastSent);
         Assert.Single(h.Dispatches);
         Assert.Equal(("gold", 50, CashPolicy.Collect), h.Dispatches[0]);
     }
@@ -91,8 +91,33 @@ public sealed class CashManagerTests
         h.Feed("There is a gold piece here.");
 
         Assert.Single(h.Sent);
-        Assert.Equal("get 1 gold", h.LastSent);
+        Assert.Equal("get 1 gold crown", h.LastSent);
         Assert.Equal(1, h.Dispatches[0].Count);
+    }
+
+    // Every get / drop currency command names the coin in full (two words), not
+    // the bare adjective — MajorMUD binds "get 1 silver" to a silver ring
+    // instead of the silver-noble coins. One case per denomination pins the
+    // outgoing wire noun. Runic is board-configurable; the harness uses stock
+    // "runic coin".
+    [Theory]
+    [InlineData("copper",   "get 5 copper farthing")]
+    [InlineData("silver",   "get 5 silver noble")]
+    [InlineData("gold",     "get 5 gold crown")]
+    [InlineData("platinum", "get 5 platinum piece")]
+    [InlineData("runic",    "get 5 runic coin")]
+    public void Collect_EmitsTwoWordCoinNoun(string currency, string expected)
+    {
+        using Harness h = new();
+        h.Settings.CopperPolicy = CashPolicy.Collect;
+        h.Settings.SilverPolicy = CashPolicy.Collect;
+        h.Settings.GoldPolicy = CashPolicy.Collect;
+        h.Settings.PlatinumPolicy = CashPolicy.Collect;
+        h.Settings.RunicPolicy = CashPolicy.Collect;
+
+        h.Feed($"5 {currency} drop to the ground.");
+
+        Assert.Equal(expected, h.LastSent);
     }
 
     [Fact]
@@ -491,7 +516,7 @@ public sealed class CashManagerTests
         h.Feed("You picked up 50 copper pieces.");
 
         List<string> lines = h.Sent.Select(b => Encoding.Latin1.GetString(b).TrimEnd('\r')).ToList();
-        Assert.Contains("drop 50 copper", lines);
+        Assert.Contains("drop 50 copper farthing", lines);
     }
 
     [Fact]
@@ -507,7 +532,7 @@ public sealed class CashManagerTests
         h.Cash.OnSettingsChanged();
 
         List<string> lines = h.Sent.Select(b => Encoding.Latin1.GetString(b).TrimEnd('\r')).ToList();
-        Assert.Contains("drop 100 gold", lines);
+        Assert.Contains("drop 100 gold crown", lines);
     }
 
     // A currency flipped Collect→Discard must drop coin the character is
@@ -528,7 +553,37 @@ public sealed class CashManagerTests
         h.Settings.CopperPolicy = CashPolicy.Discard;
         h.Cash.OnSettingsChanged();
 
-        Assert.Contains("drop 71 copper", h.AllSent);
+        Assert.Contains("drop 71 copper farthing", h.AllSent);
+    }
+
+    // Discard drops name the coin in full too, so a bare-adjective drop can't
+    // ditch a like-named item (a silver ring for silver-noble coins). One case
+    // per denomination, driven off the carried-coin snapshot.
+    [Theory]
+    [InlineData("copper",   "drop 8 copper farthing")]
+    [InlineData("silver",   "drop 8 silver noble")]
+    [InlineData("gold",     "drop 8 gold crown")]
+    [InlineData("platinum", "drop 8 platinum piece")]
+    [InlineData("runic",    "drop 8 runic coin")]
+    public void Discard_EmitsTwoWordCoinNoun(string currency, string expected)
+    {
+        using Harness h = new();
+        h.Snapshot = currency switch
+        {
+            "copper"   => Wealth(8, copper: 8),
+            "silver"   => Wealth(8, silver: 8),
+            "gold"     => Wealth(8, gold: 8),
+            "platinum" => Wealth(8, platinum: 8),
+            _          => Wealth(8, runic: 8),
+        };
+        h.Settings.CopperPolicy = CashPolicy.Discard;
+        h.Settings.SilverPolicy = CashPolicy.Discard;
+        h.Settings.GoldPolicy = CashPolicy.Discard;
+        h.Settings.PlatinumPolicy = CashPolicy.Discard;
+        h.Settings.RunicPolicy = CashPolicy.Discard;
+        h.Cash.OnSettingsChanged();
+
+        Assert.Contains(expected, h.AllSent);
     }
 
     [Fact]
@@ -590,9 +645,9 @@ public sealed class CashManagerTests
         Assert.Equal(2, h.Dispatches.Count);
         Assert.Contains(h.Dispatches, d => d.Currency == "silver" && d.Count == 56);
         Assert.Contains(h.Dispatches, d => d.Currency == "copper" && d.Count == 198);
-        // Silver is Collect → `get 56 silver`. Copper is Ignore.
+        // Silver is Collect → `get 56 silver noble`. Copper is Ignore.
         List<string> lines = h.Sent.Select(b => Encoding.Latin1.GetString(b).TrimEnd('\r')).ToList();
-        Assert.Contains("get 56 silver", lines);
+        Assert.Contains("get 56 silver noble", lines);
         Assert.DoesNotContain(lines, l => l.StartsWith("get") && l.Contains("copper"));
     }
 
@@ -655,7 +710,7 @@ public sealed class CashManagerTests
         h.PeekSuppressed = false;                       // walked in for real
         h.Feed("You notice 56 silver nobles here.");
 
-        Assert.Contains("get 56 silver", h.AllSent);
+        Assert.Contains("get 56 silver noble", h.AllSent);
     }
 
     // ----- Corpse loot (monster kill drops) ---------------------------
@@ -673,7 +728,7 @@ public sealed class CashManagerTests
         h.Feed("7 silver drop to the ground.");
 
         Assert.Single(h.Sent);
-        Assert.Equal("get 7 silver", h.LastSent);
+        Assert.Equal("get 7 silver noble", h.LastSent);
         Assert.Single(h.Dispatches);
         Assert.Equal(("silver", 7, CashPolicy.Collect), h.Dispatches[0]);
     }
@@ -760,7 +815,7 @@ public sealed class CashManagerTests
 
         h.Feed("There are 1000 gold pieces here.");
 
-        Assert.Equal("get 1000 gold", h.LastSent);
+        Assert.Equal("get 1000 gold crown", h.LastSent);
     }
 
     [Fact]
@@ -775,7 +830,7 @@ public sealed class CashManagerTests
 
         h.Feed("There are 1000 copper pieces here.");
 
-        Assert.Equal("get 507 copper", h.LastSent);
+        Assert.Equal("get 507 copper farthing", h.LastSent);
     }
 
     [Fact]
@@ -808,7 +863,7 @@ public sealed class CashManagerTests
 
         h.Feed("There are 300 gold pieces here.");
 
-        Assert.Equal(new[] { "drop 93 copper", "get 300 gold" }, h.AllSent);
+        Assert.Equal(new[] { "drop 93 copper farthing", "get 300 gold crown" }, h.AllSent);
     }
 
     [Fact]
@@ -824,7 +879,7 @@ public sealed class CashManagerTests
         h.Snapshot = Snap(0, 0, 0, 0, 0, currentWeight: 0, maxWeight: 1000);
 
         h.Feed("There are 1000 copper pieces here.");
-        Assert.Equal("get 507 copper", h.LastSent);
+        Assert.Equal("get 507 copper farthing", h.LastSent);
 
         h.Feed("There are 1000 copper pieces here.");
         Assert.Single(h.Sent);   // second batch gated out by the in-flight projection

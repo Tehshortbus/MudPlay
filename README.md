@@ -11,6 +11,7 @@
 > - Auto-train on Paradigm (level-less "train to the next level" wording) now applies the CP allocation plan and trains stats instead of resuming early
 > - A door that shuts in your path ("The door to the <dir> just closed.") reverts the pending move so the next attempt routes through door handling instead of bonking the closed door
 > - Player workshop drops the duplicate coins/wealth block from the bottom Inventory box (already shown under character stats)
+> - Currency get/drop commands name the coin in full (silver noble, gold crown, copper farthing, platinum piece, runic coin) so a bare "drop 1 silver" can't ditch a like-named item instead of the coins
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->
