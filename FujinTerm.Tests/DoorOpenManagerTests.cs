@@ -324,6 +324,31 @@ public sealed class DoorOpenManagerTests
     }
 
     [Fact]
+    public void KeyedDoor_UseKey_DoorNotLocked_SkipsToOpen_ThenOpened()
+    {
+        // Live bug: keyed door, use-key path. Server replied "The door was
+        // not locked." (the door was already unlocked) but the FSM only
+        // handled that line in WaitingPick — the use-key state ignored it,
+        // stranding the walker until a manual room reparse showed the door
+        // already open. Fix: "not locked" in any breach state skips to open.
+        using Harness h = new();
+        h.Stats.Strength = 0;
+        h.Stats.Picklocks = 0;
+        DoorOpenResult? result = null;
+        h.Mgr.Enqueue(Direction.E, 0, canBash: false, keyItemId: 172, "walker", r => result = r);
+
+        Assert.Equal("use black star key e", h.LastSent);
+        Assert.Equal(DoorOpenManager.DoorState.WaitingUseKey, h.Mgr.CurrentState);
+
+        h.Line("The door was not locked.");
+        Assert.Equal("open e", h.LastSent);
+        Assert.Equal(DoorOpenManager.DoorState.WaitingOpen, h.Mgr.CurrentState);
+
+        h.Line("The door is already open.");
+        Assert.IsType<DoorOpenResult.Opened>(result);
+    }
+
+    [Fact]
     public void KeyedDoor_UnknownKeyId_FailsImmediately()
     {
         // Item id not in the ItemNameStore → walker can't form the
