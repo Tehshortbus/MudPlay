@@ -15,15 +15,15 @@ namespace FujinTerm.Tests;
 public sealed class CurrencyFormatTests
 {
     [Theory]
-    [InlineData(0, "0 copper")]
-    [InlineData(-500, "0 copper")]       // negatives clamp, never a "-5 gold"
-    [InlineData(5, "5 copper")]
-    [InlineData(10, "1 silver")]
+    [InlineData(0, "0 copp")]
+    [InlineData(-500, "0 copp")]         // negatives clamp, never a "-5 gold"
+    [InlineData(5, "5 copp")]
+    [InlineData(10, "1 silv")]
     [InlineData(100, "1 gold")]
     [InlineData(1000, "10 gold")]        // the headline case: 1000 copper/hr → "10 gold"
     [InlineData(1050, "10.5 gold")]      // one decimal when not whole
     [InlineData(250, "2.5 gold")]
-    [InlineData(10_000, "1 platinum")]
+    [InlineData(10_000, "1 plat")]
     [InlineData(1_000_000, "1 runic")]
     public void Denominate_FlipsUpToLargestWholeRung(double copper, string expected)
     {

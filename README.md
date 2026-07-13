@@ -1,11 +1,9 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.42.0**
-> - Settings → Toolbar + Shortcuts now lists the File-menu actions (New / Open / Save / Save As / Quit) so their keybinds are editable
-> - Keybind-only rows show no icon and can't be added to the toolbar — only actions with a toolbar button can be promoted
-> - Bug report captures every built-in keybinding, flagging any that differ from the default
-> - Auto-deposit no longer bails out at the bank: a mid-walk route re-plan on the way there stopped aborting the reroute, so it deposits and returns to the loop as intended
+> **Version 1.43.0**
+> - Session Stats abbreviates cash denominations in the compact total / per-hour / stashed cells — platinum→plat, silver→silv, copper→copp; the itemised tooltip keeps the full words
+> - `lo <dir>` / `loo <dir>` are now recognised as look-direction peeks (like `l` / `look`), so glancing into an adjacent room no longer walks the tracker onto the peeked room
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

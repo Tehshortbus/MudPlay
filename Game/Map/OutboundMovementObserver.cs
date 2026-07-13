@@ -122,12 +122,17 @@ public sealed partial class OutboundMovementObserver
         }
     }
 
-    // Peek-direction commands. Accepts look, l, peek, peer followed by a
-    // target. The target is usually a direction word but we don't gate on it —
-    // "look at sign" isn't a peek either, but suppressing the next obs when
+    // Peek-direction commands. Accepts every prefix of "look" the game honours
+    // (l / lo / loo / look) plus peek / peer, followed by a target. MajorMUD
+    // prefix-matches verbs, so "lo w" is a look-west peek just like "l w" or
+    // "look w" — omitting the middle prefixes let "lo w" fall through to the
+    // cardinal path and desync the tracker onto the peeked room. The trailing
+    // \s+ anchors the alternative to a whole token, so "lock door" / "load" don't
+    // false-match. The target is usually a direction word but we don't gate on it
+    // — "look at sign" isn't a peek either, but suppressing the next obs when
     // there's nothing to suppress is harmless (3-s auto-expire).
     [GeneratedRegex(
-        @"^(l|look|peek|peer)\s+\S+",
+        @"^(l|lo|loo|look|peek|peer)\s+\S+",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex LookCommandPattern();
 

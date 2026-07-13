@@ -2,6 +2,12 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.43.0
+
+- Session Stats abbreviates cash denominations in the compact total / per-hour / stashed cells — platinum→plat, silver→silv, copper→copp; the itemised tooltip keeps the full words
+- `lo <dir>` / `loo <dir>` are now recognised as look-direction peeks (like `l` / `look`), so glancing into an adjacent room no longer walks the tracker onto the peeked room
+- bug reports addressed: paradigm-20260712-202202
+
 ## 1.42.0
 
 - Settings → Toolbar + Shortcuts now lists the File-menu actions (New / Open / Save / Save As / Quit) so their keybinds are editable

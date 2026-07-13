@@ -64,6 +64,8 @@ public sealed class OutboundMovementObserverTests : IDisposable
     [Theory]
     [InlineData("look n")]
     [InlineData("l e")]
+    [InlineData("lo w")]   // "lo" abbreviation — the reported miss that walked the tracker onto the peeked room
+    [InlineData("loo n")]
     [InlineData("look north")]
     [InlineData("peek north")]
     [InlineData("peer south")]
@@ -81,6 +83,26 @@ public sealed class OutboundMovementObserverTests : IDisposable
 
         Assert.Equal(RoomConfidence.Confirmed, tracker.State.Confidence);
         Assert.Equal(new RoomKey(1, 1), tracker.State.CurrentRoom!.Key);
+    }
+
+    [Theory]
+    [InlineData("lock door")]  // "lo" is only a prefix — the token is "lock", not a peek verb
+    [InlineData("lower rope")]
+    public void LoPrefixedNonLookVerb_DoesNotArmSuppression(string command)
+    {
+        // The look regex anchors each alternative to a whole token via the
+        // trailing \s+, so a verb that merely starts with the letters "lo" must
+        // NOT be read as a peek — otherwise it would wrongly swallow the next
+        // real room render.
+        (RoomTracker tracker, OutboundMovementObserver observer) = NewObserver();
+        tracker.SetLocated(new RoomKey(1, 1));
+
+        observer.ObserveOutbound(Cmd(command));
+
+        // A genuine move + its render must process normally (not be dropped).
+        tracker.NoteMoveSent(Direction.N);
+        tracker.NoteRoomObserved(Obs("North Square", Direction.S));
+        Assert.Equal(new RoomKey(1, 2), tracker.State.CurrentRoom!.Key);
     }
 
     [Fact]
