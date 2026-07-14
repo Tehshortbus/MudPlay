@@ -824,6 +824,14 @@ comes from the stat screen / who line (`AlignmentTracker` / `PlayerStats`).
   (or `KeyLocked`) exit that carries action cells is promoted to `MultiActionHidden` at graph-build so it
   reuses the same dispatch/tooltip/detour machinery as a native hidden multi-action exit — the promotion
   is the single change point (RoomGraphManager attach pass).
+- **[CONFIRMED, capture 2026-07-14 report 091244]** **A lever-raised gate renders in the live room
+  display as a *gate*, not a *door*.** At `1/1331` the `Obvious exits:` line reads `closed gate north,
+  south, east, west`; after `pull lever` ("you hear the loud nearby rumbling of a gate") it becomes
+  `open gate north, …`. So the barrier noun on the wire is **"gate"**, and the open/closed prefix
+  carries its live state exactly like a door's. **Client encoding:** `RoomDisplayParser.ParseExits`
+  strips an `<open|closed> <door|gate>` prefix off each exit token, feeding the open ones into
+  `OpenDoorDirections` so the walker skips the door-open FSM on an already-raised gate. Treat "gate"
+  and "door" as the same door-type barrier class for display parsing.
 
 ## Attack spells: why one fails to damage a monster
 
@@ -1022,6 +1030,12 @@ flag). These are hard eligibility gates, independent of resistance and level imm
     `You picked up 6 silver nobles` (singular `You picked up 1 silver noble`).
   - **Drop / stash confirmations** name the full coin **with** a trailing period:
     `You dropped 5 gold crowns.` / `You hid 219 copper farthings.`
+  - **Bank deposit confirmation** names the **full multi-currency amount** as one comma-separated
+    list with a trailing period: `You deposit 1 platinum piece, 93 gold crowns, 4 silver nobles,
+    12 copper farthings.` A long list wraps at the ~78-col margin, so the client re-merges a
+    non-`.`-terminated `You deposit …` row with the next physical row before parsing. Emitted for
+    **both** a manual `dep` and the client's auto-deposit `dep`, so it's the authoritative
+    both-paths signal. (Withdrawals mirror it: `You withdrew …` / `you withdrew …`.)
   - **Room survey** lists the full coin: `You notice 56 silver nobles, 198 copper farthings here.`
 - **[CONFIRMED]** Item vs. coin disambiguation is by verb + shape. An **item** get is
   `You took <item>.`; an item drop is `You dropped <item>.` — the drop/hide verbs are **shared**
@@ -1222,6 +1236,40 @@ glass jug               5               2 gold crowns
 
 ---
 
+## Status-effect wear-off lines *([CONFIRMED] 2026-07-14, user)*
+
+- **`The effects of confusion wear off!` is a shared, generic wear-off** reused by
+  many different confusion sources — a lot of confusion spells and monster effects
+  emit the same line. The onset `You are confused!` is likewise generic. So from the
+  wire alone the client cannot tell *which* confusion is on the character: a single
+  applied line covers every confusion source, and a single wear-off line ends it.
+- A few effects append their **own** specific wear-off (e.g. `The effect of hypnotic
+  hands wears off.`) rather than the generic line, but they still share the generic
+  `You are confused!` onset. They are therefore not independently distinguishable
+  from text alone.
+- **Consequence for condition tracking:** records that share an applied line are
+  aliases of one effect and must be cleared as a group — when any of them wears off,
+  all of them end. Keying each record's clear solely to its own end text strands the
+  flag whenever a sibling with a specific wear-off never sees its matching line. (See
+  `ConditionTracker`'s applied-line alias group-clear.)
+
+## Confusion fumbles — actions fail and must be re-sent *([CONFIRMED] 2026-07-14, user)*
+
+- Confusion does **not** block attacking (or acting) outright. Instead each action
+  you send can *fumble*: the game consumes the command and it does **not execute** —
+  surfaced as `You fumble in confusion!` (self) / `<name> fumbles about dazedly!`
+  (others). The catalogue's `fumble` record carries the `LastActionFailed` flag (and
+  `Confused`), and its wear-off is the generic `The effects of confusion wear off`.
+- A fumbled action is **lost**. To actually perform it you must **re-send the same
+  action**. Confusion can fumble several actions in a row; how many depends on the
+  severity of the confusion.
+- **Implication for auto-combat:** an attack command (`aa` / `a`) that fumbles is
+  consumed without hitting, so the engine must **re-issue its last attack** when it
+  sees a fumble rather than assume the swing landed. Otherwise the monster goes
+  unattacked until the user manually re-sends — the reported symptom of "monsters in
+  room but not attacking unless I manually send attack commands" (report
+  `paradigm-20260714-093614`).
+
 ## Message catalogue (lines the client parses)
 
 | Event | Line |
@@ -1250,6 +1298,7 @@ glass jug               5               2 gold crowns
 | Coin pickup (no trailing period) | `You picked up N <coin>` (e.g. `6 silver nobles`) |
 | Coin drop | `You dropped N <coin>.` |
 | Coin stash / hide | `You hid N <coin>.` |
+| Bank deposit (manual or auto; multi-currency, may wrap) | `You deposit 1 platinum piece, 93 gold crowns, ... copper farthings.` |
 | Corpse loot drop (bare keyword) | `N <keyword> drop to the ground.` |
 | Room cash survey | `You notice ... N <coin> ... here.` |
 | Move refused — no exit | `There is no exit in that direction!` |

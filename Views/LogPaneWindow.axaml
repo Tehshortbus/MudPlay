@@ -19,6 +19,7 @@
                 BorderBrush="{StaticResource ChromeBorderSoftBrush}"
                 BorderThickness="0,0,0,1"
                 Padding="10,6">
+            <StackPanel Orientation="Vertical" Spacing="6">
             <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto,Auto" VerticalAlignment="Center">
 
                 <!-- Display filters for the always-on record levels. These
@@ -49,7 +50,7 @@
                                   Content="Combat"
                                   Foreground="{StaticResource SeverityCombatBrush}"
                                   FontSize="11"
-                                  ToolTip.Tip="Generate the combat-decision channel (and the per-round trace file at Data/Logs/combat-{sessionStart}.log) and show its rows. Persisted per-character; off by default."/>
+                                  ToolTip.Tip="Generate the combat-decision channel and show its rows. Persisted per-character; off by default."/>
                     </StackPanel>
                 </Border>
 
@@ -66,6 +67,17 @@
                 <Button Grid.Column="5" Margin="8,0,0,0"
                         Content="Clear" Command="{Binding ClearCommand}"/>
             </Grid>
+
+            <!-- On-disk log collection. Sits under the filter row: gates whether
+                 the program / memory / combat-trace files are written to
+                 Data/Logs at all. Off by default so a normal session leaves
+                 nothing on disk. Persisted per-character. -->
+            <CheckBox IsChecked="{Binding AutoCollectLogs}"
+                      Content="Auto-collect logs"
+                      Foreground="{StaticResource ChromeFgSecBrush}"
+                      FontSize="11"
+                      ToolTip.Tip="Write the program, memory, and combat-trace diagnostic files to Data/Logs. Off by default; turning it on generates all three for the session. Persisted per-character."/>
+            </StackPanel>
         </Border>
 
         <!-- ============ Status footer ============ -->

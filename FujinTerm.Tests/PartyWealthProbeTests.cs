@@ -76,6 +76,11 @@ public sealed class PartyWealthProbeTests
 
         // The not-parsed-yet reply.
         public const string Unknown = "wealth unknown - parse inventory first (type i)";
+
+        // A party member on a different client answers @wealth in that client's
+        // own format — no "(= N copper)" tally, just a coin-phrase breakdown.
+        // Captured once from a MegaMUD-style member on the Paradigm realm.
+        public const string ForeignWealth = "{Wealth: 26 platinum pieces, 4792 gold crowns}";
     }
 
     [Fact]
@@ -195,6 +200,37 @@ public sealed class PartyWealthProbeTests
         Assert.Equal(2, r.Expected);
         Assert.Equal(300, r.WealthByMember["Bob"]);
         Assert.False(r.WealthByMember.ContainsKey("Al"));   // non-responder absent
+    }
+
+    [Fact]
+    public async Task ForeignClientReply_CoinPhrasesFoldedToCopper()
+    {
+        var h = new Harness();
+        h.AddMember("Tristian");
+        h.GoInParty();
+
+        Task<PartyWealthProbe.PartyWealthResult> task = h.Probe.QueryAsync();
+        h.Reply("Tristian", Harness.ForeignWealth);
+
+        PartyWealthProbe.PartyWealthResult r = await task;
+        // 26 platinum * 10,000 + 4,792 gold * 100 = 260,000 + 479,200.
+        Assert.Equal(739_200, r.WealthByMember["Tristian"]);
+        Assert.Contains(("Tristian", 739_200L), h.Recorded);
+    }
+
+    [Fact]
+    public async Task ForeignClientReply_CommaFormattedCounts_Summed()
+    {
+        var h = new Harness();
+        h.AddMember("Rich");
+        h.GoInParty();
+
+        Task<PartyWealthProbe.PartyWealthResult> task = h.Probe.QueryAsync();
+        h.Reply("Rich", "{Wealth: 1,234 gold crowns, 5 silver nobles}");
+
+        PartyWealthProbe.PartyWealthResult r = await task;
+        // 1,234 gold * 100 + 5 silver * 10 = 123,400 + 50.
+        Assert.Equal(123_450, r.WealthByMember["Rich"]);
     }
 
     [Fact]

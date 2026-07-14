@@ -24,14 +24,19 @@ namespace FujinTerm.Game.Combat;
 // 3. If no monster match, fall through to player lookup: the entry's first
 //    whitespace token compared against every PlayerRecord.GivenName in the
 //    active per-BBS database (case-insensitive).
-// 4. If still unmatched and the entry is multi-word, strip the FIRST word and
+// 4. If still unmatched, match the WHOLE entry against the Monsters table by
+//    name — this catches a monster whose Monsters-table row exists under its
+//    full (possibly multi-word) name but which carries no MonsterMessageRecord
+//    and no flavor prefix ("brigand chief"). The full name is canonical, so no
+//    missing-flavor warning is logged.
+// 5. If still unmatched and the entry is multi-word, strip the FIRST word and
 //    match the remainder against the Monsters table by name — this catches a
 //    monster whose Monsters-table row exists but whose leading flavor word
 //    isn't recorded in any MonsterMessageRecord ("vicious kobold" → "kobold").
 //    On a hit, classify as that monster AND log the full name under
 //    MissingFlavorCategory so its LogPane double-click opens the monster record
 //    for a flavor-prefix edit.
-// 5. Else Unknown — emit a Warn-severity log row with the raw "Also here:" line
+// 6. Else Unknown — emit a Warn-severity log row with the raw "Also here:" line
 //    carried as LogEntry.Context. The LogPane double-click handler opens the
 //    UnknownEntityFixDialogViewModel from this row.
 //
@@ -312,7 +317,18 @@ public sealed class RoomEntityClassifier : IDisposable
         if (given.Length > 0 && TryMatchPlayer(given, out PlayerRecord? pr))
             return new RoomEntity(entry, pr!.GivenName, EntityKind.Player, MonsterNumber: null);
 
-        // Pass 3 — unrecognized leading flavor word. A monster whose
+        // Pass 3 — full-name Monsters-table match. A monster whose Monsters-table
+        // row exists under its full (possibly multi-word) name but which carries
+        // no MonsterMessageRecord — e.g. a lair boss like "brigand chief" with no
+        // flavor prefix — is missed by both message-catalog passes above AND the
+        // first-word-strip fallback below (which would reduce "brigand chief" to
+        // "chief" and find nothing). Match the whole entry against the Monsters
+        // table directly; on a hit it's the canonical name, so no missing-flavor
+        // warning applies.
+        if (TryMatchMonstersTable(entry, out int fullMatchNumber))
+            return new RoomEntity(entry, entry, EntityKind.Monster, fullMatchNumber);
+
+        // Pass 4 — unrecognized leading flavor word. A monster whose
         // Monsters-table row exists but whose flavor prefix isn't recorded in
         // any MonsterMessageRecord shows up as "<unknown-word> <base name>"
         // ("vicious kobold"). Strip only the first word and match the remainder

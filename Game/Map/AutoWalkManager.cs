@@ -155,6 +155,11 @@ public sealed class AutoWalkManager : IRecoverableEngine
 
     public event Action<WalkEvent>? Event;
 
+    // The most recent walk event, retained after it fires so a bug report can
+    // read why the last walk stopped/failed (the Detail reason) without having
+    // subscribed to Event live. Null until the first walk event.
+    public WalkEvent? LastEvent { get; private set; }
+
     // ----- IRecoverableEngine ----------------------------------------
 
     public string Name => "Walker";
@@ -1523,7 +1528,11 @@ public sealed class AutoWalkManager : IRecoverableEngine
         State = WalkState.Idle;
     }
 
-    private void Raise(WalkEvent evt) => Event?.Invoke(evt);
+    private void Raise(WalkEvent evt)
+    {
+        LastEvent = evt;
+        Event?.Invoke(evt);
+    }
 
     public static byte[] EncodeMove(Direction dir)
     {

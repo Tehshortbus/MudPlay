@@ -19,8 +19,10 @@ namespace FujinTerm.Game.Map;
 // data lived in the same room as the multi-action exit (the common case —
 // "[on the X exit of this room]") the field is null. When the action data
 // lived in a DIFFERENT room ("[on the X exit of room M/R]") the field
-// carries that room's key. Only same-room actions are executed; remote
-// actions fail the walk with a clear reason.
+// carries that room's key — the lever governing this exit sits in that
+// other room (e.g. a guardroom lever lifting the adjacent gate). The path
+// expander routes a go-act-return detour to each such room to work the
+// switch, then crosses the exit.
 //
 // RequiredItemId is the item the crosser must hold to perform this step,
 // parsed from a trailing "(Item: N)" on the action cell (e.g. "hold up

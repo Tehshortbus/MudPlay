@@ -2,6 +2,36 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.64.0
+
+- Party-wealth probe now logs each member's reply as it arrives — the interpreted copper value (or "wealth unknown") alongside the verbatim reply — so a program-log read confirms every member's response was parsed correctly, not just the final replied/known tally
+
+## 1.63.0
+
+- Bug reports now capture the navigation engines in a dedicated section — the point-to-point walk engine (live target, step progress, next direction, and the last stop/failure reason), the door / hidden-exit / trap obstacle handlers mid-request, and the path-item shop/hunt detour state with outstanding route-item needs
+
+## 1.62.0
+
+- Transaction history now records where each offload happened — a bank deposit notes which bank (room name + map/room), and a stash notes which room hid the loot, shown as a muted second line under the entry and appended to the persisted transactions log
+
+## 1.61.0
+
+- New **Reset States** action (Action menu, terminal right-click, and a bindable/toolbar-promotable shortcut) — clears my own stuck ailments, party-wait signals, and the movement holds they drive, returning me to an idle, unafflicted state
+- Fixes a phantom "waiting — confused" nav pause: a confusion wear-off now clears every effect that shares the generic "You are confused!" line, so a monster confusion carrying its own specific wear-off no longer strands the flag (and the nav hold) active
+- bug reports addressed: paradigm-20260714-101922
+
+## 1.60.0
+
+- Transaction history now records manual bank deposits and stashes, not just the app's automated ones — a hand-typed `dep`, `hide <coin>`, or `hide <item>` shows up in the ledger like any auto action, sourced from the server's own confirmation echo
+- Each deposited denomination and each hidden coin/item lands as its own chronological ledger row
+- Log pane gains an "Auto-collect logs" checkbox (default off) — the program, memory, and combat-trace files are only written to Data/Logs while it's on, so a normal session leaves nothing on disk; persisted per-character
+- Conversation window now opens scrolled flush to the newest message instead of stopping short of the bottom
+- A multi-word monster with no flavour prefix (e.g. a lair boss) is classified off the Monsters table instead of landing as Unknown in the room roster
+- A party member on a different client whose @wealth reply lacks our copper tally is now understood — coin phrases like "26 platinum pieces, 4792 gold crowns" fold to a copper value for the toll-gate check
+- A lever-raised gate that renders as "gate" rather than "door" (e.g. "open gate north") now registers its live open/closed state, so the walker skips the door FSM on an already-raised gate instead of stalling
+- A guardroom tooltip now names the gate its lever controls (e.g. "pull lever → Inner Gate (1/1331) north exit"), so a remote lever room no longer looks inert
+- bug reports addressed: paradigm-20260714-085920, paradigm-20260714-090507, paradigm-20260714-091000, paradigm-20260714-091244
+
 ## 1.59.0
 
 - Lever-opened doors are now walkable: a plain/locked door that a lever in another room lifts (annotated with action cells) is promoted to a lever exit, so the walker detours to pull the levers instead of routing around or bonking the closed door

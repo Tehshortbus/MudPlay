@@ -276,6 +276,56 @@ public sealed class InventoryManagerTests
     }
 
     [Fact]
+    public void Deposit_FiresBankDeposited_WithCopperValue()
+    {
+        using Harness h = new();
+        h.Feed("You are carrying 5 gold crowns.");
+        h.Feed("Wealth:    500 copper farthings");
+        h.Feed("Encumbrance:    1/2880  -  None  [0%]");
+
+        long deposited = 0;
+        h.Inv.BankDeposited += copper => deposited += copper;
+
+        // Manual or auto, the echo carries the full deposited copper: 3 gold = 300.
+        h.Feed("You deposit 3 gold crowns.");
+
+        Assert.Equal(300, deposited);
+    }
+
+    [Fact]
+    public void ItemHide_FiresItemHidden_WithName()
+    {
+        using Harness h = new();
+        List<string> hidden = new();
+        h.Inv.ItemHidden += hidden.Add;
+
+        h.Feed("You hid a torch.");
+
+        Assert.Equal(new[] { "a torch" }, hidden);
+    }
+
+    [Fact]
+    public void CoinHide_DoesNotFireItemHidden()
+    {
+        using Harness h = new();
+        h.Feed("You are carrying 50 gold crowns, 6 copper farthings.");
+        h.Feed("Wealth:    5006 copper farthings");
+        h.Feed("Encumbrance:    18/2880  -  None  [0%]");
+
+        List<string> hidden = new();
+        h.Inv.ItemHidden += hidden.Add;
+
+        // Plural (caught by the coin-hide regex) and singular "a <coin>" (which the
+        // coin regex's leading digit misses) must both stay off the item path —
+        // CashManager's coin channel records coins, so a duplicate item row here
+        // would double-log the stash.
+        h.Feed("You hid 50 gold crowns.");
+        h.Feed("You hid a gold piece.");
+
+        Assert.Empty(hidden);
+    }
+
+    [Fact]
     public void Withdraw_AddsAndConsolidates()
     {
         using Harness h = new();

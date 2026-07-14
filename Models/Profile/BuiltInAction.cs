@@ -42,6 +42,9 @@ public enum BuiltInAction
     ActionEquipAll,
     ActionDepositAll,
 
+    // ---- Recovery (toolbar / Action menu) ----
+    ResetStates,
+
     // ---- Auto-response toggles (toolbar / Action menu) ----
     ToggleAllAutoOff,
     ToggleAutoCombat,

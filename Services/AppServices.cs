@@ -75,19 +75,24 @@ public sealed class AppServices
 
     // Tees Log to a rolling on-disk file (Data/Logs/{ts}-program.log) so a
     // hard hang / kill leaves a post-mortem trail the in-memory ring can't.
+    // Only writes while LogDiagnostics.AutoCollectLogs is on (default off).
     public ProgramLogFile ProgramLog { get; }
 
     // Samples the process memory footprint a-minute-at-a-time to its own
     // Data/Logs/{ts}-memory.log, kept out of the program log, so an all-night
     // session leaves a trail that tells a managed-heap leak from working-set creep.
+    // Only writes while LogDiagnostics.AutoCollectLogs is on (default off).
     public MemoryUsageLog MemoryLog { get; }
 
-    // Session-only diagnostic switches surfaced in the Log pane menu
-    // (combat-verbose / round-trace umbrella). Consumers
-    // (e.g. Game.Combat.RoundDamageTracker) read this
-    // instead of per-character settings because verbose tracing isn't
-    // a per-character affordance — it's a "while I'm debugging right
-    // now" knob that resets on app launch.
+    // Per-character diagnostic switches surfaced in the Log pane: DebugDiagnostics
+    // and CombatDiagnostics gate in-memory Debug/Combat channel generation;
+    // AutoCollectLogs gates whether the on-disk diagnostic files (program /
+    // memory / combat trace) are written at all. Consumers
+    // (e.g. Game.Combat.RoundDamageTracker) read this instead of per-character
+    // settings directly. The live state is mirrored to the Char-tier
+    // LogDiagnosticsSettings section: applied on ProfileLoaded, reset off on
+    // ProfileClosed, persisted on Changed (see the Apply/Reset/Persist helpers
+    // below).
     public LogDiagnosticState LogDiagnostics { get; } = new();
 
     // Docking / floating panel framework (single-UserControl reparented).
@@ -1439,11 +1444,13 @@ public sealed class AppServices
         // per-character diagnostic toggles (applied from the profile below,
         // flipped from the Log pane).
         Log.Diagnostics = LogDiagnostics;
-        // Start teeing the program log to disk immediately so even the
-        // earliest startup entries survive a hang / kill.
-        ProgramLog = new ProgramLogFile(Log);
-        // Begin sampling memory to its own on-disk log for the whole process life.
-        MemoryLog = new MemoryUsageLog();
+        // Tee the program log to disk, gated on AutoCollectLogs: the writer only
+        // opens once the toggle turns on (applied from the profile below or
+        // flipped from the Log pane), so a normal session leaves no file.
+        ProgramLog = new ProgramLogFile(Log, LogDiagnostics);
+        // Same gating for the memory-footprint sampler: the timer runs for the
+        // whole process, but samples land on disk only while AutoCollectLogs is on.
+        MemoryLog = new MemoryUsageLog(LogDiagnostics);
         // Late-bind the cache's log sink so SwitchSet emits the swap
         // audit entries (load / unload / swap) without coupling the
         // cache to AppServices construction order.
@@ -2288,13 +2295,14 @@ public sealed class AppServices
                 MonsterOverlaySeed.GetOverlay(n)),
             log: Log);
 
-        // RoundDamageTracker. shouldWriteTrace
-        // delegate reads the Log pane's combat-diagnostics umbrella
-        // (session-only, no per-profile persistence) so the user can
-        // toggle the per-round trace from the Log menu mid-session.
+        // RoundDamageTracker. shouldWriteTrace reads the Log pane's
+        // auto-collect-logs toggle: the on-disk per-round trace is one of the
+        // three diagnostic files that switch gates, so it follows AutoCollectLogs
+        // rather than the in-memory CombatDiagnostics channel. Both are
+        // per-character persisted; the user can flip either from the Log pane.
         RoundDamage = new Game.Combat.RoundDamageTracker(
             Router, PlayerState, Log,
-            shouldWriteTrace: () => LogDiagnostics.CombatDiagnostics);
+            shouldWriteTrace: () => LogDiagnostics.AutoCollectLogs);
         // Drive round boundaries off the 5-second combat heartbeat so each round
         // closes (and is counted) in real time rather than lagging until the next
         // damage line or *Combat Off*. Both are app-lifetime singletons, so no
@@ -3127,18 +3135,34 @@ public sealed class AppServices
             isEnabled: () => ReadAutoModeFlag(d => d.AutoGetCash),
             log: Log,
             naming: Currency);
-        // Count stash-room hides toward the Session Stats
-        // stashed/deposited figure (copper value across the dispatched coins).
-        // Also record the hide (coins + items) in the transaction
-        // ledger.
+        // Count stash-room hides toward the Session Stats stashed/deposited figure
+        // (copper value across the dispatched coins). The transaction-history
+        // ledger is NOT fed here — it sources from the server's own `You hid …` /
+        // `You deposit …` echoes below, so a hand-typed stash is recorded too.
         Stash.StashExecuted += dispatch =>
         {
             long copper = 0;
             foreach ((string currency, long amount) in dispatch.Currencies)
                 copper += Game.Inventory.CurrencyHoldings.ToCopper(Currency.Canonicalize(currency), amount);
             SessionActivity.NoteCurrencyStashed(copper);
-            TransactionHistory.NoteStash(dispatch.Currencies, dispatch.Items);
         };
+
+        // Transaction-history ledger sources — the server-confirmation echoes,
+        // which fire for a manual `dep` / `hide` and an automated reroute alike
+        // (so both are recorded), and arrive one per denomination / item:
+        //   coin stash   -> CashManager.CoinHidden       ("You hid N <coin>.")
+        //   item stash   -> InventoryManager.ItemHidden  ("You hid <item>.")
+        //   bank deposit -> InventoryManager.BankDeposited ("You deposit …", wrap-merged there)
+        // Each echo captures the room it fired in — the stash room for a hide,
+        // the bank room for a deposit — so the ledger records where excess went.
+        Cash.CoinHidden += (currency, count) =>
+            TransactionHistory.NoteStash(
+                new[] { (currency, (long)count) }, Array.Empty<string>(), CurrentRoomLabel());
+        Inventory.ItemHidden += item =>
+            TransactionHistory.NoteStash(
+                Array.Empty<(string, long)>(), new[] { item }, CurrentRoomLabel());
+        Inventory.BankDeposited += copper =>
+            TransactionHistory.NoteBankDeposit(copper, CurrentRoomLabel());
 
         // AutoGetItemsManager. The resolve delegate
         // maps a loose "You notice ..." entry back to an item Number
@@ -3722,14 +3746,11 @@ public sealed class AppServices
         // its own bank -> shop -> origin light detour and needs the `i` dump to
         // notice the bought copy land.
         Inventory.Changed += AutoDeposit.OnInventoryChanged;
-        // Bank deposits (already a copper value) join stash hides in
-        // the Session Stats stashed/deposited figure, and record the
-        // deposit in the transaction ledger.
-        AutoDeposit.Deposited += copper =>
-        {
-            SessionActivity.NoteCurrencyStashed(copper);
-            TransactionHistory.NoteBankDeposit(copper);
-        };
+        // Bank deposits (already a copper value) join stash hides in the Session
+        // Stats stashed/deposited figure. The transaction-history ledger is fed
+        // separately from the `You deposit …` echo (InventoryManager.BankDeposited,
+        // wired above) so a manual deposit is recorded too.
+        AutoDeposit.Deposited += copper => SessionActivity.NoteCurrencyStashed(copper);
 
         // Shop-source routing (PR C). On a one-shot walk-to that needs an
         // uncarried Item/Ticket-gate item a shop sells, detour to the
@@ -3909,6 +3930,7 @@ public sealed class AppServices
         _suppressLogDiagnosticsPersist = true;
         LogDiagnostics.DebugDiagnostics  = dto.Debug;
         LogDiagnostics.CombatDiagnostics = dto.Combat;
+        LogDiagnostics.AutoCollectLogs   = dto.AutoCollect;
         _suppressLogDiagnosticsPersist = false;
     }
 
@@ -3917,6 +3939,7 @@ public sealed class AppServices
         _suppressLogDiagnosticsPersist = true;
         LogDiagnostics.DebugDiagnostics  = false;
         LogDiagnostics.CombatDiagnostics = false;
+        LogDiagnostics.AutoCollectLogs   = false;
         _suppressLogDiagnosticsPersist = false;
     }
 
@@ -3928,8 +3951,9 @@ public sealed class AppServices
 
         Models.Profile.LogDiagnosticsSettings dto = new()
         {
-            Debug  = LogDiagnostics.DebugDiagnostics,
-            Combat = LogDiagnostics.CombatDiagnostics,
+            Debug      = LogDiagnostics.DebugDiagnostics,
+            Combat     = LogDiagnostics.CombatDiagnostics,
+            AutoCollect = LogDiagnostics.AutoCollectLogs,
         };
         profile.Settings ??= new();
         profile.Settings["LogDiagnostics"] = System.Text.Json.JsonSerializer.SerializeToElement(dto);
@@ -4428,6 +4452,15 @@ public sealed class AppServices
     // lives in one place. Backs PathItemDemand's possession check and the
     // MovementFilter key/item gate.
     private bool IsItemCarried(int itemId) => CountItemHeld(itemId) > 0;
+
+    // "Name (map/room)" for the room the tracker currently sits in, or null when
+    // position is unknown. Stamped onto transaction-ledger rows so a deposit
+    // records which bank was used and a stash records which room hid the loot.
+    private string? CurrentRoomLabel()
+    {
+        if (RoomTracker?.State.CurrentRoom is not { } room) return null;
+        return $"{room.DisplayName} ({room.Key.Map}/{room.Key.Room})";
+    }
 
     // How many copies of itemId the current snapshot holds
     // (carried + worn). The carried list stores one entry per copy, so gives /

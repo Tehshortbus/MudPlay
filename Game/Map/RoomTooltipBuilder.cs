@@ -69,6 +69,17 @@ public static class RoomTooltipBuilder
             sb.Append('\n').Append('\n').Append(exitsBlock);
         }
 
+        // 8b. Levers here — remote switches physically in THIS room that
+        // control a gated exit elsewhere (e.g. a guardroom lever that lifts a
+        // portcullis in the adjacent gate room). The gate's MultiAction data
+        // attaches to the gate room's exit, so without this reverse lookup the
+        // lever room's own tooltip would give no hint that acting here matters.
+        string leversBlock = BuildLeversHereBlock(room, graph);
+        if (leversBlock.Length > 0)
+        {
+            sb.Append('\n').Append('\n').Append(leversBlock);
+        }
+
         // 9. Room commands — TBInfo CMD chains for the room (use chime,
         // ring chime, etc. — keyword-triggered teleports that bypass
         // normal exits). Grouped per-destination so identical-target
@@ -194,6 +205,9 @@ public static class RoomTooltipBuilder
             parts.Add("Shop: " + (LookupName(data, "Shops", room.Shop) ?? $"#{room.Shop}"));
         if (room.Spell > 0)
             parts.Add("Room Spell: " + (LookupName(data, "Spells", room.Spell) ?? $"#{room.Spell}"));
+
+        string leversBlock = BuildLeversHereBlock(room, graph);
+        if (leversBlock.Length > 0) parts.Add(leversBlock);
 
         string commandsBlock = BuildRoomCommandsBlock(room, graph, tbinfo, spellCatalog);
         if (commandsBlock.Length > 0) parts.Add(commandsBlock);
@@ -451,6 +465,33 @@ public static class RoomTooltipBuilder
         Direction.D  => "down",
         _            => d.ToString(),
     };
+
+    // ----- Levers here (remote switches this room controls) ---------
+
+    // Lists any lever/switch physically in this room that governs an exit
+    // elsewhere, naming the controlled room + direction and the verbs that work
+    // it. One line per controlled exit, alternative verbs " / " joined.
+    private static string BuildLeversHereBlock(Room room, RoomGraphManager graph)
+    {
+        IReadOnlyList<RoomGraphManager.RemoteLeverRef> levers =
+            graph.LeversControlledFrom(room.Key);
+        if (levers.Count == 0) return string.Empty;
+
+        StringBuilder sb = new();
+        sb.Append("Levers here:");
+        foreach (RoomGraphManager.RemoteLeverRef lever in levers)
+        {
+            Room? controlled = graph.GetRoom(lever.ControlledRoom);
+            string name = controlled is not null
+                ? controlled.DisplayName
+                : lever.ControlledRoom.ToString();
+            sb.Append('\n').Append("  ")
+              .Append(string.Join(" / ", lever.Commands))
+              .Append(" → ").Append(name).Append(" (").Append(lever.ControlledRoom)
+              .Append(") ").Append(DirectionLabel(lever.Direction)).Append(" exit");
+        }
+        return sb.ToString();
+    }
 
     // ----- Room commands (TBInfo CMD chains) ------------------------
 

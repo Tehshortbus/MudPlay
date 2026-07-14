@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Text.RegularExpressions;
 using Avalonia.Threading;
+using FujinTerm.Game.Inventory;
 using FujinTerm.Services;
 
 namespace FujinTerm.Game.Remote;
@@ -19,11 +20,15 @@ namespace FujinTerm.Game.Remote;
 // InventoryQueryHandler.OnWealth replies over an incoming telepath. We subscribe
 // to ChatRouter.EntryClassified and read the copper value off each reply.
 //
-// Three reply shapes, mutually exclusive (see InventoryQueryHandler.OnWealth):
+// Reply shapes, mutually exclusive (our own client — see InventoryQueryHandler.OnWealth):
 //   - "<coins> (= N copper)"  → carrying coin worth N copper.
 //   - "no coins on hand"      → a real empty purse, worth 0 (still gates any toll).
 //   - "wealth unknown - …"    → hasn't parsed inventory yet; counts as replied but
 //                               carries no value, so the gate can't clear them.
+// A party member on a DIFFERENT client answers in that client's own format, which
+// carries no "(= N copper)" tally — observed once as "{Wealth: 26 platinum pieces,
+// 4792 gold crowns}". We fold that in by scanning for "<count> <denomination>" coin
+// phrases and summing via the standard ratio ladder.
 // A member that answers "unknown" or never answers contributes no reading, so the
 // tracker treats them as unaffordable and avoids the toll — the conservative side.
 //
@@ -97,6 +102,16 @@ public sealed partial class PartyWealthProbe : IDisposable
         RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
     private static partial Regex WealthUnknownReply();
 
+    // Fallback for a party member on another client whose @wealth reply lacks our
+    // "(= N copper)" tally — matches each "<count> <denomination>" coin phrase (e.g.
+    // "26 platinum", "4,792 gold") so mixed streams like "{Wealth: 26 platinum
+    // pieces, 4792 gold crowns}" fold to copper. The denomination noun is the
+    // canonical metal word CurrencyHoldings.ToCopper keys on; any trailing coin name
+    // ("pieces", "crowns") is ignored.
+    [GeneratedRegex(@"([\d,]+)\s+(copper|silver|gold|platinum|runic)\b",
+        RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
+    private static partial Regex ForeignCoinPhrase();
+
     public PartyWealthProbe(
         PartyBroadcaster broadcaster, ChatRouter chat, PartyState party,
         Action<string, long>? recordWealth = null, LogService? log = null)
@@ -169,6 +184,13 @@ public sealed partial class PartyWealthProbe : IDisposable
 
         string given = GivenName(entry.Speaker);
 
+        // Record what we made of each reply — name, interpreted copper value (or
+        // "unknown"), and the verbatim reply — so a reader can confirm the parse,
+        // especially the fragile foreign-client coin-phrase fallback.
+        _log?.Info("PartyWealth", known
+            ? $"{given}: interpreted {copper:N0} copper from reply \"{entry.Message}\""
+            : $"{given}: wealth unknown (reply \"{entry.Message}\")");
+
         // Forward each fresh reading to the tracker regardless of which
         // in-flight query (if any) still awaits them; one reply can satisfy
         // several concurrent queries (no echoed parameter to disambiguate).
@@ -219,6 +241,27 @@ public sealed partial class PartyWealthProbe : IDisposable
             copper = 0;   // real empty purse — still gates any positive toll
             return true;
         }
+
+        // Foreign-client fallback: sum every "<count> <denomination>" coin phrase.
+        // Only treat as a reading when at least one phrase parses, so a non-coin
+        // line ("wealth unknown", chatter) still falls through to false.
+        long total = 0;
+        bool any = false;
+        foreach (Match cm in ForeignCoinPhrase().Matches(message))
+        {
+            if (!long.TryParse(
+                    cm.Groups[1].Value.Replace(",", ""),
+                    NumberStyles.Integer, CultureInfo.InvariantCulture, out long count))
+                continue;
+            total += CurrencyHoldings.ToCopper(cm.Groups[2].Value, count);
+            any = true;
+        }
+        if (any)
+        {
+            copper = total;
+            return true;
+        }
+
         copper = 0;
         return false;
     }

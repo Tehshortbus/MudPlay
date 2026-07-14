@@ -149,6 +149,13 @@
             </MenuItem>
 
             <MenuItem Header="_Action">
+                <!-- Recovery escape hatch — clear my own stuck ailments and the
+                     movement holds / party-wait signals they drive, returning me
+                     to an idle, unafflicted state. -->
+                <MenuItem Header="Reset States" Command="{Binding ResetStatesCommand}"
+                          ToolTip.Tip="Clear my own stuck ailments, waits, and movement holds — return to idle"/>
+                <Separator/>
+
                 <!-- Bulk one-shot commands. Local twins of the @get-all /
                      @drop-all / @deposit-all remote commands and the Default
                      gear set; the toolbar Get/Drop/Equip/Deposit buttons drive
@@ -503,6 +510,11 @@
                         <MenuItem Header="Open Conversation"    InputGesture="{Binding ConversationGesture}" Command="{Binding OpenConversationCommand}"/>
                         <MenuItem Header="Open Navigation"      InputGesture="{Binding NavigationGesture}"   Command="{Binding OpenNavigationCommand}"/>
                         <MenuItem Header="Open Session Stats"   InputGesture="{Binding SessionStatsGesture}" Command="{Binding OpenSessionStatsCommand}"/>
+                        <Separator/>
+                        <!-- Recovery — clear my own stuck ailments / waits /
+                             movement holds and return to an idle state. -->
+                        <MenuItem Header="Reset States" Command="{Binding ResetStatesCommand}"
+                                  ToolTip.Tip="Clear my own stuck ailments, waits, and movement holds — return to idle"/>
                         <Separator/>
                         <!-- Diagnostics — freeze current client state + recent
                              output into a Markdown report on the Desktop. -->

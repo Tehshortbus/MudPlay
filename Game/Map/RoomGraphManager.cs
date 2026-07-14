@@ -40,6 +40,14 @@ public sealed class RoomGraphManager
     private readonly Dictionary<string, List<Room>> _byName = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<(string Name, uint ExitMask), List<RoomKey>> _byNameAndExits = new();
 
+    // Reverse index: for a room where a remote lever/switch physically sits, the
+    // exits (in OTHER rooms) that lever controls. Built during the action-cell
+    // patch pass — a guardroom's "Action [on the N exit of room 1/1331]" cell
+    // means the guardroom holds a lever governing 1/1331's north gate, but the
+    // MultiAction data attaches to 1/1331's exit, so the guardroom's own tooltip
+    // would otherwise show nothing. Keyed by the lever's host room.
+    private readonly Dictionary<RoomKey, List<RemoteLeverRef>> _leversByRoom = new();
+
     // Live predicate identifying rooms a normal player can never stand in (dev /
     // orphan rooms flagged CannotBeReached in the room blacklist). When set,
     // FindCandidates drops matching keys so the RoomTracker never resolves the
@@ -72,6 +80,21 @@ public sealed class RoomGraphManager
     // in the active set's graph.
     public Room? GetRoom(RoomKey key) =>
         _rooms.TryGetValue(key, out Room? room) ? room : null;
+
+    // A remote lever/switch sitting in one room that governs an exit in another.
+    // ControlledRoom + Direction name the exit it operates; Commands are the
+    // alternative verbs that work it (e.g. "pull lever" / "push lever").
+    public readonly record struct RemoteLeverRef(
+        RoomKey ControlledRoom, Direction Direction, IReadOnlyList<string> Commands);
+
+    // Levers physically in `room` that control a gated exit elsewhere. Empty when
+    // the room holds no remote-action switch. Lets a guardroom's tooltip name the
+    // gate its lever opens even though the exit's MultiAction attaches to the
+    // gate room, not here.
+    public IReadOnlyList<RemoteLeverRef> LeversControlledFrom(RoomKey room) =>
+        _leversByRoom.TryGetValue(room, out List<RemoteLeverRef>? list)
+            ? list
+            : Array.Empty<RemoteLeverRef>();
 
     // Fires once per name learned via LearnRoomName. Carries the room key + the
     // name the tracker just adopted. AppServices subscribes to surface the
@@ -385,6 +408,16 @@ public sealed class RoomGraphManager
                 [dir] = patched
             };
             _rooms[roomKey] = room with { Exits = rebuilt };
+
+            // Index each remote-sourced action so the room the lever physically
+            // sits in can name the exit it governs (see LeversControlledFrom).
+            foreach (ExitAction step in actions)
+            {
+                if (step.RemoteSourceRoom is not { } leverRoom) continue;
+                if (!_leversByRoom.TryGetValue(leverRoom, out List<RemoteLeverRef>? refs))
+                    _leversByRoom[leverRoom] = refs = new List<RemoteLeverRef>();
+                refs.Add(new RemoteLeverRef(roomKey, dir, step.Commands));
+            }
         }
 
         PromoteCmdTeleportExits();
@@ -405,6 +438,7 @@ public sealed class RoomGraphManager
         _rooms.Clear();
         _byName.Clear();
         _byNameAndExits.Clear();
+        _leversByRoom.Clear();
     }
 
     // Re-hint the cardinal exits a room's CMD teleport shadows. A room with

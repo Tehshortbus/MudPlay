@@ -201,11 +201,19 @@ public sealed partial class RoomDisplayParser : IDisposable
             // two items survives as a trailing word inside the entry.
             if (entry.StartsWith("and ", StringComparison.Ordinal)) entry = entry[4..];
 
+            // A door/gate barrier is phrased "<open|closed> <door|gate> <dir>"
+            // (e.g. "open door south", "closed gate north"). Strip the state +
+            // barrier-noun prefix, recording open state so the walker can skip
+            // the open-FSM on an already-open exit. Some realms render the
+            // inner-gate portcullis as "gate" rather than "door" — same barrier
+            // semantics, so both nouns feed OpenDoorDirections.
             bool isOpenDoor = false;
-            if (entry.StartsWith("open door ",   StringComparison.Ordinal))
-            { entry = entry[10..]; isOpenDoor = true; }
-            else if (entry.StartsWith("closed door ", StringComparison.Ordinal))
-            { entry = entry[12..]; /* door is shut */ }
+            Match barrier = BarrierPrefixPattern().Match(entry);
+            if (barrier.Success)
+            {
+                isOpenDoor = barrier.Groups["state"].Value == "open";
+                entry = entry[barrier.Length..];
+            }
 
             // Sub-split on spaces in case the entry has trailing
             // "and <dir>" or similar (rare).
@@ -243,6 +251,11 @@ public sealed partial class RoomDisplayParser : IDisposable
         @"^\s*Obvious\s+exits?\s*:\s*(?<list>.+?)\s*\.?\s*$",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex ObviousExitsPattern();
+
+    // Door/gate barrier prefix on an exit token — "<open|closed> <door|gate> ".
+    // Entry is already lowercased, so no IgnoreCase needed.
+    [GeneratedRegex(@"^(?<state>open|closed)\s+(?:door|gate)\s+", RegexOptions.CultureInvariant)]
+    private static partial Regex BarrierPrefixPattern();
 
     // Movement-transition markers — used as block boundaries when scanning back
     // for a room name.

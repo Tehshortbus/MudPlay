@@ -1,13 +1,22 @@
 namespace FujinTerm.Game.Cash;
 
 // A per-session ledger of cash/item offloads for the Session Stats →
-// Transaction history window. Records one TransactionEntry per bank `dep`osit
-// (fed from AutoDepositManager.Deposited) and per stash-room `hide` (fed from
-// StashRoomManager.StashExecuted), each with the wall-clock time, the store kind,
-// and a rendered description of what was put away.
+// Transaction history window. Records one TransactionEntry per bank `dep`osit and
+// per stash-room `hide` (coin or item), each with the wall-clock time, the store
+// kind, a rendered description of what was put away, and the room it happened in
+// ("Name (map/room)" — the bank used or the stash room).
 //
-// Owns no source subscriptions — AppServices wires the bank / stash events to the
-// Note* forwarders — matching SessionActivityTracker and keeping the tracker
+// Sourced from the server's own confirmation echoes so a MANUAL `dep` / `hide`
+// typed by the user is captured the same as an automated reroute: deposits from
+// InventoryManager.BankDeposited (`You deposit …`), coin stashes from
+// CashManager.CoinHidden (`You hid N <coin>.`), item stashes from
+// InventoryManager.ItemHidden (`You hid <item>.`). Because the echoes arrive one
+// per denomination / item, a multi-currency stash-room visit records one row per
+// coin line and one per item — a faithful chronological list rather than a single
+// grouped row.
+//
+// Owns no source subscriptions — AppServices wires those echo events to the Note*
+// forwarders — matching SessionActivityTracker and keeping the tracker
 // dependency-free behind an injectable clock for unit tests. Every write and
 // Snapshot runs on the marshalled dispatch thread (the sources all fire there),
 // so the list is lock-free. Reset on the same session boundary as the other
@@ -38,24 +47,28 @@ public sealed class TransactionHistoryTracker
     }
 
     // Record a bank deposit of the given copper wealth value. Non-positive
-    // amounts are ignored (nothing was deposited).
-    public void NoteBankDeposit(long copper)
+    // amounts are ignored (nothing was deposited). location is the bank room
+    // ("Name (map/room)") captured at echo time, or null when unknown.
+    public void NoteBankDeposit(long copper, string? location = null)
     {
         if (copper <= 0) return;
-        Add(TransactionKind.Bank, $"Deposited {copper:N0} wealth");
+        Add(TransactionKind.Bank, $"Deposited {copper:N0} wealth", location);
     }
 
     // Record a stash-room hide of the given per-denomination coin amounts and
     // item names. A dispatch with neither coins nor items is ignored (the stash
-    // event never fires empty, but the guard keeps the ledger clean).
+    // event never fires empty, but the guard keeps the ledger clean). location
+    // is the stash room ("Name (map/room)") captured at echo time, or null when
+    // unknown.
     public void NoteStash(
         IReadOnlyList<(string Currency, long Amount)> currencies,
-        IReadOnlyList<string> items)
+        IReadOnlyList<string> items,
+        string? location = null)
     {
         ArgumentNullException.ThrowIfNull(currencies);
         ArgumentNullException.ThrowIfNull(items);
         if (currencies.Count == 0 && items.Count == 0) return;
-        Add(TransactionKind.Stash, FormatStash(currencies, items));
+        Add(TransactionKind.Stash, FormatStash(currencies, items), location);
     }
 
     // Point-in-time copy of the ledger, oldest entry first.
@@ -70,9 +83,9 @@ public sealed class TransactionHistoryTracker
         Changed?.Invoke();
     }
 
-    private void Add(TransactionKind kind, string detail)
+    private void Add(TransactionKind kind, string detail, string? location = null)
     {
-        TransactionEntry entry = new(_clock(), kind, detail);
+        TransactionEntry entry = new(_clock(), kind, detail, location);
         _entries.Add(entry);
         while (_entries.Count > MaxEntries) _entries.RemoveAt(0);
         EntryAdded?.Invoke(entry);

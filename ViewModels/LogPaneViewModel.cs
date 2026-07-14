@@ -60,10 +60,16 @@ public sealed partial class LogPaneViewModel : ObservableObject, IDisposable
 
     // Generation toggle for the Combat channel. Mirrors
     // LogDiagnosticState.CombatDiagnostics — flipping it gates the
-    // combat-decision trace channel AND Game.Combat.RoundDamageTracker's
-    // per-round trace file, and shows/hides the Combat rows already in the
-    // ring. Persisted per-character via AppServices. Off by default.
+    // combat-decision trace channel, and shows/hides the Combat rows already in
+    // the ring. Persisted per-character via AppServices. Off by default.
     [ObservableProperty] private bool _combatDiagnostics;
+
+    // Toggle for the on-disk diagnostic files. Mirrors
+    // LogDiagnosticState.AutoCollectLogs — flipping it opens/closes the
+    // program, memory, and combat-trace writers under Data/Logs. Unlike the two
+    // above it does NOT touch displayed rows, so it drives no Rebuild.
+    // Persisted per-character via AppServices. Off by default.
+    [ObservableProperty] private bool _autoCollectLogs;
 
     // When true, every appended row scrolls the list to the bottom. The XAML
     // hooks the actual scroll-into-view call; this flag gates it.
@@ -103,6 +109,7 @@ public sealed partial class LogPaneViewModel : ObservableObject, IDisposable
             _suppressDiagnosticEcho = true;
             _debugDiagnostics  = _diagnostics.DebugDiagnostics;
             _combatDiagnostics = _diagnostics.CombatDiagnostics;
+            _autoCollectLogs   = _diagnostics.AutoCollectLogs;
             _suppressDiagnosticEcho = false;
             _diagnostics.Changed += OnDiagnosticsChanged;
         }
@@ -130,6 +137,12 @@ public sealed partial class LogPaneViewModel : ObservableObject, IDisposable
                 CombatDiagnostics = _diagnostics.CombatDiagnostics;
                 _suppressDiagnosticEcho = false;
             }
+            if (AutoCollectLogs != _diagnostics.AutoCollectLogs)
+            {
+                _suppressDiagnosticEcho = true;
+                AutoCollectLogs = _diagnostics.AutoCollectLogs;
+                _suppressDiagnosticEcho = false;
+            }
         });
     }
 
@@ -152,6 +165,14 @@ public sealed partial class LogPaneViewModel : ObservableObject, IDisposable
         if (_suppressDiagnosticEcho) return;
         if (_diagnostics is null) return;
         _diagnostics.CombatDiagnostics = value;
+    }
+
+    partial void OnAutoCollectLogsChanged(bool value)
+    {
+        // Only gates the on-disk writers — no displayed rows change — so no Rebuild.
+        if (_suppressDiagnosticEcho) return;
+        if (_diagnostics is null) return;
+        _diagnostics.AutoCollectLogs = value;
     }
 
     private void OnEntryAdded(LogEntry entry)
