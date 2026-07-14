@@ -7,7 +7,8 @@ Notable changes per merged PR, **newest first**. The top of the [README](README.
 - Auto-combat re-issues its last attack when a swing fumbles under confusion, so a confused character keeps fighting instead of silently losing attacks until manually re-sent
 - Guard-aware retargeting: when a monster is shielded by guards ("<guard> moves to protect <target>"), combat re-attacks the intended priority as each guard falls instead of stalling once the last guard dies
 - Conversation and transaction history reload from the persisted session logs on reconnect, so prior-session chat and ledger entries reappear instead of starting empty
-- bug reports addressed: paradigm-20260714-093614, paradigm-20260714-115526
+- Up/down searchable hidden exits now retry and reveal correctly — the vertical search-miss line ("nothing different above/below you") is recognized like the cardinal form, so up/down searches no longer stall the walker
+- bug reports addressed: paradigm-20260714-093614, paradigm-20260714-115526, paradigm-20260714-121106
 
 ## 1.64.0
 

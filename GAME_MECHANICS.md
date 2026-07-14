@@ -626,6 +626,21 @@ comes from the stat screen / who line (`AlignmentTracker` / `PlayerStats`).
   the same room is a real move with a real room display; it resolves as a normal
   predicted-neighbour match because the exit's target *is* the source, so it is not confused
   with a passive redisplay.)
+- **[CONFIRMED, capture 2026-07-14 report 121106] Searchable hidden exits report success/failure
+  with axis-dependent wording.** Revealing a hidden exit is `sea <dir>`; the game replies with one of:
+  - **success** — cardinals `You found an exit to the <dir>!`; up/down `You found an exit upwards!` /
+    `You found an exit downwards!` (no "to the", `<dir>wards` suffix). *`upwards` confirmed on the wire;
+    `downwards` confirmed from an earlier capture.*
+  - **failure** — cardinals `You notice nothing different to the <dir>.`; up/down `You notice nothing
+    different above you.` / `You notice nothing different below you.` (no "to the", no direction word).
+    *`above you` confirmed on the wire; `below you` is the symmetric down form, not yet directly observed.*
+
+  The client keys on both to drive the reveal retry loop (`HiddenExitRevealManager`): a failure line
+  triggers another `sea` up to the attempt cap, a success line resolves the reveal so the walker sends
+  the move. Because the up/down failure form drops "to the" entirely, a failure regex that only matched
+  the cardinal `to the <dir>` shape never registered an up/down miss — so up/down searches never retried
+  cleanly and stalled (the reported symptom). A "bonked" `sea` is distinct from a bonked *move*: the
+  `sea` reply above is not a move refusal.
 - **[CONFIRMED]** **A dark room shows no name and no exits — traversal is inferred from the
   absence of a bonk.** A room too dark to see in replaces the *entire* room display (name,
   `Obvious exits:`, `Also here:`) with a single line — `The room is very dark - you can't see

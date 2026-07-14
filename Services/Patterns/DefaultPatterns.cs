@@ -93,12 +93,18 @@ public static class DefaultPatterns
         yield return new RegexPattern(KnownPatterns.SlowDown,        @"^Why don't you slow down for a few seconds\?");
 
         // ----- Searching -------------------------------------------------
+        // Failure wording differs by axis: cardinals use "to the <dir>"
+        // ("north" / "northeast" / …); up/down instead say "above you" /
+        // "below you" — no "to the", no direction word. The handler only
+        // needs to know the search missed so it can retry, so this just has
+        // to match; it captures nothing. ("above you" confirmed on the wire,
+        // report paradigm-20260714-121106; "below you" is the symmetric down
+        // form.) Miss the vertical forms and up/down searches never retry.
         yield return new RegexPattern(KnownPatterns.UserSearchFailed,
-            @"^You notice nothing different to the \w+");
-        // Cardinal forms use "to the <dir>" ("north" / "northeast" / etc.);
-        // U/D drop the preposition and use the "<dir>wards" suffix
-        // ("upwards" / "downwards"). One regex covers both — the
-        // direction word lands in the same capture group either way.
+            @"^You notice nothing different (?:to the \w+|above you|below you)");
+        // Success wording also differs by axis: cardinals say "to the <dir>",
+        // up/down say "upwards" / "downwards". The optional "to the " lets one
+        // capture group hold the direction word either way.
         yield return new RegexPattern(KnownPatterns.UserSearchSucceeded,
             @"^You found an exit (?:to the )?(?<direction>\w+)!");
 
