@@ -83,7 +83,7 @@ public sealed class SelfConfusionResponderTests
             }
         }
 
-        private void Feed(string text)
+        public void Feed(string text)
         {
             var emitted = Line(text);
             typeof(ConditionTracker)
@@ -197,9 +197,10 @@ public sealed class SelfConfusionResponderTests
     }
 
     // A second confusion source that shares the generic applied line ("You are
-    // confused!") but carries its own specific wear-off — the shape that stuck
-    // the reported nav pause: a monster confusion whose end text the generic
-    // "confusion wears off" never matches, so it strands the flag active.
+    // confused!") but carries its own specific wear-off — the shape that once
+    // stuck the reported nav pause. The group-clear now ends every record sharing
+    // the applied line when any of them wears off, so this record no longer
+    // strands the flag when the generic "confusion wears off" fires.
     private static MessageRecord HypnoticHands() => new(
         Id: MessageRecord.ComputeId("HypnoticHands", "", "", "", "You are confused!", "The effect of hypnotic hands wears off."),
         Name: "hypnotic hands",
@@ -214,7 +215,7 @@ public sealed class SelfConfusionResponderTests
         AppliedEndsWith: "The effect of hypnotic hands wears off.");
 
     [Fact]
-    public void MismatchedEnd_StaysStuck_UntilClearAll()
+    public void SharedAppliedLine_GenericWearOff_ClearsWholeGroup()
     {
         using Harness h = new();
         // Both records latch on the shared "You are confused!" applied line.
@@ -224,15 +225,44 @@ public sealed class SelfConfusionResponderTests
         h.Confuse();
         Assert.True(h.GateHeld);
 
-        // The generic wear-off ends only the generic record; hypnotic hands
-        // keeps its own end text, so it stays active and the flag never drops —
-        // the nav pause is stranded on a phantom confusion.
+        // The generic wear-off matches only the generic record's own end text,
+        // but the shared applied line makes the pair one effect — the group sweep
+        // clears hypnotic hands too, so the flag (and the nav pause) drops.
         h.Unconfuse();
-        Assert.True(h.GateHeld);
-        Assert.True(h.SelfChip);
+        Assert.False(h.GateHeld);
+        Assert.False(h.SelfChip);
+    }
 
-        // Reset States: ClearAll drops every active record, cascading the gate
-        // release + chip clear through the responder's ActiveFlags edge.
+    [Fact]
+    public void SharedAppliedLine_SpecificWearOff_ClearsWholeGroup()
+    {
+        using Harness h = new();
+        h.Messages.Messages.Add(HypnoticHands());
+        h.FormParty();
+
+        h.Confuse();
+        Assert.True(h.GateHeld);
+
+        // The other direction: hypnotic hands' own specific wear-off ends the
+        // generic sibling latched on the same applied line, too.
+        h.Feed("The effect of hypnotic hands wears off.");
+        Assert.False(h.GateHeld);
+        Assert.False(h.SelfChip);
+    }
+
+    [Fact]
+    public void ClearAll_DropsGroupChipAndGate()
+    {
+        using Harness h = new();
+        // Reset States path: ClearAll drops every active record regardless of
+        // wear-off text, cascading gate release + chip clear via the ActiveFlags
+        // edge — the manual escape hatch when no wear-off line ever arrives.
+        h.Messages.Messages.Add(HypnoticHands());
+        h.FormParty();
+
+        h.Confuse();
+        Assert.True(h.GateHeld);
+
         h.Conditions.ClearAll();
         Assert.False(h.GateHeld);
         Assert.False(h.SelfChip);

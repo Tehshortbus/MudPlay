@@ -47,6 +47,14 @@ public sealed partial class ConditionTracker : ObservableObject, IDisposable
     // string to records — only records whose EndsWith is non-empty get indexed.
     private List<(string Pattern, MessageRecord Record)> _endsIndex = new();
 
+    // Built alongside the indexes: an exact AppliedMessage string to every record
+    // that carries it. Records sharing an applied line are indistinguishable
+    // aliases of one effect (realm variants — see _appliedIndex), so they latch
+    // together on that shared line and must clear together. The game emits shared
+    // generic wear-offs too (e.g. one "The effects of confusion wear off!" ends
+    // any confusion source), so ending any alias ends the whole group — see OnLine.
+    private Dictionary<string, List<MessageRecord>> _appliedAliases = new(StringComparer.Ordinal);
+
     private LineExtractor? _lines;
     private bool _disposed;
 
@@ -135,15 +143,22 @@ public sealed partial class ConditionTracker : ObservableObject, IDisposable
     {
         List<(string, MessageRecord)> applied = new();
         List<(string, MessageRecord)> ends = new();
+        Dictionary<string, List<MessageRecord>> aliases = new(StringComparer.Ordinal);
         foreach (MessageRecord r in _messages.Messages)
         {
             if (!string.IsNullOrWhiteSpace(r.AppliedMessage))
+            {
                 applied.Add((r.AppliedMessage, r));
+                if (!aliases.TryGetValue(r.AppliedMessage, out List<MessageRecord>? group))
+                    aliases[r.AppliedMessage] = group = new List<MessageRecord>();
+                group.Add(r);
+            }
             if (!string.IsNullOrWhiteSpace(r.AppliedEndsWith))
                 ends.Add((r.AppliedEndsWith, r));
         }
         _appliedIndex = applied;
         _endsIndex = ends;
+        _appliedAliases = aliases;
         _log?.Debug(LogCategory,
             $"index built — applied={applied.Count} endsWith={ends.Count} totalRecords={_messages.Messages.Count}");
 
@@ -181,6 +196,23 @@ public sealed partial class ConditionTracker : ObservableObject, IDisposable
             if (!text.Contains(pattern, StringComparison.Ordinal)) continue;
             if (!_active.Remove(r.Id)) continue;
             endedThisLine.Add(r);
+
+            // Group clear: records that share r's exact applied line are
+            // indistinguishable aliases latched together on that shared line
+            // (e.g. every confusion source emits "You are confused!"). A wear-off
+            // for any of them ends the whole group — otherwise a sibling that
+            // carries its own specific wear-off (a monster confusion vs. the
+            // generic spell) is stranded active when the shared generic wear-off
+            // fires, leaving the flag — and the nav pause it drives — stuck.
+            if (string.IsNullOrEmpty(r.AppliedMessage)
+                || !_appliedAliases.TryGetValue(r.AppliedMessage, out List<MessageRecord>? group))
+                continue;
+            foreach (MessageRecord alias in group)
+            {
+                if (alias.Id == r.Id) continue;
+                if (_active.Remove(alias.Id))
+                    endedThisLine.Add(alias);
+            }
         }
 
         foreach ((string pattern, MessageRecord r) in _appliedIndex)

@@ -1236,6 +1236,23 @@ glass jug               5               2 gold crowns
 
 ---
 
+## Status-effect wear-off lines *([CONFIRMED] 2026-07-14, user)*
+
+- **`The effects of confusion wear off!` is a shared, generic wear-off** reused by
+  many different confusion sources — a lot of confusion spells and monster effects
+  emit the same line. The onset `You are confused!` is likewise generic. So from the
+  wire alone the client cannot tell *which* confusion is on the character: a single
+  applied line covers every confusion source, and a single wear-off line ends it.
+- A few effects append their **own** specific wear-off (e.g. `The effect of hypnotic
+  hands wears off.`) rather than the generic line, but they still share the generic
+  `You are confused!` onset. They are therefore not independently distinguishable
+  from text alone.
+- **Consequence for condition tracking:** records that share an applied line are
+  aliases of one effect and must be cleared as a group — when any of them wears off,
+  all of them end. Keying each record's clear solely to its own end text strands the
+  flag whenever a sibling with a specific wear-off never sees its matching line. (See
+  `ConditionTracker`'s applied-line alias group-clear.)
+
 ## Message catalogue (lines the client parses)
 
 | Event | Line |

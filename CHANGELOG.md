@@ -5,7 +5,7 @@ Notable changes per merged PR, **newest first**. The top of the [README](README.
 ## 1.61.0
 
 - New **Reset States** action (Action menu, terminal right-click, and a bindable/toolbar-promotable shortcut) — clears my own stuck ailments, party-wait signals, and the movement holds they drive, returning me to an idle, unafflicted state
-- Fixes a phantom "waiting — confused" nav pause: a monster confusion that shares the generic "You are confused!" line but keeps its own specific wear-off no longer strands the flag active when the generic "confusion wears off" fires
+- Fixes a phantom "waiting — confused" nav pause: a confusion wear-off now clears every effect that shares the generic "You are confused!" line, so a monster confusion carrying its own specific wear-off no longer strands the flag (and the nav hold) active
 - bug reports addressed: paradigm-20260714-101922
 
 ## 1.60.0
