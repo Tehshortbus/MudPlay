@@ -1,4 +1,3 @@
-using System.Collections.ObjectModel;
 using System.IO;
 using FujinTerm.Models.GameData;
 
@@ -20,7 +19,12 @@ public sealed class MessageStore
     private readonly LogService? _log;
 
     // Live mirror of the active set's message records. Bound by the Messages tab.
-    public ObservableCollection<MessageRecord> Messages { get; } = new();
+    // BulkObservableCollection so a full (re)load raises one Reset instead of
+    // Clear + N Add — ConditionTracker rebuilds its index once per set switch,
+    // not once per record (O(n²) over ~1100 records at startup). Per-record
+    // editor upserts keep their normal per-op notification for synchronous
+    // downstream freshness.
+    public BulkObservableCollection<MessageRecord> Messages { get; } = new();
 
     // Set name currently sourcing Messages, or null when none is active.
     public string? ActiveSet { get; private set; }
@@ -48,27 +52,26 @@ public sealed class MessageStore
     // The seed itself is never written.
     public void Load(string? setName)
     {
-        Messages.Clear();
         ActiveSet = setName;
-        if (string.IsNullOrWhiteSpace(setName)) return;
+        if (string.IsNullOrWhiteSpace(setName)) { Messages.ReplaceAll([]); return; }
 
-        if (TryLoadInto(AppPaths.MessagesFile(setName))) return;
-        TryLoadInto(AppPaths.DefaultMessagesSeedFile);
+        List<MessageRecord> loaded =
+            TryLoad(AppPaths.MessagesFile(setName)) ??
+            TryLoad(AppPaths.DefaultMessagesSeedFile) ??
+            [];
+        Messages.ReplaceAll(loaded);
     }
 
-    // Read a JSON list from path and append every record to Messages.
-    // Returns true iff the file existed AND parsed cleanly. A corrupt file
-    // returns false + leaves Messages in whatever state the partial parse
-    // left it (callers reset via the upstream Clear() before invoking).
-    private bool TryLoadInto(string path)
+    // Read a JSON list from path. Returns the parsed list (possibly empty) iff
+    // the file existed AND parsed cleanly; null for missing/corrupt so Load
+    // falls through to the next source. Gathered fully before ReplaceAll so a
+    // corrupt file never leaves a partial catalogue.
+    private List<MessageRecord>? TryLoad(string path)
     {
-        if (!File.Exists(path)) return false;
+        if (!File.Exists(path)) return null;
         try
         {
-            List<MessageRecord>? loaded = JsonStore.Load<List<MessageRecord>>(path);
-            if (loaded is null) return false;
-            foreach (MessageRecord m in loaded) Messages.Add(m);
-            return true;
+            return JsonStore.Load<List<MessageRecord>>(path);
         }
         catch (Exception ex)
         {
@@ -78,7 +81,7 @@ public sealed class MessageStore
             // schema drift fails visibly.
             _log?.Log(LogSeverity.Warn, "Messages",
                 $"Failed to load '{path}': {ex.Message}");
-            return false;
+            return null;
         }
     }
 
@@ -92,8 +95,7 @@ public sealed class MessageStore
     // Replace the catalogue with records and persist.
     public void Replace(IEnumerable<MessageRecord> records)
     {
-        Messages.Clear();
-        foreach (MessageRecord m in records) Messages.Add(m);
+        Messages.ReplaceAll(records);
         Save();
     }
 }
