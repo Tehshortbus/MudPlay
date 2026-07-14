@@ -2,6 +2,12 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.55.0
+
+- Game-data catalogues (Messages, Monster Messages) now reload in one shot — a set switch rebuilds each subscriber's index once instead of once per record (~1100× at startup), so startup and set switches settle faster
+- Map layout cache is now bounded to 32 most-recent origins (LRU), so a realm-touring session can't grow it without limit
+- Memory log gained committed / gen2-size / LOH-size / LOH-frag / POH columns so a future capture can tell a managed-heap leak apart from GC working-set ratcheting
+
 ## 1.54.0
 
 - Conversation window and Transaction history now persist to rolling per-character logs under Data/Logs (`<char>.<bbs>.talk.log` / `.transactions.log`), surviving restarts and the in-memory line cap

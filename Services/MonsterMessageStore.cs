@@ -1,4 +1,3 @@
-using System.Collections.ObjectModel;
 using System.IO;
 using FujinTerm.Models.GameData;
 
@@ -20,7 +19,11 @@ public sealed class MonsterMessageStore
     private readonly LogService? _log;
 
     // Live mirror of the active set's monster-message records.
-    public ObservableCollection<MonsterMessageRecord> Messages { get; } = new();
+    // BulkObservableCollection so a full (re)load raises one Reset instead of
+    // Clear + N Add — MonsterDeathWatcher rebuilds its death-index once per set
+    // switch, not once per record (O(n²) over ~1100 records at startup).
+    // Per-record editor upserts keep their normal per-op notification.
+    public BulkObservableCollection<MonsterMessageRecord> Messages { get; } = new();
 
     // Set name currently sourcing Messages, or null when none is active.
     public string? ActiveSet { get; private set; }
@@ -44,29 +47,30 @@ public sealed class MonsterMessageStore
     // The seed itself is never written.
     public void Load(string? setName)
     {
-        Messages.Clear();
         ActiveSet = setName;
-        if (string.IsNullOrWhiteSpace(setName)) return;
+        if (string.IsNullOrWhiteSpace(setName)) { Messages.ReplaceAll([]); return; }
 
-        if (TryLoadInto(AppPaths.MonsterMessagesFile(setName))) return;
-        TryLoadInto(AppPaths.DefaultMonsterMessagesSeedFile);
+        List<MonsterMessageRecord> loaded =
+            TryLoad(AppPaths.MonsterMessagesFile(setName)) ??
+            TryLoad(AppPaths.DefaultMonsterMessagesSeedFile) ??
+            [];
+        Messages.ReplaceAll(loaded);
     }
 
-    private bool TryLoadInto(string path)
+    // Parsed list (possibly empty) iff the file existed AND parsed cleanly;
+    // null for missing/corrupt so Load falls through to the next source.
+    private List<MonsterMessageRecord>? TryLoad(string path)
     {
-        if (!File.Exists(path)) return false;
+        if (!File.Exists(path)) return null;
         try
         {
-            List<MonsterMessageRecord>? loaded = JsonStore.Load<List<MonsterMessageRecord>>(path);
-            if (loaded is null) return false;
-            foreach (MonsterMessageRecord m in loaded) Messages.Add(m);
-            return true;
+            return JsonStore.Load<List<MonsterMessageRecord>>(path);
         }
         catch (Exception ex)
         {
             _log?.Log(LogSeverity.Warn, "MonsterMessages",
                 $"Failed to load '{path}': {ex.Message}");
-            return false;
+            return null;
         }
     }
 
@@ -80,8 +84,7 @@ public sealed class MonsterMessageStore
     // Replace the catalogue with records and persist.
     public void Replace(IEnumerable<MonsterMessageRecord> records)
     {
-        Messages.Clear();
-        foreach (MonsterMessageRecord m in records) Messages.Add(m);
+        Messages.ReplaceAll(records);
         Save();
     }
 

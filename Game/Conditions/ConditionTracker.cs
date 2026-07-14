@@ -127,6 +127,8 @@ public sealed partial class ConditionTracker : ObservableObject, IDisposable
         _log?.Info(LogCategory, "all conditions cleared (manual)");
     }
 
+    // The store fires one Reset for a bulk (re)load, so this rebuilds once per set
+    // switch rather than once per record — see BulkObservableCollection.
     private void OnMessagesChanged(object? sender, NotifyCollectionChangedEventArgs e) => RebuildIndex();
 
     private void RebuildIndex()

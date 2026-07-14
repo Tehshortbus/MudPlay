@@ -71,6 +71,8 @@ public sealed class MonsterDeathWatcher : IDisposable
         _log = log;
 
         BuildIndex();
+        // The store fires one Reset for a bulk (re)load, so this rebuilds once
+        // per set switch rather than once per record — see BulkObservableCollection.
         _monsters.Messages.CollectionChanged += (_, _) => BuildIndex();
 
         _expSub          = router.Subscribe(KnownPatterns.UserGainExperience, OnExp);

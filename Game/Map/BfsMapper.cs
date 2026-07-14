@@ -22,6 +22,19 @@ public sealed class BfsMapper
 {
     private readonly RoomGraphManager _graph;
     private readonly Dictionary<(RoomKey Origin, int Radius), RoomLayout> _layoutCache = new();
+
+    // LRU eviction order for _layoutCache, most-recently-used at the front.
+    // A full-realm layout pins the whole room graph (~6590 cells across five
+    // dictionaries, a couple of MB) — an unbounded cache would ratchet memory
+    // on a player who tours the realm (auto-lair across zones, repeated gotos),
+    // one retained layout per distinct origin visited. The map only ever renders
+    // one origin at a time; the cache exists solely to skip rebuilds when the
+    // origin oscillates over a small set of recently-visited rooms (a camp
+    // loop). The cap comfortably covers a camp loop while bounding a grand tour;
+    // past it the least-recently-used origin is dropped.
+    private readonly LinkedList<(RoomKey Origin, int Radius)> _lruOrder = new();
+    private const int MaxCachedLayouts = 32;
+
     private readonly object _cacheLock = new();
 
     // Vertical-plane index: each room → (component, floor), where floor is
@@ -79,7 +92,33 @@ public sealed class BfsMapper
     // so the next render sees the updated filter.
     public void InvalidateCache()
     {
-        lock (_cacheLock) _layoutCache.Clear();
+        lock (_cacheLock)
+        {
+            _layoutCache.Clear();
+            _lruOrder.Clear();
+        }
+    }
+
+    // Record cacheKey as most-recently-used. Caller holds _cacheLock. O(n) over
+    // the cache size, which is capped at MaxCachedLayouts — trivial next to a
+    // layout build, and this only runs on a map draw (~once per room change).
+    private void TouchLru((RoomKey Origin, int Radius) cacheKey)
+    {
+        _lruOrder.Remove(cacheKey);
+        _lruOrder.AddFirst(cacheKey);
+    }
+
+    // Insert layout, mark it most-recently-used, and evict the LRU tail past the
+    // cap. Caller holds _cacheLock.
+    private void StoreLayout((RoomKey Origin, int Radius) cacheKey, RoomLayout layout)
+    {
+        _layoutCache[cacheKey] = layout;
+        TouchLru(cacheKey);
+        while (_layoutCache.Count > MaxCachedLayouts && _lruOrder.Last is { } tail)
+        {
+            _layoutCache.Remove(tail.Value);
+            _lruOrder.RemoveLast();
+        }
     }
 
     // Shortest-path step list from source to destination. Returns null
@@ -239,10 +278,14 @@ public sealed class BfsMapper
     //   25) to bound layout work on huge realms.
     public RoomLayout BuildLayout(RoomKey origin, int maxRadius = int.MaxValue)
     {
-        (RoomKey, int) cacheKey = (origin, maxRadius);
+        (RoomKey Origin, int Radius) cacheKey = (origin, maxRadius);
         lock (_cacheLock)
         {
-            if (_layoutCache.TryGetValue(cacheKey, out RoomLayout? cached)) return cached;
+            if (_layoutCache.TryGetValue(cacheKey, out RoomLayout? cached))
+            {
+                TouchLru(cacheKey);
+                return cached;
+            }
         }
 
         if (_graph.GetRoom(origin) is null)
@@ -256,7 +299,7 @@ public sealed class BfsMapper
                 EdgesFromCoord: new Dictionary<(int X, int Y), IReadOnlySet<Direction>>(),
                 TrapEdgesFromCoord: new Dictionary<(int X, int Y), IReadOnlySet<Direction>>())
             { LayoutRoot = origin };
-            lock (_cacheLock) _layoutCache[cacheKey] = empty;
+            lock (_cacheLock) StoreLayout(cacheKey, empty);
             return empty;
         }
 
@@ -353,8 +396,11 @@ public sealed class BfsMapper
         lock (_cacheLock)
         {
             if (_layoutCache.TryGetValue(cacheKey, out RoomLayout? existing))
+            {
+                TouchLru(cacheKey);
                 return existing;
-            _layoutCache[cacheKey] = primary;
+            }
+            StoreLayout(cacheKey, primary);
         }
         return primary;
     }

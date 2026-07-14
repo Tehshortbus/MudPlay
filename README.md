@@ -1,18 +1,10 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.54.0**
-> - Conversation window and Transaction history now persist to rolling per-character logs under Data/Logs (`<char>.<bbs>.talk.log` / `.transactions.log`), surviving restarts and the in-memory line cap
-> - Clear chatlog and the Transaction-history Clear button also wipe their log file
-> - Settings → Talk: Log conversations / Log transactions toggles and a shared line-limit picker (default 2000)
-> - Removed the Conversation window's Export chatlog menu item — the always-on log replaces it
-> - Settings → Talk: Conversation window font and size pickers, with the current row font/size tagged `{default}`
-> - Settings → Talk: per-channel accent and message-text colour overrides for the seven Conversation channels, picked with a visual colour picker (no hex code needed), with per-slot Reset to the theme default
-> - Selecting a recently-used profile no longer strands the File menu flyout at the window's old position — the profile load (and its window reposition) is deferred until the menu closes
-> - CP earn math no longer over-pays at decade tops (level 10 counted 15 CP instead of 10, level 20 counted 20 instead of 15) — the allocation plan can no longer offer a stat point the level's CP can't actually afford
-> - Auto-train now applies the CP plan on Paradigm's cursor-drawn stat box — the replay fires off the `train stats` command signal instead of the marker row that never scrolls there
-> - A train run whose trainer screen never opens keeps the CP plan rows instead of clearing them
-> - Auto-cast (bless / heal / cure) is held while the train-stats screen owns the keyboard, so a spell can't type its letters into the character-name field
+> **Version 1.55.0**
+> - Game-data catalogues (Messages, Monster Messages) now reload in one shot — a set switch rebuilds each subscriber's index once instead of once per record (~1100× at startup), so startup and set switches settle faster
+> - Map layout cache is now bounded to 32 most-recent origins (LRU), so a realm-touring session can't grow it without limit
+> - Memory log gained committed / gen2-size / LOH-size / LOH-frag / POH columns so a future capture can tell a managed-heap leak apart from GC working-set ratcheting
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->
