@@ -8,6 +8,7 @@ Notable changes per merged PR, **newest first**. The top of the [README](README.
 - Guard-aware retargeting: when a monster is shielded by guards ("<guard> moves to protect <target>"), combat re-attacks the intended priority as each guard falls instead of stalling once the last guard dies
 - Conversation and transaction history reload from the persisted session logs on reconnect, so prior-session chat and ledger entries reappear instead of starting empty
 - Up/down searchable hidden exits now retry and reveal correctly — the vertical search-miss line ("nothing different above/below you") is recognized like the cardinal form, so up/down searches no longer stall the walker
+- Backscroll search / Find Next now walks newest → oldest (bottom to top), matching the window's orientation, instead of oldest → newest
 - bug reports addressed: paradigm-20260714-093614, paradigm-20260714-115526, paradigm-20260714-121106
 
 ## 1.64.0

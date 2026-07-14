@@ -89,4 +89,38 @@ public class BackscrollViewModelTests
         Assert.Contains(reopened.Rows, r => r.PlainText.Contains("post000"));
         Assert.Contains(reopened.Rows, r => r.PlainText.Contains("post030"));
     }
+
+    // Find Next walks the newest match first and works upward toward the oldest,
+    // matching the window's newest-at-bottom orientation, then wraps back to the
+    // newest after passing the top.
+    [Fact]
+    public void FindNext_WalksNewestToOldest_ThenWraps()
+    {
+        TerminalEmulator emu = new(80, 5);
+        Feed(emu, "zzz first\r\n");
+        Feed(emu, "filler a\r\n");
+        Feed(emu, "zzz second\r\n");
+        Feed(emu, "filler b\r\n");
+        Feed(emu, "zzz third\r\n");
+        Feed(emu, "filler c\r\n");
+
+        BackscrollViewModel vm = new(emu);
+
+        int landed = -1;
+        vm.FindMatchRequested += (row, _, _) => landed = row;
+        vm.SearchText = "zzz";
+
+        List<string> visited = new();
+        for (int i = 0; i < 4; i++)
+        {
+            vm.FindNextCommand.Execute(null);
+            visited.Add(vm.Rows[landed].PlainText);
+        }
+
+        Assert.Equal(3, vm.MatchCount);
+        Assert.Contains("third", visited[0]);   // newest match first
+        Assert.Contains("second", visited[1]);
+        Assert.Contains("first", visited[2]);    // oldest match last
+        Assert.Contains("third", visited[3]);    // wraps back to the newest
+    }
 }

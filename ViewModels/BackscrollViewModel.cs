@@ -102,7 +102,9 @@ public sealed partial class BackscrollViewModel : ObservableObject
         }
 
         // Tally total hits in the corpus and find the next match strictly
-        // AFTER the cursor, wrapping back to 0 if we hit the end.
+        // BEFORE the cursor. Rows run oldest (index 0) → newest (last), and the
+        // window opens at the newest end, so Find Next walks upward — newest to
+        // oldest — wrapping back to the newest row after passing the top.
         int hits = 0;
         for (int i = 0; i < Rows.Count; i++)
         {
@@ -110,13 +112,13 @@ public sealed partial class BackscrollViewModel : ObservableObject
                 hits++;
         }
 
-        int startFrom = _lastMatchIndex + 1;
-        if (startFrom >= Rows.Count) startFrom = 0;
+        int startFrom = _lastMatchIndex < 0 ? Rows.Count - 1 : _lastMatchIndex - 1;
+        if (startFrom < 0) startFrom = Rows.Count - 1;
 
         int next = -1;
         for (int offset = 0; offset < Rows.Count; offset++)
         {
-            int i = (startFrom + offset) % Rows.Count;
+            int i = ((startFrom - offset) % Rows.Count + Rows.Count) % Rows.Count;
             if (Rows[i].PlainText.Contains(SearchText, StringComparison.OrdinalIgnoreCase))
             {
                 next = i;
