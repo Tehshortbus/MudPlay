@@ -4423,6 +4423,25 @@ public sealed class AppServices
         return rooms;
     }
 
+    // Route-picker helper: for a path-gate item the direct route needs, name the
+    // shop the walk would actually detour to buy it — but only when that detour
+    // will really run. It runs only if the item is flagged BuyIfNeededForPath
+    // (same gate PathItemShopRouter enforces) AND a reachable shop stocks it, so
+    // both conditions must hold or we return null. The chosen shop matches the
+    // router's fewest-added-steps pick (shared TrySelectShop), so the picker's
+    // "buy at X" promise is the shop the run visits — not a plausible guess.
+    public string? PathItemShopName(int itemId, Game.Map.RoomKey source, Game.Map.RoomKey destination)
+    {
+        if (!ShouldAutoObtainForPath(itemId, o => o.BuyIfNeededForPath)) return null;
+        System.Collections.Generic.IReadOnlyList<Game.Map.RoomKey> shops = ShopRoomsSellingItem(itemId);
+        if (shops.Count == 0) return null;
+        if (!Game.Map.PathItemShopRouter.TrySelectShop(
+                shops, source, destination, (a, b) => Bfs.DistanceBetween(a, b, Movement),
+                out Game.Map.RoomKey shop))
+            return null;
+        return RoomGraph.GetRoom(shop)?.Name;
+    }
+
     // Every spawn site of a monster that drops itemId —
     // the flatten of MonsterDrops's droppers × each dropper's
     // spawn rooms, tagged with the monster and drop chance for the reroute

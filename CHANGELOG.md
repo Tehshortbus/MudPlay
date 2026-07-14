@@ -6,6 +6,8 @@ Notable changes per merged PR, **newest first**. The top of the [README](README.
 
 - Clicking a saved GOTO favourite now stages it as the queued destination (map pans, route preview draws, Run arms) instead of immediately walking there — hit Run to go or the X to cancel, same as picking a room from the search box
 - Staging a favourite no longer stops a running loop / auto-lair on its own; that only happens when you commit with Run
+- All three user walk-to paths — map right-click, search box, favourites — now run through the same engine: committing a search-box or favourite destination with Run offers the free-vs-shortcut route picker when a shorter gated route exists, just like the map right-click already did
+- When a shortcut needs a carry/ticket item the walk will auto-buy, the route picker now names the shop it will detour to (e.g. "a raft (buy at General Store)")
 
 ## 1.55.0
 

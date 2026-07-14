@@ -2556,7 +2556,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     //   - Auto-Lair mode with marked rooms → start the scheduler.
     //   - Otherwise, walk to the queued destination.
     [RelayCommand]
-    private void RunStop()
+    private async Task RunStop()
     {
         Game.Map.LoopRunner runner = _services.LoopRunner;
 
@@ -2573,8 +2573,13 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
                 runner.Stop("user walk-to queued destination");
             if (_services.AutoLair.IsActive) _services.AutoLair.Stop();
             _services.MovementCoordinator.ClearGate(Game.Map.MovementCoordinator.UserGate);
-            _services.Walker.WalkTo(queued);
+            // Committing the staged destination consumes it — clear before the
+            // (possibly awaited) route picker so Run disarms immediately and a
+            // second press can't open a second picker. The search box, the
+            // favourites list, and the map right-click all funnel through the
+            // same shared engine here; only how the walk is confirmed differs.
             QueuedDestination = null;
+            await RouteChoicePrompt.WalkAsync(_services, queued);
             return;
         }
 
@@ -2665,11 +2670,6 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         {
             _services.AutoLair.Start();
             return;
-        }
-        if (QueuedDestination is { } dest)
-        {
-            _services.Walker.WalkTo(dest);
-            QueuedDestination = null;
         }
     }
 

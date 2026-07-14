@@ -31,7 +31,8 @@ public sealed partial class RouteChoiceDialogViewModel
     public RouteChoiceDialogViewModel(
         RouteChoice choice,
         string destinationLabel,
-        Func<int, string?> itemName)
+        Func<int, string?> itemName,
+        Func<int, string?>? shopNameForItem = null)
     {
         ArgumentNullException.ThrowIfNull(choice);
         ArgumentNullException.ThrowIfNull(itemName);
@@ -39,18 +40,32 @@ public sealed partial class RouteChoiceDialogViewModel
         Heading = $"Two routes to {destinationLabel}";
         FreeSummary = $"Free route — {Steps(choice.FreeStepCount)}, no items needed";
         GatedSummary = $"Direct route — {Steps(choice.GatedStepCount)}";
-        RequirementSummary = "Requires " + DescribeRequirements(choice.Requirements, itemName);
+        RequirementSummary = "Requires "
+            + DescribeRequirements(choice.Requirements, itemName, shopNameForItem);
     }
 
     private static string Steps(int n) => n == 1 ? "1 step" : $"{n} steps";
 
-    // "a raft; the iron key; a gnomish fish-helm or a waterskin" — each
-    // requirement is one clause; a hazard's any-of counters join with " or ".
+    // "a raft (buy at General Store); the iron key; a fish-helm or a waterskin"
+    // — each requirement is one clause; a hazard's any-of counters join with
+    // " or ". A CarryItem / Ticket gate whose item the walk will auto-buy on the
+    // detour gets a "(buy at <shop>)" tail; keys and hazard counters never do,
+    // since only Item/Ticket gates post a buy-triggering path-item need.
     private static string DescribeRequirements(
-        IReadOnlyList<RouteRequirement> reqs, Func<int, string?> itemName)
+        IReadOnlyList<RouteRequirement> reqs,
+        Func<int, string?> itemName,
+        Func<int, string?>? shopNameForItem)
     {
         IEnumerable<string> clauses = reqs.Select(r =>
-            string.Join(" or ", r.ItemIds.Select(id => itemName(id) ?? $"item #{id}")));
+        {
+            string items = string.Join(" or ", r.ItemIds.Select(id => itemName(id) ?? $"item #{id}"));
+            if (shopNameForItem is not null
+                && r.Kind is RouteRequirementKind.CarryItem or RouteRequirementKind.Ticket
+                && r.ItemIds.Count == 1
+                && shopNameForItem(r.ItemIds[0]) is { Length: > 0 } shop)
+                return $"{items} (buy at {shop})";
+            return items;
+        });
         return string.Join("; ", clauses);
     }
 
