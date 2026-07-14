@@ -56,6 +56,16 @@ public sealed class AutoLairManager : IDisposable
     private readonly DispatcherTimer _engageTimer;
     private readonly System.Timers.Timer _retryTimer;
 
+    // Set while we're inside our own _walker.WalkTo. A WalkTo that supersedes
+    // our previous walk raises Stopped("superseded by new walk") synchronously,
+    // re-entering OnWalkerEvent before WalkTo returns; without this flag that
+    // self-inflicted stop is read as an external displacement, nulls the target
+    // we set one line earlier, and the next 1 s tick re-dispatches → supersede →
+    // Stopped → reschedule, a ~1/sec loop that never enters the lair. The flag
+    // lets the Stopped handler ignore our own supersede while still rescheduling
+    // on a genuine external stop (user move / another engine grabbing the walker).
+    private bool _issuingWalk;
+
     // Travel-cost model — flat default until the encumbrance-gated table
     // from AutoLairSettings is wired in.
     public ITravelCostModel TravelCostModel { get; set; } = new FlatTravelCostModel();
@@ -418,13 +428,23 @@ public sealed class AutoLairManager : IDisposable
             _log?.Info("AutoLair",
                 $"approaching {pick.Lair} via wait-room {pick.WaitRoom} ({FormatSlack(pick.SlackAtEntry)} at entry).");
 
-            if (!_walker.WalkTo(pick.WaitRoom))
+            if (!IssueWalk(pick.WaitRoom))
             {
                 _log?.Warn("AutoLair", $"walker rejected path to {pick.WaitRoom}; retrying in 2s.");
                 _retryTimer.Stop();
                 _retryTimer.Start();
             }
         }
+    }
+
+    // Dispatch the walker to target, flagging the call so a synchronous
+    // supersede-Stopped of our previous walk is recognised as our own and not
+    // read as an external displacement by OnWalkerEvent.
+    private bool IssueWalk(RoomKey target)
+    {
+        _issuingWalk = true;
+        try { return _walker.WalkTo(target); }
+        finally { _issuingWalk = false; }
     }
 
     private List<LairCandidate> BuildCandidates(RoomKey current)
@@ -574,7 +594,7 @@ public sealed class AutoLairManager : IDisposable
         SetPhase(AutoLairPhase.Entering);
         CurrentEntryArrivalAt = null; // we're stepping in; the latch served its purpose
         _log?.Info("AutoLair", $"entering {lair}.");
-        if (!_walker.WalkTo(lair))
+        if (!IssueWalk(lair))
         {
             _log?.Warn("AutoLair", $"walker rejected entry to {lair}; retrying in 2s.");
             _retryTimer.Stop();
@@ -659,6 +679,14 @@ public sealed class AutoLairManager : IDisposable
                 break;
 
             case WalkEventKind.Stopped:
+                // A Stopped that fired synchronously inside our own IssueWalk is
+                // our previous walk being superseded by the new one — expected,
+                // not an external displacement. Swallow it: reacting would null
+                // the target we just set and re-dispatch on the next tick, which
+                // supersedes again, a ~1/sec loop that never enters the lair. A
+                // genuine external stop arrives with _issuingWalk false.
+                if (_issuingWalk) break;
+
                 // External walker stops (user-typed move displaced us,
                 // another engine grabbed the walker, etc) used to kill
                 // the whole session. That was too aggressive — typing

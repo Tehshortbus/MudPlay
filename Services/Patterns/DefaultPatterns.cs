@@ -310,8 +310,13 @@ public static class DefaultPatterns
         // verb forms keeps "You" out of the player group so downstream
         // consumers (notably RemoteCommandManager) never treat the local
         // character's own speech as an inbound @-command.
+        // A directed say inserts a "(to you)" / "(to Name)" clause between the
+        // verb and the quote ("Tristian says (to you) ""…"""); the optional
+        // non-capturing group swallows it so the directed reply still lands in
+        // the say channel (and a directed @-command still routes) instead of
+        // being dropped entirely.
         yield return new RegexPattern(KnownPatterns.ConversationLocal,
-            @"^(?:(?<player>\w+) says|You say) ""(?<message>.+)""");
+            @"^(?:(?<player>\w+) says|You say)(?: \(to [^)]+\))? ""(?<message>.+)""");
         // Paradigm's server PvP announcements. Every one leads with the
         // paradigm-specific "Server PvP Message: " literal — a kill is one form
         // ("X just killed Y!") but there are others — so match the prefix and

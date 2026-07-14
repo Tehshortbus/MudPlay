@@ -930,6 +930,39 @@ public sealed class HealthManagerTests
         Assert.DoesNotContain("flee", h.SentLines);
     }
 
+    // ----- party @wait / @ok recovery ceiling (report 222618) -------
+
+    [Fact]
+    public void Follower_PartyOk_HeldUntilFullRestMax_NotTriggerPlusOne()
+    {
+        // A follower's movement gate clears at trigger+1 so it can keep pace,
+        // but the party @ok must not release there — doing so told the leader
+        // to resume while we were still nearly depleted, flapping @wait/@ok.
+        using Harness h = new();          // percentage mode: MA trigger 30 %, rest-max 95 %
+        int waits = 0, oks = 0;
+        h.Health.SetPartyRoleSync(
+            isPartyFollower: () => true,
+            requestPartyWait: () => waits++,
+            requestPartyOk: () => oks++);
+
+        h.SetPrompt(hp: 100, maxHp: 100, ma: 100, maxMa: 100);  // start rested
+        Assert.Equal(0, waits);
+        Assert.Equal(0, oks);
+
+        h.State.Ma = 20;                  // below the 30 % MA rest floor
+        Assert.True(h.ManaGateHeld);
+        Assert.Equal(1, waits);
+        Assert.Equal(0, oks);
+
+        h.State.Ma = 31;                  // trigger+1: movement gate releases...
+        Assert.False(h.ManaGateHeld);
+        Assert.Equal(0, oks);             // ...but the leader is NOT told to resume yet
+
+        h.State.Ma = 95;                  // full rest-max ceiling reached
+        Assert.Equal(1, oks);             // @ok fires exactly once, now that we're rested
+        Assert.Equal(1, waits);           // and @wait never re-fired mid-recovery
+    }
+
     // ----- Multi-step flee + auto-resume (Cluster 5b foundation) ----
 
     /// <summary>Fake engine for testing the flee dispatch — captures
@@ -1898,7 +1931,7 @@ public sealed class HealthManagerTests
     }
 
     [Fact]
-    public void Follower_GateAssert_RequestsWait_GateClear_RequestsOk()
+    public void Follower_GateAssert_RequestsWait_RestMax_RequestsOk()
     {
         int waits = 0, oks = 0;
         using Harness h = new();
@@ -1913,7 +1946,11 @@ public sealed class HealthManagerTests
         Assert.Equal(1, waits);
         Assert.Equal(0, oks);
 
-        h.State.Hp = 121;            // above floor → @ok
+        h.State.Hp = 121;            // trigger+1: movement gate clears, still below rest-max
+        Assert.Equal(1, waits);
+        Assert.Equal(0, oks);        // leader NOT released yet (report 222618)
+
+        h.State.Hp = 190;            // rest-max ceiling → @ok
         Assert.Equal(1, waits);
         Assert.Equal(1, oks);
     }
@@ -1935,8 +1972,11 @@ public sealed class HealthManagerTests
         h.State.Hp = 30;
         Assert.Equal(1, waits);
 
-        h.State.Hp = 121;            // @ok
-        h.State.Hp = 130;            // still above — no second @ok
+        h.State.Hp = 121;            // trigger+1: movement gate clears, not yet rested
+        Assert.Equal(0, oks);        // @ok held until rest-max (report 222618)
+
+        h.State.Hp = 190;            // rest-max → @ok
+        h.State.Hp = 195;            // still above — no second @ok
         Assert.Equal(1, oks);
     }
 

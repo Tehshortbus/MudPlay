@@ -355,6 +355,10 @@ public static class BugReportBuilder
         Kv(sb, "Current room",
             roomState.CurrentRoom is { } room ? $"{room.Key.Map}/{room.Key.Room} — {room.DisplayName}" : "(unknown)");
         Kv(sb, "Room confidence", roomState.Confidence.ToString());
+        // A room whose cast-on-enter Spell strips buffs suppresses auto-bless —
+        // a "buffs won't cast here" report needs this to explain the silence.
+        Kv(sb, "Room strips buffs",
+            svc.RoomBuffStrip.StripsBuffs(roomState.CurrentRoom?.Spell ?? 0).ToString());
         // Dark rooms print no name/exits/"Also here:", so the walker infers
         // position from moves and combat from attack lines. A "stuck in the dark"
         // report needs this flag to explain why the room display looks empty.

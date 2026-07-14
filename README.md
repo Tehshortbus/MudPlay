@@ -1,15 +1,16 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.56.0**
-> - Clicking a saved GOTO favourite now stages it as the queued destination (map pans, route preview draws, Run arms) instead of immediately walking there — hit Run to go or the X to cancel, same as picking a room from the search box
-> - Staging a favourite no longer stops a running loop / auto-lair on its own; that only happens when you commit with Run
-> - All three user walk-to paths — map right-click, search box, favourites — now run through the same engine: committing a search-box or favourite destination with Run offers the free-vs-shortcut route picker when a shorter gated route exists, just like the map right-click already did
-> - When a shortcut needs a carry/ticket item the walk will auto-buy, the route picker now names the shop it will detour to (e.g. "a raft (buy at General Store)")
-> - Loop circuits now search-and-reveal a hidden exit mid-lap instead of failing out when a leg crosses one
-> - A monster that breaks off and flees on its own ("scuttles out to the west!") now clears the fighting chip and combat gate, like a dragged-out mob already did
-> - Stop now wipes any auto-lair markers off the map (was only cleared by re-toggling lair mode)
-> - A keyed door whose key is lying on the room floor is now grabbed (`get <key>`) before the `use`, instead of blindly trying to use a key not in inventory
+> **Version 1.57.0**
+> - Auto-buff is now suppressed in rooms whose cast-on-enter spell strips buffs (RemovesSpell / DispellMagic) — no more burning mana re-casting a blessing the room tears straight back off every tick (e.g. the Crypt's "negate magic" halls)
+> - Party window tags the self row by the parsed in-game character name instead of the profile label, so a profile named differently from the character no longer spawns a phantom party entry or whispers yourself
+> - Auto-lair recognises a room clear and advances to the next lair instead of stalling after the first — a self-supersede stop was misread as an external move and re-armed the same walk ~1×/sec
+> - A door opened by levers/actions in other rooms is now pulled at the right time: the walk detours through the action rooms first (anchored at the approach room nearest them) before checking the door, instead of walking to the closed door first and wasting the trip
+> - Follower @wait/@ok no longer flap — @ok is held until both HP and MA reach the full rest ceiling, decoupled from the movement floor that releases at trigger+1
+> - A directed say ("Name says (to you) …") is now captured in the Conversation window's say channel (and a directed @-command still routes) instead of being dropped
+> - @reset from an active party member is accepted without an AlterSettings grant — it's a party-rhythm coordination signal, not a settings change
+> - A mid-send socket drop (e.g. the party poller ticking after a disconnect) no longer crashes the app with an unobserved task exception
+> - Navigation rail reserves a bottom buffer so the last loop / Auto-Lair row can't read as cut off under the Manage footer when scrolled
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

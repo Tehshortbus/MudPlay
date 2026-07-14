@@ -81,6 +81,7 @@ public sealed class CastingDirector : IDisposable
     private readonly PartyState? _party;
     private Func<bool>? _isStealthedFunc;
     private Func<bool>? _inputCaptured;
+    private Func<bool>? _buffStripRoom;
     private Func<(string Spell, string? Target)?>? _combatDebuffSource;
     private Action? _combatDebuffCommit;
     private Func<string, int?>? _manaCostLookup;
@@ -263,6 +264,17 @@ public sealed class CastingDirector : IDisposable
     {
         ArgumentNullException.ThrowIfNull(isEnabled);
         _autoBlessEnabled = isEnabled;
+    }
+
+    // Wire the buff-strip-room gate. When the predicate returns true, the current
+    // room's cast-on-enter spell strips buffs (RemovesSpell / DispellMagic), so the
+    // Buffing category is suppressed — re-casting a buff the room immediately tears
+    // off just burns mana. Heals / cures / debuffs are unaffected. Optional — until
+    // wired, buffs fail open (never suppressed on room grounds).
+    public void SetBuffStripRoomGate(Func<bool> isBuffStripRoom)
+    {
+        ArgumentNullException.ThrowIfNull(isBuffStripRoom);
+        _buffStripRoom = isBuffStripRoom;
     }
 
     // Wire the item-cast buff bridge. A Bless slot may hold an ItemCastToken
@@ -923,6 +935,15 @@ public sealed class CastingDirector : IDisposable
         // sneak / hide; suppress buffs entirely while stealthed so a backstab
         // window stays open.
         if (_isStealthedFunc?.Invoke() == true) return null;
+
+        // Buff-strip-room gate: the room casts a buff-removal spell on entry, so
+        // any buff we put up is torn straight back off. Skip the whole category
+        // here — heals / cures still run their own paths.
+        if (_buffStripRoom?.Invoke() == true)
+        {
+            _log?.Combat(LogCategory, "buff skipped — room strips buffs on entry.");
+            return null;
+        }
 
         // Mana-floor gate applies to *mana-drawing* buffs only ("don't burn buff
         // mana when we'll need it for heals soon"). It is NOT a whole-category

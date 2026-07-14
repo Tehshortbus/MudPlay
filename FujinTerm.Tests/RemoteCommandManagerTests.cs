@@ -413,6 +413,40 @@ public sealed class RemoteCommandManagerTests
         Assert.True(fired);
     }
 
+    // ===== @reset party-member fallback (report 222201) =================
+    // @reset is filed under AlterSettings for permission-grouping, but it's a
+    // party-rhythm function (leader zeroes everyone's per-lap counters), so an
+    // active party member may issue it without the AlterSettings grant.
+
+    [Fact]
+    public void ResetFallback_PartyMemberWithoutGrant_StillReachesHandler()
+    {
+        var (engine, party, _) = Setup();
+        SeedPartyMember(party, "Buddy");
+        // No SeedPlayer — Buddy carries no AlterSettings grant.
+
+        bool fired = false;
+        engine.RegisterHandler("@reset", PlayerRemoteControls.AlterSettings, _ => fired = true);
+
+        engine.DispatchForTests(Telepath("Buddy", "@reset"));
+
+        Assert.True(fired);
+    }
+
+    [Fact]
+    public void Reset_NonPartyWithoutGrant_DeniedAtEngine()
+    {
+        var (engine, _, _) = Setup();
+        // Stranger isn't in the party AND has no AlterSettings grant.
+
+        bool fired = false;
+        engine.RegisterHandler("@reset", PlayerRemoteControls.AlterSettings, _ => fired = true);
+
+        engine.DispatchForTests(Telepath("Stranger", "@reset"));
+
+        Assert.False(fired);
+    }
+
     [Fact]
     public void DisallowPartyDirectives_LeavesCoordinationWhitelistIntact()
     {

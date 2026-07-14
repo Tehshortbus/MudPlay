@@ -536,6 +536,10 @@ public sealed class CastingDirectorTests
         public HealthSettings Health { get; set; } = new();
         public bool AutoBlessEnabled { get; set; } = true;
 
+        /// <summary>When true the buff-strip-room gate reports the current room
+        /// removes buffs on entry, so the Buffing category is suppressed.</summary>
+        public bool BuffStripRoom { get; set; }
+
         /// <summary>Test clock — buff-expiry math reads this so tests can
         /// advance time deterministically.</summary>
         public DateTime Now { get; set; } =
@@ -562,6 +566,7 @@ public sealed class CastingDirectorTests
                 isEnabled: () => true,
                 log: Log);
             Director.SetAutoBlessGate(() => AutoBlessEnabled);
+            Director.SetBuffStripRoomGate(() => BuffStripRoom);
             Director.SetClock(() => Now);
             // Self-buff confirmation: the condition's Name is the buff short
             // in this harness, so map a fired record back to its Name and
@@ -806,6 +811,48 @@ public sealed class CastingDirectorTests
         h.Director.Evaluate();
 
         Assert.Empty(h.CastsSent);
+    }
+
+    [Fact]
+    public void Buff_BuffStripRoom_NoCast()
+    {
+        // The current room casts a buff-removal spell on entry, so re-blessing
+        // here just burns mana — the Buffing category is suppressed.
+        using CureHarness h = new();
+        h.BuffStripRoom = true;
+        h.Spells.BlessSlots[1] = "bless";
+        h.Health.BlessIfAboveMa = 50;
+        h.State.MaxMa = 100;
+        h.State.Ma = 80;
+        h.State.InCombat = false;
+        h.State.Position = PlayerPosition.Standing;
+
+        h.Director.Evaluate();
+
+        Assert.Empty(h.CastsSent);
+    }
+
+    [Fact]
+    public void Buff_BuffStripRoom_StillHeals()
+    {
+        // The buff-strip gate is buff-only: a life-threat heal must still fire in
+        // a room that removes buffs.
+        using CureHarness h = new();
+        h.BuffStripRoom = true;
+        h.Spells.MajorHealSpell = "fullheal";
+        h.Health.MajorHealCombatTrigger = 40;
+        h.Spells.BlessSlots[1] = "bless";
+        h.Health.BlessIfAboveMa = 50;
+        h.State.MaxMa = 100;
+        h.State.Ma = 80;
+        h.State.InCombat = true;
+        h.State.MaxHp = 200;
+        h.State.Hp = 60;                 // 30% < 40% major trigger
+
+        h.Director.Evaluate();
+
+        Assert.Single(h.CastsSent);
+        Assert.Equal("fullheal", h.CastsSent[0]);
     }
 
     [Fact]

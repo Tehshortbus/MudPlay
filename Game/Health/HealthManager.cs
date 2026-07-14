@@ -496,9 +496,10 @@ public sealed class HealthManager : IDisposable
 
         // ----- HP gate transitions ---------------------------------
         int hpRestTrigger = PoolThreshold.Resolve(s.HpThresholdMode, s.RestIfBelowHp, _state.MaxHp);
+        int hpRestMax     = PoolThreshold.Resolve(s.HpThresholdMode, s.RestMaxHp, _state.MaxHp);
         int hpRestTarget  = follower
             ? Math.Min(hpRestTrigger + 1, _state.MaxHp)
-            : PoolThreshold.Resolve(s.HpThresholdMode, s.RestMaxHp, _state.MaxHp);
+            : hpRestMax;
 
         // Strictly below — "rest if below N" rests only when the pool is
         // under N, never AT N. (Equal-or-less traps a level-2 mystic: 1 max
@@ -521,9 +522,10 @@ public sealed class HealthManager : IDisposable
 
         // ----- MA gate transitions ---------------------------------
         int maRestTrigger = PoolThreshold.Resolve(s.MaThresholdMode, s.RestIfBelowMa, _state.MaxMa);
+        int maRestMax     = PoolThreshold.Resolve(s.MaThresholdMode, s.RestMaxMa, _state.MaxMa);
         int maRestTarget  = follower
             ? Math.Min(maRestTrigger + 1, _state.MaxMa)
-            : PoolThreshold.Resolve(s.MaThresholdMode, s.RestMaxMa, _state.MaxMa);
+            : maRestMax;
 
         // Strictly below (see HP gate above) — the mystic-at-level-2 case.
         if (!_maGateAsserted && _state.Ma < maRestTrigger && _state.MaxMa > 0)
@@ -542,20 +544,30 @@ public sealed class HealthManager : IDisposable
         }
 
         // ----- party-follower @wait / @ok --------------------------
-        // While a recovery gate is held we're below a floor — ping the
-        // leader to halt; release once both clear. PartyRestSync self-
-        // gates on membership, so these are no-ops solo or as leader;
-        // the latch just avoids redundant telepaths.
-        bool recovering = _hpGateAsserted || _maGateAsserted;
-        if (recovering && !_partyWaitSignaled)
+        // @wait fires when a recovery gate first asserts (we dropped below a
+        // rest floor). But @ok must NOT ride the same gate: a follower's
+        // movement gate releases at trigger+1 (so it keeps pace without a
+        // full topoff), and releasing @ok there tells the leader to resume
+        // while we're one point above the floor — the party lurches forward,
+        // we re-drop, and @wait/@ok flap (report 222618). So hold the signal
+        // until BOTH pools reach the full rest-max ceiling — the level the
+        // user considers "rested" — decoupled from the movement floor.
+        // PartyRestSync self-gates on membership, so these no-op solo/as leader.
+        bool droppedBelowFloor = _hpGateAsserted || _maGateAsserted;
+        if (droppedBelowFloor && !_partyWaitSignaled)
         {
             _partyWaitSignaled = true;
             _requestPartyWait?.Invoke();
         }
-        else if (!recovering && _partyWaitSignaled)
+        else if (_partyWaitSignaled)
         {
-            _partyWaitSignaled = false;
-            _requestPartyOk?.Invoke();
+            bool hpRested = _state.MaxHp <= 0 || _state.Hp >= hpRestMax;
+            bool maRested = _state.MaxMa <= 0 || _state.Ma >= maRestMax;
+            if (hpRested && maRested)
+            {
+                _partyWaitSignaled = false;
+                _requestPartyOk?.Invoke();
+            }
         }
 
         // ----- flee on critical HP/MA mid-combat -------------------
