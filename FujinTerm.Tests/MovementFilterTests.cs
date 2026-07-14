@@ -1147,4 +1147,71 @@ public sealed class MovementFilterTests
             Assert.True(filter.IsExitBlocked(into));
         });
     }
+
+    // ----- DescribeExitBlock: names the real gate kind ----------------
+
+    [Fact]
+    public void DescribeExitBlock_Passable_ReportsNone()
+    {
+        (_, MovementFilter filter) = NewPair();
+        Assert.Equal(ExitBlockReason.None, filter.DescribeExitBlock(GatedExit(0, 0)));
+    }
+
+    [Fact]
+    public void DescribeExitBlock_KeyDoorUnopenable_ReportsLockedDoor()
+    {
+        // 223929: a key-locked door we lack the key for and can't pick must
+        // read as a LockedDoor — NOT the pack-item Item reason — so the walker's
+        // failure message names a locked door instead of a mismatched "item".
+        (_, MovementFilter filter) = NewPair();
+        SetInventory(filter);              // key not held
+        filter.StrengthProvider = () => 200;
+        filter.PicklocksProvider = () => 50;
+        filter.MaxBashableStrengthProvider = () => 200;
+        Assert.Equal(ExitBlockReason.LockedDoor,
+            filter.DescribeExitBlock(KeyLockedExit(7, statReq: 80, canBash: false)));
+    }
+
+    [Fact]
+    public void DescribeExitBlock_KeyDoorKeyHeld_ReportsNone()
+    {
+        (_, MovementFilter filter) = NewPair();
+        SetInventory(filter, 7);           // key in hand → passable
+        Assert.Equal(ExitBlockReason.None,
+            filter.DescribeExitBlock(KeyLockedExit(7, statReq: 80, canBash: false)));
+    }
+
+    [Fact]
+    public void DescribeExitBlock_ItemLacking_ReportsItem()
+    {
+        (_, MovementFilter filter) = NewPair();
+        SetInventory(filter);              // raft not held
+        Assert.Equal(ExitBlockReason.Item, filter.DescribeExitBlock(ItemExit(5)));
+    }
+
+    [Fact]
+    public void DescribeExitBlock_LevelGate_ReportsLevel()
+    {
+        (_, MovementFilter filter) = NewPair();
+        filter.LevelProvider = () => 19;
+        Assert.Equal(ExitBlockReason.Level, filter.DescribeExitBlock(GatedExit(20, 0)));
+    }
+
+    [Fact]
+    public void DescribeExitBlock_Toll_ReportsToll()
+    {
+        (_, MovementFilter filter) = NewPair();
+        filter.WealthProvider = () => 499;
+        Assert.Equal(ExitBlockReason.Toll, filter.DescribeExitBlock(TollExit(5)));
+    }
+
+    [Fact]
+    public void DescribeExitBlock_PlainDoorUnopenable_ReportsDoor()
+    {
+        (_, MovementFilter filter) = NewPair();
+        filter.StrengthProvider = () => 96;
+        filter.PicklocksProvider = () => 0;
+        filter.MaxBashableStrengthProvider = () => 200;
+        Assert.Equal(ExitBlockReason.Door, filter.DescribeExitBlock(DoorExit(251)));
+    }
 }

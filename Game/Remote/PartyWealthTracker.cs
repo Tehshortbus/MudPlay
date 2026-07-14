@@ -24,13 +24,15 @@ namespace FujinTerm.Game.Remote;
 //     toll. Debounced (via the post seam, since it touches the wire) so one
 //     expansion of a multi-segment loop fires at most one round-trip.
 //
-// A follower with no fresh reading — never polled, answered "wealth unknown", or
-// a reading gone stale — gates the toll (confirmed mechanic: a member who can't
-// cover it OR doesn't reply → avoid that toll room). So the first plan across a
-// toll routes around it while the probe warms up; a loop's next lap, or a
-// walk-to retry, then uses the fresh readings. Being conservative until confirmed
-// affordable is the safe side — it never strands a follower at a gate they can't
-// pay.
+// A follower with no fresh reading is NOT treated as broke — we don't block a
+// toll on a wallet we simply haven't read. Instead the walk-start Probe fires an
+// @wealth round for the missing readings and the gate folds in only the members
+// we've confirmed, blocking the toll only when self or a KNOWN follower can't
+// cover it. So a party that can afford the toll walks it on the first pass
+// instead of detouring while the probe warms up; a follower confirmed short by a
+// reply routes the party around on the next evaluation. (There's a one-pass
+// window before the reply lands where an unread-but-broke follower could be led
+// to the toll — accepted: tolls are rare, and the probe closes the window fast.)
 //
 // Self wealth is folded in from the same live snapshot MovementFilter's self-only
 // branch reads; when our own wallet is unknown the gate stands down (returns
@@ -90,13 +92,15 @@ public sealed class PartyWealthTracker
         _readings[GivenName(givenName)] = (copper, _clock());
     }
 
-    // The party's minimum on-hand wealth in copper, or null when the party gate
-    // shouldn't apply (solo, not leading, or our own wallet unknown). Pure cache
-    // read — MovementFilter calls this per toll exit during BFS, so it must not
-    // touch the wire (BFS explores off-path toll edges the party never walks;
-    // the route-scoped Probe handles the actual poll). A follower with no fresh
-    // reading returns 0 — gating any positive toll — per the confirmed
-    // avoid-on-unknown rule.
+    // The party's minimum CONFIRMED on-hand wealth in copper, or null when the
+    // party gate shouldn't apply (solo, not leading, or our own wallet unknown).
+    // Pure cache read — MovementFilter calls this per toll exit during BFS, so it
+    // must not touch the wire (BFS explores off-path toll edges the party never
+    // walks; the route-scoped Probe handles the actual poll). A follower with no
+    // fresh reading is skipped, not counted as broke: we fold in only self plus
+    // the members we've confirmed, so the toll blocks only when someone KNOWN
+    // can't cover it. The walk-start Probe fetches the missing readings so a
+    // later pass gates on the confirmed figure.
     public long? MinWealth()
     {
         if (!_party.IsInParty || !_party.SelfIsLeader) return null;
@@ -111,8 +115,8 @@ public sealed class PartyWealthTracker
             if (_readings.TryGetValue(given, out (long Copper, DateTime At) r)
              && now - r.At <= FreshnessWindow)
                 min = Math.Min(min, r.Copper);
-            else
-                return 0;   // missing / stale follower → avoid the toll this pass
+            // else: unread / stale follower — don't gate on an unknown wallet;
+            // the walk-start Probe warms it for a later confirmed evaluation.
         }
         return min;
     }

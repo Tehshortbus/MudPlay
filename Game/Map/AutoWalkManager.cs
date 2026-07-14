@@ -592,7 +592,7 @@ public sealed class AutoWalkManager : IRecoverableEngine
                 IReadOnlyList<Direction>? ungated =
                     _bfs.FindPath(source.Key, destination, _filter, ignoreExitGates: true);
                 string reason = ungated is { Count: > 0 }
-                    ? "all routes blocked by a level, toll, or class requirement"
+                    ? DescribeBlockedRoute(source.Key, ungated)
                     : "no path";
                 Raise(new WalkEvent(WalkEventKind.Failed, reason, destination));
                 return false;
@@ -703,6 +703,45 @@ public sealed class AutoWalkManager : IRecoverableEngine
             cur = exit.Target;
         }
         return route;
+    }
+
+    // Name why the only route to the destination is blocked. The gates-ignored
+    // path (the one that surfaced when we re-probed) is exactly the set of
+    // exits the crosser can't clear, so classifying each hop and unioning the
+    // reasons tells the user the real obstacle — a locked door, a missing item,
+    // a level window, a toll, a class hall, or a room hazard — instead of the
+    // old fixed "level, toll, or class" line that misnamed a key-door block.
+    private string DescribeBlockedRoute(RoomKey source, IReadOnlyList<Direction> ungatedPath)
+    {
+        ExitBlockReason reasons = ExitBlockReason.None;
+        RoomKey cur = source;
+        foreach (Direction dir in ungatedPath)
+        {
+            Room? room = _graph.GetRoom(cur);
+            if (room is null || !room.Exits.TryGetValue(dir, out RoomExit exit))
+                break;
+            if (_filter is { } f) reasons |= f.DescribeExitBlock(in exit);
+            cur = exit.Target;
+        }
+        return FormatBlockReasons(reasons);
+    }
+
+    private static string FormatBlockReasons(ExitBlockReason reasons)
+    {
+        // Classification came up empty (e.g. a bare IRoomFilter with no gate
+        // model) — keep a truthful generic line rather than inventing a cause.
+        if (reasons == ExitBlockReason.None)
+            return "all routes blocked by an exit requirement";
+
+        List<string> parts = new();
+        if (reasons.HasFlag(ExitBlockReason.Level)) parts.Add("a level requirement");
+        if (reasons.HasFlag(ExitBlockReason.Toll)) parts.Add("a toll you can't afford");
+        if (reasons.HasFlag(ExitBlockReason.Class)) parts.Add("a class restriction");
+        if (reasons.HasFlag(ExitBlockReason.LockedDoor)) parts.Add("a locked door you can't open (no key, pick, or bash)");
+        if (reasons.HasFlag(ExitBlockReason.Item)) parts.Add("a required item you're missing");
+        if (reasons.HasFlag(ExitBlockReason.Door)) parts.Add("a door you can't pick or bash");
+        if (reasons.HasFlag(ExitBlockReason.Hazard)) parts.Add("a room hazard you can't survive");
+        return "all routes blocked by " + string.Join(" or ", parts);
     }
 
     // Expand the planned route between two known rooms into the ordered RoomKeys the
