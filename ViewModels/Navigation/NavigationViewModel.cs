@@ -1980,12 +1980,20 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         if (gates.Contains(Game.Map.MovementCoordinator.AbandonedCombatGate))
             return ("Waiting — leaving a fight", NavActivityKind.Waiting);
 
-        // Our own held/entangled state stops movement at the server; no gate is
-        // asserted for it, so a stuck loop would otherwise read "Moving".
+        // Our own held/entangled state stops movement at the server. The
+        // condition flag is the authoritative signal (SelfHeldResponder also
+        // asserts HeldGate off the same edge), read directly here so the label is
+        // right the instant we're knocked down, ahead of the gate scan below.
         if (_services.Conditions.IsMovementPrevented)
             return ("Waiting — held", NavActivityKind.Waiting);
 
         if (!mc.IsPaused) return ("Moving", NavActivityKind.Moving);
+
+        // Our own confusion holds navigation locally (the leader/solo analogue of
+        // the @wait a confused follower sends). Rank it above the party-driven
+        // waits — it's our own affliction, same tier as "held" above.
+        if (gates.Contains(Game.Map.MovementCoordinator.ConfusionGate))
+            return ("Waiting — confused", NavActivityKind.Waiting);
 
         if (gates.Contains(Game.Map.MovementCoordinator.HealthRecoveryGate))
             return ("Waiting — resting (low HP)", NavActivityKind.Waiting);

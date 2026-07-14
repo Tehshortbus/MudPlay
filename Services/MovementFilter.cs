@@ -194,10 +194,10 @@ public sealed class MovementFilter : IRoomFilter
         return reasons;
     }
 
-    // Item / ticket / key-locked-door gates. Suspended for the gated-route
-    // planning pass. Only evaluated once inventory is known — an unparsed
-    // inventory walks unrestricted rather than routing around gates we can't
-    // yet tell whether we satisfy.
+    // Item / ticket / key-locked-door / action-item gates. Suspended for the
+    // gated-route planning pass. Only evaluated once inventory is known — an
+    // unparsed inventory walks unrestricted rather than routing around gates we
+    // can't yet tell whether we satisfy.
     private bool IsItemGateBlocked(in RoomExit exit)
     {
         if (_acquirableGateSuspended) return false;
@@ -214,6 +214,15 @@ public sealed class MovementFilter : IRoomFilter
 
             case RoomExitHint.KeyLocked:
                 return IsLockedDoorImpassable(in exit, carries);
+
+            case RoomExitHint.MultiActionHidden:
+                // A hidden exit whose unlock action needs a held item ("hold up
+                // amber talisman (Item: 815)") is impassable without it — no
+                // pick/bash alternative, and the item is acquirable, so this
+                // gate is suspended for the gated-route planning pass like the
+                // other item gates. Lever-only doors carry no item requirement,
+                // so they stay passable here.
+                return exit.MultiAction is { } ma && ma.RequiresUnheldItem(carries);
 
             default:
                 return false;

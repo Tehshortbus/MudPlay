@@ -345,15 +345,30 @@ public sealed class RoomGraphManager
             // not the room the action targets — flagged so the walker
             // knows to fail on cross-row data.
             RoomKey? remote = cell.RemoteSourceRoom is not null ? sourceRoom : null;
-            list.Add(new ExitAction(cell.StepNumber, cell.Commands, remote));
+            list.Add(new ExitAction(cell.StepNumber, cell.Commands, remote, cell.RequiredItemId));
         }
 
-        // Patch each MultiActionHidden exit with the gathered data.
+        // Patch each action-gated exit with the gathered data.
         foreach (((RoomKey roomKey, Direction dir), List<ExitAction> actions) in byExit)
         {
             if (!_rooms.TryGetValue(roomKey, out Room? room)) continue;
             if (!room.Exits.TryGetValue(dir, out RoomExit exit)) continue;
-            if (exit.Hint != RoomExitHint.MultiActionHidden) continue;
+
+            // Action cells normally decorate a MultiActionHidden exit, but the
+            // same "Action [on the X exit of …]" annotation also targets plain
+            // Door / KeyLocked exits that a lever — not a pick or key — opens
+            // (e.g. the inner-gate portcullis that lifts only when levers in the
+            // flanking guardrooms are pulled). Those import as a Door with an
+            // impossibly high pick/strength requirement, so without the lever
+            // data the route picker routes around them (IsImpassableDoorBlocked)
+            // or the door FSM fails on them. Promote such a door to a
+            // MultiActionHidden exit so the lever detour + same-room dispatch
+            // that already back the hidden exits take over, and so the plan-time
+            // door block no longer rejects a route the lever can open. Search /
+            // text / teleport exits that happen to collide with an action key
+            // are left as-is.
+            bool leverDoor = exit.Hint is RoomExitHint.Door or RoomExitHint.KeyLocked;
+            if (exit.Hint != RoomExitHint.MultiActionHidden && !leverDoor) continue;
 
             (int count, bool specific) = perRoomModifiers.TryGetValue(roomKey, out var mods)
                 && mods.TryGetValue(dir, out string? modCell)
@@ -362,9 +377,12 @@ public sealed class RoomGraphManager
 
             actions.Sort(static (a, b) => a.StepNumber.CompareTo(b.StepNumber));
             var data = new MultiActionExitData(count, specific, actions);
+            RoomExit patched = leverDoor
+                ? exit with { Hint = RoomExitHint.MultiActionHidden, MultiAction = data }
+                : exit with { MultiAction = data };
             var rebuilt = new Dictionary<Direction, RoomExit>(room.Exits)
             {
-                [dir] = exit with { MultiAction = data }
+                [dir] = patched
             };
             _rooms[roomKey] = room with { Exits = rebuilt };
         }

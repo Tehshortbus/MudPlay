@@ -164,7 +164,7 @@ public sealed class TerminalEmulator
             if (_autoWrap)
             {
                 Screen.CursorX = 0;
-                LineFeed();
+                LineFeed(softWrap: true);
             }
             _wrapPending = false;
         }
@@ -181,8 +181,11 @@ public sealed class TerminalEmulator
             Screen.CursorX++;
     }
 
-    // Index-y down a row, scrolling the region if at the bottom.
-    private void LineFeed()
+    // Index-y down a row, scrolling the region if at the bottom. softWrap is
+    // true only on the auto-wrap path (a long line spilling past the right
+    // margin), so LineExtractor can rejoin the fragment with its continuation;
+    // every real LF/IND/NEL leaves it false.
+    private void LineFeed(bool softWrap = false)
     {
         // LF is the canonical "this row is done" signal. Fire LineCompleted
         // before the cursor moves so subscribers see the row that just
@@ -191,7 +194,7 @@ public sealed class TerminalEmulator
         // ScrollUp (when scrolling) or by the Backscroll view's live-tail
         // path (when not).
         ReadOnlySpan<Cell> cells = Screen.Row(Screen.CursorY);
-        LineCompleted?.Invoke(new ScrollbackBuffer.Row(DateTimeOffset.Now, cells.ToArray()));
+        LineCompleted?.Invoke(new ScrollbackBuffer.Row(DateTimeOffset.Now, cells.ToArray(), softWrap));
 
         if (Screen.CursorY == _scrollBottom)
         {

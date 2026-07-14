@@ -54,7 +54,7 @@
     "Step": 10,
     "Name": "",
     "Visible": true,
-    "Steps": "[](1/527) \u0027ask wounded mission\u0027\n[](1/546) \u0027ask guild messenger\u0027\n[](1/527) \u0027ask wounded accept\u0027\n[](1/3333) \u0027ask annora messenger\u0027\n[](2/2518) \u0027ask markus letter\u0027\n[](1/3333) \u0027ask annora return\u0027",
+    "Steps": "[](1/527) \u0027ask wounded mission\u0027\n[](1/546) \u0027ask guild messenger\u0027\n[](1/527) \u0027ask wounded accept\u0027\n[](1/1333) \u0027ask annora messenger\u0027\n[](2/2518) \u0027ask markus letter\u0027\n[](1/1333) \u0027ask annora return\u0027",
     "Rewards": null,
     "RequiredLevel": null,
     "Blocked": false
@@ -64,7 +64,7 @@
     "Step": 20,
     "Name": "",
     "Visible": true,
-    "Steps": "-----This is your last chance to change alignment quests-----\n-----Room (1/163) to pledge, requires sysop assist-----\n[](1/3333) \u0027ask annora missions\u0027\n[](3/668) obtain severed head of goru-nezar\n[](1/3333) \u0027ask annora head\u0027",
+    "Steps": "-----This is your last chance to change alignment quests-----\n-----Room (1/163) to pledge, requires sysop assist-----\n[](1/1333) \u0027ask annora missions\u0027\n[](3/668) obtain severed head of goru-nezar\n[](1/1333) \u0027ask annora head\u0027",
     "Rewards": null,
     "RequiredLevel": null,
     "Blocked": false
@@ -74,7 +74,7 @@
     "Step": 30,
     "Name": "",
     "Visible": true,
-    "Steps": "[](6/1387) \u0027ask king business\u0027\n[](6/1382) \u0027ask loremaster demons\u0027\n[](6/76) kill metallic monstrosity (gleaming shard, need 1 per good align character, can obtain anytime)\n[](6/1357) (Gleaming Shard required) \u0027ask martok forge\u0027\n[](6/577) (Gleaming Dagger required) \u0027ask gnome enchantress enchant\u0027\n[](6/994) (Enchanted Dagger required) kill spectral knight\n[](6/3108) (Spirit dagger of goijar required) kill Gulgulthra\n[](6/1387) \u0027ask king return\u0027\n[](1/3333) \u0027ask annora success\u0027",
+    "Steps": "[](6/1387) \u0027ask king business\u0027\n[](6/1382) \u0027ask loremaster demons\u0027\n[](6/76) kill metallic monstrosity (gleaming shard, need 1 per good align character, can obtain anytime)\n[](6/1357) (Gleaming Shard required) \u0027ask martok forge\u0027\n[](6/577) (Gleaming Dagger required) \u0027ask gnome enchantress enchant\u0027\n[](6/994) (Enchanted Dagger required) kill spectral knight\n[](6/3108) (Spirit dagger of goijar required) kill Gulgulthra\n[](6/1387) \u0027ask king return\u0027\n[](1/1333) \u0027ask annora success\u0027",
     "Rewards": null,
     "RequiredLevel": null,
     "Blocked": false
@@ -84,7 +84,7 @@
     "Step": 40,
     "Name": "",
     "Visible": true,
-    "Steps": "[](16/2160) kill dark phoenix\n[](1/3333) \u0027ask annora foe\u0027",
+    "Steps": "[](16/2160) kill dark phoenix\n[](1/1333) \u0027ask annora foe\u0027",
     "Rewards": null,
     "RequiredLevel": null,
     "Blocked": false
@@ -94,7 +94,7 @@
     "Step": 50,
     "Name": "",
     "Visible": true,
-    "Steps": "[](17/2418) \u0027ask pastor annora\u0027\n[](17/1746) \u0027ask justice pastor\u0027\n-----This next step is -VERY- dangerous, you will need lots of healing, roomers and coordination-----\n[](17/2243) kill Ozrinom the Vampire Lord\n[](17/2243) heal up/rest up, respawn timer is 4 minutes from kills.\n[](17/2243) \u0027tip coffin\u0027 and kill death mist of ozrinom (Easiest way to get out is to have entire party hangup and log back in)\n[](17/2418) \u0027ask pastor gem\u0027\n[](17/1790) \u0027ask old gift\u0027\n[](17/2019) kill rotting beholder, grab eye and tongue then pull lever\n[](17/2020) \u0027ask old prophecy\u0027 and \u0027ask old portal\u0027\n[](17/1753) \u0027place eye in socket\u0027 and \u0027place tongue in hole\u0027 when ready (portal lasts 15 minutes)\n-----if your whole party can stealth, you can sneak right into CMD\u0027s room, otherwise take it slow, use roomers, wraith knights are mean.-----\n[](17/1772) kill Colossal midnight dragon\n[](17/1772) Once rested up(don\u0027t bother buffing they get removed) kill ancient tapestry (ancient tapestry will last between 40 and 60 minutes before it will turn into shredded tapestry on its own)\n[](17/1772) Once Shredded tapestry is spawned, entire party sends \u0027go tapestry\u0027 to enter dark mage\u0027s room. (Shredded tapestry lasts between 8m20s and 16m40s)\n[](17/1773) kill dark mage\n[](17/1773) (optional) Once rested up (don\u0027t bother buffing they get removed) entire party sends \u0027enter portal\u0027 (If you don\u0027t want to attempt Zanthus just relog)\n[](17/785) (optional) kill zanthus the lich (NOTE: You only get one chance to kill him, if you don\u0027t on your first dark mage kill, you can\u0027t fight him again.)\n[](1/3333) \u0027ask annora knowledge\u0027 or \u0027ask annora reconcile\u0027",
+    "Steps": "[](17/2418) \u0027ask pastor annora\u0027\n[](17/1746) \u0027ask justice pastor\u0027\n-----This next step is -VERY- dangerous, you will need lots of healing, roomers and coordination-----\n[](17/2243) kill Ozrinom the Vampire Lord\n[](17/2243) heal up/rest up, respawn timer is 4 minutes from kills.\n[](17/2243) \u0027tip coffin\u0027 and kill death mist of ozrinom (Easiest way to get out is to have entire party hangup and log back in)\n[](17/2418) \u0027ask pastor gem\u0027\n[](17/1790) \u0027ask old gift\u0027\n[](17/2019) kill rotting beholder, grab eye and tongue then pull lever\n[](17/2020) \u0027ask old prophecy\u0027 and \u0027ask old portal\u0027\n[](17/1753) \u0027place eye in socket\u0027 and \u0027place tongue in hole\u0027 when ready (portal lasts 15 minutes)\n-----if your whole party can stealth, you can sneak right into CMD\u0027s room, otherwise take it slow, use roomers, wraith knights are mean.-----\n[](17/1772) kill Colossal midnight dragon\n[](17/1772) Once rested up(don\u0027t bother buffing they get removed) kill ancient tapestry (ancient tapestry will last between 40 and 60 minutes before it will turn into shredded tapestry on its own)\n[](17/1772) Once Shredded tapestry is spawned, entire party sends \u0027go tapestry\u0027 to enter dark mage\u0027s room. (Shredded tapestry lasts between 8m20s and 16m40s)\n[](17/1773) kill dark mage\n[](17/1773) (optional) Once rested up (don\u0027t bother buffing they get removed) entire party sends \u0027enter portal\u0027 (If you don\u0027t want to attempt Zanthus just relog)\n[](17/785) (optional) kill zanthus the lich (NOTE: You only get one chance to kill him, if you don\u0027t on your first dark mage kill, you can\u0027t fight him again.)\n[](1/1333) \u0027ask annora knowledge\u0027 or \u0027ask annora reconcile\u0027",
     "Rewards": "5th Quest Weapon",
     "RequiredLevel": null,
     "Blocked": false
@@ -104,7 +104,7 @@
     "Step": 10,
     "Name": "",
     "Visible": true,
-    "Steps": "[](1/315) \u0027ask hooded quest\u0027\n[](1/2327) \u0027ask jorah gaal\u0027\n[](1/2327) \u0027ask jorah transport\u0027\n[](1/160) \u0027ask grey code word\u0027\n[](2/2518) \u0027ask markus festus\u0027\n[](1/2327) \u0027ask jorah transport\u0027\n[](1/160) \u0027ask grey box\u0027\n[](1/3333) \u0027ask annora festus\u0027\n[](1/2327) \u0027ask jorah transport\u0027\n[](1/160) \u0027ask grey return\u0027",
+    "Steps": "[](1/315) \u0027ask hooded quest\u0027\n[](1/2327) \u0027ask jorah gaal\u0027\n[](1/2327) \u0027ask jorah transport\u0027\n[](1/160) \u0027ask grey code word\u0027\n[](2/2518) \u0027ask markus festus\u0027\n[](1/2327) \u0027ask jorah transport\u0027\n[](1/160) \u0027ask grey box\u0027\n[](1/1333) \u0027ask annora festus\u0027\n[](1/2327) \u0027ask jorah transport\u0027\n[](1/160) \u0027ask grey return\u0027",
     "Rewards": null,
     "RequiredLevel": null,
     "Blocked": false

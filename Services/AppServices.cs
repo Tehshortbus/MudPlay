@@ -1271,6 +1271,18 @@ public sealed class AppServices
     // sent @ok, so a loop doesn't walk away from a resting member.
     public Game.PartyWaitMovementGate PartyWaitMovement { get; private set; } = null!;
 
+    // Self-confusion bridge — sets our own party-window Confused chip and holds
+    // our navigation (ConfusionGate) while we're confused. AilmentSyncEngine's
+    // @wait covers a confused follower; this covers a confused leader / solo,
+    // whose @wait is eaten. Honours the Ignore Confusion setting.
+    public Game.Conditions.SelfConfusionResponder SelfConfusion { get; private set; } = null!;
+
+    // Self-held bridge — sets our own party-window Held chip and holds our
+    // navigation (HeldGate) while we're knocked down / held (MovementPrevented),
+    // so the loop doesn't hammer the server with moves that bonk "flat on your
+    // back" and strand the tracker. Clears on "You get back on your feet.".
+    public Game.Conditions.SelfHeldResponder SelfHeld { get; private set; } = null!;
+
     // Follower-disconnect pause bridge (leader side) — holds movement while a
     // dropped party follower is inside the reconnect grace window, so we don't
     // sprint off without a member who's trying to reconnect and re-party.
@@ -2600,6 +2612,22 @@ public sealed class AppServices
         // MainWindowViewModel alongside the other line consumers.
         PartyAilment = new Game.Conditions.PartyAilmentTracker(
             Chat, Party, PartyEssentials, CureCastMatchers, Log);
+
+        // Self-confusion bridge — the local side of our own confusion. A
+        // confused follower telepaths the leader @wait (AilmentSyncEngine above);
+        // a confused leader / solo has that @wait eaten, so their nav kept
+        // running and their own chip never lit. This sets the self Confused chip
+        // and asserts ConfusionGate, honouring the same Ignore Confusion gate the
+        // @wait obeys. Reevaluate() is pinged from the Spells settings apply.
+        SelfConfusion = new Game.Conditions.SelfConfusionResponder(
+            Conditions, Party, MovementCoordinator,
+            readSpells: () => ReadSection<Models.Profile.SpellsSettings>(Profile.Current, "Spells"),
+            log: Log);
+
+        // Self-held bridge — the same local-hold pattern for a knockdown /
+        // MovementPrevented state (no opt-out; a knockdown always holds).
+        SelfHeld = new Game.Conditions.SelfHeldResponder(
+            Conditions, Party, MovementCoordinator, log: Log);
 
         // CastingDirector. Sits on top of Cast,
         // decides which heal / cure / buff (if any) to issue based on

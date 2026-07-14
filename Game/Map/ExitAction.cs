@@ -21,7 +21,15 @@ namespace FujinTerm.Game.Map;
 // lived in a DIFFERENT room ("[on the X exit of room M/R]") the field
 // carries that room's key. Only same-room actions are executed; remote
 // actions fail the walk with a clear reason.
+//
+// RequiredItemId is the item the crosser must hold to perform this step,
+// parsed from a trailing "(Item: N)" on the action cell (e.g. "hold up
+// amber talisman (Item: 815)"). 0 when the step needs no item. The step's
+// commands are alternatives that ALL depend on the same held item, so the
+// exit is impassable without it — MovementFilter routes around a
+// multi-action exit whose required item isn't in hand.
 public sealed record ExitAction(
     int StepNumber,
     IReadOnlyList<string> Commands,
-    RoomKey? RemoteSourceRoom);
+    RoomKey? RemoteSourceRoom,
+    int RequiredItemId = 0);

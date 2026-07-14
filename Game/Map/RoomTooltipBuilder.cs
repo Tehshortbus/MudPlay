@@ -268,7 +268,7 @@ public static class RoomTooltipBuilder
             {
                 if (exit.MultiAction is { Actions.Count: > 0 } maDetail)
                 {
-                    AppendMultiActionDetail(sb, room.Key, maDetail, graph);
+                    AppendMultiActionDetail(sb, room.Key, maDetail, graph, data);
                 }
                 else if (room.Cmd > 0 && tbinfo is not null)
                 {
@@ -293,7 +293,8 @@ public static class RoomTooltipBuilder
     // actually executes — the user sees the same routing the path expander would
     // do.
     private static void AppendMultiActionDetail(
-        StringBuilder sb, RoomKey hostRoom, MultiActionExitData ma, RoomGraphManager graph)
+        StringBuilder sb, RoomKey hostRoom, MultiActionExitData ma, RoomGraphManager graph,
+        GameDataCache? data)
     {
         for (int i = 0; i < ma.Actions.Count; i++)
         {
@@ -319,6 +320,15 @@ public static class RoomTooltipBuilder
                 sb.Append("here: ");
             }
             sb.Append(string.Join(" / ", step.Commands));
+
+            // Held-item requirement ("… (Item: 815)") — surface the item the
+            // step needs so the user knows the exit is gated on carrying it.
+            if (step.RequiredItemId > 0)
+            {
+                string? itemName = LookupName(data, "Items", step.RequiredItemId);
+                string label = itemName is { Length: > 0 } ? itemName : $"#{step.RequiredItemId}";
+                sb.Append(" (needs ").Append(label).Append(')');
+            }
         }
     }
 

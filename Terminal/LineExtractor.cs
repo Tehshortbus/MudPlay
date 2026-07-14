@@ -36,6 +36,13 @@ public sealed partial class LineExtractor
     // Fired once per completed row.
     public event Action<EmittedLine>? LineEmitted;
 
+    // Holds a fragment the terminal wrapped at the right margin, awaiting its
+    // continuation row(s). When set, the next completed row is stitched onto it
+    // so downstream consumers (chat / trigger / combat pattern matchers) see the
+    // whole logical line the server sent instead of an 80-column slice whose
+    // tail silently vanishes.
+    private EmittedLine? _pendingWrap;
+
     public LineExtractor(TerminalEmulator emulator)
     {
         ArgumentNullException.ThrowIfNull(emulator);
@@ -50,8 +57,40 @@ public sealed partial class LineExtractor
 
     private void OnLineCompleted(ScrollbackBuffer.Row row)
     {
-        EmittedLine line = BuildLine(row.Cells, row.Timestamp, isPromptLine: false);
+        if (row.SoftWrapped)
+        {
+            // A long server line the terminal broke at the right margin. Keep the
+            // fragment untrimmed (a wrap that lands on a space must preserve it)
+            // and hold it for the continuation. The prompt-split / emit below is
+            // deferred until the whole line is reassembled.
+            EmittedLine fragment = BuildLine(row.Cells, row.Timestamp, isPromptLine: false, trimTrailingBlanks: false);
+            _pendingWrap = _pendingWrap is { } held ? Join(held, fragment) : fragment;
+            return;
+        }
 
+        EmittedLine line = BuildLine(row.Cells, row.Timestamp, isPromptLine: false);
+        if (_pendingWrap is { } pending)
+        {
+            line = Join(pending, line);
+            _pendingWrap = null;
+        }
+
+        EmitLine(line);
+    }
+
+    // Concatenate a held wrap fragment with a following row, keeping the
+    // attribute array aligned to the joined text. Timestamp carries the
+    // fragment's (when the message started on the wire).
+    private static EmittedLine Join(EmittedLine head, EmittedLine tail)
+    {
+        CellAttributes[] attrs = new CellAttributes[head.Attributes.Length + tail.Attributes.Length];
+        head.Attributes.CopyTo(attrs, 0);
+        tail.Attributes.CopyTo(attrs, head.Attributes.Length);
+        return head with { Text = head.Text + tail.Text, Attributes = attrs };
+    }
+
+    private void EmitLine(EmittedLine line)
+    {
         // Common BBS shape: the previous prompt is still sitting on the row
         // when fresh output (chat echo, combat hit, etc.) gets appended
         // inline. Without splitting, the chat regex never matches because
@@ -94,12 +133,14 @@ public sealed partial class LineExtractor
     private static partial Regex PromptPrefix();
 
     // Public for testability: converts a raw cell row into the EmittedLine the
-    // event surfaces. Trims trailing blank cells; the attribute array is
-    // sliced to match.
-    public static EmittedLine BuildLine(ReadOnlySpan<Cell> cells, DateTimeOffset timestamp, bool isPromptLine)
+    // event surfaces. Trims trailing blank cells (unless trimTrailingBlanks is
+    // false — a soft-wrapped fragment is full to the margin and a trailing space
+    // at the wrap point must survive the stitch); the attribute array is sliced
+    // to match.
+    public static EmittedLine BuildLine(ReadOnlySpan<Cell> cells, DateTimeOffset timestamp, bool isPromptLine, bool trimTrailingBlanks = true)
     {
         int end = cells.Length;
-        while (end > 0 && cells[end - 1].Char == ' ' && cells[end - 1].Attr.Background.Kind == ColorKind.Default)
+        while (trimTrailingBlanks && end > 0 && cells[end - 1].Char == ' ' && cells[end - 1].Attr.Background.Kind == ColorKind.Default)
         {
             end--;
         }
