@@ -29,7 +29,7 @@ public sealed class DoorOpenManagerTests
         public int MaxPick { get; set; } = 10;
         public bool PicklocksOverBash { get; set; }
 
-        public Harness()
+        public Harness(Func<int, bool>? holdsKeyItem = null)
         {
             Router = new MessageRouter();
             DefaultPatterns.Seed(Router);
@@ -40,9 +40,15 @@ public sealed class DoorOpenManagerTests
             Items[1980] = "ancient brass key";
             Mgr = new DoorOpenManager(Router, Stats,
                 () => MaxBash, () => MaxPick, () => PicklocksOverBash,
-                itemNameLookup: id => Items.TryGetValue(id, out string? name) ? name : null);
+                itemNameLookup: id => Items.TryGetValue(id, out string? name) ? name : null,
+                holdsKeyItem: holdsKeyItem);
             Mgr.SetWireSender(Sent.Add);
         }
+
+        // All bytes sent so far, decoded and trailing-CR trimmed — for asserting
+        // an ordered command sequence (e.g. get-before-use).
+        public IReadOnlyList<string> AllSent =>
+            Sent.Select(b => Encoding.Latin1.GetString(b).TrimEnd('\r')).ToList();
 
         public void Line(string text)
         {
@@ -361,6 +367,40 @@ public sealed class DoorOpenManagerTests
 
         Assert.IsType<DoorOpenResult.Failed>(result);
         Assert.Empty(h.Sent);
+    }
+
+    [Fact]
+    public void KeyedDoor_KeyNotCarried_GetsFromRoomBeforeUse()
+    {
+        // Live bug: a keyed door where the key sat on the room floor (e.g. a
+        // bone key dropped by the guardian). The manager blindly sent
+        // `use <key> <dir>` with no possession awareness, so the key never
+        // entered inventory and the door never opened. Fix: when the
+        // possession predicate says the key isn't held, grab it off the floor
+        // first — the server processes the queued `get` before the `use`.
+        using Harness h = new(holdsKeyItem: _ => false);
+        h.Stats.Strength = 0;
+        h.Stats.Picklocks = 0;
+        DoorOpenResult? result = null;
+        h.Mgr.Enqueue(Direction.E, 0, canBash: false, keyItemId: 172, "walker", r => result = r);
+
+        Assert.Equal(
+            new[] { "get black star key", "use black star key e" }, h.AllSent);
+        Assert.Equal(DoorOpenManager.DoorState.WaitingUseKey, h.Mgr.CurrentState);
+    }
+
+    [Fact]
+    public void KeyedDoor_KeyAlreadyCarried_SkipsGet()
+    {
+        // The possession predicate says the key is in inventory → no wasted
+        // `get`, just the single-shot use.
+        using Harness h = new(holdsKeyItem: _ => true);
+        h.Stats.Strength = 0;
+        h.Stats.Picklocks = 0;
+        DoorOpenResult? result = null;
+        h.Mgr.Enqueue(Direction.E, 0, canBash: false, keyItemId: 172, "walker", r => result = r);
+
+        Assert.Equal(new[] { "use black star key e" }, h.AllSent);
     }
 
     // ----- already-open responses (commit 8 fix) --------------------

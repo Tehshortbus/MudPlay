@@ -38,6 +38,7 @@ public sealed class DoorOpenManager : IDisposable
     private readonly Func<int> _maxBashStrengthProvider;
     private readonly Func<bool> _picklocksOverBashProvider;
     private readonly Func<int, string?> _itemNameLookup;
+    private readonly Func<int, bool> _holdsKeyItem;
     private readonly LogService? _log;
     private readonly IDisposable _bashOkSub;
     private readonly IDisposable _bashFailSub;
@@ -76,6 +77,7 @@ public sealed class DoorOpenManager : IDisposable
         Func<bool> picklocksOverBashProvider,
         Func<int, string?>? itemNameLookup = null,
         Func<int>? maxBashableStrengthProvider = null,
+        Func<int, bool>? holdsKeyItem = null,
         LogService? log = null)
     {
         ArgumentNullException.ThrowIfNull(router);
@@ -95,6 +97,9 @@ public sealed class DoorOpenManager : IDisposable
         // Default to "no items known" so plain-door tests can construct
         // the manager without an ItemNameStore.
         _itemNameLookup = itemNameLookup ?? (_ => null);
+        // Default "assume held" so keyed-door tests keep the plain use path with
+        // no opportunistic floor-grab; production wires the live inventory check.
+        _holdsKeyItem = holdsKeyItem ?? (_ => true);
         _log = log;
 
         _bashOkSub      = _router.Subscribe(KnownPatterns.DoorBashSuccess,      OnBashSuccess);
@@ -262,6 +267,18 @@ public sealed class DoorOpenManager : IDisposable
         {
             FailCurrent($"key item {cur.KeyItemId} not in active item table");
             return;
+        }
+        // Opportunistic floor grab: a keyed door often sits in the same room as
+        // the mob/chest that yields its key. When we're not carrying this key,
+        // try to pick a copy up from the current room before using it — `get` is
+        // a no-op ("You don't see that here.") when the floor has none, so the
+        // plain use path is never worsened, and a blind `use` on a key we don't
+        // hold was the reported failure. Sent ahead of the `use` so the server
+        // processes them in order and the key is in hand when `use` runs.
+        if (!_holdsKeyItem(cur.KeyItemId))
+        {
+            _wire.Send($"get {keyName}");
+            _log?.Info("Door", $"get {keyName} (not carried — grab from room before use).");
         }
         _state = DoorState.WaitingUseKey;
         _wire.Send($"use {keyName} {cur.DirectionShort}");

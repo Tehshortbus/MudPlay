@@ -6,6 +6,10 @@
 > - Staging a favourite no longer stops a running loop / auto-lair on its own; that only happens when you commit with Run
 > - All three user walk-to paths — map right-click, search box, favourites — now run through the same engine: committing a search-box or favourite destination with Run offers the free-vs-shortcut route picker when a shorter gated route exists, just like the map right-click already did
 > - When a shortcut needs a carry/ticket item the walk will auto-buy, the route picker now names the shop it will detour to (e.g. "a raft (buy at General Store)")
+> - Loop circuits now search-and-reveal a hidden exit mid-lap instead of failing out when a leg crosses one
+> - A monster that breaks off and flees on its own ("scuttles out to the west!") now clears the fighting chip and combat gate, like a dragged-out mob already did
+> - Stop now wipes any auto-lair markers off the map (was only cleared by re-toggling lair mode)
+> - A keyed door whose key is lying on the room floor is now grabbed (`get <key>`) before the `use`, instead of blindly trying to use a key not in inventory
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

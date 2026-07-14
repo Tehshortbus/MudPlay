@@ -948,6 +948,10 @@ public partial class MainWindowViewModel : ObservableObject
         AppServices.Current.HiddenSearch.SetWireSender(engineSend);
         AppServices.Current.Walker.SetHiddenSearchEnqueuer(AppServices.Current.HiddenSearch.Enqueue);
         AppServices.Current.Walker.SetHiddenSearchStopper(AppServices.Current.HiddenSearch.StopAll);
+        // Loop runner shares the same reveal FSM so a hidden exit mid-circuit is
+        // uncovered with sea <dir> instead of failing the lap.
+        AppServices.Current.LoopRunner.SetHiddenSearchEnqueuer(AppServices.Current.HiddenSearch.Enqueue);
+        AppServices.Current.LoopRunner.SetHiddenSearchStopper(AppServices.Current.HiddenSearch.StopAll);
         // Teleport-exit wiring — walker resolves (source, destination)
         // → keyword via TBInfoTeleportResolver against the active
         // TBInfoStore, and pre-broadcasts the keyword to followers via

@@ -2754,12 +2754,14 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
             OnPropertyChanged(nameof(LoopBuilder));
             OnPropertyChanged(nameof(IsLoopBuilding));
         }
-        // Exit AutoLair build mode too — previously StopAll stopped
-        // the scheduler but left CurrentMode == AutoLair, forcing the
-        // user to click Stop a second time to actually return to
-        // Idle.  Now one click does it.  Markers stay around so a
-        // quick Run is still cheap; the user explicitly toggles the
-        // Lair chip to discard them.
+        // Exit AutoLair mode and wipe its markers. Stop is the "clear the board"
+        // action, so leaving lair marks on the map — over a freshly drawn loop,
+        // even — reads as a bug. The Lair chip's own toggle already clears
+        // build-mode marks (ToggleLairMode); the master Stop must match it so the
+        // reported "hitting stop didn't wipe the markers" path lands the same way.
+        // Clear is a no-op when nothing's marked. Setting CurrentMode → Idle also
+        // makes one Stop click return from build mode instead of two.
+        _services.AutoLair.Clear();
         if (CurrentMode == NavigationMode.AutoLair)
             CurrentMode = NavigationMode.Idle;
         _loopBuilderOpenedByPause = false;
