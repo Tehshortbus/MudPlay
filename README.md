@@ -1,15 +1,9 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.60.0**
-> - Transaction history now records manual bank deposits and stashes, not just the app's automated ones — a hand-typed `dep`, `hide <coin>`, or `hide <item>` shows up in the ledger like any auto action, sourced from the server's own confirmation echo
-> - Each deposited denomination and each hidden coin/item lands as its own chronological ledger row
-> - Log pane gains an "Auto-collect logs" checkbox (default off) — the program, memory, and combat-trace files are only written to Data/Logs while it's on, so a normal session leaves nothing on disk; persisted per-character
-> - Conversation window now opens scrolled flush to the newest message instead of stopping short of the bottom
-> - A multi-word monster with no flavour prefix (e.g. a lair boss) is classified off the Monsters table instead of landing as Unknown in the room roster
-> - A party member on a different client whose @wealth reply lacks our copper tally is now understood — coin phrases like "26 platinum pieces, 4792 gold crowns" fold to a copper value for the toll-gate check
-> - A lever-raised gate that renders as "gate" rather than "door" (e.g. "open gate north") now registers its live open/closed state, so the walker skips the door FSM on an already-raised gate instead of stalling
-> - A guardroom tooltip now names the gate its lever controls (e.g. "pull lever → Inner Gate (1/1331) north exit"), so a remote lever room no longer looks inert
+> **Version 1.61.0**
+> - New **Reset States** action (Action menu, terminal right-click, and a bindable/toolbar-promotable shortcut) — clears my own stuck ailments, party-wait signals, and the movement holds they drive, returning me to an idle, unafflicted state
+> - Fixes a phantom "waiting — confused" nav pause: a monster confusion that shares the generic "You are confused!" line but keeps its own specific wear-off no longer strands the flag active when the generic "confusion wears off" fires
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

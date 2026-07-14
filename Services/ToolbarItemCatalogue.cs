@@ -96,6 +96,14 @@ public static class ToolbarItemCatalogue
             Tooltip: "Deposit All — bank wealth to the keep-on-hand floor",
             InDefaultLayout: false),
 
+        // Recovery escape hatch — drop my own conditions and the movement holds
+        // / party-wait signals they drive, returning me to an idle, unafflicted
+        // state (unsticks a condition that latched but never saw its wear-off).
+        new("ResetStates",        "Reset States",         "IconLoop",
+            "ResetStatesCommand",
+            Tooltip: "Reset States — clear my own stuck ailments, waits, and movement holds (return to idle)",
+            InDefaultLayout: false),
+
         // Master auto-responses switch. Active = auto-engines run; clicking
         // off kills every Auto-* (remembering which were on) and also gates
         // the game-entry command. Clicking back on restores the prior set.

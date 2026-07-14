@@ -196,6 +196,48 @@ public sealed class SelfConfusionResponderTests
         Assert.False(h.GateHeld);
     }
 
+    // A second confusion source that shares the generic applied line ("You are
+    // confused!") but carries its own specific wear-off — the shape that stuck
+    // the reported nav pause: a monster confusion whose end text the generic
+    // "confusion wears off" never matches, so it strands the flag active.
+    private static MessageRecord HypnoticHands() => new(
+        Id: MessageRecord.ComputeId("HypnoticHands", "", "", "", "You are confused!", "The effect of hypnotic hands wears off."),
+        Name: "hypnotic hands",
+        Action: MessageAction.WaitForEnd,
+        Flags: MessageFlags.Confused,
+        RawFlagsHex: (ushort)MessageFlags.Confused,
+        Response: string.Empty,
+        CasterMessage: string.Empty,
+        TargetMessage: string.Empty,
+        WitnessMessage: string.Empty,
+        AppliedMessage: "You are confused!",
+        AppliedEndsWith: "The effect of hypnotic hands wears off.");
+
+    [Fact]
+    public void MismatchedEnd_StaysStuck_UntilClearAll()
+    {
+        using Harness h = new();
+        // Both records latch on the shared "You are confused!" applied line.
+        h.Messages.Messages.Add(HypnoticHands());
+        h.FormParty();
+
+        h.Confuse();
+        Assert.True(h.GateHeld);
+
+        // The generic wear-off ends only the generic record; hypnotic hands
+        // keeps its own end text, so it stays active and the flag never drops —
+        // the nav pause is stranded on a phantom confusion.
+        h.Unconfuse();
+        Assert.True(h.GateHeld);
+        Assert.True(h.SelfChip);
+
+        // Reset States: ClearAll drops every active record, cascading the gate
+        // release + chip clear through the responder's ActiveFlags edge.
+        h.Conditions.ClearAll();
+        Assert.False(h.GateHeld);
+        Assert.False(h.SelfChip);
+    }
+
     [Fact]
     public void DisposeWhileConfused_ReleasesGate()
     {

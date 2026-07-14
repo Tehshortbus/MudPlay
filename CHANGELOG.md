@@ -2,6 +2,12 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.61.0
+
+- New **Reset States** action (Action menu, terminal right-click, and a bindable/toolbar-promotable shortcut) — clears my own stuck ailments, party-wait signals, and the movement holds they drive, returning me to an idle, unafflicted state
+- Fixes a phantom "waiting — confused" nav pause: a monster confusion that shares the generic "You are confused!" line but keeps its own specific wear-off no longer strands the flag active when the generic "confusion wears off" fires
+- bug reports addressed: paradigm-20260714-101922
+
 ## 1.60.0
 
 - Transaction history now records manual bank deposits and stashes, not just the app's automated ones — a hand-typed `dep`, `hide <coin>`, or `hide <item>` shows up in the ledger like any auto action, sourced from the server's own confirmation echo

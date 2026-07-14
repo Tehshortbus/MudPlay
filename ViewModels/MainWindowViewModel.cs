@@ -3834,6 +3834,37 @@ public partial class MainWindowViewModel : ObservableObject
     [RelayCommand]
     private void AllAutoOff() => AppServices.Current.AutoModeController.ToggleAll();
 
+    // "Reset States" — the manual recovery escape hatch. Drops every condition
+    // active on us (ConditionTracker.ClearAll), which cascades through each
+    // owner's ActiveFlags edge: the Confused / Held self-chips clear, their
+    // ConfusionGate / HeldGate release, and the ailment @wait balances to @ok.
+    // Then it sweeps the remaining self-row ailment chips so the party window
+    // shows a clean self row. Self-only — other members' state is untouched.
+    //
+    // The case this rescues: a condition that latched on a shared applied line
+    // (many confusion sources emit "You are confused!") but carries its own
+    // specific wear-off text, so a generic "confusion wears off" ends the
+    // siblings but strands this one active — leaving the nav paused on a
+    // phantom "waiting - confused" that no in-game line will clear.
+    [RelayCommand]
+    private void ResetStates()
+    {
+        AppServices.Current.Conditions.ClearAll();
+
+        Game.PartyManager party = AppServices.Current.Party;
+        if (party.LocalCharacterName is { Length: > 0 } me)
+        {
+            party.SetMemberAilment(me, Models.GameData.MessageFlags.Confused, false);
+            party.SetMemberAilment(me, Models.GameData.MessageFlags.MovementPrevented, false);
+            party.SetMemberAilment(me, Models.GameData.MessageFlags.Poisoned, false);
+            party.SetMemberAilment(me, Models.GameData.MessageFlags.Blinded, false);
+            party.SetMemberAilment(me, Models.GameData.MessageFlags.Diseased, false);
+        }
+
+        AppServices.Current.Log.Info(Game.Conditions.ConditionTracker.LogCategory,
+            "Reset States — self conditions, ailment chips, and derived movement holds cleared (manual).");
+    }
+
     // ----- Inventory / equipment bulk actions (Action menu + toolbar) -----
     // Local twins of the @get-all / @drop-all / @deposit-all remote commands
     // and the Default gear set. Reuse the same engine backends; the status
