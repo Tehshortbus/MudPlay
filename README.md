@@ -1,10 +1,9 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.55.0**
-> - Game-data catalogues (Messages, Monster Messages) now reload in one shot — a set switch rebuilds each subscriber's index once instead of once per record (~1100× at startup), so startup and set switches settle faster
-> - Map layout cache is now bounded to 32 most-recent origins (LRU), so a realm-touring session can't grow it without limit
-> - Memory log gained committed / gen2-size / LOH-size / LOH-frag / POH columns so a future capture can tell a managed-heap leak apart from GC working-set ratcheting
+> **Version 1.56.0**
+> - Clicking a saved GOTO favourite now stages it as the queued destination (map pans, route preview draws, Run arms) instead of immediately walking there — hit Run to go or the X to cancel, same as picking a room from the search box
+> - Staging a favourite no longer stops a running loop / auto-lair on its own; that only happens when you commit with Run
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

@@ -1053,16 +1053,19 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(HasFavoriteTree));
     }
 
-    // Click a favourite → walk there (stops loop/lair first).
+    // Click a favourite → stage it as the queued destination, mirroring a pick
+    // from the search box: pan the map to it, draw the preview line, and arm Run.
+    // The user hits Run to walk there or the X to cancel. Staging deliberately
+    // does NOT stop a running loop/lair — that interruption belongs to Run
+    // (RunStop stops the engine and walks the queued destination on commit), so
+    // a mis-click no longer wipes an in-flight run.
     [RelayCommand]
-    private async Task GoToFavorite(FavoriteRowViewModel? row)
+    private void GoToFavorite(FavoriteRowViewModel? row)
     {
         if (row is null) return;
-        if (_services.LoopRunner.State != Game.Map.LoopState.Idle)
-            _services.LoopRunner.Stop("user walk-to from Favorites");
-        if (_services.AutoLair.IsActive) _services.AutoLair.Stop();
-        // User-initiated walk: offer the free-vs-direct route choice.
-        await RouteChoicePrompt.WalkAsync(_services, row.Key);
+        Layout = _services.Bfs.BuildLayout(row.Key);
+        SelectedRoomKey = row.Key;
+        QueuedDestination = row.Key;
     }
 
     [RelayCommand]

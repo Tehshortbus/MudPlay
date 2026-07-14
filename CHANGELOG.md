@@ -2,6 +2,11 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.56.0
+
+- Clicking a saved GOTO favourite now stages it as the queued destination (map pans, route preview draws, Run arms) instead of immediately walking there — hit Run to go or the X to cancel, same as picking a room from the search box
+- Staging a favourite no longer stops a running loop / auto-lair on its own; that only happens when you commit with Run
+
 ## 1.55.0
 
 - Game-data catalogues (Messages, Monster Messages) now reload in one shot — a set switch rebuilds each subscriber's index once instead of once per record (~1100× at startup), so startup and set switches settle faster
