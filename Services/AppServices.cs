@@ -3127,18 +3127,29 @@ public sealed class AppServices
             isEnabled: () => ReadAutoModeFlag(d => d.AutoGetCash),
             log: Log,
             naming: Currency);
-        // Count stash-room hides toward the Session Stats
-        // stashed/deposited figure (copper value across the dispatched coins).
-        // Also record the hide (coins + items) in the transaction
-        // ledger.
+        // Count stash-room hides toward the Session Stats stashed/deposited figure
+        // (copper value across the dispatched coins). The transaction-history
+        // ledger is NOT fed here — it sources from the server's own `You hid …` /
+        // `You deposit …` echoes below, so a hand-typed stash is recorded too.
         Stash.StashExecuted += dispatch =>
         {
             long copper = 0;
             foreach ((string currency, long amount) in dispatch.Currencies)
                 copper += Game.Inventory.CurrencyHoldings.ToCopper(Currency.Canonicalize(currency), amount);
             SessionActivity.NoteCurrencyStashed(copper);
-            TransactionHistory.NoteStash(dispatch.Currencies, dispatch.Items);
         };
+
+        // Transaction-history ledger sources — the server-confirmation echoes,
+        // which fire for a manual `dep` / `hide` and an automated reroute alike
+        // (so both are recorded), and arrive one per denomination / item:
+        //   coin stash   -> CashManager.CoinHidden       ("You hid N <coin>.")
+        //   item stash   -> InventoryManager.ItemHidden  ("You hid <item>.")
+        //   bank deposit -> InventoryManager.BankDeposited ("You deposit …", wrap-merged there)
+        Cash.CoinHidden += (currency, count) =>
+            TransactionHistory.NoteStash(new[] { (currency, (long)count) }, Array.Empty<string>());
+        Inventory.ItemHidden += item =>
+            TransactionHistory.NoteStash(Array.Empty<(string, long)>(), new[] { item });
+        Inventory.BankDeposited += copper => TransactionHistory.NoteBankDeposit(copper);
 
         // AutoGetItemsManager. The resolve delegate
         // maps a loose "You notice ..." entry back to an item Number
@@ -3722,14 +3733,11 @@ public sealed class AppServices
         // its own bank -> shop -> origin light detour and needs the `i` dump to
         // notice the bought copy land.
         Inventory.Changed += AutoDeposit.OnInventoryChanged;
-        // Bank deposits (already a copper value) join stash hides in
-        // the Session Stats stashed/deposited figure, and record the
-        // deposit in the transaction ledger.
-        AutoDeposit.Deposited += copper =>
-        {
-            SessionActivity.NoteCurrencyStashed(copper);
-            TransactionHistory.NoteBankDeposit(copper);
-        };
+        // Bank deposits (already a copper value) join stash hides in the Session
+        // Stats stashed/deposited figure. The transaction-history ledger is fed
+        // separately from the `You deposit …` echo (InventoryManager.BankDeposited,
+        // wired above) so a manual deposit is recorded too.
+        AutoDeposit.Deposited += copper => SessionActivity.NoteCurrencyStashed(copper);
 
         // Shop-source routing (PR C). On a one-shot walk-to that needs an
         // uncarried Item/Ticket-gate item a shop sells, detour to the

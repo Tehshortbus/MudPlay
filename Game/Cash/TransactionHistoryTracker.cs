@@ -1,13 +1,21 @@
 namespace FujinTerm.Game.Cash;
 
 // A per-session ledger of cash/item offloads for the Session Stats →
-// Transaction history window. Records one TransactionEntry per bank `dep`osit
-// (fed from AutoDepositManager.Deposited) and per stash-room `hide` (fed from
-// StashRoomManager.StashExecuted), each with the wall-clock time, the store kind,
-// and a rendered description of what was put away.
+// Transaction history window. Records one TransactionEntry per bank `dep`osit and
+// per stash-room `hide` (coin or item), each with the wall-clock time, the store
+// kind, and a rendered description of what was put away.
 //
-// Owns no source subscriptions — AppServices wires the bank / stash events to the
-// Note* forwarders — matching SessionActivityTracker and keeping the tracker
+// Sourced from the server's own confirmation echoes so a MANUAL `dep` / `hide`
+// typed by the user is captured the same as an automated reroute: deposits from
+// InventoryManager.BankDeposited (`You deposit …`), coin stashes from
+// CashManager.CoinHidden (`You hid N <coin>.`), item stashes from
+// InventoryManager.ItemHidden (`You hid <item>.`). Because the echoes arrive one
+// per denomination / item, a multi-currency stash-room visit records one row per
+// coin line and one per item — a faithful chronological list rather than a single
+// grouped row.
+//
+// Owns no source subscriptions — AppServices wires those echo events to the Note*
+// forwarders — matching SessionActivityTracker and keeping the tracker
 // dependency-free behind an injectable clock for unit tests. Every write and
 // Snapshot runs on the marshalled dispatch thread (the sources all fire there),
 // so the list is lock-free. Reset on the same session boundary as the other

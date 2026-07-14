@@ -33,6 +33,7 @@ public sealed class CashManagerTests
         public List<(string Currency, int Count, CashPolicy Policy)> Dispatches { get; } = new();
         public List<long> AutoDeposits { get; } = new();
         public List<(string Currency, int Count)> Collected { get; } = new();
+        public List<(string Currency, int Count)> Hidden { get; } = new();
 
         public Harness()
         {
@@ -47,6 +48,7 @@ public sealed class CashManagerTests
             Cash.CashDispatched += (c, n, p) => Dispatches.Add((c, n, p));
             Cash.AutoDepositRequested += t => AutoDeposits.Add(t);
             Cash.CoinCollected += (c, n) => Collected.Add((c, n));
+            Cash.CoinHidden += (c, n) => Hidden.Add((c, n));
         }
 
         public void Feed(string line)
@@ -503,6 +505,19 @@ public sealed class CashManagerTests
         h.Feed("You hid a gold piece.");
 
         Assert.Equal(4, h.Cash.HeldCoin("gold"));
+    }
+
+    // The ledger sources coin stashes off the same hide echo the held tally
+    // uses, so a manual `hide N <coin>` (not just an auto stash) reaches the
+    // transaction history. CoinHidden carries the normalized currency + count.
+    [Fact]
+    public void Hidden_RaisesCoinHidden()
+    {
+        using Harness h = new();
+        h.Feed("You picked up 50 gold pieces.");
+        h.Feed("You hid 30 gold pieces.");
+
+        Assert.Equal(("gold", 30), Assert.Single(h.Hidden));
     }
 
     // ----- Discard auto-drop -----------------------------------------

@@ -2,6 +2,11 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.60.0
+
+- Transaction history now records manual bank deposits and stashes, not just the app's automated ones — a hand-typed `dep`, `hide <coin>`, or `hide <item>` shows up in the ledger like any auto action, sourced from the server's own confirmation echo
+- Each deposited denomination and each hidden coin/item lands as its own chronological ledger row
+
 ## 1.59.0
 
 - Lever-opened doors are now walkable: a plain/locked door that a lever in another room lifts (annotated with action cells) is promoted to a lever exit, so the walker detours to pull the levers instead of routing around or bonking the closed door

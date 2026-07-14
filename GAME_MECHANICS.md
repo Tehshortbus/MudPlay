@@ -1022,6 +1022,12 @@ flag). These are hard eligibility gates, independent of resistance and level imm
     `You picked up 6 silver nobles` (singular `You picked up 1 silver noble`).
   - **Drop / stash confirmations** name the full coin **with** a trailing period:
     `You dropped 5 gold crowns.` / `You hid 219 copper farthings.`
+  - **Bank deposit confirmation** names the **full multi-currency amount** as one comma-separated
+    list with a trailing period: `You deposit 1 platinum piece, 93 gold crowns, 4 silver nobles,
+    12 copper farthings.` A long list wraps at the ~78-col margin, so the client re-merges a
+    non-`.`-terminated `You deposit …` row with the next physical row before parsing. Emitted for
+    **both** a manual `dep` and the client's auto-deposit `dep`, so it's the authoritative
+    both-paths signal. (Withdrawals mirror it: `You withdrew …` / `you withdrew …`.)
   - **Room survey** lists the full coin: `You notice 56 silver nobles, 198 copper farthings here.`
 - **[CONFIRMED]** Item vs. coin disambiguation is by verb + shape. An **item** get is
   `You took <item>.`; an item drop is `You dropped <item>.` — the drop/hide verbs are **shared**
@@ -1250,6 +1256,7 @@ glass jug               5               2 gold crowns
 | Coin pickup (no trailing period) | `You picked up N <coin>` (e.g. `6 silver nobles`) |
 | Coin drop | `You dropped N <coin>.` |
 | Coin stash / hide | `You hid N <coin>.` |
+| Bank deposit (manual or auto; multi-currency, may wrap) | `You deposit 1 platinum piece, 93 gold crowns, ... copper farthings.` |
 | Corpse loot drop (bare keyword) | `N <keyword> drop to the ground.` |
 | Room cash survey | `You notice ... N <coin> ... here.` |
 | Move refused — no exit | `There is no exit in that direction!` |

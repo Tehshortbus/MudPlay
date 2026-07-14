@@ -143,6 +143,12 @@ public sealed class CashManager : IDisposable
     // re-parsing the wire.
     public event Action<string, int>? CoinCollected;
 
+    // Fires when the server confirms coin was stashed (a CashHidden line) — an
+    // automated stash-room reroute or a manual `hide` alike. Args: currency word,
+    // coin count. Feeds the transaction-history ledger so a hand-typed stash is
+    // recorded the same as the engine's.
+    public event Action<string, int>? CoinHidden;
+
     public CashManager(
         MessageRouter router,
         Func<CashSettings> readSettings,
@@ -370,6 +376,7 @@ public sealed class CashManager : IDisposable
         AdjustHeld(currency, -count);
         DecayInFlight(currency, -count);
         CheckAutoDeposit();
+        CoinHidden?.Invoke(currency, count);
     }
 
     // Single-line "You notice <list> here." — splits the list and dispatches

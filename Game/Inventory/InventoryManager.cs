@@ -109,6 +109,19 @@ public sealed partial class InventoryManager : IDisposable
     // Fired (outside the lock) whenever the snapshot changes.
     public event Action? Changed;
 
+    // Fired with the deposited copper value each time a `You deposit …` echo is
+    // parsed — manual or automated `dep` alike, since both produce the same
+    // server confirmation. Feeds the transaction-history ledger. (The purse-math
+    // reconciliation against an optimistic auto-deposit happens separately; this
+    // announces the full confirmed amount for the ledger.)
+    public event Action<long>? BankDeposited;
+
+    // Fired with an item's display-name each time a `You hid <item>.` echo names a
+    // non-currency item — a stash-room / manual item hide. Coin-shaped hides are
+    // excluded here (CashManager's coin path logs those), so the ledger doesn't
+    // double-record a `You hid N <coin>.` line.
+    public event Action<string>? ItemHidden;
+
     // True after at least one successful full 'i' parse.
     public bool IsLoaded
     {
@@ -360,6 +373,19 @@ public sealed partial class InventoryManager : IDisposable
             return;
         }
 
+        // Item stash: "You hid <item>." — same verb as the coin line above, which
+        // already returned for a `(\d+) <coin>` match. The singular "a <coin>" form
+        // (which HidCurrencyRegex's leading digit misses) still reaches here, so
+        // skip any coin-noun-suffixed text; CashManager's coin path records those.
+        Match itemHidden = HidItemRegex().Match(line);
+        if (itemHidden.Success)
+        {
+            string item = itemHidden.Groups[1].Value.TrimEnd();
+            if (item.Length > 0 && !CoinNounSuffixRegex().IsMatch(item))
+                ItemHidden?.Invoke(item);
+            return;
+        }
+
         Match deposit = DepositCurrencyRegex().Match(line);
         if (deposit.Success)
         {
@@ -376,6 +402,7 @@ public sealed partial class InventoryManager : IDisposable
                 if (residual > 0) ApplyTransaction(-residual);
             }
             Changed?.Invoke();
+            if (amount > 0) BankDeposited?.Invoke(amount);
             return;
         }
 
@@ -969,6 +996,14 @@ public sealed partial class InventoryManager : IDisposable
 
     [GeneratedRegex(@"^You hid (\d+) (\w+ coins?|platinum pieces?|gold crowns?|silver nobles?|copper farthings?)\.?$")]
     private static partial Regex HidCurrencyRegex();
+
+    [GeneratedRegex(@"^You hid (.+)\.$")]
+    private static partial Regex HidItemRegex();
+
+    // Trailing coin noun set (mirrors the currency regexes' denomination nouns) —
+    // tells a coin-shaped "You hid a gold piece." from a genuine item hide.
+    [GeneratedRegex(@"\b(?:farthing|noble|crown|piece|coin)s?$")]
+    private static partial Regex CoinNounSuffixRegex();
 
     [GeneratedRegex(@"^You deposit (\d.+)\.$")]
     private static partial Regex DepositCurrencyRegex();
