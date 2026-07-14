@@ -102,6 +102,19 @@ public sealed class AutoWalkManagerTests : IDisposable
     }
 
     [Fact]
+    public void LastEvent_TracksMostRecentWalkEvent()
+    {
+        Harness h = NewHarness();
+        Assert.Null(h.Walker.LastEvent);
+
+        // A no-source walk fails immediately; LastEvent must retain that reason.
+        h.Walker.WalkTo(new RoomKey(1, 3));
+
+        Assert.NotNull(h.Walker.LastEvent);
+        Assert.Equal(WalkEventKind.Failed, h.Walker.LastEvent!.Value.Kind);
+    }
+
+    [Fact]
     public void WalkTo_AlreadyAtDestination_FiresFinished()
     {
         Harness h = NewHarness();

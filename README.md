@@ -1,8 +1,8 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.62.0**
-> - Transaction history now records where each offload happened — a bank deposit notes which bank (room name + map/room), and a stash notes which room hid the loot, shown as a muted second line under the entry and appended to the persisted transactions log
+> **Version 1.63.0**
+> - Bug reports now capture the navigation engines in a dedicated section — the point-to-point walk engine (live target, step progress, next direction, and the last stop/failure reason), the door / hidden-exit / trap obstacle handlers mid-request, and the path-item shop/hunt detour state with outstanding route-item needs
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

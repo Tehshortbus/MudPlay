@@ -58,6 +58,7 @@ public static class BugReportBuilder
             new("Inventory", SafeSection(() => BuildInventory(svc))),
             new("Player Workshop", SafeSection(() => BuildWorkshop(svc))),
             new("Movement engine", SafeSection(() => BuildMovement(svc))),
+            new("Navigation engines", SafeSection(() => BuildNavigationEngines(svc))),
             new("Special room markers", SafeSection(() => BuildRoomMarkers(svc))),
             new("Auto-mode", SafeSection(() => BuildAutoMode(svc))),
             new("Keybindings", SafeSection(() => BuildKeybindings(svc))),
@@ -386,6 +387,65 @@ public static class BugReportBuilder
             sb.Append(string.Join(", ", history.Take(10).Select(k => $"{k.Map}/{k.Room}")));
             sb.Append('\n');
         }
+        return sb.ToString();
+    }
+
+    // The navigation engines the Movement section only summarizes: the
+    // point-to-point walk engine (absent above — Movement covers loops/lairs but
+    // not a plain "go to room X" walk), the obstacle FSMs a walk stalls on
+    // (door / hidden-exit / trap), and the path-item detour routers. A "walker
+    // stuck / took a wrong route / stalled on a door" report needs the walk's
+    // live target + progress + last stop reason and which obstacle handler is
+    // mid-request — the exact internals the log only hints at.
+    private static string BuildNavigationEngines(AppServices svc)
+    {
+        StringBuilder sb = new();
+
+        sb.Append("**Walk engine (point-to-point)**\n\n");
+        Game.Map.AutoWalkManager walker = svc.Walker;
+        Kv(sb, "State", walker.State.ToString());
+        Kv(sb, "Destination", walker.Destination is { } dest ? $"{dest.Map}/{dest.Room}" : "(none)");
+        if (walker.StepCount > 0)
+            Kv(sb, "Progress", $"step {Math.Min(walker.CurrentStepIndex + 1, walker.StepCount)}/{walker.StepCount}");
+        Kv(sb, "Journey origin (flee anchor)",
+            walker.JourneyOrigin is { } origin ? $"{origin.Map}/{origin.Room}" : "(none)");
+        Kv(sb, "Next planned direction",
+            walker.PeekNextPlannedDirection() is { } dir ? dir.ToString() : "(none / command step)");
+        // The retained last event carries the failure/stop reason (Detail) — the
+        // single most useful line for "why did the walk quit".
+        Kv(sb, "Last walk event",
+            walker.LastEvent is { } ev
+                ? $"{ev.Kind}: {ev.Detail}" + (ev.Destination is { } d ? $" → {d.Map}/{d.Room}" : string.Empty)
+                : "(none yet)");
+
+        sb.Append("\n**Obstacle handlers (door / hidden exit / trap)**\n\n");
+        Game.Map.DoorOpenManager door = svc.Door;
+        Kv(sb, "Door FSM", $"{door.CurrentState}"
+            + (door.CurrentDirection is { } dd ? $", dir={dd}" : string.Empty)
+            + (door.QueueDepth > 0 ? $", queued={door.QueueDepth}" : string.Empty));
+        Game.Map.HiddenExitRevealManager hidden = svc.HiddenSearch;
+        Kv(sb, "Hidden-exit search", hidden.IsBusy
+            ? $"searching dir={hidden.CurrentDirection ?? "(none)"}, queued={hidden.QueueDepth}"
+            : hidden.QueueDepth > 0 ? $"idle, queued={hidden.QueueDepth}" : "idle");
+        Game.TrapDisarmManager trap = svc.TrapDisarm;
+        Kv(sb, "Trap disarm", $"{trap.CurrentState}"
+            + (trap.CurrentDirection is { } td ? $", dir={td}" : string.Empty)
+            + (trap.QueueDepth > 0 ? $", queued={trap.QueueDepth}" : string.Empty)
+            + $", canDisarm={trap.CanDisarm}");
+
+        sb.Append("\n**Path-item detours**\n\n");
+        Kv(sb, "Path-item search demand", svc.PathItemDemand.SearchDemandActive.ToString());
+        Kv(sb, "Party path-item search demand", svc.PartyPathItemGate.SearchDemandActive.ToString());
+        Kv(sb, "Shop-buy detour active", svc.PathItemShopRouter.DetourActive.ToString());
+        Kv(sb, "Monster-drop hunt detour active", svc.MonsterDropRouter.DetourActive.ToString());
+
+        IReadOnlyList<Need> needs = svc.Needs.Outstanding(NeedKind.PathItem);
+        sb.Append("\nOutstanding path-item needs (").Append(needs.Count).Append(")\n\n");
+        if (needs.Count == 0) sb.Append("_(none)_\n");
+        else foreach (Need n in needs)
+            sb.Append("- ").Append(n.Descriptor).Append(" ×").Append(n.Quantity)
+              .Append(" (requester: ").Append(n.Requester).Append(")\n");
+
         return sb.ToString();
     }
 
