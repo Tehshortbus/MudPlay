@@ -184,7 +184,7 @@
                                         <Flyout>
                                             <LayoutTransformControl>
                                                 <LayoutTransformControl.LayoutTransform>
-                                                    <ScaleTransform ScaleX="0.8" ScaleY="0.8"/>
+                                                    <ScaleTransform ScaleX="0.7" ScaleY="0.7"/>
                                                 </LayoutTransformControl.LayoutTransform>
                                                 <ColorView Color="{Binding LabelColor, Mode=TwoWay}"
                                                            IsAlphaEnabled="False"/>
@@ -209,7 +209,7 @@
                                         <Flyout>
                                             <LayoutTransformControl>
                                                 <LayoutTransformControl.LayoutTransform>
-                                                    <ScaleTransform ScaleX="0.8" ScaleY="0.8"/>
+                                                    <ScaleTransform ScaleX="0.7" ScaleY="0.7"/>
                                                 </LayoutTransformControl.LayoutTransform>
                                                 <ColorView Color="{Binding TextColor, Mode=TwoWay}"
                                                            IsAlphaEnabled="False"/>
