@@ -97,6 +97,135 @@
                       IsChecked="{Binding GreetPlayersWhenFirstMet, Mode=TwoWay}"
                       ToolTip.Tip="The first time each day a non-party player appears (Also here list or live arrival), send greet then look at them. Tracked per-BBS; self and party members are skipped."/>
 
+            <!-- ============ Session logging (wired) ============ -->
+            <TextBlock Classes="SectionHeader" Text="Session logging"/>
+            <TextBlock Classes="HelpText"
+                       Margin="0,0,0,4"
+                       Text="Persist to rolling per-character files under Data/Logs so they survive restarts: &lt;char&gt;.&lt;bbs&gt;.talk.log and &lt;char&gt;.&lt;bbs&gt;.transactions.log. Clearing a window (Clear chatlog / Transaction history Clear) also wipes its file."/>
+
+            <CheckBox Content="Log conversations"
+                      IsChecked="{Binding LogConversations, Mode=TwoWay}"
+                      ToolTip.Tip="Append every Conversation-window line to &lt;char&gt;.&lt;bbs&gt;.talk.log."/>
+            <CheckBox Content="Log transactions"
+                      IsChecked="{Binding LogTransactions, Mode=TwoWay}"
+                      ToolTip.Tip="Append every Session Stats → Transaction history entry to &lt;char&gt;.&lt;bbs&gt;.transactions.log."/>
+
+            <Grid ColumnDefinitions="180,*" Margin="0,4,0,0">
+                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Log line limit"/>
+                <NumericUpDown Grid.Column="1"
+                               Value="{Binding LogMaxLines, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                               Minimum="100" Maximum="100000" Increment="500"
+                               FormatString="0" Width="140" HorizontalAlignment="Left"
+                               ToolTip.Tip="Both logs keep only their last N lines on disk (shared cap). The oldest lines roll off as new ones arrive."/>
+            </Grid>
+
+            <!-- ============ Conversation window font ============ -->
+            <TextBlock Classes="SectionHeader" Text="Conversation window font"/>
+            <TextBlock Classes="HelpText"
+                       Margin="0,0,0,4"
+                       Text="Font and size the Conversation window renders its chat rows with. Applies the next time the window is opened."/>
+
+            <Grid ColumnDefinitions="180,*" Margin="0,4,0,0">
+                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Font"/>
+                <ComboBox Grid.Column="1"
+                          Width="240" HorizontalAlignment="Left"
+                          ItemsSource="{Binding ConvoFontOptions}"
+                          SelectedItem="{Binding SelectedConvoFont, Mode=TwoWay}"
+                          ToolTip.Tip="Row font for the Conversation window. JetBrains Mono is the bundled default; IBM Plex Sans is the proportional chrome font; MX437 is the CP437 bitmap terminal font.">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate x:DataType="vm:FontFamilyOption">
+                            <TextBlock Text="{Binding Label}"/>
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+            </Grid>
+
+            <Grid ColumnDefinitions="180,*" Margin="0,4,0,0">
+                <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Font size"/>
+                <ComboBox Grid.Column="1"
+                          Width="240" HorizontalAlignment="Left"
+                          ItemsSource="{Binding ConvoFontSizeOptions}"
+                          SelectedItem="{Binding SelectedConvoFontSize, Mode=TwoWay}"
+                          ToolTip.Tip="Message-body font size in points. Timestamp / channel tag / speaker render one point smaller.">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate x:DataType="vm:FontSizeOption">
+                            <TextBlock Text="{Binding Label}"/>
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+            </Grid>
+
+            <!-- ============ Channel colours ============ -->
+            <TextBlock Classes="SectionHeader" Text="Channel colours"/>
+            <TextBlock Classes="HelpText"
+                       Margin="0,0,0,4"
+                       Text="Per-channel colours for the Conversation window. Accent tints the channel tag, speaker name and filter toggle; Text tints the message body. Click a swatch to pick a colour visually; Reset returns a slot to the theme default. Applies the next time the window is opened."/>
+
+            <Grid ColumnDefinitions="90,190,20,190" Margin="0,2,0,2">
+                <TextBlock Grid.Column="1" Classes="FieldLabel" Text="Accent"/>
+                <TextBlock Grid.Column="3" Classes="FieldLabel" Text="Text"/>
+            </Grid>
+
+            <ItemsControl ItemsSource="{Binding ChannelColorRows}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:ChannelColorRowViewModel">
+                        <Grid ColumnDefinitions="90,190,20,190" Margin="0,3">
+                            <TextBlock Grid.Column="0" Classes="FieldLabel" Text="{Binding Name}"/>
+
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
+                                <Button Padding="2" VerticalAlignment="Center"
+                                        ToolTip.Tip="Accent colour — the channel tag, speaker name and filter toggle. Click to pick.">
+                                    <Border Width="46" Height="18"
+                                            Background="{Binding LabelSwatch}"
+                                            BorderBrush="{StaticResource ChromeBorderSoftBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="{StaticResource CornerSm}"/>
+                                    <Button.Flyout>
+                                        <Flyout>
+                                            <LayoutTransformControl>
+                                                <LayoutTransformControl.LayoutTransform>
+                                                    <ScaleTransform ScaleX="0.7" ScaleY="0.7"/>
+                                                </LayoutTransformControl.LayoutTransform>
+                                                <ColorView Color="{Binding LabelColor, Mode=TwoWay}"
+                                                           IsAlphaEnabled="False"/>
+                                            </LayoutTransformControl>
+                                        </Flyout>
+                                    </Button.Flyout>
+                                </Button>
+                                <Button Content="Reset" Command="{Binding ResetLabelCommand}"
+                                        VerticalAlignment="Center"
+                                        ToolTip.Tip="Reset the accent colour to the theme default."/>
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="6">
+                                <Button Padding="2" VerticalAlignment="Center"
+                                        ToolTip.Tip="Message-body text colour. Click to pick.">
+                                    <Border Width="46" Height="18"
+                                            Background="{Binding TextSwatch}"
+                                            BorderBrush="{StaticResource ChromeBorderSoftBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="{StaticResource CornerSm}"/>
+                                    <Button.Flyout>
+                                        <Flyout>
+                                            <LayoutTransformControl>
+                                                <LayoutTransformControl.LayoutTransform>
+                                                    <ScaleTransform ScaleX="0.7" ScaleY="0.7"/>
+                                                </LayoutTransformControl.LayoutTransform>
+                                                <ColorView Color="{Binding TextColor, Mode=TwoWay}"
+                                                           IsAlphaEnabled="False"/>
+                                            </LayoutTransformControl>
+                                        </Flyout>
+                                    </Button.Flyout>
+                                </Button>
+                                <Button Content="Reset" Command="{Binding ResetTextCommand}"
+                                        VerticalAlignment="Center"
+                                        ToolTip.Tip="Reset the message-body colour to the theme default."/>
+                            </StackPanel>
+                        </Grid>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
         </StackPanel>
     </ScrollViewer>
 </UserControl>

@@ -1,5 +1,8 @@
+using System.Collections.ObjectModel;
 using System.Text.Json;
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using FujinTerm.Models.Profile;
 using FujinTerm.Services;
@@ -43,6 +46,8 @@ public sealed partial class TalkSectionViewModel : SettingsSectionViewModel
         "Talk", "Remote", "@-command", "Disallow",
         "telepaths", "gangpaths", "say", "local",
         "failure message", "party commands", "kill switch", "greet",
+        "log conversations", "log transactions", "log lines", "chatlog", "logging",
+        "conversation font", "font", "font size", "typeface",
     };
 
     // ----- Wired knobs -----
@@ -64,6 +69,78 @@ public sealed partial class TalkSectionViewModel : SettingsSectionViewModel
     // Settings → Talk "Greet players when first met". Char-tier; default off.
     [ObservableProperty] private bool _greetPlayersWhenFirstMet;
 
+    // Session logging (Char-tier, default on). The two toggles persist the
+    // Conversation window / Transaction history to rolling per-character files;
+    // the shared cap keeps only the last N lines on disk.
+    [ObservableProperty] private bool _logConversations = true;
+    [ObservableProperty] private bool _logTransactions = true;
+    [ObservableProperty] private int _logMaxLines = 2000;
+
+    // ----- Conversation window typography (Char-tier) -----
+    // Font family + size the Conversation window renders its rows with. The
+    // default is the bundled JetBrains Mono at size 12, tagged "{default}" in
+    // the pickers; a non-default pick persists as an avares:// URI / point size
+    // and is read back when the window next opens.
+    private const string DefaultConvoFontUri =
+        "avares://FujinTerm/Assets/Fonts/JetBrainsMono-Regular.ttf#JetBrains Mono";
+    private const double DefaultConvoFontSize = 12;
+
+    public IReadOnlyList<FontFamilyOption> ConvoFontOptions { get; } = new[]
+    {
+        new FontFamilyOption("JetBrains Mono {default}", DefaultConvoFontUri),
+        new FontFamilyOption("IBM Plex Sans",
+            "avares://FujinTerm/Assets/Fonts/IBMPlexSans-Regular.ttf#IBM Plex Sans"),
+        new FontFamilyOption("MX437 IBM VGA",
+            "avares://FujinTerm/Assets/Fonts/Mx437_IBM_VGA_8x16.ttf#Mx437 IBM VGA 8x16"),
+    };
+
+    public IReadOnlyList<FontSizeOption> ConvoFontSizeOptions { get; } = BuildConvoFontSizes();
+
+    [ObservableProperty] private FontFamilyOption? _selectedConvoFont;
+    [ObservableProperty] private FontSizeOption? _selectedConvoFontSize;
+
+    private static IReadOnlyList<FontSizeOption> BuildConvoFontSizes()
+    {
+        double[] sizes = { 10, 11, 12, 13, 14, 16, 18, 20 };
+        List<FontSizeOption> list = new(sizes.Length);
+        foreach (double s in sizes)
+            list.Add(new FontSizeOption(
+                s == DefaultConvoFontSize ? $"{s:0} {{default}}" : $"{s:0}", s));
+        return list;
+    }
+
+    // ----- Per-channel Conversation colours (Char-tier) -----
+    // One row per user-facing channel. Each holds an optional Label (accent) and
+    // Text (message-body) colour; blank falls back to the theme default the
+    // ConversationViewModel resolves. Keys mirror ConversationViewModel.GroupKey.
+    public ObservableCollection<ChannelColorRowViewModel> ChannelColorRows { get; } = new();
+
+    private void BuildChannelColorRows()
+    {
+        Color text = ResColor("ChromeFgBrush");
+        (string Key, string Name, string LabelKey)[] channels =
+        {
+            ("Gossip",     "Gossip",    "AccentCyanBrush"),
+            ("Local",      "Say",       "ChromeFgBrush"),
+            ("Telepath",   "Telepath",  "AccentMagentaBrush"),
+            ("Gangpath",   "Gang",      "AccentGreenBrush"),
+            ("Broadcast",  "Broadcast", "AccentYellowBrush"),
+            ("Yell",       "Yell",      "AccentAmberBrush"),
+            ("RealmEvent", "Realm",     "ChromeFgMutedBrush"),
+        };
+        foreach ((string key, string name, string labelKey) in channels)
+            ChannelColorRows.Add(new ChannelColorRowViewModel(
+                key, name, ResColor(labelKey), text, MarkDirty));
+    }
+
+    // Resolve a theme brush resource to its underlying Color so the picker can
+    // seed and compare against it. Solid brushes are the only kind in the
+    // palette; anything else falls back to grey.
+    private static Color ResColor(string key)
+        => Application.Current is { } app
+           && app.TryGetResource(key, null, out object? v) && v is ISolidColorBrush b
+               ? b.Color : Colors.Gray;
+
     public TalkSectionViewModel() : this(AppServices.Current.Profile) { }
 
     public TalkSectionViewModel(ProfileService profile)
@@ -77,6 +154,7 @@ public sealed partial class TalkSectionViewModel : SettingsSectionViewModel
             _profile.ProfileLoaded -= OnProfileChanged;
             _profile.ProfileClosed -= OnProfileClosedExternally;
         });
+        BuildChannelColorRows();
         _suppressDirty = true;
         LoadFromProfile();
         _suppressDirty = false;
@@ -96,6 +174,14 @@ public sealed partial class TalkSectionViewModel : SettingsSectionViewModel
             WarnOnInvalidRemoteCommand       = WarnOnInvalidRemoteCommand,
             RemoteCommandFailureMessage      = RemoteCommandFailureMessage ?? string.Empty,
             GreetPlayersWhenFirstMet         = GreetPlayersWhenFirstMet,
+            LogConversations                 = LogConversations,
+            LogTransactions                  = LogTransactions,
+            LogMaxLines                      = LogMaxLines,
+            // Store "" / 0 for the default so the delta stays clean and tracks
+            // the app default if it ever moves.
+            ConvoFont = SelectedConvoFont is { } cf && cf.Uri != DefaultConvoFontUri ? cf.Uri : "",
+            ConvoFontSize = SelectedConvoFontSize is { } cs && cs.Value != DefaultConvoFontSize ? cs.Value : 0,
+            ChannelColors = BuildChannelColors(),
         };
 
         profile.Settings ??= new();
@@ -137,11 +223,39 @@ public sealed partial class TalkSectionViewModel : SettingsSectionViewModel
         WarnOnInvalidRemoteCommand      = dto.WarnOnInvalidRemoteCommand;
         RemoteCommandFailureMessage     = dto.RemoteCommandFailureMessage;
         GreetPlayersWhenFirstMet        = dto.GreetPlayersWhenFirstMet;
+        LogConversations                = dto.LogConversations;
+        LogTransactions                 = dto.LogTransactions;
+        LogMaxLines                     = dto.LogMaxLines;
+        SelectedConvoFont = ConvoFontOptions.FirstOrDefault(o => o.Uri == dto.ConvoFont)
+                            ?? ConvoFontOptions[0];
+        SelectedConvoFontSize = ConvoFontSizeOptions.FirstOrDefault(o => o.Value == dto.ConvoFontSize)
+                                ?? ConvoFontSizeOptions.First(o => o.Value == DefaultConvoFontSize);
+        foreach (ChannelColorRowViewModel row in ChannelColorRows)
+        {
+            ChannelColor? co = null;
+            dto.ChannelColors?.TryGetValue(row.Key, out co);
+            row.Load(co?.Label, co?.Text);
+        }
 
         // Mirror loaded settings into the live engine so the user's
         // policy applies from first connection, not just after the
         // Settings window is visited.
         ApplyToServices(dto);
+    }
+
+    // Collapse the row edits into the persisted dictionary, dropping channels
+    // that are fully default (both slots blank) so the delta stays minimal.
+    private Dictionary<string, ChannelColor>? BuildChannelColors()
+    {
+        Dictionary<string, ChannelColor> map = new();
+        foreach (ChannelColorRowViewModel row in ChannelColorRows)
+        {
+            string? label = row.LabelOverride;
+            string? text  = row.TextOverride;
+            if (label is null && text is null) continue;
+            map[row.Key] = new ChannelColor { Label = label, Text = text };
+        }
+        return map.Count == 0 ? null : map;
     }
 
     private TalkSettings ReadOrDefault()
@@ -171,6 +285,7 @@ public sealed partial class TalkSectionViewModel : SettingsSectionViewModel
         engine.FailureMessage          = dto.RemoteCommandFailureMessage ?? string.Empty;
 
         AppServices.Current.Greet.Enabled = dto.GreetPlayersWhenFirstMet;
+        AppServices.Current.SessionLog.ApplySettings(dto);
     }
 
     // ----- IsDirty plumbing -----
@@ -189,6 +304,11 @@ public sealed partial class TalkSectionViewModel : SettingsSectionViewModel
     partial void OnWarnOnInvalidRemoteCommandChanged(bool value)      => MarkDirty();
     partial void OnRemoteCommandFailureMessageChanged(string value)   => MarkDirty();
     partial void OnGreetPlayersWhenFirstMetChanged(bool value)        => MarkDirty();
+    partial void OnLogConversationsChanged(bool value)                => MarkDirty();
+    partial void OnLogTransactionsChanged(bool value)                 => MarkDirty();
+    partial void OnLogMaxLinesChanged(int value)                      => MarkDirty();
+    partial void OnSelectedConvoFontChanged(FontFamilyOption? value)  => MarkDirty();
+    partial void OnSelectedConvoFontSizeChanged(FontSizeOption? value) => MarkDirty();
 
     private void MarkDirty()
     {

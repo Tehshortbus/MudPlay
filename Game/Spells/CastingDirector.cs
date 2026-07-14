@@ -80,6 +80,7 @@ public sealed class CastingDirector : IDisposable
     private readonly Conditions.ConditionTracker? _conditions;
     private readonly PartyState? _party;
     private Func<bool>? _isStealthedFunc;
+    private Func<bool>? _inputCaptured;
     private Func<(string Spell, string? Target)?>? _combatDebuffSource;
     private Action? _combatDebuffCommit;
     private Func<string, int?>? _manaCostLookup;
@@ -208,6 +209,15 @@ public sealed class CastingDirector : IDisposable
     // — when unset the buff slot fires regardless of stealth.
     public void SetStealthGate(Func<bool> isStealthed) =>
         _isStealthedFunc = isStealthed;
+
+    // Wire a "the keyboard is captured by a full-screen menu" predicate. While
+    // it returns true, Evaluate suppresses EVERY cast — not just buffs. When the
+    // `train stats` stat box is up, character-mode input sends keystrokes raw to
+    // the wire, so any automated cast text (bless, heal, cure) lands its letters
+    // in the character-creation form (the "bles" family-name corruption). No cast
+    // is safe to issue in that window. Optional — unset fails open (never gates).
+    public void SetInputCaptureGate(Func<bool> isInputCaptured) =>
+        _inputCaptured = isInputCaptured;
 
     // Wire the downed-ally rescue provider (AllyDroppedHandler). Each Evaluate
     // reads the current set of aided downed allies and heals the first one by
@@ -491,6 +501,9 @@ public sealed class CastingDirector : IDisposable
     public string? Evaluate()
     {
         if (!_isEnabled()) return null;
+        // A full-screen menu owns the keyboard (train-stats box): any cast text
+        // would corrupt its form, so suppress every category until it closes.
+        if (_inputCaptured?.Invoke() == true) return null;
         if (!_state.HasPromptData) return null;
         if (_state.MaxHp <= 0) return null;
         if (_state.Hp <= 0) return null;     // dead — DeathRecoveryManager owns this case

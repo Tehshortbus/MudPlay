@@ -70,10 +70,10 @@ public static class ShopPriceCalculator
     }
 
     // Per-level training cost in copper. To advance FROM `level` to the next,
-    // the guild charges Fix((level*5) * (markup+100)/100) * 10 — so the cost of
+    // the trainer charges Fix((level*5) * (markup+100)/100) * 10 — so the cost of
     // reaching level x passes x-1 here. Realm- and charm-independent (the
     // reference client applies no charm term to training). Markup is the
-    // trainer's Shops.Markup% (0 for a no-markup guild).
+    // trainer's Shops.Markup% (0 for a no-markup trainer).
     public static double TrainCopper(int level, int markupPercent) =>
         Fix(level * 5.0 * (markupPercent + 100) / 100.0) * 10.0;
 

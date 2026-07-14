@@ -304,7 +304,7 @@ public sealed class StatParserTests
     {
         // The auto-train relay depends on ScreenParsed firing after a
         // `train` → `stat` round-trip. But a stat screen the player is
-        // parked in front of (sitting at a guild right after `train`)
+        // parked in front of (sitting at a trainer right after `train`)
         // emits no terminating prompt and no further inbound line, so
         // the reactive gate-close never runs and ScreenParsed never
         // fired — `train stats` was therefore never sent. The idle

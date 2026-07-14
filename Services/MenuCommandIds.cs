@@ -45,7 +45,6 @@ public static class MenuCommandIds
     // ----- Tools ---------------------------------------------------------
     public const string ToolsReplayCapture    = "tools.replay-capture";
     public const string ToolsWireInspector    = "tools.wire-inspector";
-    public const string ToolsExportChatlog    = "tools.export-chatlog";
     public const string ToolsOpenLogsFolder   = "tools.open-logs-folder";
 
     // ----- Help ----------------------------------------------------------

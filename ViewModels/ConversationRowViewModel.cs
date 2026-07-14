@@ -14,10 +14,12 @@ public sealed class ConversationRowViewModel
     public string ChannelText { get; }
     public string SpeakerText { get; }
     public string MessageText { get; }
+    // Accent brush for the channel tag + speaker; MessageBrush colours the body.
     public IBrush ChannelBrush { get; }
+    public IBrush MessageBrush { get; }
     public bool IsDaySeparator => Entry.Channel == ChatChannel.DaySeparator;
 
-    public ConversationRowViewModel(ChatLogEntry entry, Func<ChatChannel, IBrush> brushLookup)
+    public ConversationRowViewModel(ChatLogEntry entry, Func<ChatChannel, IBrush> brushLookup, Func<ChatChannel, IBrush> textBrushLookup)
     {
         Entry = entry;
         TimestampText = entry.Timestamp.ToLocalTime().ToString("HH:mm:ss");
@@ -25,6 +27,7 @@ public sealed class ConversationRowViewModel
         SpeakerText   = FormatSpeaker(entry);
         MessageText   = entry.Message;
         ChannelBrush  = brushLookup(entry.Channel);
+        MessageBrush  = textBrushLookup(entry.Channel);
     }
 
     private static string FormatSpeaker(ChatLogEntry entry)

@@ -1,4 +1,3 @@
-using System.Text;
 using FujinTerm.Game;
 using FujinTerm.Services;
 using FujinTerm.Services.Patterns;
@@ -83,37 +82,5 @@ public sealed class ChatHistoryStoreTests
             new DateTimeOffset(2026, 1, 5, 9, 0, 0, TimeSpan.Zero)));
         Assert.Single(history.Entries);
         Assert.NotEqual(ChatChannel.DaySeparator, history.Entries[0].Channel);
-    }
-
-    [Fact]
-    public async Task ExportAsync_FullHistory_WritesEveryEntry()
-    {
-        var (router, _, history) = Setup();
-        DateTimeOffset t = new(2026, 1, 2, 12, 0, 0, TimeSpan.Zero);
-        router.Dispatch(Line("Forged gossips: hello",    t));
-        router.Dispatch(Line(@"Forged says ""hi""",       t.AddSeconds(1)));
-
-        using MemoryStream stream = new();
-        await history.ExportAsync(stream);
-        string text = Encoding.UTF8.GetString(stream.ToArray());
-
-        Assert.Contains("Gossip Forged: hello", text);
-        Assert.Contains("Local Forged: hi",     text);
-    }
-
-    [Fact]
-    public async Task ExportAsync_WithFilter_OnlyKeepsAllowedChannels()
-    {
-        var (router, _, history) = Setup();
-        DateTimeOffset t = new(2026, 1, 2, 12, 0, 0, TimeSpan.Zero);
-        router.Dispatch(Line("Forged gossips: keep",   t));
-        router.Dispatch(Line(@"Forged says ""drop""",  t.AddSeconds(1)));
-
-        using MemoryStream stream = new();
-        await history.ExportAsync(stream, channelFilter: new HashSet<ChatChannel> { ChatChannel.Gossip });
-        string text = Encoding.UTF8.GetString(stream.ToArray());
-
-        Assert.Contains("keep", text);
-        Assert.DoesNotContain("drop", text);
     }
 }

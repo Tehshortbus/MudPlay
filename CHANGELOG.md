@@ -2,6 +2,21 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.54.0
+
+- Conversation window and Transaction history now persist to rolling per-character logs under Data/Logs (`<char>.<bbs>.talk.log` / `.transactions.log`), surviving restarts and the in-memory line cap
+- Clear chatlog and the Transaction-history Clear button also wipe their log file
+- Settings → Talk: Log conversations / Log transactions toggles and a shared line-limit picker (default 2000)
+- Removed the Conversation window's Export chatlog menu item — the always-on log replaces it
+- Settings → Talk: Conversation window font and size pickers, with the current row font/size tagged `{default}`
+- Settings → Talk: per-channel accent and message-text colour overrides for the seven Conversation channels, picked with a visual colour picker (no hex code needed), with per-slot Reset to the theme default
+- Selecting a recently-used profile no longer strands the File menu flyout at the window's old position — the profile load (and its window reposition) is deferred until the menu closes
+- CP earn math no longer over-pays at decade tops (level 10 counted 15 CP instead of 10, level 20 counted 20 instead of 15) — the allocation plan can no longer offer a stat point the level's CP can't actually afford
+- Auto-train now applies the CP plan on Paradigm's cursor-drawn stat box — the replay fires off the `train stats` command signal instead of the marker row that never scrolls there
+- A train run whose trainer screen never opens keeps the CP plan rows instead of clearing them
+- Auto-cast (bless / heal / cure) is held while the train-stats screen owns the keyboard, so a spell can't type its letters into the character-name field
+- bug reports addressed: paradigm-20260713-104450
+
 ## 1.53.0
 
 - Memory footprint is now sampled once a minute to its own Data/Logs/{ts}-memory.log (working set, private, managed heap, GC heap, fragmentation, collection counts) — kept out of the program log

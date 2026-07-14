@@ -16,15 +16,15 @@ public sealed class TrainerCatalogSelectTests
     private static readonly TrainerShop Newhaven  = new(1, "Newhaven",   1, 100, "", 1, 3, 0, 0);   // serves 0–2
     private static readonly TrainerShop Silver    = new(2, "Silvermere", 1, 200, "", 3, 10, 0, 0);  // serves 2–9
     private static readonly TrainerShop Aldreth   = new(3, "Aldreth",    1, 300, "", 12, 20, 0, 0); // serves 11–19
-    private static readonly TrainerShop MageGuild = new(4, "Mage Guild", 1, 400, "", 1, 99, 7, 0);  // class 7 only
+    private static readonly TrainerShop MageTrainer = new(4, "Mage Trainer", 1, 400, "", 1, 99, 7, 0);  // class 7 only
 
-    private static readonly IReadOnlyList<TrainerShop> All = new[] { Newhaven, Silver, Aldreth, MageGuild };
+    private static readonly IReadOnlyList<TrainerShop> All = new[] { Newhaven, Silver, Aldreth, MageTrainer };
 
     [Fact]
     public void PicksLevelAppropriateUniversalTrainer()
     {
-        // Level 5: Silvermere serves (3–10); Newhaven + Aldreth don't; Mage
-        // Guild is class-7 only.
+        // Level 5: Silvermere serves (3–10); Newhaven + Aldreth don't; the Mage
+        // Trainer is class-7 only.
         TrainerShop? pick = TrainerCatalog.SelectNearest(
             All, level: 5, classNumber: 0, disabled: new HashSet<string>(), distance: _ => 10);
 
@@ -34,23 +34,23 @@ public sealed class TrainerCatalogSelectTests
     [Fact]
     public void PrefersTheNearestReachable()
     {
-        // Level 2 serves Newhaven + Silvermere (+ Mage Guild for class 7) — pick
+        // Level 2 serves Newhaven + Silvermere (+ Mage Trainer for class 7) — pick
         // the closest by the injected distance.
         TrainerShop? pick = TrainerCatalog.SelectNearest(
             All, level: 2, classNumber: 7, disabled: new HashSet<string>(),
-            distance: t => t.Number == MageGuild.Number ? 2 : 20);
+            distance: t => t.Number == MageTrainer.Number ? 2 : 20);
 
-        Assert.Equal(MageGuild.Number, pick!.Value.Number);
+        Assert.Equal(MageTrainer.Number, pick!.Value.Number);
     }
 
     [Fact]
     public void SkipsDisallowedAndUnreachable()
     {
-        // Level 1: only Newhaven (universal) + Mage Guild (class 7) serve it.
-        // Newhaven disallowed, Mage Guild unreachable → nothing qualifies.
+        // Level 1: only Newhaven (universal) + Mage Trainer (class 7) serve it.
+        // Newhaven disallowed, Mage Trainer unreachable → nothing qualifies.
         TrainerShop? pick = TrainerCatalog.SelectNearest(
             All, level: 1, classNumber: 7, disabled: new HashSet<string> { Newhaven.RowKey },
-            distance: t => t.Number == MageGuild.Number ? (int?)null : 5);
+            distance: t => t.Number == MageTrainer.Number ? (int?)null : 5);
 
         Assert.Null(pick);
     }
@@ -59,7 +59,7 @@ public sealed class TrainerCatalogSelectTests
     public void GapLevelClassGated_ReturnsNull()
     {
         // Level 10 is the coverage gap: no universal trainer serves it, and the
-        // only one that spans it (Mage Guild) is class-7 — so a class-3 character
+        // only one that spans it (Mage Trainer) is class-7 — so a class-3 character
         // has no trainer (a quest-gated level).
         TrainerShop? pick = TrainerCatalog.SelectNearest(
             All, level: 10, classNumber: 3, disabled: new HashSet<string>(), distance: _ => 1);
@@ -70,9 +70,9 @@ public sealed class TrainerCatalogSelectTests
     [Theory]
     [InlineData(0, 7, true)]    // universal Training Room serves every class
     [InlineData(0, 0, true)]    // universal, even when class is unknown (0)
-    [InlineData(7, 7, true)]    // guild serves its own class
-    [InlineData(7, 3, false)]   // guild hidden from other classes
-    public void ServesClass_GatesGuildsButNotUniversal(int classRest, int classNumber, bool expected)
+    [InlineData(7, 7, true)]    // class trainer serves its own class
+    [InlineData(7, 3, false)]   // class trainer hidden from other classes
+    public void ServesClass_GatesClassTrainersButNotUniversal(int classRest, int classNumber, bool expected)
     {
         // Drives the Settings → Auto-Trainer view filter (a Mystic shouldn't see
         // other classes' super trainers).
@@ -85,7 +85,7 @@ public sealed class TrainerCatalogSelectTests
     [Fact]
     public void CheapestMarkup_PicksLowestMarkupAmongServingTrainers()
     {
-        // Two universal guilds both teach up to level 5; the lower markup wins.
+        // Two universal trainers both teach up to level 5; the lower markup wins.
         TrainerShop dear  = new(1, "Dear",  1, 100, "", 1, 20, 0, 9999);
         TrainerShop cheap = new(2, "Cheap", 1, 200, "", 1, 20, 0, 300);
         var all = new[] { dear, cheap };
@@ -97,7 +97,7 @@ public sealed class TrainerCatalogSelectTests
     public void CheapestMarkup_IgnoresTrainersOutOfRangeOrOffClass()
     {
         // Reaching level 15: only Aldreth (serves reaching 12–20) qualifies; the
-        // class-7 Mage Guild is hidden from a class-3 char.
+        // class-7 Mage Trainer is hidden from a class-3 char.
         Assert.Equal(0, TrainerCatalog.CheapestMarkup(All, targetLevel: 15, classNumber: 3));
     }
 

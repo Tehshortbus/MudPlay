@@ -68,8 +68,17 @@ public sealed class TrainerMenuTracker : IDisposable
     private bool _inputMenuActive;
     private bool _skipNextInputPrompt;
 
-    // True while we believe the trainer-stats menu is the active screen.
+    // True while we believe the trainer-stats menu is the active screen
+    // (marker-confirmed — never sets on a cursor-positioned menu whose marker
+    // row doesn't scroll; use IsInputMenuActive for the realm-independent read).
     public bool IsInTrainerMenu => _inMenu;
+
+    // True while character-mode input is armed for the `train stats` screen —
+    // set on the outbound command and cleared when the in-game prompt returns.
+    // Unlike IsInTrainerMenu this is realm-independent (driven by the command,
+    // not the marker), so it's the reliable "the full-screen menu owns the
+    // keyboard right now" signal that automated wire sends must respect.
+    public bool IsInputMenuActive => _inputMenuActive;
 
     // Snapshot of non-self party member names taken at the moment we confirmed
     // menu entry. Subscribers to MenuExited inspect this to decide who to

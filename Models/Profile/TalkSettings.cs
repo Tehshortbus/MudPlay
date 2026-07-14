@@ -54,4 +54,42 @@ public sealed class TalkSettings
     // is silent. Self and current party members are always skipped. Default
     // false (opt-in). Wired to Game.GreetManager.
     public bool GreetPlayersWhenFirstMet { get; set; }
+
+    // Persist the Conversation window to Data/Logs/<char>.<bbs>.talk.log so it
+    // survives restarts. Default on. Wired to Services.SessionLogService.
+    public bool LogConversations { get; set; } = true;
+
+    // Persist the Session Stats → Transaction history to
+    // Data/Logs/<char>.<bbs>.transactions.log. Default on.
+    public bool LogTransactions { get; set; } = true;
+
+    // Rolling line cap shared by both logs — the file keeps only its last N
+    // lines, matching the in-memory window's scrollback feel. Default 2000.
+    public int LogMaxLines { get; set; } = 2000;
+
+    // Conversation window font override. Empty string means "use the window's
+    // default row font" — the bundled JetBrains Mono (the {default} option).
+    // Holds an avares:// FontFamily URI.
+    public string ConvoFont { get; set; } = "";
+
+    // Conversation window message font size. 0 means "use the window's built-in
+    // default size" (the {default} option).
+    public double ConvoFontSize { get; set; }
+
+    // Per-channel Conversation colours, keyed by the seven filter-toggle group
+    // names (Gossip / Local / Telepath / Gangpath / Broadcast / Yell /
+    // RealmEvent — both telepath directions and Server/RealmEvent collapse onto
+    // their group). Absent channels, and null members within a present one, fall
+    // back to the built-in theme brushes. Lets the user recolour both the accent
+    // (channel tag / speaker / toggle) and the message-body text.
+    public Dictionary<string, ChannelColor>? ChannelColors { get; set; }
+}
+
+// A user-picked color override for one Conversation channel: the color of its
+// toggle in the window header (Label) and the color of its message text (Text).
+// Null members fall back to the built-in theme brush for that channel.
+public sealed class ChannelColor
+{
+    public string? Label { get; set; }
+    public string? Text { get; set; }
 }

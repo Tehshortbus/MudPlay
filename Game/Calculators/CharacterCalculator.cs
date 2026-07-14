@@ -19,23 +19,30 @@ public static class CharacterCalculator
 {
     // ----- CP --------------------------------------------------------------
 
-    // CP gained when training to the given level:
-    // (Floor(level/10) * 5) + 10 — 10 CP per level through 9, 15 through 19,
-    // 20 through 29, and so on. Returns 0 below level 1.
+    // CP gained by TRAINING to the given level (level 2 and up):
+    // ((level - 1) / 10) * 5 + 10 — 10 CP per level for 2–10, 15 for 11–20,
+    // 20 for 21–30, and so on. The step rises at the *first* level of each new
+    // decade (11, 21, 31…), so level 10 still grants 10 and level 20 still 15;
+    // the old (level/10)*5+10 was off by one and over-paid every decade top.
+    // Level 1 is NOT a training gain — a character begins with the race's
+    // BaseCP pool (100 for the standard races), which CalcTotalCpAtLevel folds
+    // in via its baseCP argument — so this returns 0 below level 2.
     public static int CalcCpGainedAtLevel(int level)
     {
-        if (level < 1) return 0;
-        return (level / 10) * 5 + 10;
+        if (level < 2) return 0;
+        return ((level - 1) / 10) * 5 + 10;
     }
 
-    // Total CP accumulated from level 1 to targetLevel (exclusive upper step:
-    // the i = 1..targetLevel-1 loop), plus baseCP from race.
+    // Total CP a character has received on reaching targetLevel: the race's
+    // level-1 BaseCP pool (baseCP) plus every training gain from level 2 through
+    // targetLevel. With Kang's BaseCP of 100, CalcTotalCpAtLevel(10, 100) = 190
+    // (100 + 9×10).
     public static int CalcTotalCpAtLevel(int targetLevel, int baseCP = 0)
     {
         int total = baseCP;
-        for (int i = 1; i < targetLevel; i++)
+        for (int level = 2; level <= targetLevel; level++)
         {
-            total += (i / 10) * 5 + 10;
+            total += CalcCpGainedAtLevel(level);
         }
         return total;
     }

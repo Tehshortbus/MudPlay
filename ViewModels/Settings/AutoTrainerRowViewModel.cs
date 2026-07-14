@@ -55,8 +55,8 @@ public sealed partial class AutoTrainerRowViewModel : ObservableObject
     public bool ServesLevel(int level) => _shop.ServesLevel(level);
 
     // True when this trainer serves the given class number — either the universal
-    // Training Room (ClassRest == 0) or the matching class guild. Used to hide
-    // other classes' guild trainers from the list.
+    // Training Room (ClassRest == 0) or the matching class trainer. Used to hide
+    // other classes' trainers from the list.
     public bool ServesClass(int classNumber) => _shop.ServesClass(classNumber);
 
     partial void OnAllowedChanged(bool value) => _onAllowedChanged();

@@ -53,7 +53,7 @@ public sealed partial class StatParser : IDisposable
     // Idle self-close. The reactive gate-close in OnLine only fires when a *further*
     // line arrives after capture (a terminating prompt, or any line past the window
     // expiry). But a stat screen the player is parked in front of — e.g. sitting at a
-    // guild right after `train` — emits no trailing prompt and no further line, so the
+    // trainer right after `train` — emits no trailing prompt and no further line, so the
     // gate hangs open and ScreenParsed never fires until the next unrelated inbound line
     // (observed: 34 s later, long past the auto-train CP-apply's 8 s deadline). A short
     // settle timer, re-armed off the last captured field, closes the gate on its own so

@@ -1,5 +1,4 @@
 using System.Collections.ObjectModel;
-using System.Text;
 
 namespace FujinTerm.Game;
 
@@ -13,9 +12,9 @@ namespace FujinTerm.Game;
 // Lifetime: app-scoped (not per-profile). Survives profile swap, connect /
 // disconnect, character switch. Cleared only on Clear or app exit.
 //
-// No disk persistence — in-memory only by default. On-demand export via
-// ExportAsync writes a plain-text file with the same chronological order,
-// optionally filtered to a channel subset.
+// This store is the in-memory view the Conversation window binds to. Durable
+// disk persistence lives in Services.SessionLogService, which subscribes to the
+// same ChatRouter and rolls a per-character talk.log.
 public sealed class ChatHistoryStore : IDisposable
 {
     // Upper bound on retained entries. The store is in-memory and app-lifetime,
@@ -75,32 +74,6 @@ public sealed class ChatHistoryStore : IDisposable
     {
         _entries.Clear();
         _lastDate = default;
-    }
-
-    // Write the history to stream as plain text. Each row becomes
-    // `[HH:mm:ss] {channel}{speaker?}: {message}`; day separators become
-    // `─── yyyy-MM-dd ───`. Optional channelFilter trims to the listed channels;
-    // pass null to export everything.
-    public async Task ExportAsync(Stream stream, IReadOnlySet<ChatChannel>? channelFilter = null)
-    {
-        ArgumentNullException.ThrowIfNull(stream);
-        await using StreamWriter writer = new(stream, Encoding.UTF8, leaveOpen: true);
-
-        foreach (ChatLogEntry entry in _entries)
-        {
-            if (entry.Channel == ChatChannel.DaySeparator)
-            {
-                await writer.WriteLineAsync($"─── {entry.Message} ───").ConfigureAwait(false);
-                continue;
-            }
-
-            if (channelFilter is not null && !channelFilter.Contains(entry.Channel)) continue;
-
-            string speaker = entry.Speaker is null ? string.Empty : $" {entry.Speaker}";
-            await writer.WriteLineAsync(
-                $"[{entry.Timestamp.ToLocalTime():HH:mm:ss}] {entry.Channel}{speaker}: {entry.Message}")
-                .ConfigureAwait(false);
-        }
     }
 
     public void Dispose()
