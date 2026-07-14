@@ -1047,6 +1047,12 @@ public sealed class AppServices
     // hazard-gating pass; rebuilt on GameDataCache.ActiveSetChanged.
     public RoomHazardIndex RoomHazards { get; private set; } = null!;
 
+    // Index of the active set's buff-stripping room-entry spells — rooms whose
+    // cast-on-enter Spell removes/dispels magic (RemovesSpell / DispellMagic).
+    // Feeds CastingDirector's buff-suppression gate; rebuilt on
+    // GameDataCache.ActiveSetChanged.
+    public RoomBuffStripIndex RoomBuffStrip { get; private set; } = null!;
+
     // Active fulfiller for NeedKind.PathItem needs no shop can
     // satisfy: on a one-shot walk-to that needs an uncarried item no shop
     // sells, prompts to reroute to the nearest room a monster that drops it
@@ -1843,13 +1849,27 @@ public sealed class AppServices
         // into the profile DTO just before serialization on save.
         Profile.ProfileLoaded += p => Panels.ApplyLayouts(p.PanelLayouts);
 
-        // PartyManager needs the local character's name so its
-        // par-row parser can tag the right row IsSelf=true (par's
-        // "Given Family" name is compared against the loaded profile
-        // name). Cleared on profile close so IsSelf goes back to false
-        // for every row across the swap.
-        Profile.ProfileLoaded += p => Party.LocalCharacterName = p.Name;
+        // PartyManager needs the local character's name so its par-row
+        // parser can tag the right row IsSelf=true (par's "Given Family"
+        // name is compared against this). The profile name is a label the
+        // user picks and often differs from the in-game character name
+        // (e.g. profile "FujinPVP" vs character "Fujin"), which mis-tagged
+        // the self row and spawned a phantom party entry. So prefer the
+        // parsed character name (StatParser owns PlayerStats.Name) whenever
+        // it's known, falling back to the profile name until the first
+        // stat/snapshot restore fills it in. The Hydrate handler above runs
+        // first (earlier subscription), so a returning session already has
+        // the restored name here; the PropertyChanged sync below then keeps
+        // it current as live `stat` screens re-parse. Cleared on close so
+        // IsSelf goes back to false for every row across the swap.
+        Profile.ProfileLoaded += p =>
+            Party.LocalCharacterName = string.IsNullOrWhiteSpace(PlayerStats.Name) ? p.Name : PlayerStats.Name;
         Profile.ProfileClosed += ()  => Party.LocalCharacterName = null;
+        PlayerStats.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(Game.PlayerStats.Name) && !string.IsNullOrWhiteSpace(PlayerStats.Name))
+                Party.LocalCharacterName = PlayerStats.Name;
+        };
         Profile.ProfileClosed += () => Panels.ApplyLayouts(layouts: null);
         Profile.ProfileSaving += p => p.PanelLayouts = Panels.SnapshotLayouts();
 
@@ -2023,6 +2043,13 @@ public sealed class AppServices
         GameData.ActiveSetChanged += RoomHazards.OnActiveSetChanged;
         if (GameData.ActiveSet is not null)
             RoomHazards.OnActiveSetChanged(GameData.ActiveSet);
+
+        // RoomBuffStripIndex — room-entry Spell that removes/dispels buffs on
+        // entry, from Rooms/Spells. Feeds CastingDirector's buff-suppression gate.
+        RoomBuffStrip = new RoomBuffStripIndex(GameData, Log);
+        GameData.ActiveSetChanged += RoomBuffStrip.OnActiveSetChanged;
+        if (GameData.ActiveSet is not null)
+            RoomBuffStrip.OnActiveSetChanged(GameData.ActiveSet);
 
         // Room tracker. Resets to Unknown on every
         // graph reload because per-room references are invalidated
@@ -2596,6 +2623,11 @@ public sealed class AppServices
         // Auto-Bless auto-engine gate — when off, the Buffing category is
         // suppressed (no Bless / regen / when-full buff fires).
         CastDirector.SetAutoBlessGate(() => ReadAutoModeFlag(d => d.AutoBless));
+        // Buff-strip-room gate — the current room casts a buff-removal spell on
+        // entry (RemovesSpell / DispellMagic), so suppress buffs here rather than
+        // burn mana on a buff the room tears straight back off.
+        CastDirector.SetBuffStripRoomGate(
+            () => RoomBuffStrip.StripsBuffs(RoomTracker.State.CurrentRoom?.Spell ?? 0));
         // Suppress ALL auto-casts while the `train stats` full-screen menu has
         // character-mode input armed — otherwise a cast's letters get typed raw
         // into the character-creation form (the "bles" family-name corruption).

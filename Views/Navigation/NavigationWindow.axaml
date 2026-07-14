@@ -708,7 +708,11 @@
                                   HorizontalScrollBarVisibility="Disabled"
                                   VerticalScrollBarVisibility="Auto"
                                   Padding="10,6,10,6">
-                        <StackPanel Spacing="4">
+                        <!-- Bottom margin reserves a buffer below the last
+                             expander so that when the rail scrolls, the final
+                             loop / Auto-Lair row can't sit flush under the
+                             fixed Manage footer and read as cut off. -->
+                        <StackPanel Spacing="4" Margin="0,0,0,12">
 
                             <!-- CURRENT NAV. HorizontalAlignment=Stretch on
                                  the body StackPanel is the same width

@@ -618,6 +618,21 @@ public sealed class RemoteCommandManager : IDisposable
             return true;
         }
 
+        // @reset fallback — @reset is a party-rhythm coordination function, not
+        // a settings mutation: the leader fires it at the start of a lap so
+        // every member zeroes their per-lap session counters (exp/hour,
+        // combat-round samples). The catalog files it under AlterSettings only
+        // for permission-grouping with the other "alter something on my behalf"
+        // verbs, but any active party member should be able to issue it without
+        // an explicit AlterSettings grant — the same social baseline as @health
+        // / @party. It touches nothing but the sender-visible tracking totals,
+        // so it's safe to un-gate for members. (Report 222201.)
+        if (command.Equals("@reset", StringComparison.OrdinalIgnoreCase)
+            && IsActivePartyMember(sender))
+        {
+            return true;
+        }
+
         // @party fallback — base @party commands are always allowed inside an
         // active party regardless of per-player grants (it's the social
         // baseline of party play).

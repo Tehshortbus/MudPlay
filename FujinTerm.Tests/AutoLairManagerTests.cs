@@ -307,6 +307,39 @@ public sealed class AutoLairManagerTests : IDisposable
         Assert.Contains(AutoLairPhase.Approaching, phases);
     }
 
+    // ----- self-supersede reschedule loop --------------------------
+
+    [Fact]
+    public void Resume_WhileWalking_DoesNotSelfSupersedeIntoRescheduleLoop()
+    {
+        // Regression: Resume drops LastDecision then re-dispatches. The
+        // re-issued WalkTo supersedes the still-in-flight walk, which raises
+        // Stopped("superseded by new walk") synchronously — re-entering the
+        // walker-event handler before the dispatch returns. That self-inflicted
+        // stop must NOT be read as an external displacement: doing so nulled the
+        // target the dispatch had just set, so the next 1 s scheduler tick
+        // re-dispatched → superseded → Stopped → rescheduled, a ~1/sec loop that
+        // never entered the lair. After Resume the session must still hold its
+        // target and keep walking to the wait-room.
+        using Harness h = NewHarness();
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Roam.Mark(new RoomKey(1, 1));
+        h.Roam.Mark(new RoomKey(1, 3));
+
+        Assert.True(h.Roam.Start());
+        Assert.Equal(new RoomKey(1, 1), h.Roam.CurrentTarget);
+        Assert.Equal(WalkState.Walking, h.Walker.State);
+
+        h.Roam.Pause();
+        h.Roam.Resume();
+
+        Assert.Equal(new RoomKey(1, 1), h.Roam.CurrentTarget);
+        Assert.Equal(new RoomKey(1, 2), h.Roam.CurrentWaitRoom);
+        Assert.NotNull(h.Roam.LastDecision);
+        Assert.Equal(WalkState.Walking, h.Walker.State);
+        Assert.Equal(new RoomKey(1, 2), h.Walker.Destination);
+    }
+
     [Fact]
     public void Stop_ClearsEntryArrivalLatch()
     {

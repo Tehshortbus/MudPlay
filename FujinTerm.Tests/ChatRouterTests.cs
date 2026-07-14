@@ -129,6 +129,47 @@ public sealed class ChatRouterTests
     }
 
     [Fact]
+    public void Say_OtherClassifiesAsLocal()
+    {
+        var (router, _, entries) = Setup();
+        router.Dispatch(Line(@"Forged says ""hi there"""));
+
+        ChatLogEntry e = Assert.Single(entries);
+        Assert.Equal(ChatChannel.Local, e.Channel);
+        Assert.Equal("Forged",   e.Speaker);
+        Assert.Equal("hi there", e.Message);
+    }
+
+    [Fact]
+    public void DirectedSay_ToYou_ClassifiesAsLocalWithSpeaker()
+    {
+        // Report 225011: a directed reply ("Tristian says (to you) ""…""")
+        // was dropped entirely because the (to you) clause broke the say
+        // regex. It must land in the say channel like any other say.
+        var (router, _, entries) = Setup();
+        router.Dispatch(Line(@"Tristian says (to you) ""{Yes: 1.}"""));
+
+        ChatLogEntry e = Assert.Single(entries);
+        Assert.Equal(ChatChannel.Local, e.Channel);
+        Assert.Equal("Tristian", e.Speaker);
+        Assert.Equal("{Yes: 1.}", e.Message);
+    }
+
+    [Fact]
+    public void DirectedSay_SelfToOther_HasNoSpeaker()
+    {
+        // Own directed say keeps "You" out of the speaker group (so it's
+        // never mistaken for an inbound @-command), same as a plain say.
+        var (router, _, entries) = Setup();
+        router.Dispatch(Line(@"You say (to Tristian) ""@have rope"""));
+
+        ChatLogEntry e = Assert.Single(entries);
+        Assert.Equal(ChatChannel.Local, e.Channel);
+        Assert.Null(e.Speaker);
+        Assert.Equal("@have rope", e.Message);
+    }
+
+    [Fact]
     public void PlayerEnters_ClassifiesAsRealmEvent()
     {
         var (router, _, entries) = Setup();

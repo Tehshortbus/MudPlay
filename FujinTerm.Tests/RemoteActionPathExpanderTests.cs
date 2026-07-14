@@ -167,6 +167,100 @@ public sealed class RemoteActionPathExpanderTests : IDisposable
         Assert.True(cross.SkipSpecialDispatch);   // prerequisites already emitted
     }
 
+    // Crypt-style layout: the gated door is several rooms past a junction, and
+    // both levers branch off that junction — not off the door's host room. The
+    // approach threads the junction (1/2) on the way to the host (1/4).
+    //
+    //            1/5  (lever 1 — Action#1 for 1/4's N door)
+    //             ▲N
+    //   1/1 ─E─▶ 1/2 ─E─▶ 1/3 ─E─▶ 1/4 ─N (Hidden/Needs 2 Actions)─▶ 1/9
+    //             │S
+    //             ▼
+    //            1/6  (lever 2 — Action#2 for 1/4's N door)
+    private const string DistantDoorTwoLeverGraphJson = """
+        [
+          { "Map Number": 1, "Room Number": 1, "Name": "Start",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "0", "E": "1/2", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 2, "Name": "Junction",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "1/5", "S": "1/6", "E": "1/3", "W": "1/1",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 3, "Name": "Corridor",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "0", "E": "1/4", "W": "1/2",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 4, "Name": "DoorRoom",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "1/9 (Hidden/Needs 2 Actions, any order)", "S": "0", "E": "0", "W": "1/3",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 5, "Name": "Lever1",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "1/2", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0",
+            "D": "Action#1 [on the N exit of room 1/4]: pull lever" },
+          { "Map Number": 1, "Room Number": 6, "Name": "Lever2",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "1/2", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0",
+            "D": "Action#2 [on the N exit of room 1/4]: pull lever" },
+          { "Map Number": 1, "Room Number": 9, "Name": "Vault",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "1/4" }
+        ]
+        """;
+
+    [Fact]
+    public void CrossRoomMultiAction_AnchorsDetourAtNearestApproachRoom_NotAtDoor()
+    {
+        // Regression: the levers must be pulled where the approach passes nearest
+        // them (the junction 1/2), not after climbing all the way to the door's
+        // host room (1/4) and backtracking. The bug walked to the door first,
+        // wasting the whole 1/2↔1/4 stretch there and back.
+        RoomGraphManager graph = NewGraph(DistantDoorTwoLeverGraphJson);
+        BfsMapper bfs = new(graph);
+
+        // Path 1/1 → 1/9 is E, E, E, N (BFS crosses the gated door freely).
+        var steps = RemoteActionPathExpander.Expand(
+            graph, new RoomKey(1, 1),
+            new[] { Direction.E, Direction.E, Direction.E, Direction.N }, bfs);
+
+        // Approach one hop to the junction, pull both levers off it, then finish
+        // the approach and cross:
+        //   E→1/2, N→1/5, pull, S→1/2, S→1/6, pull, N→1/2, E→1/3, E→1/4, N→1/9
+        Assert.Equal(10, steps.Count);
+
+        Assert.Equal(new RoomKey(1, 2), ((MoveStep)steps[0]).ExpectedTarget);
+        Assert.Equal(new RoomKey(1, 5), ((MoveStep)steps[1]).ExpectedTarget);
+        Assert.Equal("pull lever", ((CommandStep)steps[2]).Command);
+        Assert.Equal(new RoomKey(1, 2), ((MoveStep)steps[3]).ExpectedTarget);
+        Assert.Equal(new RoomKey(1, 6), ((MoveStep)steps[4]).ExpectedTarget);
+        Assert.Equal("pull lever", ((CommandStep)steps[5]).Command);
+        Assert.Equal(new RoomKey(1, 2), ((MoveStep)steps[6]).ExpectedTarget);
+        Assert.Equal(new RoomKey(1, 3), ((MoveStep)steps[7]).ExpectedTarget);
+        Assert.Equal(new RoomKey(1, 4), ((MoveStep)steps[8]).ExpectedTarget);
+
+        MoveStep cross = Assert.IsType<MoveStep>(steps[9]);
+        Assert.Equal(Direction.N, cross.Direction);
+        Assert.Equal(new RoomKey(1, 9), cross.ExpectedTarget);
+        Assert.True(cross.SkipSpecialDispatch);
+
+        // The core invariant: both lever pulls precede the walker's first arrival
+        // at the door's host room (1/4), so we never overshoot to the door and
+        // come back.
+        int lastPull = -1, firstHostArrival = -1;
+        for (int i = 0; i < steps.Count; i++)
+        {
+            if (steps[i] is CommandStep) lastPull = i;
+            if (firstHostArrival < 0
+                && steps[i] is MoveStep m && m.ExpectedTarget.Equals(new RoomKey(1, 4)))
+                firstHostArrival = i;
+        }
+        Assert.True(lastPull >= 0 && lastPull < firstHostArrival);
+    }
+
     [Fact]
     public void CrossRoomMultiAction_NoMapper_FallsBackToSingleStep()
     {

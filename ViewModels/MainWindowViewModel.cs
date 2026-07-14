@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Net.Sockets;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -1047,7 +1048,7 @@ public partial class MainWindowViewModel : ObservableObject
         Emulator.ResponseReady += bytes =>
         {
             var t = _telnet;
-            if (t is not null) _ = t.SendAsync(bytes);
+            if (t is not null) _ = FireSendAsync(t, bytes);
         };
 
         // Build the dynamic toolbar items now, then rebuild whenever the
@@ -2456,7 +2457,34 @@ public partial class MainWindowViewModel : ObservableObject
         // and are caught by the router's line sniff instead.
         AppServices.Current.Chat.ObserveOutbound(data);
         var t = _telnet;
-        if (t is not null) _ = t.SendAsync(data);
+        if (t is not null) _ = FireSendAsync(t, data);
+    }
+
+    // Fire-and-forget a send on the live socket without letting a mid-send
+    // connection drop become fatal. `SendAsync` throws IOException /
+    // SocketException (broken pipe) or ObjectDisposedException when the
+    // socket dies between the null-check and the write; a timer-driven
+    // engine send (e.g. the party poller ticking after a disconnect) that
+    // discards the returned Task would surface that fault as a
+    // TaskScheduler.UnobservedTaskException and crash the app. This wrapper
+    // observes the Task and catches every fault internally — so the caller's
+    // `_ =` discard can never carry an unobserved exception. The socket-death
+    // path already logs the disconnect, so an expected drop is Debug noise;
+    // anything unexpected still logs at Error but is never rethrown.
+    private static async Task FireSendAsync(TelnetClient t, byte[] data)
+    {
+        try
+        {
+            await t.SendAsync(data).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is IOException or SocketException or ObjectDisposedException)
+        {
+            AppServices.Current.Log.Debug("Telnet", $"Send dropped (socket closed): {ex.Message}");
+        }
+        catch (Exception ex)
+        {
+            AppServices.Current.Log.Error("Telnet", $"Unexpected send failure: {ex.Message}");
+        }
     }
 
     // Convenience: encode a text line (Latin-1 + CRLF) and send it to the

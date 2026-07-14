@@ -2,6 +2,19 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.57.0
+
+- Auto-buff is now suppressed in rooms whose cast-on-enter spell strips buffs (RemovesSpell / DispellMagic) — no more burning mana re-casting a blessing the room tears straight back off every tick (e.g. the Crypt's "negate magic" halls)
+- Party window tags the self row by the parsed in-game character name instead of the profile label, so a profile named differently from the character no longer spawns a phantom party entry or whispers yourself
+- Auto-lair recognises a room clear and advances to the next lair instead of stalling after the first — a self-supersede stop was misread as an external move and re-armed the same walk ~1×/sec
+- A door opened by levers/actions in other rooms is now pulled at the right time: the walk detours through the action rooms first (anchored at the approach room nearest them) before checking the door, instead of walking to the closed door first and wasting the trip
+- Follower @wait/@ok no longer flap — @ok is held until both HP and MA reach the full rest ceiling, decoupled from the movement floor that releases at trigger+1
+- A directed say ("Name says (to you) …") is now captured in the Conversation window's say channel (and a directed @-command still routes) instead of being dropped
+- @reset from an active party member is accepted without an AlterSettings grant — it's a party-rhythm coordination signal, not a settings change
+- A mid-send socket drop (e.g. the party poller ticking after a disconnect) no longer crashes the app with an unobserved task exception
+- Navigation rail reserves a bottom buffer so the last loop / Auto-Lair row can't read as cut off under the Manage footer when scrolled
+- bug reports addressed: paradigm-20260713-105825, paradigm-20260713-173953, paradigm-20260713-195552, paradigm-20260713-220904, paradigm-20260713-222201, paradigm-20260713-222618, paradigm-20260713-225011
+
 ## 1.56.0
 
 - Clicking a saved GOTO favourite now stages it as the queued destination (map pans, route preview draws, Run arms) instead of immediately walking there — hit Run to go or the X to cancel, same as picking a room from the search box
