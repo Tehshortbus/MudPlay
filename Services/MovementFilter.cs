@@ -172,6 +172,28 @@ public sealed class MovementFilter : IRoomFilter
         IsLevelGateBlocked(in exit) || IsTollGateBlocked(in exit) || IsClassGateBlocked(in exit)
         || IsItemGateBlocked(in exit) || IsImpassableDoorBlocked(in exit) || IsHazardEntryBlocked(in exit);
 
+    // Same gate checks as IsExitBlocked, but reports which kinds fire rather
+    // than a single bool — so a failed walk names the actual obstacle. A
+    // key-locked door surfaces as LockedDoor (not the pack-item Item reason)
+    // so the message reads "a locked door you can't open" instead of a
+    // mismatched "required item". Evaluated under whatever gate-suspension is
+    // live: a walk that suspended the acquirable gates and still found no path
+    // is blocked by a non-acquirable gate, and this reports exactly that.
+    public ExitBlockReason DescribeExitBlock(in RoomExit exit)
+    {
+        ExitBlockReason reasons = ExitBlockReason.None;
+        if (IsLevelGateBlocked(in exit)) reasons |= ExitBlockReason.Level;
+        if (IsTollGateBlocked(in exit)) reasons |= ExitBlockReason.Toll;
+        if (IsClassGateBlocked(in exit)) reasons |= ExitBlockReason.Class;
+        if (IsItemGateBlocked(in exit))
+            reasons |= exit.Hint == RoomExitHint.KeyLocked
+                ? ExitBlockReason.LockedDoor
+                : ExitBlockReason.Item;
+        if (IsImpassableDoorBlocked(in exit)) reasons |= ExitBlockReason.Door;
+        if (IsHazardEntryBlocked(in exit)) reasons |= ExitBlockReason.Hazard;
+        return reasons;
+    }
+
     // Item / ticket / key-locked-door gates. Suspended for the gated-route
     // planning pass. Only evaluated once inventory is known — an unparsed
     // inventory walks unrestricted rather than routing around gates we can't

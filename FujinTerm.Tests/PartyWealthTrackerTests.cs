@@ -147,17 +147,20 @@ public sealed class PartyWealthTrackerTests
     }
 
     [Fact]
-    public void MinWealth_MissingFollower_ReturnsZero()
+    public void MinWealth_MissingFollower_SkippedNotCountedBroke()
     {
         var h = new Harness { SelfWealth = 5000 };
         h.AddMember("Bob");   // never reported wealth
         h.Lead();
 
-        Assert.Equal(0, h.Tracker.MinWealth());   // unknown follower gates any positive toll
+        // Unknown follower is skipped, not treated as broke: the toll blocks
+        // only on a CONFIRMED shortfall. The walk-start Probe warms Bob's
+        // reading for a later confirmed evaluation.
+        Assert.Equal(5000, h.Tracker.MinWealth());
     }
 
     [Fact]
-    public void MinWealth_StaleFollower_ReturnsZero()
+    public void MinWealth_StaleFollower_SkippedNotCountedBroke()
     {
         var h = new Harness { SelfWealth = 5000 };
         h.AddMember("Bob");
@@ -166,7 +169,30 @@ public sealed class PartyWealthTrackerTests
         Assert.Equal(3000, h.Tracker.MinWealth());   // fresh → folded in
 
         h.Advance(h.Tracker.FreshnessWindow + TimeSpan.FromSeconds(1));
-        Assert.Equal(0, h.Tracker.MinWealth());      // gone stale → treated as absent
+        Assert.Equal(5000, h.Tracker.MinWealth());   // gone stale → skipped, back to self only
+    }
+
+    [Fact]
+    public void MinWealth_UnknownFollower_DoesNotLowerConfirmedMin()
+    {
+        var h = new Harness { SelfWealth = 5000 };
+        h.AddMember("Bob");    // confirmed poorer
+        h.AddMember("Al");     // never reported — must not drag the min to 0
+        h.Lead();
+        h.Tracker.Record("Bob", 3000);
+
+        Assert.Equal(3000, h.Tracker.MinWealth());   // min over {self, Bob}; Al skipped
+    }
+
+    [Fact]
+    public void MinWealth_ConfirmedShortFollower_StillGates()
+    {
+        var h = new Harness { SelfWealth = 5000 };
+        h.AddMember("Bob");
+        h.Lead();
+        h.Tracker.Record("Bob", 250);   // confirmed can't cover a 300-copper toll
+
+        Assert.Equal(250, h.Tracker.MinWealth());   // below cost → MovementFilter gates the toll
     }
 
     // ----- MinWealth is a pure cache read — never touches the wire ------------
@@ -253,7 +279,7 @@ public sealed class PartyWealthTrackerTests
         h.AddMember("Bob");
         h.Lead();
 
-        Assert.Equal(0, h.Tracker.MinWealth());   // Bob unknown → 0 (no probe from the read)
+        Assert.Equal(5000, h.Tracker.MinWealth()); // Bob unknown → skipped, self only (no probe from the read)
         h.Tracker.Probe();                        // walker warms the route
         Assert.Equal(1, h.Probes);
 

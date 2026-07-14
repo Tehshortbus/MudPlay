@@ -2,6 +2,22 @@ using System;
 
 namespace FujinTerm.Game.Map;
 
+// The gate kinds that can make an exit non-traversable, as a bitset so a
+// single exit (or a whole route) can carry more than one reason. Lets a
+// failed walk name the actual obstacle instead of a generic guess.
+[Flags]
+public enum ExitBlockReason
+{
+    None       = 0,
+    Level      = 1 << 0,   // a (Level: MIN to MAX) window the crosser falls outside
+    Toll       = 1 << 1,   // a (Toll: N) the crosser can't afford
+    Class      = 1 << 2,   // a (Class: N OK) hall closed to the crosser's class
+    Item       = 1 << 3,   // a held-item / ticket gate whose item we lack
+    LockedDoor = 1 << 4,   // a key-locked door we can neither key, pick, nor bash
+    Door       = 1 << 5,   // a plain door the build can't pick or bash
+    Hazard     = 1 << 6,   // a cast-on-enter room hazard we can't survive
+}
+
 // Pathing-time room filter — when supplied to BfsMapper.FindPath, any
 // room with IsAvoided=true is treated as a non-traversable node (cannot be
 // on a path; cannot be a path's intermediate hop). The source and
@@ -24,6 +40,13 @@ public interface IRoomFilter
     // ignored to tell "all routes level-gated" apart from
     // "graph-disconnected".
     bool IsExitBlocked(in RoomExit exit) => false;
+
+    // Classifies WHY an exit is non-traversable — the union of gate kinds
+    // blocking it — so a failed walk can name the real obstacle instead of a
+    // generic "level, toll, or class" guess that may not fit (e.g. a
+    // key-locked door). Mirrors IsExitBlocked: an exit blocks iff this returns
+    // non-None. Default never blocks; only Services.MovementFilter overrides.
+    ExitBlockReason DescribeExitBlock(in RoomExit exit) => ExitBlockReason.None;
 
     // Called once at walk-start (walker approach, loop expansion) with the
     // route's endpoints so a filter can warm any route-scoped state before

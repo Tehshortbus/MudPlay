@@ -1,16 +1,10 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.57.0**
-> - Auto-buff is now suppressed in rooms whose cast-on-enter spell strips buffs (RemovesSpell / DispellMagic) — no more burning mana re-casting a blessing the room tears straight back off every tick (e.g. the Crypt's "negate magic" halls)
-> - Party window tags the self row by the parsed in-game character name instead of the profile label, so a profile named differently from the character no longer spawns a phantom party entry or whispers yourself
-> - Auto-lair recognises a room clear and advances to the next lair instead of stalling after the first — a self-supersede stop was misread as an external move and re-armed the same walk ~1×/sec
-> - A door opened by levers/actions in other rooms is now pulled at the right time: the walk detours through the action rooms first (anchored at the approach room nearest them) before checking the door, instead of walking to the closed door first and wasting the trip
-> - Follower @wait/@ok no longer flap — @ok is held until both HP and MA reach the full rest ceiling, decoupled from the movement floor that releases at trigger+1
-> - A directed say ("Name says (to you) …") is now captured in the Conversation window's say channel (and a directed @-command still routes) instead of being dropped
-> - @reset from an active party member is accepted without an AlterSettings grant — it's a party-rhythm coordination signal, not a settings change
-> - A mid-send socket drop (e.g. the party poller ticking after a disconnect) no longer crashes the app with an unobserved task exception
-> - Navigation rail reserves a bottom buffer so the last loop / Auto-Lair row can't read as cut off under the Manage footer when scrolled
+> **Version 1.58.0**
+> - A key-locked door is now recognised as passable when the required key is on your key ring (not just loose in your pack) — the walker no longer falls back to the pick-only alternative and false-blocks a route you hold the key for
+> - A blocked walk names the actual obstacle — a locked door, a missing item, a level window, a toll, a class hall, or a room hazard — instead of always reporting "level, toll, or class"
+> - A toll no longer routes the party around it just because a follower's wealth is unread: unknown followers are @wealth-probed and the toll blocks only when someone is confirmed short
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

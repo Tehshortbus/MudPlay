@@ -2,6 +2,13 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.58.0
+
+- A key-locked door is now recognised as passable when the required key is on your key ring (not just loose in your pack) — the walker no longer falls back to the pick-only alternative and false-blocks a route you hold the key for
+- A blocked walk names the actual obstacle — a locked door, a missing item, a level window, a toll, a class hall, or a room hazard — instead of always reporting "level, toll, or class"
+- A toll no longer routes the party around it just because a follower's wealth is unread: unknown followers are @wealth-probed and the toll blocks only when someone is confirmed short
+- bug reports addressed: paradigm-20260713-223929
+
 ## 1.57.0
 
 - Auto-buff is now suppressed in rooms whose cast-on-enter spell strips buffs (RemovesSpell / DispellMagic) — no more burning mana re-casting a blessing the room tears straight back off every tick (e.g. the Crypt's "negate magic" halls)

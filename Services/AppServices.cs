@@ -4391,19 +4391,15 @@ public sealed class AppServices
     }
 
     // True when the given item id is in the current inventory snapshot —
-    // carried or worn. The snapshot tracks names, so each carried / worn
-    // display-name is mapped back to its item Number via
-    // ItemNames (sharing the article/count normalization) and
-    // compared. Backs PathItemDemand's possession check.
-    private bool IsItemCarried(int itemId)
-    {
-        Game.Inventory.InventorySnapshot snap = Inventory.Snapshot;
-        foreach (string name in snap.CarriedItems)
-            if (ItemNames.FindByName(name) == itemId) return true;
-        foreach (Game.Inventory.EquippedItem worn in snap.EquippedItems)
-            if (ItemNames.FindByName(worn.Name) == itemId) return true;
-        return false;
-    }
+    // carried, worn, OR on the key ring. Possession, not pack-membership:
+    // a KEY-type item (e.g. a door key) lives in the dump's separate "You
+    // have the following keys:" trailer, not the pack, so a carried-only
+    // check misreads a held key as absent — which false-blocks a KeyLocked
+    // door's carry-the-key opener and strands the walk on the pick-only
+    // stat alternative. Delegates to CountItemHeld so the key-ring logic
+    // lives in one place. Backs PathItemDemand's possession check and the
+    // MovementFilter key/item gate.
+    private bool IsItemCarried(int itemId) => CountItemHeld(itemId) > 0;
 
     // How many copies of itemId the current snapshot holds
     // (carried + worn). The carried list stores one entry per copy, so gives /
