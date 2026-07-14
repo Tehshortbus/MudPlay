@@ -9,6 +9,7 @@ Notable changes per merged PR, **newest first**. The top of the [README](README.
 - Our own confusion now pauses navigation locally: a confused leader or solo player holds their walk / loop / auto-lair (and lights the self chip) until it clears — the leader/solo analogue of the @wait a confused follower telepaths; honours the Ignore Confusion setting
 - A knockdown now pauses navigation instead of hammering the server: while held ("flat on your back") the walker holds and resumes on "You get back on your feet.", and the flat-on-your-back refusal is recognised so an in-flight move can't strand the tracker
 - Long chat messages that wrap across terminal lines are stitched back into one logical line, so the Conversation window captures the whole message instead of just the first row
+- Corrected Chancellor Annora's quest-step room in the seed data (1/3333 → 1/1333) so the alignment/quest walkthroughs point at her real location
 - bug reports addressed: paradigm-20260713-233737, paradigm-20260714-002413, paradigm-20260714-001001
 
 ## 1.58.0

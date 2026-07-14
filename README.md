@@ -7,6 +7,7 @@
 > - Our own confusion now pauses navigation locally: a confused leader or solo player holds their walk / loop / auto-lair (and lights the self chip) until it clears; honours the Ignore Confusion setting
 > - A knockdown now pauses navigation instead of hammering the server: while held ("flat on your back") the walker holds and resumes on "You get back on your feet."
 > - Long chat messages that wrap across terminal lines are stitched back into one logical line, so the Conversation window captures the whole message instead of just the first row
+> - Corrected Chancellor Annora's quest-step room in the seed data (1/3333 → 1/1333)
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->
