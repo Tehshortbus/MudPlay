@@ -25,6 +25,10 @@ public sealed partial class ChannelColorRowViewModel : ObservableObject
     [ObservableProperty] private Color _labelColor;
     [ObservableProperty] private Color _textColor;
 
+    // Live preview brushes for the swatch buttons that open each picker flyout.
+    public IBrush LabelSwatch => new SolidColorBrush(LabelColor);
+    public IBrush TextSwatch => new SolidColorBrush(TextColor);
+
     public ChannelColorRowViewModel(string key, string name, Color defaultLabel, Color defaultText, Action onChanged)
     {
         Key = key;
@@ -55,8 +59,17 @@ public sealed partial class ChannelColorRowViewModel : ObservableObject
     [RelayCommand]
     private void ResetText() => TextColor = _defaultText;
 
-    partial void OnLabelColorChanged(Color value) => _onChanged();
-    partial void OnTextColorChanged(Color value) => _onChanged();
+    partial void OnLabelColorChanged(Color value)
+    {
+        OnPropertyChanged(nameof(LabelSwatch));
+        _onChanged();
+    }
+
+    partial void OnTextColorChanged(Color value)
+    {
+        OnPropertyChanged(nameof(TextSwatch));
+        _onChanged();
+    }
 
     // Drop alpha — overrides persist as RGB only, matching what the
     // Conversation window renders.

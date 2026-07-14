@@ -173,18 +173,50 @@
                             <TextBlock Grid.Column="0" Classes="FieldLabel" Text="{Binding Name}"/>
 
                             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
-                                <ColorPicker Color="{Binding LabelColor, Mode=TwoWay}"
-                                             IsAlphaEnabled="False"
-                                             ToolTip.Tip="Accent colour — the channel tag, speaker name and filter toggle."/>
+                                <Button Padding="2" VerticalAlignment="Center"
+                                        ToolTip.Tip="Accent colour — the channel tag, speaker name and filter toggle. Click to pick.">
+                                    <Border Width="46" Height="18"
+                                            Background="{Binding LabelSwatch}"
+                                            BorderBrush="{StaticResource ChromeBorderSoftBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="{StaticResource CornerSm}"/>
+                                    <Button.Flyout>
+                                        <Flyout>
+                                            <LayoutTransformControl>
+                                                <LayoutTransformControl.LayoutTransform>
+                                                    <ScaleTransform ScaleX="0.8" ScaleY="0.8"/>
+                                                </LayoutTransformControl.LayoutTransform>
+                                                <ColorView Color="{Binding LabelColor, Mode=TwoWay}"
+                                                           IsAlphaEnabled="False"/>
+                                            </LayoutTransformControl>
+                                        </Flyout>
+                                    </Button.Flyout>
+                                </Button>
                                 <Button Content="Reset" Command="{Binding ResetLabelCommand}"
                                         VerticalAlignment="Center"
                                         ToolTip.Tip="Reset the accent colour to the theme default."/>
                             </StackPanel>
 
                             <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="6">
-                                <ColorPicker Color="{Binding TextColor, Mode=TwoWay}"
-                                             IsAlphaEnabled="False"
-                                             ToolTip.Tip="Message-body text colour."/>
+                                <Button Padding="2" VerticalAlignment="Center"
+                                        ToolTip.Tip="Message-body text colour. Click to pick.">
+                                    <Border Width="46" Height="18"
+                                            Background="{Binding TextSwatch}"
+                                            BorderBrush="{StaticResource ChromeBorderSoftBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="{StaticResource CornerSm}"/>
+                                    <Button.Flyout>
+                                        <Flyout>
+                                            <LayoutTransformControl>
+                                                <LayoutTransformControl.LayoutTransform>
+                                                    <ScaleTransform ScaleX="0.8" ScaleY="0.8"/>
+                                                </LayoutTransformControl.LayoutTransform>
+                                                <ColorView Color="{Binding TextColor, Mode=TwoWay}"
+                                                           IsAlphaEnabled="False"/>
+                                            </LayoutTransformControl>
+                                        </Flyout>
+                                    </Button.Flyout>
+                                </Button>
                                 <Button Content="Reset" Command="{Binding ResetTextCommand}"
                                         VerticalAlignment="Center"
                                         ToolTip.Tip="Reset the message-body colour to the theme default."/>
