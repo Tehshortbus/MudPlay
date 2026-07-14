@@ -633,7 +633,7 @@ comes from the stat screen / who line (`AlignmentTracker` / `PlayerStats`).
     `downwards` confirmed from an earlier capture.*
   - **failure** — cardinals `You notice nothing different to the <dir>.`; up/down `You notice nothing
     different above you.` / `You notice nothing different below you.` (no "to the", no direction word).
-    *`above you` confirmed on the wire; `below you` is the symmetric down form, not yet directly observed.*
+    *Both vertical forms confirmed (`above you` on the wire, `below you` by the user).*
 
   The client keys on both to drive the reveal retry loop (`HiddenExitRevealManager`): a failure line
   triggers another `sea` up to the attempt cap, a success line resolves the reveal so the walker sends

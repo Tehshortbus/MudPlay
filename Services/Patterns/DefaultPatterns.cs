@@ -97,9 +97,9 @@ public static class DefaultPatterns
         // ("north" / "northeast" / …); up/down instead say "above you" /
         // "below you" — no "to the", no direction word. The handler only
         // needs to know the search missed so it can retry, so this just has
-        // to match; it captures nothing. ("above you" confirmed on the wire,
-        // report paradigm-20260714-121106; "below you" is the symmetric down
-        // form.) Miss the vertical forms and up/down searches never retry.
+        // to match; it captures nothing. (Both vertical forms confirmed on the
+        // wire — report paradigm-20260714-121106 + user.) Miss the vertical
+        // forms and up/down searches never retry.
         yield return new RegexPattern(KnownPatterns.UserSearchFailed,
             @"^You notice nothing different (?:to the \w+|above you|below you)");
         // Success wording also differs by axis: cardinals say "to the <dir>",

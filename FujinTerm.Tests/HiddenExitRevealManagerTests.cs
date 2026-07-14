@@ -217,8 +217,8 @@ public sealed class HiddenExitRevealManagerTests : IDisposable
         // "to the <dir>" form. When the failure regex only matched the cardinal
         // form, an up/down "sea" never registered as a miss, so the clean
         // pattern-driven retry never fired and the walker fell into a stall
-        // loop (report paradigm-20260714-121106). "above you" is confirmed on
-        // the wire; "below you" is the symmetric down form.
+        // loop (report paradigm-20260714-121106). Both vertical forms are
+        // confirmed on the wire.
         Harness h = new(_root, withRouter: true) { MaxAttempts = 3 };
         h.Tracker.SetLocated(new RoomKey(1, 1));
         h.Mgr.Enqueue(Direction.U, "walker", _ => { });
