@@ -24,19 +24,19 @@
                 <WrapPanel Grid.Column="0" Orientation="Horizontal" ItemSpacing="6" LineSpacing="4"
                            VerticalAlignment="Center">
                     <CheckBox IsChecked="{Binding ShowGossip}"            Content="Gossip"
-                              Foreground="{StaticResource AccentCyanBrush}"   FontSize="11"/>
+                              Foreground="{Binding GossipBrush}"    FontSize="11"/>
                     <CheckBox IsChecked="{Binding ShowLocal}"             Content="Say"
-                              Foreground="{StaticResource ChromeFgBrush}"     FontSize="11"/>
+                              Foreground="{Binding LocalBrush}"     FontSize="11"/>
                     <CheckBox IsChecked="{Binding ShowTelepath}" Content="Telepath"
-                              Foreground="{StaticResource AccentMagentaBrush}" FontSize="11"/>
+                              Foreground="{Binding TelepathBrush}" FontSize="11"/>
                     <CheckBox IsChecked="{Binding ShowGangpath}"          Content="Gang"
-                              Foreground="{StaticResource AccentGreenBrush}"  FontSize="11"/>
+                              Foreground="{Binding GangpathBrush}"  FontSize="11"/>
                     <CheckBox IsChecked="{Binding ShowBroadcast}"         Content="Broadcast"
-                              Foreground="{StaticResource AccentYellowBrush}" FontSize="11"/>
+                              Foreground="{Binding BroadcastBrush}" FontSize="11"/>
                     <CheckBox IsChecked="{Binding ShowYell}"              Content="Yell"
-                              Foreground="{StaticResource AccentAmberBrush}"  FontSize="11"/>
+                              Foreground="{Binding YellBrush}"      FontSize="11"/>
                     <CheckBox IsChecked="{Binding ShowRealmEvent}"        Content="Realm"
-                              Foreground="{StaticResource ChromeFgMutedBrush}" FontSize="11"/>
+                              Foreground="{Binding RealmBrush}"     FontSize="11"/>
                 </WrapPanel>
 
                 <!-- Search over auto-scroll in one fixed-width column: stacking
@@ -124,8 +124,8 @@
                                 Padding="0,8,0,4">
                             <TextBlock HorizontalAlignment="Center"
                                        Foreground="{StaticResource ChromeFgMutedBrush}"
-                                       FontFamily="{StaticResource FontMono}"
-                                       FontSize="11"
+                                       FontFamily="{Binding DataContext.RowFontFamily, ElementName=RowsList}"
+                                       FontSize="{Binding DataContext.MetaFontSize, ElementName=RowsList}"
                                        Text="{Binding MessageText, StringFormat='─── {0} ───'}"/>
                         </Border>
                         <Grid IsVisible="{Binding !IsDaySeparator}"
@@ -133,8 +133,8 @@
                             <TextBlock Grid.Column="0"
                                        Text="{Binding TimestampText}"
                                        Foreground="{StaticResource ChromeFgMutedBrush}"
-                                       FontFamily="{StaticResource FontMono}"
-                                       FontSize="11"
+                                       FontFamily="{Binding DataContext.RowFontFamily, ElementName=RowsList}"
+                                       FontSize="{Binding DataContext.MetaFontSize, ElementName=RowsList}"
                                        VerticalAlignment="Center"
                                        Margin="0,0,8,0"/>
                             <Border Grid.Column="1"
@@ -147,22 +147,22 @@
                                     Margin="0,0,8,0">
                                 <TextBlock Text="{Binding ChannelText}"
                                            Foreground="{Binding ChannelBrush}"
-                                           FontFamily="{StaticResource FontMono}"
-                                           FontSize="11"/>
+                                           FontFamily="{Binding DataContext.RowFontFamily, ElementName=RowsList}"
+                                           FontSize="{Binding DataContext.MetaFontSize, ElementName=RowsList}"/>
                             </Border>
                             <TextBlock Grid.Column="2"
                                        Text="{Binding SpeakerText}"
                                        Foreground="{Binding ChannelBrush}"
-                                       FontFamily="{StaticResource FontMono}"
-                                       FontSize="11"
+                                       FontFamily="{Binding DataContext.RowFontFamily, ElementName=RowsList}"
+                                       FontSize="{Binding DataContext.MetaFontSize, ElementName=RowsList}"
                                        FontWeight="Medium"
                                        VerticalAlignment="Center"
                                        Margin="0,0,8,0"/>
                             <SelectableTextBlock Grid.Column="3"
                                                  Text="{Binding MessageText}"
-                                                 Foreground="{StaticResource ChromeFgBrush}"
-                                                 FontFamily="{StaticResource FontMono}"
-                                                 FontSize="12"
+                                                 Foreground="{Binding MessageBrush}"
+                                                 FontFamily="{Binding DataContext.RowFontFamily, ElementName=RowsList}"
+                                                 FontSize="{Binding DataContext.MessageFontSize, ElementName=RowsList}"
                                                  TextWrapping="Wrap"
                                                  VerticalAlignment="Center"/>
                         </Grid>

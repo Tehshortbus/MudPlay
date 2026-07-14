@@ -30,6 +30,9 @@
         <!-- DataGrid ships its theme separately from FluentTheme; without
              this the Game Data Browser grids render with no chrome. -->
         <StyleInclude Source="avares://Avalonia.Controls.DataGrid/Themes/Fluent.xaml"/>
+        <!-- ColorPicker ships its theme separately too; without this the
+             Settings → Talk channel-colour pickers render with no chrome. -->
+        <StyleInclude Source="avares://Avalonia.Controls.ColorPicker/Themes/Fluent/Fluent.xaml"/>
         <!-- The stock DataGrid header ellipsis-trims its label and reserves
              padding plus a sort-glyph slot, so even a short header like "Str"
              clips inside an otherwise roomy column. Render the label in a

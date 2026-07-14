@@ -2693,7 +2693,8 @@ public partial class MainWindowViewModel : ObservableObject
                 AppServices.Current.ChatHistory,
                 AppServices.Current.CommandHistory,
                 SendUserText,
-                Application.Current),
+                Application.Current,
+                AppServices.Current.Resolver.Resolve<Models.Profile.TalkSettings>("Talk")),
         };
         window.Closed += (_, _) => _conversation = null;
         _conversation = window;
@@ -3633,37 +3634,15 @@ public partial class MainWindowViewModel : ObservableObject
 
     // Tools → Clear chatlog. Wipes every entry from the app-singleton
     // ChatHistoryStore — the Conversation window's contents go with it
-    // (it binds to the same store) and a fresh open shows an empty list.
-    // Destructive; no confirm dialog.
+    // (it binds to the same store) and a fresh open shows an empty list — and
+    // truncates the persisted talk.log so the on-disk copy matches. Destructive;
+    // no confirm dialog.
     [RelayCommand]
     private void ClearChatlog()
     {
         AppServices.Current.ChatHistory.Clear();
+        AppServices.Current.SessionLog.TruncateConversations();
         AppServices.Current.Log.Info("Chatlog", "Cleared chat history.");
-    }
-
-    // Tools → Export chatlog… Saves the entire ChatHistoryStore (no
-    // channel filter, no day-separator filter) to a plain-text file the
-    // user picks.
-    [RelayCommand]
-    private async Task ExportChatlogAsync()
-    {
-        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
-            return;
-
-        IStorageFile? file = await main.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
-        {
-            Title = "Export chatlog",
-            SuggestedFileName = $"chatlog-{DateTime.Now:yyyyMMdd-HHmmss}.txt",
-            DefaultExtension = "txt",
-            FileTypeChoices = [new FilePickerFileType("Plain text (.txt)") { Patterns = ["*.txt"] }],
-        });
-
-        if (file is null) return;
-
-        await using Stream stream = await file.OpenWriteAsync();
-        await AppServices.Current.ChatHistory.ExportAsync(stream).ConfigureAwait(false);
-        AppServices.Current.Log.Info("Chatlog", $"Exported chatlog to {file.Name}");
     }
 
     // Help → one of the user-editable website links. Opens the link's URL in

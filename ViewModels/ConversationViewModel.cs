@@ -5,6 +5,7 @@ using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FujinTerm.Game;
+using FujinTerm.Models.Profile;
 using FujinTerm.Services;
 
 namespace FujinTerm.ViewModels;
@@ -19,7 +20,11 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
     private readonly CommandHistory _commands;
     private readonly CommandHistoryNavigator _nav;
     private readonly Action<string> _sendUserText;
+    // Two brushes per channel: the accent (channel tag / speaker / toolbar
+    // toggle) and the message-body text colour. Both start from the theme
+    // defaults and are overlaid with the character's per-channel Talk overrides.
     private readonly Dictionary<ChatChannel, IBrush> _channelBrushes;
+    private readonly Dictionary<ChatChannel, IBrush> _textBrushes;
     private bool _disposed;
 
     // Guards OnInputTextChanged so a recall-driven InputText set (Up/Down
@@ -31,6 +36,28 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
 
     // Recent commands for the recall dropdown, newest first.
     public ObservableCollection<string> RecentCommands { get; } = new();
+
+    // Row typography resolved once from the character's Talk settings so the
+    // window can be re-fonted from Settings → Talk without touching each row
+    // template. Empty ConvoFont falls back to the bundled JetBrains Mono
+    // (FontMono); ConvoFontSize <= 0 falls back to the built-in 12. Applied on
+    // window open — a read-only toggle window picks up edits on the next open.
+    private const double DefaultMessageFontSize = 12;
+    public FontFamily RowFontFamily { get; }
+    public double MessageFontSize { get; }
+    // Timestamp / channel-tag / speaker sit one point smaller than the message
+    // body, preserving the built-in visual hierarchy as the size scales.
+    public double MetaFontSize => Math.Max(1, MessageFontSize - 1);
+
+    // Accent brushes the filter-toolbar toggles paint themselves with — the
+    // per-channel Label colour after overrides. Resolved once at open.
+    public IBrush GossipBrush    => ChannelBrush(ChatChannel.Gossip);
+    public IBrush LocalBrush     => ChannelBrush(ChatChannel.Local);
+    public IBrush TelepathBrush  => ChannelBrush(ChatChannel.TelepathIncoming);
+    public IBrush GangpathBrush  => ChannelBrush(ChatChannel.Gangpath);
+    public IBrush BroadcastBrush => ChannelBrush(ChatChannel.Broadcast);
+    public IBrush YellBrush      => ChannelBrush(ChatChannel.Yell);
+    public IBrush RealmBrush     => ChannelBrush(ChatChannel.RealmEvent);
 
     // Per-channel filter toggles. Default true (everything visible).
     // Telepaths in + out share one toggle — they're conceptually the same
@@ -54,13 +81,18 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
     // Fired by the window's code-behind to scroll the newest row into view.
     public event Action<ConversationRowViewModel>? ScrollToRowRequested;
 
-    public ConversationViewModel(ChatHistoryStore history, CommandHistory commands, Action<string> sendUserText, Application app)
+    public ConversationViewModel(ChatHistoryStore history, CommandHistory commands, Action<string> sendUserText, Application app, TalkSettings talk)
     {
         _history = history;
         _commands = commands;
         _nav = new CommandHistoryNavigator(commands);
         _sendUserText = sendUserText;
         _channelBrushes = BuildChannelBrushMap(app);
+        _textBrushes = BuildTextBrushMap(app);
+        ApplyColorOverrides(talk.ChannelColors);
+
+        RowFontFamily = ResolveFont(app, talk.ConvoFont);
+        MessageFontSize = talk.ConvoFontSize > 0 ? talk.ConvoFontSize : DefaultMessageFontSize;
 
         Rebuild();
         RebuildRecentCommands();
@@ -120,7 +152,7 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
 
     private void AddRow(ChatLogEntry entry, bool scrollIntoView)
     {
-        ConversationRowViewModel row = new(entry, ChannelBrush);
+        ConversationRowViewModel row = new(entry, ChannelBrush, TextBrush);
         Rows.Add(row);
         if (scrollIntoView) ScrollToRowRequested?.Invoke(row);
     }
@@ -154,6 +186,9 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
 
     private IBrush ChannelBrush(ChatChannel c)
         => _channelBrushes.TryGetValue(c, out IBrush? brush) ? brush : Brushes.Gray;
+
+    private IBrush TextBrush(ChatChannel c)
+        => _textBrushes.TryGetValue(c, out IBrush? brush) ? brush : Brushes.Gray;
 
     // Send InputText to the game and clear the field.
     [RelayCommand]
@@ -203,24 +238,79 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
         HasRecentCommands = e.Count > 0;
     }
 
-    private static Dictionary<ChatChannel, IBrush> BuildChannelBrushMap(Application app)
+    // A stored avares:// URI wins; empty means the JetBrains Mono theme default.
+    private static FontFamily ResolveFont(Application app, string uri)
     {
-        IBrush Lookup(string key)
-            => app.TryGetResource(key, null, out object? v) && v is IBrush b ? b : Brushes.Gray;
+        if (!string.IsNullOrWhiteSpace(uri)) return new FontFamily(uri);
+        return app.TryGetResource("FontMono", null, out object? v) && v is FontFamily f
+            ? f : new FontFamily("monospace");
+    }
 
-        return new()
+    private static IBrush LookupBrush(Application app, string key)
+        => app.TryGetResource(key, null, out object? v) && v is IBrush b ? b : Brushes.Gray;
+
+    private static Dictionary<ChatChannel, IBrush> BuildChannelBrushMap(Application app)
+        => new()
         {
-            [ChatChannel.Gossip]            = Lookup("AccentCyanBrush"),
-            [ChatChannel.Local]             = Lookup("ChromeFgBrush"),
-            [ChatChannel.TelepathIncoming]  = Lookup("AccentMagentaBrush"),
-            [ChatChannel.TelepathOutgoing]  = Lookup("AccentMagentaBrush"),
-            [ChatChannel.Gangpath]          = Lookup("AccentGreenBrush"),
-            [ChatChannel.Broadcast]         = Lookup("AccentYellowBrush"),
-            [ChatChannel.Yell]              = Lookup("AccentAmberBrush"),
-            [ChatChannel.RealmEvent]        = Lookup("ChromeFgMutedBrush"),
-            [ChatChannel.Server]            = Lookup("AccentRedBrush"),
-            [ChatChannel.DaySeparator]      = Lookup("ChromeFgMutedBrush"),
+            [ChatChannel.Gossip]            = LookupBrush(app, "AccentCyanBrush"),
+            [ChatChannel.Local]             = LookupBrush(app, "ChromeFgBrush"),
+            [ChatChannel.TelepathIncoming]  = LookupBrush(app, "AccentMagentaBrush"),
+            [ChatChannel.TelepathOutgoing]  = LookupBrush(app, "AccentMagentaBrush"),
+            [ChatChannel.Gangpath]          = LookupBrush(app, "AccentGreenBrush"),
+            [ChatChannel.Broadcast]         = LookupBrush(app, "AccentYellowBrush"),
+            [ChatChannel.Yell]              = LookupBrush(app, "AccentAmberBrush"),
+            [ChatChannel.RealmEvent]        = LookupBrush(app, "ChromeFgMutedBrush"),
+            [ChatChannel.Server]            = LookupBrush(app, "AccentRedBrush"),
+            [ChatChannel.DaySeparator]      = LookupBrush(app, "ChromeFgMutedBrush"),
         };
+
+    // Message-body text defaults to the chrome foreground for every channel;
+    // per-channel Text overrides replace individual entries.
+    private static Dictionary<ChatChannel, IBrush> BuildTextBrushMap(Application app)
+    {
+        IBrush def = LookupBrush(app, "ChromeFgBrush");
+        Dictionary<ChatChannel, IBrush> map = new();
+        foreach (ChatChannel c in Enum.GetValues<ChatChannel>()) map[c] = def;
+        return map;
+    }
+
+    // Overlay the character's per-channel Talk colours onto the default maps.
+    // Keys are the seven user-facing channel groups; both telepath directions
+    // and Server/RealmEvent collapse onto their group so one override covers
+    // the whole stream. A blank or unparseable hex leaves the default intact.
+    private void ApplyColorOverrides(Dictionary<string, ChannelColor>? overrides)
+    {
+        if (overrides is null) return;
+        foreach (ChatChannel c in Enum.GetValues<ChatChannel>())
+        {
+            if (GroupKey(c) is not { } key) continue;
+            if (!overrides.TryGetValue(key, out ChannelColor? co) || co is null) continue;
+            if (ParseBrush(co.Label) is { } lb) _channelBrushes[c] = lb;
+            if (ParseBrush(co.Text)  is { } tb) _textBrushes[c] = tb;
+        }
+    }
+
+    // The stable override key for a channel — the seven filter-toggle groups.
+    // Channels with no toggle (DaySeparator) return null and take no override.
+    private static string? GroupKey(ChatChannel c) => c switch
+    {
+        ChatChannel.Gossip           => "Gossip",
+        ChatChannel.Local            => "Local",
+        ChatChannel.TelepathIncoming => "Telepath",
+        ChatChannel.TelepathOutgoing => "Telepath",
+        ChatChannel.Gangpath         => "Gangpath",
+        ChatChannel.Broadcast        => "Broadcast",
+        ChatChannel.Yell             => "Yell",
+        ChatChannel.RealmEvent       => "RealmEvent",
+        ChatChannel.Server           => "RealmEvent",
+        _ => null,
+    };
+
+    private static IBrush? ParseBrush(string? hex)
+    {
+        if (string.IsNullOrWhiteSpace(hex)) return null;
+        try { return new SolidColorBrush(Color.Parse(hex)); }
+        catch { return null; }
     }
 
     public void Dispose()

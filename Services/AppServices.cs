@@ -137,6 +137,11 @@ public sealed class AppServices
     // Game.ChatHistoryStore.Clear.
     public Game.ChatHistoryStore ChatHistory { get; }
 
+    // Persists the Conversation window + Transaction history to per-character
+    // rolling files under Data/Logs. Constructed once the chat router and the
+    // transaction tracker exist.
+    public SessionLogService SessionLog { get; private set; } = null!;
+
     // Live player state — HP / mana / position / mana type. Updated by
     // Player from every prompt line; bound by the status
     // bar, the Workshop STATS section, and automation
@@ -2915,6 +2920,13 @@ public sealed class AppServices
         // boundary as the other session-stats trackers.
         TransactionHistory = new Game.Cash.TransactionHistoryTracker();
         Profile.ProfileLoaded += _ => TransactionHistory.Reset();
+
+        // Rolling per-character disk logs for the Conversation window +
+        // Transaction history. Reads its own char-tier Talk settings; switches
+        // files on profile / BBS change.
+        SessionLog = new SessionLogService(
+            Profile, Chat, TransactionHistory, Log,
+            () => ReadSection<Models.Profile.TalkSettings>(Profile.Current, "Talk"));
 
         // @reset — a party member zeroes our session-stats trackers (the same
         // wipe as the window button / connect boundary). Constructed here, after

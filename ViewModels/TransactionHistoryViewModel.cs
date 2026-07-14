@@ -3,6 +3,7 @@ using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FujinTerm.Game.Cash;
+using FujinTerm.Services;
 
 namespace FujinTerm.ViewModels;
 
@@ -42,9 +43,16 @@ public sealed partial class TransactionHistoryViewModel : ObservableObject, IDis
     });
 
     // The only user-driven clear of the ledger. Resetting the tracker raises
-    // Changed, which rebuilds Rows empty via OnChanged.
+    // Changed, which rebuilds Rows empty via OnChanged. Also truncates the
+    // persisted transactions.log so the on-disk copy matches — this is the
+    // explicit user wipe, distinct from the session-boundary Reset the tracker
+    // takes on connect / character switch (which must leave the log intact).
     [RelayCommand]
-    private void Clear() => _tracker.Reset();
+    private void Clear()
+    {
+        _tracker.Reset();
+        AppServices.Current.SessionLog.TruncateTransactions();
+    }
 
     private void Rebuild()
     {

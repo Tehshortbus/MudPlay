@@ -26,6 +26,12 @@ public sealed class TransactionHistoryTracker
     // history VM can rebuild. Fires on the dispatch thread.
     public event Action? Changed;
 
+    // Raised with each newly recorded entry (not on Reset), so a persistent log
+    // can append it. Kept separate from Changed because the bounded ledger
+    // evicts its oldest row past MaxEntries — diffing snapshots would miss the
+    // append, so the tracker hands the fresh entry over directly.
+    public event Action<TransactionEntry>? EntryAdded;
+
     public TransactionHistoryTracker(Func<DateTimeOffset>? clock = null)
     {
         _clock = clock ?? (static () => DateTimeOffset.Now);
@@ -66,8 +72,10 @@ public sealed class TransactionHistoryTracker
 
     private void Add(TransactionKind kind, string detail)
     {
-        _entries.Add(new TransactionEntry(_clock(), kind, detail));
+        TransactionEntry entry = new(_clock(), kind, detail);
+        _entries.Add(entry);
         while (_entries.Count > MaxEntries) _entries.RemoveAt(0);
+        EntryAdded?.Invoke(entry);
         Changed?.Invoke();
     }
 

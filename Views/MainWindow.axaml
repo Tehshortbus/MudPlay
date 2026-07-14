@@ -201,7 +201,6 @@
                 <MenuItem Header="Program Log…" InputGesture="{Binding LogPaneGesture}" Command="{Binding OpenLogPaneCommand}"/>
                 <MenuItem Header="Wire Inspector…"             Command="{Binding OpenWireInspectorCommand}"/>
                 <Separator/>
-                <MenuItem Header="Export chatlog…"             Command="{Binding ExportChatlogCommand}"/>
                 <MenuItem Header="Clear chatlog"               Command="{Binding ClearChatlogCommand}"/>
                 <MenuItem Header="Open Logs folder…"           Command="{Binding OpenLogsFolderCommand}"/>
             </MenuItem>
