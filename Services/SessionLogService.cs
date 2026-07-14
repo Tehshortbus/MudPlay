@@ -86,7 +86,8 @@ public sealed class SessionLogService : IDisposable
     private void OnTransaction(TransactionEntry entry)
     {
         if (!_logTransactions || !_txns.IsOpen) return;
-        _txns.Append($"[{entry.Time.ToLocalTime():HH:mm:ss}] {entry.Kind} {entry.Detail}");
+        string where = string.IsNullOrEmpty(entry.Location) ? string.Empty : $" @ {entry.Location}";
+        _txns.Append($"[{entry.Time.ToLocalTime():HH:mm:ss}] {entry.Kind} {entry.Detail}{where}");
     }
 
     private void ReopenFiles()

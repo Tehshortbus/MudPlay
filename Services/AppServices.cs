@@ -3153,11 +3153,16 @@ public sealed class AppServices
         //   coin stash   -> CashManager.CoinHidden       ("You hid N <coin>.")
         //   item stash   -> InventoryManager.ItemHidden  ("You hid <item>.")
         //   bank deposit -> InventoryManager.BankDeposited ("You deposit …", wrap-merged there)
+        // Each echo captures the room it fired in — the stash room for a hide,
+        // the bank room for a deposit — so the ledger records where excess went.
         Cash.CoinHidden += (currency, count) =>
-            TransactionHistory.NoteStash(new[] { (currency, (long)count) }, Array.Empty<string>());
+            TransactionHistory.NoteStash(
+                new[] { (currency, (long)count) }, Array.Empty<string>(), CurrentRoomLabel());
         Inventory.ItemHidden += item =>
-            TransactionHistory.NoteStash(Array.Empty<(string, long)>(), new[] { item });
-        Inventory.BankDeposited += copper => TransactionHistory.NoteBankDeposit(copper);
+            TransactionHistory.NoteStash(
+                Array.Empty<(string, long)>(), new[] { item }, CurrentRoomLabel());
+        Inventory.BankDeposited += copper =>
+            TransactionHistory.NoteBankDeposit(copper, CurrentRoomLabel());
 
         // AutoGetItemsManager. The resolve delegate
         // maps a loose "You notice ..." entry back to an item Number
@@ -4447,6 +4452,15 @@ public sealed class AppServices
     // lives in one place. Backs PathItemDemand's possession check and the
     // MovementFilter key/item gate.
     private bool IsItemCarried(int itemId) => CountItemHeld(itemId) > 0;
+
+    // "Name (map/room)" for the room the tracker currently sits in, or null when
+    // position is unknown. Stamped onto transaction-ledger rows so a deposit
+    // records which bank was used and a stash records which room hid the loot.
+    private string? CurrentRoomLabel()
+    {
+        if (RoomTracker?.State.CurrentRoom is not { } room) return null;
+        return $"{room.DisplayName} ({room.Key.Map}/{room.Key.Room})";
+    }
 
     // How many copies of itemId the current snapshot holds
     // (carried + worn). The carried list stores one entry per copy, so gives /

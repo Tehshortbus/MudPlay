@@ -2,6 +2,10 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.62.0
+
+- Transaction history now records where each offload happened — a bank deposit notes which bank (room name + map/room), and a stash notes which room hid the loot, shown as a muted second line under the entry and appended to the persisted transactions log
+
 ## 1.61.0
 
 - New **Reset States** action (Action menu, terminal right-click, and a bindable/toolbar-promotable shortcut) — clears my own stuck ailments, party-wait signals, and the movement holds they drive, returning me to an idle, unafflicted state

@@ -1253,6 +1253,23 @@ glass jug               5               2 gold crowns
   flag whenever a sibling with a specific wear-off never sees its matching line. (See
   `ConditionTracker`'s applied-line alias group-clear.)
 
+## Confusion fumbles — actions fail and must be re-sent *([CONFIRMED] 2026-07-14, user)*
+
+- Confusion does **not** block attacking (or acting) outright. Instead each action
+  you send can *fumble*: the game consumes the command and it does **not execute** —
+  surfaced as `You fumble in confusion!` (self) / `<name> fumbles about dazedly!`
+  (others). The catalogue's `fumble` record carries the `LastActionFailed` flag (and
+  `Confused`), and its wear-off is the generic `The effects of confusion wear off`.
+- A fumbled action is **lost**. To actually perform it you must **re-send the same
+  action**. Confusion can fumble several actions in a row; how many depends on the
+  severity of the confusion.
+- **Implication for auto-combat:** an attack command (`aa` / `a`) that fumbles is
+  consumed without hitting, so the engine must **re-issue its last attack** when it
+  sees a fumble rather than assume the swing landed. Otherwise the monster goes
+  unattacked until the user manually re-sends — the reported symptom of "monsters in
+  room but not attacking unless I manually send attack commands" (report
+  `paradigm-20260714-093614`).
+
 ## Message catalogue (lines the client parses)
 
 | Event | Line |

@@ -64,13 +64,19 @@
                                        FontFamily="{StaticResource FontMono}"
                                        FontSize="11"
                                        VerticalAlignment="Center"/>
-                            <SelectableTextBlock Grid.Column="2"
-                                                 Text="{Binding Detail}"
-                                                 Foreground="{StaticResource ChromeFgBrush}"
-                                                 FontFamily="{StaticResource FontMono}"
-                                                 FontSize="12"
-                                                 TextWrapping="Wrap"
-                                                 VerticalAlignment="Center"/>
+                            <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                                <SelectableTextBlock Text="{Binding Detail}"
+                                                     Foreground="{StaticResource ChromeFgBrush}"
+                                                     FontFamily="{StaticResource FontMono}"
+                                                     FontSize="12"
+                                                     TextWrapping="Wrap"/>
+                                <SelectableTextBlock Text="{Binding Location}"
+                                                     IsVisible="{Binding Location, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                                     Foreground="{StaticResource ChromeFgMutedBrush}"
+                                                     FontFamily="{StaticResource FontMono}"
+                                                     FontSize="10"
+                                                     TextWrapping="Wrap"/>
+                            </StackPanel>
                         </Grid>
                     </DataTemplate>
                 </ListBox.ItemTemplate>

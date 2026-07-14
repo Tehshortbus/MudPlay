@@ -1,9 +1,8 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.61.0**
-> - New **Reset States** action (Action menu, terminal right-click, and a bindable/toolbar-promotable shortcut) — clears my own stuck ailments, party-wait signals, and the movement holds they drive, returning me to an idle, unafflicted state
-> - Fixes a phantom "waiting — confused" nav pause: a confusion wear-off now clears every effect that shares the generic "You are confused!" line, so a monster confusion carrying its own specific wear-off no longer strands the flag (and the nav hold) active
+> **Version 1.62.0**
+> - Transaction history now records where each offload happened — a bank deposit notes which bank (room name + map/room), and a stash notes which room hid the loot, shown as a muted second line under the entry and appended to the persisted transactions log
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

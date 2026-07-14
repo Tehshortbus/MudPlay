@@ -42,6 +42,30 @@ public sealed class TransactionHistoryTrackerTests
     }
 
     [Fact]
+    public void NoteBankDeposit_StoresLocation()
+    {
+        (TransactionHistoryTracker t, _) = Make();
+        t.NoteBankDeposit(500, "Bank of Newhaven (1/42)");
+        Assert.Equal("Bank of Newhaven (1/42)", Assert.Single(t.Snapshot()).Location);
+    }
+
+    [Fact]
+    public void NoteStash_StoresLocation()
+    {
+        (TransactionHistoryTracker t, _) = Make();
+        t.NoteStash(new[] { ("gold", 10L) }, Array.Empty<string>(), "Hollow Stump (3/7)");
+        Assert.Equal("Hollow Stump (3/7)", Assert.Single(t.Snapshot()).Location);
+    }
+
+    [Fact]
+    public void Note_LocationDefaultsNull_WhenUnknown()
+    {
+        (TransactionHistoryTracker t, _) = Make();
+        t.NoteBankDeposit(500);
+        Assert.Null(Assert.Single(t.Snapshot()).Location);
+    }
+
+    [Fact]
     public void NoteBankDeposit_IgnoresNonPositive()
     {
         (TransactionHistoryTracker t, _) = Make();
