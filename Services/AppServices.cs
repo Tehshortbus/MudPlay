@@ -75,19 +75,24 @@ public sealed class AppServices
 
     // Tees Log to a rolling on-disk file (Data/Logs/{ts}-program.log) so a
     // hard hang / kill leaves a post-mortem trail the in-memory ring can't.
+    // Only writes while LogDiagnostics.AutoCollectLogs is on (default off).
     public ProgramLogFile ProgramLog { get; }
 
     // Samples the process memory footprint a-minute-at-a-time to its own
     // Data/Logs/{ts}-memory.log, kept out of the program log, so an all-night
     // session leaves a trail that tells a managed-heap leak from working-set creep.
+    // Only writes while LogDiagnostics.AutoCollectLogs is on (default off).
     public MemoryUsageLog MemoryLog { get; }
 
-    // Session-only diagnostic switches surfaced in the Log pane menu
-    // (combat-verbose / round-trace umbrella). Consumers
-    // (e.g. Game.Combat.RoundDamageTracker) read this
-    // instead of per-character settings because verbose tracing isn't
-    // a per-character affordance — it's a "while I'm debugging right
-    // now" knob that resets on app launch.
+    // Per-character diagnostic switches surfaced in the Log pane: DebugDiagnostics
+    // and CombatDiagnostics gate in-memory Debug/Combat channel generation;
+    // AutoCollectLogs gates whether the on-disk diagnostic files (program /
+    // memory / combat trace) are written at all. Consumers
+    // (e.g. Game.Combat.RoundDamageTracker) read this instead of per-character
+    // settings directly. The live state is mirrored to the Char-tier
+    // LogDiagnosticsSettings section: applied on ProfileLoaded, reset off on
+    // ProfileClosed, persisted on Changed (see the Apply/Reset/Persist helpers
+    // below).
     public LogDiagnosticState LogDiagnostics { get; } = new();
 
     // Docking / floating panel framework (single-UserControl reparented).
@@ -1439,11 +1444,13 @@ public sealed class AppServices
         // per-character diagnostic toggles (applied from the profile below,
         // flipped from the Log pane).
         Log.Diagnostics = LogDiagnostics;
-        // Start teeing the program log to disk immediately so even the
-        // earliest startup entries survive a hang / kill.
-        ProgramLog = new ProgramLogFile(Log);
-        // Begin sampling memory to its own on-disk log for the whole process life.
-        MemoryLog = new MemoryUsageLog();
+        // Tee the program log to disk, gated on AutoCollectLogs: the writer only
+        // opens once the toggle turns on (applied from the profile below or
+        // flipped from the Log pane), so a normal session leaves no file.
+        ProgramLog = new ProgramLogFile(Log, LogDiagnostics);
+        // Same gating for the memory-footprint sampler: the timer runs for the
+        // whole process, but samples land on disk only while AutoCollectLogs is on.
+        MemoryLog = new MemoryUsageLog(LogDiagnostics);
         // Late-bind the cache's log sink so SwitchSet emits the swap
         // audit entries (load / unload / swap) without coupling the
         // cache to AppServices construction order.
@@ -2288,13 +2295,14 @@ public sealed class AppServices
                 MonsterOverlaySeed.GetOverlay(n)),
             log: Log);
 
-        // RoundDamageTracker. shouldWriteTrace
-        // delegate reads the Log pane's combat-diagnostics umbrella
-        // (session-only, no per-profile persistence) so the user can
-        // toggle the per-round trace from the Log menu mid-session.
+        // RoundDamageTracker. shouldWriteTrace reads the Log pane's
+        // auto-collect-logs toggle: the on-disk per-round trace is one of the
+        // three diagnostic files that switch gates, so it follows AutoCollectLogs
+        // rather than the in-memory CombatDiagnostics channel. Both are
+        // per-character persisted; the user can flip either from the Log pane.
         RoundDamage = new Game.Combat.RoundDamageTracker(
             Router, PlayerState, Log,
-            shouldWriteTrace: () => LogDiagnostics.CombatDiagnostics);
+            shouldWriteTrace: () => LogDiagnostics.AutoCollectLogs);
         // Drive round boundaries off the 5-second combat heartbeat so each round
         // closes (and is counted) in real time rather than lagging until the next
         // damage line or *Combat Off*. Both are app-lifetime singletons, so no
@@ -3917,6 +3925,7 @@ public sealed class AppServices
         _suppressLogDiagnosticsPersist = true;
         LogDiagnostics.DebugDiagnostics  = dto.Debug;
         LogDiagnostics.CombatDiagnostics = dto.Combat;
+        LogDiagnostics.AutoCollectLogs   = dto.AutoCollect;
         _suppressLogDiagnosticsPersist = false;
     }
 
@@ -3925,6 +3934,7 @@ public sealed class AppServices
         _suppressLogDiagnosticsPersist = true;
         LogDiagnostics.DebugDiagnostics  = false;
         LogDiagnostics.CombatDiagnostics = false;
+        LogDiagnostics.AutoCollectLogs   = false;
         _suppressLogDiagnosticsPersist = false;
     }
 
@@ -3936,8 +3946,9 @@ public sealed class AppServices
 
         Models.Profile.LogDiagnosticsSettings dto = new()
         {
-            Debug  = LogDiagnostics.DebugDiagnostics,
-            Combat = LogDiagnostics.CombatDiagnostics,
+            Debug      = LogDiagnostics.DebugDiagnostics,
+            Combat     = LogDiagnostics.CombatDiagnostics,
+            AutoCollect = LogDiagnostics.AutoCollectLogs,
         };
         profile.Settings ??= new();
         profile.Settings["LogDiagnostics"] = System.Text.Json.JsonSerializer.SerializeToElement(dto);

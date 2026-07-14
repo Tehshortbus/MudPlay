@@ -1,19 +1,22 @@
 namespace FujinTerm.Services;
 
-// Live per-character diagnostic switches that gate generation of the Debug
-// and Combat log channels. Surfaced as the two generation toggles in the Log
-// pane.
+// Live per-character diagnostic switches. Two gate in-memory generation of the
+// Debug and Combat log channels; the third gates whether the on-disk
+// diagnostic files (program / memory / combat trace) are written at all.
+// Surfaced as the toggles in the Log pane.
 //
 // This is the in-memory source of truth. AppServices mirrors it to the
 // Char-tier LogDiagnosticsSettings section: it applies the persisted values
 // on ProfileLoaded, resets to off on ProfileClosed, and writes back on
-// Changed. Both flags default off — verbose tracing burns IO and isn't an
+// Changed. All flags default off — verbose tracing burns IO and isn't an
 // everyday affordance — and a fresh character (no saved section) reads off.
 //
 // DebugDiagnostics gates the cross-engine Debug traces; every
 // _log?.Debug(...) site emits only while it's on. CombatDiagnostics gates
-// the combat-decision channel AND Game.Combat.RoundDamageTracker's per-round
-// trace file under Data/Logs/combat-*.log.
+// the combat-decision channel. AutoCollectLogs gates whether the on-disk
+// diagnostic writers run at all: ProgramLogFile (Data/Logs/*-program.log),
+// MemoryUsageLog (*-memory.log) and RoundDamageTracker's per-round trace
+// (*-combat.log) only open their files while it's on.
 //
 // Lives under AppServices.LogDiagnostics and is wired into
 // LogService.Diagnostics so the service can gate emission at the source
@@ -22,6 +25,7 @@ public sealed class LogDiagnosticState
 {
     private bool _debugDiagnostics;
     private bool _combatDiagnostics;
+    private bool _autoCollectLogs;
 
     // Master toggle for the generation-gated Debug channel. Off by default;
     // flip on to make every _log?.Debug(...) site across the engines start
@@ -37,9 +41,9 @@ public sealed class LogDiagnosticState
         }
     }
 
-    // Master toggle for the combat-decision channel + the per-round trace
-    // file. Off by default; flip on while troubleshooting a combat or healing
-    // engine, flip off again for normal play.
+    // Master toggle for the in-memory combat-decision channel. Off by default;
+    // flip on while troubleshooting a combat or healing engine, flip off again
+    // for normal play.
     public bool CombatDiagnostics
     {
         get => _combatDiagnostics;
@@ -47,6 +51,22 @@ public sealed class LogDiagnosticState
         {
             if (_combatDiagnostics == value) return;
             _combatDiagnostics = value;
+            Changed?.Invoke();
+        }
+    }
+
+    // Master toggle for the on-disk diagnostic files. Off by default: without
+    // it the program, memory and combat-trace writers never open a file, so a
+    // normal session leaves nothing under Data/Logs. Flip on to have the
+    // client generate all three for the session (and the reverse closes them);
+    // the writers subscribe to Changed and open/close their files to match.
+    public bool AutoCollectLogs
+    {
+        get => _autoCollectLogs;
+        set
+        {
+            if (_autoCollectLogs == value) return;
+            _autoCollectLogs = value;
             Changed?.Invoke();
         }
     }

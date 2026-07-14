@@ -2,6 +2,7 @@ using System.Linq;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Markup.Xaml;
+using Avalonia.Threading;
 using Avalonia.VisualTree;
 using FujinTerm.ViewModels;
 
@@ -33,7 +34,7 @@ public partial class ConversationWindow : Window
         {
             vm.ScrollToRowRequested += OnScrollToRow;
             // Land on the freshest row.
-            if (vm.Rows.Count > 0) OnScrollToRow(vm.Rows[^1]);
+            if (vm.Rows.Count > 0) PinToBottomOnOpen();
             this.FindControl<TextBox>("InputBox")?.Focus();
         }
     }
@@ -87,6 +88,35 @@ public partial class ConversationWindow : Window
 
     private ScrollViewer? ResolveRowsScroll()
         => _rowsScroll ??= _rowsList?.GetVisualDescendants().OfType<ScrollViewer>().FirstOrDefault();
+
+    // Scroll-to-bottom on open. Unlike a live update (where the rows are already
+    // realized so one ScrollToEnd lands true), on first open the virtualizing
+    // panel only measures the handful of visible rows and estimates the rest, so
+    // its extent keeps growing as the bottom rows realize — a single ScrollToEnd
+    // stops short. Re-pin across the following layout passes until the offset
+    // stops moving (or a small safety cap), so the newest line ends flush at the
+    // viewport bottom every time the window opens.
+    private void PinToBottomOnOpen()
+    {
+        if (DataContext is not ConversationViewModel { AutoScroll: true }) return;
+
+        int attempts = 0;
+        void Pin()
+        {
+            ScrollViewer? sv = ResolveRowsScroll();
+            if (sv is null) return;
+            double before = sv.Offset.Y;
+            sv.ScrollToEnd();
+            // Offset unchanged → extent settled, we're truly at the bottom.
+            // Otherwise the extent grew this pass; try once more next pass.
+            if (System.Math.Abs(sv.Offset.Y - before) < 0.5 || attempts++ >= 8) return;
+            Dispatcher.UIThread.Post(Pin, DispatcherPriority.Background);
+        }
+
+        // First pass at Loaded priority: runs after the initial layout so the
+        // ScrollViewer exists and has an estimated extent to pin against.
+        Dispatcher.UIThread.Post(Pin, DispatcherPriority.Loaded);
+    }
 
     private void OnInputKeyDown(object? sender, KeyEventArgs e)
     {

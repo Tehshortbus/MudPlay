@@ -397,6 +397,40 @@ public sealed class RoomEntityClassifierTests
         Assert.Equal(EntityKind.Unknown, h.Observations[0].Entities[0].Kind);
     }
 
+    // ----- full-name Monsters-table match ----------------------------
+
+    // A monster whose Monsters-table row exists under its full multi-word name
+    // but which has no MonsterMessageRecord (a lair boss like "brigand chief")
+    // resolves by matching the WHOLE entry — not by stripping the first word,
+    // which would reduce it to "chief" and find nothing. Classified as the
+    // canonical monster with no missing-flavor warning.
+    [Fact]
+    public void FullNameMultiWordMonster_ResolvesToMonstersTableRow()
+    {
+        (GameDataCache cache, string dir) = MonstersTable(
+            """[ { "Number": 500, "Name": "brigand chief" } ]""");
+        try
+        {
+            using Harness h = new(cache);
+
+            h.Feed("Also here: brigand chief.");
+
+            Assert.Single(h.Observations);
+            RoomEntity ent = h.Observations[0].Entities[0];
+            Assert.Equal(EntityKind.Monster, ent.Kind);
+            Assert.Equal(500, ent.MonsterNumber);
+            Assert.Equal("brigand chief", ent.RawName);
+            Assert.Equal("brigand chief", ent.ResolvedName);
+
+            // Canonical name — no flavor prefix was stripped, so no warning.
+            Assert.DoesNotContain(h.LogEntries, e =>
+                e.Source == RoomEntityClassifier.MissingFlavorCategory);
+            Assert.DoesNotContain(h.LogEntries, e =>
+                e.Source == RoomEntityClassifier.LogCategory);
+        }
+        finally { try { Directory.Delete(dir, true); } catch { /* best-effort */ } }
+    }
+
     // ----- list-shape forms (commas, Oxford-and, mixed) --------------
 
     [Fact]

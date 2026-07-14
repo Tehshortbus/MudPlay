@@ -824,6 +824,14 @@ comes from the stat screen / who line (`AlignmentTracker` / `PlayerStats`).
   (or `KeyLocked`) exit that carries action cells is promoted to `MultiActionHidden` at graph-build so it
   reuses the same dispatch/tooltip/detour machinery as a native hidden multi-action exit — the promotion
   is the single change point (RoomGraphManager attach pass).
+- **[CONFIRMED, capture 2026-07-14 report 091244]** **A lever-raised gate renders in the live room
+  display as a *gate*, not a *door*.** At `1/1331` the `Obvious exits:` line reads `closed gate north,
+  south, east, west`; after `pull lever` ("you hear the loud nearby rumbling of a gate") it becomes
+  `open gate north, …`. So the barrier noun on the wire is **"gate"**, and the open/closed prefix
+  carries its live state exactly like a door's. **Client encoding:** `RoomDisplayParser.ParseExits`
+  strips an `<open|closed> <door|gate>` prefix off each exit token, feeding the open ones into
+  `OpenDoorDirections` so the walker skips the door-open FSM on an already-raised gate. Treat "gate"
+  and "door" as the same door-type barrier class for display parsing.
 
 ## Attack spells: why one fails to damage a monster
 

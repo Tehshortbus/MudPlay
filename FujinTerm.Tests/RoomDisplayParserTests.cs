@@ -469,6 +469,41 @@ public sealed class RoomDisplayParserTests : IDisposable
         Assert.Null(tracker.State.OpenDoorDirections);
     }
 
+    // The inner-gate portcullis on some realms renders as "gate" rather than
+    // "door" — exact wording captured live at 1/1331 on Paradigm. A gate is a
+    // door-type barrier, so its open/closed state must feed OpenDoorDirections
+    // just like a door's, or the walker never learns the gate is already open.
+    [Fact]
+    public void OpenGateModifier_OnNorth_CapturesOpenDoorDirections()
+    {
+        (RoomTracker tracker, RoomDisplayParser parser) = NewParser();
+
+        parser.FeedTestLines(new[]
+        {
+            "Inner Gate",
+            "Obvious exits: open gate north, south, east, west."
+        });
+
+        Assert.NotNull(tracker.State.OpenDoorDirections);
+        Assert.Contains(Direction.N, tracker.State.OpenDoorDirections!);
+        Assert.DoesNotContain(Direction.S, tracker.State.OpenDoorDirections!);
+    }
+
+    [Fact]
+    public void ClosedGateModifier_OnNorth_ParsesDirectionButNotAsOpen()
+    {
+        (RoomTracker tracker, RoomDisplayParser parser) = NewParser();
+
+        parser.FeedTestLines(new[]
+        {
+            "Inner Gate",
+            "Obvious exits: closed gate north, south, east, west."
+        });
+
+        // Closed gate: N is still a real exit but not in the open set.
+        Assert.Null(tracker.State.OpenDoorDirections);
+    }
+
     [Fact]
     public void ColorAnchor_BoldCyan_AlsoQualifiesAsBrightCyan()
     {

@@ -891,6 +891,114 @@ public sealed class RoomGraphManagerTests : IDisposable
         Assert.True(ex.MultiAction.HasRemoteActions);
         // Both action steps live in the guardrooms, not the gate room.
         Assert.All(ex.MultiAction.Actions, a => Assert.NotNull(a.RemoteSourceRoom));
+
+        // Reverse index: each guardroom knows it holds a lever governing the
+        // gate room's N exit, so its own tooltip can say so — the gate's
+        // MultiAction attaches to 1/1331, not to the guardroom.
+        IReadOnlyList<RoomGraphManager.RemoteLeverRef> fromEast =
+            graph.LeversControlledFrom(new RoomKey(1, 1339));
+        Assert.Single(fromEast);
+        Assert.Equal(new RoomKey(1, 1331), fromEast[0].ControlledRoom);
+        Assert.Equal(Direction.N, fromEast[0].Direction);
+        Assert.Contains("pull lever", fromEast[0].Commands);
+
+        Assert.Single(graph.LeversControlledFrom(new RoomKey(1, 1345)));
+        // The gate room itself holds no remote lever.
+        Assert.Empty(graph.LeversControlledFrom(new RoomKey(1, 1331)));
+
+        // The guardroom tooltip now names the gate its lever opens.
+        Room? guard = graph.GetRoom(new RoomKey(1, 1339));
+        string tip = RoomTooltipBuilder.Build(guard!, graph, data: null);
+        Assert.Contains("Levers here:", tip);
+        Assert.Contains("pull lever", tip);
+        Assert.Contains("Inner Gate", tip);
+    }
+
+    [Fact]
+    public void LeverGate_FullRoute_FindsPath_AndEmitsTwoLeverPulls()
+    {
+        // End-to-end regression for the inner-gate lever route (bug reports
+        // paradigm-20260714-091000 / -091244): with the gate room's N Door
+        // promoted to a lever-operated MultiActionHidden exit, BFS must find a
+        // path from the gate (1/1331) out to 1/1367, and the path expander must
+        // splice in the two guardroom lever pulls as a go-act-return detour.
+        // A raw 301-picklock Door with Strength 100 / Picklocks 0 would block —
+        // a found route + two lever CommandSteps proves the promotion + detour.
+        const string json = """
+            [
+              { "Map Number": 1, "Room Number": 1322, "Name": "Monastery Entrance",
+                "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+                "N": "1/1331 (Alignment: Saint to Neutral)", "S": "1/141",
+                "E": "0", "W": "0", "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 1, "Room Number": 1331, "Name": "Inner Gate",
+                "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+                "N": "1/1375 (Door [301 picklocks/strength])", "S": "1/1322",
+                "E": "1/1339", "W": "1/1345",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 1, "Room Number": 1339, "Name": "Guardroom",
+                "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+                "N": "Action [on the N exit of room 1/1331]: pull lever, push lever, move lever",
+                "S": "0", "E": "0", "W": "1/1331",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 1, "Room Number": 1345, "Name": "Guardroom",
+                "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+                "N": "Action [on the N exit of room 1/1331]: pull lever, push lever, move lever",
+                "S": "0", "E": "1/1331", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 1, "Room Number": 1375, "Name": "Courtyard",
+                "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+                "N": "0", "S": "1/1331 (Door [201 picklocks/strength])",
+                "E": "0", "W": "0",
+                "NE": "1/1373", "NW": "1/1374", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 1, "Room Number": 1374, "Name": "Courtyard",
+                "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+                "N": "0", "S": "0", "E": "0", "W": "0",
+                "NE": "0", "NW": "1/1371", "SE": "1/1375", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 1, "Room Number": 1371, "Name": "Outer Keep",
+                "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+                "N": "0", "S": "0", "E": "0", "W": "0",
+                "NE": "1/1370", "NW": "0", "SE": "1/1374", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 1, "Room Number": 1370, "Name": "Outer Keep, Hallway",
+                "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+                "N": "0", "S": "0", "E": "1/1368", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "1/1371", "U": "0", "D": "0" },
+              { "Map Number": 1, "Room Number": 1368, "Name": "Outer Keep, Intersection",
+                "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+                "N": "0", "S": "1/1367 (Hidden/Searchable)", "E": "0", "W": "1/1370",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 1, "Room Number": 1367, "Name": "Outer Keep, Stairwell Up",
+                "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+                "N": "1/1368", "S": "0", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "1/1361", "D": "0" }
+            ]
+            """;
+        SeedRooms("alpha", json);
+        GameDataCache cache = NewCache();
+        cache.SwitchSet("alpha");
+        RoomGraphManager graph = new(cache);
+        graph.OnActiveSetChanged("alpha");
+
+        // Strength 100 / Picklocks 0 — a raw Door 301 is unpassable, so any
+        // found route depends on the lever promotion.
+        ProfileService profile = new();
+        MovementFilter filter = new(profile)
+        {
+            StrengthProvider = () => 100,
+            PicklocksProvider = () => 0,
+            MaxBashableStrengthProvider = () => 200,
+        };
+        BfsMapper bfs = new(graph);
+
+        var path = bfs.FindPath(new RoomKey(1, 1331), new RoomKey(1, 1367), filter);
+        Assert.NotNull(path);
+
+        var expanded = RemoteActionPathExpander.Expand(
+            graph, new RoomKey(1, 1331), path!, bfs, filter);
+        int leverPulls = expanded.Count(s => s is CommandStep cs && cs.Command.Contains("lever"));
+        Assert.Equal(2, leverPulls);
+
+        // Approaching from the alignment-gated entrance (1/1322) routes too.
+        Assert.NotNull(bfs.FindPath(new RoomKey(1, 1322), new RoomKey(1, 1367), filter));
     }
 
     [Fact]

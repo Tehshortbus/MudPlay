@@ -20,67 +20,115 @@ namespace FujinTerm.Services;
 // chasing memory. It lands in its own Data/Logs/{ts}-memory.log instead, so the
 // program log stays clean while the memory history is a file away.
 //
-// One writer + one timer per app session, instantiated once in AppServices and
-// living for the whole process. The file is covered by the same
-// DebugLogWriter.PruneOldLogs retention sweep as every other .log, and each line
-// is flushed immediately (DebugLogWriter runs AutoFlush) so a hang / kill -9
-// still leaves every sample up to the crash on disk.
+// Gated by LogDiagnosticState.AutoCollectLogs: the timer always ticks, but each
+// sample is dropped while the flag is off (the default), so a normal session
+// writes no file. Flipping the Log-pane "Auto-collect logs" toggle on opens a
+// fresh file with the header + a t0 baseline sample; off closes it. One
+// instance per app session, instantiated once in AppServices.
 public sealed class MemoryUsageLog : IAsyncDisposable
 {
     // A sample a minute keeps an all-night file tiny (~500 lines over 8 h) while
     // still resolving a slow crawl.
     private static readonly TimeSpan SampleInterval = TimeSpan.FromMinutes(1);
 
-    private readonly DebugLogWriter _writer;
+    private const string HeaderLine =
+        "# columns: working-set private managed-heap gc-heap committed fragmented " +
+        "gen2-size loh-size loh-frag poh-size gen0/1/2-collections";
+
+    private readonly LogDiagnosticState _diagnostics;
     private readonly Process _process;
     private readonly System.Threading.Timer _timer;
+
+    // Guards the writer reference against the sampling threadpool thread racing
+    // a toggle-driven open/close.
+    private readonly object _gate = new();
+    private DebugLogWriter? _writer;
     private bool _broken;
 
-    public MemoryUsageLog()
+    public MemoryUsageLog(LogDiagnosticState diagnostics)
     {
-        _writer = new DebugLogWriter("memory");
+        _diagnostics = diagnostics ?? throw new ArgumentNullException(nameof(diagnostics));
         _process = Process.GetCurrentProcess();
-        _writer.WriteLine(
-            "# columns: working-set private managed-heap gc-heap committed fragmented " +
-            "gen2-size loh-size loh-frag poh-size gen0/1/2-collections");
-        Sample(null);   // t0 baseline before the first interval elapses
+        _diagnostics.Changed += OnDiagnosticsChanged;
+        // Timer runs for the whole session; Sample no-ops while the writer is
+        // closed, so the cost of collection is only paid when AutoCollectLogs is on.
         _timer = new System.Threading.Timer(Sample, null, SampleInterval, SampleInterval);
+        SyncWriter();
     }
 
-    // Full path of the on-disk memory log for this session.
-    public string Path => _writer.Path;
+    // True while the on-disk file is open and receiving samples.
+    public bool IsCollecting
+    {
+        get { lock (_gate) { return _writer is not null; } }
+    }
 
-    // Runs on a threadpool thread (Timer callback). DebugLogWriter is internally
-    // locked, so no marshalling is needed.
+    // Open or close the writer to match AutoCollectLogs. On open, write the
+    // header and take an immediate t0 baseline so the file has a datum before
+    // the first interval elapses. Once _broken we stay closed for the session.
+    private void SyncWriter()
+    {
+        bool opened = false;
+        lock (_gate)
+        {
+            if (_broken) return;
+            bool want = _diagnostics.AutoCollectLogs;
+            if (want && _writer is null)
+            {
+                try
+                {
+                    _writer = new DebugLogWriter("memory");
+                    _writer.WriteLine(HeaderLine);
+                    opened = true;
+                }
+                catch { _broken = true; }
+            }
+            else if (!want && _writer is not null)
+            {
+                _writer.Dispose();
+                _writer = null;
+            }
+        }
+        if (opened) Sample(null);   // t0 baseline immediately after opening
+    }
+
+    private void OnDiagnosticsChanged() => SyncWriter();
+
+    // Runs on a threadpool thread (Timer callback). The _gate lock guards the
+    // writer swap, so no marshalling is needed. No-op while the writer is closed.
     private void Sample(object? _)
     {
-        if (_broken) return;
-        try
+        lock (_gate)
         {
-            _process.Refresh();   // WorkingSet64 / PrivateMemorySize64 are cached until this
-            GCMemoryInfo gc = GC.GetGCMemoryInfo();
-            ReadOnlySpan<GCGenerationInfo> gens = gc.GenerationInfo;
-            // GenerationInfo is [gen0, gen1, gen2, LOH, POH] on .NET Core 3.0+;
-            // the length guards keep a leaner runtime from throwing. Sizes are
-            // "after the last GC of this kind", which is exactly the settled
-            // high-water we want to trend.
-            long gen2Size = gens.Length > 2 ? gens[2].SizeAfterBytes : 0;
-            long lohSize  = gens.Length > 3 ? gens[3].SizeAfterBytes : 0;
-            long lohFrag  = gens.Length > 3 ? gens[3].FragmentationAfterBytes : 0;
-            long pohSize  = gens.Length > 4 ? gens[4].SizeAfterBytes : 0;
-            _writer.WriteLine(
-                $"ws={Mb(_process.WorkingSet64)} priv={Mb(_process.PrivateMemorySize64)} " +
-                $"managed={Mb(GC.GetTotalMemory(false))} heap={Mb(gc.HeapSizeBytes)} " +
-                $"committed={Mb(gc.TotalCommittedBytes)} frag={Mb(gc.FragmentedBytes)} " +
-                $"gen2sz={Mb(gen2Size)} loh={Mb(lohSize)} lohfrag={Mb(lohFrag)} poh={Mb(pohSize)} " +
-                $"gc0={GC.CollectionCount(0)} gc1={GC.CollectionCount(1)} gc2={GC.CollectionCount(2)}");
-        }
-        catch
-        {
-            // Disk full / handle lost / permission flap. Stop sampling and stay
-            // silent — same rationale as ProgramLogFile: losing the trail is
-            // acceptable, wedging on it is not.
-            _broken = true;
+            if (_writer is null) return;
+            try
+            {
+                _process.Refresh();   // WorkingSet64 / PrivateMemorySize64 are cached until this
+                GCMemoryInfo gc = GC.GetGCMemoryInfo();
+                ReadOnlySpan<GCGenerationInfo> gens = gc.GenerationInfo;
+                // GenerationInfo is [gen0, gen1, gen2, LOH, POH] on .NET Core 3.0+;
+                // the length guards keep a leaner runtime from throwing. Sizes are
+                // "after the last GC of this kind", which is exactly the settled
+                // high-water we want to trend.
+                long gen2Size = gens.Length > 2 ? gens[2].SizeAfterBytes : 0;
+                long lohSize  = gens.Length > 3 ? gens[3].SizeAfterBytes : 0;
+                long lohFrag  = gens.Length > 3 ? gens[3].FragmentationAfterBytes : 0;
+                long pohSize  = gens.Length > 4 ? gens[4].SizeAfterBytes : 0;
+                _writer.WriteLine(
+                    $"ws={Mb(_process.WorkingSet64)} priv={Mb(_process.PrivateMemorySize64)} " +
+                    $"managed={Mb(GC.GetTotalMemory(false))} heap={Mb(gc.HeapSizeBytes)} " +
+                    $"committed={Mb(gc.TotalCommittedBytes)} frag={Mb(gc.FragmentedBytes)} " +
+                    $"gen2sz={Mb(gen2Size)} loh={Mb(lohSize)} lohfrag={Mb(lohFrag)} poh={Mb(pohSize)} " +
+                    $"gc0={GC.CollectionCount(0)} gc1={GC.CollectionCount(1)} gc2={GC.CollectionCount(2)}");
+            }
+            catch
+            {
+                // Disk full / handle lost / permission flap. Stop sampling and stay
+                // silent — same rationale as ProgramLogFile: losing the trail is
+                // acceptable, wedging on it is not.
+                _broken = true;
+                _writer.Dispose();
+                _writer = null;
+            }
         }
     }
 
@@ -89,8 +137,15 @@ public sealed class MemoryUsageLog : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        _diagnostics.Changed -= OnDiagnosticsChanged;
         await _timer.DisposeAsync();
         _process.Dispose();
-        await _writer.DisposeAsync();
+        DebugLogWriter? writer;
+        lock (_gate)
+        {
+            writer = _writer;
+            _writer = null;
+        }
+        if (writer is not null) await writer.DisposeAsync();
     }
 }

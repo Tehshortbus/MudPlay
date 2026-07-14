@@ -117,22 +117,40 @@ public sealed class LogDiagnosticsTests
     }
 
     [Fact]
+    public void AutoCollectLogs_DefaultsOff_AndFiresChanged()
+    {
+        LogDiagnosticState diag = new();
+        Assert.False(diag.AutoCollectLogs);
+
+        int fired = 0;
+        diag.Changed += () => fired++;
+
+        diag.AutoCollectLogs = true;
+        diag.AutoCollectLogs = true;    // no-op: same value
+        diag.AutoCollectLogs = false;
+
+        Assert.Equal(2, fired);
+    }
+
+    [Fact]
     public void LogDiagnosticsSettings_DefaultsOff()
     {
         LogDiagnosticsSettings dto = new();
         Assert.False(dto.Debug);
         Assert.False(dto.Combat);
+        Assert.False(dto.AutoCollect);
     }
 
     [Fact]
     public void LogDiagnosticsSettings_RoundTripsJson()
     {
-        LogDiagnosticsSettings original = new() { Debug = true, Combat = true };
+        LogDiagnosticsSettings original = new() { Debug = true, Combat = true, AutoCollect = true };
         string json = JsonSerializer.Serialize(original);
         LogDiagnosticsSettings? round = JsonSerializer.Deserialize<LogDiagnosticsSettings>(json);
 
         Assert.NotNull(round);
         Assert.True(round!.Debug);
         Assert.True(round.Combat);
+        Assert.True(round.AutoCollect);
     }
 }
