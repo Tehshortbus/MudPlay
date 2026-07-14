@@ -2,6 +2,10 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.64.0
+
+- Party-wealth probe now logs each member's reply as it arrives — the interpreted copper value (or "wealth unknown") alongside the verbatim reply — so a program-log read confirms every member's response was parsed correctly, not just the final replied/known tally
+
 ## 1.63.0
 
 - Bug reports now capture the navigation engines in a dedicated section — the point-to-point walk engine (live target, step progress, next direction, and the last stop/failure reason), the door / hidden-exit / trap obstacle handlers mid-request, and the path-item shop/hunt detour state with outstanding route-item needs

@@ -184,6 +184,13 @@ public sealed partial class PartyWealthProbe : IDisposable
 
         string given = GivenName(entry.Speaker);
 
+        // Record what we made of each reply — name, interpreted copper value (or
+        // "unknown"), and the verbatim reply — so a reader can confirm the parse,
+        // especially the fragile foreign-client coin-phrase fallback.
+        _log?.Info("PartyWealth", known
+            ? $"{given}: interpreted {copper:N0} copper from reply \"{entry.Message}\""
+            : $"{given}: wealth unknown (reply \"{entry.Message}\")");
+
         // Forward each fresh reading to the tracker regardless of which
         // in-flight query (if any) still awaits them; one reply can satisfy
         // several concurrent queries (no echoed parameter to disambiguate).
