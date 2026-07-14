@@ -21,12 +21,14 @@ public sealed class ConditionTrackerTests
         public ConditionTracker Tracker { get; }
         public List<MessageRecord> Applied { get; } = new();
         public List<MessageRecord> Ended { get; } = new();
+        public List<MessageRecord> ActionFailed { get; } = new();
 
         public Harness()
         {
             Tracker = new ConditionTracker(Messages, Log);
             Tracker.ConditionApplied += Applied.Add;
             Tracker.ConditionEnded   += Ended.Add;
+            Tracker.ActionFailed     += ActionFailed.Add;
         }
 
         public void Feed(string text)
@@ -88,6 +90,56 @@ public sealed class ConditionTrackerTests
         Assert.True(h.Tracker.IsPoisoned);
         Assert.True(h.Tracker.IsLosingHp);
         Assert.Single(h.Applied);
+    }
+
+    // ----- LastActionFailed (confusion fumble) ------------------------
+
+    [Fact]
+    public void Fumble_FiresActionFailed()
+    {
+        using Harness h = new();
+        h.Messages.Messages.Add(MakeRecord("fumble",
+            MessageFlags.Confused | MessageFlags.LastActionFailed,
+            applied: "You fumble in confusion",
+            endsWith: "The effects of confusion wear off"));
+
+        h.Feed("You fumble in confusion!");
+
+        Assert.Single(h.ActionFailed);
+        Assert.Equal("fumble", h.ActionFailed[0].Name);
+    }
+
+    [Fact]
+    public void Fumble_FiresEveryLine_NotJustFirst()
+    {
+        // Confusion fumbles command after command while it lasts; the condition
+        // is "applied" only once, but the retry must ride every fumble line.
+        using Harness h = new();
+        h.Messages.Messages.Add(MakeRecord("fumble",
+            MessageFlags.Confused | MessageFlags.LastActionFailed,
+            applied: "You fumble in confusion",
+            endsWith: "The effects of confusion wear off"));
+
+        h.Feed("You fumble in confusion!");
+        h.Feed("You fumble in confusion!");
+        h.Feed("You fumble in confusion!");
+
+        Assert.Equal(3, h.ActionFailed.Count);   // per-line, not deduped
+        Assert.Single(h.Applied);                // condition applied only once
+    }
+
+    [Fact]
+    public void NonActionFailedCondition_DoesNotFireActionFailed()
+    {
+        using Harness h = new();
+        h.Messages.Messages.Add(MakeRecord("Poison",
+            MessageFlags.Poisoned,
+            applied: "You have been poisoned!",
+            endsWith: "The poison wears off."));
+
+        h.Feed("You have been poisoned!");
+
+        Assert.Empty(h.ActionFailed);
     }
 
     [Fact]

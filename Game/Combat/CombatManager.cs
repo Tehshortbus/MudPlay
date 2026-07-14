@@ -85,6 +85,7 @@ public sealed partial class CombatManager : IDisposable
     private readonly IDisposable _spellNoEffectSub;
     private readonly IDisposable _commandNoEffectSub;
     private readonly IDisposable _combatStatusSub;
+    private readonly IDisposable _monsterProtectSub;
     private readonly IDisposable _bsResolveHitsSub;
     private readonly IDisposable _bsResolveMissesSub;
 
@@ -115,6 +116,18 @@ public sealed partial class CombatManager : IDisposable
     private Func<bool>? _seeHiddenClearActive;
     private Func<bool>? _shadowRestHolding;
     private string? _currentTarget;
+
+    // Guard-redirect memory. MajorMUD "guarded" monsters (a brigand chief guarded
+    // by brigands) can't be hit directly while a guard is in the room — each swing
+    // we aim at the chief is redirected to a guard, announced by "<guard> moves to
+    // protect <chief>". We stash the intended priority here (leaving _currentTarget
+    // on the chief) and re-attack it by name after each guard falls, until no guard
+    // remains and the swing lands on the chief. Durable across the room-cleared
+    // reset that a guard death's roster desync can trigger — that reset nulls
+    // _currentTarget and disarms the normal resume, so this separate memory is what
+    // drives recovery (the reported "chief left unattacked after the last guard
+    // died" stall). Cleared when the priority itself dies / leaves / on room change.
+    private string? _guardBlockedTarget;
 
     // Target-Priority follow deferral. When we're partied, in a multi-mob room,
     // and configured to follow the leader's / a member's target, we hold our own
@@ -326,6 +339,7 @@ public sealed partial class CombatManager : IDisposable
         _spellNoEffectSub  = router.Subscribe(KnownPatterns.SpellNoEffect,  OnSpellNoEffect);
         _commandNoEffectSub = router.Subscribe(KnownPatterns.CommandNoEffect, OnCommandNoEffect);
         _combatStatusSub   = router.Subscribe(KnownPatterns.CombatStatus,   OnCombatStatus);
+        _monsterProtectSub = router.Subscribe(KnownPatterns.MonsterMovesToProtect, OnMonsterProtect);
 
         // Backstab surprise-round resolution rides on our own hit / miss lines.
         // Separate subscriptions from OnCombatLine (fan-out) so the resolution
@@ -371,12 +385,14 @@ public sealed partial class CombatManager : IDisposable
         string? CurrentTarget,
         bool UsingAlternateWeapon,
         bool AwaitingBackstabResolution,
-        string? PendingBackstabSpecies);
+        string? PendingBackstabSpecies,
+        string? GuardBlockedTarget);
 
     // UI-thread only (router handlers + the capture both run there), so no lock.
     public DebugState Snapshot() => new(
         _currentTarget, _usingAlternateWeapon,
-        _awaitingBackstabResolution, _pendingBackstabSpecies);
+        _awaitingBackstabResolution, _pendingBackstabSpecies,
+        _guardBlockedTarget);
 
     // Wire the backstab gating delegates: isStealthed reports whether the character
     // holds any stealth that opens a backstab — sneaking OR (optimistically) hidden
@@ -454,6 +470,18 @@ public sealed partial class CombatManager : IDisposable
     public void NoteMonsterDied(string deadMonsterName)
     {
         if (string.IsNullOrEmpty(deadMonsterName)) return;
+
+        // The guarded priority itself fell — the redirect chase is over. Drop the
+        // memory so no stray guard-retry fires "aa <priority>" at the corpse. Runs
+        // before the _currentTarget guard below because a roster-desync room-clear
+        // may have already nulled _currentTarget while the guard block is still set.
+        if (_guardBlockedTarget is { } blocked &&
+            string.Equals(blocked, deadMonsterName, StringComparison.OrdinalIgnoreCase))
+        {
+            _log?.Combat(LogCategory, $"guard priority '{blocked}' died — clearing guard block");
+            _guardBlockedTarget = null;
+        }
+
         if (_currentTarget is not { } current) return;
 
         // Direct RawName match — the unflavored case. Two "giant rat"
@@ -546,6 +574,9 @@ public sealed partial class CombatManager : IDisposable
             // unresolved watch so a missed resolution line can't strand the re-fire
             // suppression across rooms.
             ClearBackstabResolution();
+            // A guarded priority we couldn't reach is left behind on a room change —
+            // drop the redirect memory so we don't re-attack it into the new room.
+            _guardBlockedTarget = null;
         }
 
         // Combat-off override for stealth runners. Normally combat-off
@@ -1500,6 +1531,10 @@ public sealed partial class CombatManager : IDisposable
         _log?.Combat(LogCategory,
             $"target-not-here — dropping target={_currentTarget} + refreshing room");
         _currentTarget = null;
+        // The server says the named target isn't here — a guarded priority we were
+        // chasing is genuinely gone, so end the redirect chase (breaks the retry
+        // loop if a guard-retry "aa <priority>" was what drew this line).
+        _guardBlockedTarget = null;
         ClearBackstabResolution();
 
         // Force a refresh (debounce shared with OnCombatLine so a
@@ -1531,6 +1566,9 @@ public sealed partial class CombatManager : IDisposable
         _log?.Combat(LogCategory,
             $"command-no-effect — dropping target={_currentTarget} + refreshing room");
         _currentTarget = null;
+        // A no-effect swing means the named target isn't hittable now — end any
+        // guard-redirect chase rather than re-firing at a target that won't resolve.
+        _guardBlockedTarget = null;
         ClearBackstabResolution();
 
         DateTimeOffset now = DateTimeOffset.Now;
@@ -1655,6 +1693,16 @@ public sealed partial class CombatManager : IDisposable
             {
                 TryResumeEngage(live, bypassAttackGuard: true);
             }
+
+            // Guard-redirect recovery. When a guarded monster is our priority, each
+            // guard death fires this Off; re-attack the priority by name so the next
+            // guard steps in (or, once the last guard falls, the swing finally lands
+            // on the chief). Placed after the cast-resume so its shared pacing stamps
+            // suppress a double-send, and gated on _guardBlockedTarget so it's inert
+            // outside a guard fight. This is the automated form of the manual
+            // "aa <priority>" a player otherwise has to send when the last guard's
+            // death desyncs the roster and the normal resume goes silent.
+            TryGuardRetry();
         }
         else if (string.Equals(status, "Engaged", StringComparison.OrdinalIgnoreCase))
         {
@@ -1664,6 +1712,61 @@ public sealed partial class CombatManager : IDisposable
             _engageConfirmed = true;
             _awaitingEngageSince = null;
         }
+    }
+
+    // Guard/redirect recognition — "<guard> moves to protect <priority>". While a
+    // guarded monster (brigand chief) is shielded, our swing lands on the guard,
+    // not the chief. We don't move _currentTarget onto the guard (the server is
+    // already swinging the guard for us, and leaving _currentTarget on the chief
+    // keeps its death line attributable); we just remember the priority so each
+    // guard's death re-attacks it (TryGuardRetry). Only acts when the protected
+    // monster is the one we're already trying to kill — a protect line shielding
+    // some other room monster isn't ours to chase.
+    private void OnMonsterProtect(MatchResult match)
+    {
+        if (!_isEnabled()) return;
+        if (match.Groups.Count < 2) return;
+        string guard = match.Groups[0].Trim();
+        string protectedName = match.Groups[1].Trim();
+        if (guard.Length == 0 || protectedName.Length == 0) return;
+
+        bool isOurs =
+            string.Equals(protectedName, _currentTarget, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(protectedName, _guardBlockedTarget, StringComparison.OrdinalIgnoreCase);
+        if (!isOurs) return;
+
+        if (!string.Equals(_guardBlockedTarget, protectedName, StringComparison.OrdinalIgnoreCase))
+            _log?.Combat(LogCategory,
+                $"guard redirect — '{guard}' shields priority '{protectedName}'; " +
+                "will re-attack the priority as each guard falls");
+        _guardBlockedTarget = protectedName;
+    }
+
+    // Re-attack a guard-shielded priority after a guard fell (driven by the *Combat
+    // Off* each guard death emits). Sends a literal "aa <priority>" — the server
+    // redirects it to any remaining guard (another protect line re-affirms the
+    // block) or, once the last guard is dead, engages the priority directly. Paced
+    // by the same stamps the interrupt-resume uses so it can't double with a normal
+    // resume that already re-engaged this round, and stays quiet outside a guard
+    // fight (_guardBlockedTarget null). Literal-name attack (not the room-view
+    // chooser) on purpose: the failing case is precisely the one where the priority
+    // has dropped from the room view, so a candidate can't be built.
+    private void TryGuardRetry()
+    {
+        if (_guardBlockedTarget is not { Length: > 0 } priority) return;
+        if (!_isEnabled()) return;
+        if (_castingSpellTarget is not null) return;   // spell mode owns its re-cast
+        if (_wireSender is null) return;
+
+        DateTimeOffset now = DateTimeOffset.Now;
+        if (now - _lastAttackSentAt < ResumeAfterAttackGuard) return;
+        if (now - _lastInterruptResumeAt < ResumePacing) return;
+        _lastInterruptResumeAt = now;
+
+        _currentTarget = priority;
+        _log?.Combat(LogCategory, $"guard retry — re-attacking priority '{priority}' after guard fell");
+        SendAttack(_readSettings().NormalAttackCommand, priority, refire: true,
+                   refireReason: "guard retry");
     }
 
     private bool HasEngageable(RoomEntitiesObservation obs)
@@ -1753,6 +1856,30 @@ public sealed partial class CombatManager : IDisposable
         NoteAttackSent();
     }
 
+    // Confusion-fumble recovery, driven by ConditionTracker.ActionFailed (wired in
+    // AppServices). MajorMUD confusion does not block attacking — each command you
+    // send can fumble ("You fumble in confusion!"), consumed without executing, so
+    // the server never engages and the target sits unattacked (the reported
+    // "monsters present but not attacked unless I manually re-send" symptom). We
+    // re-send the last weapon swing verbatim; it fires once per fumble line, so the
+    // server's own fumble echoes pace the retries, and once a swing lands the server
+    // auto-repeats and the fumbles stop. Weapon mode only — spell mode re-issues its
+    // cast on the per-round tick (OnCombatTick), and _lastAttackCommand holds a
+    // weapon verb we must not fire into a spell fight.
+    public void OnActionFailed()
+    {
+        if (_disposed || !_isEnabled()) return;
+        if (_castingSpellTarget is not null) return;
+        if (_currentTarget is null) return;
+        if (_lastAttackCommand is not { Length: > 0 } line) return;
+        if (_wireSender is null) return;
+
+        _combatOff = false;
+        _log?.Combat(LogCategory, $"fumble — re-sending last attack '{line}'");
+        _wireSender(Encoding.Latin1.GetBytes(line + "\r"));
+        NoteAttackSent();
+    }
+
     // Arm the engage-verification timer after a fresh attack goes out. No-op once
     // the server has confirmed engagement (subsequent rounds of an
     // already-acknowledged fight don't re-arm — only the first unconfirmed swing
@@ -1814,6 +1941,7 @@ public sealed partial class CombatManager : IDisposable
         _spellNoEffectSub.Dispose();
         _commandNoEffectSub.Dispose();
         _combatStatusSub.Dispose();
+        _monsterProtectSub.Dispose();
         _bsResolveHitsSub.Dispose();
         _bsResolveMissesSub.Dispose();
     }

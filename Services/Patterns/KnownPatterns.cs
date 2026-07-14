@@ -100,6 +100,15 @@ public static class KnownPatterns
     // Same prefix tolerance + positional announcer/target captures as the melee form.
     public const string PartyCastAnnounce    = "combat.party-cast-announce";
 
+    // "<guard> moves to protect <protected>." — MajorMUD guard/redirect mechanic.
+    // A "guarded" monster (e.g. a brigand chief guarded by brigands) can't be
+    // attacked directly while a guard is in the room: the server redirects our
+    // swing to the guard and emits this line. CombatManager uses it to remember
+    // the intended priority and re-attack it once the guard falls. Both names are
+    // monsters (multi-word), so the captures are lazy .+? — unlike the player
+    // "moves to attack" form's single-token \w+ announcer.
+    public const string MonsterMovesToProtect = "combat.monster-protect";
+
     // "You don't see <X> here!" — server's response when our `attack X` resolves
     // against a target that left or died between our send and the server's
     // resolve (our death-line match was missed, the mob fled, a partymate killed

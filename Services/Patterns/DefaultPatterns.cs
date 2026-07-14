@@ -237,6 +237,15 @@ public static class DefaultPatterns
         yield return new RegexPattern(KnownPatterns.PartyCastAnnounce,
             @"^(?:\[[^\]]*\]:|:)*(?<player>\w+) moves to cast .+? upon (?<target>.+?)\.");
 
+        // Guard/redirect announce — "<guard> moves to protect <protected>." A
+        // guarded monster can't be attacked while a guard is present; the server
+        // redirects the swing to the guard and emits this. Both names are monsters
+        // (multi-word), so unlike the player "moves to attack" form the guard
+        // capture is .+? not \w+. The line carries no trailing period in observed
+        // output, so the terminator is optional.
+        yield return new RegexPattern(KnownPatterns.MonsterMovesToProtect,
+            @"^(?:\[[^\]]*\]:|:)*(?<guard>.+?) moves to protect (?<protected>.+?)\.?\s*$");
+
         // Room-entry arrival. Anchored on "in… from <dir>"
         // so a wide alternation of verbs (crawls, walks, slithers, lumbers,
         // teleports, materialises, …) is folded into a single \w+ capture.

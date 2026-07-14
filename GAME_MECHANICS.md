@@ -1270,6 +1270,26 @@ glass jug               5               2 gold crowns
   room but not attacking unless I manually send attack commands" (report
   `paradigm-20260714-093614`).
 
+## Guarded monsters redirect attacks *([CONFIRMED] 2026-07-14, user + wire capture)*
+
+- Some monsters are **guarded** by others in the same room (e.g. a *brigand chief*
+  guarded by *brigands*). A guarded monster **cannot be hit directly** while any
+  guard is present: each attack aimed at it is **redirected to a guard**, announced
+  by `<guard> moves to protect <protected>` — **no trailing period, no prompt
+  prefix**, and both names are ordinary (multi-word) monster names.
+- The redirect repeats — one guard interposes per attack — until **all guards are
+  dead**, after which the protected monster is directly attackable. Confirmed on the
+  wire in report `paradigm-20260714-115526`: three protect lines as each attack was
+  shielded, then guard deaths, then the chief became hittable.
+- **Implication for auto-combat:** when the protect line names our current priority,
+  the engine keeps that priority "blocked" and, as **each guard falls**, re-issues an
+  attack **by the priority's literal name** (`aa <priority>`) to test whether the
+  guard wall is down yet. This is reactive (line-driven), not read off the game-data
+  "guarded by" field. The block clears when the priority itself dies, on room change,
+  or on a target-not-here / no-effect reply. Without this, killing the last guard
+  emits a *Combat Off* with the chief alive but unengaged, and auto-combat stalls
+  until the user manually attacks (`aa b`) — the reported symptom.
+
 ## Message catalogue (lines the client parses)
 
 | Event | Line |
@@ -1306,6 +1326,7 @@ glass jug               5               2 gold crowns
 | Move refused — shut door | `The door is closed.` |
 | Room too dark to see (starves name + exits + Also-here) | `The room is very dark - you can't see anything.` |
 | Room considerably darker (same starving) | `The room is pitch black...` |
+| Guard interposes for a guarded monster (no trailing period, no prefix) | `<guard> moves to protect <protected>` |
 | Incoming mob attack — miss (dark cyan; reveals a mob in a dark room) | `The <monster> <verb> at you` |
 | Incoming mob attack — hit (dark cyan; reveals a mob in a dark room) | `The <monster> <verb> you for N damage!` |
 | Monster leaves the room (e.g. dragged out by a fleeing player) | `<name> walks out of the room to <dir>.` **or** `<name> exits the room to <dir>.` — both confirmed; the "exits" form (no leading article) was the paradigm drag-out capture |

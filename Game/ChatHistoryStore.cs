@@ -68,6 +68,28 @@ public sealed class ChatHistoryStore : IDisposable
             _entries.RemoveAt(0);
     }
 
+    // Replay persisted history into the store at startup so the Conversation
+    // window shows prior-session chat on reconnect. Entries are inserted at the
+    // front (they predate anything live) in their given chronological order.
+    // Callers gate this to run once per app run — the store is app-lifetime and
+    // never cleared on profile swap, so a second seed would duplicate rows.
+    public void Seed(IReadOnlyList<ChatLogEntry> historical)
+    {
+        ArgumentNullException.ThrowIfNull(historical);
+        if (historical.Count == 0) return;
+
+        bool wasEmpty = _entries.Count == 0;
+        for (int i = 0; i < historical.Count; i++)
+            _entries.Insert(i, historical[i]);
+        while (_entries.Count > MaxEntries)
+            _entries.RemoveAt(_entries.Count - 1);
+
+        // Anchor the rollover clock to the newest seeded row so the first live
+        // entry only draws a separator when it genuinely crosses into a new day.
+        if (wasEmpty)
+            _lastDate = DateOnly.FromDateTime(historical[^1].Timestamp.LocalDateTime);
+    }
+
     // Wipe every entry. User-initiated only (no automatic clear on profile
     // swap); intended for the Conversation window's right-click → Clear menu.
     public void Clear()

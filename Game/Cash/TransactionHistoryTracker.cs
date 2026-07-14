@@ -74,6 +74,20 @@ public sealed class TransactionHistoryTracker
     // Point-in-time copy of the ledger, oldest entry first.
     public IReadOnlyList<TransactionEntry> Snapshot() => _entries.ToArray();
 
+    // Replace the ledger wholesale with persisted history read back from disk on
+    // reconnect. Fires Changed (so the window rebuilds) but deliberately NOT
+    // EntryAdded — these rows are already on disk, and re-firing the append hook
+    // would write them a second time. A full replace is safe under repeated
+    // profile / BBS re-fires: each call reflects the current disk tail exactly.
+    public void Hydrate(IReadOnlyList<TransactionEntry> entries)
+    {
+        ArgumentNullException.ThrowIfNull(entries);
+        _entries.Clear();
+        _entries.AddRange(entries);
+        while (_entries.Count > MaxEntries) _entries.RemoveAt(0);
+        Changed?.Invoke();
+    }
+
     // Clear the ledger — called on the connect / character-switch boundary and by
     // the manual / remote session reset, matching the other session-stats
     // trackers.

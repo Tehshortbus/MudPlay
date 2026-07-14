@@ -2,6 +2,13 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.65.0
+
+- Auto-combat re-issues its last attack when a swing fumbles under confusion, so a confused character keeps fighting instead of silently losing attacks until manually re-sent
+- Guard-aware retargeting: when a monster is shielded by guards ("<guard> moves to protect <target>"), combat re-attacks the intended priority as each guard falls instead of stalling once the last guard dies
+- Conversation and transaction history reload from the persisted session logs on reconnect, so prior-session chat and ledger entries reappear instead of starting empty
+- bug reports addressed: paradigm-20260714-093614, paradigm-20260714-115526
+
 ## 1.64.0
 
 - Party-wealth probe now logs each member's reply as it arrives — the interpreted copper value (or "wealth unknown") alongside the verbatim reply — so a program-log read confirms every member's response was parsed correctly, not just the final replied/known tally

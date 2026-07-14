@@ -1,8 +1,10 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.64.0**
-> - Party-wealth probe now logs each member's reply as it arrives — the interpreted copper value (or "wealth unknown") alongside the verbatim reply — so a program-log read confirms every member's response was parsed correctly, not just the final replied/known tally
+> **Version 1.65.0**
+> - Auto-combat re-issues its last attack when a swing fumbles under confusion, so a confused character keeps fighting instead of silently losing attacks until manually re-sent
+> - Guard-aware retargeting: when a monster is shielded by guards ("<guard> moves to protect <target>"), combat re-attacks the intended priority as each guard falls instead of stalling once the last guard dies
+> - Conversation and transaction history reload from the persisted session logs on reconnect, so prior-session chat and ledger entries reappear instead of starting empty
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

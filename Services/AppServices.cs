@@ -2995,7 +2995,7 @@ public sealed class AppServices
         // Transaction history. Reads its own char-tier Talk settings; switches
         // files on profile / BBS change.
         SessionLog = new SessionLogService(
-            Profile, Chat, TransactionHistory, Log,
+            Profile, Chat, ChatHistory, TransactionHistory, Log,
             () => ReadSection<Models.Profile.TalkSettings>(Profile.Current, "Talk"));
 
         // @reset — a party member zeroes our session-stats trackers (the same
@@ -3094,6 +3094,11 @@ public sealed class AppServices
         // armor (deltas only, synchronous) and the weapon swap both fire from the
         // pre-move sequence, before the sn — equipping breaks sneak.
         Combat.SetWeaponActuator(Equipment.SwapWeapon, () => Equipment.ApplyBackstabArmor());
+
+        // Confusion-fumble retry: a fumbled attack is consumed without engaging,
+        // so re-send the last swing on every fumble line (ConditionTracker gates
+        // the raw signal to the confusion record; Combat gates on an active fight).
+        Conditions.ActionFailed += _ => Combat.OnActionFailed();
 
         // CashManager. Subscribes to cash-on-ground
         // / cash-picked-up / cash-dropped patterns and dispatches
