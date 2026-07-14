@@ -1795,6 +1795,8 @@ public sealed class AppServices
             picklocksOverBashProvider:     () => Resolver.Resolve<Models.Profile.OtherSettings>("Other").PicklocksOverBash,
             itemNameLookup:                id => ItemNames.GetName(id),
             maxBashableStrengthProvider:   () => MaxStrength.MaxAchievableStrength,
+            // Read lazily at door-open time — Inventory is constructed after Door.
+            holdsKeyItem:                  HoldsKeyItem,
             log: Log);
         // LeaderDoorAssistManager — observes the leader failing to bash a
         // door and pitches in. Reads the Party-tab toggle + the Other-tab
@@ -4421,6 +4423,54 @@ public sealed class AppServices
             if (room.Shop != 0 && shops.Contains(room.Shop))
                 rooms.Add(room.Key);
         return rooms;
+    }
+
+    // Route-picker helper: for a path-gate item the direct route needs, name the
+    // shop the walk would actually detour to buy it — but only when that detour
+    // will really run. It runs only if the item is flagged BuyIfNeededForPath
+    // (same gate PathItemShopRouter enforces) AND a reachable shop stocks it, so
+    // both conditions must hold or we return null. The chosen shop matches the
+    // router's fewest-added-steps pick (shared TrySelectShop), so the picker's
+    // "buy at X" promise is the shop the run visits — not a plausible guess.
+    public string? PathItemShopName(int itemId, Game.Map.RoomKey source, Game.Map.RoomKey destination)
+    {
+        if (!ShouldAutoObtainForPath(itemId, o => o.BuyIfNeededForPath)) return null;
+        System.Collections.Generic.IReadOnlyList<Game.Map.RoomKey> shops = ShopRoomsSellingItem(itemId);
+        if (shops.Count == 0) return null;
+        if (!Game.Map.PathItemShopRouter.TrySelectShop(
+                shops, source, destination, (a, b) => Bfs.DistanceBetween(a, b, Movement),
+                out Game.Map.RoomKey shop))
+            return null;
+        return RoomGraph.GetRoom(shop)?.Name;
+    }
+
+    // Live key-possession check for DoorOpenManager's opportunistic floor grab:
+    // is the player confidently carrying the key for itemId? Compared by name
+    // against the inventory's key-ring + carried list, article-stripped. Biased
+    // to false on any uncertainty (inventory not yet parsed, name mismatch) so the
+    // door FSM errs toward a harmless `get` rather than skipping it.
+    private bool HoldsKeyItem(int itemId)
+    {
+        string? name = ItemNames.GetName(itemId);
+        if (string.IsNullOrWhiteSpace(name)) return false;
+        if (!Inventory.IsLoaded) return false;
+        string want = StripLeadingArticle(name);
+        Game.Inventory.InventorySnapshot snap = Inventory.Snapshot;
+        if (snap.Keys is { } keys)
+            foreach (string k in keys)
+                if (StripLeadingArticle(k) == want) return true;
+        foreach (string c in snap.CarriedItems)
+            if (StripLeadingArticle(c) == want) return true;
+        return false;
+
+        static string StripLeadingArticle(string s)
+        {
+            s = s.Trim().ToLowerInvariant();
+            if (s.StartsWith("the ", System.StringComparison.Ordinal)) return s[4..];
+            if (s.StartsWith("an ", System.StringComparison.Ordinal)) return s[3..];
+            if (s.StartsWith("a ", System.StringComparison.Ordinal)) return s[2..];
+            return s;
+        }
     }
 
     // Every spawn site of a monster that drops itemId —

@@ -38,7 +38,15 @@ public static class RouteChoicePrompt
             return;
         }
 
-        var vm = new RouteChoiceDialogViewModel(choice, DestinationLabel(services, destination), services.ItemNames.GetName);
+        var vm = new RouteChoiceDialogViewModel(
+            choice,
+            DestinationLabel(services, destination),
+            services.ItemNames.GetName,
+            // Name the shop the run would detour to buy a gate item, when it will
+            // (item flagged buy-if-needed + a reachable shop stocks it). Resolved
+            // from this walk's source/destination so the "buy at X" tail matches
+            // the actual detour.
+            itemId => services.PathItemShopName(itemId, source.Key, destination));
         RouteChoiceResult? result = await services.Dialogs
             .OpenWindowAsync<RouteChoiceDialogViewModel, RouteChoiceResult?>(vm);
 

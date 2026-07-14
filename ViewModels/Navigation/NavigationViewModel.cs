@@ -1053,16 +1053,19 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(HasFavoriteTree));
     }
 
-    // Click a favourite → walk there (stops loop/lair first).
+    // Click a favourite → stage it as the queued destination, mirroring a pick
+    // from the search box: pan the map to it, draw the preview line, and arm Run.
+    // The user hits Run to walk there or the X to cancel. Staging deliberately
+    // does NOT stop a running loop/lair — that interruption belongs to Run
+    // (RunStop stops the engine and walks the queued destination on commit), so
+    // a mis-click no longer wipes an in-flight run.
     [RelayCommand]
-    private async Task GoToFavorite(FavoriteRowViewModel? row)
+    private void GoToFavorite(FavoriteRowViewModel? row)
     {
         if (row is null) return;
-        if (_services.LoopRunner.State != Game.Map.LoopState.Idle)
-            _services.LoopRunner.Stop("user walk-to from Favorites");
-        if (_services.AutoLair.IsActive) _services.AutoLair.Stop();
-        // User-initiated walk: offer the free-vs-direct route choice.
-        await RouteChoicePrompt.WalkAsync(_services, row.Key);
+        Layout = _services.Bfs.BuildLayout(row.Key);
+        SelectedRoomKey = row.Key;
+        QueuedDestination = row.Key;
     }
 
     [RelayCommand]
@@ -2553,7 +2556,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     //   - Auto-Lair mode with marked rooms → start the scheduler.
     //   - Otherwise, walk to the queued destination.
     [RelayCommand]
-    private void RunStop()
+    private async Task RunStop()
     {
         Game.Map.LoopRunner runner = _services.LoopRunner;
 
@@ -2570,8 +2573,13 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
                 runner.Stop("user walk-to queued destination");
             if (_services.AutoLair.IsActive) _services.AutoLair.Stop();
             _services.MovementCoordinator.ClearGate(Game.Map.MovementCoordinator.UserGate);
-            _services.Walker.WalkTo(queued);
+            // Committing the staged destination consumes it — clear before the
+            // (possibly awaited) route picker so Run disarms immediately and a
+            // second press can't open a second picker. The search box, the
+            // favourites list, and the map right-click all funnel through the
+            // same shared engine here; only how the walk is confirmed differs.
             QueuedDestination = null;
+            await RouteChoicePrompt.WalkAsync(_services, queued);
             return;
         }
 
@@ -2663,11 +2671,6 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
             _services.AutoLair.Start();
             return;
         }
-        if (QueuedDestination is { } dest)
-        {
-            _services.Walker.WalkTo(dest);
-            QueuedDestination = null;
-        }
     }
 
     // Set true when OpenBuilderForRunningLoop opened build mode in
@@ -2751,12 +2754,14 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
             OnPropertyChanged(nameof(LoopBuilder));
             OnPropertyChanged(nameof(IsLoopBuilding));
         }
-        // Exit AutoLair build mode too — previously StopAll stopped
-        // the scheduler but left CurrentMode == AutoLair, forcing the
-        // user to click Stop a second time to actually return to
-        // Idle.  Now one click does it.  Markers stay around so a
-        // quick Run is still cheap; the user explicitly toggles the
-        // Lair chip to discard them.
+        // Exit AutoLair mode and wipe its markers. Stop is the "clear the board"
+        // action, so leaving lair marks on the map — over a freshly drawn loop,
+        // even — reads as a bug. The Lair chip's own toggle already clears
+        // build-mode marks (ToggleLairMode); the master Stop must match it so the
+        // reported "hitting stop didn't wipe the markers" path lands the same way.
+        // Clear is a no-op when nothing's marked. Setting CurrentMode → Idle also
+        // makes one Stop click return from build mode instead of two.
+        _services.AutoLair.Clear();
         if (CurrentMode == NavigationMode.AutoLair)
             CurrentMode = NavigationMode.Idle;
         _loopBuilderOpenedByPause = false;

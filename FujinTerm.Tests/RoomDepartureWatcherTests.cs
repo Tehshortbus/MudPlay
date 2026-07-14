@@ -147,6 +147,47 @@ public sealed class RoomDepartureWatcherTests
     }
 
     [Fact]
+    public void MonsterSelfFlee_RemovesMonster_FiresDepartureObservation()
+    {
+        // paradigm-20260713-193205: the engaged "big forest spider" broke off and
+        // fled on its own — "The big forest spider scuttles out to the west!" — a
+        // wording with no "the room" and a per-monster verb. This line failing to
+        // match left the Combat gate asserted and the "fighting" state stuck while
+        // the client kept swinging at the empty room. Verbatim from that capture.
+        using Harness h = new();
+        h.AddMonster(1, "giant rat");
+        h.AddMonster(2, "big forest spider");
+
+        h.Feed("Also here: giant rat, big forest spider.");
+        Assert.Equal(2, h.Observations[0].Entities.Count);
+
+        h.Feed("The big forest spider scuttles out to the west!");
+
+        Assert.Equal(2, h.Observations.Count);
+        Assert.Single(h.Observations[1].Entities);
+        Assert.Equal("giant rat", h.Observations[1].Entities[0].ResolvedName);
+        Assert.Equal(RoomObservationSource.Departure, h.Observations[1].Source);
+    }
+
+    [Fact]
+    public void LastHostileSelfFlees_LeavesEmptyList()
+    {
+        // The lone engaged mob self-flees — the empty re-fired observation is what
+        // lets the combat gate drop to zero hostiles and clear the fighting state.
+        using Harness h = new();
+        h.AddMonster(2, "big forest spider");
+
+        h.Feed("Also here: big forest spider.");
+        Assert.Single(h.Observations[0].Entities);
+
+        h.Feed("The big forest spider scuttles out to the west!");
+
+        Assert.Equal(2, h.Observations.Count);
+        Assert.Empty(h.Observations[1].Entities);
+        Assert.Equal(RoomObservationSource.Departure, h.Observations[1].Source);
+    }
+
+    [Fact]
     public void DepartureLine_StripsLeadingArticle_Cardinal()
     {
         // "A giant rat walks out of the room to north." — article stripped to the

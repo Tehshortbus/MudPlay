@@ -1,10 +1,15 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.55.0**
-> - Game-data catalogues (Messages, Monster Messages) now reload in one shot — a set switch rebuilds each subscriber's index once instead of once per record (~1100× at startup), so startup and set switches settle faster
-> - Map layout cache is now bounded to 32 most-recent origins (LRU), so a realm-touring session can't grow it without limit
-> - Memory log gained committed / gen2-size / LOH-size / LOH-frag / POH columns so a future capture can tell a managed-heap leak apart from GC working-set ratcheting
+> **Version 1.56.0**
+> - Clicking a saved GOTO favourite now stages it as the queued destination (map pans, route preview draws, Run arms) instead of immediately walking there — hit Run to go or the X to cancel, same as picking a room from the search box
+> - Staging a favourite no longer stops a running loop / auto-lair on its own; that only happens when you commit with Run
+> - All three user walk-to paths — map right-click, search box, favourites — now run through the same engine: committing a search-box or favourite destination with Run offers the free-vs-shortcut route picker when a shorter gated route exists, just like the map right-click already did
+> - When a shortcut needs a carry/ticket item the walk will auto-buy, the route picker now names the shop it will detour to (e.g. "a raft (buy at General Store)")
+> - Loop circuits now search-and-reveal a hidden exit mid-lap instead of failing out when a leg crosses one
+> - A monster that breaks off and flees on its own ("scuttles out to the west!") now clears the fighting chip and combat gate, like a dragged-out mob already did
+> - Stop now wipes any auto-lair markers off the map (was only cleared by re-toggling lair mode)
+> - A keyed door whose key is lying on the room floor is now grabbed (`get <key>`) before the `use`, instead of blindly trying to use a key not in inventory
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

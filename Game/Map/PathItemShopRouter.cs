@@ -254,18 +254,27 @@ public sealed class PathItemShopRouter : IDisposable
     private void DisarmBuyTimer()
         => _buyTimer.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
 
-    // Pick the shop room minimising dist(cur,shop)+dist(shop,dest) among the
-    // rooms that stock the item and are reachable both ways. Ties break on the
-    // nearer shop, then room-key order — deterministic for testability.
     private bool TrySelectShop(RoomKey cur, RoomKey dest, int itemId, out RoomKey best)
+        => TrySelectShop(_shopRoomsSellingItem(itemId), cur, dest, _distanceBetween, out best);
+
+    // Pick the shop room minimising dist(cur,shop)+dist(shop,dest) among the
+    // given candidate rooms reachable both ways. Ties break on the nearer shop,
+    // then room-key order — deterministic for testability. Static so the route
+    // picker can name the very shop this router would detour to, without
+    // duplicating the selection rule.
+    internal static bool TrySelectShop(
+        IReadOnlyList<RoomKey> shopRooms, RoomKey cur, RoomKey dest,
+        Func<RoomKey, RoomKey, int?> distanceBetween, out RoomKey best)
     {
+        ArgumentNullException.ThrowIfNull(shopRooms);
+        ArgumentNullException.ThrowIfNull(distanceBetween);
         best = default;
         int bestTotal = int.MaxValue;
         int bestToShop = int.MaxValue;
-        foreach (RoomKey shop in _shopRoomsSellingItem(itemId))
+        foreach (RoomKey shop in shopRooms)
         {
-            if (_distanceBetween(cur, shop) is not { } toShop) continue;
-            if (_distanceBetween(shop, dest) is not { } toDest) continue;
+            if (distanceBetween(cur, shop) is not { } toShop) continue;
+            if (distanceBetween(shop, dest) is not { } toDest) continue;
             int total = toShop + toDest;
             bool better = total < bestTotal
                 || (total == bestTotal && toShop < bestToShop)

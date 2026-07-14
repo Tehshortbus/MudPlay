@@ -56,6 +56,17 @@ public sealed class LoopRunner : IRecoverableEngine
     private Action? _doorStopAll;
     private bool _awaitingDoorOpen;
 
+    // Hidden-exit reveal enqueuer — mirrors the door integration above for a
+    // SearchableHidden exit crossed mid-circuit: fire the shared sea <dir> retry
+    // loop and cross from OnHiddenRevealReply once the exit appears, rather than
+    // failing the whole lap. Null until wired (unit harnesses leave it unbound and
+    // keep the fail-loudly path). _hiddenSearchStopAll drains the FSM on teardown;
+    // _awaitingHiddenReveal gates the tracker handler so the sea re-observations
+    // of the source room aren't mistaken for a landing.
+    private Action<Direction, string, Action<HiddenSearchResult>>? _hiddenSearchEnqueuer;
+    private Action? _hiddenSearchStopAll;
+    private bool _awaitingHiddenReveal;
+
     private Loop? _loop;
     private int _index;
 
@@ -417,6 +428,24 @@ public sealed class LoopRunner : IRecoverableEngine
     {
         ArgumentNullException.ThrowIfNull(stopAll);
         _doorStopAll = stopAll;
+    }
+
+    // Hidden-exit reveal enqueuer — mirrors AutoWalkManager.SetHiddenSearchEnqueuer.
+    // MainWindowVM binds both engines to the same HiddenExitRevealManager so a loop
+    // uncovers a SearchableHidden exit with the same sea <dir> retry loop the walker
+    // uses instead of failing the lap.
+    public void SetHiddenSearchEnqueuer(Action<Direction, string, Action<HiddenSearchResult>> enqueuer)
+    {
+        ArgumentNullException.ThrowIfNull(enqueuer);
+        _hiddenSearchEnqueuer = enqueuer;
+    }
+
+    // Hidden-search teardown — mirrors AutoWalkManager.SetHiddenSearchStopper.
+    // Same stale-state cleanup rationale as SetDoorStopper.
+    public void SetHiddenSearchStopper(Action stopAll)
+    {
+        ArgumentNullException.ThrowIfNull(stopAll);
+        _hiddenSearchStopAll = stopAll;
     }
 
     // Start running loop. If a loop is already running, it is stopped first. Returns
@@ -854,10 +883,30 @@ public sealed class LoopRunner : IRecoverableEngine
             return;
         }
 
-        // SearchableHidden likewise has no reveal FSM in the circuit.
+        // SearchableHidden: route through the shared HiddenExitRevealManager —
+        // the same sea <dir> reveal FSM the walker uses — and cross from
+        // OnHiddenRevealReply once the exit appears, so a loop uncovers a hidden
+        // exit mid-circuit rather than failing the lap. Pre-check the live room
+        // first (a prior sea may have revealed it) to skip wasted round-trips,
+        // mirroring the door pre-open check above. Only when an enqueuer is bound;
+        // unit harnesses without one keep the fail-loudly path.
         if (exit.Hint == RoomExitHint.SearchableHidden)
         {
-            FailStep($"hidden exit {step.Direction} mid-circuit — loops don't reveal hidden exits (walk through it first)");
+            if (_tracker.State.ObservedExitDirections is { } observedExits
+                && observedExits.Contains(step.Direction))
+            {
+                EmitCardinal(step.Direction, exit.Target, "hidden already revealed");
+                return;
+            }
+            if (_hiddenSearchEnqueuer is not null)
+            {
+                _awaitingHiddenReveal = true;
+                _log?.Info("LoopRunner",
+                    $"step {_index + 1}/{_expandedSteps.Count}: revealing hidden exit {step.Direction}");
+                _hiddenSearchEnqueuer(step.Direction, "loop", OnHiddenRevealReply);
+                return;
+            }
+            FailStep($"hidden exit {step.Direction} mid-circuit — no hidden-reveal flow bound");
             return;
         }
 
@@ -938,6 +987,42 @@ public sealed class LoopRunner : IRecoverableEngine
 
             case DoorOpenResult.Failed failed:
                 FailStep($"door open failed: {failed.Reason}");
+                return;
+        }
+    }
+
+    // Terminal callback from HiddenExitRevealManager for a searchable-hidden
+    // circuit step. Mirrors AutoWalkManager.OnHiddenRevealReply and OnDoorReply
+    // above: on reveal re-fetch the exit (the step index hasn't advanced) and
+    // cross with the cardinal; on failure fail the lap. _awaitingHiddenReveal is
+    // cleared before EmitCardinal so the arrival transition lands normally.
+    private void OnHiddenRevealReply(HiddenSearchResult result)
+    {
+        if (!_awaitingHiddenReveal) return;
+        _awaitingHiddenReveal = false;
+
+        switch (result)
+        {
+            case HiddenSearchResult.Revealed:
+                if (_loop is null || State != LoopState.Running
+                    || _index >= _expandedSteps.Count
+                    || _expandedSteps[_index] is not MoveLoopStep step)
+                {
+                    return;
+                }
+                if (_tracker.State.CurrentRoom is not { } current
+                    || !current.Exits.TryGetValue(step.Direction, out RoomExit exit))
+                {
+                    FailStep($"post-hidden-reveal: no exit {step.Direction} from {_tracker.State.CurrentRoom?.Key.ToString() ?? "(unknown)"}");
+                    return;
+                }
+                _expectedMoveTarget = exit.Target;
+                _stepInFlight = true;
+                EmitCardinal(step.Direction, exit.Target, "post-hidden-reveal");
+                return;
+
+            case HiddenSearchResult.Failed failed:
+                FailStep($"hidden reveal failed: {failed.Reason}");
                 return;
         }
     }
@@ -1042,12 +1127,13 @@ public sealed class LoopRunner : IRecoverableEngine
         if (_loop is null || _index >= _expandedSteps.Count) return;
         if (_expandedSteps[_index] is not MoveLoopStep) return;
 
-        // A door sub-FSM owns this step until OnDoorReply fires the cardinal. Its
-        // bash / pick output re-observes the current (source) room; acting on that
-        // transition here would treat the in-progress step as blocked-at-source
-        // and spuriously enter recovery. The FSM clears _awaitingDoorOpen before
-        // emitting the real move, so the genuine arrival still lands here.
-        if (_awaitingDoorOpen) return;
+        // A door or hidden-reveal sub-FSM owns this step until its reply fires the
+        // cardinal. Its bash / pick / sea output re-observes the current (source)
+        // room; acting on that transition here would treat the in-progress step as
+        // blocked-at-source and spuriously enter recovery. The FSM clears its
+        // await flag before emitting the real move, so the genuine arrival still
+        // lands here.
+        if (_awaitingDoorOpen || _awaitingHiddenReveal) return;
 
         // Suspect / Lost / Unknown are real confidence drops we forward
         // to the recovery gate. Pending is the normal Confirmed →
@@ -1160,6 +1246,7 @@ public sealed class LoopRunner : IRecoverableEngine
         _recovery?.Detach();
         StopDelayTimer();
         if (_awaitingDoorOpen) { _doorStopAll?.Invoke(); _awaitingDoorOpen = false; }
+        if (_awaitingHiddenReveal) { _hiddenSearchStopAll?.Invoke(); _awaitingHiddenReveal = false; }
         _stepInFlight = false;
         _awaitingPromptForCommand = false;
         _expectedMoveTarget = null;
@@ -1344,6 +1431,9 @@ public sealed class LoopRunner : IRecoverableEngine
         // Clearing _awaitingDoorOpen also makes any late OnDoorReply a no-op.
         if (_awaitingDoorOpen) _doorStopAll?.Invoke();
         _awaitingDoorOpen = false;
+        // Same for a hidden-reveal FSM opening on our behalf.
+        if (_awaitingHiddenReveal) _hiddenSearchStopAll?.Invoke();
+        _awaitingHiddenReveal = false;
         _loop = null;
         _index = 0;
         _expandedSteps = new List<LoopStep>();

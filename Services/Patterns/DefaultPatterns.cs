@@ -267,13 +267,20 @@ public static class DefaultPatterns
         yield return new RegexPattern(KnownPatterns.SneakArrivalNotice,
             @"^You notice (?<name>\w+) sneaking in from (?:the )?(?<direction>[\w-]+)[.!]\s*$");
 
-        // Room-exit departure — mirror of the arrival line. A fleeing player who
-        // drags an engaged mob out prints one of two confirmed wordings: "The orc
-        // rogue walks out of the room to the above!" or "dark goblin archer exits
-        // the room to the northeast.". Both share the "… the room to <dir>" tail;
-        // only the verb differs. Add more alternates here if the game emits others.
+        // Room-exit departure. Two confirmed shapes, both ending "… to <dir>":
+        //  • Player drag-out — a fleeing player drags an engaged mob out of our
+        //    room: "The orc rogue walks out of the room to the above!" / "dark
+        //    goblin archer exits the room to the northeast." (verb + "the room").
+        //  • Monster self-flee — an engaged mob breaks off and flees on its own:
+        //    "The big forest spider scuttles out to the west!" ("<verb> out", no
+        //    "the room"). Without this the Combat gate the fled mob held never
+        //    drops and the "fighting" state sticks while the client swings at air.
+        // The self-flee verb varies per monster (scuttles / skitters / slithers …),
+        // so it's folded into \w+ exactly like the arrival line's verb capture —
+        // the "out to <dir>" structure is the reliable anchor. Add alternates to
+        // the drag-out branch if the game emits other "the room" verbs.
         yield return new RegexPattern(KnownPatterns.RoomEntryDeparture,
-            @"^(?<name>.+?) (?:walks out of|exits) the room to (?:the )?(?<direction>[\w-]+)[.!]\s*$");
+            @"^(?<name>.+?) (?:(?:walks out of|exits) the room|\w+ out) to (?:the )?(?<direction>[\w-]+)[.!]\s*$");
 
         // ----- Conversation ---------------------------------------------
         // Auction lines share gossip's shape ("X auctions: ...") and the user
