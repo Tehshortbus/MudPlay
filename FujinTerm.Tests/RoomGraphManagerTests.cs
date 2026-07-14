@@ -837,4 +837,131 @@ public sealed class RoomGraphManagerTests : IDisposable
         Assert.Equal(RoomExitHint.Item, ex.Hint);
         Assert.Equal(474, ex.KeyItemId);
     }
+
+    // ----- lever-door promotion (Action cells on Door exits) ---------
+
+    [Fact]
+    public void RemoteLeverAnnotation_OnDoorExit_PromotesToMultiActionHidden()
+    {
+        // Inner-gate portcullis: 1/1331's N Door lifts only when levers in the
+        // two flanking guardrooms (1/1345, 1/1339) are pulled. Both guardrooms
+        // annotate the N exit of 1/1331. Without promotion the door imports as a
+        // 301-picklock Door and the route picker routes around it.
+        const string json = """
+            [
+              { "Map Number": 1, "Room Number": 1331, "Name": "Inner Gate",
+                "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+                "N": "1/1375 (Door [301 picklocks/strength])", "S": "1/1322",
+                "E": "1/1339", "W": "1/1345",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 1, "Room Number": 1345, "Name": "Guardroom",
+                "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+                "N": "Action [on the N exit of room 1/1331]: pull lever, push lever, move lever",
+                "S": "0", "E": "1/1331", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 1, "Room Number": 1339, "Name": "Guardroom",
+                "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+                "N": "Action [on the N exit of room 1/1331]: pull lever, push lever, move lever",
+                "S": "0", "E": "0", "W": "1/1331",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 1, "Room Number": 1375, "Name": "Courtyard",
+                "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+                "N": "0", "S": "0", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 1, "Room Number": 1322, "Name": "Entrance",
+                "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+                "N": "0", "S": "0", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+            ]
+            """;
+        SeedRooms("alpha", json);
+        GameDataCache cache = NewCache();
+        cache.SwitchSet("alpha");
+        RoomGraphManager graph = new(cache);
+        graph.OnActiveSetChanged("alpha");
+
+        Room? gate = graph.GetRoom(new RoomKey(1, 1331));
+        Assert.NotNull(gate);
+        Assert.True(gate!.Exits.TryGetValue(Direction.N, out RoomExit ex));
+        Assert.Equal(RoomExitHint.MultiActionHidden, ex.Hint);          // promoted off Door
+        Assert.Equal(new RoomKey(1, 1375), ex.Target);
+        Assert.NotNull(ex.MultiAction);
+        Assert.Equal(2, ex.MultiAction!.RequiredActionCount);           // both levers
+        Assert.Equal(2, ex.MultiAction.Actions.Count);
+        Assert.True(ex.MultiAction.HasRemoteActions);
+        // Both action steps live in the guardrooms, not the gate room.
+        Assert.All(ex.MultiAction.Actions, a => Assert.NotNull(a.RemoteSourceRoom));
+    }
+
+    [Fact]
+    public void SameRoomLeverAnnotation_OnDoorExit_PromotesToMultiActionHidden()
+    {
+        // The reverse side: 1/1375's S Door back to the inner gate is opened by a
+        // lever pulled in 1/1375 itself (the action cell sits in the W slot and
+        // targets "the S exit of this room"). Same-room action → not remote.
+        const string json = """
+            [
+              { "Map Number": 1, "Room Number": 1375, "Name": "Courtyard",
+                "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+                "N": "0", "S": "1/1331 (Door [201 picklocks/strength])",
+                "E": "0",
+                "W": "Action [on the S exit of this room]: pull lever, push lever, move lever",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 1, "Room Number": 1331, "Name": "Inner Gate",
+                "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+                "N": "0", "S": "0", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+            ]
+            """;
+        SeedRooms("alpha", json);
+        GameDataCache cache = NewCache();
+        cache.SwitchSet("alpha");
+        RoomGraphManager graph = new(cache);
+        graph.OnActiveSetChanged("alpha");
+
+        Room? courtyard = graph.GetRoom(new RoomKey(1, 1375));
+        Assert.NotNull(courtyard);
+        Assert.True(courtyard!.Exits.TryGetValue(Direction.S, out RoomExit ex));
+        Assert.Equal(RoomExitHint.MultiActionHidden, ex.Hint);
+        Assert.NotNull(ex.MultiAction);
+        Assert.Single(ex.MultiAction!.Actions);
+        Assert.False(ex.MultiAction.HasRemoteActions);                  // pulled here
+        Assert.Null(ex.MultiAction.Actions[0].RemoteSourceRoom);
+    }
+
+    [Fact]
+    public void MultiActionHidden_WithItemModifier_CapturesRequiredItemId()
+    {
+        // 2/687's N exit is a properly-modeled hidden exit; its S-slot action
+        // gates the crossing on holding the amber talisman (item 815).
+        const string json = """
+            [
+              { "Map Number": 2, "Room Number": 687, "Name": "Dragon's Teeth Hills",
+                "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+                "N": "2/2578 (Hidden/Needs 1 Actions, any order)",
+                "S": "Action [on the N exit of this room]: hold up talisman, hold up amber talisman, lift up talisman (Item: 815)",
+                "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 2, "Room Number": 2578, "Name": "Secret Passage",
+                "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+                "N": "0", "S": "0", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+            ]
+            """;
+        SeedRooms("alpha", json);
+        GameDataCache cache = NewCache();
+        cache.SwitchSet("alpha");
+        RoomGraphManager graph = new(cache);
+        graph.OnActiveSetChanged("alpha");
+
+        Room? room = graph.GetRoom(new RoomKey(2, 687));
+        Assert.NotNull(room);
+        Assert.True(room!.Exits.TryGetValue(Direction.N, out RoomExit ex));
+        Assert.Equal(RoomExitHint.MultiActionHidden, ex.Hint);
+        Assert.NotNull(ex.MultiAction);
+        Assert.Single(ex.MultiAction!.Actions);
+        Assert.Equal(815, ex.MultiAction.Actions[0].RequiredItemId);
+        Assert.True(ex.MultiAction.RequiresUnheldItem(_ => false));      // lacking → gated
+        Assert.False(ex.MultiAction.RequiresUnheldItem(id => id == 815)); // holding → clear
+    }
 }

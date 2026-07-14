@@ -2,6 +2,15 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.59.0
+
+- Lever-opened doors are now walkable: a plain/locked door that a lever in another room lifts (annotated with action cells) is promoted to a lever exit, so the walker detours to pull the levers instead of routing around or bonking the closed door
+- A hidden exit whose unlock action needs a held item (e.g. "hold up amber talisman") is now treated as an item gate — the walker routes around it or plans to fetch the item when it isn't in hand, and the room tooltip names the required item
+- Our own confusion now pauses navigation locally: a confused leader or solo player holds their walk / loop / auto-lair (and lights the self chip) until it clears — the leader/solo analogue of the @wait a confused follower telepaths; honours the Ignore Confusion setting
+- A knockdown now pauses navigation instead of hammering the server: while held ("flat on your back") the walker holds and resumes on "You get back on your feet.", and the flat-on-your-back refusal is recognised so an in-flight move can't strand the tracker
+- Long chat messages that wrap across terminal lines are stitched back into one logical line, so the Conversation window captures the whole message instead of just the first row
+- bug reports addressed: paradigm-20260713-233737, paradigm-20260714-002413, paradigm-20260714-001001
+
 ## 1.58.0
 
 - A key-locked door is now recognised as passable when the required key is on your key ring (not just loose in your pack) — the walker no longer falls back to the pick-only alternative and false-blocks a route you hold the key for

@@ -30,6 +30,17 @@ public sealed partial record MultiActionExitData(
         }
     }
 
+    // True when any required step needs a held item the crosser doesn't carry.
+    // A multi-action exit needs ALL its steps, so lacking one step's item makes
+    // the whole exit impassable — the movement filter treats that as an
+    // acquirable item gate and routes around (or plans to fetch) the item.
+    public bool RequiresUnheldItem(Func<int, bool> carries)
+    {
+        foreach (ExitAction a in Actions)
+            if (a.RequiredItemId > 0 && !carries(a.RequiredItemId)) return true;
+        return false;
+    }
+
     // Parse the modifier text following the Hidden prefix — e.g. "Needs 2
     // Actions, any order" or "Needs 1 Actions, specific order". Returns
     // (count, specific); defaults to (1, false) when the pattern doesn't match
@@ -70,6 +81,14 @@ public sealed partial record MultiActionExitData(
                 remote = new RoomKey(rmap, rroom);
         }
 
+        // A trailing "(Item: N)" gates the step on holding item N (e.g. "hold up
+        // amber talisman (Item: 815)"). Capture the id before it's stripped from
+        // the command text below so MovementFilter can route around the exit when
+        // the item isn't in hand.
+        int requiredItemId = 0;
+        Match itemM = ActionItemRegex().Match(m.Groups["cmds"].Value);
+        if (itemM.Success) int.TryParse(itemM.Groups[1].ValueSpan, out requiredItemId);
+
         var cmds = new List<string>();
         foreach (string raw in m.Groups["cmds"].Value.Split(','))
         {
@@ -81,7 +100,7 @@ public sealed partial record MultiActionExitData(
             if (t.Length > 0) cmds.Add(t);
         }
         if (cmds.Count == 0) return null;
-        return new ActionCell(step, dir.Value, remote, cmds);
+        return new ActionCell(step, dir.Value, remote, cmds, requiredItemId);
     }
 
     private static Direction? ParseDir(string s) => s.Trim().ToLowerInvariant() switch
@@ -104,7 +123,8 @@ public sealed partial record MultiActionExitData(
         int StepNumber,
         Direction ExitDirection,
         RoomKey? RemoteSourceRoom,
-        IReadOnlyList<string> Commands);
+        IReadOnlyList<string> Commands,
+        int RequiredItemId = 0);
 
     [GeneratedRegex(@"\bNeeds\s+(\d+)\s+Actions?,\s*(any|specific)\s+order",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
@@ -118,4 +138,8 @@ public sealed partial record MultiActionExitData(
         @"^Action(?:#(?<step>\d+))?\s*\[on the\s+(?<dir>\w+)\s+exit of\s+(?:this room|room\s+(?<room>\d+/\d+))\]\s*:\s*(?<cmds>.+)$",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex ActionCellRegex();
+
+    // Trailing "(Item: N)" gate on an action cell's command list.
+    [GeneratedRegex(@"\(Item:\s*(\d+)\)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex ActionItemRegex();
 }

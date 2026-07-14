@@ -810,6 +810,20 @@ comes from the stat screen / who line (`AlignmentTracker` / `PlayerStats`).
   - **Walker takeaway:** walk-to-action-room → send the command(s) in `StepNumber` order → walk-back to
     the exit's room → send the cardinal. The generous open window makes normal walk distances safe; do
     not gate on a data-supplied timer (there isn't one) or on parsing a confirmation line.
+- **[CONFIRMED, capture 2026-07-13 report 195552]** **A portcullis/gate raised by levers in guardrooms
+  needs *every* listed lever pulled — the action cells enumerate all of them.** Some `Door` exits are
+  raised not by a same-room verb but by a `pull lever` performed in one or more *other* rooms — the game
+  data annotates the door exit with an `Action#N [on the {dir} exit of room M/R]: pull lever` cell per
+  lever room. The confirmed case is the Newhaven castle gate `1/1331 N`, whose two guardrooms `1/1345`
+  and `1/1339` each carry a lever; the user's own words on the failed run were "we didnt pull both
+  levers opening it" — **both** levers must be pulled to raise it (a single pull is not enough). Because
+  each lever is a distinct action cell with `StepNumber 1` and the door cell carries no `Needs N`
+  modifier, the required-action count falls back to the number of cells (2), so the detour visits both
+  guardrooms before crossing. A same-room lever variant also exists (`1/1375 S`, the courtyard, whose
+  lever is on this room's own W slot — one action, no remote detour). **Client encoding:** a lever `Door`
+  (or `KeyLocked`) exit that carries action cells is promoted to `MultiActionHidden` at graph-build so it
+  reuses the same dispatch/tooltip/detour machinery as a native hidden multi-action exit — the promotion
+  is the single change point (RoomGraphManager attach pass).
 
 ## Attack spells: why one fails to damage a monster
 
@@ -1059,6 +1073,15 @@ flag). These are hard eligibility gates, independent of resistance and level imm
   `.@held` say routes through the same pause (a held member can't move, so the party waits for
   them) and releases via that member's `@ok` on cure. The leader-side "ignore @wait when leading"
   opt-out drops inbound `@wait` before it ever pauses.
+- **[CONFIRMED]** *(report 002413)* A **knockdown** is a movement-preventing (held) status. The
+  hit lands as `You are knocked off your feet, and land with a heavy thump!` (third-person
+  `{s} is knocked flat!`), then the standing status while down is **`You are flat on your back!`** —
+  which is also what the server prints as the **move refusal** when you try to walk while knocked
+  down (a bonk, no room redisplay, `MovementRefusalDetector` matches it). It clears with
+  **`You get back on your feet.`**. The applied/clear pair maps to the `MovementPrevented` flag, so
+  the local hold (`SelfHeldResponder` → `HeldGate`) holds our own loop for the duration exactly as a
+  confused leader's does — the `.@held` pause a held follower sends the leader is eaten for a held
+  leader / solo.
 - **[CONFIRMED]** A party member sitting down to rest is announced to everyone else in the room as
   **`<name> stops to rest.`** (`<name>` is the given name). The actor's own view uses a different
   verb form (`You stop to rest.`), so the third-person line never matches the resting player's own

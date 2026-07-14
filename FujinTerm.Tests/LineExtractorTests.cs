@@ -108,6 +108,84 @@ public sealed class LineExtractorTests
         Assert.True(line.IsPromptLine);
     }
 
+    [Fact]
+    public void BuildLine_TrimDisabled_KeepsTrailingBlanks()
+    {
+        // A soft-wrapped fragment is full to the right margin; a trailing space
+        // at the wrap point must survive so the stitched line reads "power of",
+        // not "powerof".
+        Cell[] cells = MakeRow("power ", paddedTo: 80);
+
+        LineExtractor.EmittedLine line =
+            LineExtractor.BuildLine(cells, FixedNow, isPromptLine: false, trimTrailingBlanks: false);
+
+        Assert.Equal(80, line.Text.Length);
+        Assert.Equal("power ", line.Text[..6]);
+    }
+
+    // ----- Soft-wrap coalescing (event path through the emulator) -----------
+
+    [Fact]
+    public void WrappedLongLine_EmitsSingleJoinedLine()
+    {
+        // A gossip longer than the 80-column terminal: the client wraps it
+        // mid-word, but the emitted line must be the whole logical message so
+        // the chat pattern matches all of it (the reported truncation bug).
+        string body = "Phrixas gossips: \"every class sucks at these levels, "
+                    + "unless you have the power of luxury farming every rare item\"";
+        Assert.True(body.Length > 80);
+
+        List<string> emitted = FeedThroughEmulator(body + "\r\n");
+
+        Assert.Single(emitted);
+        Assert.Equal(body, emitted[0]);
+    }
+
+    [Fact]
+    public void WrapLandingOnSpace_PreservesSpace()
+    {
+        // Force column 81 (0-based 80) to fall exactly on a space so the wrap
+        // splits at a word boundary; the space must survive the stitch.
+        string head = new string('a', 80);        // fills the row; 81st char wraps
+        string full = head + " tail";             // char 81 is the space
+        List<string> emitted = FeedThroughEmulator(full + "\r\n");
+
+        Assert.Single(emitted);
+        Assert.Equal(full, emitted[0]);
+    }
+
+    [Fact]
+    public void ThreeRowWrap_JoinsAllFragments()
+    {
+        string body = new string('x', 200);        // spans three 80-column rows
+        List<string> emitted = FeedThroughEmulator(body + "\r\n");
+
+        Assert.Single(emitted);
+        Assert.Equal(body, emitted[0]);
+    }
+
+    [Fact]
+    public void HardLineBreaks_AreNotJoined()
+    {
+        // Two short server lines separated by CRLF must stay two emitted lines —
+        // only right-margin wraps coalesce, never real line feeds.
+        List<string> emitted = FeedThroughEmulator("first line\r\nsecond line\r\n");
+
+        Assert.Equal(new[] { "first line", "second line" }, emitted);
+    }
+
+    // Drive raw bytes through a real 80-column emulator + LineExtractor and
+    // collect the text of every non-prompt line the extractor emits.
+    private static List<string> FeedThroughEmulator(string text)
+    {
+        TerminalEmulator emulator = new(80, 25);
+        LineExtractor extractor = new(emulator);
+        List<string> lines = new();
+        extractor.LineEmitted += l => { if (!l.IsPromptLine) lines.Add(l.Text); };
+        emulator.Feed(System.Text.Encoding.Latin1.GetBytes(text));
+        return lines;
+    }
+
     /// <summary>
     /// Helper: build a row whose first <paramref name="text"/>.Length cells
     /// hold <paramref name="text"/> at default attributes, then pad blanks

@@ -79,6 +79,7 @@ public sealed partial class MovementRefusalDetector : IDisposable
         TooImpairedToMove(),
         CantSeeWellEnoughToMove(),
         TooEncumberedToMove(),
+        FlatOnYourBack(),
     };
 
     [GeneratedRegex(
@@ -111,6 +112,17 @@ public sealed partial class MovementRefusalDetector : IDisposable
         @"^\s*You are too encumbered to move[.!]?\s*$",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex TooEncumberedToMove();
+
+    // Knocked down — the server refuses the move with this while we're held.
+    // SelfHeldResponder normally holds the loop before a move goes out, but a
+    // move already in flight when the knockdown lands (or a manual move while
+    // down) still bonks this way; recognizing it keeps the tracker from
+    // stranding on the unresolved step. Also the knockdown NOTICE itself, which
+    // NoteMoveBlocked treats as a no-op when nothing is pending.
+    [GeneratedRegex(
+        @"^\s*You are flat on your back[.!]?\s*$",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex FlatOnYourBack();
 
     // Door blocking — server returns this when the user issues a direction
     // whose exit has a closed door.

@@ -75,6 +75,10 @@ public sealed class MovementRefusalDetectorTests : IDisposable
     [InlineData("There is no exit that direction!")]
     [InlineData("You can't go that way!")]
     [InlineData("You are too paralyzed to move!")]
+    // Knocked down — the move sent just before the knockdown lands bonks this
+    // way; recognizing it keeps the tracker from stranding on the unresolved step.
+    [InlineData("You are flat on your back!")]
+    [InlineData("You are flat on your back.")]
     public void RefusalLines_RevertPendingToLocated(string line)
     {
         (RoomTracker tracker, MovementRefusalDetector detector) = NewDetector();

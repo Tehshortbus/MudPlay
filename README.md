@@ -1,10 +1,12 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.58.0**
-> - A key-locked door is now recognised as passable when the required key is on your key ring (not just loose in your pack) — the walker no longer falls back to the pick-only alternative and false-blocks a route you hold the key for
-> - A blocked walk names the actual obstacle — a locked door, a missing item, a level window, a toll, a class hall, or a room hazard — instead of always reporting "level, toll, or class"
-> - A toll no longer routes the party around it just because a follower's wealth is unread: unknown followers are @wealth-probed and the toll blocks only when someone is confirmed short
+> **Version 1.59.0**
+> - Lever-opened doors are now walkable: a plain/locked door that a lever in another room lifts is promoted to a lever exit, so the walker detours to pull the levers instead of routing around or bonking the closed door
+> - A hidden exit whose unlock action needs a held item (e.g. "hold up amber talisman") is now treated as an item gate — the walker routes around it or plans to fetch the item when it isn't in hand, and the room tooltip names the required item
+> - Our own confusion now pauses navigation locally: a confused leader or solo player holds their walk / loop / auto-lair (and lights the self chip) until it clears; honours the Ignore Confusion setting
+> - A knockdown now pauses navigation instead of hammering the server: while held ("flat on your back") the walker holds and resumes on "You get back on your feet."
+> - Long chat messages that wrap across terminal lines are stitched back into one logical line, so the Conversation window captures the whole message instead of just the first row
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

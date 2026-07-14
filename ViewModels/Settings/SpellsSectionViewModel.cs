@@ -320,6 +320,10 @@ public sealed partial class SpellsSectionViewModel : SettingsSectionViewModel
         // mid-affliction re-balances the @wait it already placed — otherwise
         // enabling IgnorePoison while poisoned leaves the party paused.
         AppServices.Current.AilmentSync.ReevaluateWaits();
+        // Same reconcile for our own local confusion hold — a mid-confusion
+        // Ignore Confusion toggle must place or lift the movement gate, not leave
+        // the onset-time decision latched.
+        AppServices.Current.SelfConfusion.Reevaluate();
 
         ClearDirty();
     }

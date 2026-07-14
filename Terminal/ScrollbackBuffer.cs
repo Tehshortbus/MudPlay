@@ -23,8 +23,12 @@ public sealed class ScrollbackBuffer
 
     // One captured row. Cells is a defensive copy owned by the buffer;
     // mutating it after Append doesn't affect anything since the source row
-    // was copied at append time.
-    public readonly record struct Row(DateTimeOffset Timestamp, Cell[] Cells);
+    // was copied at append time. SoftWrapped marks a row the emulator ended by
+    // wrapping a long line at the right margin (not a server LF) — LineExtractor
+    // uses it to stitch the continuation back onto the logical line. The
+    // scrollback ring never sets it (rendering doesn't care); only the
+    // LineCompleted event path populates it.
+    public readonly record struct Row(DateTimeOffset Timestamp, Cell[] Cells, bool SoftWrapped = false);
 
     private Row[] _ring;
     private int _head;       // next write slot

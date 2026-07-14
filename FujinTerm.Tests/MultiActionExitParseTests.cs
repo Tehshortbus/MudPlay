@@ -65,12 +65,71 @@ public sealed class MultiActionExitParseTests
     public void ParseActionCell_TrailingParenModifier_StrippedFromCommand()
     {
         // "(Item: 1289)" suffix on the last command is metadata, not part
-        // of the verb to send.
+        // of the verb to send — but the id is captured as the step's held-item
+        // requirement.
         var cell = MultiActionExitData.ParseActionCell(
             "Action#1 [on the D exit of this room]: dig sand, move sand, dig claw (Item: 1289)");
         Assert.NotNull(cell);
         Assert.Equal(3, cell!.Commands.Count);
         Assert.Equal("dig claw", cell.Commands[2]);
+        Assert.Equal(1289, cell.RequiredItemId);
+    }
+
+    [Fact]
+    public void ParseActionCell_AmberTalisman_CapturesItemId()
+    {
+        // 2/687's S-slot action gating its N exit — three verb alternatives, one
+        // held-item requirement (the amber talisman, item 815).
+        var cell = MultiActionExitData.ParseActionCell(
+            "Action [on the N exit of this room]: hold up talisman, hold up amber talisman, lift up talisman (Item: 815)");
+        Assert.NotNull(cell);
+        Assert.Equal(1, cell!.StepNumber);        // bare "Action" defaults to step 1
+        Assert.Equal(3, cell.Commands.Count);
+        Assert.Equal("lift up talisman", cell.Commands[2]);
+        Assert.Equal(815, cell.RequiredItemId);
+    }
+
+    [Fact]
+    public void ParseActionCell_NoItemModifier_RequiredItemIdZero()
+    {
+        var cell = MultiActionExitData.ParseActionCell(
+            "Action [on the N exit of room 1/1331]: pull lever, push lever, move lever");
+        Assert.NotNull(cell);
+        Assert.Equal(0, cell!.RequiredItemId);
+    }
+
+    // ----- RequiresUnheldItem -------------------------------------------
+
+    [Fact]
+    public void RequiresUnheldItem_ItemNotCarried_True()
+    {
+        var ma = new MultiActionExitData(1, false, new[]
+        {
+            new ExitAction(1, new[] { "hold up amber talisman" }, RemoteSourceRoom: null, RequiredItemId: 815),
+        });
+        Assert.True(ma.RequiresUnheldItem(id => false));
+    }
+
+    [Fact]
+    public void RequiresUnheldItem_ItemCarried_False()
+    {
+        var ma = new MultiActionExitData(1, false, new[]
+        {
+            new ExitAction(1, new[] { "hold up amber talisman" }, RemoteSourceRoom: null, RequiredItemId: 815),
+        });
+        Assert.False(ma.RequiresUnheldItem(id => id == 815));
+    }
+
+    [Fact]
+    public void RequiresUnheldItem_NoItemSteps_False()
+    {
+        // Lever-only door — no held-item requirement, so never item-gated.
+        var ma = new MultiActionExitData(2, false, new[]
+        {
+            new ExitAction(1, new[] { "pull lever" }, RemoteSourceRoom: new RoomKey(1, 1345)),
+            new ExitAction(1, new[] { "pull lever" }, RemoteSourceRoom: new RoomKey(1, 1339)),
+        });
+        Assert.False(ma.RequiresUnheldItem(id => false));
     }
 
     [Theory]

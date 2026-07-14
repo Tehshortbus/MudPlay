@@ -106,6 +106,26 @@ public sealed class MovementCoordinator
     // (Settings → Party "If leading, wait only") elapses.
     public const string MemberDisconnectGate = "MemberDisconnect";
 
+    // Asserted by ConfusionMovementGate while the local character is confused. A
+    // follower afflicted with a curable ailment telepaths the leader @wait so the
+    // party pauses; a leader (or solo player) has no one to signal — the eaten
+    // @wait left our own navigation running while confused. This gate is the local
+    // analogue: our own confusion holds our walk / loop / auto-lair until it
+    // clears, matching the party-pause a confused follower already triggers.
+    // Honours the Ignore Confusion setting (same gate the @wait obeys).
+    public const string ConfusionGate = "Confusion";
+
+    // Asserted by SelfHeldResponder while the local character is held / knocked
+    // down (MovementPrevented). A knockdown blocks movement server-side — every
+    // move sent while down bonks ("You are flat on your back!") — so a loop that
+    // kept walking would hammer the server with refused moves and strand the
+    // RoomTracker on the unresolved step. This holds our walk / loop / auto-lair
+    // for the duration so nothing is sent until "You get back on your feet."
+    // clears the condition. Unlike confusion there's no opt-out — held always
+    // holds. A held follower's own movement is already gated (FollowerGate); this
+    // matters for a held leader / solo whose .@held pause has no one to signal.
+    public const string HeldGate = "Held";
+
     private const int HistoryCapacity = 200;
 
     private readonly LogService? _log;
