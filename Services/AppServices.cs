@@ -3108,6 +3108,15 @@ public sealed class AppServices
         Cash = new Game.Cash.CashManager(Router,
             readSettings: () => ReadSection<Models.Profile.CashSettings>(Profile.Current, "Cash"),
             isEnabled: () => ReadAutoModeFlag(d => d.AutoGetCash),
+            // Shared Cash + Items timing toggle: defer ground / corpse / notice
+            // cash until the room clears so a get between kills doesn't burn the
+            // pre-attack round. hasEngageableHostiles reads CombatTracker, which
+            // subscribed to EntitiesObserved first, so the flush below sees a
+            // current flag.
+            collectAfterCombatFinished: () =>
+                ReadSection<Models.Profile.CashSettings>(Profile.Current, "Cash")
+                    .CollectAfterCombatFinished,
+            hasEngageableHostiles: () => CombatTracker.HasEngageableHostiles,
             getSnapshot: () => Inventory.Snapshot,
             isPeekSuppressed: () => RoomTracker.IsPeekSuppressed(),
             log: Log,
@@ -3116,6 +3125,11 @@ public sealed class AppServices
         // counts aren't relevant to the new one.
         Profile.ProfileLoaded += _ => Cash.ResetTallies();
         Cash.SetAcquisitionGate(Acquisition);
+        // Combat-finished flush: every room-entity observation re-checks the
+        // deferred collect queue. CombatStateTracker's handler subscribed in its
+        // constructor (well before here), so it runs first and the hostile flag
+        // is current. Mirrors AutoGetItems.OnRoomObserved.
+        RoomClassifier.EntitiesObserved += _ => Cash.OnRoomObserved();
         // Feed confirmed coin pickups into the Session Stats
         // currency-collected tally, converting each denomination to its copper
         // value so mixed currency streams fold into one figure.
@@ -3339,6 +3353,7 @@ public sealed class AppServices
             AutoSearch.OnRoomChanged();
             AutoGetItems.OnRoomChanged();
             GroundItems.OnRoomChanged();
+            Cash.OnRoomChanged();
         };
 
         Walker = new Game.Map.AutoWalkManager(RoomGraph, Bfs, RoomTracker,

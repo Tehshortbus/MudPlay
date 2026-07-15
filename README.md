@@ -10,6 +10,7 @@
 > - `walk to` now routes through single-destination CMD teleports (`go hole` / cast-teleport hops) — modeled as routable map edges, level-gated like any exit, and drawn as a gap into the portal room then out its far side rather than a line across the hop
 > - Blocked-route message now names the item(s) you're missing when every route depends on one you don't carry, instead of a bare "a required item you're missing"
 > - Navigation window header reorganized — engine badge / activity chip / status text share the top row with the search box pinned to its top-right corner, and the display-toggle + action chips drop to their own row
+> - "Collect after combat finished" now defers currency the same as items — ground / corpse / notice cash is queued while the room still holds hostiles and collected on room-clear, instead of picking up between kills
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

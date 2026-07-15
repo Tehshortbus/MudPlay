@@ -26,6 +26,10 @@ public sealed class CashManagerTests
         public CashSettings Settings { get; set; } = new();
         public bool AutoGetCashEnabled { get; set; } = true;
         public bool PeekSuppressed { get; set; }
+        // Room still holds engageable hostiles — drives the collect-after-combat
+        // defer path. Defaults false so the existing tests keep the immediate
+        // collect behaviour.
+        public bool HasHostiles { get; set; }
         // Default Empty → MaxWeight 0 → encumbrance gate inert, so the
         // non-gate tests run the v1 full-pickup path unchanged. Gate
         // tests set a populated snapshot before feeding the cash line.
@@ -41,6 +45,8 @@ public sealed class CashManagerTests
             Cash = new CashManager(Router,
                 readSettings: () => Settings,
                 isEnabled: () => AutoGetCashEnabled,
+                collectAfterCombatFinished: () => Settings.CollectAfterCombatFinished,
+                hasEngageableHostiles: () => HasHostiles,
                 getSnapshot: () => Snapshot,
                 isPeekSuppressed: () => PeekSuppressed,
                 log: Log);
@@ -784,6 +790,138 @@ public sealed class CashManagerTests
 
         Assert.Empty(h.Sent);
         Assert.Empty(h.Dispatches);
+    }
+
+    // ----- collect-after-combat defer --------------------------------
+
+    // Toggle on + a live hostile: a corpse drop mid-fight must NOT get collected
+    // between kills (that burns the next round's pre-attack). It queues instead —
+    // the dispatch still records the decision so Session Stats / logs see it.
+    [Fact]
+    public void CollectAfterCombat_DefersCorpseDropWhileHostiles()
+    {
+        using Harness h = new() { HasHostiles = true };
+        h.Settings.SilverPolicy = CashPolicy.Collect;
+        h.Settings.CollectAfterCombatFinished = true;
+
+        h.Feed("7 silver drop to the ground.");
+
+        Assert.Empty(h.Sent);                       // deferred, not collected
+        Assert.Single(h.Dispatches);                // decision still recorded
+        Assert.Equal(("silver", 7, CashPolicy.Collect), h.Dispatches[0]);
+    }
+
+    // Once the room clears (no engageable hostiles) the deferred queue flushes on
+    // the room-entity observation — the "combat finished" signal.
+    [Fact]
+    public void CollectAfterCombat_FlushesOnRoomClear()
+    {
+        using Harness h = new() { HasHostiles = true };
+        h.Settings.SilverPolicy = CashPolicy.Collect;
+        h.Settings.CollectAfterCombatFinished = true;
+
+        h.Feed("7 silver drop to the ground.");
+        Assert.Empty(h.Sent);
+
+        h.HasHostiles = false;                      // last hostile fell
+        h.Cash.OnRoomObserved();
+
+        Assert.Equal("get 7 silver noble", h.LastSent);
+    }
+
+    // Room-entity observations fire mid-fight too (a new mob wanders in); the
+    // queue must stay deferred while hostiles remain.
+    [Fact]
+    public void CollectAfterCombat_ObservationWhileHostiles_KeepsDeferred()
+    {
+        using Harness h = new() { HasHostiles = true };
+        h.Settings.GoldPolicy = CashPolicy.Collect;
+        h.Settings.CollectAfterCombatFinished = true;
+
+        h.Feed("25 gold drop to the ground.");
+        h.Cash.OnRoomObserved();                    // still fighting
+
+        Assert.Empty(h.Sent);
+    }
+
+    // Multiple corpses drop across a fight; every deferred pile is collected once
+    // the room clears, one get each (parity with the immediate per-drop path).
+    [Fact]
+    public void CollectAfterCombat_FlushesAllDeferredPiles()
+    {
+        using Harness h = new() { HasHostiles = true };
+        h.Settings.GoldPolicy = CashPolicy.Collect;
+        h.Settings.CollectAfterCombatFinished = true;
+
+        h.Feed("10 gold drop to the ground.");
+        h.Feed("5 gold drop to the ground.");
+        Assert.Empty(h.Sent);
+
+        h.HasHostiles = false;
+        h.Cash.OnRoomObserved();
+
+        Assert.Equal(new[] { "get 10 gold crown", "get 5 gold crown" }, h.AllSent);
+    }
+
+    // Room-display cash defers too (not just corpse drops) — the ground-survey
+    // collect site routes through the same defer.
+    [Fact]
+    public void CollectAfterCombat_DefersRoomDisplayCash()
+    {
+        using Harness h = new() { HasHostiles = true };
+        h.Settings.GoldPolicy = CashPolicy.Collect;
+        h.Settings.CollectAfterCombatFinished = true;
+
+        h.Feed("There are 50 gold pieces here.");
+        Assert.Empty(h.Sent);
+
+        h.HasHostiles = false;
+        h.Cash.OnRoomObserved();
+        Assert.Equal("get 50 gold crown", h.LastSent);
+    }
+
+    // Leaving the room before it cleared abandons the deferred coin — it belonged
+    // to the room we walked out of, so a later clear-signal collects nothing.
+    [Fact]
+    public void CollectAfterCombat_RoomChange_DiscardsDeferred()
+    {
+        using Harness h = new() { HasHostiles = true };
+        h.Settings.GoldPolicy = CashPolicy.Collect;
+        h.Settings.CollectAfterCombatFinished = true;
+
+        h.Feed("25 gold drop to the ground.");
+        h.Cash.OnRoomChanged();                     // walked away
+
+        h.HasHostiles = false;
+        h.Cash.OnRoomObserved();
+        Assert.Empty(h.Sent);
+    }
+
+    // Toggle OFF is the default behaviour: collect immediately even mid-fight.
+    [Fact]
+    public void CollectAfterCombat_Off_CollectsImmediatelyMidFight()
+    {
+        using Harness h = new() { HasHostiles = true };
+        h.Settings.SilverPolicy = CashPolicy.Collect;
+        h.Settings.CollectAfterCombatFinished = false;
+
+        h.Feed("7 silver drop to the ground.");
+
+        Assert.Equal("get 7 silver noble", h.LastSent);
+    }
+
+    // Toggle on but no hostiles (cleared room, or non-combat pickup): collect
+    // immediately — nothing to wait for.
+    [Fact]
+    public void CollectAfterCombat_OnButNoHostiles_CollectsImmediately()
+    {
+        using Harness h = new() { HasHostiles = false };
+        h.Settings.SilverPolicy = CashPolicy.Collect;
+        h.Settings.CollectAfterCombatFinished = true;
+
+        h.Feed("7 silver drop to the ground.");
+
+        Assert.Equal("get 7 silver noble", h.LastSent);
     }
 
     // ----- encumbrance gate + cascade --------------------------------

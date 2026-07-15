@@ -257,6 +257,8 @@ public sealed class AutoDepositManagerTests : IDisposable
         CashManager cash = new(router,
             readSettings: () => h.Settings,
             isEnabled: () => true,
+            collectAfterCombatFinished: () => h.Settings.CollectAfterCombatFinished,
+            hasEngageableHostiles: () => false,
             getSnapshot: () => h.Snapshot);
         StashRoomManager stash = new(profile,
             readCash: () => h.Settings,

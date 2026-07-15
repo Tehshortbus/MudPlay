@@ -12,7 +12,8 @@ Notable changes per merged PR, **newest first**. The top of the [README](README.
 - `walk to` now routes through single-destination CMD teleports (`go hole` / cast-teleport hops) — modeled as routable map edges, level-gated like any exit, and drawn as a gap into the portal room then out its far side rather than a line across the hop
 - Blocked-route message now names the item(s) you're missing when every route depends on one you don't carry, instead of a bare "a required item you're missing"
 - Navigation window header reorganized — engine badge / activity chip / status text share the top row with the search box pinned to its top-right corner, and the display-toggle + action chips drop to their own row
-- bug reports addressed: paradigm-20260714-093614, paradigm-20260714-115526, paradigm-20260714-121106, paradigm-20260714-163356
+- "Collect after combat finished" now defers currency the same as items — ground / corpse / notice cash is queued while the room still holds hostiles and collected on room-clear, instead of picking up between kills
+- bug reports addressed: paradigm-20260714-093614, paradigm-20260714-115526, paradigm-20260714-121106, paradigm-20260714-163356, paradigm-20260714-164946
 
 ## 1.64.0
 
