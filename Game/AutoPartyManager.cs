@@ -308,13 +308,26 @@ public sealed class AutoPartyManager : IDisposable
 
     private void OnPartyPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
+        // A party-splitting teleport reform is mid-flight — the party dissolving
+        // or our leader flag dropping is the EXPECTED consequence of the teleport
+        // we just crossed (a "go hole"-style CMD teleport answers with "Your party
+        // has been disbanded." and drops us to non-leader), not a reason to
+        // abandon the reform. Keep the deferred re-invites + gate hold alive so
+        // each member's arrival still re-invites them; a live reform only exits
+        // via rejoin (EndInviteWait), the wait window (ExpireInviteWaits), or a
+        // user movement-stop (AbortReformWaits). Without this guard the disband
+        // races ahead of the members' arrival and clears the reform before it can
+        // fire, so the leader reforms nobody and walks off alone.
+        bool reformInFlight = _reformPendingInvite.Count > 0 || _reformGiven.Count > 0;
+
         // Full dissolution wipes the cooldown so any prior roster
         // member that re-appears in our room can be auto-invited fresh.
         if (e.PropertyName == nameof(PartyState.IsInParty) && !_party.IsInParty)
         {
             _recentlyInvited.Clear();
-            // Nobody left to wait for — release any loop hold.
-            ClearAllInviteWaits("party dissolved");
+            // Nobody left to wait for — release any loop hold (unless a reform is
+            // riding out this very dissolution).
+            if (!reformInFlight) ClearAllInviteWaits("party dissolved");
         }
         // If we just became a follower, abort every active nag — only
         // solo or leader configurations should be inviting people.
@@ -322,8 +335,11 @@ public sealed class AutoPartyManager : IDisposable
              || e.PropertyName == nameof(PartyState.SelfIsLeader))
             && _party.IsInParty && !_party.SelfIsLeader)
         {
-            CancelAllNags("became a follower");
-            ClearAllInviteWaits("became a follower");
+            if (!reformInFlight)
+            {
+                CancelAllNags("became a follower");
+                ClearAllInviteWaits("became a follower");
+            }
         }
     }
 
@@ -841,6 +857,22 @@ public sealed class AutoPartyManager : IDisposable
     {
         if (match.Groups.Count == 0) return;
         string given = ExtractGiven(match.Groups[0]);
+        if (string.IsNullOrEmpty(given)) return;
+        TrySendDeferredReformInvite(given);
+    }
+
+    // A player walked into our room ("X walks into the room from <dir>", including
+    // the "from nowhere" form a hole / chime CMD teleport lands them with). Not
+    // every party-splitting teleport flashes members in with the "blinding flash
+    // of light" line OnTeleportArrival keys on — a "go hole" drops them with a
+    // plain arrival — so this is the fallback arrival signal for a reform member.
+    // No-op for anyone not pending a reform invite. Wired to
+    // RoomEntryWatcher.ArrivalObserved in AppServices; Kind is the watcher's
+    // authoritative Player/Monster classification.
+    public void OnPlayerArrival(Combat.RoomEntryArrivalEvent arrival)
+    {
+        if (arrival.Kind != Combat.EntityKind.Player) return;
+        string given = ExtractGiven(arrival.Name);
         if (string.IsNullOrEmpty(given)) return;
         TrySendDeferredReformInvite(given);
     }

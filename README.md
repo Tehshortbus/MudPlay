@@ -11,6 +11,7 @@
 > - Blocked-route message now names the item(s) you're missing when every route depends on one you don't carry, instead of a bare "a required item you're missing"
 > - Navigation window header reorganized — engine badge / activity chip / status text share the top row with the search box pinned to its top-right corner, and the display-toggle + action chips drop to their own row
 > - "Collect after combat finished" now defers currency the same as items — ground / corpse / notice cash is queued while the room still holds hostiles and collected on room-clear, instead of picking up between kills
+> - Party-splitting teleports that fully disband the party (`go hole`) now reform on the far side — the deferred re-invite survives the disband and fires on each member's plain "walks in from nowhere" arrival, so the walker holds for the reform instead of leaving without the party
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

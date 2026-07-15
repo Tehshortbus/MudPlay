@@ -2373,6 +2373,11 @@ public sealed class AppServices
         // RoomEntryArrival pattern + appends to the classifier so the
         // Combat gate / CombatManager react to spawns immediately.
         RoomEntry = new Game.Combat.RoomEntryWatcher(Router, RoomClassifier, Log);
+        // A reform member who crossed a party-splitting teleport that lands them
+        // with a plain "walks into the room from nowhere" (a "go hole"-style CMD
+        // teleport, no "blinding flash" line) still needs their withheld re-invite
+        // fired on arrival — feed the watcher's classified arrivals to AutoParty.
+        RoomEntry.ArrivalObserved += AutoParty.OnPlayerArrival;
 
         // Mid-room departure watcher. Subscribes to the
         // RoomEntryDeparture pattern + removes the departing monster
