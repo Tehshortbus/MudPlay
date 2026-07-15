@@ -908,6 +908,20 @@ comes from the stat screen / who line (`AlignmentTracker` / `PlayerStats`).
     rooms, so the player sees the whole area with its spell-gated exits visually flagged rather than a
     sparse fragment. (`RoomExit.CastsOnWalk` drives the render mark; `CastTeleportRandom`, set by the
     spell-catalog classification pass at graph build, drives only the router prune.)
+  - **A one-way cast "pocket" is not overdrawn onto its housing map.** A cast area can be a *sink* —
+    entered by a single cast-on-walk exit with no walk-back, so it lives on but topologically apart from
+    the surrounding map. The Warped Asylum is one: its 108 rooms are reachable only via one cast mouth
+    (`1182 W → 1183`, `(Cast: pre-0, post-596)`) and have zero exits back out. Laying the pocket out from
+    a housing-map origin poured all 108 rooms into the housing map's coordinate grid, drawing them on top
+    of it (the Rhudaur overlay). The fix classifies a cast exit `a→b` as a **pocket entrance** iff `b`
+    cannot reach `a` by *any* directed route (`RoomExit.CastPocketEntrance`, set by a graph-build
+    reachability pass). The planar mapper stops expanding through a pocket entrance, so from outside the
+    pocket shows only as a spell-wall stub at its mouth — but a walker standing *inside* still lays the
+    whole area out, because the pocket's internal cast exits are reciprocal (they have return paths) and
+    so are never flagged as entrances. This is a *topology* discriminator, orthogonal to
+    `CastTeleportRandom` (a *predictability* one): the asylum mouth is both, an internal reciprocal cast
+    exit is neither, and a fixed one-way cast-teleport into a sink would be a pocket entrance without
+    being random.
 
 ## Attack spells: why one fails to damage a monster
 

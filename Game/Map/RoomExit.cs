@@ -50,6 +50,18 @@ namespace FujinTerm.Game.Map;
 //     normally is what lets the whole area render; the map just marks it with a
 //     spell-wall glyph. A fixed (single-room) cast-teleport is deterministic,
 //     so it needs no flag — it stays an ordinary cardinal that happens to cast.
+//   - CastPocketEntrance — set at graph-build time: true when this cast exit is
+//     the ONE-WAY mouth of a sink pocket — its target cannot reach its source by
+//     any route (no walk-back). The Rhudaur Warped Asylum is the case: room 1182
+//     casts west into 1183 and the 108 asylum rooms have zero exits back out, so
+//     a layout rooted OUTSIDE the pocket would pour all 108 rooms into the host
+//     area's grid and overlay it. BuildLayout refuses to expand THROUGH a pocket
+//     entrance, so from outside the pocket is left undrawn (the mouth still shows
+//     as a spell-wall stub); from inside, the one-way mouth is never traversed
+//     anyway, so the whole area still renders. Distinct from CastTeleportRandom:
+//     a pocket entrance is about topology (can you get back?), not predictability
+//     (where do you land?) — the asylum's INTERNAL cast exits are reciprocal, so
+//     they're not entrances and the area stays whole when viewed from within.
 public readonly partial record struct RoomExit(
     RoomKey Target,
     RoomExitHint Hint,
@@ -66,7 +78,8 @@ public readonly partial record struct RoomExit(
     int ClassGate = 0,
     int PreCastSpell = 0,
     int PostCastSpell = 0,
-    bool CastTeleportRandom = false)
+    bool CastTeleportRandom = false,
+    bool CastPocketEntrance = false)
 {
     // True when this exit carries a character-level window (either a floor, a
     // cap, or both).

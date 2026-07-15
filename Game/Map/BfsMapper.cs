@@ -535,6 +535,17 @@ public sealed class BfsMapper
                 Room? nextRoom = _graph.GetRoom(next);
                 if (nextRoom is null) continue;
 
+                // One-way cast pocket mouth (the Warped Asylum entrance): a
+                // cast-on-walk exit whose target can't walk back. Expanding
+                // through it pours the whole sink area (108 rooms) into the
+                // HOUSING map's grid, drawn on top of it. Stop here — the source
+                // room stays placed, so the edge-rebuild pass below still records
+                // its spell-wall stub glyph pointing at the hidden pocket. A
+                // walker standing INSIDE the pocket lays the area out fully: its
+                // internal cast exits are reciprocal, so none are flagged, and
+                // the mouth lives on the outside room it can never reach.
+                if (exit.CastPocketEntrance) continue;
+
                 // Cross-plane text portal: the importer files a text exit
                 // (go portal, go manhole) under a cardinal slot, so it looks
                 // planar — but its target lives on another vertical level

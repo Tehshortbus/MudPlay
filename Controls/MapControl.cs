@@ -427,7 +427,7 @@ public sealed class MapControl : Control
     // the same purple as the spell-room highlight so the two read as kin.
     // Thicker than the grey exit line it crosses so it stands out as a barrier
     // between the two rooms — "walking here fires a spell on you."
-    private static readonly IPen   SpellWallPen   = new Pen(new SolidColorBrush(Color.Parse("#9C70CC")), 3.0)
+    private static readonly IPen   SpellWallPen   = new Pen(new SolidColorBrush(Color.Parse("#9C70CC")), 4.5)
     {
         LineCap = PenLineCap.Round,
     };
@@ -1545,7 +1545,9 @@ public sealed class MapControl : Control
         // Rotate the direction 90° to get the wall's own axis, then normalise.
         double px = -dy / len;
         double py =  dx / len;
-        double half = tilePixels * 0.20;
+        // Span the bar the full height of a room-node square (DrawRoomNode's
+        // 0.45·tile) so it reads as a wall sized to the rooms it stands between.
+        double half = tilePixels * 0.45 / 2;
         Point a = new(mid.X - px * half, mid.Y - py * half);
         Point b = new(mid.X + px * half, mid.Y + py * half);
         ctx.DrawLine(pen, a, b);

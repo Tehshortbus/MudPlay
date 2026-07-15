@@ -431,6 +431,7 @@ public sealed class RoomGraphManager
 
         PromoteCmdTeleportExits();
         PromoteCastTeleportExits();
+        MarkCastPocketEntrances();
         BuildTeleportEdges();
         BuildSecondaryIndexes();
 
@@ -522,6 +523,65 @@ public sealed class RoomGraphManager
             }
             if (rebuilt is not null) _rooms[key] = room with { Exits = rebuilt };
         }
+    }
+
+    // Flag the one-way mouth of a cast-teleport "pocket" — a sink area (e.g. the
+    // Warped Asylum) entered by a cast-on-walk exit with no walk-back. A cast
+    // exit a→b is a pocket entrance iff b cannot reach a by any directed route:
+    // stepping through it commits you to the pocket. The planar mapper keys off
+    // this to stop expanding the layout through the mouth, so the pocket's rooms
+    // don't get poured into the HOUSING map's coordinate grid and drawn on top of
+    // it — while a walker standing inside the pocket (origin within it) still lays
+    // the whole area out, because its internal cast exits are reciprocal and so
+    // are NOT entrances. Distinct from CastTeleportRandom: that flag is about an
+    // unpredictable LANDING, this is about one-way TOPOLOGY. A cast exit can be
+    // both (the asylum mouth is), one, or neither. No-op without any cast-on-walk
+    // exits present.
+    private void MarkCastPocketEntrances()
+    {
+        foreach (RoomKey key in _rooms.Keys.ToArray())
+        {
+            Room room = _rooms[key];
+
+            Dictionary<Direction, RoomExit>? rebuilt = null;
+            foreach ((Direction dir, RoomExit exit) in room.Exits)
+            {
+                if (!exit.CastsOnWalk) continue;
+                if (CanReach(exit.Target, key)) continue;
+
+                (rebuilt ??= new(room.Exits))[dir] = exit with { CastPocketEntrance = true };
+                _log?.Log(LogSeverity.Debug, "RoomGraph",
+                    $"Room {key} {dir} → {exit.Target}: one-way cast pocket entrance (no walk-back) — layout stops here from outside.");
+            }
+            if (rebuilt is not null) _rooms[key] = room with { Exits = rebuilt };
+        }
+    }
+
+    // Directed reachability over cardinal exits: can `from` reach `goal` by any
+    // sequence of room.Exits hops? Early-exits the moment `goal` is found. Used
+    // only at graph-build time to classify cast pocket entrances, so a per-call
+    // BFS bounded by the source's reachable set is cheap enough (sink pockets are
+    // small; the rare fixed cast-teleport that DOES return finds its goal fast).
+    private bool CanReach(RoomKey from, RoomKey goal)
+    {
+        if (from == goal) return true;
+
+        var seen = new HashSet<RoomKey> { from };
+        var queue = new Queue<RoomKey>();
+        queue.Enqueue(from);
+
+        while (queue.Count > 0)
+        {
+            RoomKey cur = queue.Dequeue();
+            if (!_rooms.TryGetValue(cur, out Room? room)) continue;
+            foreach (RoomExit exit in room.Exits.Values)
+            {
+                RoomKey next = exit.Target;
+                if (next == goal) return true;
+                if (seen.Add(next)) queue.Enqueue(next);
+            }
+        }
+        return false;
     }
 
     // Synthesise a routable Direction.Teleport edge for a CMD teleport whose

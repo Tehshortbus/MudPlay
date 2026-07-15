@@ -796,6 +796,89 @@ public sealed class BfsMapperTests : IDisposable
         Assert.Equal(new[] { Direction.N, Direction.E }, path);   // detour, never the E cast exit
     }
 
+    // ----- cast pocket entrances -------------------------------------
+    //
+    // A cast "pocket" is a sink area (the Warped Asylum) entered by a single
+    // cast-on-walk exit with no walk-back. Layout must NOT pour the pocket into
+    // the housing map's grid when viewed from outside (the overlay bug), yet a
+    // walker standing inside the pocket still sees the whole area. The pocket:
+    //
+    //   1/1 Ward ──E── 1/2 Rhudaur          (outside, mutually reachable)
+    //     │
+    //     W (Cast) ── one-way mouth
+    //     ↓
+    //   1/3 Cell ══E(Cast)══ 1/4 Cell       (pocket, reciprocal internally,
+    //             ══W(Cast)══                 no exit back to 1/1)
+    //
+    private const string PocketJson = """
+        [
+          { "Map Number": 1, "Room Number": 1, "Name": "Asylum Ward",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "0", "E": "1/2", "W": "1/3 (Cast: pre-0, post-596)",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 2, "Name": "Rhudaur Road",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "0", "E": "0", "W": "1/1",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 3, "Name": "Padded Cell",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "0", "E": "1/4 (Cast: pre-0, post-596)", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 4, "Name": "Rubber Room",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "0", "E": "0", "W": "1/3 (Cast: pre-0, post-596)",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+        ]
+        """;
+
+    [Fact]
+    public void MarkCastPocketEntrances_FlagsOnlyTheOneWayMouth()
+    {
+        var (_, graph) = NewMapper(PocketJson);
+
+        // 1/1 W → 1/3 has no walk-back (the pocket can't reach 1/1) → entrance.
+        Assert.True(graph.GetRoom(new RoomKey(1, 1))!.Exits[Direction.W].CastPocketEntrance);
+
+        // The internal cast exits are reciprocal (1/3↔1/4), so neither is a
+        // one-way mouth — they must stay un-flagged or the area would fragment
+        // from inside.
+        Assert.False(graph.GetRoom(new RoomKey(1, 3))!.Exits[Direction.E].CastPocketEntrance);
+        Assert.False(graph.GetRoom(new RoomKey(1, 4))!.Exits[Direction.W].CastPocketEntrance);
+    }
+
+    [Fact]
+    public void BuildLayout_FromOutside_HidesPocket_ButKeepsSpellStub()
+    {
+        var (bfs, _) = NewMapper(PocketJson);
+        RoomLayout layout = bfs.BuildLayout(new RoomKey(1, 1));
+
+        // Housing rooms lay out; the pocket does NOT get poured into the grid.
+        Assert.Contains(new RoomKey(1, 1), layout.Positions.Keys);
+        Assert.Contains(new RoomKey(1, 2), layout.Positions.Keys);
+        Assert.DoesNotContain(new RoomKey(1, 3), layout.Positions.Keys);
+        Assert.DoesNotContain(new RoomKey(1, 4), layout.Positions.Keys);
+
+        // The mouth still shows its spell-wall glyph as a stub at the ward.
+        Assert.True(layout.SpellEdgesFromCoord.TryGetValue((0, 0), out IReadOnlySet<Direction>? spellDirs));
+        Assert.Contains(Direction.W, spellDirs!);
+    }
+
+    [Fact]
+    public void BuildLayout_FromInside_RendersWholePocket()
+    {
+        var (bfs, _) = NewMapper(PocketJson);
+        RoomLayout layout = bfs.BuildLayout(new RoomKey(1, 3));
+
+        // A walker inside the pocket sees the whole area — the internal cast
+        // exits aren't entrances, so BFS lays them out.
+        Assert.Contains(new RoomKey(1, 3), layout.Positions.Keys);
+        Assert.Contains(new RoomKey(1, 4), layout.Positions.Keys);
+
+        // The pocket has no walk-back, so the housing map stays out of view.
+        Assert.DoesNotContain(new RoomKey(1, 1), layout.Positions.Keys);
+        Assert.DoesNotContain(new RoomKey(1, 2), layout.Positions.Keys);
+    }
+
     [Fact]
     public void CoordToRoom_MapsBack_FromGridPositionToRoomKey()
     {
