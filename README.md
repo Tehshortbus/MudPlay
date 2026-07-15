@@ -7,6 +7,9 @@
 > - Conversation and transaction history reload from the persisted session logs on reconnect, so prior-session chat and ledger entries reappear instead of starting empty
 > - Up/down searchable hidden exits now retry and reveal correctly — the vertical search-miss line ("nothing different above/below you") is recognized like the cardinal form, so up/down searches no longer stall the walker
 > - Backscroll search / Find Next now walks newest → oldest (bottom to top), matching the window's orientation, instead of oldest → newest
+> - `walk to` now routes through single-destination CMD teleports (`go hole` / cast-teleport hops) — modeled as routable map edges, level-gated like any exit, and drawn as a gap into the portal room then out its far side rather than a line across the hop
+> - Blocked-route message now names the item(s) you're missing when every route depends on one you don't carry, instead of a bare "a required item you're missing"
+> - Navigation window header reorganized — engine badge / activity chip / status text share the top row with the search box pinned to its top-right corner, and the display-toggle + action chips drop to their own row
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

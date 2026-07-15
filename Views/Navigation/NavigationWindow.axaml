@@ -262,21 +262,17 @@
 
     <Grid RowDefinitions="Auto,Auto,*,Auto">
 
-        <!-- Row 0: title + status badge + status text -->
+        <!-- Row 0: status badge + activity chip + status text, then the
+             selected-room chip + search box pinned to the top-right corner -->
         <Border Grid.Row="0"
                 Background="{StaticResource ChromeBgBrush}"
                 BorderBrush="{StaticResource ChromeBorderSoftBrush}"
                 BorderThickness="0,0,0,1">
-            <Grid ColumnDefinitions="Auto,Auto,Auto,*" Margin="12,6">
-                <TextBlock Grid.Column="0"
-                           Text="Navigation"
-                           FontSize="12" FontWeight="SemiBold"
-                           VerticalAlignment="Center"
-                           Margin="0,0,10,0"/>
+            <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto" Margin="12,6">
                 <!-- Engine-state badge — IDLE / WALKING / LOOPING / AUTO-LAIR.
                      Tier overlays paint the border yellow / red on top of
                      whichever engine fill is active. -->
-                <Border Grid.Column="1"
+                <Border Grid.Column="0"
                         Classes="StatusBadge"
                         Classes.WalkingState="{Binding EngineActionIsWalking}"
                         Classes.LoopingState="{Binding EngineActionIsLooping}"
@@ -289,7 +285,7 @@
                      paused reason, straight from the movement-coordinator gates.
                      Hidden while idle. Sits before the loop-name text so it's
                      never eaten by that text's ellipsis. -->
-                <Border Grid.Column="2"
+                <Border Grid.Column="1"
                         Classes="ActivityChip"
                         IsVisible="{Binding HasActivityStatus}"
                         Classes.ActivityMoving="{Binding ActivityIsMoving}"
@@ -298,45 +294,18 @@
                         Classes.ActivityPaused="{Binding ActivityIsPaused}">
                     <TextBlock Text="{Binding ActivityStatus}"/>
                 </Border>
-                <TextBlock Grid.Column="3"
+                <TextBlock Grid.Column="2"
                            Text="{Binding TopBarStatusText}"
                            VerticalAlignment="Center"
                            Foreground="{StaticResource ChromeFgSecBrush}"
                            FontSize="11"
+                           Margin="0,0,10,0"
                            TextTrimming="CharacterEllipsis"/>
-            </Grid>
-        </Border>
 
-        <!-- Row 1: chip row (display toggles + selected indicator + search + actions) -->
-        <Border Grid.Row="1"
-                Background="{StaticResource ChromeBgBrush}"
-                BorderBrush="{StaticResource ChromeBorderSoftBrush}"
-                BorderThickness="0,0,0,1">
-            <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto,Auto,Auto"
-                  Margin="12,6"
-                  ColumnSpacing="6">
-                <!-- Display-toggle chips. The Manage button lives down
-                     in the loops-rail footer (already wired to
-                     OpenManagerCommand) — putting it here too would be
-                     redundant. -->
-                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4">
-                    <Button Classes="ToggleChip" Content="Lairs"
-                            Command="{Binding ToggleLairsCommand}"
-                            Classes.LairFill="{Binding HighlightLairs}"/>
-                    <Button Classes="ToggleChip" Content="Shops"
-                            Command="{Binding ToggleShopsCommand}"
-                            Classes.ShopFill="{Binding HighlightShops}"/>
-                    <Button Classes="ToggleChip" Content="Spells"
-                            Command="{Binding ToggleSpellsCommand}"
-                            Classes.SpellFill="{Binding HighlightSpells}"/>
-                    <Button Classes="ToggleChip" Content="Legend"
-                            Command="{Binding ToggleLegendCommand}"
-                            Classes.LegendFill="{Binding LegendVisible}"/>
-                </StackPanel>
-
-                <!-- Queued destination chip (centre). Click clears the
-                     queue + preview line. -->
-                <Button Grid.Column="2"
+                <!-- Selected-room chip — appears when a room is queued as a
+                     destination (via search pick / context menu). Rides just
+                     left of the search box. Click clears the queue + preview. -->
+                <Button Grid.Column="3"
                         IsVisible="{Binding HasQueuedDestination}"
                         Command="{Binding ClearQueuedDestinationCommand}"
                         Background="{StaticResource ChromeBgElevBrush}"
@@ -360,14 +329,46 @@
                     </StackPanel>
                 </Button>
 
-                <!-- Search box -->
-                <TextBox Grid.Column="3"
+                <!-- Search box — top-right corner of the header. -->
+                <TextBox Grid.Column="4"
                          Name="SearchBox"
                          Text="{Binding SearchQuery, Mode=TwoWay}"
                          PlaceholderText="Search rooms, lairs, loops…"
-                         Width="220"
+                         Width="185"
+                         MinHeight="24"
+                         Height="24"
+                         Padding="7,2"
                          FontSize="11"
                          VerticalAlignment="Center"/>
+            </Grid>
+        </Border>
+
+        <!-- Row 1: chip row (display toggles + actions) -->
+        <Border Grid.Row="1"
+                Background="{StaticResource ChromeBgBrush}"
+                BorderBrush="{StaticResource ChromeBorderSoftBrush}"
+                BorderThickness="0,0,0,1">
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto"
+                  Margin="12,6"
+                  ColumnSpacing="6">
+                <!-- Display-toggle chips. The Manage button lives down
+                     in the loops-rail footer (already wired to
+                     OpenManagerCommand) — putting it here too would be
+                     redundant. -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4">
+                    <Button Classes="ToggleChip" Content="Lairs"
+                            Command="{Binding ToggleLairsCommand}"
+                            Classes.LairFill="{Binding HighlightLairs}"/>
+                    <Button Classes="ToggleChip" Content="Shops"
+                            Command="{Binding ToggleShopsCommand}"
+                            Classes.ShopFill="{Binding HighlightShops}"/>
+                    <Button Classes="ToggleChip" Content="Spells"
+                            Command="{Binding ToggleSpellsCommand}"
+                            Classes.SpellFill="{Binding HighlightSpells}"/>
+                    <Button Classes="ToggleChip" Content="Legend"
+                            Command="{Binding ToggleLegendCommand}"
+                            Classes.LegendFill="{Binding LegendVisible}"/>
+                </StackPanel>
 
                 <!-- Save — opens the appropriate editor dialog
                      (LoopEditor / LairEditor) pre-seeded with the
@@ -376,7 +377,7 @@
                      savable clicks, Loop running, AutoLair build
                      mode with markers, AutoLair running with
                      markers. -->
-                <Button Grid.Column="4"
+                <Button Grid.Column="2"
                         Classes="ActionChip"
                         Content="Save"
                         ToolTip.Tip="Save the current loop / lair setup."
@@ -388,7 +389,7 @@
                      walk's Pause/Resume chip (parity with the loop/lair
                      pause affordance). Keys off the user-override tier, so a
                      mid-walk fight doesn't flip it to Resume. -->
-                <Button Grid.Column="4"
+                <Button Grid.Column="2"
                         Classes="ActionChip"
                         Classes.Run="{Binding IsWalkUserPaused}"
                         Classes.Pause="{Binding !IsWalkUserPaused}"
@@ -401,7 +402,7 @@
                      user gate + open builder seeded from running loop);
                      loop paused shows "Run" (resume); walker/auto-lair
                      keep the legacy Run/Stop one-shot semantics. -->
-                <Button Grid.Column="5"
+                <Button Grid.Column="3"
                         Classes="ActionChip"
                         Classes.Run="{Binding !IsAnyExecuting}"
                         Classes.Pause="{Binding IsAnyExecuting}"
@@ -415,7 +416,7 @@
                      Stop mode, ToggleLoopMode otherwise, so the user
                      sees a single chip that always means "exit the
                      current loop context." -->
-                <Button Grid.Column="6"
+                <Button Grid.Column="4"
                         Classes="ActionChip"
                         Classes.Active="{Binding IsLoopMode}"
                         Classes.Stop="{Binding LoopModeButtonIsStop}"
@@ -423,7 +424,7 @@
                         Command="{Binding LoopModeButtonCommand}"/>
 
                 <!-- Lair mode -->
-                <Button Grid.Column="7"
+                <Button Grid.Column="5"
                         Classes="ActionChip"
                         Classes.Active="{Binding IsLairMode}"
                         Classes.Stop="{Binding LairModeButtonIsStop}"
