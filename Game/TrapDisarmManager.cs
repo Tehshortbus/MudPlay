@@ -215,15 +215,23 @@ public sealed class TrapDisarmManager : IDisposable
     }
 
     // Compare the captured \w+ from a regex match against the current request's
-    // direction. Both are normalised to short form before compare — game prints
-    // "north" / "east" / "up" etc., we store the short form we sent on the wire.
+    // direction. BOTH sides are normalised to short form before compare — the
+    // game prints the long form ("southeast" / "north" / "up"), and callers may
+    // enqueue either form: the @trap handler passes the short form it parsed,
+    // but the walker enqueues the long-form direction word. Normalising only the
+    // observed side left a walker-enqueued "southeast" never matching the game's
+    // "You found a trap to the southeast!", so the disarm stalled in Searching
+    // after a successful search. Normalising the stored side too makes the match
+    // robust to whichever form the caller queued.
     private bool MatchesCurrentDirection(MatchResult result)
     {
         if (_current is null) return false;
         if (result.Groups.Count == 0) return false;
         string? observed = NormaliseDirection(result.Groups[0]);
+        string? expected = NormaliseDirection(_current.Direction);
         return observed is not null
-               && observed.Equals(_current.Direction, StringComparison.OrdinalIgnoreCase);
+               && expected is not null
+               && observed.Equals(expected, StringComparison.OrdinalIgnoreCase);
     }
 
     private void CompleteCurrent()

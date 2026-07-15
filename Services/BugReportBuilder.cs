@@ -434,7 +434,7 @@ public static class BugReportBuilder
         Kv(sb, "Trap disarm", $"{trap.CurrentState}"
             + (trap.CurrentDirection is { } td ? $", dir={td}" : string.Empty)
             + (trap.QueueDepth > 0 ? $", queued={trap.QueueDepth}" : string.Empty)
-            + $", canDisarm={trap.CanDisarm}");
+            + $", canDisarm={trap.CanDisarm}, trapsKnown={svc.Stats.TrapsKnown}");
 
         sb.Append("\n**Path-item detours**\n\n");
         Kv(sb, "Path-item search demand", svc.PathItemDemand.SearchDemandActive.ToString());

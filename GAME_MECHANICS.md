@@ -648,6 +648,31 @@ comes from the stat screen / who line (`AlignmentTracker` / `PlayerStats`).
   the cardinal `to the <dir>` shape never registered an up/down miss — so up/down searches never retried
   cleanly and stalled (the reported symptom). A "bonked" `sea` is distinct from a bonked *move*: the
   `sea` reply above is not a move refusal.
+- **[CONFIRMED, capture 2026-07-15 report 132150] A trap search reports the found trap with the
+  LONG-form direction word.** Searching a trapped exit is `sea <dir>`; on a hit the game replies
+  `You found a trap to the <dir>!` where `<dir>` is spelled out long — `You found a trap to the
+  southeast!` (confirmed on the wire, alongside the outbound `sea southeast` that produced it). The
+  client keys on this to drive `TrapDisarmManager`'s search→disarm loop. Two consequences:
+  - **Direction matching must normalise both sides.** The @trap remote handler enqueues the short
+    form it parsed, but the walker enqueues the long-form direction word — and the game's reply is
+    long-form. Comparing a short-normalised observed direction against an un-normalised stored one
+    (long-form from the walker) never matched, so a successful search stalled in *Searching* and the
+    disarm never fired (the reported bug). Both the observed and the stored/enqueued direction are
+    now normalised to the short form before compare.
+  - **The disarm send stays long-form** — `sea southeast` is wire-confirmed, so the walker keeps
+    sending the long form it enqueued (matching the confirmed search) rather than re-shortening it.
+    Whether `disarm trap <longdir>` (e.g. `disarm trap southeast`) is accepted the same way `sea
+    <longdir>` is has NOT been directly wire-confirmed (the reported capture stalled before the
+    disarm went out); it is the walker's existing send shape and is flagged for live verification.
+- **[CONFIRMED, capture 2026-07-15 report 131801] The `stat` screen is the only source of the Traps
+  skill; the single-line `exp` output never carries it.** A character's trap-disarm capability is read
+  from the `Traps:` row of the full `stat` screen. The `exp` command's one-liner (`Exp: N Level: M Exp
+  needed for next level: ...`) reports only progression, so parsing `exp` cannot establish the trap
+  skill. The client therefore distinguishes "trap skill unknown (never parsed a full stat / no hydrated
+  profile snapshot)" from "known zero": with "utilize disarm traps if able" on, the walker halts on a
+  trapped exit when the skill is genuinely unknown rather than deciding capability on a defaulted zero
+  and waltzing through. Once a full `stat` is parsed (or a saved profile hydrates it) the skill is known
+  and the normal self-disarm / party-delegate / walk-through path applies.
 - **[CONFIRMED]** **A dark room shows no name and no exits — traversal is inferred from the
   absence of a bonk.** A room too dark to see in replaces the *entire* room display (name,
   `Obvious exits:`, `Also here:`) with a single line — `The room is very dark - you can't see

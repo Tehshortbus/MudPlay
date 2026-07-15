@@ -213,6 +213,47 @@ public sealed class StatParserTests
         Assert.Equal(expected, stats.Lives);
     }
 
+    // ===== TrapsKnown gate =====
+
+    [Fact]
+    public void TrapsKnown_False_BeforeAnyParse()
+    {
+        var (p, _) = Setup();
+        Assert.False(p.TrapsKnown);
+    }
+
+    [Fact]
+    public void TrapsKnown_StaysFalse_AfterExpOnlyParse()
+    {
+        // The single-line `exp` output flips HasParsed but never carries the
+        // Traps skill, so TrapsKnown must NOT be fooled into "known" by it —
+        // that's exactly what made the walker judge disarm on a defaulted zero.
+        var (p, _) = Setup();
+        p.FeedTestLine("Exp: 0  Level: 2  Exp needed for next level: 100 (200) [50%]");
+        Assert.True(p.HasParsed);
+        Assert.False(p.TrapsKnown);
+    }
+
+    [Fact]
+    public void TrapsKnown_True_AfterFullStatParse_EvenWhenSkillIsZero()
+    {
+        // Observing the "Traps: 0" row is "known zero", not "unknown" — the
+        // walker's disarm gate treats the two differently.
+        var (p, s) = Setup();
+        p.FeedTestLine("Kai:   0/0                                  Traps:        0");
+        Assert.Equal(0, s.Traps);
+        Assert.True(p.TrapsKnown);
+    }
+
+    [Fact]
+    public void TrapsKnown_True_AfterFullStatParse_WithSkill()
+    {
+        var (p, s) = Setup();
+        p.FeedTestLine("Kai:   0/0                                  Traps:        155");
+        Assert.Equal(155, s.Traps);
+        Assert.True(p.TrapsKnown);
+    }
+
     // ===== Live experience accrual =====
 
     [Fact]

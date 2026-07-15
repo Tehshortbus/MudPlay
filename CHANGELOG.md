@@ -2,6 +2,13 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.65.2
+
+- Trap disarm now advances past a successful search when the walker triggered it — direction matching normalizes both the game's reply and the walker's long-form direction, so a found trap ("You found a trap to the southeast!") no longer stalls in search and never disarms
+- `walk to` no longer waltzes through a trapped exit when disarm is enabled but the Traps skill was never parsed — with the skill genuinely unknown (no full `stat`, no hydrated profile) the walker halts and asks for a `stat` instead of deciding capability on a defaulted zero
+- Bug report captures the trap skill's known/unknown state alongside canDisarm
+- bug reports addressed: paradigm-20260715-131801, paradigm-20260715-132150
+
 ## 1.65.0
 
 - Auto-combat re-issues its last attack when a swing fumbles under confusion, so a confused character keeps fighting instead of silently losing attacks until manually re-sent

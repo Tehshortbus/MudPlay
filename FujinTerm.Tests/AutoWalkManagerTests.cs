@@ -1375,6 +1375,49 @@ public sealed class AutoWalkManagerTests : IDisposable
     }
 
     [Fact]
+    public void Walker_TrappedExit_HaltsWhenTrapSkillUnknown()
+    {
+        // Disarm enabled but the Traps skill was never parsed — the walker
+        // can't tell whether it's able, so it halts on the trap rather than
+        // waltzing through on a defaulted zero (the reported bug). No disarm
+        // is attempted and no move bytes go out.
+        Harness h = NewHarness(TrapGraphJson);
+        FakeTrapEnqueuer trap = new();
+        h.Walker.SetTrapEnqueuer(trap.Enqueue);
+        h.Walker.SetTrapDisarmGate(() => false);       // local can't disarm (skill 0/unknown)
+        h.Walker.SetTrapSkillUnknownGate(() => true);  // and we've never parsed it
+
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Walker.WalkTo(new RoomKey(1, 2));
+
+        Assert.Empty(trap.Calls);
+        Assert.Empty(h.Sent);
+        Assert.Equal(WalkState.Idle, h.Walker.State);
+        Assert.Contains(h.Events, e => e.Kind == WalkEventKind.Failed
+            && e.Detail.Contains("trap skill unknown"));
+    }
+
+    [Fact]
+    public void Walker_TrappedExit_WalksThroughWhenSkillKnownButUnable()
+    {
+        // Skill parsed and genuinely unable (known zero, no party helper):
+        // the "if able" toggle can't act, so the walker steps through as
+        // before. The skill-unknown halt must NOT fire on a known value.
+        Harness h = NewHarness(TrapGraphJson);
+        FakeTrapEnqueuer trap = new();
+        h.Walker.SetTrapEnqueuer(trap.Enqueue);
+        h.Walker.SetTrapDisarmGate(() => false);        // can't disarm
+        h.Walker.SetTrapSkillUnknownGate(() => false);  // but the skill IS known
+
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Walker.WalkTo(new RoomKey(1, 2));
+
+        Assert.Empty(trap.Calls);
+        Assert.Single(h.Sent);
+        Assert.Equal("n\r", Encoding.Latin1.GetString(h.Sent[0]));
+    }
+
+    [Fact]
     public void Walker_TrappedExit_WithoutEnqueuerBound_SendsMoveDirectly()
     {
         // No trap enqueuer wired — walker falls back to the regular

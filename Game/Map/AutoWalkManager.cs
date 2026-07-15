@@ -37,6 +37,7 @@ public sealed class AutoWalkManager : IRecoverableEngine
     private Action<string, Action<string>>? _trapDelegator;
     private Func<bool>? _canDelegateTrap;
     private Action? _trapDelegateStopAll;
+    private Func<bool>? _trapSkillUnknown;
     private Action<Direction, int, bool, int, string, Action<DoorOpenResult>>? _doorEnqueuer;
     private Action? _doorStopAll;
     private bool _awaitingDoorOpen;
@@ -330,6 +331,21 @@ public sealed class AutoWalkManager : IRecoverableEngine
     {
         ArgumentNullException.ThrowIfNull(stopAll);
         _trapDelegateStopAll = stopAll;
+    }
+
+    // Gate for the "skill unknown → halt" branch. Returns true when the
+    // "Utilize disarm traps if able" toggle is on AND we've never actually
+    // observed our Traps skill (no full stat parse yet, no hydrated snapshot).
+    // Wired to StatParser.TrapsKnown. When it's true and neither the self nor
+    // the party-delegate branch fired, the walker halts on the trapped exit
+    // instead of stepping through — a capability decision made on a defaulted
+    // zero would silently waltz a skilled character over a trap it could have
+    // disarmed once stats were parsed. Left unset, the walker keeps its old
+    // walk-through behaviour.
+    public void SetTrapSkillUnknownGate(Func<bool> gate)
+    {
+        ArgumentNullException.ThrowIfNull(gate);
+        _trapSkillUnknown = gate;
     }
 
     // Door-open enqueuer — the walker calls this when stepping toward a
@@ -953,7 +969,24 @@ public sealed class AutoWalkManager : IRecoverableEngine
                 return;
             }
 
-            // Disarm gated off (toggle disabled or nobody able) — step
+            // Disarm enabled, but neither we nor a party member can act — and
+            // if we've never parsed our trap skill we can't actually tell
+            // whether we're able. Halt rather than waltz blindly over the trap
+            // (which contradicts the enabled toggle): the user runs `stat` to
+            // learn the skill and retries. Once parsed, the profile persists it
+            // so this stops firing. Gate defaults off, so with a known skill (or
+            // the gate unset) we keep the walk-through below.
+            if (_trapSkillUnknown?.Invoke() ?? false)
+            {
+                _log?.Info("Walker",
+                    $"step {_index + 1}/{_path!.Count}: trap on {dirWord} — halting, trap skill not parsed yet (run `stat`)");
+                Raise(new WalkEvent(WalkEventKind.Failed,
+                    $"trap on {dirWord} but trap skill unknown — run `stat`, then retry", _destination));
+                Reset();
+                return;
+            }
+
+            // Disarm gated off (toggle disabled or known-unable) — step
             // through the trapped exit without a disarm attempt. Falls
             // through to the normal move emit below.
             _log?.Info("Walker",

@@ -3397,9 +3397,8 @@ public sealed class AppServices
         Walker.SetTrapEnqueuer(TrapDisarm.Enqueue);
         // Settings → Other "Utilize disarm traps if able": gate the
         // walker's trap-disarm on the toggle AND a real local capability
-        // (Traps skill). When the gate is false the walker steps through
-        // trapped exits without a disarm. The party-delegation half of
-        // "if able" lands in a follow-up.
+        // (Traps skill). When the gate is false the walker tries party
+        // delegation, then halts if the skill is unknown, else steps through.
         Walker.SetTrapDisarmGate(() =>
             Resolver.Resolve<Models.Profile.OtherSettings>("Other").UtilizeDisarmTrapsIfAble
             && TrapDisarm.CanDisarm);
@@ -3414,6 +3413,14 @@ public sealed class AppServices
             && !TrapDisarm.CanDisarm
             && TrapDelegation.AnyPartyMemberCanDisarm());
         Walker.SetTrapDelegateStopper(TrapDelegation.Cancel);
+        // Skill-unknown halt: with the toggle on but our Traps skill never
+        // parsed (no full `stat`, no hydrated profile snapshot), the walker
+        // can't tell whether it's able — so it halts on a trap instead of
+        // stepping through on a defaulted zero. TrapsKnown flips true on the
+        // first full stat parse (or profile hydrate), after which this no-ops.
+        Walker.SetTrapSkillUnknownGate(() =>
+            Resolver.Resolve<Models.Profile.OtherSettings>("Other").UtilizeDisarmTrapsIfAble
+            && !Stats.TrapsKnown);
         // Proactive pre-move approach sequence: gear then `sn`, both as the last
         // commands before each walker move so the move itself is sneaked (the
         // reactive RoomTracker hook above only re-sneaks AFTER arriving).

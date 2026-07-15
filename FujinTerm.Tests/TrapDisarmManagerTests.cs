@@ -183,6 +183,29 @@ public sealed class TrapDisarmManagerTests
         Assert.Equal(TrapDisarmManager.State.Searching, mgr.CurrentState);
     }
 
+    [Fact]
+    public void LongFormDirection_MatchesSearchThenDisarmThenSuccess()
+    {
+        // Regression: the walker enqueues the LONG-form direction word
+        // ("southeast"), not the short form the @trap handler parses. The
+        // game replies in the long form too. Direction matching must
+        // normalise BOTH sides — otherwise a successful search never
+        // advances past Searching and the disarm stalls (the reported bug).
+        var (mgr, router, _, wire) = Setup();
+        string? reply = null;
+        mgr.Enqueue("southeast", "walker", t => reply = t);
+        Assert.Equal("sea southeast\r", Encoding.Latin1.GetString(Assert.Single(wire)));
+        wire.Clear();
+
+        Dispatch(router, "You found a trap to the southeast!");
+        Assert.Equal(TrapDisarmManager.State.DisarmPending, mgr.CurrentState);
+        Assert.Equal("disarm trap southeast\r", Encoding.Latin1.GetString(Assert.Single(wire)));
+
+        Dispatch(router, "You successfully disarmed the trap to the southeast.");
+        Assert.Equal("Trap to the southeast disarmed.", reply);
+        Assert.Equal(TrapDisarmManager.State.Idle, mgr.CurrentState);
+    }
+
     // ===== Queue =====
 
     [Fact]
