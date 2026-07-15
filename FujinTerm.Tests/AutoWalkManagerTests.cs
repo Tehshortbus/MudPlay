@@ -1428,4 +1428,76 @@ public sealed class AutoWalkManagerTests : IDisposable
         Assert.Single(h.Sent);
         Assert.Equal("s\r", Encoding.Latin1.GetString(h.Sent[0]));
     }
+
+    // ----- item-gated blocked-route naming --------------------------
+    //
+    // 1/1 ──N (Item: 474)── 1/2. CMD=0 keeps the exit an Item gate rather
+    // than promoting it to a teleport, so a character lacking item 474 has
+    // its only route blocked by that possession requirement.
+    private const string ItemGateGraphJson = """
+        [
+          { "Map Number": 1, "Room Number": 1, "Name": "A",
+            "Light": 0, "Shop": 0, "Spell": 0, "CMD": 0, "Lair": "", "Delay": 0,
+            "N": "1/2 (Item: 474)", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 2, "Name": "B",
+            "Light": 0, "Shop": 0, "Spell": 0, "CMD": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "1/1 (Item: 474)", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+        ]
+        """;
+
+    // Build a walker whose only route to the destination is an Item-gated exit
+    // the character can't satisfy (carries nothing). The MovementFilter reports
+    // its inventory as known-and-empty so the Item gate fires at plan time.
+    private (AutoWalkManager Walker, List<WalkEvent> Events) NewItemGatedWalker(
+        Func<int, string?>? nameResolver)
+    {
+        Directory.CreateDirectory(Path.Combine(_root, "alpha"));
+        File.WriteAllText(Path.Combine(_root, "alpha", "Rooms.json"), ItemGateGraphJson);
+        GameDataCache cache = new(_root);
+        cache.SwitchSet("alpha");
+        RoomGraphManager graph = new(cache);
+        graph.OnActiveSetChanged("alpha");
+        BfsMapper bfs = new(graph);
+        RoomTracker tracker = new(graph);
+        MovementCoordinator coord = new();
+        ProfileService profile = new();
+        MovementFilter filter = new(profile)
+        {
+            InventoryReadyProbe = () => true,
+            ItemCarriedProbe = _ => false,          // carries nothing → item 474 missing
+        };
+        AutoWalkManager walker = new(graph, bfs, tracker, coord, filter);
+        var events = new List<WalkEvent>();
+        walker.Event += events.Add;
+        if (nameResolver is not null) walker.SetItemNameResolver(nameResolver);
+        tracker.SetLocated(new RoomKey(1, 1));
+        return (walker, events);
+    }
+
+    [Fact]
+    public void BlockedRoute_ItemGate_NamesMissingItem_WhenResolverWired()
+    {
+        (AutoWalkManager walker, List<WalkEvent> events) =
+            NewItemGatedWalker(id => id == 474 ? "obsidian key" : null);
+
+        Assert.False(walker.WalkTo(new RoomKey(1, 2)));
+
+        WalkEvent failed = events.Single(e => e.Kind == WalkEventKind.Failed);
+        Assert.Contains("obsidian key", failed.Detail);
+        Assert.Contains("a required item you're missing (obsidian key)", failed.Detail);
+    }
+
+    [Fact]
+    public void BlockedRoute_ItemGate_FallsBackToGeneric_WhenNoResolver()
+    {
+        (AutoWalkManager walker, List<WalkEvent> events) = NewItemGatedWalker(nameResolver: null);
+
+        Assert.False(walker.WalkTo(new RoomKey(1, 2)));
+
+        WalkEvent failed = events.Single(e => e.Kind == WalkEventKind.Failed);
+        Assert.Contains("a required item you're missing", failed.Detail);
+        Assert.DoesNotContain("(", failed.Detail);            // no name parenthetical
+    }
 }

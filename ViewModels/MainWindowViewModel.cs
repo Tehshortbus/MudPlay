@@ -971,6 +971,7 @@ public partial class MainWindowViewModel : ObservableObject
             () => AppServices.Current.Party.State.SelfIsLeader
                 && AppServices.Current.Party.State.Members.Any(m => !m.IsSelf);
         AppServices.Current.Walker.SetTeleportResolver(teleportResolver);
+        AppServices.Current.Walker.SetItemNameResolver(id => AppServices.Current.ItemNames.GetName(id));
         AppServices.Current.Walker.SetPartyLeaderCheck(isLeaderWithFollowers);
         AppServices.Current.LoopRunner.SetTeleportResolver(teleportResolver);
         AppServices.Current.LoopRunner.SetPartyLeaderCheck(isLeaderWithFollowers);
