@@ -1290,18 +1290,35 @@ public sealed class MapControl : Control
         if (path is null || path.Count < 2 || Layout is null) return;
 
         Point? prev = null;
+        RoomKey? prevKey = null;
         foreach (RoomKey key in path)
         {
             if (!Layout.Positions.TryGetValue(key, out (int X, int Y) coord))
             {
                 prev = null;                                  // gap — skip until next placed room
+                prevKey = null;
                 continue;
             }
             Point here = new(cx + coord.X * tilePixels, cy + coord.Y * tilePixels);
-            if (prev is { } p) ctx.DrawLine(pen, p, here);
+            // Never draw a line across a teleport hop: the two rooms sit on
+            // opposite sides of a portal, not on adjacent tiles. The route
+            // into the teleport room and the route out of its destination each
+            // draw on their own side, matching the "map to the teleport, then
+            // resume from the far side" rule. Usually the destination isn't
+            // even placed in this layout (the hop is one-way), so the gap is
+            // implicit — this also covers a two-way shortcut that lands both
+            // endpoints on the same plane.
+            if (prev is { } p && !(prevKey is { } pk && IsTeleportHop(pk, key)))
+                ctx.DrawLine(pen, p, here);
             prev = here;
+            prevKey = key;
         }
     }
+
+    private bool IsTeleportHop(RoomKey from, RoomKey to)
+        => Graph?.GetRoom(from) is { } room
+           && room.Exits.TryGetValue(Direction.Teleport, out RoomExit tele)
+           && tele.Target.Equals(to);
 
     private static void DrawAvoidX(DrawingContext ctx, Rect cell)
         => DrawCellX(ctx, cell, AvoidXPen);

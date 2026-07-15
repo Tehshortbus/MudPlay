@@ -898,7 +898,7 @@ public sealed class BfsMapper
     }
 
     private static bool IsPlanar(Direction d) =>
-        d != Direction.U && d != Direction.D;
+        d != Direction.U && d != Direction.D && d != Direction.Teleport;
 
     // Subscribed by AppServices to RoomGraphManager.GraphReloaded —
     // flushes the layout cache since per-room references are invalidated.
@@ -938,7 +938,7 @@ public sealed class BfsMapper
                     int curFloor = index[cur].Floor;
                     foreach ((Direction dir, RoomExit exit) in room.Exits)
                     {
-                        if (exit.Hint == RoomExitHint.Text) continue;   // teleports don't link floors
+                        if (exit.Hint is RoomExitHint.Text or RoomExitHint.Teleport) continue;   // portals don't link floors
                         RoomKey t = exit.Target;
                         if (index.ContainsKey(t)) continue;
                         if (_graph.GetRoom(t) is null) continue;
@@ -1004,7 +1004,7 @@ public sealed class BfsMapper
                 if (room is null) continue;
                 foreach ((Direction _, RoomExit exit) in room.Exits)
                 {
-                    if (exit.Hint == RoomExitHint.Text) continue;
+                    if (exit.Hint is RoomExitHint.Text or RoomExitHint.Teleport) continue;
                     RoomKey t = exit.Target;
                     if (t == target) { reachable = true; break; }
                     if (!seen.Add(t)) continue;

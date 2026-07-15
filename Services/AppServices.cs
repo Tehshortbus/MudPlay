@@ -2019,8 +2019,9 @@ public sealed class AppServices
         // Room graph — seeded from the active set's Rooms.json every time the
         // set switches. Built once per swap; consumers hold typed Room
         // references for the lifetime of the set. Takes TBInfo (loaded above)
-        // so the build can promote CMD-teleport-shadowed door exits to Teleport.
-        RoomGraph = new Game.Map.RoomGraphManager(GameData, Log, TBInfo);
+        // so the build can promote CMD-teleport-shadowed door exits to Teleport,
+        // and SpellCatalog so a cast-based CMD teleport becomes a routable edge.
+        RoomGraph = new Game.Map.RoomGraphManager(GameData, Log, TBInfo, SpellCatalog);
         GameData.ActiveSetChanged += RoomGraph.OnActiveSetChanged;
         if (GameData.ActiveSet is not null)
             RoomGraph.OnActiveSetChanged(GameData.ActiveSet);
