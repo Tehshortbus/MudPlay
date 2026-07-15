@@ -1122,8 +1122,11 @@ public sealed class MapControl : Control
                     // us. Class-hall entrances off the Crypt Shadowed Hall
                     // are the canonical case: the hall room exits into a
                     // class hall whose start room can't return, so a plain
-                    // line would imply a round trip that doesn't exist.
-                    if (targetPlaced && haveSrcKey && Graph!.GetRoom(exit.Target) is { } destRoom)
+                    // line would imply a round trip that doesn't exist. Also
+                    // computed when the target is UNPLACED (a cast pocket mouth
+                    // stubs to the cell edge) so its stub still carries the
+                    // directional arrowhead.
+                    if (haveSrcKey && Graph?.GetRoom(exit.Target) is { } destRoom)
                     {
                         oneWay = !HasExitTo(destRoom, srcKey);
                     }
@@ -1192,16 +1195,22 @@ public sealed class MapControl : Control
                     }
                     default:
                     {
-                        // Target genuinely unplaced (dropped / blacklisted)
-                        // or too far to bridge — stub to the cell edge. A
-                        // random-teleport cast exit lands here (its target is a
-                        // portal, deliberately unplaced), so the spell-wall sits
-                        // on the stub at the room's edge.
+                        // Target genuinely unplaced (dropped / blacklisted, a
+                        // one-way cast pocket mouth, or too far to bridge) — stub
+                        // to the cell edge. The spell-wall bar sits ON the cell
+                        // divider (the stub's edge point), exactly where it lands
+                        // between two placed rooms, rather than halfway down the
+                        // stub. A one-way exit keeps its directional arrowhead —
+                        // slightly enlarged and tipped at the divider — so a
+                        // cut-off pocket still reads as "out this way, no return".
                         IPen pen = isTrap ? TrapPen : isAction ? ActionPen : isHidden ? HiddenPen : ExitPen;
                         Rect cell = ComputeCellRect(source, tilePixels, cx, cy);
                         DrawStub(ctx, pen, cell, srcX, srcY, dir);
-                        if (isSpell && StubEndpoint(cell, srcX, srcY, dir) is { } endPt)
-                            DrawSpellWall(ctx, SpellWallPen, Midpoint(srcPt, endPt), dir, tilePixels);
+                        if (StubEndpoint(cell, srcX, srcY, dir) is { } endPt)
+                        {
+                            if (oneWay) DrawOneWayArrow(ctx, pen, srcPt, endPt, tilePixels, scale: 1.3, tipBack: 0.0);
+                            if (isSpell) DrawSpellWall(ctx, SpellWallPen, endPt, dir, tilePixels);
+                        }
                         break;
                     }
                 }
@@ -1567,8 +1576,12 @@ public sealed class MapControl : Control
     // A filled arrowhead near the target end of a one-way connector, pointing
     // from → to. Drawn in the connector's own colour (via pen.Brush) so trap /
     // action / hidden edges keep their meaning while gaining direction. The tip
-    // sits short of the target centre so it clears the destination node fill.
-    private static void DrawOneWayArrow(DrawingContext ctx, IPen pen, Point from, Point to, double tilePixels)
+    // sits short of the target centre so it clears the destination node fill —
+    // except a stub connector (target unplaced) passes tipBack: 0 to seat the tip
+    // right on the cell divider, since there's no node there to clear. scale
+    // enlarges the head for the stub case so a cut-off pocket's arrow reads
+    // clearly on the shorter half-tile connector.
+    private static void DrawOneWayArrow(DrawingContext ctx, IPen pen, Point from, Point to, double tilePixels, double scale = 1.0, double? tipBack = null)
     {
         if (pen.Brush is null) return;
 
@@ -1579,8 +1592,8 @@ public sealed class MapControl : Control
         dx /= len;
         dy /= len;
 
-        double head = Math.Clamp(tilePixels * 0.20, 4.0, 10.0);
-        double back = Math.Max(tilePixels * 0.30, head + 2.0);
+        double head = Math.Clamp(tilePixels * 0.20, 4.0, 10.0) * scale;
+        double back = tipBack ?? Math.Max(tilePixels * 0.30, head + 2.0);
         Point tip = new(to.X - dx * back, to.Y - dy * back);
         double px = -dy, py = dx;                    // perpendicular unit vector
         Point b1 = new(tip.X - dx * head + px * head * 0.6, tip.Y - dy * head + py * head * 0.6);
