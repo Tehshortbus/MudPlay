@@ -1,5 +1,4 @@
 using System.Linq;
-using System.Text.Json;
 using FujinTerm.Game.GameData;
 using FujinTerm.Services;
 using FujinTerm.Services.Patterns;
@@ -96,28 +95,10 @@ public sealed class TrapDelegationManager : System.IDisposable
         return false;
     }
 
+    // Class is the main gate; race (from the PlayerDatabase, unknown for a
+    // "shadowy figure") is secondary. Shared with the local self-disarm check.
     private bool MemberCanDisarm(PartyMember m)
-    {
-        // Class is the main gate.
-        if (ClassGrantsTraps(m.Class)) return true;
-
-        // Race is secondary — only consulted when we actually know it.
-        string? race = LookupRace(m.Name);
-        return !string.IsNullOrWhiteSpace(race) && RaceGrantsTraps(race!);
-    }
-
-    private bool ClassGrantsTraps(string? className)
-    {
-        if (string.IsNullOrWhiteSpace(className)) return false;
-        JsonElement? row = _gameData.FindRowByName("Classes", className!);
-        return row is { } r && AbilityNames.HasTrapAbility(r);
-    }
-
-    private bool RaceGrantsTraps(string race)
-    {
-        JsonElement? row = _gameData.FindRowByName("Races", race);
-        return row is { } r && AbilityNames.HasTrapAbility(r);
-    }
+        => AbilityNames.ClassOrRaceGrantsTraps(_gameData, m.Class, LookupRace(m.Name));
 
     private string? LookupRace(string name)
         => _players.Players
@@ -128,10 +109,11 @@ public sealed class TrapDelegationManager : System.IDisposable
 
     private void OnMemberJoined(string name)
     {
-        // Class already settles capability → no race probe needed.
+        // Class already settles capability → no race probe needed (race: null
+        // scopes the shared check to the class gate alone).
         PartyMember? m = _party.State.Members
             .FirstOrDefault(x => x.Name.Equals(name, System.StringComparison.OrdinalIgnoreCase));
-        if (m is not null && ClassGrantsTraps(m.Class)) return;
+        if (m is not null && AbilityNames.ClassOrRaceGrantsTraps(_gameData, m.Class, null)) return;
 
         // Race already known → no probe needed.
         if (!string.IsNullOrWhiteSpace(LookupRace(name))) return;

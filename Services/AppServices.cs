@@ -1820,7 +1820,7 @@ public sealed class AppServices
         // handler owns the @-command auth boundary. Wire-sender +
         // OtherSettings cadence knobs bind in MainWindowVM /
         // ApplyOtherFromActiveProfile.
-        TrapDisarm = new Game.TrapDisarmManager(Router, PlayerStats, Log);
+        TrapDisarm = new Game.TrapDisarmManager(Router, PlayerStats, GameData, Log);
         TrapDelegation = new Game.TrapDelegationManager(Party, Players, GameData, Router, Log);
         TrapRemote = new Game.Remote.TrapHandler(RemoteCommands, TrapDisarm);
 
@@ -3397,9 +3397,9 @@ public sealed class AppServices
         Walker.SetTrapEnqueuer(TrapDisarm.Enqueue);
         // Settings → Other "Utilize disarm traps if able": gate the
         // walker's trap-disarm on the toggle AND a real local capability
-        // (Traps skill). When the gate is false the walker steps through
-        // trapped exits without a disarm. The party-delegation half of
-        // "if able" lands in a follow-up.
+        // (a positive Traps stat, or a class/race game-data trap-skill
+        // grant when the value hasn't been captured yet). When the gate is
+        // false the walker tries party delegation, else steps through.
         Walker.SetTrapDisarmGate(() =>
             Resolver.Resolve<Models.Profile.OtherSettings>("Other").UtilizeDisarmTrapsIfAble
             && TrapDisarm.CanDisarm);

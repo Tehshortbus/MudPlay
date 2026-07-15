@@ -19,6 +19,12 @@ public sealed class TrapHandlerTests
 {
     private static readonly DateTime Now = new(2026, 6, 3, 0, 0, 0, DateTimeKind.Utc);
 
+    // Isolated empty game-data root — no SwitchSet, so CanDisarm is driven
+    // purely by the parsed Traps stat (class/race are left empty here, so the
+    // inference path never fires and never reads the cache).
+    private static readonly string GameDataRoot =
+        Path.Combine(Path.GetTempPath(), "fujinterm-traphandler-tests");
+
     private static (RemoteCommandManager engine, TrapHandler handler, TrapDisarmManager mgr, PlayerDatabase players, List<byte[]> wire) Setup(int traps = 50)
     {
         MessageRouter router = new();
@@ -28,7 +34,7 @@ public sealed class TrapHandlerTests
         PlayerDatabase players = new();
         PlayerStats stats = new() { Traps = traps };
         RemoteCommandManager engine = new(chat, party, players);
-        TrapDisarmManager mgr = new(router, stats);
+        TrapDisarmManager mgr = new(router, stats, new GameDataCache(GameDataRoot));
         TrapHandler handler = new(engine, mgr);
         List<byte[]> wire = new();
         mgr.SetWireSender(wire.Add);

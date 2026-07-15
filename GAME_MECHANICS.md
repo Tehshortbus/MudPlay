@@ -648,6 +648,36 @@ comes from the stat screen / who line (`AlignmentTracker` / `PlayerStats`).
   the cardinal `to the <dir>` shape never registered an up/down miss — so up/down searches never retried
   cleanly and stalled (the reported symptom). A "bonked" `sea` is distinct from a bonked *move*: the
   `sea` reply above is not a move refusal.
+- **[CONFIRMED, capture 2026-07-15 report 132150] A trap search reports the found trap with the
+  LONG-form direction word.** Searching a trapped exit is `sea <dir>`; on a hit the game replies
+  `You found a trap to the <dir>!` where `<dir>` is spelled out long — `You found a trap to the
+  southeast!` (confirmed on the wire, alongside the outbound `sea southeast` that produced it). The
+  client keys on this to drive `TrapDisarmManager`'s search→disarm loop. Two consequences:
+  - **Direction matching must normalise both sides.** The @trap remote handler enqueues the short
+    form it parsed, but the walker enqueues the long-form direction word — and the game's reply is
+    long-form. Comparing a short-normalised observed direction against an un-normalised stored one
+    (long-form from the walker) never matched, so a successful search stalled in *Searching* and the
+    disarm never fired (the reported bug). Both the observed and the stored/enqueued direction are
+    now normalised to the short form before compare.
+  - **The disarm send stays long-form** — `sea southeast` is wire-confirmed, so the walker keeps
+    sending the long form it enqueued (matching the confirmed search) rather than re-shortening it.
+    Whether `disarm trap <longdir>` (e.g. `disarm trap southeast`) is accepted the same way `sea
+    <longdir>` is has NOT been directly wire-confirmed (the reported capture stalled before the
+    disarm went out); it is the walker's existing send shape and is flagged for live verification.
+- **[CONFIRMED, capture 2026-07-15 report 131801] Trap-disarm capability can be inferred from the
+  character's race and class via game data — the parsed Traps stat is not the only signal.** Race and
+  class are chosen at character creation (the player selects them) and are shown on the train-stats
+  screen, so they are known even for a brand-new character that has never run `stat`. A class or race
+  grants the Traps skill when its game-data record carries a trap-skill ability code — code 40
+  (FindTraps, the single "Traps" skill governing both find and disarm in stock data), 41 (DisarmTraps),
+  or 1002 (GrantTraps) for custom / ParaMUD sets (see `AbilityNames.HasTrapAbility`; this is the same
+  grant the party-delegation capability check already reads for other players). The Traps *value*
+  itself still comes only from the `stat` screen's `Traps:` row — the single-line `exp` output
+  (`Exp: N Level: M Exp needed for next level: ...`) reports only progression and never carries it. So
+  when the Traps value hasn't been captured yet (a freshly loaded profile with no `stat` this session,
+  or a new character), the client falls back to the race/class game-data grant to decide capability:
+  the walker self-disarms if the selected class or race grants Traps, rather than deciding on a
+  defaulted-zero value and waltzing through. A positive parsed Traps value remains the primary signal.
 - **[CONFIRMED]** **A dark room shows no name and no exits — traversal is inferred from the
   absence of a bonk.** A room too dark to see in replaces the *entire* room display (name,
   `Obvious exits:`, `Also here:`) with a single line — `The room is very dark - you can't see
@@ -854,6 +884,44 @@ comes from the stat screen / who line (`AlignmentTracker` / `PlayerStats`).
   strips an `<open|closed> <door|gate>` prefix off each exit token, feeding the open ones into
   `OpenDoorDirections` so the walker skips the door-open FSM on an already-raised gate. Treat "gate"
   and "door" as the same door-type barrier class for display parsing.
+- **[CONFIRMED, game data v1.11p map 9]** **A `(Cast: pre-N, post-M)` exit fires a spell as part of
+  the walk — pre-N before the move, post-M after — and when the post-cast spell is a *random* teleport
+  the exit's landing is non-deterministic.** The exit stays a plain cardinal move (its cell modifier
+  carries the two spell numbers; `0` means no cast on that side). The spell's game-data record classifies
+  its landing: ability code **140 = TeleportRoom** (value `0` → a *random* room drawn from the spell's
+  `MinBase..MaxBase` base range; value `>0` → a single *fixed* room), **141 = TeleportMap** (the
+  destination map). A room-teleport with value 0 spanning more than one base room (and inside the
+  defensive `MaxRandomRange` ceiling of 64) is the random case; a fixed room, a single-room range, or a
+  non-teleport spell is deterministic. The confirmed real case is the **Warped Asylum** (map 9, rooms
+  1183–1290 reached from the Rhudaur side): those rooms carry a mix of plain cardinals and cast exits
+  whose post-cast spell (596 / 597) random-teleports the caster into roughly the `[1183,1206]` band.
+  Two consequences the client relies on:
+  - **The random-teleport exit is NOT routable.** BFS pathing (`FindPath` / `ComputeDistancesFrom`)
+    skips any exit flagged `CastTeleportRandom`, even when exit gates are being ignored — the
+    non-determinism, not a gate, is what rules it out. The walker can only be routed through the area's
+    *plain* exits and its single-destination teleports; a random landing can't be planned.
+  - **But the random-teleport exit still LAYS OUT on the map.** Its nominal target is a real adjacent
+    room, and the Warped Asylum's cast grid is fully reciprocal — laying those exits out normally
+    renders the whole connected area, where portalling them away would strand ~90% of the rooms
+    (from room 1259, ~10 rooms are reachable by plain exits vs ~108 by cast). The map marks each
+    cast-on-walk exit with a short perpendicular "wall" glyph in the Spell colour, drawn between the two
+    rooms, so the player sees the whole area with its spell-gated exits visually flagged rather than a
+    sparse fragment. (`RoomExit.CastsOnWalk` drives the render mark; `CastTeleportRandom`, set by the
+    spell-catalog classification pass at graph build, drives only the router prune.)
+  - **A one-way cast "pocket" is not overdrawn onto its housing map.** A cast area can be a *sink* —
+    entered by a single cast-on-walk exit with no walk-back, so it lives on but topologically apart from
+    the surrounding map. The Warped Asylum is one: its 108 rooms are reachable only via one cast mouth
+    (`1182 W → 1183`, `(Cast: pre-0, post-596)`) and have zero exits back out. Laying the pocket out from
+    a housing-map origin poured all 108 rooms into the housing map's coordinate grid, drawing them on top
+    of it (the Rhudaur overlay). The fix classifies a cast exit `a→b` as a **pocket entrance** iff `b`
+    cannot reach `a` by *any* directed route (`RoomExit.CastPocketEntrance`, set by a graph-build
+    reachability pass). The planar mapper stops expanding through a pocket entrance, so from outside the
+    pocket shows only as a spell-wall stub at its mouth — but a walker standing *inside* still lays the
+    whole area out, because the pocket's internal cast exits are reciprocal (they have return paths) and
+    so are never flagged as entrances. This is a *topology* discriminator, orthogonal to
+    `CastTeleportRandom` (a *predictability* one): the asylum mouth is both, an internal reciprocal cast
+    exit is neither, and a fixed one-way cast-teleport into a sink would be a pocket entrance without
+    being random.
 
 ## Attack spells: why one fails to damage a monster
 

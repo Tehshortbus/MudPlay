@@ -228,6 +228,30 @@ public static class AbilityNames
         return false;
     }
 
+    // True when the named class OR race grants the Traps skill in the active
+    // game-data set. Class is the main gate; race is secondary and consulted only
+    // when non-empty — an unknown race ("shadowy figure" look, or a character
+    // whose race was never captured) must not read as "no traps". Backs both the
+    // local self-disarm capability (a character whose Traps stat hasn't been
+    // parsed yet — a freshly loaded profile or brand-new character — is still
+    // recognised as able when its selected class/race grants the skill) and the
+    // party-delegation check, so "can I disarm" and "can a party member disarm"
+    // share one signal. gameData resolves the Classes / Races rows.
+    public static bool ClassOrRaceGrantsTraps(
+        FujinTerm.Services.GameDataCache gameData, string? className, string? race)
+    {
+        ArgumentNullException.ThrowIfNull(gameData);
+        if (!string.IsNullOrWhiteSpace(className)
+            && gameData.FindRowByName("Classes", className!) is { } classRow
+            && HasTrapAbility(classRow))
+            return true;
+        if (!string.IsNullOrWhiteSpace(race)
+            && gameData.FindRowByName("Races", race!) is { } raceRow
+            && HasTrapAbility(raceRow))
+            return true;
+        return false;
+    }
+
     // Class-ability code that grants ShadowRest — a Paradigm ability letting a
     // hidden/sneaking character rest in a room with monsters without being
     // attacked (see GAME_MECHANICS "ShadowRest"). Not a stock mechanic; the code

@@ -273,4 +273,44 @@ public sealed class RoomExitParseTests
     {
         Assert.Equal(expected, RoomExit.FormatLevelGate(min, max));
     }
+
+    // ----- Cast-on-walk gate ("(Cast: pre-N, post-M)") ---------------
+    // Confirmed from the Rhudaur Warped Asylum (map 9): the west exit out of
+    // "Abandoned Asylum" reads "(Cast: pre-0, post-596)" — walking it fires
+    // spell 596 (a random teleport) after the step. The exit stays a plain
+    // cardinal (Hint None); the cast is captured on Pre/PostCastSpell.
+
+    [Theory]
+    [InlineData("9/1181 (Cast: pre-0, post-596)",   0, 596)]  // post-only (live asylum data)
+    [InlineData("9/1181 (Cast: pre-42, post-0)",   42,   0)]  // pre-only
+    [InlineData("9/1181 (Cast: pre-7, post-596)",   7, 596)]  // both sides
+    public void CastGate_ParsesSpellNumbers_StaysNoneHint(string wire, int pre, int post)
+    {
+        Assert.True(RoomExit.TryParseWire(wire, out RoomExit exit));
+        Assert.Equal(RoomExitHint.None, exit.Hint);   // still a plain cardinal step
+        Assert.Equal(pre, exit.PreCastSpell);
+        Assert.Equal(post, exit.PostCastSpell);
+        Assert.False(exit.HasLevelGate);
+        Assert.False(exit.HasClassGate);
+    }
+
+    [Theory]
+    [InlineData("9/1181 (Cast: pre-0, post-596)", true)]   // fires post-cast
+    [InlineData("9/1181 (Cast: pre-42, post-0)",  true)]   // fires pre-cast
+    [InlineData("9/1181 (Cast: pre-0, post-0)",   false)]  // no cast either side
+    [InlineData("1/2666 (Door)",                  false)]  // not a cast exit at all
+    public void CastsOnWalk_TrueOnlyWhenASpellFires(string wire, bool expected)
+    {
+        Assert.True(RoomExit.TryParseWire(wire, out RoomExit exit));
+        Assert.Equal(expected, exit.CastsOnWalk);
+    }
+
+    [Fact]
+    public void CastGate_DefaultsCastTeleportRandomFalse_UntilGraphClassifies()
+    {
+        // The random-teleport flag needs the spell catalog, so parse-time never
+        // sets it — RoomGraphManager promotes it in a later pass.
+        Assert.True(RoomExit.TryParseWire("9/1181 (Cast: pre-0, post-596)", out RoomExit exit));
+        Assert.False(exit.CastTeleportRandom);
+    }
 }

@@ -1,6 +1,7 @@
 using System.IO;
 using System.Linq;
 using FujinTerm.Game.Map;
+using FujinTerm.Game.Spells;
 using FujinTerm.Services;
 using Xunit;
 
@@ -76,6 +77,23 @@ public sealed class BfsMapperTests : IDisposable
         cache.SwitchSet("alpha");
         RoomGraphManager graph = new(cache);
         graph.OnActiveSetChanged("alpha");
+        return (new BfsMapper(graph), graph);
+    }
+
+    // A graph wired with a spell catalog so PromoteCastTeleportExits runs and
+    // stamps CastTeleportRandom on cast-on-walk exits whose post-cast spell is a
+    // random teleport. Uses a separate set dir so it never clashes with the
+    // catalog-free alpha fixtures above.
+    private (BfsMapper Bfs, RoomGraphManager Graph) NewMapperWithSpells(string roomsJson, string spellsJson)
+    {
+        Directory.CreateDirectory(Path.Combine(_root, "beta"));
+        File.WriteAllText(Path.Combine(_root, "beta", "Rooms.json"), roomsJson);
+        File.WriteAllText(Path.Combine(_root, "beta", "Spells.json"), spellsJson);
+        GameDataCache cache = new(_root);
+        cache.SwitchSet("beta");
+        KnownSpellCatalog catalog = new(cache);
+        RoomGraphManager graph = new(cache, log: null, tbinfo: null, spellCatalog: catalog);
+        graph.OnActiveSetChanged("beta");
         return (new BfsMapper(graph), graph);
     }
 
@@ -714,6 +732,151 @@ public sealed class BfsMapperTests : IDisposable
 
         Assert.True(layout.TrapEdgesFromCoord.TryGetValue((0, 0), out IReadOnlySet<Direction>? trapDirs));
         Assert.Contains(Direction.N, trapDirs!);
+    }
+
+    [Fact]
+    public void SpellEdgesFromCoord_RecordsCastDirections()
+    {
+        // A (Cast: pre-0, post-596) exit fires a spell on the walk, so the map
+        // marks it with a perpendicular wall glyph. SpellEdgesFromCoord keys off
+        // CastsOnWalk (a parse-time property), so no spell catalog is needed for
+        // the render surface — only the router prune needs classification.
+        const string Json = """
+            [
+              { "Map Number": 1, "Room Number": 1, "Name": "A",
+                "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+                "N": "1/2 (Cast: pre-0, post-596)", "S": "0", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 1, "Room Number": 2, "Name": "B",
+                "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+                "N": "0", "S": "1/1", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+            ]
+            """;
+        var (bfs, _) = NewMapper(Json);
+        RoomLayout layout = bfs.BuildLayout(new RoomKey(1, 1));
+
+        Assert.True(layout.SpellEdgesFromCoord.TryGetValue((0, 0), out IReadOnlySet<Direction>? spellDirs));
+        Assert.Contains(Direction.N, spellDirs!);
+    }
+
+    [Fact]
+    public void FindPath_SkipsRandomCastTeleportExit_RoutesDeterministically()
+    {
+        // 1/1 reaches 1/3 by a single random-teleport cast exit (E, spell 596) or
+        // by a two-hop deterministic detour (N to 1/2, then E to 1/3). The random
+        // landing is unpredictable, so the router must take the longer sure route.
+        const string Rooms = """
+            [
+              { "Map Number": 1, "Room Number": 1, "Name": "Ward",
+                "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+                "N": "1/2", "S": "0", "E": "1/3 (Cast: pre-0, post-596)", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 1, "Room Number": 2, "Name": "Hall",
+                "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+                "N": "0", "S": "1/1", "E": "1/3", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 1, "Room Number": 3, "Name": "Cell",
+                "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+                "N": "0", "S": "0", "E": "0", "W": "1/2",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+            ]
+            """;
+        // Spell 596: TeleportRoom (140) value 0 over a multi-room base range → random.
+        const string Spells = """
+            [ { "Number": 596, "Name": "warp", "Short": "warp",
+                "MinBase": 100, "MaxBase": 110,
+                "Abil-0": 140, "AbilVal-0": 0 } ]
+            """;
+        var (bfs, _) = NewMapperWithSpells(Rooms, Spells);
+
+        var path = bfs.FindPath(new RoomKey(1, 1), new RoomKey(1, 3));
+
+        Assert.NotNull(path);
+        Assert.Equal(new[] { Direction.N, Direction.E }, path);   // detour, never the E cast exit
+    }
+
+    // ----- cast pocket entrances -------------------------------------
+    //
+    // A cast "pocket" is a sink area (the Warped Asylum) entered by a single
+    // cast-on-walk exit with no walk-back. Layout must NOT pour the pocket into
+    // the housing map's grid when viewed from outside (the overlay bug), yet a
+    // walker standing inside the pocket still sees the whole area. The pocket:
+    //
+    //   1/1 Ward ──E── 1/2 Rhudaur          (outside, mutually reachable)
+    //     │
+    //     W (Cast) ── one-way mouth
+    //     ↓
+    //   1/3 Cell ══E(Cast)══ 1/4 Cell       (pocket, reciprocal internally,
+    //             ══W(Cast)══                 no exit back to 1/1)
+    //
+    private const string PocketJson = """
+        [
+          { "Map Number": 1, "Room Number": 1, "Name": "Asylum Ward",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "0", "E": "1/2", "W": "1/3 (Cast: pre-0, post-596)",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 2, "Name": "Rhudaur Road",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "0", "E": "0", "W": "1/1",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 3, "Name": "Padded Cell",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "0", "E": "1/4 (Cast: pre-0, post-596)", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 4, "Name": "Rubber Room",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "0", "E": "0", "W": "1/3 (Cast: pre-0, post-596)",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+        ]
+        """;
+
+    [Fact]
+    public void MarkCastPocketEntrances_FlagsOnlyTheOneWayMouth()
+    {
+        var (_, graph) = NewMapper(PocketJson);
+
+        // 1/1 W → 1/3 has no walk-back (the pocket can't reach 1/1) → entrance.
+        Assert.True(graph.GetRoom(new RoomKey(1, 1))!.Exits[Direction.W].CastPocketEntrance);
+
+        // The internal cast exits are reciprocal (1/3↔1/4), so neither is a
+        // one-way mouth — they must stay un-flagged or the area would fragment
+        // from inside.
+        Assert.False(graph.GetRoom(new RoomKey(1, 3))!.Exits[Direction.E].CastPocketEntrance);
+        Assert.False(graph.GetRoom(new RoomKey(1, 4))!.Exits[Direction.W].CastPocketEntrance);
+    }
+
+    [Fact]
+    public void BuildLayout_FromOutside_HidesPocket_ButKeepsSpellStub()
+    {
+        var (bfs, _) = NewMapper(PocketJson);
+        RoomLayout layout = bfs.BuildLayout(new RoomKey(1, 1));
+
+        // Housing rooms lay out; the pocket does NOT get poured into the grid.
+        Assert.Contains(new RoomKey(1, 1), layout.Positions.Keys);
+        Assert.Contains(new RoomKey(1, 2), layout.Positions.Keys);
+        Assert.DoesNotContain(new RoomKey(1, 3), layout.Positions.Keys);
+        Assert.DoesNotContain(new RoomKey(1, 4), layout.Positions.Keys);
+
+        // The mouth still shows its spell-wall glyph as a stub at the ward.
+        Assert.True(layout.SpellEdgesFromCoord.TryGetValue((0, 0), out IReadOnlySet<Direction>? spellDirs));
+        Assert.Contains(Direction.W, spellDirs!);
+    }
+
+    [Fact]
+    public void BuildLayout_FromInside_RendersWholePocket()
+    {
+        var (bfs, _) = NewMapper(PocketJson);
+        RoomLayout layout = bfs.BuildLayout(new RoomKey(1, 3));
+
+        // A walker inside the pocket sees the whole area — the internal cast
+        // exits aren't entrances, so BFS lays them out.
+        Assert.Contains(new RoomKey(1, 3), layout.Positions.Keys);
+        Assert.Contains(new RoomKey(1, 4), layout.Positions.Keys);
+
+        // The pocket has no walk-back, so the housing map stays out of view.
+        Assert.DoesNotContain(new RoomKey(1, 1), layout.Positions.Keys);
+        Assert.DoesNotContain(new RoomKey(1, 2), layout.Positions.Keys);
     }
 
     [Fact]

@@ -21,7 +21,11 @@ public sealed record RoomLayout(
     IReadOnlyList<RoomKey> OffGrid,
     IReadOnlyDictionary<(int X, int Y), RoomKey> CoordToRoom,
     IReadOnlyDictionary<(int X, int Y), IReadOnlySet<Direction>> EdgesFromCoord,
-    IReadOnlyDictionary<(int X, int Y), IReadOnlySet<Direction>> TrapEdgesFromCoord)
+    IReadOnlyDictionary<(int X, int Y), IReadOnlySet<Direction>> TrapEdgesFromCoord,
+    // Per-coord directions whose exit fires a spell when walked ("(Cast: ...)").
+    // The map draws a perpendicular wall glyph across the connector in the spell
+    // colour so the user sees which way out of a room triggers a cast on them.
+    IReadOnlyDictionary<(int X, int Y), IReadOnlySet<Direction>> SpellEdgesFromCoord)
 {
     // The room BFS structurally expanded from to produce this layout — the
     // "seed" that fully determines the drawn shape (two layouts with the same

@@ -30,6 +30,38 @@ namespace FujinTerm.Game.Map;
 //     exit stays a plain cardinal (Hint None); 0 means no class gate. The
 //     trailing "N NO" count is always 0 in observed data and its non-zero
 //     meaning is unconfirmed, so we don't act on it.
+//   - PreCastSpell / PostCastSpell — the spell Numbers fired by a
+//     "(Cast: pre-N, post-M)" exit. pre-N casts before the move is attempted,
+//     post-M casts after stepping through; 0 in either slot means "no cast on
+//     that side". The movement stays a plain cardinal (Hint None) — the cast
+//     is a side effect, not a modifier the walker acts on at exit-parse time.
+//     Confirmed on the Rhudaur Warped Asylum (map 9 rooms 1183-1206), where
+//     every exit is "(Cast: pre-0, post-596)" and spell 596 random-teleports
+//     the walker into rooms 1183-1206.
+//   - CastTeleportRandom — set at graph-build time (not parse time, since it
+//     needs the spell catalog): true when the post-cast spell is a teleport
+//     with a random destination (TeleportRoom ability value 0 → a random room
+//     in the spell's MinBase..MaxBase range). This is the "we can't predict
+//     where this exit lands" signal: the walker's router refuses to plan
+//     through it (a random landing can't be part of a deterministic route). It
+//     does NOT change the map layout — the exit's nominal cardinal target is a
+//     real adjacent room (the Warped Asylum is a fully-reciprocal grid whose
+//     rooms connect almost entirely through these cast exits), so laying it out
+//     normally is what lets the whole area render; the map just marks it with a
+//     spell-wall glyph. A fixed (single-room) cast-teleport is deterministic,
+//     so it needs no flag — it stays an ordinary cardinal that happens to cast.
+//   - CastPocketEntrance — set at graph-build time: true when this cast exit is
+//     the ONE-WAY mouth of a sink pocket — its target cannot reach its source by
+//     any route (no walk-back). The Rhudaur Warped Asylum is the case: room 1182
+//     casts west into 1183 and the 108 asylum rooms have zero exits back out, so
+//     a layout rooted OUTSIDE the pocket would pour all 108 rooms into the host
+//     area's grid and overlay it. BuildLayout refuses to expand THROUGH a pocket
+//     entrance, so from outside the pocket is left undrawn (the mouth still shows
+//     as a spell-wall stub); from inside, the one-way mouth is never traversed
+//     anyway, so the whole area still renders. Distinct from CastTeleportRandom:
+//     a pocket entrance is about topology (can you get back?), not predictability
+//     (where do you land?) — the asylum's INTERNAL cast exits are reciprocal, so
+//     they're not entrances and the area stays whole when viewed from within.
 public readonly partial record struct RoomExit(
     RoomKey Target,
     RoomExitHint Hint,
@@ -43,7 +75,11 @@ public readonly partial record struct RoomExit(
     int TrapDamage = 0,
     int MinLevel = 0,
     int MaxLevel = 0,
-    int ClassGate = 0)
+    int ClassGate = 0,
+    int PreCastSpell = 0,
+    int PostCastSpell = 0,
+    bool CastTeleportRandom = false,
+    bool CastPocketEntrance = false)
 {
     // True when this exit carries a character-level window (either a floor, a
     // cap, or both).
@@ -51,6 +87,11 @@ public readonly partial record struct RoomExit(
 
     // True when this exit only admits a single character class.
     public bool HasClassGate => ClassGate > 0;
+
+    // True when stepping this exit fires a spell (before or after the move).
+    // Drives the map's per-exit spell-wall glyph: the user sees which direction
+    // out of a room will trigger a cast on them.
+    public bool CastsOnWalk => PreCastSpell > 0 || PostCastSpell > 0;
 
     // Render a level window as a friendly label: "Level 40+" (floor only),
     // "Level ≤3" (cap only), "Level 10–25" (both). Returns the empty string when
@@ -101,12 +142,15 @@ public readonly partial record struct RoomExit(
             out int trapDamage,
             out int minLevel,
             out int maxLevel,
-            out int classGate);
+            out int classGate,
+            out int preCast,
+            out int postCast);
 
         exit = new RoomExit(key, hint, rawHint,
             statReq, canBash, keyItemId, toll, textCommands,
             MultiAction: null, TrapDamage: trapDamage,
-            MinLevel: minLevel, MaxLevel: maxLevel, ClassGate: classGate);
+            MinLevel: minLevel, MaxLevel: maxLevel, ClassGate: classGate,
+            PreCastSpell: preCast, PostCastSpell: postCast);
         return true;
     }
 
@@ -121,7 +165,9 @@ public readonly partial record struct RoomExit(
         out int trapDamage,
         out int minLevel,
         out int maxLevel,
-        out int classGate)
+        out int classGate,
+        out int preCast,
+        out int postCast)
     {
         hint = RoomExitHint.None;
         statReq = 0;
@@ -133,6 +179,8 @@ public readonly partial record struct RoomExit(
         minLevel = 0;
         maxLevel = 0;
         classGate = 0;
+        preCast = 0;
+        postCast = 0;
 
         if (string.IsNullOrEmpty(raw)) return;
 
@@ -275,9 +323,25 @@ public readonly partial record struct RoomExit(
             return;  // hint stays None — movement is still a plain cardinal step
         }
 
-        // Race / Alignment / Ability / Cast / Timed restrictions: walker
-        // treats as None for now (path-time gates are a later concern);
-        // RawHint carries the detail forward.
+        // "(Cast: pre-N, post-M)" — stepping this exit fires spell N before the
+        // move and spell M after it (0 = no cast that side). The movement stays
+        // a plain cardinal (hint None); the cast is captured on
+        // PreCastSpell/PostCastSpell so the map can flag it and the graph-build
+        // pass can promote a random-teleport post-cast to a portal. Whether the
+        // post-cast spell teleports (and randomly) needs the spell catalog, so
+        // that classification happens later in RoomGraphManager, not here.
+        if (raw.StartsWith("Cast", StringComparison.OrdinalIgnoreCase))
+        {
+            Match preM = CastPreRegex().Match(raw);
+            if (preM.Success) int.TryParse(preM.Groups[1].ValueSpan, out preCast);
+            Match postM = CastPostRegex().Match(raw);
+            if (postM.Success) int.TryParse(postM.Groups[1].ValueSpan, out postCast);
+            return;  // hint stays None — movement is still a plain cardinal step
+        }
+
+        // Race / Alignment / Ability / Timed restrictions: walker treats as
+        // None for now (path-time gates are a later concern); RawHint carries
+        // the detail forward.
     }
 
     // Pull "N picklocks" / "N picklocks/strength" out of a modifier string. Used
@@ -316,4 +380,12 @@ public readonly partial record struct RoomExit(
     // Matches the allowed class Number in a "Class: N OK, M NO" modifier.
     [GeneratedRegex(@"Class:\s*(\d+)\s*OK", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex ClassGateRegex();
+
+    // Matches the pre-move spell Number in a "Cast: pre-N, post-M" modifier.
+    [GeneratedRegex(@"pre-(\d+)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex CastPreRegex();
+
+    // Matches the post-move spell Number in a "Cast: pre-N, post-M" modifier.
+    [GeneratedRegex(@"post-(\d+)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex CastPostRegex();
 }

@@ -168,4 +168,72 @@ public sealed class TBInfoCastTeleportResolverTests : IDisposable
 
         Assert.Empty(TBInfoCastTeleportResolver.EnumerateCastTeleports(store, 90, sourceMap: 1, catalog));
     }
+
+    // ----- IsRandomTeleport (drives the map's cast-exit classification) -----
+
+    [Fact]
+    public void IsRandomTeleport_TrueForZeroRoomSpanningRange()
+    {
+        // AbilVal-140 = 0 (random), MinBase..MaxBase = 1183..1206 → 24 rooms.
+        SpellFormulaInput spell = new()
+        {
+            MinBase = 1183,
+            MaxBase = 1206,
+            Abilities = new[] { new SpellAbility(140, 0), new SpellAbility(141, 9) },
+        };
+        Assert.True(TBInfoCastTeleportResolver.IsRandomTeleport(spell));
+    }
+
+    [Fact]
+    public void IsRandomTeleport_FalseForFixedRoomTeleport()
+    {
+        // AbilVal-140 = 487 (a fixed destination) is deterministic.
+        SpellFormulaInput spell = new()
+        {
+            MinBase = 0,
+            MaxBase = 0,
+            Abilities = new[] { new SpellAbility(140, 487), new SpellAbility(141, 2) },
+        };
+        Assert.False(TBInfoCastTeleportResolver.IsRandomTeleport(spell));
+    }
+
+    [Fact]
+    public void IsRandomTeleport_FalseForSingleRoomRange()
+    {
+        // A degenerate "random" range of exactly one room is deterministic.
+        SpellFormulaInput spell = new()
+        {
+            MinBase = 1200,
+            MaxBase = 1200,
+            Abilities = new[] { new SpellAbility(140, 0) },
+        };
+        Assert.False(TBInfoCastTeleportResolver.IsRandomTeleport(spell));
+    }
+
+    [Fact]
+    public void IsRandomTeleport_FalseForNonTeleportSpell()
+    {
+        // No Abil 140 at all — a heal, buff, etc.
+        SpellFormulaInput spell = new()
+        {
+            MinBase = 30,
+            MaxBase = 45,
+            Abilities = new[] { new SpellAbility(2, 0) },
+        };
+        Assert.False(TBInfoCastTeleportResolver.IsRandomTeleport(spell));
+    }
+
+    [Fact]
+    public void IsRandomTeleport_FalseForImplausiblyWideRange()
+    {
+        // A span past the defensive ceiling is treated as a misparse, not a
+        // real teleport, so it never trips the random classification.
+        SpellFormulaInput spell = new()
+        {
+            MinBase = 1,
+            MaxBase = 9999,
+            Abilities = new[] { new SpellAbility(140, 0) },
+        };
+        Assert.False(TBInfoCastTeleportResolver.IsRandomTeleport(spell));
+    }
 }

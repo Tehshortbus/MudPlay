@@ -2,6 +2,16 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.66.0
+
+- Cast-teleport pocket areas (the Warped Asylum and its kin) no longer overdraw the map that houses them — the one-way cast entrance shows as a spell-wall bar on the cell divider plus a directional arrow, and the pocket lays out in full only when you're standing inside it
+- Cast-on-walk exits (a spell fires as you move) are marked with a short perpendicular wall glyph in the spell colour, drawn between the two rooms
+- Navigation no longer routes through random-teleport exits — their landing is unpredictable, so the walker prefers a deterministic route and only crosses cast exits with a fixed destination
+- Trap disarm now advances past a successful search when the walker triggered it — direction matching normalizes both the game's reply and the walker's long-form direction, so a found trap ("You found a trap to the southeast!") no longer stalls in search and never disarms
+- Trap-disarm capability is now inferred from the character's race and class via game data — when the Traps value hasn't been captured yet (freshly loaded profile, or a new character), a class/race that grants the Traps skill still lets the walker self-disarm instead of walking through the trapped exit
+- Bug report captures the parsed Traps stat and whether disarm capability was inferred from class/race, alongside canDisarm
+- bug reports addressed: paradigm-20260715-131801, paradigm-20260715-132150
+
 ## 1.65.0
 
 - Auto-combat re-issues its last attack when a swing fumbles under confusion, so a confused character keeps fighting instead of silently losing attacks until manually re-sent
