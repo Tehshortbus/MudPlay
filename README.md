@@ -1,7 +1,10 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.65.2**
+> **Version 1.66.0**
+> - Cast-teleport areas (the Warped Asylum and its kin) now render the whole connected area instead of a disconnected fragment — cast-on-walk exits lay out in place rather than portalling their rooms away
+> - Cast-on-walk exits (a spell fires as you move) are marked with a short perpendicular wall glyph in the spell colour, drawn between the two rooms
+> - Navigation no longer routes through random-teleport exits — their landing is unpredictable, so the walker prefers a deterministic route and only crosses cast exits with a fixed destination
 > - Trap disarm now advances past a successful search when the walker triggered it — direction matching normalizes both the game's reply and the walker's long-form direction, so a found trap ("You found a trap to the southeast!") no longer stalls in search and never disarms
 > - Trap-disarm capability is now inferred from the character's race and class via game data — when the Traps value hasn't been captured yet (freshly loaded profile, or a new character), a class/race that grants the Traps skill still lets the walker self-disarm instead of walking through the trapped exit
 > - Bug report captures the parsed Traps stat and whether disarm capability was inferred from class/race, alongside canDisarm

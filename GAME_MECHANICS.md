@@ -884,6 +884,30 @@ comes from the stat screen / who line (`AlignmentTracker` / `PlayerStats`).
   strips an `<open|closed> <door|gate>` prefix off each exit token, feeding the open ones into
   `OpenDoorDirections` so the walker skips the door-open FSM on an already-raised gate. Treat "gate"
   and "door" as the same door-type barrier class for display parsing.
+- **[CONFIRMED, game data v1.11p map 9]** **A `(Cast: pre-N, post-M)` exit fires a spell as part of
+  the walk — pre-N before the move, post-M after — and when the post-cast spell is a *random* teleport
+  the exit's landing is non-deterministic.** The exit stays a plain cardinal move (its cell modifier
+  carries the two spell numbers; `0` means no cast on that side). The spell's game-data record classifies
+  its landing: ability code **140 = TeleportRoom** (value `0` → a *random* room drawn from the spell's
+  `MinBase..MaxBase` base range; value `>0` → a single *fixed* room), **141 = TeleportMap** (the
+  destination map). A room-teleport with value 0 spanning more than one base room (and inside the
+  defensive `MaxRandomRange` ceiling of 64) is the random case; a fixed room, a single-room range, or a
+  non-teleport spell is deterministic. The confirmed real case is the **Warped Asylum** (map 9, rooms
+  1183–1290 reached from the Rhudaur side): those rooms carry a mix of plain cardinals and cast exits
+  whose post-cast spell (596 / 597) random-teleports the caster into roughly the `[1183,1206]` band.
+  Two consequences the client relies on:
+  - **The random-teleport exit is NOT routable.** BFS pathing (`FindPath` / `ComputeDistancesFrom`)
+    skips any exit flagged `CastTeleportRandom`, even when exit gates are being ignored — the
+    non-determinism, not a gate, is what rules it out. The walker can only be routed through the area's
+    *plain* exits and its single-destination teleports; a random landing can't be planned.
+  - **But the random-teleport exit still LAYS OUT on the map.** Its nominal target is a real adjacent
+    room, and the Warped Asylum's cast grid is fully reciprocal — laying those exits out normally
+    renders the whole connected area, where portalling them away would strand ~90% of the rooms
+    (from room 1259, ~10 rooms are reachable by plain exits vs ~108 by cast). The map marks each
+    cast-on-walk exit with a short perpendicular "wall" glyph in the Spell colour, drawn between the two
+    rooms, so the player sees the whole area with its spell-gated exits visually flagged rather than a
+    sparse fragment. (`RoomExit.CastsOnWalk` drives the render mark; `CastTeleportRandom`, set by the
+    spell-catalog classification pass at graph build, drives only the router prune.)
 
 ## Attack spells: why one fails to damage a monster
 

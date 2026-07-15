@@ -423,6 +423,14 @@ public sealed class MapControl : Control
     private static readonly IPen   LairBorderPen  = new Pen(new SolidColorBrush(Color.Parse("#B36F9C")), 1.5);
     private static readonly IPen   ShopBorderPen  = new Pen(new SolidColorBrush(Color.Parse("#6A9CB6")), 1.5);
     private static readonly IPen   SpellBorderPen = new Pen(new SolidColorBrush(Color.Parse("#9C70CC")), 1.5);
+    // Perpendicular "wall" bar drawn across a cast-on-walk exit's connector, in
+    // the same purple as the spell-room highlight so the two read as kin.
+    // Thicker than the grey exit line it crosses so it stands out as a barrier
+    // between the two rooms — "walking here fires a spell on you."
+    private static readonly IPen   SpellWallPen   = new Pen(new SolidColorBrush(Color.Parse("#9C70CC")), 3.0)
+    {
+        LineCap = PenLineCap.Round,
+    };
     private static readonly IPen   UpBorderPen     = new Pen(new SolidColorBrush(Color.Parse("#00A000")), 1.5);
     private static readonly IPen   DownBorderPen   = new Pen(new SolidColorBrush(Color.Parse("#B4B400")), 1.5);
     private static readonly IPen   UpDownBorderPen = new Pen(new SolidColorBrush(Color.Parse("#FFD250")), 1.5);
@@ -1150,6 +1158,13 @@ public sealed class MapControl : Control
                     && (IsHiddenEdge(source, dir)
                      || IsHiddenEdge(bCoord, Opposite(dir)));
 
+                // A cast-on-walk exit gets a perpendicular spell-wall bar across
+                // its connector regardless of the trap/action/hidden line colour
+                // — the two convey different things (why the edge is special vs.
+                // that a spell fires when you cross it).
+                bool isSpell = IsSpellEdge(source, dir)
+                            || IsSpellEdge(bCoord, Opposite(dir));
+
                 switch (ClassifyConnection(targetPlaced, source, expected, actual, BridgeMaxCells))
                 {
                     case ConnectionKind.Adjacent:
@@ -1159,6 +1174,7 @@ public sealed class MapControl : Control
                         Point tgtPt = new(cx + actual.X * tilePixels, cy + actual.Y * tilePixels);
                         ctx.DrawLine(pen, srcPt, tgtPt);
                         if (oneWay) DrawOneWayArrow(ctx, pen, srcPt, tgtPt, tilePixels);
+                        if (isSpell) DrawSpellWall(ctx, SpellWallPen, Midpoint(srcPt, tgtPt), dir, tilePixels);
                         break;
                     }
                     case ConnectionKind.Bridge:
@@ -1171,15 +1187,21 @@ public sealed class MapControl : Control
                         Point tgtPt = new(cx + actual.X * tilePixels, cy + actual.Y * tilePixels);
                         ctx.DrawLine(pen, srcPt, tgtPt);
                         if (oneWay) DrawOneWayArrow(ctx, pen, srcPt, tgtPt, tilePixels);
+                        if (isSpell) DrawSpellWall(ctx, SpellWallPen, Midpoint(srcPt, tgtPt), dir, tilePixels);
                         break;
                     }
                     default:
                     {
                         // Target genuinely unplaced (dropped / blacklisted)
-                        // or too far to bridge — stub to the cell edge.
+                        // or too far to bridge — stub to the cell edge. A
+                        // random-teleport cast exit lands here (its target is a
+                        // portal, deliberately unplaced), so the spell-wall sits
+                        // on the stub at the room's edge.
                         IPen pen = isTrap ? TrapPen : isAction ? ActionPen : isHidden ? HiddenPen : ExitPen;
                         Rect cell = ComputeCellRect(source, tilePixels, cx, cy);
                         DrawStub(ctx, pen, cell, srcX, srcY, dir);
+                        if (isSpell && StubEndpoint(cell, srcX, srcY, dir) is { } endPt)
+                            DrawSpellWall(ctx, SpellWallPen, Midpoint(srcPt, endPt), dir, tilePixels);
                         break;
                     }
                 }
@@ -1220,6 +1242,16 @@ public sealed class MapControl : Control
     {
         if (Layout?.TrapEdgesFromCoord is null) return false;
         return Layout.TrapEdgesFromCoord.TryGetValue(coord, out IReadOnlySet<Direction>? set)
+            && set.Contains(dir);
+    }
+
+    // True when the exit at coord heading dir fires a spell when walked
+    // ("(Cast: ...)"). Drives the perpendicular spell-wall glyph. Same
+    // pre-computed-set lookup as IsTrapEdge.
+    private bool IsSpellEdge((int X, int Y) coord, Direction dir)
+    {
+        if (Layout?.SpellEdgesFromCoord is null) return false;
+        return Layout.SpellEdgesFromCoord.TryGetValue(coord, out IReadOnlySet<Direction>? set)
             && set.Contains(dir);
     }
 
@@ -1479,18 +1511,44 @@ public sealed class MapControl : Control
     // no adjacent stub to meet, so the segment ends flush at the cell edge.
     private static void DrawStub(DrawingContext ctx, IPen pen, Rect cell, double mx, double my, Direction dir)
     {
-        switch (dir)
-        {
-            case Direction.N:  ctx.DrawLine(pen, new Point(mx, my), new Point(mx, cell.Top)); break;
-            case Direction.S:  ctx.DrawLine(pen, new Point(mx, my), new Point(mx, cell.Bottom)); break;
-            case Direction.E:  ctx.DrawLine(pen, new Point(mx, my), new Point(cell.Right, my)); break;
-            case Direction.W:  ctx.DrawLine(pen, new Point(mx, my), new Point(cell.Left,  my)); break;
-            case Direction.NE: ctx.DrawLine(pen, new Point(mx, my), new Point(cell.Right, cell.Top)); break;
-            case Direction.NW: ctx.DrawLine(pen, new Point(mx, my), new Point(cell.Left,  cell.Top)); break;
-            case Direction.SE: ctx.DrawLine(pen, new Point(mx, my), new Point(cell.Right, cell.Bottom)); break;
-            case Direction.SW: ctx.DrawLine(pen, new Point(mx, my), new Point(cell.Left,  cell.Bottom)); break;
-            // U / D — not planar, not rendered as stubs.
-        }
+        if (StubEndpoint(cell, mx, my, dir) is { } end)
+            ctx.DrawLine(pen, new Point(mx, my), end);
+    }
+
+    // Where a stub connector from the cell centre (mx, my) meets the cell edge
+    // for a planar direction. Null for U / D (not rendered as stubs). Shared by
+    // DrawStub and the spell-wall placement so both agree on the stub geometry.
+    private static Point? StubEndpoint(Rect cell, double mx, double my, Direction dir) => dir switch
+    {
+        Direction.N  => new Point(mx, cell.Top),
+        Direction.S  => new Point(mx, cell.Bottom),
+        Direction.E  => new Point(cell.Right, my),
+        Direction.W  => new Point(cell.Left,  my),
+        Direction.NE => new Point(cell.Right, cell.Top),
+        Direction.NW => new Point(cell.Left,  cell.Top),
+        Direction.SE => new Point(cell.Right, cell.Bottom),
+        Direction.SW => new Point(cell.Left,  cell.Bottom),
+        _            => null,
+    };
+
+    private static Point Midpoint(Point a, Point b) => new((a.X + b.X) / 2, (a.Y + b.Y) / 2);
+
+    // A short bar drawn perpendicular to an exit's direction, centred on the
+    // connector between the two rooms, in the spell colour. Marks a
+    // "(Cast: ...)" exit — crossing this connector fires a spell on the player —
+    // so it reads as a wall standing in the doorway between the rooms.
+    private static void DrawSpellWall(DrawingContext ctx, IPen pen, Point mid, Direction dir, double tilePixels)
+    {
+        if (!TryPlanarOffset(dir, out int dx, out int dy)) return;
+        double len = Math.Sqrt((double)dx * dx + (double)dy * dy);
+        if (len < 1e-3) return;
+        // Rotate the direction 90° to get the wall's own axis, then normalise.
+        double px = -dy / len;
+        double py =  dx / len;
+        double half = tilePixels * 0.20;
+        Point a = new(mid.X - px * half, mid.Y - py * half);
+        Point b = new(mid.X + px * half, mid.Y + py * half);
+        ctx.DrawLine(pen, a, b);
     }
 
     // True when room has any exit whose target is key — i.e. the connection

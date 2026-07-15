@@ -36,6 +36,30 @@ public static class TBInfoCastTeleportResolver
     // the tooltip into hundreds of lines.
     private const int MaxRandomRange = 64;
 
+    // True when casting this spell lands the caster in an unpredictable room —
+    // a TeleportRoom (Abil 140) ability whose value is 0, meaning "a random room
+    // in the spell's MinBase..MaxBase range" spanning more than one room. A
+    // fixed-room teleport (Abil 140 value > 0) is deterministic, and so is a
+    // degenerate single-room range; both return false. Drives the map's
+    // portal-stub layout and the router's refuse-to-plan-through decision for a
+    // "(Cast: pre-N, post-M)" exit whose post-cast spell is this one.
+    public static bool IsRandomTeleport(SpellFormulaInput spell)
+    {
+        int? teleRoom = null;
+        foreach (SpellAbility ab in spell.Abilities)
+        {
+            if (ab.Code == TeleportRoomCode) { teleRoom = ab.Value; break; }
+        }
+        if (teleRoom is not { } tr) return false; // not a room teleport
+        if (tr > 0) return false;                 // fixed destination room
+
+        int lo = spell.MinBase;
+        int hi = spell.MaxBase;
+        if (hi < lo) (lo, hi) = (hi, lo);
+        if (lo <= 0 || hi - lo + 1 > MaxRandomRange) return false;
+        return hi > lo; // more than one possible destination
+    }
+
     // Walk every cast <spell> directive in the CMD's Action chain whose spell
     // teleports, and yield (keyword, destinations, random, minLevel). sourceMap
     // is the map of the room the command is typed in — used as the destination

@@ -165,6 +165,14 @@ public sealed class BfsMapper
                 RoomKey next = exit.Target;
                 if (parent.ContainsKey(next)) continue;
 
+                // A random-destination cast-teleport exit lands the walker in an
+                // unpredictable room — never plan a route through it (even when
+                // exit gates are being ignored: the non-determinism, not a gate,
+                // is what rules it out). The exit still lays out on the map (its
+                // nominal target is a real adjacent room); it's only routing that
+                // must avoid it.
+                if (exit.CastTeleportRandom) continue;
+
                 // Avoid filter applies to intermediates AND to the
                 // destination itself — walking *into* an avoided room
                 // is the thing the user wants to forbid.
@@ -224,6 +232,7 @@ public sealed class BfsMapper
             {
                 RoomKey next = exit.Target;
                 if (dist.ContainsKey(next)) continue;
+                if (exit.CastTeleportRandom) continue; // unpredictable landing — not routable
                 if (filter is not null && filter.IsAvoided(next)) continue;
                 if (filter is not null && filter.IsExitBlocked(exit)) continue;
                 if (_graph.GetRoom(next) is null) continue;
@@ -297,7 +306,8 @@ public sealed class BfsMapper
                 OffGrid: Array.Empty<RoomKey>(),
                 CoordToRoom: new Dictionary<(int X, int Y), RoomKey>(),
                 EdgesFromCoord: new Dictionary<(int X, int Y), IReadOnlySet<Direction>>(),
-                TrapEdgesFromCoord: new Dictionary<(int X, int Y), IReadOnlySet<Direction>>())
+                TrapEdgesFromCoord: new Dictionary<(int X, int Y), IReadOnlySet<Direction>>(),
+                SpellEdgesFromCoord: new Dictionary<(int X, int Y), IReadOnlySet<Direction>>())
             { LayoutRoot = origin };
             lock (_cacheLock) StoreLayout(cacheKey, empty);
             return empty;
@@ -468,6 +478,7 @@ public sealed class BfsMapper
         };
         var edgesFromCoord = new Dictionary<(int X, int Y), HashSet<Direction>>();
         var trapEdgesFromCoord = new Dictionary<(int X, int Y), HashSet<Direction>>();
+        var spellEdgesFromCoord = new Dictionary<(int X, int Y), HashSet<Direction>>();
         var vertical = new Dictionary<RoomKey, VerticalHint>();
         var depth = new Dictionary<RoomKey, int> { [origin] = 0 };
 
@@ -683,6 +694,7 @@ public sealed class BfsMapper
 
         edgesFromCoord.Clear();
         trapEdgesFromCoord.Clear();
+        spellEdgesFromCoord.Clear();
         foreach ((RoomKey rk, (int X, int Y) rcoord) in positions)
         {
             Room? rroom = _graph.GetRoom(rk);
@@ -693,6 +705,8 @@ public sealed class BfsMapper
                 AddEdge(edgesFromCoord, rcoord, edir);
                 if (eexit.Hint == RoomExitHint.Trap)
                     AddEdge(trapEdgesFromCoord, rcoord, edir);
+                if (eexit.CastsOnWalk)
+                    AddEdge(spellEdgesFromCoord, rcoord, edir);
             }
         }
 
@@ -706,6 +720,9 @@ public sealed class BfsMapper
                 kvp => kvp.Key,
                 kvp => (IReadOnlySet<Direction>)kvp.Value),
             TrapEdgesFromCoord: trapEdgesFromCoord.ToDictionary(
+                kvp => kvp.Key,
+                kvp => (IReadOnlySet<Direction>)kvp.Value),
+            SpellEdgesFromCoord: spellEdgesFromCoord.ToDictionary(
                 kvp => kvp.Key,
                 kvp => (IReadOnlySet<Direction>)kvp.Value))
         { LayoutRoot = origin };
@@ -869,6 +886,10 @@ public sealed class BfsMapper
         foreach (((int X, int Y) c, IReadOnlySet<Direction> dirs) in source.TrapEdgesFromCoord)
             trapEdges[(c.X + dx, c.Y + dy)] = dirs;
 
+        Dictionary<(int X, int Y), IReadOnlySet<Direction>> spellEdges = new();
+        foreach (((int X, int Y) c, IReadOnlySet<Direction> dirs) in source.SpellEdgesFromCoord)
+            spellEdges[(c.X + dx, c.Y + dy)] = dirs;
+
         return new RoomLayout(
             Origin: newOrigin,
             Positions: positions,
@@ -876,7 +897,8 @@ public sealed class BfsMapper
             OffGrid: source.OffGrid,
             CoordToRoom: coordToRoom,
             EdgesFromCoord: edges,
-            TrapEdgesFromCoord: trapEdges)
+            TrapEdgesFromCoord: trapEdges,
+            SpellEdgesFromCoord: spellEdges)
         {
             // Origin moves to the requested room, but the BFS was actually
             // anchored at source's root — keep that as the seed so the

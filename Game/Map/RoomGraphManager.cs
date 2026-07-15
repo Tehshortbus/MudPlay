@@ -430,6 +430,7 @@ public sealed class RoomGraphManager
         }
 
         PromoteCmdTeleportExits();
+        PromoteCastTeleportExits();
         BuildTeleportEdges();
         BuildSecondaryIndexes();
 
@@ -485,6 +486,39 @@ public sealed class RoomGraphManager
                 (rebuilt ??= new(room.Exits))[dir] = exit with { Hint = RoomExitHint.Teleport };
                 _log?.Log(LogSeverity.Debug, "RoomGraph",
                     $"Room {key} {dir} → {exit.Target}: door re-hinted Teleport (CMD {room.Cmd} teleport bypass).");
+            }
+            if (rebuilt is not null) _rooms[key] = room with { Exits = rebuilt };
+        }
+    }
+
+    // Flag the cardinal exits whose post-move cast is a random-destination
+    // teleport. A "(Cast: pre-N, post-M)" exit is parsed as a plain cardinal
+    // carrying PreCastSpell/PostCastSpell; resolving whether the post-cast spell
+    // teleports (and to a random room) needs the spell catalog, which isn't
+    // available at exit-parse time. Here, with the catalog loaded, every exit
+    // whose post-cast spell is a random TeleportRoom (Abil 140 value 0, spanning
+    // more than one room) gets CastTeleportRandom set — the "we can't predict
+    // where this lands" signal the planar map and the router key off. A fixed
+    // (single-room) cast-teleport stays an ordinary cardinal that happens to
+    // cast. No-op without a catalog (parameterless / test construction).
+    private void PromoteCastTeleportExits()
+    {
+        if (_spellCatalog is null) return;
+
+        foreach (RoomKey key in _rooms.Keys.ToArray())
+        {
+            Room room = _rooms[key];
+
+            Dictionary<Direction, RoomExit>? rebuilt = null;
+            foreach ((Direction dir, RoomExit exit) in room.Exits)
+            {
+                if (exit.PostCastSpell <= 0) continue;
+                if (_spellCatalog.GetFormulaByNumber(exit.PostCastSpell) is not { } spell) continue;
+                if (!TBInfoCastTeleportResolver.IsRandomTeleport(spell)) continue;
+
+                (rebuilt ??= new(room.Exits))[dir] = exit with { CastTeleportRandom = true };
+                _log?.Log(LogSeverity.Debug, "RoomGraph",
+                    $"Room {key} {dir} → {exit.Target}: cast-on-walk spell {exit.PostCastSpell} is a random teleport — marked non-routable.");
             }
             if (rebuilt is not null) _rooms[key] = room with { Exits = rebuilt };
         }
