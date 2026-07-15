@@ -31,6 +31,16 @@ public sealed class HealCommandHandler : IDisposable
     private Action<byte[]>? _wireSender;
     private bool _disposed;
 
+    // Live gate — true while a trainer / creation screen owns the keyboard. The
+    // @heal poll rides the same wall-clock leak risk as PartyPoller's timed par:
+    // fired while the user is parked on the `train stats` form (which the healer
+    // can't cast from anyway), the `par\r` lands in the form's Family Name field
+    // and overwrites the character's last name. When the screen owns the keyboard
+    // the handler stays fully silent — no par, no ack — matching the non-healer
+    // path, since a menu-bound healer can't help the requester right now.
+    // Null = ungated (test / pre-wire default).
+    public Func<bool>? IsInTrainerMenu { get; set; }
+
     public HealCommandHandler(RemoteCommandManager engine, Func<PartySettings> readParty)
     {
         ArgumentNullException.ThrowIfNull(engine);
@@ -65,6 +75,11 @@ public sealed class HealCommandHandler : IDisposable
         // to cast → stay silent, so a broadcast @heal doesn't draw a
         // "can't heal" reply from every non-healer in the party.
         if (!HasPartyHeal(_readParty())) return;
+
+        // Parked on the trainer screen → the par would land in the stat form and
+        // corrupt the last name, and we can't cast from a menu anyway. Stay
+        // silent, exactly as a non-healer does.
+        if (IsInTrainerMenu is { } gate && gate()) return;
 
         // par now → CastingDirector sees fresh member HP% on its next combat
         // tick and heals whoever is below threshold. Same command PartyPoller

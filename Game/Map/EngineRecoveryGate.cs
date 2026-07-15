@@ -150,9 +150,23 @@ public sealed class EngineRecoveryGate
     // The engine just sent a planned move. The gate appends it to the
     // executed-steps history (used as the reverse-walk source if tier 3 is
     // later triggered).
+    //
+    // A teleport hop is a hard position break: you can't reverse-walk back
+    // through a `go hole` / cast-teleport, and the cardinal history taken
+    // before it now starts from an unrelated room, so reversing it would send
+    // the character somewhere bogus (and Direction.Teleport isn't even
+    // encodable as a move). Drop the whole pre-teleport history instead of
+    // recording the hop — the gate then rebuilds a fresh reverse-walk source
+    // from steps taken after the teleport, and refreshes its anchor on the
+    // next 1-of-1 landing.
     public void NoteEngineStepSent(Direction direction)
     {
         if (_engine is null) return;
+        if (direction == Direction.Teleport)
+        {
+            _executedSinceAnchor.Clear();
+            return;
+        }
         _executedSinceAnchor.Add(direction);
     }
 

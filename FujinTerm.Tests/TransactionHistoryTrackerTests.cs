@@ -168,4 +168,55 @@ public sealed class TransactionHistoryTrackerTests
 
         Assert.Equal(2, changed);
     }
+
+    [Fact]
+    public void Hydrate_ReplacesLedgerAndFiresChanged()
+    {
+        (TransactionHistoryTracker t, _) = Make();
+        t.NoteBankDeposit(100);            // pre-existing row, should be replaced
+        int changed = 0;
+        t.Changed += () => changed++;
+
+        TransactionEntry a = new(new DateTimeOffset(2026, 1, 1, 8, 0, 0, TimeSpan.Zero),
+            TransactionKind.Bank, "Deposited 900 wealth", "Bank (1/2)");
+        TransactionEntry b = new(new DateTimeOffset(2026, 1, 1, 8, 5, 0, TimeSpan.Zero),
+            TransactionKind.Stash, "Hid a torch", null);
+        t.Hydrate(new[] { a, b });
+
+        Assert.Equal(new[] { a, b }, t.Snapshot());
+        Assert.Equal(1, changed);
+    }
+
+    [Fact]
+    public void Hydrate_DoesNotRePersist_ViaEntryAdded()
+    {
+        // Reloading disk history must not re-fire EntryAdded — that hook writes
+        // back to the log and would double the persisted rows on every reconnect.
+        (TransactionHistoryTracker t, _) = Make();
+        int added = 0;
+        t.EntryAdded += _ => added++;
+
+        t.Hydrate(new[]
+        {
+            new TransactionEntry(DateTimeOffset.Now, TransactionKind.Bank, "Deposited 5 wealth", null),
+        });
+
+        Assert.Equal(0, added);
+    }
+
+    [Fact]
+    public void Hydrate_TrimsToCap()
+    {
+        (TransactionHistoryTracker t, _) = Make();
+        TransactionEntry[] many = new TransactionEntry[TransactionHistoryTracker.MaxEntries + 5];
+        for (int i = 0; i < many.Length; i++)
+            many[i] = new TransactionEntry(DateTimeOffset.Now, TransactionKind.Bank, $"Deposited {i} wealth", null);
+
+        t.Hydrate(many);
+
+        IReadOnlyList<TransactionEntry> snap = t.Snapshot();
+        Assert.Equal(TransactionHistoryTracker.MaxEntries, snap.Count);
+        // Oldest 5 dropped; the window starts at index 5.
+        Assert.Equal("Deposited 5 wealth", snap[0].Detail);
+    }
 }

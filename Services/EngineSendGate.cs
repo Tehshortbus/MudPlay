@@ -9,6 +9,11 @@ namespace FujinTerm.Services;
 //   - Game.PlayerDroppedGate, while the local character is mortally wounded (HP <=
 //     0): the game rejects every action command with "You may not do that while you
 //     are mortally wounded!", so engine sends are pure noise until we recover.
+//   - Game.TrainerScreenGate, while the `train stats` / character-creation form
+//     owns the keyboard: the form's first field is the Family Name, so any stray
+//     engine send types into it and Enter corrupts the character's last name. The
+//     auto-trainer's CP allocation is the one exception — it rides the raw sender
+//     (below), not the wrapped path, so it can still fill in the stat plan.
 // MainWindowViewModel wraps every engine's SetWireSender callback through
 // WrapEngineSender, so a raised hold silently no-ops every engine until cleared.
 //
@@ -17,9 +22,12 @@ namespace FujinTerm.Services;
 // MainWindowViewModel.SendUserInput. So even while held, the user can still type
 // (their password, a manual command) normally; only background engines are gated.
 //
-// The emergency low-HP hangup is the one automatic send that must survive a hold —
-// hanging up is still allowed at 0 HP or below. HealthManager sends it through a
-// separate, un-wrapped sender (SetHangupWireSender), so it isn't gated here.
+// A couple of automatic sends must survive a hold, so they're bound to a separate,
+// un-wrapped sender rather than the wrapped path: the emergency low-HP hangup
+// (HealthManager.SetHangupWireSender — hanging up is still allowed at 0 HP or
+// below, exactly when the mortally-wounded hold is up) and the auto-trainer's CP
+// allocation (AutoTrainManager on the raw SendUserInput — it's the one automation
+// permitted while the TrainerScreenGate hold silences everything else).
 //
 // Single-threaded: every holder flips these on the UI thread (router handlers and
 // PlayerState.PropertyChanged both marshal upstream), and the wrapper reads on the

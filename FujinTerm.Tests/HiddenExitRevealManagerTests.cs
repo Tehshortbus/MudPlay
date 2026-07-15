@@ -197,17 +197,38 @@ public sealed class HiddenExitRevealManagerTests : IDisposable
         Harness h = new(_root, withRouter: true) { MaxAttempts = 3 };
         h.Tracker.SetLocated(new RoomKey(1, 1));
         HiddenSearchResult? result = null;
-        h.Mgr.Enqueue(Direction.D, "walker", r => result = r);
+        h.Mgr.Enqueue(Direction.N, "walker", r => result = r);
         Assert.Single(h.Sent);
 
         // Two failures → two retries → 3 total attempts.
-        h.FeedLine("You notice nothing different to the down");
-        h.FeedLine("You notice nothing different to the down");
+        h.FeedLine("You notice nothing different to the north.");
+        h.FeedLine("You notice nothing different to the north.");
         Assert.Equal(3, h.Sent.Count);
 
         // Third failure exhausts the cap.
-        h.FeedLine("You notice nothing different to the down");
+        h.FeedLine("You notice nothing different to the north.");
         Assert.IsType<HiddenSearchResult.Failed>(result);
+    }
+
+    [Fact]
+    public void Reveal_OnSearchFailedPattern_VerticalForm_TriggersRetry()
+    {
+        // The up/down miss uses "above you" / "below you", not the cardinal
+        // "to the <dir>" form. When the failure regex only matched the cardinal
+        // form, an up/down "sea" never registered as a miss, so the clean
+        // pattern-driven retry never fired and the walker fell into a stall
+        // loop (report paradigm-20260714-121106). Both vertical forms are
+        // confirmed on the wire.
+        Harness h = new(_root, withRouter: true) { MaxAttempts = 3 };
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Mgr.Enqueue(Direction.U, "walker", _ => { });
+        Assert.Single(h.Sent);
+
+        h.FeedLine("You notice nothing different above you.");
+        Assert.Equal(2, h.Sent.Count);
+
+        h.FeedLine("You notice nothing different below you.");
+        Assert.Equal(3, h.Sent.Count);
     }
 
     [Fact]

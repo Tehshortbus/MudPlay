@@ -1072,4 +1072,188 @@ public sealed class RoomGraphManagerTests : IDisposable
         Assert.True(ex.MultiAction.RequiresUnheldItem(_ => false));      // lacking → gated
         Assert.False(ex.MultiAction.RequiresUnheldItem(id => id == 815)); // holding → clear
     }
+
+    // ----- synthesised routable teleport edges -----------------------
+    //
+    // A CMD teleport that drops the player into a room with NO cardinal edge
+    // from here (a `go hole` hop) becomes a routable Direction.Teleport exit so
+    // BFS can plan through it. Distinct from PromoteCmdTeleportExits, which
+    // re-hints an EXISTING Door/KeyLocked cardinal the teleport shadows.
+
+    private void SeedTable(string setName, string table, string json)
+    {
+        string dir = Path.Combine(_root, setName);
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, table + ".json"), json);
+    }
+
+    private (RoomGraphManager Graph, BfsMapper Bfs) BuildWithTbInfo(
+        string setName, string roomsJson, string tbInfoJson)
+    {
+        SeedTable(setName, "Rooms", roomsJson);
+        SeedTable(setName, "TBInfo", tbInfoJson);
+        GameDataCache cache = NewCache();
+        cache.SwitchSet(setName);
+        TBInfoStore tbinfo = new(cache);
+        tbinfo.OnActiveSetChanged(setName);
+        RoomGraphManager graph = new(cache, log: null, tbinfo);
+        graph.OnActiveSetChanged(setName);
+        return (graph, new BfsMapper(graph));
+    }
+
+    [Fact]
+    public void CmdTeleport_SingleDestination_SynthesisesTeleportEdge()
+    {
+        // Room 1/10 has CMD=100 and only a S cardinal to 1/11; its `go hole`
+        // teleport lands in 2/487, which no cardinal reaches — so a
+        // Direction.Teleport edge is minted carrying the crossing keyword.
+        const string rooms = """
+            [
+              { "Map Number": 1, "Room Number": 10, "Name": "Cavern Mouth",
+                "Light": 0, "Shop": 0, "Spell": 0, "CMD": 100, "Lair": "", "Delay": 5,
+                "N": "0", "S": "1/11", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 1, "Room Number": 11, "Name": "Dead End",
+                "Light": 0, "Shop": 0, "Spell": 0, "CMD": 0, "Lair": "", "Delay": 5,
+                "N": "1/10", "S": "0", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 2, "Room Number": 487, "Name": "Far Shore",
+                "Light": 0, "Shop": 0, "Spell": 0, "CMD": 0, "Lair": "", "Delay": 5,
+                "N": "0", "S": "0", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+            ]
+            """;
+        const string tbinfo = """
+            [ { "Number": 100, "LinkTo": 0,
+                "Action": "go hole:message 767:teleport 487 2:message 768\n",
+                "Called From": "Room 1/10" } ]
+            """;
+        (RoomGraphManager graph, _) = BuildWithTbInfo("alpha", rooms, tbinfo);
+
+        Room? room = graph.GetRoom(new RoomKey(1, 10));
+        Assert.NotNull(room);
+        Assert.True(room!.Exits.TryGetValue(Direction.Teleport, out RoomExit tele));
+        Assert.Equal(RoomExitHint.Teleport, tele.Hint);
+        Assert.Equal(new RoomKey(2, 487), tele.Target);
+        Assert.NotNull(tele.TextCommands);
+        Assert.Equal("go hole", tele.TextCommands![0]);
+        Assert.Equal(0, tele.MinLevel);
+        // The synthetic edge never touches the cardinal fingerprint.
+        Assert.Equal(1u << (int)Direction.S, room.ExitMask);
+    }
+
+    [Fact]
+    public void CmdTeleport_WithMinLevel_CapturesGateOnEdge()
+    {
+        // `go vortex` gates on minlevel 20 before teleporting to 3/669 — the
+        // synthetic edge carries that so MovementFilter skips it under-level.
+        const string rooms = """
+            [
+              { "Map Number": 1, "Room Number": 613, "Name": "Whirlpool",
+                "Light": 0, "Shop": 0, "Spell": 0, "CMD": 100, "Lair": "", "Delay": 5,
+                "N": "0", "S": "0", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+            ]
+            """;
+        const string tbinfo = """
+            [ { "Number": 100, "LinkTo": 0,
+                "Action": "go vortex:adddelay 5:minlevel 20 1220:message 1205:teleport 669 3:message 1221\n",
+                "Called From": "Room 1/613" } ]
+            """;
+        (RoomGraphManager graph, _) = BuildWithTbInfo("alpha", rooms, tbinfo);
+
+        Room? room = graph.GetRoom(new RoomKey(1, 613));
+        Assert.True(room!.Exits.TryGetValue(Direction.Teleport, out RoomExit tele));
+        Assert.Equal(new RoomKey(3, 669), tele.Target);
+        Assert.Equal("go vortex", tele.TextCommands![0]);
+        Assert.Equal(20, tele.MinLevel);
+    }
+
+    [Fact]
+    public void CmdTeleport_DestinationAlreadyCardinalExit_NoSyntheticEdge()
+    {
+        // The teleport lands in 1/11, which a plain S cardinal already reaches.
+        // No synthetic edge — the walker gets there the normal way.
+        const string rooms = """
+            [
+              { "Map Number": 1, "Room Number": 10, "Name": "Cavern Mouth",
+                "Light": 0, "Shop": 0, "Spell": 0, "CMD": 100, "Lair": "", "Delay": 5,
+                "N": "0", "S": "1/11", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 1, "Room Number": 11, "Name": "Dead End",
+                "Light": 0, "Shop": 0, "Spell": 0, "CMD": 0, "Lair": "", "Delay": 5,
+                "N": "1/10", "S": "0", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+            ]
+            """;
+        const string tbinfo = """
+            [ { "Number": 100, "LinkTo": 0,
+                "Action": "go hole:teleport 11 1\n",
+                "Called From": "Room 1/10" } ]
+            """;
+        (RoomGraphManager graph, _) = BuildWithTbInfo("alpha", rooms, tbinfo);
+
+        Room? room = graph.GetRoom(new RoomKey(1, 10));
+        Assert.False(room!.Exits.ContainsKey(Direction.Teleport));
+    }
+
+    [Fact]
+    public void CmdTeleport_SynthesisedEdge_IsRoutableByBfs()
+    {
+        // End-to-end: BFS must route 1/10 → 2/487 through the synthesised
+        // teleport hop, and the single planned step is Direction.Teleport.
+        const string rooms = """
+            [
+              { "Map Number": 1, "Room Number": 10, "Name": "Cavern Mouth",
+                "Light": 0, "Shop": 0, "Spell": 0, "CMD": 100, "Lair": "", "Delay": 5,
+                "N": "0", "S": "1/11", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 1, "Room Number": 11, "Name": "Dead End",
+                "Light": 0, "Shop": 0, "Spell": 0, "CMD": 0, "Lair": "", "Delay": 5,
+                "N": "1/10", "S": "0", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 2, "Room Number": 487, "Name": "Far Shore",
+                "Light": 0, "Shop": 0, "Spell": 0, "CMD": 0, "Lair": "", "Delay": 5,
+                "N": "0", "S": "0", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+            ]
+            """;
+        const string tbinfo = """
+            [ { "Number": 100, "LinkTo": 0,
+                "Action": "go hole:teleport 487 2\n",
+                "Called From": "Room 1/10" } ]
+            """;
+        (RoomGraphManager graph, BfsMapper bfs) = BuildWithTbInfo("alpha", rooms, tbinfo);
+
+        var path = bfs.FindPath(new RoomKey(1, 10), new RoomKey(2, 487));
+        Assert.NotNull(path);
+        Assert.Equal(new[] { Direction.Teleport }, path!);
+    }
+
+    [Fact]
+    public void NoTbInfo_LeavesTeleportEdgesUnsynthesised()
+    {
+        // Parameterless / no-TBInfo construction can't resolve keywords, so a
+        // CMD room stays a plain graph node with no Direction.Teleport edge.
+        const string rooms = """
+            [
+              { "Map Number": 1, "Room Number": 10, "Name": "Cavern Mouth",
+                "Light": 0, "Shop": 0, "Spell": 0, "CMD": 100, "Lair": "", "Delay": 5,
+                "N": "0", "S": "1/11", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 1, "Room Number": 11, "Name": "Dead End",
+                "Light": 0, "Shop": 0, "Spell": 0, "CMD": 0, "Lair": "", "Delay": 5,
+                "N": "1/10", "S": "0", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+            ]
+            """;
+        SeedRooms("alpha", rooms);
+        GameDataCache cache = NewCache();
+        cache.SwitchSet("alpha");
+        RoomGraphManager graph = new(cache);          // no TBInfo
+        graph.OnActiveSetChanged("alpha");
+
+        Room? room = graph.GetRoom(new RoomKey(1, 10));
+        Assert.False(room!.Exits.ContainsKey(Direction.Teleport));
+    }
 }

@@ -52,6 +52,7 @@ public sealed class AutoWalkManager : IRecoverableEngine
     private Action<IReadOnlyList<int>>? _pathItemAnnouncer;
     private Action<IReadOnlyList<RoomKey>>? _routeAnnouncer;
     private Func<RoomKey, IReadOnlyList<int>>? _hazardItemResolver;
+    private Func<int, string?>? _itemNameResolver;
     private readonly LogService? _log;
 
     private List<WalkStep>? _path;
@@ -464,6 +465,17 @@ public sealed class AutoWalkManager : IRecoverableEngine
         _hazardItemResolver = resolver;
     }
 
+    // Item-name lookup for the blocked-route diagnostic. Given an item id
+    // gating an exit the crosser can't clear, returns the item's display name
+    // so "all routes blocked by a required item you're missing" can name the
+    // culprit ("... (obsidian key)"). Bound to the game-data item store in
+    // MainWindowVM; when unset the message keeps its generic wording.
+    public void SetItemNameResolver(Func<int, string?> resolver)
+    {
+        ArgumentNullException.ThrowIfNull(resolver);
+        _itemNameResolver = resolver;
+    }
+
     // Planned-route room announcer. Invoked once at walk-start with the
     // ordered RoomKey sequence of the freshly-planned path (source first,
     // then each hop's target). Bound to the auto-light provisioner, which
@@ -719,19 +731,44 @@ public sealed class AutoWalkManager : IRecoverableEngine
     private string DescribeBlockedRoute(RoomKey source, IReadOnlyList<Direction> ungatedPath)
     {
         ExitBlockReason reasons = ExitBlockReason.None;
+        List<int> missingItems = new();
         RoomKey cur = source;
         foreach (Direction dir in ungatedPath)
         {
             Room? room = _graph.GetRoom(cur);
             if (room is null || !room.Exits.TryGetValue(dir, out RoomExit exit))
                 break;
-            if (_filter is { } f) reasons |= f.DescribeExitBlock(in exit);
+            if (_filter is { } f)
+            {
+                ExitBlockReason hop = f.DescribeExitBlock(in exit);
+                reasons |= hop;
+                if (hop.HasFlag(ExitBlockReason.Item)) CollectGateItems(in exit, missingItems);
+            }
             cur = exit.Target;
         }
-        return FormatBlockReasons(reasons);
+        return FormatBlockReasons(reasons, missingItems);
     }
 
-    private static string FormatBlockReasons(ExitBlockReason reasons)
+    // Gather the item ids an Item/Ticket/multi-action exit demands, so the
+    // blocked-route message can name what the crosser lacks. Key-locked doors
+    // report as LockedDoor (a key is one of several openers), not Item, so
+    // they're handled by that branch — only pure possession gates land here.
+    private static void CollectGateItems(in RoomExit exit, List<int> into)
+    {
+        switch (exit.Hint)
+        {
+            case RoomExitHint.Item:
+            case RoomExitHint.Ticket:
+                if (exit.KeyItemId > 0 && !into.Contains(exit.KeyItemId)) into.Add(exit.KeyItemId);
+                break;
+            case RoomExitHint.MultiActionHidden when exit.MultiAction is { } ma:
+                foreach (ExitAction a in ma.Actions)
+                    if (a.RequiredItemId > 0 && !into.Contains(a.RequiredItemId)) into.Add(a.RequiredItemId);
+                break;
+        }
+    }
+
+    private string FormatBlockReasons(ExitBlockReason reasons, IReadOnlyList<int> missingItems)
     {
         // Classification came up empty (e.g. a bare IRoomFilter with no gate
         // model) — keep a truthful generic line rather than inventing a cause.
@@ -743,10 +780,28 @@ public sealed class AutoWalkManager : IRecoverableEngine
         if (reasons.HasFlag(ExitBlockReason.Toll)) parts.Add("a toll you can't afford");
         if (reasons.HasFlag(ExitBlockReason.Class)) parts.Add("a class restriction");
         if (reasons.HasFlag(ExitBlockReason.LockedDoor)) parts.Add("a locked door you can't open (no key, pick, or bash)");
-        if (reasons.HasFlag(ExitBlockReason.Item)) parts.Add("a required item you're missing");
+        if (reasons.HasFlag(ExitBlockReason.Item)) parts.Add(DescribeMissingItems(missingItems));
         if (reasons.HasFlag(ExitBlockReason.Door)) parts.Add("a door you can't pick or bash");
         if (reasons.HasFlag(ExitBlockReason.Hazard)) parts.Add("a room hazard you can't survive");
         return "all routes blocked by " + string.Join(" or ", parts);
+    }
+
+    // Name the item(s) an Item-gated hop needs, when the game-data name resolver
+    // is wired and a name is known; otherwise fall back to the generic phrasing.
+    private string DescribeMissingItems(IReadOnlyList<int> missingItems)
+    {
+        if (_itemNameResolver is { } resolve && missingItems.Count > 0)
+        {
+            List<string> names = new();
+            foreach (int id in missingItems)
+            {
+                string? name = resolve(id);
+                if (!string.IsNullOrWhiteSpace(name)) names.Add(name);
+            }
+            if (names.Count == 1) return $"a required item you're missing ({names[0]})";
+            if (names.Count > 1) return "required items you're missing (" + string.Join(", ", names) + ")";
+        }
+        return "a required item you're missing";
     }
 
     // Expand the planned route between two known rooms into the ordered RoomKeys the

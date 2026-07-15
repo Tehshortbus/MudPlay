@@ -93,12 +93,18 @@ public static class DefaultPatterns
         yield return new RegexPattern(KnownPatterns.SlowDown,        @"^Why don't you slow down for a few seconds\?");
 
         // ----- Searching -------------------------------------------------
+        // Failure wording differs by axis: cardinals use "to the <dir>"
+        // ("north" / "northeast" / …); up/down instead say "above you" /
+        // "below you" — no "to the", no direction word. The handler only
+        // needs to know the search missed so it can retry, so this just has
+        // to match; it captures nothing. (Both vertical forms confirmed on the
+        // wire — report paradigm-20260714-121106 + user.) Miss the vertical
+        // forms and up/down searches never retry.
         yield return new RegexPattern(KnownPatterns.UserSearchFailed,
-            @"^You notice nothing different to the \w+");
-        // Cardinal forms use "to the <dir>" ("north" / "northeast" / etc.);
-        // U/D drop the preposition and use the "<dir>wards" suffix
-        // ("upwards" / "downwards"). One regex covers both — the
-        // direction word lands in the same capture group either way.
+            @"^You notice nothing different (?:to the \w+|above you|below you)");
+        // Success wording also differs by axis: cardinals say "to the <dir>",
+        // up/down say "upwards" / "downwards". The optional "to the " lets one
+        // capture group hold the direction word either way.
         yield return new RegexPattern(KnownPatterns.UserSearchSucceeded,
             @"^You found an exit (?:to the )?(?<direction>\w+)!");
 
@@ -216,6 +222,13 @@ public static class DefaultPatterns
         // both into the same policy dispatch.
         yield return new RegexPattern(KnownPatterns.CashFromKill,
             @"^(?<count>\d+) (?<currency>\w+) drops? to the ground\.");
+        // Another player grabbing ground cash — "<Name> picks up some <coin>".
+        // Count-less and NOT period-terminated, so it can't collide with the
+        // period-terminated PlayerGets item line ("Bob picks up a sword."). The
+        // coin group is the full plural ("gold crowns"); CashManager keys off the
+        // leading denomination word and ignores non-cash "some <item>" matches.
+        yield return new RegexPattern(KnownPatterns.CashPickedUpByOther,
+            @"^(?<player>\w+) picks up some (?<coin>.+)$");
 
         // Realm-specific room survey — "You notice <list> here." with
         // cash entries (always first) + items. The single-line case
@@ -236,6 +249,15 @@ public static class DefaultPatterns
         // this as an equivalent per-member "gone this round" announce.
         yield return new RegexPattern(KnownPatterns.PartyCastAnnounce,
             @"^(?:\[[^\]]*\]:|:)*(?<player>\w+) moves to cast .+? upon (?<target>.+?)\.");
+
+        // Guard/redirect announce — "<guard> moves to protect <protected>." A
+        // guarded monster can't be attacked while a guard is present; the server
+        // redirects the swing to the guard and emits this. Both names are monsters
+        // (multi-word), so unlike the player "moves to attack" form the guard
+        // capture is .+? not \w+. The line carries no trailing period in observed
+        // output, so the terminator is optional.
+        yield return new RegexPattern(KnownPatterns.MonsterMovesToProtect,
+            @"^(?:\[[^\]]*\]:|:)*(?<guard>.+?) moves to protect (?<protected>.+?)\.?\s*$");
 
         // Room-entry arrival. Anchored on "in… from <dir>"
         // so a wide alternation of verbs (crawls, walks, slithers, lumbers,

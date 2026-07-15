@@ -239,6 +239,9 @@ public static class BugReportBuilder
         Game.Inventory.InventorySnapshot inv = svc.Inventory.Snapshot;
         sb.Append("\n**Combat weapon state**\n\n");
         Kv(sb, "Current target", combat.CurrentTarget ?? "(none)");
+        // A guarded priority we're chasing through the "moves to protect" redirect —
+        // explains re-attacks aimed at a monster that isn't our live target.
+        Kv(sb, "Guard-blocked priority", combat.GuardBlockedTarget ?? "(none)");
         Kv(sb, "Worn weapon", WornSlot(inv, "Weapon Hand") ?? "(none)");
         Kv(sb, "Worn off-hand", WornSlot(inv, "Off-Hand") ?? "(none)");
         Kv(sb, "Using alternate weapon", combat.UsingAlternateWeapon.ToString());

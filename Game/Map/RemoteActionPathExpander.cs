@@ -90,13 +90,13 @@ public static class RemoteActionPathExpander
             // "door" word) — synthesising `open door <dir>` here triggered the
             // "Syntax: OPEN {Direction|Item}" failure.
 
-            // Text exits — `(Text: cmd1, cmd2, ...)` — are traversed by a
-            // fixed command, never the cardinal. Pin the first alternative
-            // as the step's display label so the Navigation step list shows
-            // the command the walker actually sends (e.g. "borrow skiff")
-            // rather than the misleading direction. Mirrors the send-side
-            // choice in AutoWalkManager.SendMoveStep (first TextCommand).
-            string? label = exit.Hint == RoomExitHint.Text
+            // Text and Teleport exits are traversed by a fixed command, never
+            // the cardinal. Pin the first alternative as the step's display
+            // label so the Navigation step list shows the command the walker
+            // actually sends (e.g. "borrow skiff" / "go hole") rather than a
+            // misleading direction or the "?" a synthetic Teleport slot would
+            // render. Mirrors the send-side keyword choice.
+            string? label = exit.Hint is RoomExitHint.Text or RoomExitHint.Teleport
                             && exit.TextCommands is { Count: > 0 } cmds
                 ? cmds[0]
                 : null;

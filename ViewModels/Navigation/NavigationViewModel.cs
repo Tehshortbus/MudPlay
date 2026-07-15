@@ -798,7 +798,9 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         var rows = new List<object>(Setups.Count + Loops.Count);
         rows.AddRange(Setups);
         rows.AddRange(Loops);
-        NavTreeBuilder.Sync<object>(NavTree, rows, FolderOfNavRow, _services.NavFolders.AllFolders);
+        // Rail Loops+Lairs folders start collapsed so the compact rail opens
+        // tidy; the user's per-folder expand overrides survive rebuilds.
+        NavTreeBuilder.Sync<object>(NavTree, rows, FolderOfNavRow, _services.NavFolders.AllFolders, defaultExpanded: false);
         OnPropertyChanged(nameof(HasNavTree));
     }
 

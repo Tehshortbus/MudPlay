@@ -17,8 +17,10 @@ public abstract record WalkStep
 // walker sends and what the step list shows.
 //
 // CommandLabel is the exact command the exit requires in place of the cardinal,
-// when game data statically pins one (Text exits). null for ordinary passages
-// and for exits whose command is only known at runtime (teleport keywords, door
+// when game data statically pins one (Text exits, and a synthesised
+// Direction.Teleport hop whose keyword is baked in at graph build). null for
+// ordinary passages and for exits whose command is only known at runtime (a
+// cardinal-slot re-hinted teleport resolved via the keyword resolver, door
 // opens) — those still display the direction.
 public sealed record MoveStep(Direction Direction, RoomKey ExpectedTarget, string? CommandLabel = null) : WalkStep
 {

@@ -844,10 +844,17 @@ public partial class MainWindowViewModel : ObservableObject
         // Death-recovery auto-grab (`get`) + auto-equip (`wear` / `hold`)
         // ride the same gate-wrapped pipeline as the other engines.
         AppServices.Current.DeathRecovery.SetWireSender(engineSend);
-        // Auto-train drives the `train stats` screen (the command + each
-        // Enter-driven keystroke) through the same gate-wrapped pipeline;
-        // the trainer-walk coordinator sends `train` / `stat` the same way.
-        AppServices.Current.AutoTrain.SetWireSender(engineSend);
+        // Auto-train is the ONE automation allowed to type on the `train stats`
+        // screen — entering the form (`train stats`) raises the TrainerScreenGate
+        // hold that silences every other engine, so its own `train stats` + each
+        // Enter-driven CP keystroke must pierce that hold. Bind it to the raw,
+        // un-wrapped SendUserInput (same escape hatch the low-HP hangup uses);
+        // ObserveOutbound still fires on this path, so the `train stats` send is
+        // what arms the tracker and raises the gate in the first place.
+        AppServices.Current.AutoTrain.SetWireSender(SendUserInput);
+        // TrainerWalk sends `train` / `stat` only OUTSIDE the form (bare `train`
+        // has no Point Cost Chart, so it never raises MenuOwnsKeyboard; `stat`
+        // fires post-training), so it stays on the gate-wrapped pipeline.
         AppServices.Current.TrainerWalk.SetWireSender(engineSend);
         // Level-up announcer broadcasts "I can now train to level: N" on
         // the configured channel through the same gate-wrapped pipeline.
@@ -971,6 +978,7 @@ public partial class MainWindowViewModel : ObservableObject
             () => AppServices.Current.Party.State.SelfIsLeader
                 && AppServices.Current.Party.State.Members.Any(m => !m.IsSelf);
         AppServices.Current.Walker.SetTeleportResolver(teleportResolver);
+        AppServices.Current.Walker.SetItemNameResolver(id => AppServices.Current.ItemNames.GetName(id));
         AppServices.Current.Walker.SetPartyLeaderCheck(isLeaderWithFollowers);
         AppServices.Current.LoopRunner.SetTeleportResolver(teleportResolver);
         AppServices.Current.LoopRunner.SetPartyLeaderCheck(isLeaderWithFollowers);

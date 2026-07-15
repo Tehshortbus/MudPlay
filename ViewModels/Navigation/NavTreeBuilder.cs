@@ -16,11 +16,14 @@ public static class NavTreeBuilder
     // both alphabetical (case-insensitive, via SortKeyOf). folderOf returns
     // a row's stored folder (empty = root). allFolders seeds folders that
     // have no rows yet (empty folders the user created) so they still
-    // render.
+    // render. defaultExpanded seeds each folder's starting expand state — the
+    // rail's Loops+Lairs tree passes false (start collapsed); the Manage dialog
+    // and GOTO tree keep the default true.
     public static List<object> Build<TRow>(
         IEnumerable<TRow> rows,
         Func<TRow, string?> folderOf,
-        IEnumerable<string> allFolders)
+        IEnumerable<string> allFolders,
+        bool defaultExpanded = true)
     {
         ArgumentNullException.ThrowIfNull(rows);
         ArgumentNullException.ThrowIfNull(folderOf);
@@ -36,7 +39,7 @@ public static class NavTreeBuilder
             if (folders.TryGetValue(path, out NavFolderNodeViewModel? existing))
                 return existing;
 
-            var node = new NavFolderNodeViewModel(path, NavFolders.LastSegment(path));
+            var node = new NavFolderNodeViewModel(path, NavFolders.LastSegment(path), defaultExpanded);
             folders[path] = node;
 
             string parent = NavFolders.Parent(path);
@@ -66,19 +69,21 @@ public static class NavTreeBuilder
 
     // Replace target's contents with a freshly built tree, preserving folder
     // expand/collapse state across the rebuild (keyed by folder path) so a
-    // refresh doesn't snap every folder back open.
+    // refresh doesn't snap every folder back to its default. defaultExpanded is
+    // the per-surface starting state (see Build).
     public static void Sync<TRow>(
         ObservableCollection<object> target,
         IEnumerable<TRow> rows,
         Func<TRow, string?> folderOf,
-        IEnumerable<string> allFolders)
+        IEnumerable<string> allFolders,
+        bool defaultExpanded = true)
     {
         ArgumentNullException.ThrowIfNull(target);
-        var expanded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        CollectCollapsed(target, expanded);
+        var overridden = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        CollectOverrides(target, overridden, defaultExpanded);
 
-        List<object> built = Build(rows, folderOf, allFolders);
-        RestoreCollapsed(built, expanded);
+        List<object> built = Build(rows, folderOf, allFolders, defaultExpanded);
+        RestoreOverrides(built, overridden, defaultExpanded);
 
         target.Clear();
         foreach (object node in built) target.Add(node);
@@ -105,29 +110,31 @@ public static class NavTreeBuilder
         _ => node.ToString() ?? string.Empty,
     };
 
-    // Expand/collapse state is keyed by folder path. We record the
-    // collapsed set (folders default to expanded) so a rebuild keeps
-    // whatever the user toggled shut.
-    private static void CollectCollapsed(IEnumerable<object> nodes, HashSet<string> collapsed)
+    // Expand/collapse state is keyed by folder path. We record the folders the
+    // user toggled AWAY from the tree's default (a collapsed folder in an
+    // expand-by-default tree, or an expanded folder in a collapse-by-default
+    // one) so a rebuild keeps that override instead of snapping every folder
+    // back to its default.
+    private static void CollectOverrides(IEnumerable<object> nodes, HashSet<string> overridden, bool defaultExpanded)
     {
         foreach (object node in nodes)
         {
             if (node is NavFolderNodeViewModel f)
             {
-                if (!f.IsExpanded) collapsed.Add(f.Path);
-                CollectCollapsed(f.Children, collapsed);
+                if (f.IsExpanded != defaultExpanded) overridden.Add(f.Path);
+                CollectOverrides(f.Children, overridden, defaultExpanded);
             }
         }
     }
 
-    private static void RestoreCollapsed(IEnumerable<object> nodes, HashSet<string> collapsed)
+    private static void RestoreOverrides(IEnumerable<object> nodes, HashSet<string> overridden, bool defaultExpanded)
     {
         foreach (object node in nodes)
         {
             if (node is NavFolderNodeViewModel f)
             {
-                if (collapsed.Contains(f.Path)) f.IsExpanded = false;
-                RestoreCollapsed(f.Children, collapsed);
+                if (overridden.Contains(f.Path)) f.IsExpanded = !defaultExpanded;
+                RestoreOverrides(f.Children, overridden, defaultExpanded);
             }
         }
     }

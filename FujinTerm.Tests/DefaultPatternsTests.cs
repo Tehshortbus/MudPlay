@@ -165,4 +165,29 @@ public sealed class DefaultPatternsTests
         Assert.True(p.TryMatch(Line("You read a scroll and learn the spell minor heal."), out MatchResult r2));
         Assert.Equal("minor heal", r2.Groups[0]);
     }
+
+    // A third party grabbing ground cash — count-less, "some", NO trailing period.
+    // The coin plural is captured whole (CashManager keys off the leading word).
+    [Fact]
+    public void CashPickedUpByOtherRegex_CapturesCoinPlural()
+    {
+        IMessagePattern p = PatternById(KnownPatterns.CashPickedUpByOther);
+
+        Assert.True(p.TryMatch(Line("Tristian picks up some gold crowns"), out MatchResult r));
+        Assert.Equal("Tristian",    r.Groups[0]);
+        Assert.Equal("gold crowns", r.Groups[1]);
+    }
+
+    // The period-terminated PlayerGets item line must NOT collide with the
+    // cash-pickup-by-other pattern — the trailing "." (and "a", not "some")
+    // keeps an item pickup out of the coin path.
+    [Fact]
+    public void CashPickedUpByOtherRegex_IgnoresPeriodTerminatedItemGet()
+    {
+        IMessagePattern cash = PatternById(KnownPatterns.CashPickedUpByOther);
+        IMessagePattern item = PatternById(KnownPatterns.PlayerGets);
+
+        Assert.False(cash.TryMatch(Line("Bob picks up a rusty sword."), out _));
+        Assert.True(item.TryMatch(Line("Bob picks up a rusty sword."), out _));
+    }
 }

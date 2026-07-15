@@ -22,6 +22,15 @@ public sealed class RollingLogFile
         get { lock (_gate) { return _path is not null; } }
     }
 
+    // A point-in-time copy of the retained tail, oldest line first — the same
+    // lines an Open reloaded from disk. Lets a caller replay the persisted
+    // history back into an in-memory store on reconnect without re-reading the
+    // file itself.
+    public IReadOnlyList<string> Snapshot()
+    {
+        lock (_gate) { return _lines.ToArray(); }
+    }
+
     // Point the log at path with the given cap, loading any existing tail so
     // appends continue across restarts. Re-opening at a different path drops the
     // previous file's in-memory tail first. maxLines <= 0 is clamped to 1.

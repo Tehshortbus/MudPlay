@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using FujinTerm.Game.Spells;
 using FujinTerm.Services;
 
 namespace FujinTerm.Game.Map;
@@ -36,6 +37,12 @@ public sealed class RoomGraphManager
     // configurations, in which case the promotion pass is skipped.
     private readonly TBInfoStore? _tbinfo;
 
+    // Spell catalog consulted at build time to synthesise routable teleport
+    // edges for cast-based CMD teleports (see BuildTeleportEdges). Null in
+    // test / no-catalog configurations, where only literal-teleport CMD chains
+    // become routable edges.
+    private readonly KnownSpellCatalog? _spellCatalog;
+
     private readonly Dictionary<RoomKey, Room> _rooms = new();
     private readonly Dictionary<string, List<Room>> _byName = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<(string Name, uint ExitMask), List<RoomKey>> _byNameAndExits = new();
@@ -68,12 +75,14 @@ public sealed class RoomGraphManager
 
     public RoomGraphManager(GameDataCache cache) : this(cache, log: null) { }
 
-    public RoomGraphManager(GameDataCache cache, LogService? log, TBInfoStore? tbinfo = null)
+    public RoomGraphManager(GameDataCache cache, LogService? log,
+        TBInfoStore? tbinfo = null, KnownSpellCatalog? spellCatalog = null)
     {
         ArgumentNullException.ThrowIfNull(cache);
         _cache = cache;
         _log = log;
         _tbinfo = tbinfo;
+        _spellCatalog = spellCatalog;
     }
 
     // Direct lookup by primary key. Returns null when the key doesn't resolve
@@ -421,6 +430,7 @@ public sealed class RoomGraphManager
         }
 
         PromoteCmdTeleportExits();
+        BuildTeleportEdges();
         BuildSecondaryIndexes();
 
         // Free the raw JSON; the typed graph is the source of truth now.
@@ -478,6 +488,95 @@ public sealed class RoomGraphManager
             }
             if (rebuilt is not null) _rooms[key] = room with { Exits = rebuilt };
         }
+    }
+
+    // Synthesise a routable Direction.Teleport edge for a CMD teleport whose
+    // destination isn't already reachable by a cardinal exit. PromoteCmdTeleport-
+    // Exits handles the case where a teleport shadows an existing Door/KeyLocked
+    // cardinal (re-hinting that slot in place); this covers the other shape — a
+    // `go hole` / cast-teleport hop that drops the player into a room with no
+    // cardinal edge from here, which the planar graph otherwise can't route
+    // through. The synthesised exit carries the crossing keyword in TextCommands
+    // and the minlevel gate in MinLevel, so SpecialExitDispatch crosses it with
+    // that command and MovementFilter skips it for an under-level character. It's
+    // filed under the non-planar Direction.Teleport slot so it never perturbs the
+    // map layout or the cardinal ExitMask fingerprint.
+    //
+    // Only SINGLE-destination teleports are routable: a random / multi-room
+    // landing (a "bridge jump" into one of five river rooms) can't be planned
+    // through BFS, so it's left un-synthesised (the map surfaces those elsewhere).
+    // A room with several distinct single-dest teleports keeps the first — one
+    // Direction.Teleport slot per room.
+    private void BuildTeleportEdges()
+    {
+        if (_tbinfo is null) return;
+
+        foreach (RoomKey key in _rooms.Keys.ToArray())
+        {
+            Room room = _rooms[key];
+            if (room.Cmd <= 0) continue;
+            if (room.Exits.ContainsKey(Direction.Teleport)) continue;   // already has one
+
+            // Existing exit targets — a teleport whose destination is already a
+            // cardinal (or re-hinted) exit target needs no synthetic edge; the
+            // walker reaches it the normal way.
+            HashSet<RoomKey> existingTargets = new();
+            foreach ((Direction _, RoomExit ex) in room.Exits) existingTargets.Add(ex.Target);
+
+            if (TryFirstRoutableTeleport(room, existingTargets,
+                    out RoomKey dest, out string keyword, out int minLevel))
+            {
+                RoomExit tele = new(
+                    dest,
+                    RoomExitHint.Teleport,
+                    RawHint: "CMD teleport",
+                    TextCommands: new[] { keyword },
+                    MinLevel: minLevel);
+                var rebuilt = new Dictionary<Direction, RoomExit>(room.Exits)
+                {
+                    [Direction.Teleport] = tele
+                };
+                _rooms[key] = room with { Exits = rebuilt };
+                _log?.Log(LogSeverity.Debug, "RoomGraph",
+                    $"Room {key}: synthesised Teleport edge '{keyword}' → {dest}"
+                    + (minLevel > 0 ? $" (Level {minLevel}+)." : "."));
+            }
+        }
+    }
+
+    // First single-destination teleport off a room's CMD chain whose landing
+    // isn't already an exit target — literal teleports first, then cast teleports
+    // (which need the spell catalog). Returns false when the room has no routable
+    // single-dest teleport to a new room.
+    private bool TryFirstRoutableTeleport(Room room, HashSet<RoomKey> existingTargets,
+        out RoomKey dest, out string keyword, out int minLevel)
+    {
+        dest = default;
+        keyword = string.Empty;
+        minLevel = 0;
+
+        foreach ((string kw, RoomKey d, int lvl) in
+                 TBInfoTeleportResolver.EnumerateTeleports(_tbinfo!, room.Cmd))
+        {
+            if (existingTargets.Contains(d)) continue;
+            dest = d; keyword = kw; minLevel = lvl;
+            return true;
+        }
+
+        if (_spellCatalog is not null)
+        {
+            foreach ((string kw, IReadOnlyList<RoomKey> dests, bool random, int lvl) in
+                     TBInfoCastTeleportResolver.EnumerateCastTeleports(
+                         _tbinfo!, room.Cmd, room.Key.Map, _spellCatalog))
+            {
+                if (random || dests.Count != 1) continue;   // can't BFS a random landing
+                if (existingTargets.Contains(dests[0])) continue;
+                dest = dests[0]; keyword = kw; minLevel = lvl;
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private void BuildSecondaryIndexes()

@@ -1,5 +1,6 @@
 using System.Text;
 using FujinTerm.Game;
+using FujinTerm.Game.Combat;
 using FujinTerm.Game.Map;
 using FujinTerm.Models.GameData;
 using FujinTerm.Services;
@@ -1247,5 +1248,146 @@ public sealed class AutoPartyManagerTests
         engine.NowProvider = () => t0.AddSeconds(6);
         engine.TickNagsForTests();
         Assert.Single(engine.LastSentForTests, b => Encoding.Latin1.GetString(b) == "/Raijin @join\r");
+    }
+
+    // ===== Party-split teleport reform: plain arrival + disband survival =====
+
+    [Fact]
+    public void SplitReform_PlainArrivalLine_FiresDeferredInvite()
+    {
+        // A "go hole"-style CMD teleport lands members with a plain "walks into
+        // the room from nowhere" arrival — no "blinding flash" line at all. The
+        // withheld invite must fire on that classified Player arrival, not only on
+        // the flash / "Also here:" signals.
+        var (engine, _, _, party) = Setup();
+        MovementCoordinator coord = new();
+        engine.SetMovementGate(coord, isLooping: () => false);
+
+        party.SelfIsLeader = true;
+        party.Members.Add(new PartyMember { Name = "Fujin", IsSelf = true });
+        party.Members.Add(new PartyMember { Name = "Raijin" });
+
+        engine.NotePartySplitTeleport();
+        Assert.Empty(engine.LastSentForTests);
+
+        engine.OnPlayerArrival(new RoomEntryArrivalEvent("Raijin", EntityKind.Player, "nowhere", default));
+
+        byte[] sent = Assert.Single(engine.LastSentForTests);
+        Assert.Equal("invite Raijin\r", Encoding.Latin1.GetString(sent));
+    }
+
+    [Fact]
+    public void SplitReform_MonsterArrival_DoesNotFireReformInvite()
+    {
+        // OnPlayerArrival is fed every classified arrival — a Monster arrival that
+        // happens to carry a pending member's name must not fire the invite. Only
+        // the watcher's Player classification counts.
+        var (engine, _, _, party) = Setup();
+        MovementCoordinator coord = new();
+        engine.SetMovementGate(coord, isLooping: () => false);
+
+        party.SelfIsLeader = true;
+        party.Members.Add(new PartyMember { Name = "Fujin", IsSelf = true });
+        party.Members.Add(new PartyMember { Name = "Raijin" });
+
+        engine.NotePartySplitTeleport();
+        engine.OnPlayerArrival(new RoomEntryArrivalEvent("Raijin", EntityKind.Monster, "east", default));
+
+        Assert.Empty(engine.LastSentForTests);
+    }
+
+    [Fact]
+    public void SplitReform_CardinalArrival_DoesNotFireReformInvite_NowhereDoes()
+    {
+        // Regression: a reform member following the leader into the pre-teleport
+        // staging room arrives from a cardinal direction ("walks into the room from
+        // the east"). That stale arrival can be processed after the split arms but
+        // before the leader's teleport confirms — firing the withheld invite on it
+        // races `invite X` ahead of X crossing the hole ("You don't see X here!").
+        // Only the "from nowhere" teleport materialization must trigger the invite.
+        var (engine, _, _, party) = Setup();
+        MovementCoordinator coord = new();
+        engine.SetMovementGate(coord, isLooping: () => false);
+
+        party.SelfIsLeader = true;
+        party.Members.Add(new PartyMember { Name = "Fujin", IsSelf = true });
+        party.Members.Add(new PartyMember { Name = "Raijin" });
+
+        engine.NotePartySplitTeleport();
+
+        // Cardinal follow-in (staging room) must NOT fire the invite.
+        engine.OnPlayerArrival(new RoomEntryArrivalEvent("Raijin", EntityKind.Player, "east", default));
+        Assert.Empty(engine.LastSentForTests);
+
+        // The real through-hole arrival ("from nowhere") fires it.
+        engine.OnPlayerArrival(new RoomEntryArrivalEvent("Raijin", EntityKind.Player, "nowhere", default));
+        byte[] sent = Assert.Single(engine.LastSentForTests);
+        Assert.Equal("invite Raijin\r", Encoding.Latin1.GetString(sent));
+    }
+
+    [Fact]
+    public void SplitReform_PartyDisbands_ReformSurvives_ReinvitesOnArrival()
+    {
+        // The "go hole" teleport answers with "Your party has been disbanded." and
+        // drops us to non-leader BEFORE the members walk in. That disband must NOT
+        // clear the in-flight reform: the gate stays held and each member's later
+        // arrival still fires the withheld re-invite. Regression — the disband
+        // used to nuke the reform, so the leader reformed nobody and walked off.
+        var (engine, _, _, party) = Setup();
+        MovementCoordinator coord = new();
+        engine.InviteWaitWindow = TimeSpan.FromSeconds(90);
+        engine.SetMovementGate(coord, isLooping: () => false);
+
+        party.SelfIsLeader = true;
+        party.IsInParty    = true;
+        party.Members.Add(new PartyMember { Name = "Fujin", IsSelf = true });
+        party.Members.Add(new PartyMember { Name = "Raijin" });
+
+        engine.NotePartySplitTeleport();
+        Assert.True(coord.IsPaused);
+
+        // Server disband arrives before the member does.
+        party.SelfIsLeader = false;
+        party.IsInParty    = false;
+
+        // Reform survived — still holding, nothing prematurely invited.
+        Assert.True(coord.IsPaused);
+        Assert.Empty(engine.LastSentForTests);
+
+        // Member finally walks in — the withheld invite goes out and reforms.
+        engine.OnPlayerArrival(new RoomEntryArrivalEvent("Raijin", EntityKind.Player, "nowhere", default));
+
+        byte[] sent = Assert.Single(engine.LastSentForTests);
+        Assert.Equal("invite Raijin\r", Encoding.Latin1.GetString(sent));
+    }
+
+    [Fact]
+    public void SplitReform_TransientFollowerFlip_KeepsReformHold()
+    {
+        // Crossing the teleport churns the party state — we can momentarily read
+        // as a follower before the disband settles. That transient flip must not
+        // cancel the reform (the pre-fix "became a follower" clear was the exact
+        // line that released the gate and let the walker leave alone).
+        var (engine, _, _, party) = Setup();
+        MovementCoordinator coord = new();
+        engine.SetMovementGate(coord, isLooping: () => false);
+
+        party.SelfIsLeader = true;
+        party.IsInParty    = true;
+        party.Members.Add(new PartyMember { Name = "Fujin", IsSelf = true });
+        party.Members.Add(new PartyMember { Name = "Raijin" });
+
+        engine.NotePartySplitTeleport();
+        Assert.True(coord.IsPaused);
+
+        // Transient "became a follower" flip mid-teleport.
+        party.SelfIsLeader = false;
+
+        // Still holding for the reform — the flip didn't release the gate.
+        Assert.True(coord.IsPaused);
+        Assert.Contains(MovementCoordinator.PartyInviteGate, coord.AssertedGates);
+
+        engine.OnPlayerArrival(new RoomEntryArrivalEvent("Raijin", EntityKind.Player, "nowhere", default));
+        Assert.Single(engine.LastSentForTests);
     }
 }

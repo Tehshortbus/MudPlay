@@ -169,6 +169,180 @@ public sealed class CombatManagerTests
         Assert.Equal("giant rat", h.Combat.CurrentTarget);
     }
 
+    // ----- confusion-fumble retry (OnActionFailed) ----------------------
+
+    [Fact]
+    public void OnActionFailed_ResendsLastAttack_WhenFighting()
+    {
+        using Harness h = new();
+        h.AddMonster(1, "giant rat", killable: true);
+        h.Feed("Also here: giant rat.");
+        Assert.Single(h.Sent);
+
+        // A fumble consumed the swing — re-send it verbatim.
+        h.Combat.OnActionFailed();
+
+        Assert.Equal(2, h.Sent.Count);
+        Assert.Equal("a giant rat", h.LastSent);
+    }
+
+    [Fact]
+    public void OnActionFailed_NoOp_WhenNoTarget()
+    {
+        using Harness h = new();
+
+        h.Combat.OnActionFailed();
+
+        Assert.Empty(h.Sent);
+    }
+
+    [Fact]
+    public void OnActionFailed_NoOp_WhenDisabled()
+    {
+        using Harness h = new();
+        h.AddMonster(1, "giant rat", killable: true);
+        h.Feed("Also here: giant rat.");
+        Assert.Single(h.Sent);
+
+        h.AutoCombatEnabled = false;
+        h.Combat.OnActionFailed();
+
+        Assert.Single(h.Sent);   // still just the original swing
+    }
+
+    // ----- guard-redirect retargeting -----------------------------------
+    //
+    // A MajorMUD "guarded" monster (brigand chief guarded by brigands) can't be
+    // hit while a guard shields it — the server redirects our swing and emits
+    // "<guard> moves to protect <chief>". CombatManager remembers the shielded
+    // priority so it re-attacks it once the guard dies; the block is cleared when
+    // the priority itself dies / leaves / on a room change. (The timed re-attack
+    // on *Combat Off* is paced by the same stamps the interrupt-resume uses, so
+    // its positive path is verified against a live BBS; here we pin the state
+    // machine — when the block is set and when it's dropped.)
+
+    [Fact]
+    public void GuardProtect_SetsGuardBlock_WhenProtectedIsOurTarget()
+    {
+        using Harness h = new();
+        h.AddMonster(1, "brigand chief", killable: true);
+        h.AddMonster(2, "brigand", killable: true, allowNoPrefix: true, "large", "small");
+
+        h.Feed("Also here: brigand chief.");
+        Assert.Equal("brigand chief", h.Combat.CurrentTarget);
+        Assert.Single(h.Sent);
+
+        // A guard steps in front of the chief we're already trying to kill.
+        h.Feed("large brigand moves to protect brigand chief");
+
+        Assert.Equal("brigand chief", h.Combat.Snapshot().GuardBlockedTarget);
+        // We stay on record as targeting the chief; recognising the guard is a
+        // no-op on the wire (the server is already swinging the guard for us).
+        Assert.Equal("brigand chief", h.Combat.CurrentTarget);
+        Assert.Single(h.Sent);
+    }
+
+    [Fact]
+    public void GuardProtect_Ignored_WhenProtectedIsNotOurTarget()
+    {
+        using Harness h = new();
+        h.AddMonster(1, "brigand chief", killable: true);
+        h.AddMonster(2, "brigand", killable: true, allowNoPrefix: true, "large", "small");
+
+        // We're engaging a plain brigand, not the chief.
+        h.Feed("Also here: brigand.");
+        Assert.Equal("brigand", h.Combat.CurrentTarget);
+
+        // A protect line shielding some OTHER monster isn't ours to chase.
+        h.Feed("large brigand moves to protect brigand chief");
+
+        Assert.Null(h.Combat.Snapshot().GuardBlockedTarget);
+    }
+
+    [Fact]
+    public void GuardProtect_Ignored_WhenAutoCombatOff()
+    {
+        using Harness h = new();
+        h.AddMonster(1, "brigand chief", killable: true);
+        h.AddMonster(2, "brigand", killable: true, allowNoPrefix: true, "large", "small");
+
+        h.Feed("Also here: brigand chief.");
+        Assert.Equal("brigand chief", h.Combat.CurrentTarget);
+
+        h.AutoCombatEnabled = false;
+        h.Feed("large brigand moves to protect brigand chief");
+
+        Assert.Null(h.Combat.Snapshot().GuardBlockedTarget);
+    }
+
+    [Fact]
+    public void GuardBlock_ClearedWhenPriorityDies()
+    {
+        using Harness h = new();
+        h.AddMonster(1, "brigand chief", killable: true);
+        h.AddMonster(2, "brigand", killable: true, allowNoPrefix: true, "large", "small");
+
+        h.Feed("Also here: brigand chief.");
+        h.Feed("large brigand moves to protect brigand chief");
+        Assert.Equal("brigand chief", h.Combat.Snapshot().GuardBlockedTarget);
+
+        // The chief finally falls (last guard dead → direct hit → death line).
+        h.Combat.NoteMonsterDied("brigand chief");
+
+        Assert.Null(h.Combat.Snapshot().GuardBlockedTarget);
+        Assert.Null(h.Combat.CurrentTarget);
+    }
+
+    [Fact]
+    public void GuardBlock_SurvivesGuardDeath_ClearsOnlyOnPriorityDeath()
+    {
+        using Harness h = new();
+        h.AddMonster(1, "brigand chief", killable: true);
+        h.AddMonster(2, "brigand", killable: true, allowNoPrefix: true, "large", "small");
+
+        h.Feed("Also here: brigand chief.");
+        h.Feed("large brigand moves to protect brigand chief");
+        Assert.Equal("brigand chief", h.Combat.Snapshot().GuardBlockedTarget);
+
+        // A GUARD dying must not drop the block — the chief is still shielded /
+        // pending until it itself dies.
+        h.Combat.NoteMonsterDied("brigand");
+        Assert.Equal("brigand chief", h.Combat.Snapshot().GuardBlockedTarget);
+    }
+
+    [Fact]
+    public void GuardBlock_ClearedOnRoomChange()
+    {
+        using Harness h = new();
+        h.AddMonster(1, "brigand chief", killable: true);
+        h.AddMonster(2, "brigand", killable: true, allowNoPrefix: true, "large", "small");
+
+        h.Feed("Also here: brigand chief.");
+        h.Feed("large brigand moves to protect brigand chief");
+        Assert.Equal("brigand chief", h.Combat.Snapshot().GuardBlockedTarget);
+
+        h.Classifier.NoteRoomChanged();
+
+        Assert.Null(h.Combat.Snapshot().GuardBlockedTarget);
+    }
+
+    [Fact]
+    public void GuardBlock_ClearedOnTargetNotHere()
+    {
+        using Harness h = new();
+        h.AddMonster(1, "brigand chief", killable: true);
+        h.AddMonster(2, "brigand", killable: true, allowNoPrefix: true, "large", "small");
+
+        h.Feed("Also here: brigand chief.");
+        h.Feed("large brigand moves to protect brigand chief");
+        Assert.Equal("brigand chief", h.Combat.Snapshot().GuardBlockedTarget);
+
+        // Server says the priority isn't here anymore — end the chase.
+        h.Feed("You don't see brigand chief here!");
+
+        Assert.Null(h.Combat.Snapshot().GuardBlockedTarget);
+    }
+
     [Fact]
     public void PrefixedDisplay_AttackUsesPrefixedName()
     {

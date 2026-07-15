@@ -83,6 +83,14 @@ public sealed partial class ConditionTracker : ObservableObject, IDisposable
     // Fires when a previously-active record's AppliedEndsWith matches.
     public event Action<MessageRecord>? ConditionEnded;
 
+    // Fires per matching line for a record carrying LastActionFailed — a
+    // transient per-action outcome (the confusion fumble "You fumble in
+    // confusion"), not a lasting condition. Unlike ConditionApplied this is NOT
+    // deduped by the active set: a confused character fumbles command after
+    // command, re-emitting the same line each time, and combat must re-send its
+    // lost swing on EVERY fumble, not just the first. Fires at most once per line.
+    public event Action<MessageRecord>? ActionFailed;
+
     public ConditionTracker(MessageStore messages, LogService? log = null)
     {
         ArgumentNullException.ThrowIfNull(messages);
@@ -215,9 +223,16 @@ public sealed partial class ConditionTracker : ObservableObject, IDisposable
             }
         }
 
+        MessageRecord? actionFailed = null;
         foreach ((string pattern, MessageRecord r) in _appliedIndex)
         {
             if (!text.Contains(pattern, StringComparison.Ordinal)) continue;
+            // Capture a LastActionFailed match BEFORE the active-set dedup below —
+            // the fumble line re-fires while confusion persists but the record is
+            // only "applied" once, so ActionFailed must ride the raw line. First
+            // match only; alias records sharing the line must not double the retry.
+            if (actionFailed is null && r.Flags.HasFlag(MessageFlags.LastActionFailed))
+                actionFailed = r;
             if (!_active.Add(r.Id)) continue;
             appliedThisLine.Add(r);
         }
@@ -235,6 +250,9 @@ public sealed partial class ConditionTracker : ObservableObject, IDisposable
         LogBatch("applied", appliedThisLine);
         foreach (MessageRecord r in appliedThisLine)
             ConditionApplied?.Invoke(r);
+
+        if (actionFailed is { } af)
+            ActionFailed?.Invoke(af);
     }
 
     // A single game line can match many catalogue records that share the same

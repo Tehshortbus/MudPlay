@@ -110,15 +110,20 @@ internal static class SpecialExitDispatch
             return SpecialExitSend.Sent;
         }
 
-        // Teleport exits — `(Item: N)` on a room whose CMD indexes a TBInfo
-        // action chain. The resolver maps (source, dest) → the keyword the
-        // player types. Party-breaking: a leader relays `.@party <kw>` so
-        // followers come along before the leader teleports.
+        // Teleport exits. Two shapes reach here: a synthesised Direction.Teleport
+        // edge carries its crossing keyword in TextCommands (baked in at graph
+        // build so no lookup is needed), while a cardinal slot re-hinted Teleport
+        // (a CMD teleport shadowing a Door/KeyLocked exit) carries none and
+        // resolves (source, dest) → keyword through the resolver. Party-breaking:
+        // a leader relays `.@party <kw>` so followers come along before the
+        // leader teleports.
         if (exit.Hint == RoomExitHint.Teleport)
         {
-            string? keyword = (sourceRoom is not null && teleportResolver is not null)
-                ? teleportResolver(sourceRoom.Key, exit.Target)
-                : null;
+            string? keyword = exit.TextCommands is { Count: > 0 } teleCmds
+                ? teleCmds[0]
+                : (sourceRoom is not null && teleportResolver is not null)
+                    ? teleportResolver(sourceRoom.Key, exit.Target)
+                    : null;
             if (keyword is null)
             {
                 failReason = "no teleport keyword resolved (TBInfo entry missing or not for this destination)";

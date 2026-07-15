@@ -1,8 +1,21 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.64.0**
-> - Party-wealth probe now logs each member's reply as it arrives — the interpreted copper value (or "wealth unknown") alongside the verbatim reply — so a program-log read confirms every member's response was parsed correctly, not just the final replied/known tally
+> **Version 1.65.0**
+> - Auto-combat re-issues its last attack when a swing fumbles under confusion, so a confused character keeps fighting instead of silently losing attacks until manually re-sent
+> - Guard-aware retargeting: when a monster is shielded by guards ("<guard> moves to protect <target>"), combat re-attacks the intended priority as each guard falls instead of stalling once the last guard dies
+> - Conversation and transaction history reload from the persisted session logs on reconnect, so prior-session chat and ledger entries reappear instead of starting empty
+> - Up/down searchable hidden exits now retry and reveal correctly — the vertical search-miss line ("nothing different above/below you") is recognized like the cardinal form, so up/down searches no longer stall the walker
+> - Backscroll search / Find Next now walks newest → oldest (bottom to top), matching the window's orientation, instead of oldest → newest
+> - `walk to` now routes through single-destination CMD teleports (`go hole` / cast-teleport hops) — modeled as routable map edges, level-gated like any exit, and drawn as a gap into the portal room then out its far side rather than a line across the hop
+> - Blocked-route message now names the item(s) you're missing when every route depends on one you don't carry, instead of a bare "a required item you're missing"
+> - Navigation window header reorganized — engine badge / activity chip / status text share the top row with the search box pinned to its top-right corner, and the display-toggle + action chips drop to their own row
+> - "Collect after combat finished" now defers currency the same as items — ground / corpse / notice cash is queued while the room still holds hostiles and collected on room-clear, instead of picking up between kills
+> - Party-splitting teleports that fully disband the party (`go hole`) now reform on the far side — the deferred re-invite survives the disband and fires on each member's plain "walks in from nowhere" arrival, so the walker holds for the reform instead of leaving without the party
+> - Navigation rail's Loops + Auto-Lairs folders now start collapsed instead of expanded — the compact rail opens tidy each time, and any folder you expand stays open across refreshes
+> - Collect-after-combat re-surveys with a bare `look` when another player is seen grabbing deferred ground cash — the stale per-pile counts are refreshed before the post-combat flush, so it collects what's actually there instead of firing rejected gets ("You don't see 7 gold crown here.")
+> - Party-split teleport (`go hole`) reform now waits for a member's through-the-hole "from nowhere" arrival before re-inviting — a cardinal follow-in the staging room no longer fires the invite early ("You don't see <name> here."), so the group reforms on the far side
+> - The `train stats` / character-creation form now blanket-blocks background automation — while the form owns the keyboard, a single engine-send hold silences every engine (par HP poll, @health nag, the @heal-driven poll, combat, casting, auto-get, chat replies) so nothing can leak into the form's first field (Family Name / last name); only the user's manual input and the auto-trainer's own CP allocation reach the form. Fixes a stray `par\r` overwriting the character's last name on realms whose cursor-positioned stat box never shows the "Point Cost Chart" marker
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

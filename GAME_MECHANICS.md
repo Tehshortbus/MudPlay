@@ -96,6 +96,13 @@ it isn't here and you're unsure, ask.
   realm-independent signal is the outbound `train stats` command itself.
 - **Stock** realms render the same screen inline (scrolling text), so the marker row is emitted
   normally.
+- **The stat box's first field is the "Family Name" (surname / last name)** *([CONFIRMED] — user
+  report)*. The cursor starts there, and a plain Enter advances past it (the auto-trainer replays a
+  bare Enter and never edits it). So any automated `<text>\r` that fires while the user is parked on
+  the form types into that field: a stray party `par\r` poll overwrites the character's last name with
+  "par". This is why every wall-clock / on-demand automated wire send must gate on the realm-
+  independent "screen owns the keyboard" signal (the outbound `train stats` command), not the
+  marker — which on Paradigm never confirms.
 
 ## Light sources
 
@@ -626,6 +633,21 @@ comes from the stat screen / who line (`AlignmentTracker` / `PlayerStats`).
   the same room is a real move with a real room display; it resolves as a normal
   predicted-neighbour match because the exit's target *is* the source, so it is not confused
   with a passive redisplay.)
+- **[CONFIRMED, capture 2026-07-14 report 121106] Searchable hidden exits report success/failure
+  with axis-dependent wording.** Revealing a hidden exit is `sea <dir>`; the game replies with one of:
+  - **success** — cardinals `You found an exit to the <dir>!`; up/down `You found an exit upwards!` /
+    `You found an exit downwards!` (no "to the", `<dir>wards` suffix). *`upwards` confirmed on the wire;
+    `downwards` confirmed from an earlier capture.*
+  - **failure** — cardinals `You notice nothing different to the <dir>.`; up/down `You notice nothing
+    different above you.` / `You notice nothing different below you.` (no "to the", no direction word).
+    *Both vertical forms confirmed (`above you` on the wire, `below you` by the user).*
+
+  The client keys on both to drive the reveal retry loop (`HiddenExitRevealManager`): a failure line
+  triggers another `sea` up to the attempt cap, a success line resolves the reveal so the walker sends
+  the move. Because the up/down failure form drops "to the" entirely, a failure regex that only matched
+  the cardinal `to the <dir>` shape never registered an up/down miss — so up/down searches never retried
+  cleanly and stalled (the reported symptom). A "bonked" `sea` is distinct from a bonked *move*: the
+  `sea` reply above is not a move refusal.
 - **[CONFIRMED]** **A dark room shows no name and no exits — traversal is inferred from the
   absence of a bonk.** A room too dark to see in replaces the *entire* room display (name,
   `Obvious exits:`, `Also here:`) with a single line — `The room is very dark - you can't see
@@ -1047,6 +1069,18 @@ flag). These are hard eligibility gates, independent of resistance and level imm
   silver noble; the game picks whichever object matches first. Emitting the **full two-word coin
   noun** (`silver noble`, `gold crown`, `copper farthing`, `platinum piece`, runic `<word> coin`)
   forces the currency match. The client sends the full noun on every outgoing get/drop as a result.
+- **[CONFIRMED]** **Another player grabbing ground cash emits a non-specific, count-less line:**
+  `<Name> picks up some <coin-plural>` (e.g. `Tristian picks up some gold crowns`) — "some", the
+  full coin plural, and **no trailing count and no trailing period**. It does **not** say how much
+  they took, and it **may take part or all** of the pile. Consequence for automation: a witnessed
+  third-party pickup of a denomination we've deferred makes our stored exact per-pile count stale
+  and unrecoverable — the remaining amount can't be derived from the line.
+- **[CONFIRMED]** **A bare `look` (or `l`) with no target re-displays the current room** — including
+  the `You notice N <coin> here.` ground-cash survey line — so the exact remaining ground cash can be
+  re-surveyed on demand. (A `look <direction>`/`l <dir>` peek renders the *adjacent* room's display
+  instead and is peek-suppressed; only the target-less form surveys the room you stand in.) This is
+  the recovery path for stale deferred counts after a witnessed third-party pickup: re-survey with
+  `look` and collect the freshly-observed amount.
 
 ## Party
 
@@ -1270,6 +1304,26 @@ glass jug               5               2 gold crowns
   room but not attacking unless I manually send attack commands" (report
   `paradigm-20260714-093614`).
 
+## Guarded monsters redirect attacks *([CONFIRMED] 2026-07-14, user + wire capture)*
+
+- Some monsters are **guarded** by others in the same room (e.g. a *brigand chief*
+  guarded by *brigands*). A guarded monster **cannot be hit directly** while any
+  guard is present: each attack aimed at it is **redirected to a guard**, announced
+  by `<guard> moves to protect <protected>` — **no trailing period, no prompt
+  prefix**, and both names are ordinary (multi-word) monster names.
+- The redirect repeats — one guard interposes per attack — until **all guards are
+  dead**, after which the protected monster is directly attackable. Confirmed on the
+  wire in report `paradigm-20260714-115526`: three protect lines as each attack was
+  shielded, then guard deaths, then the chief became hittable.
+- **Implication for auto-combat:** when the protect line names our current priority,
+  the engine keeps that priority "blocked" and, as **each guard falls**, re-issues an
+  attack **by the priority's literal name** (`aa <priority>`) to test whether the
+  guard wall is down yet. This is reactive (line-driven), not read off the game-data
+  "guarded by" field. The block clears when the priority itself dies, on room change,
+  or on a target-not-here / no-effect reply. Without this, killing the last guard
+  emits a *Combat Off* with the chief alive but unengaged, and auto-combat stalls
+  until the user manually attacks (`aa b`) — the reported symptom.
+
 ## Message catalogue (lines the client parses)
 
 | Event | Line |
@@ -1306,6 +1360,7 @@ glass jug               5               2 gold crowns
 | Move refused — shut door | `The door is closed.` |
 | Room too dark to see (starves name + exits + Also-here) | `The room is very dark - you can't see anything.` |
 | Room considerably darker (same starving) | `The room is pitch black...` |
+| Guard interposes for a guarded monster (no trailing period, no prefix) | `<guard> moves to protect <protected>` |
 | Incoming mob attack — miss (dark cyan; reveals a mob in a dark room) | `The <monster> <verb> at you` |
 | Incoming mob attack — hit (dark cyan; reveals a mob in a dark room) | `The <monster> <verb> you for N damage!` |
 | Monster leaves the room (e.g. dragged out by a fleeing player) | `<name> walks out of the room to <dir>.` **or** `<name> exits the room to <dir>.` — both confirmed; the "exits" form (no leading article) was the paradigm drag-out capture |

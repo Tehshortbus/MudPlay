@@ -1306,6 +1306,14 @@ public sealed class AppServices
     // from the party game-side). Auto-clears on recovery.
     public Game.PlayerDroppedGate PlayerDropped { get; private set; } = null!;
 
+    // Trainer-screen lockout bridge — while the `train stats` / character-creation
+    // form owns the keyboard (TrainerMenuTracker.MenuOwnsKeyboard), holds the
+    // EngineSendGate so NO wrapped engine can leak a send into the form's Family
+    // Name field. Only the user's manual input and the auto-trainer's CP
+    // allocation reach the form (both ride the raw, un-wrapped SendUserInput, so
+    // they pierce the hold like the low-HP hangup). Auto-clears on form exit.
+    public Game.TrainerScreenGate TrainerScreen { get; private set; } = null!;
+
     // Ally-drop rescue bridge — reacts to another party / recently-partied member
     // dropping to the ground (0 HP): holds movement (AllyDownGate) to stay with
     // them, sends `aid <name>`, feeds the aided ally into CastDirector for a
@@ -1655,8 +1663,19 @@ public sealed class AppServices
         TrainerMenu.MenuExited  += () => InputBuffer.CharacterMode = false;
         // Silence the poller's wall-clock cadences (par poll + @health nag)
         // while parked in the trainer stats menu; the auto-trainer drives its
-        // own wire, so its CP replay is unaffected.
-        PartyPoller.IsInTrainerMenu = () => TrainerMenu.IsInTrainerMenu;
+        // own wire, so its CP replay is unaffected. Gate on MenuOwnsKeyboard, not
+        // IsInTrainerMenu: on Paradigm's cursor-positioned stat box the marker
+        // never confirms, so the marker-only flag stays false and a `par\r` leaks
+        // into the form's Family Name field, overwriting the character's last name.
+        PartyPoller.IsInTrainerMenu = () => TrainerMenu.MenuOwnsKeyboard;
+        // Blanket lockout: while the train-stats / creation form owns the
+        // keyboard, hold the EngineSendGate so no wrapped engine can leak a send
+        // into the form (the per-poller gate above is a belt-and-braces double
+        // for the wall-clock cadences; this hold catches every other engine —
+        // combat, casting, auto-get, chat replies, the lot). The user's manual
+        // input and the auto-trainer's CP replay both ride the raw SendUserInput,
+        // so they pierce the hold and remain the only two things that can type.
+        TrainerScreen = new Game.TrainerScreenGate(TrainerMenu, EngineGate, Log);
         AutoParty = new Game.AutoPartyManager(Router, Players, PartyState, TrainerMenu, Log);
         // Suicide-password observer + engine-gate consumer. Drives
         // EngineGate.IsLocked during password-entry prompts so
@@ -2019,8 +2038,9 @@ public sealed class AppServices
         // Room graph — seeded from the active set's Rooms.json every time the
         // set switches. Built once per swap; consumers hold typed Room
         // references for the lifetime of the set. Takes TBInfo (loaded above)
-        // so the build can promote CMD-teleport-shadowed door exits to Teleport.
-        RoomGraph = new Game.Map.RoomGraphManager(GameData, Log, TBInfo);
+        // so the build can promote CMD-teleport-shadowed door exits to Teleport,
+        // and SpellCatalog so a cast-based CMD teleport becomes a routable edge.
+        RoomGraph = new Game.Map.RoomGraphManager(GameData, Log, TBInfo, SpellCatalog);
         GameData.ActiveSetChanged += RoomGraph.OnActiveSetChanged;
         if (GameData.ActiveSet is not null)
             RoomGraph.OnActiveSetChanged(GameData.ActiveSet);
@@ -2372,6 +2392,11 @@ public sealed class AppServices
         // RoomEntryArrival pattern + appends to the classifier so the
         // Combat gate / CombatManager react to spawns immediately.
         RoomEntry = new Game.Combat.RoomEntryWatcher(Router, RoomClassifier, Log);
+        // A reform member who crossed a party-splitting teleport that lands them
+        // with a plain "walks into the room from nowhere" (a "go hole"-style CMD
+        // teleport, no "blinding flash" line) still needs their withheld re-invite
+        // fired on arrival — feed the watcher's classified arrivals to AutoParty.
+        RoomEntry.ArrivalObserved += AutoParty.OnPlayerArrival;
 
         // Mid-room departure watcher. Subscribes to the
         // RoomEntryDeparture pattern + removes the departing monster
@@ -2995,7 +3020,7 @@ public sealed class AppServices
         // Transaction history. Reads its own char-tier Talk settings; switches
         // files on profile / BBS change.
         SessionLog = new SessionLogService(
-            Profile, Chat, TransactionHistory, Log,
+            Profile, Chat, ChatHistory, TransactionHistory, Log,
             () => ReadSection<Models.Profile.TalkSettings>(Profile.Current, "Talk"));
 
         // @reset — a party member zeroes our session-stats trackers (the same
@@ -3047,7 +3072,12 @@ public sealed class AppServices
         // MainWindowVM.
         Heal = new Game.Remote.HealCommandHandler(
             RemoteCommands,
-            readParty: () => ReadSection<Models.Profile.PartySettings>(Profile.Current, "Party"));
+            readParty: () => ReadSection<Models.Profile.PartySettings>(Profile.Current, "Party"))
+        {
+            // Same trainer-screen suppression as the timed par poll — an @heal
+            // that fires while parked on the stat form would corrupt the last name.
+            IsInTrainerMenu = () => TrainerMenu.MenuOwnsKeyboard,
+        };
 
         // Item-cast buffs. A Bless slot may hold a #-token naming an
         // unlimited-use cast item (surfaced in the Spell Book); the director
@@ -3095,6 +3125,11 @@ public sealed class AppServices
         // pre-move sequence, before the sn — equipping breaks sneak.
         Combat.SetWeaponActuator(Equipment.SwapWeapon, () => Equipment.ApplyBackstabArmor());
 
+        // Confusion-fumble retry: a fumbled attack is consumed without engaging,
+        // so re-send the last swing on every fumble line (ConditionTracker gates
+        // the raw signal to the confusion record; Combat gates on an active fight).
+        Conditions.ActionFailed += _ => Combat.OnActionFailed();
+
         // CashManager. Subscribes to cash-on-ground
         // / cash-picked-up / cash-dropped patterns and dispatches
         // per-currency policy. AutoGetCash gates the whole engine
@@ -3102,6 +3137,15 @@ public sealed class AppServices
         Cash = new Game.Cash.CashManager(Router,
             readSettings: () => ReadSection<Models.Profile.CashSettings>(Profile.Current, "Cash"),
             isEnabled: () => ReadAutoModeFlag(d => d.AutoGetCash),
+            // Shared Cash + Items timing toggle: defer ground / corpse / notice
+            // cash until the room clears so a get between kills doesn't burn the
+            // pre-attack round. hasEngageableHostiles reads CombatTracker, which
+            // subscribed to EntitiesObserved first, so the flush below sees a
+            // current flag.
+            collectAfterCombatFinished: () =>
+                ReadSection<Models.Profile.CashSettings>(Profile.Current, "Cash")
+                    .CollectAfterCombatFinished,
+            hasEngageableHostiles: () => CombatTracker.HasEngageableHostiles,
             getSnapshot: () => Inventory.Snapshot,
             isPeekSuppressed: () => RoomTracker.IsPeekSuppressed(),
             log: Log,
@@ -3110,6 +3154,11 @@ public sealed class AppServices
         // counts aren't relevant to the new one.
         Profile.ProfileLoaded += _ => Cash.ResetTallies();
         Cash.SetAcquisitionGate(Acquisition);
+        // Combat-finished flush: every room-entity observation re-checks the
+        // deferred collect queue. CombatStateTracker's handler subscribed in its
+        // constructor (well before here), so it runs first and the hostile flag
+        // is current. Mirrors AutoGetItems.OnRoomObserved.
+        RoomClassifier.EntitiesObserved += _ => Cash.OnRoomObserved();
         // Feed confirmed coin pickups into the Session Stats
         // currency-collected tally, converting each denomination to its copper
         // value so mixed currency streams fold into one figure.
@@ -3333,6 +3382,7 @@ public sealed class AppServices
             AutoSearch.OnRoomChanged();
             AutoGetItems.OnRoomChanged();
             GroundItems.OnRoomChanged();
+            Cash.OnRoomChanged();
         };
 
         Walker = new Game.Map.AutoWalkManager(RoomGraph, Bfs, RoomTracker,

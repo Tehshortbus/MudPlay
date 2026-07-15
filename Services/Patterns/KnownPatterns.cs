@@ -100,6 +100,15 @@ public static class KnownPatterns
     // Same prefix tolerance + positional announcer/target captures as the melee form.
     public const string PartyCastAnnounce    = "combat.party-cast-announce";
 
+    // "<guard> moves to protect <protected>." — MajorMUD guard/redirect mechanic.
+    // A "guarded" monster (e.g. a brigand chief guarded by brigands) can't be
+    // attacked directly while a guard is in the room: the server redirects our
+    // swing to the guard and emits this line. CombatManager uses it to remember
+    // the intended priority and re-attack it once the guard falls. Both names are
+    // monsters (multi-word), so the captures are lazy .+? — unlike the player
+    // "moves to attack" form's single-token \w+ announcer.
+    public const string MonsterMovesToProtect = "combat.monster-protect";
+
     // "You don't see <X> here!" — server's response when our `attack X` resolves
     // against a target that left or died between our send and the server's
     // resolve (our death-line match was missed, the mob fled, a partymate killed
@@ -170,6 +179,15 @@ public static class KnownPatterns
     // CashManager dispatches through the same per-currency policy as CashOnGround
     // so kill-loot follows the user's Collect / Discard / Ignore choices.
     public const string CashFromKill        = "cash.from-kill";
+
+    // "<Name> picks up some <coin-plural>" — another player grabbing ground cash.
+    // Non-specific: no count, "some", full coin plural, NO trailing period (so it
+    // never collides with the period-terminated PlayerGets item line). It doesn't
+    // say how much was taken and may take part or all of the pile, so any exact
+    // per-pile count we've deferred goes stale. CashManager arms a re-survey (a
+    // bare `look`) before the post-combat flush when a witnessed pickup names a
+    // denomination we're holding.
+    public const string CashPickedUpByOther = "cash.picked-up-by-other";
 
     // "You notice <list> here." — the realm-specific room-survey line. Cash
     // entries appear FIRST (server orders runic → platinum → gold → copper →

@@ -80,6 +80,19 @@ public sealed class TrainerMenuTracker : IDisposable
     // keyboard right now" signal that automated wire sends must respect.
     public bool IsInputMenuActive => _inputMenuActive;
 
+    // The composite "a trainer / creation screen owns the keyboard right now"
+    // read that automated wall-clock wire sends (par poll, @health nag, the
+    // @heal-driven par) MUST gate on. It's the OR of both entry paths: the
+    // command-armed `train stats` input session (realm-independent) and the
+    // marker-confirmed full-screen menu (covers character creation, which has no
+    // outbound command to arm on). Gating on IsInTrainerMenu alone is a trap: on
+    // a cursor-positioned menu (Paradigm's stat box) the "Point Cost Chart"
+    // marker row never scrolls inline, so that flag never confirms — yet the
+    // screen owns the keyboard, and the box's FIRST field is the Family Name, so
+    // a stray automated `par\r` types into it and overwrites the character's last
+    // name. IsInputMenuActive carries that case; this property folds both in.
+    public bool MenuOwnsKeyboard => _inputMenuActive || _inMenu;
+
     // Snapshot of non-self party member names taken at the moment we confirmed
     // menu entry. Subscribers to MenuExited inspect this to decide who to
     // re-invite.
