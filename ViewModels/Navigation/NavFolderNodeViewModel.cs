@@ -14,10 +14,11 @@ namespace FujinTerm.ViewModels.Navigation;
 // the tree from a flat row list is NavTreeBuilder's job.
 public sealed partial class NavFolderNodeViewModel : ObservableObject
 {
-    public NavFolderNodeViewModel(string path, string name)
+    public NavFolderNodeViewModel(string path, string name, bool isExpanded = true)
     {
         Path = path;
         Name = name;
+        IsExpanded = isExpanded;
     }
 
     // Full stored folder path (e.g. "Cities/Silvermere"). Never empty — the root isn't a node.
@@ -29,6 +30,9 @@ public sealed partial class NavFolderNodeViewModel : ObservableObject
     // Child folders (as NavFolderNodeViewModel) then leaf rows, both pre-sorted by the builder.
     public ObservableCollection<object> Children { get; } = new();
 
-    // Tree expand/collapse state. Folders start expanded so a freshly-built tree shows everything.
-    [ObservableProperty] private bool _isExpanded = true;
+    // Tree expand/collapse state. The builder seeds the starting value per
+    // surface (the rail's Loops+Lairs tree starts collapsed; the Manage dialog
+    // and GOTO tree start expanded); NavTreeBuilder preserves a user's per-folder
+    // override across rebuilds.
+    [ObservableProperty] private bool _isExpanded;
 }
