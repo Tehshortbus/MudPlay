@@ -1306,6 +1306,14 @@ public sealed class AppServices
     // from the party game-side). Auto-clears on recovery.
     public Game.PlayerDroppedGate PlayerDropped { get; private set; } = null!;
 
+    // Trainer-screen lockout bridge — while the `train stats` / character-creation
+    // form owns the keyboard (TrainerMenuTracker.MenuOwnsKeyboard), holds the
+    // EngineSendGate so NO wrapped engine can leak a send into the form's Family
+    // Name field. Only the user's manual input and the auto-trainer's CP
+    // allocation reach the form (both ride the raw, un-wrapped SendUserInput, so
+    // they pierce the hold like the low-HP hangup). Auto-clears on form exit.
+    public Game.TrainerScreenGate TrainerScreen { get; private set; } = null!;
+
     // Ally-drop rescue bridge — reacts to another party / recently-partied member
     // dropping to the ground (0 HP): holds movement (AllyDownGate) to stay with
     // them, sends `aid <name>`, feeds the aided ally into CastDirector for a
@@ -1660,6 +1668,14 @@ public sealed class AppServices
         // never confirms, so the marker-only flag stays false and a `par\r` leaks
         // into the form's Family Name field, overwriting the character's last name.
         PartyPoller.IsInTrainerMenu = () => TrainerMenu.MenuOwnsKeyboard;
+        // Blanket lockout: while the train-stats / creation form owns the
+        // keyboard, hold the EngineSendGate so no wrapped engine can leak a send
+        // into the form (the per-poller gate above is a belt-and-braces double
+        // for the wall-clock cadences; this hold catches every other engine —
+        // combat, casting, auto-get, chat replies, the lot). The user's manual
+        // input and the auto-trainer's CP replay both ride the raw SendUserInput,
+        // so they pierce the hold and remain the only two things that can type.
+        TrainerScreen = new Game.TrainerScreenGate(TrainerMenu, EngineGate, Log);
         AutoParty = new Game.AutoPartyManager(Router, Players, PartyState, TrainerMenu, Log);
         // Suicide-password observer + engine-gate consumer. Drives
         // EngineGate.IsLocked during password-entry prompts so
