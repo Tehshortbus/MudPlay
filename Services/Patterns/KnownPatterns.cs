@@ -180,6 +180,15 @@ public static class KnownPatterns
     // so kill-loot follows the user's Collect / Discard / Ignore choices.
     public const string CashFromKill        = "cash.from-kill";
 
+    // "<Name> picks up some <coin-plural>" — another player grabbing ground cash.
+    // Non-specific: no count, "some", full coin plural, NO trailing period (so it
+    // never collides with the period-terminated PlayerGets item line). It doesn't
+    // say how much was taken and may take part or all of the pile, so any exact
+    // per-pile count we've deferred goes stale. CashManager arms a re-survey (a
+    // bare `look`) before the post-combat flush when a witnessed pickup names a
+    // denomination we're holding.
+    public const string CashPickedUpByOther = "cash.picked-up-by-other";
+
     // "You notice <list> here." — the realm-specific room-survey line. Cash
     // entries appear FIRST (server orders runic → platinum → gold → copper →
     // silver), followed by items. Comma-separated, last entry ends with a period.

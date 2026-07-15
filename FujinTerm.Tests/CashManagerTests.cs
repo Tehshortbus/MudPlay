@@ -924,6 +924,94 @@ public sealed class CashManagerTests
         Assert.Equal("get 7 silver noble", h.LastSent);
     }
 
+    // ----- witnessed third-party pickup → re-survey before flush ------
+
+    // The bug: with deferred gold on the ground, another player grabs "some gold
+    // crowns" (non-specific) and more gold drops. The stored per-pile counts are
+    // now stale (piles merged, amount taken unknown), so the flush must NOT fire
+    // the blind stale gets ("get 3", "get 7" → "You don't see 7 gold crown here.")
+    // — it re-surveys with a bare `look` and collects the freshly-observed amount.
+    [Fact]
+    public void WitnessedPickup_OfDeferredCurrency_ResurveysInsteadOfBlindGets()
+    {
+        using Harness h = new() { HasHostiles = true };
+        h.Settings.GoldPolicy = CashPolicy.Collect;
+        h.Settings.CollectAfterCombatFinished = true;
+
+        h.Feed("3 gold drop to the ground.");             // deferred
+        h.Feed("Tristian picks up some gold crowns");     // arms re-survey (gold is deferred)
+        h.Feed("7 gold drop to the ground.");             // deferred (merged pile now stale)
+        Assert.Empty(h.Sent);
+
+        h.HasHostiles = false;
+        h.Cash.OnRoomObserved();                          // combat finished → flush
+
+        // A single `look`, and NONE of the blind stale gets.
+        Assert.Equal(new[] { "look" }, h.AllSent);
+
+        // The room re-display drives the exact collect (combat is over now).
+        h.Feed("You notice 10 gold crowns here.");
+        Assert.Equal("get 10 gold crown", h.LastSent);
+        Assert.DoesNotContain("get 3 gold crown", h.AllSent);
+        Assert.DoesNotContain("get 7 gold crown", h.AllSent);
+    }
+
+    // A witnessed pickup of a denomination we HAVEN'T deferred leaves our stored
+    // count intact — the normal flush fires the exact deferred get, no re-survey.
+    [Fact]
+    public void WitnessedPickup_OfUndeferredCurrency_FlushesNormally()
+    {
+        using Harness h = new() { HasHostiles = true };
+        h.Settings.GoldPolicy = CashPolicy.Collect;
+        h.Settings.CollectAfterCombatFinished = true;
+
+        h.Feed("3 gold drop to the ground.");             // deferred
+        h.Feed("Tristian picks up some silver nobles");   // silver not deferred → no re-survey
+
+        h.HasHostiles = false;
+        h.Cash.OnRoomObserved();
+
+        Assert.Equal("get 3 gold crown", h.LastSent);
+        Assert.DoesNotContain("look", h.AllSent);
+    }
+
+    // "picks up some <item>" (a non-cash stackable) must not arm the re-survey —
+    // the leading word isn't a denomination.
+    [Fact]
+    public void WitnessedPickup_NonCashItem_FlushesNormally()
+    {
+        using Harness h = new() { HasHostiles = true };
+        h.Settings.GoldPolicy = CashPolicy.Collect;
+        h.Settings.CollectAfterCombatFinished = true;
+
+        h.Feed("3 gold drop to the ground.");
+        h.Feed("Tristian picks up some torn rags");       // not cash → ignored
+
+        h.HasHostiles = false;
+        h.Cash.OnRoomObserved();
+
+        Assert.Equal("get 3 gold crown", h.LastSent);
+        Assert.DoesNotContain("look", h.AllSent);
+    }
+
+    // Walking out before the room cleared drops a pending re-survey too — the coin
+    // belonged to the room we left, so a later clear-signal collects nothing.
+    [Fact]
+    public void WitnessedPickup_RoomChange_DropsPendingResurvey()
+    {
+        using Harness h = new() { HasHostiles = true };
+        h.Settings.GoldPolicy = CashPolicy.Collect;
+        h.Settings.CollectAfterCombatFinished = true;
+
+        h.Feed("3 gold drop to the ground.");
+        h.Feed("Tristian picks up some gold crowns");     // re-survey armed
+        h.Cash.OnRoomChanged();                           // walked away
+
+        h.HasHostiles = false;
+        h.Cash.OnRoomObserved();
+        Assert.Empty(h.Sent);                             // no look, no get
+    }
+
     // ----- encumbrance gate + cascade --------------------------------
 
     /// <summary>Build a snapshot with given per-coin counts + a numeric

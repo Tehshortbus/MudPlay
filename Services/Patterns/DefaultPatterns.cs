@@ -222,6 +222,13 @@ public static class DefaultPatterns
         // both into the same policy dispatch.
         yield return new RegexPattern(KnownPatterns.CashFromKill,
             @"^(?<count>\d+) (?<currency>\w+) drops? to the ground\.");
+        // Another player grabbing ground cash — "<Name> picks up some <coin>".
+        // Count-less and NOT period-terminated, so it can't collide with the
+        // period-terminated PlayerGets item line ("Bob picks up a sword."). The
+        // coin group is the full plural ("gold crowns"); CashManager keys off the
+        // leading denomination word and ignores non-cash "some <item>" matches.
+        yield return new RegexPattern(KnownPatterns.CashPickedUpByOther,
+            @"^(?<player>\w+) picks up some (?<coin>.+)$");
 
         // Realm-specific room survey — "You notice <list> here." with
         // cash entries (always first) + items. The single-line case

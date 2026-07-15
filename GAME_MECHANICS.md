@@ -1062,6 +1062,18 @@ flag). These are hard eligibility gates, independent of resistance and level imm
   silver noble; the game picks whichever object matches first. Emitting the **full two-word coin
   noun** (`silver noble`, `gold crown`, `copper farthing`, `platinum piece`, runic `<word> coin`)
   forces the currency match. The client sends the full noun on every outgoing get/drop as a result.
+- **[CONFIRMED]** **Another player grabbing ground cash emits a non-specific, count-less line:**
+  `<Name> picks up some <coin-plural>` (e.g. `Tristian picks up some gold crowns`) — "some", the
+  full coin plural, and **no trailing count and no trailing period**. It does **not** say how much
+  they took, and it **may take part or all** of the pile. Consequence for automation: a witnessed
+  third-party pickup of a denomination we've deferred makes our stored exact per-pile count stale
+  and unrecoverable — the remaining amount can't be derived from the line.
+- **[CONFIRMED]** **A bare `look` (or `l`) with no target re-displays the current room** — including
+  the `You notice N <coin> here.` ground-cash survey line — so the exact remaining ground cash can be
+  re-surveyed on demand. (A `look <direction>`/`l <dir>` peek renders the *adjacent* room's display
+  instead and is peek-suppressed; only the target-less form surveys the room you stand in.) This is
+  the recovery path for stale deferred counts after a witnessed third-party pickup: re-survey with
+  `look` and collect the freshly-observed amount.
 
 ## Party
 
