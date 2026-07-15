@@ -126,28 +126,6 @@ public sealed class StatParserPersistenceTests
     }
 
     [Fact]
-    public void Hydrate_FromSnapshot_MarksTrapsKnown()
-    {
-        // A persisted snapshot is only ever written after a real capture, so
-        // hydrating one counts as "trap skill known" — the walker trusts it
-        // instead of halting on the first trap of a fresh session.
-        var (p, _) = Setup();
-        Assert.False(p.TrapsKnown);
-        p.Hydrate(new LastKnownStats { Traps = 155 });
-        Assert.True(p.TrapsKnown);
-    }
-
-    [Fact]
-    public void Hydrate_NullSnapshot_ClearsTrapsKnown()
-    {
-        var (p, _) = Setup();
-        p.FeedTestLine("Kai:   0/0                                  Traps:        155");
-        Assert.True(p.TrapsKnown);
-        p.Hydrate(null);
-        Assert.False(p.TrapsKnown);
-    }
-
-    [Fact]
     public void Hydrate_FromSnapshot_RestoresEveryField()
     {
         var (p, s) = Setup();

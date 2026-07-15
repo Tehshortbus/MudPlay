@@ -1,3 +1,4 @@
+using FujinTerm.Game.GameData;
 using FujinTerm.Services;
 using FujinTerm.Services.Patterns;
 
@@ -13,8 +14,10 @@ namespace FujinTerm.Game;
 // the queue, telepaths each queued sender that their trap was cancelled, and
 // returns to State.Idle.
 //
-// The Stats-skill gate (CanDisarm) lives in this manager so the handler can
-// interrogate it before deciding whether to enqueue or send a denial reply. The
+// The capability gate (CanDisarm) lives in this manager so the handler can
+// interrogate it before deciding whether to enqueue or send a denial reply. It
+// reads a positive parsed Traps stat OR a class/race game-data trap-skill grant,
+// so a character whose Traps value isn't captured yet still counts as able. The
 // handler also owns the channel-aware silence (Say/Gangpath when no skill →
 // silent; Telepath → reply) since the channel context lives at handler dispatch
 // time.
@@ -25,6 +28,7 @@ public sealed class TrapDisarmManager : IDisposable
 {
     private readonly MessageRouter _router;
     private readonly PlayerStats _stats;
+    private readonly GameDataCache _gameData;
     private readonly LogService? _log;
     private readonly IDisposable _foundSub;
     private readonly IDisposable _noneSub;
@@ -48,8 +52,23 @@ public sealed class TrapDisarmManager : IDisposable
     // Default 5; pushed from Models.Profile.OtherSettings.MaxTrapDisarmAttempts.
     public int MaxDisarmAttempts { get; set; } = 5;
 
-    // True when the local character has the Traps skill (Stats.Traps > 0).
-    public bool CanDisarm => _stats.Traps > 0;
+    // True when the local character has the Traps skill — either a positive parsed
+    // Traps stat, or a selected class / race that grants the skill in the active
+    // game data. The inference covers the gap when the Traps value hasn't been
+    // captured yet (a freshly loaded profile that hasn't run `stat` this session, a
+    // brand-new character): race and class are chosen at creation and shown on the
+    // train-stats screen, so the game-data grant tells us capability even with a
+    // defaulted-zero Traps value. Mirrors the party-delegation capability check.
+    public bool CanDisarm =>
+        _stats.Traps > 0
+        || AbilityNames.ClassOrRaceGrantsTraps(_gameData, _stats.Class, _stats.Race);
+
+    // Diagnostic: true when CanDisarm is satisfied ONLY by the class/race game-data
+    // grant (no parsed Traps value). Surfaced in the bug report so a "walker walked
+    // through a trap" capture shows whether capability came from stats or inference.
+    public bool SkillInferredFromClassOrRace =>
+        _stats.Traps <= 0
+        && AbilityNames.ClassOrRaceGrantsTraps(_gameData, _stats.Class, _stats.Race);
 
     // Current state — exposed for tests + diagnostics.
     public State CurrentState => _state;
@@ -60,13 +79,16 @@ public sealed class TrapDisarmManager : IDisposable
     // Outstanding queue depth (excludes the in-flight request).
     public int QueueDepth => _queue.Count;
 
-    public TrapDisarmManager(MessageRouter router, PlayerStats stats, LogService? log = null)
+    public TrapDisarmManager(
+        MessageRouter router, PlayerStats stats, GameDataCache gameData, LogService? log = null)
     {
         ArgumentNullException.ThrowIfNull(router);
         ArgumentNullException.ThrowIfNull(stats);
-        _router = router;
-        _stats  = stats;
-        _log    = log;
+        ArgumentNullException.ThrowIfNull(gameData);
+        _router   = router;
+        _stats    = stats;
+        _gameData = gameData;
+        _log      = log;
 
         _foundSub    = _router.Subscribe(KnownPatterns.TrapFoundInSearch,   OnSearchFound);
         _noneSub     = _router.Subscribe(KnownPatterns.TrapNoneInSearch,    OnSearchNone);

@@ -65,16 +65,6 @@ public sealed partial class StatParser : IDisposable
     // True once any stat-screen line has been parsed this session.
     public bool HasParsed { get; private set; }
 
-    // True once we've actually observed our Traps skill — either the full stat
-    // screen's "Traps:" row committed, or a persisted snapshot hydrated it on
-    // profile load. Distinct from HasParsed, which the single-line `exp` /
-    // lives / xp-gain handlers also flip WITHOUT ever touching Traps — so
-    // HasParsed can't tell "trap skill unknown" from "known zero." The walker's
-    // trap-disarm gate needs that distinction: with disarm enabled it halts on a
-    // trap when the skill is genuinely unknown, rather than waltzing through on a
-    // defaulted zero it never actually parsed.
-    public bool TrapsKnown { get; private set; }
-
     // Fires once per scan window AFTER one or more fields commit and the gate
     // closes (whatever the close reason — prompt, expiry, etc.). Carries a
     // fresh LastKnownStats snapshot built from the current Stats values.
@@ -148,7 +138,6 @@ public sealed partial class StatParser : IDisposable
             Stats.MagicRes = 0;
             Stats.Spellcasting = 0;
             HasParsed = false;
-            TrapsKnown = false;
             return;
         }
 
@@ -187,11 +176,8 @@ public sealed partial class StatParser : IDisposable
         Stats.Spellcasting = snapshot.Spellcasting;
         // Flip the gate true so consumers (e.g. RemoteCommandManager's
         // LivesProvider) trust the hydrated values immediately — the
-        // next live stat will reconfirm them. A persisted snapshot is only
-        // ever written after a real capture (CloseGate snapshots only when a
-        // field committed), so a hydrated Traps value counts as known.
+        // next live stat will reconfirm them.
         HasParsed = true;
-        TrapsKnown = true;
     }
 
     // Build a snapshot of the current Stats values suitable for persisting to
@@ -429,7 +415,7 @@ public sealed partial class StatParser : IDisposable
         TryInt(text, PerceptionRx(),   "Perception",   v => Stats.Perception   = v);
         TryInt(text, StealthRx(),      "Stealth",      v => Stats.Stealth      = v);
         TryInt(text, ThieveryRx(),     "Thievery",     v => Stats.Thievery     = v);
-        TryInt(text, TrapsRx(),        "Traps",        v => { Stats.Traps = v; TrapsKnown = true; });
+        TryInt(text, TrapsRx(),        "Traps",        v => Stats.Traps        = v);
         TryInt(text, PicklocksRx(),    "Picklocks",    v => Stats.Picklocks    = v);
         TryInt(text, TrackingRx(),     "Tracking",     v => Stats.Tracking     = v);
         TryInt(text, StrengthRx(),     "Strength",     v => Stats.Strength     = v);

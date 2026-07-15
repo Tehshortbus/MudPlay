@@ -664,15 +664,20 @@ comes from the stat screen / who line (`AlignmentTracker` / `PlayerStats`).
     Whether `disarm trap <longdir>` (e.g. `disarm trap southeast`) is accepted the same way `sea
     <longdir>` is has NOT been directly wire-confirmed (the reported capture stalled before the
     disarm went out); it is the walker's existing send shape and is flagged for live verification.
-- **[CONFIRMED, capture 2026-07-15 report 131801] The `stat` screen is the only source of the Traps
-  skill; the single-line `exp` output never carries it.** A character's trap-disarm capability is read
-  from the `Traps:` row of the full `stat` screen. The `exp` command's one-liner (`Exp: N Level: M Exp
-  needed for next level: ...`) reports only progression, so parsing `exp` cannot establish the trap
-  skill. The client therefore distinguishes "trap skill unknown (never parsed a full stat / no hydrated
-  profile snapshot)" from "known zero": with "utilize disarm traps if able" on, the walker halts on a
-  trapped exit when the skill is genuinely unknown rather than deciding capability on a defaulted zero
-  and waltzing through. Once a full `stat` is parsed (or a saved profile hydrates it) the skill is known
-  and the normal self-disarm / party-delegate / walk-through path applies.
+- **[CONFIRMED, capture 2026-07-15 report 131801] Trap-disarm capability can be inferred from the
+  character's race and class via game data — the parsed Traps stat is not the only signal.** Race and
+  class are chosen at character creation (the player selects them) and are shown on the train-stats
+  screen, so they are known even for a brand-new character that has never run `stat`. A class or race
+  grants the Traps skill when its game-data record carries a trap-skill ability code — code 40
+  (FindTraps, the single "Traps" skill governing both find and disarm in stock data), 41 (DisarmTraps),
+  or 1002 (GrantTraps) for custom / ParaMUD sets (see `AbilityNames.HasTrapAbility`; this is the same
+  grant the party-delegation capability check already reads for other players). The Traps *value*
+  itself still comes only from the `stat` screen's `Traps:` row — the single-line `exp` output
+  (`Exp: N Level: M Exp needed for next level: ...`) reports only progression and never carries it. So
+  when the Traps value hasn't been captured yet (a freshly loaded profile with no `stat` this session,
+  or a new character), the client falls back to the race/class game-data grant to decide capability:
+  the walker self-disarms if the selected class or race grants Traps, rather than deciding on a
+  defaulted-zero value and waltzing through. A positive parsed Traps value remains the primary signal.
 - **[CONFIRMED]** **A dark room shows no name and no exits — traversal is inferred from the
   absence of a bonk.** A room too dark to see in replaces the *entire* room display (name,
   `Obvious exits:`, `Also here:`) with a single line — `The room is very dark - you can't see

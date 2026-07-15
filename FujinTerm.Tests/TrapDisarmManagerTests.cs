@@ -13,16 +13,47 @@ namespace FujinTerm.Tests;
 /// these tests drive the manager directly via Enqueue + simulated
 /// inbound game messages.
 /// </summary>
-public sealed class TrapDisarmManagerTests
+public sealed class TrapDisarmManagerTests : IDisposable
 {
     private static readonly DateTimeOffset Now = new(2026, 6, 3, 0, 0, 0, TimeSpan.Zero);
 
-    private static (TrapDisarmManager mgr, MessageRouter router, PlayerStats stats, List<byte[]> wire) Setup(int traps = 50)
+    private readonly string _root;
+
+    public TrapDisarmManagerTests()
+    {
+        _root = Path.Combine(Path.GetTempPath(), "fujinterm-trapdisarm-tests-" + Path.GetRandomFileName());
+        Directory.CreateDirectory(_root);
+    }
+
+    public void Dispose()
+    {
+        try { Directory.Delete(_root, recursive: true); }
+        catch { /* best-effort temp cleanup — leaves nothing but a temp dir if it fails */ }
+    }
+
+    // Build a cache over an isolated set. Seed rows via classesJson / racesJson
+    // (null → that table absent). Passing both null leaves no active set, so every
+    // FindRowByName reads null — what the state-machine tests want, where the
+    // class/race inference must contribute nothing.
+    private GameDataCache Cache(string? classesJson = null, string? racesJson = null)
+    {
+        GameDataCache cache = new(_root);
+        if (classesJson is null && racesJson is null) return cache;
+        string dir = Path.Combine(_root, "set");
+        Directory.CreateDirectory(dir);
+        if (classesJson is not null) File.WriteAllText(Path.Combine(dir, "Classes.json"), classesJson);
+        if (racesJson is not null) File.WriteAllText(Path.Combine(dir, "Races.json"), racesJson);
+        cache.SwitchSet("set");
+        return cache;
+    }
+
+    private (TrapDisarmManager mgr, MessageRouter router, PlayerStats stats, List<byte[]> wire) Setup(
+        int traps = 50, GameDataCache? cache = null, string race = "", string @class = "")
     {
         MessageRouter router = new();
         DefaultPatterns.Seed(router);
-        PlayerStats stats = new() { Traps = traps };
-        TrapDisarmManager mgr = new(router, stats);
+        PlayerStats stats = new() { Traps = traps, Race = race, Class = @class };
+        TrapDisarmManager mgr = new(router, stats, cache ?? Cache());
         List<byte[]> wire = new();
         mgr.SetWireSender(wire.Add);
         return (mgr, router, stats, wire);
@@ -84,6 +115,55 @@ public sealed class TrapDisarmManagerTests
     {
         var (mgr, _, _, _) = Setup(traps: 50);
         Assert.True(mgr.CanDisarm);
+    }
+
+    [Fact]
+    public void CanDisarm_True_WhenClassGrantsTraps_EvenWithZeroStat()
+    {
+        // The Traps value was never captured (a freshly loaded profile, or a
+        // brand-new character that hasn't run `stat`), but the selected class
+        // grants the Traps skill in game data (Abil-0=40 FindTraps). Inference
+        // recognises capability so the walker self-disarms instead of walking
+        // through — the reported bug.
+        GameDataCache cache = Cache(
+            classesJson: "[{\"Name\":\"Ninja\",\"Abil-0\":40},{\"Name\":\"Mage\",\"Abil-0\":5}]");
+        var (mgr, _, _, _) = Setup(traps: 0, cache: cache, @class: "Ninja");
+        Assert.True(mgr.CanDisarm);
+        Assert.True(mgr.SkillInferredFromClassOrRace);
+    }
+
+    [Fact]
+    public void CanDisarm_True_WhenRaceGrantsTraps_EvenWithZeroStat()
+    {
+        // Class doesn't grant it, but the race does (Abil-0=1002 GrantTraps).
+        GameDataCache cache = Cache(
+            classesJson: "[{\"Name\":\"Mage\",\"Abil-0\":5}]",
+            racesJson:   "[{\"Name\":\"Gnome\",\"Abil-0\":1002},{\"Name\":\"Human\",\"Abil-0\":0}]");
+        var (mgr, _, _, _) = Setup(traps: 0, cache: cache, race: "Gnome", @class: "Mage");
+        Assert.True(mgr.CanDisarm);
+    }
+
+    [Fact]
+    public void CanDisarm_False_WhenClassAndRaceLackTraps_AndStatZero()
+    {
+        GameDataCache cache = Cache(
+            classesJson: "[{\"Name\":\"Mage\",\"Abil-0\":5}]",
+            racesJson:   "[{\"Name\":\"Human\",\"Abil-0\":0}]");
+        var (mgr, _, _, _) = Setup(traps: 0, cache: cache, race: "Human", @class: "Mage");
+        Assert.False(mgr.CanDisarm);
+        Assert.False(mgr.SkillInferredFromClassOrRace);
+    }
+
+    [Fact]
+    public void SkillInferredFromClassOrRace_False_WhenStatPositive()
+    {
+        // A parsed positive Traps value is the primary signal, so the inference
+        // diagnostic reads false even when the class would also grant the skill.
+        GameDataCache cache = Cache(
+            classesJson: "[{\"Name\":\"Ninja\",\"Abil-0\":40}]");
+        var (mgr, _, _, _) = Setup(traps: 50, cache: cache, @class: "Ninja");
+        Assert.True(mgr.CanDisarm);
+        Assert.False(mgr.SkillInferredFromClassOrRace);
     }
 
     // ===== Single-request happy path =====

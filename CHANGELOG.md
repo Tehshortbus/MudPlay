@@ -5,8 +5,8 @@ Notable changes per merged PR, **newest first**. The top of the [README](README.
 ## 1.65.2
 
 - Trap disarm now advances past a successful search when the walker triggered it — direction matching normalizes both the game's reply and the walker's long-form direction, so a found trap ("You found a trap to the southeast!") no longer stalls in search and never disarms
-- `walk to` no longer waltzes through a trapped exit when disarm is enabled but the Traps skill was never parsed — with the skill genuinely unknown (no full `stat`, no hydrated profile) the walker halts and asks for a `stat` instead of deciding capability on a defaulted zero
-- Bug report captures the trap skill's known/unknown state alongside canDisarm
+- Trap-disarm capability is now inferred from the character's race and class via game data — when the Traps value hasn't been captured yet (freshly loaded profile, or a new character), a class/race that grants the Traps skill still lets the walker self-disarm instead of walking through the trapped exit
+- Bug report captures the parsed Traps stat and whether disarm capability was inferred from class/race, alongside canDisarm
 - bug reports addressed: paradigm-20260715-131801, paradigm-20260715-132150
 
 ## 1.65.0
