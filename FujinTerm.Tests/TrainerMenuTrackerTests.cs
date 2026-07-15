@@ -265,6 +265,48 @@ public sealed class TrainerMenuTrackerTests
     }
 
     [Fact]
+    public void MenuOwnsKeyboard_TrueOnTrainStats_EvenWithoutMarker()
+    {
+        // Regression: the timed `par` poll gated on IsInTrainerMenu (marker-
+        // confirmed), which never sets on Paradigm's cursor-positioned stat box
+        // (the "Point Cost Chart" marker row never scrolls inline). So a `par\r`
+        // leaked into the form and overwrote the Family Name (last name). The
+        // realm-independent read automated sends must gate on is MenuOwnsKeyboard,
+        // which the command-armed input session carries even with no marker line.
+        var (tracker, _, _) = Setup();
+        Assert.False(tracker.MenuOwnsKeyboard);
+
+        tracker.ObserveOutbound(Encoding.Latin1.GetBytes("train stats\r"));
+
+        Assert.True(tracker.MenuOwnsKeyboard);   // owns the keyboard...
+        Assert.False(tracker.IsInTrainerMenu);   // ...though the marker never confirmed
+    }
+
+    [Fact]
+    public void MenuOwnsKeyboard_TrueOnMarkerConfirmedMenu()
+    {
+        // The character-creation / stock-realm path confirms via the marker with
+        // no command to arm input on; MenuOwnsKeyboard must fold that in too.
+        var (tracker, router, _) = Setup();
+        tracker.ObserveOutbound(Encoding.Latin1.GetBytes("train stats\r"));
+        Dispatch(router, "    Point Cost Chart");
+        Assert.True(tracker.IsInTrainerMenu);
+        Assert.True(tracker.MenuOwnsKeyboard);
+    }
+
+    [Fact]
+    public void MenuOwnsKeyboard_ClearsOnMenuExit()
+    {
+        var (tracker, router, _) = Setup();
+        tracker.ObserveOutbound(Encoding.Latin1.GetBytes("train stats\r"));
+        Assert.True(tracker.MenuOwnsKeyboard);
+
+        Dispatch(router, "[HP=33]:"); // command echo — swallowed
+        Dispatch(router, "[HP=33]:"); // exit prompt — screen left
+        Assert.False(tracker.MenuOwnsKeyboard);
+    }
+
+    [Fact]
     public void InputMenu_ReOpen_ArmsAgainAfterExit()
     {
         // A fresh `train stats` after the box was left re-arms input mode.

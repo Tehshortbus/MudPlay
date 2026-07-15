@@ -1655,8 +1655,11 @@ public sealed class AppServices
         TrainerMenu.MenuExited  += () => InputBuffer.CharacterMode = false;
         // Silence the poller's wall-clock cadences (par poll + @health nag)
         // while parked in the trainer stats menu; the auto-trainer drives its
-        // own wire, so its CP replay is unaffected.
-        PartyPoller.IsInTrainerMenu = () => TrainerMenu.IsInTrainerMenu;
+        // own wire, so its CP replay is unaffected. Gate on MenuOwnsKeyboard, not
+        // IsInTrainerMenu: on Paradigm's cursor-positioned stat box the marker
+        // never confirms, so the marker-only flag stays false and a `par\r` leaks
+        // into the form's Family Name field, overwriting the character's last name.
+        PartyPoller.IsInTrainerMenu = () => TrainerMenu.MenuOwnsKeyboard;
         AutoParty = new Game.AutoPartyManager(Router, Players, PartyState, TrainerMenu, Log);
         // Suicide-password observer + engine-gate consumer. Drives
         // EngineGate.IsLocked during password-entry prompts so
@@ -3053,7 +3056,12 @@ public sealed class AppServices
         // MainWindowVM.
         Heal = new Game.Remote.HealCommandHandler(
             RemoteCommands,
-            readParty: () => ReadSection<Models.Profile.PartySettings>(Profile.Current, "Party"));
+            readParty: () => ReadSection<Models.Profile.PartySettings>(Profile.Current, "Party"))
+        {
+            // Same trainer-screen suppression as the timed par poll — an @heal
+            // that fires while parked on the stat form would corrupt the last name.
+            IsInTrainerMenu = () => TrainerMenu.MenuOwnsKeyboard,
+        };
 
         // Item-cast buffs. A Bless slot may hold a #-token naming an
         // unlimited-use cast item (surfaced in the Spell Book); the director

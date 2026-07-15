@@ -26,6 +26,7 @@ public sealed class HealCommandHandlerTests
         public required PlayerDatabase Players { get; init; }
         public required PartySettings Party { get; init; }
         public required List<byte[]> WireSent { get; init; }
+        public required HealCommandHandler Handler { get; init; }
     }
 
     private static Harness Setup()
@@ -46,6 +47,7 @@ public sealed class HealCommandHandlerTests
             Players = players,
             Party = settings,
             WireSent = wire,
+            Handler = handler,
         };
     }
 
@@ -108,6 +110,23 @@ public sealed class HealCommandHandlerTests
         Harness h = Setup();
         SeedPlayer(h.Players, "Bob", PlayerRemoteControls.ExecuteCommands);
         // No party-heal spell set — nothing to cast, so no par + no reply.
+
+        h.Engine.DispatchForTests(Telepath("Bob", "@heal"));
+
+        Assert.Empty(Wire(h));
+        Assert.Empty(Replies(h.Engine));
+    }
+
+    [Fact]
+    public void Heal_WhileInTrainerMenu_StaysSilent()
+    {
+        // Parked on the `train stats` form a configured healer can't cast, and a
+        // par poll would land in the stat form's Family Name field, overwriting
+        // the last name. So the handler stays fully silent — no par, no ack.
+        Harness h = Setup();
+        SeedPlayer(h.Players, "Bob", PlayerRemoteControls.ExecuteCommands);
+        h.Party.MinorPartyHealSpell = "mheal";
+        h.Handler.IsInTrainerMenu = () => true;
 
         h.Engine.DispatchForTests(Telepath("Bob", "@heal"));
 

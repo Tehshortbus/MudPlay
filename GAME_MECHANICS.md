@@ -96,6 +96,13 @@ it isn't here and you're unsure, ask.
   realm-independent signal is the outbound `train stats` command itself.
 - **Stock** realms render the same screen inline (scrolling text), so the marker row is emitted
   normally.
+- **The stat box's first field is the "Family Name" (surname / last name)** *([CONFIRMED] — user
+  report)*. The cursor starts there, and a plain Enter advances past it (the auto-trainer replays a
+  bare Enter and never edits it). So any automated `<text>\r` that fires while the user is parked on
+  the form types into that field: a stray party `par\r` poll overwrites the character's last name with
+  "par". This is why every wall-clock / on-demand automated wire send must gate on the realm-
+  independent "screen owns the keyboard" signal (the outbound `train stats` command), not the
+  marker — which on Paradigm never confirms.
 
 ## Light sources
 

@@ -15,6 +15,7 @@
 > - Navigation rail's Loops + Auto-Lairs folders now start collapsed instead of expanded — the compact rail opens tidy each time, and any folder you expand stays open across refreshes
 > - Collect-after-combat re-surveys with a bare `look` when another player is seen grabbing deferred ground cash — the stale per-pile counts are refreshed before the post-combat flush, so it collects what's actually there instead of firing rejected gets ("You don't see 7 gold crown here.")
 > - Party-split teleport (`go hole`) reform now waits for a member's through-the-hole "from nowhere" arrival before re-inviting — a cardinal follow-in the staging room no longer fires the invite early ("You don't see <name> here."), so the group reforms on the far side
+> - Automated `par` sends (party HP poll + the @heal-driven poll) now stay off the wire while the `train stats` form owns the keyboard — on realms whose cursor-positioned stat box never shows the "Point Cost Chart" marker, a stray `par\r` was leaking into the form and overwriting the character's last name (Family Name field)
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->
