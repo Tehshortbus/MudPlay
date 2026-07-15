@@ -1297,6 +1297,35 @@ public sealed class AutoPartyManagerTests
     }
 
     [Fact]
+    public void SplitReform_CardinalArrival_DoesNotFireReformInvite_NowhereDoes()
+    {
+        // Regression: a reform member following the leader into the pre-teleport
+        // staging room arrives from a cardinal direction ("walks into the room from
+        // the east"). That stale arrival can be processed after the split arms but
+        // before the leader's teleport confirms — firing the withheld invite on it
+        // races `invite X` ahead of X crossing the hole ("You don't see X here!").
+        // Only the "from nowhere" teleport materialization must trigger the invite.
+        var (engine, _, _, party) = Setup();
+        MovementCoordinator coord = new();
+        engine.SetMovementGate(coord, isLooping: () => false);
+
+        party.SelfIsLeader = true;
+        party.Members.Add(new PartyMember { Name = "Fujin", IsSelf = true });
+        party.Members.Add(new PartyMember { Name = "Raijin" });
+
+        engine.NotePartySplitTeleport();
+
+        // Cardinal follow-in (staging room) must NOT fire the invite.
+        engine.OnPlayerArrival(new RoomEntryArrivalEvent("Raijin", EntityKind.Player, "east", default));
+        Assert.Empty(engine.LastSentForTests);
+
+        // The real through-hole arrival ("from nowhere") fires it.
+        engine.OnPlayerArrival(new RoomEntryArrivalEvent("Raijin", EntityKind.Player, "nowhere", default));
+        byte[] sent = Assert.Single(engine.LastSentForTests);
+        Assert.Equal("invite Raijin\r", Encoding.Latin1.GetString(sent));
+    }
+
+    [Fact]
     public void SplitReform_PartyDisbands_ReformSurvives_ReinvitesOnArrival()
     {
         // The "go hole" teleport answers with "Your party has been disbanded." and

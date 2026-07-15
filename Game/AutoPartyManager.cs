@@ -861,17 +861,29 @@ public sealed class AutoPartyManager : IDisposable
         TrySendDeferredReformInvite(given);
     }
 
-    // A player walked into our room ("X walks into the room from <dir>", including
-    // the "from nowhere" form a hole / chime CMD teleport lands them with). Not
-    // every party-splitting teleport flashes members in with the "blinding flash
-    // of light" line OnTeleportArrival keys on — a "go hole" drops them with a
-    // plain arrival — so this is the fallback arrival signal for a reform member.
+    // A player materialised in our room "from nowhere" — the plain arrival a
+    // "go hole" / chime CMD teleport lands members with (no "blinding flash of
+    // light" line, which OnTeleportArrival keys on). This is the fallback arrival
+    // signal for a reform member.
+    //
+    // ONLY the "from nowhere" direction counts: a cardinal arrival ("X walks into
+    // the room from the east") is a normal follow-in — e.g. a member trailing the
+    // leader into the pre-teleport staging room the instant before the leader
+    // jumps. That stale staging-room arrival can be processed just after the split
+    // arms but before the leader's teleport confirms on the far side, so firing the
+    // withheld `invite X` on it races the invite ahead of X actually crossing the
+    // hole ("You don't see X here!") and it's lost. Through the teleport, members
+    // always arrive "from nowhere", so gating on that both picks the right arrival
+    // and defers past the leader's own far-side landing.
+    //
     // No-op for anyone not pending a reform invite. Wired to
     // RoomEntryWatcher.ArrivalObserved in AppServices; Kind is the watcher's
     // authoritative Player/Monster classification.
     public void OnPlayerArrival(Combat.RoomEntryArrivalEvent arrival)
     {
         if (arrival.Kind != Combat.EntityKind.Player) return;
+        if (!string.Equals(arrival.Direction, "nowhere", StringComparison.OrdinalIgnoreCase))
+            return;
         string given = ExtractGiven(arrival.Name);
         if (string.IsNullOrEmpty(given)) return;
         TrySendDeferredReformInvite(given);

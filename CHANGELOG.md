@@ -16,7 +16,8 @@ Notable changes per merged PR, **newest first**. The top of the [README](README.
 - Party-splitting teleports that fully disband the party (`go hole`) now reform on the far side — the deferred re-invite survives the disband and fires on each member's plain "walks in from nowhere" arrival, so the walker holds for the reform instead of leaving without the party
 - Navigation rail's Loops + Auto-Lairs folders now start collapsed instead of expanded — the compact rail opens tidy each time, and any folder you expand stays open across refreshes
 - Collect-after-combat re-surveys with a bare `look` when another player is seen grabbing deferred ground cash — the stale per-pile counts are refreshed before the post-combat flush, so it collects what's actually there instead of firing rejected gets ("You don't see 7 gold crown here.")
-- bug reports addressed: paradigm-20260714-093614, paradigm-20260714-115526, paradigm-20260714-121106, paradigm-20260714-163356, paradigm-20260714-164946, paradigm-20260714-231638, paradigm-20260715-002959
+- Party-split teleport (`go hole`) reform now waits for a member's through-the-hole "from nowhere" arrival before re-inviting — a cardinal follow-in the staging room no longer fires the invite early ("You don't see <name> here."), so the group reforms on the far side
+- bug reports addressed: paradigm-20260714-093614, paradigm-20260714-115526, paradigm-20260714-121106, paradigm-20260714-163356, paradigm-20260714-164946, paradigm-20260714-231638, paradigm-20260715-002959, paradigm-20260715-092858
 
 ## 1.64.0
 
