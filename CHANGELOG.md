@@ -2,6 +2,12 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.67.4
+
+- A "look &lt;player&gt;" no longer arms room-peek suppression — only a "look &lt;direction&gt;" does, since only that renders an adjacent room
+- Fixes the post-teleport movement stall: after a party-splitting "go hole", the trap-delegation race-probe (`look <member>` on re-join) was eating the walker's next-step room confirmation, freezing the walk until a manual room re-display
+- bug reports addressed: paradigm-20260716-005420
+
 ## 1.67.3
 
 - Kills detected only by the fallback path (exp + *Combat Off*, used when the monster's death line isn't in the active dataset) now force an immediate room re-display instead of stalling ~5s for the next combat tick

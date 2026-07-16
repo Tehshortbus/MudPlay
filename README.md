@@ -1,10 +1,9 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.67.3**
-> - Kills detected only by the fallback path (exp + *Combat Off*, used when the monster's death line isn't in the active dataset) now force an immediate room re-display instead of stalling ~5s for the next combat tick
-> - Fixes the post-kill freeze and the wasted first swing at an already-dead mob before the surviving monster is engaged
-> - The "par polling delays re-attack" symptom was the same ~5s stall coinciding with the 5s party-poll cadence — resolved by the above; the party poller is unchanged
+> **Version 1.67.4**
+> - A "look &lt;player&gt;" no longer arms room-peek suppression — only a "look &lt;direction&gt;" does, since only that renders an adjacent room
+> - Fixes the post-teleport movement stall: after a party-splitting "go hole", the trap-delegation race-probe (`look <member>` on re-join) was eating the walker's next-step room confirmation, freezing the walk until a manual room re-display
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

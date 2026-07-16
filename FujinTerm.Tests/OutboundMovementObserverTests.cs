@@ -105,6 +105,32 @@ public sealed class OutboundMovementObserverTests : IDisposable
         Assert.Equal(new RoomKey(1, 2), tracker.State.CurrentRoom!.Key);
     }
 
+    [Theory]
+    [InlineData("look Tristian")]  // the party-member race probe that raced the walker's step (paradigm-20260716-005420)
+    [InlineData("l Tristian")]
+    [InlineData("look sign")]
+    [InlineData("look at altar")]
+    [InlineData("peek chest")]
+    public void LookAtNonDirection_DoesNotArmSuppression_MoveConfirmationSurvives(string command)
+    {
+        // A look at a player / item / feature renders a description, never an
+        // adjacent-room display, so it must NOT arm peek-suppression. If it did,
+        // a real move's confirming room render landing inside the 3-s window
+        // would be swallowed and the walk would stall until a manual re-display
+        // — the party-splitting-teleport stall from bug report
+        // paradigm-20260716-005420 (TrapDelegationManager's "look <member>" race
+        // probe on a re-join raced the walker's next step).
+        (RoomTracker tracker, OutboundMovementObserver observer) = NewObserver();
+        tracker.SetLocated(new RoomKey(1, 1));
+
+        observer.ObserveOutbound(Cmd(command));
+
+        // The walker's next step and its room render must confirm normally.
+        tracker.NoteMoveSent(Direction.N);
+        tracker.NoteRoomObserved(Obs("North Square", Direction.S));
+        Assert.Equal(new RoomKey(1, 2), tracker.State.CurrentRoom!.Key);
+    }
+
     [Fact]
     public void LookCommand_SuppressesOnlyOneObservation()
     {
