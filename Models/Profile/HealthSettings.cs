@@ -26,7 +26,8 @@ public sealed class HealthSettings
     // Assert HealthRecovery gate when HP falls below this value. Default 60 (%).
     public int RestIfBelowHp { get; set; } = 60;
 
-    // Trigger flee behavior when HP falls below this value. Default 20 (%).
+    // Trigger flee behavior when HP falls below this value. 0 disables the
+    // HP flee entirely (never run on HP). Default 20 (%).
     public int RunIfBelowHp { get; set; } = 20;
 
     // Drop the connection when HP falls below this emergency threshold. Default 5 (%).
@@ -64,7 +65,8 @@ public sealed class HealthSettings
     // Assert ManaRecovery gate when MA falls below this value. Default 30 (%).
     public int RestIfBelowMa { get; set; } = 30;
 
-    // Trigger flee behavior when the caster pool drops below this. Default 10 (%).
+    // Trigger flee behavior when the caster pool drops below this. 0 disables
+    // the MA flee entirely (never run on mana). Default 10 (%).
     public int RunIfBelowMa { get; set; } = 10;
 
     // Re-cast party / self buffs once MA recovers past this value.

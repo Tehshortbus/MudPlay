@@ -590,10 +590,14 @@ public sealed class HealthManager : IDisposable
         {
             int hpRunTrigger = PoolThreshold.Resolve(s.HpThresholdMode, s.RunIfBelowHp, _state.MaxHp);
             int maRunTrigger = PoolThreshold.Resolve(s.MaThresholdMode, s.RunIfBelowMa, _state.MaxMa);
-            bool hpRun = _state.MaxHp > 0 && _state.Hp > 0 && _state.Hp <= hpRunTrigger;
-            // No Ma>0 guard: 0 mana is itself a valid flee state (unlike 0 HP,
-            // which reads as dead/unknown and must not flee a corpse).
-            bool maRun = _state.MaxMa > 0 && _state.Ma <= maRunTrigger;
+            // A run-trigger of 0 means "never flee on this pool" — the pool's
+            // flee is off. Gate on the RAW setting so "off" is mode-agnostic
+            // (0% and absolute-0 both resolve to a 0 trigger, and without this
+            // the MA branch would flee every time mana bottoms out at 0).
+            bool hpFleeEnabled = s.RunIfBelowHp > 0;
+            bool maFleeEnabled = s.RunIfBelowMa > 0;
+            bool hpRun = hpFleeEnabled && _state.MaxHp > 0 && _state.Hp > 0 && _state.Hp <= hpRunTrigger;
+            bool maRun = maFleeEnabled && _state.MaxMa > 0 && _state.Ma <= maRunTrigger;
             if (hpRun || maRun)
             {
                 _fledThisCombat = true;
@@ -639,8 +643,11 @@ public sealed class HealthManager : IDisposable
         {
             int hpRunTrigger = PoolThreshold.Resolve(s.HpThresholdMode, s.RunIfBelowHp, _state.MaxHp);
             int maRunTrigger = PoolThreshold.Resolve(s.MaThresholdMode, s.RunIfBelowMa, _state.MaxMa);
-            bool hpRecovered = _state.Hp > hpRunTrigger;
-            bool maRecovered = _state.MaxMa <= 0 || _state.Ma > maRunTrigger;
+            // A disabled pool (run-trigger 0) never blocks resume — otherwise a
+            // caster with MA flee off could never climb "above" a 0 trigger with
+            // 0 mana and would stay paused forever.
+            bool hpRecovered = s.RunIfBelowHp <= 0 || _state.Hp > hpRunTrigger;
+            bool maRecovered = s.RunIfBelowMa <= 0 || _state.MaxMa <= 0 || _state.Ma > maRunTrigger;
             if (hpRecovered && maRecovered && _lastKnownRoom is { } room)
             {
                 _log?.Combat(LogCategory,

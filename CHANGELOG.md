@@ -2,6 +2,11 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.66.9
+
+- A flee-if-below trigger of 0 now disables fleeing on that pool instead of firing at 0 — a caster with "run if below mana" set to 0 no longer bolts off the loop path the moment mana bottoms out, which had relocated the character and then failed the lap to Idle
+- bug reports addressed: paradigm-20260715-183717
+
 ## 1.66.8
 
 - Idle-stall watchdog re-checks a quietly-cleared room after 6s instead of 12s — when combat-end goes unrecognized (room cleared, no further combat lines), the walker forces the resync re-display a round sooner, wasting 1 round instead of 2
