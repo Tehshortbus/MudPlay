@@ -901,9 +901,9 @@ public sealed class CombatStateTrackerTests
         // Regression: the final kill can route through a path that never forces
         // a room re-display, so the tracker never sees the empty room and the
         // Combat gate stays asserted forever — the walker hangs "fighting" an
-        // empty room. The watchdog forces a bare CR once the gate has been held
-        // past the idle threshold with no combat activity, producing the resync
-        // observation the gate-clear needs.
+        // empty room. Single-phase watchdog: once the gate has been held past the
+        // idle threshold with no combat activity, it fires a bare resync CR AND
+        // force-clears the gate in the same tick.
         using Harness h = new();
         h.WireSender();
         h.AddMonster(1, "giant rat", killable: true);
@@ -915,11 +915,14 @@ public sealed class CombatStateTrackerTests
         h.FakeNow = h.FakeNow.AddSeconds(5);
         h.Tracker.OnCombatTick();
         Assert.Empty(h.SentRaw);
+        Assert.True(h.CombatGateHeld);
 
-        // Past the 6s threshold with the gate still held and no activity → CR.
+        // Past the 6s threshold with the gate still held and no activity → the
+        // resync CR goes out and the stuck gate clears in the same tick.
         h.FakeNow = h.FakeNow.AddSeconds(2);        // 7s total
         h.Tracker.OnCombatTick();
         Assert.Contains("\r", h.SentRaw);
+        Assert.False(h.CombatGateHeld);
     }
 
     [Fact]
@@ -964,10 +967,10 @@ public sealed class CombatStateTrackerTests
         // The deeper stuck-gate bug (report paradigm-20260716-011443): a fallback
         // death empties the room, but a stationary re-display of an empty room
         // carries NO "Also here:" line, so the classifier fires no observation and
-        // the gate never clears. The watchdog re-displays the empty room forever.
-        // Escalation: once the resync CR has gone out and produced no fresh
-        // observation (no survivor Also-Here, gate still held), conclude the room
-        // is empty and force the tracker idle automatically.
+        // the gate never clears — the walker hangs "fighting" nothing. Single-phase
+        // watchdog: once the gate has been held past the threshold with no combat
+        // activity, one tick sends the resync CR AND fully resets the tracker
+        // (gate released, InCombat dropped) — no second escalation tick needed.
         using Harness h = new();
         h.WireSender();
         h.AddMonster(1, "roc hatchling", killable: true);
@@ -977,26 +980,22 @@ public sealed class CombatStateTrackerTests
         Assert.True(h.CombatGateHeld);
         Assert.True(h.State.InCombat);
 
-        // First stall tick past the threshold → the watchdog sends its resync CR.
+        // One stall tick past the threshold clears the whole stuck state.
         h.FakeNow = h.FakeNow.AddSeconds(7);
         h.Tracker.OnCombatTick();
-        Assert.Contains("\r", h.SentRaw);
-        Assert.True(h.CombatGateHeld);              // CR alone doesn't clear
-
-        // The empty room's re-display carried no "Also here:" line, so no fresh
-        // observation ever arrived. A cooldown later the escalation force-clears.
-        h.FakeNow = h.FakeNow.AddSeconds(5);        // 12s stall, 5s since the CR
-        h.Tracker.OnCombatTick();
-        Assert.False(h.CombatGateHeld);
+        Assert.Contains("\r", h.SentRaw);           // resync probe went out
+        Assert.False(h.CombatGateHeld);             // and the gate cleared
         Assert.False(h.State.InCombat);
     }
 
     [Fact]
-    public void IdleStallWatchdog_SurvivorReDisplay_DoesNotForceClear()
+    public void IdleStallWatchdog_SurvivorReDisplay_ReAssertsGate()
     {
-        // A survivor's Also-Here on the resync re-display refreshes the activity
-        // stamp, so the escalation must NOT force-clear — a live fight with a slow
-        // round is left alone (it re-displays again instead).
+        // The single-phase clear is optimistic — it releases the gate on the
+        // assumption the room is empty. If a monster actually lingered (a laggy
+        // >6s round), the resync CR's re-display still shows it, and that
+        // Also-Here re-asserts the gate a beat later. The over-eager clear
+        // self-heals rather than stranding a live fight.
         using Harness h = new();
         h.WireSender();
         h.AddMonster(1, "roc hatchling", killable: true);
@@ -1005,18 +1004,12 @@ public sealed class CombatStateTrackerTests
         Assert.True(h.CombatGateHeld);
 
         h.FakeNow = h.FakeNow.AddSeconds(7);
-        h.Tracker.OnCombatTick();                   // first resync CR
+        h.Tracker.OnCombatTick();                   // watchdog: CR + optimistic clear
         Assert.Single(h.SentRaw);
+        Assert.False(h.CombatGateHeld);
 
-        // The re-display shows the mob still here — activity refreshes.
-        h.FakeNow = h.FakeNow.AddSeconds(1);
+        // The resync CR's re-display still shows the mob → the gate re-asserts.
         h.Feed("Also here: roc hatchling.");
-
-        // Stalled again past the threshold, but the last activity post-dates the
-        // CR → no force-clear; the watchdog just re-displays once more.
-        h.FakeNow = h.FakeNow.AddSeconds(7);
-        h.Tracker.OnCombatTick();
         Assert.True(h.CombatGateHeld);
-        Assert.Equal(2, h.SentRaw.Count);           // a second CR, not a clear
     }
 }

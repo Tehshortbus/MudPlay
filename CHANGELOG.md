@@ -5,7 +5,9 @@ Notable changes per merged PR, **newest first**. The top of the [README](README.
 ## 1.67.5
 
 - Root-cause fix for the stuck "Fighting" chip: after a fallback death empties a room, an empty room re-displays with no "Also here:" line so the classifier fired no observation — the combat gate hung forever, re-displaying the empty room on a loop
-- The idle-stall watchdog now escalates: once its resync re-display produces no roster, it force-clears the stuck gate automatically instead of looping (no manual Reset States needed)
+- The idle-stall watchdog now auto-recovers in a single step: once the gate has been held ~6s with no combat activity it sends one resync probe and force-clears the stuck gate in the same beat (no manual Reset States needed)
+- Watchdog moved onto the 1s heartbeat instead of the coarse 5s combat tick, cutting total auto-recovery from ~10-15s down to ~6s
+- Optimistic clear self-heals: if a monster actually lingered, its re-displayed "Also here:" re-asserts the gate a beat later
 - Reset States still force-clears combat state too, as a manual escape hatch
 - bug reports addressed: paradigm-20260716-011443
 

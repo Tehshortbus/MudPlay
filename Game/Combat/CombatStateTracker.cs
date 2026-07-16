@@ -39,20 +39,21 @@ public sealed class CombatStateTracker : IDisposable
     // (OnEntitiesObserved's "room cleared" branch). Normally the death of the
     // last monster forces that re-display (CombatManager.NoteUnattributedDeath /
     // OnCommandNoEffect send a bare CR). But when a final kill routes through
-    // neither path — an attributed death that doesn't re-display, a desynced
-    // roster — no fresh observation ever arrives, the gate stays asserted, and
-    // the walker hangs "fighting" an empty room until a manual redisplay. The
-    // watchdog (driven by the combat heartbeat) forces the same benign CR once
-    // the gate has been held this long with zero combat activity, so the resync
-    // observation the gate-clear needs is produced automatically. Kept short so a
-    // room that quietly cleared (kill flavor we never attributed, no further
-    // combat lines) is re-checked within a couple of combat rounds rather than
-    // leaving the walker parked "fighting" nothing for a dozen seconds.
+    // neither path, the empty room emits no "Also here:" line so the classifier
+    // fires no observation at all — the gate stays asserted and the walker hangs
+    // "fighting" an empty room until a manual redisplay.
+    //
+    // The watchdog runs off the 1s heartbeat (TickEngine.HeartbeatElapsed) and is
+    // single-phase: once the gate has been held for IdleStallThreshold with zero
+    // combat activity, it BOTH sends a benign resync CR AND force-clears the gate
+    // in the same tick. The clear is optimistic — 6s of total silence while the
+    // gate is held means an empty room (a live fight emits a line every 5s
+    // round), so releasing the walker is correct. The CR is a safety probe: if a
+    // real monster lingered (a laggy >6s round), its re-displayed "Also here:"
+    // re-asserts the gate a beat later, so an over-eager clear self-heals. Driving
+    // this off the 1s heartbeat rather than the coarse 5s combat tick is what
+    // keeps total recovery at ~6s instead of quantizing it up to ~10-15s.
     private static readonly TimeSpan IdleStallThreshold = TimeSpan.FromSeconds(6);
-
-    // Debounce between watchdog CRs so a server that's merely slow to answer the
-    // forced re-display doesn't get a flood of them; one combat round apart.
-    private static readonly TimeSpan WatchdogRefreshCooldown = TimeSpan.FromSeconds(5);
 
     private readonly MovementCoordinator _coordinator;
     private readonly RoomEntityClassifier _classifier;
@@ -73,11 +74,10 @@ public sealed class CombatStateTracker : IDisposable
     private bool _hostilePresent;
     private bool _disposed;
 
-    // Idle-stall watchdog stamps. _lastCombatActivityAt tracks the last sign of
-    // a live fight (a combat damage/miss line or a room observation still
-    // holding a monster); _lastWatchdogRefreshAt debounces the forced CRs.
+    // Idle-stall watchdog stamp: the last sign of a live fight (a combat
+    // damage/miss line or a room observation still holding a monster). The
+    // watchdog fires once this goes IdleStallThreshold stale with the gate held.
     private DateTimeOffset _lastCombatActivityAt = DateTimeOffset.MinValue;
-    private DateTimeOffset _lastWatchdogRefreshAt = DateTimeOffset.MinValue;
 
     private Func<bool>? _clearWhenSeenHidden;
     private Func<bool>? _isAutoSneakEnabled;
@@ -267,48 +267,27 @@ public sealed class CombatStateTracker : IDisposable
         if (_classifier.Current is { } obs) OnEntitiesObserved(obs);
     }
 
-    // Idle-stall watchdog, driven by the combat heartbeat (TickEngine's
-    // CombatTickElapsed, ~5s). When the Combat gate has been held with zero
-    // combat activity for IdleStallThreshold, force a bare CR so the server
-    // re-displays the room — the resync observation the gate-clear needs
-    // (OnEntitiesObserved's "room cleared" branch). Without it, a final kill
-    // that routes through neither NoteUnattributedDeath nor OnCommandNoEffect
-    // leaves the gate asserted forever and the walker hangs on an empty room.
+    // Idle-stall watchdog, driven by the 1s heartbeat (TickEngine's
+    // HeartbeatElapsed). When the Combat gate has been held for IdleStallThreshold
+    // with zero combat activity, the room is empty (a live fight emits a line
+    // every 5s round) yet the gate hung because the empty re-display carried no
+    // "Also here:" line for the classifier to observe. Single-phase recovery:
+    // send a benign resync CR (the safety probe) AND force the tracker idle in the
+    // same tick. If a monster actually lingered — a laggy >6s round — the CR's
+    // re-displayed "Also here:" re-asserts the gate a beat later, so the optimistic
+    // clear self-heals. Running on the 1s heartbeat lands this in ~6s total.
     public void OnCombatTick()
     {
         if (_disposed) return;
         if (!_gateAsserted) return;
         if (_wireSender is null) return;
+        if (_now() - _lastCombatActivityAt < IdleStallThreshold) return;
 
-        DateTimeOffset now = _now();
-        if (now - _lastCombatActivityAt < IdleStallThreshold) return;
-        if (now - _lastWatchdogRefreshAt < WatchdogRefreshCooldown) return;
-
-        // Escalation: our previous resync CR (sent in THIS gate episode —
-        // _lastWatchdogRefreshAt resets on each fresh AssertGate) already went out
-        // and had a full cooldown to answer, yet produced neither a survivor
-        // "Also here:" line — which refreshes _lastCombatActivityAt via the
-        // actionable-observation path — nor an empty-room clear, which drops the
-        // gate. That's the empty-room trap: a stationary re-display of a room the
-        // last monster just died in is only "<name>" + "Obvious exits:" with NO
-        // "Also here:" line, so the classifier fires no observation at all and the
-        // gate would hang forever (only a real move fires the RoomChange empty-wipe
-        // that clears it). When the last CR post-dates every sign of activity, the
-        // room is genuinely empty: force the tracker idle instead of re-displaying
-        // an empty room on a loop. A slow survivor re-display that lands after this
-        // just re-asserts the gate a beat later, so an early clear self-heals.
-        if (_lastWatchdogRefreshAt > DateTimeOffset.MinValue
-            && _lastCombatActivityAt < _lastWatchdogRefreshAt)
-        {
-            ResetCombatState(
-                "idle-stall watchdog: resync re-display produced no roster — room empty");
-            return;
-        }
-
-        _lastWatchdogRefreshAt = now;
         _log?.Info(LogCategory,
-            "combat gate held with no combat activity — forcing room re-display to resync");
+            "combat gate held with no combat activity for the stall window — "
+            + "room empty, resyncing and clearing the stuck gate");
         _wireSender(Encoding.Latin1.GetBytes("\r"));
+        ResetCombatState("idle-stall watchdog: no combat activity — room empty");
     }
 
     private void SendCommand(string text)
@@ -474,12 +453,6 @@ public sealed class CombatStateTracker : IDisposable
     {
         if (_gateAsserted) return;
         _gateAsserted = true;
-        // Re-arm the idle-stall watchdog for this fresh fight: the resync stamp is
-        // "the last watchdog CR in the CURRENT gate episode", so the empty-room
-        // escalation in OnCombatTick can never fire off a CR left over from a prior
-        // fight. A live fight re-affirming the gate early-outs above, so the stamp
-        // survives an in-progress stall (only a genuinely new assertion clears it).
-        _lastWatchdogRefreshAt = DateTimeOffset.MinValue;
         _coordinator.AssertGate(MovementCoordinator.CombatGate, AsserterName, reason);
     }
 

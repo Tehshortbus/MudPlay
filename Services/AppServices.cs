@@ -2790,10 +2790,11 @@ public sealed class AppServices
             isCastCode: c => Spellbook.FindByCastCode(c) is not null,
             onManualCast: Combat.NoteBetweenRoundCast);
         Tick.CombatTickElapsed += Combat.OnCombatTick;
-        // Idle-stall watchdog: the same 5s heartbeat drives CombatStateTracker's
-        // forced room re-display when the Combat gate stalls with no combat
-        // activity (a final kill that never triggered a resync re-display).
-        Tick.CombatTickElapsed += CombatTracker.OnCombatTick;
+        // Idle-stall watchdog: the 1s heartbeat (not the coarse 5s combat tick)
+        // drives CombatStateTracker's stuck-gate recovery so it fires within a
+        // second of its threshold — a final kill that never triggered a resync
+        // re-display is caught and cleared in ~6s total instead of ~10-15s.
+        Tick.HeartbeatElapsed += CombatTracker.OnCombatTick;
 
         // StealthManager state tracker + auto-sneak /
         // auto-hide engines. Owns PlayerState.IsSneaking/IsHidden,

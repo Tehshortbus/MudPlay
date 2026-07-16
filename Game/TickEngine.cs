@@ -29,8 +29,18 @@ public sealed partial class TickEngine : ObservableObject, IDisposable
     // Combat tick interval — universal across MajorMUD realm flavours.
     public static readonly TimeSpan CombatTickInterval = TimeSpan.FromSeconds(5);
 
+    // Coarse watchdog heartbeat. Unlike the combat / regen ticks this carries no
+    // cycle semantics — it's a plain "another second passed" poll off the same
+    // 100 ms timer, so a subscriber (the idle-stall watchdog on
+    // CombatStateTracker) can re-check its state at ~1 s granularity instead of
+    // waiting for the coarse 5 s combat tick. That's what lets a stuck-gate
+    // recovery land within a second or two of its threshold rather than being
+    // quantized up to the next combat tick.
+    public static readonly TimeSpan HeartbeatInterval = TimeSpan.FromSeconds(1);
+
     private readonly DispatcherTimer _timer;
     private readonly List<IDisposable> _patternSubs = new();
+    private DateTimeOffset? _lastHeartbeat;
     private bool _disposed;
 
     // HP regen interval. TimeSpan.Zero disables the regen event.
@@ -64,6 +74,10 @@ public sealed partial class TickEngine : ObservableObject, IDisposable
 
     // Fired on every combat tick — every 5 s, refreshed by damage lines.
     public event Action? CombatTickElapsed;
+
+    // Fired every HeartbeatInterval (1 s) — a coarse watchdog poll with no cycle
+    // semantics (see HeartbeatInterval).
+    public event Action? HeartbeatElapsed;
 
     // Fired at HpRegenInterval when configured.
     public event Action? HpRegenTickElapsed;
@@ -152,6 +166,19 @@ public sealed partial class TickEngine : ObservableObject, IDisposable
                 LastManaRegenTick = now;
                 ManaRegenTickElapsed?.Invoke();
             }
+        }
+
+        // Watchdog heartbeat — a plain 1 s poll re-anchored at now (precision
+        // doesn't matter for a stuck-state re-check, unlike the projected combat
+        // cycle). First tick seeds the stamp without firing.
+        if (_lastHeartbeat is not { } beat)
+        {
+            _lastHeartbeat = now;
+        }
+        else if (now - beat >= HeartbeatInterval)
+        {
+            _lastHeartbeat = now;
+            HeartbeatElapsed?.Invoke();
         }
 
         // Refresh the countdown properties so the status bar updates each
