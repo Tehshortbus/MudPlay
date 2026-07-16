@@ -1,9 +1,10 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.67.0**
-> - Outgoing telepath chip now reads "TELE→" (arrow trailing) so it mirrors the incoming "←TELE" and the two directions are distinguishable at a glance
-> - Realm-event chip and filter are now a red "SERVER" chip / "Server" checkbox, matching Paradigm's server PvP notices
+> **Version 1.67.3**
+> - Kills detected only by the fallback path (exp + *Combat Off*, used when the monster's death line isn't in the active dataset) now force an immediate room re-display instead of stalling ~5s for the next combat tick
+> - Fixes the post-kill freeze and the wasted first swing at an already-dead mob before the surviving monster is engaged
+> - The "par polling delays re-attack" symptom was the same ~5s stall coinciding with the 5s party-poll cadence — resolved by the above; the party poller is unchanged
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

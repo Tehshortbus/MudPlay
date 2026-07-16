@@ -1603,16 +1603,20 @@ public sealed partial class CombatManager : IDisposable
         _wireSender(Encoding.Latin1.GetBytes("\r"));
     }
 
-    // A specific death-line matched, but the classifier couldn't attribute it to
-    // any monster in the current room view (shared / suffix-flavored wordings:
-    // the death line resolved to "spectre" while the roster holds "shadow
-    // spectre", so RemoveDeadEntity found nothing to drop). The roster is now
-    // stale — a mob is gone but our list still shows it. Without a nudge, combat
-    // only learns the room emptied on the NEXT tick, when its swing at the ghost
-    // target no-ops through OnCommandNoEffect — a ~5s stall before the walker can
-    // resume. Force the same debounced room re-display those paths use so the
-    // server hands us the true roster now: if the room's empty the Combat gate
-    // clears immediately; if a survivor remains we re-pick it a beat sooner.
+    // A kill happened but we can't drop a specific roster slot for it. Two
+    // callers: (1) a specific death-line matched but the classifier couldn't
+    // attribute it to any monster in the current room view (shared /
+    // suffix-flavored wordings: the death line resolved to "spectre" while the
+    // roster holds "shadow spectre", so RemoveDeadEntity found nothing to drop);
+    // (2) a fallback death (exp + *Combat Off*) where we never learned which mob
+    // died — the norm for datasets missing per-monster DeathLine patterns. Either
+    // way the roster is now stale — a mob is gone but our list still shows it.
+    // Without a nudge, combat only learns the room emptied on the NEXT tick, when
+    // its swing at the ghost target no-ops through OnCommandNoEffect — a ~5s stall
+    // before the walker can resume. Force the same debounced room re-display those
+    // paths use so the server hands us the true roster now: if the room's empty
+    // the Combat gate clears immediately; if a survivor remains we re-pick it a
+    // beat sooner.
     public void NoteUnattributedDeath()
     {
         if (!_isEnabled()) return;

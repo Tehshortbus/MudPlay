@@ -2419,12 +2419,22 @@ public sealed class AppServices
         {
             if (evt.IsFallback)
             {
-                // Fallback path: we don't know which monster died.
-                // CombatManager's next swing window will be correct
-                // because the server's room re-display (or the next
-                // arrival) eventually rebuilds the list. We just log.
+                // Fallback path: exp + *Combat Off* proved a monster died but
+                // not which one, so — exactly like the unattributed-death case
+                // below — we can't drop a specific roster slot. Leaving the
+                // stale roster in place strands combat until the next ~5s tick
+                // re-picks the corpse, no-ops it, and only THEN forces a
+                // re-display: the reported "sits through the timeout after a
+                // kill" and "wastes the first round on the next mob before the
+                // survivor is engaged". Datasets whose per-monster DeathLine
+                // patterns are missing route every kill through here, so this is
+                // the common case, not an edge. Nudge the same debounced room
+                // re-display so the server hands back the true roster now — an
+                // empty room clears the Combat gate immediately, a survivor is
+                // re-picked a beat later instead of ~5s later.
                 Log.Info(Game.Combat.MonsterDeathWatcher.LogCategory,
-                    $"fallback death — no entity removed");
+                    "fallback death — forcing roster resync");
+                Combat.NoteUnattributedDeath();
                 return;
             }
             bool removedAny = false;
