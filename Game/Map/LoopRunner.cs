@@ -1409,8 +1409,20 @@ public sealed class LoopRunner : IRecoverableEngine
                 // send is aborted, the overshoot guard must re-fire on the next
                 // resume rather than falling through and re-sending the completed
                 // move.
+                //
+                // Capture the step index and bail if it moved: the SAME server-line
+                // burst that cleared the gate can also carry the room's forced
+                // re-display (a combat "resync" \r after the final kill). That
+                // re-display re-confirms the current room (Confirmed → Confirmed) and
+                // OnTrackerStateChanged advances this very step before the deferred
+                // body runs. Advancing again here would send the step AFTER next from
+                // the pre-move room ("no exit …"), failing the whole lap to Idle
+                // (the "moves a room or two then sits idle" report). Only advance if
+                // the step is still in flight and un-advanced.
+                int overshootIndex = _index;
                 DeferResumeDispatch(() =>
                 {
+                    if (_index != overshootIndex || !_stepInFlight) return;
                     _stepInFlight = false;
                     _expectedMoveTarget = null;
                     AdvanceStep();

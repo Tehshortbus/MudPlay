@@ -2,6 +2,11 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.66.6
+
+- Loop no longer moves a room or two then fails out to Idle — a kill's forced room re-display and the gate-resume no longer both advance the same step (which had sent the next move from the stale room and failed the lap)
+- bug reports addressed: paradigm-20260715-174119
+
 ## 1.66.5
 
 - Party @wait arriving as combat ends no longer leaks the loop's next move past the wait — the walker holds formation

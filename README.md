@@ -1,11 +1,8 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.66.5**
-> - Party @wait arriving as combat ends no longer leaks the loop's next move past the wait — the walker holds formation
-> - Combat gate no longer hangs the walker "fighting" an empty room after a final kill that skipped the room refresh; a watchdog forces a re-display to resync
-> - Party heals skip a re-invited member that hasn't reported vitals yet, so a relogged ally no longer draws spam-heals at a phantom 0% HP
-> - Between-round cast (e.g. mihe) whose resync dropped the target now re-attacks the same round instead of idling one
+> **Version 1.66.6**
+> - Loop no longer moves a room or two then fails out to Idle — a kill's forced room re-display and the gate-resume no longer both advance the same step (which had sent the next move from the stale room and failed the lap)
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

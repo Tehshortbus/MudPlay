@@ -475,6 +475,77 @@ public sealed class LoopRunnerTests : IDisposable
         Assert.Equal("s\r", Encoding.Latin1.GetString(h.Sent[1]));
     }
 
+    // Three-room line used by the double-advance regression below. The loop
+    // 1/1 → 1/2 → 1/3 expands to [E (1→2), N (2→3), S (3→2), W (2→1)]. The key
+    // property: room 1/2 ("B") has NO south exit, so a step-2 (S) move sent
+    // while still physically at 1/2 fails "no exit S" — exactly the stale-room
+    // send the double-advance produces.
+    private const string LineGraphJson = """
+        [
+          { "Map Number": 1, "Room Number": 1, "Name": "A",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "0", "E": "1/2", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 2, "Name": "B",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "1/3", "S": "0", "E": "0", "W": "1/1",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 3, "Name": "C",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "1/2", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+        ]
+        """;
+
+    [Fact]
+    public void OvershootResume_TargetRedisplayInSameBurst_DoesNotDoubleAdvance()
+    {
+        // Regression (report paradigm-20260715-174119: "loop moves a room or two
+        // then fails out and sits idle"). Combat pauses the loop as it enters a
+        // room; the move confirms during the pause; then the kill fires a room
+        // re-display AND clears the Combat gate in the same server-line burst. On
+        // resume the overshoot guard schedules a deferred advance — but the SAME
+        // re-display re-confirms the current room (Confirmed → Confirmed), which
+        // OnTrackerStateChanged treats as the step's arrival and advances too. Two
+        // advances for one completed step: the deferred body then sends the step
+        // AFTER next from the pre-move room, "no exit" fails the lap, and the loop
+        // detaches to Idle. The fix makes the deferred overshoot body a no-op when
+        // the step it was scheduled to advance has already advanced.
+        Harness h = NewHarness(LineGraphJson, deferResume: true);
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Runner.Start(new Loop("line",
+            new[] { new RoomKey(1, 1), new RoomKey(1, 2), new RoomKey(1, 3) }));
+        Assert.Single(h.Sent);                        // step 0: "e" → 1/2
+        Assert.Equal("e\r", Encoding.Latin1.GetString(h.Sent[0]));
+
+        // Combat asserts as we enter 1/2; the move confirms while paused (tracker
+        // events are ignored, so the step stays in flight and the overshoot guard
+        // owns it on resume).
+        h.Coordinator.AssertGate(MovementCoordinator.CombatGate);
+        Assert.Equal(LoopState.Paused, h.Runner.State);
+        h.Tracker.NoteRoomObserved(new RoomObservation("B",
+            new HashSet<Direction> { Direction.W, Direction.N }));
+
+        // --- one server-line burst: kill clears the gate AND re-displays 1/2 ---
+        h.Coordinator.ClearGate(MovementCoordinator.CombatGate);
+        Assert.Equal(LoopState.Running, h.Runner.State);
+        // The forced room re-display re-confirms the current room. Before the
+        // deferred advance runs, this re-confirmation advances the step itself.
+        h.Tracker.NoteRoomObserved(new RoomObservation("B",
+            new HashSet<Direction> { Direction.W, Direction.N }));
+        Assert.Equal(2, h.Sent.Count);                // step 1: "n" → 1/3
+        Assert.Equal("n\r", Encoding.Latin1.GetString(h.Sent[1]));
+
+        // --- burst ends; the deferred overshoot dispatch runs ---
+        h.Drain();
+
+        // No double-advance: the loop did NOT send step 2 ("s") from the stale
+        // room 1/2, did NOT fail, and is still running.
+        Assert.Equal(2, h.Sent.Count);
+        Assert.Equal(LoopState.Running, h.Runner.State);
+        Assert.DoesNotContain(h.Events, e => e.Kind == LoopEventKind.Failed);
+    }
+
     // ----- PR C: lap timing + ReachedFirstWaypoint ---------------------
 
     [Fact]
