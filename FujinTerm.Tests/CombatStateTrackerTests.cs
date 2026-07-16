@@ -53,12 +53,26 @@ public sealed class CombatStateTrackerTests
         // Commands the tracker pushes to the wire (decoded, trailing \r
         // stripped) and the BreakBeforeFleeing setting the gate reads.
         public List<string> Sent { get; } = new();
+        // Raw wire bytes decoded without trimming — lets the watchdog test see a
+        // bare "\r" that Sent would collapse to an empty entry.
+        public List<string> SentRaw { get; } = new();
         public bool BreakBeforeRunning { get; set; }
+
+        // Injected clock so the idle-stall watchdog's 6s threshold is testable
+        // without wall-clock waits. Constant by default (existing tests never
+        // advance it and never drive OnCombatTick, so the stamps stay inert).
+        public DateTimeOffset FakeNow { get; set; } = DateTimeOffset.UnixEpoch;
+
+        public void WireSender() =>
+            Tracker.SetWireSender(bytes =>
+            {
+                Sent.Add(System.Text.Encoding.Latin1.GetString(bytes).TrimEnd('\r', '\n'));
+                SentRaw.Add(System.Text.Encoding.Latin1.GetString(bytes));
+            });
 
         public void WireBreakBeforeRun()
         {
-            Tracker.SetWireSender(bytes =>
-                Sent.Add(System.Text.Encoding.Latin1.GetString(bytes).TrimEnd('\r', '\n')));
+            WireSender();
             Tracker.SetBreakBeforeRunGate(() => BreakBeforeRunning);
         }
 
@@ -73,7 +87,8 @@ public sealed class CombatStateTrackerTests
                 () => AutoAttackEnabled,
                 resolveOverlay: n => Overlays.TryGetValue(n, out MonsterOverlay? o)
                                      ? o : new MonsterOverlay(),
-                log: Log);
+                log: Log,
+                clock: () => FakeNow);
         }
 
         public void SetOverlay(int number, MonsterRelationship? relationship = null,
@@ -853,5 +868,148 @@ public sealed class CombatStateTrackerTests
         using Harness h = new();
         h.Feed("The giant rat swings at you");
         Assert.True(h.State.InCombat);
+    }
+
+    // ----- manual reset escape hatch (report paradigm-20260716-011443) ----
+
+    [Fact]
+    public void ResetCombatState_ClearsGateAndInCombat()
+    {
+        // Reset States must force the tracker idle when a stale roster (fallback
+        // death whose forced re-display never wiped the room) left the Combat gate
+        // stuck asserted and InCombat true. Clearing conditions alone didn't touch
+        // the gate, so the Fighting chip stayed lit over an empty room.
+        using Harness h = new();
+        h.AddMonster(1, "roc hatchling", killable: true);
+
+        h.Feed("Also here: roc hatchling.");        // asserts gate
+        h.Feed("*Combat Engaged*");                 // flips InCombat true
+        Assert.True(h.CombatGateHeld);
+        Assert.True(h.State.InCombat);
+
+        h.Tracker.ResetCombatState("test");
+
+        Assert.False(h.CombatGateHeld);
+        Assert.False(h.State.InCombat);
+    }
+
+    // ----- idle-stall watchdog (reports 162423 / 163553) ----------------
+
+    [Fact]
+    public void IdleStallWatchdog_GateHeldNoActivity_ForcesRedisplay()
+    {
+        // Regression: the final kill can route through a path that never forces
+        // a room re-display, so the tracker never sees the empty room and the
+        // Combat gate stays asserted forever — the walker hangs "fighting" an
+        // empty room. Single-phase watchdog: once the gate has been held past the
+        // idle threshold with no combat activity, it fires a bare resync CR AND
+        // force-clears the gate in the same tick.
+        using Harness h = new();
+        h.WireSender();
+        h.AddMonster(1, "giant rat", killable: true);
+
+        h.Feed("Also here: giant rat.");           // stamps activity + asserts gate
+        Assert.True(h.CombatGateHeld);
+
+        // A tick before the threshold does nothing.
+        h.FakeNow = h.FakeNow.AddSeconds(5);
+        h.Tracker.OnCombatTick();
+        Assert.Empty(h.SentRaw);
+        Assert.True(h.CombatGateHeld);
+
+        // Past the 6s threshold with the gate still held and no activity → the
+        // resync CR goes out and the stuck gate clears in the same tick.
+        h.FakeNow = h.FakeNow.AddSeconds(2);        // 7s total
+        h.Tracker.OnCombatTick();
+        Assert.Contains("\r", h.SentRaw);
+        Assert.False(h.CombatGateHeld);
+    }
+
+    [Fact]
+    public void IdleStallWatchdog_CombatActivity_ResetsStall()
+    {
+        // A live-but-slow fight must never trip the watchdog: any combat line
+        // (or a room observation still holding a killable monster) refreshes the
+        // activity stamp, so a genuinely ongoing fight is left alone.
+        using Harness h = new();
+        h.WireSender();
+        h.AddMonster(1, "giant rat", killable: true);
+
+        h.Feed("Also here: giant rat.");
+        Assert.True(h.CombatGateHeld);
+
+        h.FakeNow = h.FakeNow.AddSeconds(5);
+        h.Feed("The giant rat bites you for 3 damage!");   // fresh activity
+        h.FakeNow = h.FakeNow.AddSeconds(2);               // 7s since gate, 2s since hit
+        h.Tracker.OnCombatTick();
+        Assert.Empty(h.SentRaw);                            // not stalled — no CR
+    }
+
+    [Fact]
+    public void IdleStallWatchdog_NoGate_NeverFires()
+    {
+        // No gate held → nothing to resync. The watchdog must stay silent even
+        // long after any activity.
+        using Harness h = new();
+        h.WireSender();
+
+        h.Feed("Also here: Bob.");                 // player only, no gate
+        Assert.False(h.CombatGateHeld);
+
+        h.FakeNow = h.FakeNow.AddSeconds(60);
+        h.Tracker.OnCombatTick();
+        Assert.Empty(h.SentRaw);
+    }
+
+    [Fact]
+    public void IdleStallWatchdog_EmptyReDisplayNoRoster_ForceClearsGate()
+    {
+        // The deeper stuck-gate bug (report paradigm-20260716-011443): a fallback
+        // death empties the room, but a stationary re-display of an empty room
+        // carries NO "Also here:" line, so the classifier fires no observation and
+        // the gate never clears — the walker hangs "fighting" nothing. Single-phase
+        // watchdog: once the gate has been held past the threshold with no combat
+        // activity, one tick sends the resync CR AND fully resets the tracker
+        // (gate released, InCombat dropped) — no second escalation tick needed.
+        using Harness h = new();
+        h.WireSender();
+        h.AddMonster(1, "roc hatchling", killable: true);
+
+        h.Feed("Also here: roc hatchling.");        // asserts gate, stamps activity
+        h.Feed("*Combat Engaged*");                 // InCombat true
+        Assert.True(h.CombatGateHeld);
+        Assert.True(h.State.InCombat);
+
+        // One stall tick past the threshold clears the whole stuck state.
+        h.FakeNow = h.FakeNow.AddSeconds(7);
+        h.Tracker.OnCombatTick();
+        Assert.Contains("\r", h.SentRaw);           // resync probe went out
+        Assert.False(h.CombatGateHeld);             // and the gate cleared
+        Assert.False(h.State.InCombat);
+    }
+
+    [Fact]
+    public void IdleStallWatchdog_SurvivorReDisplay_ReAssertsGate()
+    {
+        // The single-phase clear is optimistic — it releases the gate on the
+        // assumption the room is empty. If a monster actually lingered (a laggy
+        // >6s round), the resync CR's re-display still shows it, and that
+        // Also-Here re-asserts the gate a beat later. The over-eager clear
+        // self-heals rather than stranding a live fight.
+        using Harness h = new();
+        h.WireSender();
+        h.AddMonster(1, "roc hatchling", killable: true);
+
+        h.Feed("Also here: roc hatchling.");
+        Assert.True(h.CombatGateHeld);
+
+        h.FakeNow = h.FakeNow.AddSeconds(7);
+        h.Tracker.OnCombatTick();                   // watchdog: CR + optimistic clear
+        Assert.Single(h.SentRaw);
+        Assert.False(h.CombatGateHeld);
+
+        // The resync CR's re-display still shows the mob → the gate re-asserts.
+        h.Feed("Also here: roc hatchling.");
+        Assert.True(h.CombatGateHeld);
     }
 }

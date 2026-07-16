@@ -3848,6 +3848,9 @@ public partial class MainWindowViewModel : ObservableObject
     // ConfusionGate / HeldGate release, and the ailment @wait balances to @ok.
     // Then it sweeps the remaining self-row ailment chips so the party window
     // shows a clean self row. Self-only — other members' state is untouched.
+    // Finally it force-clears combat state so a stuck Combat gate (stale roster
+    // parking the walker "fighting" an empty room) releases and the Fighting chip
+    // goes away — the conditions sweep alone never touched it.
     //
     // The case this rescues: a condition that latched on a shared applied line
     // (many confusion sources emit "You are confused!") but carries its own
@@ -3869,8 +3872,10 @@ public partial class MainWindowViewModel : ObservableObject
             party.SetMemberAilment(me, Models.GameData.MessageFlags.Diseased, false);
         }
 
+        AppServices.Current.CombatTracker.ResetCombatState("Reset States (manual)");
+
         AppServices.Current.Log.Info(Game.Conditions.ConditionTracker.LogCategory,
-            "Reset States — self conditions, ailment chips, and derived movement holds cleared (manual).");
+            "Reset States — self conditions, ailment chips, combat state, and derived movement holds cleared (manual).");
     }
 
     // ----- Inventory / equipment bulk actions (Action menu + toolbar) -----

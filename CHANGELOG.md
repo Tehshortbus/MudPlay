@@ -2,6 +2,62 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.67.5
+
+- Root-cause fix for the stuck "Fighting" chip: after a fallback death empties a room, an empty room re-displays with no "Also here:" line so the classifier fired no observation — the combat gate hung forever, re-displaying the empty room on a loop
+- The idle-stall watchdog now auto-recovers in a single step: once the gate has been held ~6s with no combat activity it sends one resync probe and force-clears the stuck gate in the same beat (no manual Reset States needed)
+- Watchdog moved onto the 1s heartbeat instead of the coarse 5s combat tick, cutting total auto-recovery from ~10-15s down to ~6s
+- Optimistic clear self-heals: if a monster actually lingered, its re-displayed "Also here:" re-asserts the gate a beat later
+- Reset States still force-clears combat state too, as a manual escape hatch
+- bug reports addressed: paradigm-20260716-011443
+
+## 1.67.4
+
+- A "look &lt;player&gt;" no longer arms room-peek suppression — only a "look &lt;direction&gt;" does, since only that renders an adjacent room
+- Fixes the post-teleport movement stall: after a party-splitting "go hole", the trap-delegation race-probe (`look <member>` on re-join) was eating the walker's next-step room confirmation, freezing the walk until a manual room re-display
+- Party-splitting-teleport reform now suppresses the trap race-probe look entirely — no member looks during that evolution
+- Reform adds a fixed 2s settle then a single room re-display, a backstop that reforms a member who teleported in ahead of us and whose arrival we never witnessed
+- bug reports addressed: paradigm-20260716-005420
+
+## 1.67.3
+
+- Kills detected only by the fallback path (exp + *Combat Off*, used when the monster's death line isn't in the active dataset) now force an immediate room re-display instead of stalling ~5s for the next combat tick
+- Fixes the post-kill freeze and the wasted first swing at an already-dead mob before the surviving monster is engaged
+- The "par polling delays re-attack" symptom was the same ~5s stall coinciding with the 5s party-poll cadence — resolved by the above; the party poller is unchanged
+- bug reports addressed: paradigm-20260716-003144, paradigm-20260716-003531, paradigm-20260715-223821
+
+## 1.67.0
+
+- Outgoing telepath chip now reads "TELE→" (arrow trailing) so it mirrors the incoming "←TELE" and the two directions are distinguishable at a glance
+- Realm-event chip and filter are now a red "SERVER" chip / "Server" checkbox, matching Paradigm's server PvP notices
+
+## 1.66.9
+
+- A flee-if-below trigger of 0 now disables fleeing on that pool instead of firing at 0 — a caster with "run if below mana" set to 0 no longer bolts off the loop path the moment mana bottoms out, which had relocated the character and then failed the lap to Idle
+- bug reports addressed: paradigm-20260715-183717
+
+## 1.66.8
+
+- Idle-stall watchdog re-checks a quietly-cleared room after 6s instead of 12s — when combat-end goes unrecognized (room cleared, no further combat lines), the walker forces the resync re-display a round sooner, wasting 1 round instead of 2
+
+## 1.66.7
+
+- Loop no longer fires a phantom attack at an already-cleared room after a heal — a kill's *Combat Off* landing the same round as a between-round cast (mihe) is no longer misread as the cast's interrupt, so the resume can't re-attack a corpse from a roster the kill's re-display hasn't cleared yet
+- bug reports addressed: paradigm-20260715-181944
+
+## 1.66.6
+
+- Loop no longer moves a room or two then fails out to Idle — a kill's forced room re-display and the gate-resume no longer both advance the same step (which had sent the next move from the stale room and failed the lap)
+- bug reports addressed: paradigm-20260715-174119
+
+## 1.66.5
+
+- Party @wait arriving as combat ends no longer leaks the loop's next move past the wait — the walker holds formation
+- Combat gate no longer hangs the walker "fighting" an empty room after a final kill that skipped the room refresh; a watchdog forces a re-display to resync
+- Party heals skip a re-invited member that hasn't reported vitals yet, so a relogged ally no longer draws spam-heals at a phantom 0% HP
+- Between-round cast (e.g. mihe) whose resync dropped the target now re-attacks the same round instead of idling one
+- bug reports addressed: paradigm-20260715-162125, paradigm-20260715-162423, paradigm-20260715-162916, paradigm-20260715-163553, paradigm-20260715-163947
+
 ## 1.66.0
 
 - Cast-teleport pocket areas (the Warped Asylum and its kin) no longer overdraw the map that houses them — the one-way cast entrance shows as a spell-wall bar on the cell divider plus a directional arrow, and the pocket lays out in full only when you're standing inside it

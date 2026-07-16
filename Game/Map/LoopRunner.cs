@@ -18,6 +18,15 @@ public sealed class LoopRunner : IRecoverableEngine
     private readonly MovementCoordinator _coordinator;
     private readonly WirePromptScanner? _promptScanner;
     private readonly LogService? _log;
+
+    // Marshals a resume-triggered step dispatch onto the next UI tick. The
+    // coordinator fires PauseStateChanged synchronously mid server-line burst
+    // (a Combat gate clearing on a room re-display); a LATER line in the SAME
+    // burst can assert another gate — a party @wait — that must re-pause us
+    // before the next move leaves. Posting past the burst lets that @wait land
+    // first (see DeferResumeDispatch). Defaults to Dispatcher.UIThread.Post;
+    // tests inject a synchronous or manually-drained variant.
+    private readonly Action<Action> _postToUi;
     private readonly EngineRecoveryGate? _recovery;
     private readonly BfsMapper? _bfs;
     private readonly AutoWalkManager? _walker;
@@ -337,7 +346,7 @@ public sealed class LoopRunner : IRecoverableEngine
         WirePromptScanner? promptScanner = null, LogService? log = null,
         RoomGraphManager? graph = null, EngineRecoveryGate? recovery = null,
         BfsMapper? bfs = null, AutoWalkManager? walker = null,
-        IRoomFilter? filter = null)
+        IRoomFilter? filter = null, Action<Action>? postToUi = null)
     {
         ArgumentNullException.ThrowIfNull(tracker);
         ArgumentNullException.ThrowIfNull(coordinator);
@@ -350,6 +359,7 @@ public sealed class LoopRunner : IRecoverableEngine
         _bfs = bfs;
         _walker = walker;
         _filter = filter;
+        _postToUi = postToUi ?? (a => Dispatcher.UIThread.Post(a));
 
         _tracker.StateChanged += OnTrackerStateChanged;
         _coordinator.PauseStateChanged += OnPauseChanged;
@@ -1394,9 +1404,29 @@ public sealed class LoopRunner : IRecoverableEngine
             {
                 _log?.Info("LoopRunner",
                     $"resume: step {_index + 1} arrived during pause (tracker at {expected}, {_tracker.State.Confidence}); advancing");
-                _stepInFlight = false;
-                _expectedMoveTarget = null;
-                AdvanceStep();
+                // Defer the advance+send so a same-burst re-pause aborts it. Keep
+                // the in-flight flags set until the deferred body runs — if the
+                // send is aborted, the overshoot guard must re-fire on the next
+                // resume rather than falling through and re-sending the completed
+                // move.
+                //
+                // Capture the step index and bail if it moved: the SAME server-line
+                // burst that cleared the gate can also carry the room's forced
+                // re-display (a combat "resync" \r after the final kill). That
+                // re-display re-confirms the current room (Confirmed → Confirmed) and
+                // OnTrackerStateChanged advances this very step before the deferred
+                // body runs. Advancing again here would send the step AFTER next from
+                // the pre-move room ("no exit …"), failing the whole lap to Idle
+                // (the "moves a room or two then sits idle" report). Only advance if
+                // the step is still in flight and un-advanced.
+                int overshootIndex = _index;
+                DeferResumeDispatch(() =>
+                {
+                    if (_index != overshootIndex || !_stepInFlight) return;
+                    _stepInFlight = false;
+                    _expectedMoveTarget = null;
+                    AdvanceStep();
+                });
                 return;
             }
             // A move was already on the wire when the pause hit and its
@@ -1415,10 +1445,30 @@ public sealed class LoopRunner : IRecoverableEngine
                     $"resume: step {_index + 1} still in flight (tracker Pending); awaiting confirmation, not re-sending");
                 return;
             }
-            _stepInFlight = false;
-            _awaitingPromptForCommand = false;
-            SendNextStep();
+            // Defer the send so a same-burst re-pause (a party @wait telepath
+            // arriving after the Combat gate cleared in the same server-line
+            // burst) lands first and aborts the leaked move.
+            DeferResumeDispatch(() =>
+            {
+                _stepInFlight = false;
+                _awaitingPromptForCommand = false;
+                SendNextStep();
+            });
         }
+    }
+
+    // Marshal a resume-triggered step dispatch onto the next UI tick and re-check
+    // posture before it fires. PauseStateChanged runs synchronously inside a
+    // server-line burst; posting past the burst lets any later gate-assert in the
+    // same burst re-pause us first. The State re-check makes that re-pause abort
+    // the send rather than leak a move past the new gate.
+    private void DeferResumeDispatch(Action send)
+    {
+        _postToUi(() =>
+        {
+            if (State != LoopState.Running) return;
+            send();
+        });
     }
 
     private void Reset()

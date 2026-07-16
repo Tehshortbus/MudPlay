@@ -132,6 +132,22 @@ public sealed class AutoPartyManager : IDisposable
     private readonly HashSet<string> _reformPendingInvite =
         new(StringComparer.OrdinalIgnoreCase);
 
+    // A party-splitting-teleport reform stays "settling" for a short grace beyond
+    // the last member's rejoin. The final follow-confirmation clears the reform
+    // sets one beat BEFORE TrapDelegationManager sees the join (PartyManager
+    // mutates the roster — which drives EndInviteWait — then fires
+    // MemberFollowConfirmed last), so a count-only signal would miss the very
+    // last member. The grace keeps IsReformSettling true across that gap. See
+    // IsReformSettling.
+    private DateTime _reformSettleUntil = DateTime.MinValue;
+    private static readonly TimeSpan ReformSettleGrace = TimeSpan.FromSeconds(2);
+
+    // Fixed settle delay after crossing a party-splitting teleport before we
+    // nudge a room redisplay — about how long every follower's teleport takes to
+    // land. Deliberately a constant, not a setting. See ScheduleReformRedisplay.
+    private static readonly TimeSpan ReformRedisplayDelay = TimeSpan.FromSeconds(2);
+    private Avalonia.Threading.DispatcherTimer? _reformRedisplayTimer;
+
     // Members whose IsInvited we're watching so a pending invite flipping
     // accepted releases the loop hold.
     private readonly HashSet<PartyMember> _watchedMembers = new();
@@ -424,6 +440,7 @@ public sealed class AutoPartyManager : IDisposable
         // Release any held gate so a disposed manager doesn't strand the loop.
         ClearAllInviteWaits("manager disposed");
         StopNagTimer();
+        StopReformRedisplay();
     }
 
     // ----- Handlers ------------------------------------------------------
@@ -809,6 +826,21 @@ public sealed class AutoPartyManager : IDisposable
     // walk off without the reforming group. Mirrors OnTrainerMenuExited (the
     // other party-dissolving event we re-invite through) but adds the gate hold
     // since a split happens mid-movement.
+    // True while a party-splitting-teleport reform is in flight — members still
+    // pending an arrival re-invite, still held for rejoin, or within a short
+    // settle grace after the last member rejoined. TrapDelegationManager consults
+    // this to skip its race-probe `look <member>` during a reform: looking at a
+    // member the instant they rejoin renders their description right as the
+    // walker's movement gate releases, and a stray look landing on the walk's
+    // next-step room confirmation re-strands the resuming move (the
+    // party-splitting-teleport stall). No member looks during that evolution — the
+    // race just stays unknown (the safe non-trap-capable default) until a later,
+    // non-reform join or a manual look fills it in.
+    public bool IsReformSettling
+        => _reformPendingInvite.Count > 0
+        || _reformGiven.Count > 0
+        || NowProvider() < _reformSettleUntil;
+
     public void NotePartySplitTeleport()
     {
         // Only a leader reforms — a follower / solo character crossing the same
@@ -817,6 +849,7 @@ public sealed class AutoPartyManager : IDisposable
         if (!_wire.IsBound) return;
 
         DateTime now = NowProvider();
+        bool anyDeferred = false;
         foreach (PartyMember m in _party.Members.ToArray())
         {
             if (m.IsSelf) continue;
@@ -830,9 +863,57 @@ public sealed class AutoPartyManager : IDisposable
             // OnTeleportArrival / OnRoomAlsoHere once X is actually present.
             _reformPendingInvite.Add(given);
             BeginReformWait(given, now);
+            anyDeferred = true;
             _log?.Log(LogSeverity.Info, "AutoParty",
                 $"Awaiting {given}'s arrival to re-invite after party-splitting teleport.");
         }
+
+        // Backstop the per-arrival event detection with one delayed room
+        // redisplay — only meaningful when we actually deferred someone.
+        if (anyDeferred) ScheduleReformRedisplay();
+    }
+
+    // Schedule a single room redisplay ReformRedisplayDelay after a split-teleport
+    // reform starts. This AUGMENTS the event-driven per-arrival re-invite
+    // (OnTeleportArrival / OnPlayerArrival / OnRoomAlsoHere), it does not replace
+    // it: its sole job is catching a member who materialised in the room BEFORE
+    // the leader crossed, so we never witnessed their "appears in a blinding
+    // flash" / "from nowhere" arrival line. The bare CR re-renders the room; the
+    // "Also here:" line then routes any still-pending member through
+    // OnRoomAlsoHere → TrySendDeferredReformInvite.
+    private void ScheduleReformRedisplay()
+    {
+        StopReformRedisplay();
+        _reformRedisplayTimer = new Avalonia.Threading.DispatcherTimer(
+            interval: ReformRedisplayDelay,
+            priority: Avalonia.Threading.DispatcherPriority.Background,
+            callback: (_, _) => FireReformRedisplay());
+        _reformRedisplayTimer.Start();
+    }
+
+    private void StopReformRedisplay()
+    {
+        _reformRedisplayTimer?.Stop();
+        _reformRedisplayTimer = null;
+    }
+
+    // Test seam — runs the redisplay backstop without waiting on a real timer.
+    internal void FireReformRedisplayForTests() => FireReformRedisplay();
+
+    private void FireReformRedisplay()
+    {
+        StopReformRedisplay();
+        // Every member's arrival was already witnessed → the reform resolved via
+        // the event path and the walker may have resumed; a redisplay now is a
+        // no-op nudge at best and risks landing on the resumed walk's next-step
+        // room, so skip it.
+        if (_reformPendingInvite.Count == 0) return;
+        if (!_wire.IsBound) return;
+        // Bare CR = Enter = redisplay the current room, surfacing an "Also here:"
+        // line for members who teleported in unwitnessed.
+        _wire.Send("");
+        _log?.Log(LogSeverity.Info, "AutoParty",
+            $"Redisplaying room to catch unwitnessed reform arrivals ({string.Join(", ", _reformPendingInvite)}).");
     }
 
     // A party member we're waiting to reform has materialised (teleport-arrival
@@ -894,7 +975,12 @@ public sealed class AutoPartyManager : IDisposable
     private void EndInviteWait(string given, string reason)
     {
         if (!_inviteWaits.Remove(given)) return;
-        _reformGiven.Remove(given);
+        // A reform member rejoining clears its reform tracking, but keep the
+        // reform "settling" a short grace longer so the follow-confirmation
+        // TrapDelegationManager sees one beat later (MemberFollowConfirmed fires
+        // after this roster-driven clear) still reads as in-reform and skips the
+        // race-probe look. See IsReformSettling.
+        if (_reformGiven.Remove(given)) _reformSettleUntil = NowProvider() + ReformSettleGrace;
         _reformPendingInvite.Remove(given);
         _log?.Log(LogSeverity.Info, "AutoParty",
             $"Released loop hold for {given} — {reason}.");
@@ -917,6 +1003,7 @@ public sealed class AutoPartyManager : IDisposable
         }
         _reformGiven.Clear();
         _reformPendingInvite.Clear();
+        StopReformRedisplay();
         _log?.Log(LogSeverity.Info, "AutoParty", $"Aborted party-reform holds — {reason}.");
         RefreshInviteGate();
         if (_activeNags.Count == 0 && _inviteWaits.Count == 0) StopNagTimer();
@@ -963,6 +1050,7 @@ public sealed class AutoPartyManager : IDisposable
         _inviteWaits.Clear();
         _reformGiven.Clear();
         _reformPendingInvite.Clear();
+        StopReformRedisplay();
         _log?.Log(LogSeverity.Info, "AutoParty", $"Released all loop holds — {reason}.");
         RefreshInviteGate();
         if (_activeNags.Count == 0) StopNagTimer();

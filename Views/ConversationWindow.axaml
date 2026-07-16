@@ -35,7 +35,7 @@
                               Foreground="{Binding BroadcastBrush}" FontSize="11"/>
                     <CheckBox IsChecked="{Binding ShowYell}"              Content="Yell"
                               Foreground="{Binding YellBrush}"      FontSize="11"/>
-                    <CheckBox IsChecked="{Binding ShowRealmEvent}"        Content="Realm"
+                    <CheckBox IsChecked="{Binding ShowRealmEvent}"        Content="Server"
                               Foreground="{Binding RealmBrush}"     FontSize="11"/>
                 </WrapPanel>
 

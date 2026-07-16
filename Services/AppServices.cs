@@ -1822,6 +1822,10 @@ public sealed class AppServices
         // ApplyOtherFromActiveProfile.
         TrapDisarm = new Game.TrapDisarmManager(Router, PlayerStats, GameData, Log);
         TrapDelegation = new Game.TrapDelegationManager(Party, Players, GameData, Router, Log);
+        // Suppress the race-probe look while a party-splitting-teleport reform is
+        // settling — no member looks during that evolution (AutoParty owns the
+        // reform lifecycle; a stray look re-strands the resuming walk).
+        TrapDelegation.IsPartyReformSettling = () => AutoParty.IsReformSettling;
         TrapRemote = new Game.Remote.TrapHandler(RemoteCommands, TrapDisarm);
 
         // @goto / @loop / @lair / @stop / @rego land
@@ -2419,12 +2423,22 @@ public sealed class AppServices
         {
             if (evt.IsFallback)
             {
-                // Fallback path: we don't know which monster died.
-                // CombatManager's next swing window will be correct
-                // because the server's room re-display (or the next
-                // arrival) eventually rebuilds the list. We just log.
+                // Fallback path: exp + *Combat Off* proved a monster died but
+                // not which one, so — exactly like the unattributed-death case
+                // below — we can't drop a specific roster slot. Leaving the
+                // stale roster in place strands combat until the next ~5s tick
+                // re-picks the corpse, no-ops it, and only THEN forces a
+                // re-display: the reported "sits through the timeout after a
+                // kill" and "wastes the first round on the next mob before the
+                // survivor is engaged". Datasets whose per-monster DeathLine
+                // patterns are missing route every kill through here, so this is
+                // the common case, not an edge. Nudge the same debounced room
+                // re-display so the server hands back the true roster now — an
+                // empty room clears the Combat gate immediately, a survivor is
+                // re-picked a beat later instead of ~5s later.
                 Log.Info(Game.Combat.MonsterDeathWatcher.LogCategory,
-                    $"fallback death — no entity removed");
+                    "fallback death — forcing roster resync");
+                Combat.NoteUnattributedDeath();
                 return;
             }
             bool removedAny = false;
@@ -2776,6 +2790,11 @@ public sealed class AppServices
             isCastCode: c => Spellbook.FindByCastCode(c) is not null,
             onManualCast: Combat.NoteBetweenRoundCast);
         Tick.CombatTickElapsed += Combat.OnCombatTick;
+        // Idle-stall watchdog: the 1s heartbeat (not the coarse 5s combat tick)
+        // drives CombatStateTracker's stuck-gate recovery so it fires within a
+        // second of its threshold — a final kill that never triggered a resync
+        // re-display is caught and cleared in ~6s total instead of ~10-15s.
+        Tick.HeartbeatElapsed += CombatTracker.OnCombatTick;
 
         // StealthManager state tracker + auto-sneak /
         // auto-hide engines. Owns PlayerState.IsSneaking/IsHidden,

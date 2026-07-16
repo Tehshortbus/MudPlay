@@ -69,6 +69,15 @@ public sealed class TrapDelegationManager : System.IDisposable
     // used for both the look <name> race probe and the @trap <dir> say broadcast.
     public void SetWireSender(System.Action<byte[]> sender) => _wire.Bind(sender);
 
+    // Wired by AppServices to AutoPartyManager.IsReformSettling. While a
+    // party-splitting-teleport reform is settling, we skip the race-probe look
+    // entirely — no member looks during that evolution. Looking at a member the
+    // instant they rejoin renders their description right as the walker's movement
+    // gate releases, and a stray look landing on the walk's next-step room
+    // confirmation re-strands the resuming move. Null = no reform coordinator
+    // wired (always probe).
+    public System.Func<bool>? IsPartyReformSettling { get; set; }
+
     // Test seam — bytes the manager asked to write to the wire.
     internal System.Collections.Generic.List<byte[]> LastSentForTests => _wire.LastSentForTests;
 
@@ -117,6 +126,17 @@ public sealed class TrapDelegationManager : System.IDisposable
 
         // Race already known → no probe needed.
         if (!string.IsNullOrWhiteSpace(LookupRace(name))) return;
+
+        // A party-splitting-teleport reform is settling — skip the look. No member
+        // looks during that evolution: a look here renders the member's
+        // description right as the walker's gate releases and can re-strand the
+        // resuming move. Race stays unknown (safe non-trap-capable default) until
+        // a later, non-reform join or manual look fills it in.
+        if (IsPartyReformSettling?.Invoke() == true)
+        {
+            _log?.Info(LogCategory, $"skipping race probe for '{name}' — party reform settling");
+            return;
+        }
 
         // Unknown race on a class that doesn't grant traps — look once so
         // the LookParser → PlayerDatabase.RecordLook pipeline fills it in.

@@ -123,16 +123,23 @@ public sealed partial class OutboundMovementObserver
     }
 
     // Peek-direction commands. Accepts every prefix of "look" the game honours
-    // (l / lo / loo / look) plus peek / peer, followed by a target. MajorMUD
-    // prefix-matches verbs, so "lo w" is a look-west peek just like "l w" or
-    // "look w" — omitting the middle prefixes let "lo w" fall through to the
-    // cardinal path and desync the tracker onto the peeked room. The trailing
-    // \s+ anchors the alternative to a whole token, so "lock door" / "load" don't
-    // false-match. The target is usually a direction word but we don't gate on it
-    // — "look at sign" isn't a peek either, but suppressing the next obs when
-    // there's nothing to suppress is harmless (3-s auto-expire).
+    // (l / lo / loo / look) plus peek / peer, followed by a DIRECTION word.
+    // MajorMUD prefix-matches verbs, so "lo w" is a look-west peek just like
+    // "l w" or "look w" — omitting the middle prefixes let "lo w" fall through to
+    // the cardinal path and desync the tracker onto the peeked room. The verb's
+    // trailing \s+ still anchors the alternative to a whole token, so "lock door"
+    // / "load" don't false-match.
+    //
+    // The target MUST be a direction: only a "look <dir>" renders an adjacent
+    // room, which is the display the suppression exists to drop. A "look
+    // <player>" / "look <item>" / "look at sign" renders a description, never a
+    // room — arming suppression for those is NOT harmless, it's actively wrong:
+    // if a real move's confirming room render lands inside the 3-s window it gets
+    // swallowed, stranding the pending move until a manual re-display. That's the
+    // party-splitting-teleport stall — TrapDelegationManager's "look <member>"
+    // race probe on a re-join raced the walker's next step and ate its landing.
     [GeneratedRegex(
-        @"^(l|lo|loo|look|peek|peer)\s+\S+",
+        @"^(l|lo|loo|look|peek|peer)\s+(northeast|northwest|southeast|southwest|north|south|east|west|up|down|ne|nw|se|sw|n|s|e|w|u|d)\s*$",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex LookCommandPattern();
 

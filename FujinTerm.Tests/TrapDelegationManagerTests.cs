@@ -190,6 +190,34 @@ public sealed class TrapDelegationManagerTests : IDisposable
         Assert.Empty(mgr.LastSentForTests);
     }
 
+    [Fact]
+    public void OnMemberJoined_SkipsLook_WhileReformSettling()
+    {
+        // No member looks during a party-splitting-teleport reform: a look renders
+        // the member's description right as the walker's gate releases and can
+        // re-strand the resuming move. Race stays unknown until a later join.
+        var h = Harness();
+        TrapDelegationManager mgr = NewManager(h);
+        mgr.IsPartyReformSettling = () => true;
+
+        h.router.Dispatch(Line("Helper started to follow you."));
+
+        Assert.Empty(mgr.LastSentForTests);
+    }
+
+    [Fact]
+    public void OnMemberJoined_Looks_WhenReformNotSettling()
+    {
+        // Outside a reform (predicate false) the ordinary race probe still fires.
+        var h = Harness();
+        TrapDelegationManager mgr = NewManager(h);
+        mgr.IsPartyReformSettling = () => false;
+
+        h.router.Dispatch(Line("Helper started to follow you."));
+
+        Assert.Equal("look Helper\r", Sent(mgr, 0));
+    }
+
     // ===== Delegation broadcast ==========================================
 
     [Fact]

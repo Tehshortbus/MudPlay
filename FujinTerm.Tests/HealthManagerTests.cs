@@ -844,6 +844,37 @@ public sealed class HealthManagerTests
     }
 
     [Fact]
+    public void RunIfBelowMaZero_DisablesMaFlee_EvenAtZeroMana()
+    {
+        // A run-trigger of 0 means "never flee on this pool". Without the
+        // disable guard the MA branch (MaxMa>0 && Ma<=0) would fire the moment
+        // mana bottomed out at 0 — an errant flee that walks the character off
+        // its loop path. 0 must switch the MA flee off entirely.
+        using Harness h = new(new HealthSettings { RunIfBelowMa = 0 });
+        h.State.MaxHp = 200;
+        h.State.MaxMa = 100;
+        h.State.InCombat = true;
+        h.State.HasPromptData = true;
+        h.State.Hp = 150;      // healthy HP
+        h.State.Ma = 0;        // fully out of mana
+
+        Assert.False(h.Health.FledThisCombat);
+    }
+
+    [Fact]
+    public void RunIfBelowHpZero_DisablesHpFlee()
+    {
+        // Same disable rule on the HP pool: 0 = never flee on HP.
+        using Harness h = new(new HealthSettings { RunIfBelowHp = 0 });
+        h.State.MaxHp = 200;
+        h.State.InCombat = true;
+        h.State.HasPromptData = true;
+        h.State.Hp = 30;       // 15% — below the default 20% run trigger, but flee is off
+
+        Assert.False(h.Health.FledThisCombat);
+    }
+
+    [Fact]
     public void RunLatchAndRest_BothHappen_AfterCombatEnds()
     {
         using Harness h = new();

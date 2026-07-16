@@ -919,6 +919,73 @@ public sealed class AutoPartyManagerTests
     }
 
     [Fact]
+    public void IsReformSettling_TrueWhileMembersPending_FalseBeforeReform()
+    {
+        // The reform-settling signal TrapDelegationManager consults to skip its
+        // race-probe look. False before a split, true while members are pending.
+        var (engine, _, _, party) = Setup();
+        MovementCoordinator coord = new();
+        engine.SetMovementGate(coord, isLooping: () => false);
+
+        party.SelfIsLeader = true;
+        party.Members.Add(new PartyMember { Name = "Fujin", IsSelf = true });
+        party.Members.Add(new PartyMember { Name = "Raijin" });
+
+        Assert.False(engine.IsReformSettling);
+
+        engine.NotePartySplitTeleport();
+
+        Assert.True(engine.IsReformSettling);
+    }
+
+    [Fact]
+    public void SplitReform_RedisplayBackstop_SendsBareCr_WhenMemberStillPending()
+    {
+        // The fixed settle-timer backstop: a member who teleported in ahead of us
+        // and whose arrival we never witnessed is still pending — a bare CR
+        // redisplays the room so the "Also here:" line surfaces them.
+        var (engine, _, _, party) = Setup();
+        MovementCoordinator coord = new();
+        engine.SetMovementGate(coord, isLooping: () => false);
+
+        party.SelfIsLeader = true;
+        party.Members.Add(new PartyMember { Name = "Fujin", IsSelf = true });
+        party.Members.Add(new PartyMember { Name = "Raijin" });
+
+        engine.NotePartySplitTeleport();
+        Assert.Empty(engine.LastSentForTests);   // invite deferred, nothing yet
+
+        engine.FireReformRedisplayForTests();
+
+        byte[] sent = Assert.Single(engine.LastSentForTests);
+        Assert.Equal("\r", Encoding.Latin1.GetString(sent));
+    }
+
+    [Fact]
+    public void SplitReform_RedisplayBackstop_NoOp_WhenAllMembersWitnessed()
+    {
+        // Every member's arrival was already witnessed → nothing pending → the
+        // backstop redisplay is a no-op, so it can't nudge the resumed walk.
+        var (engine, router, _, party) = Setup();
+        MovementCoordinator coord = new();
+        engine.SetMovementGate(coord, isLooping: () => false);
+
+        party.SelfIsLeader = true;
+        party.Members.Add(new PartyMember { Name = "Fujin", IsSelf = true });
+        party.Members.Add(new PartyMember { Name = "Raijin" });
+
+        engine.NotePartySplitTeleport();
+        Dispatch(router, "Raijin appears in a blinding flash of light!");
+
+        int before = engine.LastSentForTests.Count;
+        engine.FireReformRedisplayForTests();
+
+        Assert.Equal(before, engine.LastSentForTests.Count);
+        Assert.DoesNotContain(engine.LastSentForTests,
+            b => Encoding.Latin1.GetString(b) == "\r");
+    }
+
+    [Fact]
     public void NotePartySplitTeleport_NonLeader_NoReform()
     {
         // A follower who crossed the same teleport has nobody to re-invite —

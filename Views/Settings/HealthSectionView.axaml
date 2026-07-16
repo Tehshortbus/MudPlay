@@ -117,7 +117,7 @@
                             <NumericUpDown Grid.Row="5" Grid.Column="1"
                                            Value="{Binding RunIfBelowHp, Mode=TwoWay}"
                                            Minimum="0" Maximum="100000" Increment="1" FormatString="0" Width="120" HorizontalAlignment="Left"
-                                           ToolTip.Tip="Trigger flee behavior when HP falls this low."/>
+                                           ToolTip.Tip="Trigger flee behavior when HP falls this low. 0 = off (never flee on HP)."/>
                             <TextBlock Grid.Row="5" Grid.Column="2" Classes="FieldLabel"
                                        VerticalAlignment="Center" Margin="8,0,0,0"
                                        Text="{Binding RunIfBelowHpConverted}"/>
@@ -188,7 +188,7 @@
                             <NumericUpDown Grid.Row="4" Grid.Column="1"
                                            Value="{Binding RunIfBelowMa, Mode=TwoWay}"
                                            Minimum="0" Maximum="100000" Increment="1" FormatString="0" Width="120" HorizontalAlignment="Left"
-                                           ToolTip.Tip="Flee when caster runs out of MA / KAI to cast."/>
+                                           ToolTip.Tip="Flee when caster runs out of MA / KAI to cast. 0 = off (never flee on mana)."/>
                             <TextBlock Grid.Row="4" Grid.Column="2" Classes="FieldLabel"
                                        VerticalAlignment="Center" Margin="8,0,0,0"
                                        Text="{Binding RunIfBelowMaConverted}"/>
