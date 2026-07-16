@@ -629,6 +629,70 @@ public sealed class QuestCrawlerTests : IDisposable
     }
 
     [Fact]
+    public void Crawl_SinglePartQuest_SurfacesAddExpAward()
+    {
+        // Golden-egg (133) shape: the final give-step hands a keeper and grants exp. The
+        // crawl surfaces the exp as the quest's ExpAward — a guide-only reward figure.
+        IReadOnlyList<CrawledQuest> quests = QuestCrawler.Crawl(
+            CacheWithTbInfo("giveability 133 9:giveitem 1000:addexp 1500000"), classId: null);
+
+        CrawledQuest q = Assert.Single(quests);
+        Assert.Equal(1_500_000, q.ExpAward);
+        Assert.Equal(new[] { 1000 }, q.AwardItems);
+    }
+
+    [Fact]
+    public void Crawl_ExpAward_NotMultipliedAcrossClassVariants()
+    {
+        // The same completion exp fans out across per-class chains at one give-step; the
+        // crawl counts it once (keyed on the step), not once per class variant.
+        IReadOnlyList<CrawledQuest> quests = QuestCrawler.Crawl(
+            CacheWithTbInfo(
+                "class 1:giveability 132 4:addexp 4000000",
+                "class 2:giveability 132 4:addexp 4000000",
+                "class 3:giveability 132 4:addexp 4000000"), classId: 2);
+
+        CrawledQuest q = Assert.Single(quests);
+        Assert.Equal(4_000_000, q.ExpAward);
+    }
+
+    [Fact]
+    public void Crawl_MultiPartExp_AttachesToItsBand()
+    {
+        // Two tiers (give-step 3 @ L10, give-step 9 @ L20), each granting its own exp.
+        // Each band reports only the addexp handed at its own give-step.
+        IReadOnlyList<CrawledQuest> quests = QuestCrawler.Crawl(
+            CacheWithTbInfo(
+                "giveability 140 3:minlevel 10:addexp 1000000",
+                "giveability 140 9:minlevel 20:addexp 5000000"),
+            classId: null);
+
+        Assert.Equal(1_000_000, Find(quests, 140, 10).ExpAward);
+        Assert.Equal(5_000_000, Find(quests, 140, 20).ExpAward);
+    }
+
+    [Fact]
+    public void Crawl_QuestWithoutAddExp_HasZeroExpAward()
+    {
+        // A quest whose chain carries no addexp reports no exp reward (the Experience
+        // line stays hidden), distinct from a quest that grants exp.
+        IReadOnlyList<CrawledQuest> quests = QuestCrawler.Crawl(
+            CacheWithTbInfo("giveability 125 2:minlevel 15:addability 2 1"), classId: 7);
+
+        Assert.Equal(0, Assert.Single(quests).ExpAward);
+    }
+
+    [Fact]
+    public void Experience_FormatsThousandsSeparatedWithSuffix()
+    {
+        var q = new CrawledQuest(133, 0, 0, Array.Empty<QuestBonus>(), Array.Empty<int>(), ExpAward: 1_500_000);
+        Assert.Equal("1,500,000 exp", QuestTextFormatter.Experience(q));
+
+        var none = new CrawledQuest(133, 0, 0, Array.Empty<QuestBonus>(), Array.Empty<int>());
+        Assert.Equal(string.Empty, QuestTextFormatter.Experience(none));
+    }
+
+    [Fact]
     public void Crawl_NonMonotonicGivestepGates_WithoutAddabilityAdvance_StaySinglePart()
     {
         // A flag whose give-step minlevel gates are step1@L15, step0@L35, step4@L50 —

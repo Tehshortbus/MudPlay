@@ -51,6 +51,14 @@ internal static partial class QuestTextFormatter
             ? string.Join(", ", q.AwardItems.Select(id => ItemName(gameData, id)))
             : q.AwardsAbility ? AbilityNames.FormatId(q.Flag) : string.Empty;
 
+    // The quest's completion experience, thousands-separated with an "exp" suffix
+    // ("1,500,000 exp"); empty when the quest (or band) hands none. A distinct reward
+    // line from the keeper-item award — this is the raw exp the give-chain grants.
+    public static string Experience(CrawledQuest q) =>
+        q.ExpAward > 0
+            ? string.Create(CultureInfo.InvariantCulture, $"{q.ExpAward:N0} exp")
+            : string.Empty;
+
     // The class / race the crawl found this quest restricted to, as
     // "Classes: Warrior, Cleric  ·  Races: Gaunt One"; empty when the quest is open to
     // all (no restriction surfaced). Informational — the crawl reads guards off the

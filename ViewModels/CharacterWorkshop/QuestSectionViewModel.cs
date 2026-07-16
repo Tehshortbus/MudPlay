@@ -123,6 +123,9 @@ public sealed partial class QuestSectionViewModel : WorkshopSectionViewModel
                     QuestTextFormatter.Level(requiredLevel),
                     QuestTextFormatter.Bonuses(q.Bonuses),
                     awardText,
+                    // Crawl-derived exp reward, shown straight (no user override): a reward
+                    // override edits the item/ability award line, not the raw give-chain exp.
+                    QuestTextFormatter.Experience(q),
                     QuestTextFormatter.Requirements(_gameData, q),
                     IsIneligible(q, classId, raceId),
                     prog.Complete,
@@ -214,6 +217,7 @@ public sealed partial class QuestSectionViewModel : WorkshopSectionViewModel
             QuestTextFormatter.Level(def.RequiredLevel ?? 0),
             string.Empty,
             def.Rewards ?? string.Empty,
+            string.Empty,   // manual quests carry no crawled exp reward
             string.Empty,
             ineligible: false,
             prog.Complete,

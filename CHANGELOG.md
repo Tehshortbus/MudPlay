@@ -8,6 +8,7 @@ Notable changes per merged PR, **newest first**. The top of the [README](README.
 - Game Data Rooms filter accepts a `map,room` coordinate (`1,1`) — comma, slash, or space all jump straight to that one room
 - Item detail's bought/sold shops are now clickable — each jumps the Game Data browser to the host room's Rooms-tab record
 - Character Info tab moves Quest Bonuses beneath the attack accuracy/damage box, freeing the right column for the full inventory readout
+- Quest Status cards now show the completion experience a quest awards on its own reward line (guide-only — it doesn't feed the Character Info bonuses)
 - Weapon-flap fix: a combat-entry gear-set trigger now defers the weapon/off-hand to the combat engine while it holds a per-monster alternate-weapon override, so the Default set can't re-wear the normal weapon over the swap mid-fight
 - Fallback-death fix: a kill with no per-monster death line (exp + `*Combat Off*`) is now attributed to the current target and dropped from the room roster — the survivor is re-engaged at once, ending the re-swing at the corpse and the post-kill idle stall
 - `@stop` now stacks a pause on top of combat exactly like the Pause button — a route paused mid-fight stays paused after the fight clears instead of walking on (and `@rego` lifts only that user pause)

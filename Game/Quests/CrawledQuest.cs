@@ -71,6 +71,11 @@ namespace FujinTerm.Game.Quests;
 //     StepRangeStart/StepRangeEnd are that ability value, so the followable-step
 //     draft walks the same axis (QuestStepGraph.Build(…, byAbilityValue: true)).
 //     false for single-part and give-step-laddered quests.
+//   ExpAward — total experience the quest (or, for a multi-part band, this tier)
+//     hands the player, summed from the `addexp` directives on its give-steps and
+//     deduped across class-branched chains that repeat the same grant. 0 when the
+//     quest awards no experience. Guide-only reward info — never folded into the
+//     completion bonus the Character Info tab reads.
 public sealed record CrawledQuest(
     int Flag,
     int Step,
@@ -84,4 +89,5 @@ public sealed record CrawledQuest(
     int StepRangeStart = 0,
     int StepRangeEnd = 0,
     bool AwardsAbility = false,
-    bool ProgressByValue = false);
+    bool ProgressByValue = false,
+    int ExpAward = 0);
