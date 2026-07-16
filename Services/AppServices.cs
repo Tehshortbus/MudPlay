@@ -3151,6 +3151,11 @@ public sealed class AppServices
         // pre-move sequence, before the sn — equipping breaks sneak.
         Combat.SetWeaponActuator(Equipment.SwapWeapon, () => Equipment.ApplyBackstabArmor());
 
+        // Let an auto-fire gear-set apply defer the weapon slot to combat while it
+        // holds a per-monster alternate-weapon override, so the Default set's
+        // combat-entry trigger can't clobber the swap (the weapon-flap report).
+        Equipment.SetCombatWeaponOwnershipProbe(() => Combat.IsWeaponOverrideActive);
+
         // Confusion-fumble retry: a fumbled attack is consumed without engaging,
         // so re-send the last swing on every fumble line (ConditionTracker gates
         // the raw signal to the confusion record; Combat gates on an active fight).

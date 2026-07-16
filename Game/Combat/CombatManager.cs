@@ -396,6 +396,15 @@ public sealed partial class CombatManager : IDisposable
     // flight.
     public string? CurrentTarget => _currentTarget;
 
+    // True while combat has deliberately swapped to the alternate weapon for the
+    // monster it's fighting (a magic-required mob, or a normal-weapon-no-effect
+    // fallback). The auto-equip gear-set triggers consult this so a Default-set
+    // apply on combat-entry doesn't slam the normal weapon back on and undo the
+    // per-monster swap — the reported "swaps to alternate, then back to normal,
+    // then to alternate again" flapping. Reverts to false when the room clears
+    // (OnRoomCleared) or a fresh weapon pick lands on the normal weapon.
+    public bool IsWeaponOverrideActive => _usingAlternateWeapon;
+
     // Immutable view of the combat decision state, for the bug-report
     // engine-state dump. The believed-worn weapon is no longer shadowed here —
     // live inventory is authoritative (the actuator diffs against it), so the
@@ -1603,31 +1612,52 @@ public sealed partial class CombatManager : IDisposable
         _wireSender(Encoding.Latin1.GetBytes("\r"));
     }
 
-    // A kill happened but we can't drop a specific roster slot for it. Two
-    // callers: (1) a specific death-line matched but the classifier couldn't
+    // A kill happened but the death-line didn't hand us a roster slot to drop.
+    // Two callers: (1) a specific death-line matched but the classifier couldn't
     // attribute it to any monster in the current room view (shared /
     // suffix-flavored wordings: the death line resolved to "spectre" while the
     // roster holds "shadow spectre", so RemoveDeadEntity found nothing to drop);
-    // (2) a fallback death (exp + *Combat Off*) where we never learned which mob
-    // died — the norm for datasets missing per-monster DeathLine patterns. Either
-    // way the roster is now stale — a mob is gone but our list still shows it.
-    // Without a nudge, combat only learns the room emptied on the NEXT tick, when
-    // its swing at the ghost target no-ops through OnCommandNoEffect — a ~5s stall
-    // before the walker can resume. Force the same debounced room re-display those
-    // paths use so the server hands us the true roster now: if the room's empty
-    // the Combat gate clears immediately; if a survivor remains we re-pick it a
-    // beat sooner.
+    // (2) a fallback death (exp + *Combat Off*) where the death line was missing
+    // entirely — the norm for datasets missing per-monster DeathLine patterns.
+    //
+    // Either way we WERE swinging at something and a kill just landed, so
+    // _currentTarget is our best identity for the corpse: a fallback death's
+    // *Combat Off* means OUR fight ended, and a flavored specific death is the
+    // same mob under a base-name wording. Attribute the death to _currentTarget
+    // exactly like a matched death does — drop it from the live roster so the
+    // synthetic EntitiesObserved re-picks the next survivor immediately, or
+    // clears the room and releases the Combat gate when it was the last mob.
+    // Without this the dead mob lingers, the next tick re-swings at the corpse
+    // ("Your command had no effect."), and recovery waits out the idle-stall
+    // watchdog — the reported "tries to re-attack the monster that clearly died"
+    // and "sits idle after a kill until the timeout" stalls. Only when the target
+    // name doesn't match any roster slot do we fall back to the debounced CR
+    // re-display, letting the server hand back the true roster.
     public void NoteUnattributedDeath()
     {
         if (!_isEnabled()) return;
         if (_wireSender is null) return;
-        if (_currentTarget is null) return;
+        if (_currentTarget is not { } presumedDead) return;
 
         // A kill we couldn't pin to a roster slot still leaves the roster stale
-        // until the forced re-display below resolves — the exact window in which
-        // the between-round-cast resume must not re-engage (see _lastDeathAt).
+        // until it resolves — the exact window in which the between-round-cast
+        // resume must not re-engage (see _lastDeathAt).
         _lastDeathAt = DateTimeOffset.Now;
 
+        // Clear the target BEFORE the removal re-fires EntitiesObserved (mirrors
+        // the specific-death ordering) so the re-pick sees a clean slate.
+        _currentTarget = null;
+        ClearBackstabResolution();
+        if (_classifier.RemoveDeadEntity(presumedDead))
+        {
+            _log?.Combat(LogCategory,
+                $"unattributed death attributed to '{presumedDead}' — dropped from roster");
+            return;
+        }
+
+        // Target name matched no roster slot (flavored / shared wording the
+        // RawName doesn't cover). Force the debounced room re-display so the
+        // server hands us the true roster now.
         DateTimeOffset now = DateTimeOffset.Now;
         if (now - _lastRoomRefreshAt < RoomRefreshCooldown) return;
         _lastRoomRefreshAt = now;

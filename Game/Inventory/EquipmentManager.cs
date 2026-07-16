@@ -46,6 +46,13 @@ public sealed class EquipmentManager
     private readonly LogService? _log;
     private readonly WireSender _wire = new();
 
+    // True when the combat engine currently owns the weapon slot with a
+    // per-monster alternate-weapon override. Wired post-construction (the combat
+    // engine is built after this manager, so a ctor injection would be circular).
+    // Auto-fire gear-set applies consult it to leave the weapon/off-hand to combat
+    // rather than clobbering its swap — see ApplySet.
+    private Func<bool>? _combatOwnsWeaponSlot;
+
     private readonly Queue<string> _pending = new();
     private DispatcherTimer? _applyTimer;
     private bool _isEquipping;
@@ -76,6 +83,10 @@ public sealed class EquipmentManager
 
     // Bind the wire sink. Idempotent; later binds replace earlier ones.
     public void SetWireSender(Action<byte[]> send) => _wire.Bind(send);
+
+    // Bind the combat weapon-ownership probe (CombatManager.IsWeaponOverrideActive).
+    // Wired post-construction to break the manager ↔ combat-engine build cycle.
+    public void SetCombatWeaponOwnershipProbe(Func<bool> probe) => _combatOwnsWeaponSlot = probe;
 
     // Every buffer the engine has pushed to the wire, for tests.
     internal IReadOnlyList<byte[]> LastSentForTests => _wire.LastSentForTests;
@@ -261,7 +272,16 @@ public sealed class EquipmentManager
             combatChanged = true;
         }
 
-        List<string> cmds = BuildApplyCommands(set, _getSnapshot(), fillFromInventory);
+        // Auto-fire applies (resting / combat triggers, fill=false) defer the
+        // weapon + off-hand to the combat engine whenever it's mid-swap for a
+        // monster. Otherwise the Default-set trigger that fires on combat-entry
+        // re-wears the normal weapon and cancels combat's per-monster alternate
+        // swap, which then re-swaps next round — the reported weapon flapping.
+        // Manual gear-ups (Equip All / @equip, fill=true) carry explicit intent
+        // and always control the weapon.
+        bool deferWeaponToCombat = !fillFromInventory && _combatOwnsWeaponSlot?.Invoke() == true;
+
+        List<string> cmds = BuildApplyCommands(set, _getSnapshot(), fillFromInventory, deferWeaponToCombat);
 
         if (cmds.Count == 0)
             return combatChanged;
@@ -277,7 +297,7 @@ public sealed class EquipmentManager
     // every existing test exercises (their snapshots are never-observed, so
     // haveInventory is false) and what an auto-fire uses.
     private List<string> BuildApplyCommands(
-        EquipmentSet set, InventorySnapshot snap, bool fillFromInventory)
+        EquipmentSet set, InventorySnapshot snap, bool fillFromInventory, bool armorOnly = false)
     {
         bool haveInventory = snap.LastUpdated != DateTimeOffset.MinValue;
         if (fillFromInventory && haveInventory
@@ -292,7 +312,8 @@ public sealed class EquipmentManager
         // Gate the set-only diff on the pack once we've parsed an 'i' so an
         // auto-fire trigger doesn't flood failed wears for gear we no longer hold
         // (e.g. after a death dumped the whole loadout into a deathpile).
-        return BuildWearCommands(set, worn, availableNames: haveInventory ? HeldNames(snap) : null);
+        return BuildWearCommands(set, worn, armorOnly: armorOnly,
+            availableNames: haveInventory ? HeldNames(snap) : null);
     }
 
     // ----- pure apply logic (unit-tested directly) ------------------------
@@ -303,8 +324,9 @@ public sealed class EquipmentManager
     // skipped so re-applying a set issues no redundant wears. The game
     // auto-removes whatever occupies a slot when the new item is worn, so no
     // explicit remove is needed for a full-loadout swap. armorOnly additionally
-    // skips the held slots (Weapon / Off-Hand) — the backstab auto-fire leaves
-    // the weapon to the combat engine's immediate swap.
+    // skips the held slots (Weapon / Off-Hand) — both the backstab auto-fire and
+    // an auto-fire set applied mid-swap leave the weapon to the combat engine's
+    // immediate per-monster swap.
     // availableNames, when non-null, is the set of items the character actually
     // holds (carried-but-unworn); an item that's neither worn nor in it is
     // skipped, since the wear would only draw "You do not have X left

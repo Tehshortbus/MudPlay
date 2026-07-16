@@ -435,6 +435,53 @@ public sealed class CombatManagerTests
     }
 
     [Fact]
+    public void UnattributedDeath_AttributesToCurrentTarget_ReSwingsAtSurvivor()
+    {
+        // Fallback-death repro (paradigm-20260716-095716 / -101002): the dataset
+        // has no per-monster DeathLine, so every kill routes through the fallback
+        // path (exp + *Combat Off*) that lands on NoteUnattributedDeath with no
+        // roster slot handed to us. The pre-fix method left _currentTarget set and
+        // only nudged a CR, so the dead mob lingered in the roster: the next tick
+        // re-swung at the corpse and recovery waited out the idle-stall watchdog.
+        // Now the death is attributed to _currentTarget, dropped from the roster,
+        // and the survivor is re-picked immediately.
+        using Harness h = new();
+        h.AddMonster(1, "big margoyle", killable: false);
+        h.AddMonster(2, "small margoyle", killable: false);
+
+        h.Feed("Also here: big margoyle, small margoyle.");
+        Assert.Equal("a big margoyle", h.LastSent);
+        Assert.Equal("big margoyle", h.Combat.CurrentTarget);
+        int initialSent = h.Sent.Count;
+
+        // The fallback death fires — AppServices routes it to NoteUnattributedDeath.
+        h.Combat.NoteUnattributedDeath();
+
+        Assert.True(h.Sent.Count > initialSent,
+            "expected a fresh swing at the survivor after the fallback kill");
+        Assert.Equal("a small margoyle", h.LastSent);
+        Assert.Equal("small margoyle", h.Combat.CurrentTarget);
+    }
+
+    [Fact]
+    public void UnattributedDeath_LastMonster_ClearsTarget()
+    {
+        // The sole monster in the room dies via the fallback path. Attributing the
+        // death to _currentTarget and dropping it empties the roster, so the
+        // synthetic EntitiesObserved releases the Combat gate — no CR-nudge wait,
+        // no re-swing at the corpse (the "sits idle after a kill" stall).
+        using Harness h = new();
+        h.AddMonster(1, "big margoyle", killable: false);
+
+        h.Feed("Also here: big margoyle.");
+        Assert.Equal("big margoyle", h.Combat.CurrentTarget);
+
+        h.Combat.NoteUnattributedDeath();
+
+        Assert.Null(h.Combat.CurrentTarget);
+    }
+
+    [Fact]
     public void CustomAttackCommand_UsedVerbatim()
     {
         using Harness h = new();
