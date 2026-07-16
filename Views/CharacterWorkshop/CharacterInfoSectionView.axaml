@@ -205,14 +205,11 @@
                             </Grid>
                         </StackPanel>
                     </Border>
-                </StackPanel>
 
-                <!-- ===== Right column: quest bonuses + full inventory readout ===== -->
-                <StackPanel Grid.Column="1" Spacing="14" HorizontalAlignment="Left">
-
-                    <!-- Quest Bonuses: completed-quest permanent rewards. Shown only
-                         when at least one completed quest grants a bonus, so it stays
-                         out of the way for characters with no quest rewards yet. -->
+                    <!-- Quest Bonuses: completed-quest permanent rewards, placed below
+                         the combat box so the right column is free for the full
+                         inventory readout. Shown only when at least one completed quest
+                         grants a bonus. -->
                     <Border Classes="Box" IsVisible="{Binding HasQuestBonuses}">
                         <StackPanel Spacing="2">
                             <TextBlock Classes="BoxTitle" Text="Quest Bonuses" Margin="0,0,0,6"/>
@@ -236,6 +233,10 @@
                             </ItemsControl>
                         </StackPanel>
                     </Border>
+                </StackPanel>
+
+                <!-- ===== Right column: full inventory readout ===== -->
+                <StackPanel Grid.Column="1" Spacing="14" HorizontalAlignment="Left">
 
                     <!-- Inventory: the full carry list from the last `i` dump — every
                          worn item (with its slot) and every carried-but-unworn item. -->

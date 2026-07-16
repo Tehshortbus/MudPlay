@@ -157,6 +157,39 @@
                                    IsVisible="{Binding HasTrainer}"
                                    Text="{Binding TrainerBand}"/>
 
+                        <!-- Per-level training cost (training rooms only). -->
+                        <StackPanel IsVisible="{Binding HasTrainerCosts}" Spacing="1">
+                            <Grid Margin="8,2,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="TrainLevel"/>
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="TrainCost"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Classes="SectionHeader" Text="Level"
+                                           TextAlignment="Right"/>
+                                <TextBlock Grid.Column="1" Classes="SectionHeader" Text="Cost"
+                                           TextAlignment="Right" Margin="16,0,0,0"/>
+                            </Grid>
+                            <ItemsControl ItemsSource="{Binding TrainerCosts}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate DataType="vm:TrainerCostRow">
+                                        <Grid Margin="8,0,0,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" SharedSizeGroup="TrainLevel"/>
+                                                <ColumnDefinition Width="Auto" SharedSizeGroup="TrainCost"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Classes="ShopCell" Text="{Binding Level}"
+                                                       TextAlignment="Right"/>
+                                            <TextBlock Grid.Column="1" Classes="ShopCell" Text="{Binding Cost}"
+                                                       TextAlignment="Right" Margin="16,0,0,0"/>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <TextBlock Classes="Note" Margin="8,1,0,0"
+                                       IsVisible="{Binding TrainerCostsTruncated}"
+                                       Text="… higher levels omitted"/>
+                        </StackPanel>
+
                         <!-- Column headers -->
                         <Grid Margin="8,2,0,0" IsVisible="{Binding HasShop}">
                             <Grid.ColumnDefinitions>

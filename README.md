@@ -1,10 +1,10 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.67.7**
-> - A weapon's magic-hit level now sums both magic abilities (Magical + HitMagic), matching the character sheet — an inherently magical weapon (a "shimmering" longsword carrying only the Magical ability) is no longer misread as un-magical
-> - Fixes the walker stalling "un-actionable" against a monster its magical weapon could actually hit, and the spurious auto-swap to an alternate weapon
-> - Door-key possession check now strips the count prefix on key-ring entries ("2 black serpent key"), so a key held in multiples is recognized as carried instead of triggering a spurious floor "get" before "use"
+> **Version 1.68.0**
+> - Trainer room detail now lists the per-level training cost across the trainer's whole level band, priced at that trainer's own markup
+> - Game Data Rooms filter accepts a `map,room` coordinate (`1,1`) — comma, slash, or space all jump straight to that one room
+> - Character Info tab moves Quest Bonuses beneath the attack accuracy/damage box, freeing the right column for the full inventory readout
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

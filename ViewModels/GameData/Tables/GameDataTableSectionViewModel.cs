@@ -265,8 +265,10 @@ public abstract partial class GameDataTableSectionViewModel : GameDataSectionVie
 
     // A row matches the filter when any column's raw value contains the filter substring
     // (case-insensitive). Raw values drive the match so numeric codes (e.g. 1) are findable
-    // even when the grid renders them via a formatter ("Weapon").
-    private bool RowMatches(GameDataRow row, string filter)
+    // even when the grid renders them via a formatter ("Weapon"). Virtual so a tab with a
+    // richer notion of a match (e.g. Rooms' "map,room" coordinate query) can intercept
+    // before falling back to this substring pass.
+    protected virtual bool RowMatches(GameDataRow row, string filter)
     {
         foreach (string column in Columns)
         {

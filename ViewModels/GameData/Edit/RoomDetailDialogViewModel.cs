@@ -71,6 +71,20 @@ public sealed partial class RoomDetailDialogViewModel
     private string _trainerBand = string.Empty;
     public bool HasTrainer => TrainerBand.Length > 0;
 
+    // Per-level training cost at this trainer — one row per level in its band, the
+    // copper to advance into that level at the trainer's own markup. Charm plays no
+    // part in training price, so these read the same for every character.
+    public ObservableCollection<TrainerCostRow> TrainerCosts { get; } = new();
+    public bool HasTrainerCosts => TrainerCosts.Count > 0;
+
+    // A wide-band trainer (e.g. a 1–999 sentinel room) would list hundreds of rows;
+    // cap the table and flag the tail so the popup stays readable. 80 clears every
+    // bounded band in the data — only the 999 sentinel actually trips the cap.
+    private const int MaxTrainerCostRows = 80;
+
+    [ObservableProperty]
+    private bool _trainerCostsTruncated;
+
     // Prices are shown at the neutral retail Charm (no discount / surcharge) so
     // the popup reads the same for every character.
     private const int RetailCharm = 50;
@@ -104,6 +118,8 @@ public sealed partial class RoomDetailDialogViewModel
         Monsters.Clear();
         Exits.Clear();
         ShopStock.Clear();
+        TrainerCosts.Clear();
+        TrainerCostsTruncated = false;
         ShopName = string.Empty;
         ShopSubtitle = string.Empty;
         TrainerBand = string.Empty;
@@ -196,14 +212,39 @@ public sealed partial class RoomDetailDialogViewModel
         ShopSubtitle = BuildShopSubtitle(def, isTrainer, hasStock);
 
         if (isTrainer)
+        {
             TrainerBand = def.MaxLevel > def.MinLevel
                 ? $"Trains levels {def.MinLevel}–{def.MaxLevel}"
                 : $"Trains level {def.MinLevel}";
+            PopulateTrainerCosts(def);
+        }
 
         if (hasStock)
             PopulateStock(def);
 
         return true;
+    }
+
+    // Fill the per-level training cost table. A row's cost is the copper to advance
+    // INTO that level, so it's priced off the previous level's exp step —
+    // TrainCopper takes level-1. Level 1 is the free 0-exp start, so the table
+    // begins at level 2 (or the trainer's floor, whichever is higher). The band is
+    // capped at MaxTrainerCostRows; a wider band flags the omitted tail.
+    private void PopulateTrainerCosts(ShopDefinition def)
+    {
+        int first = Math.Max(2, def.MinLevel);
+        int last = def.MaxLevel;
+        if (last < first) return;
+
+        int shown = 0;
+        for (int level = first; level <= last && shown < MaxTrainerCostRows; level++, shown++)
+        {
+            double copper = ShopPriceCalculator.TrainCopper(level - 1, def.MarkupPercent);
+            TrainerCosts.Add(new TrainerCostRow(
+                level.ToString(CultureInfo.InvariantCulture),
+                ShopPriceCalculator.FormatCopper(copper)));
+        }
+        TrainerCostsTruncated = last >= first + MaxTrainerCostRows;
     }
 
     // One subtitle line composed from whichever facets apply: the shop type, the
@@ -289,6 +330,7 @@ public sealed partial class RoomDetailDialogViewModel
         OnPropertyChanged(nameof(HasExits));
         OnPropertyChanged(nameof(HasShop));
         OnPropertyChanged(nameof(HasShopSection));
+        OnPropertyChanged(nameof(HasTrainerCosts));
     }
 
     // Exit click — walk the popup to the neighbour and let an already-open map
