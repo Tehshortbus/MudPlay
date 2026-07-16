@@ -231,6 +231,25 @@ public sealed partial class CombatManager : IDisposable
     // misattributed.
     private static readonly TimeSpan CastInterruptResumeWindow = TimeSpan.FromSeconds(3);
 
+    // When a monster death was last detected this burst (stamped by
+    // NoteMonsterDied / NoteUnattributedDeath). The between-round-cast resume
+    // must not fire when a kill just happened: a mob's dying *Combat Off* and a
+    // between-round heal in the same round both land inside CastInterruptResumeWindow,
+    // so the resume would misread the KILL's Off as its cast's interrupt and re-
+    // engage — against a roster the kill's forced re-display hasn't yet cleared.
+    // That fires an "aa <corpse>" at the emptied room ("Your command had no
+    // effect."). Suppressing the resume for this window hands re-engagement to the
+    // death→re-display→re-observe path, which re-picks any survivor from the
+    // resynced roster (or clears the gate on an empty room).
+    private DateTimeOffset _lastDeathAt = DateTimeOffset.MinValue;
+
+    // How long after a detected death a *Combat Off* is treated as the kill's Off
+    // rather than a cast interrupt. A death line and its *Combat Off* arrive in the
+    // same server burst (milliseconds apart), so this only needs to bridge that gap
+    // with margin; kept well under a round so a genuine cast-interrupt resume in the
+    // NEXT round (no kill) still fires.
+    private static readonly TimeSpan DeathInterruptWindow = TimeSpan.FromSeconds(2);
+
     // Server-confirmed engagement, driven ONLY by the wire *Combat Engaged* /
     // *Combat Off* lines — unlike _combatOff (optimistically cleared on every
     // attack send), this stays a faithful mirror of what the server actually told
@@ -470,6 +489,13 @@ public sealed partial class CombatManager : IDisposable
     public void NoteMonsterDied(string deadMonsterName)
     {
         if (string.IsNullOrEmpty(deadMonsterName)) return;
+
+        // A kill just landed — mark it so the between-round-cast resume treats the
+        // imminent *Combat Off* as the kill's Off, not its own cast's interrupt
+        // (see _lastDeathAt). Stamped regardless of whether this death matches our
+        // target: any death in the room means a re-observe is coming that owns the
+        // re-engage.
+        _lastDeathAt = DateTimeOffset.Now;
 
         // The guarded priority itself fell — the redirect chase is over. Drop the
         // memory so no stray guard-retry fires "aa <priority>" at the corpse. Runs
@@ -1593,6 +1619,11 @@ public sealed partial class CombatManager : IDisposable
         if (_wireSender is null) return;
         if (_currentTarget is null) return;
 
+        // A kill we couldn't pin to a roster slot still leaves the roster stale
+        // until the forced re-display below resolves — the exact window in which
+        // the between-round-cast resume must not re-engage (see _lastDeathAt).
+        _lastDeathAt = DateTimeOffset.Now;
+
         DateTimeOffset now = DateTimeOffset.Now;
         if (now - _lastRoomRefreshAt < RoomRefreshCooldown) return;
         _lastRoomRefreshAt = now;
@@ -1691,12 +1722,26 @@ public sealed partial class CombatManager : IDisposable
             // ResumeEngage re-picks from the room anyway. Requiring
             // _currentTarget here stranded exactly that case — the reported
             // "cast mihe, then missed a combat round before re-attacking".
+            //
+            // But NOT when a kill just fired this burst: the mob's dying *Combat
+            // Off* also lands inside CastInterruptResumeWindow, and re-engaging on
+            // it would re-pick from a roster the kill's forced re-display hasn't
+            // cleared yet — sending "aa <corpse>" at the emptied room (the reported
+            // phantom attack). bypassAttackGuard makes it worse by defeating the
+            // very ResumeAfterAttackGuard that suppresses a double-send on a kill.
+            // Skip for DeathInterruptWindow and let the death→re-observe path own
+            // the re-engage from the resynced roster.
             if (DateTimeOffset.Now - _betweenRoundCastAt < CastInterruptResumeWindow
                 && _castingSpellTarget is null
                 && _classifier.Current is { } live
                 && HasEngageable(live))
             {
-                TryResumeEngage(live, bypassAttackGuard: true);
+                if (DateTimeOffset.Now - _lastDeathAt < DeathInterruptWindow)
+                    _log?.Combat(LogCategory,
+                        "between-round-cast resume suppressed — kill this burst; " +
+                        "deferring re-engage to the death→re-observe path");
+                else
+                    TryResumeEngage(live, bypassAttackGuard: true);
             }
 
             // Guard-redirect recovery. When a guarded monster is our priority, each

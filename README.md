@@ -1,8 +1,8 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.66.6**
-> - Loop no longer moves a room or two then fails out to Idle — a kill's forced room re-display and the gate-resume no longer both advance the same step (which had sent the next move from the stale room and failed the lap)
+> **Version 1.66.7**
+> - Loop no longer fires a phantom attack at an already-cleared room after a heal — a kill's *Combat Off* landing the same round as a between-round cast (mihe) is no longer misread as the cast's interrupt, so the resume can't re-attack a corpse from a roster the kill's re-display hasn't cleared yet
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

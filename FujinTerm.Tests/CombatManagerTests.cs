@@ -2319,6 +2319,43 @@ public sealed class CombatManagerTests
     }
 
     [Fact]
+    public void BetweenRoundCast_KillInSameBurst_DoesNotPhantomAttackCorpse()
+    {
+        // Report paradigm-20260715-181944 (phantom "aa <trog>" at a cleared room):
+        // the mob took its killing blow the same round a mihe party-heal fired. The
+        // kill's *Combat Off* lands inside CastInterruptResumeWindow, so the resume
+        // misread it as the heal's interrupt and re-engaged — but the kill's forced
+        // re-display hadn't cleared the roster yet, so it re-picked the corpse and
+        // sent an attack at the emptied room ("Your command had no effect."). A
+        // death detected this burst must suppress the between-round-cast resume and
+        // hand re-engagement to the death→re-observe path (a fresh, resynced roster).
+        using Harness h = new();
+        h.AddMonster(1, "large troglodyte warrior", killable: true);
+
+        h.Feed("Also here: large troglodyte warrior.");
+        Assert.Single(h.Sent);
+        Assert.Equal("a large troglodyte warrior", h.LastSent);
+
+        // Age the swing so the fresh-swing guard isn't the suppressor — the
+        // between-round branch bypasses that guard anyway, isolating the death guard.
+        BackdateLastAttack(h.Combat);
+
+        // The trog dies but the death can't be pinned to a roster slot (flavored
+        // wording), so the roster still lists it and a re-display is forced. This
+        // stamps the death so the imminent Off reads as the KILL's Off.
+        h.Combat.NoteUnattributedDeath();
+        int before = h.Sent.Count;     // includes the forced \r re-display
+
+        // The heal fires this same round, then the kill's *Combat Off* lands with
+        // the (now-dead) trog still in the classifier's stale roster.
+        h.Combat.NoteBetweenRoundCast();
+        h.Feed("*Combat Off*");
+
+        // No phantom "a large troglodyte warrior" — the resume stood down.
+        Assert.Equal(before, h.Sent.Count);
+    }
+
+    [Fact]
     public void NoCombatOff_MobLine_DoesNotReswing()
     {
         // Guard: a mob line while combat is live (server still swinging
