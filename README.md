@@ -1,8 +1,9 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.66.9**
-> - A flee-if-below trigger of 0 now disables fleeing on that pool instead of firing at 0 — a caster with "run if below mana" set to 0 no longer bolts off the loop path the moment mana bottoms out, which had relocated the character and then failed the lap to Idle
+> **Version 1.67.0**
+> - Outgoing telepath chip now reads "TELE→" (arrow trailing) so it mirrors the incoming "←TELE" and the two directions are distinguishable at a glance
+> - Realm-event chip and filter are now a red "SERVER" chip / "Server" checkbox, matching Paradigm's server PvP notices
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

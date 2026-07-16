@@ -54,12 +54,17 @@ public sealed class ConversationRowViewModel
     {
         ChatChannel.Gossip            => "GOSS",
         ChatChannel.Local             => "SAY",
+        // Mirror the arrow so the two directions read as opposites at a
+        // glance: an incoming telepath leads with the arrow (pointing in),
+        // an outgoing one trails it (pointing away).
         ChatChannel.TelepathIncoming  => "←TELE",
-        ChatChannel.TelepathOutgoing  => "→TELE",
+        ChatChannel.TelepathOutgoing  => "TELE→",
         ChatChannel.Gangpath          => "GANG",
         ChatChannel.Broadcast         => "BCAST",
         ChatChannel.Yell              => "YELL",
-        ChatChannel.RealmEvent        => "REALM",
+        // Paradigm's realm events are server-authored, styled like the
+        // Server PvP notices — same red "SERVER" chip.
+        ChatChannel.RealmEvent        => "SERVER",
         ChatChannel.Server            => "SERVER",
         ChatChannel.DaySeparator      => string.Empty,
         _ => "?",

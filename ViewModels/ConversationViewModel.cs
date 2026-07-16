@@ -259,7 +259,7 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
             [ChatChannel.Gangpath]          = LookupBrush(app, "AccentGreenBrush"),
             [ChatChannel.Broadcast]         = LookupBrush(app, "AccentYellowBrush"),
             [ChatChannel.Yell]              = LookupBrush(app, "AccentAmberBrush"),
-            [ChatChannel.RealmEvent]        = LookupBrush(app, "ChromeFgMutedBrush"),
+            [ChatChannel.RealmEvent]        = LookupBrush(app, "AccentRedBrush"),
             [ChatChannel.Server]            = LookupBrush(app, "AccentRedBrush"),
             [ChatChannel.DaySeparator]      = LookupBrush(app, "ChromeFgMutedBrush"),
         };
