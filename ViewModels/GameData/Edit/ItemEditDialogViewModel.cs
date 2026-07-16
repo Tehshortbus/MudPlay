@@ -91,6 +91,12 @@ public sealed partial class ItemEditDialogViewModel : ObservableObject, IDialogV
     // Right-pane "Other Info" key/value list (read-only MDB fields).
     public IReadOnlyList<KeyValuePair<string, string>> MdbInfo { get; }
 
+    // Bought/sold shop rows — each a clickable link to the host room's
+    // Rooms-tab record, with a charm-priced buy/sell line beneath. Empty for an
+    // item sold at no shop.
+    public IReadOnlyList<ShopSaleRow> ShopSales { get; }
+    public bool HasShopSales => ShopSales.Count > 0;
+
     // Chest-contents readout (containers only) — the decoded loot table's
     // per-item drop chances plus a one-line yield summary. Empty for any item
     // that isn't a container wired to a loot textblock.
@@ -109,6 +115,7 @@ public sealed partial class ItemEditDialogViewModel : ObservableObject, IDialogV
         ItemOverlay? existing,
         SettingsTier currentTier,
         IReadOnlyList<KeyValuePair<string, string>> mdbInfo,
+        IReadOnlyList<ShopSaleRow> shops,
         bool isLight = false,
         bool isContainer = false,
         ChestContents? chest = null)
@@ -117,6 +124,7 @@ public sealed partial class ItemEditDialogViewModel : ObservableObject, IDialogV
         Name         = existing?.Name ?? mdbName;
         UseTier      = currentTier;
         MdbInfo      = mdbInfo;
+        ShopSales    = shops;
         CanBuySell   = !isLight;
         CanAutoOpen  = isContainer;
 

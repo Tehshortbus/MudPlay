@@ -517,6 +517,7 @@ public partial class MainWindowViewModel : ObservableObject
         // Same for the room-detail popup: monster names jump to a monster
         // record, and the room title / exits centre the Nav map on a room.
         AppServices.Current.SetMonsterGameDataOpener(OpenMonsterGameData);
+        AppServices.Current.SetRoomGameDataOpener(OpenRoomGameData);
         AppServices.Current.SetNavigateToRoomOpener(FocusNavigationOnRoom);
         AppServices.Current.SetCenterNavigationIfOpenOpener(CenterNavigationOnRoomIfOpen);
 
@@ -3176,6 +3177,19 @@ public partial class MainWindowViewModel : ObservableObject
         string numStr = monsterNumber.ToString(System.Globalization.CultureInfo.InvariantCulture);
         ShowGameDataBrowser("monsters",
             row => string.Equals(row.Get("Number"), numStr, StringComparison.Ordinal));
+    }
+
+    // Registered on AppServices so an item's clickable bought/sold shop line
+    // jumps straight to the host room's Game Data record. Opens (or re-focuses)
+    // the browser at the Rooms section and selects the row whose Map Number +
+    // Room Number match.
+    private void OpenRoomGameData(int map, int room)
+    {
+        string mapStr  = map.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        string roomStr = room.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        ShowGameDataBrowser("rooms",
+            row => string.Equals(row.Get("Map Number"),  mapStr,  StringComparison.Ordinal)
+                && string.Equals(row.Get("Room Number"), roomStr, StringComparison.Ordinal));
     }
 
     // Game Data menu → "Modify Blacklist…". Staged editor over the

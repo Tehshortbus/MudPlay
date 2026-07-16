@@ -144,6 +144,7 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
             existing:     existing,
             currentTier:  row.SourceTier,
             mdbInfo:      mdb.OtherInfo,
+            shops:        mdb.Shops,
             isLight:      mdb.IsLight,
             isContainer:  mdb.IsContainer,
             chest:        chest);
@@ -201,15 +202,16 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
     private ItemMdbView BuildMdbView(string wccNoStr)
     {
         List<KeyValuePair<string, string>> otherInfo = new();
+        List<ShopSaleRow> shops = new();
         bool isLight = false;
         bool isContainer = false;
 
         if (!int.TryParse(wccNoStr, out int wccNo))
-            return new ItemMdbView(otherInfo);
+            return new ItemMdbView(otherInfo, shops);
 
         JsonDocument? doc = _cache.GetRawTable("Items");
         if (doc is null)
-            return new ItemMdbView(otherInfo);
+            return new ItemMdbView(otherInfo, shops);
 
         // Spell-effect renderer for weapon use-cast / proc rows. An item's
         // cast spell scales to the item's required level (ability code 135 =
@@ -414,19 +416,18 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
             if (!string.IsNullOrEmpty(droppedBy))
                 otherInfo.Add(new KeyValuePair<string, string>("Dropped By", droppedBy));
 
-            // Bought / sold — shop buy/sell locations, each followed by an
-            // "@<charm>cha BUY: … SELL: …" line priced for the current
-            // character's charm (or the neutral retail charm of 50 when it's
-            // unknown) under the active realm's formula.
+            // Bought / sold — one clickable row per shop buy/sell location, each
+            // followed by an "@<charm>cha BUY: … SELL: …" line priced for the
+            // current character's charm (or the neutral retail charm of 50 when
+            // it's unknown) under the active realm's formula. The location links
+            // to the host room's Rooms-tab record.
             double baseCopper = ShopPriceCalculator.ToCopper(ReadInt(el, "Price"), ReadInt(el, "Currency"));
             int charm = (_playerStats?.Charm ?? 0) > 0 ? _playerStats!.Charm : 50;
-            string boughtSold = ResolveBoughtSold(obtainedFrom, baseCopper, charm, _cache.ActiveRealm);
-            if (!string.IsNullOrEmpty(boughtSold))
-                otherInfo.Add(new KeyValuePair<string, string>("Bought / sold", boughtSold));
+            shops = ResolveShopSales(obtainedFrom, baseCopper, charm, _cache.ActiveRealm);
 
             break;
         }
-        return new ItemMdbView(otherInfo, isLight, isContainer);
+        return new ItemMdbView(otherInfo, shops, isLight, isContainer);
     }
 
     // ----- Ability-row formatting helpers -----
@@ -551,22 +552,22 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
     }
 
     // Bought/sold: enumerate every Shop #N / Shop(flag) #N reference in Obtained From, look
-    // each shop's host room up via Shops.AssignedTo + Rooms.json, and render one line per shop
-    // in the form:
+    // each shop's host room up via Shops.AssignedTo + Rooms.json, and build one clickable row
+    // per shop whose location reads:
     //   {RoomName}              - {map}/{room}
     //   {RoomName} (SELL)       - {map}/{room}      // for Shop(sell) #N
     //   {RoomName} (NO GEN)     - {map}/{room}      // for Shop(nogen) #N
     // Plain Shop #N (no flag) is normal buy + sell, no suffix. Falls back to the raw shop
-    // token when the shop / room isn't in the active set.
-    private string ResolveBoughtSold(string obtainedFrom, double baseCopper, int charm, RealmType realm)
+    // token (non-clickable) when the shop / room isn't in the active set.
+    private List<ShopSaleRow> ResolveShopSales(string obtainedFrom, double baseCopper, int charm, RealmType realm)
     {
-        if (string.IsNullOrWhiteSpace(obtainedFrom)) return string.Empty;
+        List<ShopSaleRow> rows = new();
+        if (string.IsNullOrWhiteSpace(obtainedFrom)) return rows;
 
         // SELL ignores shop markup, so it's identical at every shop for a given
         // charm — compute it once and reuse on each shop's price line.
         double sellCopper = ShopPriceCalculator.SellCopper(baseCopper, charm, realm);
 
-        List<string> lines = new();
         foreach (string token in obtainedFrom.Split(','))
         {
             string trimmed = token.Trim();
@@ -589,19 +590,21 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
             string suffix = flag is null ? string.Empty : $" ({flag.ToUpperInvariant()})";
             string locator = mapNo > 0 ? $"{mapNo}/{roomNo}" : "?";
             string name = string.IsNullOrEmpty(roomName) ? $"Shop #{shopId}" : roomName;
-
-            lines.Add($"{name}{suffix} - {locator}");
+            string location = $"{name}{suffix} - {locator}";
 
             // Priced line under the shop — only meaningful when the item
             // carries a value (Free items have no buy/sell figure).
+            string price = string.Empty;
             if (baseCopper > 0)
             {
                 double buyCopper = ShopPriceCalculator.BuyCopper(baseCopper, markup, charm);
-                lines.Add($"@{charm}cha BUY: {ShopPriceCalculator.FormatCopper(buyCopper)} " +
-                          $"SELL: {ShopPriceCalculator.FormatCopper(sellCopper)}");
+                price = $"@{charm}cha BUY: {ShopPriceCalculator.FormatCopper(buyCopper)} " +
+                        $"SELL: {ShopPriceCalculator.FormatCopper(sellCopper)}";
             }
+
+            rows.Add(new ShopSaleRow(location, price, mapNo, roomNo));
         }
-        return string.Join("\n", lines);
+        return rows;
     }
 
     // "Shop" → null; "Shop(sell)" → "sell"; "Shop(nogen)" → "no gen".
@@ -709,12 +712,18 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
     internal IReadOnlyList<KeyValuePair<string, string>> BuildOtherInfoForTests(string itemNumber)
         => BuildMdbView(itemNumber).OtherInfo;
 
-    // Bundle returned by BuildMdbView. IsLight flags an ItemType==6 light so the
-    // edit dialog can grey Auto-buy / Auto-sell (Auto-light owns lights);
-    // IsContainer flags an ItemType==8 container so it can grey Auto-open
-    // (only containers can be opened).
+    // Test seam: the rendered clickable bought/sold shop rows for a given item.
+    internal IReadOnlyList<ShopSaleRow> BuildShopSalesForTests(string itemNumber)
+        => BuildMdbView(itemNumber).Shops;
+
+    // Bundle returned by BuildMdbView. Shops is the clickable bought/sold list
+    // (each row links to the host room's Rooms-tab record). IsLight flags an
+    // ItemType==6 light so the edit dialog can grey Auto-buy / Auto-sell
+    // (Auto-light owns lights); IsContainer flags an ItemType==8 container so it
+    // can grey Auto-open (only containers can be opened).
     private sealed record ItemMdbView(
         IReadOnlyList<KeyValuePair<string, string>> OtherInfo,
+        IReadOnlyList<ShopSaleRow> Shops,
         bool IsLight = false,
         bool IsContainer = false);
 }

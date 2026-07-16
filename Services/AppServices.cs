@@ -50,6 +50,13 @@ public sealed class AppServices
     public void SetMonsterGameDataOpener(Action<int> opener) => _monsterGameDataOpener = opener;
     public void OpenMonsterGameData(int monsterNumber) => _monsterGameDataOpener?.Invoke(monsterNumber);
 
+    // Same indirection for the Rooms section — lets an item's clickable
+    // bought/sold shop line jump to the host room's Rooms-tab record (by
+    // Map Number + Room Number) without a back-reference to the main VM.
+    private Action<int, int>? _roomGameDataOpener;
+    public void SetRoomGameDataOpener(Action<int, int> opener) => _roomGameDataOpener = opener;
+    public void OpenRoomGameData(int map, int room) => _roomGameDataOpener?.Invoke(map, room);
+
     // Opens (or re-focuses) the Navigation window and centres the map on a
     // given room. Used by the room-detail popup's clickable room title. No-op
     // until the main VM binds it.
