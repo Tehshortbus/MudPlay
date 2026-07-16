@@ -29,6 +29,7 @@ public sealed class MovePlayerHandler : IDisposable
     private readonly LairManager _lairs;
     private readonly AutoLairManager _autoLair;
     private readonly MovementCoordinator _coordinator;
+    private readonly MovementController _controller;
     private bool _disposed;
 
     public MovePlayerHandler(
@@ -41,7 +42,8 @@ public sealed class MovePlayerHandler : IDisposable
         LoopRunner loopRunner,
         LairManager lairs,
         AutoLairManager autoLair,
-        MovementCoordinator coordinator)
+        MovementCoordinator coordinator,
+        MovementController controller)
     {
         ArgumentNullException.ThrowIfNull(engine);
         ArgumentNullException.ThrowIfNull(search);
@@ -53,6 +55,7 @@ public sealed class MovePlayerHandler : IDisposable
         ArgumentNullException.ThrowIfNull(lairs);
         ArgumentNullException.ThrowIfNull(autoLair);
         ArgumentNullException.ThrowIfNull(coordinator);
+        ArgumentNullException.ThrowIfNull(controller);
         _engine = engine;
         _search = search;
         _graph = graph;
@@ -63,6 +66,7 @@ public sealed class MovePlayerHandler : IDisposable
         _lairs = lairs;
         _autoLair = autoLair;
         _coordinator = coordinator;
+        _controller = controller;
 
         Register("@goto", OnGoto);
         Register("@loop", OnLoop);
@@ -285,31 +289,27 @@ public sealed class MovePlayerHandler : IDisposable
             : "auto-lair failed to start");
     }
 
-    // Pause-gate semantics:
-    //   - Walker + LoopRunner pause off the coordinator's UserGate
-    //     (AutoWalkManager.OnCoordinatorPauseChanged + LoopRunner.OnPauseChanged)
-    //     — asserting the gate directly is sufficient for those two.
-    //   - AutoLair owns its own scheduler tick + entry / engage / retry timers;
-    //     asserting the gate alone halts the walker but leaves the scheduler
-    //     spinning every interval, re-dispatching WalkTo into the paused gate and
-    //     churning state. Route through AutoLairManager.Pause so its internal
-    //     timers stop and the IsPaused flag flips for the UI.
-    // Idempotent: a second @stop while already paused replies "already @stopped"
-    // so the sender knows the prior pause held.
+    // @stop mirrors the toolbar Pause button exactly (routes through the same
+    // MovementController). The user-pause STACKS on top of any engine wait, so a
+    // route paused mid-combat (CombatGate held) stays paused after the fight
+    // clears — instead of the old bug where @stop saw the coordinator already
+    // "paused" (by Combat), replied "already stopped", and let the loop walk on
+    // the moment combat ended. IsUserPaused is the user-tier check (Auto-Lair's
+    // own pause flag, or the UserGate); combat / rest / party waits don't count
+    // as a user stop. MovementController.Pause routes to the right target
+    // (Auto-Lair's own pause vs the shared UserGate) but no-ops when idle, so an
+    // idle @stop arms the gate directly to still register an explicit hold for
+    // whatever starts next. Idempotent: a second @stop while already user-paused
+    // just re-confirms.
     private void OnStop(RemoteCommandContext ctx)
     {
-        if (_autoLair.IsActive && _autoLair.IsPaused)
+        if (_controller.IsUserPaused)
         {
             ctx.Reply("already @stopped");
             return;
         }
-        if (_coordinator.IsPaused)
-        {
-            ctx.Reply("already @stopped");
-            return;
-        }
-        if (_autoLair.IsActive) _autoLair.Pause();
-        else _coordinator.AssertGate(MovementCoordinator.UserGate);
+        if (_controller.IsActive) _controller.Pause();
+        else _coordinator.AssertGate(MovementCoordinator.UserGate, nameof(MovePlayerHandler));
 
         string here = DescribeCurrentRoom();
         ctx.Reply(here.Length > 0
@@ -317,34 +317,30 @@ public sealed class MovePlayerHandler : IDisposable
             : "movement paused");
     }
 
-    // Mirror of OnStop: route through AutoLairManager.Resume when AutoLair holds
-    // the pause, so its respawn-aware re-evaluation runs (in-game timers kept
-    // ticking through the stop window — the original target may no longer be the
-    // best pick). Otherwise just clear the gate. If nothing is paused, reply with
-    // what we're already doing (or "nothing to resume") so the sender doesn't
-    // assume the command worked when it was a no-op.
+    // Mirror of OnStop: lift only the USER pause, exactly like the toolbar
+    // Resume (routes through the same MovementController). An engine wait still
+    // holding the stack (an active fight, a rest) keeps the engine paused on its
+    // own gate and resumes itself later — @rego doesn't force-clear engine waits.
+    // Auto-Lair's own Resume runs its respawn-aware re-evaluation (in-game timers
+    // kept ticking through the stop window — the original target may no longer be
+    // the best pick). If the user pause isn't held, reply with what we're already
+    // doing (or "nothing to resume") so the sender doesn't assume it worked.
     private void OnRego(RemoteCommandContext ctx)
     {
+        if (!_controller.IsUserPaused)
+        {
+            ctx.Reply(DescribeActivity() ?? "nothing to resume");
+            return;
+        }
         // Capture the "what's running" description BEFORE the resume
-        // call — the coordinator's gate clear may transition the
-        // walker / LoopRunner from Paused back to Walking / Running
-        // immediately, after which the activity description (which
-        // gates on Walking / Running states) becomes a no-op.
-        if (_autoLair.IsActive && _autoLair.IsPaused)
-        {
-            string what = DescribePausedAutoLair();
-            _autoLair.Resume();
-            ctx.Reply($"resuming {what}");
-            return;
-        }
-        if (_coordinator.IsPaused)
-        {
-            string what = DescribePausedLoopOrWalker();
-            _coordinator.ClearGate(MovementCoordinator.UserGate);
-            ctx.Reply($"resuming {what}");
-            return;
-        }
-        ctx.Reply(DescribeActivity() ?? "nothing to resume");
+        // call — clearing the gate may transition the walker / LoopRunner from
+        // Paused back to Walking / Running immediately, after which the activity
+        // description (which gates on the Paused state) becomes a no-op.
+        string what = _autoLair.IsActive
+            ? DescribePausedAutoLair()
+            : DescribePausedLoopOrWalker();
+        _controller.Resume();
+        ctx.Reply($"resuming {what}");
     }
 
     // Render the tracker's current room as "Room Name (m/r)" for inclusion in chat

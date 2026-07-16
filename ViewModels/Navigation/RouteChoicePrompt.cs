@@ -24,7 +24,7 @@ public static class RouteChoicePrompt
         {
             // No confident source room — let the walker plan and report the
             // "no known source" failure itself rather than second-guessing here.
-            services.Walker.WalkTo(destination);
+            CommitWalk(services, destination, gated: false);
             return;
         }
 
@@ -34,7 +34,7 @@ public static class RouteChoicePrompt
         {
             // No shorter gated route (or it needs nothing acquirable) — just walk
             // the free-preferring route.
-            services.Walker.WalkTo(destination);
+            CommitWalk(services, destination, gated: false);
             return;
         }
 
@@ -53,13 +53,35 @@ public static class RouteChoicePrompt
         switch (result)
         {
             case RouteChoiceResult.Free:
-                services.Walker.WalkTo(destination);
+                CommitWalk(services, destination, gated: false);
                 break;
             case RouteChoiceResult.Gated:
-                services.Walker.WalkTo(destination, planThroughAcquirableGates: true);
+                CommitWalk(services, destination, gated: true);
                 break;
-            // null → cancelled: walk nothing.
+            // null → cancelled: walk nothing (and leave any manual pause intact —
+            // the user backed out, so nothing changed).
         }
+    }
+
+    // Start the walk, first lifting any lingering manual pause. A user picking a
+    // fresh destination is an explicit "go here now" that outranks a mid-walk
+    // Pause: without clearing the UserGate the new walk would immediately re-pause
+    // (AutoWalkManager.WalkToImmediate honours the coordinator's paused state), so
+    // the destination changed but the walker stayed frozen. Engine waits (Combat /
+    // rest / party) are left asserted and re-pause on their own if still relevant.
+    private static void CommitWalk(AppServices services, RoomKey destination, bool gated)
+    {
+        // Abandon a paused walk-in-progress BEFORE clearing the gate. Clearing
+        // UserGate synchronously resumes a Paused walker (OnCoordinatorPauseChanged
+        // → SendNextStep), which would fire one stale step toward the OLD
+        // destination before we redirect. Stopping first leaves the walker Idle so
+        // the gate clear has nothing to resume, and WalkTo plans the new route
+        // cleanly.
+        if (services.Walker.State == WalkState.Paused)
+            services.Walker.Stop("superseded by new user walk-to");
+        services.MovementCoordinator.ClearGate(
+            MovementCoordinator.UserGate, nameof(RouteChoicePrompt));
+        services.Walker.WalkTo(destination, planThroughAcquirableGates: gated);
     }
 
     private static string DestinationLabel(AppServices services, RoomKey destination) =>

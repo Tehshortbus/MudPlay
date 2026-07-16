@@ -357,7 +357,13 @@ public sealed class MapControl : Control
     private void SuppressAutoFollow()
         => _autoFollowSuppressedUntil = DateTime.UtcNow.AddSeconds(AutoFollowSuppressionSeconds);
 
-    private bool IsAutoFollowSuppressed
+    // True while the player-room auto-centre is paused because the user is
+    // actively browsing (pan-drag, zoom, crawler step, or an explicit view
+    // re-root). Time-boxed — lapses AutoFollowSuppressionSeconds after the last
+    // browse gesture. The Navigation VM reads this to defer a movement-driven
+    // layout rebuild while the user is looking elsewhere, so a stairs / U-D step
+    // doesn't yank the map back mid-browse; once it lapses, the next step rebounds.
+    public bool IsAutoFollowSuppressed
         => DateTime.UtcNow < _autoFollowSuppressedUntil;
 
     // Fires once the pointer has dwelled over a room cell for HoverDelayMs, AND
@@ -607,7 +613,10 @@ public sealed class MapControl : Control
         //     destination selection instead of where we actually landed.
         //   - Explicit re-root (PageUp/Down floor-crawl, search jump):
         //     origin is a room the user isn't standing on. Honour it
-        //     immediately — the user just asked to go there.
+        //     immediately AND arm the browse window so the view holds there
+        //     for the suppression interval, then rebounds to the player —
+        //     mirroring a pan-drag. Without this a search jump re-rooted the
+        //     layout off the player permanently and never rebounded.
         LayoutProperty.Changed.AddClassHandler<MapControl>((c, _) =>
         {
             if (c.Layout is not { } layout) return;
@@ -618,6 +627,10 @@ public sealed class MapControl : Control
                 c.CenterOnRoom(origin);
                 return;
             }
+            // A null current room is initial-load / no-fix-yet, not a deliberate
+            // browse-off-player — don't arm suppression there or startup would
+            // freeze auto-follow for the first window.
+            if (c.CurrentRoomKey is not null) c.SuppressAutoFollow();
             c.CenterOnRoom(origin);
         });
     }

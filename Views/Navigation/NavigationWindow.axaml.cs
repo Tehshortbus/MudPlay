@@ -67,6 +67,11 @@ public partial class NavigationWindow : Window
             {
                 vm.CenterOnPlayerRequested += OnCenterOnPlayerRequested;
                 vm.PropertyChanged          += OnVmPropertyChanged;
+                // Expose the map's live browse state so a movement step defers
+                // the layout re-root while the user is panning / crawling / has
+                // just jumped the view (see NavigationViewModel.RefreshFromTracker).
+                if (this.FindControl<MapControl>("MapHost") is { } browseMap)
+                    vm.IsMapBrowsing = () => browseMap.IsAutoFollowSuppressed;
             }
         };
     }

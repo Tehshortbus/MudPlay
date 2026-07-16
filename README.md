@@ -8,6 +8,10 @@
 > - Character Info tab moves Quest Bonuses beneath the attack accuracy/damage box, freeing the right column for the full inventory readout
 > - Weapon-flap fix: a combat-entry gear-set trigger now defers the weapon/off-hand to the combat engine while it holds a per-monster alternate-weapon override, so the Default set can't re-wear the normal weapon over the swap mid-fight
 > - Fallback-death fix: a kill with no per-monster death line (exp + `*Combat Off*`) is now attributed to the current target and dropped from the room roster — the survivor is re-engaged at once, ending the re-swing at the corpse and the post-kill idle stall
+> - `@stop` now stacks a pause on top of combat exactly like the Pause button — a route paused mid-fight stays paused after the fight clears instead of walking on (and `@rego` lifts only that user pause)
+> - Search-bar walk-to now rebounds to auto-following the player once the browse window lapses, matching how a pan-drag rebounds
+> - Crossing an up/down no longer rebuilds/refocuses the map while you're panning or numpad-browsing — the re-root defers until browsing ends
+> - Picking a new walk-to destination while manually paused now lifts the pause and walks there, instead of changing the destination but staying frozen
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

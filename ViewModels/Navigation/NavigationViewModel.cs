@@ -1484,10 +1484,25 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         // walk-to takes precedence over the automation in the
         // background. Auto-Lair owns the walker for its routing, so
         // stopping it cleanly releases the walker for our WalkTo call.
+        bool stoppedEngine = false;
         if (_services.LoopRunner.State != Game.Map.LoopState.Idle)
+        {
             _services.LoopRunner.Stop("user walk-to from Navigation");
+            stoppedEngine = true;
+        }
         if (_services.AutoLair.IsActive)
+        {
             _services.AutoLair.Stop();
+            stoppedEngine = true;
+        }
+        // If we tore down a running (possibly user-paused) engine up front, lift
+        // any lingering user-pause now — otherwise a cancelled route picker would
+        // strand an idle engine behind a stale UserGate. We DON'T pre-clear when
+        // no engine was stopped: a bare paused walk-to should survive a cancelled
+        // picker intact (clearing here would resume the old walk instead). The
+        // commit path un-pauses via RouteChoicePrompt.WalkAsync regardless.
+        if (stoppedEngine)
+            _services.MovementCoordinator.ClearGate(Game.Map.MovementCoordinator.UserGate);
         // Exit LoopBuild mode too — same UX contract as the loop /
         // lair stops above. The user picked a fresh walk-to, so any
         // in-progress build session should drop out of the way (the
@@ -1551,6 +1566,14 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     // same pattern the right-click menu uses for other map-only
     // operations.
     public event Action? CenterOnPlayerRequested;
+
+    // Set by the Navigation window to expose the MapControl's live browse state
+    // (pan-drag / zoom / crawler step / explicit re-root each arm a time-boxed
+    // window). While the user is browsing, a movement step must NOT re-root the
+    // layout back onto the player — the view holds where the user is looking and
+    // rebounds once the window lapses. Null when no map is wired (window closed),
+    // in which case there's nothing to hold, so rebuilds proceed normally.
+    public Func<bool>? IsMapBrowsing { get; set; }
 
     // Right-click → "Center on Player". Re-centres the map on the live
     // current room and clears the 10 s browse-suppression window so
@@ -2041,7 +2064,6 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         // outside the cached layout (typical after a reconnect or a
         // big walk). The map control re-fits visually via its own
         // FitToCurrent helper when the binding changes.
-        RoomKey? previousRoom = CurrentRoomKey;
         CurrentRoomKey = state.CurrentRoom?.Key;
         if (state.CurrentRoom is { } here)
         {
@@ -2058,24 +2080,20 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
                 && _services.RoomBlacklist.IsBlacklisted(Layout.Origin)
                 && !_services.RoomBlacklist.IsBlacklisted(here.Key);
 
-            // Don't yank the layout back to the player mid-browse. When the
-            // player's PREVIOUS room wasn't on the displayed layout, the user
-            // has floor-crawled / searched off to look at a different part of
-            // the map, so a movement step must leave that view alone — the
-            // reported bug was the map re-rooting on the player every step
-            // while browsing elsewhere. Only re-root when the layout was
-            // actually following the player (previous room on it, or no fix
-            // yet) and this step walked off it — the usual stairs / reconnect
-            // / big-walk case. "Center on Player" (Home / context menu) is the
-            // way back; it rebuilds around the live room itself.
-            bool browsingOffPlayer =
-                Layout is not null
-                && previousRoom is { } prev
-                && !Layout.Positions.ContainsKey(prev);
+            // Don't yank the layout back to the player mid-browse. While the map
+            // is actively browsed (pan-drag / zoom / numpad crawl / a search or
+            // floor-crawl jump — all arm the MapControl's time-boxed suppression
+            // window) a movement step must leave that view alone: the reported
+            // bug was the map re-rooting on the player — including on a U/D that
+            // rebuilt the whole floor — every step while the user was looking
+            // elsewhere. Once the window lapses the next off-layout step rebuilds
+            // and rebounds, just like releasing a pan. "Center on Player" (Home /
+            // context menu) is the immediate way back.
+            bool mapBrowsing = IsMapBrowsing?.Invoke() ?? false;
 
             if (Layout is null
                 || exitedBlacklistedOrigin
-                || (!browsingOffPlayer && !Layout.Positions.ContainsKey(here.Key)))
+                || (!mapBrowsing && !Layout.Positions.ContainsKey(here.Key)))
             {
                 Layout = _services.Bfs.BuildLayout(here.Key);
             }
@@ -2574,15 +2592,29 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         // loop/lair pause-resume cycle: stop whatever engine is running and walk
         // there. SelectSearchResult's arm-comment promises "clicking Run walks
         // there", which the running-engine branches below would otherwise
-        // preempt — so the check has to come first. Mirrors GoToFavorite, plus a
-        // ClearGate so a lingering user-pause (loop paused when the destination
-        // was queued) doesn't block the walker from sending.
+        // preempt — so the check has to come first. Mirrors GoToFavorite.
         if (QueuedDestination is { } queued)
         {
+            // Only pre-clear the user-pause gate when a loop/lair was actually
+            // stopped here: leaving that engine idle behind a stale UserGate would
+            // re-pause the next loop start, so we lift it up front. A bare paused
+            // *walker* must NOT be cleared here — clearing UserGate synchronously
+            // resumes it toward the OLD destination (one stale step) before the
+            // picker; RouteChoicePrompt.CommitWalk stops that walker and clears
+            // the gate itself on the walk-to paths that don't pre-stop an engine.
+            bool stoppedEngine = false;
             if (runner.State != Game.Map.LoopState.Idle)
+            {
                 runner.Stop("user walk-to queued destination");
-            if (_services.AutoLair.IsActive) _services.AutoLair.Stop();
-            _services.MovementCoordinator.ClearGate(Game.Map.MovementCoordinator.UserGate);
+                stoppedEngine = true;
+            }
+            if (_services.AutoLair.IsActive)
+            {
+                _services.AutoLair.Stop();
+                stoppedEngine = true;
+            }
+            if (stoppedEngine)
+                _services.MovementCoordinator.ClearGate(Game.Map.MovementCoordinator.UserGate);
             // Committing the staged destination consumes it — clear before the
             // (possibly awaited) route picker so Run disarms immediately and a
             // second press can't open a second picker. The search box, the

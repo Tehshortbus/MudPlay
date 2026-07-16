@@ -3772,7 +3772,7 @@ public sealed class AppServices
         // can issue these.
         MoveRemote = new Game.Remote.MovePlayerHandler(
             RemoteCommands, RoomSearch, RoomGraph, RoomTracker, Walker, Loops, LoopRunner,
-            Lairs, AutoLair, MovementCoordinator);
+            Lairs, AutoLair, MovementCoordinator, MovementControl);
 
         // Leader-side @comeback. Snapshots the running movement
         // engine, stops it (stop-and-restart, NOT a coordinator gate —
