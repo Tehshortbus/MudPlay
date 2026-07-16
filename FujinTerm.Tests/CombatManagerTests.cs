@@ -2284,6 +2284,41 @@ public sealed class CombatManagerTests
     }
 
     [Fact]
+    public void BetweenRoundCast_TargetDroppedByResync_StillResumes()
+    {
+        // Report 163947 (cast mihe, then missed a combat round): a between-round
+        // self-heal landed right after a resync (command-no-effect /
+        // unattributed-death) had already nulled _currentTarget. The old resume
+        // gate required a non-null _currentTarget, so it stood down and the
+        // engine idled a full round before re-attacking. Presence of a live
+        // target is proven by the room (HasEngageable), and ResumeEngage re-picks
+        // from it — so a null target must NOT block the resume.
+        using Harness h = new();
+        h.AddMonster(1, "cave bear", killable: true);
+
+        h.Feed("Also here: cave bear.");
+        Assert.Single(h.Sent);
+        Assert.Equal("a cave bear", h.LastSent);
+        Assert.Equal("cave bear", h.Combat.CurrentTarget);
+
+        // A resync nulls the target while the mob is still in the room (no fresh
+        // observation fed, so the classifier still holds the cave bear).
+        h.Feed("Your command had no effect.");
+        Assert.Null(h.Combat.CurrentTarget);
+
+        int before = h.Sent.Count;
+
+        // The heal fires and turns combat off with the target still null.
+        h.Combat.NoteBetweenRoundCast();
+        h.Feed("*Combat Off*");
+
+        // Resumed anyway — re-picked the surviving cave bear and re-swung.
+        Assert.Equal(before + 1, h.Sent.Count);
+        Assert.Equal("a cave bear", h.LastSent);
+        Assert.Equal("cave bear", h.Combat.CurrentTarget);
+    }
+
+    [Fact]
     public void NoCombatOff_MobLine_DoesNotReswing()
     {
         // Guard: a mob line while combat is live (server still swinging

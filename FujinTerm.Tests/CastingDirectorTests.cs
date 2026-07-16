@@ -1577,6 +1577,45 @@ public sealed class CastingDirectorTests
     }
 
     [Fact]
+    public void PartyHeal_InvitedMemberNotYetJoined_NotHealed()
+    {
+        // Report 162916 (spam-heal on relog): a re-invited member reads 0% /
+        // BaselineHp 0 until the on-join @health exchange runs. That 0% counted
+        // as below-threshold and the director spam-cast a heal at the pending
+        // invitee every tick. Invited-but-not-joined rows must be skipped until
+        // they follow and report real vitals.
+        using PartyHarness h = new();
+        h.PartySettings.MinorPartyHealSpell = "heal";
+        h.PartySettings.MinorHealMemberThresholdPercent = 70;
+        h.AddMember("Tank", hpPercent: 90);                    // joined, healthy
+        PartyMember invited = h.AddMember("NewGuy", hpPercent: 0, baselineHp: 0);
+        invited.IsInvited = true;
+
+        h.Director.Evaluate();
+
+        Assert.Empty(h.CastsSent);
+    }
+
+    [Fact]
+    public void PartyHeal_InvitedMemberExcludedFromLowestPick()
+    {
+        // The skip also keeps a 0%-reading invitee out of the lowest-HP target
+        // pick, so a genuinely-low joined member is still the one healed — not
+        // the pending invitee that hasn't reported vitals yet.
+        using PartyHarness h = new();
+        h.PartySettings.MinorPartyHealSpell = "heal";
+        h.PartySettings.MinorHealMemberThresholdPercent = 70;
+        h.AddMember("Tank", hpPercent: 60);                    // joined, hurt
+        PartyMember invited = h.AddMember("NewGuy", hpPercent: 0, baselineHp: 0);
+        invited.IsInvited = true;
+
+        h.Director.Evaluate();
+
+        Assert.Single(h.CastsSent);
+        Assert.Equal("heal Tank", h.CastsSent[0]);
+    }
+
+    [Fact]
     public void PartyHeal_PicksLowestHp_AsTarget()
     {
         using PartyHarness h = new();

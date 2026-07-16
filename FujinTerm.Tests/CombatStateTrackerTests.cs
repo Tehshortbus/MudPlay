@@ -53,12 +53,26 @@ public sealed class CombatStateTrackerTests
         // Commands the tracker pushes to the wire (decoded, trailing \r
         // stripped) and the BreakBeforeFleeing setting the gate reads.
         public List<string> Sent { get; } = new();
+        // Raw wire bytes decoded without trimming — lets the watchdog test see a
+        // bare "\r" that Sent would collapse to an empty entry.
+        public List<string> SentRaw { get; } = new();
         public bool BreakBeforeRunning { get; set; }
+
+        // Injected clock so the idle-stall watchdog's 12s threshold is testable
+        // without wall-clock waits. Constant by default (existing tests never
+        // advance it and never drive OnCombatTick, so the stamps stay inert).
+        public DateTimeOffset FakeNow { get; set; } = DateTimeOffset.UnixEpoch;
+
+        public void WireSender() =>
+            Tracker.SetWireSender(bytes =>
+            {
+                Sent.Add(System.Text.Encoding.Latin1.GetString(bytes).TrimEnd('\r', '\n'));
+                SentRaw.Add(System.Text.Encoding.Latin1.GetString(bytes));
+            });
 
         public void WireBreakBeforeRun()
         {
-            Tracker.SetWireSender(bytes =>
-                Sent.Add(System.Text.Encoding.Latin1.GetString(bytes).TrimEnd('\r', '\n')));
+            WireSender();
             Tracker.SetBreakBeforeRunGate(() => BreakBeforeRunning);
         }
 
@@ -73,7 +87,8 @@ public sealed class CombatStateTrackerTests
                 () => AutoAttackEnabled,
                 resolveOverlay: n => Overlays.TryGetValue(n, out MonsterOverlay? o)
                                      ? o : new MonsterOverlay(),
-                log: Log);
+                log: Log,
+                clock: () => FakeNow);
         }
 
         public void SetOverlay(int number, MonsterRelationship? relationship = null,
@@ -853,5 +868,70 @@ public sealed class CombatStateTrackerTests
         using Harness h = new();
         h.Feed("The giant rat swings at you");
         Assert.True(h.State.InCombat);
+    }
+
+    // ----- idle-stall watchdog (reports 162423 / 163553) ----------------
+
+    [Fact]
+    public void IdleStallWatchdog_GateHeldNoActivity_ForcesRedisplay()
+    {
+        // Regression: the final kill can route through a path that never forces
+        // a room re-display, so the tracker never sees the empty room and the
+        // Combat gate stays asserted forever — the walker hangs "fighting" an
+        // empty room. The watchdog forces a bare CR once the gate has been held
+        // past the idle threshold with no combat activity, producing the resync
+        // observation the gate-clear needs.
+        using Harness h = new();
+        h.WireSender();
+        h.AddMonster(1, "giant rat", killable: true);
+
+        h.Feed("Also here: giant rat.");           // stamps activity + asserts gate
+        Assert.True(h.CombatGateHeld);
+
+        // A tick before the threshold does nothing.
+        h.FakeNow = h.FakeNow.AddSeconds(11);
+        h.Tracker.OnCombatTick();
+        Assert.Empty(h.SentRaw);
+
+        // Past the 12s threshold with the gate still held and no activity → CR.
+        h.FakeNow = h.FakeNow.AddSeconds(2);        // 13s total
+        h.Tracker.OnCombatTick();
+        Assert.Contains("\r", h.SentRaw);
+    }
+
+    [Fact]
+    public void IdleStallWatchdog_CombatActivity_ResetsStall()
+    {
+        // A live-but-slow fight must never trip the watchdog: any combat line
+        // (or a room observation still holding a killable monster) refreshes the
+        // activity stamp, so a genuinely ongoing fight is left alone.
+        using Harness h = new();
+        h.WireSender();
+        h.AddMonster(1, "giant rat", killable: true);
+
+        h.Feed("Also here: giant rat.");
+        Assert.True(h.CombatGateHeld);
+
+        h.FakeNow = h.FakeNow.AddSeconds(11);
+        h.Feed("The giant rat bites you for 3 damage!");   // fresh activity
+        h.FakeNow = h.FakeNow.AddSeconds(2);               // 13s since gate, 2s since hit
+        h.Tracker.OnCombatTick();
+        Assert.Empty(h.SentRaw);                            // not stalled — no CR
+    }
+
+    [Fact]
+    public void IdleStallWatchdog_NoGate_NeverFires()
+    {
+        // No gate held → nothing to resync. The watchdog must stay silent even
+        // long after any activity.
+        using Harness h = new();
+        h.WireSender();
+
+        h.Feed("Also here: Bob.");                 // player only, no gate
+        Assert.False(h.CombatGateHeld);
+
+        h.FakeNow = h.FakeNow.AddSeconds(60);
+        h.Tracker.OnCombatTick();
+        Assert.Empty(h.SentRaw);
     }
 }

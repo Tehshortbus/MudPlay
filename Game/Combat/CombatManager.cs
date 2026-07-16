@@ -1683,11 +1683,16 @@ public sealed partial class CombatManager : IDisposable
             // a full round" symptom. Attributed strictly to our own cast
             // (armed by NoteBetweenRoundCast) so a non-sustaining attack's
             // per-strike Off (KAI pummel) is never misread. Weapon mode only;
-            // a live target must still be present; TryResumeEngage's pacing
-            // is the backstop against any double-fire with the tick resume.
+            // TryResumeEngage's pacing is the backstop against any double-fire
+            // with the tick resume. Presence of a live target is proven by
+            // HasEngageable, NOT by _currentTarget: a between-round self-heal
+            // can land right after a prior swing dropped the target (an
+            // unattributed-death / command-no-effect resync nulls it), and
+            // ResumeEngage re-picks from the room anyway. Requiring
+            // _currentTarget here stranded exactly that case — the reported
+            // "cast mihe, then missed a combat round before re-attacking".
             if (DateTimeOffset.Now - _betweenRoundCastAt < CastInterruptResumeWindow
                 && _castingSpellTarget is null
-                && _currentTarget is not null
                 && _classifier.Current is { } live
                 && HasEngageable(live))
             {

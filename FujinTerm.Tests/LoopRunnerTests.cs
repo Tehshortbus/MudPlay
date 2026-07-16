@@ -48,10 +48,26 @@ public sealed class LoopRunnerTests : IDisposable
         public required LoopRunner Runner { get; init; }
         public List<byte[]> Sent { get; } = new();
         public List<LoopEvent> Events { get; } = new();
+        // Resume-dispatch queue when the harness is built in deferred mode
+        // (postToUi captures instead of running). Drain() runs them in order to
+        // simulate the next UI tick. Empty/unused in the default synchronous mode.
+        public required List<Action> Posted { get; init; }
+        public void Drain()
+        {
+            // Copy-then-clear so a posted action that re-posts (a chained resume)
+            // lands in a fresh batch rather than mutating the list mid-iteration.
+            Action[] batch = Posted.ToArray();
+            Posted.Clear();
+            foreach (Action a in batch) a();
+        }
         public void Dispose() { }
     }
 
-    private Harness NewHarness(string json = GraphJson)
+    // deferResume=false (default) runs resume dispatches synchronously so the
+    // long-standing tests observe the immediate send they always did. Pass true
+    // to capture them in Harness.Posted for manual Drain() — needed to interleave
+    // a same-burst gate assert between a resume and its deferred send.
+    private Harness NewHarness(string json = GraphJson, bool deferResume = false)
     {
         Directory.CreateDirectory(Path.Combine(_root, "alpha"));
         File.WriteAllText(Path.Combine(_root, "alpha", "Rooms.json"), json);
@@ -65,8 +81,13 @@ public sealed class LoopRunnerTests : IDisposable
         // Without a BFS the expansion yields an empty step list and the
         // runner can't push the first step.
         BfsMapper bfs = new(graph);
-        LoopRunner runner = new(tracker, coord, graph: graph, bfs: bfs);
-        Harness h = new() { Tracker = tracker, Coordinator = coord, Runner = runner };
+        List<Action> posted = new();
+        LoopRunner runner = new(tracker, coord, graph: graph, bfs: bfs,
+            postToUi: deferResume ? posted.Add : a => a());
+        Harness h = new()
+        {
+            Tracker = tracker, Coordinator = coord, Runner = runner, Posted = posted,
+        };
         runner.SetWireSender(b => h.Sent.Add(b));
         runner.Event += e => h.Events.Add(e);
         return h;
@@ -404,6 +425,54 @@ public sealed class LoopRunnerTests : IDisposable
         Assert.Equal(2, h.Sent.Count);
         Assert.Equal("s\r", Encoding.Latin1.GetString(h.Sent[1]));
         Assert.Contains(h.Events, e => e.Kind == LoopEventKind.StepCompleted);
+    }
+
+    [Fact]
+    public void ResumeDispatchDeferred_SameBurstRePause_DoesNotLeakNextMove()
+    {
+        // Regression (the @wait race): the coordinator fires PauseStateChanged
+        // synchronously mid server-line burst. A Combat gate clearing on a room
+        // re-display resumed the loop, and the OLD code dispatched the next move
+        // synchronously — but a LATER line in the SAME burst (a party @wait
+        // telepath) then asserted PartyWait. The move had already left, walking
+        // us out of formation. The fix defers the resume dispatch past the burst
+        // so the @wait re-pauses first and the deferred send aborts.
+        Harness h = NewHarness(deferResume: true);
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Runner.Start(AbCycle());
+        Assert.Single(h.Sent);                       // "n" for step 0 (target B)
+
+        // A gate pauses while the move is in flight; the arrival lands during the
+        // pause (tracker events are ignored while paused, so the step stays in
+        // flight and resolves via the overshoot guard on resume).
+        h.Coordinator.AssertGate(MovementCoordinator.CombatGate);
+        Assert.Equal(LoopState.Paused, h.Runner.State);
+        h.Tracker.NoteRoomObserved(new RoomObservation("B",
+            new HashSet<Direction> { Direction.N, Direction.S }));
+
+        // --- one server-line burst ---
+        // Combat gate clears (room went empty) → resume; the advance+send is now
+        // deferred, not run.
+        h.Coordinator.ClearGate(MovementCoordinator.CombatGate);
+        Assert.Equal(LoopState.Running, h.Runner.State);
+        Assert.Single(h.Posted);                     // dispatch queued, not sent
+        Assert.Single(h.Sent);                        // nothing new on the wire yet
+        // Later line in the SAME burst: a party @wait asserts PartyWait.
+        h.Coordinator.AssertGate(MovementCoordinator.PartyWaitGate);
+        Assert.Equal(LoopState.Paused, h.Runner.State);
+        // --- burst ends; the deferred dispatch runs ---
+        h.Drain();
+
+        // The move did NOT leak past the @wait — still only the original "n".
+        Assert.Single(h.Sent);
+
+        // When the @wait finally clears, the deferred advance re-fires and the
+        // step completes cleanly.
+        h.Coordinator.ClearGate(MovementCoordinator.PartyWaitGate);
+        Assert.Equal(LoopState.Running, h.Runner.State);
+        h.Drain();
+        Assert.Equal(2, h.Sent.Count);
+        Assert.Equal("s\r", Encoding.Latin1.GetString(h.Sent[1]));
     }
 
     // ----- PR C: lap timing + ReachedFirstWaypoint ---------------------

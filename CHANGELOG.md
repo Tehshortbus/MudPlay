@@ -2,6 +2,14 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.66.5
+
+- Party @wait arriving as combat ends no longer leaks the loop's next move past the wait — the walker holds formation
+- Combat gate no longer hangs the walker "fighting" an empty room after a final kill that skipped the room refresh; a watchdog forces a re-display to resync
+- Party heals skip a re-invited member that hasn't reported vitals yet, so a relogged ally no longer draws spam-heals at a phantom 0% HP
+- Between-round cast (e.g. mihe) whose resync dropped the target now re-attacks the same round instead of idling one
+- bug reports addressed: paradigm-20260715-162125, paradigm-20260715-162423, paradigm-20260715-162916, paradigm-20260715-163553, paradigm-20260715-163947
+
 ## 1.66.0
 
 - Cast-teleport pocket areas (the Warped Asylum and its kin) no longer overdraw the map that houses them — the one-way cast entrance shows as a spell-wall bar on the cell divider plus a directional arrow, and the pocket lays out in full only when you're standing inside it

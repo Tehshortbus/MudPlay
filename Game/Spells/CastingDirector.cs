@@ -887,6 +887,12 @@ public sealed class CastingDirector : IDisposable
         PartyMember? lowest = null;
         foreach (PartyMember m in _party.Members)
         {
+            // Invited-but-not-joined rows carry no health data — BaselineHp and
+            // HpPercent stay 0 until the on-join @health exchange runs, so a
+            // freshly-invited (or relogged-and-re-invited) member reads as 0% and
+            // gets spam-healed every cast tick. They aren't a healable party member
+            // until they actually follow, so skip them and wait for real vitals.
+            if (m.IsInvited) continue;
             if (m.HpPercent >= threshold) continue;
             below++;
             if (lowest is null || m.HpPercent < lowest.HpPercent)

@@ -34,6 +34,23 @@ public sealed class CombatStateTracker : IDisposable
     // LogService category for tracker-emitted rows.
     public const string LogCategory = "CombatGate";
 
+    // Idle-stall watchdog. The Combat gate clears authoritatively only when a
+    // room re-display shows the room empty of engageable monsters
+    // (OnEntitiesObserved's "room cleared" branch). Normally the death of the
+    // last monster forces that re-display (CombatManager.NoteUnattributedDeath /
+    // OnCommandNoEffect send a bare CR). But when a final kill routes through
+    // neither path — an attributed death that doesn't re-display, a desynced
+    // roster — no fresh observation ever arrives, the gate stays asserted, and
+    // the walker hangs "fighting" an empty room until a manual redisplay. The
+    // watchdog (driven by the combat heartbeat) forces the same benign CR once
+    // the gate has been held this long with zero combat activity, so the resync
+    // observation the gate-clear needs is produced automatically.
+    private static readonly TimeSpan IdleStallThreshold = TimeSpan.FromSeconds(12);
+
+    // Debounce between watchdog CRs so a server that's merely slow to answer the
+    // forced re-display doesn't get a flood of them; one combat round apart.
+    private static readonly TimeSpan WatchdogRefreshCooldown = TimeSpan.FromSeconds(5);
+
     private readonly MovementCoordinator _coordinator;
     private readonly RoomEntityClassifier _classifier;
     private readonly MonsterMessageStore _monsters;
@@ -41,6 +58,7 @@ public sealed class CombatStateTracker : IDisposable
     private readonly PlayerState _state;
     private readonly Func<bool> _isAutoAttackEnabled;
     private readonly LogService? _log;
+    private readonly Func<DateTimeOffset> _now;
 
     private readonly IDisposable _userHitsSub;
     private readonly IDisposable _mobHitsSub;
@@ -51,6 +69,12 @@ public sealed class CombatStateTracker : IDisposable
     private bool _anyNpcPresent;
     private bool _hostilePresent;
     private bool _disposed;
+
+    // Idle-stall watchdog stamps. _lastCombatActivityAt tracks the last sign of
+    // a live fight (a combat damage/miss line or a room observation still
+    // holding a monster); _lastWatchdogRefreshAt debounces the forced CRs.
+    private DateTimeOffset _lastCombatActivityAt = DateTimeOffset.MinValue;
+    private DateTimeOffset _lastWatchdogRefreshAt = DateTimeOffset.MinValue;
 
     private Func<bool>? _clearWhenSeenHidden;
     private Func<bool>? _isAutoSneakEnabled;
@@ -129,7 +153,8 @@ public sealed class CombatStateTracker : IDisposable
         PlayerState state,
         Func<bool> isAutoAttackEnabled,
         Func<int, MonsterOverlay>? resolveOverlay,
-        LogService? log = null)
+        LogService? log = null,
+        Func<DateTimeOffset>? clock = null)
     {
         ArgumentNullException.ThrowIfNull(router);
         ArgumentNullException.ThrowIfNull(coordinator);
@@ -145,6 +170,7 @@ public sealed class CombatStateTracker : IDisposable
         _state       = state;
         _isAutoAttackEnabled = isAutoAttackEnabled;
         _log         = log;
+        _now         = clock ?? (() => DateTimeOffset.Now);
 
         _classifier.EntitiesObserved += OnEntitiesObserved;
         _userHitsSub      = router.Subscribe(KnownPatterns.UserHits,    OnAnyCombatLine);
@@ -238,6 +264,29 @@ public sealed class CombatStateTracker : IDisposable
         if (_classifier.Current is { } obs) OnEntitiesObserved(obs);
     }
 
+    // Idle-stall watchdog, driven by the combat heartbeat (TickEngine's
+    // CombatTickElapsed, ~5s). When the Combat gate has been held with zero
+    // combat activity for IdleStallThreshold, force a bare CR so the server
+    // re-displays the room — the resync observation the gate-clear needs
+    // (OnEntitiesObserved's "room cleared" branch). Without it, a final kill
+    // that routes through neither NoteUnattributedDeath nor OnCommandNoEffect
+    // leaves the gate asserted forever and the walker hangs on an empty room.
+    public void OnCombatTick()
+    {
+        if (_disposed) return;
+        if (!_gateAsserted) return;
+        if (_wireSender is null) return;
+
+        DateTimeOffset now = _now();
+        if (now - _lastCombatActivityAt < IdleStallThreshold) return;
+        if (now - _lastWatchdogRefreshAt < WatchdogRefreshCooldown) return;
+
+        _lastWatchdogRefreshAt = now;
+        _log?.Info(LogCategory,
+            "combat gate held with no combat activity — forcing room re-display to resync");
+        _wireSender(Encoding.Latin1.GetBytes("\r"));
+    }
+
     private void SendCommand(string text)
     {
         if (_wireSender is null) return;
@@ -324,6 +373,11 @@ public sealed class CombatStateTracker : IDisposable
 
         if (actionable > 0)
         {
+            // A fresh observation still holding a killable monster is a live
+            // fight — refresh the watchdog stamp (AssertGate early-outs when the
+            // gate's already held, so stamp here regardless so a slow-but-real
+            // fight never trips the stall watchdog).
+            _lastCombatActivityAt = _now();
             string reason = first is null
                 ? $"room-entry actionable={actionable}/{targetable}"
                 : $"room-entry actionable={actionable}/{targetable} first={first}";
@@ -410,6 +464,9 @@ public sealed class CombatStateTracker : IDisposable
 
     private void OnAnyCombatLine(MatchResult _)
     {
+        // A damage/miss line is proof the fight is live — refresh the
+        // watchdog's activity stamp so it never fires mid-fight.
+        _lastCombatActivityAt = _now();
         if (!_state.InCombat) _state.InCombat = true;
     }
 

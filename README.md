@@ -1,13 +1,11 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.66.0**
-> - Cast-teleport pocket areas (the Warped Asylum and its kin) no longer overdraw the map that houses them — the one-way cast entrance shows as a spell-wall bar on the cell divider plus a directional arrow, and the pocket lays out in full only when you're standing inside it
-> - Cast-on-walk exits (a spell fires as you move) are marked with a short perpendicular wall glyph in the spell colour, drawn between the two rooms
-> - Navigation no longer routes through random-teleport exits — their landing is unpredictable, so the walker prefers a deterministic route and only crosses cast exits with a fixed destination
-> - Trap disarm now advances past a successful search when the walker triggered it — direction matching normalizes both the game's reply and the walker's long-form direction, so a found trap ("You found a trap to the southeast!") no longer stalls in search and never disarms
-> - Trap-disarm capability is now inferred from the character's race and class via game data — when the Traps value hasn't been captured yet (freshly loaded profile, or a new character), a class/race that grants the Traps skill still lets the walker self-disarm instead of walking through the trapped exit
-> - Bug report captures the parsed Traps stat and whether disarm capability was inferred from class/race, alongside canDisarm
+> **Version 1.66.5**
+> - Party @wait arriving as combat ends no longer leaks the loop's next move past the wait — the walker holds formation
+> - Combat gate no longer hangs the walker "fighting" an empty room after a final kill that skipped the room refresh; a watchdog forces a re-display to resync
+> - Party heals skip a re-invited member that hasn't reported vitals yet, so a relogged ally no longer draws spam-heals at a phantom 0% HP
+> - Between-round cast (e.g. mihe) whose resync dropped the target now re-attacks the same round instead of idling one
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->
