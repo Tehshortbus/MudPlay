@@ -1822,6 +1822,10 @@ public sealed class AppServices
         // ApplyOtherFromActiveProfile.
         TrapDisarm = new Game.TrapDisarmManager(Router, PlayerStats, GameData, Log);
         TrapDelegation = new Game.TrapDelegationManager(Party, Players, GameData, Router, Log);
+        // Suppress the race-probe look while a party-splitting-teleport reform is
+        // settling — no member looks during that evolution (AutoParty owns the
+        // reform lifecycle; a stray look re-strands the resuming walk).
+        TrapDelegation.IsPartyReformSettling = () => AutoParty.IsReformSettling;
         TrapRemote = new Game.Remote.TrapHandler(RemoteCommands, TrapDisarm);
 
         // @goto / @loop / @lair / @stop / @rego land
