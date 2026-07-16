@@ -97,21 +97,28 @@ internal static partial class QuestTextFormatter
     // narrated "kill <monster> (<drop>)" and a bare item grant "obtain <item>",
     // matching how the seed guides read. Items the step needs / turns in trail as
     // a parenthetical note.
-    public static string Step(GameDataCache gameData, QuestStep s)
+    public static string Step(GameDataCache gameData, QuestStep s,
+        IReadOnlyDictionary<int, IReadOnlyList<RoomKey>>? monsterRooms = null)
     {
         var segments = new List<string>();
 
-        string rooms = RoomLinks(s.Location);
-        if (rooms.Length > 0) segments.Add(rooms);
-
         string granted = string.Join(", ", s.GrantedItems.Select(id => ItemName(gameData, id)));
+
+        int monster = 0;
+        bool isKill = string.IsNullOrWhiteSpace(s.Command) && TryMonsterRef(s.Location, out monster);
+
+        // Room link(s): a command / obtain step names its room in the Called-From
+        // location; a kill step's location is the monster itself, so its room comes
+        // from where the quest places (or summons) that monster.
+        string rooms = isKill ? MonsterRoomLinks(monster, monsterRooms) : RoomLinks(s.Location);
+        if (rooms.Length > 0) segments.Add(rooms);
 
         if (!string.IsNullOrWhiteSpace(s.Command))
         {
             segments.Add($"`{s.Command!.Trim()}`");
             if (granted.Length > 0) segments.Add($"(get {granted})");
         }
-        else if (TryMonsterRef(s.Location, out int monster))
+        else if (isKill)
         {
             string name = MonsterName(gameData, monster);
             segments.Add(granted.Length > 0 ? $"kill {name} ({granted})" : $"kill {name}");
@@ -140,6 +147,17 @@ internal static partial class QuestTextFormatter
             : string.Join(" ", RoomRef().Matches(location)
                 .Select(m => string.Create(CultureInfo.InvariantCulture, $"({m.Groups[1].Value}/{m.Groups[2].Value})")));
 
+    // A kill step's room link(s): every room the quest places the target monster in,
+    // as space-joined (map/room) tokens, drawn from the pre-built placement map so no
+    // per-step room scan happens. Empty when the monster has no resolved placement —
+    // the kill step then renders room-less rather than offering a dead link.
+    private static string MonsterRoomLinks(int monster,
+        IReadOnlyDictionary<int, IReadOnlyList<RoomKey>>? monsterRooms) =>
+        monsterRooms is not null && monsterRooms.TryGetValue(monster, out IReadOnlyList<RoomKey>? keys)
+            ? string.Join(" ", keys.Select(k =>
+                string.Create(CultureInfo.InvariantCulture, $"({k.Map}/{k.Room})")))
+            : string.Empty;
+
     // A command-less step whose chain is Called-From a monster is a kill step —
     // the monster number to narrate. Matches the hand-written guides' convention
     // of writing monster-granted quest items as "kill <monster> (<drop>)".
@@ -167,7 +185,8 @@ internal static partial class QuestTextFormatter
     // only the give-steps inside the band's StepRangeStart..StepRangeEnd span are
     // emitted; a single-part quest (range 0/0) emits every step. Empty when the flag
     // drafts no steps.
-    public static IReadOnlyList<string> StepLines(GameDataCache gameData, CrawledQuest q)
+    public static IReadOnlyList<string> StepLines(GameDataCache gameData, CrawledQuest q,
+        IReadOnlyDictionary<int, IReadOnlyList<RoomKey>>? monsterRooms = null)
     {
         var lines = new List<string>();
         var seenOrders = new HashSet<int>();
@@ -178,7 +197,7 @@ internal static partial class QuestTextFormatter
             // one give-step echoed from many rooms) only applies on the give-step axis.
             if (!q.ProgressByValue && !seenOrders.Add(s.Order)) continue;
             if (q.StepRangeEnd > 0 && (s.Order < q.StepRangeStart || s.Order > q.StepRangeEnd)) continue;
-            lines.Add(string.Create(CultureInfo.InvariantCulture, $"[] {Step(gameData, s)}"));
+            lines.Add(string.Create(CultureInfo.InvariantCulture, $"[] {Step(gameData, s, monsterRooms)}"));
         }
         return lines;
     }

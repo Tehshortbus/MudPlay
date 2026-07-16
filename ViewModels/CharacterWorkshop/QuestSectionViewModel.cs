@@ -91,6 +91,12 @@ public sealed partial class QuestSectionViewModel : WorkshopSectionViewModel
             _bonusesByCard.Clear();
             LoadProgressFromProfile();
 
+            // Where each quest-kill monster stands, resolved once (this loop drafts a
+            // step checklist per quest, each kill step consulting the map) so a kill
+            // step can link to the room the quest places its target in.
+            IReadOnlyDictionary<int, IReadOnlyList<RoomKey>>? monsterRooms =
+                AppServices.Current?.RoomSearch?.QuestKillRooms();
+
             int? classId = ResolveClassId();
             int? raceId = ResolveRaceId();
             foreach (CrawledQuest q in QuestCrawler.Crawl(_gameData, classId))
@@ -134,7 +140,7 @@ public sealed partial class QuestSectionViewModel : WorkshopSectionViewModel
 
                 // Every quest carries a followable checklist (multi-part bands too,
                 // filtered to the band's give-step range by the crawl + StepLines).
-                PopulateSteps(card, q, def, prog);
+                PopulateSteps(card, q, def, prog, monsterRooms);
 
                 Quests.Add(card);
             }
@@ -175,11 +181,12 @@ public sealed partial class QuestSectionViewModel : WorkshopSectionViewModel
     // `[]`-marked line is a tickable step keyed by its 0-based checkbox index (the
     // CheckedSteps key — stable across edits to the surrounding prose); a plain line
     // is a context label. A step is pre-ticked when its index is in saved progress.
-    private void PopulateSteps(QuestCardViewModel card, CrawledQuest q, QuestDefinition def, QuestProgress prog)
+    private void PopulateSteps(QuestCardViewModel card, CrawledQuest q, QuestDefinition def, QuestProgress prog,
+        IReadOnlyDictionary<int, IReadOnlyList<RoomKey>>? monsterRooms)
     {
         string text = !string.IsNullOrWhiteSpace(def.Steps)
             ? def.Steps!
-            : string.Join("\n", QuestTextFormatter.StepLines(_gameData, q));
+            : string.Join("\n", QuestTextFormatter.StepLines(_gameData, q, monsterRooms));
         AddStepRows(card, text, prog);
     }
 

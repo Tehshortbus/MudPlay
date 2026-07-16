@@ -36,6 +36,12 @@ public sealed class RoomSearchService
     private static readonly Regex SummonedRoomRegex
         = new(@"(\d+)/(\d+)", RegexOptions.Compiled);
 
+    // "Summoned By: Spell #491" — the spell another NPC casts to summon this
+    // monster (used to borrow the summoner's placement when the target isn't
+    // itself placed in a room).
+    private static readonly Regex SummonedSpellRegex
+        = new(@"Spell\s+#(\d+)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
     private readonly RoomGraphManager _graph;
     private readonly GameDataCache _gameData;
     private readonly BfsMapper _bfs;
@@ -45,6 +51,7 @@ public sealed class RoomSearchService
 
     private List<(int Id, string Name, int RegenHours)>? _regenMonsterCache;
     private Dictionary<int, List<RoomKey>>? _roomsByMonsterIdCache;
+    private Dictionary<int, IReadOnlyList<RoomKey>>? _questKillRoomsCache;
     // Single-source distance cache. Each Search call reuses it when
     // source is unchanged → one BFS per current-room change, O(1)
     // lookups per match. Matters for the rail search box's 50+
@@ -264,6 +271,7 @@ public sealed class RoomSearchService
     {
         _regenMonsterCache = null;
         _roomsByMonsterIdCache = null;
+        _questKillRoomsCache = null;
         InvalidateDistanceCache();
         _log?.Debug("RoomSearch", "caches invalidated (graph or game-data swap).");
     }
@@ -346,5 +354,85 @@ public sealed class RoomSearchService
         if (!map.TryGetValue(monsterId, out List<RoomKey>? rooms))
             map[monsterId] = rooms = new List<RoomKey>();
         if (!rooms.Contains(key)) rooms.Add(key);
+    }
+
+    // Where a quest guide's kill step sends you: the room(s) the quest places its
+    // kill target in, keyed by monster number. A quest-kill monster is placed
+    // statically — the room's NPC field names it — so that placement is primary.
+    // When the target is summoned rather than placed, its Monsters "Summoned By"
+    // record either names the spawn room directly, or names the spell another NPC
+    // casts to summon it — in which case that summoner's own placement stands in
+    // (a boss you fight where its summoner waits). Distinct from RoomsByMonsterId,
+    // which surfaces roaming-lair spawns; this is the single placed spot a guide
+    // walks you to. Built once and cached (guide rebuilds resolve every kill step
+    // against it), invalidated on game-data / graph swap.
+    public IReadOnlyDictionary<int, IReadOnlyList<RoomKey>> QuestKillRooms()
+    {
+        if (_questKillRoomsCache is not null) return _questKillRoomsCache;
+        Dictionary<int, List<RoomKey>> placed = new();
+
+        // Primary: the room's NPC field statically places the monster there.
+        foreach (Room room in _graph.Rooms)
+            if (room.Npc > 0) AddMonsterRoom(placed, room.Npc, room.Key);
+
+        JsonDocument? doc = _gameData.GetRawTable("Monsters");
+        if (doc is not null)
+        {
+            // Map each summon spell to the NPC(s) whose CreateSpell casts it, so a
+            // "Summoned By: Spell #N" target can borrow its summoner's placement.
+            Dictionary<int, List<int>> summonerBySpell = new();
+            foreach (JsonElement row in doc.RootElement.EnumerateArray())
+            {
+                if (!TryInt(row, "Number", out int owner)) continue;
+                if (!TryInt(row, "CreateSpell", out int spell) || spell <= 0) continue;
+                if (!summonerBySpell.TryGetValue(spell, out List<int>? owners))
+                    summonerBySpell[spell] = owners = new List<int>();
+                owners.Add(owner);
+            }
+
+            // Fallback for monsters with no static placement: their own Summoned By
+            // spawn room(s), else the placement of whoever summons them.
+            foreach (JsonElement row in doc.RootElement.EnumerateArray())
+            {
+                if (!TryInt(row, "Number", out int id) || placed.ContainsKey(id)) continue;
+                if (!row.TryGetProperty("Summoned By", out JsonElement sbEl)
+                    || sbEl.ValueKind != JsonValueKind.String) continue;
+                string text = sbEl.GetString() ?? string.Empty;
+                if (text.Length == 0) continue;
+
+                bool addedRoom = false;
+                foreach (Match m in SummonedRoomRegex.Matches(text))
+                {
+                    if (int.TryParse(m.Groups[1].Value, out int mn) && mn > 0
+                        && int.TryParse(m.Groups[2].Value, out int rn) && rn > 0)
+                    {
+                        AddMonsterRoom(placed, id, new RoomKey(mn, rn));
+                        addedRoom = true;
+                    }
+                }
+                if (addedRoom) continue;
+
+                foreach (Match m in SummonedSpellRegex.Matches(text))
+                {
+                    if (!int.TryParse(m.Groups[1].Value, out int sp)) continue;
+                    if (!summonerBySpell.TryGetValue(sp, out List<int>? owners)) continue;
+                    foreach (int owner in owners)
+                        if (placed.TryGetValue(owner, out List<RoomKey>? ownerRooms))
+                            foreach (RoomKey k in ownerRooms) AddMonsterRoom(placed, id, k);
+                }
+            }
+        }
+
+        _questKillRoomsCache = placed.ToDictionary(
+            kv => kv.Key, kv => (IReadOnlyList<RoomKey>)kv.Value);
+        return _questKillRoomsCache;
+    }
+
+    private static bool TryInt(JsonElement row, string property, out int value)
+    {
+        value = 0;
+        return row.TryGetProperty(property, out JsonElement el)
+            && el.ValueKind == JsonValueKind.Number
+            && el.TryGetInt32(out value);
     }
 }

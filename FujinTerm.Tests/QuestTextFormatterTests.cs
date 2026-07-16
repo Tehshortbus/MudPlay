@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using FujinTerm.Game.Map;
@@ -129,8 +130,40 @@ public sealed class QuestTextFormatterTests
     [Fact]
     public void Step_MonsterSourcedGrant_NarratesKillWithDrop()
     {
+        // No placement map → the kill narrates room-less (backward-compatible default).
         Assert.Equal("kill monster #39 (#100)",
             QuestTextFormatter.Step(NoSet, MakeStep(2, null, "Monster #39", granted: new[] { 100 })));
+    }
+
+    private static IReadOnlyDictionary<int, IReadOnlyList<RoomKey>> Placement(int monster, params RoomKey[] keys) =>
+        new Dictionary<int, IReadOnlyList<RoomKey>> { [monster] = keys };
+
+    [Fact]
+    public void Step_KillStep_PrependsMonsterPlacementRoomLink()
+    {
+        // A kill step's location is the monster; its room link comes from where the
+        // quest places that monster, resolved into the threaded-in placement map.
+        Assert.Equal("(9/717) kill monster #39 (#100)",
+            QuestTextFormatter.Step(NoSet, MakeStep(2, null, "Monster #39", granted: new[] { 100 }),
+                Placement(39, new RoomKey(9, 717))));
+    }
+
+    [Fact]
+    public void Step_KillStep_MultiplePlacements_ListEveryRoomAsItsOwnLink()
+    {
+        Assert.Equal("(1/2) (3/4) kill monster #39",
+            QuestTextFormatter.Step(NoSet, MakeStep(2, null, "Monster #39"),
+                Placement(39, new RoomKey(1, 2), new RoomKey(3, 4))));
+    }
+
+    [Fact]
+    public void Step_KillStep_UnplacedMonster_StaysRoomless()
+    {
+        // Monster absent from the map (nothing places it) → no dead link, the kill
+        // narration stands alone.
+        Assert.Equal("kill monster #39",
+            QuestTextFormatter.Step(NoSet, MakeStep(2, null, "Monster #39"),
+                Placement(99, new RoomKey(1, 2))));
     }
 
     [Fact]

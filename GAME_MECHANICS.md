@@ -1392,6 +1392,26 @@ glass jug               5               2 gold crowns
   emits a *Combat Off* with the chief alive but unengaged, and auto-combat stalls
   until the user manually attacks (`aa b`) — the reported symptom.
 
+## Quest kill steps & monster placement *([CONFIRMED] 2026-07-16, user)*
+
+- **A command-less quest step sourced from a monster's textblock is a "kill this
+  monster" step.** The flag advances because the monster's **death spell** (or a
+  room **`nomonster`** spell that fires when the room is cleared) grants the quest
+  progress — you receive the flag by killing the monster, not by typing a command.
+  So a crawled step whose Called-From is a `Monster #N` chain and carries no player
+  command narrates `kill <monster> (<drop>)`.
+- **A monster a quest requires you to kill is placed in a specific room** — the
+  room's **NPC field** (`Rooms.json` `NPC` = the monster number) names it. That
+  placement is the authoritative room a guide walks you to for the kill (e.g. queen
+  ant #485 is placed at 9/717 via `room.NPC == 485`).
+- **When the kill target is summoned rather than statically placed**, its Monsters
+  `Summoned By` record resolves the room: either a room token directly (`Room 9/717`
+  / `Group(lair): 1/531`), or a `Spell #N` that another NPC casts to summon it. In
+  the spell case the summoner is the monster whose **`CreateSpell` == N**, and that
+  summoner's own placement stands in as the target's room (e.g. *hydra head* is
+  summoned by *hydra*'s CreateSpell, so you fight it where the hydra waits). (See
+  `RoomSearchService.QuestKillRooms`.)
+
 ## Message catalogue (lines the client parses)
 
 | Event | Line |

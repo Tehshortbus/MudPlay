@@ -20,6 +20,7 @@
 > - Renaming the currently-running loop via Save-current now updates the navigation header at once, instead of holding the old (often loop-builder-generated) name until the next lap
 > - Quest seed: Phoenix Feather guide reordered (`ask morukai orfeo` moved up to follow `ask orfeo morukai`) and the missing `ask morukai return` step added before `use potion`
 > - Crawled quest guides (those with no hand-written seed) now auto-draft in the seed's own style: step rooms render as clickable `(map/room)` links, the player command is backtick-wrapped, a monster-sourced grant reads `kill <monster> (<drop>)` and a bare grant `obtain <item>`, and the noisy `flag(order)` prefix is dropped
+> - A crawled kill step now links to the room the quest places its target in (the room's NPC field), falling back to the monster's summon room — or, when it's summoned by another NPC, that summoner's room
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

@@ -1,8 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using FujinTerm.Game.Map;
 using FujinTerm.Game.Quests;
 using FujinTerm.Models.Profile;
 using FujinTerm.Services;
@@ -50,13 +52,19 @@ public sealed partial class QuestEditorViewModel : ObservableObject, IDialogView
 
         Quests.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasQuests));
 
+        // Kill-step target placement, resolved once for the whole draft pass so a
+        // crawled quest's auto-draft kill step can link to the room the quest places
+        // its target in.
+        IReadOnlyDictionary<int, IReadOnlyList<RoomKey>>? monsterRooms =
+            AppServices.Current?.RoomSearch?.QuestKillRooms();
+
         foreach (CrawledQuest q in QuestCrawler.Crawl(gameData, classId))
         {
             QuestDefinition def = quests.Resolve(q.Flag, q.Step);
             Quests.Add(new QuestEditRowViewModel(
                 q.Flag, q.Step,
                 QuestTextFormatter.FallbackTitle(q),
-                string.Join("\n", QuestTextFormatter.StepLines(gameData, q)),
+                string.Join("\n", QuestTextFormatter.StepLines(gameData, q, monsterRooms)),
                 QuestTextFormatter.Awards(gameData, q),
                 QuestTextFormatter.Bonuses(q.Bonuses),
                 QuestTextFormatter.Level(q.RequiredLevel),
