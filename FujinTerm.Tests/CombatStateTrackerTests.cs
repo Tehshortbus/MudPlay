@@ -58,7 +58,7 @@ public sealed class CombatStateTrackerTests
         public List<string> SentRaw { get; } = new();
         public bool BreakBeforeRunning { get; set; }
 
-        // Injected clock so the idle-stall watchdog's 12s threshold is testable
+        // Injected clock so the idle-stall watchdog's 6s threshold is testable
         // without wall-clock waits. Constant by default (existing tests never
         // advance it and never drive OnCombatTick, so the stamps stay inert).
         public DateTimeOffset FakeNow { get; set; } = DateTimeOffset.UnixEpoch;
@@ -889,12 +889,12 @@ public sealed class CombatStateTrackerTests
         Assert.True(h.CombatGateHeld);
 
         // A tick before the threshold does nothing.
-        h.FakeNow = h.FakeNow.AddSeconds(11);
+        h.FakeNow = h.FakeNow.AddSeconds(5);
         h.Tracker.OnCombatTick();
         Assert.Empty(h.SentRaw);
 
-        // Past the 12s threshold with the gate still held and no activity → CR.
-        h.FakeNow = h.FakeNow.AddSeconds(2);        // 13s total
+        // Past the 6s threshold with the gate still held and no activity → CR.
+        h.FakeNow = h.FakeNow.AddSeconds(2);        // 7s total
         h.Tracker.OnCombatTick();
         Assert.Contains("\r", h.SentRaw);
     }
@@ -912,9 +912,9 @@ public sealed class CombatStateTrackerTests
         h.Feed("Also here: giant rat.");
         Assert.True(h.CombatGateHeld);
 
-        h.FakeNow = h.FakeNow.AddSeconds(11);
+        h.FakeNow = h.FakeNow.AddSeconds(5);
         h.Feed("The giant rat bites you for 3 damage!");   // fresh activity
-        h.FakeNow = h.FakeNow.AddSeconds(2);               // 13s since gate, 2s since hit
+        h.FakeNow = h.FakeNow.AddSeconds(2);               // 7s since gate, 2s since hit
         h.Tracker.OnCombatTick();
         Assert.Empty(h.SentRaw);                            // not stalled — no CR
     }

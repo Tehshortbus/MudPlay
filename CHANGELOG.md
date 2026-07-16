@@ -2,6 +2,11 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.66.8
+
+- Idle-stall watchdog now re-checks a quietly-cleared room after 6s instead of 12s — when the room clears with no further combat lines, the walker forces the resync re-display twice as fast so it doesn't sit parked "fighting" nothing
+- bug reports addressed: paradigm-20260715-183717
+
 ## 1.66.7
 
 - Loop no longer fires a phantom attack at an already-cleared room after a heal — a kill's *Combat Off* landing the same round as a between-round cast (mihe) is no longer misread as the cast's interrupt, so the resume can't re-attack a corpse from a roster the kill's re-display hasn't cleared yet

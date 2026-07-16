@@ -44,8 +44,11 @@ public sealed class CombatStateTracker : IDisposable
     // the walker hangs "fighting" an empty room until a manual redisplay. The
     // watchdog (driven by the combat heartbeat) forces the same benign CR once
     // the gate has been held this long with zero combat activity, so the resync
-    // observation the gate-clear needs is produced automatically.
-    private static readonly TimeSpan IdleStallThreshold = TimeSpan.FromSeconds(12);
+    // observation the gate-clear needs is produced automatically. Kept short so a
+    // room that quietly cleared (kill flavor we never attributed, no further
+    // combat lines) is re-checked within a couple of combat rounds rather than
+    // leaving the walker parked "fighting" nothing for a dozen seconds.
+    private static readonly TimeSpan IdleStallThreshold = TimeSpan.FromSeconds(6);
 
     // Debounce between watchdog CRs so a server that's merely slow to answer the
     // forced re-display doesn't get a flood of them; one combat round apart.

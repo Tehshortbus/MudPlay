@@ -1,8 +1,8 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.66.7**
-> - Loop no longer fires a phantom attack at an already-cleared room after a heal — a kill's *Combat Off* landing the same round as a between-round cast (mihe) is no longer misread as the cast's interrupt, so the resume can't re-attack a corpse from a roster the kill's re-display hasn't cleared yet
+> **Version 1.66.8**
+> - Idle-stall watchdog now re-checks a quietly-cleared room after 6s instead of 12s — when the room clears with no further combat lines, the walker forces the resync re-display twice as fast so it doesn't sit parked "fighting" nothing
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->
