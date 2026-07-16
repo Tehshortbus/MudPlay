@@ -2,7 +2,7 @@
 
 <!-- current-version:start -->
 > **Version 1.66.8**
-> - Idle-stall watchdog now re-checks a quietly-cleared room after 6s instead of 12s — when the room clears with no further combat lines, the walker forces the resync re-display twice as fast so it doesn't sit parked "fighting" nothing
+> - Idle-stall watchdog re-checks a quietly-cleared room after 6s instead of 12s — when combat-end goes unrecognized (room cleared, no further combat lines), the walker forces the resync re-display a round sooner, wasting 1 round instead of 2
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->
