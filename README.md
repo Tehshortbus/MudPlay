@@ -2,7 +2,9 @@
 
 <!-- current-version:start -->
 > **Version 1.67.5**
-> - Reset States now clears stuck combat state too — the "Fighting" chip no longer stays lit over an empty room after the escape hatch runs
+> - Root-cause fix for the stuck "Fighting" chip: after a fallback death empties a room, an empty room re-displays with no "Also here:" line so the classifier fired no observation — the combat gate hung forever, re-displaying the empty room on a loop
+> - The idle-stall watchdog now escalates: once its resync re-display produces no roster, it force-clears the stuck gate automatically instead of looping (no manual Reset States needed)
+> - Reset States still force-clears combat state too, as a manual escape hatch
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

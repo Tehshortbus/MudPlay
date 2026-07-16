@@ -284,6 +284,27 @@ public sealed class CombatStateTracker : IDisposable
         if (now - _lastCombatActivityAt < IdleStallThreshold) return;
         if (now - _lastWatchdogRefreshAt < WatchdogRefreshCooldown) return;
 
+        // Escalation: our previous resync CR (sent in THIS gate episode —
+        // _lastWatchdogRefreshAt resets on each fresh AssertGate) already went out
+        // and had a full cooldown to answer, yet produced neither a survivor
+        // "Also here:" line — which refreshes _lastCombatActivityAt via the
+        // actionable-observation path — nor an empty-room clear, which drops the
+        // gate. That's the empty-room trap: a stationary re-display of a room the
+        // last monster just died in is only "<name>" + "Obvious exits:" with NO
+        // "Also here:" line, so the classifier fires no observation at all and the
+        // gate would hang forever (only a real move fires the RoomChange empty-wipe
+        // that clears it). When the last CR post-dates every sign of activity, the
+        // room is genuinely empty: force the tracker idle instead of re-displaying
+        // an empty room on a loop. A slow survivor re-display that lands after this
+        // just re-asserts the gate a beat later, so an early clear self-heals.
+        if (_lastWatchdogRefreshAt > DateTimeOffset.MinValue
+            && _lastCombatActivityAt < _lastWatchdogRefreshAt)
+        {
+            ResetCombatState(
+                "idle-stall watchdog: resync re-display produced no roster — room empty");
+            return;
+        }
+
         _lastWatchdogRefreshAt = now;
         _log?.Info(LogCategory,
             "combat gate held with no combat activity — forcing room re-display to resync");
@@ -453,6 +474,12 @@ public sealed class CombatStateTracker : IDisposable
     {
         if (_gateAsserted) return;
         _gateAsserted = true;
+        // Re-arm the idle-stall watchdog for this fresh fight: the resync stamp is
+        // "the last watchdog CR in the CURRENT gate episode", so the empty-room
+        // escalation in OnCombatTick can never fire off a CR left over from a prior
+        // fight. A live fight re-affirming the gate early-outs above, so the stamp
+        // survives an in-progress stall (only a genuinely new assertion clears it).
+        _lastWatchdogRefreshAt = DateTimeOffset.MinValue;
         _coordinator.AssertGate(MovementCoordinator.CombatGate, AsserterName, reason);
     }
 

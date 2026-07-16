@@ -957,4 +957,66 @@ public sealed class CombatStateTrackerTests
         h.Tracker.OnCombatTick();
         Assert.Empty(h.SentRaw);
     }
+
+    [Fact]
+    public void IdleStallWatchdog_EmptyReDisplayNoRoster_ForceClearsGate()
+    {
+        // The deeper stuck-gate bug (report paradigm-20260716-011443): a fallback
+        // death empties the room, but a stationary re-display of an empty room
+        // carries NO "Also here:" line, so the classifier fires no observation and
+        // the gate never clears. The watchdog re-displays the empty room forever.
+        // Escalation: once the resync CR has gone out and produced no fresh
+        // observation (no survivor Also-Here, gate still held), conclude the room
+        // is empty and force the tracker idle automatically.
+        using Harness h = new();
+        h.WireSender();
+        h.AddMonster(1, "roc hatchling", killable: true);
+
+        h.Feed("Also here: roc hatchling.");        // asserts gate, stamps activity
+        h.Feed("*Combat Engaged*");                 // InCombat true
+        Assert.True(h.CombatGateHeld);
+        Assert.True(h.State.InCombat);
+
+        // First stall tick past the threshold → the watchdog sends its resync CR.
+        h.FakeNow = h.FakeNow.AddSeconds(7);
+        h.Tracker.OnCombatTick();
+        Assert.Contains("\r", h.SentRaw);
+        Assert.True(h.CombatGateHeld);              // CR alone doesn't clear
+
+        // The empty room's re-display carried no "Also here:" line, so no fresh
+        // observation ever arrived. A cooldown later the escalation force-clears.
+        h.FakeNow = h.FakeNow.AddSeconds(5);        // 12s stall, 5s since the CR
+        h.Tracker.OnCombatTick();
+        Assert.False(h.CombatGateHeld);
+        Assert.False(h.State.InCombat);
+    }
+
+    [Fact]
+    public void IdleStallWatchdog_SurvivorReDisplay_DoesNotForceClear()
+    {
+        // A survivor's Also-Here on the resync re-display refreshes the activity
+        // stamp, so the escalation must NOT force-clear — a live fight with a slow
+        // round is left alone (it re-displays again instead).
+        using Harness h = new();
+        h.WireSender();
+        h.AddMonster(1, "roc hatchling", killable: true);
+
+        h.Feed("Also here: roc hatchling.");
+        Assert.True(h.CombatGateHeld);
+
+        h.FakeNow = h.FakeNow.AddSeconds(7);
+        h.Tracker.OnCombatTick();                   // first resync CR
+        Assert.Single(h.SentRaw);
+
+        // The re-display shows the mob still here — activity refreshes.
+        h.FakeNow = h.FakeNow.AddSeconds(1);
+        h.Feed("Also here: roc hatchling.");
+
+        // Stalled again past the threshold, but the last activity post-dates the
+        // CR → no force-clear; the watchdog just re-displays once more.
+        h.FakeNow = h.FakeNow.AddSeconds(7);
+        h.Tracker.OnCombatTick();
+        Assert.True(h.CombatGateHeld);
+        Assert.Equal(2, h.SentRaw.Count);           // a second CR, not a clear
+    }
 }
