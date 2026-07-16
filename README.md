@@ -19,6 +19,7 @@
 > - A monster that walks in under a name the game data doesn't recognize (a colour-stripped arrival like "dragon serpent") is now auto-attacked instead of stopping the walker on a mob it never engages
 > - Renaming the currently-running loop via Save-current now updates the navigation header at once, instead of holding the old (often loop-builder-generated) name until the next lap
 > - Quest seed: Phoenix Feather guide reordered (`ask morukai orfeo` moved up to follow `ask orfeo morukai`) and the missing `ask morukai return` step added before `use potion`
+> - Crawled quest guides (those with no hand-written seed) now auto-draft in the seed's own style: step rooms render as clickable `(map/room)` links, the player command is backtick-wrapped, a monster-sourced grant reads `kill <monster> (<drop>)` and a bare grant `obtain <item>`, and the noisy `flag(order)` prefix is dropped
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

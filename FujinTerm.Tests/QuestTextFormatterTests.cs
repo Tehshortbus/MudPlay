@@ -1,7 +1,9 @@
 using System;
+using System.IO;
 using System.Linq;
 using FujinTerm.Game.Map;
 using FujinTerm.Game.Quests;
+using FujinTerm.Services;
 using FujinTerm.ViewModels.CharacterWorkshop;
 using Xunit;
 
@@ -102,5 +104,74 @@ public sealed class QuestTextFormatterTests
     public void SplitRoomLinks_EmptyInput_ReturnsNoSegments()
     {
         Assert.Empty(QuestTextFormatter.SplitRoomLinks(string.Empty));
+    }
+
+    // ----- Step: seed-style auto-draft rendering -----------------------------
+    //
+    // Step resolves item / monster names off the cache; with no active set those
+    // lookups fall back to "#id" / "monster #id", which is enough to pin the
+    // seed-style shape (room-link-first, backtick command, kill/obtain narration,
+    // trailing item note) without loading a real game-data set.
+    private static readonly GameDataCache NoSet = new(Path.GetTempPath());
+
+    private static QuestStep MakeStep(int order, string? command, string? location,
+        int[]? required = null, int[]? turnIn = null, int[]? granted = null) =>
+        new(order, command, location,
+            required ?? Array.Empty<int>(), turnIn ?? Array.Empty<int>(), granted ?? Array.Empty<int>());
+
+    [Fact]
+    public void Step_CommandWithRoom_RendersRoomLinkThenBacktickCommand()
+    {
+        Assert.Equal("(9/1259) `ask old man phoenix`",
+            QuestTextFormatter.Step(NoSet, MakeStep(1, "ask old man phoenix", "Room 9/1259")));
+    }
+
+    [Fact]
+    public void Step_MonsterSourcedGrant_NarratesKillWithDrop()
+    {
+        Assert.Equal("kill monster #39 (#100)",
+            QuestTextFormatter.Step(NoSet, MakeStep(2, null, "Monster #39", granted: new[] { 100 })));
+    }
+
+    [Fact]
+    public void Step_CommandlessGrant_NarratesObtain()
+    {
+        Assert.Equal("obtain #100",
+            QuestTextFormatter.Step(NoSet, MakeStep(3, null, "Textblock #5", granted: new[] { 100 })));
+    }
+
+    [Fact]
+    public void Step_MultiRoomLocation_ListsEveryRoomAsItsOwnLink()
+    {
+        Assert.Equal("(5/294) (16/368) (1/527)",
+            QuestTextFormatter.Step(NoSet, MakeStep(1, null, "Room 5/294, Room 16/368, Room 1/527")));
+    }
+
+    [Fact]
+    public void Step_RequiredItem_TrailsAsRequiredNote()
+    {
+        Assert.Equal("(6/1357) `ask martok forge` (#100 required)",
+            QuestTextFormatter.Step(NoSet, MakeStep(4, "ask martok forge", "Room 6/1357", required: new[] { 100 })));
+    }
+
+    [Fact]
+    public void Step_TurnInItem_TrailsAsTurnInNote()
+    {
+        Assert.Equal("(1/1333) `ask annora head` (turn in #100)",
+            QuestTextFormatter.Step(NoSet, MakeStep(5, "ask annora head", "Room 1/1333", turnIn: new[] { 100 })));
+    }
+
+    [Fact]
+    public void Step_CommandGrant_TrailsAsGetNote()
+    {
+        Assert.Equal("(9/1259) `ask smith key` (get #100)",
+            QuestTextFormatter.Step(NoSet, MakeStep(6, "ask smith key", "Room 9/1259", granted: new[] { 100 })));
+    }
+
+    [Fact]
+    public void Step_NoRoomCommandOrItems_FallsBackToStepOrdinal()
+    {
+        Assert.Equal("Step 7",
+            QuestTextFormatter.Step(NoSet, MakeStep(7, null, "Textblock #5")));
     }
 }
