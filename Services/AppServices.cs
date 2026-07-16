@@ -4604,26 +4604,34 @@ public sealed class AppServices
 
     // Live key-possession check for DoorOpenManager's opportunistic floor grab:
     // is the player confidently carrying the key for itemId? Compared by name
-    // against the inventory's key-ring + carried list, article-stripped. Biased
-    // to false on any uncertainty (inventory not yet parsed, name mismatch) so the
-    // door FSM errs toward a harmless `get` rather than skipping it.
+    // against the inventory's key-ring + carried list, normalized (count prefix +
+    // article stripped). Biased to false on any uncertainty (inventory not yet
+    // parsed, name mismatch) so the door FSM errs toward a harmless `get` rather
+    // than skipping it.
     private bool HoldsKeyItem(int itemId)
     {
         string? name = ItemNames.GetName(itemId);
         if (string.IsNullOrWhiteSpace(name)) return false;
         if (!Inventory.IsLoaded) return false;
-        string want = StripLeadingArticle(name);
+        string want = NormalizeItemName(name);
         Game.Inventory.InventorySnapshot snap = Inventory.Snapshot;
         if (snap.Keys is { } keys)
             foreach (string k in keys)
-                if (StripLeadingArticle(k) == want) return true;
+                if (NormalizeItemName(k) == want) return true;
         foreach (string c in snap.CarriedItems)
-            if (StripLeadingArticle(c) == want) return true;
+            if (NormalizeItemName(c) == want) return true;
         return false;
 
-        static string StripLeadingArticle(string s)
+        static string NormalizeItemName(string s)
         {
             s = s.Trim().ToLowerInvariant();
+            // Key-ring / carried entries carry a count prefix ("2 black serpent
+            // key") the bare game-data name lacks; strip it so a key held in
+            // multiples still matches. Only a run of digits followed by a space
+            // qualifies, so a name like "3-pronged fork" is left intact.
+            int d = 0;
+            while (d < s.Length && char.IsDigit(s[d])) d++;
+            if (d > 0 && d < s.Length && s[d] == ' ') s = s[(d + 1)..].TrimStart();
             if (s.StartsWith("the ", System.StringComparison.Ordinal)) return s[4..];
             if (s.StartsWith("an ", System.StringComparison.Ordinal)) return s[3..];
             if (s.StartsWith("a ", System.StringComparison.Ordinal)) return s[2..];

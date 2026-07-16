@@ -2,6 +2,13 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.67.7
+
+- A weapon's magic-hit level now sums both magic abilities (Magical + HitMagic), matching the character sheet — an inherently magical weapon (a "shimmering" longsword carrying only the Magical ability) is no longer misread as un-magical
+- Fixes the walker stalling "un-actionable" against a monster its magical weapon could actually hit, and the spurious auto-swap to an alternate weapon
+- Door-key possession check now strips the count prefix on key-ring entries ("2 black serpent key"), so a key held in multiples is recognized as carried instead of triggering a spurious floor "get" before "use"
+- bug reports addressed: paradigm-20260715-235300, paradigm-20260715-222258
+
 ## 1.67.5
 
 - Root-cause fix for the stuck "Fighting" chip: after a fallback death empties a room, an empty room re-displays with no "Also here:" line so the classifier fired no observation — the combat gate hung forever, re-displaying the empty room on a loop
