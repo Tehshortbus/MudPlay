@@ -29,6 +29,7 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
     private readonly SettingsResolver? _resolverRef;
     private readonly ItemOverlaySeedStore? _overlaySeed;
     private readonly PlayerStats? _playerStats;
+    private readonly ItemSourceIndex? _itemSources;
 
     // The item menu currently open (null when none). Only one exists at a time:
     // double-clicking another row closes this one and opens the new item, rather
@@ -86,7 +87,8 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
         SettingsResolver? resolver = null,
         DialogService? dialogs = null,
         ItemOverlaySeedStore? overlaySeed = null,
-        PlayerStats? playerStats = null)
+        PlayerStats? playerStats = null,
+        ItemSourceIndex? itemSources = null)
         : base(cache, resolver)
     {
         _cache = cache;
@@ -94,6 +96,7 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
         _resolverRef = resolver;
         _overlaySeed = overlaySeed;
         _playerStats = playerStats;
+        _itemSources = itemSources;
         // AllowConcurrentExecutions: the first double-click parks at the open
         // dialog's await, so without this the command reports IsRunning and
         // CanExecute=false — a second double-click on another row would be
@@ -134,20 +137,30 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
 
         // Container loot table (null for a non-chest) — the dialog shows it as a
         // read-only "Chest Contents" section below "Other Info".
-        ChestContents? chest = int.TryParse(wcc, out int chestNum)
-            ? ChestContentsReader.Read(_cache, chestNum)
+        int.TryParse(wcc, out int itemNum);
+        ChestContents? chest = itemNum > 0
+            ? ChestContentsReader.Read(_cache, itemNum)
             : null;
 
+        // Reverse acquisition sources the shop/drop panes don't cover: containers
+        // this item is found in, and monster/room textblock `giveitem` awards.
+        IReadOnlyList<ItemSource>? containerSources =
+            itemNum > 0 ? _itemSources?.ContainersOf(itemNum) : null;
+        IReadOnlyList<ItemGiver>? givers =
+            itemNum > 0 ? _itemSources?.GiversOf(itemNum) : null;
+
         ItemEditDialogViewModel vm = new(
-            wccNoStr:     wcc,
-            mdbName:      row.Get("Name") ?? string.Empty,
-            existing:     existing,
-            currentTier:  row.SourceTier,
-            mdbInfo:      mdb.OtherInfo,
-            shops:        mdb.Shops,
-            isLight:      mdb.IsLight,
-            isContainer:  mdb.IsContainer,
-            chest:        chest);
+            wccNoStr:         wcc,
+            mdbName:          row.Get("Name") ?? string.Empty,
+            existing:         existing,
+            currentTier:      row.SourceTier,
+            mdbInfo:          mdb.OtherInfo,
+            shops:            mdb.Shops,
+            isLight:          mdb.IsLight,
+            isContainer:      mdb.IsContainer,
+            chest:            chest,
+            containerSources: containerSources,
+            givers:           givers);
 
         // Replace any open item menu with the new one: a double-click on another
         // row swaps the shown item instead of opening a second window. Closing

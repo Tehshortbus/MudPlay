@@ -3289,6 +3289,7 @@ public partial class MainWindowViewModel : ObservableObject
             AppServices.Current.Profile,
             AppServices.Current.RoomGraph,
             AppServices.Current.PlayerStats,
+            AppServices.Current.ItemSources,
             initialSectionId);
         FujinTerm.Views.GameData.GameDataBrowserWindow window = new() { DataContext = newVm };
         window.Closed += (_, _) => _gameDataBrowser = null;

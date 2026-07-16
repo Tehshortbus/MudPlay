@@ -232,6 +232,59 @@
                                 </ItemsControl>
                             </StackPanel>
 
+                            <!-- Found in — containers that can yield this item (the
+                                 reverse of Chest Contents). Each links to the container's
+                                 Items-tab record with its per-open drop chance. Hidden
+                                 when no chest drops the item. -->
+                            <StackPanel IsVisible="{Binding HasFoundInContainers}" Margin="0,10,0,0">
+                                <TextBlock Classes="SectionHeader" Text="Found in"/>
+                                <ItemsControl ItemsSource="{Binding FoundInContainers}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate DataType="vm:ChestDropRow">
+                                            <Grid ColumnDefinitions="200,10,46" Margin="0,1">
+                                                <Button Grid.Column="0" Classes="MdbLink"
+                                                        Content="{Binding Name}"
+                                                        Command="{Binding Open}"
+                                                        HorizontalAlignment="Left"
+                                                        ToolTip.Tip="Open this container in the Game Data browser"/>
+                                                <Border Grid.Column="1" Width="1"
+                                                        Background="{StaticResource ChromeBorderBrush}"
+                                                        VerticalAlignment="Stretch"
+                                                        HorizontalAlignment="Center"/>
+                                                <TextBlock Grid.Column="2" Classes="MdbValue" Text="{Binding Chance}"
+                                                           TextAlignment="Right"/>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+
+                            <!-- Given by — monsters / rooms that hand this item over via
+                                 a textblock giveitem (quest turn-ins, room CMD rewards,
+                                 merchant gives). The name links to that Monsters/Rooms-tab
+                                 record; a requirement note (turn in … / purchase / quest
+                                 reward) sits beneath. Hidden when nothing gives the item. -->
+                            <StackPanel IsVisible="{Binding HasGivers}" Margin="0,10,0,0">
+                                <TextBlock Classes="SectionHeader" Text="Given by"/>
+                                <ItemsControl ItemsSource="{Binding Givers}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate DataType="vm:ItemGiverRow">
+                                            <StackPanel Margin="0,1,0,4">
+                                                <Button Classes="MdbLink"
+                                                        Content="{Binding Name}"
+                                                        Command="{Binding Open}"
+                                                        IsEnabled="{Binding CanOpen}"
+                                                        HorizontalAlignment="Left"
+                                                        ToolTip.Tip="Open this source in the Game Data browser"/>
+                                                <TextBlock Classes="MdbValue" Text="{Binding Requirement}"
+                                                           IsVisible="{Binding HasRequirement}"
+                                                           Margin="8,0,0,0"/>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+
                             <!-- Chest Contents — containers only. Decoded loot table:
                                  item · at-least-once drop chance for one `open`, plus a
                                  yield summary. Read-only; hidden for non-containers. -->

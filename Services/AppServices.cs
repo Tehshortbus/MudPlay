@@ -1053,6 +1053,13 @@ public sealed class AppServices
     // GameDataCache.ActiveSetChanged.
     public MonsterDropIndex MonsterDrops { get; private set; } = null!;
 
+    // Reverse item-acquisition index for the Game Data Browser's item detail
+    // pane — the containers an item is found in and the monster/room textblock
+    // `giveitem` awards that hand it over. Browser-only, so unlike the routing
+    // indexes above it builds lazily on first query and self-invalidates on a
+    // set swap (no ActiveSetChanged subscription).
+    public ItemSourceIndex ItemSources { get; private set; } = null!;
+
     // Index of the active set's room-entry hazards — a room's cast-on-enter
     // Spell mapped to the item(s) that make the room safe (fish-helm negator,
     // failitem rafts, checkspell buff sources). Feeds the navigation
@@ -2045,6 +2052,12 @@ public sealed class AppServices
         GameData.ActiveSetChanged += TBInfo.OnActiveSetChanged;
         if (GameData.ActiveSet is not null)
             TBInfo.OnActiveSetChanged(GameData.ActiveSet);
+
+        // ItemSourceIndex — reverse item-acquisition (containers + textblock
+        // giveitem awards) for the Game Data browser. Reads TBInfo's typed
+        // entries, so it's constructed after the store above. Lazy and
+        // self-invalidating, so there's no ActiveSetChanged subscription to wire.
+        ItemSources = new ItemSourceIndex(GameData, TBInfo, Log);
 
         // Room graph — seeded from the active set's Rooms.json every time the
         // set switches. Built once per swap; consumers hold typed Room

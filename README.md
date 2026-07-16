@@ -5,6 +5,7 @@
 > - Trainer room detail now lists the per-level training cost across the trainer's whole level band, priced at that trainer's own markup
 > - Game Data Rooms filter accepts a `map,room` coordinate (`1,1`) — comma, slash, or space all jump straight to that one room
 > - Item detail's bought/sold shops are now clickable — each jumps the Game Data browser to the host room's Rooms-tab record
+> - Item detail surfaces two more acquisition paths: `Found in` lists the chests an item drops from (with per-open odds), and `Given by` lists the monsters/rooms that hand it over via a textblock award — turn-in, purchase, or quest reward — each a clickable jump to that record
 > - Character Info tab moves Quest Bonuses beneath the attack accuracy/damage box, freeing the right column for the full inventory readout
 > - Quest Status cards now show the completion experience a quest awards on its own reward line (guide-only — it doesn't feed the Character Info bonuses)
 > - Weapon-flap fix: a combat-entry gear-set trigger now defers the weapon/off-hand to the combat engine while it holds a per-monster alternate-weapon override, so the Default set can't re-wear the normal weapon over the swap mid-fight

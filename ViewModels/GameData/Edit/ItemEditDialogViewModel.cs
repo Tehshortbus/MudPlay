@@ -104,6 +104,18 @@ public sealed partial class ItemEditDialogViewModel : ObservableObject, IDialogV
     public bool HasChestContents => ChestDrops.Count > 0;
     public string ChestSummary { get; }
 
+    // Reverse container sourcing — the chests this item can be found in, each a
+    // clickable link to that container's Items-tab record with its per-open drop
+    // chance. Empty when no container yields the item.
+    public IReadOnlyList<ChestDropRow> FoundInContainers { get; }
+    public bool HasFoundInContainers => FoundInContainers.Count > 0;
+
+    // Textblock `giveitem` sourcing — the monsters / rooms that hand this item
+    // over (quest turn-ins, room CMD rewards, merchant gives), each a clickable
+    // link with an optional requirement note. Empty when nothing gives it.
+    public IReadOnlyList<ItemGiverRow> Givers { get; }
+    public bool HasGivers => Givers.Count > 0;
+
     public IReadOnlyList<SettingsTier> AvailableTiers { get; } =
         Enum.GetValues<SettingsTier>().ToArray();
 
@@ -118,7 +130,9 @@ public sealed partial class ItemEditDialogViewModel : ObservableObject, IDialogV
         IReadOnlyList<ShopSaleRow> shops,
         bool isLight = false,
         bool isContainer = false,
-        ChestContents? chest = null)
+        ChestContents? chest = null,
+        IReadOnlyList<ItemSource>? containerSources = null,
+        IReadOnlyList<ItemGiver>? givers = null)
     {
         WccNoStr     = wccNoStr;
         Name         = existing?.Name ?? mdbName;
@@ -129,6 +143,8 @@ public sealed partial class ItemEditDialogViewModel : ObservableObject, IDialogV
         CanAutoOpen  = isContainer;
 
         (ChestDrops, ChestSummary) = BuildChest(chest);
+        FoundInContainers = BuildContainerSources(containerSources);
+        Givers = BuildGivers(givers);
 
         AutoCollect     = existing?.AutoCollect     ?? false;
         AutoDiscard     = existing?.AutoDiscard     ?? false;
@@ -180,6 +196,27 @@ public sealed partial class ItemEditDialogViewModel : ObservableObject, IDialogV
             ? $"Yields {chest.MinItems} {Plural(chest.MaxItems)}"
             : $"Yields {chest.MinItems}–{chest.MaxItems} items";
         return (rows, summary);
+    }
+
+    // Reverse container sourcing → clickable Items-tab links. Reuses ChestDropRow
+    // (identical shape: an item link + a formatted per-open chance) — here the
+    // linked item is the container and the chance is this item's drop rate from it.
+    private static IReadOnlyList<ChestDropRow> BuildContainerSources(IReadOnlyList<ItemSource>? sources)
+    {
+        if (sources is null || sources.Count == 0) return Array.Empty<ChestDropRow>();
+        var rows = new List<ChestDropRow>(sources.Count);
+        foreach (ItemSource s in sources)
+            rows.Add(new ChestDropRow(s.ContainerItemId, s.ContainerName, FormatChance(s.Probability)));
+        return rows;
+    }
+
+    private static IReadOnlyList<ItemGiverRow> BuildGivers(IReadOnlyList<ItemGiver>? givers)
+    {
+        if (givers is null || givers.Count == 0) return Array.Empty<ItemGiverRow>();
+        var rows = new List<ItemGiverRow>(givers.Count);
+        foreach (ItemGiver g in givers)
+            rows.Add(new ItemGiverRow(g));
+        return rows;
     }
 
     private static string FormatChance(double p)

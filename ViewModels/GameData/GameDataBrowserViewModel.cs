@@ -60,9 +60,10 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject, IDispos
     private readonly ProfileService? _profile;
     private readonly RoomGraphManager? _roomGraph;
     private readonly PlayerStats? _playerStats;
+    private readonly ItemSourceIndex? _itemSources;
 
     public GameDataBrowserViewModel(GameDataCache gameData, string? initialSectionId = null)
-        : this(gameData, triggers: null, aliases: null, players: null, macros: null, messages: null, monsterMessages: null, monsterOverlaySeed: null, itemOverlaySeed: null, resolver: null, dialogs: null, keybindings: null, profile: null, roomGraph: null, playerStats: null, initialSectionId: initialSectionId) { }
+        : this(gameData, triggers: null, aliases: null, players: null, macros: null, messages: null, monsterMessages: null, monsterOverlaySeed: null, itemOverlaySeed: null, resolver: null, dialogs: null, keybindings: null, profile: null, roomGraph: null, playerStats: null, itemSources: null, initialSectionId: initialSectionId) { }
 
     public GameDataBrowserViewModel(
         GameDataCache gameData,
@@ -80,6 +81,7 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject, IDispos
         ProfileService? profile = null,
         RoomGraphManager? roomGraph = null,
         PlayerStats? playerStats = null,
+        ItemSourceIndex? itemSources = null,
         string? initialSectionId = null)
     {
         ArgumentNullException.ThrowIfNull(gameData);
@@ -98,6 +100,7 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject, IDispos
         _profile = profile;
         _roomGraph = roomGraph;
         _playerStats = playerStats;
+        _itemSources = itemSources;
         _gameData.ActiveSetChanged += OnActiveSetChanged;
 
         SeedSections();
@@ -209,7 +212,7 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject, IDispos
         // ----- MDB-derived (bottom group) ---------------------------------
 
         Sections.Add(new MonstersSectionViewModel(_gameData, _resolver, _dialogs, _monsterMessages, _monsterOverlaySeed, _roomGraph));
-        Sections.Add(new ItemsSectionViewModel(_gameData, _resolver, _dialogs, _itemOverlaySeed, _playerStats));
+        Sections.Add(new ItemsSectionViewModel(_gameData, _resolver, _dialogs, _itemOverlaySeed, _playerStats, _itemSources));
         Sections.Add(new SpellsSectionViewModel(_gameData, _resolver, _messages, _dialogs));
         Sections.Add(new RoomsSectionViewModel(_gameData, _resolver, _dialogs));
         Sections.Add(new LairsSectionViewModel(_gameData, _resolver));
