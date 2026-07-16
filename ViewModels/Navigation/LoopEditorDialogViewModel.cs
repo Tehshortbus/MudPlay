@@ -431,25 +431,36 @@ public sealed partial class LoopEditorDialogViewModel : ObservableObject, IDialo
         _loops.Save(_original);
         SaveError = string.Empty;
 
-        // If we just edited the live running loop, ask whether to
-        // restart it with the new definition. The user might be
-        // tweaking for next time and not want their current lap
-        // disrupted, OR they might be fixing a bug and want it
-        // applied immediately. Yes → stop+restart; No → leave the
-        // runner on the in-memory pre-edit version (it'll pick up
-        // the new disk version next time the user clicks Run).
-        if (_runner is { } runner && _confirm is { } confirm
-            && IsEditingRunningLoop(runner, oldName)
-            && StepsEditedSinceOpen(waypoints))
+        // If we just edited the live running loop, reconcile the runner with
+        // what we saved. Two cases:
+        if (_runner is { } runner && IsEditingRunningLoop(runner, oldName))
         {
-            bool restart = await confirm.ConfirmAsync(
-                "Apply to running loop?",
-                "You edited the loop that's currently running. Restart the runner with the new version now?",
-                yesLabel: "Restart now");
-            if (restart)
+            if (_confirm is { } confirm && StepsEditedSinceOpen(waypoints))
             {
-                runner.Stop("edited; restarting with new definition");
-                runner.Start(_original);
+                // The runnable PATH changed — ask whether to restart with the
+                // new definition. The user might be tweaking for next time and
+                // not want their current lap disrupted, OR they might be fixing a
+                // bug and want it applied immediately. Yes → stop+restart (which
+                // adopts the new name too); No → leave the runner on the in-memory
+                // pre-edit version — name and path both stay as they're actually
+                // running, and a later Run picks up the new disk version.
+                bool restart = await confirm.ConfirmAsync(
+                    "Apply to running loop?",
+                    "You edited the loop that's currently running. Restart the runner with the new version now?",
+                    yesLabel: "Restart now");
+                if (restart)
+                {
+                    runner.Stop("edited; restarting with new definition");
+                    runner.Start(_original);
+                }
+            }
+            else if (renamed)
+            {
+                // Name/notes-only edit: the live path is identical to what we
+                // saved, so renaming in place is truthful and doesn't disrupt the
+                // lap. Push the new name onto the runner so the nav header + status
+                // chip stop holding the old (often builder-generated) name.
+                runner.RenameCurrentLoop(newName);
             }
         }
 
