@@ -3436,9 +3436,12 @@ public sealed class AppServices
         // through the walker — attached here since the walker is built
         // after the manager.
         DeathRecovery.AttachWalker(Walker);
-        // Route walker over trapped exits through
-        // the TrapDisarmManager.
-        Walker.SetTrapEnqueuer(TrapDisarm.Enqueue);
+        // Route walker over trapped exits through the TrapDisarmManager. The
+        // walker only enqueues on a RoomExitHint.Trap — it already knows a trap
+        // sits on the exit, so it disarms directly (trapKnown: true) instead of
+        // searching first.
+        Walker.SetTrapEnqueuer((dir, sender, reply) =>
+            TrapDisarm.Enqueue(dir, sender, reply, trapKnown: true));
         // Settings → Other "Utilize disarm traps if able": gate the
         // walker's trap-disarm on the toggle AND a real local capability
         // (a positive Traps stat, or a class/race game-data trap-skill

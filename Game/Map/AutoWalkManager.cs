@@ -274,8 +274,9 @@ public sealed class AutoWalkManager : IRecoverableEngine
     internal void SetWireSenderForTests(Action<byte[]> sender) => SetWireSender(sender);
 
     // Bind the trap-disarm enqueuer. Production wires this to
-    // TrapDisarmManager.Enqueue so trapped exits route through the
-    // search-then-disarm flow before the move goes out. Tests pass a
+    // TrapDisarmManager.Enqueue with trapKnown=true — a walker step only reaches
+    // here on a RoomExitHint.Trap, so the trap is already known and disarms
+    // directly (no confirming search) before the move goes out. Tests pass a
     // capture-and-fire delegate.
     //
     // Signature: (direction, sender, reply). The walker passes the

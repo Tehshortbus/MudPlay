@@ -16,7 +16,10 @@ Notable changes per merged PR, **newest first**. The top of the [README](README.
 - Search-bar walk-to now rebounds to auto-following the player once the browse window lapses, matching how a pan-drag rebounds
 - Crossing an up/down no longer rebuilds/refocuses the map while you're panning or numpad-browsing — the re-root defers until browsing ends
 - Picking a new walk-to destination while manually paused now lifts the pause and walks there, instead of changing the destination but staying frozen
-- bug reports addressed: paradigm-20260716-095547, paradigm-20260716-095716, paradigm-20260716-101002
+- Walker now disarms a known-trapped exit directly instead of searching it first — the exit hint already proved the trap, so the confirming `search` is skipped
+- A between-round buff/heal cast that lands after the death→re-observe already re-swung now resumes the weapon on its `*Combat Off*` instead of idling a full round
+- A monster that walks in under a name the game data doesn't recognize (a colour-stripped arrival like "dragon serpent") is now auto-attacked instead of stopping the walker on a mob it never engages
+- bug reports addressed: paradigm-20260716-095547, paradigm-20260716-095716, paradigm-20260716-101002, paradigm-20260716-123358, paradigm-20260716-124255, paradigm-20260716-124409
 
 ## 1.67.7
 

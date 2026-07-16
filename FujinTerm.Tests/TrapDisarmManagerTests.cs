@@ -183,6 +183,33 @@ public sealed class TrapDisarmManagerTests : IDisposable
     }
 
     [Fact]
+    public void Enqueue_TrapKnown_SkipsSearchAndDisarmsImmediately()
+    {
+        // The walker enqueues with trapKnown=true because it only reaches the
+        // trap path on a RoomExitHint.Trap — the trap is already known, so the
+        // confirming `sea <dir>` is a wasted round and we go straight to disarm.
+        var (mgr, _, _, wire) = Setup();
+        mgr.Enqueue("se", "walker", _ => { }, trapKnown: true);
+
+        Assert.Equal("disarm trap se\r", Encoding.Latin1.GetString(Assert.Single(wire)));
+        Assert.Equal(TrapDisarmManager.State.DisarmPending, mgr.CurrentState);
+        Assert.Equal("se", mgr.CurrentDirection);
+    }
+
+    [Fact]
+    public void Enqueue_TrapKnown_DisarmSuccess_RepliesAndReturnsToIdle()
+    {
+        var (mgr, router, _, _) = Setup();
+        string? reply = null;
+        mgr.Enqueue("se", "walker", t => reply = t, trapKnown: true);
+
+        Dispatch(router, "You successfully disarmed the trap to the southeast.");
+
+        Assert.Equal("Trap to the se disarmed.", reply);
+        Assert.Equal(TrapDisarmManager.State.Idle, mgr.CurrentState);
+    }
+
+    [Fact]
     public void SearchSuccess_TransitionsToDisarmAndSendsDisarmCommand()
     {
         var (mgr, router, _, wire) = Setup();

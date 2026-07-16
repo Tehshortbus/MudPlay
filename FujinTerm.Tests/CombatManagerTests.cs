@@ -2403,6 +2403,62 @@ public sealed class CombatManagerTests
     }
 
     [Fact]
+    public void BetweenRoundCast_AfterDeathReObserveReengaged_StillResumes()
+    {
+        // Report paradigm-20260716-124255 (cast a buff mid-fight, then missed a
+        // combat round): a fallback kill re-observed and re-swung at the surviving
+        // mob, THEN a between-round buff cast fired and turned combat off. The death
+        // guard suppressed the cast-resume as if the kill's re-observe were still
+        // pending — but it had already run, so the fresh swing sat interrupted for a
+        // full round until the cast-block latch cleared. Once an attack has gone out
+        // since the death, the Off is the cast's interrupt and must resume.
+        using Harness h = new();
+        h.AddMonster(1, "angry bugbear", killable: false);
+        h.AddMonster(2, "short bugbear", killable: false);
+
+        h.Feed("Also here: angry bugbear, short bugbear.");
+        Assert.Equal("a angry bugbear", h.LastSent);
+        Assert.Equal("angry bugbear", h.Combat.CurrentTarget);
+
+        // The fallback death re-observes and re-swings at the survivor — the death→
+        // re-observe path completes here (an attack goes out AFTER the death stamp).
+        h.Combat.NoteUnattributedDeath();
+        Assert.Equal("a short bugbear", h.LastSent);
+        Assert.Equal("short bugbear", h.Combat.CurrentTarget);
+        int before = h.Sent.Count;
+
+        // A between-round buff cast now fires and interrupts that fresh swing.
+        h.Combat.NoteBetweenRoundCast();
+        h.Feed("*Combat Off*");
+
+        // Resumed on the Off line — the survivor is re-swung, no missed round.
+        Assert.Equal(before + 1, h.Sent.Count);
+        Assert.Equal("a short bugbear", h.LastSent);
+    }
+
+    [Fact]
+    public void NullNumberArrival_UnresolvedName_IsEngaged()
+    {
+        // Report paradigm-20260716-124409 (didn't react to a monster entering the
+        // room, had to manually attack): a mid-walk arrival whose colour-stripped
+        // name ("dragon serpent") misses the colour-prefixed game-data records
+        // ("red/white dragon serpent") is classified Monster with a null number.
+        // HasEngageable fail-opens on it to hold the Combat gate (walker pause),
+        // but the attacker used to DROP null-number monsters — so the walker
+        // stopped on a mob that was never hit and the player just got pummelled.
+        // The attacker must engage it too, by RawName.
+        using Harness h = new();
+
+        h.Classifier.AppendArrivalEntity(
+            new RoomEntity("dragon serpent", "dragon serpent",
+                           EntityKind.Monster, MonsterNumber: null),
+            rawWireLine: "A dragon serpent slithers in from the northwest!");
+
+        Assert.Equal("a dragon serpent", h.LastSent);
+        Assert.Equal("dragon serpent", h.Combat.CurrentTarget);
+    }
+
+    [Fact]
     public void NoCombatOff_MobLine_DoesNotReswing()
     {
         // Guard: a mob line while combat is live (server still swinging
