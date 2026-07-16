@@ -1,11 +1,8 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.67.4**
-> - A "look &lt;player&gt;" no longer arms room-peek suppression — only a "look &lt;direction&gt;" does, since only that renders an adjacent room
-> - Fixes the post-teleport movement stall: after a party-splitting "go hole", the trap-delegation race-probe (`look <member>` on re-join) was eating the walker's next-step room confirmation, freezing the walk until a manual room re-display
-> - Party-splitting-teleport reform now suppresses the trap race-probe look entirely — no member looks during that evolution
-> - Reform adds a fixed 2s settle then a single room re-display, a backstop that reforms a member who teleported in ahead of us and whose arrival we never witnessed
+> **Version 1.67.5**
+> - Reset States now clears stuck combat state too — the "Fighting" chip no longer stays lit over an empty room after the escape hatch runs
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

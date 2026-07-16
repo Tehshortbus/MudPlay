@@ -870,6 +870,29 @@ public sealed class CombatStateTrackerTests
         Assert.True(h.State.InCombat);
     }
 
+    // ----- manual reset escape hatch (report paradigm-20260716-011443) ----
+
+    [Fact]
+    public void ResetCombatState_ClearsGateAndInCombat()
+    {
+        // Reset States must force the tracker idle when a stale roster (fallback
+        // death whose forced re-display never wiped the room) left the Combat gate
+        // stuck asserted and InCombat true. Clearing conditions alone didn't touch
+        // the gate, so the Fighting chip stayed lit over an empty room.
+        using Harness h = new();
+        h.AddMonster(1, "roc hatchling", killable: true);
+
+        h.Feed("Also here: roc hatchling.");        // asserts gate
+        h.Feed("*Combat Engaged*");                 // flips InCombat true
+        Assert.True(h.CombatGateHeld);
+        Assert.True(h.State.InCombat);
+
+        h.Tracker.ResetCombatState("test");
+
+        Assert.False(h.CombatGateHeld);
+        Assert.False(h.State.InCombat);
+    }
+
     // ----- idle-stall watchdog (reports 162423 / 163553) ----------------
 
     [Fact]

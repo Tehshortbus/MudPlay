@@ -2,6 +2,11 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.67.5
+
+- Reset States now clears stuck combat state too — the "Fighting" chip no longer stays lit over an empty room after the escape hatch runs
+- bug reports addressed: paradigm-20260716-011443
+
 ## 1.67.4
 
 - A "look &lt;player&gt;" no longer arms room-peek suppression — only a "look &lt;direction&gt;" does, since only that renders an adjacent room

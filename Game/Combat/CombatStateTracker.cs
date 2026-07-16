@@ -463,6 +463,23 @@ public sealed class CombatStateTracker : IDisposable
         _coordinator.ClearGate(MovementCoordinator.CombatGate, AsserterName, reason);
     }
 
+    // Manual escape hatch (Reset States). Force the tracker back to an idle,
+    // out-of-combat state: release the Combat gate, drop the combat-off seehidden
+    // latch, and clear InCombat. The case this rescues: a stale roster (a fallback
+    // death whose forced re-display never wiped the room) leaves the gate asserted
+    // and the walker parked "fighting" an empty room with no in-game line left to
+    // release it — the idle-stall watchdog keeps re-displaying but the roster
+    // never clears. Reset States clearing conditions alone left this stuck, so it
+    // routes here too. The next genuine room observation re-derives presence from
+    // scratch, so a hostile that really remains re-asserts within a round.
+    public void ResetCombatState(string reason)
+    {
+        ClearGate(reason);
+        _seeHiddenClearLatch = false;
+        if (_state.InCombat) _state.InCombat = false;
+        _log?.Info(LogCategory, $"combat state force-cleared — {reason}");
+    }
+
     // ----- InCombat plumbing ----------------------------------------
 
     private void OnAnyCombatLine(MatchResult _)
