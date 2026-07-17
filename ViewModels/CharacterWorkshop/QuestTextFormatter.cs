@@ -100,8 +100,9 @@ internal static partial class QuestTextFormatter
     // captured nothing followable (see StepOrNull) — kept for any caller that wants
     // a label for every step; the auto-draft (StepLines) drops those steps instead.
     public static string Step(GameDataCache gameData, QuestStep s,
-        IReadOnlyDictionary<int, IReadOnlyList<RoomKey>>? monsterRooms = null)
-        => StepOrNull(gameData, s, monsterRooms)
+        IReadOnlyDictionary<int, IReadOnlyList<RoomKey>>? monsterRooms = null,
+        ItemSourceIndex? itemSources = null)
+        => StepOrNull(gameData, s, monsterRooms, itemSources)
            ?? string.Create(CultureInfo.InvariantCulture, $"Step {s.Order}");
 
     // The step's followable body — room links, command, kill/obtain narration and
@@ -112,19 +113,21 @@ internal static partial class QuestTextFormatter
     // no command, no item). Those carry nothing to do, so the auto-draft omits them
     // rather than listing an opaque "Step 31" the player can't act on.
     public static string? StepOrNull(GameDataCache gameData, QuestStep s,
-        IReadOnlyDictionary<int, IReadOnlyList<RoomKey>>? monsterRooms = null)
+        IReadOnlyDictionary<int, IReadOnlyList<RoomKey>>? monsterRooms = null,
+        ItemSourceIndex? itemSources = null)
     {
         var segments = new List<string>();
 
         string granted = string.Join(", ", s.GrantedItems.Select(id => ItemName(gameData, id)));
 
         int monster = 0;
-        bool isKill = string.IsNullOrWhiteSpace(s.Command) && TryMonsterRef(s.Location, out monster);
+        bool monsterLoc = TryMonsterRef(s.Location, out monster);
+        bool isKill = monsterLoc && string.IsNullOrWhiteSpace(s.Command);
 
-        // Room link(s): a command / obtain step names its room in the Called-From
-        // location; a kill step's location is the monster itself, so its room comes
-        // from where the quest places (or summons) that monster.
-        string rooms = isKill ? MonsterRoomLinks(monster, monsterRooms) : RoomLinks(s.Location);
+        // Room link(s): a monster-anchored step (a kill target, or an NPC the step
+        // asks) links that monster's placement room; a room-anchored step links its
+        // own Called-From room.
+        string rooms = monsterLoc ? MonsterRoomLinks(monster, monsterRooms) : RoomLinks(s.Location);
         if (rooms.Length > 0) segments.Add(rooms);
 
         if (!string.IsNullOrWhiteSpace(s.Command))
@@ -143,11 +146,43 @@ internal static partial class QuestTextFormatter
         }
 
         if (s.TurnInItems.Count > 0)
-            segments.Add("(turn in " + string.Join(", ", s.TurnInItems.Select(id => ItemName(gameData, id))) + ")");
-        if (s.RequiredItems.Count > 0)
-            segments.Add("(" + string.Join(", ", s.RequiredItems.Select(id => ItemName(gameData, id))) + " required)");
+            segments.Add("(turn in " + string.Join(", ",
+                s.TurnInItems.Select(id => ItemName(gameData, id) + SourceSuffix(itemSources, monsterRooms, id))) + ")");
+
+        // A required item the step also turns in is already named by the turn-in note
+        // (a checkitem + takeitem of the same id), so it isn't repeated as "required".
+        var required = s.RequiredItems.Where(id => !s.TurnInItems.Contains(id)).ToList();
+        if (required.Count > 0)
+            segments.Add("(" + string.Join(", ",
+                required.Select(id => ItemName(gameData, id) + SourceSuffix(itemSources, monsterRooms, id))) + " required)");
 
         return segments.Count > 0 ? string.Join(" ", segments) : null;
+    }
+
+    // Where the player acquires an item the step needs, appended as ", from <source>"
+    // so a turn-in / prerequisite step points at the chest, NPC, or room that yields
+    // the item — the reverse acquisition index the item-detail pane uses. Empty when
+    // no index is threaded in or nothing in the set yields the item. A monster giver
+    // trails its placement room link (resolved through the same map the kill steps
+    // use); a room-CMD reward trails the room; a chest names the container.
+    private static string SourceSuffix(ItemSourceIndex? sources,
+        IReadOnlyDictionary<int, IReadOnlyList<RoomKey>>? monsterRooms, int itemId)
+    {
+        if (sources is null) return string.Empty;
+
+        foreach (ItemGiver g in sources.GiversOf(itemId))
+        {
+            if (g.Kind == ItemGiverKind.Room && g.Map > 0 && g.Room > 0)
+                return string.Create(CultureInfo.InvariantCulture, $", from ({g.Map}/{g.Room})");
+            if (g.Kind == ItemGiverKind.Monster)
+            {
+                string where = MonsterRoomLinks(g.Number, monsterRooms);
+                return where.Length > 0 ? $", from {g.Name} {where}" : $", from {g.Name}";
+            }
+        }
+
+        IReadOnlyList<ItemSource> chests = sources.ContainersOf(itemId);
+        return chests.Count > 0 ? $", from {chests[0].ContainerName}" : string.Empty;
     }
 
     // The Called-From location's room coordinates as space-joined (map/room) link
@@ -170,9 +205,10 @@ internal static partial class QuestTextFormatter
                 string.Create(CultureInfo.InvariantCulture, $"({k.Map}/{k.Room})")))
             : string.Empty;
 
-    // A command-less step whose chain is Called-From a monster is a kill step —
-    // the monster number to narrate. Matches the hand-written guides' convention
-    // of writing monster-granted quest items as "kill <monster> (<drop>)".
+    // The step's monster anchor, if any: a "Monster #N" location. A command-less
+    // monster step is a kill (narrated "kill <monster> (<drop>)"); a monster step
+    // carrying an "ask <npc> ..." command is an NPC dialogue step re-anchored on that
+    // NPC by QuestStepGraph so the guide can link its room.
     private static bool TryMonsterRef(string? location, out int number)
     {
         number = 0;
@@ -198,7 +234,8 @@ internal static partial class QuestTextFormatter
     // emitted; a single-part quest (range 0/0) emits every step. Empty when the flag
     // drafts no steps.
     public static IReadOnlyList<string> StepLines(GameDataCache gameData, CrawledQuest q,
-        IReadOnlyDictionary<int, IReadOnlyList<RoomKey>>? monsterRooms = null)
+        IReadOnlyDictionary<int, IReadOnlyList<RoomKey>>? monsterRooms = null,
+        ItemSourceIndex? itemSources = null)
     {
         var lines = new List<string>();
         var seenOrders = new HashSet<int>();
@@ -212,7 +249,7 @@ internal static partial class QuestTextFormatter
             // A pure flag-advance (no room, command, kill or item) carries nothing the
             // player can act on, so it's dropped from the draft rather than listed as an
             // opaque "Step N" — the seed guides list actions, not narrative ticks.
-            if (StepOrNull(gameData, s, monsterRooms) is not { } body) continue;
+            if (StepOrNull(gameData, s, monsterRooms, itemSources) is not { } body) continue;
             lines.Add(string.Create(CultureInfo.InvariantCulture, $"[] {body}"));
         }
         return lines;

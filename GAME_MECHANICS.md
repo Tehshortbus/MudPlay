@@ -1412,6 +1412,27 @@ glass jug               5               2 gold crowns
   summoned by *hydra*'s CreateSpell, so you fight it where the hydra waits). (See
   `RoomSearchService.QuestKillRooms`.)
 
+## Quest dialogue steps — NPC keyword dispatch *([CONFIRMED] 2026-07-16, user)*
+
+- **A quest advances through NPC dialogue, not standalone room commands.** The
+  player types `ask <npc> <keyword>`; the NPC's **root dispatch textblock** maps that
+  keyword to a child textblock (`Action` is a `\n`-separated list of
+  `keyword:textblock` chains, e.g. `crystal:7018`); the child block runs its own
+  `Action` and eventually `giveability <flag> <step>` to grant progress. The child's
+  **Called From** names its parent (`Textblock #N`), and the root dispatch block's
+  Called From is the **`Monster #N`** — the NPC itself.
+- **So a crawled step gated behind an NPC is recovered by walking its Called-From
+  chain up to that `Monster #N`, then reading which dispatch keyword branches into
+  the child that leads to the step.** That yields the exact `ask <npc> <keyword>` the
+  player must type (e.g. Mandos quest: `ask archmage valduin crystal`,
+  `ask kale mandos free`). The step is then re-anchored on the NPC so the guide links
+  the NPC's placement room (same map used for kill steps). (See
+  `QuestStepGraph.ResolveAsk`.)
+- **Auto-shown blocks aren't askable.** Dispatch keywords `message`, `text`, and
+  `greeting` are shown automatically on interaction (or as flavor), not typed — a
+  step reached only through one of those has no `ask` command and isn't drafted as
+  one.
+
 ## Message catalogue (lines the client parses)
 
 | Event | Line |

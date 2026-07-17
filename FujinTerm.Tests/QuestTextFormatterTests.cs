@@ -174,6 +174,38 @@ public sealed class QuestTextFormatterTests
     }
 
     [Fact]
+    public void Step_AskStep_MonsterCommand_RendersNpcRoomThenBacktickCommand()
+    {
+        // QuestStepGraph re-anchors a dialogue step on its NPC (Location "Monster #N")
+        // and fills in the ask command — the room link comes from that NPC's placement,
+        // even though the step carries a command (unlike a kill step).
+        Assert.Equal("(2/340) `ask archmage valduin crystal`",
+            QuestTextFormatter.Step(NoSet,
+                MakeStep(2, "ask archmage valduin crystal", "Monster #1266"),
+                Placement(1266, new RoomKey(2, 340))));
+    }
+
+    [Fact]
+    public void Step_RequiredItemAlsoTurnedIn_ListedOnceAsTurnIn()
+    {
+        // A step that checks the same item it takes (checkitem + takeitem of one id)
+        // names it once in the turn-in note, not again as "required".
+        Assert.Equal("(2/340) `ask valduin crystal` (turn in #100)",
+            QuestTextFormatter.Step(NoSet,
+                MakeStep(2, "ask valduin crystal", "Room 2/340",
+                    required: new[] { 100 }, turnIn: new[] { 100 })));
+    }
+
+    [Fact]
+    public void Step_DistinctRequiredAndTurnIn_BothListed()
+    {
+        Assert.Equal("(2/340) `ask x` (turn in #100) (#200 required)",
+            QuestTextFormatter.Step(NoSet,
+                MakeStep(2, "ask x", "Room 2/340",
+                    required: new[] { 200 }, turnIn: new[] { 100 })));
+    }
+
+    [Fact]
     public void Step_MultiRoomLocation_ListsEveryRoomAsItsOwnLink()
     {
         Assert.Equal("(5/294) (16/368) (1/527)",

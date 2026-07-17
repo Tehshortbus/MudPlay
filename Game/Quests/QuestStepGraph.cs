@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using FujinTerm.Services;
 
 namespace FujinTerm.Game.Quests;
@@ -39,6 +40,10 @@ public static class QuestStepGraph
         var steps = new List<QuestStep>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
 
+        // Index every block by its textblock number so a guard-led (command-less) step
+        // can walk its Called-From chain up to the NPC whose ask-keyword branches to it.
+        Dictionary<int, JsonElement> byNumber = IndexByNumber(tbinfo);
+
         foreach (JsonElement block in tbinfo.RootElement.EnumerateArray())
         {
             if (!block.TryGetProperty("Action", out JsonElement actionEl)) continue;
@@ -52,6 +57,7 @@ public static class QuestStepGraph
             {
                 QuestStep? step = byAbilityValue ? BuildValueStep(raw, flag, location) : BuildStep(raw, flag, location);
                 if (step is null) continue;
+                step = ResolveAsk(step, cache, byNumber);
                 if (seen.Add(CanonicalKey(step))) steps.Add(step);
             }
         }
@@ -166,6 +172,136 @@ public static class QuestStepGraph
         string? s = cf.GetString();
         return string.IsNullOrWhiteSpace(s) ? null : s;
     }
+
+    // Index blocks by textblock number (first row wins — a number is unique in
+    // practice) so ResolveAsk can hop a step's Called-From chain by number.
+    private static Dictionary<int, JsonElement> IndexByNumber(JsonDocument tbinfo)
+    {
+        var map = new Dictionary<int, JsonElement>();
+        foreach (JsonElement block in tbinfo.RootElement.EnumerateArray())
+        {
+            if (block.TryGetProperty("Number", out JsonElement n)
+                && n.ValueKind == JsonValueKind.Number && n.TryGetInt32(out int num))
+                map.TryAdd(num, block);
+        }
+        return map;
+    }
+
+    // Enrich a guard-led step anchored on a textblock with the player command that
+    // reaches it: an "ask <npc> <keyword>" recovered by walking the Called-From chain
+    // up to the NPC whose dialogue keyword branches into the step, re-anchoring the
+    // step's location on that NPC so the guide links its room. This is how the crawl
+    // recovers the real quest flow — a MajorMUD quest advances through NPC dialogue
+    // (ask keyword → textblock → giveability), not standalone room commands. Verb-led
+    // steps, and steps rooted on a room / monster / spell rather than a textblock, are
+    // left untouched.
+    private static QuestStep ResolveAsk(QuestStep step, GameDataCache cache,
+        Dictionary<int, JsonElement> byNumber)
+    {
+        if (step.Command is not null) return step;
+        if (ParseTextblockRef(step.Location) is null) return step;
+
+        var hit = ResolveAskSource(step.Location, byNumber);
+        if (hit is null) return step;
+
+        (int monster, string keyword) = hit.Value;
+        string npc = cache.FindNameByNumber("Monsters", monster)
+            ?? string.Create(System.Globalization.CultureInfo.InvariantCulture, $"monster #{monster}");
+        return step with
+        {
+            Command = $"ask {npc.ToLowerInvariant()} {keyword}",
+            Location = string.Create(System.Globalization.CultureInfo.InvariantCulture, $"Monster #{monster}"),
+        };
+    }
+
+    // Walk a step's Called-From textblock chain up to the NPC that dispatches into it,
+    // returning that NPC's monster number and the ask-keyword whose branch reaches the
+    // step. Null when the chain doesn't root at an askable NPC keyword — an auto-shown
+    // greeting textblock, a spell/room root, the NPC being the step's direct parent
+    // (no intermediate textblock names the keyword), or an unresolvable ref.
+    private static (int Monster, string Keyword)? ResolveAskSource(
+        string? stepCalledFrom, Dictionary<int, JsonElement> byNumber)
+    {
+        int? cur = ParseTextblockRef(stepCalledFrom);
+        if (cur is null) return null;
+
+        int child = -1;
+        var seen = new HashSet<int>();
+        int guard = 0;
+        while (cur is int c && seen.Add(c) && guard++ < 64)
+        {
+            if (!byNumber.TryGetValue(c, out JsonElement block)) return null;
+            string? parent = ReadStringProp(block, "Called From");
+
+            if (ParseMonsterRef(parent) is int monster)
+            {
+                if (child <= 0) return null;   // NPC root is the step's direct parent —
+                                               // no intermediate textblock to key on.
+                string? kw = FindDispatchKeyword(ReadStringProp(block, "Action"), child);
+                if (kw is null || GreetingKeywords.Contains(kw)) return null;
+                return (monster, kw);
+            }
+
+            int? parentTb = ParseTextblockRef(parent);
+            if (parentTb is null) return null;   // parent is a spell / room / nothing.
+            child = c;
+            cur = parentTb;
+        }
+        return null;
+    }
+
+    // In an NPC root block's keyword-dispatch action ("crystal:7018\nreturn:7020"),
+    // the keyword whose branch targets `textblock`; null when none maps to it.
+    private static string? FindDispatchKeyword(string? dispatch, int textblock)
+    {
+        if (string.IsNullOrEmpty(dispatch)) return null;
+        foreach (string line in dispatch.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        {
+            string[] parts = line.Split(':');
+            if (parts.Length < 2) continue;
+            string kw = parts[0].Trim();
+            if (kw.Length == 0) continue;
+            for (int i = 1; i < parts.Length; i++)
+            {
+                string tok = parts[i].Trim();
+                int sp = tok.IndexOf(' ');
+                if (sp >= 0) tok = tok[..sp];
+                if (int.TryParse(tok, out int n) && n == textblock) return kw;
+            }
+        }
+        return null;
+    }
+
+    private static string? ReadStringProp(JsonElement block, string prop)
+        => block.TryGetProperty(prop, out JsonElement el) && el.ValueKind == JsonValueKind.String
+            ? el.GetString()
+            : null;
+
+    private static int? ParseTextblockRef(string? s)
+    {
+        if (string.IsNullOrEmpty(s)) return null;
+        Match m = TextblockRefRe.Match(s);
+        return m.Success && int.TryParse(m.Groups[1].Value, out int n) ? n : null;
+    }
+
+    private static int? ParseMonsterRef(string? s)
+    {
+        if (string.IsNullOrEmpty(s)) return null;
+        Match m = MonsterRefRe.Match(s);
+        return m.Success && int.TryParse(m.Groups[1].Value, out int n) ? n : null;
+    }
+
+    // "Textblock #7018" / "Textblock(rndm) #7018" and "Monster #1266" refs inside a
+    // Called-From string.
+    private static readonly Regex TextblockRefRe =
+        new(@"Textblock[^#]*#(\d+)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex MonsterRefRe =
+        new(@"Monster\s*#(\d+)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    // Auto-shown dialogue blocks the player never types a keyword to reach — a step
+    // gated behind one of these has no "ask" command, so it isn't drafted as one.
+    private static readonly HashSet<string> GreetingKeywords =
+        new(StringComparer.OrdinalIgnoreCase) { "message", "text", "greeting" };
 
     // Stable structural fingerprint so the same step echoed from many rooms folds
     // to one entry (record equality is reference-based for the list fields).

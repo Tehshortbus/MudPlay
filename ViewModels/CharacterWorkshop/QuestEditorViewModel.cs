@@ -52,11 +52,13 @@ public sealed partial class QuestEditorViewModel : ObservableObject, IDialogView
 
         Quests.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasQuests));
 
-        // Kill-step target placement, resolved once for the whole draft pass so a
-        // crawled quest's auto-draft kill step can link to the room the quest places
-        // its target in.
+        // Kill / ask-NPC target placement, resolved once for the whole draft pass so a
+        // crawled quest's auto-draft step can link to the room the quest places its
+        // target / NPC in; and the reverse item-acquisition index so a turn-in /
+        // prerequisite step can point at where its item comes from.
         IReadOnlyDictionary<int, IReadOnlyList<RoomKey>>? monsterRooms =
             AppServices.Current?.RoomSearch?.QuestKillRooms();
+        ItemSourceIndex? itemSources = AppServices.Current?.ItemSources;
 
         foreach (CrawledQuest q in QuestCrawler.Crawl(gameData, classId))
         {
@@ -64,7 +66,7 @@ public sealed partial class QuestEditorViewModel : ObservableObject, IDialogView
             Quests.Add(new QuestEditRowViewModel(
                 q.Flag, q.Step,
                 QuestTextFormatter.FallbackTitle(q),
-                string.Join("\n", QuestTextFormatter.StepLines(gameData, q, monsterRooms)),
+                string.Join("\n", QuestTextFormatter.StepLines(gameData, q, monsterRooms, itemSources)),
                 QuestTextFormatter.Awards(gameData, q),
                 QuestTextFormatter.Bonuses(q.Bonuses),
                 QuestTextFormatter.Level(q.RequiredLevel),
