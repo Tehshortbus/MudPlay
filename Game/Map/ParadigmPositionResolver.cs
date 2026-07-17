@@ -50,6 +50,14 @@ public sealed class ParadigmPositionResolver : IDisposable
     // heuristic recovery ladder.
     public event Action? ResyncFailed;
 
+    // Fires with the authoritative RoomKey every time a `Location:` line is
+    // parsed — solicited (recovery resync) or manual. Distinct from the tracker's
+    // StateChanged, which also fires on ordinary move-confirms and blocked-move
+    // refusals: this fires ONLY on an actual `rm` reply. The maze solver keys its
+    // Paradigm relocalization off this so it advances on the true `rm` answer and
+    // never on a same-second move-confirm that would race it (report 152718).
+    public event Action<RoomKey>? PositionResolved;
+
     // ----- bug-report surface ----------------------------------------
     public bool Enabled => _gameData.ActiveRealm == RealmType.ParaMud;
     public bool RequestInFlight => _inFlight;
@@ -162,6 +170,7 @@ public sealed class ParadigmPositionResolver : IDisposable
         // gate re-checks graph presence and falls back to heuristic on a miss.
         _tracker.SetLocated(key);
         _gate.NoteAuthoritativePosition(key);
+        PositionResolved?.Invoke(key);
     }
 
     private void OnTimeout()

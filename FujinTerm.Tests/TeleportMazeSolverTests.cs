@@ -265,6 +265,15 @@ public sealed class TeleportMazeSolverTests : IDisposable
     private static RoomObservation PaddedCell(params Direction[] exits)
         => new("Padded Cell", new HashSet<Direction>(exits));
 
+    // Mirror ParadigmPositionResolver.OnLocationObserved: hard-locate the tracker,
+    // then raise PositionResolved (which the solver keys its relocalization off).
+    // The harness has no real resolver, so drive both halves through the seam.
+    private static void FeedRm(Harness h, RoomKey key)
+    {
+        h.Tracker.SetLocated(key);
+        h.Solver.FireParadigmPositionResolvedForTests(key);
+    }
+
     [Fact]
     public void RelocalizesAndDrivesFinalWalk_WhenPlainRouteExists()
     {
@@ -306,30 +315,43 @@ public sealed class TeleportMazeSolverTests : IDisposable
     {
         // On Paradigm the game answers `rm` with the player's authoritative
         // (map,room), so the solver relocalizes with `rm` ALONE — never a `look`.
-        // Both the teleport landing AND the plain step toward the goal re-locate by
-        // `rm`; telnet order guarantees `rm` reads the room we're actually in.
+        // Pacing (report 152718): after a move it waits out the teleport's own
+        // redisplay (a settle window), THEN fires a single `rm`; firing it the
+        // instant the move was sent raced the round-time and desynced the replies.
         Harness h = NewHarness(isParadigm: true);
         // A teleport dropped us in 1/31 (tracker Lost). Goal is plain-adjacent 1/30.
 
         Assert.True(h.Walker.WalkTo(new RoomKey(1, 30)));
         Assert.True(h.Solver.Active);
 
-        // Post-teleport: straight to `rm` — no self-look, no settle.
+        // Post-teleport the solver does NOT fire `rm` yet — it settles first. No
+        // `rm` and no `look` on the wire until the redisplay quiets.
+        Assert.DoesNotContain("rm\r", h.SentText);
+        Assert.DoesNotContain("look\r", h.SentText);
+
+        // The teleport redisplays the room; the settle then elapses → a single `rm`.
+        h.Solver.OnRoomObserved(Asylum(Direction.E, Direction.D));
+        h.Solver.FireSettleForTests();
         Assert.Equal("rm\r", h.SentText[^1]);
         Assert.DoesNotContain("look\r", h.SentText);
 
-        // The game's `Location:` reply re-anchors the tracker to 1/31 (what
-        // ParadigmPositionResolver does off the rm reply). StateChanged → the solver
-        // plans the plain route and takes ONE step E, then `rm`s again.
-        h.Tracker.SetLocated(new RoomKey(1, 31));
+        // The game's `Location:` reply re-anchors to 1/31 (what ParadigmPositionResolver
+        // does off the rm reply, then fires PositionResolved) → the solver plans the
+        // plain route and takes ONE step E, settling before the next `rm`.
+        FeedRm(h, new RoomKey(1, 31));
 
         Assert.DoesNotContain("look east\r", h.SentText);
         Assert.DoesNotContain("look\r", h.SentText);
         Assert.Contains("e\r", h.SentText);
+        Assert.NotEqual("rm\r", h.SentText[^1]);   // still settling on the step's landing
+
+        // The step's landing redisplays; settle → the next `rm`.
+        h.Solver.OnRoomObserved(Asylum(Direction.W, Direction.D));
+        h.Solver.FireSettleForTests();
         Assert.Equal("rm\r", h.SentText[^1]);
 
         // `rm` after the step reports 1/30 (the goal) → Finish.
-        h.Tracker.SetLocated(new RoomKey(1, 30));
+        FeedRm(h, new RoomKey(1, 30));
 
         Assert.False(h.Solver.Active);
         Assert.Equal(0, h.Solver.Attempts);
@@ -346,6 +368,10 @@ public sealed class TeleportMazeSolverTests : IDisposable
         Harness h = NewHarness(isParadigm: true);
 
         Assert.True(h.Walker.WalkTo(new RoomKey(1, 30)));
+
+        // Settle onto the teleport's redisplay → the first `rm`.
+        h.Solver.OnRoomObserved(Asylum(Direction.E, Direction.D));
+        h.Solver.FireSettleForTests();
         Assert.Equal("rm\r", h.SentText[^1]);
         Assert.Equal(1, h.SentText.Count(s => s == "rm\r"));
 
@@ -356,8 +382,10 @@ public sealed class TeleportMazeSolverTests : IDisposable
         Assert.DoesNotContain(h.SentText, s => s.StartsWith("look"));
 
         // The retry's reply finally arrives → the solve proceeds by `rm` and finishes.
-        h.Tracker.SetLocated(new RoomKey(1, 31));   // relocalized to 1/31
-        h.Tracker.SetLocated(new RoomKey(1, 30));   // plain step E landed the goal
+        FeedRm(h, new RoomKey(1, 31));                             // relocalized to 1/31 → step E, settle
+        h.Solver.OnRoomObserved(Asylum(Direction.W, Direction.D)); // the step's landing redisplays
+        h.Solver.FireSettleForTests();                             // → `rm`
+        FeedRm(h, new RoomKey(1, 30));                             // plain step E landed the goal
 
         Assert.False(h.Solver.Active);
         Assert.DoesNotContain(h.SentText, s => s.StartsWith("look"));

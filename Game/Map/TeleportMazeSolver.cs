@@ -78,6 +78,12 @@ public sealed class TeleportMazeSolver : IMazeSolver, IDisposable
     // mid-session set swap is honoured. Defaults to stock (always false).
     private readonly Func<bool> _isParadigm;
 
+    // Paradigm authoritative-position source. Its PositionResolved event fires on
+    // (and only on) a parsed `rm` reply, so the solver keys its relocalization off
+    // the true answer — never a same-second move-confirm that would race it. Null
+    // on stock / in tests, where the sweep or a test seam drives relocalization.
+    private readonly ParadigmPositionResolver? _paradigmResolver;
+
     // Defers the initial Start() (and the walker delegation) off the current
     // call stack so TryBegin, invoked from INSIDE the walker's own WalkTo, never
     // re-enters the walker synchronously. Production posts to the UI dispatcher;
@@ -154,8 +160,9 @@ public sealed class TeleportMazeSolver : IMazeSolver, IDisposable
         BfsMapper bfs,
         AutoWalkManager walker,
         LogService? log = null,
-        Func<bool>? isParadigm = null)
-        : this(index, graph, tracker, bfs, walker, log, useTimer: true, post: null, isParadigm) { }
+        Func<bool>? isParadigm = null,
+        ParadigmPositionResolver? paradigmResolver = null)
+        : this(index, graph, tracker, bfs, walker, log, useTimer: true, post: null, isParadigm, paradigmResolver) { }
 
     internal TeleportMazeSolver(
         TeleportMazeIndex index,
@@ -166,7 +173,8 @@ public sealed class TeleportMazeSolver : IMazeSolver, IDisposable
         LogService? log,
         bool useTimer,
         Action<Action>? post,
-        Func<bool>? isParadigm = null)
+        Func<bool>? isParadigm = null,
+        ParadigmPositionResolver? paradigmResolver = null)
     {
         ArgumentNullException.ThrowIfNull(index);
         ArgumentNullException.ThrowIfNull(graph);
@@ -182,9 +190,11 @@ public sealed class TeleportMazeSolver : IMazeSolver, IDisposable
         _log = log;
         _post = post ?? (a => Dispatcher.UIThread.Post(a));
         _isParadigm = isParadigm ?? (() => false);
+        _paradigmResolver = paradigmResolver;
 
         _walker.Event += OnWalkerEvent;
-        _tracker.StateChanged += OnTrackerStateChanged;
+        if (_paradigmResolver is not null)
+            _paradigmResolver.PositionResolved += OnParadigmPositionResolved;
 
         if (useTimer)
         {
@@ -323,18 +333,21 @@ public sealed class TeleportMazeSolver : IMazeSolver, IDisposable
             Reshuffle(here);
     }
 
-    // Paradigm plain-route step: walk ONE square toward the goal, then re-locate
-    // with `rm` and re-plan from the authoritative landing (in OnTrackerStateChanged
-    // → ContinueFromLocated). No self-look or name+mask verify — `rm` names the exact
-    // room, so a surprise teleport or blocked door is caught by re-planning rather
-    // than a signature check, and arrival at the dead-end goal cell (which the look
-    // sweep can't relocalize) is just `here == goal`.
+    // Paradigm plain-route step: walk ONE square toward the goal, let the landing
+    // settle, then re-locate with `rm` and re-plan from the authoritative answer
+    // (in OnParadigmPositionResolved → ContinueFromLocated). No self-look or
+    // name+mask verify — `rm` names the exact room, so a surprise teleport or
+    // blocked door is caught by re-planning rather than a signature check, and
+    // arrival at the dead-end goal cell (which the look sweep can't relocalize) is
+    // just `here == goal`. The settle before `rm` is what keeps a stuck-gate step
+    // from racing the query (report 152718).
     private void ParadigmStep(RoomKey here, Direction d)
     {
         _paradigmStepFrom = here;
-        _log?.Debug(LogSource, $"plain step {d.ToLongName()} from {here}; re-locate via `rm`");
+        _lastObserved = null;
+        _log?.Debug(LogSource, $"plain step {d.ToLongName()} from {here}; settle then re-locate via `rm`");
         SendMove(d);
-        BeginParadigmResync();
+        BeginParadigmSettle();
     }
 
     // Walk the plain (teleport-free) route to the goal ourselves, one step at a
@@ -513,12 +526,14 @@ public sealed class TeleportMazeSolver : IMazeSolver, IDisposable
 
     // Relocalize after a teleport landing, by the realm's method.
     //
-    // Paradigm: ask the game for our authoritative position with a single `rm` — no
-    // look at all. `rm` reports the player's own (map,room), distinct even though
-    // every asylum room shares a name, so it pinpoints the exact landing including
-    // the dead-end Padded Cells the look sweep can't relocalize in. Telnet
-    // serialization runs `rm` AFTER the move's teleport, so its reply names the room
-    // we landed in, not the one we left.
+    // Paradigm: DON'T fire `rm` yet. A teleport redisplays the room on its own —
+    // often twice — so wait out that redisplay (BeginParadigmSettle) before asking
+    // a single `rm`. Firing `rm` the instant the move was sent raced the round-time
+    // and piled move+`rm` pairs at the wire, so replies desynced from moves and the
+    // walker bonked into non-existent exits (report 152718). `rm` reports the
+    // player's own (map,room), distinct even though every asylum room shares a name,
+    // so once the landing settles it pinpoints the exact room — including the
+    // dead-end Padded Cells the look sweep can't relocalize in.
     //
     // Stock (no `rm`): force a fresh render with a self-`look`, then settle and run
     // the 1x2 look sweep off it. A maze move always fires a random teleport, and in
@@ -533,7 +548,7 @@ public sealed class TeleportMazeSolver : IMazeSolver, IDisposable
         _paradigmStepFrom = null;   // this landing is a teleport, not a plain step
         if (_isParadigm())
         {
-            BeginParadigmResync();
+            BeginParadigmSettle();   // wait for the teleport's redisplay, then `rm`
             return;
         }
         _phase = Phase.Settling;
@@ -542,30 +557,43 @@ public sealed class TeleportMazeSolver : IMazeSolver, IDisposable
         RestartLookTimeout();
     }
 
-    // Paradigm authoritative-position query. ParadigmPositionResolver parses the
-    // `Location:` reply and hard-locates the tracker, which we continue off in
-    // OnTrackerStateChanged. A dropped reply is re-sent (OnLookTimeout) up to
-    // MaxRmRetries — never a look-sweep fallback: on Paradigm the solver never looks.
+    // Paradigm pacing: after a move, let the game finish before asking `rm`. A
+    // teleport (and, on this realm, even a plain step) redisplays the room on its
+    // own — often twice — so wait out a quiet window with no fresh display, THEN
+    // fire a single `rm` (BeginParadigmResync off the settle tick). Firing `rm`
+    // the instant the move was sent raced the round-time so replies desynced from
+    // moves and the walker bonked into non-existent exits (report 152718). A
+    // blocked move renders no room: the settle window still elapses on its own and
+    // fires `rm`, whose same-room answer is read as "didn't move".
+    private void BeginParadigmSettle()
+    {
+        _phase = Phase.Settling;
+        RestartSettle();
+    }
+
+    // Paradigm authoritative-position query, fired once the landing has settled.
+    // ParadigmPositionResolver parses the `Location:` reply and raises its
+    // PositionResolved event, which we continue off in OnParadigmPositionResolved.
+    // A dropped reply is re-sent (OnLookTimeout) up to MaxRmRetries — never a
+    // look-sweep fallback: on Paradigm the solver never looks.
     private void BeginParadigmResync()
     {
         _phase = Phase.Resyncing;
         _rmRetries = 0;
-        _log?.Log(LogSeverity.Info, LogSource, "requesting authoritative position via `rm`");
+        _log?.Log(LogSeverity.Info, LogSource, "landing settled; querying authoritative position via `rm`");
         SendRm();
         RestartLookTimeout();
     }
 
-    // The `rm` reply lands here: ParadigmPositionResolver hard-locates the tracker
-    // from the Location: line, which raises StateChanged. Only act while awaiting
-    // that resync — the solver's own SetLocated calls (look-sweep resolve, driven-
-    // step verify) also raise StateChanged, but never in the Resyncing phase.
-    private void OnTrackerStateChanged(RoomTransition _)
+    // The `rm` reply lands here — ParadigmPositionResolver fires PositionResolved
+    // ONLY on a parsed `Location:` line, so this never races an ordinary move-
+    // confirm or a blocked-move refusal (both of which drive the tracker's own
+    // StateChanged and used to trip this handler early). Only act while awaiting
+    // the reply; a stray manual `rm` outside the Resyncing phase is ignored.
+    private void OnParadigmPositionResolved(RoomKey here)
     {
         if (!Active || _phase != Phase.Resyncing) return;
-        RoomState st = _tracker.State;
-        if (st.Confidence != RoomConfidence.Confirmed || st.CurrentRoom is not { } room) return;
         _lookTimeout?.Stop();
-        RoomKey here = room.Key;
 
         // A plain step `rm` shows didn't move us (blocked door/gate) would otherwise
         // re-plan the same step forever — escape via a reshuffle teleport instead.
@@ -724,6 +752,17 @@ public sealed class TeleportMazeSolver : IMazeSolver, IDisposable
         _settleTimer?.Stop();
         if (!Active) return;
         if (_phase != Phase.Settling && _phase != Phase.Walking) return;
+
+        // Paradigm: the redisplay (if any) has gone quiet — ask `rm` now. Unlike
+        // the stock sweep this doesn't need a rendered display to key off, so a
+        // blocked move that renders nothing still advances to the query, whose
+        // same-room answer is read as "didn't move".
+        if (_isParadigm() && _phase == Phase.Settling)
+        {
+            BeginParadigmResync();
+            return;
+        }
+
         if (_lastObserved is null)
         {
             // The self-look landing render hasn't arrived yet — keep waiting; the
@@ -808,13 +847,15 @@ public sealed class TeleportMazeSolver : IMazeSolver, IDisposable
     // ----- test seams ------------------------------------------------
     internal void FireSettleForTests() => OnSettleElapsed();
     internal void FireLookTimeoutForTests() => OnLookTimeout();
+    internal void FireParadigmPositionResolvedForTests(RoomKey here) => OnParadigmPositionResolved(here);
 
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
         _walker.Event -= OnWalkerEvent;
-        _tracker.StateChanged -= OnTrackerStateChanged;
+        if (_paradigmResolver is not null)
+            _paradigmResolver.PositionResolved -= OnParadigmPositionResolved;
         StopTimers();
     }
 }

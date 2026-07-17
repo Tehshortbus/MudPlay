@@ -3478,7 +3478,8 @@ public sealed class AppServices
         // MainWindowViewModel after connect.
         MazeSolver = new Game.Map.TeleportMazeSolver(
             MazeIndex, RoomGraph, RoomTracker, Bfs, Walker, Log,
-            isParadigm: () => GameData.ActiveRealm == Game.RealmType.ParaMud);
+            isParadigm: () => GameData.ActiveRealm == Game.RealmType.ParaMud,
+            paradigmResolver: ParadigmResync);
         Walker.SetMazeSolver(MazeSolver);
         // While a maze solve is Active the tracker legitimately churns Lost/Suspect
         // between same-named teleport landings — relocalizing that is the solver's
