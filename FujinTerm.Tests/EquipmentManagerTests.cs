@@ -384,6 +384,32 @@ public sealed class EquipmentManagerTests
         Assert.Equal(EquipResult.NoChange, mgr.ApplyBySetId("set-7"));
     }
 
+    [Fact]
+    public void ApplyBySetId_CombatOwnsWeapon_WeaponOnlyDiff_Deferred_NoChange()
+    {
+        // Weapon-flap repro (paradigm-20260716-095547): the Default set's
+        // combat-entry trigger (an auto-fire, fillFromInventory:false) re-wears the
+        // normal weapon "throwing hammers" while the combat engine is mid-swap to
+        // the per-monster alternate "shimmering longsword" — the clobber that made
+        // the weapon flap. With the combat-weapon-ownership probe returning true,
+        // the auto-fire defers the held slots to combat: the set's only diff is the
+        // weapon, so nothing is left to apply and ApplyBySetId reports NoChange
+        // instead of re-wearing over the swap. (The un-deferred path that DOES
+        // issue the weapon wear is pinned by BuildWearCommands_ArmorOnly / null-
+        // availability tests; it starts the paced DispatcherTimer the headless
+        // harness doesn't pump, so it isn't exercised end-to-end here.)
+        EquipmentSettings settings = new()
+        {
+            Sets = { SetWithId("set-1", "Default",
+                Entry(EquipmentSlot.Weapon, "throwing hammers")) },
+        };
+        EquipmentManager mgr = Manager(settings,
+            SnapshotWithWorn("shimmering longsword"), new CombatSettings());
+        mgr.SetCombatWeaponOwnershipProbe(() => true);
+
+        Assert.Equal(EquipResult.NoChange, mgr.ApplyBySetId("set-1"));
+    }
+
     // ===== SwapWeapon (immediate combat fast path) =====
     // Unlike the paced apply, this bypasses the DispatcherTimer and writes the
     // wire synchronously, so the tests can assert directly on LastSentForTests.

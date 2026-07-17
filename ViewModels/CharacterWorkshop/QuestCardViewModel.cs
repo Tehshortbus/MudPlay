@@ -37,6 +37,10 @@ public sealed partial class QuestCardViewModel : ObservableObject
     // Keeper-item award summary; empty when the quest awards no keeper item.
     public string AwardText { get; }
 
+    // Completion experience label ("1,500,000 exp"); empty when the quest grants no
+    // exp. Guide-only — never contributes to the Character Info completion bonuses.
+    public string ExpText { get; }
+
     // Class / race restriction the crawl found; empty when the quest is open to all.
     public string RequirementsText { get; }
 
@@ -52,6 +56,9 @@ public sealed partial class QuestCardViewModel : ObservableObject
     // True when AwardText is non-empty.
     public bool HasAward { get; }
 
+    // True when ExpText is non-empty.
+    public bool HasExp { get; }
+
     // True when RequirementsText is non-empty.
     public bool HasRequirements { get; }
 
@@ -61,8 +68,8 @@ public sealed partial class QuestCardViewModel : ObservableObject
     // True when this card has a followable step checklist to show.
     public bool HasSteps => Steps.Count > 0;
 
-    // True when the card has any detail (requirements / bonus / award / steps) worth expanding to.
-    public bool CanExpand => HasRequirements || HasBonus || HasAward || HasSteps;
+    // True when the card has any detail (requirements / bonus / award / exp / steps) worth expanding to.
+    public bool CanExpand => HasRequirements || HasBonus || HasAward || HasExp || HasSteps;
 
     // Whether the quest counts as done for this character — applies its bonus.
     [ObservableProperty] private bool _isComplete;
@@ -83,6 +90,7 @@ public sealed partial class QuestCardViewModel : ObservableObject
         string requiredLevelText,
         string bonusText,
         string awardText,
+        string expText,
         string requirementsText,
         bool ineligible,
         bool isComplete,
@@ -93,6 +101,7 @@ public sealed partial class QuestCardViewModel : ObservableObject
         ArgumentNullException.ThrowIfNull(requiredLevelText);
         ArgumentNullException.ThrowIfNull(bonusText);
         ArgumentNullException.ThrowIfNull(awardText);
+        ArgumentNullException.ThrowIfNull(expText);
         ArgumentNullException.ThrowIfNull(requirementsText);
         ArgumentNullException.ThrowIfNull(steps);
         ArgumentNullException.ThrowIfNull(onCompletionChanged);
@@ -104,10 +113,12 @@ public sealed partial class QuestCardViewModel : ObservableObject
         RequiredLevelText = requiredLevelText;
         BonusText = bonusText;
         AwardText = awardText;
+        ExpText = expText;
         RequirementsText = requirementsText;
         Ineligible = ineligible;
         HasBonus = bonusText.Length > 0;
         HasAward = awardText.Length > 0;
+        HasExp = expText.Length > 0;
         HasRequirements = requirementsText.Length > 0;
         Steps = steps;
         _isComplete = isComplete;

@@ -152,6 +152,16 @@
                                         <TextBlock Classes="FieldValue" Text="{Binding AwardText}" TextWrapping="Wrap"/>
                                     </StackPanel>
 
+                                    <!-- Completion experience (guide-only reward; never reaches Character Info). -->
+                                    <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding HasExp}">
+                                        <TextBlock Classes="FieldLabel" Text="Experience:"/>
+                                        <TextBlock Text="{Binding ExpText}" TextWrapping="Wrap"
+                                                   Foreground="{StaticResource AccentGreenBrush}"
+                                                   FontFamily="{StaticResource FontMono}"
+                                                   FontWeight="SemiBold"
+                                                   FontSize="{StaticResource FontSizeMd}"/>
+                                    </StackPanel>
+
                                     <!-- Followable checklist parsed from the quest's step markdown:
                                          `[]`-marked lines render as tickable checkboxes, plain lines
                                          as context labels. Ticking every checkbox flips the quest

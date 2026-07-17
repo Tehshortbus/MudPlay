@@ -14,6 +14,11 @@ namespace FujinTerm.Game;
 // the queue, telepaths each queued sender that their trap was cancelled, and
 // returns to State.Idle.
 //
+// A request enqueued with trapKnown=true skips the Searching phase and enters
+// DisarmPending straight away — the walker already knows a trap sits on the exit
+// (RoomExitHint.Trap), and `disarm trap <dir>` works directly on a known trap, so
+// the confirming search is a wasted round.
+//
 // The capability gate (CanDisarm) lives in this manager so the handler can
 // interrogate it before deciding whether to enqueue or send a denial reply. It
 // reads a positive parsed Traps stat OR a class/race game-data trap-skill grant,
@@ -116,10 +121,15 @@ public sealed class TrapDisarmManager : IDisposable
     // channel-bound callback the handler captured at dispatch time; the manager
     // invokes it once on terminal state (success / max-attempts / stop).
     //
+    // trapKnown=true means the caller already knows a trap sits on this exit (the
+    // walker acting on a RoomExitHint.Trap): the search phase is skipped and the
+    // request disarms directly. The @trap remote path leaves it false so an unseen
+    // exit is confirmed by search before a disarm attempt is spent.
+    //
     // Same-direction duplicate while already in-flight or queued is silently
     // ignored — we're already on it; sending a second {Trap to the N disarmed.}
     // would be misleading.
-    public void Enqueue(string direction, string sender, Action<string> reply)
+    public void Enqueue(string direction, string sender, Action<string> reply, bool trapKnown = false)
     {
         if (string.IsNullOrEmpty(direction)) return;
         ArgumentNullException.ThrowIfNull(reply);
@@ -142,9 +152,9 @@ public sealed class TrapDisarmManager : IDisposable
             }
         }
 
-        _queue.Enqueue(new TrapRequest(direction, sender, reply));
+        _queue.Enqueue(new TrapRequest(direction, sender, reply, trapKnown));
         _log?.Log(LogSeverity.Info, "Trap",
-            $"@trap {direction} queued (sender={sender}, depth={_queue.Count}).");
+            $"@trap {direction} queued (sender={sender}, depth={_queue.Count}, known={trapKnown}).");
         TryStartNext();
     }
 
@@ -177,10 +187,21 @@ public sealed class TrapDisarmManager : IDisposable
         if (_state != State.Idle) return;
         if (_queue.Count == 0) return;
         _current = _queue.Dequeue();
-        _state = State.Searching;
         _searchAttempts = 0;
         _disarmAttempts = 0;
-        SendSearch();
+        // A known trap (walker, RoomExitHint.Trap) disarms directly — the
+        // search phase only exists to confirm an unseen trap for the @trap
+        // remote path.
+        if (_current.TrapKnown)
+        {
+            _state = State.DisarmPending;
+            SendDisarm();
+        }
+        else
+        {
+            _state = State.Searching;
+            SendSearch();
+        }
     }
 
     private void SendSearch()
@@ -300,5 +321,5 @@ public sealed class TrapDisarmManager : IDisposable
     // the handler captured from RemoteCommandContext at dispatch time — invoking
     // it later telepaths / says-back to the original sender on the same channel
     // they used.
-    private sealed record TrapRequest(string Direction, string Sender, Action<string> Reply);
+    private sealed record TrapRequest(string Direction, string Sender, Action<string> Reply, bool TrapKnown);
 }

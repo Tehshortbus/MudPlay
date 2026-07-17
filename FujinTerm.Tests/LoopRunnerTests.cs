@@ -160,6 +160,49 @@ public sealed class LoopRunnerTests : IDisposable
     }
 
     [Fact]
+    public void RenameCurrentLoop_UpdatesLiveNameAndFiresRenamed_WithoutDisruptingRun()
+    {
+        // Save-current on a still-running loop persists a rename without
+        // restarting the cycle; the runner must reflect the new name in place so
+        // the nav header stops holding the old (builder-generated) one.
+        Harness h = NewHarness();
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Runner.Start(AbCycle());
+        int sentBefore = h.Sent.Count;
+        int indexBefore = h.Runner.CurrentIndex;
+
+        h.Runner.RenameCurrentLoop("My Route");
+
+        Assert.Equal("My Route", h.Runner.CurrentLoop?.Name);
+        Assert.Contains(h.Events,
+            e => e.Kind == LoopEventKind.Renamed && e.Detail == "My Route");
+        // Rename must not disturb the lap: no extra step sent, same position,
+        // still running.
+        Assert.Equal(sentBefore, h.Sent.Count);
+        Assert.Equal(indexBefore, h.Runner.CurrentIndex);
+        Assert.Equal(LoopState.Running, h.Runner.State);
+    }
+
+    [Fact]
+    public void RenameCurrentLoop_NoLoopOrUnchangedName_IsNoOp()
+    {
+        Harness h = NewHarness();
+
+        // Nothing running — no crash, no event.
+        h.Runner.RenameCurrentLoop("whatever");
+        Assert.DoesNotContain(h.Events, e => e.Kind == LoopEventKind.Renamed);
+
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Runner.Start(AbCycle());
+
+        // Same name / blank — no event fires.
+        h.Runner.RenameCurrentLoop("ab");
+        h.Runner.RenameCurrentLoop("   ");
+        Assert.DoesNotContain(h.Events, e => e.Kind == LoopEventKind.Renamed);
+        Assert.Equal("ab", h.Runner.CurrentLoop?.Name);
+    }
+
+    [Fact]
     public void CoordinatorPause_DuringRun_HoldsRunner()
     {
         Harness h = NewHarness();

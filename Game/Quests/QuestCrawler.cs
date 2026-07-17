@@ -374,13 +374,17 @@ public static class QuestCrawler
                 members.SelectMany(m => m.Chain.GiveItems
                     .Where(it => !takenAnywhere.Contains(it))
                     .Select(it => (it, m.Value, (IReadOnlyList<int>)m.Chain.ClassIds))).ToList(), classId);
+            // Exp keys off the ability value (this axis's step), so tiers that share a value
+            // don't double-count the same addexp.
+            int exp = SumDistinctStepExp(members.Select(m => (m.Value, m.Chain.Exp)));
 
             int rangeStart = i == 0 ? 1 : boundaries[i - 1] + 1;
             int rangeEnd = i == boundaries.Length - 1 ? int.MaxValue : upper;
 
             yield return new CrawledQuest(
                 flag, upper, level, bonuses, awards, classRestrict, raceRestrict, classLevels,
-                BandOrdinal: i + 1, StepRangeStart: rangeStart, StepRangeEnd: rangeEnd, ProgressByValue: true);
+                BandOrdinal: i + 1, StepRangeStart: rangeStart, StepRangeEnd: rangeEnd,
+                ProgressByValue: true, ExpAward: exp);
         }
     }
 
@@ -410,6 +414,7 @@ public static class QuestCrawler
         var bonuses = new List<QuestBonus>();
         var giveItems = new List<int>();
         var takeItems = new List<int>();
+        int exp = 0;
 
         foreach (string segment in raw.Split(':'))
         {
@@ -438,11 +443,14 @@ public static class QuestCrawler
                 case "takeitem" when p.Length >= 2 && int.TryParse(p[1], out int ti):
                     takeItems.Add(ti);
                     break;
+                case "addexp" when p.Length >= 2 && int.TryParse(p[1], out int xp):
+                    exp += xp;
+                    break;
             }
         }
 
         return touches
-            ? new ParsedChain(flag, 0, minLevel, classIds, raceIds, bonuses, giveItems, takeItems)
+            ? new ParsedChain(flag, 0, minLevel, classIds, raceIds, bonuses, giveItems, takeItems, exp)
             : null;
     }
 
@@ -460,9 +468,10 @@ public static class QuestCrawler
         IReadOnlyList<QuestBonus> bonuses = ResolveLowestRewardBonuses(chains, classId);
         IReadOnlyList<int> awardItems = AwardItemsFrom(KeeperCandidates(chains), classId);
         bool awardsAbility = awardItems.Count == 0 && bonuses.Count == 0;
+        int exp = SumDistinctStepExp(chains.Select(c => (c.GiveStep, c.Exp)));
         return new CrawledQuest(
             flag, 0, requiredLevel, bonuses, awardItems, classRestrict, raceRestrict, classLevels,
-            AwardsAbility: awardsAbility);
+            AwardsAbility: awardsAbility, ExpAward: exp);
     }
 
     // A multi-part quest: one quest per ladder tier. Each band carries the reward group
@@ -499,6 +508,18 @@ public static class QuestCrawler
                 bucket.Add((item, chain.GiveStep, chain.ClassIds));
             }
 
+        // Attribute each exp-bearing chain to its tier the same way keepers are, so a
+        // band's experience is only the addexp handed at its own give-steps.
+        var bandExpSteps = new Dictionary<int, List<(int Step, int Exp)>>();
+        foreach (ParsedChain chain in chains.Where(c => c.Exp > 0))
+        {
+            int band = ResolveBand(new[] { chain }, bandLevels, ladder);
+            if (band == 0) continue;
+            List<(int, int)> bucket = bandExpSteps.TryGetValue(band, out List<(int, int)>? es)
+                ? es : (bandExpSteps[band] = new List<(int, int)>());
+            bucket.Add((chain.GiveStep, chain.Exp));
+        }
+
         for (int i = 0; i < ladder.Count; i++)
         {
             int level = ladder[i].Level;
@@ -506,13 +527,14 @@ public static class QuestCrawler
                 ? bb : Array.Empty<QuestBonus>();
             IReadOnlyList<int> items = bandKeepers.TryGetValue(level, out List<(int, int, IReadOnlyList<int>)>? bk)
                 ? AwardItemsFrom(bk, classId) : Array.Empty<int>();
+            int exp = bandExpSteps.TryGetValue(level, out List<(int, int)>? xs) ? SumDistinctStepExp(xs) : 0;
 
             int rangeStart = i == 0 ? 1 : ladder[i].Step;
             int rangeEnd = i == ladder.Count - 1 ? int.MaxValue : ladder[i + 1].Step - 1;
 
             yield return new CrawledQuest(
                 flag, level, level, bonuses, items, classRestrict, raceRestrict, classLevels,
-                BandOrdinal: i + 1, StepRangeStart: rangeStart, StepRangeEnd: rangeEnd);
+                BandOrdinal: i + 1, StepRangeStart: rangeStart, StepRangeEnd: rangeEnd, ExpAward: exp);
         }
     }
 
@@ -631,6 +653,15 @@ public static class QuestCrawler
         return result;
     }
 
+    // Total experience across a set of (step, exp) grants: one value per distinct step
+    // (the max, though class-branched chains repeat the same figure), summed. Keying on
+    // the step is what stops a quest whose exp grant fans out across 15 class variants
+    // from reporting 15× the award. Zero/negative addexp entries don't contribute.
+    private static int SumDistinctStepExp(IEnumerable<(int Step, int Exp)> steps) =>
+        steps.Where(s => s.Exp > 0)
+            .GroupBy(s => s.Step)
+            .Sum(g => g.Max(s => s.Exp));
+
     private static bool TakenAnywhere(List<ParsedChain> chains, int item) =>
         chains.Any(c => c.TakeItems.Contains(item));
 
@@ -647,6 +678,7 @@ public static class QuestCrawler
         var bonuses = new List<QuestBonus>();
         var giveItems = new List<int>();
         var takeItems = new List<int>();
+        int exp = 0;
 
         foreach (string segment in raw.Split(':'))
         {
@@ -680,11 +712,14 @@ public static class QuestCrawler
                 case "takeitem" when p.Length >= 2 && int.TryParse(p[1], out int ti):
                     takeItems.Add(ti);
                     break;
+                case "addexp" when p.Length >= 2 && int.TryParse(p[1], out int xp):
+                    exp += xp; // the completion experience handed alongside this give-step
+                    break;
             }
         }
 
         if (flag is null) return null;
-        return new ParsedChain(flag.Value, giveStep, minLevel, classIds, raceIds, bonuses, giveItems, takeItems);
+        return new ParsedChain(flag.Value, giveStep, minLevel, classIds, raceIds, bonuses, giveItems, takeItems, exp);
     }
 
     // Scratch record for one parsed chain; never escapes the crawl.
@@ -696,5 +731,6 @@ public static class QuestCrawler
         List<int> RaceIds,
         List<QuestBonus> Bonuses,
         List<int> GiveItems,
-        List<int> TakeItems);
+        List<int> TakeItems,
+        int Exp);
 }

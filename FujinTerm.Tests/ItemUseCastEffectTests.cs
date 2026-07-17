@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using FujinTerm.Services;
+using FujinTerm.ViewModels.GameData.Edit;
 using FujinTerm.ViewModels.GameData.Tables;
 using Xunit;
 
@@ -43,6 +44,12 @@ public sealed class ItemUseCastEffectTests : IDisposable
     {
         ItemsSectionViewModel vm = new(_cache);
         return vm.BuildOtherInfoForTests(itemNumber);
+    }
+
+    private IReadOnlyList<ShopSaleRow> ShopSalesFor(string itemNumber)
+    {
+        ItemsSectionViewModel vm = new(_cache);
+        return vm.BuildShopSalesForTests(itemNumber);
     }
 
     [Fact]
@@ -152,32 +159,30 @@ public sealed class ItemUseCastEffectTests : IDisposable
     }
 
     [Fact]
-    public void BoughtSold_RendersInOtherInfo_NotTheEditableDetails()
+    public void BoughtSold_RendersAsClickableShopRow()
     {
         // Shop #5 sits in room 1/10 ("General Store"); item #200 lists it in
-        // Obtained From. The bought/sold shop line is read-only MDB info, so
-        // it now belongs in the "Other Info" pane.
+        // Obtained From. The bought/sold shop line renders as a clickable row
+        // whose location names the room + locator and links to that room record.
         Seed("Shops", "[{\"Number\":5,\"Assigned To\":\"Room 1/10\"}]");
         Seed("Rooms", "[{\"Map Number\":1,\"Room Number\":10,\"Name\":\"General Store\"}]");
         Seed("Items", "[{\"Number\":200,\"Name\":\"Torch\",\"ItemType\":0,\"Obtained From\":\"Shop #5\"}]");
         _cache.SwitchSet("v1.11p");
 
-        IReadOnlyList<KeyValuePair<string, string>> info = OtherInfoFor("200");
-
-        KeyValuePair<string, string> row = info.Single(kv => kv.Key == "Bought / sold");
-        Assert.Contains("General Store", row.Value);
-        Assert.Contains("1/10", row.Value);
+        ShopSaleRow row = Assert.Single(ShopSalesFor("200"));
+        Assert.Contains("General Store", row.Location);
+        Assert.Contains("1/10", row.Location);
+        // The host room resolved, so the location is a live navigation link.
+        Assert.True(row.CanOpen);
     }
 
     [Fact]
     public void BoughtSold_Absent_WhenItemHasNoShop()
     {
-        // No shop reference in Obtained From → no Bought/sold row at all.
+        // No shop reference in Obtained From → no bought/sold rows at all.
         Seed("Items", "[{\"Number\":201,\"Name\":\"Quest Relic\",\"ItemType\":0,\"Obtained From\":\"Monster #1(50%)\"}]");
         _cache.SwitchSet("v1.11p");
 
-        IReadOnlyList<KeyValuePair<string, string>> info = OtherInfoFor("201");
-
-        Assert.DoesNotContain(info, kv => kv.Key == "Bought / sold");
+        Assert.Empty(ShopSalesFor("201"));
     }
 }

@@ -250,6 +250,17 @@ public sealed partial class CombatManager : IDisposable
     // NEXT round (no kill) still fires.
     private static readonly TimeSpan DeathInterruptWindow = TimeSpan.FromSeconds(2);
 
+    // Whether a real attack has gone out since the last death was stamped. The
+    // between-round-cast resume suppresses itself for DeathInterruptWindow so the
+    // death→re-observe path owns the re-engage from a resynced roster — but only
+    // while that path still owes us a swing. Once it has re-picked a survivor and
+    // sent one (this flag flips true in NoteAttackSent), the roster is already
+    // clean and a later *Combat Off* is our own cast interrupting the fresh swing,
+    // not the kill's Off; suppressing it there idles a full round. A boolean, not a
+    // _lastAttackSentAt > _lastDeathAt compare, because the death stamp and the
+    // re-observe swing can land on the same DateTimeOffset.Now tick.
+    private bool _attackSentSinceDeath;
+
     // Server-confirmed engagement, driven ONLY by the wire *Combat Engaged* /
     // *Combat Off* lines — unlike _combatOff (optimistically cleared on every
     // attack send), this stays a faithful mirror of what the server actually told
@@ -396,6 +407,15 @@ public sealed partial class CombatManager : IDisposable
     // flight.
     public string? CurrentTarget => _currentTarget;
 
+    // True while combat has deliberately swapped to the alternate weapon for the
+    // monster it's fighting (a magic-required mob, or a normal-weapon-no-effect
+    // fallback). The auto-equip gear-set triggers consult this so a Default-set
+    // apply on combat-entry doesn't slam the normal weapon back on and undo the
+    // per-monster swap — the reported "swaps to alternate, then back to normal,
+    // then to alternate again" flapping. Reverts to false when the room clears
+    // (OnRoomCleared) or a fresh weapon pick lands on the normal weapon.
+    public bool IsWeaponOverrideActive => _usingAlternateWeapon;
+
     // Immutable view of the combat decision state, for the bug-report
     // engine-state dump. The believed-worn weapon is no longer shadowed here —
     // live inventory is authoritative (the actuator diffs against it), so the
@@ -496,6 +516,7 @@ public sealed partial class CombatManager : IDisposable
         // target: any death in the room means a re-observe is coming that owns the
         // re-engage.
         _lastDeathAt = DateTimeOffset.Now;
+        _attackSentSinceDeath = false;
 
         // The guarded priority itself fell — the redirect chase is over. Drop the
         // memory so no stray guard-retry fires "aa <priority>" at the corpse. Runs
@@ -642,26 +663,49 @@ public sealed partial class CombatManager : IDisposable
         {
             RoomEntity e = obs.Entities[i];
             if (e.Kind != EntityKind.Monster) continue;
-            if (e.MonsterNumber is not int n) continue;
 
-            MonsterOverlay overlay = ResolveOverlay(n);
-            if ((overlay.Relationship ?? MonsterRelationship.Enemy) != MonsterRelationship.Enemy)
-                continue;
-            // Engageability is Relationship-based ONLY. Earlier we
-            // also required MonsterMessageRecord.DeathLine non-empty
-            // as a "killable" proxy, but 152 of 1100 monsters in the
-            // stock data set ship with empty DeathLine (incomplete
-            // data, not actually unkillable — acid slime, etc.). The
-            // overlay seed marks the real friendlies explicitly; if
-            // a monster is Enemy / unmarked, it's a target.
+            if (e.MonsterNumber is int n)
+            {
+                MonsterOverlay overlay = ResolveOverlay(n);
+                if ((overlay.Relationship ?? MonsterRelationship.Enemy) != MonsterRelationship.Enemy)
+                    continue;
+                // Engageability is Relationship-based ONLY. Earlier we
+                // also required MonsterMessageRecord.DeathLine non-empty
+                // as a "killable" proxy, but 152 of 1100 monsters in the
+                // stock data set ship with empty DeathLine (incomplete
+                // data, not actually unkillable — acid slime, etc.). The
+                // overlay seed marks the real friendlies explicitly; if
+                // a monster is Enemy / unmarked, it's a target.
 
-            engageable.Add(new EngageableCandidate(
-                RawName:         e.RawName,
-                ResolvedName:    e.ResolvedName,
-                MonsterNumber:   n,
-                Priority:        overlay.Priority ?? MonsterAttackPriority.Normal,
-                AppearanceIndex: i,
-                DontBackstab:    overlay.DontBackstab ?? false));
+                engageable.Add(new EngageableCandidate(
+                    RawName:         e.RawName,
+                    ResolvedName:    e.ResolvedName,
+                    MonsterNumber:   n,
+                    Priority:        overlay.Priority ?? MonsterAttackPriority.Normal,
+                    AppearanceIndex: i,
+                    DontBackstab:    overlay.DontBackstab ?? false));
+            }
+            else
+            {
+                // A monster the server coloured hostile whose name doesn't
+                // resolve to a game-data record — e.g. a colour-stripped
+                // arrival "dragon serpent" that misses the colour-prefixed
+                // "red/white dragon serpent" records. HasEngageable already
+                // fail-opens on a null number to hold the Combat gate (walker
+                // pause); the attacker MUST follow through or the walker stops
+                // on a monster we then never hit and the player just gets
+                // pummelled. Sentinel -1 makes every number-keyed helper
+                // (UnengageableReason, per-monster overrides, DontBackstab,
+                // weapon-swap) fail open, so it's attacked with the normal
+                // weapon by RawName at Normal priority.
+                engageable.Add(new EngageableCandidate(
+                    RawName:         e.RawName,
+                    ResolvedName:    e.ResolvedName,
+                    MonsterNumber:   -1,
+                    Priority:        MonsterAttackPriority.Normal,
+                    AppearanceIndex: i,
+                    DontBackstab:    false));
+            }
         }
 
         if (engageable.Count == 0)
@@ -670,23 +714,22 @@ public sealed partial class CombatManager : IDisposable
             {
                 // Dump the observation's entity breakdown so the user
                 // can see WHY we think the room is empty — Unknown
-                // (classifier doesn't recognise the name), MonsterNumber
-                // null (record has no Monsters-table link), Relationship
-                // not-Enemy (friendly NPC), or genuinely an empty list.
-                // The "wasted re-attack mid-combat" symptom usually
-                // means one of the first three caused a spurious empty
-                // observation that null-ed the target between rounds.
+                // (classifier doesn't recognise the name → not a Monster
+                // kind) or Relationship not-Enemy (friendly NPC). A Monster
+                // with a null number is NOT counted here: it's now engaged
+                // fail-open above, so it can never leave the room empty. The
+                // "wasted re-attack mid-combat" symptom usually means one of
+                // these caused a spurious empty observation that null-ed the
+                // target between rounds.
                 int total = obs.Entities.Count;
                 int unknownCount = 0;
-                int noNumberCount = 0;
                 int friendlyCount = 0;
                 foreach (RoomEntity e in obs.Entities)
                 {
                     if (e.Kind != EntityKind.Monster) unknownCount++;
-                    else if (e.MonsterNumber is null) noNumberCount++;
-                    else
+                    else if (e.MonsterNumber is int mn)
                     {
-                        MonsterOverlay ov = ResolveOverlay(e.MonsterNumber.Value);
+                        MonsterOverlay ov = ResolveOverlay(mn);
                         if ((ov.Relationship ?? MonsterRelationship.Enemy) != MonsterRelationship.Enemy)
                             friendlyCount++;
                     }
@@ -695,7 +738,7 @@ public sealed partial class CombatManager : IDisposable
                     $"room cleared — was=target={_currentTarget} " +
                     $"source={obs.Source} " +
                     $"obs-entities={total} (unknown={unknownCount} " +
-                    $"no-monster-number={noNumberCount} friendly={friendlyCount})");
+                    $"friendly={friendlyCount})");
             }
             _currentTarget = null;
             // Room genuinely empty — no pending swing can be confirmed, so
@@ -1603,31 +1646,53 @@ public sealed partial class CombatManager : IDisposable
         _wireSender(Encoding.Latin1.GetBytes("\r"));
     }
 
-    // A kill happened but we can't drop a specific roster slot for it. Two
-    // callers: (1) a specific death-line matched but the classifier couldn't
+    // A kill happened but the death-line didn't hand us a roster slot to drop.
+    // Two callers: (1) a specific death-line matched but the classifier couldn't
     // attribute it to any monster in the current room view (shared /
     // suffix-flavored wordings: the death line resolved to "spectre" while the
     // roster holds "shadow spectre", so RemoveDeadEntity found nothing to drop);
-    // (2) a fallback death (exp + *Combat Off*) where we never learned which mob
-    // died — the norm for datasets missing per-monster DeathLine patterns. Either
-    // way the roster is now stale — a mob is gone but our list still shows it.
-    // Without a nudge, combat only learns the room emptied on the NEXT tick, when
-    // its swing at the ghost target no-ops through OnCommandNoEffect — a ~5s stall
-    // before the walker can resume. Force the same debounced room re-display those
-    // paths use so the server hands us the true roster now: if the room's empty
-    // the Combat gate clears immediately; if a survivor remains we re-pick it a
-    // beat sooner.
+    // (2) a fallback death (exp + *Combat Off*) where the death line was missing
+    // entirely — the norm for datasets missing per-monster DeathLine patterns.
+    //
+    // Either way we WERE swinging at something and a kill just landed, so
+    // _currentTarget is our best identity for the corpse: a fallback death's
+    // *Combat Off* means OUR fight ended, and a flavored specific death is the
+    // same mob under a base-name wording. Attribute the death to _currentTarget
+    // exactly like a matched death does — drop it from the live roster so the
+    // synthetic EntitiesObserved re-picks the next survivor immediately, or
+    // clears the room and releases the Combat gate when it was the last mob.
+    // Without this the dead mob lingers, the next tick re-swings at the corpse
+    // ("Your command had no effect."), and recovery waits out the idle-stall
+    // watchdog — the reported "tries to re-attack the monster that clearly died"
+    // and "sits idle after a kill until the timeout" stalls. Only when the target
+    // name doesn't match any roster slot do we fall back to the debounced CR
+    // re-display, letting the server hand back the true roster.
     public void NoteUnattributedDeath()
     {
         if (!_isEnabled()) return;
         if (_wireSender is null) return;
-        if (_currentTarget is null) return;
+        if (_currentTarget is not { } presumedDead) return;
 
         // A kill we couldn't pin to a roster slot still leaves the roster stale
-        // until the forced re-display below resolves — the exact window in which
-        // the between-round-cast resume must not re-engage (see _lastDeathAt).
+        // until it resolves — the exact window in which the between-round-cast
+        // resume must not re-engage (see _lastDeathAt).
         _lastDeathAt = DateTimeOffset.Now;
+        _attackSentSinceDeath = false;
 
+        // Clear the target BEFORE the removal re-fires EntitiesObserved (mirrors
+        // the specific-death ordering) so the re-pick sees a clean slate.
+        _currentTarget = null;
+        ClearBackstabResolution();
+        if (_classifier.RemoveDeadEntity(presumedDead))
+        {
+            _log?.Combat(LogCategory,
+                $"unattributed death attributed to '{presumedDead}' — dropped from roster");
+            return;
+        }
+
+        // Target name matched no roster slot (flavored / shared wording the
+        // RawName doesn't cover). Force the debounced room re-display so the
+        // server hands us the true roster now.
         DateTimeOffset now = DateTimeOffset.Now;
         if (now - _lastRoomRefreshAt < RoomRefreshCooldown) return;
         _lastRoomRefreshAt = now;
@@ -1727,20 +1792,29 @@ public sealed partial class CombatManager : IDisposable
             // _currentTarget here stranded exactly that case — the reported
             // "cast mihe, then missed a combat round before re-attacking".
             //
-            // But NOT when a kill just fired this burst: the mob's dying *Combat
-            // Off* also lands inside CastInterruptResumeWindow, and re-engaging on
-            // it would re-pick from a roster the kill's forced re-display hasn't
-            // cleared yet — sending "aa <corpse>" at the emptied room (the reported
-            // phantom attack). bypassAttackGuard makes it worse by defeating the
-            // very ResumeAfterAttackGuard that suppresses a double-send on a kill.
-            // Skip for DeathInterruptWindow and let the death→re-observe path own
-            // the re-engage from the resynced roster.
+            // But NOT when a kill just fired this burst AND its re-observe still
+            // owes us a re-engage: the mob's dying *Combat Off* also lands inside
+            // CastInterruptResumeWindow, and re-engaging on it would re-pick from a
+            // roster the kill's forced re-display hasn't cleared yet — sending
+            // "aa <corpse>" at the emptied room (the reported phantom attack).
+            // bypassAttackGuard makes it worse by defeating the very
+            // ResumeAfterAttackGuard that suppresses a double-send on a kill. Skip
+            // for DeathInterruptWindow and let the death→re-observe path own the
+            // re-engage from the resynced roster.
+            //
+            // The suppression only holds while that re-observe hasn't run yet. Once
+            // it has re-picked a survivor and swung (_attackSentSinceDeath), the
+            // roster is already clean and this Off is the CAST interrupting that
+            // fresh swing — not the kill's Off. Suppressing it there strands the
+            // survivor for a full round (the reported "cast a buff mid-fight, then
+            // missed a combat round before re-attacking"), so resume.
             if (DateTimeOffset.Now - _betweenRoundCastAt < CastInterruptResumeWindow
                 && _castingSpellTarget is null
                 && _classifier.Current is { } live
                 && HasEngageable(live))
             {
-                if (DateTimeOffset.Now - _lastDeathAt < DeathInterruptWindow)
+                if (DateTimeOffset.Now - _lastDeathAt < DeathInterruptWindow
+                    && !_attackSentSinceDeath)
                     _log?.Combat(LogCategory,
                         "between-round-cast resume suppressed — kill this burst; " +
                         "deferring re-engage to the death→re-observe path");
@@ -1944,6 +2018,10 @@ public sealed partial class CombatManager : IDisposable
         // reads this even when engagement is already confirmed (the death→re-
         // observe re-engage happens mid-fight, long after Engaged).
         _lastAttackSentAt = DateTimeOffset.Now;
+        // A swing since the last death means the death→re-observe path has run;
+        // a later cast-interrupt Off should resume, not stand down (see
+        // _attackSentSinceDeath).
+        _attackSentSinceDeath = true;
         if (_engageConfirmed) return;
         _awaitingEngageSince ??= DateTimeOffset.Now;
     }

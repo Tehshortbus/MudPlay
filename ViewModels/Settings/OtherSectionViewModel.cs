@@ -50,6 +50,7 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             yield return "Attempt pick-lock";
             yield return "Lockpicks";
             yield return "Search rooms if item needed";
+            yield return "Hide items when discarding";
             yield return "Avoid party-impassable level gates";
             yield return "Max comeback backtrack rooms";
             yield return "@comeback";
@@ -108,6 +109,12 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     // walker sea every room until the item turns up, even with the
     // Auto-Search master toggle off. Read live by PathItemDemandTracker.
     [ObservableProperty] private bool _searchRoomsIfItemNeeded;
+
+    // When checked, the auto-discard engine conceals each excess flagged item
+    // with hide <item> instead of drop <item>. Engine hides are kept out of the
+    // Transaction ledger (a discard isn't a stash); manual / stash-room hides
+    // still record. Read live by AutoDiscardManager.HideMode.
+    [ObservableProperty] private bool _hideWhenDiscarding;
 
     // Note: the former Buy/Hunt/Defer path-item toggles moved to per-item
     // game-data flags on the item record (ItemOverlay.BuyIfNeededForPath /
@@ -238,6 +245,7 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             MaxPickAttempts       = Math.Clamp(MaxPickAttempts,       1, 100),
             PicklocksOverBash     = PicklocksOverBash,
             SearchRoomsIfItemNeeded = SearchRoomsIfItemNeeded,
+            HideWhenDiscarding    = HideWhenDiscarding,
             AvoidPartyImpassableLevelGates = AvoidPartyImpassableLevelGates,
             LogMovementHopTiming  = LogMovementHopTiming,
             MaxComebackBacktrackRooms = Math.Clamp(MaxComebackBacktrackRooms, 1, 50),
@@ -293,6 +301,7 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
         MaxPickAttempts       = dto.MaxPickAttempts;
         PicklocksOverBash     = dto.PicklocksOverBash;
         SearchRoomsIfItemNeeded = dto.SearchRoomsIfItemNeeded;
+        HideWhenDiscarding    = dto.HideWhenDiscarding;
         AvoidPartyImpassableLevelGates = dto.AvoidPartyImpassableLevelGates;
         LogMovementHopTiming  = dto.LogMovementHopTiming;
         MaxComebackBacktrackRooms = dto.MaxComebackBacktrackRooms;
@@ -335,6 +344,9 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
         // Follower-side auto-@comeback toggle — live-mirror so the next
         // left-behind honours the edit without a profile reload.
         svcs.ComebackRequest.Enabled = dto.AutoRequestComebackWhenLeftBehind;
+        // Auto-discard offload verb — live-mirror so the next discard uses
+        // hide/drop per the edit without a profile reload.
+        svcs.AutoDiscard.HideMode = dto.HideWhenDiscarding;
     }
 
     // ----- IsDirty plumbing -----
@@ -354,6 +366,7 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     partial void OnMaxPickAttemptsChanged(int value)       => MarkDirty();
     partial void OnPicklocksOverBashChanged(bool value)    => MarkDirty();
     partial void OnSearchRoomsIfItemNeededChanged(bool value) => MarkDirty();
+    partial void OnHideWhenDiscardingChanged(bool value) => MarkDirty();
     partial void OnAvoidPartyImpassableLevelGatesChanged(bool value) => MarkDirty();
     partial void OnLogMovementHopTimingChanged(bool value) => MarkDirty();
     partial void OnMaxComebackBacktrackRoomsChanged(int value) => MarkDirty();

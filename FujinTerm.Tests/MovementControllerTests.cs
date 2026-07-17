@@ -192,6 +192,37 @@ public sealed class MovementControllerTests : IDisposable
     }
 
     [Fact]
+    public void Pause_StacksOnEngineWait_SurvivesWaitClearing()
+    {
+        // Backs the @stop fix: a remote stop (routed through Pause) must hold on
+        // top of a combat wait so movement stays paused after the fight clears,
+        // instead of resuming the moment the CombatGate drops.
+        using Harness h = NewHarness();
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Walker.WalkTo(new RoomKey(1, 3));
+
+        // An engine wait (combat) holds the walker first — NOT a user pause.
+        h.Coordinator.AssertGate(MovementCoordinator.CombatGate);
+        Assert.Equal(MovementEngineState.Paused, h.Controller.State);
+        Assert.False(h.Controller.IsUserPaused);
+
+        // @stop stacks the user pause on top.
+        h.Controller.Pause();
+        Assert.True(h.Controller.IsUserPaused);
+
+        // Combat clears — the user override still holds, so we stay paused.
+        h.Coordinator.ClearGate(MovementCoordinator.CombatGate);
+        Assert.True(h.Controller.IsUserPaused);
+        Assert.Equal(MovementEngineState.Paused, h.Controller.State);
+        Assert.Equal(WalkState.Paused, h.Walker.State);
+
+        // @rego (Resume) lifts the user override and the walk continues.
+        h.Controller.Resume();
+        Assert.False(h.Controller.IsUserPaused);
+        Assert.Equal(MovementEngineState.Running, h.Controller.State);
+    }
+
+    [Fact]
     public void Pause_WhileAutoLair_RoutesThroughManager()
     {
         using Harness h = NewHarness();

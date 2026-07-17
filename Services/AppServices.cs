@@ -50,6 +50,13 @@ public sealed class AppServices
     public void SetMonsterGameDataOpener(Action<int> opener) => _monsterGameDataOpener = opener;
     public void OpenMonsterGameData(int monsterNumber) => _monsterGameDataOpener?.Invoke(monsterNumber);
 
+    // Same indirection for the Rooms section — lets an item's clickable
+    // bought/sold shop line jump to the host room's Rooms-tab record (by
+    // Map Number + Room Number) without a back-reference to the main VM.
+    private Action<int, int>? _roomGameDataOpener;
+    public void SetRoomGameDataOpener(Action<int, int> opener) => _roomGameDataOpener = opener;
+    public void OpenRoomGameData(int map, int room) => _roomGameDataOpener?.Invoke(map, room);
+
     // Opens (or re-focuses) the Navigation window and centres the map on a
     // given room. Used by the room-detail popup's clickable room title. No-op
     // until the main VM binds it.
@@ -1046,6 +1053,13 @@ public sealed class AppServices
     // GameDataCache.ActiveSetChanged.
     public MonsterDropIndex MonsterDrops { get; private set; } = null!;
 
+    // Reverse item-acquisition index for the Game Data Browser's item detail
+    // pane — the containers an item is found in and the monster/room textblock
+    // `giveitem` awards that hand it over. Browser-only, so unlike the routing
+    // indexes above it builds lazily on first query and self-invalidates on a
+    // set swap (no ActiveSetChanged subscription).
+    public ItemSourceIndex ItemSources { get; private set; } = null!;
+
     // Index of the active set's room-entry hazards — a room's cast-on-enter
     // Spell mapped to the item(s) that make the room safe (fish-helm negator,
     // failitem rafts, checkspell buff sources). Feeds the navigation
@@ -2038,6 +2052,12 @@ public sealed class AppServices
         GameData.ActiveSetChanged += TBInfo.OnActiveSetChanged;
         if (GameData.ActiveSet is not null)
             TBInfo.OnActiveSetChanged(GameData.ActiveSet);
+
+        // ItemSourceIndex — reverse item-acquisition (containers + textblock
+        // giveitem awards) for the Game Data browser. Reads TBInfo's typed
+        // entries, so it's constructed after the store above. Lazy and
+        // self-invalidating, so there's no ActiveSetChanged subscription to wire.
+        ItemSources = new ItemSourceIndex(GameData, TBInfo, Log);
 
         // Room graph — seeded from the active set's Rooms.json every time the
         // set switches. Built once per swap; consumers hold typed Room
@@ -3144,6 +3164,11 @@ public sealed class AppServices
         // pre-move sequence, before the sn — equipping breaks sneak.
         Combat.SetWeaponActuator(Equipment.SwapWeapon, () => Equipment.ApplyBackstabArmor());
 
+        // Let an auto-fire gear-set apply defer the weapon slot to combat while it
+        // holds a per-monster alternate-weapon override, so the Default set's
+        // combat-entry trigger can't clobber the swap (the weapon-flap report).
+        Equipment.SetCombatWeaponOwnershipProbe(() => Combat.IsWeaponOverrideActive);
+
         // Confusion-fumble retry: a fumbled attack is consumed without engaging,
         // so re-send the last swing on every fumble line (ConditionTracker gates
         // the raw signal to the confusion record; Combat gates on an active fight).
@@ -3227,8 +3252,15 @@ public sealed class AppServices
             TransactionHistory.NoteStash(
                 new[] { (currency, (long)count) }, Array.Empty<string>(), CurrentRoomLabel());
         Inventory.ItemHidden += item =>
+        {
+            // An auto-discard offload uses `hide <item>` in HideMode — that's a
+            // discard, not a stash, so it claims its own confirmation here and is
+            // kept out of the ledger. Manual / stash-room hides were never
+            // registered, so they still record.
+            if (AutoDiscard.TryConsumeSuppressedHide(item)) return;
             TransactionHistory.NoteStash(
                 Array.Empty<(string, long)>(), new[] { item }, CurrentRoomLabel());
+        };
         Inventory.BankDeposited += copper =>
             TransactionHistory.NoteBankDeposit(copper, CurrentRoomLabel());
 
@@ -3411,9 +3443,12 @@ public sealed class AppServices
         // through the walker — attached here since the walker is built
         // after the manager.
         DeathRecovery.AttachWalker(Walker);
-        // Route walker over trapped exits through
-        // the TrapDisarmManager.
-        Walker.SetTrapEnqueuer(TrapDisarm.Enqueue);
+        // Route walker over trapped exits through the TrapDisarmManager. The
+        // walker only enqueues on a RoomExitHint.Trap — it already knows a trap
+        // sits on the exit, so it disarms directly (trapKnown: true) instead of
+        // searching first.
+        Walker.SetTrapEnqueuer((dir, sender, reply) =>
+            TrapDisarm.Enqueue(dir, sender, reply, trapKnown: true));
         // Settings → Other "Utilize disarm traps if able": gate the
         // walker's trap-disarm on the toggle AND a real local capability
         // (a positive Traps stat, or a class/race game-data trap-skill
@@ -3760,7 +3795,7 @@ public sealed class AppServices
         // can issue these.
         MoveRemote = new Game.Remote.MovePlayerHandler(
             RemoteCommands, RoomSearch, RoomGraph, RoomTracker, Walker, Loops, LoopRunner,
-            Lairs, AutoLair, MovementCoordinator);
+            Lairs, AutoLair, MovementCoordinator, MovementControl);
 
         // Leader-side @comeback. Snapshots the running movement
         // engine, stops it (stop-and-restart, NOT a coordinator gate —
@@ -4921,6 +4956,8 @@ public sealed class AppServices
         // Hop-timing calibration logger — off by default; user flips
         // on for a data-collection session.
         HopCalibrator.Enabled = dto.LogMovementHopTiming;
+        // Auto-discard offload verb: hide <item> vs drop <item>.
+        AutoDiscard.HideMode = dto.HideWhenDiscarding;
     }
 
     private void ResetOtherToDefaults()
@@ -4931,6 +4968,7 @@ public sealed class AppServices
         TrapDisarm.MaxDisarmAttempts = defaults.MaxTrapDisarmAttempts;
         PartyComeback.MaxBacktrackRooms = defaults.MaxComebackBacktrackRooms;
         ComebackRequest.Enabled = defaults.AutoRequestComebackWhenLeftBehind;
+        AutoDiscard.HideMode = defaults.HideWhenDiscarding;
     }
 
     // Push the loaded character's

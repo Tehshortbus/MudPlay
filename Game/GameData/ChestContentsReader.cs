@@ -67,6 +67,57 @@ public static class ChestContentsReader
         return agg.Resolve(topTextblock);
     }
 
+    // Batch decode: resolve every container's loot table in one pass, sharing the
+    // item-name / textblock dictionaries and a single Aggregator so a table
+    // referenced by several chests is decoded once. Returns containerItemId →
+    // ChestContents (only for containers that actually yield a drop); empty when
+    // no set is active or the tables are missing. Backs ItemSourceIndex's reverse
+    // "found in" lookup, which needs the inverse (item → chests holding it).
+    public static IReadOnlyDictionary<int, ChestContents> ReadAll(GameDataCache cache)
+    {
+        ArgumentNullException.ThrowIfNull(cache);
+        var result = new Dictionary<int, ChestContents>();
+
+        JsonDocument? items = cache.GetRawTable("Items");
+        if (items is null) return result;
+        JsonDocument? spells = cache.GetRawTable("Spells");
+        if (spells is null) return result;
+        JsonDocument? tbinfo = cache.GetRawTable("TBInfo");
+        if (tbinfo is null) return result;
+
+        // spellNumber → loot textblock (Abil 148 value), built once so the
+        // per-container resolve is a dictionary hit rather than a Spells scan.
+        var spellToTextblock = new Dictionary<int, int>();
+        foreach (JsonElement spell in spells.RootElement.EnumerateArray())
+        {
+            if (spell.ValueKind != JsonValueKind.Object) continue;
+            int number = ReadInt(spell, "Number");
+            if (number <= 0) continue;
+            int tb = FirstAbilValue(spell, CastTextblockAbil);
+            if (tb > 0) spellToTextblock[number] = tb;
+        }
+
+        var agg = new Aggregator(BuildTextblocks(tbinfo), BuildItemNames(items));
+
+        foreach (JsonElement item in items.RootElement.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.Object) continue;
+            if (ReadInt(item, "ItemType") != ContainerItemType) continue;
+            int itemNumber = ReadInt(item, "Number");
+            if (itemNumber <= 0) continue;
+
+            int spellNumber = FirstAbilValue(item, CastSpellAbil);
+            if (spellNumber <= 0) continue;
+            if (!spellToTextblock.TryGetValue(spellNumber, out int topTextblock) || topTextblock <= 0)
+                continue;
+
+            ChestContents contents = agg.Resolve(topTextblock);
+            if (contents.Drops.Count > 0)
+                result[itemNumber] = contents;
+        }
+        return result;
+    }
+
     // Walks the loot-textblock tree, memoising each weighted table's per-draw
     // item chances so a table drawn N times is decoded once. Cycles are broken by
     // the per-branch ancestor set; depth is bounded as a backstop.

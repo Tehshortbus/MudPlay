@@ -51,6 +51,14 @@ internal static partial class QuestTextFormatter
             ? string.Join(", ", q.AwardItems.Select(id => ItemName(gameData, id)))
             : q.AwardsAbility ? AbilityNames.FormatId(q.Flag) : string.Empty;
 
+    // The quest's completion experience, thousands-separated with an "exp" suffix
+    // ("1,500,000 exp"); empty when the quest (or band) hands none. A distinct reward
+    // line from the keeper-item award — this is the raw exp the give-chain grants.
+    public static string Experience(CrawledQuest q) =>
+        q.ExpAward > 0
+            ? string.Create(CultureInfo.InvariantCulture, $"{q.ExpAward:N0} exp")
+            : string.Empty;
+
     // The class / race the crawl found this quest restricted to, as
     // "Classes: Warrior, Cleric  ·  Races: Gaunt One"; empty when the quest is open to
     // all (no restriction surfaced). Informational — the crawl reads guards off the
@@ -81,19 +89,137 @@ internal static partial class QuestTextFormatter
         gameData.FindNameByNumber(table, number)
         ?? string.Create(CultureInfo.InvariantCulture, $"#{number}");
 
-    // One followable step rendered as "command · @ location · turn in … · need … · receive …".
-    public static string Step(GameDataCache gameData, QuestStep s)
+    // One followable step drafted in the hand-written guide's own shape:
+    //   (map/room) `command` (item note)
+    // The Called-From location's rooms become clickable (map/room) links (all of
+    // them, for a multi-room list); a player command is backtick-wrapped as the
+    // literal to type; a command-less step sourced from a monster's textblock is
+    // narrated "kill <monster> (<drop>)" and a bare item grant "obtain <item>",
+    // matching how the seed guides read. Items the step needs / turns in trail as
+    // a parenthetical note. Falls back to a bare "Step N" label when the crawl
+    // captured nothing followable (see StepOrNull) — kept for any caller that wants
+    // a label for every step; the auto-draft (StepLines) drops those steps instead.
+    public static string Step(GameDataCache gameData, QuestStep s,
+        IReadOnlyDictionary<int, IReadOnlyList<RoomKey>>? monsterRooms = null,
+        ItemSourceIndex? itemSources = null)
+        => StepOrNull(gameData, s, monsterRooms, itemSources)
+           ?? string.Create(CultureInfo.InvariantCulture, $"Step {s.Order}");
+
+    // The step's followable body — room links, command, kill/obtain narration and
+    // item notes joined into one line — or null when the crawl captured no action
+    // the player can take. Many quest steps are pure flag-advances the crawl can't
+    // render: an alignment ladder's automatic value ticks, a story textblock the
+    // player never directly triggers (Called-From another textblock/spell, no room,
+    // no command, no item). Those carry nothing to do, so the auto-draft omits them
+    // rather than listing an opaque "Step 31" the player can't act on.
+    public static string? StepOrNull(GameDataCache gameData, QuestStep s,
+        IReadOnlyDictionary<int, IReadOnlyList<RoomKey>>? monsterRooms = null,
+        ItemSourceIndex? itemSources = null)
     {
-        var parts = new List<string>();
-        if (!string.IsNullOrWhiteSpace(s.Command)) parts.Add(s.Command!);
-        if (!string.IsNullOrWhiteSpace(s.Location)) parts.Add($"@ {s.Location}");
-        if (s.TurnInItems.Count > 0) parts.Add("turn in " + string.Join(", ", s.TurnInItems.Select(id => ItemName(gameData, id))));
-        if (s.RequiredItems.Count > 0) parts.Add("need " + string.Join(", ", s.RequiredItems.Select(id => ItemName(gameData, id))));
-        if (s.GrantedItems.Count > 0) parts.Add("receive " + string.Join(", ", s.GrantedItems.Select(id => ItemName(gameData, id))));
-        return parts.Count > 0
-            ? string.Join("  ·  ", parts)
-            : string.Create(CultureInfo.InvariantCulture, $"Step {s.Order}");
+        var segments = new List<string>();
+
+        string granted = string.Join(", ", s.GrantedItems.Select(id => ItemName(gameData, id)));
+
+        int monster = 0;
+        bool monsterLoc = TryMonsterRef(s.Location, out monster);
+        bool isKill = monsterLoc && string.IsNullOrWhiteSpace(s.Command);
+
+        // Room link(s): a monster-anchored step (a kill target, or an NPC the step
+        // asks) links that monster's placement room; a room-anchored step links its
+        // own Called-From room.
+        string rooms = monsterLoc ? MonsterRoomLinks(monster, monsterRooms) : RoomLinks(s.Location);
+        if (rooms.Length > 0) segments.Add(rooms);
+
+        if (!string.IsNullOrWhiteSpace(s.Command))
+        {
+            segments.Add($"`{s.Command!.Trim()}`");
+            if (granted.Length > 0) segments.Add($"(get {granted})");
+        }
+        else if (isKill)
+        {
+            string name = MonsterName(gameData, monster);
+            segments.Add(granted.Length > 0 ? $"kill {name} ({granted})" : $"kill {name}");
+        }
+        else if (granted.Length > 0)
+        {
+            segments.Add($"obtain {granted}");
+        }
+
+        if (s.TurnInItems.Count > 0)
+            segments.Add("(turn in " + string.Join(", ",
+                s.TurnInItems.Select(id => ItemName(gameData, id) + SourceSuffix(itemSources, monsterRooms, id))) + ")");
+
+        // A required item the step also turns in is already named by the turn-in note
+        // (a checkitem + takeitem of the same id), so it isn't repeated as "required".
+        var required = s.RequiredItems.Where(id => !s.TurnInItems.Contains(id)).ToList();
+        if (required.Count > 0)
+            segments.Add("(" + string.Join(", ",
+                required.Select(id => ItemName(gameData, id) + SourceSuffix(itemSources, monsterRooms, id))) + " required)");
+
+        return segments.Count > 0 ? string.Join(" ", segments) : null;
     }
+
+    // Where the player acquires an item the step needs, appended as ", from <source>"
+    // so a turn-in / prerequisite step points at the chest, NPC, or room that yields
+    // the item — the reverse acquisition index the item-detail pane uses. Empty when
+    // no index is threaded in or nothing in the set yields the item. A monster giver
+    // trails its placement room link (resolved through the same map the kill steps
+    // use); a room-CMD reward trails the room; a chest names the container.
+    private static string SourceSuffix(ItemSourceIndex? sources,
+        IReadOnlyDictionary<int, IReadOnlyList<RoomKey>>? monsterRooms, int itemId)
+    {
+        if (sources is null) return string.Empty;
+
+        foreach (ItemGiver g in sources.GiversOf(itemId))
+        {
+            if (g.Kind == ItemGiverKind.Room && g.Map > 0 && g.Room > 0)
+                return string.Create(CultureInfo.InvariantCulture, $", from ({g.Map}/{g.Room})");
+            if (g.Kind == ItemGiverKind.Monster)
+            {
+                string where = MonsterRoomLinks(g.Number, monsterRooms);
+                return where.Length > 0 ? $", from {g.Name} {where}" : $", from {g.Name}";
+            }
+        }
+
+        IReadOnlyList<ItemSource> chests = sources.ContainersOf(itemId);
+        return chests.Count > 0 ? $", from {chests[0].ContainerName}" : string.Empty;
+    }
+
+    // The Called-From location's room coordinates as space-joined (map/room) link
+    // tokens — every room in a multi-room list, so each renders as its own walk-to
+    // link. Empty when the location names no room (a Monster / Spell / Textblock ref).
+    private static string RoomLinks(string? location) =>
+        string.IsNullOrWhiteSpace(location)
+            ? string.Empty
+            : string.Join(" ", RoomRef().Matches(location)
+                .Select(m => string.Create(CultureInfo.InvariantCulture, $"({m.Groups[1].Value}/{m.Groups[2].Value})")));
+
+    // A kill step's room link(s): every room the quest places the target monster in,
+    // as space-joined (map/room) tokens, drawn from the pre-built placement map so no
+    // per-step room scan happens. Empty when the monster has no resolved placement —
+    // the kill step then renders room-less rather than offering a dead link.
+    private static string MonsterRoomLinks(int monster,
+        IReadOnlyDictionary<int, IReadOnlyList<RoomKey>>? monsterRooms) =>
+        monsterRooms is not null && monsterRooms.TryGetValue(monster, out IReadOnlyList<RoomKey>? keys)
+            ? string.Join(" ", keys.Select(k =>
+                string.Create(CultureInfo.InvariantCulture, $"({k.Map}/{k.Room})")))
+            : string.Empty;
+
+    // The step's monster anchor, if any: a "Monster #N" location. A command-less
+    // monster step is a kill (narrated "kill <monster> (<drop>)"); a monster step
+    // carrying an "ask <npc> ..." command is an NPC dialogue step re-anchored on that
+    // NPC by QuestStepGraph so the guide can link its room.
+    private static bool TryMonsterRef(string? location, out int number)
+    {
+        number = 0;
+        if (string.IsNullOrWhiteSpace(location)) return false;
+        Match m = MonsterRef().Match(location);
+        return m.Success && int.TryParse(m.Groups[1].Value, out number);
+    }
+
+    private static string MonsterName(GameDataCache gameData, int number) =>
+        gameData.FindNameByNumber("Monsters", number)
+        ?? string.Create(CultureInfo.InvariantCulture, $"monster #{number}");
 
     // Item display name by id, falling back to #id when the active set has no such row.
     public static string ItemName(GameDataCache gameData, int id) =>
@@ -101,12 +227,15 @@ internal static partial class QuestTextFormatter
         ?? string.Create(CultureInfo.InvariantCulture, $"#{id}");
 
     // The crawler's auto-draft followable steps for a quest, one markdown line per
-    // give-step in order — each a checkbox line "[] {flag}({order}) {step}" so the Quest
-    // Status tab renders it as a tickable item and the editor pre-fills it verbatim. For
-    // a multi-part band only the give-steps inside the band's StepRangeStart..StepRangeEnd
-    // span are emitted; a single-part quest (range 0/0) emits every step. Empty when the
-    // flag drafts no steps.
-    public static IReadOnlyList<string> StepLines(GameDataCache gameData, CrawledQuest q)
+    // give-step in order — each a checkbox line "[] {step}" (the seed guides carry no
+    // flag/order prefix, so the draft matches them) so the Quest Status tab renders it
+    // as a tickable item and the editor pre-fills it verbatim. For a multi-part band
+    // only the give-steps inside the band's StepRangeStart..StepRangeEnd span are
+    // emitted; a single-part quest (range 0/0) emits every step. Empty when the flag
+    // drafts no steps.
+    public static IReadOnlyList<string> StepLines(GameDataCache gameData, CrawledQuest q,
+        IReadOnlyDictionary<int, IReadOnlyList<RoomKey>>? monsterRooms = null,
+        ItemSourceIndex? itemSources = null)
     {
         var lines = new List<string>();
         var seenOrders = new HashSet<int>();
@@ -117,7 +246,11 @@ internal static partial class QuestTextFormatter
             // one give-step echoed from many rooms) only applies on the give-step axis.
             if (!q.ProgressByValue && !seenOrders.Add(s.Order)) continue;
             if (q.StepRangeEnd > 0 && (s.Order < q.StepRangeStart || s.Order > q.StepRangeEnd)) continue;
-            lines.Add(string.Create(CultureInfo.InvariantCulture, $"[] {q.Flag}({s.Order}) {Step(gameData, s)}"));
+            // A pure flag-advance (no room, command, kill or item) carries nothing the
+            // player can act on, so it's dropped from the draft rather than listed as an
+            // opaque "Step N" — the seed guides list actions, not narrative ticks.
+            if (StepOrNull(gameData, s, monsterRooms, itemSources) is not { } body) continue;
+            lines.Add(string.Create(CultureInfo.InvariantCulture, $"[] {body}"));
         }
         return lines;
     }
@@ -178,4 +311,12 @@ internal static partial class QuestTextFormatter
     // Map/room coordinate token: "(", digits, "/", digits, ")" — the link target.
     [GeneratedRegex(@"\((\d+)/(\d+)\)")]
     private static partial Regex RoomLink();
+
+    // "Room 9/1259" inside a Called-From string — a location's room reference.
+    [GeneratedRegex(@"Room\s+(\d+)/(\d+)", RegexOptions.IgnoreCase)]
+    private static partial Regex RoomRef();
+
+    // "Monster #39" inside a Called-From string — a monster-sourced chain.
+    [GeneratedRegex(@"Monster\s+#(\d+)", RegexOptions.IgnoreCase)]
+    private static partial Regex MonsterRef();
 }

@@ -67,6 +67,29 @@ public sealed class LevelProjectionCalculatorTests
     }
 
     [Fact]
+    public void Row_TrainCost_UngroupedNoThousandsSeparators()
+    {
+        // The train-cost column is raw copper meant to paste into the game, so it's
+        // ungrouped — unlike the exp columns which stay comma-grouped for reading.
+        var p = new LevelProjection(Level: 4, TotalXp: 10000, HpMin: 1, HpMax: 1, HpRegen: 1, Mana: 0, MpRegen: 0);
+        var row = new FujinTerm.ViewModels.CharacterWorkshop.LevelProjectionRow(
+            p, currentExp: 0, isCurrentLevel: false, isCaster: false, trainCost: 1234567);
+
+        Assert.Equal("1234567", row.Cost);       // no commas on the cost column
+        Assert.Equal("10,000", row.TotalXp);     // exp columns still grouped
+    }
+
+    [Fact]
+    public void Row_TrainCost_NullRendersDash()
+    {
+        var p = new LevelProjection(Level: 4, TotalXp: 10000, HpMin: 1, HpMax: 1, HpRegen: 1, Mana: 0, MpRegen: 0);
+        var row = new FujinTerm.ViewModels.CharacterWorkshop.LevelProjectionRow(
+            p, currentExp: 0, isCurrentLevel: false, isCaster: false, trainCost: null);
+
+        Assert.Equal("—", row.Cost);
+    }
+
+    [Fact]
     public void ProjectLevel_HpCellsBracketTheRolls()
     {
         const int level = 20;

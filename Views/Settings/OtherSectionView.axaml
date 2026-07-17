@@ -136,6 +136,16 @@
                       Margin="0,12,0,0"
                       ToolTip.Tip="When checked: if the walker plans a route through an exit that requires an item you're not carrying (a boat for the Silver River, a rope-and-grapple for a climb, a ticket, etc.), FujinTerm searches every room you enter (`sea`) to reveal the missing item, and stops once it's found. Works even when the Auto-Search master toggle is off. Applies only for this character."/>
 
+            <!-- Auto-discard offload verb. When checked, the auto-discard
+                 engine conceals each excess flagged item with hide <item>
+                 instead of drop <item>. Engine hides are excluded from the
+                 Transaction ledger (a discard isn't a stash); manual and
+                 stash-room hides still record there. Char-tier. -->
+            <CheckBox Content="Hide items when discarding"
+                      IsChecked="{Binding HideWhenDiscarding, Mode=TwoWay}"
+                      Margin="0,8,0,0"
+                      ToolTip.Tip="When checked: the auto-discard engine uses `hide &lt;item&gt;` instead of `drop &lt;item&gt;` to offload each excess flagged item — it still leaves your pack, but lands concealed on the ground rather than in plain view. These engine hides are kept out of the Transaction history (a discard isn't a stash), while your manual hides and stash-room hides are still logged. Applies only for this character."/>
+
             <!-- Note: the former Buy/Hunt/Defer path-item checkboxes moved to
                  per-item game-data flags on the item record (item-edit dialog:
                  Auto-obtain for path + its buy / source-from-drops / provision-

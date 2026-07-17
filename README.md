@@ -1,10 +1,31 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.67.7**
-> - A weapon's magic-hit level now sums both magic abilities (Magical + HitMagic), matching the character sheet — an inherently magical weapon (a "shimmering" longsword carrying only the Magical ability) is no longer misread as un-magical
-> - Fixes the walker stalling "un-actionable" against a monster its magical weapon could actually hit, and the spurious auto-swap to an alternate weapon
-> - Door-key possession check now strips the count prefix on key-ring entries ("2 black serpent key"), so a key held in multiples is recognized as carried instead of triggering a spurious floor "get" before "use"
+> **Version 1.69.0**
+> - Trainer room detail now lists the per-level training cost across the trainer's whole level band, priced at that trainer's own markup
+> - Workshop level-projection table's train-cost column now shows raw copper without thousands separators (pastes straight into the game); the exp columns stay comma-grouped
+> - Settings → Other adds a "Hide items when discarding" toggle — auto-discard then offloads each excess flagged item with `hide <item>` instead of `drop <item>`, and these engine hides stay out of the Transaction ledger (manual and stash-room hides still record)
+> - Game Data Rooms filter accepts a `map,room` coordinate (`1,1`) — comma, slash, or space all jump straight to that one room
+> - Item detail's bought/sold shops are now clickable — each jumps the Game Data browser to the host room's Rooms-tab record
+> - Item detail surfaces two more acquisition paths: `Found in` lists the chests an item drops from (with per-open odds), and `Given by` lists the monsters/rooms that hand it over via a textblock award — turn-in, purchase, or quest reward — each a clickable jump to that record
+> - Character Info tab moves Quest Bonuses beneath the attack accuracy/damage box, freeing the right column for the full inventory readout
+> - Quest Status cards now show the completion experience a quest awards on its own reward line (guide-only — it doesn't feed the Character Info bonuses)
+> - Weapon-flap fix: a combat-entry gear-set trigger now defers the weapon/off-hand to the combat engine while it holds a per-monster alternate-weapon override, so the Default set can't re-wear the normal weapon over the swap mid-fight
+> - Fallback-death fix: a kill with no per-monster death line (exp + `*Combat Off*`) is now attributed to the current target and dropped from the room roster — the survivor is re-engaged at once, ending the re-swing at the corpse and the post-kill idle stall
+> - `@stop` now stacks a pause on top of combat exactly like the Pause button — a route paused mid-fight stays paused after the fight clears instead of walking on (and `@rego` lifts only that user pause)
+> - Search-bar walk-to now rebounds to auto-following the player once the browse window lapses, matching how a pan-drag rebounds
+> - Crossing an up/down no longer rebuilds/refocuses the map while you're panning or numpad-browsing — the re-root defers until browsing ends
+> - Picking a new walk-to destination while manually paused now lifts the pause and walks there, instead of changing the destination but staying frozen
+> - Walker now disarms a known-trapped exit directly instead of searching it first — the exit hint already proved the trap, so the confirming `search` is skipped
+> - A between-round buff/heal cast that lands after the death→re-observe already re-swung now resumes the weapon on its `*Combat Off*` instead of idling a full round
+> - A monster that walks in under a name the game data doesn't recognize (a colour-stripped arrival like "dragon serpent") is now auto-attacked instead of stopping the walker on a mob it never engages
+> - Renaming the currently-running loop via Save-current now updates the navigation header at once, instead of holding the old (often loop-builder-generated) name until the next lap
+> - Quest seed: Phoenix Feather guide reordered (`ask morukai orfeo` moved up to follow `ask orfeo morukai`) and the missing `ask morukai return` step added before `use potion`
+> - Crawled quest guides (those with no hand-written seed) now auto-draft in the seed's own style: step rooms render as clickable `(map/room)` links, the player command is backtick-wrapped, a monster-sourced grant reads `kill <monster> (<drop>)` and a bare grant `obtain <item>`, and the noisy `flag(order)` prefix is dropped
+> - A crawled kill step now links to the room the quest places its target in (the room's NPC field), falling back to the monster's summon room — or, when it's summoned by another NPC, that summoner's room
+> - A crawled quest's pure flag-advance steps (alignment-ladder value ticks, story textblocks the player never directly triggers) are dropped from the auto-draft instead of listed as an opaque "Step 31" — only the followable actions show
+> - A crawled dialogue step now recovers the `ask <npc> <keyword>` that reaches it — walking the textblock dispatch chain up to the NPC whose keyword branches into the step — and links that NPC's room, so a multi-NPC quest (Mandos etc.) drafts its full ask-by-ask flow instead of one bare line
+> - A crawled step's prerequisite / turn-in item now trails `, from <source>` naming where to get it — the chest that drops it, the NPC that hands it over (with a room link), or the room CMD reward — and a required item the step also turns in is listed once, not twice
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

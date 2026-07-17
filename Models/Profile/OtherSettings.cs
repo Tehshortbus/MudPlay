@@ -41,6 +41,14 @@ public sealed class OtherSettings
     // fires and we lose HP) ships with the HealthManager wiring.
     public int MaxTrapDisarmAttempts { get; set; } = 5;
 
+    // When true, the auto-discard engine conceals each excess flagged item with
+    // hide <item> instead of drop <item> — it still leaves the pack, but lands
+    // out of sight on the ground. Engine hides are excluded from the Transaction
+    // history ledger (a discard isn't a stash); manual and stash-room hides still
+    // record there. Default false (plain drop). Char-tier; surfaced in
+    // Settings → Other. Read live by Game.Inventory.AutoDiscardManager.HideMode.
+    public bool HideWhenDiscarding { get; set; }
+
     // ----- Door / lock handling --------------------------------------
 
     // Walker's max bash <dir> retries before giving up on a single door. Hits

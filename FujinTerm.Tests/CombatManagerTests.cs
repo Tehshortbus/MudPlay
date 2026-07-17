@@ -435,6 +435,53 @@ public sealed class CombatManagerTests
     }
 
     [Fact]
+    public void UnattributedDeath_AttributesToCurrentTarget_ReSwingsAtSurvivor()
+    {
+        // Fallback-death repro (paradigm-20260716-095716 / -101002): the dataset
+        // has no per-monster DeathLine, so every kill routes through the fallback
+        // path (exp + *Combat Off*) that lands on NoteUnattributedDeath with no
+        // roster slot handed to us. The pre-fix method left _currentTarget set and
+        // only nudged a CR, so the dead mob lingered in the roster: the next tick
+        // re-swung at the corpse and recovery waited out the idle-stall watchdog.
+        // Now the death is attributed to _currentTarget, dropped from the roster,
+        // and the survivor is re-picked immediately.
+        using Harness h = new();
+        h.AddMonster(1, "big margoyle", killable: false);
+        h.AddMonster(2, "small margoyle", killable: false);
+
+        h.Feed("Also here: big margoyle, small margoyle.");
+        Assert.Equal("a big margoyle", h.LastSent);
+        Assert.Equal("big margoyle", h.Combat.CurrentTarget);
+        int initialSent = h.Sent.Count;
+
+        // The fallback death fires — AppServices routes it to NoteUnattributedDeath.
+        h.Combat.NoteUnattributedDeath();
+
+        Assert.True(h.Sent.Count > initialSent,
+            "expected a fresh swing at the survivor after the fallback kill");
+        Assert.Equal("a small margoyle", h.LastSent);
+        Assert.Equal("small margoyle", h.Combat.CurrentTarget);
+    }
+
+    [Fact]
+    public void UnattributedDeath_LastMonster_ClearsTarget()
+    {
+        // The sole monster in the room dies via the fallback path. Attributing the
+        // death to _currentTarget and dropping it empties the roster, so the
+        // synthetic EntitiesObserved releases the Combat gate — no CR-nudge wait,
+        // no re-swing at the corpse (the "sits idle after a kill" stall).
+        using Harness h = new();
+        h.AddMonster(1, "big margoyle", killable: false);
+
+        h.Feed("Also here: big margoyle.");
+        Assert.Equal("big margoyle", h.Combat.CurrentTarget);
+
+        h.Combat.NoteUnattributedDeath();
+
+        Assert.Null(h.Combat.CurrentTarget);
+    }
+
+    [Fact]
     public void CustomAttackCommand_UsedVerbatim()
     {
         using Harness h = new();
@@ -2353,6 +2400,62 @@ public sealed class CombatManagerTests
 
         // No phantom "a large troglodyte warrior" — the resume stood down.
         Assert.Equal(before, h.Sent.Count);
+    }
+
+    [Fact]
+    public void BetweenRoundCast_AfterDeathReObserveReengaged_StillResumes()
+    {
+        // Report paradigm-20260716-124255 (cast a buff mid-fight, then missed a
+        // combat round): a fallback kill re-observed and re-swung at the surviving
+        // mob, THEN a between-round buff cast fired and turned combat off. The death
+        // guard suppressed the cast-resume as if the kill's re-observe were still
+        // pending — but it had already run, so the fresh swing sat interrupted for a
+        // full round until the cast-block latch cleared. Once an attack has gone out
+        // since the death, the Off is the cast's interrupt and must resume.
+        using Harness h = new();
+        h.AddMonster(1, "angry bugbear", killable: false);
+        h.AddMonster(2, "short bugbear", killable: false);
+
+        h.Feed("Also here: angry bugbear, short bugbear.");
+        Assert.Equal("a angry bugbear", h.LastSent);
+        Assert.Equal("angry bugbear", h.Combat.CurrentTarget);
+
+        // The fallback death re-observes and re-swings at the survivor — the death→
+        // re-observe path completes here (an attack goes out AFTER the death stamp).
+        h.Combat.NoteUnattributedDeath();
+        Assert.Equal("a short bugbear", h.LastSent);
+        Assert.Equal("short bugbear", h.Combat.CurrentTarget);
+        int before = h.Sent.Count;
+
+        // A between-round buff cast now fires and interrupts that fresh swing.
+        h.Combat.NoteBetweenRoundCast();
+        h.Feed("*Combat Off*");
+
+        // Resumed on the Off line — the survivor is re-swung, no missed round.
+        Assert.Equal(before + 1, h.Sent.Count);
+        Assert.Equal("a short bugbear", h.LastSent);
+    }
+
+    [Fact]
+    public void NullNumberArrival_UnresolvedName_IsEngaged()
+    {
+        // Report paradigm-20260716-124409 (didn't react to a monster entering the
+        // room, had to manually attack): a mid-walk arrival whose colour-stripped
+        // name ("dragon serpent") misses the colour-prefixed game-data records
+        // ("red/white dragon serpent") is classified Monster with a null number.
+        // HasEngageable fail-opens on it to hold the Combat gate (walker pause),
+        // but the attacker used to DROP null-number monsters — so the walker
+        // stopped on a mob that was never hit and the player just got pummelled.
+        // The attacker must engage it too, by RawName.
+        using Harness h = new();
+
+        h.Classifier.AppendArrivalEntity(
+            new RoomEntity("dragon serpent", "dragon serpent",
+                           EntityKind.Monster, MonsterNumber: null),
+            rawWireLine: "A dragon serpent slithers in from the northwest!");
+
+        Assert.Equal("a dragon serpent", h.LastSent);
+        Assert.Equal("dragon serpent", h.Combat.CurrentTarget);
     }
 
     [Fact]

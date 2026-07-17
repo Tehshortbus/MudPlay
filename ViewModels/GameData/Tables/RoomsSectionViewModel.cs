@@ -58,6 +58,32 @@ public sealed class RoomsSectionViewModel : JsonTableSectionViewModel, IEditable
         OpenDetailCommand = new RelayCommand<GameDataRow?>(ShowRoomDetail);
     }
 
+    // A "map,room" coordinate query (e.g. "1,1", "1/1", "1 1") matches the single row
+    // whose Map Number and Room Number equal those two integers. The base substring pass
+    // can't serve this: comma never appears in any cell, and "1/1" only hits by accident
+    // via exit columns that store "map/room" destinations. Any filter that isn't exactly
+    // two integer tokens falls through to the normal substring match.
+    protected override bool RowMatches(GameDataRow row, string filter)
+    {
+        if (TryParseCoordinate(filter, out int map, out int room))
+            return IntEquals(row.Get("Map Number"), map) && IntEquals(row.Get("Room Number"), room);
+        return base.RowMatches(row, filter);
+    }
+
+    private static bool TryParseCoordinate(string filter, out int map, out int room)
+    {
+        map = room = 0;
+        string[] parts = filter.Split(
+            new[] { ',', '/', ' ', '\t' },
+            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (parts.Length != 2) return false;
+        return int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out map)
+            && int.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out room);
+    }
+
+    private static bool IntEquals(string? cell, int value)
+        => int.TryParse(cell, NumberStyles.Integer, CultureInfo.InvariantCulture, out int n) && n == value;
+
     // Resolve the row's (Map Number, Room Number) and pop the room-detail popup.
     // No-op when the DialogService is absent (design-time) or the pair can't be parsed.
     private void ShowRoomDetail(GameDataRow? row)

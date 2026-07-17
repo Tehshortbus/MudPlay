@@ -91,6 +91,16 @@ public sealed partial class QuestSectionViewModel : WorkshopSectionViewModel
             _bonusesByCard.Clear();
             LoadProgressFromProfile();
 
+            // Where each quest-kill / quest-NPC monster stands, resolved once (this loop
+            // drafts a step checklist per quest, each kill / ask step consulting the map)
+            // so a step can link to the room the quest places its target / NPC in.
+            IReadOnlyDictionary<int, IReadOnlyList<RoomKey>>? monsterRooms =
+                AppServices.Current?.RoomSearch?.QuestKillRooms();
+
+            // Reverse item-acquisition index so a prerequisite / turn-in step can point
+            // at where its item comes from (chest, NPC, or room CMD reward).
+            ItemSourceIndex? itemSources = AppServices.Current?.ItemSources;
+
             int? classId = ResolveClassId();
             int? raceId = ResolveRaceId();
             foreach (CrawledQuest q in QuestCrawler.Crawl(_gameData, classId))
@@ -123,6 +133,9 @@ public sealed partial class QuestSectionViewModel : WorkshopSectionViewModel
                     QuestTextFormatter.Level(requiredLevel),
                     QuestTextFormatter.Bonuses(q.Bonuses),
                     awardText,
+                    // Crawl-derived exp reward, shown straight (no user override): a reward
+                    // override edits the item/ability award line, not the raw give-chain exp.
+                    QuestTextFormatter.Experience(q),
                     QuestTextFormatter.Requirements(_gameData, q),
                     IsIneligible(q, classId, raceId),
                     prog.Complete,
@@ -131,7 +144,7 @@ public sealed partial class QuestSectionViewModel : WorkshopSectionViewModel
 
                 // Every quest carries a followable checklist (multi-part bands too,
                 // filtered to the band's give-step range by the crawl + StepLines).
-                PopulateSteps(card, q, def, prog);
+                PopulateSteps(card, q, def, prog, monsterRooms, itemSources);
 
                 Quests.Add(card);
             }
@@ -172,11 +185,12 @@ public sealed partial class QuestSectionViewModel : WorkshopSectionViewModel
     // `[]`-marked line is a tickable step keyed by its 0-based checkbox index (the
     // CheckedSteps key — stable across edits to the surrounding prose); a plain line
     // is a context label. A step is pre-ticked when its index is in saved progress.
-    private void PopulateSteps(QuestCardViewModel card, CrawledQuest q, QuestDefinition def, QuestProgress prog)
+    private void PopulateSteps(QuestCardViewModel card, CrawledQuest q, QuestDefinition def, QuestProgress prog,
+        IReadOnlyDictionary<int, IReadOnlyList<RoomKey>>? monsterRooms, ItemSourceIndex? itemSources)
     {
         string text = !string.IsNullOrWhiteSpace(def.Steps)
             ? def.Steps!
-            : string.Join("\n", QuestTextFormatter.StepLines(_gameData, q));
+            : string.Join("\n", QuestTextFormatter.StepLines(_gameData, q, monsterRooms, itemSources));
         AddStepRows(card, text, prog);
     }
 
@@ -214,6 +228,7 @@ public sealed partial class QuestSectionViewModel : WorkshopSectionViewModel
             QuestTextFormatter.Level(def.RequiredLevel ?? 0),
             string.Empty,
             def.Rewards ?? string.Empty,
+            string.Empty,   // manual quests carry no crawled exp reward
             string.Empty,
             ineligible: false,
             prog.Complete,

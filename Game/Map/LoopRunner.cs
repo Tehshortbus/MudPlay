@@ -178,6 +178,22 @@ public sealed class LoopRunner : IRecoverableEngine
         StagedLoop = loop;
     }
 
+    // Rename the loop currently in flight in place, keeping the lap / step
+    // position intact. The Save-current chip persists a rename without restarting
+    // the runner (a rename doesn't change the path), but the live status readout
+    // reads CurrentLoop.Name — so the editor pushes the new name here and we raise
+    // a benign Renamed event, giving the nav header + status chip an immediate
+    // re-read instead of holding the old (often builder-generated timestamp) name
+    // until the next step ticks. No-op when nothing is running or the name is
+    // unchanged.
+    public void RenameCurrentLoop(string newName)
+    {
+        if (_loop is null || string.IsNullOrWhiteSpace(newName)) return;
+        if (string.Equals(_loop.Name, newName, StringComparison.Ordinal)) return;
+        _loop.Name = newName;
+        Raise(new LoopEvent(LoopEventKind.Renamed, newName));
+    }
+
     // Waypoint the walker is approaching, or null when not in LoopState.Approaching.
     public RoomKey? ApproachTarget => _approachTarget;
 
@@ -1554,6 +1570,12 @@ public enum LoopEventKind
     // @reset to the party, etc. on this event rather than on Started so the timing
     // reflects the actual loop start, not the approach walk.
     ReachedFirstWaypoint = 8,
+
+    // The live loop was renamed in place (Save-current on a still-running loop)
+    // without restarting the cycle — no lap/step change, only the display name.
+    // Purely a nudge for the nav header / status chip to re-read CurrentLoop.Name;
+    // engine-state consumers can ignore it.
+    Renamed = 9,
 }
 
 public readonly record struct LoopEvent(LoopEventKind Kind, string Detail);
