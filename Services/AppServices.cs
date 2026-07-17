@@ -3475,7 +3475,7 @@ public sealed class AppServices
         // and the RoomDisplayParser.RoomParsed feed are bound per-session by
         // MainWindowViewModel after connect.
         MazeSolver = new Game.Map.TeleportMazeSolver(
-            MazeIndex, RoomTracker, Bfs, Walker, GameData, Log);
+            MazeIndex, RoomTracker, Bfs, Walker, Log);
         Walker.SetMazeSolver(MazeSolver);
         // DeathRecoveryManager's Walk-to-Room / Recover-Now actions route
         // through the walker — attached here since the walker is built

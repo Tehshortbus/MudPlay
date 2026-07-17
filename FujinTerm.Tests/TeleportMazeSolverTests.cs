@@ -12,13 +12,16 @@ namespace FujinTerm.Tests;
 // Covers TeleportMazeSolver end-to-end against a synthetic random-teleport
 // pocket: relocalize-by-look-sweep then delegate a plain walk, reshuffle to jump
 // plain-disconnected components, enter the pocket from outside, and the
-// Stock-only / maze-room-only / wire-bound / not-already-active CanSolve gate.
+// maze-room-only / wire-bound / not-already-active CanSolve gate.
 //
 // The pocket has TWO plain-connected components linked only by cast-teleport
 // exits — component A {1/10, 1/11, 1/12} and component B {1/30, 1/31} — so a
 // landing in A has no plain route to a goal in B and must reshuffle. Every
 // corridor's 1x2 signature (own exit mask + each neighbour's mask read by a
 // `look`) is unique, so a landing always relocalizes to an exact room.
+//
+// The solver runs on every realm — the CanSolve gate is maze-room-only /
+// wire-bound / not-already-active (no realm check).
 public sealed class TeleportMazeSolverTests : IDisposable
 {
     private readonly string _root;
@@ -98,15 +101,13 @@ public sealed class TeleportMazeSolverTests : IDisposable
         public void Dispose() => Solver.Dispose();
     }
 
-    private Harness NewHarness(string rooms = SplitMaze, bool paradigm = false, bool bindWire = true)
+    private Harness NewHarness(string rooms = SplitMaze, bool bindWire = true)
     {
         string dir = Path.Combine(_root, "alpha");
         Directory.CreateDirectory(dir);
         File.WriteAllText(Path.Combine(dir, "Rooms.json"), rooms);
         File.WriteAllText(Path.Combine(dir, "Spells.json"), Spells);
         File.WriteAllText(Path.Combine(dir, "TBInfo.json"), "[]");
-        if (paradigm)
-            File.WriteAllText(Path.Combine(dir, "Info.json"), "[{\"Legit\":2}]");
 
         GameDataCache cache = new(_root);
         cache.SwitchSet("alpha");
@@ -123,7 +124,7 @@ public sealed class TeleportMazeSolverTests : IDisposable
         TeleportMazeIndex index = new(graph);
         // Synchronous post + no dispatcher timers: Start() runs inline in TryBegin
         // and the settle / look timers are driven manually via test seams.
-        TeleportMazeSolver solver = new(index, tracker, bfs, walker, cache,
+        TeleportMazeSolver solver = new(index, tracker, bfs, walker,
             log: null, useTimer: false, post: a => a());
 
         Harness h = new()
@@ -232,19 +233,10 @@ public sealed class TeleportMazeSolverTests : IDisposable
     }
 
     [Fact]
-    public void CanSolve_False_OnParadigmRealm()
-    {
-        Harness h = NewHarness(paradigm: true);
-        Assert.False(h.Solver.Enabled);
-        Assert.False(h.Solver.CanSolve(new RoomKey(1, 30)));
-        Assert.False(h.Solver.TryBegin(new RoomKey(1, 30)));
-    }
-
-    [Fact]
     public void CanSolve_False_ForNonMazeRoom()
     {
         Harness h = NewHarness();
-        Assert.True(h.Solver.Enabled);
+        Assert.True(h.Solver.Enabled);   // runs on every realm (Paradigm included)
         Assert.False(h.Solver.CanSolve(new RoomKey(1, 1)));   // the mouth room is outside
         Assert.False(h.Solver.CanSolve(new RoomKey(1, 2)));   // overworld
         Assert.True(h.Solver.CanSolve(new RoomKey(1, 30)));   // a pocket member

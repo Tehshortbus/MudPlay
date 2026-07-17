@@ -37,10 +37,10 @@ public sealed class TeleportMazeIndexTests : IDisposable
         File.WriteAllText(Path.Combine(dir, table + ".json"), json);
     }
 
-    private TeleportMazeIndex BuildIndex(string roomsJson, string spellsJson)
+    private TeleportMazeIndex BuildIndex(string roomsJson, string spellsJson, string tbinfoJson = "[]")
     {
         SeedTable("alpha", "Rooms", roomsJson);
-        SeedTable("alpha", "TBInfo", "[]");
+        SeedTable("alpha", "TBInfo", tbinfoJson);
         SeedTable("alpha", "Spells", spellsJson);
         GameDataCache cache = NewCache();
         cache.SwitchSet("alpha");
@@ -235,5 +235,51 @@ public sealed class TeleportMazeIndexTests : IDisposable
 
         Assert.False(index.HasMazes);
         Assert.False(index.IsMazeRoom(new RoomKey(1, 10)));
+    }
+
+    // Regression guard for the Paradigm-1.9.1 Warped Asylum lever ignore
+    // (RoomGraphManager.ParadigmAsylumLeverRoom). Room 9/1259 sits inside a
+    // one-way cast pocket but carries a `pull lever` CMD teleport (CMD 10243)
+    // back to the outside entry 9/1180. If that escape were synthesised as a
+    // routable Teleport edge, pocket detection would walk it back out and the
+    // asylum would never be flagged/indexed as a maze — the exact Paradigm bug.
+    // Skipping just this room's synthesis keeps the pocket one-way, so it detects
+    // the same as stock (whose 9/1259 has no lever).
+    [Fact]
+    public void ParadigmAsylumLever_DoesNotDefeatPocketDetection()
+    {
+        const string rooms = """
+            [
+              { "Map Number": 9, "Room Number": 1, "Name": "Courtyard",
+                "Light": 0, "Shop": 0, "Spell": 0, "CMD": 0, "Lair": "", "Delay": 0,
+                "N": "0", "S": "9/1183 (Cast: pre-0, post-596)", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 9, "Room Number": 1183, "Name": "Warped Asylum",
+                "Light": 0, "Shop": 0, "Spell": 0, "CMD": 0, "Lair": "", "Delay": 0,
+                "N": "0", "S": "0", "E": "9/1259", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "9/1259 (Cast: pre-0, post-596)" },
+              { "Map Number": 9, "Room Number": 1259, "Name": "Warped Asylum",
+                "Light": 0, "Shop": 0, "Spell": 0, "CMD": 10243, "Lair": "", "Delay": 0,
+                "N": "0", "S": "0", "E": "0", "W": "9/1183",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 9, "Room Number": 1180, "Name": "Asylum Entrance",
+                "Light": 0, "Shop": 0, "Spell": 0, "CMD": 0, "Lair": "", "Delay": 0,
+                "N": "9/1", "S": "0", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+            ]
+            """;
+        // CMD 10243 → `pull lever` teleporting to 9/1180 (the escape we ignore).
+        const string tbinfo = """
+            [ { "Number": 10243, "LinkTo": 0,
+                "Action": "pull lever:teleport 1180 9\n",
+                "Called From": "Room 9/1259" } ]
+            """;
+        TeleportMazeIndex index = BuildIndex(rooms, MazeSpells, tbinfo);
+
+        Assert.True(index.HasMazes);
+        Assert.True(index.IsMazeRoom(new RoomKey(9, 1183)));
+        Assert.True(index.IsMazeRoom(new RoomKey(9, 1259)));   // the lever room is a member
+        Assert.False(index.IsMazeRoom(new RoomKey(9, 1180)));  // escape target stays outside
+        Assert.False(index.IsMazeRoom(new RoomKey(9, 1)));     // mouth source is outside
     }
 }

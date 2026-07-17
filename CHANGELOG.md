@@ -7,7 +7,9 @@ Notable changes per merged PR, **newest first**. The top of the [README](README.
 - Navigation can now reach a destination inside a random-teleport maze (e.g. the Warped Asylum), where every room shares a name so normal tracking gives up
 - The maze is detected structurally — a one-way cast mouth whose interior random-teleports on every step — with no hardcoded room numbers
 - After each teleport the walker relocalizes by peeking neighbours with `look <dir>` and matching a unique exit signature, then routes to the goal, re-teleporting ("reshuffling") when the goal is only reachable through another teleport
-- Stock realms only (Paradigm already has authoritative `rm` positioning)
+- Runs on every realm — `rm` locates a room by number but can't relocalize inside a same-named random-teleport maze, so the look-sweep drives the asylum on Paradigm too
+- Paradigm's asylum pull-lever escape is treated as a one-way pocket dimension so the maze detects and routes there the same as on stock
+- bug reports addressed: paradigm-20260717-094620, paradigm-20260717-094702, paradigm-20260717-100919, paradigm-20260717-100956
 
 ## 1.71.5
 

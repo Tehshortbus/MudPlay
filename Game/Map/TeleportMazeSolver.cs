@@ -65,7 +65,6 @@ public sealed class TeleportMazeSolver : IMazeSolver, IDisposable
     private readonly RoomTracker _tracker;
     private readonly BfsMapper _bfs;
     private readonly AutoWalkManager _walker;
-    private readonly GameDataCache _gameData;
     private readonly LogService? _log;
 
     // Defers the initial Start() (and the walker delegation) off the current
@@ -102,25 +101,28 @@ public sealed class TeleportMazeSolver : IMazeSolver, IDisposable
     public int Attempts => _attempts;
     public string PhaseName => _phase.ToString();
 
-    // Stock-only: Paradigm has `rm` (ParadigmPositionResolver hard-locates from
-    // the game's own answer), so it never needs the look-sweep relocalization.
-    public bool Enabled => _gameData.ActiveRealm != RealmType.ParaMud;
+    // Runs on every realm. Paradigm has `rm`, but `rm` locates a room by number —
+    // it does NOT relocalize inside a random-teleport maze where every room shares
+    // one name/number band and each step reshuffles you (the tracker sits at
+    // Suspect, not Confirmed). The look-sweep relocalization is realm-agnostic and
+    // is the only thing that can drive the asylum, so the solver is not gated by
+    // realm. (The Paradigm asylum's pull-lever escape is neutralised at graph-build
+    // in RoomGraphManager so the pocket detects there the same as on stock.)
+    public bool Enabled => true;
 
     public TeleportMazeSolver(
         TeleportMazeIndex index,
         RoomTracker tracker,
         BfsMapper bfs,
         AutoWalkManager walker,
-        GameDataCache gameData,
         LogService? log = null)
-        : this(index, tracker, bfs, walker, gameData, log, useTimer: true, post: null) { }
+        : this(index, tracker, bfs, walker, log, useTimer: true, post: null) { }
 
     internal TeleportMazeSolver(
         TeleportMazeIndex index,
         RoomTracker tracker,
         BfsMapper bfs,
         AutoWalkManager walker,
-        GameDataCache gameData,
         LogService? log,
         bool useTimer,
         Action<Action>? post)
@@ -129,13 +131,11 @@ public sealed class TeleportMazeSolver : IMazeSolver, IDisposable
         ArgumentNullException.ThrowIfNull(tracker);
         ArgumentNullException.ThrowIfNull(bfs);
         ArgumentNullException.ThrowIfNull(walker);
-        ArgumentNullException.ThrowIfNull(gameData);
 
         _index = index;
         _tracker = tracker;
         _bfs = bfs;
         _walker = walker;
-        _gameData = gameData;
         _log = log;
         _post = post ?? (a => Dispatcher.UIThread.Post(a));
 

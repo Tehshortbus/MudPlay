@@ -453,9 +453,9 @@ public static class BugReportBuilder
         // Random-teleport maze solver — a "walker never reaches the asylum room /
         // spins forever teleporting" report needs whether the solver engaged, its
         // goal, which phase it's stuck in, and how many reshuffles it's burned.
-        sb.Append("\n**Teleport-maze solver (stock-only)**\n\n");
+        sb.Append("\n**Teleport-maze solver**\n\n");
         Game.Map.TeleportMazeSolver maze = svc.MazeSolver;
-        Kv(sb, "Enabled (non-Paradigm)", maze.Enabled.ToString());
+        Kv(sb, "Enabled", maze.Enabled.ToString());
         Kv(sb, "Pockets indexed", svc.MazeIndex.HasMazes.ToString());
         Kv(sb, "Active", maze.Active.ToString());
         Kv(sb, "Phase", maze.PhaseName);

@@ -995,9 +995,19 @@ comes from the stat screen / who line (`AlignmentTracker` / `PlayerStats`).
     non-unique signatures and are deliberately omitted from the lookup rather than risk a mis-ID.
   - **Solving:** relocalize from the signature → if a plain BFS route to the goal now exists, hand the
     final walk back to the walker; if the goal sits in a plain-disconnected component (reachable only by
-    re-teleporting), **reshuffle** — walk a `CastTeleportRandom` exit to re-teleport and retry. Stock-only
-    (Paradigm has `rm` for authoritative position, so it never needs this); implemented in
-    `TeleportMazeIndex` (detection + signatures) and `TeleportMazeSolver` (the state machine).
+    re-teleporting), **reshuffle** — walk a `CastTeleportRandom` exit to re-teleport and retry. Runs on
+    **every realm**: `rm` locates a room by number but does not relocalize inside a same-named
+    random-teleport maze (the tracker sits at Suspect, not Confirmed), so the look-sweep is the only thing
+    that can drive the asylum — Paradigm included. Implemented in `TeleportMazeIndex` (detection +
+    signatures) and `TeleportMazeSolver` (the state machine).
+  - **[CONFIRMED, user design 2026-07-17] Paradigm asylum pull-lever = pocket dimension.** Only the
+    Paradigm 1.9.1 data (not stock v1.11p) gives room `9/1259` a `pull lever` CMD teleport back to the
+    entry area `9/1180`. That one escape edge would otherwise defeat the one-way pocket test (reachability
+    walks the lever back out; the pocket-collection BFS balloons through it into the overworld), so the
+    asylum would never be flagged/indexed as a maze on Paradigm. The lever's routable edge is therefore
+    **not synthesised** (`RoomGraphManager.ParadigmAsylumLeverRoom`), making the asylum act as the same
+    one-way pocket it already is on stock. The lever is still a real in-game exit the player can pull
+    manually — the client just doesn't route through it.
 
 ## Attack spells: why one fails to damage a monster
 
