@@ -11,6 +11,7 @@
 > - `rm` is suppressed while the maze solver is active, so the asylum is driven entirely by the look-sweep on Paradigm exactly as it would be on stock
 > - The solver now drives the final plain route to the goal itself (ungated, like a reshuffle step) instead of handing off to the walker, so it no longer stalls on a stuck combat gate mid-maze
 > - Arrival at a dead-end goal room (e.g. the old man's padded cell, whose signature can't be uniquely matched) is recognized by room name so the solver stops there instead of blind-reshuffling back out
+> - When a landing has several reshuffle exits, the solver picks the one whose teleport spell is likeliest to land somewhere useful — favouring the pool with the most rooms it can both relocalize in and route to the goal from, instead of spiralling into a dead-end pool
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

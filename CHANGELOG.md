@@ -13,7 +13,8 @@ Notable changes per merged PR, **newest first**. The top of the [README](README.
 - `rm` is now suppressed while the maze solver is active, so the asylum is driven entirely by the look-sweep on Paradigm exactly as it would be on stock
 - The solver now drives the final plain route to the goal itself (ungated, like a reshuffle step) instead of handing off to the walker, so it no longer stalls on a stuck combat gate mid-maze
 - Arrival at a dead-end goal room (e.g. the old man's padded cell, whose signature can't be uniquely matched) is recognized by room name so the solver stops there instead of blind-reshuffling back out
-- bug reports addressed: paradigm-20260717-094620, paradigm-20260717-094702, paradigm-20260717-100919, paradigm-20260717-100956, paradigm-20260717-102748, paradigm-20260717-103010, paradigm-20260717-111518, paradigm-20260717-111721
+- When a landing has several reshuffle exits, the solver now picks the one whose teleport spell is likeliest to land somewhere useful — each cast exit fires a different spell with a different landing pool, so it favours the pool with the most rooms it can both relocalize in and route to the goal from, instead of walking the first exit into a dead-end pool and spiralling
+- bug reports addressed: paradigm-20260717-094620, paradigm-20260717-094702, paradigm-20260717-100919, paradigm-20260717-100956, paradigm-20260717-102748, paradigm-20260717-103010, paradigm-20260717-111518, paradigm-20260717-111721, paradigm-20260717-115451
 
 ## 1.71.5
 

@@ -48,6 +48,22 @@ public sealed class TeleportMazeSolverTests : IDisposable
         ]
         """;
 
+    // Two random teleports with DIFFERENT landing pools, mirroring the asylum's
+    // "asylum" (596) vs "cell" (597) split: 596 lands in the relocatable corridor
+    // 1/20..1/21 (both reach the goal); 597 lands in 1/40..1/41 (rooms that don't
+    // exist in the pocket, so they're never relocatable — the reshuffle chooser
+    // must reject it).
+    private const string ChoiceSpells = """
+        [
+          { "Number": 596, "Name": "asylum", "Short": "asy",
+            "MinBase": 20, "MaxBase": 21,
+            "Abil-0": 140, "AbilVal-0": 0, "Abil-1": 141, "AbilVal-1": 1 },
+          { "Number": 597, "Name": "cell", "Short": "cel",
+            "MinBase": 40, "MaxBase": 41,
+            "Abil-0": 140, "AbilVal-0": 0, "Abil-1": 141, "AbilVal-1": 1 }
+        ]
+        """;
+
     // 1/1 Courtyard ──N── 1/2 Gate  (overworld)
     //   │ S (cast 596, one-way pocket mouth)
     //   ▼
@@ -138,6 +154,57 @@ public sealed class TeleportMazeSolverTests : IDisposable
         ]
         """;
 
+    // A pocket whose decision room 1/10 offers TWO reshuffle exits firing
+    // DIFFERENT spells: D fires 596 (pool 1/20..1/21, relocatable corridor that
+    // reaches the goal 1/30) and U fires 597 (pool 1/40..1/41, rooms absent from
+    // the pocket → never relocatable). 1/10 has no plain route to the goal, so it
+    // must reshuffle — and the chooser must walk D (the useful pool), not U.
+    //
+    //   1/1 Courtyard ─N─ 1/2 Gate                 (overworld)
+    //     │ S (cast 596, one-way mouth)
+    //     ▼
+    //   1/10 WA ─E─ 1/11 WA
+    //     │ D(cast 596 → 1/20..1/21)   │ U(cast 597 → 1/40..1/41, dead pool)
+    //     ▼                            ▼
+    //   1/20 WA ─E─ 1/21 WA ─S─ 1/30 WA(goal)     1/12 Padded Cell (U nominal target)
+    private const string ChoiceMaze = """
+        [
+          { "Map Number": 1, "Room Number": 1, "Name": "Courtyard",
+            "Light": 0, "Shop": 0, "Spell": 0, "CMD": 0, "Lair": "", "Delay": 0,
+            "N": "1/2", "S": "1/10 (Cast: pre-0, post-596)", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 2, "Name": "Gate",
+            "Light": 0, "Shop": 0, "Spell": 0, "CMD": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "1/1", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 10, "Name": "Warped Asylum",
+            "Light": 0, "Shop": 0, "Spell": 0, "CMD": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "0", "E": "1/11", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0",
+            "U": "1/12 (Cast: pre-0, post-597)", "D": "1/20 (Cast: pre-0, post-596)" },
+          { "Map Number": 1, "Room Number": 11, "Name": "Warped Asylum",
+            "Light": 0, "Shop": 0, "Spell": 0, "CMD": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "0", "E": "0", "W": "1/10",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 12, "Name": "Padded Cell",
+            "Light": 0, "Shop": 0, "Spell": 0, "CMD": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 20, "Name": "Warped Asylum",
+            "Light": 0, "Shop": 0, "Spell": 0, "CMD": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "0", "E": "1/21", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 21, "Name": "Warped Asylum",
+            "Light": 0, "Shop": 0, "Spell": 0, "CMD": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "1/30", "E": "0", "W": "1/20",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 30, "Name": "Warped Asylum",
+            "Light": 0, "Shop": 0, "Spell": 0, "CMD": 0, "Lair": "", "Delay": 0,
+            "N": "1/21", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+        ]
+        """;
+
     private sealed class Harness : IDisposable
     {
         public required RoomGraphManager Graph { get; init; }
@@ -152,20 +219,20 @@ public sealed class TeleportMazeSolverTests : IDisposable
         public void Dispose() => Solver.Dispose();
     }
 
-    private Harness NewHarness(string rooms = SplitMaze, bool bindWire = true)
+    private Harness NewHarness(string rooms = SplitMaze, bool bindWire = true, string spells = Spells)
     {
         string dir = Path.Combine(_root, "alpha");
         Directory.CreateDirectory(dir);
         File.WriteAllText(Path.Combine(dir, "Rooms.json"), rooms);
-        File.WriteAllText(Path.Combine(dir, "Spells.json"), Spells);
+        File.WriteAllText(Path.Combine(dir, "Spells.json"), spells);
         File.WriteAllText(Path.Combine(dir, "TBInfo.json"), "[]");
 
         GameDataCache cache = new(_root);
         cache.SwitchSet("alpha");
         TBInfoStore tbinfo = new(cache);
         tbinfo.OnActiveSetChanged("alpha");
-        KnownSpellCatalog spells = new(cache);
-        RoomGraphManager graph = new(cache, log: null, tbinfo, spells);
+        KnownSpellCatalog catalog = new(cache);
+        RoomGraphManager graph = new(cache, log: null, tbinfo, catalog);
         graph.OnActiveSetChanged("alpha");
 
         BfsMapper bfs = new(graph);
@@ -306,6 +373,38 @@ public sealed class TeleportMazeSolverTests : IDisposable
         Assert.False(h.Solver.Active);
         Assert.Equal(new RoomKey(1, 30), h.Tracker.State.CurrentRoom!.Key);
         Assert.Contains(h.Events, e => e.Kind == WalkEventKind.Finished);
+    }
+
+    [Fact]
+    public void Reshuffle_PrefersSpellWhosePoolCanReachTheGoal()
+    {
+        // 1/10 has two reshuffle exits firing different spells: D → 596 (pool
+        // 1/20..1/21, both relocatable and plain-connected to the goal) and U →
+        // 597 (pool 1/40..1/41, rooms absent from the pocket → never relocatable).
+        // The chooser must walk D. Picking U (the old dirs[0] behaviour, if U sorts
+        // first) dumps into a dead pool and the solve spirals — the 80-try failure.
+        Harness h = NewHarness(ChoiceMaze, spells: ChoiceSpells);
+        // A teleport dropped us in 1/10 (Lost); the goal 1/30 is only reachable
+        // through a 596 landing, so 1/10 must reshuffle.
+
+        Assert.True(h.Walker.WalkTo(new RoomKey(1, 30)));
+        Assert.True(h.Solver.Active);
+
+        // Self-look renders 1/10 (own exits E, U, D); settle.
+        h.Solver.OnRoomObserved(Asylum(Direction.E, Direction.U, Direction.D));
+        h.Solver.FireSettleForTests();
+
+        // Look sweep of 1/10 (enum order E, U, D): peek each neighbour.
+        h.Solver.OnRoomObserved(Asylum(Direction.W));      // look E → 1/11
+        h.Solver.OnRoomObserved(PaddedCell());             // look U → 1/12 (dead-end cell, no exits)
+        h.Solver.OnRoomObserved(Asylum(Direction.E));      // look D → 1/20
+
+        // Relocalized to 1/10, no plain route to 1/30 → reshuffle. The chooser
+        // walks D (596, whose pool reaches the goal), never U (597, a dead pool).
+        Assert.Equal(new RoomKey(1, 10), h.Tracker.State.CurrentRoom!.Key);
+        Assert.Equal(1, h.Solver.Attempts);
+        Assert.Contains("d\r", h.SentText);
+        Assert.DoesNotContain("u\r", h.SentText);
     }
 
     [Fact]

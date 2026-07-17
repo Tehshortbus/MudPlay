@@ -627,9 +627,12 @@ public sealed class RoomGraphManager
                 if (_spellCatalog.GetFormulaByNumber(exit.PostCastSpell) is not { } spell) continue;
                 if (!TBInfoCastTeleportResolver.IsRandomTeleport(spell)) continue;
 
-                (rebuilt ??= new(room.Exits))[dir] = exit with { CastTeleportRandom = true };
+                IReadOnlyList<RoomKey>? pool = TBInfoCastTeleportResolver.RandomTeleportTargets(spell, key.Map);
+                (rebuilt ??= new(room.Exits))[dir] =
+                    exit with { CastTeleportRandom = true, CastTeleportTargets = pool };
                 _log?.Log(LogSeverity.Debug, "RoomGraph",
-                    $"Room {key} {dir} → {exit.Target}: cast-on-walk spell {exit.PostCastSpell} is a random teleport — marked non-routable.");
+                    $"Room {key} {dir} → {exit.Target}: cast-on-walk spell {exit.PostCastSpell} is a random teleport "
+                    + $"(pool of {pool?.Count ?? 0}) — marked non-routable.");
             }
             if (rebuilt is not null) _rooms[key] = room with { Exits = rebuilt };
         }

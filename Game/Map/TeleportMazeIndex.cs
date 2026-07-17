@@ -37,6 +37,7 @@ public sealed class TeleportMazeIndex
 
     private readonly HashSet<RoomKey> _mazeRooms = new();
     private readonly Dictionary<string, RoomKey> _bySignature = new();
+    private readonly HashSet<RoomKey> _relocatable = new();
     private readonly Dictionary<RoomKey, IReadOnlyList<Direction>> _reshuffleDirs = new();
 
     // Every pocket member → the one-way cast mouth that enters its pocket (the
@@ -68,6 +69,13 @@ public sealed class TeleportMazeIndex
         => _reshuffleDirs.TryGetValue(key, out IReadOnlyList<Direction>? dirs)
             ? dirs
             : Array.Empty<Direction>();
+
+    // True when key has a 1x2 signature unique within its pocket, so a live look
+    // sweep can relocalize onto it after a teleport. False for the dead-end cells
+    // whose signature collides with a sibling (the index omits them). The
+    // reshuffle-spell chooser uses this to value a teleport pool by how many of
+    // its landings the solver could actually identify and route from.
+    public bool IsUniquelyRelocatable(RoomKey key) => _relocatable.Contains(key);
 
     // The one-way cast mouth that leads into the pocket containing mazeRoom — the
     // room a walker must stand in (source) and the direction it walks (direction)
@@ -107,6 +115,7 @@ public sealed class TeleportMazeIndex
     {
         _mazeRooms.Clear();
         _bySignature.Clear();
+        _relocatable.Clear();
         _reshuffleDirs.Clear();
         _entranceByRoom.Clear();
 
@@ -136,7 +145,10 @@ public sealed class TeleportMazeIndex
         // wrong.
         foreach ((string sig, List<RoomKey> keys) in sigBuckets)
             if (keys.Count == 1)
+            {
                 _bySignature[sig] = keys[0];
+                _relocatable.Add(keys[0]);
+            }
 
         if (_mazeRooms.Count > 0)
             _log?.Log(LogSeverity.Info, "TeleportMaze",

@@ -60,6 +60,35 @@ public static class TBInfoCastTeleportResolver
         return hi > lo; // more than one possible destination
     }
 
+    // The pool of rooms a random-teleport spell can drop the caster in — every
+    // room in the spell's MinBase..MaxBase range on the teleport map (Abil 141, or
+    // sourceMap when the spell sets no explicit map). Null when the spell isn't a
+    // bounded random teleport (same guards as IsRandomTeleport). Lets a caller that
+    // already resolved the spell reify the landing pool without re-deriving the
+    // range — the maze solver scores each reshuffle exit's pool to pick the spell
+    // most likely to land somewhere it can act on.
+    public static IReadOnlyList<RoomKey>? RandomTeleportTargets(SpellFormulaInput spell, int sourceMap)
+    {
+        int? teleRoom = null;
+        int? teleMap = null;
+        foreach (SpellAbility ab in spell.Abilities)
+        {
+            if (ab.Code == TeleportRoomCode) teleRoom = ab.Value;
+            else if (ab.Code == TeleportMapCode) teleMap = ab.Value;
+        }
+        if (teleRoom is not { } tr || tr > 0) return null;   // not a room teleport, or a fixed destination
+
+        int lo = spell.MinBase;
+        int hi = spell.MaxBase;
+        if (hi < lo) (lo, hi) = (hi, lo);
+        if (lo <= 0 || hi <= lo || hi - lo + 1 > MaxRandomRange) return null;
+
+        int map = teleMap is { } tm && tm > 0 ? tm : sourceMap;
+        var pool = new List<RoomKey>(hi - lo + 1);
+        for (int r = lo; r <= hi; r++) pool.Add(new RoomKey(map, r));
+        return pool;
+    }
+
     // Walk every cast <spell> directive in the CMD's Action chain whose spell
     // teleports, and yield (keyword, destinations, random, minLevel). sourceMap
     // is the map of the room the command is typed in — used as the destination

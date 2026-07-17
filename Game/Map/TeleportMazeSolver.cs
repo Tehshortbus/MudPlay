@@ -105,6 +105,12 @@ public sealed class TeleportMazeSolver : IMazeSolver, IDisposable
     private readonly Queue<(Direction Dir, RoomKey Expected)> _finalRoute = new();
     private RoomKey _stepExpected;
 
+    // Memoized "can a plain route reach the goal from here?" — a spell's landing
+    // pool (up to ~24 rooms) is re-scored on every reshuffle, and the goal is
+    // fixed for the whole solve, so cache the BFS verdict per room. Cleared at
+    // TryBegin.
+    private readonly Dictionary<RoomKey, bool> _reachGoalCache = new();
+
     // ----- bug-report surface ----------------------------------------
     public bool Active { get; private set; }
     public RoomKey? Goal => Active ? _goal : (RoomKey?)null;
@@ -186,6 +192,7 @@ public sealed class TeleportMazeSolver : IMazeSolver, IDisposable
         _neighbourMasks.Clear();
         _lookQueue.Clear();
         _finalRoute.Clear();
+        _reachGoalCache.Clear();
         Active = true;
         _log?.Log(LogSeverity.Info, LogSource, $"engaging maze solver for {destination}");
         // Defer off the walker's call stack — TryBegin runs inside WalkToImmediate.
@@ -389,11 +396,75 @@ public sealed class TeleportMazeSolver : IMazeSolver, IDisposable
             return;
         }
 
-        Direction d = dirs[0];
+        Direction d = ChooseReshuffleDirection(here, dirs);
         _log?.Log(LogSeverity.Info, LogSource,
             $"reshuffle #{_attempts}: walking {d.ToLongName()} from {here} to re-teleport");
         SendMove(d);
         ObserveLandingAndRelocalize();
+    }
+
+    // Pick the reshuffle exit whose random-teleport spell is most likely to drop
+    // us somewhere we can act on. Each cast exit fires a DIFFERENT teleport spell
+    // with a different landing pool, and the pools differ wildly: the Warped
+    // Asylum's "asylum" spell lands in a relocatable corridor that carries a shot
+    // at the goal's plain component, while its "cell" spells dump you into
+    // dead-end Padded Cells you can't even relocalize in (so you blind-reshuffle
+    // and the odds spiral). We score each exit's pool by the fraction of its rooms
+    // that are BOTH uniquely relocatable AND plain-connected to the goal — a
+    // direct win — tie-broken by the fraction merely relocatable, so a failed roll
+    // still lands somewhere we can make the next choice from rather than a blind
+    // dead-end. Falls back to the first exit when no pool data is available (a
+    // single exit, or a build with no spell catalog).
+    private Direction ChooseReshuffleDirection(RoomKey here, IReadOnlyList<Direction> dirs)
+    {
+        if (dirs.Count == 1 || _graph.GetRoom(here) is not { } room) return dirs[0];
+
+        Direction best = dirs[0];
+        double bestUseful = -1.0, bestReloc = -1.0;
+        bool scored = false;
+        foreach (Direction d in dirs)
+        {
+            if (!room.Exits.TryGetValue(d, out RoomExit exit)) continue;
+            IReadOnlyList<RoomKey>? pool = exit.CastTeleportTargets;
+            if (pool is null || pool.Count == 0) continue;
+
+            int useful = 0, reloc = 0;
+            foreach (RoomKey t in pool)
+            {
+                if (!_index.IsUniquelyRelocatable(t)) continue;
+                reloc++;
+                if (CanPlainReachGoal(t)) useful++;
+            }
+            double usefulFrac = (double)useful / pool.Count;
+            double relocFrac = (double)reloc / pool.Count;
+            scored = true;
+            if (usefulFrac > bestUseful || (usefulFrac == bestUseful && relocFrac > bestReloc))
+            {
+                bestUseful = usefulFrac;
+                bestReloc = relocFrac;
+                best = d;
+            }
+        }
+
+        if (scored)
+            _log?.Debug(LogSource,
+                $"reshuffle chooser at {here}: {best.ToLongName()} best "
+                + $"(useful {bestUseful:P0}, relocatable {bestReloc:P0} of pool)");
+        return scored ? best : dirs[0];
+    }
+
+    // A room from which a plain (teleport-free) route to the goal exists — the
+    // "useful landing" test for the reshuffle chooser. Cached per solve because a
+    // spell's pool is re-scored on every reshuffle. FindPath already refuses to
+    // route through cast-teleport exits, so a non-empty path is a genuine walkable
+    // route.
+    private bool CanPlainReachGoal(RoomKey from)
+    {
+        if (from.Equals(_goal)) return true;
+        if (_reachGoalCache.TryGetValue(from, out bool cached)) return cached;
+        bool ok = _bfs.FindPath(from, _goal) is { Count: > 0 };
+        _reachGoalCache[from] = ok;
+        return ok;
     }
 
     // Force a fresh render of the room we're standing in, then settle and
