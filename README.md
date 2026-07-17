@@ -9,6 +9,8 @@
 > - Paradigm's asylum pull-lever escape is treated as a one-way pocket dimension so the maze detects and routes there the same as on stock
 > - After each teleport the solver forces a `look` to read the landing's exits — in brief mode (the default) a room shows only its name on entry, so relocalization was keying off the room just left and desyncing at the entrance
 > - `rm` is suppressed while the maze solver is active, so the asylum is driven entirely by the look-sweep on Paradigm exactly as it would be on stock
+> - The solver now drives the final plain route to the goal itself (ungated, like a reshuffle step) instead of handing off to the walker, so it no longer stalls on a stuck combat gate mid-maze
+> - Arrival at a dead-end goal room (e.g. the old man's padded cell, whose signature can't be uniquely matched) is recognized by room name so the solver stops there instead of blind-reshuffling back out
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

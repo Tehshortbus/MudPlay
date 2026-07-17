@@ -87,6 +87,57 @@ public sealed class TeleportMazeSolverTests : IDisposable
         ]
         """;
 
+    // A pocket whose goal is a dead-end "Padded Cell" cell, mirroring the asylum's
+    // old-man room. Two sibling cells (1/12, 1/22) share an identical 1x2
+    // signature ({N} exit, parent mask {N,S}) so the index omits BOTH as
+    // non-relocatable — the solver can only arrive by driving the plain step and
+    // matching the cell's name, never by relocalizing onto it.
+    //
+    //            1/1 Courtyard ─N─ 1/2 Gate         (overworld)
+    //              │ S (cast 596, one-way mouth)
+    //              ▼
+    //   1/10 WA ─S─ 1/11 WA ─S─ 1/12 Padded Cell   (goal, dead-end)
+    //    │ E(cast)   (landing)
+    //    ▼
+    //   1/13 WA ─S─ 1/20 WA ─S─ 1/22 Padded Cell   (sibling cell → signature clash)
+    //    │ W(cast)
+    private const string DeadEndMaze = """
+        [
+          { "Map Number": 1, "Room Number": 1, "Name": "Courtyard",
+            "Light": 0, "Shop": 0, "Spell": 0, "CMD": 0, "Lair": "", "Delay": 0,
+            "N": "1/2", "S": "1/10 (Cast: pre-0, post-596)", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 2, "Name": "Gate",
+            "Light": 0, "Shop": 0, "Spell": 0, "CMD": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "1/1", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 10, "Name": "Warped Asylum",
+            "Light": 0, "Shop": 0, "Spell": 0, "CMD": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "1/11", "E": "1/13 (Cast: pre-0, post-596)", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 11, "Name": "Warped Asylum",
+            "Light": 0, "Shop": 0, "Spell": 0, "CMD": 0, "Lair": "", "Delay": 0,
+            "N": "1/10", "S": "1/12", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 12, "Name": "Padded Cell",
+            "Light": 0, "Shop": 0, "Spell": 0, "CMD": 0, "Lair": "", "Delay": 0,
+            "N": "1/11", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 13, "Name": "Warped Asylum",
+            "Light": 0, "Shop": 0, "Spell": 0, "CMD": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "1/20", "E": "0", "W": "1/10 (Cast: pre-0, post-596)",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 20, "Name": "Warped Asylum",
+            "Light": 0, "Shop": 0, "Spell": 0, "CMD": 0, "Lair": "", "Delay": 0,
+            "N": "1/13", "S": "1/22", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 22, "Name": "Padded Cell",
+            "Light": 0, "Shop": 0, "Spell": 0, "CMD": 0, "Lair": "", "Delay": 0,
+            "N": "1/20", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+        ]
+        """;
+
     private sealed class Harness : IDisposable
     {
         public required RoomGraphManager Graph { get; init; }
@@ -124,7 +175,7 @@ public sealed class TeleportMazeSolverTests : IDisposable
         TeleportMazeIndex index = new(graph);
         // Synchronous post + no dispatcher timers: Start() runs inline in TryBegin
         // and the settle / look timers are driven manually via test seams.
-        TeleportMazeSolver solver = new(index, tracker, bfs, walker,
+        TeleportMazeSolver solver = new(index, graph, tracker, bfs, walker,
             log: null, useTimer: false, post: a => a());
 
         Harness h = new()
@@ -142,8 +193,11 @@ public sealed class TeleportMazeSolverTests : IDisposable
     private static RoomObservation Asylum(params Direction[] exits)
         => new("Warped Asylum", new HashSet<Direction>(exits));
 
+    private static RoomObservation PaddedCell(params Direction[] exits)
+        => new("Padded Cell", new HashSet<Direction>(exits));
+
     [Fact]
-    public void RelocalizesAndDelegates_WhenPlainRouteExists()
+    public void RelocalizesAndDrivesFinalWalk_WhenPlainRouteExists()
     {
         Harness h = NewHarness();
         // A teleport dropped us in 1/31 (tracker Lost). Goal is plain-adjacent 1/30.
@@ -160,15 +214,61 @@ public sealed class TeleportMazeSolverTests : IDisposable
         h.Solver.OnRoomObserved(Asylum(Direction.W, Direction.D));  // look E → 1/30
         h.Solver.OnRoomObserved(Asylum(Direction.E, Direction.D));  // look D → 1/10
 
-        // Relocalized to 1/31 → plain route E to 1/30 → walker steps once.
+        // Relocalized to 1/31 → plain route E to 1/30 → the solver drives the step
+        // itself: the cardinal move, then a self-look to render the landing.
         Assert.Equal(new RoomKey(1, 31), h.Tracker.State.CurrentRoom!.Key);
         Assert.Contains("e\r", h.SentText);
+        Assert.Equal("look\r", h.SentText[^1]);
 
-        // Confirm the walker's step landing at 1/30.
-        h.Tracker.NoteRoomObserved(Asylum(Direction.W, Direction.D));
+        // Feed 1/30's self-look landing render, then settle → the step verifies by
+        // name + exit-mask and finishes on the goal.
+        h.Solver.OnRoomObserved(Asylum(Direction.W, Direction.D));  // 1/30's display
+        h.Solver.FireSettleForTests();
 
         Assert.False(h.Solver.Active);
         Assert.Equal(0, h.Solver.Attempts);
+        Assert.Equal(new RoomKey(1, 30), h.Tracker.State.CurrentRoom!.Key);
+        Assert.Contains(h.Events, e => e.Kind == WalkEventKind.Finished);
+        Assert.DoesNotContain(h.Events, e => e.Kind == WalkEventKind.Failed);
+    }
+
+    [Fact]
+    public void DrivesIntoDeadEndGoal_RecognizesArrivalByName()
+    {
+        // The goal cell is a dead-end Padded Cell whose 1x2 signature collides
+        // with a sibling cell, so the index omits it (non-relocatable). Reaching
+        // it must work off the driven step's name + mask check — NOT a look-sweep
+        // relocalize, which would fail to identify the cell and walk back out (the
+        // "made it to the old man then walked out" report).
+        Harness h = NewHarness(DeadEndMaze);
+        // A teleport dropped us in 1/11 (Lost); the goal 1/12 hangs plain-south.
+
+        Assert.True(h.Walker.WalkTo(new RoomKey(1, 12)));
+        Assert.True(h.Solver.Active);
+
+        // Self-look renders 1/11 (own exits N, S); settle.
+        h.Solver.OnRoomObserved(Asylum(Direction.N, Direction.S));
+        h.Solver.FireSettleForTests();
+
+        // Look sweep of 1/11 (enum order N, S).
+        h.Solver.OnRoomObserved(Asylum(Direction.S, Direction.E));  // look N → 1/10
+        h.Solver.OnRoomObserved(PaddedCell(Direction.N));           // look S → 1/12
+
+        // Relocalized to 1/11 → plain route S to the cell → solver drives the step.
+        Assert.Equal(new RoomKey(1, 11), h.Tracker.State.CurrentRoom!.Key);
+        Assert.Equal("s\r", h.SentText[^2]);
+        Assert.Equal("look\r", h.SentText[^1]);
+        int sentBeforeArrival = h.Sent.Count;
+
+        // The step lands in the Padded Cell. Its name matches the goal, so the
+        // solver finishes — without emitting any further look-sweep or reshuffle.
+        h.Solver.OnRoomObserved(PaddedCell(Direction.N));
+        h.Solver.FireSettleForTests();
+
+        Assert.False(h.Solver.Active);
+        Assert.Equal(0, h.Solver.Attempts);
+        Assert.Equal(new RoomKey(1, 12), h.Tracker.State.CurrentRoom!.Key);
+        Assert.Equal(sentBeforeArrival, h.Sent.Count);   // no walk-back-out
         Assert.Contains(h.Events, e => e.Kind == WalkEventKind.Finished);
         Assert.DoesNotContain(h.Events, e => e.Kind == WalkEventKind.Failed);
     }

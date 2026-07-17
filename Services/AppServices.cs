@@ -3477,7 +3477,7 @@ public sealed class AppServices
         // and the RoomDisplayParser.RoomParsed feed are bound per-session by
         // MainWindowViewModel after connect.
         MazeSolver = new Game.Map.TeleportMazeSolver(
-            MazeIndex, RoomTracker, Bfs, Walker, Log);
+            MazeIndex, RoomGraph, RoomTracker, Bfs, Walker, Log);
         Walker.SetMazeSolver(MazeSolver);
         // While a maze solve is Active the tracker legitimately sits Suspect
         // between same-named landings — resolving that is the solver's job (it

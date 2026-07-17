@@ -59,9 +59,10 @@ public sealed class TeleportMazeSolver : IMazeSolver, IDisposable
     // the goal's component is never randomly hit (mis-flagged topology).
     private const int MaxReshuffleAttempts = 80;
 
-    private enum Phase { Idle, RoutingToEntrance, Settling, Looking, Delegated }
+    private enum Phase { Idle, RoutingToEntrance, Settling, Looking, Walking }
 
     private readonly TeleportMazeIndex _index;
+    private readonly RoomGraphManager _graph;
     private readonly RoomTracker _tracker;
     private readonly BfsMapper _bfs;
     private readonly AutoWalkManager _walker;
@@ -95,6 +96,15 @@ public sealed class TeleportMazeSolver : IMazeSolver, IDisposable
     private RoomKey _entranceSource;
     private Direction _entranceDir;
 
+    // Self-driven final walk — the plain (teleport-free) route to the goal, each
+    // step paired with the room the graph says it lands in. The solver drives
+    // these moves itself (ungated, like a reshuffle) and verifies each landing by
+    // name + exit-mask, instead of handing the leg to AutoWalkManager, whose
+    // heuristic tracker can't confirm same-named maze steps and whose moves stall
+    // on the combat gate.
+    private readonly Queue<(Direction Dir, RoomKey Expected)> _finalRoute = new();
+    private RoomKey _stepExpected;
+
     // ----- bug-report surface ----------------------------------------
     public bool Active { get; private set; }
     public RoomKey? Goal => Active ? _goal : (RoomKey?)null;
@@ -112,14 +122,16 @@ public sealed class TeleportMazeSolver : IMazeSolver, IDisposable
 
     public TeleportMazeSolver(
         TeleportMazeIndex index,
+        RoomGraphManager graph,
         RoomTracker tracker,
         BfsMapper bfs,
         AutoWalkManager walker,
         LogService? log = null)
-        : this(index, tracker, bfs, walker, log, useTimer: true, post: null) { }
+        : this(index, graph, tracker, bfs, walker, log, useTimer: true, post: null) { }
 
     internal TeleportMazeSolver(
         TeleportMazeIndex index,
+        RoomGraphManager graph,
         RoomTracker tracker,
         BfsMapper bfs,
         AutoWalkManager walker,
@@ -128,11 +140,13 @@ public sealed class TeleportMazeSolver : IMazeSolver, IDisposable
         Action<Action>? post)
     {
         ArgumentNullException.ThrowIfNull(index);
+        ArgumentNullException.ThrowIfNull(graph);
         ArgumentNullException.ThrowIfNull(tracker);
         ArgumentNullException.ThrowIfNull(bfs);
         ArgumentNullException.ThrowIfNull(walker);
 
         _index = index;
+        _graph = graph;
         _tracker = tracker;
         _bfs = bfs;
         _walker = walker;
@@ -171,6 +185,7 @@ public sealed class TeleportMazeSolver : IMazeSolver, IDisposable
         _phase = Phase.Idle;
         _neighbourMasks.Clear();
         _lookQueue.Clear();
+        _finalRoute.Clear();
         Active = true;
         _log?.Log(LogSeverity.Info, LogSource, $"engaging maze solver for {destination}");
         // Defer off the walker's call stack — TryBegin runs inside WalkToImmediate.
@@ -194,8 +209,10 @@ public sealed class TeleportMazeSolver : IMazeSolver, IDisposable
                 SendNextLook();
                 break;
             case Phase.Settling:
-                // A fresh display inside the settle window — a teleport can echo
-                // two, so keep the last and restart the timer.
+            case Phase.Walking:
+                // A fresh display inside the settle window — a teleport (or a
+                // driven step's self-look) can echo two, so keep the last and
+                // restart the timer.
                 RestartSettle();
                 break;
         }
@@ -258,25 +275,103 @@ public sealed class TeleportMazeSolver : IMazeSolver, IDisposable
     {
         if (here.Equals(_goal))
         {
-            DelegateFinalWalk(here);   // walker raises Finished ("already at destination")
+            Finish();   // relocalized straight onto the goal
             return;
         }
 
         IReadOnlyList<Direction>? plain = _bfs.FindPath(here, _goal);
         if (plain is { Count: > 0 })
-            DelegateFinalWalk(here);
+            DriveFinalWalk(here, plain);
         else
             Reshuffle(here);
     }
 
-    private void DelegateFinalWalk(RoomKey here)
+    // Walk the plain (teleport-free) route to the goal ourselves, one step at a
+    // time. Handing the leg to AutoWalkManager fails inside the pocket: its
+    // heuristic tracker can't confirm same-named landings without `rm` (which the
+    // solve suppresses), and its moves stall on the combat gate that the asylum's
+    // monsters keep asserting. Driving the moves directly (ungated, like a
+    // reshuffle) and verifying each landing by the graph's name + exit-mask keeps
+    // the final leg as robust as the reshuffle loop — and recognizes arrival at a
+    // dead-end goal cell (the old man's Padded Cell) by name instead of trying to
+    // signature-relocalize a room the index deliberately omits, which walked us
+    // straight back out.
+    private void DriveFinalWalk(RoomKey here, IReadOnlyList<Direction> route)
     {
-        _phase = Phase.Delegated;
+        _finalRoute.Clear();
+        RoomKey cur = here;
+        foreach (Direction d in route)
+        {
+            Room? room = _graph.GetRoom(cur);
+            if (room is null || !room.Exits.TryGetValue(d, out RoomExit exit))
+            {
+                FailSolve("plain route step missing from graph");
+                return;
+            }
+            _finalRoute.Enqueue((d, exit.Target));
+            cur = exit.Target;
+        }
+
         _log?.Log(LogSeverity.Info, LogSource,
-            $"located at {here}; delegating final walk to {_goal}");
-        // Active stays true so the walker's re-entry hook (CanSolve → !Active)
-        // won't re-trigger us if this delegated walk itself hits a no-path.
-        _walker.WalkTo(_goal);
+            $"located at {here}; driving {_finalRoute.Count}-step plain route to {_goal}");
+        StepFinalWalk();
+    }
+
+    private void StepFinalWalk()
+    {
+        if (_finalRoute.Count == 0)
+        {
+            Finish();   // defensive — nothing left to walk
+            return;
+        }
+
+        (Direction dir, RoomKey expected) = _finalRoute.Dequeue();
+        _stepExpected = expected;
+        _phase = Phase.Walking;
+        _log?.Debug(LogSource, $"final walk: step {dir.ToLongName()} → expect {expected}");
+        SendMove(dir);
+        // Brief mode renders only a NAME on entry — force a self-look so the
+        // landing's full exits render for the name + mask verification.
+        _lastObserved = null;
+        SendSelfLook();
+        RestartSettle();
+        RestartLookTimeout();
+    }
+
+    private void VerifyStep()
+    {
+        if (_lastObserved is not { } obs)
+        {
+            FailSolve("walk step did not render");
+            return;
+        }
+
+        Room? expected = _graph.GetRoom(_stepExpected);
+        bool onRoute = expected is not null
+            && string.Equals(obs.Name, expected.Name, StringComparison.OrdinalIgnoreCase)
+            && MaskOf(obs.Exits) == expected.ExitMask;
+
+        if (onRoute)
+        {
+            _tracker.SetLocated(_stepExpected);
+            if (_finalRoute.Count == 0)
+                Finish();
+            else
+                StepFinalWalk();
+            return;
+        }
+
+        // Landed off the planned plain route — a blocked move, or a surprise
+        // teleport we mis-attributed. Re-relocalize from scratch and re-plan
+        // rather than blindly firing the rest of a route from the wrong room.
+        if (++_attempts > MaxReshuffleAttempts)
+        {
+            FailSolve($"exceeded {MaxReshuffleAttempts} reshuffle attempts");
+            return;
+        }
+        _log?.Log(LogSeverity.Info, LogSource,
+            $"walk step landed off-route (saw '{obs.Name}'); re-relocalizing");
+        ObserveLandingAndRelocalize();
     }
 
     private void Reshuffle(RoomKey here)
@@ -402,38 +497,15 @@ public sealed class TeleportMazeSolver : IMazeSolver, IDisposable
     {
         if (!Active) return;
 
-        switch (_phase)
-        {
-            case Phase.RoutingToEntrance:
-                if (e.Kind == WalkEventKind.Finished) CrossEntrance();
-                else if (e.Kind == WalkEventKind.Failed) FailSolve($"could not reach maze entrance: {e.Detail}");
-                else if (e.Kind == WalkEventKind.Stopped) Abandon("route to entrance superseded");
-                break;
+        // The walker only drives the leg TO the pocket mouth (RoutingToEntrance);
+        // the final in-pocket walk is solver-driven, so no other phase reacts to
+        // a walker event. Our own Finish / FailSolve raise walker events too, but
+        // they flip Active false first, so the guard above short-circuits them.
+        if (_phase != Phase.RoutingToEntrance) return;
 
-            case Phase.Delegated:
-                if (e.Kind == WalkEventKind.Finished) Finish();
-                else if (e.Kind == WalkEventKind.Failed) OnDelegatedWalkFailed(e.Detail);
-                else if (e.Kind == WalkEventKind.Stopped) Abandon("final walk superseded");
-                break;
-        }
-    }
-
-    private void OnDelegatedWalkFailed(string detail)
-    {
-        // A delegated walk fails either because we drifted into a component with
-        // no plain route to the goal (reshuffle to jump components) or because a
-        // gate/blocker stopped an otherwise-plain route (surface, don't loop).
-        if (_tracker.State.Confidence == RoomConfidence.Confirmed
-            && _tracker.State.CurrentRoom is { } cur
-            && _index.IsMazeRoom(cur.Key)
-            && _bfs.FindPath(cur.Key, _goal) is not { Count: > 0 })
-        {
-            Reshuffle(cur.Key);
-        }
-        else
-        {
-            FailSolve($"delegated walk failed: {detail}");
-        }
+        if (e.Kind == WalkEventKind.Finished) CrossEntrance();
+        else if (e.Kind == WalkEventKind.Failed) FailSolve($"could not reach maze entrance: {e.Detail}");
+        else if (e.Kind == WalkEventKind.Stopped) Abandon("route to entrance superseded");
     }
 
     // ----- terminal transitions --------------------------------------
@@ -442,8 +514,13 @@ public sealed class TeleportMazeSolver : IMazeSolver, IDisposable
     {
         _log?.Log(LogSeverity.Info, LogSource, $"maze solve complete → {_goal}");
         StopTimers();
+        RoomKey dest = _goal;
         _phase = Phase.Idle;
-        Active = false;   // the walker already raised Finished for the UI
+        Active = false;
+        // We drove the final leg ourselves, so the walker never raised its own
+        // Finished — surface arrival through it so every WalkTo caller (and the
+        // UI) sees the maze solve complete like any other route.
+        _walker.ReportMazeSolveSucceeded(dest);
     }
 
     private void Abandon(string reason)
@@ -475,7 +552,8 @@ public sealed class TeleportMazeSolver : IMazeSolver, IDisposable
     private void OnSettleElapsed()
     {
         _settleTimer?.Stop();
-        if (!Active || _phase != Phase.Settling) return;
+        if (!Active) return;
+        if (_phase != Phase.Settling && _phase != Phase.Walking) return;
         if (_lastObserved is null)
         {
             // The self-look landing render hasn't arrived yet — keep waiting; the
@@ -484,7 +562,10 @@ public sealed class TeleportMazeSolver : IMazeSolver, IDisposable
             return;
         }
         _lookTimeout?.Stop();
-        BeginRelocalize();
+        if (_phase == Phase.Settling)
+            BeginRelocalize();       // post-teleport: full 1x2 look sweep
+        else
+            VerifyStep();            // driven step: name + mask check
     }
 
     private void RestartLookTimeout()
@@ -501,6 +582,8 @@ public sealed class TeleportMazeSolver : IMazeSolver, IDisposable
             FailSolve($"look {_currentLookDir.ToLongName()} did not render a room");
         else if (_phase == Phase.Settling)
             FailSolve("teleport landing did not render");
+        else if (_phase == Phase.Walking)
+            FailSolve("walk step landing did not render");
     }
 
     private void StopTimers()

@@ -293,6 +293,13 @@ public sealed class AutoWalkManager : IRecoverableEngine
     internal void ReportMazeSolveFailed(RoomKey destination, string reason)
         => Raise(new WalkEvent(WalkEventKind.Failed, $"maze solve: {reason}", destination));
 
+    // The maze solver's success channel — it drives the final in-pocket leg
+    // itself (self-look-verified, ungated moves), so the walker never raised its
+    // own Finished. Routed through the walker (not a solver-owned event) so every
+    // WalkTo caller sees a maze solve arrive exactly like any other route.
+    internal void ReportMazeSolveSucceeded(RoomKey destination)
+        => Raise(new WalkEvent(WalkEventKind.Finished, "maze solve: arrived", destination));
+
     // Bind the trap-disarm enqueuer. Production wires this to
     // TrapDisarmManager.Enqueue with trapKnown=true — a walker step only reaches
     // here on a RoomExitHint.Trap, so the trap is already known and disarms
