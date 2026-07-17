@@ -1,9 +1,9 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.71.0**
-> - Navigation now recognizes a "guard door" — a pick/bash-proof door opened only by asking a stationed monster the right password (e.g. the grove shadow guard's `ask guard morukai` raising the west gate to Morukai's chamber) — and routes across it via ask-then-move instead of discarding the route
-> - Guard doors are gated on an untrackable quest ability, so the walker issues the ask and reacts to whether the door actually opens; every greet topic that opens the same door is offered as an alternative command
+> **Version 1.71.5**
+> - Navigation now reaches Morukai from the overworld tree base for both invited and un-invited characters: the quest-gated `go portal` is crossed as a last-resort "gateway" and the walker re-plans from wherever the cast lands (the fixed chamber when invited, the Caves of Chaos when not)
+> - Routing inside the Morukai cluster no longer loops down through the random portal — a deterministic path is always preferred and the gateway is taken only when no cardinal route to the goal exists
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

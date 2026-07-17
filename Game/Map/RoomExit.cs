@@ -62,6 +62,17 @@ namespace FujinTerm.Game.Map;
 //     a pocket entrance is about topology (can you get back?), not predictability
 //     (where do you land?) — the asylum's INTERNAL cast exits are reciprocal, so
 //     they're not entrances and the area stays whole when viewed from within.
+//   - GatewayTeleport — set at graph-build time on a synthesised Direction.Teleport
+//     edge whose crossing keyword lands NON-deterministically (a quest-gated portal
+//     that's a fixed hop for flagged characters but a random dump for everyone
+//     else — Paradigm's `go portal`, fixed → 9/1424 or random → the Caves of Chaos).
+//     Unlike CastTeleportRandom (always non-routable), a gateway IS routable but only
+//     as a LAST RESORT: BfsMapper.FindPath runs a deterministic pass first and only
+//     crosses gateways in a fallback pass when nothing else reaches the goal. Every
+//     landing of a benign gateway converges on the goal region, so crossing it makes
+//     progress; the walker re-plans from wherever it actually lands. The nominal
+//     Target is the fixed-branch landing (a real onward-connected room) so a flagged
+//     character's route continues straight through without a re-plan.
 public readonly partial record struct RoomExit(
     RoomKey Target,
     RoomExitHint Hint,
@@ -79,7 +90,8 @@ public readonly partial record struct RoomExit(
     int PreCastSpell = 0,
     int PostCastSpell = 0,
     bool CastTeleportRandom = false,
-    bool CastPocketEntrance = false)
+    bool CastPocketEntrance = false,
+    bool GatewayTeleport = false)
 {
     // True when this exit carries a character-level window (either a floor, a
     // cap, or both).

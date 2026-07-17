@@ -948,6 +948,34 @@ comes from the stat screen / who line (`AlignmentTracker` / `PlayerStats`).
     ask-then-move path. Monster ids come from the room's `Lair` group (and its single placed `Npc`);
     only monsters carrying a `GreetTXT` are considered.
 
+- **[CONFIRMED, game data Paradigm 1.9.1 map 9]** **A quest-gated portal keyword can teleport to a
+  fixed room for flagged characters but a *random* room for everyone else — so it is routed as a
+  last-resort "gateway", never a plain shortcut.** Room `9/1291` ("Ancient Darkwood Tree, Portal") has
+  `CMD 1462`, whose TBInfo fires the same keyword three ways on ability **133 = PhoenixQuest**:
+  `go portal:checkability 133 5:cast 620` / `go portal:testability 133 4:cast 621` /
+  `go portal:failability 133:cast 621` (and identical `enter portal` lines). Spell **620** "lower portal
+  (invited)" is `TeleportRoom 1424` → a **fixed** hop to `9/1424` (the character has talked to Morukai
+  and is quest-flagged). Spell **621** "lower portal (uninvited)" has `TeleportRoom 0`,
+  `MinBase 1292 / MaxBase 1327` → a **random** dump into the Caves of Chaos (`9/1292–1327`) for anyone
+  not flagged. The only observable difference is *where you land*; the quest ability is untrackable by
+  the client. Byte-identical across the stock and Paradigm data sets, so the rule is realm-generic.
+  - **Client rule:** when a cast-teleport keyword's branches disagree — a fixed branch alongside a
+    random (or a different-room fixed) sibling — the landing is non-deterministic, so it is minted as a
+    **gateway** `Direction.Teleport` edge (flagged `GatewayTeleport`, nominal target = the fixed
+    branch's landing `9/1424`) rather than a plain shortcut
+    (`RoomGraphManager.TryFirstRoutableTeleport` classifies each keyword; a keyword with *every* branch a
+    fixed hop to the *same* room stays a plain edge). BFS routes in two passes
+    (`BfsMapper.FindPath`): a deterministic pass that ignores gateways, then — only if that finds
+    nothing — a fallback pass that may cross one. So from *inside* the cluster the gateway is never used
+    (BFS prefers the deterministic narrow-stair climb
+    `9/1413 → U … → 9/1422 → N → 9/1423 →` guard door `W → 9/1425`), which is what stops an unflagged
+    character looping down through the random portal; but from the *overworld* tree base (`7/1360`),
+    where the portal is the only way up, the fallback pass crosses it. The walker re-plans from wherever
+    the cast actually drops it (flagged → `9/1424` and continues; unflagged → a random caves room →
+    re-plan into the cardinal stair climb to Morukai). A pure `IsRandomTeleport` cast with no fixed
+    branch to anchor a nominal target stays fully non-routable (`CastTeleportRandom`, skipped in both
+    passes).
+
 ## Attack spells: why one fails to damage a monster
 
 **Three independent mechanics** decide whether an attack spell damages a monster — do not

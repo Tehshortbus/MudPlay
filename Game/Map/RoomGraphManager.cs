@@ -706,11 +706,17 @@ public sealed class RoomGraphManager
     // filed under the non-planar Direction.Teleport slot so it never perturbs the
     // map layout or the cardinal ExitMask fingerprint.
     //
-    // Only SINGLE-destination teleports are routable: a random / multi-room
-    // landing (a "bridge jump" into one of five river rooms) can't be planned
-    // through BFS, so it's left un-synthesised (the map surfaces those elsewhere).
-    // A room with several distinct single-dest teleports keeps the first — one
-    // Direction.Teleport slot per room.
+    // A DETERMINISTIC single-destination teleport becomes a plain routable edge.
+    // A purely-random / multi-room landing (a "bridge jump" into one of five
+    // river rooms, with no fixed branch to anchor a nominal target) can't be
+    // planned through BFS and is left un-synthesised. A keyword whose branches
+    // DISAGREE — a quest-gated portal that's a fixed hop for some players but a
+    // random dump for others — becomes a GATEWAY edge (flagged GatewayTeleport,
+    // nominal target = the fixed branch's landing): still routable, but BFS uses
+    // it only as a last resort when no deterministic path exists (see
+    // TryFirstRoutableTeleport / BfsMapper.FindPath). A room with several
+    // distinct single-dest teleports keeps the first — one Direction.Teleport
+    // slot per room.
     private void BuildTeleportEdges()
     {
         if (_tbinfo is null) return;
@@ -728,21 +734,23 @@ public sealed class RoomGraphManager
             foreach ((Direction _, RoomExit ex) in room.Exits) existingTargets.Add(ex.Target);
 
             if (TryFirstRoutableTeleport(room, existingTargets,
-                    out RoomKey dest, out string keyword, out int minLevel))
+                    out RoomKey dest, out string keyword, out int minLevel, out bool isGateway))
             {
                 RoomExit tele = new(
                     dest,
                     RoomExitHint.Teleport,
                     RawHint: "CMD teleport",
                     TextCommands: new[] { keyword },
-                    MinLevel: minLevel);
+                    MinLevel: minLevel,
+                    GatewayTeleport: isGateway);
                 var rebuilt = new Dictionary<Direction, RoomExit>(room.Exits)
                 {
                     [Direction.Teleport] = tele
                 };
                 _rooms[key] = room with { Exits = rebuilt };
                 _log?.Log(LogSeverity.Debug, "RoomGraph",
-                    $"Room {key}: synthesised Teleport edge '{keyword}' → {dest}"
+                    $"Room {key}: synthesised {(isGateway ? "gateway " : string.Empty)}Teleport edge "
+                    + $"'{keyword}' → {dest}"
                     + (minLevel > 0 ? $" (Level {minLevel}+)." : "."));
             }
         }
@@ -753,11 +761,12 @@ public sealed class RoomGraphManager
     // (which need the spell catalog). Returns false when the room has no routable
     // single-dest teleport to a new room.
     private bool TryFirstRoutableTeleport(Room room, HashSet<RoomKey> existingTargets,
-        out RoomKey dest, out string keyword, out int minLevel)
+        out RoomKey dest, out string keyword, out int minLevel, out bool isGateway)
     {
         dest = default;
         keyword = string.Empty;
         minLevel = 0;
+        isGateway = false;
 
         foreach ((string kw, RoomKey d, int lvl) in
                  TBInfoTeleportResolver.EnumerateTeleports(_tbinfo!, room.Cmd))
@@ -769,18 +778,70 @@ public sealed class RoomGraphManager
 
         if (_spellCatalog is not null)
         {
+            // Classify each cast keyword by the branches it fires. A keyword
+            // whose branches are ALL deterministic hops to the SAME room is a
+            // plain routable shortcut. A keyword with a fixed branch AND a random
+            // (or disagreeing) sibling is a GATEWAY — routable, but only as a
+            // last resort, with its nominal landing set to a fixed branch.
+            //
+            // MajorMUD gates some portals on an untrackable quest flag and swaps
+            // the landing on it: Paradigm map 9's `go portal` casts "lower portal
+            // (invited)" (fixed → 9/1424) for quest-flagged characters but "lower
+            // portal (uninvited)" (random → the Caves of Chaos) for everyone
+            // else, both under the one keyword. The client can't read that flag,
+            // so the fixed branch can't be minted as a plain shortcut (it would
+            // random-dump an unflagged character mid-route). As a gateway it's
+            // ignored by BFS's deterministic pass — the narrow-stair climb to
+            // Morukai wins from inside the cluster — and crossed only by the
+            // fallback pass from the overworld, where no deterministic path up
+            // exists. The walker re-plans from wherever the cast drops it.
+            Dictionary<string, CastKeywordRoutability> byKeyword =
+                new(StringComparer.OrdinalIgnoreCase);
+            List<string> keywordOrder = new();
             foreach ((string kw, IReadOnlyList<RoomKey> dests, bool random, int lvl) in
                      TBInfoCastTeleportResolver.EnumerateCastTeleports(
                          _tbinfo!, room.Cmd, room.Key.Map, _spellCatalog))
             {
-                if (random || dests.Count != 1) continue;   // can't BFS a random landing
-                if (existingTargets.Contains(dests[0])) continue;
-                dest = dests[0]; keyword = kw; minLevel = lvl;
-                return true;
+                bool branchFixed = !random && dests.Count == 1;
+                if (!byKeyword.TryGetValue(kw, out CastKeywordRoutability acc))
+                    keywordOrder.Add(kw);
+                if (branchFixed)
+                {
+                    if (acc.FixedDest is null) { acc.FixedDest = dests[0]; acc.MinLevel = lvl; }
+                    else if (acc.FixedDest != dests[0]) acc.SawDisagree = true;
+                }
+                else acc.SawNonFixed = true;
+                byKeyword[kw] = acc;
+            }
+
+            // Prefer a purely-deterministic keyword; fall back to a gateway.
+            foreach (bool wantGateway in new[] { false, true })
+            {
+                foreach (string kw in keywordOrder)
+                {
+                    CastKeywordRoutability ck = byKeyword[kw];
+                    if (ck.FixedDest is not { } d) continue;   // no fixed landing to anchor
+                    bool gateway = ck.SawNonFixed || ck.SawDisagree;
+                    if (gateway != wantGateway) continue;
+                    if (existingTargets.Contains(d)) continue;
+                    dest = d; keyword = kw; minLevel = ck.MinLevel; isGateway = gateway;
+                    return true;
+                }
             }
         }
 
         return false;
+    }
+
+    // Accumulator for TryFirstRoutableTeleport: tracks, per cast keyword, the
+    // first fixed-branch landing (the nominal target) and whether any sibling
+    // branch is random or disagrees — which turns the keyword into a gateway.
+    private struct CastKeywordRoutability
+    {
+        public RoomKey? FixedDest;
+        public int MinLevel;
+        public bool SawNonFixed;
+        public bool SawDisagree;
     }
 
     private void BuildSecondaryIndexes()
