@@ -171,6 +171,25 @@
                           IsChecked="{Binding DropSmallerForLarger, Mode=TwoWay}"
                           ToolTip.Tip="Cascade — drops just enough lower-value Collect-flagged held coin. Never sacrifices Ignore-flagged."/>
 
+                <!-- ============ Item Collection Rules ============ -->
+                <TextBlock Classes="SectionHeader" Text="Item Collection Rules"/>
+
+                <TextBlock Classes="FieldLabel"
+                           Text="Auto-get never grabs a ground item that would exceed your carrying capacity. These add tighter ceilings."
+                           TextWrapping="Wrap" Margin="0,0,0,4"/>
+
+                <CheckBox Content="Don't get item if it makes you Light"
+                          IsChecked="{Binding SkipGetItemIfMakesLight, Mode=TwoWay}"
+                          ToolTip.Tip="Skip a ground-item pickup that would push the character into the Light bracket."/>
+                <CheckBox Content="Don't get item if it makes you Medium"
+                          IsChecked="{Binding SkipGetItemIfMakesMedium, Mode=TwoWay}"
+                          IsEnabled="{Binding GetItemMediumEnabled}"
+                          ToolTip.Tip="Skip a ground-item pickup that would push past Light → Medium. Auto-checked + locked while the stricter Light gate is on."/>
+                <CheckBox Content="Don't get item if it makes you Heavy"
+                          IsChecked="{Binding SkipGetItemIfMakesHeavy, Mode=TwoWay}"
+                          IsEnabled="{Binding GetItemHeavyEnabled}"
+                          ToolTip.Tip="Skip a ground-item pickup that would push past Medium → Heavy. Auto-checked + locked while a stricter gate (Light or Medium) is on."/>
+
             </StackPanel>
         </Grid>
     </ScrollViewer>

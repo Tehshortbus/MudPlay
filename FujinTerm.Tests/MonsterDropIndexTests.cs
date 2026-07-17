@@ -132,6 +132,33 @@ public sealed class MonsterDropIndexTests : IDisposable
     }
 
     [Fact]
+    public void DropItemsOf_ReturnsMonstersDropSlots()
+    {
+        MonsterDropIndex s = NewIndex();
+        // goblin (20) drops 175 and 176 — the forward map lists both.
+        Assert.Equal(new[] { 175, 176 }, s.DropItemsOf(20).OrderBy(n => n).ToArray());
+    }
+
+    [Fact]
+    public void DropItemsOf_NonDropper_ReturnsEmpty()
+    {
+        MonsterDropIndex s = NewIndex();
+        // rat (30) drops nothing (only a 0 sentinel slot).
+        Assert.Empty(s.DropItemsOf(30));
+    }
+
+    [Fact]
+    public void DropItemsOf_ClearedOnSetChange()
+    {
+        MonsterDropIndex s = NewIndex();
+        Assert.NotEmpty(s.DropItemsOf(20));
+
+        s.OnActiveSetChanged(null);
+
+        Assert.Empty(s.DropItemsOf(20));
+    }
+
+    [Fact]
     public void ActiveSetChanged_ToNull_ClearsIndex()
     {
         MonsterDropIndex s = NewIndex();

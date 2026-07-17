@@ -1073,6 +1073,12 @@ flag). These are hard eligibility gates, independent of resistance and level imm
 
 - **[CONFIRMED]** Items are acquired via `buy` / `get` / `search`+`get`. There is no "hunt"
   verb — don't describe path-item sourcing as "hunting."
+- **[CONFIRMED]** (2026-07-16, user) **Monster drops land loose on the ground as the item.**
+  When a monster we kill drops one of its `DropItem-N` items, the item appears on the floor as a
+  normal ground item — there is no corpse-container split to loot. A plain `get <item>` collects
+  it, exactly like any other ground item. The drop isn't announced on the kill line, so to see and
+  auto-collect it the room must be re-surveyed (a bare `look` re-renders the `You notice … here.`
+  list the auto-get engine already parses).
 
 ## Currency & cash
 

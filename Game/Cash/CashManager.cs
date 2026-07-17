@@ -144,13 +144,6 @@ public sealed class CashManager : IDisposable
     private readonly DateTime[] _inFlightCoinDeltaSetAt = new DateTime[5];
     private const int InFlightDeltaTimeoutMs = 60000;
 
-    // Stock encumbrance bracket start percentages: None→Light at 17%,
-    // Light→Medium at 34%, Medium→Heavy at 67%. These are the current fixed
-    // values and match InventoryManager's Stock assumption.
-    private const int StockLightStartPct = 17;
-    private const int StockMediumStartPct = 34;
-    private const int StockHeavyStartPct = 67;
-
     // Single-word currency names for the get / drop wire shape, indexed by slot
     // (0=copper..4=runic) — same vocabulary the collect path already sends.
     private static readonly string[] SlotCurrencyNames =
@@ -703,7 +696,11 @@ public sealed class CashManager : IDisposable
 
         SweepStaleInFlight();
 
-        long capWeight = ComputeCapWeight(settings, enc);
+        long capWeight = EncumbranceGate.ComputeCapWeight(
+            settings.SkipCollectIfMakesLight,
+            settings.SkipCollectIfMakesMedium,
+            settings.SkipCollectIfMakesHeavy,
+            enc);
         CurrencyHoldings c = snap.Currency;
         long[] rawHeld = { c.Copper, c.Silver, c.Gold, c.Platinum, c.Runic };
         long rawTotal = 0;
@@ -804,29 +801,6 @@ public sealed class CashManager : IDisposable
             _          => currency,
         };
     }
-
-    // Tightest encumbrance cap weight across the enabled gate flags. Each gate
-    // caps collection at the highest weight that still displays one bracket below
-    // it (so a Light gate keeps the character in None). No flags set → full
-    // MaxWeight.
-    private static long ComputeCapWeight(CashSettings s, EncumbranceReading enc)
-    {
-        long cap = enc.MaxWeight;
-        if (s.SkipCollectIfMakesHeavy)
-            cap = Math.Min(cap, GateBoundaryCap(enc.MaxWeight, StockHeavyStartPct));
-        if (s.SkipCollectIfMakesMedium)
-            cap = Math.Min(cap, GateBoundaryCap(enc.MaxWeight, StockMediumStartPct));
-        if (s.SkipCollectIfMakesLight)
-            cap = Math.Min(cap, GateBoundaryCap(enc.MaxWeight, StockLightStartPct));
-        return cap;
-    }
-
-    // Largest weight whose displayed percent (floor(weight*100/max)) stays
-    // strictly below thresholdPercent — i.e. the most a character can carry
-    // without tipping into the next bracket. Integer inverse of the game's
-    // rounding: (pct*max - 1) / 100.
-    private static long GateBoundaryCap(long maxWeight, long thresholdPercent) =>
-        Math.Max(0, (thresholdPercent * maxWeight - 1) / 100);
 
     // Drain the matching in-flight delta toward zero by an observed coin change
     // that agrees with the delta's sign (a confirmed pickup against a pending
