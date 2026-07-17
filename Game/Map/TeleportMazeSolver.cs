@@ -217,9 +217,10 @@ public sealed class TeleportMazeSolver : IMazeSolver, IDisposable
             return;
         }
 
-        // Lost / Unknown / Suspect — the teleport collapsed the tracker. Identify
-        // the landing from the last room display we saw.
-        BeginRelocalize();
+        // Lost / Unknown / Suspect — the teleport collapsed the tracker. Force a
+        // fresh render of the room we're actually standing in and relocalize off
+        // it (the last passive display can be a stale pre-teleport room).
+        ObserveLandingAndRelocalize();
     }
 
     private void EnterFromOutside(RoomKey here)
@@ -249,9 +250,8 @@ public sealed class TeleportMazeSolver : IMazeSolver, IDisposable
     {
         _log?.Log(LogSeverity.Info, LogSource,
             $"crossing maze entrance {_entranceDir.ToLongName()} (fires random teleport)");
-        _phase = Phase.Settling;
         SendMove(_entranceDir);
-        RestartSettle();
+        ObserveLandingAndRelocalize();
     }
 
     private void ContinueFromLocated(RoomKey here)
@@ -297,9 +297,25 @@ public sealed class TeleportMazeSolver : IMazeSolver, IDisposable
         Direction d = dirs[0];
         _log?.Log(LogSeverity.Info, LogSource,
             $"reshuffle #{_attempts}: walking {d.ToLongName()} from {here} to re-teleport");
-        _phase = Phase.Settling;
         SendMove(d);
+        ObserveLandingAndRelocalize();
+    }
+
+    // Force a fresh render of the room we're standing in, then settle and
+    // relocalize off it. A maze move always fires a random teleport, and in BRIEF
+    // mode (how ~all players run) the landing renders only a NAME line — no exits
+    // — so it yields no RoomObservation. Relocalizing off the stale last-display
+    // would then key the look sweep to the room we LEFT (the entrance-cross
+    // desync from the 102748 report). The self-`look` always prints name+exits;
+    // clearing _lastObserved first guarantees the settle can't fire off a
+    // pre-teleport room before the true landing renders.
+    private void ObserveLandingAndRelocalize()
+    {
+        _lastObserved = null;
+        _phase = Phase.Settling;
+        SendSelfLook();
         RestartSettle();
+        RestartLookTimeout();
     }
 
     private void BeginRelocalize()
@@ -372,9 +388,8 @@ public sealed class TeleportMazeSolver : IMazeSolver, IDisposable
             if ((_ownMask & (1u << d)) == 0) continue;
             _log?.Log(LogSeverity.Info, LogSource,
                 $"blind reshuffle #{_attempts}: walking {((Direction)d).ToLongName()} to re-observe");
-            _phase = Phase.Settling;
             SendMove((Direction)d);
-            RestartSettle();
+            ObserveLandingAndRelocalize();
             return;
         }
 
@@ -461,6 +476,14 @@ public sealed class TeleportMazeSolver : IMazeSolver, IDisposable
     {
         _settleTimer?.Stop();
         if (!Active || _phase != Phase.Settling) return;
+        if (_lastObserved is null)
+        {
+            // The self-look landing render hasn't arrived yet — keep waiting; the
+            // look timeout is the hard deadline for a landing that never renders.
+            RestartSettle();
+            return;
+        }
+        _lookTimeout?.Stop();
         BeginRelocalize();
     }
 
@@ -473,8 +496,11 @@ public sealed class TeleportMazeSolver : IMazeSolver, IDisposable
     private void OnLookTimeout()
     {
         _lookTimeout?.Stop();
-        if (!Active || _phase != Phase.Looking) return;
-        FailSolve($"look {_currentLookDir.ToLongName()} did not render a room");
+        if (!Active) return;
+        if (_phase == Phase.Looking)
+            FailSolve($"look {_currentLookDir.ToLongName()} did not render a room");
+        else if (_phase == Phase.Settling)
+            FailSolve("teleport landing did not render");
     }
 
     private void StopTimers()
@@ -489,6 +515,13 @@ public sealed class TeleportMazeSolver : IMazeSolver, IDisposable
 
     private void SendLook(Direction d)
         => Send(Encoding.Latin1.GetBytes("look " + d.ToLongName() + "\r"));
+
+    // Bare self-look forces a full name+exits render of the room we're standing
+    // in. A bare `look` isn't a directional peek, so OutboundMovementObserver
+    // doesn't arm the tracker's peek-suppression for it — that's fine: the solver
+    // reads the render via OnRoomObserved (which fires before that suppression)
+    // and hard-locates with SetLocated once the sweep resolves.
+    private void SendSelfLook() => Send(Encoding.Latin1.GetBytes("look\r"));
 
     private void Send(byte[] bytes) => _wireSender?.Invoke(bytes);
 

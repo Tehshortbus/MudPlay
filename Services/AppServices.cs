@@ -2143,8 +2143,10 @@ public sealed class AppServices
         // Reads GameData.ActiveRealm live per-request, so a mid-session set swap
         // is honoured without re-wiring.
         ParadigmResync = new Game.Map.ParadigmPositionResolver(Router, RoomTracker, Recovery, GameData, Log);
-        Recovery.TryResync = ParadigmResync.TryRequestResync;
         ParadigmResync.ResyncFailed += Recovery.OnAuthoritativeResyncFailed;
+        // Recovery.TryResync is wired below once MazeSolver exists: a maze solve
+        // suppresses `rm` so the asylum is driven by the realm-agnostic look-sweep
+        // (stock parity) rather than rm short-circuiting the solver's relocalize.
 
         // Random-teleport maze index. Rebuilds itself on every graph reload (it
         // subscribes to RoomGraph.GraphReloaded in its ctor), so it's built once
@@ -3477,6 +3479,13 @@ public sealed class AppServices
         MazeSolver = new Game.Map.TeleportMazeSolver(
             MazeIndex, RoomTracker, Bfs, Walker, Log);
         Walker.SetMazeSolver(MazeSolver);
+        // While a maze solve is Active the tracker legitimately sits Suspect
+        // between same-named landings — resolving that is the solver's job (it
+        // relocalizes by look-sweep and hard-locates via SetLocated), not the
+        // recovery gate's. Suppress the Paradigm `rm` resync for the duration so
+        // the asylum is driven the same way it is on stock, instead of rm
+        // short-circuiting the solver mid-walk.
+        Recovery.TryResync = reason => !MazeSolver.Active && ParadigmResync.TryRequestResync(reason);
         // DeathRecoveryManager's Walk-to-Room / Recover-Now actions route
         // through the walker — attached here since the walker is built
         // after the manager.

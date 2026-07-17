@@ -147,10 +147,14 @@ public sealed class TeleportMazeSolverTests : IDisposable
     {
         Harness h = NewHarness();
         // A teleport dropped us in 1/31 (tracker Lost). Goal is plain-adjacent 1/30.
-        h.Solver.OnRoomObserved(Asylum(Direction.E, Direction.D));  // 1/31's own display
 
         Assert.True(h.Walker.WalkTo(new RoomKey(1, 30)));   // walker hands off to the solver
         Assert.True(h.Solver.Active);
+
+        // The solver forces a self-look to render the landing (brief mode gives no
+        // exits on entry); feed 1/31's own display, then settle onto it.
+        h.Solver.OnRoomObserved(Asylum(Direction.E, Direction.D));  // 1/31's self-look render
+        h.Solver.FireSettleForTests();
 
         // Look sweep of 1/31's exits (enum order E, D): peek each neighbour.
         h.Solver.OnRoomObserved(Asylum(Direction.W, Direction.D));  // look E → 1/30
@@ -175,9 +179,12 @@ public sealed class TeleportMazeSolverTests : IDisposable
         Harness h = NewHarness();
         // Teleport dropped us in 1/10 (component A); the goal 1/30 is in B, so no
         // plain route exists and the solver must reshuffle to re-teleport.
-        h.Solver.OnRoomObserved(Asylum(Direction.E, Direction.D));  // 1/10's own display
 
         Assert.True(h.Walker.WalkTo(new RoomKey(1, 30)));
+
+        // Self-look renders 1/10 (brief mode gives no exits on entry); settle.
+        h.Solver.OnRoomObserved(Asylum(Direction.E, Direction.D));  // 1/10's self-look render
+        h.Solver.FireSettleForTests();
 
         // Look sweep of 1/10 (E, D).
         h.Solver.OnRoomObserved(Asylum(Direction.W, Direction.S, Direction.D));  // look E → 1/11
@@ -215,13 +222,16 @@ public sealed class TeleportMazeSolverTests : IDisposable
         h.Tracker.NoteRoomObserved(new RoomObservation("Courtyard",
             new HashSet<Direction> { Direction.N, Direction.S }));
 
-        // Reaching the mouth fires the cross — another S send, and the solver
-        // moves into its post-teleport settle window.
+        // Reaching the mouth fires the cross — the entrance move S plus a self-look
+        // to force the teleport landing's full render — and the solver moves into
+        // its post-teleport settle window.
         Assert.True(h.Sent.Count > sentBeforeArrival);
-        Assert.Equal("s\r", Encoding.Latin1.GetString(h.Sent[^1]));
+        Assert.Equal("s\r", Encoding.Latin1.GetString(h.Sent[^2]));      // the crossing move
+        Assert.Equal("look\r", Encoding.Latin1.GetString(h.Sent[^1]));   // self-look for the landing
         Assert.Equal("Settling", h.Solver.PhaseName);
 
-        // Teleport drops us in 1/30. Settle, relocalize, land on goal → done.
+        // Teleport drops us in 1/30. Feed the self-look render, settle, relocalize,
+        // land on goal → done.
         h.Solver.OnRoomObserved(Asylum(Direction.W, Direction.D));
         h.Solver.FireSettleForTests();
         h.Solver.OnRoomObserved(Asylum(Direction.E, Direction.D));  // look W → 1/31
