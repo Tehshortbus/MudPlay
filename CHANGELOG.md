@@ -2,6 +2,12 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.70.0
+
+- Auto-get now re-surveys the room after a kill whose monster could drop an item you auto-collect, so a ground drop is picked up instead of left behind
+- Auto-get never grabs a ground item that would exceed your carrying capacity; the "Cash" tab is renamed "Cash + Items" and adds optional Light/Medium/Heavy item weight gates, separate from the coin gates
+- Encumbrance-bracket math shared between the coin and item collect engines
+
 ## 1.69.0
 
 - Trainer room detail now lists the per-level training cost across the trainer's whole level band, priced at that trainer's own markup
