@@ -3252,8 +3252,15 @@ public sealed class AppServices
             TransactionHistory.NoteStash(
                 new[] { (currency, (long)count) }, Array.Empty<string>(), CurrentRoomLabel());
         Inventory.ItemHidden += item =>
+        {
+            // An auto-discard offload uses `hide <item>` in HideMode — that's a
+            // discard, not a stash, so it claims its own confirmation here and is
+            // kept out of the ledger. Manual / stash-room hides were never
+            // registered, so they still record.
+            if (AutoDiscard.TryConsumeSuppressedHide(item)) return;
             TransactionHistory.NoteStash(
                 Array.Empty<(string, long)>(), new[] { item }, CurrentRoomLabel());
+        };
         Inventory.BankDeposited += copper =>
             TransactionHistory.NoteBankDeposit(copper, CurrentRoomLabel());
 
@@ -4949,6 +4956,8 @@ public sealed class AppServices
         // Hop-timing calibration logger — off by default; user flips
         // on for a data-collection session.
         HopCalibrator.Enabled = dto.LogMovementHopTiming;
+        // Auto-discard offload verb: hide <item> vs drop <item>.
+        AutoDiscard.HideMode = dto.HideWhenDiscarding;
     }
 
     private void ResetOtherToDefaults()
@@ -4959,6 +4968,7 @@ public sealed class AppServices
         TrapDisarm.MaxDisarmAttempts = defaults.MaxTrapDisarmAttempts;
         PartyComeback.MaxBacktrackRooms = defaults.MaxComebackBacktrackRooms;
         ComebackRequest.Enabled = defaults.AutoRequestComebackWhenLeftBehind;
+        AutoDiscard.HideMode = defaults.HideWhenDiscarding;
     }
 
     // Push the loaded character's

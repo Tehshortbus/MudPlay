@@ -4,6 +4,7 @@
 > **Version 1.69.0**
 > - Trainer room detail now lists the per-level training cost across the trainer's whole level band, priced at that trainer's own markup
 > - Workshop level-projection table's train-cost column now shows raw copper without thousands separators (pastes straight into the game); the exp columns stay comma-grouped
+> - Settings → Other adds a "Hide items when discarding" toggle — auto-discard then offloads each excess flagged item with `hide <item>` instead of `drop <item>`, and these engine hides stay out of the Transaction ledger (manual and stash-room hides still record)
 > - Game Data Rooms filter accepts a `map,room` coordinate (`1,1`) — comma, slash, or space all jump straight to that one room
 > - Item detail's bought/sold shops are now clickable — each jumps the Game Data browser to the host room's Rooms-tab record
 > - Item detail surfaces two more acquisition paths: `Found in` lists the chests an item drops from (with per-open odds), and `Given by` lists the monsters/rooms that hand it over via a textblock award — turn-in, purchase, or quest reward — each a clickable jump to that record

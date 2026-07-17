@@ -158,4 +158,80 @@ public sealed class AutoDiscardManagerTests
         h.Discard.OnInventoryChanged();
         Assert.Single(h.Sent);
     }
+
+    [Fact]
+    public void HideMode_OffloadsWithHideNotDrop()
+    {
+        using Harness h = new();
+        h.Discard.HideMode = true;
+        h.Map("dagger", 1, discard: true);
+        h.Carried.AddRange(new[] { "dagger", "dagger" });
+
+        h.Discard.OnInventoryChanged();
+
+        Assert.Equal(2, h.SentText.Count);
+        Assert.All(h.SentText, s => Assert.Equal("hide dagger", s));
+    }
+
+    [Fact]
+    public void HideMode_SelfHideConfirmation_ClearsInFlight()
+    {
+        using Harness h = new();
+        h.Discard.HideMode = true;
+        h.Map("dagger", 1, discard: true);
+        h.Carried.AddRange(new[] { "dagger", "dagger" });
+
+        h.Discard.OnInventoryChanged();      // 2 hides, in-flight = 2
+        h.Feed("You hid dagger.");
+        h.Feed("You hid dagger.");           // in-flight cleared
+
+        // A fresh copy pours in; with in-flight clear it hides.
+        h.Carried.Clear();
+        h.Carried.Add("dagger");
+        h.Discard.OnInventoryChanged();
+
+        Assert.Equal(3, h.SentText.Count);   // 2 + 1
+    }
+
+    [Fact]
+    public void TryConsumeSuppressedHide_ClaimsEngineHideOncePerCopy()
+    {
+        using Harness h = new();
+        h.Discard.HideMode = true;
+        h.Map("dagger", 1, discard: true);
+        h.Carried.AddRange(new[] { "dagger", "dagger" });
+
+        h.Discard.OnInventoryChanged();      // 2 engine hides registered
+
+        // The transaction-log forwarder claims each engine hide once — those two
+        // are discards, not stashes, so they're kept out of the ledger.
+        Assert.True(h.Discard.TryConsumeSuppressedHide("dagger"));
+        Assert.True(h.Discard.TryConsumeSuppressedHide("dagger"));
+        // A third hide of the same item was never an engine offload — it logs.
+        Assert.False(h.Discard.TryConsumeSuppressedHide("dagger"));
+    }
+
+    [Fact]
+    public void TryConsumeSuppressedHide_ManualHide_NotClaimed()
+    {
+        using Harness h = new();
+        h.Map("dagger", 1, discard: true);
+
+        // No engine offload has run, so a manual / stash-room hide is never
+        // registered — the forwarder still records it.
+        Assert.False(h.Discard.TryConsumeSuppressedHide("dagger"));
+    }
+
+    [Fact]
+    public void DropMode_DoesNotRegisterSuppressedHides()
+    {
+        using Harness h = new();   // HideMode defaults off
+        h.Map("dagger", 1, discard: true);
+        h.Carried.Add("dagger");
+
+        h.Discard.OnInventoryChanged();      // sends `drop dagger`
+
+        // Drop-mode offloads aren't hides, so nothing is suppressed from the log.
+        Assert.False(h.Discard.TryConsumeSuppressedHide("dagger"));
+    }
 }
