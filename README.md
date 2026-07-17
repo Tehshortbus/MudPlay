@@ -21,6 +21,7 @@
 > - Quest seed: Phoenix Feather guide reordered (`ask morukai orfeo` moved up to follow `ask orfeo morukai`) and the missing `ask morukai return` step added before `use potion`
 > - Crawled quest guides (those with no hand-written seed) now auto-draft in the seed's own style: step rooms render as clickable `(map/room)` links, the player command is backtick-wrapped, a monster-sourced grant reads `kill <monster> (<drop>)` and a bare grant `obtain <item>`, and the noisy `flag(order)` prefix is dropped
 > - A crawled kill step now links to the room the quest places its target in (the room's NPC field), falling back to the monster's summon room — or, when it's summoned by another NPC, that summoner's room
+> - A crawled quest's pure flag-advance steps (alignment-ladder value ticks, story textblocks the player never directly triggers) are dropped from the auto-draft instead of listed as an opaque "Step 31" — only the followable actions show
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

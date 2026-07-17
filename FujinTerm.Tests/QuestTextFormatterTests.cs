@@ -207,4 +207,20 @@ public sealed class QuestTextFormatterTests
         Assert.Equal("Step 7",
             QuestTextFormatter.Step(NoSet, MakeStep(7, null, "Textblock #5")));
     }
+
+    [Fact]
+    public void StepOrNull_NonActionableStep_ReturnsNull()
+    {
+        // A pure flag-advance (Called-From another textblock, no room / command /
+        // kill / item) carries nothing to do — StepOrNull reports that with null so
+        // the auto-draft can drop it instead of listing an opaque "Step N".
+        Assert.Null(QuestTextFormatter.StepOrNull(NoSet, MakeStep(31, null, "Textblock #5")));
+    }
+
+    [Fact]
+    public void StepOrNull_ActionableStep_ReturnsBody()
+    {
+        Assert.Equal("(9/1259) `ask old man phoenix`",
+            QuestTextFormatter.StepOrNull(NoSet, MakeStep(1, "ask old man phoenix", "Room 9/1259")));
+    }
 }

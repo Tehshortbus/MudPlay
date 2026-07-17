@@ -96,8 +96,22 @@ internal static partial class QuestTextFormatter
     // literal to type; a command-less step sourced from a monster's textblock is
     // narrated "kill <monster> (<drop>)" and a bare item grant "obtain <item>",
     // matching how the seed guides read. Items the step needs / turns in trail as
-    // a parenthetical note.
+    // a parenthetical note. Falls back to a bare "Step N" label when the crawl
+    // captured nothing followable (see StepOrNull) — kept for any caller that wants
+    // a label for every step; the auto-draft (StepLines) drops those steps instead.
     public static string Step(GameDataCache gameData, QuestStep s,
+        IReadOnlyDictionary<int, IReadOnlyList<RoomKey>>? monsterRooms = null)
+        => StepOrNull(gameData, s, monsterRooms)
+           ?? string.Create(CultureInfo.InvariantCulture, $"Step {s.Order}");
+
+    // The step's followable body — room links, command, kill/obtain narration and
+    // item notes joined into one line — or null when the crawl captured no action
+    // the player can take. Many quest steps are pure flag-advances the crawl can't
+    // render: an alignment ladder's automatic value ticks, a story textblock the
+    // player never directly triggers (Called-From another textblock/spell, no room,
+    // no command, no item). Those carry nothing to do, so the auto-draft omits them
+    // rather than listing an opaque "Step 31" the player can't act on.
+    public static string? StepOrNull(GameDataCache gameData, QuestStep s,
         IReadOnlyDictionary<int, IReadOnlyList<RoomKey>>? monsterRooms = null)
     {
         var segments = new List<string>();
@@ -133,9 +147,7 @@ internal static partial class QuestTextFormatter
         if (s.RequiredItems.Count > 0)
             segments.Add("(" + string.Join(", ", s.RequiredItems.Select(id => ItemName(gameData, id))) + " required)");
 
-        return segments.Count > 0
-            ? string.Join(" ", segments)
-            : string.Create(CultureInfo.InvariantCulture, $"Step {s.Order}");
+        return segments.Count > 0 ? string.Join(" ", segments) : null;
     }
 
     // The Called-From location's room coordinates as space-joined (map/room) link
@@ -197,7 +209,11 @@ internal static partial class QuestTextFormatter
             // one give-step echoed from many rooms) only applies on the give-step axis.
             if (!q.ProgressByValue && !seenOrders.Add(s.Order)) continue;
             if (q.StepRangeEnd > 0 && (s.Order < q.StepRangeStart || s.Order > q.StepRangeEnd)) continue;
-            lines.Add(string.Create(CultureInfo.InvariantCulture, $"[] {Step(gameData, s, monsterRooms)}"));
+            // A pure flag-advance (no room, command, kill or item) carries nothing the
+            // player can act on, so it's dropped from the draft rather than listed as an
+            // opaque "Step N" — the seed guides list actions, not narrative ticks.
+            if (StepOrNull(gameData, s, monsterRooms) is not { } body) continue;
+            lines.Add(string.Create(CultureInfo.InvariantCulture, $"[] {body}"));
         }
         return lines;
     }
