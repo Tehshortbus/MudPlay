@@ -33,6 +33,14 @@ public sealed partial class RoomDisplayParser : IDisposable
     private readonly LogService? _log;
     private readonly List<LineExtractor.EmittedLine> _buffer = new(BufferCapacity);
 
+    // Fires for every fully-parsed room display, BEFORE the tracker decides what
+    // to do with it — and crucially, regardless of the tracker's peek-suppression
+    // window. A `look <dir>` peek is dropped at the tracker (so it doesn't desync
+    // position), but its room display still parses; the teleport-maze solver
+    // subscribes here to read the neighbour's obvious-exits fingerprint that the
+    // look revealed. Consumers must not mutate tracker state from this handler.
+    public event Action<RoomObservation>? RoomParsed;
+
     public RoomDisplayParser(LineExtractor lines, RoomTracker tracker, LogService? log = null)
     {
         ArgumentNullException.ThrowIfNull(lines);
@@ -92,10 +100,10 @@ public sealed partial class RoomDisplayParser : IDisposable
             string? name = FindRoomNameInBuffer();
             if (name is not null)
             {
-                _tracker.NoteRoomObserved(
-                    new RoomObservation(name, dirs,
-                        openDoors.Count > 0 ? openDoors : null),
-                    line.Timestamp);
+                var observation = new RoomObservation(name, dirs,
+                    openDoors.Count > 0 ? openDoors : null);
+                RoomParsed?.Invoke(observation);
+                _tracker.NoteRoomObserved(observation, line.Timestamp);
                 _log?.Info("RoomDisplay",
                     $"observed: '{name}' exits={{{string.Join(",", dirs)}}}"
                     + (openDoors.Count > 0 ? $" openDoors={{{string.Join(",", openDoors)}}}" : ""));

@@ -1,0 +1,271 @@
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Text;
+using FujinTerm.Game.Map;
+using FujinTerm.Game.Spells;
+using FujinTerm.Services;
+using Xunit;
+
+namespace FujinTerm.Tests;
+
+// Covers TeleportMazeSolver end-to-end against a synthetic random-teleport
+// pocket: relocalize-by-look-sweep then delegate a plain walk, reshuffle to jump
+// plain-disconnected components, enter the pocket from outside, and the
+// Stock-only / maze-room-only / wire-bound / not-already-active CanSolve gate.
+//
+// The pocket has TWO plain-connected components linked only by cast-teleport
+// exits — component A {1/10, 1/11, 1/12} and component B {1/30, 1/31} — so a
+// landing in A has no plain route to a goal in B and must reshuffle. Every
+// corridor's 1x2 signature (own exit mask + each neighbour's mask read by a
+// `look`) is unique, so a landing always relocalizes to an exact room.
+public sealed class TeleportMazeSolverTests : IDisposable
+{
+    private readonly string _root;
+
+    public TeleportMazeSolverTests()
+    {
+        _root = Path.Combine(Path.GetTempPath(), "fujinterm-mazesolver-tests-" + Path.GetRandomFileName());
+        Directory.CreateDirectory(_root);
+    }
+
+    public void Dispose()
+    {
+        try { Directory.Delete(_root, recursive: true); }
+        catch { /* best-effort cleanup */ }
+    }
+
+    // Random teleport 596 (Abil 140 value 0, range 10..21) — casts on every
+    // pocket exit and on the one-way mouth.
+    private const string Spells = """
+        [
+          { "Number": 596, "Name": "warp", "Short": "wrp",
+            "MinBase": 10, "MaxBase": 21,
+            "Abil-0": 140, "AbilVal-0": 0, "Abil-1": 141, "AbilVal-1": 1 }
+        ]
+        """;
+
+    // 1/1 Courtyard ──N── 1/2 Gate  (overworld)
+    //   │ S (cast 596, one-way pocket mouth)
+    //   ▼
+    // Component A: 1/10 ─E─ 1/11 ─S─ 1/12   (plain corridors)
+    // Component B: 1/30 ─W─ 1/31            (plain corridors, holds the goal 1/30)
+    // A and B connect ONLY through the cast-teleport D exits (reshuffle).
+    private const string SplitMaze = """
+        [
+          { "Map Number": 1, "Room Number": 1, "Name": "Courtyard",
+            "Light": 0, "Shop": 0, "Spell": 0, "CMD": 0, "Lair": "", "Delay": 0,
+            "N": "1/2", "S": "1/10 (Cast: pre-0, post-596)", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 2, "Name": "Gate",
+            "Light": 0, "Shop": 0, "Spell": 0, "CMD": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "1/1", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 10, "Name": "Warped Asylum",
+            "Light": 0, "Shop": 0, "Spell": 0, "CMD": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "0", "E": "1/11", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "1/30 (Cast: pre-0, post-596)" },
+          { "Map Number": 1, "Room Number": 11, "Name": "Warped Asylum",
+            "Light": 0, "Shop": 0, "Spell": 0, "CMD": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "1/12", "E": "0", "W": "1/10",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "1/30 (Cast: pre-0, post-596)" },
+          { "Map Number": 1, "Room Number": 12, "Name": "Warped Asylum",
+            "Light": 0, "Shop": 0, "Spell": 0, "CMD": 0, "Lair": "", "Delay": 0,
+            "N": "1/11", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "1/30 (Cast: pre-0, post-596)" },
+          { "Map Number": 1, "Room Number": 30, "Name": "Warped Asylum",
+            "Light": 0, "Shop": 0, "Spell": 0, "CMD": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "0", "E": "0", "W": "1/31",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "1/10 (Cast: pre-0, post-596)" },
+          { "Map Number": 1, "Room Number": 31, "Name": "Warped Asylum",
+            "Light": 0, "Shop": 0, "Spell": 0, "CMD": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "0", "E": "1/30", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "1/10 (Cast: pre-0, post-596)" }
+        ]
+        """;
+
+    private sealed class Harness : IDisposable
+    {
+        public required RoomGraphManager Graph { get; init; }
+        public required BfsMapper Bfs { get; init; }
+        public required RoomTracker Tracker { get; init; }
+        public required AutoWalkManager Walker { get; init; }
+        public required TeleportMazeIndex Index { get; init; }
+        public required TeleportMazeSolver Solver { get; init; }
+        public List<byte[]> Sent { get; } = new();
+        public List<WalkEvent> Events { get; } = new();
+        public List<string> SentText => Sent.Select(b => Encoding.Latin1.GetString(b)).ToList();
+        public void Dispose() => Solver.Dispose();
+    }
+
+    private Harness NewHarness(string rooms = SplitMaze, bool paradigm = false, bool bindWire = true)
+    {
+        string dir = Path.Combine(_root, "alpha");
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, "Rooms.json"), rooms);
+        File.WriteAllText(Path.Combine(dir, "Spells.json"), Spells);
+        File.WriteAllText(Path.Combine(dir, "TBInfo.json"), "[]");
+        if (paradigm)
+            File.WriteAllText(Path.Combine(dir, "Info.json"), "[{\"Legit\":2}]");
+
+        GameDataCache cache = new(_root);
+        cache.SwitchSet("alpha");
+        TBInfoStore tbinfo = new(cache);
+        tbinfo.OnActiveSetChanged("alpha");
+        KnownSpellCatalog spells = new(cache);
+        RoomGraphManager graph = new(cache, log: null, tbinfo, spells);
+        graph.OnActiveSetChanged("alpha");
+
+        BfsMapper bfs = new(graph);
+        RoomTracker tracker = new(graph);
+        MovementCoordinator coord = new();
+        AutoWalkManager walker = new(graph, bfs, tracker, coord);
+        TeleportMazeIndex index = new(graph);
+        // Synchronous post + no dispatcher timers: Start() runs inline in TryBegin
+        // and the settle / look timers are driven manually via test seams.
+        TeleportMazeSolver solver = new(index, tracker, bfs, walker, cache,
+            log: null, useTimer: false, post: a => a());
+
+        Harness h = new()
+        {
+            Graph = graph, Bfs = bfs, Tracker = tracker,
+            Walker = walker, Index = index, Solver = solver,
+        };
+        walker.SetWireSender(h.Sent.Add);
+        walker.SetMazeSolver(solver);
+        walker.Event += h.Events.Add;
+        if (bindWire) solver.SetWireSender(h.Sent.Add);
+        return h;
+    }
+
+    private static RoomObservation Asylum(params Direction[] exits)
+        => new("Warped Asylum", new HashSet<Direction>(exits));
+
+    [Fact]
+    public void RelocalizesAndDelegates_WhenPlainRouteExists()
+    {
+        Harness h = NewHarness();
+        // A teleport dropped us in 1/31 (tracker Lost). Goal is plain-adjacent 1/30.
+        h.Solver.OnRoomObserved(Asylum(Direction.E, Direction.D));  // 1/31's own display
+
+        Assert.True(h.Walker.WalkTo(new RoomKey(1, 30)));   // walker hands off to the solver
+        Assert.True(h.Solver.Active);
+
+        // Look sweep of 1/31's exits (enum order E, D): peek each neighbour.
+        h.Solver.OnRoomObserved(Asylum(Direction.W, Direction.D));  // look E → 1/30
+        h.Solver.OnRoomObserved(Asylum(Direction.E, Direction.D));  // look D → 1/10
+
+        // Relocalized to 1/31 → plain route E to 1/30 → walker steps once.
+        Assert.Equal(new RoomKey(1, 31), h.Tracker.State.CurrentRoom!.Key);
+        Assert.Contains("e\r", h.SentText);
+
+        // Confirm the walker's step landing at 1/30.
+        h.Tracker.NoteRoomObserved(Asylum(Direction.W, Direction.D));
+
+        Assert.False(h.Solver.Active);
+        Assert.Equal(0, h.Solver.Attempts);
+        Assert.Contains(h.Events, e => e.Kind == WalkEventKind.Finished);
+        Assert.DoesNotContain(h.Events, e => e.Kind == WalkEventKind.Failed);
+    }
+
+    [Fact]
+    public void ReshufflesToJumpComponents_WhenGoalUnreachable()
+    {
+        Harness h = NewHarness();
+        // Teleport dropped us in 1/10 (component A); the goal 1/30 is in B, so no
+        // plain route exists and the solver must reshuffle to re-teleport.
+        h.Solver.OnRoomObserved(Asylum(Direction.E, Direction.D));  // 1/10's own display
+
+        Assert.True(h.Walker.WalkTo(new RoomKey(1, 30)));
+
+        // Look sweep of 1/10 (E, D).
+        h.Solver.OnRoomObserved(Asylum(Direction.W, Direction.S, Direction.D));  // look E → 1/11
+        h.Solver.OnRoomObserved(Asylum(Direction.W, Direction.D));               // look D → 1/30
+
+        // Relocalized to 1/10, no plain route to 1/30 → reshuffle down the cast exit.
+        Assert.Equal(new RoomKey(1, 10), h.Tracker.State.CurrentRoom!.Key);
+        Assert.Equal(1, h.Solver.Attempts);
+        Assert.Contains("d\r", h.SentText);
+
+        // The reshuffle teleported us into 1/30 (component B). Settle, then relocalize.
+        h.Solver.OnRoomObserved(Asylum(Direction.W, Direction.D));  // 1/30's own display
+        h.Solver.FireSettleForTests();
+
+        h.Solver.OnRoomObserved(Asylum(Direction.E, Direction.D));  // look W → 1/31
+        h.Solver.OnRoomObserved(Asylum(Direction.E, Direction.D));  // look D → 1/10
+
+        // Relocalized onto the goal itself → done.
+        Assert.False(h.Solver.Active);
+        Assert.Equal(new RoomKey(1, 30), h.Tracker.State.CurrentRoom!.Key);
+        Assert.Contains(h.Events, e => e.Kind == WalkEventKind.Finished);
+    }
+
+    [Fact]
+    public void EntersFromOutside_RoutesToMouthThenCrosses()
+    {
+        Harness h = NewHarness();
+        h.Tracker.SetLocated(new RoomKey(1, 2));   // Confirmed in the overworld, outside the pocket
+
+        Assert.True(h.Walker.WalkTo(new RoomKey(1, 30)));
+
+        // Solver routes to the mouth room 1/1 (walker steps S). Confirm the step.
+        Assert.Contains("s\r", h.SentText);
+        int sentBeforeArrival = h.Sent.Count;
+        h.Tracker.NoteRoomObserved(new RoomObservation("Courtyard",
+            new HashSet<Direction> { Direction.N, Direction.S }));
+
+        // Reaching the mouth fires the cross — another S send, and the solver
+        // moves into its post-teleport settle window.
+        Assert.True(h.Sent.Count > sentBeforeArrival);
+        Assert.Equal("s\r", Encoding.Latin1.GetString(h.Sent[^1]));
+        Assert.Equal("Settling", h.Solver.PhaseName);
+
+        // Teleport drops us in 1/30. Settle, relocalize, land on goal → done.
+        h.Solver.OnRoomObserved(Asylum(Direction.W, Direction.D));
+        h.Solver.FireSettleForTests();
+        h.Solver.OnRoomObserved(Asylum(Direction.E, Direction.D));  // look W → 1/31
+        h.Solver.OnRoomObserved(Asylum(Direction.E, Direction.D));  // look D → 1/10
+
+        Assert.False(h.Solver.Active);
+        Assert.Equal(new RoomKey(1, 30), h.Tracker.State.CurrentRoom!.Key);
+        Assert.Contains(h.Events, e => e.Kind == WalkEventKind.Finished);
+    }
+
+    [Fact]
+    public void CanSolve_False_OnParadigmRealm()
+    {
+        Harness h = NewHarness(paradigm: true);
+        Assert.False(h.Solver.Enabled);
+        Assert.False(h.Solver.CanSolve(new RoomKey(1, 30)));
+        Assert.False(h.Solver.TryBegin(new RoomKey(1, 30)));
+    }
+
+    [Fact]
+    public void CanSolve_False_ForNonMazeRoom()
+    {
+        Harness h = NewHarness();
+        Assert.True(h.Solver.Enabled);
+        Assert.False(h.Solver.CanSolve(new RoomKey(1, 1)));   // the mouth room is outside
+        Assert.False(h.Solver.CanSolve(new RoomKey(1, 2)));   // overworld
+        Assert.True(h.Solver.CanSolve(new RoomKey(1, 30)));   // a pocket member
+    }
+
+    [Fact]
+    public void CanSolve_False_WhenNoWireSenderBound()
+    {
+        Harness h = NewHarness(bindWire: false);
+        Assert.False(h.Solver.CanSolve(new RoomKey(1, 30)));
+    }
+
+    [Fact]
+    public void CanSolve_False_WhileAlreadySolving()
+    {
+        Harness h = NewHarness();
+        h.Solver.OnRoomObserved(Asylum(Direction.E, Direction.D));  // seed a landing display
+
+        Assert.True(h.Solver.TryBegin(new RoomKey(1, 30)));         // enters the look sweep
+        Assert.True(h.Solver.Active);
+        Assert.False(h.Solver.CanSolve(new RoomKey(1, 30)));        // re-entry refused
+        Assert.False(h.Solver.TryBegin(new RoomKey(1, 30)));
+    }
+}

@@ -2,6 +2,13 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.72.0
+
+- Navigation can now reach a destination inside a random-teleport maze (e.g. the Warped Asylum), where every room shares a name so normal tracking gives up
+- The maze is detected structurally — a one-way cast mouth whose interior random-teleports on every step — with no hardcoded room numbers
+- After each teleport the walker relocalizes by peeking neighbours with `look <dir>` and matching a unique exit signature, then routes to the goal, re-teleporting ("reshuffling") when the goal is only reachable through another teleport
+- Stock realms only (Paradigm already has authoritative `rm` positioning)
+
 ## 1.71.5
 
 - Navigation now reaches Morukai from the overworld tree base for both invited and un-invited characters: the quest-gated `go portal` is crossed as a last-resort "gateway" and the walker re-plans from wherever the cast lands (the fixed chamber when invited, the Caves of Chaos when not)

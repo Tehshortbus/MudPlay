@@ -1,9 +1,11 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.71.5**
-> - Navigation now reaches Morukai from the overworld tree base for both invited and un-invited characters: the quest-gated `go portal` is crossed as a last-resort "gateway" and the walker re-plans from wherever the cast lands (the fixed chamber when invited, the Caves of Chaos when not)
-> - Routing inside the Morukai cluster no longer loops down through the random portal — a deterministic path is always preferred and the gateway is taken only when no cardinal route to the goal exists
+> **Version 1.72.0**
+> - Navigation can now reach a destination inside a random-teleport maze (e.g. the Warped Asylum), where every room shares a name so normal tracking gives up
+> - The maze is detected structurally — a one-way cast mouth whose interior random-teleports on every step — with no hardcoded room numbers
+> - After each teleport the walker relocalizes by peeking neighbours with `look <dir>` and matching a unique exit signature, then routes to the goal, re-teleporting ("reshuffling") when the goal is only reachable through another teleport
+> - Stock realms only (Paradigm already has authoritative `rm` positioning)
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->
