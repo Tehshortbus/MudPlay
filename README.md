@@ -5,12 +5,12 @@
 > - Navigation can now reach a destination inside a random-teleport maze (e.g. the Warped Asylum), where every room shares a name so normal tracking gives up
 > - The maze is detected structurally — a one-way cast mouth whose interior random-teleports on every step — with no hardcoded room numbers
 > - After each teleport the walker relocalizes by peeking neighbours with `look <dir>` and matching a unique exit signature, then routes to the goal, re-teleporting ("reshuffling") when the goal is only reachable through another teleport
-> - Runs on every realm — the look-sweep is the realm-agnostic method, and on Paradigm the solver relocalizes after each teleport with `rm` (an authoritative position query whose room numbers stay distinct even though every asylum room shares a name), which also pinpoints the dead-end Padded Cells the sweep can't disambiguate; a dropped `rm` reply falls back to the look-sweep so the solve never hangs
+> - Runs on every realm — on stock the look-sweep is the only tool, while on Paradigm the solver relocalizes with `rm` (an authoritative position query whose room numbers stay distinct even though every asylum room shares a name) and never looks at all: every teleport landing and every plain step re-locates by `rm`, which also pinpoints the dead-end Padded Cells the look-sweep can't disambiguate
 > - Paradigm's asylum pull-lever escape is treated as a one-way pocket dimension so the maze detects and routes there the same as on stock
-> - After each teleport the solver forces a `look` to read the landing's exits — in brief mode (the default) a room shows only its name on entry, so relocalization was keying off the room just left and desyncing at the entrance
-> - The `rm` relocalize fires only after the teleport's landing has settled, so it reads the room just landed in rather than the one left behind
+> - On stock, after each teleport the solver forces a `look` to read the landing's exits — in brief mode (the default) a room shows only its name on entry, so relocalization was keying off the room just left and desyncing at the entrance
+> - On Paradigm the solver sends a bare `rm` after each move (never a `look`); telnet ordering guarantees `rm` reads the room the move landed us in, and a dropped reply is re-sent rather than falling back to a look
 > - The solver now drives the final plain route to the goal itself (ungated, like a reshuffle step) instead of handing off to the walker, so it no longer stalls on a stuck combat gate mid-maze
-> - Arrival at a dead-end goal room (e.g. the old man's padded cell, whose signature can't be uniquely matched) is recognized by room name so the solver stops there instead of blind-reshuffling back out
+> - Arrival at a dead-end goal room (e.g. the old man's padded cell, whose signature can't be uniquely matched) is recognized by room name on stock, or directly by `rm` on Paradigm, so the solver stops there instead of blind-reshuffling back out
 > - When a landing has several reshuffle exits, the solver picks the one whose teleport spell is likeliest to land somewhere useful — favouring the pool with the most rooms it can both relocalize in and route to the goal from, instead of spiralling into a dead-end pool
 >
 > See the [version history](CHANGELOG.md) for the full changelog.

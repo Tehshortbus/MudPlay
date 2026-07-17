@@ -59,6 +59,11 @@ public sealed class TeleportMazeSolver : IMazeSolver, IDisposable
     // the goal's component is never randomly hit (mis-flagged topology).
     private const int MaxReshuffleAttempts = 80;
 
+    // Paradigm-only: a dropped `rm` reply is re-sent up to this many times before
+    // the solve gives up. `rm` is a reliable server query, so this only covers a
+    // rare lost packet — not a fallback to the look sweep (Paradigm never looks).
+    private const int MaxRmRetries = 2;
+
     private enum Phase { Idle, RoutingToEntrance, Settling, Looking, Resyncing, Walking }
 
     private readonly TeleportMazeIndex _index;
@@ -88,6 +93,13 @@ public sealed class TeleportMazeSolver : IMazeSolver, IDisposable
     private Phase _phase = Phase.Idle;
     private RoomKey _goal;
     private int _attempts;
+
+    // Paradigm rm-relocalize scratch: how many times the current `rm` has been
+    // re-sent after a dropped reply, and the room a plain step departed from so a
+    // step that `rm` shows didn't move us (a blocked door/gate) is caught instead
+    // of re-planning the same step forever.
+    private int _rmRetries;
+    private RoomKey? _paradigmStepFrom;
 
     // Relocalization scratch — snapshot the landing room's own exit mask when a
     // look sweep begins, then fill one neighbour mask per `look <dir>` reply.
@@ -128,10 +140,11 @@ public sealed class TeleportMazeSolver : IMazeSolver, IDisposable
     // authoritative (map,room) (see GAME_MECHANICS.md) — and that room number is
     // distinct even though every asylum room shares one NAME, so `rm` pinpoints the
     // exact landing, including the dead-end Padded Cells the look-sweep can't
-    // relocalize in. So on Paradigm the solver relocalizes by `rm` (falling back to
-    // the look-sweep if a reply is dropped); on stock it uses the sweep directly.
-    // (The Paradigm asylum's pull-lever escape is neutralised at graph-build in
-    // RoomGraphManager so the pocket detects there the same as on stock.)
+    // relocalize in. So on Paradigm the solver relocalizes with `rm` alone and never
+    // looks: every landing AND every plain step re-locates by `rm`, and a dropped
+    // reply is re-sent rather than falling back to a look. On stock it uses the
+    // sweep directly. (The Paradigm asylum's pull-lever escape is neutralised at
+    // graph-build in RoomGraphManager so the pocket detects there the same as stock.)
     public bool Enabled => true;
 
     public TeleportMazeSolver(
@@ -300,9 +313,28 @@ public sealed class TeleportMazeSolver : IMazeSolver, IDisposable
 
         IReadOnlyList<Direction>? plain = _bfs.FindPath(here, _goal);
         if (plain is { Count: > 0 })
-            DriveFinalWalk(here, plain);
+        {
+            if (_isParadigm())
+                ParadigmStep(here, plain[0]);   // one step, then re-locate via `rm`
+            else
+                DriveFinalWalk(here, plain);     // stock: queued walk, name+mask verify
+        }
         else
             Reshuffle(here);
+    }
+
+    // Paradigm plain-route step: walk ONE square toward the goal, then re-locate
+    // with `rm` and re-plan from the authoritative landing (in OnTrackerStateChanged
+    // → ContinueFromLocated). No self-look or name+mask verify — `rm` names the exact
+    // room, so a surprise teleport or blocked door is caught by re-planning rather
+    // than a signature check, and arrival at the dead-end goal cell (which the look
+    // sweep can't relocalize) is just `here == goal`.
+    private void ParadigmStep(RoomKey here, Direction d)
+    {
+        _paradigmStepFrom = here;
+        _log?.Debug(LogSource, $"plain step {d.ToLongName()} from {here}; re-locate via `rm`");
+        SendMove(d);
+        BeginParadigmResync();
     }
 
     // Walk the plain (teleport-free) route to the goal ourselves, one step at a
@@ -479,46 +511,45 @@ public sealed class TeleportMazeSolver : IMazeSolver, IDisposable
         return ok;
     }
 
-    // Force a fresh render of the room we're standing in, then settle and
-    // relocalize off it. A maze move always fires a random teleport, and in BRIEF
-    // mode (how ~all players run) the landing renders only a NAME line — no exits
-    // — so it yields no RoomObservation. Relocalizing off the stale last-display
-    // would then key the look sweep to the room we LEFT (the entrance-cross
-    // desync from the 102748 report). The self-`look` always prints name+exits;
-    // clearing _lastObserved first guarantees the settle can't fire off a
-    // pre-teleport room before the true landing renders.
+    // Relocalize after a teleport landing, by the realm's method.
+    //
+    // Paradigm: ask the game for our authoritative position with a single `rm` — no
+    // look at all. `rm` reports the player's own (map,room), distinct even though
+    // every asylum room shares a name, so it pinpoints the exact landing including
+    // the dead-end Padded Cells the look sweep can't relocalize in. Telnet
+    // serialization runs `rm` AFTER the move's teleport, so its reply names the room
+    // we landed in, not the one we left.
+    //
+    // Stock (no `rm`): force a fresh render with a self-`look`, then settle and run
+    // the 1x2 look sweep off it. A maze move always fires a random teleport, and in
+    // BRIEF mode (how ~all players run) the landing renders only a NAME line — no
+    // exits — so it yields no RoomObservation; relocalizing off the stale last
+    // display would key the sweep to the room we LEFT (the entrance-cross desync
+    // from the 102748 report). The self-`look` always prints name+exits; clearing
+    // _lastObserved first guarantees the settle can't fire off a pre-teleport room.
     private void ObserveLandingAndRelocalize()
     {
         _lastObserved = null;
+        _paradigmStepFrom = null;   // this landing is a teleport, not a plain step
+        if (_isParadigm())
+        {
+            BeginParadigmResync();
+            return;
+        }
         _phase = Phase.Settling;
         SendSelfLook();
         RestartSettle();
         RestartLookTimeout();
     }
 
-    // The teleport has landed and rendered (settle just fired off the self-look).
-    // Relocalize by the realm's method: `rm` on Paradigm, the 1x2 look sweep on
-    // stock. Firing here — after the settle — is what guarantees `rm` reads the
-    // room we're standing in rather than the one we left.
-    private void BeginPostTeleportRelocalize()
-    {
-        if (_isParadigm())
-            BeginParadigmResync();
-        else
-            BeginRelocalize();
-    }
-
-    // Paradigm-only: ask the game for our authoritative position with `rm` instead
-    // of walking the look sweep. `rm` reports the player's own (map,room) (see
-    // GAME_MECHANICS.md) — distinct even though every asylum room shares a name —
-    // so it pinpoints the exact landing, including the dead-end Padded Cells the
-    // sweep can't relocalize in. The existing ParadigmPositionResolver parses the
-    // `Location:` reply and hard-locates the tracker; we continue off that in
-    // OnTrackerStateChanged. A dropped reply falls back to the look sweep via
-    // OnLookTimeout so a missed `rm` never hangs the solve.
+    // Paradigm authoritative-position query. ParadigmPositionResolver parses the
+    // `Location:` reply and hard-locates the tracker, which we continue off in
+    // OnTrackerStateChanged. A dropped reply is re-sent (OnLookTimeout) up to
+    // MaxRmRetries — never a look-sweep fallback: on Paradigm the solver never looks.
     private void BeginParadigmResync()
     {
         _phase = Phase.Resyncing;
+        _rmRetries = 0;
         _log?.Log(LogSeverity.Info, LogSource, "requesting authoritative position via `rm`");
         SendRm();
         RestartLookTimeout();
@@ -534,8 +565,22 @@ public sealed class TeleportMazeSolver : IMazeSolver, IDisposable
         RoomState st = _tracker.State;
         if (st.Confidence != RoomConfidence.Confirmed || st.CurrentRoom is not { } room) return;
         _lookTimeout?.Stop();
-        _log?.Log(LogSeverity.Info, LogSource, $"relocalized to {room.Key} via authoritative `rm`");
-        ContinueFromLocated(room.Key);
+        RoomKey here = room.Key;
+
+        // A plain step `rm` shows didn't move us (blocked door/gate) would otherwise
+        // re-plan the same step forever — escape via a reshuffle teleport instead.
+        if (_paradigmStepFrom is { } from && from.Equals(here))
+        {
+            _paradigmStepFrom = null;
+            _log?.Log(LogSeverity.Info, LogSource,
+                $"plain step from {from} did not move (blocked); reshuffling");
+            Reshuffle(here);
+            return;
+        }
+        _paradigmStepFrom = null;
+
+        _log?.Log(LogSeverity.Info, LogSource, $"relocalized to {here} via authoritative `rm`");
+        ContinueFromLocated(here);
     }
 
     private void BeginRelocalize()
@@ -688,9 +733,9 @@ public sealed class TeleportMazeSolver : IMazeSolver, IDisposable
         }
         _lookTimeout?.Stop();
         if (_phase == Phase.Settling)
-            BeginPostTeleportRelocalize();   // rm (Paradigm) or 1x2 look sweep (stock)
+            BeginRelocalize();   // stock post-teleport: full 1x2 look sweep
         else
-            VerifyStep();                    // driven step: name + mask check
+            VerifyStep();        // stock driven step: name + mask check
     }
 
     private void RestartLookTimeout()
@@ -709,11 +754,17 @@ public sealed class TeleportMazeSolver : IMazeSolver, IDisposable
             FailSolve("teleport landing did not render");
         else if (_phase == Phase.Resyncing)
         {
-            // No Location: reply to our `rm` — fall back to the realm-agnostic look
-            // sweep off the landing we already rendered rather than hang the solve.
-            _log?.Log(LogSeverity.Warn, LogSource,
-                "`rm` resync got no Location: reply; falling back to look sweep");
-            BeginRelocalize();
+            // No Location: reply to our `rm` — re-send it (a rare lost packet) rather
+            // than falling back to the look sweep; on Paradigm the solver never looks.
+            if (++_rmRetries <= MaxRmRetries)
+            {
+                _log?.Log(LogSeverity.Warn, LogSource,
+                    $"`rm` got no Location: reply; retry {_rmRetries}/{MaxRmRetries}");
+                SendRm();
+                RestartLookTimeout();
+            }
+            else
+                FailSolve("`rm` resync got no Location: reply");
         }
         else if (_phase == Phase.Walking)
             FailSolve("walk step landing did not render");
