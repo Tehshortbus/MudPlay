@@ -219,7 +219,8 @@ public sealed class TeleportMazeSolverTests : IDisposable
         public void Dispose() => Solver.Dispose();
     }
 
-    private Harness NewHarness(string rooms = SplitMaze, bool bindWire = true, string spells = Spells)
+    private Harness NewHarness(string rooms = SplitMaze, bool bindWire = true, string spells = Spells,
+        bool isParadigm = false)
     {
         string dir = Path.Combine(_root, "alpha");
         Directory.CreateDirectory(dir);
@@ -243,7 +244,8 @@ public sealed class TeleportMazeSolverTests : IDisposable
         // Synchronous post + no dispatcher timers: Start() runs inline in TryBegin
         // and the settle / look timers are driven manually via test seams.
         TeleportMazeSolver solver = new(index, graph, tracker, bfs, walker,
-            log: null, useTimer: false, post: a => a());
+            log: null, useTimer: false, post: a => a(),
+            isParadigm: isParadigm ? () => true : null);
 
         Harness h = new()
         {
@@ -294,6 +296,82 @@ public sealed class TeleportMazeSolverTests : IDisposable
 
         Assert.False(h.Solver.Active);
         Assert.Equal(0, h.Solver.Attempts);
+        Assert.Equal(new RoomKey(1, 30), h.Tracker.State.CurrentRoom!.Key);
+        Assert.Contains(h.Events, e => e.Kind == WalkEventKind.Finished);
+        Assert.DoesNotContain(h.Events, e => e.Kind == WalkEventKind.Failed);
+    }
+
+    [Fact]
+    public void Paradigm_RelocalizesViaRm_NotLookSweep()
+    {
+        // On Paradigm the game answers `rm` with the player's authoritative
+        // (map,room), so the solver relocalizes with a single `rm` instead of the
+        // multi-`look` 1x2 sweep. `rm` fires only AFTER the landing settles, so it
+        // reads the teleported-to room, not the one we left.
+        Harness h = NewHarness(isParadigm: true);
+        // A teleport dropped us in 1/31 (tracker Lost). Goal is plain-adjacent 1/30.
+
+        Assert.True(h.Walker.WalkTo(new RoomKey(1, 30)));
+        Assert.True(h.Solver.Active);
+
+        // Self-look renders the landing; settle → on Paradigm the solver fires `rm`
+        // (NOT a directional look sweep) for its authoritative position.
+        h.Solver.OnRoomObserved(Asylum(Direction.E, Direction.D));  // 1/31 self-look render
+        h.Solver.FireSettleForTests();
+        Assert.Equal("rm\r", h.SentText[^1]);
+
+        // Simulate the game's `Location:` reply re-anchoring the tracker (what
+        // ParadigmPositionResolver does off the rm reply): hard-locate to 1/31.
+        // That raises StateChanged → the solver continues from the located room.
+        h.Tracker.SetLocated(new RoomKey(1, 31));
+
+        // No directional peeks were sent — straight to driving the plain route E.
+        Assert.DoesNotContain("look east\r", h.SentText);
+        Assert.DoesNotContain("look down\r", h.SentText);
+        Assert.Equal(new RoomKey(1, 31), h.Tracker.State.CurrentRoom!.Key);
+        Assert.Contains("e\r", h.SentText);
+        Assert.Equal("look\r", h.SentText[^1]);
+
+        // Feed 1/30's landing render, settle → the step verifies + finishes.
+        h.Solver.OnRoomObserved(Asylum(Direction.W, Direction.D));
+        h.Solver.FireSettleForTests();
+
+        Assert.False(h.Solver.Active);
+        Assert.Equal(0, h.Solver.Attempts);
+        Assert.Equal(new RoomKey(1, 30), h.Tracker.State.CurrentRoom!.Key);
+        Assert.Contains(h.Events, e => e.Kind == WalkEventKind.Finished);
+        Assert.DoesNotContain(h.Events, e => e.Kind == WalkEventKind.Failed);
+    }
+
+    [Fact]
+    public void Paradigm_RmTimeout_FallsBackToLookSweep()
+    {
+        // A dropped `rm` reply must not hang the solve: the look-timeout falls the
+        // solver back to the realm-agnostic 1x2 look sweep off the landing it
+        // already rendered.
+        Harness h = NewHarness(isParadigm: true);
+
+        Assert.True(h.Walker.WalkTo(new RoomKey(1, 30)));
+        h.Solver.OnRoomObserved(Asylum(Direction.E, Direction.D));  // 1/31 self-look render
+        h.Solver.FireSettleForTests();
+        Assert.Equal("rm\r", h.SentText[^1]);
+
+        // No Location: reply arrives — the resync deadline elapses.
+        h.Solver.FireLookTimeoutForTests();
+
+        // Fell back to the look sweep: peeking 1/31's exits (enum order E, D).
+        Assert.Equal("look east\r", h.SentText[^1]);
+        h.Solver.OnRoomObserved(Asylum(Direction.W, Direction.D));  // look E → 1/30
+        h.Solver.OnRoomObserved(Asylum(Direction.E, Direction.D));  // look D → 1/10
+
+        // Relocalized to 1/31 → drives the plain route E to the goal.
+        Assert.Equal(new RoomKey(1, 31), h.Tracker.State.CurrentRoom!.Key);
+        Assert.Contains("e\r", h.SentText);
+
+        h.Solver.OnRoomObserved(Asylum(Direction.W, Direction.D));  // 1/30's display
+        h.Solver.FireSettleForTests();
+
+        Assert.False(h.Solver.Active);
         Assert.Equal(new RoomKey(1, 30), h.Tracker.State.CurrentRoom!.Key);
         Assert.Contains(h.Events, e => e.Kind == WalkEventKind.Finished);
         Assert.DoesNotContain(h.Events, e => e.Kind == WalkEventKind.Failed);

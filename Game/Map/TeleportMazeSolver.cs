@@ -59,7 +59,7 @@ public sealed class TeleportMazeSolver : IMazeSolver, IDisposable
     // the goal's component is never randomly hit (mis-flagged topology).
     private const int MaxReshuffleAttempts = 80;
 
-    private enum Phase { Idle, RoutingToEntrance, Settling, Looking, Walking }
+    private enum Phase { Idle, RoutingToEntrance, Settling, Looking, Resyncing, Walking }
 
     private readonly TeleportMazeIndex _index;
     private readonly RoomGraphManager _graph;
@@ -67,6 +67,11 @@ public sealed class TeleportMazeSolver : IMazeSolver, IDisposable
     private readonly BfsMapper _bfs;
     private readonly AutoWalkManager _walker;
     private readonly LogService? _log;
+
+    // True on a ParaMud (Paradigm) realm, where the solver relocalizes by `rm`
+    // instead of the look-sweep. Reads GameData.ActiveRealm live per-call so a
+    // mid-session set swap is honoured. Defaults to stock (always false).
+    private readonly Func<bool> _isParadigm;
 
     // Defers the initial Start() (and the walker delegation) off the current
     // call stack so TryBegin, invoked from INSIDE the walker's own WalkTo, never
@@ -117,13 +122,16 @@ public sealed class TeleportMazeSolver : IMazeSolver, IDisposable
     public int Attempts => _attempts;
     public string PhaseName => _phase.ToString();
 
-    // Runs on every realm. Paradigm has `rm`, but `rm` locates a room by number —
-    // it does NOT relocalize inside a random-teleport maze where every room shares
-    // one name/number band and each step reshuffles you (the tracker sits at
-    // Suspect, not Confirmed). The look-sweep relocalization is realm-agnostic and
-    // is the only thing that can drive the asylum, so the solver is not gated by
-    // realm. (The Paradigm asylum's pull-lever escape is neutralised at graph-build
-    // in RoomGraphManager so the pocket detects there the same as on stock.)
+    // Runs on every realm, so the solver is not gated by realm. The relocalization
+    // METHOD differs by realm, though: on stock the only tool is the realm-agnostic
+    // 1x2 look-sweep. On Paradigm the game answers `rm` with the player's own
+    // authoritative (map,room) (see GAME_MECHANICS.md) — and that room number is
+    // distinct even though every asylum room shares one NAME, so `rm` pinpoints the
+    // exact landing, including the dead-end Padded Cells the look-sweep can't
+    // relocalize in. So on Paradigm the solver relocalizes by `rm` (falling back to
+    // the look-sweep if a reply is dropped); on stock it uses the sweep directly.
+    // (The Paradigm asylum's pull-lever escape is neutralised at graph-build in
+    // RoomGraphManager so the pocket detects there the same as on stock.)
     public bool Enabled => true;
 
     public TeleportMazeSolver(
@@ -132,8 +140,9 @@ public sealed class TeleportMazeSolver : IMazeSolver, IDisposable
         RoomTracker tracker,
         BfsMapper bfs,
         AutoWalkManager walker,
-        LogService? log = null)
-        : this(index, graph, tracker, bfs, walker, log, useTimer: true, post: null) { }
+        LogService? log = null,
+        Func<bool>? isParadigm = null)
+        : this(index, graph, tracker, bfs, walker, log, useTimer: true, post: null, isParadigm) { }
 
     internal TeleportMazeSolver(
         TeleportMazeIndex index,
@@ -143,7 +152,8 @@ public sealed class TeleportMazeSolver : IMazeSolver, IDisposable
         AutoWalkManager walker,
         LogService? log,
         bool useTimer,
-        Action<Action>? post)
+        Action<Action>? post,
+        Func<bool>? isParadigm = null)
     {
         ArgumentNullException.ThrowIfNull(index);
         ArgumentNullException.ThrowIfNull(graph);
@@ -158,8 +168,10 @@ public sealed class TeleportMazeSolver : IMazeSolver, IDisposable
         _walker = walker;
         _log = log;
         _post = post ?? (a => Dispatcher.UIThread.Post(a));
+        _isParadigm = isParadigm ?? (() => false);
 
         _walker.Event += OnWalkerEvent;
+        _tracker.StateChanged += OnTrackerStateChanged;
 
         if (useTimer)
         {
@@ -484,6 +496,48 @@ public sealed class TeleportMazeSolver : IMazeSolver, IDisposable
         RestartLookTimeout();
     }
 
+    // The teleport has landed and rendered (settle just fired off the self-look).
+    // Relocalize by the realm's method: `rm` on Paradigm, the 1x2 look sweep on
+    // stock. Firing here — after the settle — is what guarantees `rm` reads the
+    // room we're standing in rather than the one we left.
+    private void BeginPostTeleportRelocalize()
+    {
+        if (_isParadigm())
+            BeginParadigmResync();
+        else
+            BeginRelocalize();
+    }
+
+    // Paradigm-only: ask the game for our authoritative position with `rm` instead
+    // of walking the look sweep. `rm` reports the player's own (map,room) (see
+    // GAME_MECHANICS.md) — distinct even though every asylum room shares a name —
+    // so it pinpoints the exact landing, including the dead-end Padded Cells the
+    // sweep can't relocalize in. The existing ParadigmPositionResolver parses the
+    // `Location:` reply and hard-locates the tracker; we continue off that in
+    // OnTrackerStateChanged. A dropped reply falls back to the look sweep via
+    // OnLookTimeout so a missed `rm` never hangs the solve.
+    private void BeginParadigmResync()
+    {
+        _phase = Phase.Resyncing;
+        _log?.Log(LogSeverity.Info, LogSource, "requesting authoritative position via `rm`");
+        SendRm();
+        RestartLookTimeout();
+    }
+
+    // The `rm` reply lands here: ParadigmPositionResolver hard-locates the tracker
+    // from the Location: line, which raises StateChanged. Only act while awaiting
+    // that resync — the solver's own SetLocated calls (look-sweep resolve, driven-
+    // step verify) also raise StateChanged, but never in the Resyncing phase.
+    private void OnTrackerStateChanged(RoomTransition _)
+    {
+        if (!Active || _phase != Phase.Resyncing) return;
+        RoomState st = _tracker.State;
+        if (st.Confidence != RoomConfidence.Confirmed || st.CurrentRoom is not { } room) return;
+        _lookTimeout?.Stop();
+        _log?.Log(LogSeverity.Info, LogSource, $"relocalized to {room.Key} via authoritative `rm`");
+        ContinueFromLocated(room.Key);
+    }
+
     private void BeginRelocalize()
     {
         if (_lastObserved is not { } obs)
@@ -634,9 +688,9 @@ public sealed class TeleportMazeSolver : IMazeSolver, IDisposable
         }
         _lookTimeout?.Stop();
         if (_phase == Phase.Settling)
-            BeginRelocalize();       // post-teleport: full 1x2 look sweep
+            BeginPostTeleportRelocalize();   // rm (Paradigm) or 1x2 look sweep (stock)
         else
-            VerifyStep();            // driven step: name + mask check
+            VerifyStep();                    // driven step: name + mask check
     }
 
     private void RestartLookTimeout()
@@ -653,6 +707,14 @@ public sealed class TeleportMazeSolver : IMazeSolver, IDisposable
             FailSolve($"look {_currentLookDir.ToLongName()} did not render a room");
         else if (_phase == Phase.Settling)
             FailSolve("teleport landing did not render");
+        else if (_phase == Phase.Resyncing)
+        {
+            // No Location: reply to our `rm` — fall back to the realm-agnostic look
+            // sweep off the landing we already rendered rather than hang the solve.
+            _log?.Log(LogSeverity.Warn, LogSource,
+                "`rm` resync got no Location: reply; falling back to look sweep");
+            BeginRelocalize();
+        }
         else if (_phase == Phase.Walking)
             FailSolve("walk step landing did not render");
     }
@@ -677,6 +739,10 @@ public sealed class TeleportMazeSolver : IMazeSolver, IDisposable
     // and hard-locates with SetLocated once the sweep resolves.
     private void SendSelfLook() => Send(Encoding.Latin1.GetBytes("look\r"));
 
+    // Paradigm authoritative-position query. The reply's `Location:` line is
+    // parsed by ParadigmPositionResolver, which hard-locates the tracker.
+    private void SendRm() => Send(Encoding.Latin1.GetBytes("rm\r"));
+
     private void Send(byte[] bytes) => _wireSender?.Invoke(bytes);
 
     private static uint MaskOf(IReadOnlySet<Direction> exits)
@@ -697,6 +763,7 @@ public sealed class TeleportMazeSolver : IMazeSolver, IDisposable
         if (_disposed) return;
         _disposed = true;
         _walker.Event -= OnWalkerEvent;
+        _tracker.StateChanged -= OnTrackerStateChanged;
         StopTimers();
     }
 }

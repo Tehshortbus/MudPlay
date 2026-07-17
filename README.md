@@ -5,10 +5,10 @@
 > - Navigation can now reach a destination inside a random-teleport maze (e.g. the Warped Asylum), where every room shares a name so normal tracking gives up
 > - The maze is detected structurally — a one-way cast mouth whose interior random-teleports on every step — with no hardcoded room numbers
 > - After each teleport the walker relocalizes by peeking neighbours with `look <dir>` and matching a unique exit signature, then routes to the goal, re-teleporting ("reshuffling") when the goal is only reachable through another teleport
-> - Runs on every realm — `rm` locates a room by number but can't relocalize inside a same-named random-teleport maze, so the look-sweep drives the asylum on Paradigm too
+> - Runs on every realm — the look-sweep is the realm-agnostic method, and on Paradigm the solver relocalizes after each teleport with `rm` (an authoritative position query whose room numbers stay distinct even though every asylum room shares a name), which also pinpoints the dead-end Padded Cells the sweep can't disambiguate; a dropped `rm` reply falls back to the look-sweep so the solve never hangs
 > - Paradigm's asylum pull-lever escape is treated as a one-way pocket dimension so the maze detects and routes there the same as on stock
 > - After each teleport the solver forces a `look` to read the landing's exits — in brief mode (the default) a room shows only its name on entry, so relocalization was keying off the room just left and desyncing at the entrance
-> - `rm` is suppressed while the maze solver is active, so the asylum is driven entirely by the look-sweep on Paradigm exactly as it would be on stock
+> - The `rm` relocalize fires only after the teleport's landing has settled, so it reads the room just landed in rather than the one left behind
 > - The solver now drives the final plain route to the goal itself (ungated, like a reshuffle step) instead of handing off to the walker, so it no longer stalls on a stuck combat gate mid-maze
 > - Arrival at a dead-end goal room (e.g. the old man's padded cell, whose signature can't be uniquely matched) is recognized by room name so the solver stops there instead of blind-reshuffling back out
 > - When a landing has several reshuffle exits, the solver picks the one whose teleport spell is likeliest to land somewhere useful — favouring the pool with the most rooms it can both relocalize in and route to the goal from, instead of spiralling into a dead-end pool

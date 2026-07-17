@@ -3477,14 +3477,16 @@ public sealed class AppServices
         // and the RoomDisplayParser.RoomParsed feed are bound per-session by
         // MainWindowViewModel after connect.
         MazeSolver = new Game.Map.TeleportMazeSolver(
-            MazeIndex, RoomGraph, RoomTracker, Bfs, Walker, Log);
+            MazeIndex, RoomGraph, RoomTracker, Bfs, Walker, Log,
+            isParadigm: () => GameData.ActiveRealm == Game.RealmType.ParaMud);
         Walker.SetMazeSolver(MazeSolver);
-        // While a maze solve is Active the tracker legitimately sits Suspect
-        // between same-named landings — resolving that is the solver's job (it
-        // relocalizes by look-sweep and hard-locates via SetLocated), not the
-        // recovery gate's. Suppress the Paradigm `rm` resync for the duration so
-        // the asylum is driven the same way it is on stock, instead of rm
-        // short-circuiting the solver mid-walk.
+        // While a maze solve is Active the tracker legitimately churns Lost/Suspect
+        // between same-named teleport landings — relocalizing that is the solver's
+        // job. On Paradigm the solver drives its OWN `rm` after each landing (see
+        // TeleportMazeSolver); keep the recovery gate's proactive `rm` suppressed
+        // for the duration so it can't fire a second, uncoordinated `rm` that races
+        // the solver's. On stock (no `rm`) the solver uses the look-sweep and this
+        // gate no-ops anyway.
         Recovery.TryResync = reason => !MazeSolver.Active && ParadigmResync.TryRequestResync(reason);
         // DeathRecoveryManager's Walk-to-Room / Recover-Now actions route
         // through the walker — attached here since the walker is built
