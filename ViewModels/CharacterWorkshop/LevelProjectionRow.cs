@@ -41,7 +41,9 @@ public sealed class LevelProjectionRow
         HpRegen = p.HpRegen.ToString(CultureInfo.InvariantCulture);
         Mana = isCaster ? p.Mana.ToString("N0", CultureInfo.InvariantCulture) : "—";
         MpRegen = isCaster ? p.MpRegen.ToString(CultureInfo.InvariantCulture) : "—";
-        Cost = trainCost is { } c ? c.ToString("N0", CultureInfo.InvariantCulture) : "—";
+        // Raw copper, ungrouped (no thousands separators) — the train cost pastes
+        // straight into the game, unlike the other columns' human-readable figures.
+        Cost = trainCost is { } c ? c.ToString("0", CultureInfo.InvariantCulture) : "—";
         IsCurrentLevel = isCurrentLevel;
     }
 
