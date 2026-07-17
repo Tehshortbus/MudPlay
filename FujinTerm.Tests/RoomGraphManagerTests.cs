@@ -1101,6 +1101,119 @@ public sealed class RoomGraphManagerTests : IDisposable
         return (graph, new BfsMapper(graph));
     }
 
+    private (RoomGraphManager Graph, BfsMapper Bfs) BuildWithTbInfoAndMonsters(
+        string setName, string roomsJson, string tbInfoJson, string monstersJson)
+    {
+        SeedTable(setName, "Rooms", roomsJson);
+        SeedTable(setName, "TBInfo", tbInfoJson);
+        SeedTable(setName, "Monsters", monstersJson);
+        GameDataCache cache = NewCache();
+        cache.SwitchSet(setName);
+        TBInfoStore tbinfo = new(cache);
+        tbinfo.OnActiveSetChanged(setName);
+        RoomGraphManager graph = new(cache, log: null, tbinfo);
+        graph.OnActiveSetChanged(setName);
+        return (graph, new BfsMapper(graph));
+    }
+
+    // ----- guard-door promotion (lair monster greet opens a home-room door) --
+    //
+    // The grove shadow guard (#503) stands in the lair of 9/1423; its greet
+    // (1433) lifts that room's W door to Morukai's chamber (9/1425) when a
+    // Phoenix-quest character asks about "morukai". The door imports as a
+    // 1000-picklock Door that no pick/bash opens, so without the greet-derived
+    // ask command the route picker discards it.
+
+    private const string GuardRooms = """
+        [
+          { "Map Number": 9, "Room Number": 1423, "Name": "Grove",
+            "Light": 0, "Shop": 0, "Spell": 0, "CMD": 0,
+            "Lair": "(Max 2): 503,[30-24-24-2]", "Delay": 5,
+            "N": "0", "S": "9/1422 (Door)", "E": "9/1424",
+            "W": "9/1425 (Door [1000 picklocks/strength])",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 9, "Room Number": 1425, "Name": "Morukai's Chamber",
+            "Light": 0, "Shop": 0, "Spell": 0, "CMD": 0, "NPC": 504, "Lair": "", "Delay": 0,
+            "N": "0", "S": "0", "E": "9/1423 (Door)", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+        ]
+        """;
+
+    private const string GuardTbInfo = """
+        [
+          { "Number": 1433, "LinkTo": 0,
+            "Action": "morukai:1435\norfeo:1435\npassage:1435\nphoenix:1435\nprophecy:1435\n",
+            "Called From": "Monster #503" },
+          { "Number": 1435, "LinkTo": 1436, "Action": null, "Called From": "" },
+          { "Number": 1436, "LinkTo": 0,
+            "Action": "checkability 133 4:remoteaction 1423 66 0 3:message 1841\n",
+            "Called From": "" }
+        ]
+        """;
+
+    private const string GuardMonsters = """
+        [
+          { "Number": 503, "Name": "shadow guard", "GreetTXT": 1433 },
+          { "Number": 504, "Name": "Morukai", "GreetTXT": 0 }
+        ]
+        """;
+
+    [Fact]
+    public void GuardMonsterGreet_OnDoorExit_PromotesToMultiActionHidden()
+    {
+        (RoomGraphManager graph, _) =
+            BuildWithTbInfoAndMonsters("alpha", GuardRooms, GuardTbInfo, GuardMonsters);
+
+        Room? grove = graph.GetRoom(new RoomKey(9, 1423));
+        Assert.NotNull(grove);
+        Assert.True(grove!.Exits.TryGetValue(Direction.W, out RoomExit ex));
+
+        // Promoted off the unpickable Door so the ask-then-move dispatch crosses
+        // it instead of the door FSM bonking on a 1000-picklock door.
+        Assert.Equal(RoomExitHint.MultiActionHidden, ex.Hint);
+        Assert.Equal(new RoomKey(9, 1425), ex.Target);
+        Assert.NotNull(ex.MultiAction);
+        Assert.Single(ex.MultiAction!.Actions);
+        Assert.False(ex.MultiAction.HasRemoteActions);              // spoken here, no detour
+        Assert.Equal("ask guard morukai", ex.MultiAction.Actions[0].Commands[0]);
+        Assert.Equal(0, ex.MultiAction.Actions[0].RequiredItemId);  // no held-item gate
+    }
+
+    [Fact]
+    public void GuardDoor_PromotedExit_IsRoutableByBfs()
+    {
+        // End-to-end: with the guarded door promoted, BFS routes 9/1423 → 9/1425
+        // even for a build that can never pick/bash a 1000-picklock door.
+        (RoomGraphManager graph, BfsMapper bfs) =
+            BuildWithTbInfoAndMonsters("alpha", GuardRooms, GuardTbInfo, GuardMonsters);
+
+        ProfileService profile = new();
+        MovementFilter filter = new(profile)
+        {
+            StrengthProvider = () => 100,
+            PicklocksProvider = () => 0,
+            MaxBashableStrengthProvider = () => 200,
+        };
+
+        var path = bfs.FindPath(new RoomKey(9, 1423), new RoomKey(9, 1425), filter);
+        Assert.NotNull(path);
+        Assert.Equal(new[] { Direction.W }, path!);
+    }
+
+    [Fact]
+    public void GuardDoor_WithoutMonstersTable_LeavesDoorUnpromoted()
+    {
+        // No Monsters table → the greet is never scanned, so the door stays a
+        // plain (unpickable) Door — proves the promotion is the Monsters-driven
+        // path, not something the room/TBInfo data alone triggers.
+        (RoomGraphManager graph, _) = BuildWithTbInfo("alpha", GuardRooms, GuardTbInfo);
+
+        Room? grove = graph.GetRoom(new RoomKey(9, 1423));
+        Assert.True(grove!.Exits.TryGetValue(Direction.W, out RoomExit ex));
+        Assert.Equal(RoomExitHint.Door, ex.Hint);
+        Assert.Null(ex.MultiAction);
+    }
+
     [Fact]
     public void CmdTeleport_SingleDestination_SynthesisesTeleportEdge()
     {

@@ -2,6 +2,11 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.71.0
+
+- Navigation now recognizes a "guard door" — a pick/bash-proof door opened only by asking a stationed monster the right password (e.g. the grove shadow guard's `ask guard morukai` raising the west gate to Morukai's chamber) — and routes across it via ask-then-move instead of discarding the route
+- Guard doors are gated on an untrackable quest ability, so the walker issues the ask and reacts to whether the door actually opens; every greet topic that opens the same door is offered as an alternative command
+
 ## 1.70.0
 
 - Auto-get now re-surveys the room after a kill whose monster could drop an item you auto-collect, so a ground drop is picked up instead of left behind

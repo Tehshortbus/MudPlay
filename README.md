@@ -1,10 +1,9 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.70.0**
-> - Auto-get now re-surveys the room after a kill whose monster could drop an item you auto-collect, so a ground drop is picked up instead of left behind
-> - Auto-get never grabs a ground item that would exceed your carrying capacity; the "Cash" tab is renamed "Cash + Items" and adds optional Light/Medium/Heavy item weight gates, separate from the coin gates
-> - Encumbrance-bracket math shared between the coin and item collect engines
+> **Version 1.71.0**
+> - Navigation now recognizes a "guard door" — a pick/bash-proof door opened only by asking a stationed monster the right password (e.g. the grove shadow guard's `ask guard morukai` raising the west gate to Morukai's chamber) — and routes across it via ask-then-move instead of discarding the route
+> - Guard doors are gated on an untrackable quest ability, so the walker issues the ask and reacts to whether the door actually opens; every greet topic that opens the same door is offered as an alternative command
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

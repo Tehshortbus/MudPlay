@@ -922,6 +922,31 @@ comes from the stat screen / who line (`AlignmentTracker` / `PlayerStats`).
     `CastTeleportRandom` (a *predictability* one): the asylum mouth is both, an internal reciprocal cast
     exit is neither, and a fixed one-way cast-teleport into a sink would be a pocket entrance without
     being random.
+- **[CONFIRMED, game data v1.11p map 9, MMUD Explorer cross-check]** **A placed "guardian" monster
+  whose greet dialogue raises a door on its own room is opened by `ask <monster-noun> <topic>` — the
+  spoken password lifts the gate.** Some pick/bash-proof `Door` exits aren't operated by a room verb or
+  a remote lever at all; the barrier is a stationed monster who lifts it when the player asks the right
+  keyword. The confirmed case is the **grove shadow guard**: room `9/1423` carries
+  `Lair='(Max 2): 503,[…]'` placing shadow guard **#503** (`GreetTXT 1433`), and the door `9/1423 W →
+  9/1425` (Morukai's chamber) has an impassable stat requirement so it can't be picked or bashed. The
+  greet decodes as: block `1433` lists topics `morukai / orfeo / passage / phoenix / prophecy`, each
+  pointing at `1435` (empty, `LinkTo 1436`); block `1436` is
+  `checkability 133 4 : remoteaction 1423 66 0 3 : message 1841`. So asking any of those five keywords
+  fires `remoteaction 1423 … 3` — **direction index 3 = W** — operating this room's own west exit. The
+  spoken command is **`ask <noun> <topic>`** where `<noun>` is the **last word of the monster's name**
+  ("shadow guard" → `guard`), e.g. `ask guard morukai`. The five topics are **alternatives** that all
+  open the same door — the walker sends only one.
+  - **The open is quest-gated and the gate is untrackable by the client.** `checkability 133 4` gates
+    the lift on ability **133 = PhoenixQuest**; the client can't read a character's quest abilities, so
+    the crossing is **reactive**: promote the door to routable, issue the `ask`, attempt the move, and
+    react to whether it actually opened (halt/replan if not). Do **not** try to pre-check the gate.
+  - **Client encoding:** identical promotion to the lever-door case above — a `Door`/`KeyLocked` exit
+    fronted by a greeting monster whose `remoteaction` targets *its own room* and names *that exit* is
+    promoted to `MultiActionHidden` at graph-build, folding the resolved `ask` command into the same
+    `byExit` action table the `Action#N` lever cells populate (`GuardDoorCommandResolver` +
+    `RoomGraphManager.InjectGuardDoorActions`). The crossing then reuses `SpecialExitDispatch`'s
+    ask-then-move path. Monster ids come from the room's `Lair` group (and its single placed `Npc`);
+    only monsters carrying a `GreetTXT` are considered.
 
 ## Attack spells: why one fails to damage a monster
 

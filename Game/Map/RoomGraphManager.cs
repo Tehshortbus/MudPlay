@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using FujinTerm.Game.GameData;
 using FujinTerm.Game.Spells;
 using FujinTerm.Services;
 
@@ -380,6 +381,11 @@ public sealed class RoomGraphManager
             list.Add(new ExitAction(cell.StepNumber, cell.Commands, remote, cell.RequiredItemId));
         }
 
+        // Fold in guard-monster doors: a placed monster whose greet dialogue
+        // opens a door on its own room contributes an `ask` command that the
+        // promotion below treats exactly like a lever action.
+        InjectGuardDoorActions(byExit);
+
         // Patch each action-gated exit with the gathered data.
         foreach (((RoomKey roomKey, Direction dir), List<ExitAction> actions) in byExit)
         {
@@ -451,6 +457,110 @@ public sealed class RoomGraphManager
         _byName.Clear();
         _byNameAndExits.Clear();
         _leversByRoom.Clear();
+    }
+
+    // Recognise placed guardian monsters whose greet dialogue opens a door on
+    // their own room (the "ask the guard the password and the gate lifts"
+    // mechanic). Each resolved `ask` command is folded into the byExit table the
+    // Action#N lever cells populate, so the Door → MultiActionHidden promotion
+    // below routes the walker across the guarded door via ask-then-move instead
+    // of the planner discarding it as an unpickable / unbashable door. The quest
+    // ability the game gates the open behind is untrackable by the client, so the
+    // door is always made routable and the walker reacts to whether the command
+    // actually opens it. No-op without a TBInfo source (parameterless / test
+    // construction) or when the set has no Monsters table.
+    private void InjectGuardDoorActions(Dictionary<(RoomKey Room, Direction Dir), List<ExitAction>> byExit)
+    {
+        if (_tbinfo is null) return;
+
+        // Build a small id → (greet, name) map of only monsters carrying a greet,
+        // then evict the raw table — memory-hygiene parity with the Rooms load.
+        JsonDocument? monstersDoc = _cache.GetRawTable("Monsters");
+        if (monstersDoc is null) return;
+
+        var greeters = new Dictionary<int, (int Greet, string Name)>();
+        foreach (JsonElement row in monstersDoc.RootElement.EnumerateArray())
+        {
+            if (row.ValueKind != JsonValueKind.Object) continue;
+            if (!TryReadInt(row, "Number", out int num) || num <= 0) continue;
+            int greet = TryReadIntOrZero(row, "GreetTXT");
+            if (greet <= 0) continue;
+            greeters[num] = (greet, TryReadString(row, "Name") ?? string.Empty);
+        }
+        _cache.EvictTable("Monsters");
+        if (greeters.Count == 0) return;
+
+        // Gather the alternative ask-commands per guarded exit first. Every greet
+        // topic that opens the same door is an ALTERNATIVE — the crossing sends
+        // only the first — so they collapse into one ExitAction rather than
+        // inflating the exit's required-action count.
+        var guardExits = new Dictionary<(RoomKey Room, Direction Dir),
+            (List<string> Commands, int AbilityGate, RoomKey Target)>();
+
+        foreach ((RoomKey key, Room room) in _rooms)
+        {
+            foreach (int monsterId in EnumerateRoomMonsters(room))
+            {
+                if (!greeters.TryGetValue(monsterId, out (int Greet, string Name) g)) continue;
+
+                foreach (GuardDoorCommandResolver.GuardDoorCommand cmd in
+                         GuardDoorCommandResolver.Resolve(_tbinfo, g.Greet, g.Name, key.Room))
+                {
+                    // Only a pick/bash-proof door needs the promotion; a normal
+                    // exit that happens to share the direction is left untouched.
+                    if (!room.Exits.TryGetValue(cmd.Direction, out RoomExit exit)) continue;
+                    if (exit.Hint is not (RoomExitHint.Door or RoomExitHint.KeyLocked)) continue;
+
+                    var exitKey = (key, cmd.Direction);
+                    if (!guardExits.TryGetValue(exitKey, out (List<string> Commands, int AbilityGate, RoomKey Target) acc))
+                        guardExits[exitKey] = acc = (new List<string>(), cmd.AbilityGate, exit.Target);
+                    if (!acc.Commands.Any(c => string.Equals(c, cmd.Command, StringComparison.OrdinalIgnoreCase)))
+                        acc.Commands.Add(cmd.Command);
+                }
+            }
+        }
+
+        foreach (((RoomKey Room, Direction Dir) exitKey,
+                  (List<string> commands, int abilityGate, RoomKey target)) in guardExits)
+        {
+            if (commands.Count == 0) continue;
+            if (!byExit.TryGetValue(exitKey, out List<ExitAction>? list))
+                byExit[exitKey] = list = new List<ExitAction>();
+            list.Add(new ExitAction(StepNumber: 1, commands, RemoteSourceRoom: null));
+
+            _log?.Log(LogSeverity.Info, "RoomGraph",
+                $"Room {exitKey.Room} {exitKey.Dir} → {target}: guarded door opened by '{commands[0]}'"
+                + (commands.Count > 1 ? $" (or {commands.Count - 1} other topic(s))" : "")
+                + (abilityGate > 0
+                    ? $" — gated on {AbilityNames.GetName(abilityGate) ?? $"ability {abilityGate}"}; walker issues the command and reacts to whether it opens."
+                    : "."));
+        }
+    }
+
+    // Monster numbers standing in a room: the single placed NPC (Room.Npc) plus
+    // every mob id in the room's lair group. Yields each id once in that order.
+    private static IEnumerable<int> EnumerateRoomMonsters(Room room)
+    {
+        if (room.Npc > 0) yield return room.Npc;
+        foreach (int id in LairMonsterIds(room.RawLairTag)) yield return id;
+    }
+
+    // Monster ids from a raw Lair cell — the integers between the "(Max N):"
+    // header and the trailing "[group-index]" token (e.g.
+    // "(Max 2): 503,[30-24-24-2]" → 503; "(Max 2): 1141,2175,2176,[…]" →
+    // 1141, 2175, 2176).
+    private static IEnumerable<int> LairMonsterIds(string? rawLairTag)
+    {
+        if (string.IsNullOrEmpty(rawLairTag)) yield break;
+        int colon = rawLairTag.IndexOf(':');
+        int start = colon >= 0 ? colon + 1 : 0;
+        int bracket = rawLairTag.IndexOf('[', start);
+        int end = bracket >= 0 ? bracket : rawLairTag.Length;
+        if (end <= start) yield break;
+        foreach (string part in rawLairTag[start..end].Split(',', StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (int.TryParse(part.Trim(), out int id) && id > 0) yield return id;
+        }
     }
 
     // Re-hint the cardinal exits a room's CMD teleport shadows. A room with
