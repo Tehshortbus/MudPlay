@@ -2,6 +2,23 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.71.5
+
+- Navigation now reaches Morukai from the overworld tree base for both invited and un-invited characters: the quest-gated `go portal` is crossed as a last-resort "gateway" and the walker re-plans from wherever the cast lands (the fixed chamber when invited, the Caves of Chaos when not)
+- Routing inside the Morukai cluster no longer loops down through the random portal — a deterministic path is always preferred and the gateway is taken only when no cardinal route to the goal exists
+- bug reports addressed: paradigm-20260717-062940, paradigm-20260717-063059, paradigm-20260717-063236, paradigm-20260717-070404, paradigm-20260717-073104
+
+## 1.71.0
+
+- Navigation now recognizes a "guard door" — a pick/bash-proof door opened only by asking a stationed monster the right password (e.g. the grove shadow guard's `ask guard morukai` raising the west gate to Morukai's chamber) — and routes across it via ask-then-move instead of discarding the route
+- Guard doors are gated on an untrackable quest ability, so the walker issues the ask and reacts to whether the door actually opens; every greet topic that opens the same door is offered as an alternative command
+
+## 1.70.0
+
+- Auto-get now re-surveys the room after a kill whose monster could drop an item you auto-collect, so a ground drop is picked up instead of left behind
+- Auto-get never grabs a ground item that would exceed your carrying capacity; the "Cash" tab is renamed "Cash + Items" and adds optional Light/Medium/Heavy item weight gates, separate from the coin gates
+- Encumbrance-bracket math shared between the coin and item collect engines
+
 ## 1.69.0
 
 - Trainer room detail now lists the per-level training cost across the trainer's whole level band, priced at that trainer's own markup

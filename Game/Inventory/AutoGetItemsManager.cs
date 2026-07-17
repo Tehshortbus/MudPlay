@@ -41,9 +41,11 @@ public sealed class AutoGetItemsManager : IDisposable
     // One resolved room entry: the item's canonical Number (for the held-count
     // lookup), the name to send to the game, whether the user flagged it for
     // auto-collection, whether it is marked CannotBeTaken (a hard never-pick-up
-    // flag that wins over AutoCollect — the engine never sends get for it), and
-    // the MaxToGet carry cap (int.MaxValue = unbounded).
-    public sealed record ResolvedItem(int Number, string Name, bool AutoCollect, bool CannotBeTaken, int MaxToGet);
+    // flag that wins over AutoCollect — the engine never sends get for it), the
+    // MaxToGet carry cap (int.MaxValue = unbounded), and the item's carry Weight
+    // (MDB Encum; 0 when unknown — such items skip the encumbrance gate).
+    public sealed record ResolvedItem(int Number, string Name, bool AutoCollect,
+                                      bool CannotBeTaken, int MaxToGet, int Weight);
 
     private readonly Func<string, ResolvedItem?> _resolve;
     private readonly Func<int, int> _heldCount;
@@ -51,8 +53,15 @@ public sealed class AutoGetItemsManager : IDisposable
     private readonly Func<bool> _collectAfterCombatFinished;
     private readonly Func<bool> _hasEngageableHostiles;
     private readonly Func<bool> _isPeekSuppressed;
+    private readonly Func<EncumbranceReading> _encumbrance;
+    private readonly Func<(bool Light, bool Medium, bool Heavy)> _itemEncGates;
     private readonly LogService? _log;
     private readonly IDisposable _noticeSub;
+
+    // Cooldown so an area kill whose several corpses each drop a flagged item
+    // re-surveys the room once, not once per corpse.
+    private const int ReLookCooldownMs = 750;
+    private DateTime _lastReLookAt = DateTime.MinValue;
 
     private Terminal.LineExtractor? _lines;
     private string? _noticeBuffer;            // multi-line continuation
@@ -73,6 +82,8 @@ public sealed class AutoGetItemsManager : IDisposable
         Func<bool> hasEngageableHostiles,
         Func<bool>? isPeekSuppressed = null,
         Func<int, int>? heldCount = null,
+        Func<EncumbranceReading>? encumbrance = null,
+        Func<(bool Light, bool Medium, bool Heavy)>? itemEncGates = null,
         LogService? log = null)
     {
         ArgumentNullException.ThrowIfNull(router);
@@ -93,6 +104,12 @@ public sealed class AutoGetItemsManager : IDisposable
         // so we don't send get commands (and trigger the get→inventory→equip
         // chain) against a room the player never entered.
         _isPeekSuppressed = isPeekSuppressed ?? (static () => false);
+        // Null when unbound (tests) → Empty reading (MaxWeight 0) disables the
+        // encumbrance gate, so those cases collect ungated. Live wiring supplies
+        // the parsed InventorySnapshot.Encumbrance and the per-character item
+        // bracket gates (the "Cash + Items" tab checkboxes).
+        _encumbrance = encumbrance ?? (static () => EncumbranceReading.Empty);
+        _itemEncGates = itemEncGates ?? (static () => (false, false, false));
         _log = log;
 
         _noticeSub = router.Subscribe(KnownPatterns.YouNoticeRoom, OnYouNoticeRoom);
@@ -144,6 +161,22 @@ public sealed class AutoGetItemsManager : IDisposable
         _log?.Debug(LogCategory, $"room changed — dropping {_deferred.Count} deferred get(s)");
         _deferred.Clear();
         _gate?.NoteDeferredCleared();
+    }
+
+    // Re-survey the room after a kill whose monster could drop an
+    // AutoCollect-flagged item. A drop lands loose on the ground as the item but
+    // isn't announced on the kill line, so a bare `look` re-renders the "You
+    // notice … here." survey the get path already parses. No-op while the master
+    // toggle is off; cooldown-guarded so an area kill re-looks once (the single
+    // survey collects every ground drop at once).
+    public void RequestDropReLook()
+    {
+        if (_disposed || !_isEnabled()) return;
+        DateTime now = DateTime.UtcNow;
+        if ((now - _lastReLookAt).TotalMilliseconds < ReLookCooldownMs) return;
+        _lastReLookAt = now;
+        _log?.Info(LogCategory, "re-look after kill (monster drops a flagged item)");
+        Send("look");
     }
 
     // ----- notice parsing ----------------------------------------------
@@ -227,6 +260,21 @@ public sealed class AutoGetItemsManager : IDisposable
         // (the held-count snapshot doesn't move until the get echoes back).
         Dictionary<int, int>? decidedThisPass = null;
 
+        // Encumbrance gate. With a known carry weight, cap what we grab this
+        // survey so a pickup can't push past the character's capacity (the
+        // always-on hard cap = MaxWeight) or past a user-flagged bracket. The
+        // running projection charges each accepted item's weight so a survey
+        // that lists several heavy items stops at the first that would overflow.
+        EncumbranceReading enc = _encumbrance();
+        bool encKnown = enc.MaxWeight > 0;
+        long capWeight = long.MaxValue;
+        if (encKnown)
+        {
+            (bool gL, bool gM, bool gH) = _itemEncGates();
+            capWeight = EncumbranceGate.ComputeCapWeight(gL, gM, gH, enc);
+        }
+        long projectedWeight = enc.CurrentWeight;
+
         foreach (string entry in SplitEntries(list))
         {
             ResolvedItem? item = _resolve(entry);
@@ -241,18 +289,35 @@ public sealed class AutoGetItemsManager : IDisposable
             // MaxToGet carry cap. Count what we already hold (carried + worn +
             // key ring — key-type items land in the ring, not the pack) plus
             // anything already decided in this same survey; stop at the cap.
+            // Decided-count and projected-weight are committed only after BOTH
+            // gates pass, so a weight refusal doesn't burn a cap slot.
+            int decidedSoFar = decidedThisPass?.GetValueOrDefault(item.Number) ?? 0;
             if (item.MaxToGet != int.MaxValue)
             {
-                decidedThisPass ??= new Dictionary<int, int>();
-                int have = _heldCount(item.Number) + decidedThisPass.GetValueOrDefault(item.Number);
+                int have = _heldCount(item.Number) + decidedSoFar;
                 if (have >= item.MaxToGet)
                 {
                     _log?.Debug(LogCategory,
                         $"skipped item={item.Name} (have {have} >= max {item.MaxToGet})");
                     continue;
                 }
-                decidedThisPass[item.Number] = decidedThisPass.GetValueOrDefault(item.Number) + 1;
             }
+
+            // Weight gate — skip a pickup that would breach the cap. Weight 0
+            // (unknown) and an unknown carry weight both mean "don't gate".
+            if (encKnown && item.Weight > 0 && projectedWeight + item.Weight > capWeight)
+            {
+                _log?.Info(LogCategory,
+                    $"skipped item={item.Name} (encumbrance: {projectedWeight}+{item.Weight} > cap {capWeight})");
+                continue;
+            }
+
+            if (item.MaxToGet != int.MaxValue)
+            {
+                decidedThisPass ??= new Dictionary<int, int>();
+                decidedThisPass[item.Number] = decidedSoFar + 1;
+            }
+            if (encKnown && item.Weight > 0) projectedWeight += item.Weight;
 
             if (deferMode)
             {

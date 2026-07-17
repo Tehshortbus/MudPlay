@@ -1,4 +1,5 @@
 using System.Text;
+using FujinTerm.Game;
 using FujinTerm.Game.Inventory;
 using FujinTerm.Services;
 using FujinTerm.Services.Patterns;
@@ -44,10 +45,22 @@ public sealed class AutoGetItemsManagerTests
         // item Number -> currently-held copies (carried + worn + key ring).
         public Dictionary<int, int> Held { get; } = new();
 
+        // canonical name -> carry weight (MDB Encum). Absent means 0 (ungated).
+        public Dictionary<string, int> Weights { get; } =
+            new(StringComparer.OrdinalIgnoreCase);
+
         public bool Enabled { get; set; } = true;
         public bool CollectAfterCombat { get; set; }
         public bool HasHostiles { get; set; }
         public bool PeekSuppressed { get; set; }
+
+        // Encumbrance reading + item bracket gates the manager reads each survey.
+        // Default Empty (MaxWeight 0) disables the gate — the pre-existing tests
+        // set no weights and expect ungated collection.
+        public EncumbranceReading Enc { get; set; } = EncumbranceReading.Empty;
+        public bool GateLight { get; set; }
+        public bool GateMedium { get; set; }
+        public bool GateHeavy { get; set; }
 
         public Harness()
         {
@@ -59,6 +72,8 @@ public sealed class AutoGetItemsManagerTests
                 hasEngageableHostiles: () => HasHostiles,
                 isPeekSuppressed: () => PeekSuppressed,
                 heldCount: id => Held.GetValueOrDefault(id),
+                encumbrance: () => Enc,
+                itemEncGates: () => (GateLight, GateMedium, GateHeavy),
                 log: Log);
             Items.SetWireSender(b => Sent.Add(b));
         }
@@ -83,7 +98,8 @@ public sealed class AutoGetItemsManagerTests
             bool noTake = NoTake.GetValueOrDefault(key);
             int number = Numbers.GetValueOrDefault(key);
             int cap = Caps.TryGetValue(key, out int c) ? c : int.MaxValue;
-            return new AutoGetItemsManager.ResolvedItem(number, key, auto, noTake, cap);
+            int weight = Weights.GetValueOrDefault(key);
+            return new AutoGetItemsManager.ResolvedItem(number, key, auto, noTake, cap, weight);
         }
 
         private static string Strip(string raw)
@@ -370,6 +386,132 @@ public sealed class AutoGetItemsManagerTests
         (int qty, string name) = InventorySnapshot.ParseKeyEntry(entry);
         Assert.Equal(expectQty, qty);
         Assert.Equal(expectName, name);
+    }
+
+    // ----- Encumbrance gate ----------------------------------------
+
+    // Category doesn't feed the gate (only current/max weight do), so any
+    // bracket label works; percentage is derived for completeness.
+    private static EncumbranceReading Reading(int current, int max)
+        => new(current, max, max > 0 ? current * 100 / max : 0, EncumbranceLevel.None);
+
+    [Fact]
+    public void HardCap_SkipsItemThatWouldExceedCapacity()
+    {
+        using Harness h = new();
+        h.Flags["anvil"] = true;
+        h.Weights["anvil"] = 20;
+        h.Enc = Reading(90, 100);           // 10 headroom, no gate flags
+
+        h.Feed("You notice an anvil here.");
+
+        Assert.Empty(h.Sent);               // 90+20 > 100 capacity
+    }
+
+    [Fact]
+    public void HardCap_CollectsItemThatFits()
+    {
+        using Harness h = new();
+        h.Flags["dagger"] = true;
+        h.Weights["dagger"] = 5;
+        h.Enc = Reading(90, 100);
+
+        h.Feed("You notice a dagger here.");
+
+        Assert.Single(h.Sent);
+        Assert.Equal("get dagger", h.SentText[0]);
+    }
+
+    [Fact]
+    public void UnknownEncumbrance_CollectsUngated()
+    {
+        using Harness h = new();
+        h.Flags["anvil"] = true;
+        h.Weights["anvil"] = 9999;
+        // Enc stays Empty (MaxWeight 0) — capacity unknown, so no gate.
+
+        h.Feed("You notice an anvil here.");
+
+        Assert.Single(h.Sent);
+    }
+
+    [Fact]
+    public void ZeroWeightItem_NeverGated()
+    {
+        using Harness h = new();
+        h.Flags["feather"] = true;          // weight absent → 0
+        h.Enc = Reading(100, 100);          // already at capacity
+
+        h.Feed("You notice a feather here.");
+
+        Assert.Single(h.Sent);
+    }
+
+    [Fact]
+    public void BracketGate_Light_SkipsPickupThatCrossesBracket()
+    {
+        using Harness h = new() { GateLight = true };
+        h.Flags["shield"] = true;
+        h.Weights["shield"] = 10;
+        h.Enc = Reading(10, 100);           // Light starts at 17% → cap 16
+
+        h.Feed("You notice a shield here.");
+
+        Assert.Empty(h.Sent);               // 10+10=20 > 16 cap
+    }
+
+    [Fact]
+    public void BracketGate_Light_AllowsPickupUnderBracket()
+    {
+        using Harness h = new() { GateLight = true };
+        h.Flags["ring"] = true;
+        h.Weights["ring"] = 5;
+        h.Enc = Reading(10, 100);           // cap 16 → 10+5=15 fits
+
+        h.Feed("You notice a ring here.");
+
+        Assert.Single(h.Sent);
+    }
+
+    [Fact]
+    public void Projection_ChargesEarlierPickupWithinSameSurvey()
+    {
+        using Harness h = new();
+        h.Flags["dagger"] = true;  h.Weights["dagger"] = 5;
+        h.Flags["anvil"]  = true;  h.Weights["anvil"]  = 10;
+        h.Enc = Reading(90, 100);           // 10 headroom
+
+        h.Feed("You notice a dagger and an anvil here.");
+
+        // dagger fits (90+5=95); anvil then overflows (95+10=105 > 100).
+        Assert.Equal(new[] { "get dagger" }, h.SentText);
+    }
+
+    // ----- Post-kill drop re-look ----------------------------------
+
+    [Fact]
+    public void RequestDropReLook_SendsLook()
+    {
+        using Harness h = new();
+        h.Items.RequestDropReLook();
+        Assert.Equal(new[] { "look" }, h.SentText);
+    }
+
+    [Fact]
+    public void RequestDropReLook_Cooldown_SuppressesSecond()
+    {
+        using Harness h = new();
+        h.Items.RequestDropReLook();
+        h.Items.RequestDropReLook();        // within cooldown → suppressed
+        Assert.Single(h.Sent);
+    }
+
+    [Fact]
+    public void RequestDropReLook_DisabledMaster_NoLook()
+    {
+        using Harness h = new() { Enabled = false };
+        h.Items.RequestDropReLook();
+        Assert.Empty(h.Sent);
     }
 
     [Fact]

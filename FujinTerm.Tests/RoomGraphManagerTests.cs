@@ -1,6 +1,7 @@
 using System.IO;
 using System.Linq;
 using FujinTerm.Game.Map;
+using FujinTerm.Game.Spells;
 using FujinTerm.Services;
 using Xunit;
 
@@ -1101,6 +1102,135 @@ public sealed class RoomGraphManagerTests : IDisposable
         return (graph, new BfsMapper(graph));
     }
 
+    private (RoomGraphManager Graph, BfsMapper Bfs) BuildWithTbInfoAndMonsters(
+        string setName, string roomsJson, string tbInfoJson, string monstersJson)
+    {
+        SeedTable(setName, "Rooms", roomsJson);
+        SeedTable(setName, "TBInfo", tbInfoJson);
+        SeedTable(setName, "Monsters", monstersJson);
+        GameDataCache cache = NewCache();
+        cache.SwitchSet(setName);
+        TBInfoStore tbinfo = new(cache);
+        tbinfo.OnActiveSetChanged(setName);
+        RoomGraphManager graph = new(cache, log: null, tbinfo);
+        graph.OnActiveSetChanged(setName);
+        return (graph, new BfsMapper(graph));
+    }
+
+    private (RoomGraphManager Graph, BfsMapper Bfs) BuildWithTbInfoAndSpells(
+        string setName, string roomsJson, string tbInfoJson, string spellsJson)
+    {
+        SeedTable(setName, "Rooms", roomsJson);
+        SeedTable(setName, "TBInfo", tbInfoJson);
+        SeedTable(setName, "Spells", spellsJson);
+        GameDataCache cache = NewCache();
+        cache.SwitchSet(setName);
+        TBInfoStore tbinfo = new(cache);
+        tbinfo.OnActiveSetChanged(setName);
+        KnownSpellCatalog spells = new(cache);
+        RoomGraphManager graph = new(cache, log: null, tbinfo, spells);
+        graph.OnActiveSetChanged(setName);
+        return (graph, new BfsMapper(graph));
+    }
+
+    // ----- guard-door promotion (lair monster greet opens a home-room door) --
+    //
+    // The grove shadow guard (#503) stands in the lair of 9/1423; its greet
+    // (1433) lifts that room's W door to Morukai's chamber (9/1425) when a
+    // Phoenix-quest character asks about "morukai". The door imports as a
+    // 1000-picklock Door that no pick/bash opens, so without the greet-derived
+    // ask command the route picker discards it.
+
+    private const string GuardRooms = """
+        [
+          { "Map Number": 9, "Room Number": 1423, "Name": "Grove",
+            "Light": 0, "Shop": 0, "Spell": 0, "CMD": 0,
+            "Lair": "(Max 2): 503,[30-24-24-2]", "Delay": 5,
+            "N": "0", "S": "9/1422 (Door)", "E": "9/1424",
+            "W": "9/1425 (Door [1000 picklocks/strength])",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 9, "Room Number": 1425, "Name": "Morukai's Chamber",
+            "Light": 0, "Shop": 0, "Spell": 0, "CMD": 0, "NPC": 504, "Lair": "", "Delay": 0,
+            "N": "0", "S": "0", "E": "9/1423 (Door)", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+        ]
+        """;
+
+    private const string GuardTbInfo = """
+        [
+          { "Number": 1433, "LinkTo": 0,
+            "Action": "morukai:1435\norfeo:1435\npassage:1435\nphoenix:1435\nprophecy:1435\n",
+            "Called From": "Monster #503" },
+          { "Number": 1435, "LinkTo": 1436, "Action": null, "Called From": "" },
+          { "Number": 1436, "LinkTo": 0,
+            "Action": "checkability 133 4:remoteaction 1423 66 0 3:message 1841\n",
+            "Called From": "" }
+        ]
+        """;
+
+    private const string GuardMonsters = """
+        [
+          { "Number": 503, "Name": "shadow guard", "GreetTXT": 1433 },
+          { "Number": 504, "Name": "Morukai", "GreetTXT": 0 }
+        ]
+        """;
+
+    [Fact]
+    public void GuardMonsterGreet_OnDoorExit_PromotesToMultiActionHidden()
+    {
+        (RoomGraphManager graph, _) =
+            BuildWithTbInfoAndMonsters("alpha", GuardRooms, GuardTbInfo, GuardMonsters);
+
+        Room? grove = graph.GetRoom(new RoomKey(9, 1423));
+        Assert.NotNull(grove);
+        Assert.True(grove!.Exits.TryGetValue(Direction.W, out RoomExit ex));
+
+        // Promoted off the unpickable Door so the ask-then-move dispatch crosses
+        // it instead of the door FSM bonking on a 1000-picklock door.
+        Assert.Equal(RoomExitHint.MultiActionHidden, ex.Hint);
+        Assert.Equal(new RoomKey(9, 1425), ex.Target);
+        Assert.NotNull(ex.MultiAction);
+        Assert.Single(ex.MultiAction!.Actions);
+        Assert.False(ex.MultiAction.HasRemoteActions);              // spoken here, no detour
+        Assert.Equal("ask guard morukai", ex.MultiAction.Actions[0].Commands[0]);
+        Assert.Equal(0, ex.MultiAction.Actions[0].RequiredItemId);  // no held-item gate
+    }
+
+    [Fact]
+    public void GuardDoor_PromotedExit_IsRoutableByBfs()
+    {
+        // End-to-end: with the guarded door promoted, BFS routes 9/1423 → 9/1425
+        // even for a build that can never pick/bash a 1000-picklock door.
+        (RoomGraphManager graph, BfsMapper bfs) =
+            BuildWithTbInfoAndMonsters("alpha", GuardRooms, GuardTbInfo, GuardMonsters);
+
+        ProfileService profile = new();
+        MovementFilter filter = new(profile)
+        {
+            StrengthProvider = () => 100,
+            PicklocksProvider = () => 0,
+            MaxBashableStrengthProvider = () => 200,
+        };
+
+        var path = bfs.FindPath(new RoomKey(9, 1423), new RoomKey(9, 1425), filter);
+        Assert.NotNull(path);
+        Assert.Equal(new[] { Direction.W }, path!);
+    }
+
+    [Fact]
+    public void GuardDoor_WithoutMonstersTable_LeavesDoorUnpromoted()
+    {
+        // No Monsters table → the greet is never scanned, so the door stays a
+        // plain (unpickable) Door — proves the promotion is the Monsters-driven
+        // path, not something the room/TBInfo data alone triggers.
+        (RoomGraphManager graph, _) = BuildWithTbInfo("alpha", GuardRooms, GuardTbInfo);
+
+        Room? grove = graph.GetRoom(new RoomKey(9, 1423));
+        Assert.True(grove!.Exits.TryGetValue(Direction.W, out RoomExit ex));
+        Assert.Equal(RoomExitHint.Door, ex.Hint);
+        Assert.Null(ex.MultiAction);
+    }
+
     [Fact]
     public void CmdTeleport_SingleDestination_SynthesisesTeleportEdge()
     {
@@ -1255,5 +1385,165 @@ public sealed class RoomGraphManagerTests : IDisposable
 
         Room? room = graph.GetRoom(new RoomKey(1, 10));
         Assert.False(room!.Exits.ContainsKey(Direction.Teleport));
+    }
+
+    // Paradigm map 9's `go portal` (CMD 1462) is quest-gated: it casts "lower
+    // portal (invited)" (spell 620, fixed → 9/1424) for flagged characters but
+    // "lower portal (uninvited)" (spell 621, random → the Caves of Chaos) for
+    // everyone else, all under the one keyword. The client can't read the flag,
+    // so the fixed branch is NOT minted as a plain routable shortcut — it becomes
+    // a GATEWAY edge instead: BFS's deterministic pass ignores it (the
+    // narrow-stair climb wins from inside the cluster, so unflagged characters
+    // don't get random-dumped mid-route), and only the fallback pass crosses it
+    // from the overworld, where the portal is the sole way up.
+    private const string PortalSpells = """
+        [
+          { "Number": 620, "Name": "lower portal (invited)", "Short": "lpi",
+            "MinBase": 0, "MaxBase": 0,
+            "Abil-0": 140, "AbilVal-0": 1424, "Abil-1": 141, "AbilVal-1": 9 },
+          { "Number": 621, "Name": "lower portal (uninvited)", "Short": "lpu",
+            "MinBase": 1292, "MaxBase": 1327,
+            "Abil-0": 140, "AbilVal-0": 0, "Abil-1": 141, "AbilVal-1": 9 }
+        ]
+        """;
+
+    [Fact]
+    public void CmdCastTeleport_FixedAndRandomBranchesShareKeyword_SynthesisesGateway()
+    {
+        const string rooms = """
+            [
+              { "Map Number": 9, "Room Number": 1291, "Name": "Ancient Darkwood Tree, Portal",
+                "Light": 0, "Shop": 0, "Spell": 0, "CMD": 1462, "Lair": "", "Delay": 5,
+                "N": "0", "S": "0", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "9/1413", "D": "0" },
+              { "Map Number": 9, "Room Number": 1413, "Name": "Narrow Stair",
+                "Light": 0, "Shop": 0, "Spell": 0, "CMD": 0, "Lair": "", "Delay": 5,
+                "N": "0", "S": "0", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "9/1291" },
+              { "Map Number": 9, "Room Number": 1424, "Name": "Mystical Chamber",
+                "Light": 0, "Shop": 0, "Spell": 0, "CMD": 0, "Lair": "", "Delay": 5,
+                "N": "0", "S": "0", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+            ]
+            """;
+        const string tbinfo = """
+            [ { "Number": 1462, "LinkTo": 0,
+                "Action": "go portal:checkability 133 5:cast 620\ngo portal:testability 133 4:cast 621\ngo portal:failability 133:cast 621\n",
+                "Called From": "Room 9/1291" } ]
+            """;
+        (RoomGraphManager graph, _) = BuildWithTbInfoAndSpells("alpha", rooms, tbinfo, PortalSpells);
+
+        Room? room = graph.GetRoom(new RoomKey(9, 1291));
+        Assert.NotNull(room);
+        // The fixed branch's random sibling makes the keyword non-deterministic —
+        // it's minted as a GATEWAY (routable last resort), not a plain shortcut.
+        Assert.True(room!.Exits.TryGetValue(Direction.Teleport, out RoomExit tele));
+        Assert.True(tele.GatewayTeleport);
+        Assert.Equal(new RoomKey(9, 1424), tele.Target);   // nominal landing = fixed branch
+        Assert.Equal("go portal", tele.TextCommands![0]);
+    }
+
+    [Fact]
+    public void CmdCastTeleport_SoleFixedBranch_SynthesisesTeleportEdge()
+    {
+        // Positive control: a keyword whose only branch is a deterministic fixed
+        // cast still mints a plain (non-gateway) routable Teleport edge — the
+        // grouping rule only flags keywords with a random / disagreeing sibling.
+        const string rooms = """
+            [
+              { "Map Number": 9, "Room Number": 1500, "Name": "Sealed Gate",
+                "Light": 0, "Shop": 0, "Spell": 0, "CMD": 1500, "Lair": "", "Delay": 5,
+                "N": "0", "S": "0", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 9, "Room Number": 1424, "Name": "Mystical Chamber",
+                "Light": 0, "Shop": 0, "Spell": 0, "CMD": 0, "Lair": "", "Delay": 5,
+                "N": "0", "S": "0", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+            ]
+            """;
+        const string tbinfo = """
+            [ { "Number": 1500, "LinkTo": 0,
+                "Action": "go gate:cast 620\n", "Called From": "Room 9/1500" } ]
+            """;
+        (RoomGraphManager graph, _) = BuildWithTbInfoAndSpells("alpha", rooms, tbinfo, PortalSpells);
+
+        Room? room = graph.GetRoom(new RoomKey(9, 1500));
+        Assert.True(room!.Exits.TryGetValue(Direction.Teleport, out RoomExit tele));
+        Assert.Equal(new RoomKey(9, 1424), tele.Target);
+        Assert.Equal("go gate", tele.TextCommands![0]);
+        Assert.False(tele.GatewayTeleport);
+    }
+
+    [Fact]
+    public void Gateway_NotCrossedWhenDeterministicPathExists()
+    {
+        // The loop fix: from inside the cluster a deterministic cardinal route to
+        // the chamber exists (9/1291 U→9/1413 N→9/1424), so BFS takes the stair
+        // climb and never routes through the gateway — even though the gateway is
+        // a shorter single hop. This is what stops the walker looping down through
+        // the random portal for an unflagged character.
+        const string rooms = """
+            [
+              { "Map Number": 9, "Room Number": 1291, "Name": "Ancient Darkwood Tree, Portal",
+                "Light": 0, "Shop": 0, "Spell": 0, "CMD": 1462, "Lair": "", "Delay": 5,
+                "N": "0", "S": "0", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "9/1413", "D": "0" },
+              { "Map Number": 9, "Room Number": 1413, "Name": "Narrow Stair",
+                "Light": 0, "Shop": 0, "Spell": 0, "CMD": 0, "Lair": "", "Delay": 5,
+                "N": "9/1424", "S": "0", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "9/1291" },
+              { "Map Number": 9, "Room Number": 1424, "Name": "Mystical Chamber",
+                "Light": 0, "Shop": 0, "Spell": 0, "CMD": 0, "Lair": "", "Delay": 5,
+                "N": "0", "S": "0", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+            ]
+            """;
+        const string tbinfo = """
+            [ { "Number": 1462, "LinkTo": 0,
+                "Action": "go portal:checkability 133 5:cast 620\ngo portal:testability 133 4:cast 621\ngo portal:failability 133:cast 621\n",
+                "Called From": "Room 9/1291" } ]
+            """;
+        (RoomGraphManager graph, BfsMapper bfs) = BuildWithTbInfoAndSpells("alpha", rooms, tbinfo, PortalSpells);
+
+        // Gateway edge is present...
+        Room? room = graph.GetRoom(new RoomKey(9, 1291));
+        Assert.True(room!.Exits.TryGetValue(Direction.Teleport, out RoomExit tele));
+        Assert.True(tele.GatewayTeleport);
+
+        // ...but BFS prefers the deterministic cardinal climb, no Teleport step.
+        var path = bfs.FindPath(new RoomKey(9, 1291), new RoomKey(9, 1424));
+        Assert.Equal(new[] { Direction.U, Direction.N }, path!);
+    }
+
+    [Fact]
+    public void Gateway_CrossedWhenItIsTheOnlyRoute()
+    {
+        // The overworld crossing: no cardinal route to the chamber exists, so BFS
+        // falls back to crossing the gateway (a single Direction.Teleport step).
+        const string rooms = """
+            [
+              { "Map Number": 9, "Room Number": 1291, "Name": "Ancient Darkwood Tree, Portal",
+                "Light": 0, "Shop": 0, "Spell": 0, "CMD": 1462, "Lair": "", "Delay": 5,
+                "N": "0", "S": "0", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "9/1413", "D": "0" },
+              { "Map Number": 9, "Room Number": 1413, "Name": "Narrow Stair",
+                "Light": 0, "Shop": 0, "Spell": 0, "CMD": 0, "Lair": "", "Delay": 5,
+                "N": "0", "S": "0", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "9/1291" },
+              { "Map Number": 9, "Room Number": 1424, "Name": "Mystical Chamber",
+                "Light": 0, "Shop": 0, "Spell": 0, "CMD": 0, "Lair": "", "Delay": 5,
+                "N": "0", "S": "0", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+            ]
+            """;
+        const string tbinfo = """
+            [ { "Number": 1462, "LinkTo": 0,
+                "Action": "go portal:checkability 133 5:cast 620\ngo portal:testability 133 4:cast 621\ngo portal:failability 133:cast 621\n",
+                "Called From": "Room 9/1291" } ]
+            """;
+        (RoomGraphManager graph, BfsMapper bfs) = BuildWithTbInfoAndSpells("alpha", rooms, tbinfo, PortalSpells);
+
+        var path = bfs.FindPath(new RoomKey(9, 1291), new RoomKey(9, 1424));
+        Assert.Equal(new[] { Direction.Teleport }, path!);
     }
 }

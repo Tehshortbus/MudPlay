@@ -45,6 +45,7 @@ public sealed class MonsterDropIndex
     private readonly GameDataCache _cache;
     private readonly LogService? _log;
     private readonly Dictionary<int, List<MonsterDrop>> _droppersByItem = new();
+    private readonly Dictionary<int, List<int>> _dropItemsByMonster = new();
     private readonly Dictionary<int, List<RoomKey>> _spawnRoomsByMonster = new();
 
     private static readonly Regex s_roomToken = new(@"(\d+)/(\d+)", RegexOptions.Compiled);
@@ -81,6 +82,15 @@ public sealed class MonsterDropIndex
             ? rooms
             : Array.Empty<RoomKey>();
 
+    // Item ids the monster with monsterId can drop (its non-empty DropItem-0..9
+    // slots), or an empty list when it drops nothing. Forward view for the
+    // post-kill re-look: on a monster's death we ask what it could have dropped
+    // to decide whether to re-survey the room. Live view — read, don't mutate.
+    public IReadOnlyList<int> DropItemsOf(int monsterId)
+        => _dropItemsByMonster.TryGetValue(monsterId, out List<int>? items)
+            ? items
+            : Array.Empty<int>();
+
     // True when at least one monster in the active set drops the item.
     public bool AnyMonsterDrops(int itemId) => _droppersByItem.ContainsKey(itemId);
 
@@ -89,6 +99,7 @@ public sealed class MonsterDropIndex
     public void OnActiveSetChanged(string? setName)
     {
         _droppersByItem.Clear();
+        _dropItemsByMonster.Clear();
         _spawnRoomsByMonster.Clear();
         ActiveSet = setName;
 
@@ -126,6 +137,11 @@ public sealed class MonsterDropIndex
                 if (!_droppersByItem.TryGetValue(itemId, out List<MonsterDrop>? drops))
                     _droppersByItem[itemId] = drops = new List<MonsterDrop>();
                 drops.Add(new MonsterDrop(monsterId, name, pct));
+
+                if (!_dropItemsByMonster.TryGetValue(monsterId, out List<int>? items))
+                    _dropItemsByMonster[monsterId] = items = new List<int>();
+                if (!items.Contains(itemId)) items.Add(itemId);
+
                 droppedAny = true;
             }
 

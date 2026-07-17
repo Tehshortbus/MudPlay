@@ -2441,6 +2441,11 @@ public sealed class AppServices
             Router, MonsterMessages, Log);
         MonsterDeath.MonsterDied += evt =>
         {
+            // If the dead monster could drop an item we auto-collect, re-survey
+            // the room so the fresh "You notice … here." list picks up the
+            // ground drop. No-op on the fallback path (no monster identity).
+            MaybeReLookForDrops(evt);
+
             if (evt.IsFallback)
             {
                 // Fallback path: exp + *Combat Off* proved a monster died but
@@ -3281,6 +3286,13 @@ public sealed class AppServices
             hasEngageableHostiles: () => CombatTracker.HasEngageableHostiles,
             isPeekSuppressed: () => RoomTracker.IsPeekSuppressed(),
             heldCount: CountItemHeld,
+            encumbrance: () => Inventory.Snapshot.Encumbrance,
+            itemEncGates: () =>
+            {
+                Models.Profile.CashSettings c =
+                    ReadSection<Models.Profile.CashSettings>(Profile.Current, "Cash");
+                return (c.SkipGetItemIfMakesLight, c.SkipGetItemIfMakesMedium, c.SkipGetItemIfMakesHeavy);
+            },
             log: Log);
         AutoGetItems.SetAcquisitionGate(Acquisition);
         // Combat-finished flush: every room-entity observation re-checks
@@ -4709,7 +4721,37 @@ public sealed class AppServices
 
         Models.GameData.ItemOverlay overlay = ResolveItemOverlay(number);
         return new Game.Inventory.AutoGetItemsManager.ResolvedItem(
-            number, name, overlay.AutoCollect ?? false, overlay.CannotBeTaken ?? false, MaxCap(overlay));
+            number, name, overlay.AutoCollect ?? false, overlay.CannotBeTaken ?? false,
+            MaxCap(overlay), ItemNames.WeightOf(name) ?? 0);
+    }
+
+    // True when the item is user-flagged AutoCollect and not marked
+    // CannotBeTaken — i.e. the auto-get engine would actually pick it up. Backs
+    // the post-kill drop re-look: a monster whose drop resolves to such an item
+    // is worth re-surveying the room for.
+    private bool IsAutoCollectItem(int itemId)
+    {
+        Models.GameData.ItemOverlay overlay = ResolveItemOverlay(itemId);
+        return (overlay.AutoCollect ?? false) && !(overlay.CannotBeTaken ?? false);
+    }
+
+    // On a specific monster death, ask the drop index what the dead monster
+    // could drop; if any of it is an item we auto-collect, nudge a room re-look
+    // so the drop is grabbed. Fallback deaths carry no monster Number, and
+    // unlinked candidates (Number null) can't be looked up — both skip.
+    private void MaybeReLookForDrops(Game.Combat.MonsterDeathEvent evt)
+    {
+        if (evt.IsFallback) return;
+        foreach (Game.Combat.MonsterDeathIdentity id in evt.Candidates)
+        {
+            if (id.Number is not int monsterId) continue;
+            foreach (int itemId in MonsterDrops.DropItemsOf(monsterId))
+                if (IsAutoCollectItem(itemId))
+                {
+                    AutoGetItems.RequestDropReLook();
+                    return;
+                }
+        }
     }
 
     // Resolve a carried entry for AutoDiscard: map the loose carry wording to an

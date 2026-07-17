@@ -25,7 +25,7 @@ public sealed partial class CashSectionViewModel : SettingsSectionViewModel
     private bool _dirty;
 
     public override string Id => "cash";
-    public override string Title => "Cash";
+    public override string Title => "Cash + Items";
     public override bool IsDirty => _dirty;
 
     // True when a profile is loaded — editor is hidden otherwise.
@@ -35,11 +35,13 @@ public sealed partial class CashSectionViewModel : SettingsSectionViewModel
 
     public override IEnumerable<string> SearchableLabels => new[]
     {
-        "Cash", "Coin", "Currency",
+        "Cash", "Coin", "Currency", "Items",
         "Copper", "Silver", "Gold", "Platinum", "Runic",
         "Collect", "Ignore", "Discard",
         "Auto-deposit", "Stashing", "Bank", "Keep on hand", "Wealth threshold",
         "Coin count", "Coins exceed",
+        "Encumbrance", "Weight", "Light", "Medium", "Heavy",
+        "Auto-get", "Get item", "Collection rules",
     };
 
     // ----- Per-currency policy --------------------------------------
@@ -73,13 +75,19 @@ public sealed partial class CashSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private long _keepPlatinumOnHand;
     [ObservableProperty] private long _keepRunicOnHand;
 
-    // ----- Encumbrance + cascade (persisted; engines deferred) -----
+    // ----- Coin encumbrance gate + cascade --------------------------
 
     [ObservableProperty] private bool _skipCollectIfMakesLight;
     [ObservableProperty] private bool _skipCollectIfMakesMedium;
     [ObservableProperty] private bool _skipCollectIfMakesHeavy;
     [ObservableProperty] private bool _collectAfterCombatFinished;
     [ObservableProperty] private bool _dropSmallerForLarger;
+
+    // ----- Item encumbrance gate (independent of the coin gate) ------
+
+    [ObservableProperty] private bool _skipGetItemIfMakesLight;
+    [ObservableProperty] private bool _skipGetItemIfMakesMedium;
+    [ObservableProperty] private bool _skipGetItemIfMakesHeavy;
 
     // Static list of policy choices for the per-currency ComboBoxes. The view
     // binds ItemsSource to this.
@@ -133,6 +141,10 @@ public sealed partial class CashSectionViewModel : SettingsSectionViewModel
             SkipCollectIfMakesHeavy    = SkipCollectIfMakesHeavy,
             CollectAfterCombatFinished = CollectAfterCombatFinished,
             DropSmallerForLarger       = DropSmallerForLarger,
+
+            SkipGetItemIfMakesLight    = SkipGetItemIfMakesLight,
+            SkipGetItemIfMakesMedium   = SkipGetItemIfMakesMedium,
+            SkipGetItemIfMakesHeavy    = SkipGetItemIfMakesHeavy,
         };
 
         profile.Settings ??= new();
@@ -198,6 +210,10 @@ public sealed partial class CashSectionViewModel : SettingsSectionViewModel
         SkipCollectIfMakesHeavy    = dto.SkipCollectIfMakesHeavy;
         CollectAfterCombatFinished = dto.CollectAfterCombatFinished;
         DropSmallerForLarger       = dto.DropSmallerForLarger;
+
+        SkipGetItemIfMakesLight    = dto.SkipGetItemIfMakesLight;
+        SkipGetItemIfMakesMedium   = dto.SkipGetItemIfMakesMedium;
+        SkipGetItemIfMakesHeavy    = dto.SkipGetItemIfMakesHeavy;
     }
 
     private CashSettings ReadOrDefault()
@@ -280,6 +296,34 @@ public sealed partial class CashSectionViewModel : SettingsSectionViewModel
     partial void OnSkipCollectIfMakesHeavyChanged(bool value)          => MarkDirty();
     partial void OnCollectAfterCombatFinishedChanged(bool value)      => MarkDirty();
     partial void OnDropSmallerForLargerChanged(bool value)            => MarkDirty();
+
+    // ----- Item encumbrance-gate cascade ----------------------------
+    // Same strictness nesting as the coin gate: Light ⊃ Medium ⊃ Heavy. The
+    // hard capacity cap (never exceed MaxWeight) is always on in the engine and
+    // has no checkbox — these three only add the tighter bracket ceilings.
+
+    // Item Medium gate editable only while the stricter Light gate is unchecked.
+    public bool GetItemMediumEnabled => !SkipGetItemIfMakesLight;
+
+    // Item Heavy gate editable only while both stricter item gates are unchecked.
+    public bool GetItemHeavyEnabled => !(SkipGetItemIfMakesLight || SkipGetItemIfMakesMedium);
+
+    partial void OnSkipGetItemIfMakesLightChanged(bool value)
+    {
+        if (value) SkipGetItemIfMakesMedium = true;   // cascades Heavy on
+        OnPropertyChanged(nameof(GetItemMediumEnabled));
+        OnPropertyChanged(nameof(GetItemHeavyEnabled));
+        MarkDirty();
+    }
+
+    partial void OnSkipGetItemIfMakesMediumChanged(bool value)
+    {
+        if (value) SkipGetItemIfMakesHeavy = true;
+        OnPropertyChanged(nameof(GetItemHeavyEnabled));
+        MarkDirty();
+    }
+
+    partial void OnSkipGetItemIfMakesHeavyChanged(bool value)         => MarkDirty();
     partial void OnSelectedBankChanged(BankChoice? value)
     {
         if (value is not null) BankRoomKey = value.Value;

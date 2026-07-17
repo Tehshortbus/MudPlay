@@ -922,6 +922,59 @@ comes from the stat screen / who line (`AlignmentTracker` / `PlayerStats`).
     `CastTeleportRandom` (a *predictability* one): the asylum mouth is both, an internal reciprocal cast
     exit is neither, and a fixed one-way cast-teleport into a sink would be a pocket entrance without
     being random.
+- **[CONFIRMED, game data v1.11p map 9, MMUD Explorer cross-check]** **A placed "guardian" monster
+  whose greet dialogue raises a door on its own room is opened by `ask <monster-noun> <topic>` — the
+  spoken password lifts the gate.** Some pick/bash-proof `Door` exits aren't operated by a room verb or
+  a remote lever at all; the barrier is a stationed monster who lifts it when the player asks the right
+  keyword. The confirmed case is the **grove shadow guard**: room `9/1423` carries
+  `Lair='(Max 2): 503,[…]'` placing shadow guard **#503** (`GreetTXT 1433`), and the door `9/1423 W →
+  9/1425` (Morukai's chamber) has an impassable stat requirement so it can't be picked or bashed. The
+  greet decodes as: block `1433` lists topics `morukai / orfeo / passage / phoenix / prophecy`, each
+  pointing at `1435` (empty, `LinkTo 1436`); block `1436` is
+  `checkability 133 4 : remoteaction 1423 66 0 3 : message 1841`. So asking any of those five keywords
+  fires `remoteaction 1423 … 3` — **direction index 3 = W** — operating this room's own west exit. The
+  spoken command is **`ask <noun> <topic>`** where `<noun>` is the **last word of the monster's name**
+  ("shadow guard" → `guard`), e.g. `ask guard morukai`. The five topics are **alternatives** that all
+  open the same door — the walker sends only one.
+  - **The open is quest-gated and the gate is untrackable by the client.** `checkability 133 4` gates
+    the lift on ability **133 = PhoenixQuest**; the client can't read a character's quest abilities, so
+    the crossing is **reactive**: promote the door to routable, issue the `ask`, attempt the move, and
+    react to whether it actually opened (halt/replan if not). Do **not** try to pre-check the gate.
+  - **Client encoding:** identical promotion to the lever-door case above — a `Door`/`KeyLocked` exit
+    fronted by a greeting monster whose `remoteaction` targets *its own room* and names *that exit* is
+    promoted to `MultiActionHidden` at graph-build, folding the resolved `ask` command into the same
+    `byExit` action table the `Action#N` lever cells populate (`GuardDoorCommandResolver` +
+    `RoomGraphManager.InjectGuardDoorActions`). The crossing then reuses `SpecialExitDispatch`'s
+    ask-then-move path. Monster ids come from the room's `Lair` group (and its single placed `Npc`);
+    only monsters carrying a `GreetTXT` are considered.
+
+- **[CONFIRMED, game data Paradigm 1.9.1 map 9]** **A quest-gated portal keyword can teleport to a
+  fixed room for flagged characters but a *random* room for everyone else — so it is routed as a
+  last-resort "gateway", never a plain shortcut.** Room `9/1291` ("Ancient Darkwood Tree, Portal") has
+  `CMD 1462`, whose TBInfo fires the same keyword three ways on ability **133 = PhoenixQuest**:
+  `go portal:checkability 133 5:cast 620` / `go portal:testability 133 4:cast 621` /
+  `go portal:failability 133:cast 621` (and identical `enter portal` lines). Spell **620** "lower portal
+  (invited)" is `TeleportRoom 1424` → a **fixed** hop to `9/1424` (the character has talked to Morukai
+  and is quest-flagged). Spell **621** "lower portal (uninvited)" has `TeleportRoom 0`,
+  `MinBase 1292 / MaxBase 1327` → a **random** dump into the Caves of Chaos (`9/1292–1327`) for anyone
+  not flagged. The only observable difference is *where you land*; the quest ability is untrackable by
+  the client. Byte-identical across the stock and Paradigm data sets, so the rule is realm-generic.
+  - **Client rule:** when a cast-teleport keyword's branches disagree — a fixed branch alongside a
+    random (or a different-room fixed) sibling — the landing is non-deterministic, so it is minted as a
+    **gateway** `Direction.Teleport` edge (flagged `GatewayTeleport`, nominal target = the fixed
+    branch's landing `9/1424`) rather than a plain shortcut
+    (`RoomGraphManager.TryFirstRoutableTeleport` classifies each keyword; a keyword with *every* branch a
+    fixed hop to the *same* room stays a plain edge). BFS routes in two passes
+    (`BfsMapper.FindPath`): a deterministic pass that ignores gateways, then — only if that finds
+    nothing — a fallback pass that may cross one. So from *inside* the cluster the gateway is never used
+    (BFS prefers the deterministic narrow-stair climb
+    `9/1413 → U … → 9/1422 → N → 9/1423 →` guard door `W → 9/1425`), which is what stops an unflagged
+    character looping down through the random portal; but from the *overworld* tree base (`7/1360`),
+    where the portal is the only way up, the fallback pass crosses it. The walker re-plans from wherever
+    the cast actually drops it (flagged → `9/1424` and continues; unflagged → a random caves room →
+    re-plan into the cardinal stair climb to Morukai). A pure `IsRandomTeleport` cast with no fixed
+    branch to anchor a nominal target stays fully non-routable (`CastTeleportRandom`, skipped in both
+    passes).
 
 ## Attack spells: why one fails to damage a monster
 
@@ -1073,6 +1126,12 @@ flag). These are hard eligibility gates, independent of resistance and level imm
 
 - **[CONFIRMED]** Items are acquired via `buy` / `get` / `search`+`get`. There is no "hunt"
   verb — don't describe path-item sourcing as "hunting."
+- **[CONFIRMED]** (2026-07-16, user) **Monster drops land loose on the ground as the item.**
+  When a monster we kill drops one of its `DropItem-N` items, the item appears on the floor as a
+  normal ground item — there is no corpse-container split to loot. A plain `get <item>` collects
+  it, exactly like any other ground item. The drop isn't announced on the kill line, so to see and
+  auto-collect it the room must be re-surveyed (a bare `look` re-renders the `You notice … here.`
+  list the auto-get engine already parses).
 
 ## Currency & cash
 

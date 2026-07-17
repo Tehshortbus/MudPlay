@@ -148,6 +148,25 @@ public sealed class BfsMapper
         if (source.Equals(destination))
             return returnEmptyWhenAtDestination ? Array.Empty<Direction>() : null;
 
+        // Two-tier search: a deterministic pass first (gateway teleports
+        // excluded), then — only if that finds nothing — a fallback pass that
+        // may cross a gateway. A gateway crossing (a quest-gated portal whose
+        // landing is fixed for some players, random for others) is a last
+        // resort: from inside a room cluster the deterministic path wins, so the
+        // walker never routes through the portal and loops; from the overworld,
+        // where the only way up is the portal, the fallback pass takes it and the
+        // walker re-plans from wherever the cast drops it.
+        return FindPathCore(source, destination, filter, ignoreExitGates, allowGateway: false)
+            ?? FindPathCore(source, destination, filter, ignoreExitGates, allowGateway: true);
+    }
+
+    private IReadOnlyList<Direction>? FindPathCore(
+        RoomKey source,
+        RoomKey destination,
+        IRoomFilter? filter,
+        bool ignoreExitGates,
+        bool allowGateway)
+    {
         // Per-node parent + direction-from-parent, replayed on hit.
         var parent = new Dictionary<RoomKey, (RoomKey ParentKey, Direction Step)>();
         var queue = new Queue<RoomKey>();
@@ -172,6 +191,11 @@ public sealed class BfsMapper
                 // nominal target is a real adjacent room); it's only routing that
                 // must avoid it.
                 if (exit.CastTeleportRandom) continue;
+
+                // A gateway teleport is only crossed on the fallback pass — the
+                // deterministic pass ignores it so a routable cardinal path is
+                // always preferred (see FindPath).
+                if (exit.GatewayTeleport && !allowGateway) continue;
 
                 // Avoid filter applies to intermediates AND to the
                 // destination itself — walking *into* an avoided room
@@ -233,6 +257,7 @@ public sealed class BfsMapper
                 RoomKey next = exit.Target;
                 if (dist.ContainsKey(next)) continue;
                 if (exit.CastTeleportRandom) continue; // unpredictable landing — not routable
+                if (exit.GatewayTeleport) continue;    // last-resort crossing — keep badge distances deterministic
                 if (filter is not null && filter.IsAvoided(next)) continue;
                 if (filter is not null && filter.IsExitBlocked(exit)) continue;
                 if (_graph.GetRoom(next) is null) continue;

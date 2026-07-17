@@ -72,29 +72,43 @@ public sealed class CashSettings
         + KeepPlatinumOnHand * 10_000
         + KeepRunicOnHand * 1_000_000;
 
-    // ----- Encumbrance + cascade (persisted; engines deferred) -------
-    // These knobs are visible in the Settings → Cash tab but their engines
-    // haven't shipped yet (the original CashManager audit deferred them). When
-    // the engines land they pick these up from the DTO with no schema change.
+    // ----- Coin encumbrance gate + cascade ---------------------------
+    // The "Cash + Items" tab exposes these; CashManager.CollectCoins gates coin
+    // pickups against the bracket boundary they name.
 
-    // Skip a pickup that would push the character into the Light encumbrance
-    // bracket. Engine deferred.
+    // Skip a coin pickup that would push the character into the Light
+    // encumbrance bracket.
     public bool SkipCollectIfMakesLight { get; set; }
 
-    // Skip a pickup that would push past Light → Medium. Engine deferred.
+    // Skip a coin pickup that would push past Light → Medium.
     public bool SkipCollectIfMakesMedium { get; set; }
 
-    // Skip a pickup that would push past Medium → Heavy. Engine deferred.
+    // Skip a coin pickup that would push past Medium → Heavy.
     public bool SkipCollectIfMakesHeavy { get; set; }
 
-    // Defer pickups until the current combat round ends so the pre-attack roll
-    // isn't lost. Engine deferred.
+    // Defer pickups until the room's combat finishes before sending gets.
+    // Shared by CashManager and the AutoGetItemsManager item engine.
     public bool CollectAfterCombatFinished { get; set; }
 
     // When a Collect-flagged currency would push past an encumbrance gate, drop
     // just enough lower-value Collect-flagged held coin to make room. Never
-    // sacrifices Ignore-flagged coin. Engine deferred.
+    // sacrifices Ignore-flagged coin.
     public bool DropSmallerForLarger { get; set; }
+
+    // ----- Item encumbrance gate -------------------------------------
+    // Independent of the coin gate above: these cap the AutoGetItemsManager
+    // ground-item pickups at the named bracket boundary. The hard capacity cap
+    // (never grab an item that would exceed MaxWeight) is always on regardless
+    // of these; the flags add the optional tighter bracket ceilings.
+
+    // Skip a ground-item pickup that would push the character into Light.
+    public bool SkipGetItemIfMakesLight { get; set; }
+
+    // Skip a ground-item pickup that would push past Light → Medium.
+    public bool SkipGetItemIfMakesMedium { get; set; }
+
+    // Skip a ground-item pickup that would push past Medium → Heavy.
+    public bool SkipGetItemIfMakesHeavy { get; set; }
 }
 
 // Per-currency pickup decision.
