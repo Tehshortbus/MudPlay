@@ -219,13 +219,6 @@ public sealed class SpellBookViewModelTests : IDisposable
         SpellBookItemRowViewModel scroll = vm.CastItems.Single(r => r.ItemName == "Scroll of Arc");
         Assert.True(scroll.CostsMana);
         Assert.Equal("8 mana", scroll.ManaText);
-
-        // Only unlimited-use items expose a buff-slot token (limited ones would
-        // burn out on a recast loop, so they get none).
-        Assert.True(wand.HasBuffToken);
-        Assert.Equal("#Wand of Stars", wand.BuffToken);
-        Assert.False(vm.CastItems.Single(r => r.ItemName == "Scroll of Arc").HasBuffToken);
-        Assert.False(vm.CastItems.Single(r => r.ItemName == "Single Charge Rod").HasBuffToken);
     }
 
     [Fact]
@@ -369,10 +362,12 @@ public sealed class SpellBookViewModelTests : IDisposable
         Assert.Equal("Unlimited", zero.ChargesText);
         Assert.Equal("7 uses", charged.ChargesText);
 
-        // Only unlimited items expose a buff-slot token — a charged one would burn out.
-        Assert.True(neg.HasBuffToken);
-        Assert.True(zero.HasBuffToken);
-        Assert.False(charged.HasBuffToken);
+        // The underlying model flags both <= 0 items unlimited (buff-loop safe) and
+        // the positive count limited — the display "Unlimited" mirrors that.
+        IReadOnlyList<ClassCastItem> model = book.GetCastItems();
+        Assert.True(model.Single(i => i.ItemName == "Neg Wand").Unlimited);
+        Assert.True(model.Single(i => i.ItemName == "Zero Wand").Unlimited);
+        Assert.False(model.Single(i => i.ItemName == "Charged Wand").Unlimited);
     }
 
     [Fact]

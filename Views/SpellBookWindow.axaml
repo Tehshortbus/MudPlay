@@ -77,53 +77,49 @@
                     <ItemsControl ItemsSource="{Binding CastItems}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate DataType="vm:SpellBookItemRowViewModel">
-                                <Grid ColumnDefinitions="*,Auto" Margin="0,2">
-                                    <StackPanel Grid.Column="0" Orientation="Vertical" Spacing="1">
-                                        <StackPanel Orientation="Horizontal" Spacing="8">
-                                            <TextBlock Text="{Binding LevelText}"
-                                                       ToolTip.Tip="Minimum character level to use this item"
-                                                       Foreground="{StaticResource ChromeFgSecBrush}"
-                                                       FontFamily="{StaticResource FontMono}"
-                                                       FontSize="11"
-                                                       MinWidth="42"
-                                                       VerticalAlignment="Center"/>
-                                            <TextBlock Text="{Binding ItemName}"
-                                                       Foreground="{StaticResource ChromeFgBrush}"
-                                                       FontSize="12"
-                                                       VerticalAlignment="Center"/>
-                                            <TextBlock Text="{Binding CastsText}"
-                                                       Foreground="{StaticResource ChromeFgMutedBrush}"
-                                                       FontFamily="{StaticResource FontMono}"
-                                                       FontSize="11"
-                                                       VerticalAlignment="Center"/>
-                                            <TextBlock Text="{Binding AffectsText}"
-                                                       IsVisible="{Binding HasAffects}"
-                                                       ToolTip.Tip="What the cast spell does, at this item's use-level"
-                                                       Foreground="{StaticResource ChromeFgSecBrush}"
-                                                       FontFamily="{StaticResource FontMono}"
-                                                       FontSize="11"
-                                                       VerticalAlignment="Center"/>
-                                            <TextBlock Text="{Binding ManaText}"
-                                                       Foreground="{StaticResource ChromeFgMutedBrush}"
-                                                       FontFamily="{StaticResource FontMono}"
-                                                       FontSize="11"
-                                                       VerticalAlignment="Center"/>
-                                        </StackPanel>
-                                        <SelectableTextBlock Text="{Binding BuffToken}"
-                                                             IsVisible="{Binding HasBuffToken}"
-                                                             ToolTip.Tip="{Binding BuffTokenTip}"
-                                                             Foreground="{StaticResource ChromeFgMutedBrush}"
-                                                             FontFamily="{StaticResource FontMono}"
-                                                             FontSize="10"/>
-                                    </StackPanel>
-                                    <TextBlock Grid.Column="1"
-                                               Text="{Binding ChargesText}"
+                                <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,2">
+                                    <TextBlock Text="{Binding LevelText}"
+                                               ToolTip.Tip="Minimum character level to use this item"
+                                               Foreground="{StaticResource ChromeFgSecBrush}"
+                                               FontFamily="{StaticResource FontMono}"
+                                               FontSize="11"
+                                               MinWidth="42"
+                                               VerticalAlignment="Center"/>
+                                    <TextBlock Text="{Binding ItemName}"
+                                               Foreground="{StaticResource ChromeFgBrush}"
+                                               FontSize="12"
+                                               VerticalAlignment="Center"/>
+                                    <TextBlock Text="{Binding CastsText}"
+                                               Foreground="{StaticResource ChromeFgMutedBrush}"
+                                               FontFamily="{StaticResource FontMono}"
+                                               FontSize="11"
+                                               VerticalAlignment="Center"/>
+                                    <TextBlock Text="{Binding AffectsText}"
+                                               IsVisible="{Binding HasAffects}"
+                                               ToolTip.Tip="What the cast spell does, at this item's use-level"
+                                               Foreground="{StaticResource ChromeFgSecBrush}"
+                                               FontFamily="{StaticResource FontMono}"
+                                               FontSize="11"
+                                               VerticalAlignment="Center"/>
+                                    <TextBlock Text="{Binding ManaText}"
+                                               Foreground="{StaticResource ChromeFgMutedBrush}"
+                                               FontFamily="{StaticResource FontMono}"
+                                               FontSize="11"
+                                               VerticalAlignment="Center"/>
+                                    <!-- Use count tucked inline at the end of the line rather than
+                                         right-aligned in its own column (which the scrollbar clipped). -->
+                                    <TextBlock Text="·"
+                                               Foreground="{StaticResource ChromeFgMutedBrush}"
+                                               FontFamily="{StaticResource FontMono}"
+                                               FontSize="11"
+                                               VerticalAlignment="Center"/>
+                                    <TextBlock Text="{Binding ChargesText}"
                                                ToolTip.Tip="{Binding ChargesTip}"
                                                Foreground="{StaticResource SeverityInfoBrush}"
                                                FontFamily="{StaticResource FontMono}"
                                                FontSize="11"
                                                VerticalAlignment="Center"/>
-                                </Grid>
+                                </StackPanel>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>

@@ -514,6 +514,8 @@
                              from a right-click on the canvas. -->
                         <MenuItem Header="Open Backscroll"      InputGesture="{Binding BackscrollGesture}"   Command="{Binding OpenBackscrollCommand}"/>
                         <MenuItem Header="Open Player Workshop" InputGesture="{Binding WorkshopGesture}"     Command="{Binding OpenWorkshopCommand}"/>
+                        <MenuItem Header="Open Party"           InputGesture="{Binding PartyGesture}"        Command="{Binding OpenPartyCommand}"/>
+                        <MenuItem Header="Open Spell Book"      InputGesture="{Binding SpellBookGesture}"    Command="{Binding OpenSpellBookCommand}"/>
                         <MenuItem Header="Open Conversation"    InputGesture="{Binding ConversationGesture}" Command="{Binding OpenConversationCommand}"/>
                         <MenuItem Header="Open Navigation"      InputGesture="{Binding NavigationGesture}"   Command="{Binding OpenNavigationCommand}"/>
                         <MenuItem Header="Open Session Stats"   InputGesture="{Binding SessionStatsGesture}" Command="{Binding OpenSessionStatsCommand}"/>
