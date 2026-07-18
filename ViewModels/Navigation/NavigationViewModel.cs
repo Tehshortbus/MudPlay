@@ -673,10 +673,11 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     // ----- Section expand/collapse state (right rail) ---------------
     //
     // Persisted only for this window session — open/closed state isn't
-    // worth a profile field. Defaults: everything expanded.
-    [ObservableProperty] private bool _isCurrentNavExpanded = true;
-    [ObservableProperty] private bool _isGotoExpanded       = true;
-    [ObservableProperty] private bool _isLoopsExpanded      = true;
+    // worth a profile field. Defaults: everything collapsed (the VM is built
+    // fresh each window open, so every open starts fully collapsed).
+    [ObservableProperty] private bool _isCurrentNavExpanded;
+    [ObservableProperty] private bool _isGotoExpanded;
+    [ObservableProperty] private bool _isLoopsExpanded;
 
     public bool HasQueuedDestination => QueuedDestination is not null;
 

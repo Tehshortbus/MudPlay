@@ -17,9 +17,9 @@ namespace FujinTerm.Game;
 // measurement on the LAST send — that's noisy but the user will typically
 // calibrate by typing single moves anyway.
 //
-// Off by default. Toggle on via OtherSettings.LogMovementHopTiming; logs at Info
-// severity so the Log pane's default filters surface it without DBG being
-// checked.
+// Off by default. Toggle on via the Program Log window's "Hop timing" checkbox
+// (LogDiagnosticState.HopTiming); logs at Info severity so the Log pane's
+// default filters surface it without DBG being checked.
 public sealed class HopTimingCalibrator : IDisposable
 {
     private readonly RoomTracker _tracker;
@@ -74,8 +74,10 @@ public sealed class HopTimingCalibrator : IDisposable
 
             string from = _lastSentFrom is { } f ? FormatRoom(f) : "?";
             string to   = t.NewRoom is { } n ? FormatRoom(n.Key, n.Name) : "?";
+            // Log both the numeric level and its word (e.g. "2/Light") so the
+            // trace reads at a glance and still sorts by severity band.
             _log.Info("HopCalibration",
-                $"{elapsed.TotalSeconds:F2}s @ encumbrance={_state.Encumbrance} ({from} → {to})");
+                $"{elapsed.TotalSeconds:F2}s @ encumbrance={(int)_state.Encumbrance}/{_state.Encumbrance} ({from} → {to})");
         }
     }
 

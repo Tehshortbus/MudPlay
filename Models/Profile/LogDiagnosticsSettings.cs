@@ -21,4 +21,8 @@ public sealed class LogDiagnosticsSettings
     // writers under Data/Logs). Default off. When on, the client generates all
     // three for the session.
     public bool AutoCollect { get; set; }
+
+    // Gate for the navigation hop-timing calibration trace. Default off. When
+    // on, HopTimingCalibrator emits one Info line per confirmed room hop.
+    public bool HopTiming { get; set; }
 }

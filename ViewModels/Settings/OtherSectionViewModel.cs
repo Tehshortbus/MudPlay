@@ -130,12 +130,6 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     // PartyLevelTracker.
     [ObservableProperty] private bool _avoidPartyImpassableLevelGates;
 
-    // When on, every observed Confirmed→Pending→Confirmed transition logs one
-    // Info line with the measured wall-clock time + current encumbrance level.
-    // Use it for a data-collection session when tuning the Auto-Lair
-    // travel-cost table; turn it off again for normal play.
-    [ObservableProperty] private bool _logMovementHopTiming;
-
     // Leader-side @comeback backtrack budget — how many rooms the leader walks
     // backwards along the path just taken when a stranded follower sends a bare
     // @comeback (no target room) before giving up and going idle. Range 1..50.
@@ -247,7 +241,6 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             SearchRoomsIfItemNeeded = SearchRoomsIfItemNeeded,
             HideWhenDiscarding    = HideWhenDiscarding,
             AvoidPartyImpassableLevelGates = AvoidPartyImpassableLevelGates,
-            LogMovementHopTiming  = LogMovementHopTiming,
             MaxComebackBacktrackRooms = Math.Clamp(MaxComebackBacktrackRooms, 1, 50),
             AutoRequestComebackWhenLeftBehind = AutoRequestComebackWhenLeftBehind,
         };
@@ -303,7 +296,6 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
         SearchRoomsIfItemNeeded = dto.SearchRoomsIfItemNeeded;
         HideWhenDiscarding    = dto.HideWhenDiscarding;
         AvoidPartyImpassableLevelGates = dto.AvoidPartyImpassableLevelGates;
-        LogMovementHopTiming  = dto.LogMovementHopTiming;
         MaxComebackBacktrackRooms = dto.MaxComebackBacktrackRooms;
         AutoRequestComebackWhenLeftBehind = dto.AutoRequestComebackWhenLeftBehind;
         PlayerCleanupDays = _globalSettings?.Current.PlayerCleanupDays ?? 90;
@@ -335,9 +327,6 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
         // queued @trap honours the edit without a profile reload.
         svcs.TrapDisarm.MaxSearchAttempts = Math.Clamp(dto.MaxTrapSearchAttempts, 1, 100);
         svcs.TrapDisarm.MaxDisarmAttempts = Math.Clamp(dto.MaxTrapDisarmAttempts, 1, 50);
-        // Calibrator toggle — live-mirror so the user can flip it from
-        // the Settings dialog without an Apply + profile reload cycle.
-        svcs.HopCalibrator.Enabled = dto.LogMovementHopTiming;
         // @comeback backtrack budget — live-mirror so the next stranded-
         // follower pickup honours the edit without a profile reload.
         svcs.PartyComeback.MaxBacktrackRooms = Math.Clamp(dto.MaxComebackBacktrackRooms, 1, 50);
@@ -368,7 +357,6 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     partial void OnSearchRoomsIfItemNeededChanged(bool value) => MarkDirty();
     partial void OnHideWhenDiscardingChanged(bool value) => MarkDirty();
     partial void OnAvoidPartyImpassableLevelGatesChanged(bool value) => MarkDirty();
-    partial void OnLogMovementHopTimingChanged(bool value) => MarkDirty();
     partial void OnMaxComebackBacktrackRoomsChanged(int value) => MarkDirty();
     partial void OnAutoRequestComebackWhenLeftBehindChanged(bool value) => MarkDirty();
 

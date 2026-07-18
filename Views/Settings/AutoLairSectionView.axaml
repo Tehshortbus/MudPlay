@@ -81,7 +81,7 @@
             <TextBlock Classes="SectionHeader" Text="TRAVEL COST MODEL"/>
 
             <TextBlock Classes="HelpText"
-                       Text="How long the scheduler thinks each BFS hop takes. Used to project entry-arrival time and pick lairs whose ready-at lines up with our arrival. Calibrate via Settings → Other → &quot;Log movement hop timing&quot;."/>
+                       Text="How long the scheduler thinks each BFS hop takes. Used to project entry-arrival time and pick lairs whose ready-at lines up with our arrival. Calibrate via the Program Log window's &quot;Hop timing&quot; toggle."/>
 
             <RadioButton Content="Flat seconds per hop"
                          GroupName="TravelCostMode"

@@ -6,6 +6,9 @@ Notable changes per merged PR, **newest first**. The top of the [README](README.
 
 - Auto-train master toggle now on the toolbar, Action menu, and hotkey-assignable — mirrors the Settings → Auto-Trainer "Auto-train" checkbox
 - Toggling it off from the toolbar/menu also clears the "Auto-train CP" cascade; the CP plan and per-trainer list stay in the settings tab
+- "Hop timing" toggle moved from Settings → Other to the Program Log window, next to "Auto-collect logs"
+- Hop-timing log line now shows encumbrance as both value and word (e.g. `2/Light`)
+- Navigation window's collapsible sections now start collapsed on open
 
 ## 1.74.0
 

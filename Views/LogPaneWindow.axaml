@@ -68,15 +68,23 @@
                         Content="Clear" Command="{Binding ClearCommand}"/>
             </Grid>
 
-            <!-- On-disk log collection. Sits under the filter row: gates whether
-                 the program / memory / combat-trace files are written to
-                 Data/Logs at all. Off by default so a normal session leaves
-                 nothing on disk. Persisted per-character. -->
-            <CheckBox IsChecked="{Binding AutoCollectLogs}"
-                      Content="Auto-collect logs"
-                      Foreground="{StaticResource ChromeFgSecBrush}"
-                      FontSize="11"
-                      ToolTip.Tip="Write the program, memory, and combat-trace diagnostic files to Data/Logs. Off by default; turning it on generates all three for the session. Persisted per-character."/>
+            <!-- On-disk / calibration toggles. Sit under the filter row.
+                 Auto-collect gates whether the program / memory / combat-trace
+                 files are written to Data/Logs at all; Hop timing gates the
+                 navigation calibration trace. Both off by default so a normal
+                 session leaves nothing extra behind. Persisted per-character. -->
+            <StackPanel Orientation="Horizontal" Spacing="14">
+                <CheckBox IsChecked="{Binding AutoCollectLogs}"
+                          Content="Auto-collect logs"
+                          Foreground="{StaticResource ChromeFgSecBrush}"
+                          FontSize="11"
+                          ToolTip.Tip="Write the program, memory, and combat-trace diagnostic files to Data/Logs. Off by default; turning it on generates all three for the session. Persisted per-character."/>
+                <CheckBox IsChecked="{Binding HopTiming}"
+                          Content="Hop timing"
+                          Foreground="{StaticResource ChromeFgSecBrush}"
+                          FontSize="11"
+                          ToolTip.Tip="Log one Info line per confirmed room hop with the measured wall-clock time + current encumbrance. Use it to tune the Auto-Lair travel-cost table against in-game truth, then turn off for normal play. Persisted per-character."/>
+            </StackPanel>
             </StackPanel>
         </Border>
 

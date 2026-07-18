@@ -201,15 +201,6 @@
                 <TextBlock Classes="FieldLabel" Text="days."/>
             </StackPanel>
 
-            <!-- Calibration / debug toggle. Off by default; flip on for a
-                 data-collection session, run around the realm, then flip
-                 off. Log lines land in the Log pane at Info severity with
-                 the measured hop time + current encumbrance. -->
-            <CheckBox Content="Log movement hop timing (debug)"
-                      IsChecked="{Binding LogMovementHopTiming, Mode=TwoWay}"
-                      Margin="0,8,0,0"
-                      ToolTip.Tip="When checked: each observed hop emits one Info log line with the measured wall-clock time + the current encumbrance level. Use it to tune the Auto-Lair travel-cost table against in-game truth, then turn off for normal play."/>
-
             <!-- Note: the run-away (flee) toggles (Go backwards if running /
                  Break combat before running) graduated to the Combat tab —
                  they sit next to the room thresholds + RunDistance they
@@ -218,9 +209,10 @@
 
             <!-- Note: the per-category Verbose toggles + the round-trace
                  toggle moved to the Log pane menu as a single "Combat
-                 diagnostics" umbrella switch. They were per-character
-                 here but verbose tracing is a "while I'm debugging
-                 right now" affordance, not a per-character preference. -->
+                 diagnostics" umbrella switch. The "Log movement hop timing"
+                 toggle moved there too (now just "Hop timing", next to
+                 "Auto-collect logs"). All are "while I'm debugging right
+                 now" affordances, not per-character preferences. -->
 
             <!-- ============ Inline stub catalog ============
                  Section headers stripped per user direction — the

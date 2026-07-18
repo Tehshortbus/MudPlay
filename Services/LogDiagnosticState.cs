@@ -2,8 +2,9 @@ namespace FujinTerm.Services;
 
 // Live per-character diagnostic switches. Two gate in-memory generation of the
 // Debug and Combat log channels; the third gates whether the on-disk
-// diagnostic files (program / memory / combat trace) are written at all.
-// Surfaced as the toggles in the Log pane.
+// diagnostic files (program / memory / combat trace) are written at all; the
+// fourth gates the navigation hop-timing calibration trace. Surfaced as the
+// toggles in the Log pane.
 //
 // This is the in-memory source of truth. AppServices mirrors it to the
 // Char-tier LogDiagnosticsSettings section: it applies the persisted values
@@ -26,6 +27,7 @@ public sealed class LogDiagnosticState
     private bool _debugDiagnostics;
     private bool _combatDiagnostics;
     private bool _autoCollectLogs;
+    private bool _hopTiming;
 
     // Master toggle for the generation-gated Debug channel. Off by default;
     // flip on to make every _log?.Debug(...) site across the engines start
@@ -67,6 +69,21 @@ public sealed class LogDiagnosticState
         {
             if (_autoCollectLogs == value) return;
             _autoCollectLogs = value;
+            Changed?.Invoke();
+        }
+    }
+
+    // Master toggle for the navigation hop-timing calibration trace. Off by
+    // default; flip on to have HopTimingCalibrator emit one Info line per
+    // confirmed room hop (elapsed time + encumbrance) while tuning movement
+    // delays, flip off again for normal play.
+    public bool HopTiming
+    {
+        get => _hopTiming;
+        set
+        {
+            if (_hopTiming == value) return;
+            _hopTiming = value;
             Changed?.Invoke();
         }
     }

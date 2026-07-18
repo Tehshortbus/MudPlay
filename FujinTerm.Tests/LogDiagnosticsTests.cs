@@ -133,18 +133,35 @@ public sealed class LogDiagnosticsTests
     }
 
     [Fact]
+    public void HopTiming_DefaultsOff_AndFiresChanged()
+    {
+        LogDiagnosticState diag = new();
+        Assert.False(diag.HopTiming);
+
+        int fired = 0;
+        diag.Changed += () => fired++;
+
+        diag.HopTiming = true;
+        diag.HopTiming = true;    // no-op: same value
+        diag.HopTiming = false;
+
+        Assert.Equal(2, fired);
+    }
+
+    [Fact]
     public void LogDiagnosticsSettings_DefaultsOff()
     {
         LogDiagnosticsSettings dto = new();
         Assert.False(dto.Debug);
         Assert.False(dto.Combat);
         Assert.False(dto.AutoCollect);
+        Assert.False(dto.HopTiming);
     }
 
     [Fact]
     public void LogDiagnosticsSettings_RoundTripsJson()
     {
-        LogDiagnosticsSettings original = new() { Debug = true, Combat = true, AutoCollect = true };
+        LogDiagnosticsSettings original = new() { Debug = true, Combat = true, AutoCollect = true, HopTiming = true };
         string json = JsonSerializer.Serialize(original);
         LogDiagnosticsSettings? round = JsonSerializer.Deserialize<LogDiagnosticsSettings>(json);
 
@@ -152,5 +169,6 @@ public sealed class LogDiagnosticsTests
         Assert.True(round!.Debug);
         Assert.True(round.Combat);
         Assert.True(round.AutoCollect);
+        Assert.True(round.HopTiming);
     }
 }

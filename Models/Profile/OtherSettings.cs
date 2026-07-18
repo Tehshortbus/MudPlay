@@ -95,13 +95,6 @@ public sealed class OtherSettings
     // Settings → Other.
     public bool AvoidPartyImpassableLevelGates { get; set; }
 
-    // When true, Game.HopTimingCalibrator logs one Info line per observed hop
-    // with the wall-clock time + the current Game.EncumbranceLevel. Used to
-    // calibrate the Settings → Auto-Lair tab's per-encumbrance seconds-per-hop
-    // defaults against in-game truth. Off by default — it's a developer /
-    // data-collection knob, not a normal-play affordance.
-    public bool LogMovementHopTiming { get; set; }
-
     // Leader-side @comeback backtrack budget — when a stranded follower sends a
     // bare @comeback (no target room), the leader pauses its active movement
     // engine and walks backwards along the path just taken, room by room, up to
