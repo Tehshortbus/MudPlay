@@ -34,12 +34,19 @@ public sealed partial class ItemFinderViewModel : ObservableObject, IDialogViewM
     private const string AnySlot = "(Any slot)";
     private const string AnyType = "(Any)";
 
+    // The catch-all slot option — every non-weapon item at once, so weapons drop
+    // out. The mirror image of the "(All weapons)" weapon-type option below.
+    private const string AllSlots = "(All slots)";
+
     // Aggregate weapon-type options that span both damage kinds of a hand class.
     // Weapon-type codes: 0 = 1H Blunt, 1 = 2H Blunt, 2 = 1H Sharp, 3 = 2H Sharp.
     private const string All1H = "(All 1H weapons)";
     private const string All2H = "(All 2H weapons)";
+    // The catch-all weapon option — every weapon at once, so armour drops out.
+    private const string AllWeapons = "(All weapons)";
     private static readonly int[] OneHandedCodes = { 0, 2 };
     private static readonly int[] TwoHandedCodes = { 1, 3 };
+    private static readonly int[] AllWeaponCodes = { 0, 1, 2, 3 };
 
     // The grid columns that collapse to nothing once no visible item carries a
     // value — every column but the Slot / Name anchors. Each is keyed by its
@@ -120,6 +127,9 @@ public sealed partial class ItemFinderViewModel : ObservableObject, IDialogViewM
     private AlignmentBucket? _activeAlignment;
     private bool _activeCharFilter;
     private EquipmentSlot? _activeSlot;
+    // True when the slot filter is the "(All slots)" catch-all — keep every
+    // non-weapon item and drop weapons, the inverse of the "(All weapons)" option.
+    private bool _activeArmourOnly;
     // Weapon-type codes the active weapon filter accepts (null = no weapon filter).
     // A single-element set for a specific type, the 1H / 2H pair for the aggregates.
     private int[]? _activeWeaponCodes;
@@ -266,6 +276,11 @@ public sealed partial class ItemFinderViewModel : ObservableObject, IDialogViewM
             ClassOptions.Add(name);
 
         SlotOptions.Add(AnySlot);
+        // "(All slots)" shows every non-weapon item at once (weapons drop out), the
+        // mirror of the Weapon-type "(All weapons)" aggregate. Offered only when the
+        // catalog actually holds a non-weapon item.
+        if (_all.Any(static e => e.Slot != EquipmentSlot.Weapon))
+            SlotOptions.Add(AllSlots);
         // The Slot dropdown is for armour placement — the Weapon slot is redundant
         // with the Weapon-type dropdown, which already isolates weapons, so it's
         // dropped from the list (leaving jewellery / worn armour slots).
@@ -280,8 +295,11 @@ public sealed partial class ItemFinderViewModel : ObservableObject, IDialogViewM
         }
 
         WeaponTypeOptions.Add(AnyType);
-        // Offer the hand-class aggregates ahead of the specific types, but only
+        // "(All weapons)" shows every weapon at once (armour drops out); offer it
+        // first, then the hand-class aggregates, then the specific types — each only
         // when the catalog actually holds a weapon of that class.
+        if (_all.Any(static e => e.WeaponType >= 0))
+            WeaponTypeOptions.Add(AllWeapons);
         if (_all.Any(static e => Array.IndexOf(OneHandedCodes, e.WeaponType) >= 0))
             WeaponTypeOptions.Add(All1H);
         if (_all.Any(static e => Array.IndexOf(TwoHandedCodes, e.WeaponType) >= 0))
@@ -362,9 +380,11 @@ public sealed partial class ItemFinderViewModel : ObservableObject, IDialogViewM
         };
         _activeCharFilter = _activeClass.ClassNumber > 0 || UsableLevel > 0 || _activeAlignment is not null;
 
-        _activeSlot = SelectedSlot is { } sl && _slotByLabel.TryGetValue(sl, out EquipmentSlot s) ? s : null;
+        _activeArmourOnly = SelectedSlot == AllSlots;
+        _activeSlot = !_activeArmourOnly && SelectedSlot is { } sl && _slotByLabel.TryGetValue(sl, out EquipmentSlot s) ? s : null;
         _activeWeaponCodes = SelectedWeaponType switch
         {
+            AllWeapons => AllWeaponCodes,
             All1H => OneHandedCodes,
             All2H => TwoHandedCodes,
             { } wt when wt != AnyType && _weaponCodeByLabel.TryGetValue(wt, out int code) => new[] { code },
@@ -404,6 +424,8 @@ public sealed partial class ItemFinderViewModel : ObservableObject, IDialogViewM
         // gear, so it ignores every filter and always shows under its attack type.
         if (e.IsSynthetic) return true;
 
+        // "(All slots)" keeps every non-weapon item — weapons drop out.
+        if (_activeArmourOnly && e.Slot == EquipmentSlot.Weapon) return false;
         if (_activeSlot is { } slot && e.Slot != slot) return false;
         // A weapon-type filter keeps only matching weapons — non-weapons (code -1)
         // never appear in the code set, so they're excluded, as before.

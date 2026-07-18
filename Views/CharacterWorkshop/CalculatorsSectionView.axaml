@@ -52,7 +52,7 @@
             <StackPanel Spacing="14" MaxWidth="560" HorizontalAlignment="Left">
 
                 <!-- ===== Monster Matchup ===== -->
-                <Expander IsExpanded="True" HorizontalAlignment="Stretch">
+                <Expander HorizontalAlignment="Stretch">
                     <Expander.Header>
                         <TextBlock Classes="BoxTitle" Text="Monster Matchup"/>
                     </Expander.Header>
@@ -89,6 +89,17 @@
                                 <TextBlock Classes="Section" Text="You → Monster"/>
 
                                 <StackPanel Spacing="3">
+                                    <TextBlock Classes="FieldLabel" Text="Attack type"/>
+                                    <ComboBox ItemsSource="{Binding MatchupAttackTypeOptions}"
+                                              SelectedItem="{Binding SelectedMatchupAttackType, Mode=TwoWay}"
+                                              MinWidth="180"
+                                              HorizontalAlignment="Left"
+                                              ToolTip.Tip="Which attack drives the projection. Bash / Smash and the Mystic strikes (Punch / Kick / Jumpkick) appear only when the class can use them."/>
+                                </StackPanel>
+
+                                <!-- Weapon picker only applies to a weapon attack; a
+                                     bare-handed Mystic strike hides it. -->
+                                <StackPanel Spacing="3" IsVisible="{Binding !IsMatchupMartialArts}">
                                     <TextBlock Classes="FieldLabel" Text="Weapon"/>
                                     <AutoCompleteBox ItemsSource="{Binding WeaponNames}"
                                                      SelectedItem="{Binding SelectedWeaponName, Mode=TwoWay}"

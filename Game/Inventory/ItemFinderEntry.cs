@@ -302,7 +302,9 @@ public sealed record ItemFinderEntry
                 MaxDmg = isWeapon ? t.WeaponMax : 0,
                 Accuracy = t.TotalWornAccy + t.PlusAccuracy,
                 Crits = t.PlusCrits,
-                HitMagic = t.PlusHitMagic,
+                // Hit-magic (the "magical" to-hit level) only governs weapon swings —
+                // on armour / jewellery the game ignores it, so it reads blank there.
+                HitMagic = isWeapon ? t.PlusHitMagic : 0,
                 CanBackstab = backstab,
                 BsAccuracy = t.PlusBSAccuracy,
                 BsMin = t.PlusBSMin,
@@ -457,18 +459,9 @@ public sealed record ItemFinderEntry
 
         // Mean swings per round for a bare-handed martial-arts attack, whose fixed
         // attack speed replaces a weapon's and which carries no strength requirement.
-        // Speeds are MajorMUD's: Punch 1150, Kick 1400. Jumpkick differs by realm —
-        // Stock is faster (1900) than the highest-version Paradigm/GreaterMUD build
-        // (2800); those are the two values the app models (older 2900 builds aside).
         public double AvgSwingsForMartialArts(MudAttackType attackType)
         {
-            int speed = attackType switch
-            {
-                MudAttackType.Punch => 1150,
-                MudAttackType.Kick => 1400,
-                MudAttackType.Jumpkick => Realm == RealmType.ParaMud ? 2800 : 1900,
-                _ => 0,
-            };
+            int speed = CombatCalculator.MartialArtsSpeed(attackType, Realm);
             if (speed <= 0 || !IsUsable) return 0;
             SwingCalcResult res = CombatCalculator.CalcSwings(
                 CombatLevel, Level, speed, Agility, Strength, weaponStrReq: 0,

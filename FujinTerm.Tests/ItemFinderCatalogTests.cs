@@ -42,6 +42,10 @@ public sealed class ItemFinderCatalogTests : IDisposable
     // - runed pendant : neck armour stacking several bonus abilities — Strength (46),
     //                   min-damage (1 "Damage"), max-damage (4), shadow-resist (9) and
     //                   stealth (27) — exercises the attribute/damage/resist/skill columns.
+    // - runic blade   : 1H Sharp weapon carrying hit-magic (Abil 28 = +5) — the value is
+    //                   meaningful and surfaces on the row.
+    // - warding ring  : finger armour (Worn 4) carrying the same hit-magic ability — the
+    //                   stat is meaningless off a weapon, so the finder blanks it.
     private const string Items =
         "[{\"Number\":1,\"Name\":\"keen dagger\",\"ItemType\":1,\"WeaponType\":2,\"Speed\":30,\"StrReq\":0,\"Min\":5,\"Max\":10,\"In Game\":1}," +
         " {\"Number\":2,\"Name\":\"phantom blade\",\"ItemType\":1,\"WeaponType\":3,\"Speed\":40,\"StrReq\":0,\"Min\":8,\"Max\":20,\"In Game\":0}," +
@@ -50,7 +54,9 @@ public sealed class ItemFinderCatalogTests : IDisposable
         " {\"Number\":5,\"Name\":\"silver bracer\",\"ItemType\":0,\"Worn\":14,\"In Game\":1}," +
         " {\"Number\":6,\"Name\":\"bright torch\",\"ItemType\":6,\"Worn\":14,\"In Game\":1}," +
         " {\"Number\":7,\"Name\":\"glowing amulet\",\"ItemType\":0,\"Worn\":8,\"Encum\":12,\"Abil-0\":13,\"AbilVal-0\":75,\"In Game\":1}," +
-        " {\"Number\":8,\"Name\":\"runed pendant\",\"ItemType\":0,\"Worn\":8,\"Abil-0\":46,\"AbilVal-0\":3,\"Abil-1\":1,\"AbilVal-1\":2,\"Abil-2\":4,\"AbilVal-2\":5,\"Abil-3\":9,\"AbilVal-3\":10,\"Abil-4\":27,\"AbilVal-4\":4,\"In Game\":1}]";
+        " {\"Number\":8,\"Name\":\"runed pendant\",\"ItemType\":0,\"Worn\":8,\"Abil-0\":46,\"AbilVal-0\":3,\"Abil-1\":1,\"AbilVal-1\":2,\"Abil-2\":4,\"AbilVal-2\":5,\"Abil-3\":9,\"AbilVal-3\":10,\"Abil-4\":27,\"AbilVal-4\":4,\"In Game\":1}," +
+        " {\"Number\":9,\"Name\":\"runic blade\",\"ItemType\":1,\"WeaponType\":2,\"Speed\":30,\"StrReq\":0,\"Min\":5,\"Max\":10,\"Abil-0\":28,\"AbilVal-0\":5,\"In Game\":1}," +
+        " {\"Number\":10,\"Name\":\"warding ring\",\"ItemType\":0,\"Worn\":4,\"Abil-0\":28,\"AbilVal-0\":5,\"In Game\":1}]";
 
     private static ItemFinderEntry.SwingContext UsableContext() => new(
         CombatLevel: 5, Level: 30, Agility: 60, Strength: 60,
@@ -198,6 +204,22 @@ public sealed class ItemFinderCatalogTests : IDisposable
         Assert.Equal(string.Empty, dagger.StrengthText);
         Assert.Equal(string.Empty, dagger.MinDamageBonusText);
         Assert.Equal(string.Empty, dagger.ShadowResistText);
+    }
+
+    [Fact]
+    public void BuildCatalog_HitMagic_CountsOnWeaponsOnly()
+    {
+        IReadOnlyList<ItemFinderEntry> catalog = ItemFinderEntry.BuildCatalog(SeededCache());
+
+        // A weapon's hit-magic (the "magical" to-hit level) is meaningful, so it shows.
+        ItemFinderEntry blade = catalog.Single(e => e.Name == "runic blade");
+        Assert.Equal(5, blade.HitMagic);
+        Assert.Equal("+5", blade.HitMagicText);
+
+        // The identical ability on armour does nothing in-game, so the finder blanks it.
+        ItemFinderEntry ring = catalog.Single(e => e.Name == "warding ring");
+        Assert.Equal(0, ring.HitMagic);
+        Assert.Equal(string.Empty, ring.HitMagicText);
     }
 
     [Fact]
