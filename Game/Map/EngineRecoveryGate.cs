@@ -356,6 +356,20 @@ public sealed class EngineRecoveryGate
         if (CurrentTier == TierLevel.Tier3) return;
         if (_engine is null) return;
 
+        // Before committing to the heuristic reverse-walk (which ends in the
+        // "Lost" dialog when it can't converge), defer to the RoomTracker if
+        // it's still Confirmed at a graph-known room. Confirmed means the
+        // current room is trusted as a source — that's the contract of
+        // RoomConfidence.Confirmed — so the tracker already knows where we
+        // are; the backtrack exists to recover from Suspect / Lost / ambiguity,
+        // not to second-guess a room the tracker is sure of. In a
+        // name-ambiguous area (e.g. Darkwood Forest, 66 same-named rooms) the
+        // name+exits matcher can even converge to the WRONG room and reroute
+        // from there, which is exactly the failure this guards against. Treat
+        // the confirmed key as authoritative and let the engine reroute from
+        // it — the stock-realm analogue of the Paradigm `rm` resync.
+        if (TryTrustConfirmedTracker(reason)) return;
+
         _log?.Log(LogSeverity.Warn, LogSource,
             $"Tier3.start: {reason} (engine={_engine.Name} anchor={(_anchor?.ToString() ?? "(none)")} executed={_executedSinceAnchor.Count} steps)");
         SetTier(TierLevel.Tier3, reason);
@@ -389,6 +403,35 @@ public sealed class EngineRecoveryGate
         // Don't pop the first backtrack step yet — engine has just
         // paused; we'll send the reverse move on the next gate tick.
         SendNextBacktrackMove();
+    }
+
+    // Stock-realm authoritative re-anchor: when the RoomTracker is Confirmed at
+    // a room that exists in the active graph, that room is trusted (Confirmed's
+    // own contract), so treat its key as authoritative instead of running the
+    // tier-3 backtrack. Mirrors NoteAuthoritativePosition's re-anchor + resume,
+    // minus the Paradigm rm-resync bookkeeping. The engine reroutes from the
+    // confirmed key (its EnterRecovery already trusts a Confirmed tracker); a
+    // reroute that stays unroutable re-enters here at most until the engine's
+    // own bounded recovery-attempt cap fails it cleanly, so this can't loop.
+    // Returns true when it short-circuited the escalation.
+    private bool TryTrustConfirmedTracker(string reason)
+    {
+        if (_engine is null) return false;
+        if (_tracker.State.Confidence != RoomConfidence.Confirmed) return false;
+        if (_tracker.State.CurrentRoom is not { } room) return false;
+        if (_graph.GetRoom(room.Key) is null) return false;
+
+        _awaitingAuthoritative = false;
+        _anchor = room.Key;
+        _executedSinceAnchor.Clear();
+        _tier3.Clear();
+        _tier3Backtracking = false;
+        if (CurrentTier != TierLevel.Tier1) SetTier(TierLevel.Tier1, "confirmed-tracker re-anchor");
+        _log?.Log(LogSeverity.Info, LogSource,
+            $"trust-confirmed: re-anchored to {room.Key} ({room.Name}) instead of tier-3 backtrack — {reason}");
+        Recovered?.Invoke(room.Key);
+        _engine.ResumeAfterRecovery(room.Key);
+        return true;
     }
 
     private void SendNextBacktrackMove()
