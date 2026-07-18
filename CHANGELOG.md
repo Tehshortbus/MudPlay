@@ -2,6 +2,13 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.76.3
+
+- Party window now shows your OWN poison / blindness / disease chip, not just other members' (matches par + "You feel ill.")
+- A member who joins after you missed the "started to follow you" line no longer stays stuck "Invited" — a joined par row clears the invite
+- Fixes a below-threshold party member never being auto-healed when they were wrongly still flagged invited
+- bug reports addressed: stock-20260718-140246, stock-20260718-141002, stock-20260718-141109
+
 ## 1.76.0
 
 - Equipment Manager gains a "Projected AC" line above the item-only Armour Class row — item AC folded with race/class innate bonuses, completed-quest rewards, configured AC self-buff spells, and the shadow property (+10, once)

@@ -1,12 +1,10 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.76.0**
-> - Equipment Manager gains a "Projected AC" line above the item-only Armour Class row — item AC folded with race/class innate bonuses, completed-quest rewards, configured AC self-buff spells, and the shadow property (+10, once)
-> - Prot-Evil rides its own "vs evil" line (1 AC/point, evil-only); VileWard noted as present in the hover tooltip (magnitude scales with the wearer's evil)
-> - Spell Book no longer lists weapon combat procs (%Spell) or on-kill gear (CastOnKill%) as command-cast spell sources — only genuine "on use" cast items appear
-> - Spell Book cast items now show the cast spell's effect inline (e.g. "(AC +10)") and render unlimited-use items as "Unlimited" instead of "-1 uses"
-> - Terminal right-click menu gains "Open Party" and "Open Spell Book" quick-opens
+> **Version 1.76.3**
+> - Party window now shows your OWN poison / blindness / disease chip, not just other members' (matches par + "You feel ill.")
+> - A member who joins after you missed the "started to follow you" line no longer stays stuck "Invited" — a joined par row clears the invite
+> - Fixes a below-threshold party member never being auto-healed when they were wrongly still flagged invited
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

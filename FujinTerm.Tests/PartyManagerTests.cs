@@ -1320,6 +1320,40 @@ public sealed class PartyManagerTests
     }
 
     [Fact]
+    public void ParJoinedRow_ClearsStaleInvite_WithoutFollowsYouLine()
+    {
+        // Follower's-view bug: "X started to follow you." prints only for the
+        // LEADER, so a non-leader client never sees OnFollowsYou clear the invite
+        // chip. The invitee was seeded IsInvited via par's "[Invited]" row; once
+        // they accept, the follower sees them only as a normal joined par row (with
+        // an [H:] bracket). That joined row must clear the stale invite — otherwise
+        // the member is stuck "Invited" forever, their health stays hidden, and the
+        // healer skips them.
+        var (_, p) = Setup(localCharacterName: "Raijin");
+        p.TestEnterParBlock();
+        p.FeedTestLines(new[]
+        {
+            "  Suijin WuzHere                   (Mage)          [Invited]",
+            string.Empty,
+        });
+        Assert.True(p.State.Members.Single(m => m.Name == "Suijin WuzHere").IsInvited);
+
+        // Next poll — no follows-you line ever arrived; Suijin now shows as a
+        // joined member with live vitals.
+        p.TestEnterParBlock();
+        p.FeedTestLines(new[]
+        {
+            "  Suijin WuzHere                   (Mage)          [M:98%] [H: 83%]   - Midrank",
+            string.Empty,
+        });
+
+        PartyMember suijin = p.State.Members.Single(m => m.Name == "Suijin WuzHere");
+        Assert.False(suijin.IsInvited);
+        Assert.Equal(83, suijin.HpPercent);
+        Assert.Equal(98, suijin.MpPercent);
+    }
+
+    [Fact]
     public void ParInvitedRow_MixedWithNormalRows_BothParse()
     {
         // The two row regexes must not collide — the invited regex is

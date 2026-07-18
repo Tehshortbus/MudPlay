@@ -1212,6 +1212,17 @@ public sealed partial class PartyManager : IDisposable
         member.Resting    = position == PlayerPosition.Resting;
         member.Meditating = position == PlayerPosition.Meditating;
 
+        // A joined par row (this branch only matches a row carrying an [H:] bracket)
+        // is proof the member is actually in the party — pending invitees print as a
+        // bare "[Invited]" row (ParInvitedRow), never with health. So clear any stale
+        // invite chip here: OnFollowsYou is the usual clear, but that "X started to
+        // follow you." line prints only for the LEADER, so a FOLLOWER's client never
+        // saw it and left the row stuck "Invited" forever — which also suppressed the
+        // member's health display and made CastingDirector skip them for party heals.
+        // Idempotent: SetProperty no-ops when already false, so the on-join @health
+        // round-trip (subscribed to this PropertyChanged) fires once, on the real edge.
+        member.IsInvited = false;
+
         State.IsInParty = State.Members.Count > 0;
     }
 
