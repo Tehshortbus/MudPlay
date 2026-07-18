@@ -1,4 +1,7 @@
 using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using Avalonia.Collections;
 using Avalonia.Controls;
 using Avalonia.Input;
 using FujinTerm.Game.Inventory;
@@ -10,6 +13,15 @@ namespace FujinTerm.Views.CharacterWorkshop;
 public partial class ItemFinderWindow : Window
 {
     private ItemFinderViewModel? _vm;
+
+    // Columns that read best low-to-high on the first click: the name/type text
+    // and the slot order. Every other column here is a numeric stat where the
+    // useful answer is "which item has the most", so those flip to descending
+    // first (see OnGridSorting).
+    private static readonly HashSet<string> _ascendingFirstPaths = new(StringComparer.Ordinal)
+    {
+        "Name", "TypeLabel", "SlotOrder",
+    };
 
     public ItemFinderWindow()
     {
@@ -45,5 +57,39 @@ public partial class ItemFinderWindow : Window
     {
         if (ItemsGrid.SelectedItem is ItemFinderEntry entry && entry.Number > 0)
             AppServices.Current.OpenItemGameData(entry.Number);
+    }
+
+    // Take over sorting so numeric stat columns lead with their biggest values.
+    // The DataGrid's built-in default is ascending-first, which buries the useful
+    // items (the highest damage / AC / bonus) at the bottom and puts zeros and
+    // negatives on top. We drive the CollectionView's SortDescriptions directly —
+    // the header arrow follows that collection, so no per-column state to poke.
+    private void OnGridSorting(object? sender, DataGridColumnEventArgs e)
+    {
+        if (ItemsGrid.CollectionView is not { } view) return;
+        string? path = e.Column.SortMemberPath;
+        if (string.IsNullOrEmpty(path)) return;
+
+        e.Handled = true;
+
+        ListSortDirection firstClick = _ascendingFirstPaths.Contains(path)
+            ? ListSortDirection.Ascending
+            : ListSortDirection.Descending;
+
+        DataGridSortDescription? existing = null;
+        foreach (DataGridSortDescription d in view.SortDescriptions)
+        {
+            if (d.HasPropertyPath && d.PropertyPath == path) { existing = d; break; }
+        }
+
+        ListSortDirection next = existing is null
+            ? firstClick
+            : Opposite(existing.Direction);
+
+        view.SortDescriptions.Clear();
+        view.SortDescriptions.Add(DataGridSortDescription.FromPath(path, next, (System.Globalization.CultureInfo?)null));
+
+        static ListSortDirection Opposite(ListSortDirection d) =>
+            d == ListSortDirection.Ascending ? ListSortDirection.Descending : ListSortDirection.Ascending;
     }
 }

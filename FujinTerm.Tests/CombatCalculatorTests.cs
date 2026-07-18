@@ -493,6 +493,21 @@ public sealed class CombatCalculatorTests
         Assert.Equal(expectedMax, r.MaxDamage);
     }
 
+    [Theory]
+    // Fixed martial-arts swing speeds shared by the Item Finder swing model and
+    // the Monster Matchup projection. Punch/Kick are realm-independent; only
+    // jumpkick differs (Stock 1900 vs ParaMUD/GreaterMUD 2800).
+    [InlineData(MudAttackType.Punch, RealmType.Stock, 1150)]
+    [InlineData(MudAttackType.Punch, RealmType.ParaMud, 1150)]
+    [InlineData(MudAttackType.Kick, RealmType.Stock, 1400)]
+    [InlineData(MudAttackType.Kick, RealmType.ParaMud, 1400)]
+    [InlineData(MudAttackType.Jumpkick, RealmType.Stock, 1900)]
+    [InlineData(MudAttackType.Jumpkick, RealmType.ParaMud, 2800)]
+    [InlineData(MudAttackType.Normal, RealmType.ParaMud, 0)]
+    public void MartialArtsSpeed_PinsFixedStrikeSpeeds(
+        MudAttackType attack, RealmType realm, int expected)
+        => Assert.Equal(expected, CombatCalculator.MartialArtsSpeed(attack, realm));
+
     // ----- Critical hit chance (gear/quest crit + Quick-and-Deadly) --------
 
     [Theory]

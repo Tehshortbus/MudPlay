@@ -451,6 +451,19 @@ public static class CombatCalculator
         return new MeleeDamageResult(min, max);
     }
 
+    // Fixed attack speed (energy cost per strike) for a bare-handed martial-arts
+    // attack — these have no weapon speed of their own, so their swing rate comes
+    // from this constant instead. MajorMUD's values: Punch 1150, Kick 1400;
+    // Jumpkick differs by realm (Stock is faster at 1900, ParaMUD/GreaterMUD 2800,
+    // older 2900 builds aside). Returns 0 for a non-martial-arts type.
+    public static int MartialArtsSpeed(MudAttackType attackType, RealmType realmType) => attackType switch
+    {
+        MudAttackType.Punch => 1150,
+        MudAttackType.Kick => 1400,
+        MudAttackType.Jumpkick => realmType == RealmType.ParaMud ? 2800 : 1900,
+        _ => 0,
+    };
+
     // One GreaterMUD martial-arts level band: under level 20 the subTwenty term
     // is used; at 20+ the twentyPlus term is used and floored at floor. Both
     // round half-to-even, mirroring the game's Double→Long assignment (which uses

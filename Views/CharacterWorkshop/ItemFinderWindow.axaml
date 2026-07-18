@@ -233,7 +233,8 @@
                           GridLinesVisibility="Horizontal"
                           HorizontalScrollBarVisibility="Auto"
                           VerticalScrollBarVisibility="Auto"
-                          DoubleTapped="OnRowDoubleTapped">
+                          DoubleTapped="OnRowDoubleTapped"
+                          Sorting="OnGridSorting">
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="Slot"       Binding="{ReflectionBinding SlotLabel}"      SortMemberPath="SlotOrder"  Width="100"/>
                         <DataGridTextColumn Header="Name"       Binding="{ReflectionBinding Name}"           SortMemberPath="Name"       Width="200"/>

@@ -22,8 +22,10 @@ namespace FujinTerm.ViewModels.CharacterWorkshop;
 // stat sheet:
 //   Monster Matchup — pick a monster by name and see the You → Monster
 //     projection (hit%, damage, swings, DPS) computed from your gear-derived
-//     offense, with an optional weapon picker to model a different weapon's
-//     damage against the monster's damage resist.
+//     offense, with an attack-type dropdown (Attack / Bash / Smash and the
+//     Mystic strikes Punch / Kick / Jumpkick, filtered to what the class can
+//     do) and an optional weapon picker to model a different weapon's damage
+//     against the monster's damage resist.
 //   Monster → You — the return direction, made interactive: your AC and dodge
 //     seed from the live stat + gear values but are editable, and every physical
 //     attack the monster has is listed with its own editable accuracy, so you can
@@ -35,9 +37,12 @@ namespace FujinTerm.ViewModels.CharacterWorkshop;
 //   Backstab — the realm-aware backstab damage range for the backstab-set weapon
 //     (or a picked one), reading level / strength / stealth / class-stealth and
 //     the +BS ability bonuses from the live character.
-// The player-side offense/defense numbers refresh live from the stat snapshot,
-// inventory, and completed-quest bonuses; the editable inputs re-seed to the
-// actuals on each refresh but are free to override in between.
+// The underlying "actual" offense/defense snapshot tracks the live stats,
+// inventory, and completed-quest bonuses so the Reset buttons and the Backstab
+// read-out always reflect the current character. The editable inputs, though,
+// seed from those actuals only once (construction / profile load) and on the
+// per-calculator Reset buttons — live game changes never overwrite a value the
+// user has dialed in, so a what-if stays put until it's explicitly reset.
 public sealed partial class CalculatorsSectionViewModel : WorkshopSectionViewModel
 {
     private readonly PlayerStats _stats;
@@ -56,6 +61,23 @@ public sealed partial class CalculatorsSectionViewModel : WorkshopSectionViewMod
     public ObservableCollection<string> MonsterNames { get; } = new();
     private readonly Dictionary<string, int> _monsterNumberByLabel = new();
     [ObservableProperty] private string? _selectedMonsterName;
+
+    // ----- Attack type (drives the You → Monster projection) --------------
+    // Filtered to what the loaded class can actually do: Attack / Bash are
+    // universal, Smash rides on the smash-capable class list, and the three
+    // Mystic strikes appear only when the class grants that ability.
+    public ObservableCollection<string> MatchupAttackTypeOptions { get; } = new();
+    // Selected attack type label; a martial-arts pick hides the weapon picker
+    // (the strike is bare-handed) and swaps the offense math to the strike model.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsMatchupMartialArts))]
+    private string _selectedMatchupAttackType = AttackBase;
+
+    // True while a bare-handed Mystic strike is selected — the view hides the
+    // weapon picker, since the strike carries no weapon.
+    public bool IsMatchupMartialArts => IsMartialArts(MatchupAttackTypeFor(SelectedMatchupAttackType));
+
+    private const string AttackBase = "Attack";
 
     // ----- Weapon picker (what-if offense) -------------------------------
     // Typeahead source: "<name> (#<number>)" per weapon item.
@@ -157,7 +179,9 @@ public sealed partial class CalculatorsSectionViewModel : WorkshopSectionViewMod
 
     // Captured player-side numbers (recomputed on every data refresh).
     private RealmType _realm;
-    private int _normalAccuracy;
+    // Accuracy for the currently-selected attack type (Normal / Bash / Smash /
+    // the Mystic strike) — the value the Accuracy input seeds and resets to.
+    private int _attackAccuracy;
     private int _avgWeaponDamage;
     private double _swingsPerRound;
     private bool _hasWeapon;
@@ -172,8 +196,25 @@ public sealed partial class CalculatorsSectionViewModel : WorkshopSectionViewMod
     // Offense inputs captured on refresh so the weapon picker can re-derive
     // damage / swings / crit without re-running the full stat aggregation.
     private int _str, _agi, _level, _nCombatLevel, _encumCur, _encumMax;
+    private int _intel, _chm;
     private int _plusMaxDamage, _plusCrits;
     private int _equipWeaponMin, _equipWeaponMax, _equipWeaponSpeed, _equipWeaponStrReq;
+
+    // Accuracy inputs captured on refresh: the worn accy total and the effective
+    // Abil-22 term (both attack types), plus the martial-arts worn accy (weapon
+    // hands excluded) and the per-strike accy / damage bonuses.
+    private int _totalWornAccy, _effectiveAbil22, _maWornAccy;
+    private int _plusPunchAccy, _plusKickAccy, _plusJumpKickAccy;
+    private int _plusPunchDmg, _plusKickDmg, _plusJumpKickDmg;
+
+    // Attack-type availability for the loaded class, captured on refresh so the
+    // dropdown lists only strikes the character can actually perform.
+    private bool _canSmash, _hasPunch, _hasKick, _hasJumpKick;
+
+    // Set while CaptureActuals rebuilds the snapshot so an attack-type reselection
+    // it triggers (an option list rebuild) doesn't re-enter the offense recompute
+    // before the captured fields are all in place.
+    private bool _capturing;
 
     // Weapon override from the picker — empty / unmatched falls back to equipped.
     private bool _hasSelectedWeapon;
@@ -195,9 +236,8 @@ public sealed partial class CalculatorsSectionViewModel : WorkshopSectionViewMod
     private int _plusBsMin, _plusBsMax;
     private bool _hasClassStealth;
     // The Backstab-set weapon label the picker seeds to (null = none configured);
-    // seeded once per loaded profile so a what-if pick survives data refreshes.
+    // seeded on construction / profile load so a what-if pick survives data refreshes.
     private string? _backstabDefaultWeaponLabel;
-    private bool _backstabSeeded;
     private int _bsWeaponMin, _bsWeaponMax;
 
     // Alignment of the picked monster — decides which of the player's wards
@@ -224,13 +264,28 @@ public sealed partial class CalculatorsSectionViewModel : WorkshopSectionViewMod
         _profile.ProfileLoaded += OnProfileLoaded;
         EnsureMonsterNames();
         EnsureWeaponNames();
-        Refresh();
+        SeedAll();
     }
 
-    private void Refresh()
+    // Full (re)seed: refresh the actual snapshot, push it into the editable
+    // inputs, and rebuild the monster side. Runs on construction and profile
+    // load — the two moments the inputs should adopt the live character.
+    private void SeedAll()
     {
         CaptureActuals();
+        SeedInputsFromActuals();
         RebuildMonster();
+    }
+
+    // Live refresh: recompute the actual snapshot (keeping the Reset buttons and
+    // the Backstab read-out current) and re-run the read-only projections, but
+    // leave every editable input exactly as the user left it.
+    private void RefreshActuals()
+    {
+        CaptureActuals();
+        RecomputeBackstab();
+        RecomputeOutgoing();
+        RecomputeAllRows();
     }
 
     // Re-aggregate worn gear + innate race/class bonuses + completed-quest
@@ -241,63 +296,103 @@ public sealed partial class CalculatorsSectionViewModel : WorkshopSectionViewMod
     // for no real gain. Second occurrence — extract only if a third appears.
     private void CaptureActuals()
     {
-        IReadOnlyList<EquippedItem> worn = _inventory.Snapshot.EquippedItems;
-        EquipmentStatBreakdown combined = CharacterCalculator.AggregateEquipmentStats(worn, _gameData);
-        JsonElement? classRow = _gameData.FindRowByName("Classes", _stats.Class);
-        JsonElement? raceRow = _gameData.FindRowByName("Races", _stats.Race);
-        if (raceRow is JsonElement r) CharacterCalculator.ApplyAbilityBonuses(combined, r, _stats.Race);
-        if (classRow is JsonElement c) CharacterCalculator.ApplyAbilityBonuses(combined, c, _stats.Class);
-        CharacterCalculator.ApplyQuestBonuses(combined, _questBonuses.Bonuses, "Quests");
-        EquipmentStatSummary t = combined.Totals;
+        _capturing = true;
+        try
+        {
+            IReadOnlyList<EquippedItem> worn = _inventory.Snapshot.EquippedItems;
+            EquipmentStatBreakdown combined = CharacterCalculator.AggregateEquipmentStats(worn, _gameData);
+            JsonElement? classRow = _gameData.FindRowByName("Classes", _stats.Class);
+            JsonElement? raceRow = _gameData.FindRowByName("Races", _stats.Race);
+            if (raceRow is JsonElement r) CharacterCalculator.ApplyAbilityBonuses(combined, r, _stats.Race);
+            if (classRow is JsonElement c) CharacterCalculator.ApplyAbilityBonuses(combined, c, _stats.Class);
+            CharacterCalculator.ApplyQuestBonuses(combined, _questBonuses.Bonuses, "Quests");
+            EquipmentStatSummary t = combined.Totals;
 
-        _realm = _gameData.ActiveRealm;
-        _level = _stats.Level;
-        _nCombatLevel = GetInt(classRow, "CombatLVL");
-        _str = _stats.Strength;
-        _agi = _stats.Agility;
-        int intel = _stats.Intellect, chm = _stats.Charm;
-        EncumbranceReading encum = _inventory.Snapshot.Encumbrance;
-        _encumCur = encum.CurrentWeight;
-        _encumMax = encum.MaxWeight;
+            _realm = _gameData.ActiveRealm;
+            _level = _stats.Level;
+            _nCombatLevel = GetInt(classRow, "CombatLVL");
+            _str = _stats.Strength;
+            _agi = _stats.Agility;
+            _intel = _stats.Intellect;
+            _chm = _stats.Charm;
+            EncumbranceReading encum = _inventory.Snapshot.Encumbrance;
+            _encumCur = encum.CurrentWeight;
+            _encumMax = encum.MaxWeight;
 
-        // Accuracy stays keyed to the actual equipped weapon's str requirement —
-        // it's an editable input the weapon picker deliberately leaves alone.
-        _normalAccuracy = (_level > 0 && _nCombatLevel > 0)
-            ? CombatCalculator.CalcAccuracy(MudAttackType.Normal, _realm, _level, _nCombatLevel,
-                _str, _agi, intel, chm, t.TotalWornAccy,
-                _realm == RealmType.ParaMud ? t.PlusAccuracy : t.MaxSingleAbil22,
-                _encumCur, _encumMax, t.WeaponStrReq)
-            : 0;
+            // Accuracy inputs. TotalWornAccy + the effective Abil-22 term feed the
+            // weapon attacks; the martial-arts strikes drop the weapon-hand accy
+            // (a strike doesn't use the wielded weapon's accuracy) and add their
+            // own per-strike bonuses.
+            _totalWornAccy = t.TotalWornAccy;
+            _effectiveAbil22 = _realm == RealmType.ParaMud ? t.PlusAccuracy : t.MaxSingleAbil22;
+            _maWornAccy = Math.Max(0, t.TotalWornAccy - t.WeaponHandAccy - t.OffHandAccy);
+            _plusPunchAccy = t.PlusPunchAccy;
+            _plusKickAccy = t.PlusKickAccy;
+            _plusJumpKickAccy = t.PlusJumpKickAccy;
+            _plusPunchDmg = t.PlusPunchDmg;
+            _plusKickDmg = t.PlusKickDmg;
+            _plusJumpKickDmg = t.PlusJumpKickDmg;
 
-        // Capture the offense inputs, then derive damage / swings / crit through
-        // the shared helper so the weapon picker can re-run it in isolation.
-        _plusMaxDamage = t.PlusMaxDamage;
-        _plusCrits = t.PlusCrits;
-        _equipWeaponMin = t.WeaponMin;
-        _equipWeaponMax = t.WeaponMax;
-        _equipWeaponSpeed = t.WeaponSpeed;
-        _equipWeaponStrReq = t.WeaponStrReq;
-        ComputeOffense();
+            // Attack-type availability: Attack / Bash are universal; Smash rides on
+            // the smash-capable class list; the Mystic strikes need the granting
+            // class ability. Refresh the dropdown before computing accuracy so the
+            // selection is valid for the current class.
+            HashSet<string>? smashClasses = ClassCapabilities.GetSmashCapableClasses(_gameData);
+            _canSmash = smashClasses is null
+                || (!string.IsNullOrEmpty(_stats.Class) && smashClasses.Contains(_stats.Class));
+            _hasPunch = ClassCapabilities.ClassHasPunch(classRow);
+            _hasKick = ClassCapabilities.ClassHasKick(classRow);
+            _hasJumpKick = ClassCapabilities.ClassHasJumpKick(classRow);
+            RebuildAttackTypeOptions();
 
-        _actualAc = _stats.ArmourClass;
-        _actualDodge = CombatCalculator.CalcDodge(_level, _agi, chm, t.PlusDodge, _encumCur, _encumMax);
-        _protEvil = t.PlusProtEvil;
-        _protGood = t.PlusProtGood;
-        _damageResist = (int)Math.Round(t.PlusDR, MidpointRounding.AwayFromZero);
+            // Capture the offense inputs, then derive accuracy / damage / swings /
+            // crit for the selected attack type through the shared helpers so the
+            // weapon picker + attack-type dropdown can re-run them in isolation.
+            _plusMaxDamage = t.PlusMaxDamage;
+            _plusCrits = t.PlusCrits;
+            _equipWeaponMin = t.WeaponMin;
+            _equipWeaponMax = t.WeaponMax;
+            _equipWeaponSpeed = t.WeaponSpeed;
+            _equipWeaponStrReq = t.WeaponStrReq;
+            _attackAccuracy = ComputeAttackAccuracy(MatchupAttackTypeFor(SelectedMatchupAttackType));
+            ComputeOffense();
 
-        _actualEncumPercent = encum.Percentage;
-        _plusQuickness = t.PlusQuickness;
+            _actualAc = _stats.ArmourClass;
+            _actualDodge = CombatCalculator.CalcDodge(_level, _agi, _chm, t.PlusDodge, _encumCur, _encumMax);
+            _protEvil = t.PlusProtEvil;
+            _protGood = t.PlusProtGood;
+            _damageResist = (int)Math.Round(t.PlusDR, MidpointRounding.AwayFromZero);
 
-        // Seed the editable inputs from the actuals. The setter recompute is
-        // cheap and harmless when the attack list is still empty / no monster.
-        PlayerAccuracy = _normalAccuracy;
+            _actualEncumPercent = encum.Percentage;
+            _plusQuickness = t.PlusQuickness;
+
+            _stealth = _stats.Stealth;
+            _plusBsMin = t.PlusBSMin;
+            _plusBsMax = t.PlusBSMax;
+            _hasClassStealth = ClassCapabilities.ClassHasStealth(classRow);
+            _backstabDefaultWeaponLabel = ResolveBackstabSetWeaponLabel();
+            // Keep whatever backstab weapon is selected; refresh its damage range.
+            ResolveBackstabWeapon();
+        }
+        finally
+        {
+            _capturing = false;
+        }
+    }
+
+    // Push the captured actuals into the editable inputs. Runs only when the
+    // inputs should adopt the live character — construction, profile load, and
+    // (via the Reset commands, which re-seed their own subset) an explicit reset.
+    private void SeedInputsFromActuals()
+    {
+        PlayerAccuracy = _attackAccuracy;
         PlayerAc = _actualAc;
         PlayerDodge = _actualDodge;
 
         MoveEncumbrance = _actualEncumPercent;
         MoveQuickness = _plusQuickness;
         MoveSlowness = 0;
-        // Seeding to values that equal the current backing field won't fire the
+        // Seeding to a value that equals the current backing field won't fire the
         // setter, so recompute explicitly to guarantee the outputs are current.
         RecomputeMovement();
 
@@ -306,33 +401,79 @@ public sealed partial class CalculatorsSectionViewModel : WorkshopSectionViewMod
         SwingAgility = _agi;
         SwingStrength = _str;
         SwingEncumbrance = _actualEncumPercent;
-        // Keep any weapon the user picked; refresh its fallback speed / str-req.
         ResolveSwingWeapon();
         RecomputeSwing();
 
-        _stealth = _stats.Stealth;
-        _plusBsMin = t.PlusBSMin;
-        _plusBsMax = t.PlusBSMax;
-        _hasClassStealth = ClassCapabilities.ClassHasStealth(classRow);
-        _backstabDefaultWeaponLabel = ResolveBackstabSetWeaponLabel();
-        // Seed the picker to the Backstab-set weapon once per loaded profile; a
-        // later what-if pick is preserved across data refreshes (like the swing
-        // weapon), and OnProfileLoaded resets the flag so switching characters
-        // re-seeds to that character's set.
-        if (!_backstabSeeded)
-        {
-            _backstabSeeded = true;
-            SelectedBackstabWeaponName = _backstabDefaultWeaponLabel;
-        }
+        SelectedBackstabWeaponName = _backstabDefaultWeaponLabel;
         ResolveBackstabWeapon();
         RecomputeBackstab();
     }
 
-    // Derive avg damage / swings / crit from the captured offense inputs,
-    // honoring the weapon-picker override (empty picker = the equipped weapon).
-    // Accuracy is intentionally excluded — it's a separate editable input the
-    // weapon choice doesn't touch.
+    // Accuracy for a given attack type from the captured inputs. Normal / Bash /
+    // Smash key off the equipped weapon's str-req (the picker deliberately leaves
+    // accuracy alone); the Mystic strikes use the weapon-hand-excluded worn accy,
+    // add their per-strike accy bonus, and take GreaterMUD's kick / jumpkick
+    // accuracy penalty (Stock has none).
+    private int ComputeAttackAccuracy(MudAttackType type)
+    {
+        if (_level <= 0 || _nCombatLevel <= 0) return 0;
+
+        if (IsMartialArts(type))
+        {
+            int maBase = CombatCalculator.CalcAccuracy(
+                MudAttackType.Normal, _realm, _level, _nCombatLevel,
+                _str, _agi, _intel, _chm, _maWornAccy, _effectiveAbil22,
+                _encumCur, _encumMax, weaponStrReq: 0);
+            int bonus = type switch
+            {
+                MudAttackType.Punch => _plusPunchAccy,
+                MudAttackType.Kick => _plusKickAccy,
+                MudAttackType.Jumpkick => _plusJumpKickAccy,
+                _ => 0,
+            };
+            int penalty = _realm == RealmType.ParaMud
+                ? type switch { MudAttackType.Kick => 10, MudAttackType.Jumpkick => 15, _ => 0 }
+                : 0;
+            return maBase + bonus - penalty;
+        }
+
+        return CombatCalculator.CalcAccuracy(type, _realm, _level, _nCombatLevel,
+            _str, _agi, _intel, _chm, _totalWornAccy, _effectiveAbil22,
+            _encumCur, _encumMax, _equipWeaponStrReq);
+    }
+
+    // Rebuild the attack-type dropdown to just the strikes the class can perform.
+    // SequenceEqual guards against needless collection churn on live refreshes
+    // (the capability set only changes on a profile / class swap).
+    private void RebuildAttackTypeOptions()
+    {
+        var desired = new List<string> { AttackBase, "Bash" };
+        if (_canSmash) desired.Add("Smash");
+        if (_hasPunch) desired.Add("Punch");
+        if (_hasKick) desired.Add("Kick");
+        if (_hasJumpKick) desired.Add("Jumpkick");
+        if (MatchupAttackTypeOptions.SequenceEqual(desired)) return;
+
+        MatchupAttackTypeOptions.Clear();
+        foreach (string d in desired) MatchupAttackTypeOptions.Add(d);
+        if (!desired.Contains(SelectedMatchupAttackType))
+            SelectedMatchupAttackType = AttackBase;
+    }
+
+    // Derive avg damage / swings / crit for the selected attack type from the
+    // captured offense inputs, honoring the weapon-picker override (empty picker =
+    // the equipped weapon). Accuracy is computed separately in ComputeAttackAccuracy.
     private void ComputeOffense()
+    {
+        MudAttackType type = MatchupAttackTypeFor(SelectedMatchupAttackType);
+        if (IsMartialArts(type))
+            ComputeMartialArtsOffense(type);
+        else
+            ComputeWeaponOffense(type);
+    }
+
+    // Normal / Bash / Smash against the picked-or-equipped weapon.
+    private void ComputeWeaponOffense(MudAttackType type)
     {
         int wMin = _hasSelectedWeapon ? _selWeaponMin : _equipWeaponMin;
         int wMax = _hasSelectedWeapon ? _selWeaponMax : _equipWeaponMax;
@@ -341,21 +482,75 @@ public sealed partial class CalculatorsSectionViewModel : WorkshopSectionViewMod
 
         _hasWeapon = wMax > 0;
         MeleeDamageResult dmg = CombatCalculator.CalcMeleeDamage(
-            MudAttackType.Normal, _realm, _str, wMin, wMax, _plusMaxDamage);
+            type, _realm, _str, wMin, wMax, _plusMaxDamage);
         _avgWeaponDamage = _hasWeapon ? (dmg.MinDamage + dmg.MaxDamage) / 2 : 0;
 
         SwingCalcResult swings = CombatCalculator.CalcSwings(
             _nCombatLevel, _level, wSpeed, _agi, _str, wStrReq,
+            _encumCur, _encumMax, isBashing: type == MudAttackType.Bash, realmType: _realm);
+        // Smash locks the round to a single swing regardless of weapon speed.
+        _swingsPerRound = type == MudAttackType.Smash ? (_hasWeapon ? 1 : 0) : swings.RawSwings;
+
+        // Crit folds into DPS only for the plain Attack, the same way CalculateAttack
+        // does: gear/quest crit (abil 58) + the Quick-and-Deadly bonus (only when STR
+        // meets the weapon's requirement), then diminishing returns; a crit averages
+        // 3× the max. Bash / Smash crit interaction isn't a verified mechanic, so
+        // those project without a crit term.
+        if (type == MudAttackType.Normal && _hasWeapon)
+        {
+            int qnd = (wStrReq <= 0 || _str >= wStrReq) ? swings.QnDCritBonus : 0;
+            _critChance = CombatCalculator.CalcCritChance(_plusCrits, qnd, _realm);
+            _avgCritDamage = dmg.MaxDamage * 3;
+        }
+        else
+        {
+            _critChance = 0;
+            _avgCritDamage = 0;
+        }
+    }
+
+    // Punch / Kick / Jumpkick — a bare-handed strike whose fixed attack speed
+    // stands in for a weapon's and which carries no strength requirement. The
+    // strike itself is the damage source, so the projection is always "armed".
+    // Crit is not modelled (no verified QnD interaction for the strikes).
+    private void ComputeMartialArtsOffense(MudAttackType type)
+    {
+        _hasWeapon = true;
+        int maPlusDmg = type switch
+        {
+            MudAttackType.Punch => _plusPunchDmg,
+            MudAttackType.Kick => _plusKickDmg,
+            MudAttackType.Jumpkick => _plusJumpKickDmg,
+            _ => 0,
+        };
+        // No stock ability grants a +MA-skill bonus; the calc floors it to 1.
+        const int maPlusSkill = 1;
+        MeleeDamageResult dmg = CombatCalculator.CalcMartialArtsDamage(
+            type, _realm, _level, maPlusSkill, _str, _plusMaxDamage, maPlusDmg);
+        _avgWeaponDamage = (dmg.MinDamage + dmg.MaxDamage) / 2;
+
+        int speed = CombatCalculator.MartialArtsSpeed(type, _realm);
+        SwingCalcResult swings = CombatCalculator.CalcSwings(
+            _nCombatLevel, _level, speed, _agi, _str, weaponStrReq: 0,
             _encumCur, _encumMax, realmType: _realm);
         _swingsPerRound = swings.RawSwings;
 
-        // Crit folds into DPS the same way CalculateAttack does: gear/quest crit
-        // (abil 58) + the Quick-and-Deadly bonus (only when STR meets the weapon's
-        // requirement), then diminishing returns. A crit averages 3× the max.
-        int qnd = (wStrReq <= 0 || _str >= wStrReq) ? swings.QnDCritBonus : 0;
-        _critChance = _hasWeapon ? CombatCalculator.CalcCritChance(_plusCrits, qnd, _realm) : 0;
-        _avgCritDamage = _hasWeapon ? dmg.MaxDamage * 3 : 0;
+        _critChance = 0;
+        _avgCritDamage = 0;
     }
+
+    private static MudAttackType MatchupAttackTypeFor(string? label) => label switch
+    {
+        "Bash" => MudAttackType.Bash,
+        "Smash" => MudAttackType.Smash,
+        "Punch" => MudAttackType.Punch,
+        "Kick" => MudAttackType.Kick,
+        "Jumpkick" => MudAttackType.Jumpkick,
+        _ => MudAttackType.Normal,
+    };
+
+    private static bool IsMartialArts(MudAttackType type) =>
+        type is MudAttackType.Punch or MudAttackType.Kick or MudAttackType.Jumpkick;
 
     // Populate the typeahead once from the active set. Cheap to retry if the set
     // wasn't loaded at construction (no monsters yet).
@@ -440,6 +635,19 @@ public sealed partial class CalculatorsSectionViewModel : WorkshopSectionViewMod
     partial void OnSelectedWeaponNameChanged(string? value)
     {
         ResolveSelectedWeapon();
+        ComputeOffense();
+        RecomputeOutgoing();
+    }
+
+    // Switching attack type is a fresh modelling choice: re-seed the accuracy
+    // input to that type's actual (each type has its own accuracy), re-derive the
+    // offense, and refresh the projection. Suppressed while CaptureActuals is
+    // mid-rebuild (it recomputes these itself once every field is in place).
+    partial void OnSelectedMatchupAttackTypeChanged(string value)
+    {
+        if (_capturing) return;
+        _attackAccuracy = ComputeAttackAccuracy(MatchupAttackTypeFor(value));
+        PlayerAccuracy = _attackAccuracy;
         ComputeOffense();
         RecomputeOutgoing();
     }
@@ -622,12 +830,13 @@ public sealed partial class CalculatorsSectionViewModel : WorkshopSectionViewMod
         foreach (MonsterAttackRowViewModel row in MonsterAttacks) RecomputeRow(row);
     }
 
-    // Discard manual weapon / accuracy / AC / dodge edits and re-seed from the live actuals.
+    // Discard manual weapon / accuracy / AC / dodge edits and re-seed from the live
+    // actuals. Accuracy re-seeds to the currently-selected attack type's value.
     [RelayCommand]
     private void ResetDefenses()
     {
         SelectedWeaponName = null;
-        PlayerAccuracy = _normalAccuracy;
+        PlayerAccuracy = _attackAccuracy;
         PlayerAc = _actualAc;
         PlayerDodge = _actualDodge;
     }
@@ -862,17 +1071,13 @@ public sealed partial class CalculatorsSectionViewModel : WorkshopSectionViewMod
         return 0;
     }
 
-    private void OnStatsChanged(object? sender, PropertyChangedEventArgs e) => Refresh();
-    private void OnInventoryChanged() => Refresh();
-    private void OnQuestBonusesChanged() => Refresh();
+    private void OnStatsChanged(object? sender, PropertyChangedEventArgs e) => RefreshActuals();
+    private void OnInventoryChanged() => RefreshActuals();
+    private void OnQuestBonusesChanged() => RefreshActuals();
 
-    // A new character's Equipment Manager carries its own Backstab set, so drop
-    // the seed guard and let CaptureActuals re-seed the picker to it.
-    private void OnProfileLoaded(CharacterProfile _)
-    {
-        _backstabSeeded = false;
-        Refresh();
-    }
+    // A profile swap is a seed moment: adopt the new character's stats / gear /
+    // Backstab set into every editable input.
+    private void OnProfileLoaded(CharacterProfile _) => SeedAll();
 
     public override void Dispose()
     {

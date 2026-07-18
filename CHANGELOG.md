@@ -2,6 +2,13 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.74.0
+
+- Monster Matchup gains an attack-type dropdown — Attack / Bash / Smash plus the Mystic strikes (Punch / Kick / Jumpkick), filtered to what the class can do, driving hit% / damage / swings / DPS
+- Monster Matchup player-side values no longer snap back to your live gear/stats — they seed from equipment on profile load and on the Reset buttons, and otherwise stay wherever you set them
+- Monster Matchup expander now starts collapsed
+- Item Finder numeric columns sort highest-first on the first click (positives before negatives)
+
 ## 1.73.0
 
 - Item Finder weapon-type filter gains an "(All weapons)" option — show every weapon, hide armour
