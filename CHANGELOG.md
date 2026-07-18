@@ -2,6 +2,11 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.76.4
+
+- A poisoned party member (the `P` flag in par) no longer gets silently demoted to midrank — a force-frontranked leader now keeps Frontrank while poisoned
+- bug reports addressed: stock-20260718-145855, stock-20260718-150350
+
 ## 1.76.3
 
 - Party window now shows your OWN poison / blindness / disease chip, not just other members' (matches par + "You feel ill.")

@@ -1,10 +1,8 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.76.3**
-> - Party window now shows your OWN poison / blindness / disease chip, not just other members' (matches par + "You feel ill.")
-> - A member who joins after you missed the "started to follow you" line no longer stays stuck "Invited" — a joined par row clears the invite
-> - Fixes a below-threshold party member never being auto-healed when they were wrongly still flagged invited
+> **Version 1.76.4**
+> - A poisoned party member (the `P` flag in par) no longer gets silently demoted to midrank — a force-frontranked leader now keeps Frontrank while poisoned
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

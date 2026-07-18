@@ -151,11 +151,21 @@ public sealed partial class PartyManager : IDisposable
     // [H:  5%]). The regex must allow that space — otherwise every non-100% row
     // silently fails to match and HP percent stays frozen between full and empty.
     //
+    // A poisoned member's row carries a trailing `P` flag butted right up against
+    // the HP bracket with no space ("[H: 89%]P  - Frontrank"). It MUST be consumed
+    // between the bracket and the rank chip: without the optional (?<poison>P)?
+    // here, the `-` rank suffix never matched on a poisoned row, so `rank` fell
+    // through to its Mid default and the PartyWindow silently demoted a
+    // force-frontranked leader (or any poisoned member) to midrank every poll
+    // they were poisoned. The flag is captured but not authoritative for the
+    // poison chip — that stays owned by the @poisoned say tracker, which is more
+    // timely than the 5s par poll and avoids a stale-poll re-poison race.
+    //
     // - Rank is an optional trailing chip (Frontrank / Midrank / Backrank). par
     // doesn't carry Position — that field stays at its default (Standing) for
     // non-self members until a per-member status query fills it.
     [GeneratedRegex(
-        @"^\s+(?<name>\S[\w '-]*?)\s+\((?<class>[^)]+)\)\s*(?:\[[MK]:\s*(?<mp>\d+)%\])?\s*\[H:\s*(?<hp>\d+)%\]\s*(?<state>[RM])?\s*(?:-\s*(?<rank>\w+))?",
+        @"^\s+(?<name>\S[\w '-]*?)\s+\((?<class>[^)]+)\)\s*(?:\[[MK]:\s*(?<mp>\d+)%\])?\s*\[H:\s*(?<hp>\d+)%\]\s*(?<poison>P)?\s*(?<state>[RM])?\s*(?:-\s*(?<rank>\w+))?",
         RegexOptions.CultureInvariant)]
     private static partial Regex ParRow();
 
