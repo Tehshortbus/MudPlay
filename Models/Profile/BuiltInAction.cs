@@ -57,4 +57,10 @@ public enum BuiltInAction
     ToggleAutoSneak,
     ToggleAutoHide,
     ToggleAutoSearch,
+
+    // ---- Auto-trainer master toggle (toolbar / Action menu) ----
+    // Mirrors the Settings → Auto-Trainer "Auto-train" checkbox; persisted in
+    // AutoTrainerSettings, not the AutoMode set, so it stands apart from the
+    // combat auto-responses above and the master All-auto kill switch.
+    ToggleAutoTrain,
 }

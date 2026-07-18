@@ -100,5 +100,7 @@
     <StreamGeometry x:Key="IconAutoSneak">M10 3 C7 3 6 6 6 9 C6 11 8 13 10 13 C12 13 13 11 13 8 C13 5 12 3 10 3 Z M12 15 L12 20 H7 V15 Z</StreamGeometry>
     <!-- Closed eye (lash arc + lashes + slash). -->
     <StreamGeometry x:Key="IconAutoHide">M3 13 C7 9 17 9 21 13 M7 15 L8 17 M17 15 L16 17 M11 16 V18 M13 16 V18 M5 5 L19 19</StreamGeometry>
+    <!-- Double chevron up — level up / auto-train. -->
+    <StreamGeometry x:Key="IconAutoTrain">M6 12 L12 6 L18 12 M6 18 L12 12 L18 18</StreamGeometry>
 
 </ResourceDictionary>

@@ -154,6 +154,15 @@ public static class ToolbarItemCatalogue
             "ToggleAutoSearchCommand",
             Tooltip: "Toggle Auto Search on / off (search each room on entry)",
             InDefaultLayout: false),
+
+        // Auto-trainer master toggle. Mirrors the Settings → Auto-Trainer
+        // "Auto-train" checkbox (persisted in AutoTrainerSettings, not the
+        // AutoMode set); the "Auto-train CP" cascade and per-trainer allow
+        // list stay in the settings tab.
+        new("ToggleAutoTrain",    "Auto Train",           "IconAutoTrain",
+            "ToggleAutoTrainCommand",
+            Tooltip: "Toggle Auto Train on / off (level up at the trainer during a loop / auto-lair)",
+            InDefaultLayout: false),
     };
 
     // All entries in their canonical (default-layout) order.
