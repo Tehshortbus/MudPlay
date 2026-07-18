@@ -28,8 +28,17 @@ public sealed class SpellBookItemRowViewModel
     // "casts <spell>" sub-label shown next to the item name.
     public string CastsText => $"casts {SpellName}";
 
-    // Compact charges indicator: "∞" for unlimited, else "N use(s)".
-    public string ChargesText => _item.Unlimited ? "∞" : $"{_item.UseCount} use{(_item.UseCount == 1 ? "" : "s")}";
+    // The cast spell's decoded effect wrapped in parentheses ("(AC +10)",
+    // "(Dmg 14–22)"), shown between the spell name and the mana cost so the
+    // reader sees what the item actually does. Empty when the spell decodes to no
+    // figure — the view collapses the label then.
+    public string AffectsText => _item.SpellEffect.Length > 0 ? $"({_item.SpellEffect})" : string.Empty;
+
+    // True when the cast spell has a renderable effect (drives the label's visibility).
+    public bool HasAffects => _item.SpellEffect.Length > 0;
+
+    // Compact charges indicator: "Unlimited" for an unlimited item, else "N use(s)".
+    public string ChargesText => _item.Unlimited ? "Unlimited" : $"{_item.UseCount} use{(_item.UseCount == 1 ? "" : "s")}";
 
     // Mana the cast draws when the item is used: "N mana" for a paid
     // use-spell (e.g. a shimmering greatsword), or "free" when the cast costs

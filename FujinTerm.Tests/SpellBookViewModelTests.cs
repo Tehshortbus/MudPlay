@@ -44,11 +44,11 @@ public sealed class SpellBookViewModelTests : IDisposable
         SpellRow(103, "gated", "lvlg", magery: 1, mageryLvl: 1, reqLevel: 20),
     ];
 
-    private SpellbookState NewBook(int classNumber, int level, object[]? items = null)
+    private SpellbookState NewBook(int classNumber, int level, object[]? items = null, object[]? spells = null)
     {
         string dir = Path.Combine(_root, "set");
         Directory.CreateDirectory(dir);
-        File.WriteAllText(Path.Combine(dir, "Spells.json"), JsonSerializer.Serialize(_spells));
+        File.WriteAllText(Path.Combine(dir, "Spells.json"), JsonSerializer.Serialize(spells ?? _spells));
         File.WriteAllText(Path.Combine(dir, "Classes.json"), JsonSerializer.Serialize(_classes));
         if (items is not null)
             File.WriteAllText(Path.Combine(dir, "Items.json"), JsonSerializer.Serialize(items));
@@ -175,8 +175,9 @@ public sealed class SpellBookViewModelTests : IDisposable
 
     private static readonly object[] _items =
     [
-        // Mage-only (ClassRest 12), casts starlight (100), unlimited (UseCount 0).
-        ItemRow(200, "Wand of Stars", castSpell: 100, useCount: 0, 12),
+        // Mage-only (ClassRest 12), casts starlight (100), unlimited — MajorMUD's
+        // -1 sentinel (the real-world unlimited value, not 0).
+        ItemRow(200, "Wand of Stars", castSpell: 100, useCount: -1, 12),
         // Mage-only (ClassRest 12), casts high arc (101), 3 uses.
         ItemRow(201, "Scroll of Arc", castSpell: 101, useCount: 3, 12),
         // Warrior-only (ClassRest 1), casts starlight — excluded for the Mage.
@@ -205,7 +206,8 @@ public sealed class SpellBookViewModelTests : IDisposable
 
         SpellBookItemRowViewModel wand = vm.CastItems.Single(r => r.ItemName == "Wand of Stars");
         Assert.Equal("casts starlight", wand.CastsText);
-        Assert.Equal("∞", wand.ChargesText);
+        // The -1 sentinel renders as the word "Unlimited", not a raw "-1 uses".
+        Assert.Equal("Unlimited", wand.ChargesText);
 
         Assert.Equal("3 uses", vm.CastItems.Single(r => r.ItemName == "Scroll of Arc").ChargesText);
         Assert.Equal("1 use", vm.CastItems.Single(r => r.ItemName == "Single Charge Rod").ChargesText);
@@ -344,6 +346,62 @@ public sealed class SpellBookViewModelTests : IDisposable
         Assert.DoesNotContain("Kill Mask", book.GetCastItems().Select(i => i.ItemName));
     }
 
+    [Fact]
+    public void CastItems_UnlimitedSentinel_TreatsZeroAndNegativeAsUnlimited()
+    {
+        // MajorMUD stores -1 for an unlimited item and (rarely) 0; both mean
+        // unlimited — matching MMUD Explorer's "If uses <= 0 Then uses = -1". Only a
+        // positive count is a real charge count.
+        object[] items =
+        [
+            ItemRow(500, "Neg Wand", castSpell: 100, useCount: -1, 12),
+            ItemRow(501, "Zero Wand", castSpell: 100, useCount: 0, 12),
+            ItemRow(502, "Charged Wand", castSpell: 100, useCount: 7, 12),
+        ];
+        SpellbookState book = NewBook(classNumber: 12, level: 5, items: items); // Mage
+        using SpellBookViewModel vm = new(book);
+
+        SpellBookItemRowViewModel neg = vm.CastItems.Single(r => r.ItemName == "Neg Wand");
+        SpellBookItemRowViewModel zero = vm.CastItems.Single(r => r.ItemName == "Zero Wand");
+        SpellBookItemRowViewModel charged = vm.CastItems.Single(r => r.ItemName == "Charged Wand");
+
+        Assert.Equal("Unlimited", neg.ChargesText);
+        Assert.Equal("Unlimited", zero.ChargesText);
+        Assert.Equal("7 uses", charged.ChargesText);
+
+        // Only unlimited items expose a buff-slot token — a charged one would burn out.
+        Assert.True(neg.HasBuffToken);
+        Assert.True(zero.HasBuffToken);
+        Assert.False(charged.HasBuffToken);
+    }
+
+    [Fact]
+    public void CastItems_ShowCastSpellEffect_ParenthesisedBetweenNameAndMana()
+    {
+        // A cast item surfaces its spell's decoded effect inline, wrapped in
+        // parentheses, so the reader sees what the item actually does. Spell 600
+        // grants AC +10; a spell with no renderable figure collapses the label.
+        object[] spells =
+        [
+            AffectSpellRow(600, "iron skin", "iron", magery: 1, mageryLvl: 1, reqLevel: 1,
+                abilCode: 2, abilVal: 10), // AC +10
+            SpellRow(100, "starlight", "star", magery: 1, mageryLvl: 1, reqLevel: 2),
+        ];
+        object[] items =
+        [
+            ItemRow(600, "Iron Ring", castSpell: 600, useCount: -1, 12),
+        ];
+        SpellbookState book = NewBook(classNumber: 12, level: 5, items: items, spells: spells); // Mage
+        using SpellBookViewModel vm = new(book);
+
+        SpellBookItemRowViewModel ring = vm.CastItems.Single(r => r.ItemName == "Iron Ring");
+        Assert.True(ring.HasAffects);
+        Assert.StartsWith("(", ring.AffectsText);
+        Assert.EndsWith(")", ring.AffectsText);
+        Assert.Contains("AC", ring.AffectsText);
+        Assert.Contains("+10", ring.AffectsText);
+    }
+
     // ----- synthetic-row builders (mirror SpellListParserTests) ----------
 
     // An equippable item whose CastsSp(43) rides on a preceding proc modifier —
@@ -460,6 +518,20 @@ public sealed class SpellBookViewModelTests : IDisposable
             ["MageryType"] = magery,
             ["MageryLVL"] = mageryLvl,
         };
+
+    // A spell whose sole effect is a single stat affect (Abil code + value) with
+    // no damage/heal base — so SpellEffectFormatter renders exactly that affect
+    // ("AC +10"), letting a cast item's inline effect be asserted deterministically.
+    private static Dictionary<string, object> AffectSpellRow(
+        int number, string name, string shortCode, int magery, int mageryLvl, int reqLevel,
+        int abilCode, int abilVal)
+    {
+        Dictionary<string, object> row = SpellRow(number, name, shortCode, magery, mageryLvl, reqLevel);
+        row["MinBase"] = 0; // clear the Damage base SpellRow seeds so only the affect renders
+        row["Abil-0"] = abilCode;
+        row["AbilVal-0"] = abilVal;
+        return row;
+    }
 
     private static Dictionary<string, object> SpellRow(
         int number, string name, string shortCode, int magery, int mageryLvl, int reqLevel,

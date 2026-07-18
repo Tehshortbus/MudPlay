@@ -1200,6 +1200,13 @@ Client consequence: `KnownSpellCatalog.GetClassCastItems` (the Spell Book's item
 skip any `CastsSp` slot preceded by a `%Spell` / `CastOnKill%` modifier — otherwise proc weapons
 and on-kill gear masquerade as command-cast spell sources.
 
+**Charge count (`Uses` / `UseCount` field):** a **positive** value is the item's real charge count
+(consumed to zero, then the item is gone). **`<= 0` means unlimited** — MajorMUD stores **`-1`** for
+a truly unlimited item (the common case — e.g. *shimmering greatsword*, *jeweled longsword*), and
+occasionally **`0`**; **both are unlimited**, matching MMUD Explorer's own normalisation
+`If uses <= 0 Then uses = -1`. Only unlimited items are safe to feed a buff-recast loop; the Spell
+Book renders `<= 0` as the word "Unlimited" (never a raw "-1 uses").
+
 ### Armour Class contributions — shadow, Prot-Evil, VileWard *([CONFIRMED] 2026-07-18, user)*
 
 Sources that feed a character's effective AC beyond the item/race/class/quest `+AC` (ability code

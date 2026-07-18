@@ -96,6 +96,13 @@
                                                        FontFamily="{StaticResource FontMono}"
                                                        FontSize="11"
                                                        VerticalAlignment="Center"/>
+                                            <TextBlock Text="{Binding AffectsText}"
+                                                       IsVisible="{Binding HasAffects}"
+                                                       ToolTip.Tip="What the cast spell does, at this item's use-level"
+                                                       Foreground="{StaticResource ChromeFgSecBrush}"
+                                                       FontFamily="{StaticResource FontMono}"
+                                                       FontSize="11"
+                                                       VerticalAlignment="Center"/>
                                             <TextBlock Text="{Binding ManaText}"
                                                        Foreground="{StaticResource ChromeFgMutedBrush}"
                                                        FontFamily="{StaticResource FontMono}"

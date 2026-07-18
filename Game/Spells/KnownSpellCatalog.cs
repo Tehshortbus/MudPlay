@@ -281,8 +281,9 @@ public sealed class KnownSpellCatalog
     // Every cast-on-use item the class can use — an Items row that both
     // (a) is usable by classNumber via its ClassRest-0..9 restriction (no
     // entries => universal) and (b) carries a CastsSp ability (code 43) naming
-    // a spell. Each result resolves the cast Spells.Name and the item's
-    // UseCount charges (0 = unlimited). Sorted by item name then spell name.
+    // a spell. Each result resolves the cast Spells.Name, the item's UseCount
+    // charges (<= 0 = unlimited), and the cast spell's rendered affect line
+    // scaled to the item's use-level. Sorted by item name then spell name.
     // Empty when no class is set, the set has no Items table, or nothing
     // matches.
     public IReadOnlyList<ClassCastItem> GetClassCastItems(int classNumber)
@@ -294,6 +295,7 @@ public sealed class KnownSpellCatalog
         if (items is null) return results;
 
         Dictionary<int, (string Name, int ManaCost)>? spellInfo = null; // built lazily on first cast item
+        IReadOnlyDictionary<int, IReadOnlyList<KnownSpell>>? tbIndex = null; // ditto, for textblock casts
         foreach (JsonElement row in items.RootElement.EnumerateArray())
         {
             if (!ItemUsableByClass(row, classNumber)) continue;
@@ -336,6 +338,12 @@ public sealed class KnownSpellCatalog
                 ? info
                 : (string.Empty, 0);
 
+            // The cast spell's effect scales to the item's use-level (its MinLevel
+            // gate) — the same convention the Game Data Items pane uses when it
+            // renders a weapon's use-cast spell: the item, not a character, delivers
+            // the spell, so its required level is the spell's effective base level.
+            string spellEffect = RenderCastEffect(spellNumber, minLevel, ref tbIndex);
+
             results.Add(new ClassCastItem(
                 ItemNumber: ReadInt(row, "Number"),
                 ItemName: itemName,
@@ -345,7 +353,8 @@ public sealed class KnownSpellCatalog
                 UseCount: ReadInt(row, "UseCount"),
                 IsTwoHanded: LookupEnums.IsTwoHandedWeaponType(ReadInt(row, "WeaponType")),
                 ClassRestricted: ItemClassRestricted(row, classNumber),
-                MinLevel: minLevel));
+                MinLevel: minLevel,
+                SpellEffect: spellEffect));
         }
 
         results.Sort(static (a, b) =>
@@ -354,6 +363,28 @@ public sealed class KnownSpellCatalog
             return byItem != 0 ? byItem : string.Compare(a.SpellName, b.SpellName, StringComparison.OrdinalIgnoreCase);
         });
         return results;
+    }
+
+    // Render a cast item's spell as a compact affect line ("AC +10", "Dmg 14–22",
+    // "Dur 8 · Strength +3") at the given use-level, reusing the same formatter the
+    // spell grid uses so an item's cast reads identically to the learnable spell.
+    // Returns empty when the spell doesn't resolve or decodes to no figure. The
+    // textblock cast-index is a full-table scan, so it's built lazily on the first
+    // cast item that needs it and shared across the rest of the scan.
+    private string RenderCastEffect(
+        int spellNumber, int castLevel, ref IReadOnlyDictionary<int, IReadOnlyList<KnownSpell>>? tbIndex)
+    {
+        if (GetFormulaByNumber(spellNumber) is not { } formula) return string.Empty;
+        tbIndex ??= BuildCastByTextblockIndex();
+        IReadOnlyDictionary<int, IReadOnlyList<KnownSpell>> idx = tbIndex;
+        string rendered = SpellEffectFormatter.Format(
+            formula, castLevel,
+            resolveChain: GetFormulaByNumber,
+            resolveSpellName: GetSpellNameByNumber,
+            resolveTextblockCasts: tb => idx.TryGetValue(tb, out IReadOnlyList<KnownSpell>? list)
+                ? list : System.Array.Empty<KnownSpell>(),
+            resolveMonsterName: n => _cache.FindNameByNumber("Monsters", n));
+        return rendered == "—" ? string.Empty : rendered;
     }
 
     // Item class-usability: an item with no non-zero ClassRest-N slot is
