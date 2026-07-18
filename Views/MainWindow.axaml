@@ -191,6 +191,13 @@
                 <MenuItem Header="Auto Sneak"       ToggleType="CheckBox" IsChecked="{Binding IsAutoSneakActive,    Mode=TwoWay}"/>
                 <MenuItem Header="Auto Hide"        ToggleType="CheckBox" IsChecked="{Binding IsAutoHideActive,     Mode=TwoWay}"/>
                 <MenuItem Header="Auto Search"      ToggleType="CheckBox" IsEnabled="False" ToolTip.Tip="Wired in Phase 7 (AutoWalkManager) — search rooms while running"/>
+                <Separator/>
+
+                <!-- Auto-train master toggle. Set apart because it persists in
+                     AutoTrainerSettings (not the AutoMode set above) and isn't
+                     governed by the All-auto master switch — the CP cascade and
+                     per-trainer list stay in Settings → Auto-Trainer. -->
+                <MenuItem Header="Auto Train"       ToggleType="CheckBox" IsChecked="{Binding IsAutoTrainActive,    Mode=TwoWay}"/>
 
                 <!-- Corpse-recovery actions land here when Phase 9 DEATH ships. -->
             </MenuItem>

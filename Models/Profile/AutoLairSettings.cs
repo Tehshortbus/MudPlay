@@ -13,8 +13,8 @@ namespace FujinTerm.Models.Profile;
 // All fields ship with sensible defaults the user can run on day one
 // without touching the tab. The encumbrance-gated travel-cost table is
 // seeded from a single-character run-without-encumbrance measurement
-// (1.5 s / hop), then refined per bucket once
-// OtherSettings.LogMovementHopTiming has produced data for the user to enter.
+// (1.5 s / hop), then refined per bucket once the Program Log window's
+// "Hop timing" toggle has produced data for the user to enter.
 public sealed class AutoLairSettings
 {
     // ----- Routing heuristic ----------------------------------------
@@ -42,7 +42,7 @@ public sealed class AutoLairSettings
 
     // Seconds per hop for the Flat cost mode. Default 1.5 s — a
     // single-character run-without-encumbrance observation. Tune with
-    // OtherSettings.LogMovementHopTiming.
+    // the Program Log window's "Hop timing" toggle.
     public double FlatSecondsPerHop { get; set; } = 1.5;
 
     // Encumbrance bucket → seconds per hop, used when TravelCostMode is

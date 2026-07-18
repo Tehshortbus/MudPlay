@@ -21,6 +21,26 @@ public sealed class MacroStoreTests
         Assert.Equal(expected, steps);
     }
 
+    [Theory]
+    // No separator → verbatim single element, untrimmed (ordinary input
+    // unchanged, incl. a blank line whose lone CR still matters at a prompt).
+    [InlineData("look",            new[] { "look" })]
+    [InlineData("  look  ",        new[] { "  look  " })]
+    [InlineData("",                new[] { "" })]
+    // Separator present → macro-style split (trim + drop empties).
+    [InlineData("sea n;sea n;n",   new[] { "sea n", "sea n", "n" })]
+    [InlineData("open;look",       new[] { "open", "look" })]
+    [InlineData("n^Ms^Me",         new[] { "n", "s", "e" })]
+    [InlineData("look;",           new[] { "look" })]            // trailing separator dropped
+    // Separator-only line collapses to nothing → fall back to raw so the
+    // caller still sends something rather than silently swallowing the line.
+    [InlineData(";",               new[] { ";" })]
+    public void SplitTypedInput_BehavesAsSpecified(string input, string[] expected)
+    {
+        IReadOnlyList<string> steps = MacroStore.SplitTypedInput(input);
+        Assert.Equal(expected, steps);
+    }
+
     [Fact]
     public void IsDuplicate_FlagsSameChord_FromAnotherMacro()
     {

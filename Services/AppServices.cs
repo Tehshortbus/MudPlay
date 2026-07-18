@@ -3707,10 +3707,16 @@ public sealed class AppServices
 
         // Encumbrance parser writes
         // PlayerState.Encumbrance from the `enc` line; HopTimingCalibrator
-        // logs measured per-hop times tagged with that level. Enabled via
-        // Settings → Other → "Log movement-hop timing".
+        // logs measured per-hop times tagged with the carry-weight reading the
+        // workshop records (Inventory snapshot). Enabled via the Program Log
+        // window's "Hop timing" toggle (LogDiagnostics.HopTiming).
         Encumbrance = new Game.EncumbranceParser(Router, PlayerState, Log);
-        HopCalibrator = new Game.HopTimingCalibrator(RoomTracker, PlayerState, Log);
+        HopCalibrator = new Game.HopTimingCalibrator(RoomTracker, PlayerState, Inventory, Log);
+        // The calibrator's gate follows the live diagnostic flag: apply the
+        // current value now, then track every change. Wired here (after
+        // construction, before any ProfileLoaded fires) so it's never null.
+        HopCalibrator.Enabled = LogDiagnostics.HopTiming;
+        LogDiagnostics.Changed += () => HopCalibrator.Enabled = LogDiagnostics.HopTiming;
 
         // Per-BBS room blacklist — hides ganghouse / dead-end rooms
         // from the map render + room search. Loaded on BBS pin so
@@ -4085,6 +4091,7 @@ public sealed class AppServices
         LogDiagnostics.DebugDiagnostics  = dto.Debug;
         LogDiagnostics.CombatDiagnostics = dto.Combat;
         LogDiagnostics.AutoCollectLogs   = dto.AutoCollect;
+        LogDiagnostics.HopTiming         = dto.HopTiming;
         _suppressLogDiagnosticsPersist = false;
     }
 
@@ -4094,6 +4101,7 @@ public sealed class AppServices
         LogDiagnostics.DebugDiagnostics  = false;
         LogDiagnostics.CombatDiagnostics = false;
         LogDiagnostics.AutoCollectLogs   = false;
+        LogDiagnostics.HopTiming         = false;
         _suppressLogDiagnosticsPersist = false;
     }
 
@@ -4108,6 +4116,7 @@ public sealed class AppServices
             Debug      = LogDiagnostics.DebugDiagnostics,
             Combat     = LogDiagnostics.CombatDiagnostics,
             AutoCollect = LogDiagnostics.AutoCollectLogs,
+            HopTiming  = LogDiagnostics.HopTiming,
         };
         profile.Settings ??= new();
         profile.Settings["LogDiagnostics"] = System.Text.Json.JsonSerializer.SerializeToElement(dto);
@@ -5033,9 +5042,6 @@ public sealed class AppServices
         PartyComeback.MaxBacktrackRooms = Math.Clamp(dto.MaxComebackBacktrackRooms, 1, 50);
         // Follower-side auto-@comeback toggle.
         ComebackRequest.Enabled = dto.AutoRequestComebackWhenLeftBehind;
-        // Hop-timing calibration logger — off by default; user flips
-        // on for a data-collection session.
-        HopCalibrator.Enabled = dto.LogMovementHopTiming;
         // Auto-discard offload verb: hide <item> vs drop <item>.
         AutoDiscard.HideMode = dto.HideWhenDiscarding;
     }

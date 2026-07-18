@@ -625,7 +625,17 @@ public sealed class TerminalControl : Control
                 // CommandHistory.Record itself.
                 FujinTerm.Services.AppServices.Current.CommandHistory.Record(buf.Text);
                 HistoryNav.Reset();
-                UserInput?.Invoke(buf.FlushBytes());
+                // Rapid-fire multi-command: a typed line carrying the macro
+                // separators (';' / '^M') fans out into several wire lines the
+                // same way macros do, so "sea n;sea n;n" sends three commands.
+                // A separator-free line (incl. a blank Enter) yields a single
+                // verbatim element, so ordinary input is unchanged. Flush the
+                // buffer for its clear + Changed side effects, then emit each
+                // line as its own CR-terminated wire send.
+                string typedLine = buf.Text;
+                _ = buf.FlushBytes();
+                foreach (string wireLine in FujinTerm.Services.MacroStore.SplitTypedInput(typedLine))
+                    UserInput?.Invoke(System.Text.Encoding.Latin1.GetBytes(wireLine + "\r"));
                 InvalidateVisual();
                 e.Handled = true;
                 return;

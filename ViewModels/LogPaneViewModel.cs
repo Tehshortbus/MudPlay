@@ -71,6 +71,13 @@ public sealed partial class LogPaneViewModel : ObservableObject, IDisposable
     // Persisted per-character via AppServices. Off by default.
     [ObservableProperty] private bool _autoCollectLogs;
 
+    // Toggle for the navigation hop-timing calibration trace. Mirrors
+    // LogDiagnosticState.HopTiming — flipping it gates HopTimingCalibrator,
+    // which emits one Info line per confirmed room hop. Like AutoCollectLogs it
+    // doesn't touch displayed rows (the lines it emits show up through the
+    // normal Info channel), so no Rebuild. Persisted per-character. Off by default.
+    [ObservableProperty] private bool _hopTiming;
+
     // When true, every appended row scrolls the list to the bottom. The XAML
     // hooks the actual scroll-into-view call; this flag gates it.
     [ObservableProperty] private bool _autoScroll = true;
@@ -110,6 +117,7 @@ public sealed partial class LogPaneViewModel : ObservableObject, IDisposable
             _debugDiagnostics  = _diagnostics.DebugDiagnostics;
             _combatDiagnostics = _diagnostics.CombatDiagnostics;
             _autoCollectLogs   = _diagnostics.AutoCollectLogs;
+            _hopTiming         = _diagnostics.HopTiming;
             _suppressDiagnosticEcho = false;
             _diagnostics.Changed += OnDiagnosticsChanged;
         }
@@ -143,6 +151,12 @@ public sealed partial class LogPaneViewModel : ObservableObject, IDisposable
                 AutoCollectLogs = _diagnostics.AutoCollectLogs;
                 _suppressDiagnosticEcho = false;
             }
+            if (HopTiming != _diagnostics.HopTiming)
+            {
+                _suppressDiagnosticEcho = true;
+                HopTiming = _diagnostics.HopTiming;
+                _suppressDiagnosticEcho = false;
+            }
         });
     }
 
@@ -173,6 +187,14 @@ public sealed partial class LogPaneViewModel : ObservableObject, IDisposable
         if (_suppressDiagnosticEcho) return;
         if (_diagnostics is null) return;
         _diagnostics.AutoCollectLogs = value;
+    }
+
+    partial void OnHopTimingChanged(bool value)
+    {
+        // Only gates the calibrator's Info emission — no displayed rows change — so no Rebuild.
+        if (_suppressDiagnosticEcho) return;
+        if (_diagnostics is null) return;
+        _diagnostics.HopTiming = value;
     }
 
     private void OnEntryAdded(LogEntry entry)

@@ -2,6 +2,15 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.75.0
+
+- Auto-train master toggle now on the toolbar, Action menu, and hotkey-assignable — mirrors the Settings → Auto-Trainer "Auto-train" checkbox
+- Toggling it off from the toolbar/menu also clears the "Auto-train CP" cascade; the CP plan and per-trainer list stay in the settings tab
+- Typing several commands separated by `;` (or `^M`) in the terminal or conversation window now sends each as its own line — same multi-step split as macros
+- "Hop timing" toggle moved from Settings → Other to the Program Log window, next to "Auto-collect logs"
+- Hop-timing log line now shows the carry-weight encumbrance the workshop records — weight, percent, and bracket (e.g. `240/2880 Light [8%]`)
+- Navigation window's collapsible sections now start collapsed on open
+
 ## 1.74.0
 
 - Monster Matchup gains an attack-type dropdown — Attack / Bash / Smash plus the Mystic strikes (Punch / Kick / Jumpkick), filtered to what the class can do, driving hit% / damage / swings / DPS
