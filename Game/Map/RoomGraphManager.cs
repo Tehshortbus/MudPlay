@@ -627,9 +627,12 @@ public sealed class RoomGraphManager
                 if (_spellCatalog.GetFormulaByNumber(exit.PostCastSpell) is not { } spell) continue;
                 if (!TBInfoCastTeleportResolver.IsRandomTeleport(spell)) continue;
 
-                (rebuilt ??= new(room.Exits))[dir] = exit with { CastTeleportRandom = true };
+                IReadOnlyList<RoomKey>? pool = TBInfoCastTeleportResolver.RandomTeleportTargets(spell, key.Map);
+                (rebuilt ??= new(room.Exits))[dir] =
+                    exit with { CastTeleportRandom = true, CastTeleportTargets = pool };
                 _log?.Log(LogSeverity.Debug, "RoomGraph",
-                    $"Room {key} {dir} → {exit.Target}: cast-on-walk spell {exit.PostCastSpell} is a random teleport — marked non-routable.");
+                    $"Room {key} {dir} → {exit.Target}: cast-on-walk spell {exit.PostCastSpell} is a random teleport "
+                    + $"(pool of {pool?.Count ?? 0}) — marked non-routable.");
             }
             if (rebuilt is not null) _rooms[key] = room with { Exits = rebuilt };
         }
@@ -694,6 +697,19 @@ public sealed class RoomGraphManager
         return false;
     }
 
+    // Paradigm-1.9.1 data quirk: room 9/1259, inside the Warped Asylum, carries a
+    // `pull lever` CMD teleport back to 9/1180 (the entry area) that stock v1.11p
+    // doesn't have (its 9/1259 CMD is 0). Left in the graph, that one escape edge
+    // makes the asylum look two-way: pocket-entrance detection's CanReach walks the
+    // lever back out, and CollectPocket balloons through it into the overworld, so
+    // the cast mouth never gets flagged CastPocketEntrance and the maze never gets
+    // indexed — the reshuffle/relocalize solver only engages on a detected pocket.
+    // Skipping the lever's synthesis makes the Paradigm asylum act as the same
+    // one-way pocket dimension it already is on stock. Scoped to this exact room;
+    // inert on stock, where the edge doesn't exist. The lever remains a real in-game
+    // exit the player can still pull manually — we just don't route through it.
+    private static readonly RoomKey ParadigmAsylumLeverRoom = new(9, 1259);
+
     // Synthesise a routable Direction.Teleport edge for a CMD teleport whose
     // destination isn't already reachable by a cardinal exit. PromoteCmdTeleport-
     // Exits handles the case where a teleport shadows an existing Door/KeyLocked
@@ -717,6 +733,10 @@ public sealed class RoomGraphManager
     // TryFirstRoutableTeleport / BfsMapper.FindPath). A room with several
     // distinct single-dest teleports keeps the first — one Direction.Teleport
     // slot per room.
+    //
+    // Exception: the Paradigm-1.9.1 Warped Asylum lever (see ParadigmAsylumLever-
+    // Room) is deliberately NOT synthesised, so the asylum stays a one-way pocket
+    // the maze solver can detect and navigate.
     private void BuildTeleportEdges()
     {
         if (_tbinfo is null) return;
@@ -726,6 +746,7 @@ public sealed class RoomGraphManager
             Room room = _rooms[key];
             if (room.Cmd <= 0) continue;
             if (room.Exits.ContainsKey(Direction.Teleport)) continue;   // already has one
+            if (key == ParadigmAsylumLeverRoom) continue;               // pocket-dimension: lever ignored
 
             // Existing exit targets — a teleport whose destination is already a
             // cardinal (or re-hinted) exit target needs no synthetic edge; the

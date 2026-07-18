@@ -676,6 +676,11 @@ public partial class MainWindowViewModel : ObservableObject
         // parsers above.
         _roomDisplayParser       = new Game.Map.RoomDisplayParser(Lines,
             AppServices.Current.RoomTracker, AppServices.Current.Log);
+        // Feed every room display into the teleport-maze solver so it can
+        // relocalize after a random teleport. RoomParsed fires before the
+        // tracker consumes the observation, so a look-peek (which the tracker
+        // drops) still reaches the solver.
+        _roomDisplayParser.RoomParsed += AppServices.Current.MazeSolver.OnRoomObserved;
         _movementRefusalDetector = new Game.Map.MovementRefusalDetector(Lines,
             AppServices.Current.RoomTracker, AppServices.Current.Log);
         // Combat-gated-entry refusal: `break` → 3s → revert move so the driving
@@ -1003,6 +1008,10 @@ public partial class MainWindowViewModel : ObservableObject
         // Paradigm position resolver — its `rm` re-sync ride the same
         // gate-wrapped pipeline so it can't land mid-password-prompt.
         AppServices.Current.ParadigmResync.SetWireSender(engineSend);
+        // Teleport-maze solver — its look-peeks + reshuffle moves ride the same
+        // gate-wrapped pipeline. The RoomParsed feed that drives its relocalize
+        // is subscribed below beside the RoomDisplayParser.
+        AppServices.Current.MazeSolver.SetWireSender(engineSend);
         // SuicideHandler — bypasses the engine gate because it OWNS
         // the suicide flow (and needs its `suicide` + password sends
         // to land even while SuicidePasswordTracker has the gate

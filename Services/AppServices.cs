@@ -1217,6 +1217,17 @@ public sealed class AppServices
     // realms no-op it and keep the heuristic recovery ladder.
     public Game.Map.ParadigmPositionResolver ParadigmResync { get; private set; } = null!;
 
+    // Per-active-set index of random-teleport "maze" pockets (the Warped Asylum
+    // is canonical). Detects them structurally and holds the 1x2 relocalization
+    // signatures + reshuffle exits. Rebuilds on graph reload; app-lifetime.
+    public Game.Map.TeleportMazeIndex MazeIndex { get; private set; } = null!;
+
+    // Stock-only random-teleport maze solver. When the walker can't source a
+    // route into a maze pocket, this drives look-peeks to relocalize after each
+    // teleport and reshuffles across disconnected components until a plain route
+    // to the goal exists, then hands the final walk back to the walker.
+    public Game.Map.TeleportMazeSolver MazeSolver { get; private set; } = null!;
+
     // Writer that persists tracker-learned room names back into the
     // active set's Rooms.json. Consumed by the
     // MainWindowViewModel name-learned prompt handler after the user
@@ -2132,8 +2143,16 @@ public sealed class AppServices
         // Reads GameData.ActiveRealm live per-request, so a mid-session set swap
         // is honoured without re-wiring.
         ParadigmResync = new Game.Map.ParadigmPositionResolver(Router, RoomTracker, Recovery, GameData, Log);
-        Recovery.TryResync = ParadigmResync.TryRequestResync;
         ParadigmResync.ResyncFailed += Recovery.OnAuthoritativeResyncFailed;
+        // Recovery.TryResync is wired below once MazeSolver exists: a maze solve
+        // suppresses `rm` so the asylum is driven by the realm-agnostic look-sweep
+        // (stock parity) rather than rm short-circuiting the solver's relocalize.
+
+        // Random-teleport maze index. Rebuilds itself on every graph reload (it
+        // subscribes to RoomGraph.GraphReloaded in its ctor), so it's built once
+        // at app scope like the tracker. The solver that consumes it is built
+        // after the Walker below.
+        MazeIndex = new Game.Map.TeleportMazeIndex(RoomGraph, Log);
 
         // Writer that persists tracker-learned names back to
         // Rooms.json. The MainWindowVM subscribes to NameLearned to
@@ -3451,6 +3470,25 @@ public sealed class AppServices
         Walker = new Game.Map.AutoWalkManager(RoomGraph, Bfs, RoomTracker,
             MovementCoordinator, filter: Movement, log: Log,
             promptScanner: PromptScanner, recovery: Recovery);
+        // Random-teleport maze solver. The walker calls into it (via
+        // SetMazeSolver) whenever a destination inside a maze pocket has no
+        // sourceable route; the solver drives look-peeks + reshuffles until a
+        // plain route exists, then hands the final walk back. Its wire-sender
+        // and the RoomDisplayParser.RoomParsed feed are bound per-session by
+        // MainWindowViewModel after connect.
+        MazeSolver = new Game.Map.TeleportMazeSolver(
+            MazeIndex, RoomGraph, RoomTracker, Bfs, Walker, Log,
+            isParadigm: () => GameData.ActiveRealm == Game.RealmType.ParaMud,
+            paradigmResolver: ParadigmResync);
+        Walker.SetMazeSolver(MazeSolver);
+        // While a maze solve is Active the tracker legitimately churns Lost/Suspect
+        // between same-named teleport landings — relocalizing that is the solver's
+        // job. On Paradigm the solver drives its OWN `rm` after each landing (see
+        // TeleportMazeSolver); keep the recovery gate's proactive `rm` suppressed
+        // for the duration so it can't fire a second, uncoordinated `rm` that races
+        // the solver's. On stock (no `rm`) the solver uses the look-sweep and this
+        // gate no-ops anyway.
+        Recovery.TryResync = reason => !MazeSolver.Active && ParadigmResync.TryRequestResync(reason);
         // DeathRecoveryManager's Walk-to-Room / Recover-Now actions route
         // through the walker — attached here since the walker is built
         // after the manager.

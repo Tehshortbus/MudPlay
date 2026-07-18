@@ -53,6 +53,7 @@ public sealed class AutoWalkManager : IRecoverableEngine
     private Action<IReadOnlyList<RoomKey>>? _routeAnnouncer;
     private Func<RoomKey, IReadOnlyList<int>>? _hazardItemResolver;
     private Func<int, string?>? _itemNameResolver;
+    private IMazeSolver? _mazeSolver;
     private readonly LogService? _log;
 
     private List<WalkStep>? _path;
@@ -272,6 +273,32 @@ public sealed class AutoWalkManager : IRecoverableEngine
     }
 
     internal void SetWireSenderForTests(Action<byte[]> sender) => SetWireSender(sender);
+
+    // Bind the random-teleport-maze solver. When a WalkTo targets a room inside a
+    // teleport-maze pocket that normal routing can't reach (no known source, or
+    // no plain route because BFS won't cross the cast-teleport exits), the walker
+    // hands the job off to the solver instead of failing. The solver relocalizes
+    // by look-sweep and drives the final leg back through WalkTo, or surfaces its
+    // own failure via ReportMazeSolveFailed. Left unset on realms with no maze.
+    public void SetMazeSolver(IMazeSolver solver)
+    {
+        ArgumentNullException.ThrowIfNull(solver);
+        _mazeSolver = solver;
+    }
+
+    // The maze solver's failure channel — it can't reach the goal, so raise the
+    // walker's own Failed event with the solver's reason. Routed through the
+    // walker (not a solver-owned event) so every WalkTo caller sees a maze solve
+    // give up exactly like any other route failure.
+    internal void ReportMazeSolveFailed(RoomKey destination, string reason)
+        => Raise(new WalkEvent(WalkEventKind.Failed, $"maze solve: {reason}", destination));
+
+    // The maze solver's success channel — it drives the final in-pocket leg
+    // itself (self-look-verified, ungated moves), so the walker never raised its
+    // own Finished. Routed through the walker (not a solver-owned event) so every
+    // WalkTo caller sees a maze solve arrive exactly like any other route.
+    internal void ReportMazeSolveSucceeded(RoomKey destination)
+        => Raise(new WalkEvent(WalkEventKind.Finished, "maze solve: arrived", destination));
 
     // Bind the trap-disarm enqueuer. Production wires this to
     // TrapDisarmManager.Enqueue with trapKnown=true — a walker step only reaches
@@ -565,6 +592,14 @@ public sealed class AutoWalkManager : IRecoverableEngine
         Room? source = _tracker.State.CurrentRoom;
         if (source is null)
         {
+            // Tracker is Lost — but if the goal is inside a teleport-maze pocket
+            // the solver can relocalize by look-sweep from where a teleport
+            // dropped us, so hand off rather than fail. (TryBegin defers its work
+            // off this call stack, so it won't re-enter WalkTo synchronously.)
+            if (_mazeSolver is { } lostSolver
+                && lostSolver.CanSolve(destination) && lostSolver.TryBegin(destination))
+                return true;
+
             Raise(new WalkEvent(WalkEventKind.Failed, "no known source room", destination));
             return false;
         }
@@ -600,6 +635,13 @@ public sealed class AutoWalkManager : IRecoverableEngine
             path = _bfs.FindPath(source.Key, destination, _filter);
             if (path is null || path.Count == 0)
             {
+                // No plain route — but a teleport-maze goal has no plain route by
+                // construction (BFS refuses the cast-teleport exits). Hand off to
+                // the solver, which enters the pocket / reshuffles / relocalizes.
+                if (_mazeSolver is { } mazeSolver
+                    && mazeSolver.CanSolve(destination) && mazeSolver.TryBegin(destination))
+                    return true;
+
                 // Distinguish "all routes blocked by an exit gate" from a
                 // genuinely disconnected target: re-probe with the exit gates
                 // ignored. A path that appears only when gates are off means
@@ -1590,7 +1632,7 @@ public sealed class AutoWalkManager : IRecoverableEngine
         Event?.Invoke(evt);
     }
 
-    public static byte[] EncodeMove(Direction dir)
+    internal static byte[] EncodeMove(Direction dir)
     {
         string cmd = dir switch
         {

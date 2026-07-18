@@ -976,6 +976,39 @@ comes from the stat screen / who line (`AlignmentTracker` / `PlayerStats`).
     branch to anchor a nominal target stays fully non-routable (`CastTeleportRandom`, skipped in both
     passes).
 
+- **[CONFIRMED, user design 2026-07-17]** **A "random-teleport maze" is a pocket of same-named rooms
+  behind a one-way cast mouth whose interior random-teleports you on every step — normal position
+  tracking collapses to Lost because every room shares a name and plain-exit fingerprint, so the walker
+  can't source a route.** The Warped Asylum is the canonical one. The pocket is detected **structurally,
+  with no hardcoded room numbers**: it's the set of rooms trapped behind a one-way cast-pocket entrance
+  (`RoomExit.CastPocketEntrance` — a cast-on-walk mouth you can't walk back out of) whose interior holds
+  at least one random-teleport exit (`RoomExit.CastTeleportRandom`). Because the asylum's entrance exit
+  is *both* a pocket mouth and a random teleport, `BfsMapper.FindPath(outside, mazeRoom)` is always null
+  — the clean signal the walker uses to hand the destination to the maze solver instead of failing.
+  - **Relocalization is by a "1x2 signature", not the room name.** A random teleport only ever drops you
+    into a *corridor* room, and within a pocket every corridor room's signature is unique. The signature
+    is the room's own obvious-exits mask **plus, for each of those exits, the neighbour room's
+    obvious-exits mask** — the neighbour read live via **`look <dir>`, a passive peek that renders the
+    neighbour's exits without moving or firing the teleport**. `look <dir>` responses reach the solver
+    because `RoomDisplayParser.RoomParsed` fires before the tracker's look-suppression drops the peek.
+    Dead-end cells (reached only deterministically by walking, so never a teleport landing) have
+    non-unique signatures and are deliberately omitted from the lookup rather than risk a mis-ID.
+  - **Solving:** relocalize from the signature → if a plain BFS route to the goal now exists, hand the
+    final walk back to the walker; if the goal sits in a plain-disconnected component (reachable only by
+    re-teleporting), **reshuffle** — walk a `CastTeleportRandom` exit to re-teleport and retry. Runs on
+    **every realm**: `rm` locates a room by number but does not relocalize inside a same-named
+    random-teleport maze (the tracker sits at Suspect, not Confirmed), so the look-sweep is the only thing
+    that can drive the asylum — Paradigm included. Implemented in `TeleportMazeIndex` (detection +
+    signatures) and `TeleportMazeSolver` (the state machine).
+  - **[CONFIRMED, user design 2026-07-17] Paradigm asylum pull-lever = pocket dimension.** Only the
+    Paradigm 1.9.1 data (not stock v1.11p) gives room `9/1259` a `pull lever` CMD teleport back to the
+    entry area `9/1180`. That one escape edge would otherwise defeat the one-way pocket test (reachability
+    walks the lever back out; the pocket-collection BFS balloons through it into the overworld), so the
+    asylum would never be flagged/indexed as a maze on Paradigm. The lever's routable edge is therefore
+    **not synthesised** (`RoomGraphManager.ParadigmAsylumLeverRoom`), making the asylum act as the same
+    one-way pocket it already is on stock. The lever is still a real in-game exit the player can pull
+    manually — the client just doesn't route through it.
+
 ## Attack spells: why one fails to damage a monster
 
 **Three independent mechanics** decide whether an attack spell damages a monster — do not

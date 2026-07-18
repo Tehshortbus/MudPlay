@@ -2,6 +2,20 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.72.0
+
+- Navigation can now reach a destination inside a random-teleport maze (e.g. the Warped Asylum), where every room shares a name so normal tracking gives up
+- The maze is detected structurally — a one-way cast mouth whose interior random-teleports on every step — with no hardcoded room numbers
+- After each teleport the walker relocalizes by peeking neighbours with `look <dir>` and matching a unique exit signature, then routes to the goal, re-teleporting ("reshuffling") when the goal is only reachable through another teleport
+- Runs on every realm — on stock the look-sweep is the only tool, while on Paradigm the solver relocalizes with `rm` (an authoritative position query whose room numbers stay distinct even though every asylum room shares a name) and never looks at all: every teleport landing and every plain step re-locates by `rm`, which also pinpoints the dead-end Padded Cells the look-sweep can't disambiguate
+- Paradigm's asylum pull-lever escape is treated as a one-way pocket dimension so the maze detects and routes there the same as on stock
+- On stock, after each teleport the solver forces a `look` to read the landing's exits — in brief mode (the default) a room shows only its name on entry, so relocalization was keying off the room just left and desyncing at the entrance
+- On Paradigm the solver waits out the teleport's own room redisplay before sending a single `rm`, and advances only on the authoritative `Location:` reply — never on a same-second move-confirm — so move+`rm` pairs no longer pile up and desync the walker into non-existent exits; a dropped reply is re-sent rather than falling back to a look
+- The solver now drives the final plain route to the goal itself (ungated, like a reshuffle step) instead of handing off to the walker, so it no longer stalls on a stuck combat gate mid-maze
+- Arrival at a dead-end goal room (e.g. the old man's padded cell, whose signature can't be uniquely matched) is recognized by room name on stock, or directly by `rm` on Paradigm, so the solver stops there instead of blind-reshuffling back out
+- When a landing has several reshuffle exits, the solver now picks the one whose teleport spell is likeliest to land somewhere useful — each cast exit fires a different spell with a different landing pool, so it favours the pool with the most rooms it can both relocalize in and route to the goal from, instead of walking the first exit into a dead-end pool and spiralling
+- bug reports addressed: paradigm-20260717-094620, paradigm-20260717-094702, paradigm-20260717-100919, paradigm-20260717-100956, paradigm-20260717-102748, paradigm-20260717-103010, paradigm-20260717-111518, paradigm-20260717-111721, paradigm-20260717-115451, paradigm-20260717-150827, paradigm-20260717-151121, paradigm-20260717-152718
+
 ## 1.71.5
 
 - Navigation now reaches Morukai from the overworld tree base for both invited and un-invited characters: the quest-gated `go portal` is crossed as a last-resort "gateway" and the walker re-plans from wherever the cast lands (the fixed chamber when invited, the Caves of Chaos when not)

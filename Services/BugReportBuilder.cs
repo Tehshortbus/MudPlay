@@ -450,6 +450,18 @@ public static class BugReportBuilder
             sb.Append("- ").Append(n.Descriptor).Append(" ×").Append(n.Quantity)
               .Append(" (requester: ").Append(n.Requester).Append(")\n");
 
+        // Random-teleport maze solver — a "walker never reaches the asylum room /
+        // spins forever teleporting" report needs whether the solver engaged, its
+        // goal, which phase it's stuck in, and how many reshuffles it's burned.
+        sb.Append("\n**Teleport-maze solver**\n\n");
+        Game.Map.TeleportMazeSolver maze = svc.MazeSolver;
+        Kv(sb, "Enabled", maze.Enabled.ToString());
+        Kv(sb, "Pockets indexed", svc.MazeIndex.HasMazes.ToString());
+        Kv(sb, "Active", maze.Active.ToString());
+        Kv(sb, "Phase", maze.PhaseName);
+        Kv(sb, "Goal", maze.Goal is { } mg ? $"{mg.Map}/{mg.Room}" : "(none)");
+        Kv(sb, "Reshuffle attempts", maze.Attempts.ToString());
+
         return sb.ToString();
     }
 

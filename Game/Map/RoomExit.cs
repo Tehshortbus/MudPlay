@@ -50,6 +50,14 @@ namespace FujinTerm.Game.Map;
 //     normally is what lets the whole area render; the map just marks it with a
 //     spell-wall glyph. A fixed (single-room) cast-teleport is deterministic,
 //     so it needs no flag — it stays an ordinary cardinal that happens to cast.
+//   - CastTeleportTargets — set alongside CastTeleportRandom at graph-build: the
+//     pool of rooms the random teleport can actually land in (the spell's
+//     MinBase..MaxBase range on its teleport map), NOT the nominal cardinal
+//     Target. Null on a non-teleport exit. The maze solver scores these pools to
+//     choose which reshuffle exit to walk — different cast exits fire different
+//     teleport spells whose landing pools differ wildly in how many rooms are
+//     useful (the asylum's 596 pool is a relocatable corridor with a shot at the
+//     goal; its 597-600 "cell" pools are dead-ends you can't even relocalize in).
 //   - CastPocketEntrance — set at graph-build time: true when this cast exit is
 //     the ONE-WAY mouth of a sink pocket — its target cannot reach its source by
 //     any route (no walk-back). The Rhudaur Warped Asylum is the case: room 1182
@@ -91,7 +99,8 @@ public readonly partial record struct RoomExit(
     int PostCastSpell = 0,
     bool CastTeleportRandom = false,
     bool CastPocketEntrance = false,
-    bool GatewayTeleport = false)
+    bool GatewayTeleport = false,
+    IReadOnlyList<RoomKey>? CastTeleportTargets = null)
 {
     // True when this exit carries a character-level window (either a floor, a
     // cap, or both).
