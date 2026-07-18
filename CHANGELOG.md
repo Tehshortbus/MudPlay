@@ -2,6 +2,12 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.73.0
+
+- Item Finder weapon-type filter gains an "(All weapons)" option — show every weapon, hide armour
+- Item Finder slot filter gains an "(All slots)" option — show every non-weapon item, hide weapons
+- Hit-magic now reads blank on armour/jewellery rows; the stat only matters on weapons
+
 ## 1.72.0
 
 - Navigation can now reach a destination inside a random-teleport maze (e.g. the Warped Asylum), where every room shares a name so normal tracking gives up

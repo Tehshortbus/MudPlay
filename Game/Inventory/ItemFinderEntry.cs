@@ -302,7 +302,9 @@ public sealed record ItemFinderEntry
                 MaxDmg = isWeapon ? t.WeaponMax : 0,
                 Accuracy = t.TotalWornAccy + t.PlusAccuracy,
                 Crits = t.PlusCrits,
-                HitMagic = t.PlusHitMagic,
+                // Hit-magic (the "magical" to-hit level) only governs weapon swings —
+                // on armour / jewellery the game ignores it, so it reads blank there.
+                HitMagic = isWeapon ? t.PlusHitMagic : 0,
                 CanBackstab = backstab,
                 BsAccuracy = t.PlusBSAccuracy,
                 BsMin = t.PlusBSMin,

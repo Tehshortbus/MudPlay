@@ -296,6 +296,11 @@ it isn't here and you're unsure, ask.
   touch. So when the whole weapon path is exhausted (normal weapon can't hit, and either no
   alternate is configured or the alternate also can't hit), the *Physical first* action order
   falls back to the attack-spell cascade for that target rather than swinging uselessly.
+- **[CONFIRMED]** **Hit-magic (the "magical" to-hit level) only matters on weapons.** It's the
+  weapon's magical hit level compared above against a monster's magical defense; nothing else
+  consults it. If a non-weapon item (armour / jewellery) carries a hit-magic ability value it's
+  inert — the game ignores it. So UI that surfaces the stat (e.g. the Item Finder) shows it on
+  weapon rows only and blanks it everywhere else.
 - **[CONFIRMED]** **Casting a spell mid-fight drops the auto-attack for that round** — the server
   emits `*Combat Off*` because a cast is a distinct action that interrupts the sustained weapon
   swing. If the target is **still alive** after the cast, the desired behaviour is to **re-attack

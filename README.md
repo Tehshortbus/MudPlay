@@ -1,17 +1,10 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.72.0**
-> - Navigation can now reach a destination inside a random-teleport maze (e.g. the Warped Asylum), where every room shares a name so normal tracking gives up
-> - The maze is detected structurally — a one-way cast mouth whose interior random-teleports on every step — with no hardcoded room numbers
-> - After each teleport the walker relocalizes by peeking neighbours with `look <dir>` and matching a unique exit signature, then routes to the goal, re-teleporting ("reshuffling") when the goal is only reachable through another teleport
-> - Runs on every realm — on stock the look-sweep is the only tool, while on Paradigm the solver relocalizes with `rm` (an authoritative position query whose room numbers stay distinct even though every asylum room shares a name) and never looks at all: every teleport landing and every plain step re-locates by `rm`, which also pinpoints the dead-end Padded Cells the look-sweep can't disambiguate
-> - Paradigm's asylum pull-lever escape is treated as a one-way pocket dimension so the maze detects and routes there the same as on stock
-> - On stock, after each teleport the solver forces a `look` to read the landing's exits — in brief mode (the default) a room shows only its name on entry, so relocalization was keying off the room just left and desyncing at the entrance
-> - On Paradigm the solver waits out the teleport's own room redisplay before sending a single `rm`, and advances only on the authoritative `Location:` reply — never on a same-second move-confirm — so move+`rm` pairs no longer pile up and desync the walker into non-existent exits; a dropped reply is re-sent rather than falling back to a look
-> - The solver now drives the final plain route to the goal itself (ungated, like a reshuffle step) instead of handing off to the walker, so it no longer stalls on a stuck combat gate mid-maze
-> - Arrival at a dead-end goal room (e.g. the old man's padded cell, whose signature can't be uniquely matched) is recognized by room name on stock, or directly by `rm` on Paradigm, so the solver stops there instead of blind-reshuffling back out
-> - When a landing has several reshuffle exits, the solver picks the one whose teleport spell is likeliest to land somewhere useful — favouring the pool with the most rooms it can both relocalize in and route to the goal from, instead of spiralling into a dead-end pool
+> **Version 1.73.0**
+> - Item Finder weapon-type filter gains an "(All weapons)" option — show every weapon, hide armour
+> - Item Finder slot filter gains an "(All slots)" option — show every non-weapon item, hide weapons
+> - Hit-magic now reads blank on armour/jewellery rows; the stat only matters on weapons
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->
