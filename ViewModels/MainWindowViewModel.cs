@@ -2526,13 +2526,22 @@ public partial class MainWindowViewModel : ObservableObject
     {
         if (string.IsNullOrEmpty(text)) return;
 
+        // Rapid-fire multi-command: a typed line carrying the macro
+        // separators (';' or '^M') fans out into several wire lines the
+        // same way macros / aliases do, so the player can queue commands
+        // like "sea n;sea n;n". A line with no separator sends verbatim
+        // (untrimmed), preserving prior behavior. Each resulting line is
+        // then alias-expanded + sent on its own.
+        foreach (string line in MacroStore.SplitTypedInput(text))
+            SendOneUserLine(line);
+    }
+
+    private void SendOneUserLine(string text)
+    {
         // Alias check first — first-word match, case-insensitive. When
         // an enabled alias's name matches, the engine returns the
         // multi-step expansion + we send each step in place of the raw
         // text. No match → fall through to the verbatim send below.
-        // This is the only surface aliases fire from today; the
-        // terminal canvas is char-by-char and would need client-side
-        // line-mode to participate — explicitly out of scope for now.
         if (AppServices.Current.Aliases.TryExpand(text, out IReadOnlyList<string> steps))
         {
             foreach (string step in steps)

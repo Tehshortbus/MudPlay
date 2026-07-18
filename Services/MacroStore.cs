@@ -107,6 +107,21 @@ public sealed class MacroStore
         return steps;
     }
 
+    // Split a line the PLAYER just typed (terminal / conversation input) into
+    // the commands it should send. Lets a player rapid-fire several commands
+    // from one line — "sea n;sea n;n" — using the same ';' / '^M' convention as
+    // macros. A line with no separator is returned verbatim (untrimmed) as a
+    // single element, so ordinary input — including a blank line, whose lone CR
+    // still matters at a prompt — is sent exactly as before. This is the live-
+    // input wrapper around SplitCommandSteps; engines never route through it.
+    public static IReadOnlyList<string> SplitTypedInput(string text)
+    {
+        if (text.IndexOf(';') < 0 && !text.Contains("^M", StringComparison.Ordinal))
+            return new[] { text };
+        IReadOnlyList<string> steps = SplitCommandSteps(text);
+        return steps.Count > 0 ? steps : new[] { text };
+    }
+
     // Default numpad macros every new profile gets so the user can walk
     // around immediately — the conventional numpad → compass-direction layout
     // (8 = north, 2 = south, 0 = up, decimal = down, corners = diagonals).
