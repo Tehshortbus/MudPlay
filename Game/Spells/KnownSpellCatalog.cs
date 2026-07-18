@@ -245,6 +245,16 @@ public sealed class KnownSpellCatalog
     // AbilVal is the Spells.Number the item casts when used.
     private const int CastsSpAbilityCode = 43;
 
+    // A CastsSp slot only means "command-activated on-use cast" when nothing
+    // reframes it. A preceding %Spell (114) turns the following CastsSp into an
+    // automatic per-swing combat proc (extra damage lines while fighting — e.g.
+    // a hellblade's sunsword); a preceding CastOnKill% (1114) turns it into an
+    // on-kill proc that only fires on a monster death (e.g. a fukumen's
+    // invigorate). Neither is something the player casts on command, so a
+    // CastsSp riding on one of these modifiers is NOT a Spell Book cast source.
+    private const int PctSpellAbilityCode = 114;
+    private const int CastOnKillAbilityCode = 1114;
+
     // MajorMUD ability code for the item's minimum-level gate ("MinLevel"): the
     // slot's AbilVal is the character level required to wear / use the item.
     private const int MinLevelAbilityCode = 135;
@@ -290,17 +300,30 @@ public sealed class KnownSpellCatalog
             if (!IsEquippableCastItem(row)) continue;
 
             // One scan of the 20 ability slots pulls both facts we need: the
-            // first CastsSp (code 43) slot names the use-spell, and a MinLevel
-            // (code 135) slot names the level gate. An item casts a single
-            // use-spell, so the first CastsSp wins.
+            // first command-activated CastsSp (code 43) slot names the use-spell,
+            // and a MinLevel (code 135) slot names the level gate. An item casts a
+            // single use-spell, so the first qualifying CastsSp wins. A CastsSp
+            // preceded by a %Spell / CastOnKill% modifier is an automatic combat /
+            // kill proc, not an on-use cast — it's skipped so proc weapons and
+            // on-kill gear never masquerade as command-cast spell sources.
             int spellNumber = 0;
             int minLevel = 0;
+            bool pendingProc = false;
             for (int i = 0; i < ItemAbilSlots; i++)
             {
                 int code = ReadInt(row, $"Abil-{i}");
-                if (code == CastsSpAbilityCode && spellNumber <= 0)
-                    spellNumber = ReadInt(row, $"AbilVal-{i}");
-                else if (code == MinLevelAbilityCode)
+                if (code == PctSpellAbilityCode || code == CastOnKillAbilityCode)
+                {
+                    pendingProc = true;
+                    continue;
+                }
+                if (code == CastsSpAbilityCode)
+                {
+                    if (pendingProc) { pendingProc = false; continue; } // proc, not on-use
+                    if (spellNumber <= 0) spellNumber = ReadInt(row, $"AbilVal-{i}");
+                    continue;
+                }
+                if (code == MinLevelAbilityCode)
                     minLevel = ReadInt(row, $"AbilVal-{i}");
             }
             if (spellNumber <= 0) continue;

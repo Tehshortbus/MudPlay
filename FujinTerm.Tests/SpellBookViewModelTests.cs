@@ -321,7 +321,61 @@ public sealed class SpellBookViewModelTests : IDisposable
         Assert.Equal(new[] { "Healing Wand" }, vm.CastItems.Select(r => r.ItemName));
     }
 
+    [Fact]
+    public void CastItems_ExcludeAutomaticProcs_KeepOnlyCommandCasts()
+    {
+        // Three Mage-usable, equippable items each carry a CastsSp(43) → starlight,
+        // but only one is a genuine command-cast. A %Spell(114) before the CastsSp
+        // makes it a per-swing combat proc (extra damage while fighting); a
+        // CastOnKill%(1114) before it makes it an on-kill proc. Both fire
+        // automatically, so the Spell Book must list only the bare-CastsSp wand.
+        object[] items =
+        [
+            ItemRow(400, "Plain Wand", castSpell: 100, useCount: 0, 12),
+            ProcCastItemRow(401, "Proc Blade", modifierCode: 114, proc: 25, castSpell: 100, 12),
+            ProcCastItemRow(402, "Kill Mask", modifierCode: 1114, proc: 50, castSpell: 100, 12),
+        ];
+        SpellbookState book = NewBook(classNumber: 12, level: 5, items: items); // Mage
+        using SpellBookViewModel vm = new(book);
+
+        Assert.Equal(new[] { "Plain Wand" }, vm.CastItems.Select(r => r.ItemName));
+        // The automation-facing list drops them too — a proc never command-casts.
+        Assert.DoesNotContain("Proc Blade", book.GetCastItems().Select(i => i.ItemName));
+        Assert.DoesNotContain("Kill Mask", book.GetCastItems().Select(i => i.ItemName));
+    }
+
     // ----- synthetic-row builders (mirror SpellListParserTests) ----------
+
+    // An equippable item whose CastsSp(43) rides on a preceding proc modifier —
+    // %Spell (114, per-swing combat proc) or CastOnKill% (1114, on-kill proc).
+    // Both fire automatically, so GetClassCastItems must NOT surface them as
+    // command-cast spell sources. Worn 16 keeps it equippable so the proc filter
+    // is the only reason it's excluded.
+    private static Dictionary<string, object> ProcCastItemRow(
+        int number, string name, int modifierCode, int proc, int castSpell, params int[] classRest)
+    {
+        Dictionary<string, object> row = new()
+        {
+            ["Number"] = number,
+            ["Name"] = name,
+            ["UseCount"] = 0,
+            ["Worn"] = 16,
+        };
+        for (int i = 0; i < 10; i++)
+            row[$"ClassRest-{i}"] = i < classRest.Length ? classRest[i] : 0;
+        for (int i = 0; i < 20; i++)
+        {
+            row[$"Abil-{i}"] = 0;
+            row[$"AbilVal-{i}"] = 0;
+        }
+        // The modifier immediately precedes the CastsSp it reframes (real data
+        // always places them adjacent).
+        row["Abil-0"] = modifierCode;
+        row["AbilVal-0"] = proc;
+        row["Abil-1"] = 43;
+        row["AbilVal-1"] = castSpell;
+        return row;
+    }
 
     // A cast-on-use item the player can't equip — a non-zero ItemType worn
     // Nowhere (Worn 0). Used to prove the equippable filter drops potions /

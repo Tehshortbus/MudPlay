@@ -1,10 +1,13 @@
 namespace FujinTerm.Game.Spells;
 
-// A class-usable item that casts a spell when used — an Items row carrying a
-// CastsSp ability (MajorMUD ability code 43, AbilVal = the cast Spells.Number).
-// Wands, scrolls, potions, and proc weapons all surface this way. The Spell Book
-// lists them alongside the class's learnable spells so a caster sees every spell
-// source they have access to, not just the ones they memorise.
+// A class-usable item that casts a spell on command when used — an Items row
+// carrying a bare CastsSp ability (MajorMUD ability code 43, AbilVal = the cast
+// Spells.Number). Readied gear you activate deliberately — wands, staves, charged
+// worn items — surfaces this way. The Spell Book lists them alongside the class's
+// learnable spells so a caster sees every spell source they have access to, not
+// just the ones they memorise. Automatic combat procs (a %Spell per-swing weapon,
+// a CastOnKill% on-kill item) and one-time consumables (potions, food) are NOT
+// cast sources in this sense — you swing or quaff those — and are excluded.
 //
 // ItemNumber / ItemName identify the carrier item. SpellNumber is the Spells.Number
 // the item casts on use (the code-43 slot's AbilVal); SpellName is the resolved

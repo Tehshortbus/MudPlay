@@ -1171,6 +1171,51 @@ flag). These are hard eligibility gates, independent of resistance and level imm
   auto-collect it the room must be re-surveyed (a bare `look` re-renders the `You notice … here.`
   list the auto-get engine already parses).
 
+### Item-cast triggers — how a `CastsSp` fires *([CONFIRMED] 2026-07-18, user)*
+
+An Items row's **`CastsSp`** ability (code **43**, `AbilVal` = the cast `Spells.Number`) does NOT
+always mean "you command-cast this spell." How the cast fires depends on the ability that
+**immediately precedes** the `43` slot in the item's `Abil-0..19` list:
+
+- **`%Spell` (code 114) before `CastsSp`** → an **automatic per-swing combat proc**. The `%Spell`
+  `AbilVal` is the proc chance; on a hit the weapon adds the cast spell as **extra damage lines
+  during combat** (e.g. *hellblade*: `%Spell 25` → `sunsword`). Not player-triggered.
+- **`CastOnKill%` (code 1114) before `CastsSp`** → an **on-kill proc**. Fires **only when the
+  wearer lands a monster kill** (`AbilVal` = chance). Legitimately appears on **worn** gear, not
+  just weapons (e.g. the *fukumen* / *shinobi mask* / *oni mask*, all worn masks → `invigorate` /
+  `adrenaline rush` / `nimble`). Not player-triggered.
+- **A single item can carry both** — one `%Spell→CastsSp` proc **and** a separate
+  `CastOnKill%→CastsSp` proc (e.g. *Pulsar*: `%Spell 45 → blue ray` + `CastOnKill% 90 → energy
+  barrier`). Two independent automatic procs.
+- **Bare `CastsSp` (no `%Spell` / `CastOnKill%` modifier before it)** → a **command-activated
+  "on use" cast**: the player deliberately activates the readied item to cast the spell (e.g. a
+  wand/staff, or *jeweled longsword* → `weapon major valour`). **These are the item spell sources
+  the Spell Book lists** alongside learnable spells.
+- **`CastsSp` on a one-time consumable** (potion, food — `ItemType` Drink/Food, worn Nowhere) →
+  technically activates on use (quaff/eat), but it's **single-use**, so it is **not** a repeatable
+  cast source and is **excluded** from the Spell Book. (The equippable-slot gate already filters
+  these — a cast source must ready into a real equipment slot.)
+
+Client consequence: `KnownSpellCatalog.GetClassCastItems` (the Spell Book's item-cast list) must
+skip any `CastsSp` slot preceded by a `%Spell` / `CastOnKill%` modifier — otherwise proc weapons
+and on-kill gear masquerade as command-cast spell sources.
+
+### Armour Class contributions — shadow, Prot-Evil, VileWard *([CONFIRMED] 2026-07-18, user)*
+
+Sources that feed a character's effective AC beyond the item/race/class/quest `+AC` (ability code
+2 / blur 10) totals:
+
+- **Shadow property** (ability code **9**) — a flat **+10 AC** that **stacks only once**, no matter
+  how many sources carry it. Ten shadow items still grant a single +10, not +100. (Note: the client's
+  `AbilityNames`/stat map currently labels code 9 "Shadow Resist" and accumulates its raw `AbilVal`;
+  the *AC effect* is the flat +10-once, computed separately from that raw sum.)
+- **Prot-Evil / PREV** (ability code **24**) — **1 AC per point, but ONLY versus evil monsters**
+  (the majority of monsters). Because it's conditional, it is surfaced as its own "+N vs evil" line
+  rather than folded into a flat AC total.
+- **VileWard** (ability code **1113**) — an AC bonus whose **magnitude scales with the wearer's own
+  evil**. The exact scale is unconfirmed (and it's unclear MME models it), so the client notes its
+  **presence only** and never prints a magnitude.
+
 ## Currency & cash
 
 - **[CONFIRMED]** Five denominations, each with its own full coin name:
