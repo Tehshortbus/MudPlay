@@ -68,7 +68,7 @@ public sealed partial class CharacterWorkshopViewModel : ObservableObject, IDisp
 
         Sections.Add(new QuestSectionViewModel(playerStats, gameData, profile, quests, questBonuses));
 
-        Sections.Add(new EquipmentSectionViewModel(profile, inventory, gameData, equipment, playerStats, players));
+        Sections.Add(new EquipmentSectionViewModel(profile, inventory, gameData, equipment, playerStats, players, questBonuses));
 
         Sections.Add(new CalculatorsSectionViewModel(playerStats, gameData, inventory, questBonuses, profile));
 

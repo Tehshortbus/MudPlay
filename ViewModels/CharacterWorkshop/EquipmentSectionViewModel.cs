@@ -5,6 +5,7 @@ using System.ComponentModel;
 using System.Globalization;
 using System.Linq;
 using System.Text;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Avalonia.Controls;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -12,6 +13,8 @@ using CommunityToolkit.Mvvm.Input;
 using FujinTerm.Game;
 using FujinTerm.Game.Calculators;
 using FujinTerm.Game.Inventory;
+using FujinTerm.Game.Quests;
+using FujinTerm.Game.Spells;
 using FujinTerm.Models.GameData;
 using FujinTerm.Models.Profile;
 using FujinTerm.Services;
@@ -53,6 +56,9 @@ public sealed partial class EquipmentSectionViewModel : WorkshopSectionViewModel
     private readonly EquipmentManager _equipment;
     private readonly PlayerStats _stats;
     private readonly PlayerDatabase _players;
+    // Completed-quest permanent stat rewards, published by the Quest Status tab —
+    // folded into the projected-AC line alongside race / class innate bonuses.
+    private readonly QuestBonusState _questBonuses;
     private Control? _view;
     // Gates the edit callbacks while rows / selection are seeded programmatically,
     // so a profile load or set switch doesn't re-persist what it just read.
@@ -71,6 +77,19 @@ public sealed partial class EquipmentSectionViewModel : WorkshopSectionViewModel
     // Aggregate bonuses of the selected set's physical-slot items, one row per
     // non-zero stat with a per-item hover breakdown.
     public ObservableCollection<EquipBonusRow> BonusRows { get; } = new();
+
+    // Projected total AC bonus — the set's item AC folded with the character's
+    // innate race + class bonuses, completed-quest rewards, and any configured
+    // self-buff spell that grants AC, plus the shadow property's flat bump. Sits
+    // above the item-only "Armour Class" row so the user sees what the set
+    // actually lands them at; the server-parsed AC on Character Info is untouched.
+    [ObservableProperty] private string _projectedAc = "+0";
+    // Newline breakdown of every AC source feeding ProjectedAc, shown on hover.
+    [ObservableProperty] private string? _projectedAcTooltip;
+    // Prot-Evil is a 1:1 AC bonus, but only versus evil monsters, so it rides its
+    // own conditional line instead of folding into the flat projected total.
+    [ObservableProperty] private bool _hasProjectedProtEvil;
+    [ObservableProperty] private string _projectedProtEvil = "+0";
 
     // The row being viewed; null when no character is loaded.
     [ObservableProperty]
@@ -107,7 +126,7 @@ public sealed partial class EquipmentSectionViewModel : WorkshopSectionViewModel
     public EquipmentSectionViewModel(
         ProfileService profile, InventoryManager inventory,
         GameDataCache gameData, EquipmentManager equipment,
-        PlayerStats stats, PlayerDatabase players)
+        PlayerStats stats, PlayerDatabase players, QuestBonusState questBonuses)
     {
         ArgumentNullException.ThrowIfNull(profile);
         ArgumentNullException.ThrowIfNull(inventory);
@@ -115,12 +134,14 @@ public sealed partial class EquipmentSectionViewModel : WorkshopSectionViewModel
         ArgumentNullException.ThrowIfNull(equipment);
         ArgumentNullException.ThrowIfNull(stats);
         ArgumentNullException.ThrowIfNull(players);
+        ArgumentNullException.ThrowIfNull(questBonuses);
         _profile = profile;
         _inventory = inventory;
         _gameData = gameData;
         _equipment = equipment;
         _stats = stats;
         _players = players;
+        _questBonuses = questBonuses;
 
         BuildRows();
         ReloadFromProfile();
@@ -129,6 +150,7 @@ public sealed partial class EquipmentSectionViewModel : WorkshopSectionViewModel
         _gameData.ActiveSetChanged += OnActiveSetChanged;
         _stats.PropertyChanged += OnStatsChanged;
         _players.ObservationRecorded += OnObservationRecorded;
+        _questBonuses.Changed += OnQuestBonusesChanged;
     }
 
     // ----- enable / disable / apply ---------------------------------------
@@ -396,6 +418,8 @@ public sealed partial class EquipmentSectionViewModel : WorkshopSectionViewModel
         EquipmentStatBreakdown b = CharacterCalculator.AggregateEquipmentStats(worn, _gameData);
         EquipmentStatSummary t = b.Totals;
 
+        RebuildProjectedAc(worn, b);
+
         AddDoubleRow(b, "Armour Class", t.PlusAC);
         AddDoubleRow(b, "Damage Resist", t.PlusDR);
         AddIntRow(b, "Strength", t.PlusStrength);
@@ -441,6 +465,171 @@ public sealed partial class EquipmentSectionViewModel : WorkshopSectionViewModel
         AddIntRow(b, "JumpKick Accy", t.PlusJumpKickAccy);
 
         HasBonuses = BonusRows.Count > 0;
+    }
+
+    // ----- projected total AC ---------------------------------------------
+
+    // The shadow property is a flat +10 AC that lands ONCE no matter how many
+    // sources carry it — ten shadow items still grant one +10, not +100.
+    private const int ShadowAcBonus = 10;
+    // VileWard (Abil 1113) scales AC with the wearer's evil; the magnitude model
+    // isn't nailed down, so it's surfaced as presence-only, never a number.
+    private const int VileWardAbilityCode = 1113;
+    // Ability-slot counts mirror CharacterCalculator: items carry Abil-0..19,
+    // race / class records the first ten.
+    private const int MaxItemAbilSlots = 20;
+    private const int MaxRecordAbilSlots = 10;
+
+    // The AC-relevant portion of the character's configured self-buff spells,
+    // summed once per bonus rebuild. ProtEvil rides its own conditional line;
+    // shadow / VileWard are presence flags (magnitude handled separately).
+    private readonly record struct SpellAcContribution(double Ac, int ProtEvil, bool HasShadow, bool HasVileWard);
+
+    // Fold the set's item AC together with the character's innate race / class
+    // bonuses, completed-quest rewards, configured AC self-buffs, and the shadow
+    // property into a single projected total — what the set actually lands the
+    // character at once worn. The item-only "Armour Class" row below stays as-is,
+    // and the server-parsed AC on Character Info is untouched.
+    private void RebuildProjectedAc(IReadOnlyList<EquippedItem> worn, EquipmentStatBreakdown itemBreakdown)
+    {
+        EquipmentStatBreakdown combined = CharacterCalculator.AggregateEquipmentStats(worn, _gameData);
+        JsonElement? raceRow = _gameData.FindRowByName("Races", _stats.Race);
+        JsonElement? classRow = _gameData.FindRowByName("Classes", _stats.Class);
+        if (raceRow is JsonElement r) CharacterCalculator.ApplyAbilityBonuses(combined, r, _stats.Race);
+        if (classRow is JsonElement c) CharacterCalculator.ApplyAbilityBonuses(combined, c, _stats.Class);
+        CharacterCalculator.ApplyQuestBonuses(combined, _questBonuses.Bonuses, "Quests");
+
+        SpellAcContribution spell = SumConfiguredSpellAc();
+
+        double itemAc = itemBreakdown.Totals.PlusAC;
+        double innateAc = combined.Totals.PlusAC - itemAc;   // race + class + quest
+
+        // Shadow lands once across gear / race / class / quest (folded into
+        // PlusShadowResist) or any configured self-buff that grants it.
+        bool hasShadow = combined.Totals.PlusShadowResist != 0 || spell.HasShadow;
+        int shadowAc = hasShadow ? ShadowAcBonus : 0;
+
+        double total = combined.Totals.PlusAC + spell.Ac + shadowAc;
+        ProjectedAc = total.ToString("+0.#;-0.#", CultureInfo.InvariantCulture);
+
+        // Prot-Evil is 1 AC per point but only versus evil monsters, so it's a
+        // conditional line rather than part of the flat projected total.
+        int protEvil = combined.Totals.PlusProtEvil + spell.ProtEvil;
+        HasProjectedProtEvil = protEvil != 0;
+        ProjectedProtEvil = protEvil.ToString("+0;-0", CultureInfo.InvariantCulture);
+
+        bool hasVileWard = spell.HasVileWard
+            || WornHasAbility(worn, VileWardAbilityCode)
+            || RowHasAbility(raceRow, VileWardAbilityCode, MaxRecordAbilSlots)
+            || RowHasAbility(classRow, VileWardAbilityCode, MaxRecordAbilSlots)
+            || _questBonuses.Bonuses.Any(q => q.AbilityId == VileWardAbilityCode);
+
+        ProjectedAcTooltip = BuildProjectedAcTooltip(itemAc, innateAc, spell.Ac, shadowAc, hasVileWard);
+    }
+
+    // Sum the AC-relevant affects of every configured self-buff spell — the bless
+    // slots plus the mana-regen / when-full downtime buffs, the same roster the
+    // engine's self-buff path recasts. A slot naming a spell that grants AC (Abil
+    // 2 / 10) adds its magnitude; ProtEvil (24) sums separately; shadow (9) and
+    // VileWard (1113) are noted as present.
+    private SpellAcContribution SumConfiguredSpellAc()
+    {
+        SpellsSettings spells = ReadSpellsSettings();
+        Game.Spells.KnownSpellCatalog catalog = AppServices.Current.SpellCatalog;
+        int classNumber = catalog.ResolveClassNumber(_stats.Class) ?? 0;
+        int level = _stats.Level;
+
+        double ac = 0;
+        int protEvil = 0;
+        bool hasShadow = false, hasVileWard = false;
+
+        foreach (string code in EnumerateSelfBuffCodes(spells))
+        {
+            if (catalog.GetByShort(code, classNumber, level) is not { } spell) continue;
+            foreach (SpellAbility a in spell.Formula.Abilities)
+            {
+                switch (a.Code)
+                {
+                    case 2 or 10: ac += Magnitude(a, spell.Formula, level); break;
+                    case 24: protEvil += (int)Magnitude(a, spell.Formula, level); break;
+                    case 9: hasShadow = true; break;
+                    case VileWardAbilityCode: hasVileWard = true; break;
+                }
+            }
+        }
+        return new SpellAcContribution(ac, protEvil, hasShadow, hasVileWard);
+    }
+
+    // An affect's magnitude: the stored AbilVal when non-zero, else the spell's
+    // level-scaled Max — mirrors how SpellEffectFormatter renders AbilVal-0 affects.
+    private static double Magnitude(SpellAbility a, in SpellFormulaInput formula, int level)
+        => a.Value != 0 ? a.Value : SpellCalculator.AffectMagnitude(formula, level).Max;
+
+    // The canonical self-buff cast-code roster, matching CastingDirector's
+    // self-buff enumeration: the bless slots in slot order, then the mana-regen
+    // and when-HP/MA-full downtime buffs. Blank picks drop out.
+    private static IEnumerable<string> EnumerateSelfBuffCodes(SpellsSettings spells)
+    {
+        foreach (KeyValuePair<int, string> kv in spells.BlessSlots.OrderBy(kv => kv.Key))
+            if (!string.IsNullOrWhiteSpace(kv.Value)) yield return kv.Value.Trim();
+        if (!string.IsNullOrWhiteSpace(spells.MaRegenSpell)) yield return spells.MaRegenSpell!.Trim();
+        if (!string.IsNullOrWhiteSpace(spells.WhenHpFullSpell)) yield return spells.WhenHpFullSpell!.Trim();
+        if (!string.IsNullOrWhiteSpace(spells.WhenMaFullSpell)) yield return spells.WhenMaFullSpell!.Trim();
+    }
+
+    // Read the character-tier "Spells" section the same way the settings tab and
+    // the casting engine do — a missing / malformed section reads as defaults.
+    private SpellsSettings ReadSpellsSettings()
+    {
+        CharacterProfile? profile = _profile.Current;
+        if (profile?.Settings is null) return new SpellsSettings();
+        if (!profile.Settings.TryGetValue("Spells", out JsonElement json)) return new SpellsSettings();
+        try { return JsonSerializer.Deserialize<SpellsSettings>(json) ?? new SpellsSettings(); }
+        catch { return new SpellsSettings(); }
+    }
+
+    // True when any worn item carries the given ability code in its slots.
+    private bool WornHasAbility(IReadOnlyList<EquippedItem> worn, int code)
+    {
+        foreach (EquippedItem item in worn)
+            if (RowHasAbility(_gameData.FindRowByName("Items", item.Name), code, MaxItemAbilSlots))
+                return true;
+        return false;
+    }
+
+    // Scan an Items / Races / Classes row's Abil-0..N slots for a code.
+    private static bool RowHasAbility(JsonElement? row, int code, int maxSlots)
+    {
+        if (row is not JsonElement el || el.ValueKind != JsonValueKind.Object) return false;
+        for (int i = 0; i < maxSlots; i++)
+            if (el.TryGetProperty($"Abil-{i}", out JsonElement a)
+                && a.ValueKind == JsonValueKind.Number && a.TryGetInt32(out int v) && v == code)
+                return true;
+        return false;
+    }
+
+    private static string? BuildProjectedAcTooltip(
+        double itemAc, double innateAc, double spellAc, int shadowAc, bool hasVileWard)
+    {
+        var sb = new StringBuilder();
+        AppendAcLine(sb, "Items", itemAc);
+        AppendAcLine(sb, "Race / class / quests", innateAc);
+        AppendAcLine(sb, "Self-buff spells", spellAc);
+        if (shadowAc != 0) AppendAcLine(sb, "Shadow property", shadowAc);
+        if (hasVileWard)
+        {
+            if (sb.Length > 0) sb.Append('\n');
+            sb.Append("VileWard active (scales with your evil)");
+        }
+        return sb.Length > 0 ? sb.ToString() : null;
+    }
+
+    private static void AppendAcLine(StringBuilder sb, string label, double value)
+    {
+        if (value == 0) return;
+        if (sb.Length > 0) sb.Append('\n');
+        sb.Append(label).Append("  ")
+          .Append(value.ToString("+0.#;-0.#", CultureInfo.InvariantCulture));
     }
 
     // The slot's worn-string tag drives which fields AggregateEquipmentStats fills
@@ -511,7 +700,17 @@ public sealed partial class EquipmentSectionViewModel : WorkshopSectionViewModel
             or nameof(PlayerStats.Class)
             or nameof(PlayerStats.Name))
             RefreshAvailableItems();
+
+        // Level / class / race feed the projected-AC line's innate + self-buff
+        // contributions, so re-derive it when any of them change.
+        if (e.PropertyName is nameof(PlayerStats.Level)
+            or nameof(PlayerStats.Class)
+            or nameof(PlayerStats.Race))
+            RebuildBonusRows();
     }
+
+    // A completed-quest reward change shifts the innate AC bucket — re-derive.
+    private void OnQuestBonusesChanged() => RebuildBonusRows();
 
     private void OnObservationRecorded(string givenName)
     {
@@ -527,5 +726,6 @@ public sealed partial class EquipmentSectionViewModel : WorkshopSectionViewModel
         _gameData.ActiveSetChanged -= OnActiveSetChanged;
         _stats.PropertyChanged -= OnStatsChanged;
         _players.ObservationRecorded -= OnObservationRecorded;
+        _questBonuses.Changed -= OnQuestBonusesChanged;
     }
 }

@@ -28,8 +28,17 @@ public sealed class SpellBookItemRowViewModel
     // "casts <spell>" sub-label shown next to the item name.
     public string CastsText => $"casts {SpellName}";
 
-    // Compact charges indicator: "∞" for unlimited, else "N use(s)".
-    public string ChargesText => _item.Unlimited ? "∞" : $"{_item.UseCount} use{(_item.UseCount == 1 ? "" : "s")}";
+    // The cast spell's decoded effect wrapped in parentheses ("(AC +10)",
+    // "(Dmg 14–22)"), shown between the spell name and the mana cost so the
+    // reader sees what the item actually does. Empty when the spell decodes to no
+    // figure — the view collapses the label then.
+    public string AffectsText => _item.SpellEffect.Length > 0 ? $"({_item.SpellEffect})" : string.Empty;
+
+    // True when the cast spell has a renderable effect (drives the label's visibility).
+    public bool HasAffects => _item.SpellEffect.Length > 0;
+
+    // Compact charges indicator: "Unlimited" for an unlimited item, else "N use(s)".
+    public string ChargesText => _item.Unlimited ? "Unlimited" : $"{_item.UseCount} use{(_item.UseCount == 1 ? "" : "s")}";
 
     // Mana the cast draws when the item is used: "N mana" for a paid
     // use-spell (e.g. a shimmering greatsword), or "free" when the cast costs
@@ -44,17 +53,4 @@ public sealed class SpellBookItemRowViewModel
     public string ChargesTip => _item.Unlimited
         ? "Unlimited uses"
         : $"{_item.UseCount} charge{(_item.UseCount == 1 ? "" : "s")} before the item is consumed";
-
-    // The buff-slot token to paste into a Bless slot for auto-use, or empty
-    // for a limited-charge item (those aren't safe to recast on a buff loop,
-    // so only unlimited-use items get a token).
-    public string BuffToken => _item.Unlimited ? ItemCastToken.Format(_item.ItemName) : string.Empty;
-
-    // True when this item exposes a buff-slot token (unlimited-use).
-    public bool HasBuffToken => BuffToken.Length > 0;
-
-    // Hover text explaining what the buff token does.
-    public string BuffTokenTip =>
-        "Paste this into a Bless slot on the Settings → Spells tab to auto-use this " +
-        "item as a buff (equip → use → re-equip), recast on its buff timer.";
 }

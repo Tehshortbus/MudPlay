@@ -44,11 +44,11 @@ public sealed class SpellBookViewModelTests : IDisposable
         SpellRow(103, "gated", "lvlg", magery: 1, mageryLvl: 1, reqLevel: 20),
     ];
 
-    private SpellbookState NewBook(int classNumber, int level, object[]? items = null)
+    private SpellbookState NewBook(int classNumber, int level, object[]? items = null, object[]? spells = null)
     {
         string dir = Path.Combine(_root, "set");
         Directory.CreateDirectory(dir);
-        File.WriteAllText(Path.Combine(dir, "Spells.json"), JsonSerializer.Serialize(_spells));
+        File.WriteAllText(Path.Combine(dir, "Spells.json"), JsonSerializer.Serialize(spells ?? _spells));
         File.WriteAllText(Path.Combine(dir, "Classes.json"), JsonSerializer.Serialize(_classes));
         if (items is not null)
             File.WriteAllText(Path.Combine(dir, "Items.json"), JsonSerializer.Serialize(items));
@@ -175,8 +175,9 @@ public sealed class SpellBookViewModelTests : IDisposable
 
     private static readonly object[] _items =
     [
-        // Mage-only (ClassRest 12), casts starlight (100), unlimited (UseCount 0).
-        ItemRow(200, "Wand of Stars", castSpell: 100, useCount: 0, 12),
+        // Mage-only (ClassRest 12), casts starlight (100), unlimited — MajorMUD's
+        // -1 sentinel (the real-world unlimited value, not 0).
+        ItemRow(200, "Wand of Stars", castSpell: 100, useCount: -1, 12),
         // Mage-only (ClassRest 12), casts high arc (101), 3 uses.
         ItemRow(201, "Scroll of Arc", castSpell: 101, useCount: 3, 12),
         // Warrior-only (ClassRest 1), casts starlight — excluded for the Mage.
@@ -205,7 +206,8 @@ public sealed class SpellBookViewModelTests : IDisposable
 
         SpellBookItemRowViewModel wand = vm.CastItems.Single(r => r.ItemName == "Wand of Stars");
         Assert.Equal("casts starlight", wand.CastsText);
-        Assert.Equal("∞", wand.ChargesText);
+        // The -1 sentinel renders as the word "Unlimited", not a raw "-1 uses".
+        Assert.Equal("Unlimited", wand.ChargesText);
 
         Assert.Equal("3 uses", vm.CastItems.Single(r => r.ItemName == "Scroll of Arc").ChargesText);
         Assert.Equal("1 use", vm.CastItems.Single(r => r.ItemName == "Single Charge Rod").ChargesText);
@@ -217,13 +219,6 @@ public sealed class SpellBookViewModelTests : IDisposable
         SpellBookItemRowViewModel scroll = vm.CastItems.Single(r => r.ItemName == "Scroll of Arc");
         Assert.True(scroll.CostsMana);
         Assert.Equal("8 mana", scroll.ManaText);
-
-        // Only unlimited-use items expose a buff-slot token (limited ones would
-        // burn out on a recast loop, so they get none).
-        Assert.True(wand.HasBuffToken);
-        Assert.Equal("#Wand of Stars", wand.BuffToken);
-        Assert.False(vm.CastItems.Single(r => r.ItemName == "Scroll of Arc").HasBuffToken);
-        Assert.False(vm.CastItems.Single(r => r.ItemName == "Single Charge Rod").HasBuffToken);
     }
 
     [Fact]
@@ -321,7 +316,119 @@ public sealed class SpellBookViewModelTests : IDisposable
         Assert.Equal(new[] { "Healing Wand" }, vm.CastItems.Select(r => r.ItemName));
     }
 
+    [Fact]
+    public void CastItems_ExcludeAutomaticProcs_KeepOnlyCommandCasts()
+    {
+        // Three Mage-usable, equippable items each carry a CastsSp(43) → starlight,
+        // but only one is a genuine command-cast. A %Spell(114) before the CastsSp
+        // makes it a per-swing combat proc (extra damage while fighting); a
+        // CastOnKill%(1114) before it makes it an on-kill proc. Both fire
+        // automatically, so the Spell Book must list only the bare-CastsSp wand.
+        object[] items =
+        [
+            ItemRow(400, "Plain Wand", castSpell: 100, useCount: 0, 12),
+            ProcCastItemRow(401, "Proc Blade", modifierCode: 114, proc: 25, castSpell: 100, 12),
+            ProcCastItemRow(402, "Kill Mask", modifierCode: 1114, proc: 50, castSpell: 100, 12),
+        ];
+        SpellbookState book = NewBook(classNumber: 12, level: 5, items: items); // Mage
+        using SpellBookViewModel vm = new(book);
+
+        Assert.Equal(new[] { "Plain Wand" }, vm.CastItems.Select(r => r.ItemName));
+        // The automation-facing list drops them too — a proc never command-casts.
+        Assert.DoesNotContain("Proc Blade", book.GetCastItems().Select(i => i.ItemName));
+        Assert.DoesNotContain("Kill Mask", book.GetCastItems().Select(i => i.ItemName));
+    }
+
+    [Fact]
+    public void CastItems_UnlimitedSentinel_TreatsZeroAndNegativeAsUnlimited()
+    {
+        // MajorMUD stores -1 for an unlimited item and (rarely) 0; both mean
+        // unlimited — matching MMUD Explorer's "If uses <= 0 Then uses = -1". Only a
+        // positive count is a real charge count.
+        object[] items =
+        [
+            ItemRow(500, "Neg Wand", castSpell: 100, useCount: -1, 12),
+            ItemRow(501, "Zero Wand", castSpell: 100, useCount: 0, 12),
+            ItemRow(502, "Charged Wand", castSpell: 100, useCount: 7, 12),
+        ];
+        SpellbookState book = NewBook(classNumber: 12, level: 5, items: items); // Mage
+        using SpellBookViewModel vm = new(book);
+
+        SpellBookItemRowViewModel neg = vm.CastItems.Single(r => r.ItemName == "Neg Wand");
+        SpellBookItemRowViewModel zero = vm.CastItems.Single(r => r.ItemName == "Zero Wand");
+        SpellBookItemRowViewModel charged = vm.CastItems.Single(r => r.ItemName == "Charged Wand");
+
+        Assert.Equal("Unlimited", neg.ChargesText);
+        Assert.Equal("Unlimited", zero.ChargesText);
+        Assert.Equal("7 uses", charged.ChargesText);
+
+        // The underlying model flags both <= 0 items unlimited (buff-loop safe) and
+        // the positive count limited — the display "Unlimited" mirrors that.
+        IReadOnlyList<ClassCastItem> model = book.GetCastItems();
+        Assert.True(model.Single(i => i.ItemName == "Neg Wand").Unlimited);
+        Assert.True(model.Single(i => i.ItemName == "Zero Wand").Unlimited);
+        Assert.False(model.Single(i => i.ItemName == "Charged Wand").Unlimited);
+    }
+
+    [Fact]
+    public void CastItems_ShowCastSpellEffect_ParenthesisedBetweenNameAndMana()
+    {
+        // A cast item surfaces its spell's decoded effect inline, wrapped in
+        // parentheses, so the reader sees what the item actually does. Spell 600
+        // grants AC +10; a spell with no renderable figure collapses the label.
+        object[] spells =
+        [
+            AffectSpellRow(600, "iron skin", "iron", magery: 1, mageryLvl: 1, reqLevel: 1,
+                abilCode: 2, abilVal: 10), // AC +10
+            SpellRow(100, "starlight", "star", magery: 1, mageryLvl: 1, reqLevel: 2),
+        ];
+        object[] items =
+        [
+            ItemRow(600, "Iron Ring", castSpell: 600, useCount: -1, 12),
+        ];
+        SpellbookState book = NewBook(classNumber: 12, level: 5, items: items, spells: spells); // Mage
+        using SpellBookViewModel vm = new(book);
+
+        SpellBookItemRowViewModel ring = vm.CastItems.Single(r => r.ItemName == "Iron Ring");
+        Assert.True(ring.HasAffects);
+        Assert.StartsWith("(", ring.AffectsText);
+        Assert.EndsWith(")", ring.AffectsText);
+        Assert.Contains("AC", ring.AffectsText);
+        Assert.Contains("+10", ring.AffectsText);
+    }
+
     // ----- synthetic-row builders (mirror SpellListParserTests) ----------
+
+    // An equippable item whose CastsSp(43) rides on a preceding proc modifier —
+    // %Spell (114, per-swing combat proc) or CastOnKill% (1114, on-kill proc).
+    // Both fire automatically, so GetClassCastItems must NOT surface them as
+    // command-cast spell sources. Worn 16 keeps it equippable so the proc filter
+    // is the only reason it's excluded.
+    private static Dictionary<string, object> ProcCastItemRow(
+        int number, string name, int modifierCode, int proc, int castSpell, params int[] classRest)
+    {
+        Dictionary<string, object> row = new()
+        {
+            ["Number"] = number,
+            ["Name"] = name,
+            ["UseCount"] = 0,
+            ["Worn"] = 16,
+        };
+        for (int i = 0; i < 10; i++)
+            row[$"ClassRest-{i}"] = i < classRest.Length ? classRest[i] : 0;
+        for (int i = 0; i < 20; i++)
+        {
+            row[$"Abil-{i}"] = 0;
+            row[$"AbilVal-{i}"] = 0;
+        }
+        // The modifier immediately precedes the CastsSp it reframes (real data
+        // always places them adjacent).
+        row["Abil-0"] = modifierCode;
+        row["AbilVal-0"] = proc;
+        row["Abil-1"] = 43;
+        row["AbilVal-1"] = castSpell;
+        return row;
+    }
 
     // A cast-on-use item the player can't equip — a non-zero ItemType worn
     // Nowhere (Worn 0). Used to prove the equippable filter drops potions /
@@ -406,6 +513,20 @@ public sealed class SpellBookViewModelTests : IDisposable
             ["MageryType"] = magery,
             ["MageryLVL"] = mageryLvl,
         };
+
+    // A spell whose sole effect is a single stat affect (Abil code + value) with
+    // no damage/heal base — so SpellEffectFormatter renders exactly that affect
+    // ("AC +10"), letting a cast item's inline effect be asserted deterministically.
+    private static Dictionary<string, object> AffectSpellRow(
+        int number, string name, string shortCode, int magery, int mageryLvl, int reqLevel,
+        int abilCode, int abilVal)
+    {
+        Dictionary<string, object> row = SpellRow(number, name, shortCode, magery, mageryLvl, reqLevel);
+        row["MinBase"] = 0; // clear the Damage base SpellRow seeds so only the affect renders
+        row["Abil-0"] = abilCode;
+        row["AbilVal-0"] = abilVal;
+        return row;
+    }
 
     private static Dictionary<string, object> SpellRow(
         int number, string name, string shortCode, int magery, int mageryLvl, int reqLevel,

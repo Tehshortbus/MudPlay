@@ -1,13 +1,12 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.75.0**
-> - Auto-train master toggle now on the toolbar, Action menu, and hotkey-assignable — mirrors the Settings → Auto-Trainer "Auto-train" checkbox
-> - Toggling it off from the toolbar/menu also clears the "Auto-train CP" cascade; the CP plan and per-trainer list stay in the settings tab
-> - Typing several commands separated by `;` (or `^M`) in the terminal or conversation window now sends each as its own line — same multi-step split as macros
-> - "Hop timing" toggle moved from Settings → Other to the Program Log window, next to "Auto-collect logs"
-> - Hop-timing log line now shows the carry-weight encumbrance the workshop records — weight, percent, and bracket (e.g. `240/2880 Light [8%]`)
-> - Navigation window's collapsible sections now start collapsed on open
+> **Version 1.76.0**
+> - Equipment Manager gains a "Projected AC" line above the item-only Armour Class row — item AC folded with race/class innate bonuses, completed-quest rewards, configured AC self-buff spells, and the shadow property (+10, once)
+> - Prot-Evil rides its own "vs evil" line (1 AC/point, evil-only); VileWard noted as present in the hover tooltip (magnitude scales with the wearer's evil)
+> - Spell Book no longer lists weapon combat procs (%Spell) or on-kill gear (CastOnKill%) as command-cast spell sources — only genuine "on use" cast items appear
+> - Spell Book cast items now show the cast spell's effect inline (e.g. "(AC +10)") and render unlimited-use items as "Unlimited" instead of "-1 uses"
+> - Terminal right-click menu gains "Open Party" and "Open Spell Book" quick-opens
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

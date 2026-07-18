@@ -245,6 +245,16 @@ public sealed class KnownSpellCatalog
     // AbilVal is the Spells.Number the item casts when used.
     private const int CastsSpAbilityCode = 43;
 
+    // A CastsSp slot only means "command-activated on-use cast" when nothing
+    // reframes it. A preceding %Spell (114) turns the following CastsSp into an
+    // automatic per-swing combat proc (extra damage lines while fighting — e.g.
+    // a hellblade's sunsword); a preceding CastOnKill% (1114) turns it into an
+    // on-kill proc that only fires on a monster death (e.g. a fukumen's
+    // invigorate). Neither is something the player casts on command, so a
+    // CastsSp riding on one of these modifiers is NOT a Spell Book cast source.
+    private const int PctSpellAbilityCode = 114;
+    private const int CastOnKillAbilityCode = 1114;
+
     // MajorMUD ability code for the item's minimum-level gate ("MinLevel"): the
     // slot's AbilVal is the character level required to wear / use the item.
     private const int MinLevelAbilityCode = 135;
@@ -271,8 +281,9 @@ public sealed class KnownSpellCatalog
     // Every cast-on-use item the class can use — an Items row that both
     // (a) is usable by classNumber via its ClassRest-0..9 restriction (no
     // entries => universal) and (b) carries a CastsSp ability (code 43) naming
-    // a spell. Each result resolves the cast Spells.Name and the item's
-    // UseCount charges (0 = unlimited). Sorted by item name then spell name.
+    // a spell. Each result resolves the cast Spells.Name, the item's UseCount
+    // charges (<= 0 = unlimited), and the cast spell's rendered affect line
+    // scaled to the item's use-level. Sorted by item name then spell name.
     // Empty when no class is set, the set has no Items table, or nothing
     // matches.
     public IReadOnlyList<ClassCastItem> GetClassCastItems(int classNumber)
@@ -284,23 +295,37 @@ public sealed class KnownSpellCatalog
         if (items is null) return results;
 
         Dictionary<int, (string Name, int ManaCost)>? spellInfo = null; // built lazily on first cast item
+        IReadOnlyDictionary<int, IReadOnlyList<KnownSpell>>? tbIndex = null; // ditto, for textblock casts
         foreach (JsonElement row in items.RootElement.EnumerateArray())
         {
             if (!ItemUsableByClass(row, classNumber)) continue;
             if (!IsEquippableCastItem(row)) continue;
 
             // One scan of the 20 ability slots pulls both facts we need: the
-            // first CastsSp (code 43) slot names the use-spell, and a MinLevel
-            // (code 135) slot names the level gate. An item casts a single
-            // use-spell, so the first CastsSp wins.
+            // first command-activated CastsSp (code 43) slot names the use-spell,
+            // and a MinLevel (code 135) slot names the level gate. An item casts a
+            // single use-spell, so the first qualifying CastsSp wins. A CastsSp
+            // preceded by a %Spell / CastOnKill% modifier is an automatic combat /
+            // kill proc, not an on-use cast — it's skipped so proc weapons and
+            // on-kill gear never masquerade as command-cast spell sources.
             int spellNumber = 0;
             int minLevel = 0;
+            bool pendingProc = false;
             for (int i = 0; i < ItemAbilSlots; i++)
             {
                 int code = ReadInt(row, $"Abil-{i}");
-                if (code == CastsSpAbilityCode && spellNumber <= 0)
-                    spellNumber = ReadInt(row, $"AbilVal-{i}");
-                else if (code == MinLevelAbilityCode)
+                if (code == PctSpellAbilityCode || code == CastOnKillAbilityCode)
+                {
+                    pendingProc = true;
+                    continue;
+                }
+                if (code == CastsSpAbilityCode)
+                {
+                    if (pendingProc) { pendingProc = false; continue; } // proc, not on-use
+                    if (spellNumber <= 0) spellNumber = ReadInt(row, $"AbilVal-{i}");
+                    continue;
+                }
+                if (code == MinLevelAbilityCode)
                     minLevel = ReadInt(row, $"AbilVal-{i}");
             }
             if (spellNumber <= 0) continue;
@@ -313,6 +338,12 @@ public sealed class KnownSpellCatalog
                 ? info
                 : (string.Empty, 0);
 
+            // The cast spell's effect scales to the item's use-level (its MinLevel
+            // gate) — the same convention the Game Data Items pane uses when it
+            // renders a weapon's use-cast spell: the item, not a character, delivers
+            // the spell, so its required level is the spell's effective base level.
+            string spellEffect = RenderCastEffect(spellNumber, minLevel, ref tbIndex);
+
             results.Add(new ClassCastItem(
                 ItemNumber: ReadInt(row, "Number"),
                 ItemName: itemName,
@@ -322,7 +353,8 @@ public sealed class KnownSpellCatalog
                 UseCount: ReadInt(row, "UseCount"),
                 IsTwoHanded: LookupEnums.IsTwoHandedWeaponType(ReadInt(row, "WeaponType")),
                 ClassRestricted: ItemClassRestricted(row, classNumber),
-                MinLevel: minLevel));
+                MinLevel: minLevel,
+                SpellEffect: spellEffect));
         }
 
         results.Sort(static (a, b) =>
@@ -331,6 +363,28 @@ public sealed class KnownSpellCatalog
             return byItem != 0 ? byItem : string.Compare(a.SpellName, b.SpellName, StringComparison.OrdinalIgnoreCase);
         });
         return results;
+    }
+
+    // Render a cast item's spell as a compact affect line ("AC +10", "Dmg 14–22",
+    // "Dur 8 · Strength +3") at the given use-level, reusing the same formatter the
+    // spell grid uses so an item's cast reads identically to the learnable spell.
+    // Returns empty when the spell doesn't resolve or decodes to no figure. The
+    // textblock cast-index is a full-table scan, so it's built lazily on the first
+    // cast item that needs it and shared across the rest of the scan.
+    private string RenderCastEffect(
+        int spellNumber, int castLevel, ref IReadOnlyDictionary<int, IReadOnlyList<KnownSpell>>? tbIndex)
+    {
+        if (GetFormulaByNumber(spellNumber) is not { } formula) return string.Empty;
+        tbIndex ??= BuildCastByTextblockIndex();
+        IReadOnlyDictionary<int, IReadOnlyList<KnownSpell>> idx = tbIndex;
+        string rendered = SpellEffectFormatter.Format(
+            formula, castLevel,
+            resolveChain: GetFormulaByNumber,
+            resolveSpellName: GetSpellNameByNumber,
+            resolveTextblockCasts: tb => idx.TryGetValue(tb, out IReadOnlyList<KnownSpell>? list)
+                ? list : System.Array.Empty<KnownSpell>(),
+            resolveMonsterName: n => _cache.FindNameByNumber("Monsters", n));
+        return rendered == "—" ? string.Empty : rendered;
     }
 
     // Item class-usability: an item with no non-zero ClassRest-N slot is

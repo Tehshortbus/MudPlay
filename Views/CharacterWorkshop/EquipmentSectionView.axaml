@@ -146,15 +146,47 @@
                 <!-- Equipment Bonuses — the set's physical-slot items' summed
                      bonuses, with a per-item hover breakdown on each row. -->
                 <Border Grid.Column="1" Classes="Box" Width="220" Margin="14,0,0,0">
-                    <Grid RowDefinitions="Auto,Auto,*">
+                    <Grid RowDefinitions="Auto,Auto,Auto,*">
                         <TextBlock Grid.Row="0" Classes="Heading" Text="Equipment Bonuses" Margin="0,0,0,6"/>
 
-                        <TextBlock Grid.Row="1" Classes="Field"
+                        <!-- Projected total AC: item AC folded with innate race /
+                             class / quest bonuses, configured AC self-buffs, and the
+                             shadow property. Prot-Evil rides its own conditional line
+                             (1 AC per point, but only versus evil monsters). -->
+                        <Border Grid.Row="1" Margin="0,0,0,6" Padding="0,0,0,6"
+                                BorderBrush="{StaticResource ChromeBorderBrush}"
+                                BorderThickness="0,0,0,1">
+                            <StackPanel>
+                                <Grid ColumnDefinitions="*,Auto"
+                                      ToolTip.Tip="{Binding ProjectedAcTooltip}">
+                                    <TextBlock Grid.Column="0" Classes="Field"
+                                               Text="Projected AC" Margin="0,0,12,0"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding ProjectedAc}"
+                                               Foreground="{StaticResource AccentAmberBrush}"
+                                               FontFamily="{StaticResource FontMono}"
+                                               FontWeight="SemiBold"
+                                               FontSize="{StaticResource FontSizeMd}"/>
+                                </Grid>
+                                <Grid ColumnDefinitions="*,Auto" Margin="0,2,0,0"
+                                      IsVisible="{Binding HasProjectedProtEvil}"
+                                      ToolTip.Tip="Prot-Evil adds 1 AC per point, but only versus evil monsters.">
+                                    <TextBlock Grid.Column="0" Classes="Field"
+                                               Text="vs evil (Prot-Evil)" Margin="0,0,12,0"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding ProjectedProtEvil}"
+                                               Classes="bonusValue"
+                                               FontFamily="{StaticResource FontMono}"
+                                               FontWeight="SemiBold"
+                                               FontSize="{StaticResource FontSizeMd}"/>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock Grid.Row="2" Classes="Field"
                                    Text="No slot contributes a bonus yet."
                                    TextWrapping="Wrap"
                                    IsVisible="{Binding !HasBonuses}"/>
 
-                        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto"
+                        <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Auto"
                                       HorizontalScrollBarVisibility="Disabled"
                                       IsVisible="{Binding HasBonuses}">
                             <ItemsControl ItemsSource="{Binding BonusRows}">

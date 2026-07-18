@@ -2,6 +2,14 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.76.0
+
+- Equipment Manager gains a "Projected AC" line above the item-only Armour Class row — item AC folded with race/class innate bonuses, completed-quest rewards, configured AC self-buff spells, and the shadow property (+10, once)
+- Prot-Evil rides its own "vs evil" line (1 AC/point, evil-only); VileWard noted as present in the hover tooltip (magnitude scales with the wearer's evil)
+- Spell Book no longer lists weapon combat procs (%Spell) or on-kill gear (CastOnKill%) as command-cast spell sources — only genuine "on use" cast items appear
+- Spell Book cast items now show the cast spell's effect inline (e.g. "(AC +10)") and render unlimited-use items as "Unlimited" instead of "-1 uses"
+- Terminal right-click menu gains "Open Party" and "Open Spell Book" quick-opens
+
 ## 1.75.0
 
 - Auto-train master toggle now on the toolbar, Action menu, and hotkey-assignable — mirrors the Settings → Auto-Trainer "Auto-train" checkbox
