@@ -6,7 +6,7 @@
 > - Toggling it off from the toolbar/menu also clears the "Auto-train CP" cascade; the CP plan and per-trainer list stay in the settings tab
 > - Typing several commands separated by `;` (or `^M`) in the terminal or conversation window now sends each as its own line — same multi-step split as macros
 > - "Hop timing" toggle moved from Settings → Other to the Program Log window, next to "Auto-collect logs"
-> - Hop-timing log line now shows encumbrance as both value and word (e.g. `2/Light`)
+> - Hop-timing log line now shows the carry-weight encumbrance the workshop records — weight, percent, and bracket (e.g. `240/2880 Light [8%]`)
 > - Navigation window's collapsible sections now start collapsed on open
 >
 > See the [version history](CHANGELOG.md) for the full changelog.

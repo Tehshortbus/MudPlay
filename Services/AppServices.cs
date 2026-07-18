@@ -3707,10 +3707,11 @@ public sealed class AppServices
 
         // Encumbrance parser writes
         // PlayerState.Encumbrance from the `enc` line; HopTimingCalibrator
-        // logs measured per-hop times tagged with that level. Enabled via the
-        // Program Log window's "Hop timing" toggle (LogDiagnostics.HopTiming).
+        // logs measured per-hop times tagged with the carry-weight reading the
+        // workshop records (Inventory snapshot). Enabled via the Program Log
+        // window's "Hop timing" toggle (LogDiagnostics.HopTiming).
         Encumbrance = new Game.EncumbranceParser(Router, PlayerState, Log);
-        HopCalibrator = new Game.HopTimingCalibrator(RoomTracker, PlayerState, Log);
+        HopCalibrator = new Game.HopTimingCalibrator(RoomTracker, PlayerState, Inventory, Log);
         // The calibrator's gate follows the live diagnostic flag: apply the
         // current value now, then track every change. Wired here (after
         // construction, before any ProfileLoaded fires) so it's never null.
