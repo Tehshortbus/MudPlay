@@ -1313,6 +1313,12 @@ public sealed class AppServices
     // back" and strand the tracker. Clears on "You get back on your feet.".
     public Game.Conditions.SelfHeldResponder SelfHeld { get; private set; } = null!;
 
+    // Self-ailment chip bridge — mirrors our own poison / blindness / disease onto
+    // the self party-window chip. The say-driven mirror only lights OTHER members'
+    // chips; our own state is owned by ConditionTracker, so without this our self
+    // row never showed poison even though `par` and "You feel ill." did.
+    public Game.Conditions.SelfAilmentChipResponder SelfAilmentChip { get; private set; } = null!;
+
     // Follower-disconnect pause bridge (leader side) — holds movement while a
     // dropped party follower is inside the reconnect grace window, so we don't
     // sprint off without a member who's trying to reconnect and re-party.
@@ -2719,6 +2725,13 @@ public sealed class AppServices
         // MovementPrevented state (no opt-out; a knockdown always holds).
         SelfHeld = new Game.Conditions.SelfHeldResponder(
             Conditions, Party, MovementCoordinator, log: Log);
+
+        // Self-ailment chip bridge — the pure-chip sibling of the two responders
+        // above for poison / blindness / disease (no movement gate). Lights the
+        // self party-window chip off ConditionTracker so our own poison shows the
+        // same way an other member's announced poison does.
+        SelfAilmentChip = new Game.Conditions.SelfAilmentChipResponder(
+            Conditions, Party, log: Log);
 
         // CastingDirector. Sits on top of Cast,
         // decides which heal / cure / buff (if any) to issue based on

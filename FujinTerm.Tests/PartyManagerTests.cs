@@ -464,6 +464,60 @@ public sealed class PartyManagerTests
     }
 
     [Fact]
+    public void ParBlock_PoisonedRow_StillParsesRank()
+    {
+        // A poisoned member's par row butts a trailing `P` flag right up
+        // against the HP bracket with no space ("[H: 89%]P  - Frontrank").
+        // Before the regex consumed that flag the `-` rank suffix never
+        // matched on a poisoned row, so rank fell through to its Mid default
+        // and the PartyWindow demoted a force-frontranked (poisoned) leader
+        // to midrank the moment they were poisoned. Rank must survive the flag.
+        var (_, p) = Setup(localCharacterName: "MindGoblin");
+        p.TestEnterParBlock();
+        p.FeedTestLines(new[]
+        {
+            "  Fujin                          (Missionary) [M:100%] [H: 89%]P  - Frontrank",
+            "  MindGoblin                     (Druid)      [M: 98%] [H:100%]   - Midrank",
+            "  Suijin                         (Mage)       [M: 98%] [H: 81%]P  - Backrank",
+            string.Empty,
+        });
+
+        PartyMember fujin  = p.State.Members.First(x => x.Name == "Fujin");
+        PartyMember suijin = p.State.Members.First(x => x.Name == "Suijin");
+        Assert.Equal(Models.Profile.PartyRank.Front, fujin.Rank);
+        Assert.Equal(Models.Profile.PartyRank.Back,  suijin.Rank);
+        Assert.Equal(89, fujin.HpPercent);
+        Assert.Equal(81, suijin.HpPercent);
+    }
+
+    [Fact]
+    public void ParBlock_PoisonFlag_DoesNotDemoteLeaderAcrossPolls()
+    {
+        // Regression for the reported bug: a clean par poll sets the leader
+        // Front, then a later poll where the leader is poisoned must NOT
+        // silently revert them to Mid. The rank has to hold across the
+        // poison-flagged poll.
+        var (_, p) = Setup(localCharacterName: "MindGoblin");
+        p.TestEnterParBlock();
+        p.FeedTestLines(new[]
+        {
+            "  Fujin                          (Missionary) [M:100%] [H:100%]   - Frontrank",
+            string.Empty,
+        });
+        Assert.Equal(Models.Profile.PartyRank.Front,
+            p.State.Members.First(x => x.Name == "Fujin").Rank);
+
+        p.TestEnterParBlock();
+        p.FeedTestLines(new[]
+        {
+            "  Fujin                          (Missionary) [M:100%] [H: 89%]P  - Frontrank",
+            string.Empty,
+        });
+        Assert.Equal(Models.Profile.PartyRank.Front,
+            p.State.Members.First(x => x.Name == "Fujin").Rank);
+    }
+
+    [Fact]
     public void ParBlock_NonFullHpPercent_ParsesLeadingSpacePadding()
     {
         // MajorMUD right-pads the percentage to a 3-char column so the
@@ -1317,6 +1371,40 @@ public sealed class PartyManagerTests
 
         Assert.Single(p.State.Members, m => m.Name.StartsWith("Raijin"));
         Assert.False(p.State.Members.Single(m => m.Name.StartsWith("Raijin")).IsInvited);
+    }
+
+    [Fact]
+    public void ParJoinedRow_ClearsStaleInvite_WithoutFollowsYouLine()
+    {
+        // Follower's-view bug: "X started to follow you." prints only for the
+        // LEADER, so a non-leader client never sees OnFollowsYou clear the invite
+        // chip. The invitee was seeded IsInvited via par's "[Invited]" row; once
+        // they accept, the follower sees them only as a normal joined par row (with
+        // an [H:] bracket). That joined row must clear the stale invite — otherwise
+        // the member is stuck "Invited" forever, their health stays hidden, and the
+        // healer skips them.
+        var (_, p) = Setup(localCharacterName: "Raijin");
+        p.TestEnterParBlock();
+        p.FeedTestLines(new[]
+        {
+            "  Suijin WuzHere                   (Mage)          [Invited]",
+            string.Empty,
+        });
+        Assert.True(p.State.Members.Single(m => m.Name == "Suijin WuzHere").IsInvited);
+
+        // Next poll — no follows-you line ever arrived; Suijin now shows as a
+        // joined member with live vitals.
+        p.TestEnterParBlock();
+        p.FeedTestLines(new[]
+        {
+            "  Suijin WuzHere                   (Mage)          [M:98%] [H: 83%]   - Midrank",
+            string.Empty,
+        });
+
+        PartyMember suijin = p.State.Members.Single(m => m.Name == "Suijin WuzHere");
+        Assert.False(suijin.IsInvited);
+        Assert.Equal(83, suijin.HpPercent);
+        Assert.Equal(98, suijin.MpPercent);
     }
 
     [Fact]
