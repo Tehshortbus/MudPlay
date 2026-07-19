@@ -36,7 +36,7 @@ public sealed class LoopRunner : IRecoverableEngine
     private readonly IRoomFilter? _filter;
     private Action<byte[]>? _wireSender;
     private Action? _preMoveHook;
-    private Action<RoomKey>? _approachLightHook;
+    private Action<RoomKey>? _approachRoomHook;
 
     // (source, dest) → teleport keyword resolver, mirroring the walker's
     // AutoWalkManager.SetTeleportResolver. Lets the circuit cross a
@@ -401,15 +401,15 @@ public sealed class LoopRunner : IRecoverableEngine
         _preMoveHook = hook;
     }
 
-    // Predictive auto-light hook — invoked the instant a circuit step commits, with
+    // Predictive approach hook — invoked the instant a circuit step commits, with
     // the room about to be entered, before any crossing bytes go out. Mirrors
-    // AutoWalkManager.SetApproachLightHook; AppServices binds both to
-    // AutoLightProvisioner.OnApproachingRoom so a loop lap lights a dark room ahead
-    // of the step exactly like a walk-to does.
-    public void SetApproachLightHook(Action<RoomKey> hook)
+    // AutoWalkManager.SetApproachRoomHook; AppServices binds both to the same
+    // room-provisioners (auto-light + hazard-counter) so a loop lap readies a dark
+    // room's light / raises a hazard buff ahead of the step exactly like a walk-to.
+    public void SetApproachRoomHook(Action<RoomKey> hook)
     {
         ArgumentNullException.ThrowIfNull(hook);
-        _approachLightHook = hook;
+        _approachRoomHook = hook;
     }
 
     // Wire the teleport-keyword resolver so circuit steps can cross
@@ -872,11 +872,12 @@ public sealed class LoopRunner : IRecoverableEngine
         _expectedMoveTarget = exit.Target;
         _stepInFlight = true;
 
-        // Predictive auto-light: light a carried light NOW if the room this lap step
-        // enters reads dark, before any crossing bytes (door / cardinal / special)
-        // go out — so the `use` lands ahead of the move and the room is lit on
-        // arrival. No-op for a seeable / unmapped target.
-        _approachLightHook?.Invoke(exit.Target);
+        // Predictive room provisioning: light a carried light if the room this lap
+        // step enters reads dark, and raise a checkspell hazard buff if it needs one,
+        // before any crossing bytes (door / cardinal / special) go out — so the `use`
+        // lands ahead of the move and the room is lit / survivable on arrival. No-op
+        // for a benign / unmapped target.
+        _approachRoomHook?.Invoke(exit.Target);
 
         // Door / KeyLocked: if the latest room observation already shows the
         // door open, cross with the plain cardinal. Otherwise route through the

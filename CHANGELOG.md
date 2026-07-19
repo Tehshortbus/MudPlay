@@ -2,6 +2,13 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.79.0
+
+- Hazard rooms countered by a `use`-cast buff (desert heat, drowning) now raise the buff mid-walk — `use`s the source item on approach, re-`use`ing when its duration lapses so a long crossing spends the fewest charges
+- A route blocked only by a survivable hazard is now offered in the route picker (with a "buy at <shop>" tail when the counter is buyable) instead of aborting with "a room hazard you can't survive"
+- Bug report shows the current room's checkspell hazard, its buff-source item, and whether one is carried
+- bug reports addressed: stock-20260719-020228
+
 ## 1.78.0
 
 - Route picker no longer walks on click — clicking a route selects it and previews its line on the map

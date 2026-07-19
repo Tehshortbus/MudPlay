@@ -143,6 +143,49 @@ public sealed class RoomHazardIndexTests : IDisposable
         Assert.Contains(60, h!.ProtectingItems);   // carry the buff source
     }
 
+    // A checkspell hazard also records a BuffCounter carrying the buff spell #,
+    // its source item(s), and the computed protection window (the buff's Dur in
+    // rounds × SpellRoundSeconds) — the timer the walk-time provisioner re-`use`s
+    // the source on.
+    [Fact]
+    public void CheckSpell_BuildsBuffCounter_WithDuration()
+    {
+        RoomHazardIndex idx = NewIndex(
+            Room(700),
+            // Room spell 700 is a TextBlock (checkspell gate); buff spell 300 has
+            // Dur 600 rounds → 1800s. Item 60 casts buff 300 (Abil 43 = CastsSp).
+            """
+            [ { "Number": 700, "Abil-0": 148, "AbilVal-0": 50 },
+              { "Number": 300, "Dur": 600 } ]
+            """,
+            """ [ { "Number": 60, "Abil-0": 43, "AbilVal-0": 300 } ] """,
+            """ [ { "Number": 50, "Action": "checkspell 300" } ] """);
+
+        RoomHazardIndex.RoomHazard? h = idx.HazardForSpell(700);
+        Assert.NotNull(h);
+        RoomHazardIndex.BuffCounter counter = Assert.Single(h!.BuffCounters);
+        Assert.Equal(300, counter.BuffSpell);
+        Assert.Contains(60, counter.SourceItems);
+        Assert.Equal(1800, counter.DurationSeconds);   // 600 rounds × 3s
+    }
+
+    // A checkspell whose buff spell has no Dur in the data → DurationSeconds 0.
+    // The provisioner falls back to a periodic refresh rather than once-and-never.
+    [Fact]
+    public void CheckSpell_UnknownDuration_IsZero()
+    {
+        RoomHazardIndex idx = NewIndex(
+            Room(700),
+            """ [ { "Number": 700, "Abil-0": 148, "AbilVal-0": 50 } ] """,
+            """ [ { "Number": 60, "Abil-0": 43, "AbilVal-0": 300 } ] """,
+            """ [ { "Number": 50, "Action": "checkspell 300" } ] """);
+
+        RoomHazardIndex.RoomHazard? h = idx.HazardForSpell(700);
+        Assert.NotNull(h);
+        RoomHazardIndex.BuffCounter counter = Assert.Single(h!.BuffCounters);
+        Assert.Equal(0, counter.DurationSeconds);
+    }
+
     [Fact]
     public void LayeredProtections_RequireOneFromEachGroup()
     {

@@ -450,6 +450,30 @@ public static class BugReportBuilder
             sb.Append("- ").Append(n.Descriptor).Append(" ×").Append(n.Quantity)
               .Append(" (requester: ").Append(n.Requester).Append(")\n");
 
+        // Checkspell hazard-buff provisioning for the CURRENT room — a "walked into
+        // the desert / drowned without `use`ing the waterskin" report needs whether
+        // the room the character stands in is a buff-gated hazard, which item raises
+        // the buff, and whether one is on hand for the provisioner to `use`.
+        sb.Append("\n**Room hazard (current)**\n\n");
+        Game.Map.Room? here = svc.RoomTracker.State.CurrentRoom;
+        RoomHazardIndex.RoomHazard? hazard = here is { Spell: > 0 }
+            ? svc.RoomHazards.HazardForSpell(here.Spell) : null;
+        if (hazard is null || hazard.BuffCounters.Count == 0)
+            Kv(sb, "Checkspell hazard", "(none — current room needs no buff counter)");
+        else foreach (RoomHazardIndex.BuffCounter bc in hazard.BuffCounters)
+        {
+            List<string> names = bc.SourceItems
+                .Select(id => svc.ItemNames.GetName(id))
+                .Where(n => !string.IsNullOrWhiteSpace(n)).Select(n => n!).ToList();
+            // Approximate carried check: the dump lists carried names (sometimes
+            // count-prefixed), so a substring match tolerates "3 waterskins".
+            bool carried = names.Any(n => svc.Inventory.Snapshot.CarriedItems
+                .Any(c => c.Contains(n, StringComparison.OrdinalIgnoreCase)));
+            string label = names.Count > 0 ? string.Join(" / ", names) : "(unnamed source)";
+            Kv(sb, $"Buff {bc.BuffSpell}",
+                $"{label} (dur ~{bc.DurationSeconds}s, carried: {(carried ? "yes" : "no")})");
+        }
+
         // Random-teleport maze solver — a "walker never reaches the asylum room /
         // spins forever teleporting" report needs whether the solver engaged, its
         // goal, which phase it's stuck in, and how many reshuffles it's burned.

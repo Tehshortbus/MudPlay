@@ -35,6 +35,11 @@ public sealed partial class RouteChoiceDialogViewModel
     public string GatedSummary { get; }
     public string RequirementSummary { get; }
 
+    // False when there's no gate-free route — the direct (hazard-crossing) route
+    // is the only way there. The Free card renders as a disabled "why you can't
+    // just walk it" note; only the direct route is selectable.
+    public bool HasFreeRoute { get; }
+
     // Which route the user has selected to preview. Null until they click one —
     // Go stays disabled until then, forcing the click-to-preview-then-Go flow.
     [ObservableProperty]
@@ -55,20 +60,28 @@ public sealed partial class RouteChoiceDialogViewModel
         ArgumentNullException.ThrowIfNull(choice);
         ArgumentNullException.ThrowIfNull(itemName);
 
-        Heading = $"Two routes to {destinationLabel}";
-        FreeSummary = $"Free route — {Steps(choice.FreeStepCount)}, no items needed";
-        GatedSummary = $"Direct route — {Steps(choice.GatedStepCount)}";
+        HasFreeRoute = choice.HasFreeRoute;
+        Heading = HasFreeRoute
+            ? $"Two routes to {destinationLabel}"
+            : $"Only route to {destinationLabel} crosses a hazard";
+        FreeSummary = HasFreeRoute
+            ? $"Free route — {Steps(choice.FreeStepCount)}, no items needed"
+            : "No hazard-free route — every path there crosses a hazard you must counter";
+        GatedSummary = HasFreeRoute
+            ? $"Direct route — {Steps(choice.GatedStepCount)}"
+            : $"Route — {Steps(choice.GatedStepCount)}";
         RequirementSummary = "Requires "
             + DescribeRequirements(choice.Requirements, itemName, shopNameForItem);
     }
 
     private static string Steps(int n) => n == 1 ? "1 step" : $"{n} steps";
 
-    // "a raft (buy at General Store); the iron key; a fish-helm or a waterskin"
+    // "a raft (buy at General Store); the iron key; a waterskin (buy at Oasis)"
     // — each requirement is one clause; a hazard's any-of counters join with
-    // " or ". A CarryItem / Ticket gate whose item the walk will auto-buy on the
-    // detour gets a "(buy at <shop>)" tail; keys and hazard counters never do,
-    // since only Item/Ticket gates post a buy-triggering path-item need.
+    // " or ". An Item / Ticket gate, or a SINGLE-counter hazard, whose item the
+    // walk will auto-buy on the detour gets a "(buy at <shop>)" tail; keys and
+    // any-of hazard counters never do — a key isn't shopped and an any-of hazard
+    // group posts no single buy-triggering path-item need.
     private static string DescribeRequirements(
         IReadOnlyList<RouteRequirement> reqs,
         Func<int, string?> itemName,
@@ -77,8 +90,10 @@ public sealed partial class RouteChoiceDialogViewModel
         IEnumerable<string> clauses = reqs.Select(r =>
         {
             string items = string.Join(" or ", r.ItemIds.Select(id => itemName(id) ?? $"item #{id}"));
+            bool buyable = r.Kind is RouteRequirementKind.CarryItem or RouteRequirementKind.Ticket
+                || (r.Kind is RouteRequirementKind.HazardProtection && r.ItemIds.Count == 1);
             if (shopNameForItem is not null
-                && r.Kind is RouteRequirementKind.CarryItem or RouteRequirementKind.Ticket
+                && buyable
                 && r.ItemIds.Count == 1
                 && shopNameForItem(r.ItemIds[0]) is { Length: > 0 } shop)
                 return $"{items} (buy at {shop})";
@@ -90,6 +105,7 @@ public sealed partial class RouteChoiceDialogViewModel
     [RelayCommand]
     private void SelectFree()
     {
+        if (!HasFreeRoute) return;   // no gate-free route to pick
         SelectedRoute = RouteChoiceResult.Free;
         PreviewRequested?.Invoke(RouteChoiceResult.Free);
     }

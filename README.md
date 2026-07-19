@@ -1,10 +1,10 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.78.0**
-> - Route picker no longer walks on click — clicking a route selects it and previews its line on the map
-> - A Go button (bottom of the picker) walks the selected route; disabled until one is chosen
-> - Cancel / X closes without walking and clears the preview
+> **Version 1.79.0**
+> - Hazard rooms countered by a `use`-cast buff now raise the buff mid-walk, re-`use`ing when it lapses
+> - A route blocked only by a survivable hazard is offered in the picker instead of aborting
+> - Bug report shows the current room's checkspell hazard and whether its counter is carried
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

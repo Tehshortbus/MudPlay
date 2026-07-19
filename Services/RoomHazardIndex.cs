@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Text.Json;
+using FujinTerm.Game.Spells;
 
 namespace FujinTerm.Services;
 
@@ -39,13 +40,31 @@ public sealed class RoomHazardIndex
     // when a single spell layers protections (a damage negator AND a textblock
     // gate); the common case is a single group. Groups are never empty — an
     // uncounterable hazard is simply not indexed.
+    // A checkspell counter: an item that protects NOT by being held but by being
+    // `use`d, which raises a timed buff (the desert waterskin → buff 711). The
+    // provisioner re-`use`s a source item whenever the buff would have lapsed, so
+    // it needs the buff's spell number (identity) and its duration in wall-clock
+    // seconds (the refresh interval). SourceItems are the items that cast the buff.
+    public readonly record struct BuffCounter(
+        int BuffSpell, int DurationSeconds, IReadOnlyList<int> SourceItems);
+
     public sealed class RoomHazard
     {
         public IReadOnlyList<IReadOnlyList<int>> RequirementGroups { get; }
 
-        public RoomHazard(IReadOnlyList<IReadOnlyList<int>> groups)
+        // The room's checkspell (buff-gated) counters, if any. Empty for a hazard
+        // whose only protection is passive (held negator / failitem). Drives the
+        // active provisioner that keeps the buff up while walking the hazard —
+        // carrying a source item satisfies the routing gate (via RequirementGroups),
+        // but the buff must actually be raised with `use` to survive entry.
+        public IReadOnlyList<BuffCounter> BuffCounters { get; }
+
+        public RoomHazard(
+            IReadOnlyList<IReadOnlyList<int>> groups,
+            IReadOnlyList<BuffCounter>? buffCounters = null)
         {
             RequirementGroups = groups;
+            BuffCounters = buffCounters ?? Array.Empty<BuffCounter>();
         }
 
         // Every distinct protecting item across all groups — the set the route
@@ -134,6 +153,7 @@ public sealed class RoomHazardIndex
         // excludes the (damaging) attack-spell table from the harmful scan.
         HashSet<int> roomSpells = CollectRoomSpells(rooms);
         Dictionary<int, (int[] Abil, int[] Val)> spellAbils = ReadSpellAbils(spells);
+        Dictionary<int, int> durationSecondsBySpell = ReadSpellDurations(spells);
         Dictionary<int, List<int>> negatorsBySpell = new();
         Dictionary<int, List<int>> castersBySpell = new();
         ReadItemReverseMaps(negatorsBySpell, castersBySpell);
@@ -141,7 +161,8 @@ public sealed class RoomHazardIndex
 
         foreach (int spell in roomSpells)
         {
-            RoomHazard? hazard = BuildHazard(spell, spellAbils, negatorsBySpell, castersBySpell, tbActions);
+            RoomHazard? hazard = BuildHazard(
+                spell, spellAbils, negatorsBySpell, castersBySpell, tbActions, durationSecondsBySpell);
             if (hazard is not null) _hazardBySpell[spell] = hazard;
         }
 
@@ -163,13 +184,15 @@ public sealed class RoomHazardIndex
         Dictionary<int, (int[] Abil, int[] Val)> spellAbils,
         Dictionary<int, List<int>> negatorsBySpell,
         Dictionary<int, List<int>> castersBySpell,
-        Dictionary<int, string> tbActions)
+        Dictionary<int, string> tbActions,
+        Dictionary<int, int> durationSecondsBySpell)
     {
         HashSet<int> chain = new();
         List<int> textBlocks = new();
         bool damaging = WalkSpellChain(rootSpell, 0, spellAbils, chain, textBlocks);
 
         List<IReadOnlyList<int>> groups = new();
+        List<BuffCounter> buffCounters = new();
 
         // Damage / death-timer path: any item negating any chain member protects.
         if (damaging)
@@ -184,13 +207,14 @@ public sealed class RoomHazardIndex
             if (negators.Count > 0) groups.Add(negators);
         }
 
-        // TextBlock paths: failitem (hold to abort) and checkspell (carry the buff
-        // source) each contribute a requirement group.
+        // TextBlock paths: failitem (hold to abort) and checkspell (carry+use the
+        // buff source) each contribute a requirement group; a checkspell block also
+        // records the buff's identity + duration for the active provisioner.
         HashSet<int> visitedTb = new();
         foreach (int tb in textBlocks)
-            ScanTextBlock(tb, 0, tbActions, castersBySpell, visitedTb, groups);
+            ScanTextBlock(tb, 0, tbActions, castersBySpell, durationSecondsBySpell, visitedTb, groups, buffCounters);
 
-        return groups.Count > 0 ? new RoomHazard(groups) : null;
+        return groups.Count > 0 ? new RoomHazard(groups, buffCounters) : null;
     }
 
     // Depth-first walk of a spell's EndCast chain. Returns true when any chain
@@ -225,7 +249,9 @@ public sealed class RoomHazardIndex
         int tb, int depth,
         Dictionary<int, string> tbActions,
         Dictionary<int, List<int>> castersBySpell,
-        HashSet<int> visited, List<IReadOnlyList<int>> groups)
+        Dictionary<int, int> durationSecondsBySpell,
+        HashSet<int> visited, List<IReadOnlyList<int>> groups,
+        List<BuffCounter> buffCounters)
     {
         if (depth > MaxChainDepth || tb <= 0 || !visited.Add(tb)) return;
         if (!tbActions.TryGetValue(tb, out string? action) || string.IsNullOrWhiteSpace(action))
@@ -233,6 +259,7 @@ public sealed class RoomHazardIndex
 
         List<int> failItems = new();
         List<int> checkspellCasters = new();
+        int buffSpellSeen = 0;
 
         foreach (string line in action.Split('\n'))
         {
@@ -249,14 +276,22 @@ public sealed class RoomHazardIndex
                 {
                     int buffSpell = FirstIntAfter(tok, "checkspell");
                     if (buffSpell > 0 && castersBySpell.TryGetValue(buffSpell, out List<int>? casters))
+                    {
+                        buffSpellSeen = buffSpell;
                         foreach (int itemId in casters)
                             if (!checkspellCasters.Contains(itemId)) checkspellCasters.Add(itemId);
+                    }
                 }
             }
         }
 
         if (failItems.Count > 0) groups.Add(failItems);
-        if (checkspellCasters.Count > 0) groups.Add(checkspellCasters);
+        if (checkspellCasters.Count > 0)
+        {
+            groups.Add(checkspellCasters);
+            durationSecondsBySpell.TryGetValue(buffSpellSeen, out int durSec);
+            buffCounters.Add(new BuffCounter(buffSpellSeen, durSec, checkspellCasters));
+        }
     }
 
     private static HashSet<int> CollectRoomSpells(JsonDocument rooms)
@@ -286,6 +321,43 @@ public sealed class RoomHazardIndex
                 TryReadInt(row, $"AbilVal-{k}", out val[k]);
             }
             map[number] = (abil, val);
+        }
+        return map;
+    }
+
+    // Base wall-clock duration (seconds) of every spell, keyed by number. Computed
+    // via the same SpellCalculator the rest of the app uses so the buff-refresh
+    // clock matches how buff durations are reckoned elsewhere. Evaluated at each
+    // spell's own ReqLevel — a level-independent baseline: when DurInc scales the
+    // duration up with level, the real in-play buff lasts at least this long, so
+    // using it as the refresh interval never under-covers (it only re-uses a
+    // touch early). 0 when the spell confers no timed effect.
+    private static Dictionary<int, int> ReadSpellDurations(JsonDocument spells)
+    {
+        Dictionary<int, int> map = new();
+        foreach (JsonElement row in spells.RootElement.EnumerateArray())
+        {
+            if (row.ValueKind != JsonValueKind.Object) continue;
+            if (!TryReadInt(row, "Number", out int number) || number <= 0) continue;
+
+            TryReadInt(row, "Dur", out int dur);
+            if (dur <= 0) continue;   // no timed effect — nothing to refresh
+            TryReadInt(row, "DurInc", out int durInc);
+            TryReadInt(row, "DurIncLVLs", out int durIncLvls);
+            TryReadInt(row, "Cap", out int cap);
+            TryReadInt(row, "ReqLevel", out int reqLevel);
+
+            SpellFormulaInput formula = new()
+            {
+                Number = number,
+                Dur = dur,
+                DurInc = durInc,
+                DurIncLVLs = durIncLvls,
+                Cap = cap,
+                ReqLevel = reqLevel,
+            };
+            long rounds = SpellCalculator.Duration(formula, reqLevel);
+            if (rounds > 0) map[number] = (int)(rounds * SpellCalculator.SpellRoundSeconds);
         }
         return map;
     }

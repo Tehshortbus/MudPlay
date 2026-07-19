@@ -942,6 +942,16 @@ public sealed class AppServices
     // toggle; wire-sender bound by MainWindowViewModel after connect.
     public Game.Light.AutoLightShopRouter AutoLightShopRouter { get; private set; } = null!;
 
+    // Keeps a checkspell hazard buff up while the walker crosses a hazard room.
+    // Bound to the same approach-room hook as the light provisioner: the instant a
+    // step commits toward a checkspell-hazard room whose buff source we carry
+    // (the desert waterskin), it `use`s the item so the buff is raised before we
+    // arrive, re-`use`ing on the buff's own duration-timer so a long traverse
+    // spends the minimum charges. No master toggle — surviving a hazard room the
+    // route already commits to walking isn't opt-in. Wire-sender bound by
+    // MainWindowViewModel after connect.
+    public Game.Map.AutoHazardCounterProvisioner AutoHazardCounterProvisioner { get; private set; } = null!;
+
     // Death observation aggregator. Surfaces the loaded
     // profile's Models.Profile.CharacterProfile.DeathHistory
     // as the Workshop DEATH section's deathpile grid, owns the per-character
@@ -3590,10 +3600,31 @@ public sealed class AppServices
             settings:    () => ReadSection<Models.Profile.AutoLightSettings>(Profile.Current, "AutoLight"),
             log:         Log);
         Walker.SetRouteAnnouncer(AutoLightProvisioner.OnRoutePlanned);
-        // Predictive one-room-lookahead equip: the walker hands the room it's about
-        // to enter to the provisioner, which `use`s a carried light ahead of the
-        // move when that room reads dark (LoopRunner gets the same hook below).
-        Walker.SetApproachLightHook(AutoLightProvisioner.OnApproachingRoom);
+
+        // Keeps a checkspell hazard buff up as the walker crosses a hazard room.
+        // Shares the approach-room hook below with the light provisioner: on each
+        // committed step it resolves the room's hazard and, for a carried buff
+        // source (the desert waterskin), `use`s it so the buff is up on arrival —
+        // re-`use`ing only when the buff's own duration would have lapsed so a fast
+        // traverse spends one charge. No opt-in gate: a route the user chose to run
+        // through a hazard room must survive it.
+        AutoHazardCounterProvisioner = new Game.Map.AutoHazardCounterProvisioner(
+            resolveRoom:    RoomGraph.GetRoom,
+            hazardForSpell: spell => RoomHazards.HazardForSpell(spell),
+            carriedCount:   CountItemCarried,
+            itemName:       ItemNames.GetName,
+            log:            Log);
+
+        // Predictive one-room-lookahead: the walker hands the room it's about to
+        // enter to both provisioners BEFORE the move bytes — the light one `use`s a
+        // carried light when the room reads dark, the hazard one raises a carried
+        // buff when the room is a checkspell hazard (LoopRunner gets the same hook
+        // below).
+        Walker.SetApproachRoomHook(key =>
+        {
+            AutoLightProvisioner.OnApproachingRoom(key);
+            AutoHazardCounterProvisioner.OnApproachingRoom(key);
+        });
 
         // Auto-light provisioning detour. When the provisioner's planner returns
         // Buy (route dark, nothing carried covers), detour to the fewest-added-
@@ -3775,8 +3806,13 @@ public sealed class AppServices
             Stealth.RequestPreMoveStealth();
         });
         // Predictive equip on loop laps — same hook the walker uses, so a circuit
-        // step lights a dark room ahead of the move too.
-        LoopRunner.SetApproachLightHook(AutoLightProvisioner.OnApproachingRoom);
+        // step lights a dark room and raises a carried hazard buff ahead of the
+        // move too.
+        LoopRunner.SetApproachRoomHook(key =>
+        {
+            AutoLightProvisioner.OnApproachingRoom(key);
+            AutoHazardCounterProvisioner.OnApproachingRoom(key);
+        });
         // Avoid-list mutation mid-loop → LoopRunner re-routes via a
         // Stop+Start cycle so the new filter applies on the next BFS.
         Movement.AvoidedChanged += () => LoopRunner.NotifyAvoidedChanged();

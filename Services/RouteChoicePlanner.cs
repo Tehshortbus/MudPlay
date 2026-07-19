@@ -24,15 +24,21 @@ public sealed record RouteRequirement(RouteRequirementKind Kind, IReadOnlyList<i
 // count, the shorter direct route's step count, the requirements the direct
 // route demands, and each route as a RoomKey sequence (source first, then every
 // hop's target) so the picker can draw a map preview of whichever the user
-// selects before committing. Only produced when the direct route is a genuine
-// shortcut that needs at least one acquirable item — otherwise the caller just
-// walks free.
+// selects before committing. Produced either when the direct route is a genuine
+// shortcut that needs an acquirable item, or when NO gate-free route exists and
+// the only way there crosses a survivable room hazard.
 public sealed record RouteChoice(
     int FreeStepCount,
     int GatedStepCount,
     IReadOnlyList<RouteRequirement> Requirements,
     IReadOnlyList<RoomKey> FreePath,
-    IReadOnlyList<RoomKey> GatedPath);
+    IReadOnlyList<RoomKey> GatedPath)
+{
+    // No gate-free alternative — every path to the destination crosses a hazard,
+    // so the direct route is the ONLY way there (empty FreePath is the sentinel).
+    // The picker presents it as the sole option instead of a shortcut choice.
+    public bool HasFreeRoute => FreePath.Count > 0;
+}
 
 // Compares the free-preferring route (acquirable gates active, so BFS detours
 // around them) against the direct route (gates suspended, so BFS crosses them as
@@ -62,26 +68,44 @@ public static class RouteChoicePlanner
         ArgumentNullException.ThrowIfNull(filter);
         ArgumentNullException.ThrowIfNull(graph);
 
-        // Free route: gates active. No free route → nothing to weigh a shortcut
-        // against, so leave the decision to the plain walk (which will report the
-        // gated-only failure).
+        // Free route: gates active. May be null when every path to the
+        // destination crosses an acquirable gate.
         IReadOnlyList<Direction>? free = bfs.FindPath(source, destination, filter);
-        if (free is null || free.Count == 0) return null;
 
-        // Direct route: acquirable gates suspended so BFS crosses them.
+        // Direct route: acquirable gates suspended so BFS crosses them. No direct
+        // route either → genuinely disconnected (or blocked by a non-acquirable
+        // level/toll/class gate), so there's nothing to offer.
         IReadOnlyList<Direction>? gated;
         using (filter.SuspendAcquirableGates())
             gated = bfs.FindPath(source, destination, filter);
         if (gated is null || gated.Count == 0) return null;
 
-        // Only offer the choice when the direct route is actually shorter — an
-        // equal-or-longer "shortcut" is no bargain (and equal length is what we
-        // get when the player already carries the gate items, so the two routes
-        // coincide).
-        if (gated.Count >= free.Count) return null;
-
         List<RouteRequirement> reqs = CollectRequirements(graph, filter, source, gated);
-        if (reqs.Count == 0) return null;   // shorter but needs nothing acquirable → not a gated choice
+        if (reqs.Count == 0) return null;   // needs nothing acquirable → not a gated choice
+
+        bool hasFree = free is { Count: > 0 };
+        if (!hasFree)
+        {
+            // No gate-free route at all. Offer the direct route ONLY when every
+            // block is a survivable room hazard — carry + `use` (or buy) a counter
+            // and walk through, rather than aborting with "a room hazard you can't
+            // survive" when the counter is two rooms from a shop. An item / ticket
+            // / key gate that's the sole route stays a plain walk whose failure
+            // names the missing item (matching the acquire policy that item gates
+            // aren't auto-shopped from here).
+            if (reqs.Any(r => r.Kind != RouteRequirementKind.HazardProtection))
+                return null;
+            return new RouteChoice(
+                0, gated.Count, reqs,
+                Array.Empty<RoomKey>(),
+                BuildKeyPath(graph, source, gated));
+        }
+
+        // A free route exists — only offer the direct one when it's actually
+        // shorter. An equal-or-longer "shortcut" is no bargain (equal length is
+        // what we get when the player already carries the gate items, so the two
+        // routes coincide).
+        if (gated.Count >= free!.Count) return null;
 
         // A shortcut that shaves only a single room isn't worth a detour to
         // acquire — and usually to buy from a shop — the gate item: a player

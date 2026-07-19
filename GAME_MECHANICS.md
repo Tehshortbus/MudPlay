@@ -836,9 +836,20 @@ comes from the stat screen / who line (`AlignmentTracker` / `PlayerStats`).
      check). `checkspell S T` = "if effect/buff S is active, branch to TBInfo T (safe); else fall
      through (damage)." Worked example — Scorching Desert `12/1047` `Spell:683` → TextBlock **2653**:
      `checkspell 711 2654:random 2655`. Buff 711 "waterskin" (`Dur 600`) is conferred by **using** the
-     *waterskin* (item 283, `Abil 43` CastsSp→711, 3 uses). So the protection is "carry the waterskin
-     and re-drink periodically to keep buff 711 up." We can't guarantee a buff stays up mid-walk, so
-     for routing treat this as "carry the source item + auto-use on entry," else gate/ask.
+     *waterskin* (item 283, `Abil 43` CastsSp→711, 3 uses).
+     - **[CONFIRMED by user]** Protection is *duration-based*, not carry-based. `use waterskin` applies
+       buff 711, which lasts its listed `Dur` (600 = 10 min game-time). You are protected only **while
+       the buff is up** — carrying the item alone does nothing. If you're still in a desert/hazard room
+       that needs the buff when it **expires**, you must `use waterskin` **again** to re-apply it.
+     - **[CONFIRMED by user]** Each `use` **consumes one charge**; a **fresh waterskin carries 3 charges**
+       (the item's `Uses` field). When a waterskin is spent, you need another one — so players typically
+       carry **2–3 waterskins** into the desert. Provisioning must therefore stock enough total charges
+       to cover the expected time in the hazard stretch, not just "one waterskin."
+     - **Routing model:** carry the source item(s), `use` on entering the first hazard room to raise the
+       buff, and **re-`use` whenever the buff lapses while still inside a hazard room** (mirror the
+       light-readier's approach-hook cadence, but keyed on buff-expiry rather than per-room). Consuming a
+       charge each time; when charges run out mid-stretch and no spare waterskin remains, halt/ask rather
+       than walking a room unprotected.
 
   - **Routing takeaway:** a room is *safe to route through* if, for its `Room.Spell` hazard, the
     player satisfies the protection — holds a `failitem` item, wears/holds an item that `NegateSpell`s

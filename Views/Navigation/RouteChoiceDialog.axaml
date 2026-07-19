@@ -31,6 +31,7 @@
                 <Button Classes="route"
                         Classes.selected="{Binding IsFreeSelected}"
                         Command="{Binding SelectFreeCommand}"
+                        IsEnabled="{Binding HasFreeRoute}"
                         HorizontalAlignment="Stretch"
                         HorizontalContentAlignment="Left"
                         BorderThickness="1"

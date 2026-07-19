@@ -926,6 +926,9 @@ public partial class MainWindowViewModel : ObservableObject
         // Auto-light provisioning detour — the `buy <light>` at the shop rides
         // the same gate-wrapped pipeline.
         AppServices.Current.AutoLightShopRouter.SetWireSender(engineSend);
+        // Hazard-buff provisioning — the `use <waterskin>` that raises a
+        // checkspell hazard buff rides the same gate-wrapped pipeline.
+        AppServices.Current.AutoHazardCounterProvisioner.SetWireSender(engineSend);
         // Shop-source routing — the `buy <item>` at the detour shop
         // rides the same gate-wrapped pipeline.
         AppServices.Current.PathItemShopRouter.SetWireSender(engineSend);
