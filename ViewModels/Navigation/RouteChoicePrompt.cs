@@ -15,7 +15,15 @@ namespace FujinTerm.ViewModels.Navigation;
 // item-acquisition pipeline for anything missing); cancel walks nothing.
 public static class RouteChoicePrompt
 {
-    public static async Task WalkAsync(AppServices services, RoomKey destination)
+    // previewSink: optional map-preview channel. When the user selects a route in
+    // the picker (before committing), it's called with that route's RoomKey line
+    // so the caller can draw it; called with null when the picker closes (the
+    // committed walk then draws its own live path). Callers without a map (e.g.
+    // the navigation-manager list) pass none and the picker just works Go-only.
+    public static async Task WalkAsync(
+        AppServices services,
+        RoomKey destination,
+        Action<IReadOnlyList<RoomKey>?>? previewSink = null)
     {
         ArgumentNullException.ThrowIfNull(services);
 
@@ -47,8 +55,28 @@ public static class RouteChoicePrompt
             // from this walk's source/destination so the "buy at X" tail matches
             // the actual detour.
             itemId => services.PathItemShopName(itemId, source.Key, destination));
-        RouteChoiceResult? result = await services.Dialogs
-            .OpenWindowAsync<RouteChoiceDialogViewModel, RouteChoiceResult?>(vm);
+
+        // Draw the selected route's line while the picker is open; clear it when
+        // the picker closes so a committed walk's live path isn't double-drawn and
+        // a cancel leaves no stale preview behind.
+        if (previewSink is not null)
+            vm.PreviewRequested += r => previewSink(r switch
+            {
+                RouteChoiceResult.Free => choice.FreePath,
+                RouteChoiceResult.Gated => choice.GatedPath,
+                _ => null,
+            });
+
+        RouteChoiceResult? result;
+        try
+        {
+            result = await services.Dialogs
+                .OpenWindowAsync<RouteChoiceDialogViewModel, RouteChoiceResult?>(vm);
+        }
+        finally
+        {
+            previewSink?.Invoke(null);
+        }
 
         switch (result)
         {

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using FujinTerm.Game.Map;
 using FujinTerm.Services;
 using FujinTerm.ViewModels.Navigation;
 using Xunit;
@@ -9,11 +10,16 @@ namespace FujinTerm.Tests;
 // kinds a walk actually auto-buys — Item and Ticket. Keys and hazard counters
 // never post a buy-triggering path-item need, so they must not carry the tail
 // even when a shop resolver would name one. These pin that kind-gating and the
-// no-resolver fallback.
+// no-resolver fallback, plus the select-to-preview / Go interaction.
 public sealed class RouteChoiceDialogViewModelTests
 {
+    private static readonly IReadOnlyList<RoomKey> FreeLine =
+        new[] { new RoomKey(1, 1), new RoomKey(1, 2), new RoomKey(1, 9) };
+    private static readonly IReadOnlyList<RoomKey> GatedLine =
+        new[] { new RoomKey(1, 1), new RoomKey(1, 9) };
+
     private static RouteChoice Choice(params RouteRequirement[] reqs) =>
-        new(FreeStepCount: 5, GatedStepCount: 2, reqs);
+        new(FreeStepCount: 5, GatedStepCount: 2, reqs, FreeLine, GatedLine);
 
     [Fact]
     public void CarryItemGate_WithShop_GetsBuyTail()
@@ -87,5 +93,97 @@ public sealed class RouteChoiceDialogViewModelTests
             choice, "Bank (1/9)", id => "a raft", id => null);
 
         Assert.Equal("Requires a raft", vm.RequirementSummary);
+    }
+
+    // ----- Select-to-preview / Go interaction -----------------------------
+
+    private static RouteChoiceDialogViewModel PickerVm() =>
+        new(Choice(new RouteRequirement(RouteRequirementKind.CarryItem, new[] { 5 })),
+            "Bank (1/9)", id => "a raft");
+
+    [Fact]
+    public void NoSelection_GoDisabled_NothingPreviewed()
+    {
+        var vm = PickerVm();
+        bool previewed = false;
+        vm.PreviewRequested += _ => previewed = true;
+
+        Assert.Null(vm.SelectedRoute);
+        Assert.False(vm.GoCommand.CanExecute(null));
+        Assert.False(vm.IsFreeSelected);
+        Assert.False(vm.IsGatedSelected);
+        Assert.False(previewed);
+    }
+
+    [Fact]
+    public void SelectFree_PreviewsFreeLine_EnablesGo_NoWalkYet()
+    {
+        var vm = PickerVm();
+        RouteChoiceResult? previewed = null;
+        int previewCount = 0;
+        RouteChoiceResult? closed = null;
+        bool closeFired = false;
+        vm.PreviewRequested += r => { previewed = r; previewCount++; };
+        vm.CloseRequested += r => { closed = r; closeFired = true; };
+
+        vm.SelectFreeCommand.Execute(null);
+
+        Assert.Equal(RouteChoiceResult.Free, vm.SelectedRoute);
+        Assert.True(vm.IsFreeSelected);
+        Assert.False(vm.IsGatedSelected);
+        Assert.Equal(RouteChoiceResult.Free, previewed);
+        Assert.Equal(1, previewCount);
+        Assert.True(vm.GoCommand.CanExecute(null));
+        // Selecting previews only — the dialog stays open until Go.
+        Assert.False(closeFired);
+        Assert.Null(closed);
+    }
+
+    [Fact]
+    public void SwitchSelection_RepreviewsAndFlipsHighlight()
+    {
+        var vm = PickerVm();
+        var previews = new List<RouteChoiceResult?>();
+        vm.PreviewRequested += r => previews.Add(r);
+
+        vm.SelectFreeCommand.Execute(null);
+        vm.SelectGatedCommand.Execute(null);
+
+        Assert.Equal(RouteChoiceResult.Gated, vm.SelectedRoute);
+        Assert.False(vm.IsFreeSelected);
+        Assert.True(vm.IsGatedSelected);
+        Assert.Equal(
+            new RouteChoiceResult?[] { RouteChoiceResult.Free, RouteChoiceResult.Gated },
+            previews);
+    }
+
+    [Fact]
+    public void Go_ClosesWithSelectedRoute()
+    {
+        var vm = PickerVm();
+        RouteChoiceResult? closed = null;
+        int closeCount = 0;
+        vm.CloseRequested += r => { closed = r; closeCount++; };
+
+        vm.SelectGatedCommand.Execute(null);
+        vm.GoCommand.Execute(null);
+
+        Assert.Equal(RouteChoiceResult.Gated, closed);
+        Assert.Equal(1, closeCount);
+    }
+
+    [Fact]
+    public void Cancel_ClosesWithNull_EvenAfterASelection()
+    {
+        var vm = PickerVm();
+        RouteChoiceResult? closed = RouteChoiceResult.Free;
+        bool closeFired = false;
+        vm.CloseRequested += r => { closed = r; closeFired = true; };
+
+        vm.SelectFreeCommand.Execute(null);
+        vm.CancelCommand.Execute(null);
+
+        Assert.True(closeFired);
+        Assert.Null(closed);
     }
 }

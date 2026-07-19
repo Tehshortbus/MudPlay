@@ -21,13 +21,18 @@ public enum RouteRequirementKind
 public sealed record RouteRequirement(RouteRequirementKind Kind, IReadOnlyList<int> ItemIds);
 
 // A free-vs-direct route comparison for one destination: the free route's step
-// count, the shorter direct route's step count, and the requirements the direct
-// route demands. Only produced when the direct route is a genuine shortcut that
-// needs at least one acquirable item — otherwise the caller just walks free.
+// count, the shorter direct route's step count, the requirements the direct
+// route demands, and each route as a RoomKey sequence (source first, then every
+// hop's target) so the picker can draw a map preview of whichever the user
+// selects before committing. Only produced when the direct route is a genuine
+// shortcut that needs at least one acquirable item — otherwise the caller just
+// walks free.
 public sealed record RouteChoice(
     int FreeStepCount,
     int GatedStepCount,
-    IReadOnlyList<RouteRequirement> Requirements);
+    IReadOnlyList<RouteRequirement> Requirements,
+    IReadOnlyList<RoomKey> FreePath,
+    IReadOnlyList<RoomKey> GatedPath);
 
 // Compares the free-preferring route (acquirable gates active, so BFS detours
 // around them) against the direct route (gates suspended, so BFS crosses them as
@@ -90,7 +95,29 @@ public static class RouteChoicePlanner
             && reqs.Any(r => r.Kind != RouteRequirementKind.HazardProtection))
             return null;
 
-        return new RouteChoice(free.Count, gated.Count, reqs);
+        return new RouteChoice(
+            free.Count, gated.Count, reqs,
+            BuildKeyPath(graph, source, free),
+            BuildKeyPath(graph, source, gated));
+    }
+
+    // Expand a planned direction list to the RoomKey sequence it visits (source
+    // first, then each hop's target) for the picker's map preview. Stops at the
+    // first hop the graph can't resolve — a defensive guard; a freshly-planned
+    // BFS path is always resolvable end to end.
+    private static IReadOnlyList<RoomKey> BuildKeyPath(
+        RoomGraphManager graph, RoomKey source, IReadOnlyList<Direction> path)
+    {
+        var keys = new List<RoomKey>(path.Count + 1) { source };
+        RoomKey cur = source;
+        foreach (Direction dir in path)
+        {
+            Room? room = graph.GetRoom(cur);
+            if (room is null || !room.Exits.TryGetValue(dir, out RoomExit exit)) break;
+            cur = exit.Target;
+            keys.Add(cur);
+        }
+        return keys;
     }
 
     // Walk the direct path hop by hop; every hop the live filter still blocks is

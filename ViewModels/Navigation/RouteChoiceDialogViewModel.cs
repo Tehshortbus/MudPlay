@@ -16,17 +16,35 @@ public enum RouteChoiceResult
 
 // Free-vs-direct route picker. Shown only when RouteChoicePlanner found a direct
 // route that saves steps but crosses an acquirable gate the crosser can't yet
-// pass. The user chooses the safe/free detour or the shorter route (which arms
-// the acquisition pipeline for the missing items). Cancel walks nothing.
+// pass. Clicking a route selects it and previews its line on the map (no walk
+// yet); the Go button commits the selected route (the direct one arms the
+// acquisition pipeline for the missing items). Cancel / X walks nothing.
 public sealed partial class RouteChoiceDialogViewModel
     : ObservableObject, IDialogViewModel<RouteChoiceResult?>
 {
     public event Action<RouteChoiceResult?>? CloseRequested;
 
+    // Raised when the user selects a route to preview (before committing), so the
+    // caller can draw that route's line on the map. Null clears the preview. The
+    // picker never draws the map itself — it has no map knowledge; the prompt
+    // maps the selected route to its FreePath / GatedPath and pushes it.
+    public event Action<RouteChoiceResult?>? PreviewRequested;
+
     public string Heading { get; }
     public string FreeSummary { get; }
     public string GatedSummary { get; }
     public string RequirementSummary { get; }
+
+    // Which route the user has selected to preview. Null until they click one —
+    // Go stays disabled until then, forcing the click-to-preview-then-Go flow.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsFreeSelected))]
+    [NotifyPropertyChangedFor(nameof(IsGatedSelected))]
+    [NotifyCanExecuteChangedFor(nameof(GoCommand))]
+    private RouteChoiceResult? _selectedRoute;
+
+    public bool IsFreeSelected => SelectedRoute == RouteChoiceResult.Free;
+    public bool IsGatedSelected => SelectedRoute == RouteChoiceResult.Gated;
 
     public RouteChoiceDialogViewModel(
         RouteChoice choice,
@@ -70,10 +88,23 @@ public sealed partial class RouteChoiceDialogViewModel
     }
 
     [RelayCommand]
-    private void TakeFree() => CloseRequested?.Invoke(RouteChoiceResult.Free);
+    private void SelectFree()
+    {
+        SelectedRoute = RouteChoiceResult.Free;
+        PreviewRequested?.Invoke(RouteChoiceResult.Free);
+    }
 
     [RelayCommand]
-    private void TakeGated() => CloseRequested?.Invoke(RouteChoiceResult.Gated);
+    private void SelectGated()
+    {
+        SelectedRoute = RouteChoiceResult.Gated;
+        PreviewRequested?.Invoke(RouteChoiceResult.Gated);
+    }
+
+    private bool CanGo => SelectedRoute is not null;
+
+    [RelayCommand(CanExecute = nameof(CanGo))]
+    private void Go() => CloseRequested?.Invoke(SelectedRoute);
 
     [RelayCommand]
     private void Cancel() => CloseRequested?.Invoke(null);

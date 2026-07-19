@@ -234,6 +234,16 @@ public sealed class RouteChoicePlannerTests
             RouteRequirement req = Assert.Single(choice.Requirements);
             Assert.Equal(RouteRequirementKind.CarryItem, req.Kind);
             Assert.Equal(new[] { 5 }, req.ItemIds);
+
+            // The picker previews each route as a RoomKey line (source first,
+            // then every hop's target) — free detours 1/1→1/2→1/3→1/9, the
+            // direct hop is 1/1→1/9.
+            Assert.Equal(
+                new[] { new RoomKey(1, 1), new RoomKey(1, 2), new RoomKey(1, 3), new RoomKey(1, 9) },
+                choice.FreePath);
+            Assert.Equal(
+                new[] { new RoomKey(1, 1), new RoomKey(1, 9) },
+                choice.GatedPath);
         });
     }
 

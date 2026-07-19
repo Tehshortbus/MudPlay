@@ -2,6 +2,12 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.78.0
+
+- Route picker no longer walks on click — clicking a route selects it and previews its line on the map
+- A Go button (bottom of the picker) walks the selected route; disabled until one is chosen
+- Cancel / X closes without walking and clears the preview
+
 ## 1.77.0
 
 - Location recovery rebuilt: when genuinely lost it reverse-walks the exact steps since the last known room while growing a multi-room footprint, matched against the map until a single room survives, then re-confirms there and reroutes

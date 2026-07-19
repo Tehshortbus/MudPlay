@@ -1,11 +1,10 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.77.0**
-> - Location recovery rebuilt: when genuinely lost it reverse-walks the exact steps since the last known room while growing a multi-room footprint, matched against the map until a single room survives, then re-confirms there and reroutes
-> - Lit rooms are look-swept in place first — peeking every exit to fingerprint the neighbours breaks name-ambiguous twins (e.g. Darkwood Forest) without taking a step
-> - Dark rooms skip the useless look-sweep and dead-reckon position from the moves that actually executed
-> - Recovery clears the room of hostiles before look-sweeping (lit) / waits out a combat tick before dead-reckoning (dark)
+> **Version 1.78.0**
+> - Route picker no longer walks on click — clicking a route selects it and previews its line on the map
+> - A Go button (bottom of the picker) walks the selected route; disabled until one is chosen
+> - Cancel / X closes without walking and clears the preview
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->
