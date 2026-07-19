@@ -55,7 +55,8 @@ public sealed partial class RouteChoiceDialogViewModel
         RouteChoice choice,
         string destinationLabel,
         Func<int, string?> itemName,
-        Func<int, string?>? shopNameForItem = null)
+        Func<int, string?>? shopNameForItem = null,
+        Func<int, string?>? dropNameForItem = null)
     {
         ArgumentNullException.ThrowIfNull(choice);
         ArgumentNullException.ThrowIfNull(itemName);
@@ -71,32 +72,37 @@ public sealed partial class RouteChoiceDialogViewModel
             ? $"Direct route — {Steps(choice.GatedStepCount)}"
             : $"Route — {Steps(choice.GatedStepCount)}";
         RequirementSummary = "Requires "
-            + DescribeRequirements(choice.Requirements, itemName, shopNameForItem);
+            + DescribeRequirements(choice.Requirements, itemName, shopNameForItem, dropNameForItem);
     }
 
     private static string Steps(int n) => n == 1 ? "1 step" : $"{n} steps";
 
-    // "a raft (buy at General Store); the iron key; a waterskin (buy at Oasis)"
-    // — each requirement is one clause; a hazard's any-of counters join with
-    // " or ". An Item / Ticket gate, or a SINGLE-counter hazard, whose item the
-    // walk will auto-buy on the detour gets a "(buy at <shop>)" tail; keys and
-    // any-of hazard counters never do — a key isn't shopped and an any-of hazard
-    // group posts no single buy-triggering path-item need.
+    // "a raft (buy at General Store); the iron key; a waterskin (dropped by a
+    // sand nomad)" — each requirement is one clause; a hazard's any-of counters
+    // join with " or ". An Item / Ticket gate, or a SINGLE-counter hazard, whose
+    // item the walk will auto-source gets a tail naming where: "(buy at <shop>)"
+    // when a shop sells it, else "(dropped by <monster>)" when a flagged dropper
+    // is reachable. Keys and any-of hazard counters never get a tail — a key
+    // isn't sourced and an any-of hazard group posts no single auto-obtain
+    // path-item need. Shop wins over drop when both resolve (a buy is cheap and
+    // deterministic; the routers are mutually exclusive shop-first anyway).
     private static string DescribeRequirements(
         IReadOnlyList<RouteRequirement> reqs,
         Func<int, string?> itemName,
-        Func<int, string?>? shopNameForItem)
+        Func<int, string?>? shopNameForItem,
+        Func<int, string?>? dropNameForItem)
     {
         IEnumerable<string> clauses = reqs.Select(r =>
         {
             string items = string.Join(" or ", r.ItemIds.Select(id => itemName(id) ?? $"item #{id}"));
-            bool buyable = r.Kind is RouteRequirementKind.CarryItem or RouteRequirementKind.Ticket
+            bool autoSourced = r.Kind is RouteRequirementKind.CarryItem or RouteRequirementKind.Ticket
                 || (r.Kind is RouteRequirementKind.HazardProtection && r.ItemIds.Count == 1);
-            if (shopNameForItem is not null
-                && buyable
-                && r.ItemIds.Count == 1
-                && shopNameForItem(r.ItemIds[0]) is { Length: > 0 } shop)
+            if (!autoSourced || r.ItemIds.Count != 1)
+                return items;
+            if (shopNameForItem?.Invoke(r.ItemIds[0]) is { Length: > 0 } shop)
                 return $"{items} (buy at {shop})";
+            if (dropNameForItem?.Invoke(r.ItemIds[0]) is { Length: > 0 } monster)
+                return $"{items} (dropped by {monster})";
             return items;
         });
         return string.Join("; ", clauses);

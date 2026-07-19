@@ -6,6 +6,7 @@ Notable changes per merged PR, **newest first**. The top of the [README](README.
 
 - Hazard rooms countered by a `use`-cast buff (desert heat, drowning) now raise the buff mid-walk — `use`s the source item on approach, re-`use`ing when its duration lapses so a long crossing spends the fewest charges
 - A route blocked only by a survivable hazard is now offered in the route picker (with a "buy at <shop>" tail when the counter is buyable) instead of aborting with "a room hazard you can't survive"
+- Route picker also previews a "dropped by <monster>" tail when a gate item no shop sells is flagged to source from a reachable monster drop
 - Bug report shows the current room's checkspell hazard, its buff-source item, and whether one is carried
 - bug reports addressed: stock-20260719-020228
 

@@ -267,18 +267,26 @@ public sealed class MonsterDropRouter
     }
 
     // Pick the reachable spawn room minimising dist(cur, spawn). A single
-    // forward BFS (distancesFrom) covers every candidate; ties break on the
-    // higher drop chance, then room-key order — deterministic for tests.
+    // forward BFS (distancesFrom) covers every candidate; the ranking itself is
+    // the shared static below so the route picker can name the same lair.
     private bool TrySelectNearestSpawn(
         RoomKey cur, int itemId, out MonsterDropSpawn best, out int bestDistance)
+        => SelectNearestSpawn(_dropSpawnsForItem(itemId), _distancesFrom(cur), out best, out bestDistance);
+
+    // Nearest reachable spawn among candidates by the given distance map; ties
+    // break on the higher drop chance, then room-key order — deterministic for
+    // tests. Static + internal so AppServices can resolve the picker's "dropped
+    // by <monster>" tail to the exact spawn a reroute would target.
+    internal static bool SelectNearestSpawn(
+        IReadOnlyList<MonsterDropSpawn> candidates,
+        IReadOnlyDictionary<RoomKey, int> distances,
+        out MonsterDropSpawn best, out int bestDistance)
     {
         best = default;
         bestDistance = int.MaxValue;
 
-        IReadOnlyList<MonsterDropSpawn> candidates = _dropSpawnsForItem(itemId);
         if (candidates.Count == 0) return false;
 
-        IReadOnlyDictionary<RoomKey, int> distances = _distancesFrom(cur);
         bool found = false;
         foreach (MonsterDropSpawn c in candidates)
         {

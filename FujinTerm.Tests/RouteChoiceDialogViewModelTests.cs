@@ -6,10 +6,12 @@ using Xunit;
 
 namespace FujinTerm.Tests;
 
-// The picker's requirement line only promises "buy at <shop>" for the gate
-// kinds a walk actually auto-buys — Item and Ticket. Keys and hazard counters
-// never post a buy-triggering path-item need, so they must not carry the tail
-// even when a shop resolver would name one. These pin that kind-gating and the
+// The picker's requirement line promises a source tail — "(buy at <shop>)" or,
+// when no shop sells it, "(dropped by <monster>)" — only for the single-item
+// gate kinds a walk actually auto-sources (Item, Ticket, single-counter
+// hazard). Keys and any-of hazard counters never post a single auto-obtain
+// path-item need, so they must not carry a tail even when a resolver would name
+// one. These pin that kind-gating, the shop-over-drop precedence, and the
 // no-resolver fallback, plus the select-to-preview / Go interaction.
 public sealed class RouteChoiceDialogViewModelTests
 {
@@ -68,6 +70,55 @@ public sealed class RouteChoiceDialogViewModelTests
             choice, "Flooded hall (1/9)",
             id => id == 11 ? "a fish-helm" : "a waterskin",
             id => "General Store");
+
+        Assert.Equal("Requires a fish-helm or a waterskin", vm.RequirementSummary);
+    }
+
+    [Fact]
+    public void HazardGate_NoShop_GetsDropTail()
+    {
+        // A single-counter hazard whose item no shop sells but a monster drops:
+        // the picker previews the hunt the walk would reroute to run.
+        var choice = Choice(new RouteRequirement(
+            RouteRequirementKind.HazardProtection, new[] { 42 }));
+
+        var vm = new RouteChoiceDialogViewModel(
+            choice, "Sunbaked dune (1/9)",
+            id => id == 42 ? "a waterskin" : null,
+            shopNameForItem: id => null,          // no shop stocks it
+            dropNameForItem: id => id == 42 ? "a sand nomad" : null);
+
+        Assert.Equal("Requires a waterskin (dropped by a sand nomad)", vm.RequirementSummary);
+    }
+
+    [Fact]
+    public void CarryItemGate_ShopWinsOverDrop_WhenBothResolve()
+    {
+        // Shop and drop both name a source — the buy tail wins (cheap,
+        // deterministic; the routers are shop-first mutually exclusive).
+        var choice = Choice(new RouteRequirement(RouteRequirementKind.CarryItem, new[] { 5 }));
+
+        var vm = new RouteChoiceDialogViewModel(
+            choice, "Bank (1/9)", id => "a raft",
+            shopNameForItem: id => "General Store",
+            dropNameForItem: id => "a river troll");
+
+        Assert.Equal("Requires a raft (buy at General Store)", vm.RequirementSummary);
+    }
+
+    [Fact]
+    public void HazardGate_AnyOf_NeverGetsDropTail()
+    {
+        // Two-item hazard group: an any-of counter posts no single auto-obtain
+        // need, so no drop tail even when a resolver would name a dropper.
+        var choice = Choice(new RouteRequirement(
+            RouteRequirementKind.HazardProtection, new[] { 11, 12 }));
+
+        var vm = new RouteChoiceDialogViewModel(
+            choice, "Flooded hall (1/9)",
+            id => id == 11 ? "a fish-helm" : "a waterskin",
+            shopNameForItem: id => null,
+            dropNameForItem: id => "a deep one");
 
         Assert.Equal("Requires a fish-helm or a waterskin", vm.RequirementSummary);
     }

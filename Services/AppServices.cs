@@ -4752,6 +4752,27 @@ public sealed class AppServices
         return RoomGraph.GetRoom(shop)?.Name;
     }
 
+    // Route-picker helper: for a path-gate item NO shop sells, name the monster
+    // the walk would actually reroute to hunt — but only when that hunt will run.
+    // It runs only if the item is flagged SourceFromDropsForPath (same gate
+    // MonsterDropRouter enforces), no shop sells it (a sold item is the buy
+    // tail's job), AND a dropper spawns in a room reachable from source. The
+    // chosen monster matches the router's nearest-spawn pick (shared
+    // SelectNearestSpawn from the same forward BFS), so the picker's "dropped by
+    // X" promise is the lair the run visits — not a plausible guess.
+    public string? PathItemDropName(int itemId, Game.Map.RoomKey source)
+    {
+        if (!ShouldAutoObtainForPath(itemId, o => o.SourceFromDropsForPath)) return null;
+        if (ShopStock.AnyShopSells(itemId)) return null;
+        System.Collections.Generic.IReadOnlyList<Game.Map.MonsterDropSpawn> spawns = DropSpawnsForItem(itemId);
+        if (spawns.Count == 0) return null;
+        return Game.Map.MonsterDropRouter.SelectNearestSpawn(
+                spawns, Bfs.ComputeDistancesFrom(source, Movement),
+                out Game.Map.MonsterDropSpawn best, out _)
+            ? best.MonsterName
+            : null;
+    }
+
     // Live key-possession check for DoorOpenManager's opportunistic floor grab:
     // is the player confidently carrying the key for itemId? Compared by name
     // against the inventory's key-ring + carried list, normalized (count prefix +

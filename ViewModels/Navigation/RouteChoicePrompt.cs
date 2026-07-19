@@ -54,7 +54,11 @@ public static class RouteChoicePrompt
             // (item flagged buy-if-needed + a reachable shop stocks it). Resolved
             // from this walk's source/destination so the "buy at X" tail matches
             // the actual detour.
-            itemId => services.PathItemShopName(itemId, source.Key, destination));
+            itemId => services.PathItemShopName(itemId, source.Key, destination),
+            // No shop sells it but a flagged monster drops it: name the lair the
+            // run would reroute to hunt, so the picker previews the hunt option
+            // (which otherwise only surfaces as a prompt once the walk starts).
+            itemId => services.PathItemDropName(itemId, source.Key));
 
         // Draw the selected route's line while the picker is open; clear it when
         // the picker closes so a committed walk's live path isn't double-drawn and

@@ -4,6 +4,7 @@
 > **Version 1.79.0**
 > - Hazard rooms countered by a `use`-cast buff now raise the buff mid-walk, re-`use`ing when it lapses
 > - A route blocked only by a survivable hazard is offered in the picker instead of aborting
+> - Route picker previews a "dropped by <monster>" tail for a gate item sourced from a drop
 > - Bug report shows the current room's checkspell hazard and whether its counter is carried
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
