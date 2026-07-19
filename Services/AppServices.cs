@@ -1085,8 +1085,9 @@ public sealed class AppServices
     // Active fulfiller for NeedKind.PathItem needs no shop can
     // satisfy: on a one-shot walk-to that needs an uncarried item no shop
     // sells, prompts to reroute to the nearest room a monster that drops it
-    // spawns in, then resumes once it lands. Gated by Settings → Other
-    // "hunt item if needed".
+    // spawns in, then resumes once it lands. Gated per item by the item
+    // record's SourceFromDropsForPath flag (under the AutoObtainForPath opt-in),
+    // set in the item-edit dialog.
     public Game.Map.MonsterDropRouter MonsterDropRouter { get; private set; } = null!;
 
     // On-demand party-inventory probe — broadcasts @have and aggregates
