@@ -2140,6 +2140,13 @@ public sealed class AppServices
         // Shared engine-level recovery gate. Walker / LoopRunner /
         // AutoLair attach themselves on Start (next commits).
         Recovery = new Game.Map.EngineRecoveryGate(RoomGraph, RoomTracker, Log);
+        // Tier-3 look-sweep combat gate: clear the recovery room before peeking
+        // (lit) / wait a combat tick for an ambush to reveal (dark). Reads the
+        // predicate live so an auto-attack toggle is honoured; the tick drives
+        // the "room clear yet?" re-check. CombatTracker is assigned later in
+        // init but only read at recovery time, so the lambda is safe here.
+        Recovery.SetCombatGate(() => CombatTracker.HasEngageableHostiles);
+        Tick.CombatTickElapsed += Recovery.OnCombatTick;
 
         // Paradigm-only re-sync: on a suspected drift the gate asks this
         // resolver to fire `rm`; its Location: reply hard-locates the tracker

@@ -690,6 +690,9 @@ public partial class MainWindowViewModel : ObservableObject
         // tracker consumes the observation, so a look-peek (which the tracker
         // drops) still reaches the solver.
         _roomDisplayParser.RoomParsed += AppServices.Current.MazeSolver.OnRoomObserved;
+        // Same pre-suppression feed drives the recovery gate's tier-3 look-sweep
+        // — it reads peeked neighbours the tracker would otherwise drop.
+        _roomDisplayParser.RoomParsed += AppServices.Current.Recovery.OnRoomObserved;
         _movementRefusalDetector = new Game.Map.MovementRefusalDetector(Lines,
             AppServices.Current.RoomTracker, AppServices.Current.Log);
         // Combat-gated-entry refusal: `break` → 3s → revert move so the driving
@@ -1021,6 +1024,9 @@ public partial class MainWindowViewModel : ObservableObject
         // gate-wrapped pipeline. The RoomParsed feed that drives its relocalize
         // is subscribed below beside the RoomDisplayParser.
         AppServices.Current.MazeSolver.SetWireSender(engineSend);
+        // Recovery gate's tier-3 look-sweep rides the same gate-wrapped pipeline
+        // so its `look <dir>` peeks can't land mid-password-prompt.
+        AppServices.Current.Recovery.SetWireSender(engineSend);
         // SuicideHandler — bypasses the engine gate because it OWNS
         // the suicide flow (and needs its `suicide` + password sends
         // to land even while SuicidePasswordTracker has the gate
