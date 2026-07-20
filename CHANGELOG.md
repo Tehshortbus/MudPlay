@@ -2,6 +2,24 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.83.0
+
+- Navigation window gains a collapse/expand toggle beside the search box (▶ collapse the panels / ◀ bring them back)
+- Collapsing hides the search box, Selected-Room readout, action buttons, the display-toggle chips (Lairs/Shops/Spells/Legend), and the whole right-hand nav rail, and lowers the window's minimum width and height so the map can be dragged smaller
+
+## 1.82.0
+
+- Navigation map button bar shows "Current room" and "Selected Room" map/room readouts side by side between the Legend and Save chips
+- Lairs chip is now a three-stage toggle: uniform colour → respawn heat-map → off
+- Heat mode colours each lair by its 30-second respawn bucket — 30s red, stepping through the spectrum to 5min purple, longer lairs fading toward black (the game's slowest lair)
+
+## 1.81.0
+
+- Terminal font picker now lists every monospace font installed on the system, below the two bundled faces
+- Proportional fonts filtered out (Latin advance-width probe), so a picked font can't mangle the fixed cell grid
+- System fonts persist as their bare family name; a system copy of a bundled face is de-duplicated from the list
+- Font catalogue is pre-built off the UI thread at startup, so opening Settings no longer stalls on the font scan
+
 ## 1.80.0
 
 - Path-item auto-obtain simplified to one per-item toggle — the separate buy / drop-source / party-provision sub-checkboxes are gone, folded into a single "auto-obtain for path"

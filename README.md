@@ -1,15 +1,9 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.80.0**
-> - Path-item auto-obtain simplified to one per-item toggle — the buy / drop-source / party-provision sub-checkboxes are folded into a single "auto-obtain for path"
-> - Party path-item provisioning now acquires a per-person quota (enough for every member), redistributing from members carrying spares
-> - Path-item shop router withdraws from the bank before buying when cash on hand is short but the bank covers it
-> - Route picker gains a "send it" card to walk a gated route without acquiring; a sole item/ticket-gated route now surfaces instead of silently aborting
-> - Desert/drown hazard buff also re-raised reactively: the game's lapse prompt ("you need water, soon!") fires one `use waterskin` when the timer drifted and the buff dropped early
-> - A lapse prompt with no swig confirmation — out of charges — halts the walk instead of marching deeper into the hazard
-> - Lapse-damage spell derived from the checkspell chain, so the re-raise keys on the active set's message, not hardcoded text
-> - Bug report's room-hazard line now shows the derived lapse spell
+> **Version 1.83.0**
+> - Navigation window gains a collapse/expand toggle beside the search box (▶ collapse the panels / ◀ bring them back)
+> - Collapsing hides the search box, Selected-Room readout, action buttons, the display-toggle chips (Lairs/Shops/Spells/Legend), and the whole right-hand nav rail, and lowers the window's minimum width and height so the map can be dragged smaller
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

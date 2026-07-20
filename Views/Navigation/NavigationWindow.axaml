@@ -10,7 +10,7 @@
         x:DataType="vm:NavigationViewModel"
         Title="Navigation"
         Width="1280" Height="720"
-        MinWidth="900" MinHeight="500"
+        MinWidth="{Binding WindowMinWidth}" MinHeight="{Binding WindowMinHeight}"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False">
 
@@ -263,12 +263,13 @@
     <Grid RowDefinitions="Auto,Auto,*,Auto">
 
         <!-- Row 0: status badge + activity chip + status text, then the
-             selected-room chip + search box pinned to the top-right corner -->
+             selected-room chip + search box + collapse/expand toggle pinned to
+             the top-right corner -->
         <Border Grid.Row="0"
                 Background="{StaticResource ChromeBgBrush}"
                 BorderBrush="{StaticResource ChromeBorderSoftBrush}"
                 BorderThickness="0,0,0,1">
-            <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto" Margin="12,6">
+            <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto,Auto" Margin="12,6">
                 <!-- Engine-state badge — IDLE / WALKING / LOOPING / AUTO-LAIR.
                      Tier overlays paint the border yellow / red on top of
                      whichever engine fill is active. -->
@@ -329,17 +330,39 @@
                     </StackPanel>
                 </Button>
 
-                <!-- Search box — top-right corner of the header. -->
+                <!-- Search box — top-right corner of the header. Hidden while the
+                     map is collapsed (search has no target rail to show results
+                     against in that mode). -->
                 <TextBox Grid.Column="4"
                          Name="SearchBox"
+                         IsVisible="{Binding MapExpanded}"
                          Text="{Binding SearchQuery, Mode=TwoWay}"
                          PlaceholderText="Search rooms, lairs, loops…"
-                         Width="185"
+                         Width="150"
                          MinHeight="24"
                          Height="24"
                          Padding="7,2"
                          FontSize="11"
                          VerticalAlignment="Center"/>
+
+                <!-- Collapse / expand the side chrome so the map can fill the
+                     window (and the window shrink narrower than the rail).
+                     Arrow points the direction the next click takes: ◀ collapse,
+                     ▶ expand. -->
+                <Button Grid.Column="5"
+                        Content="{Binding MapCollapseGlyph}"
+                        Command="{Binding ToggleMapExpandedCommand}"
+                        ToolTip.Tip="{Binding MapCollapseTooltip}"
+                        Background="{StaticResource ChromeBgElevBrush}"
+                        BorderBrush="{StaticResource ChromeBorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="3"
+                        Padding="8,2"
+                        MinHeight="24"
+                        Height="24"
+                        FontSize="11"
+                        Margin="6,0,0,0"
+                        VerticalAlignment="Center"/>
             </Grid>
         </Border>
 
@@ -348,16 +371,18 @@
                 Background="{StaticResource ChromeBgBrush}"
                 BorderBrush="{StaticResource ChromeBorderSoftBrush}"
                 BorderThickness="0,0,0,1">
-            <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto"
+            <Grid ColumnDefinitions="Auto,*,Auto"
                   Margin="12,6"
                   ColumnSpacing="6">
                 <!-- Display-toggle chips. The Manage button lives down
                      in the loops-rail footer (already wired to
                      OpenManagerCommand) — putting it here too would be
                      redundant. -->
-                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4">
-                    <Button Classes="ToggleChip" Content="Lairs"
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4"
+                            IsVisible="{Binding MapExpanded}">
+                    <Button Classes="ToggleChip" Content="{Binding LairButtonLabel}"
                             Command="{Binding ToggleLairsCommand}"
+                            ToolTip.Tip="Lair highlight: click to cycle uniform colour → respawn heat-map → off."
                             Classes.LairFill="{Binding HighlightLairs}"/>
                     <Button Classes="ToggleChip" Content="Shops"
                             Command="{Binding ToggleShopsCommand}"
@@ -370,71 +395,97 @@
                             Classes.LegendFill="{Binding LegendVisible}"/>
                 </StackPanel>
 
-                <!-- Save — opens the appropriate editor dialog
-                     (LoopEditor / LairEditor) pre-seeded with the
-                     current build session OR running engine state.
-                     Enabled in four cases: Loop build mode with
-                     savable clicks, Loop running, AutoLair build
-                     mode with markers, AutoLair running with
-                     markers. -->
-                <Button Grid.Column="2"
-                        Classes="ActionChip"
-                        Content="Save"
-                        ToolTip.Tip="Save the current loop / lair setup."
-                        IsVisible="{Binding !EngineActionIsWalking}"
-                        Command="{Binding SaveCurrentCommand}"
-                        IsEnabled="{Binding CanSaveCurrent}"/>
+                <!-- Centred readouts filling the flex gap between the toggle
+                     chips and the action chips: the player's live room and the
+                     cyan-boxed selection, side by side (single row) so they
+                     don't add height to the bar. -->
+                <StackPanel Grid.Column="1"
+                            Orientation="Horizontal"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Spacing="18">
+                    <TextBlock Text="{Binding CurrentRoomText}"
+                               VerticalAlignment="Center"
+                               FontSize="12"
+                               Foreground="{StaticResource ChromeFgSecBrush}"/>
+                    <TextBlock Text="{Binding SelectedRoomText}"
+                               IsVisible="{Binding MapExpanded}"
+                               VerticalAlignment="Center"
+                               FontSize="12"
+                               Foreground="{StaticResource ChromeFgSecBrush}"/>
+                </StackPanel>
 
-                <!-- Walk-to has no savable setup, so its Save slot becomes the
-                     walk's Pause/Resume chip (parity with the loop/lair
-                     pause affordance). Keys off the user-override tier, so a
-                     mid-walk fight doesn't flip it to Resume. -->
-                <Button Grid.Column="2"
-                        Classes="ActionChip"
-                        Classes.Run="{Binding IsWalkUserPaused}"
-                        Classes.Pause="{Binding !IsWalkUserPaused}"
-                        Content="{Binding WalkPauseLabel}"
-                        ToolTip.Tip="Pause / resume the walk-to."
-                        IsVisible="{Binding EngineActionIsWalking}"
-                        Command="{Binding PauseOrResumeCommand}"/>
+                <!-- Action chips (Save / Run / Loop-mode / Lair-mode) share one
+                     row-end strip so the whole group hides together when the map
+                     is collapsed, leaving just the display toggles + current-room
+                     readout above the full-width map. -->
+                <StackPanel Grid.Column="2"
+                            Orientation="Horizontal"
+                            Spacing="6"
+                            IsVisible="{Binding MapExpanded}">
+                    <!-- Save — opens the appropriate editor dialog
+                         (LoopEditor / LairEditor) pre-seeded with the
+                         current build session OR running engine state.
+                         Enabled in four cases: Loop build mode with
+                         savable clicks, Loop running, AutoLair build
+                         mode with markers, AutoLair running with
+                         markers. -->
+                    <Button Classes="ActionChip"
+                            Content="Save"
+                            ToolTip.Tip="Save the current loop / lair setup."
+                            IsVisible="{Binding !EngineActionIsWalking}"
+                            Command="{Binding SaveCurrentCommand}"
+                            IsEnabled="{Binding CanSaveCurrent}"/>
 
-                <!-- Run / Pause — loop running shows "Pause" (assert
-                     user gate + open builder seeded from running loop);
-                     loop paused shows "Run" (resume); walker/auto-lair
-                     keep the legacy Run/Stop one-shot semantics. -->
-                <Button Grid.Column="3"
-                        Classes="ActionChip"
-                        Classes.Run="{Binding !IsAnyExecuting}"
-                        Classes.Pause="{Binding IsAnyExecuting}"
-                        Content="{Binding RunStopLabel}"
-                        Command="{Binding RunStopCommand}"
-                        IsEnabled="{Binding CanRun}"/>
+                    <!-- Walk-to has no savable setup, so its Save slot becomes the
+                         walk's Pause/Resume chip (parity with the loop/lair
+                         pause affordance). Keys off the user-override tier, so a
+                         mid-walk fight doesn't flip it to Resume. -->
+                    <Button Classes="ActionChip"
+                            Classes.Run="{Binding IsWalkUserPaused}"
+                            Classes.Pause="{Binding !IsWalkUserPaused}"
+                            Content="{Binding WalkPauseLabel}"
+                            ToolTip.Tip="Pause / resume the walk-to."
+                            IsVisible="{Binding EngineActionIsWalking}"
+                            Command="{Binding PauseOrResumeCommand}"/>
 
-                <!-- Loop mode chip — doubles as the full Stop when a
-                     loop is running. The dispatcher
-                     LoopModeButtonCommand routes to StopAll when in
-                     Stop mode, ToggleLoopMode otherwise, so the user
-                     sees a single chip that always means "exit the
-                     current loop context." -->
-                <Button Grid.Column="4"
-                        Classes="ActionChip"
-                        Classes.Active="{Binding IsLoopMode}"
-                        Classes.Stop="{Binding LoopModeButtonIsStop}"
-                        Content="{Binding LoopModeButtonLabel}"
-                        Command="{Binding LoopModeButtonCommand}"/>
+                    <!-- Run / Pause — loop running shows "Pause" (assert
+                         user gate + open builder seeded from running loop);
+                         loop paused shows "Run" (resume); walker/auto-lair
+                         keep the legacy Run/Stop one-shot semantics. -->
+                    <Button Classes="ActionChip"
+                            Classes.Run="{Binding !IsAnyExecuting}"
+                            Classes.Pause="{Binding IsAnyExecuting}"
+                            Content="{Binding RunStopLabel}"
+                            Command="{Binding RunStopCommand}"
+                            IsEnabled="{Binding CanRun}"/>
 
-                <!-- Lair mode -->
-                <Button Grid.Column="5"
-                        Classes="ActionChip"
-                        Classes.Active="{Binding IsLairMode}"
-                        Classes.Stop="{Binding LairModeButtonIsStop}"
-                        Content="{Binding LairModeButtonLabel}"
-                        Command="{Binding LairModeButtonCommand}"/>
+                    <!-- Loop mode chip — doubles as the full Stop when a
+                         loop is running. The dispatcher
+                         LoopModeButtonCommand routes to StopAll when in
+                         Stop mode, ToggleLoopMode otherwise, so the user
+                         sees a single chip that always means "exit the
+                         current loop context." -->
+                    <Button Classes="ActionChip"
+                            Classes.Active="{Binding IsLoopMode}"
+                            Classes.Stop="{Binding LoopModeButtonIsStop}"
+                            Content="{Binding LoopModeButtonLabel}"
+                            Command="{Binding LoopModeButtonCommand}"/>
+
+                    <!-- Lair mode -->
+                    <Button Classes="ActionChip"
+                            Classes.Active="{Binding IsLairMode}"
+                            Classes.Stop="{Binding LairModeButtonIsStop}"
+                            Content="{Binding LairModeButtonLabel}"
+                            Command="{Binding LairModeButtonCommand}"/>
+                </StackPanel>
             </Grid>
         </Border>
 
-        <!-- Row 2: map + right rail -->
-        <Grid Grid.Row="2" ColumnDefinitions="*,290">
+        <!-- Row 2: map + right rail. Second column is Auto so that hiding the
+             rail (collapsed map) drops it to zero width and the map spans the
+             whole row; the rail Border carries the fixed 290 width when shown. -->
+        <Grid Grid.Row="2" ColumnDefinitions="*,Auto">
 
             <controls:MapControl Grid.Column="0"
                                  Name="MapHost"
@@ -442,7 +493,9 @@
                                  CurrentRoomKey="{Binding CurrentRoomKey}"
                                  DestinationRoomKey="{Binding DestinationRoomKey}"
                                  Graph="{Binding Graph}"
-                                 HighlightLairs="{Binding HighlightLairs}"
+                                 LairMode="{Binding LairMode}"
+                                 LairRespawnSeconds="{Binding LairRespawnSeconds}"
+                                 LairMaxRespawnSeconds="{Binding LairMaxRespawnSeconds}"
                                  HighlightShops="{Binding HighlightShops}"
                                  HighlightSpells="{Binding HighlightSpells}"
                                  WalkPath="{Binding WalkPath}"
@@ -700,6 +753,8 @@
                  edge, which would make the section look stretched relative
                  to GOTO/LOOPS. -->
             <Border Grid.Column="1"
+                    Width="290"
+                    IsVisible="{Binding MapExpanded}"
                     ClipToBounds="True"
                     Background="{StaticResource ChromeBgSunkenBrush}"
                     BorderBrush="{StaticResource ChromeBorderSoftBrush}"
