@@ -190,7 +190,7 @@
                 <MenuItem Header="Auto Get Cash"    ToggleType="CheckBox" IsChecked="{Binding IsAutoGetCashActive,  Mode=TwoWay}"/>
                 <MenuItem Header="Auto Sneak"       ToggleType="CheckBox" IsChecked="{Binding IsAutoSneakActive,    Mode=TwoWay}"/>
                 <MenuItem Header="Auto Hide"        ToggleType="CheckBox" IsChecked="{Binding IsAutoHideActive,     Mode=TwoWay}"/>
-                <MenuItem Header="Auto Search"      ToggleType="CheckBox" IsEnabled="False" ToolTip.Tip="Wired in Phase 7 (AutoWalkManager) — search rooms while running"/>
+                <MenuItem Header="Auto Search"      ToggleType="CheckBox" IsChecked="{Binding IsAutoSearchActive,   Mode=TwoWay}"/>
                 <Separator/>
 
                 <!-- Auto-train master toggle. Set apart because it persists in
