@@ -8,7 +8,7 @@ Notable changes per merged PR, **newest first**. The top of the [README](README.
 - Settings → Talk: new "Look at players to learn/update their inventories" toggle — looks at each non-party player who walks into the room (skips self and party)
 - Both default off, sit next to "Greet players when first met"
 - Settings → Talk: removed two redundant help-text captions (master kill-switch, @party disable)
-- Action menu "Auto Search" toggle now enabled and wired to the live engine (was stuck disabled with a stale tooltip)
+- Action menu "Auto Search" toggle now enabled and wired to the live engine (was stuck disabled with a stale tooltip); separator above Auto Train removed
 
 ## 1.83.0
 
