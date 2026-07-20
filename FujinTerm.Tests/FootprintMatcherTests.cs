@@ -235,4 +235,202 @@ public sealed class FootprintMatcherTests
         Assert.False(m.IsConverged);
         Assert.False(m.IsExhausted);
     }
+
+    // ----- FilterByNeighbours (look-sweep spatial narrowing) ----------
+
+    /// <summary>
+    /// Two identical-name twins that Step alone can't separate ARE separated
+    /// by a look-sweep: the peeked neighbour in a direction matches only one
+    /// twin's graph-neighbour, dropping the other.
+    /// </summary>
+    [Fact]
+    public void FilterByNeighbours_breaks_twins_by_peeked_neighbour()
+    {
+        RoomKey a = K(1, 1), b = K(1, 2);        // twins: same name+exits
+        RoomKey aN = K(1, 11), bN = K(1, 12);    // but different neighbours to the north
+
+        var table = new Dictionary<(RoomKey, Direction), HopOutcome>
+        {
+            [(a, Direction.N)] = HopOutcome.Reached(aN),
+            [(b, Direction.N)] = HopOutcome.Reached(bN),
+        };
+
+        FootprintMatcher m = new(
+            probeHop: ProbeFrom(table),
+            matchesObservation: AcceptOnly(aN));  // the look north looks like aN only
+        m.Reset(new[] { a, b });
+
+        m.FilterByNeighbours(new Dictionary<Direction, RoomObservation>
+        {
+            [Direction.N] = Obs("Clearing"),
+        });
+
+        Assert.True(m.IsConverged);
+        Assert.Single(m.Candidates, a);
+        Assert.Equal(0, m.Depth);                 // a look is not a move
+    }
+
+    /// <summary>
+    /// A candidate that has no exit in a direction we successfully peeked is
+    /// inconsistent (the real room does have that exit) and is dropped.
+    /// </summary>
+    [Fact]
+    public void FilterByNeighbours_drops_candidate_missing_the_peeked_exit()
+    {
+        RoomKey a = K(1, 1), b = K(1, 2);
+        RoomKey aN = K(1, 11);
+
+        // b has no N exit at all (absent from the table → NoExit).
+        var table = new Dictionary<(RoomKey, Direction), HopOutcome>
+        {
+            [(a, Direction.N)] = HopOutcome.Reached(aN),
+        };
+
+        FootprintMatcher m = new(
+            probeHop: ProbeFrom(table),
+            matchesObservation: AcceptOnly(aN));
+        m.Reset(new[] { a, b });
+
+        m.FilterByNeighbours(new Dictionary<Direction, RoomObservation>
+        {
+            [Direction.N] = Obs("Clearing"),
+        });
+
+        Assert.Single(m.Candidates, a);
+    }
+
+    /// <summary>
+    /// A trapped arm is unverifiable, so it contributes no constraint — a
+    /// candidate is NOT dropped merely because the peeked direction is a trap
+    /// on it, even when its target wouldn't match.
+    /// </summary>
+    [Fact]
+    public void FilterByNeighbours_trapped_arm_is_no_constraint()
+    {
+        RoomKey a = K(1, 1), b = K(1, 2);
+        RoomKey aN = K(1, 11);
+
+        var table = new Dictionary<(RoomKey, Direction), HopOutcome>
+        {
+            [(a, Direction.N)] = HopOutcome.Reached(aN),
+            [(b, Direction.N)] = HopOutcome.TrappedExit(),
+        };
+
+        FootprintMatcher m = new(
+            probeHop: ProbeFrom(table),
+            matchesObservation: AcceptOnly(aN));   // would reject b's arm if it were verifiable
+        m.Reset(new[] { a, b });
+
+        m.FilterByNeighbours(new Dictionary<Direction, RoomObservation>
+        {
+            [Direction.N] = Obs("Clearing"),
+        });
+
+        Assert.Equal(2, m.Candidates.Count);       // b kept — its only peeked arm was a trap
+        Assert.Contains(a, m.Candidates);
+        Assert.Contains(b, m.Candidates);
+    }
+
+    /// <summary>
+    /// An empty peek map (nothing resolved — e.g. every look timed out) is a
+    /// no-op: the candidate set is untouched.
+    /// </summary>
+    [Fact]
+    public void FilterByNeighbours_empty_peek_is_noop()
+    {
+        FootprintMatcher m = new(
+            probeHop: (_, _) => HopOutcome.NoExit(),
+            matchesObservation: (_, _) => false);
+        m.Reset(new[] { K(1, 1), K(1, 2) });
+
+        m.FilterByNeighbours(new Dictionary<Direction, RoomObservation>());
+
+        Assert.Equal(2, m.Candidates.Count);
+    }
+
+    // ----- StepBlind (dark dead-reckon) -------------------------------
+
+    /// <summary>
+    /// In the dark there's no room to match, so StepBlind hops every
+    /// candidate and keeps its target unconditionally — even when the
+    /// observation predicate would reject all of them.
+    /// </summary>
+    [Fact]
+    public void StepBlind_hops_without_observation_filter()
+    {
+        RoomKey a = K(1, 1), b = K(1, 2);
+        RoomKey aN = K(2, 1), bN = K(2, 2);
+
+        var table = new Dictionary<(RoomKey, Direction), HopOutcome>
+        {
+            [(a, Direction.N)] = HopOutcome.Reached(aN),
+            [(b, Direction.N)] = HopOutcome.Reached(bN),
+        };
+
+        FootprintMatcher m = new(
+            probeHop: ProbeFrom(table),
+            matchesObservation: (_, _) => false);  // would kill everything under Step
+        m.Reset(new[] { a, b });
+
+        m.StepBlind(Direction.N);
+
+        Assert.Equal(2, m.Candidates.Count);
+        Assert.Contains(aN, m.Candidates);
+        Assert.Contains(bN, m.Candidates);
+        Assert.Equal(1, m.Depth);                  // a blind move still advances depth
+        Assert.False(m.IsExhausted);
+    }
+
+    /// <summary>
+    /// StepBlind still drops a candidate the move is structurally impossible
+    /// from (no exit / trap-gated).
+    /// </summary>
+    [Fact]
+    public void StepBlind_drops_no_exit_and_trapped()
+    {
+        RoomKey a = K(1, 1), b = K(1, 2);
+
+        // a has no N exit (absent → NoExit); b's N is trapped.
+        var table = new Dictionary<(RoomKey, Direction), HopOutcome>
+        {
+            [(b, Direction.N)] = HopOutcome.TrappedExit(),
+        };
+
+        FootprintMatcher m = new(
+            probeHop: ProbeFrom(table),
+            matchesObservation: (_, _) => true);
+        m.Reset(new[] { a, b });
+
+        m.StepBlind(Direction.N);
+
+        Assert.Empty(m.Candidates);
+        Assert.True(m.IsExhausted);
+    }
+
+    /// <summary>
+    /// Two candidates that dead-reckon to the same room collapse to one —
+    /// blind movement alone can converge when paths merge.
+    /// </summary>
+    [Fact]
+    public void StepBlind_converges_when_paths_merge()
+    {
+        RoomKey a = K(1, 1), b = K(1, 2);
+        RoomKey shared = K(2, 9);
+
+        var table = new Dictionary<(RoomKey, Direction), HopOutcome>
+        {
+            [(a, Direction.N)] = HopOutcome.Reached(shared),
+            [(b, Direction.N)] = HopOutcome.Reached(shared),
+        };
+
+        FootprintMatcher m = new(
+            probeHop: ProbeFrom(table),
+            matchesObservation: (_, _) => true);
+        m.Reset(new[] { a, b });
+
+        m.StepBlind(Direction.N);
+
+        Assert.True(m.IsConverged);
+        Assert.Single(m.Candidates, shared);
+    }
 }

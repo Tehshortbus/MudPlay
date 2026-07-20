@@ -131,6 +131,79 @@ public sealed class FootprintMatcher
         _log?.Log(LogSeverity.Debug, LogSource,
             $"Tier2.step move={move} obs='{observation.Name}' depth={Depth}: {prevCount}→{_candidates.Count}");
     }
+
+    // Spatial narrowing from a live look-sweep, WITHOUT moving the player.
+    // peeked maps each direction we looked (`look <dir>`) to the neighbour
+    // room's rendered observation. A candidate survives only if, for every
+    // peeked direction, its graph-neighbour in that direction exists and
+    // matches what the look revealed (name + exit-subset via
+    // _matchesObservation). This is what breaks name-ambiguous twins that
+    // Step alone can't: two identical "Darkwood Forest" rooms differ in the
+    // exits of the rooms AROUND them, and the sweep reads exactly that.
+    //
+    // Because the player never moved, Depth is untouched (this isn't a hop).
+    // A trapped neighbour is skipped, not used as a filter — we peeked
+    // through a `look`, which doesn't spring the trap, but we also refuse to
+    // assert the candidate is wrong on an arm we can't verify by walking, so
+    // a trap simply contributes no constraint.
+    public void FilterByNeighbours(IReadOnlyDictionary<Direction, RoomObservation> peeked)
+    {
+        ArgumentNullException.ThrowIfNull(peeked);
+        int prevCount = _candidates.Count;
+        if (prevCount == 0 || peeked.Count == 0) return;
+
+        var survivors = new List<RoomKey>(prevCount);
+        foreach (RoomKey candidate in _candidates)
+        {
+            bool consistent = true;
+            foreach ((Direction dir, RoomObservation obs) in peeked)
+            {
+                HopOutcome hop = _probeHop(candidate, dir);
+                if (hop.Kind == HopOutcomeKind.TrappedExit) continue;   // unverifiable arm — no constraint
+                if (hop.Kind == HopOutcomeKind.NoExit
+                    || !_matchesObservation(hop.Target, obs))
+                {
+                    consistent = false;
+                    break;
+                }
+            }
+            if (consistent) survivors.Add(candidate);
+        }
+
+        _candidates.Clear();
+        foreach (RoomKey k in survivors) _candidates.Add(k);
+        IsExhausted = _candidates.Count == 0;
+
+        _log?.Log(LogSeverity.Debug, LogSource,
+            $"Tier2.look-filter dirs={peeked.Count} depth={Depth}: {prevCount}→{_candidates.Count}");
+    }
+
+    // Blind temporal step for a dark / unseeable room: the only signal is
+    // that a move command succeeded (no bonk), so hop every candidate one
+    // hop in move and keep its target unconditionally — there's no room
+    // display to match against. A candidate is dropped only when the move is
+    // structurally impossible from it (no exit, or trap-gated). Advances
+    // Depth like Step, since the player did move.
+    public void StepBlind(Direction move)
+    {
+        int prevCount = _candidates.Count;
+        if (prevCount == 0) return;
+
+        Depth++;
+        var survivors = new List<RoomKey>(prevCount);
+        foreach (RoomKey candidate in _candidates)
+        {
+            HopOutcome hop = _probeHop(candidate, move);
+            if (hop.Kind == HopOutcomeKind.Reached) survivors.Add(hop.Target);
+        }
+
+        _candidates.Clear();
+        foreach (RoomKey k in survivors) _candidates.Add(k);
+        IsExhausted = _candidates.Count == 0;
+
+        _log?.Log(LogSeverity.Debug, LogSource,
+            $"Tier2.blind-step move={move} depth={Depth}: {prevCount}→{_candidates.Count}");
+    }
 }
 
 // Outcome of one candidate's hop in a given direction. Distinguishes "no

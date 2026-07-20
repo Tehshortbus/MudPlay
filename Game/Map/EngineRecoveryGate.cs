@@ -49,7 +49,33 @@ public sealed class EngineRecoveryGate
     private RoomKey? _anchor;
     private readonly List<Direction> _executedSinceAnchor = new();
     private readonly FootprintMatcher _tier3;
-    private bool _tier3Backtracking;
+
+    // Tier-3 orchestration is a per-room phase machine. Idle when not
+    // recovering. AwaitingLanding: a reverse move is in flight; the next lit
+    // render (via OnRoomObserved) or dark-advance (via the tracker) is its
+    // landing. WaitingCombatClear: a hostile is in the recovery room — hold
+    // until it clears (lit) / until the next combat tick (dark). Sweeping:
+    // peeking the landing room's exits to fingerprint it.
+    private enum Tier3Phase { Idle, AwaitingLanding, WaitingCombatClear, Sweeping }
+    private Tier3Phase _tier3Phase = Tier3Phase.Idle;
+    private bool Tier3Active => _tier3Phase != Tier3Phase.Idle;
+
+    // Reverse direction of the most recent backtrack move — the temporal
+    // constraint fed to FootprintMatcher.Step / StepBlind on its landing.
+    private Direction _lastBacktrackReverse;
+
+    // What to run once the room clears (WaitingCombatClear resume).
+    private Action? _combatClearResume;
+
+    // Move-free look-sweep for spatial fingerprinting. Created when the wire
+    // sender binds (per-session, on the UI thread). Null in headless tests /
+    // before connect → recovery falls back to the temporal-only footprint.
+    private RecoveryLookSweep? _sweep;
+
+    // Combat-clear gate: true while a hostile the combat engine will
+    // auto-engage is in the room. Null → no combat gating (tests / no combat
+    // tracker) → recovery never waits.
+    private Func<bool>? _hostilesPresent;
 
     // Set while we've paused the engine waiting on an authoritative `rm`
     // position reply (Paradigm only). NoteAuthoritativePosition clears it on a
@@ -103,6 +129,56 @@ public sealed class EngineRecoveryGate
             depthCeiling: Tier3DepthCeiling);
     }
 
+    // ----- external feeds (bound per-session by the main-window VM) ---
+
+    // Bind the wire sender used by the tier-3 look-sweep. Creates the sweep on
+    // first bind (per-session, on the UI thread where its timer is valid).
+    // Mirrors every other engine's SetWireSender.
+    public void SetWireSender(Action<byte[]> sender)
+    {
+        ArgumentNullException.ThrowIfNull(sender);
+        _sweep ??= new RecoveryLookSweep(_log);
+        _sweep.SetWireSender(sender);
+    }
+
+    // Fed every parsed room display (RoomDisplayParser.RoomParsed, which fires
+    // BEFORE the tracker's peek-suppression). Routed by tier-3 phase: a landing
+    // render advances the footprint; a render during a sweep is a peeked
+    // neighbour handed to the sweep.
+    public void OnRoomObserved(RoomObservation obs)
+    {
+        switch (_tier3Phase)
+        {
+            case Tier3Phase.AwaitingLanding:
+                HandleLitLanding(obs);
+                break;
+            case Tier3Phase.Sweeping:
+                _sweep?.OnRoomObserved(obs);
+                break;
+        }
+    }
+
+    // Supply the combat-clear predicate: true while a hostile the combat engine
+    // will auto-engage is present. Recovery holds its look-sweep / next reverse
+    // move until it clears. Left unset leaves recovery ungated (tests).
+    public void SetCombatGate(Func<bool> hostilesPresent)
+    {
+        ArgumentNullException.ThrowIfNull(hostilesPresent);
+        _hostilesPresent = hostilesPresent;
+    }
+
+    // Wired to TickEngine.CombatTickElapsed. Drives the combat-clear wait: once
+    // the recovery room is clear of hostiles, resume the held sweep / step.
+    public void OnCombatTick()
+    {
+        if (_tier3Phase != Tier3Phase.WaitingCombatClear) return;
+        if (_hostilesPresent?.Invoke() == true) return;   // still fighting — keep holding
+        ResumeAfterCombatClear();
+    }
+
+    // Test seam: inject a timer-free look-sweep so the sweep path runs headless.
+    internal void SetLookSweepForTests(RecoveryLookSweep sweep) => _sweep = sweep;
+
     // ----- attach / detach -------------------------------------------
 
     // Bind an engine to the gate. Seeds Anchor from the tracker's current
@@ -122,7 +198,7 @@ public sealed class EngineRecoveryGate
         _engine = engine;
         _executedSinceAnchor.Clear();
         _tier3.Clear();
-        _tier3Backtracking = false;
+        ResetTier3Orchestration();
         _awaitingAuthoritative = false;
         CurrentTier = TierLevel.Tier1;
 
@@ -142,7 +218,7 @@ public sealed class EngineRecoveryGate
         _anchor = null;
         _executedSinceAnchor.Clear();
         _tier3.Clear();
-        _tier3Backtracking = false;
+        ResetTier3Orchestration();
         _awaitingAuthoritative = false;
         SetTier(TierLevel.Tier1, "detach");
     }
@@ -175,6 +251,20 @@ public sealed class EngineRecoveryGate
     private void OnTrackerStateChanged(RoomTransition t)
     {
         if (_engine is null) return;
+
+        // Dark backtrack landing: a dark room never renders, so OnRoomObserved
+        // never fires — the tracker's dark-advance is our only "the move
+        // executed" signal. Dead-reckon the footprint by the reverse move
+        // alone. Non-circular: we use the FACT the move landed, not the
+        // tracker's predicted identity (which came from the same graph).
+        if (_tier3Phase == Tier3Phase.AwaitingLanding
+            && _tracker.IsInDarkRoom
+            && t.NewRoom is not null)
+        {
+            HandleDarkLanding();
+            return;
+        }
+
         if (t.NewConfidence != RoomConfidence.Confirmed) return;
         if (t.NewRoom is not { } room) return;
 
@@ -190,9 +280,11 @@ public sealed class EngineRecoveryGate
                 $"Tier1.anchor-refresh → {room.Key} ({room.Name})"
                 + (prevAnchor is { } pa && !pa.Equals(room.Key) ? $" (was {pa})" : string.Empty));
 
-            if (_tier3Backtracking)
+            if (Tier3Active)
             {
-                // Tier 3 backtrack just hit a 1-of-1 — recovery success.
+                // Tier 3 backtrack just hit a clean 1-of-1 — authoritative
+                // recovery, independent of the footprint. Cancel any in-flight
+                // sweep and finish here.
                 FinishTier3Success(room.Key);
                 return;
             }
@@ -209,12 +301,10 @@ public sealed class EngineRecoveryGate
         _log?.Log(LogSeverity.Debug, LogSource,
             $"non-strict observation '{room.Name}' → {candidates.Count} graph candidate(s); anchor unchanged ({(_anchor?.ToString() ?? "(none)")})");
 
-        if (_tier3Backtracking)
-        {
-            // Tier 3 backtrack step landed without a 1-of-1. Feed the
-            // matcher and check for convergence.
-            StepTier3FootprintFromTransition();
-        }
+        // A tier-3 lit landing is fingerprinted through OnRoomObserved (the raw
+        // pre-suppression render), not here — the tracker's matched graph room
+        // hides live-hidden exits behind a subset match. This non-strict branch
+        // stays a pure diagnostic during recovery.
     }
 
     private static IReadOnlySet<Direction> ExitMaskToSet(uint mask)
@@ -295,7 +385,7 @@ public sealed class EngineRecoveryGate
         _anchor = key;
         _executedSinceAnchor.Clear();
         _tier3.Clear();
-        _tier3Backtracking = false;
+        ResetTier3Orchestration();
         SetTier(TierLevel.Tier1, "authoritative rm resync");
         _log?.Log(LogSeverity.Info, LogSource, $"authoritative resync → anchored {key}");
         Recovered?.Invoke(key);
@@ -356,6 +446,20 @@ public sealed class EngineRecoveryGate
         if (CurrentTier == TierLevel.Tier3) return;
         if (_engine is null) return;
 
+        // Before committing to the heuristic reverse-walk (which ends in the
+        // "Lost" dialog when it can't converge), defer to the RoomTracker if
+        // it's still Confirmed at a graph-known room. Confirmed means the
+        // current room is trusted as a source — that's the contract of
+        // RoomConfidence.Confirmed — so the tracker already knows where we
+        // are; the backtrack exists to recover from Suspect / Lost / ambiguity,
+        // not to second-guess a room the tracker is sure of. In a
+        // name-ambiguous area (e.g. Darkwood Forest, 66 same-named rooms) the
+        // name+exits matcher can even converge to the WRONG room and reroute
+        // from there, which is exactly the failure this guards against. Treat
+        // the confirmed key as authoritative and let the engine reroute from
+        // it — the stock-realm analogue of the Paradigm `rm` resync.
+        if (TryTrustConfirmedTracker(reason)) return;
+
         _log?.Log(LogSeverity.Warn, LogSource,
             $"Tier3.start: {reason} (engine={_engine.Name} anchor={(_anchor?.ToString() ?? "(none)")} executed={_executedSinceAnchor.Count} steps)");
         SetTier(TierLevel.Tier3, reason);
@@ -382,85 +486,209 @@ public sealed class EngineRecoveryGate
         if (seeds.Count == 0) seeds = new[] { here.Key };   // best-effort
 
         _tier3.Reset(seeds);
-        _tier3Backtracking = true;
         _log?.Log(LogSeverity.Info, LogSource,
             $"Tier3.seed: {seeds.Count} candidates from observation '{here.Name}'");
 
-        // Don't pop the first backtrack step yet — engine has just
-        // paused; we'll send the reverse move on the next gate tick.
-        SendNextBacktrackMove();
+        // Fingerprint where we stand BEFORE reversing a single step — a
+        // look-sweep in place may already break the twin. If it doesn't (or we
+        // can't look, e.g. dark), fall through to the reverse-walk.
+        RelocalizeInPlace(here);
     }
 
-    private void SendNextBacktrackMove()
+    // Stock-realm authoritative re-anchor: when the RoomTracker is Confirmed at
+    // a room that exists in the active graph, that room is trusted (Confirmed's
+    // own contract), so treat its key as authoritative instead of running the
+    // tier-3 backtrack. Mirrors NoteAuthoritativePosition's re-anchor + resume,
+    // minus the Paradigm rm-resync bookkeeping. The engine reroutes from the
+    // confirmed key (its EnterRecovery already trusts a Confirmed tracker); a
+    // reroute that stays unroutable re-enters here at most until the engine's
+    // own bounded recovery-attempt cap fails it cleanly, so this can't loop.
+    // Returns true when it short-circuited the escalation.
+    private bool TryTrustConfirmedTracker(string reason)
+    {
+        if (_engine is null) return false;
+        if (_tracker.State.Confidence != RoomConfidence.Confirmed) return false;
+        if (_tracker.State.CurrentRoom is not { } room) return false;
+        if (_graph.GetRoom(room.Key) is null) return false;
+
+        _awaitingAuthoritative = false;
+        _anchor = room.Key;
+        _executedSinceAnchor.Clear();
+        _tier3.Clear();
+        ResetTier3Orchestration();
+        if (CurrentTier != TierLevel.Tier1) SetTier(TierLevel.Tier1, "confirmed-tracker re-anchor");
+        _log?.Log(LogSeverity.Info, LogSource,
+            $"trust-confirmed: re-anchored to {room.Key} ({room.Name}) instead of tier-3 backtrack — {reason}");
+        Recovered?.Invoke(room.Key);
+        _engine.ResumeAfterRecovery(room.Key);
+        return true;
+    }
+
+    // ----- tier-3 footprint orchestration ----------------------------
+
+    // Fingerprint the room we escalated from, before any reverse move. Lit: a
+    // look-sweep here (combat-gated) may already break the twin. Dark: nothing
+    // to look at, so go straight to the reverse-walk. The initial room carries
+    // no move, so no temporal step — only the spatial sweep narrows it.
+    private void RelocalizeInPlace(Room here)
+    {
+        if (_tracker.IsInDarkRoom)
+        {
+            AdvanceReverseWalk();
+            return;
+        }
+        BeginSweepOrAdvance(new HashSet<Direction>(here.Exits.Keys));
+    }
+
+    // Lit backtrack landing: temporal-narrow by the reverse move we just made,
+    // then (combat-gated) spatially-narrow with a look-sweep of this room.
+    private void HandleLitLanding(RoomObservation obs)
+    {
+        if (_engine is null) return;
+
+        _tier3.Step(_lastBacktrackReverse, obs);
+        if (_tier3.IsConverged) { FinishTier3Success(_tier3.Candidates.Single()); return; }
+        if (_tier3.IsExhausted) { FailTier3("footprint exhausted after reverse step"); return; }
+
+        BeginSweepOrAdvance(new HashSet<Direction>(obs.Exits));
+    }
+
+    // Dark backtrack landing: the room never rendered, so the only constraint
+    // is that the move executed. Per the dark protocol, wait for the next
+    // combat tick (clearing any ambush that swings) before dead-reckoning.
+    private void HandleDarkLanding()
+    {
+        if (_engine is null) return;
+
+        // No combat gating wired (headless) → step immediately; otherwise hold
+        // until a combat tick with the room clear, then dead-reckon.
+        if (_hostilesPresent is null) { DoDarkStep(); return; }
+
+        _tier3Phase = Tier3Phase.WaitingCombatClear;
+        _combatClearResume = DoDarkStep;
+        _log?.Log(LogSeverity.Info, LogSource,
+            "Tier3.dark: holding for combat tick before dead-reckoning the reverse step");
+    }
+
+    private void DoDarkStep()
+    {
+        _tier3.StepBlind(_lastBacktrackReverse);
+        _log?.Log(LogSeverity.Info, LogSource,
+            $"Tier3.dark-step reverse={_lastBacktrackReverse} → {_tier3.Candidates.Count} candidate(s)");
+        EvaluateFootprint();
+    }
+
+    // Combat-gate a look-sweep (lit): clear the room before peeking. Skips
+    // straight to the sweep when nothing hostile is present / no gate is wired.
+    private void BeginSweepOrAdvance(IReadOnlySet<Direction> ownExits)
+    {
+        if (_hostilesPresent?.Invoke() == true)
+        {
+            _tier3Phase = Tier3Phase.WaitingCombatClear;
+            _combatClearResume = () => StartSweep(ownExits);
+            _log?.Log(LogSeverity.Info, LogSource,
+                "Tier3: holding look-sweep until the room is clear of hostiles");
+            return;
+        }
+        StartSweep(ownExits);
+    }
+
+    private void ResumeAfterCombatClear()
+    {
+        Action? resume = _combatClearResume;
+        _combatClearResume = null;
+        _log?.Log(LogSeverity.Info, LogSource, "Tier3: room clear — resuming recovery");
+        resume?.Invoke();
+    }
+
+    // Peek every exit of the landing room and spatially narrow the footprint by
+    // what the neighbours reveal. No sweep available (headless / no wire / no
+    // exits) → decide on the temporal footprint alone.
+    private void StartSweep(IReadOnlySet<Direction> ownExits)
+    {
+        if (_sweep is null || !_sweep.CanSweep)
+        {
+            EvaluateFootprint();
+            return;
+        }
+
+        _tier3Phase = Tier3Phase.Sweeping;
+        if (!_sweep.Begin(ownExits, OnSweepComplete))
+            EvaluateFootprint();
+    }
+
+    private void OnSweepComplete(IReadOnlyDictionary<Direction, RoomObservation> neighbours)
+    {
+        if (!Tier3Active) return;
+        _tier3.FilterByNeighbours(neighbours);
+        _log?.Log(LogSeverity.Info, LogSource,
+            $"Tier3.look-sweep: {neighbours.Count} neighbour(s) → {_tier3.Candidates.Count} candidate(s)");
+        EvaluateFootprint();
+    }
+
+    // Converged → re-confirm; exhausted → fail; otherwise take one more reverse
+    // step and keep growing the footprint.
+    private void EvaluateFootprint()
+    {
+        if (_tier3.IsConverged) { FinishTier3Success(_tier3.Candidates.Single()); return; }
+        if (_tier3.IsExhausted) { FailTier3("footprint exhausted — live world disagrees with the graph"); return; }
+        AdvanceReverseWalk();
+    }
+
+    // Pop the most-recent executed step, reverse it, and send it. The landing
+    // (lit via OnRoomObserved, dark via the tracker) continues the footprint.
+    private void AdvanceReverseWalk()
     {
         if (_engine is null) return;
         if (_executedSinceAnchor.Count == 0)
         {
-            // We've fully reversed our executed history. If we're at
-            // the anchor (matcher converged to it earlier) we'd have
-            // exited already. Reaching here means the anchor itself
-            // didn't reconcile — terminal failure.
+            // Fully reversed the executed history without converging. If the
+            // anchor itself had reconciled we'd have exited already, so this is
+            // a terminal failure.
             FailTier3("backtrack exhausted to anchor without convergence");
             return;
         }
 
-        // Pop the most-recent executed step and reverse it.
         Direction lastSent = _executedSinceAnchor[^1];
         _executedSinceAnchor.RemoveAt(_executedSinceAnchor.Count - 1);
+        _lastBacktrackReverse = Reverse(lastSent);
+        _tier3Phase = Tier3Phase.AwaitingLanding;
 
-        Direction reverse = Reverse(lastSent);
         _log?.Log(LogSeverity.Info, LogSource,
-            $"Tier3.backtrack: reverse({lastSent})={reverse} (history remaining={_executedSinceAnchor.Count})");
-
-        _engine.SendBacktrackMove(reverse);
+            $"Tier3.backtrack: reverse({lastSent})={_lastBacktrackReverse} (history remaining={_executedSinceAnchor.Count})");
+        _engine.SendBacktrackMove(_lastBacktrackReverse);
     }
 
-    private void StepTier3FootprintFromTransition()
+    private void ResetTier3Orchestration()
     {
-        // The most-recent backtrack send was the LAST reverse direction we
-        // popped — recover it from the pending queue heuristically: it's
-        // the direction we just told the engine to send. Since we don't
-        // record that explicitly, recompute from "expected reverse of
-        // the head we just popped." Easier: tell the matcher to skip
-        // this step (since we don't reliably know what direction the
-        // tracker just observed via) and re-seed instead.
-        //
-        // In practice, the matcher's Step(direction, observation) is
-        // the right call when we know the direction. The cleanest path
-        // is: just re-narrow by re-seeding candidates from each new
-        // observation's FindCandidates. If a single candidate remains,
-        // we have convergence even without the per-step shape match.
-
-        if (_tracker.State.CurrentRoom is not { } here) return;
-
-        IReadOnlySet<Direction> obsExits = ExitMaskToSet(here.ExitMask);
-        IReadOnlyList<RoomKey> reseeded = _graph.FindCandidates(here.Name, obsExits);
-
-        if (reseeded.Count == 1)
-        {
-            FinishTier3Success(reseeded[0]);
-            return;
-        }
-
-        if (reseeded.Count == 0)
-        {
-            FailTier3($"observation '{here.Name}' has no graph candidates");
-            return;
-        }
-
-        SendNextBacktrackMove();
+        _tier3Phase = Tier3Phase.Idle;
+        _combatClearResume = null;
+        _sweep?.Cancel();
     }
 
     private void FinishTier3Success(RoomKey recovered)
     {
         if (_engine is null) return;
+        if (!Tier3Active) return;   // already finished (re-entrant tracker 1-of-1)
         _log?.Log(LogSeverity.Info, LogSource,
             $"Tier3.recovered → {recovered}");
         _anchor = recovered;
         _executedSinceAnchor.Clear();
         _tier3.Clear();
-        _tier3Backtracking = false;
+        ResetTier3Orchestration();
         SetTier(TierLevel.Tier1, "tier-3 recovered");
+
+        // Re-confirm the tracker at the room the footprint resolved — unless it
+        // already agrees (the tracker-1-of-1 fast path lands here with the
+        // tracker Confirmed at `recovered`, and re-locating would needlessly
+        // re-enter StateChanged). SetLocated promotes to Confirmed so the next
+        // observation reconciles against the right room.
+        if (_tracker.State.Confidence != RoomConfidence.Confirmed
+            || _tracker.State.CurrentRoom?.Key != recovered)
+        {
+            _tracker.SetLocated(recovered);
+        }
+
         Recovered?.Invoke(recovered);
         _engine.ResumeAfterRecovery(recovered);
     }
@@ -470,7 +698,7 @@ public sealed class EngineRecoveryGate
         if (_engine is null) return;
         _log?.Log(LogSeverity.Warn, LogSource, $"Tier3.failed: {detail}");
         _tier3.Clear();
-        _tier3Backtracking = false;
+        ResetTier3Orchestration();
 
         // Capture the engine name BEFORE aborting. AbortFromRecoveryFailure
         // re-enters the gate synchronously — both engines reset themselves,

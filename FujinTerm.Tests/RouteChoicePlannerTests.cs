@@ -174,6 +174,25 @@ public sealed class RouteChoicePlannerTests
         [ { "Number": 42, "NegateSpell-0": 700 } ]
         """;
 
+    // The hazard room 1/5 is the ONLY way from 1/1 to 1/9 — no gate-free detour.
+    // Direct (and only): 1/1 ──E── 1/5 (Spell 700) ──E── 1/9.
+    private const string HazardOnlyRoomsJson = """
+        [
+          { "Map Number": 1, "Room Number": 1, "Name": "Start", "Spell": 0,
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "0", "E": "1/5", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 5, "Name": "Hazard", "Spell": 700,
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "0", "E": "1/9", "W": "1/1",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 9, "Name": "Vault", "Spell": 0,
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "0", "E": "0", "W": "1/5",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+        ]
+        """;
+
     private static void WithGraph(
         string roomsJson,
         Action<BfsMapper, RoomGraphManager, MovementFilter> body,
@@ -234,6 +253,16 @@ public sealed class RouteChoicePlannerTests
             RouteRequirement req = Assert.Single(choice.Requirements);
             Assert.Equal(RouteRequirementKind.CarryItem, req.Kind);
             Assert.Equal(new[] { 5 }, req.ItemIds);
+
+            // The picker previews each route as a RoomKey line (source first,
+            // then every hop's target) — free detours 1/1→1/2→1/3→1/9, the
+            // direct hop is 1/1→1/9.
+            Assert.Equal(
+                new[] { new RoomKey(1, 1), new RoomKey(1, 2), new RoomKey(1, 3), new RoomKey(1, 9) },
+                choice.FreePath);
+            Assert.Equal(
+                new[] { new RoomKey(1, 1), new RoomKey(1, 9) },
+                choice.GatedPath);
         });
     }
 
@@ -254,7 +283,7 @@ public sealed class RouteChoicePlannerTests
     }
 
     [Fact]
-    public void NoChoice_WhenNoFreeRoute()
+    public void OffersSoleItemRoute_WhenNoFreeAlternative()
     {
         WithGraph(ItemOnlyJson, (bfs, graph, filter) =>
         {
@@ -264,9 +293,14 @@ public sealed class RouteChoicePlannerTests
             RouteChoice? choice = RouteChoicePlanner.Evaluate(
                 bfs, filter, graph, new RoomKey(1, 1), new RoomKey(1, 9));
 
-            // The gate is the only way through — leave it to the plain walk,
-            // which surfaces the gated-only failure.
-            Assert.Null(choice);
+            // The item gate is the only way through — surface it (HasFreeRoute
+            // false) so the caller's flag logic decides whether to arm the
+            // acquisition pipeline or fail in place naming the item.
+            Assert.NotNull(choice);
+            Assert.False(choice!.HasFreeRoute);
+            Assert.Empty(choice.FreePath);
+            RouteRequirement req = Assert.Single(choice.Requirements);
+            Assert.Equal(RouteRequirementKind.CarryItem, req.Kind);
         });
     }
 
@@ -355,6 +389,39 @@ public sealed class RouteChoicePlannerTests
             RouteRequirement req = Assert.Single(choice.Requirements);
             Assert.Equal(RouteRequirementKind.HazardProtection, req.Kind);
             Assert.Equal(new[] { 42 }, req.ItemIds);
+        },
+        spellsJson: HazardSpellsJson,
+        itemsJson: HazardItemsJson,
+        wireHazards: (index, filter) =>
+        {
+            filter.Hazards = index;
+            filter.RoomEntrySpellProbe = key => key == new RoomKey(1, 5) ? 700 : 0;
+            filter.InventoryReadyProbe = () => true;
+            filter.ItemCarriedProbe = _ => false;   // no counter
+        });
+    }
+
+    // No gate-free route AND the only path crosses a survivable hazard → offer
+    // the direct route (HasFreeRoute false) so the walk can carry / buy / `use`
+    // the counter instead of aborting with "a room hazard you can't survive".
+    [Fact]
+    public void OffersHazardOnlyRoute_WhenNoFreeAlternative()
+    {
+        WithGraph(HazardOnlyRoomsJson, (bfs, graph, filter) =>
+        {
+            RouteChoice? choice = RouteChoicePlanner.Evaluate(
+                bfs, filter, graph, new RoomKey(1, 1), new RoomKey(1, 9));
+
+            Assert.NotNull(choice);
+            Assert.False(choice!.HasFreeRoute);        // every path crosses the hazard
+            Assert.Empty(choice.FreePath);
+            Assert.Equal(2, choice.GatedStepCount);
+            RouteRequirement req = Assert.Single(choice.Requirements);
+            Assert.Equal(RouteRequirementKind.HazardProtection, req.Kind);
+            Assert.Equal(new[] { 42 }, req.ItemIds);
+            Assert.Equal(
+                new[] { new RoomKey(1, 1), new RoomKey(1, 5), new RoomKey(1, 9) },
+                choice.GatedPath);
         },
         spellsJson: HazardSpellsJson,
         itemsJson: HazardItemsJson,

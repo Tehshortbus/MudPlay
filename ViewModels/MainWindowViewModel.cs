@@ -662,6 +662,12 @@ public partial class MainWindowViewModel : ObservableObject
         // chat / combat / triggers / etc. all share one dispatch path.
         Lines.LineEmitted += line => AppServices.Current.Router.Dispatch(line);
 
+        // Reactive hazard-buff re-raise: a lapse-damage prompt (the desert's
+        // "you need water, soon!") mid-walk fires one `use` to re-raise, and a
+        // second prompt with no swig confirmation halts the walk (out of charges).
+        Lines.LineEmitted += line =>
+            AppServices.Current.AutoHazardCounterProvisioner.OnServerLine(line.Text);
+
         // who-list observer: subscribes to LineExtractor on its own
         // (the table is multi-line — needs state, doesn't fit
         // MessageRouter's stateless dispatch). Feeds every observed
@@ -690,6 +696,9 @@ public partial class MainWindowViewModel : ObservableObject
         // tracker consumes the observation, so a look-peek (which the tracker
         // drops) still reaches the solver.
         _roomDisplayParser.RoomParsed += AppServices.Current.MazeSolver.OnRoomObserved;
+        // Same pre-suppression feed drives the recovery gate's tier-3 look-sweep
+        // — it reads peeked neighbours the tracker would otherwise drop.
+        _roomDisplayParser.RoomParsed += AppServices.Current.Recovery.OnRoomObserved;
         _movementRefusalDetector = new Game.Map.MovementRefusalDetector(Lines,
             AppServices.Current.RoomTracker, AppServices.Current.Log);
         // Combat-gated-entry refusal: `break` → 3s → revert move so the driving
@@ -923,6 +932,9 @@ public partial class MainWindowViewModel : ObservableObject
         // Auto-light provisioning detour — the `buy <light>` at the shop rides
         // the same gate-wrapped pipeline.
         AppServices.Current.AutoLightShopRouter.SetWireSender(engineSend);
+        // Hazard-buff provisioning — the `use <waterskin>` that raises a
+        // checkspell hazard buff rides the same gate-wrapped pipeline.
+        AppServices.Current.AutoHazardCounterProvisioner.SetWireSender(engineSend);
         // Shop-source routing — the `buy <item>` at the detour shop
         // rides the same gate-wrapped pipeline.
         AppServices.Current.PathItemShopRouter.SetWireSender(engineSend);
@@ -1021,6 +1033,9 @@ public partial class MainWindowViewModel : ObservableObject
         // gate-wrapped pipeline. The RoomParsed feed that drives its relocalize
         // is subscribed below beside the RoomDisplayParser.
         AppServices.Current.MazeSolver.SetWireSender(engineSend);
+        // Recovery gate's tier-3 look-sweep rides the same gate-wrapped pipeline
+        // so its `look <dir>` peeks can't land mid-password-prompt.
+        AppServices.Current.Recovery.SetWireSender(engineSend);
         // SuicideHandler — bypasses the engine gate because it OWNS
         // the suicide flow (and needs its `suicide` + password sends
         // to land even while SuicidePasswordTracker has the gate

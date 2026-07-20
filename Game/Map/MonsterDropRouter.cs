@@ -16,9 +16,8 @@ public readonly record struct MonsterDropSpawn(
 // we're not carrying and no shop stocks it, find which monster drops it,
 // and — with the user's confirmation — reroute to the nearest room that
 // monster spawns in so they can hunt it, then resume to the original
-// destination. Backs the item record's "Auto-obtain for path → source from
-// drops" flag (ItemOverlay.SourceFromDropsForPath under the AutoObtainForPath
-// master opt-in).
+// destination. Backs the item record's "Auto-obtain for path" flag
+// (ItemOverlay.AutoObtainForPath).
 //
 // Division of labour with PathItemShopRouter. Both react to the same
 // NeedsRegistry.NeedPosted event and are mutually exclusive: the shop router
@@ -267,18 +266,26 @@ public sealed class MonsterDropRouter
     }
 
     // Pick the reachable spawn room minimising dist(cur, spawn). A single
-    // forward BFS (distancesFrom) covers every candidate; ties break on the
-    // higher drop chance, then room-key order — deterministic for tests.
+    // forward BFS (distancesFrom) covers every candidate; the ranking itself is
+    // the shared static below so the route picker can name the same lair.
     private bool TrySelectNearestSpawn(
         RoomKey cur, int itemId, out MonsterDropSpawn best, out int bestDistance)
+        => SelectNearestSpawn(_dropSpawnsForItem(itemId), _distancesFrom(cur), out best, out bestDistance);
+
+    // Nearest reachable spawn among candidates by the given distance map; ties
+    // break on the higher drop chance, then room-key order — deterministic for
+    // tests. Static + internal so AppServices can resolve the picker's "dropped
+    // by <monster>" tail to the exact spawn a reroute would target.
+    internal static bool SelectNearestSpawn(
+        IReadOnlyList<MonsterDropSpawn> candidates,
+        IReadOnlyDictionary<RoomKey, int> distances,
+        out MonsterDropSpawn best, out int bestDistance)
     {
         best = default;
         bestDistance = int.MaxValue;
 
-        IReadOnlyList<MonsterDropSpawn> candidates = _dropSpawnsForItem(itemId);
         if (candidates.Count == 0) return false;
 
-        IReadOnlyDictionary<RoomKey, int> distances = _distancesFrom(cur);
         bool found = false;
         foreach (MonsterDropSpawn c in candidates)
         {

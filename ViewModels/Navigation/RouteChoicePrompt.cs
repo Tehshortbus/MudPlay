@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Threading.Tasks;
 using FujinTerm.Game.Map;
 using FujinTerm.Services;
@@ -15,7 +16,15 @@ namespace FujinTerm.ViewModels.Navigation;
 // item-acquisition pipeline for anything missing); cancel walks nothing.
 public static class RouteChoicePrompt
 {
-    public static async Task WalkAsync(AppServices services, RoomKey destination)
+    // previewSink: optional map-preview channel. When the user selects a route in
+    // the picker (before committing), it's called with that route's RoomKey line
+    // so the caller can draw it; called with null when the picker closes (the
+    // committed walk then draws its own live path). Callers without a map (e.g.
+    // the navigation-manager list) pass none and the picker just works Go-only.
+    public static async Task WalkAsync(
+        AppServices services,
+        RoomKey destination,
+        Action<IReadOnlyList<RoomKey>?>? previewSink = null)
     {
         ArgumentNullException.ThrowIfNull(services);
 
@@ -38,6 +47,19 @@ public static class RouteChoicePrompt
             return;
         }
 
+        // Sole route (no gate-free alternative) whose gates are item/ticket, not a
+        // hazard: no picker — the item's AutoObtainForPath flag decides. Flagged
+        // arms the acquisition pipeline and crosses the gate; unflagged walks the
+        // plain route, whose BFS fails in place naming the missing item. Hazard
+        // sole routes fall through to the picker (carry / buy / use a counter).
+        if (!choice.HasFreeRoute
+            && choice.Requirements.Any(r => r.Kind != RouteRequirementKind.HazardProtection))
+        {
+            bool arm = services.ShouldAutoObtainSoleRoute(choice.Requirements);
+            CommitWalk(services, destination, gated: arm);
+            return;
+        }
+
         var vm = new RouteChoiceDialogViewModel(
             choice,
             DestinationLabel(services, destination),
@@ -46,9 +68,35 @@ public static class RouteChoicePrompt
             // (item flagged buy-if-needed + a reachable shop stocks it). Resolved
             // from this walk's source/destination so the "buy at X" tail matches
             // the actual detour.
-            itemId => services.PathItemShopName(itemId, source.Key, destination));
-        RouteChoiceResult? result = await services.Dialogs
-            .OpenWindowAsync<RouteChoiceDialogViewModel, RouteChoiceResult?>(vm);
+            itemId => services.PathItemShopName(itemId, source.Key, destination),
+            // No shop sells it but a flagged monster drops it: name the lair the
+            // run would reroute to hunt, so the picker previews the hunt option
+            // (which otherwise only surfaces as a prompt once the walk starts).
+            itemId => services.PathItemDropName(itemId, source.Key));
+
+        // Draw the selected route's line while the picker is open; clear it when
+        // the picker closes so a committed walk's live path isn't double-drawn and
+        // a cancel leaves no stale preview behind.
+        if (previewSink is not null)
+            vm.PreviewRequested += r => previewSink(r switch
+            {
+                RouteChoiceResult.Free => choice.FreePath,
+                // Both direct choices trace the same physical gated line.
+                RouteChoiceResult.Gated => choice.GatedPath,
+                RouteChoiceResult.GatedNoAcquire => choice.GatedPath,
+                _ => null,
+            });
+
+        RouteChoiceResult? result;
+        try
+        {
+            result = await services.Dialogs
+                .OpenWindowAsync<RouteChoiceDialogViewModel, RouteChoiceResult?>(vm);
+        }
+        finally
+        {
+            previewSink?.Invoke(null);
+        }
 
         switch (result)
         {
@@ -57,6 +105,11 @@ public static class RouteChoicePrompt
                 break;
             case RouteChoiceResult.Gated:
                 CommitWalk(services, destination, gated: true);
+                break;
+            case RouteChoiceResult.GatedNoAcquire:
+                // "Send it": walk the gated route but don't arm acquisition — the
+                // user asserts they'll clear the gates without provisioning.
+                CommitWalk(services, destination, gated: true, armAcquisition: false);
                 break;
             // null → cancelled: walk nothing (and leave any manual pause intact —
             // the user backed out, so nothing changed).
@@ -69,7 +122,8 @@ public static class RouteChoicePrompt
     // (AutoWalkManager.WalkToImmediate honours the coordinator's paused state), so
     // the destination changed but the walker stayed frozen. Engine waits (Combat /
     // rest / party) are left asserted and re-pause on their own if still relevant.
-    private static void CommitWalk(AppServices services, RoomKey destination, bool gated)
+    private static void CommitWalk(
+        AppServices services, RoomKey destination, bool gated, bool armAcquisition = true)
     {
         // Abandon a paused walk-in-progress BEFORE clearing the gate. Clearing
         // UserGate synchronously resumes a Paused walker (OnCoordinatorPauseChanged
@@ -81,7 +135,8 @@ public static class RouteChoicePrompt
             services.Walker.Stop("superseded by new user walk-to");
         services.MovementCoordinator.ClearGate(
             MovementCoordinator.UserGate, nameof(RouteChoicePrompt));
-        services.Walker.WalkTo(destination, planThroughAcquirableGates: gated);
+        services.Walker.WalkTo(
+            destination, planThroughAcquirableGates: gated, armItemAcquisition: armAcquisition);
     }
 
     private static string DestinationLabel(AppServices services, RoomKey destination) =>

@@ -942,6 +942,16 @@ public sealed class AppServices
     // toggle; wire-sender bound by MainWindowViewModel after connect.
     public Game.Light.AutoLightShopRouter AutoLightShopRouter { get; private set; } = null!;
 
+    // Keeps a checkspell hazard buff up while the walker crosses a hazard room.
+    // Bound to the same approach-room hook as the light provisioner: the instant a
+    // step commits toward a checkspell-hazard room whose buff source we carry
+    // (the desert waterskin), it `use`s the item so the buff is raised before we
+    // arrive, re-`use`ing on the buff's own duration-timer so a long traverse
+    // spends the minimum charges. No master toggle — surviving a hazard room the
+    // route already commits to walking isn't opt-in. Wire-sender bound by
+    // MainWindowViewModel after connect.
+    public Game.Map.AutoHazardCounterProvisioner AutoHazardCounterProvisioner { get; private set; } = null!;
+
     // Death observation aggregator. Surfaces the loaded
     // profile's Models.Profile.CharacterProfile.DeathHistory
     // as the Workshop DEATH section's deathpile grid, owns the per-character
@@ -1075,8 +1085,8 @@ public sealed class AppServices
     // Active fulfiller for NeedKind.PathItem needs no shop can
     // satisfy: on a one-shot walk-to that needs an uncarried item no shop
     // sells, prompts to reroute to the nearest room a monster that drops it
-    // spawns in, then resumes once it lands. Gated by Settings → Other
-    // "hunt item if needed".
+    // spawns in, then resumes once it lands. Gated per item by the item
+    // record's AutoObtainForPath flag, set in the item-edit dialog.
     public Game.Map.MonsterDropRouter MonsterDropRouter { get; private set; } = null!;
 
     // On-demand party-inventory probe — broadcasts @have and aggregates
@@ -2140,6 +2150,13 @@ public sealed class AppServices
         // Shared engine-level recovery gate. Walker / LoopRunner /
         // AutoLair attach themselves on Start (next commits).
         Recovery = new Game.Map.EngineRecoveryGate(RoomGraph, RoomTracker, Log);
+        // Tier-3 look-sweep combat gate: clear the recovery room before peeking
+        // (lit) / wait a combat tick for an ambush to reveal (dark). Reads the
+        // predicate live so an auto-attack toggle is honoured; the tick drives
+        // the "room clear yet?" re-check. CombatTracker is assigned later in
+        // init but only read at recovery time, so the lambda is safe here.
+        Recovery.SetCombatGate(() => CombatTracker.HasEngageableHostiles);
+        Tick.CombatTickElapsed += Recovery.OnCombatTick;
 
         // Paradigm-only re-sync: on a suspected drift the gate asks this
         // resolver to fire `rm`; its Location: reply hard-locates the tracker
@@ -3404,7 +3421,8 @@ public sealed class AppServices
             selfCount: CountItemCarried,
             query: (id, name) => PartyInventory.QueryAsync(id, name),
             itemName: ItemNames.GetName,
-            isEnabled: id => ShouldAutoObtainForPath(id, o => o.ProvisionPartyForPath),
+            isEnabled: IsAutoObtainForPath,
+            perPersonQuantity: PathPerPersonQuantity,
             searchEnabled: () =>
                 Resolver.Resolve<Models.Profile.OtherSettings>("Other").SearchRoomsIfItemNeeded,
             inParty: () => PartyState.IsInParty,
@@ -3583,10 +3601,39 @@ public sealed class AppServices
             settings:    () => ReadSection<Models.Profile.AutoLightSettings>(Profile.Current, "AutoLight"),
             log:         Log);
         Walker.SetRouteAnnouncer(AutoLightProvisioner.OnRoutePlanned);
-        // Predictive one-room-lookahead equip: the walker hands the room it's about
-        // to enter to the provisioner, which `use`s a carried light ahead of the
-        // move when that room reads dark (LoopRunner gets the same hook below).
-        Walker.SetApproachLightHook(AutoLightProvisioner.OnApproachingRoom);
+
+        // Keeps a checkspell hazard buff up as the walker crosses a hazard room.
+        // Shares the approach-room hook below with the light provisioner: on each
+        // committed step it resolves the room's hazard and, for a carried buff
+        // source (the desert waterskin), `use`s it so the buff is up on arrival —
+        // re-`use`ing only when the buff's own duration would have lapsed so a fast
+        // traverse spends one charge. No opt-in gate: a route the user chose to run
+        // through a hazard room must survive it.
+        AutoHazardCounterProvisioner = new Game.Map.AutoHazardCounterProvisioner(
+            resolveRoom:    RoomGraph.GetRoom,
+            hazardForSpell: spell => RoomHazards.HazardForSpell(spell),
+            carriedCount:   CountItemCarried,
+            itemName:       ItemNames.GetName,
+            // The lapse-prompt / swig-confirmation line recognisers for the
+            // reactive re-raise. walkActive / haltWalk defer to MovementControl
+            // (assigned below, only ever invoked mid-walk) so a lapse prompt with
+            // no swig — out of charges — backs the route out instead of marching
+            // deeper into a hazard it can no longer counter.
+            messageMatcherForSpell: BuildSpellLinePredicate,
+            walkActive:     () => MovementControl.IsActive,
+            haltWalk:       _ => MovementControl.Stop(),
+            log:            Log);
+
+        // Predictive one-room-lookahead: the walker hands the room it's about to
+        // enter to both provisioners BEFORE the move bytes — the light one `use`s a
+        // carried light when the room reads dark, the hazard one raises a carried
+        // buff when the room is a checkspell hazard (LoopRunner gets the same hook
+        // below).
+        Walker.SetApproachRoomHook(key =>
+        {
+            AutoLightProvisioner.OnApproachingRoom(key);
+            AutoHazardCounterProvisioner.OnApproachingRoom(key);
+        });
 
         // Auto-light provisioning detour. When the provisioner's planner returns
         // Buy (route dark, nothing carried covers), detour to the fewest-added-
@@ -3768,8 +3815,13 @@ public sealed class AppServices
             Stealth.RequestPreMoveStealth();
         });
         // Predictive equip on loop laps — same hook the walker uses, so a circuit
-        // step lights a dark room ahead of the move too.
-        LoopRunner.SetApproachLightHook(AutoLightProvisioner.OnApproachingRoom);
+        // step lights a dark room and raises a carried hazard buff ahead of the
+        // move too.
+        LoopRunner.SetApproachRoomHook(key =>
+        {
+            AutoLightProvisioner.OnApproachingRoom(key);
+            AutoHazardCounterProvisioner.OnApproachingRoom(key);
+        });
         // Avoid-list mutation mid-loop → LoopRunner re-routes via a
         // Stop+Start cycle so the new filter applies on the next BFS.
         Movement.AvoidedChanged += () => LoopRunner.NotifyAvoidedChanged();
@@ -3943,8 +3995,11 @@ public sealed class AppServices
             walkDestination: () => Walker.Destination,
             distanceBetween: (a, b) => Bfs.DistanceBetween(a, b, Movement),
             carriedCount: CountItemCarried,
+            cashOnHand: PathItemCashOnHand,
+            buyCost: PathItemBuyCost,
+            bankRoom: PathItemBankRoom,
             itemName: ItemNames.GetName,
-            isEnabled: id => ShouldAutoObtainForPath(id, o => o.BuyIfNeededForPath),
+            isEnabled: IsAutoObtainForPath,
             engineWalkActive: () =>
                 AutoLair.IsActive || LoopRunner.State != Game.Map.LoopState.Idle
                 || AutoDeposit.IsRerouting,
@@ -3974,7 +4029,7 @@ public sealed class AppServices
             distancesFrom: src => Bfs.ComputeDistancesFrom(src, Movement),
             isCarried: IsItemCarried,
             itemName: ItemNames.GetName,
-            isEnabled: id => ShouldAutoObtainForPath(id, o => o.SourceFromDropsForPath),
+            isEnabled: IsAutoObtainForPath,
             engineWalkActive: () =>
                 AutoLair.IsActive || LoopRunner.State != Game.Map.LoopState.Idle
                 || AutoDeposit.IsRerouting,
@@ -4491,10 +4546,33 @@ public sealed class AppServices
         }
 
         string target = spellName.Trim();
+        if (target.Length == 0) return null;   // link-only lookup — never name-match ""
         foreach (Models.GameData.MessageRecord m in Messages.Messages)
             if (string.Equals(m.Name.Trim(), target, StringComparison.OrdinalIgnoreCase))
                 return m;
         return null;
+    }
+
+    // Compile a predicate that recognises a spell's own player-facing line —
+    // the hazard-counter provisioner watches for the lapse-damage prompt (a
+    // hazard's LapseSpell) and the swig confirmation (its BuffSpell). The desert
+    // lines ship with no {s}/{damage} placeholder, so CasterMessageMatcher
+    // declines them; those fall back to a literal case-insensitive Contains.
+    // Null when the active set carries no message for the spell — the reactive
+    // path then stays inert and only the predictive timer keeps the buff up.
+    private Func<string, bool>? BuildSpellLinePredicate(int spellNumber)
+    {
+        if (spellNumber <= 0) return null;
+        Models.GameData.MessageRecord? rec = FindSpellMessage(spellNumber, string.Empty);
+        if (rec is null) return null;
+        string text = !string.IsNullOrWhiteSpace(rec.CasterMessage)
+            ? rec.CasterMessage
+            : rec.TargetMessage;
+        if (string.IsNullOrWhiteSpace(text)) return null;
+        if (Game.Spells.CasterMessageMatcher.TryCreate(text) is { } matcher)
+            return line => matcher.TryMatch(line, out _);
+        string literal = text.Trim();
+        return line => line.Contains(literal, StringComparison.OrdinalIgnoreCase);
     }
 
     // Find the active set's Models.GameData.MessageRecord for an
@@ -4692,14 +4770,14 @@ public sealed class AppServices
 
     // Route-picker helper: for a path-gate item the direct route needs, name the
     // shop the walk would actually detour to buy it — but only when that detour
-    // will really run. It runs only if the item is flagged BuyIfNeededForPath
+    // will really run. It runs only if the item is flagged AutoObtainForPath
     // (same gate PathItemShopRouter enforces) AND a reachable shop stocks it, so
     // both conditions must hold or we return null. The chosen shop matches the
     // router's fewest-added-steps pick (shared TrySelectShop), so the picker's
     // "buy at X" promise is the shop the run visits — not a plausible guess.
     public string? PathItemShopName(int itemId, Game.Map.RoomKey source, Game.Map.RoomKey destination)
     {
-        if (!ShouldAutoObtainForPath(itemId, o => o.BuyIfNeededForPath)) return null;
+        if (!IsAutoObtainForPath(itemId)) return null;
         System.Collections.Generic.IReadOnlyList<Game.Map.RoomKey> shops = ShopRoomsSellingItem(itemId);
         if (shops.Count == 0) return null;
         if (!Game.Map.PathItemShopRouter.TrySelectShop(
@@ -4707,6 +4785,64 @@ public sealed class AppServices
                 out Game.Map.RoomKey shop))
             return null;
         return RoomGraph.GetRoom(shop)?.Name;
+    }
+
+    // Route-picker helper: for a path-gate item NO shop sells, name the monster
+    // the walk would actually reroute to hunt — but only when that hunt will run.
+    // It runs only if the item is flagged AutoObtainForPath (same gate
+    // MonsterDropRouter enforces), no shop sells it (a sold item is the buy
+    // tail's job), AND a dropper spawns in a room reachable from source. The
+    // chosen monster matches the router's nearest-spawn pick (shared
+    // SelectNearestSpawn from the same forward BFS), so the picker's "dropped by
+    // X" promise is the lair the run visits — not a plausible guess.
+    public string? PathItemDropName(int itemId, Game.Map.RoomKey source)
+    {
+        if (!IsAutoObtainForPath(itemId)) return null;
+        if (ShopStock.AnyShopSells(itemId)) return null;
+        System.Collections.Generic.IReadOnlyList<Game.Map.MonsterDropSpawn> spawns = DropSpawnsForItem(itemId);
+        if (spawns.Count == 0) return null;
+        return Game.Map.MonsterDropRouter.SelectNearestSpawn(
+                spawns, Bfs.ComputeDistancesFrom(source, Movement),
+                out Game.Map.MonsterDropSpawn best, out _)
+            ? best.MonsterName
+            : null;
+    }
+
+    // Cash-on-hand read for the shop router's affordability gate: the
+    // consolidated purse in copper farthings (the same wealth figure the
+    // auto-deposit engine weighs). Backs the withdraw-before-buy decision.
+    private long PathItemCashOnHand() => Inventory.Snapshot.Currency.TotalCopperValue;
+
+    // Configured bank room for the shop router's withdraw leg, or null when
+    // unset / unparseable. Reuses the Cash section's BankRoomKey (the
+    // auto-deposit destination), so "where I bank" stays one setting.
+    private Game.Map.RoomKey? PathItemBankRoom()
+    {
+        Models.Profile.CashSettings cash =
+            ReadSection<Models.Profile.CashSettings>(Profile.Current, "Cash");
+        return Game.Map.RoomKey.TryParseWire(cash.BankRoomKey, out Game.Map.RoomKey key)
+            ? key
+            : null;
+    }
+
+    // Per-copy buy cost in copper for the shop router's affordability gate:
+    // resolve the shop hosting shopRoom, price itemId's slot with the same
+    // MajorMUD markup + charm formula the room-detail readout uses, and round up
+    // (the game charges whole copper). Null when the room hosts no shop, the shop
+    // doesn't stock the item, or the set can't be read — the router then heads
+    // straight to the shop and buys with cash on hand.
+    private long? PathItemBuyCost(int itemId, Game.Map.RoomKey shopRoom)
+    {
+        if (RoomGraph.GetRoom(shopRoom) is not { Shop: > 0 } room) return null;
+        if (Game.GameData.ShopInventoryReader.Read(GameData, room.Shop) is not { } def) return null;
+        foreach (Game.GameData.ShopStockEntry entry in def.Stock)
+        {
+            if (entry.ItemId != itemId) continue;
+            double copper = Game.Calculators.ShopPriceCalculator.BuyCopper(
+                entry.BaseCopper, def.MarkupPercent, PlayerStats.Charm);
+            return (long)Math.Ceiling(copper);
+        }
+        return null;
     }
 
     // Live key-possession check for DoorOpenManager's opportunistic floor grab:
@@ -4893,15 +5029,50 @@ public sealed class AppServices
             number.ToString(System.Globalization.CultureInfo.InvariantCulture),
             ItemOverlaySeed.GetOverlay(number));
 
-    // Per-item on-demand path acquisition gate: the master AutoObtainForPath
-    // opt-in AND the specific method flag must both be set on the item's overlay.
-    // Backs the three path-item routers' isEnabled predicates (buy / source-from-
-    // drops / provision-party) — each passes the method selector for its flag.
-    private bool ShouldAutoObtainForPath(int itemId, Func<Models.GameData.ItemOverlay, bool?> method)
+    // Per-item on-demand path acquisition gate: the single AutoObtainForPath
+    // opt-in on the item's overlay. Checked means every acquisition method is in
+    // play (party redistribute, shop buy, bank withdraw, drop reroute). Backs all
+    // three path-item routers' isEnabled predicates and the picker's name helpers.
+    private bool IsAutoObtainForPath(int itemId)
     {
         if (itemId <= 0) return false;
+        return ResolveItemOverlay(itemId).AutoObtainForPath ?? false;
+    }
+
+    // Sole-route auto-obtain decision. Given the requirements of a route that has
+    // NO gate-free alternative, returns true when every gate is a single
+    // carry-item or ticket the user flagged AutoObtainForPath — the walk should
+    // arm the acquisition pipeline and cross the gate rather than fail. A key gate
+    // (never auto-sourced), a hazard, or any unflagged item makes it false, so the
+    // walk stays a plain route whose BFS fails in place naming what's missing.
+    // Hazard-only sole routes never reach here — the picker offers those.
+    public bool ShouldAutoObtainSoleRoute(IReadOnlyList<RouteRequirement> requirements)
+    {
+        ArgumentNullException.ThrowIfNull(requirements);
+        if (requirements.Count == 0) return false;
+        foreach (RouteRequirement req in requirements)
+        {
+            if (req.Kind is not (RouteRequirementKind.CarryItem or RouteRequirementKind.Ticket))
+                return false;
+            if (req.ItemIds.Count != 1 || !IsAutoObtainForPath(req.ItemIds[0]))
+                return false;
+        }
+        return true;
+    }
+
+    // Per-person copies to provision when auto-obtaining an item for a path. Aims
+    // for MaxToGet (the carry target: rope=1, a waterskin its 2–3), never below
+    // the MinToKeep floor, and never below 1 — so an item with no carry policy set
+    // resolves to the historical one-per-member quantity. The party-provisioning
+    // gate multiplies this by the head-count for the whole-party total.
+    private int PathPerPersonQuantity(int itemId)
+    {
+        if (itemId <= 0) return 1;
         Models.GameData.ItemOverlay overlay = ResolveItemOverlay(itemId);
-        return (overlay.AutoObtainForPath ?? false) && (method(overlay) ?? false);
+        int floor = ParseCount(overlay.MinToKeep, 0);
+        int cap = ParseCount(overlay.MaxToGet, 0);   // 0 = "All" / blank / unset
+        int target = cap > 0 ? cap : Math.Max(1, floor);
+        return Math.Max(1, Math.Max(target, floor));
     }
 
     // Keep floor for the discard / sell engines: MinToKeep when the user set

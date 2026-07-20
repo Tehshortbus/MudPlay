@@ -1513,8 +1513,9 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         _loopBuilderOpenedByPause = false;
         // User-initiated walk: offer the free-vs-direct route choice when a
         // shorter gated shortcut exists (falls straight through to WalkTo when
-        // it doesn't).
-        await RouteChoicePrompt.WalkAsync(_services, k);
+        // it doesn't). The preview sink draws the picked route on the map while
+        // the dialog decides.
+        await RouteChoicePrompt.WalkAsync(_services, k, path => PreviewPath = path);
     }
 
     [RelayCommand]
@@ -2622,7 +2623,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
             // favourites list, and the map right-click all funnel through the
             // same shared engine here; only how the walk is confirmed differs.
             QueuedDestination = null;
-            await RouteChoicePrompt.WalkAsync(_services, queued);
+            await RouteChoicePrompt.WalkAsync(_services, queued, path => PreviewPath = path);
             return;
         }
 

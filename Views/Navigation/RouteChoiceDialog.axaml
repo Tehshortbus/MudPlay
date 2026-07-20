@@ -4,8 +4,21 @@
         x:Class="FujinTerm.Views.Navigation.RouteChoiceDialog"
         x:DataType="vm:RouteChoiceDialogViewModel"
         Title="Choose a route"
-        Width="480" Height="300"
+        Width="480" Height="360"
         WindowStartupLocation="CenterOwner">
+
+    <Window.Styles>
+        <!-- A selected route card reads as the amber brand accent: an amber
+             border over a soft-amber fill, so the previewed route stands out
+             from the unselected one. -->
+        <Style Selector="Button.route.selected">
+            <Setter Property="BorderBrush" Value="{StaticResource AccentAmberBrush}"/>
+            <Setter Property="Background" Value="{StaticResource AccentAmberSoftBrush}"/>
+        </Style>
+        <Style Selector="Button.route.selected:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource AccentAmberSoftBrush}"/>
+        </Style>
+    </Window.Styles>
 
     <Border Background="{StaticResource ChromeBgBrush}" Padding="14">
         <Grid RowDefinitions="Auto,*,Auto,Auto" RowSpacing="12">
@@ -15,9 +28,13 @@
                        Foreground="{StaticResource ChromeFgBrush}"/>
 
             <StackPanel Grid.Row="1" Spacing="10" VerticalAlignment="Center">
-                <Button Command="{Binding TakeFreeCommand}"
+                <Button Classes="route"
+                        Classes.selected="{Binding IsFreeSelected}"
+                        Command="{Binding SelectFreeCommand}"
+                        IsEnabled="{Binding HasFreeRoute}"
                         HorizontalAlignment="Stretch"
                         HorizontalContentAlignment="Left"
+                        BorderThickness="1"
                         Padding="12,10">
                     <TextBlock Text="{Binding FreeSummary}"
                                FontSize="12"
@@ -25,9 +42,12 @@
                                Foreground="{StaticResource ChromeFgBrush}"/>
                 </Button>
 
-                <Button Command="{Binding TakeGatedCommand}"
+                <Button Classes="route"
+                        Classes.selected="{Binding IsGatedSelected}"
+                        Command="{Binding SelectGatedCommand}"
                         HorizontalAlignment="Stretch"
                         HorizontalContentAlignment="Left"
+                        BorderThickness="1"
                         Padding="12,10">
                     <StackPanel Spacing="4">
                         <TextBlock Text="{Binding GatedSummary}"
@@ -40,10 +60,30 @@
                                    Foreground="{StaticResource ChromeFgMutedBrush}"/>
                     </StackPanel>
                 </Button>
+
+                <Button Classes="route"
+                        Classes.selected="{Binding IsSendItSelected}"
+                        Command="{Binding SelectSendItCommand}"
+                        IsVisible="{Binding ShowSendItCard}"
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Left"
+                        BorderThickness="1"
+                        Padding="12,10">
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="{Binding SendItSummary}"
+                                   FontSize="12"
+                                   TextWrapping="Wrap"
+                                   Foreground="{StaticResource ChromeFgBrush}"/>
+                        <TextBlock Text="Crosses the gates as-is — nothing acquired; you must already carry what's needed."
+                                   FontSize="11"
+                                   TextWrapping="Wrap"
+                                   Foreground="{StaticResource ChromeFgMutedBrush}"/>
+                    </StackPanel>
+                </Button>
             </StackPanel>
 
             <TextBlock Grid.Row="2"
-                       Text="The direct route arms the item pipeline for anything you're missing."
+                       Text="Click a route to preview it on the map, then Go to walk it. &quot;Acquire then go&quot; sources any missing gate items first; &quot;send it&quot; walks straight through without them."
                        FontSize="10"
                        TextWrapping="Wrap"
                        Foreground="{StaticResource ChromeFgMutedBrush}"/>
@@ -55,6 +95,10 @@
                 <Button Content="Cancel"
                         Command="{Binding CancelCommand}"
                         IsCancel="True" MinWidth="80"/>
+                <Button Content="Go"
+                        Command="{Binding GoCommand}"
+                        IsDefault="True" MinWidth="80"
+                        Classes="accent"/>
             </StackPanel>
         </Grid>
     </Border>

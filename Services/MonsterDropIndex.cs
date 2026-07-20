@@ -7,11 +7,11 @@ namespace FujinTerm.Services;
 
 // In-memory index of Monsters.json for the active game-data set, answering
 // two questions the monster-drop reroute needs: which monsters drop a given
-// item, and where each of those monsters spawns. Backs the Settings → Other
-// "hunt item if needed" affordance — when a walk-route crosses an (Item: N) /
-// (Ticket: N) gate whose item we don't carry and no shop sells it,
-// MonsterDropRouter asks this index which monsters drop it and reroutes
-// toward the nearest one's lair.
+// item, and where each of those monsters spawns. Backs the per-item
+// source-from-drops affordance — when a walk-route crosses an (Item: N) /
+// (Ticket: N) gate whose item we don't carry and no shop sells it, and the item
+// is flagged AutoObtainForPath (item-edit dialog), MonsterDropRouter asks this
+// index which monsters drop it and reroutes toward the nearest one's lair.
 //
 // A monster "drops" an item when the id appears in any of its ten
 // DropItem-0..DropItem-9 slots; the paired DropItem%-N gives the drop chance

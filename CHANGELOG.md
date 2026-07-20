@@ -2,6 +2,43 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.80.0
+
+- Path-item auto-obtain simplified to one per-item toggle — the separate buy / drop-source / party-provision sub-checkboxes are gone, folded into a single "auto-obtain for path"
+- Party path-item provisioning now acquires a per-person quota (enough for every member), not just one, redistributing from members who already carry spares
+- Path-item shop router withdraws from the bank before buying when cash on hand is short but the bank covers it
+- Route picker gains a "send it" card to walk a gated route without acquiring; a sole item/ticket-gated route now surfaces in the picker instead of silently aborting
+- Desert/drown hazard buff now also re-raised reactively: the game's own lapse prompt (the desert "you suffer in the heat... you need water, soon!") fires one `use waterskin` when the predictive timer drifted and the buff dropped early
+- A lapse prompt with no swig confirmation — out of charges/waterskins — halts the walk instead of marching deeper into a hazard it can no longer counter
+- Lapse-damage spell is derived from the checkspell chain (desert spell 712), so the re-raise keys on the active set's message record, not hardcoded realm text
+- Bug report's room-hazard line now shows the derived lapse spell (whether the reactive re-raise can arm)
+
+## 1.79.0
+
+- Hazard rooms countered by a `use`-cast buff (desert heat, drowning) now raise the buff mid-walk — `use`s the source item on approach, re-`use`ing when its duration lapses so a long crossing spends the fewest charges
+- A route blocked only by a survivable hazard is now offered in the route picker (with a "buy at <shop>" tail when the counter is buyable) instead of aborting with "a room hazard you can't survive"
+- Route picker also previews a "dropped by <monster>" tail when a gate item no shop sells is flagged to source from a reachable monster drop
+- Bug report shows the current room's checkspell hazard, its buff-source item, and whether one is carried
+- bug reports addressed: stock-20260719-020228
+
+## 1.78.0
+
+- Route picker no longer walks on click — clicking a route selects it and previews its line on the map
+- A Go button (bottom of the picker) walks the selected route; disabled until one is chosen
+- Cancel / X closes without walking and clears the preview
+
+## 1.77.0
+
+- Location recovery rebuilt: when genuinely lost it reverse-walks the exact steps since the last known room while growing a multi-room footprint, matched against the map until a single room survives, then re-confirms there and reroutes
+- Lit rooms are look-swept in place first — peeking every exit to fingerprint the neighbours breaks name-ambiguous twins (e.g. Darkwood Forest) without taking a step
+- Dark rooms skip the useless look-sweep and dead-reckon position from the moves that actually executed
+- Recovery clears the room of hostiles before look-sweeping (lit) / waits out a combat tick before dead-reckoning (dark)
+
+## 1.76.5
+
+- Navigation recovery now trusts a Confirmed room tracker: a loop/walk mismatch in a name-ambiguous area (e.g. Darkwood Forest) re-anchors to the known room and reroutes instead of a doomed backtrack that popped a false "Lost" dialog
+- bug reports addressed: stock-20260718-155138
+
 ## 1.76.4
 
 - A poisoned party member (the `P` flag in par) no longer gets silently demoted to midrank — a force-frontranked leader now keeps Frontrank while poisoned

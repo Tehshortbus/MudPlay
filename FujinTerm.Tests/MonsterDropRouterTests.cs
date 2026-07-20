@@ -402,4 +402,39 @@ public sealed class MonsterDropRouterTests
         Assert.Single(h.Walks);
         Assert.Equal(Spawn, h.Walks[0]);
     }
+
+    // The shared static the route picker calls to name the same lair a reroute
+    // targets: nearest reachable spawn, ties to the higher drop chance, then
+    // room-key order. Unreachable candidates (no distance) are skipped.
+    [Fact]
+    public void SelectNearestSpawn_PicksNearest_TieBreaksOnDropThenKey()
+    {
+        var far = new MonsterDropSpawn(new RoomKey(1, 300), 1, "wyrm", 90);
+        var nearLowDrop = new MonsterDropSpawn(new RoomKey(1, 150), 2, "gremlin", 10);
+        var nearHighDrop = new MonsterDropSpawn(new RoomKey(1, 160), 3, "nomad", 40);
+        var unreachable = new MonsterDropSpawn(new RoomKey(9, 9), 4, "ghost", 99);
+        var candidates = new[] { far, nearLowDrop, nearHighDrop, unreachable };
+        var distances = new Dictionary<RoomKey, int>
+        {
+            [far.Room] = 20,
+            [nearLowDrop.Room] = 4,
+            [nearHighDrop.Room] = 4,   // tie with nearLowDrop → higher drop wins
+        };
+
+        bool ok = MonsterDropRouter.SelectNearestSpawn(
+            candidates, distances, out MonsterDropSpawn best, out int dist);
+
+        Assert.True(ok);
+        Assert.Equal("nomad", best.MonsterName);
+        Assert.Equal(4, dist);
+    }
+
+    [Fact]
+    public void SelectNearestSpawn_NoReachableCandidate_ReturnsFalse()
+    {
+        var candidates = new[] { new MonsterDropSpawn(new RoomKey(1, 300), 1, "wyrm", 90) };
+        bool ok = MonsterDropRouter.SelectNearestSpawn(
+            candidates, new Dictionary<RoomKey, int>(), out _, out _);
+        Assert.False(ok);
+    }
 }

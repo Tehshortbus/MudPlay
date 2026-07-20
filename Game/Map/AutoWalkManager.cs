@@ -48,7 +48,7 @@ public sealed class AutoWalkManager : IRecoverableEngine
     private Action? _onLeaderPartySplit;
     private Action? _onPartySplitAbort;
     private Action? _preMoveHook;
-    private Action<RoomKey>? _approachLightHook;
+    private Action<RoomKey>? _approachRoomHook;
     private Action<IReadOnlyList<int>>? _pathItemAnnouncer;
     private Action<IReadOnlyList<RoomKey>>? _routeAnnouncer;
     private Func<RoomKey, IReadOnlyList<int>>? _hazardItemResolver;
@@ -453,17 +453,18 @@ public sealed class AutoWalkManager : IRecoverableEngine
         _preMoveHook = hook;
     }
 
-    // Predictive auto-light hook — invoked the instant the walker commits to a step,
+    // Predictive approach hook — invoked the instant the walker commits to a step,
     // with the room it's about to enter, BEFORE any door / trap / hidden / cardinal
-    // bytes go out. AppServices binds this to AutoLightProvisioner.OnApproachingRoom,
-    // which `use`s a carried light when that room's mapped light reads dark on worn
-    // gear — so the `use` precedes the move and the room is lit on arrival. No-op for
-    // a seeable or unmapped target; fires on every step (cheap) so the provisioner
-    // owns the dark/seeable decision.
-    public void SetApproachLightHook(Action<RoomKey> hook)
+    // bytes go out. AppServices binds this to the room-provisioners: auto-light
+    // `use`s a carried light for a dark target, and the hazard-counter provisioner
+    // `use`s a buff source for a checkspell hazard target — either way the `use`
+    // precedes the move so the room is lit / survivable on arrival. No-op for a
+    // benign or unmapped target; fires on every step (cheap) so each provisioner
+    // owns its own decision.
+    public void SetApproachRoomHook(Action<RoomKey> hook)
     {
         ArgumentNullException.ThrowIfNull(hook);
-        _approachLightHook = hook;
+        _approachRoomHook = hook;
     }
 
     // Planned-route item-requirement announcer. Invoked once at walk-start
@@ -538,11 +539,25 @@ public sealed class AutoWalkManager : IRecoverableEngine
     // deferral so the deferred dispatch replans the same gated route.
     private bool _deferredWalkThroughGates;
 
+    // Companion to _deferredWalkTarget: preserves the route picker's
+    // "arm the item-acquisition pipeline" choice (false only for the
+    // "direct — send it" mode) across the tracker-Pending deferral.
+    private bool _deferredWalkArmAcquisition = true;
+
     // planThroughAcquirableGates: when true, BFS plans the route as if every
     // acquirable gate item (raft / ticket / door key / hazard counter) were
     // already carried — the route picker's "direct" choice. Default false
     // keeps every existing caller on the free-preferring route.
-    public bool WalkTo(RoomKey destination, bool planThroughAcquirableGates = false)
+    //
+    // armItemAcquisition: when true (default), the walk-start announce posts a
+    // need for every gate item the route demands that we lack, arming the
+    // shop / drop / party-share pipeline to source it. The route picker's
+    // "direct — send it" choice passes false: it crosses the gates as-is
+    // without provisioning, trusting the user to already hold what's needed.
+    public bool WalkTo(
+        RoomKey destination,
+        bool planThroughAcquirableGates = false,
+        bool armItemAcquisition = true)
     {
         if (State is WalkState.Walking or WalkState.Paused)
         {
@@ -569,6 +584,7 @@ public sealed class AutoWalkManager : IRecoverableEngine
             }
             _deferredWalkTarget = destination;
             _deferredWalkThroughGates = planThroughAcquirableGates;
+            _deferredWalkArmAcquisition = armItemAcquisition;
             _destination = destination;       // populated so status surfaces show the target
             State = WalkState.Walking;
             Raise(new WalkEvent(WalkEventKind.Started,
@@ -577,10 +593,13 @@ public sealed class AutoWalkManager : IRecoverableEngine
             return true;
         }
 
-        return WalkToImmediate(destination, planThroughAcquirableGates);
+        return WalkToImmediate(destination, planThroughAcquirableGates, armItemAcquisition);
     }
 
-    private bool WalkToImmediate(RoomKey destination, bool planThroughAcquirableGates = false)
+    private bool WalkToImmediate(
+        RoomKey destination,
+        bool planThroughAcquirableGates = false,
+        bool armItemAcquisition = true)
     {
         // Callers may arrive here from the WalkTo entry (Idle) OR from
         // the deferred dispatch in OnTrackerStateChanged (Walking with
@@ -688,7 +707,10 @@ public sealed class AutoWalkManager : IRecoverableEngine
         // Announce the items this route demands so the demand-driven
         // auto-search can arm for anything we're not carrying. Best-effort:
         // walks the graph along the planned directions from the source room.
-        AnnouncePlannedItemRequirements(source.Key, path);
+        // Suppressed for the "direct — send it" choice: that route crosses the
+        // gates as-is without provisioning anything.
+        if (armItemAcquisition)
+            AnnouncePlannedItemRequirements(source.Key, path);
 
         // Announce the rooms this route crosses so the auto-light provisioner
         // can ready / buy a light for the darkest one before we step into it.
@@ -956,11 +978,12 @@ public sealed class AutoWalkManager : IRecoverableEngine
         _expectedAfterCurrentMove = exit.Target;
         _stepInFlight = true;
 
-        // Predictive auto-light: light a carried light NOW if the room we're
-        // stepping into reads dark, before any crossing bytes (door / trap / hidden
-        // / cardinal) go out — so the `use` lands ahead of the move and the room is
-        // lit on arrival. No-op for a seeable / unmapped target.
-        _approachLightHook?.Invoke(exit.Target);
+        // Predictive room provisioning: light a carried light if the room we're
+        // stepping into reads dark, and raise a checkspell hazard buff if it needs
+        // one — before any crossing bytes (door / trap / hidden / cardinal) go out,
+        // so the `use` lands ahead of the move and the room is lit / survivable on
+        // arrival. No-op for a benign / unmapped target.
+        _approachRoomHook?.Invoke(exit.Target);
 
         // Trapped exits — route through TrapDisarmManager before the move
         // bytes go out. The walker waits for the trap reply; the actual
@@ -1295,9 +1318,11 @@ public sealed class AutoWalkManager : IRecoverableEngine
             && _path is null)
         {
             bool throughGates = _deferredWalkThroughGates;
+            bool armAcquisition = _deferredWalkArmAcquisition;
             _deferredWalkTarget = null;
             _deferredWalkThroughGates = false;
-            WalkToImmediate(deferred, throughGates);
+            _deferredWalkArmAcquisition = true;
+            WalkToImmediate(deferred, throughGates, armAcquisition);
             return;
         }
 
@@ -1484,9 +1509,11 @@ public sealed class AutoWalkManager : IRecoverableEngine
                 if (_tracker.State.Confidence == RoomConfidence.Confirmed)
                 {
                     bool throughGates = _deferredWalkThroughGates;
+                    bool armAcquisition = _deferredWalkArmAcquisition;
                     _deferredWalkTarget = null;
                     _deferredWalkThroughGates = false;
-                    WalkToImmediate(deferred, throughGates);
+                    _deferredWalkArmAcquisition = true;
+                    WalkToImmediate(deferred, throughGates, armAcquisition);
                 }
                 return;
             }
@@ -1613,6 +1640,7 @@ public sealed class AutoWalkManager : IRecoverableEngine
         _awaitingHiddenReveal = false;
         _deferredWalkTarget = null;
         _deferredWalkThroughGates = false;
+        _deferredWalkArmAcquisition = true;
         _retryCount = 0;
         _replanCount = 0;
         // Drop any AbandonedCombat hold this walk was carrying so a stopped /

@@ -1,8 +1,15 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.76.4**
-> - A poisoned party member (the `P` flag in par) no longer gets silently demoted to midrank — a force-frontranked leader now keeps Frontrank while poisoned
+> **Version 1.80.0**
+> - Path-item auto-obtain simplified to one per-item toggle — the buy / drop-source / party-provision sub-checkboxes are folded into a single "auto-obtain for path"
+> - Party path-item provisioning now acquires a per-person quota (enough for every member), redistributing from members carrying spares
+> - Path-item shop router withdraws from the bank before buying when cash on hand is short but the bank covers it
+> - Route picker gains a "send it" card to walk a gated route without acquiring; a sole item/ticket-gated route now surfaces instead of silently aborting
+> - Desert/drown hazard buff also re-raised reactively: the game's lapse prompt ("you need water, soon!") fires one `use waterskin` when the timer drifted and the buff dropped early
+> - A lapse prompt with no swig confirmation — out of charges — halts the walk instead of marching deeper into the hazard
+> - Lapse-damage spell derived from the checkspell chain, so the re-raise keys on the active set's message, not hardcoded text
+> - Bug report's room-hazard line now shows the derived lapse spell
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->
