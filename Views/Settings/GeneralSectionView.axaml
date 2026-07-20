@@ -87,7 +87,7 @@
                               HorizontalAlignment="Left"
                               ItemsSource="{Binding FontFamilyOptions}"
                               SelectedItem="{Binding SelectedFontFamily, Mode=TwoWay}"
-                              ToolTip.Tip="Font the terminal canvas renders with. MX437 is the bundled CP437 bitmap font that matches classic BBS output; JetBrains Mono is a modern monospace with box-drawing coverage. Applies on Save.">
+                              ToolTip.Tip="Font the terminal canvas renders with. MX437 is the bundled CP437 bitmap font that matches classic BBS output; JetBrains Mono is a modern monospace with box-drawing coverage. Every monospace font installed on your system is listed below them. Applies on Save.">
                         <ComboBox.ItemTemplate>
                             <DataTemplate x:DataType="vm:FontFamilyOption">
                                 <TextBlock Text="{Binding Label}"/>

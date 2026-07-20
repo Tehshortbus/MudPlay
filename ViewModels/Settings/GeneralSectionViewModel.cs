@@ -104,22 +104,43 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
     // ----- Terminal font (char-tier) -----
     // Font family + size the terminal canvas renders with. Both used to live in
     // the per-BBS Display settings; they moved here so the choice follows the
-    // character rather than whichever board it's connected to. Only the two
-    // bundled monospace fonts are offered — MX437 (the CP437 bitmap font that
-    // matches classic BBS output) and JetBrains Mono — since a proportional font
-    // would mangle the fixed cell grid. The default font and size 16 carry a
-    // "{default}" tag in the picker labels.
-    public IReadOnlyList<FontFamilyOption> FontFamilyOptions { get; } = new[]
-    {
-        new FontFamilyOption("MX437 IBM VGA {default}", DisplayConfig.DefaultFontFamily),
-        new FontFamilyOption("JetBrains Mono",
-            "avares://FujinTerm/Assets/Fonts/JetBrainsMono-Regular.ttf#JetBrains Mono"),
-    };
+    // character rather than whichever board it's connected to. The picker leads
+    // with the two bundled faces — MX437 (the CP437 bitmap font that matches
+    // classic BBS output) and JetBrains Mono — then lists every monospace font
+    // installed on the system. Proportional faces are filtered out by
+    // MonospaceFontCatalog since they'd mangle the fixed cell grid. The default
+    // font and size 16 carry a "{default}" tag in the picker labels; a bundled
+    // face persists as its avares:// URI while a system font persists as its
+    // bare family name (both are valid FontFamily inputs).
+    public IReadOnlyList<FontFamilyOption> FontFamilyOptions { get; } = BuildFontFamilyOptions();
 
     public IReadOnlyList<FontSizeOption> FontSizeOptions { get; } = BuildFontSizeOptions();
 
     [ObservableProperty] private FontFamilyOption? _selectedFontFamily;
     [ObservableProperty] private FontSizeOption? _selectedFontSize;
+
+    private static IReadOnlyList<FontFamilyOption> BuildFontFamilyOptions()
+    {
+        // Bundled faces first, in a fixed order, so the default stays at the top.
+        List<FontFamilyOption> list = new()
+        {
+            new FontFamilyOption("MX437 IBM VGA {default}", DisplayConfig.DefaultFontFamily),
+            new FontFamilyOption("JetBrains Mono",
+                "avares://FujinTerm/Assets/Fonts/JetBrainsMono-Regular.ttf#JetBrains Mono"),
+        };
+
+        // Then every installed monospace font, skipping any that duplicates a
+        // bundled face's family name so the picker never shows two identical
+        // labels (e.g. a system-wide JetBrains Mono install).
+        foreach (string name in MonospaceFontCatalog.Families)
+        {
+            if (name.Equals("JetBrains Mono", StringComparison.OrdinalIgnoreCase)) continue;
+            if (name.Equals("Mx437 IBM VGA 8x16", StringComparison.OrdinalIgnoreCase)) continue;
+            list.Add(new FontFamilyOption(name, name));
+        }
+
+        return list;
+    }
 
     private static IReadOnlyList<FontSizeOption> BuildFontSizeOptions()
     {

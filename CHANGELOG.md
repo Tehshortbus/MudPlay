@@ -2,6 +2,13 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.81.0
+
+- Terminal font picker now lists every monospace font installed on the system, below the two bundled faces
+- Proportional fonts filtered out (Latin advance-width probe), so a picked font can't mangle the fixed cell grid
+- System fonts persist as their bare family name; a system copy of a bundled face is de-duplicated from the list
+- Font catalogue is pre-built off the UI thread at startup, so opening Settings no longer stalls on the font scan
+
 ## 1.80.0
 
 - Path-item auto-obtain simplified to one per-item toggle — the separate buy / drop-source / party-provision sub-checkboxes are gone, folded into a single "auto-obtain for path"

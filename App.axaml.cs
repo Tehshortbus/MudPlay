@@ -22,6 +22,17 @@ public partial class App : Application
         // exists; later code reaches them via AppServices.Current.
         AppServices.Initialize();
 
+        // Pre-build the monospace system-font catalogue off the UI thread so the
+        // first Settings open doesn't stall while enumerating installed fonts.
+        // The count is logged so a "my font isn't in the list" report can be
+        // reasoned about without re-running the scan.
+        System.Threading.Tasks.Task.Run(() =>
+        {
+            MonospaceFontCatalog.Warm();
+            AppServices.Current.Log.Info("Fonts",
+                $"{MonospaceFontCatalog.Families.Count} monospace system fonts available for the terminal picker");
+        });
+
         // On classic desktop platforms (Windows / Linux / macOS) the
         // lifetime exposes a MainWindow slot — fill it with our window
         // and a fresh view-model.
