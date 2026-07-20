@@ -46,6 +46,7 @@ public sealed partial class TalkSectionViewModel : SettingsSectionViewModel
         "Talk", "Remote", "@-command", "Disallow",
         "telepaths", "gangpaths", "say", "local",
         "failure message", "party commands", "kill switch", "greet",
+        "look", "look back", "looking at you", "inventory", "inspect players",
         "log conversations", "log transactions", "log lines", "chatlog", "logging",
         "conversation font", "font", "font size", "typeface",
     };
@@ -68,6 +69,10 @@ public sealed partial class TalkSectionViewModel : SettingsSectionViewModel
 
     // Settings → Talk "Greet players when first met". Char-tier; default off.
     [ObservableProperty] private bool _greetPlayersWhenFirstMet;
+
+    // Settings → Talk reactive-look toggles. Char-tier; both default off.
+    [ObservableProperty] private bool _lookBackWhenLookedAt;
+    [ObservableProperty] private bool _lookAtPlayersOnArrival;
 
     // Session logging (Char-tier, default on). The two toggles persist the
     // Conversation window / Transaction history to rolling per-character files;
@@ -174,6 +179,8 @@ public sealed partial class TalkSectionViewModel : SettingsSectionViewModel
             WarnOnInvalidRemoteCommand       = WarnOnInvalidRemoteCommand,
             RemoteCommandFailureMessage      = RemoteCommandFailureMessage ?? string.Empty,
             GreetPlayersWhenFirstMet         = GreetPlayersWhenFirstMet,
+            LookBackWhenLookedAt             = LookBackWhenLookedAt,
+            LookAtPlayersOnArrival           = LookAtPlayersOnArrival,
             LogConversations                 = LogConversations,
             LogTransactions                  = LogTransactions,
             LogMaxLines                      = LogMaxLines,
@@ -223,6 +230,8 @@ public sealed partial class TalkSectionViewModel : SettingsSectionViewModel
         WarnOnInvalidRemoteCommand      = dto.WarnOnInvalidRemoteCommand;
         RemoteCommandFailureMessage     = dto.RemoteCommandFailureMessage;
         GreetPlayersWhenFirstMet        = dto.GreetPlayersWhenFirstMet;
+        LookBackWhenLookedAt            = dto.LookBackWhenLookedAt;
+        LookAtPlayersOnArrival          = dto.LookAtPlayersOnArrival;
         LogConversations                = dto.LogConversations;
         LogTransactions                 = dto.LogTransactions;
         LogMaxLines                     = dto.LogMaxLines;
@@ -285,6 +294,8 @@ public sealed partial class TalkSectionViewModel : SettingsSectionViewModel
         engine.FailureMessage          = dto.RemoteCommandFailureMessage ?? string.Empty;
 
         AppServices.Current.Greet.Enabled = dto.GreetPlayersWhenFirstMet;
+        AppServices.Current.PlayerLook.LookBackWhenLookedAt   = dto.LookBackWhenLookedAt;
+        AppServices.Current.PlayerLook.LookAtPlayersOnArrival = dto.LookAtPlayersOnArrival;
         AppServices.Current.SessionLog.ApplySettings(dto);
     }
 
@@ -304,6 +315,8 @@ public sealed partial class TalkSectionViewModel : SettingsSectionViewModel
     partial void OnWarnOnInvalidRemoteCommandChanged(bool value)      => MarkDirty();
     partial void OnRemoteCommandFailureMessageChanged(string value)   => MarkDirty();
     partial void OnGreetPlayersWhenFirstMetChanged(bool value)        => MarkDirty();
+    partial void OnLookBackWhenLookedAtChanged(bool value)            => MarkDirty();
+    partial void OnLookAtPlayersOnArrivalChanged(bool value)          => MarkDirty();
     partial void OnLogConversationsChanged(bool value)                => MarkDirty();
     partial void OnLogTransactionsChanged(bool value)                 => MarkDirty();
     partial void OnLogMaxLinesChanged(int value)                      => MarkDirty();

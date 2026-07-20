@@ -2,6 +2,12 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.84.0
+
+- Settings → Talk: new "Look back when a player looks at us" toggle — mirrors a `look` back when the game shows "&lt;name&gt; is looking at you." (skips self, includes party)
+- Settings → Talk: new "Look at players to learn/update their inventories" toggle — looks at each non-party player who walks into the room (skips self and party)
+- Both default off, sit next to "Greet players when first met"
+
 ## 1.83.0
 
 - Navigation window gains a collapse/expand toggle beside the search box (▶ collapse the panels / ◀ bring them back)

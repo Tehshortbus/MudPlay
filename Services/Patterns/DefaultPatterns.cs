@@ -281,6 +281,14 @@ public static class DefaultPatterns
         yield return new RegexPattern(KnownPatterns.RoomEntryArrival,
             @"^(?!You notice )(?<name>.+?) \w+ in(?:to)?(?: the room)? from (?:the )?(?<direction>[\w-]+)[.!]\s*$");
 
+        // Reactive look-back — another player `look`ed at us. Wording is
+        // user-confirmed (not in any imported game-data table); keyed on the
+        // exact "<name> is looking at you." phrase. Name is a bare word (players
+        // are single-token on the wire here). PlayerLookManager sends
+        // `look <name>` back when Settings → Talk enables it.
+        yield return new RegexPattern(KnownPatterns.PlayerLooksAtYou,
+            @"^(?<name>\w+) is looking at you[.!]?\s*$");
+
         // Sneak-arrival notice — a player who failed a sneak into our room.
         // Monsters never emit this; RoomEntryWatcher classifies it Player
         // unconditionally (the line's wire colour is the monster hue and can't

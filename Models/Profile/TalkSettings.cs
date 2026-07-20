@@ -55,6 +55,18 @@ public sealed class TalkSettings
     // false (opt-in). Wired to Game.GreetManager.
     public bool GreetPlayersWhenFirstMet { get; set; }
 
+    // When true, seeing the wire line "<name> is looking at you." makes the
+    // client send `look <name>` straight back — a reactive social mirror. No
+    // dedup (each look-at gets a look-back); self is skipped, party members are
+    // not. Default false (opt-in). Wired to Game.PlayerLookManager.
+    public bool LookBackWhenLookedAt { get; set; }
+
+    // When true, any non-party player walking into our room triggers a
+    // `look <name>` so we learn/refresh their kit. One look per arrival; self
+    // and current party members are skipped. Default false (opt-in). Wired to
+    // Game.PlayerLookManager.
+    public bool LookAtPlayersOnArrival { get; set; }
+
     // Persist the Conversation window to Data/Logs/<char>.<bbs>.talk.log so it
     // survives restarts. Default on. Wired to Services.SessionLogService.
     public bool LogConversations { get; set; } = true;

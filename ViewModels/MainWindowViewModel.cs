@@ -826,6 +826,9 @@ public partial class MainWindowViewModel : ObservableObject
         // Settings → Talk auto-greet — needs the wire-sender to emit
         // greet/look at newly-seen non-party players.
         AppServices.Current.Greet.SetWireSender(engineSend);
+        // Settings → Talk reactive-look — needs the wire-sender to emit
+        // look-back / look-on-arrival at other players.
+        AppServices.Current.PlayerLook.SetWireSender(engineSend);
         // Poller needs the same wire-sender to send @health round-trip
         // requests and the periodic par poll.
         AppServices.Current.PartyPoller.SetWireSender(engineSend);

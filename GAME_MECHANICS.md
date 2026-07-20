@@ -1410,6 +1410,11 @@ Sources that feed a character's effective AC beyond the item/race/class/quest `+
 
 - **[CONFIRMED]** Talk modes (say / talk-fast / slow) differ **per realm** — that's game
   configuration, not a client bug. The keyboard period is a say-precursor and stays unbindable.
+- **[CONFIRMED] 2026-07-20, user** — when another player `look`s at us the wire prints
+  **`<name> is looking at you.`** (`name` a single first-name token). The reactive-look-back
+  feature (Settings → Talk) keys on this exact phrase; if a realm's wording differs it's a
+  one-line regex tweak (`DefaultPatterns.PlayerLooksAtYou`). Not present in any imported MDB
+  table — it's a live interaction line, so the wording is user-supplied, not data-derived.
 
 ## Shop prices — buy & sell *([CONFIRMED] — extracted from the reference client)*
 

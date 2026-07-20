@@ -97,6 +97,14 @@
                       IsChecked="{Binding GreetPlayersWhenFirstMet, Mode=TwoWay}"
                       ToolTip.Tip="The first time each day a non-party player appears (Also here list or live arrival), send greet then look at them. Tracked per-BBS; self and party members are skipped."/>
 
+            <CheckBox Content="Look back when a player looks at us"
+                      IsChecked="{Binding LookBackWhenLookedAt, Mode=TwoWay}"
+                      ToolTip.Tip="When the game shows &quot;&lt;name&gt; is looking at you.&quot;, send look at them in return. Fires each time; only ourself is skipped (party members included)."/>
+
+            <CheckBox Content="Look at players to learn/update their inventories"
+                      IsChecked="{Binding LookAtPlayersOnArrival, Mode=TwoWay}"
+                      ToolTip.Tip="When a non-party player walks into the room, look at them to learn or refresh their equipment. One look per arrival; self and party members are skipped."/>
+
             <!-- ============ Session logging (wired) ============ -->
             <TextBlock Classes="SectionHeader" Text="Session logging"/>
             <TextBlock Classes="HelpText"

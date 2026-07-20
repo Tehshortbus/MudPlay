@@ -714,6 +714,12 @@ public sealed class AppServices
     // dedup on the per-BBS player record. Off by default.
     public Game.GreetManager Greet { get; private set; } = null!;
 
+    // Reactive `look <player>` automation (Settings → Talk). Two independent
+    // toggles: look-back when a player looks at us, and look at non-party
+    // players who walk into the room. Both off by default. Subscribes to the
+    // PlayerLooksAtYou pattern + RoomEntry.ArrivalObserved.
+    public Game.PlayerLookManager PlayerLook { get; private set; } = null!;
+
     // Owns PlayerState.InCombat and
     // the Game.Map.MovementCoordinator.CombatGate hold
     // state. Cleared automatically when the room is free of
@@ -3389,6 +3395,11 @@ public sealed class AppServices
         // the loaded profile name as a fallback. Wire-sender bound by
         // MainWindowViewModel after telnet connects.
         Greet = new Game.GreetManager(RoomClassifier, Players, Party.State,
+            selfNameProvider: () => Party.LocalCharacterName ?? Profile.Current?.Name);
+        // Settings → Talk reactive-look automation. Shares Greet's self-name
+        // resolution; RoomEntry (built earlier) supplies the arrival hook.
+        // Wire-sender bound by MainWindowViewModel after telnet connects.
+        PlayerLook = new Game.PlayerLookManager(Router, RoomEntry, Party.State,
             selfNameProvider: () => Party.LocalCharacterName ?? Profile.Current?.Name);
         // Demand-driven auto-search (PR B). Posts a PathItem need when the
         // walker plans a route through an Item/Ticket exit whose item we
