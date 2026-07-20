@@ -10,7 +10,7 @@
         x:DataType="vm:NavigationViewModel"
         Title="Navigation"
         Width="1280" Height="720"
-        MinWidth="{Binding WindowMinWidth}" MinHeight="500"
+        MinWidth="{Binding WindowMinWidth}" MinHeight="{Binding WindowMinHeight}"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False">
 
@@ -378,7 +378,8 @@
                      in the loops-rail footer (already wired to
                      OpenManagerCommand) — putting it here too would be
                      redundant. -->
-                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4">
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4"
+                            IsVisible="{Binding MapExpanded}">
                     <Button Classes="ToggleChip" Content="{Binding LairButtonLabel}"
                             Command="{Binding ToggleLairsCommand}"
                             ToolTip.Tip="Lair highlight: click to cycle uniform colour → respawn heat-map → off."

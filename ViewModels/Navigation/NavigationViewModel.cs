@@ -613,6 +613,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     [NotifyPropertyChangedFor(nameof(MapCollapseGlyph))]
     [NotifyPropertyChangedFor(nameof(MapCollapseTooltip))]
     [NotifyPropertyChangedFor(nameof(WindowMinWidth))]
+    [NotifyPropertyChangedFor(nameof(WindowMinHeight))]
     private bool _mapExpanded = true;
 
     // Arrow points toward the panels it acts on: ▶ (toward the hidden-away right
@@ -623,10 +624,11 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         ? "Collapse the side panels to shrink the map."
         : "Expand the side panels.";
 
-    // Floor the window can shrink to. The full layout needs the rail's width;
-    // collapsed, only the top chips + map do, so drop the floor to let the user
-    // pull the window in narrower on demand.
-    public double WindowMinWidth => MapExpanded ? 900 : 420;
+    // Floor the window can shrink to. The full layout needs the rail's width +
+    // the stacked chrome bars; collapsed, only the thin header + map remain, so
+    // drop both floors to let the user pull the window in on demand.
+    public double WindowMinWidth  => MapExpanded ? 900 : 420;
+    public double WindowMinHeight => MapExpanded ? 500 : 220;
 
     [RelayCommand] private void ToggleMapExpanded() => MapExpanded = !MapExpanded;
 

@@ -5,7 +5,7 @@ Notable changes per merged PR, **newest first**. The top of the [README](README.
 ## 1.83.0
 
 - Navigation window gains a collapse/expand toggle beside the search box (▶ collapse the panels / ◀ bring them back)
-- Collapsing hides the search box, Selected-Room readout, action buttons, and the whole right-hand nav rail, and lowers the window's minimum width so the map can be dragged narrower
+- Collapsing hides the search box, Selected-Room readout, action buttons, the display-toggle chips (Lairs/Shops/Spells/Legend), and the whole right-hand nav rail, and lowers the window's minimum width and height so the map can be dragged smaller
 
 ## 1.82.0
 
