@@ -45,8 +45,13 @@ public sealed class RoomHazardIndex
     // provisioner re-`use`s a source item whenever the buff would have lapsed, so
     // it needs the buff's spell number (identity) and its duration in wall-clock
     // seconds (the refresh interval). SourceItems are the items that cast the buff.
+    // LapseSpell is the damage spell the room casts when the buff is ABSENT (the
+    // desert's "you need water, soon!" spell 712), reached down the checkspell's
+    // buff-absent branch; its game-data message is the reactive re-`use` trigger,
+    // since the waterskin buff has no wear-off line to time off. 0 when the chain
+    // casts nothing (or the target block couldn't be resolved).
     public readonly record struct BuffCounter(
-        int BuffSpell, int DurationSeconds, IReadOnlyList<int> SourceItems);
+        int BuffSpell, int LapseSpell, int DurationSeconds, IReadOnlyList<int> SourceItems);
 
     public sealed class RoomHazard
     {
@@ -260,6 +265,7 @@ public sealed class RoomHazardIndex
         List<int> failItems = new();
         List<int> checkspellCasters = new();
         int buffSpellSeen = 0;
+        int lapseSpellSeen = 0;
 
         foreach (string line in action.Split('\n'))
         {
@@ -278,6 +284,11 @@ public sealed class RoomHazardIndex
                     if (buffSpell > 0 && castersBySpell.TryGetValue(buffSpell, out List<int>? casters))
                     {
                         buffSpellSeen = buffSpell;
+                        // The token's second int is the TB the room jumps to when
+                        // the buff is ABSENT; that block's `cast <spell>` is the
+                        // lapse-damage spell whose message re-triggers the `use`.
+                        if (lapseSpellSeen == 0)
+                            lapseSpellSeen = FindCastSpell(SecondIntAfter(tok, "checkspell"), tbActions);
                         foreach (int itemId in casters)
                             if (!checkspellCasters.Contains(itemId)) checkspellCasters.Add(itemId);
                     }
@@ -290,8 +301,31 @@ public sealed class RoomHazardIndex
         {
             groups.Add(checkspellCasters);
             durationSecondsBySpell.TryGetValue(buffSpellSeen, out int durSec);
-            buffCounters.Add(new BuffCounter(buffSpellSeen, durSec, checkspellCasters));
+            buffCounters.Add(new BuffCounter(buffSpellSeen, lapseSpellSeen, durSec, checkspellCasters));
         }
+    }
+
+    // The first `cast <spell>` directive inside a TB action, or 0. Used to reach
+    // the checkspell buff-absent branch's damage cast (the desert's spell 712) —
+    // that block isn't an Abil-148 target the room reaches on its own, so it's
+    // looked up directly rather than via the textblock scan.
+    private static int FindCastSpell(int tb, Dictionary<int, string> tbActions)
+    {
+        if (tb <= 0 || !tbActions.TryGetValue(tb, out string? action)
+            || string.IsNullOrWhiteSpace(action))
+            return 0;
+
+        foreach (string line in action.Split('\n'))
+            foreach (string raw in line.Split(':'))
+            {
+                string tok = raw.Trim();
+                if (StartsWith(tok, "cast"))
+                {
+                    int spell = FirstIntAfter(tok, "cast");
+                    if (spell > 0) return spell;
+                }
+            }
+        return 0;
     }
 
     private static HashSet<int> CollectRoomSpells(JsonDocument rooms)
@@ -425,6 +459,24 @@ public sealed class RoomHazardIndex
         if (idx < 0) return 0;
         int i = idx + keyword.Length;
         while (i < tok.Length && !char.IsDigit(tok[i])) i++;
+        int start = i;
+        while (i < tok.Length && char.IsDigit(tok[i])) i++;
+        return i > start
+            ? int.Parse(tok.AsSpan(start, i - start), NumberStyles.Integer, CultureInfo.InvariantCulture)
+            : 0;
+    }
+
+    // Second contiguous integer following keyword in tok (skip keyword, the first
+    // digit-run, then read the next). 0 when the token holds fewer than two ints —
+    // e.g. a bare `checkspell 300` with no jump target.
+    private static int SecondIntAfter(string tok, string keyword)
+    {
+        int idx = tok.IndexOf(keyword, StringComparison.OrdinalIgnoreCase);
+        if (idx < 0) return 0;
+        int i = idx + keyword.Length;
+        while (i < tok.Length && !char.IsDigit(tok[i])) i++;   // to first int
+        while (i < tok.Length && char.IsDigit(tok[i])) i++;    // past first int
+        while (i < tok.Length && !char.IsDigit(tok[i])) i++;   // to second int
         int start = i;
         while (i < tok.Length && char.IsDigit(tok[i])) i++;
         return i > start

@@ -143,34 +143,19 @@
 
                             <!-- Navigation — when a planned route needs this item to
                                  cross a gate or survive a hazard and the party lacks
-                                 it, "Auto-obtain for path" (master) tells the walker
-                                 to go get it (via the enabled methods) instead of
-                                 surfacing the requirement in the route picker. The
-                                 three method sub-flags grey out until the master is
-                                 ticked; Min/Max above bound how many are acquired. -->
+                                 it, "Auto-obtain for path" tells the walker to go get
+                                 it (via every method — party redistribute, shop buy,
+                                 bank withdraw, drop reroute) instead of failing the
+                                 sole-route case or surfacing the two-route case in the
+                                 route picker. Min/Max above bound how many are
+                                 acquired per person. -->
                             <TextBlock Classes="SectionHeader" Text="Navigation" Margin="0,10,0,4"/>
                             <Border BorderBrush="{StaticResource ChromeBorderBrush}"
                                     BorderThickness="1" CornerRadius="3" Padding="8"
                                     HorizontalAlignment="Left">
-                                <StackPanel Spacing="2">
-                                    <CheckBox Content="Auto-obtain for path"
-                                              IsChecked="{Binding AutoObtainForPath, Mode=TwoWay}"
-                                              ToolTip.Tip="When a route needs this item, acquire it via the enabled methods below instead of surfacing the requirement in the route picker."/>
-                                    <StackPanel Margin="18,0,0,0" Spacing="2">
-                                        <CheckBox Content="Buy if needed"
-                                                  IsChecked="{Binding BuyIfNeededForPath, Mode=TwoWay}"
-                                                  IsEnabled="{Binding PathMethodsEnabled}"
-                                                  ToolTip.Tip="Route through a shop that sells it and buy up to Max to get."/>
-                                        <CheckBox Content="Source from drops"
-                                                  IsChecked="{Binding SourceFromDropsForPath, Mode=TwoWay}"
-                                                  IsEnabled="{Binding PathMethodsEnabled}"
-                                                  ToolTip.Tip="Route through a room whose monsters drop it and search+get the drop."/>
-                                        <CheckBox Content="Provision from party"
-                                                  IsChecked="{Binding ProvisionPartyForPath, Mode=TwoWay}"
-                                                  IsEnabled="{Binding PathMethodsEnabled}"
-                                                  ToolTip.Tip="Borrow a spare from a party member who is carrying one."/>
-                                    </StackPanel>
-                                </StackPanel>
+                                <CheckBox Content="Auto-obtain for path"
+                                          IsChecked="{Binding AutoObtainForPath, Mode=TwoWay}"
+                                          ToolTip.Tip="When a route needs this item, acquire it automatically (party redistribute, shop buy via bank withdraw, or drop reroute) instead of failing the sole route or surfacing the choice in the route picker."/>
                             </Border>
 
                         </StackPanel>

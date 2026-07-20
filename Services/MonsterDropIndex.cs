@@ -10,9 +10,8 @@ namespace FujinTerm.Services;
 // item, and where each of those monsters spawns. Backs the per-item
 // source-from-drops affordance — when a walk-route crosses an (Item: N) /
 // (Ticket: N) gate whose item we don't carry and no shop sells it, and the item
-// is flagged SourceFromDropsForPath (item-edit dialog, under AutoObtainForPath),
-// MonsterDropRouter asks this index which monsters drop it and reroutes
-// toward the nearest one's lair.
+// is flagged AutoObtainForPath (item-edit dialog), MonsterDropRouter asks this
+// index which monsters drop it and reroutes toward the nearest one's lair.
 //
 // A monster "drops" an item when the id appears in any of its ten
 // DropItem-0..DropItem-9 slots; the paired DropItem%-N gives the drop chance

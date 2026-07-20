@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Threading.Tasks;
 using FujinTerm.Game.Map;
 using FujinTerm.Services;
@@ -46,6 +47,19 @@ public static class RouteChoicePrompt
             return;
         }
 
+        // Sole route (no gate-free alternative) whose gates are item/ticket, not a
+        // hazard: no picker — the item's AutoObtainForPath flag decides. Flagged
+        // arms the acquisition pipeline and crosses the gate; unflagged walks the
+        // plain route, whose BFS fails in place naming the missing item. Hazard
+        // sole routes fall through to the picker (carry / buy / use a counter).
+        if (!choice.HasFreeRoute
+            && choice.Requirements.Any(r => r.Kind != RouteRequirementKind.HazardProtection))
+        {
+            bool arm = services.ShouldAutoObtainSoleRoute(choice.Requirements);
+            CommitWalk(services, destination, gated: arm);
+            return;
+        }
+
         var vm = new RouteChoiceDialogViewModel(
             choice,
             DestinationLabel(services, destination),
@@ -67,7 +81,9 @@ public static class RouteChoicePrompt
             vm.PreviewRequested += r => previewSink(r switch
             {
                 RouteChoiceResult.Free => choice.FreePath,
+                // Both direct choices trace the same physical gated line.
                 RouteChoiceResult.Gated => choice.GatedPath,
+                RouteChoiceResult.GatedNoAcquire => choice.GatedPath,
                 _ => null,
             });
 
@@ -90,6 +106,11 @@ public static class RouteChoicePrompt
             case RouteChoiceResult.Gated:
                 CommitWalk(services, destination, gated: true);
                 break;
+            case RouteChoiceResult.GatedNoAcquire:
+                // "Send it": walk the gated route but don't arm acquisition — the
+                // user asserts they'll clear the gates without provisioning.
+                CommitWalk(services, destination, gated: true, armAcquisition: false);
+                break;
             // null → cancelled: walk nothing (and leave any manual pause intact —
             // the user backed out, so nothing changed).
         }
@@ -101,7 +122,8 @@ public static class RouteChoicePrompt
     // (AutoWalkManager.WalkToImmediate honours the coordinator's paused state), so
     // the destination changed but the walker stayed frozen. Engine waits (Combat /
     // rest / party) are left asserted and re-pause on their own if still relevant.
-    private static void CommitWalk(AppServices services, RoomKey destination, bool gated)
+    private static void CommitWalk(
+        AppServices services, RoomKey destination, bool gated, bool armAcquisition = true)
     {
         // Abandon a paused walk-in-progress BEFORE clearing the gate. Clearing
         // UserGate synchronously resumes a Paused walker (OnCoordinatorPauseChanged
@@ -113,7 +135,8 @@ public static class RouteChoicePrompt
             services.Walker.Stop("superseded by new user walk-to");
         services.MovementCoordinator.ClearGate(
             MovementCoordinator.UserGate, nameof(RouteChoicePrompt));
-        services.Walker.WalkTo(destination, planThroughAcquirableGates: gated);
+        services.Walker.WalkTo(
+            destination, planThroughAcquirableGates: gated, armItemAcquisition: armAcquisition);
     }
 
     private static string DestinationLabel(AppServices services, RoomKey destination) =>

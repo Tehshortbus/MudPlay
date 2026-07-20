@@ -20,6 +20,8 @@ public sealed class PathItemShopRouterTests
     private static Need PathNeed(int id, int qty = 1)
         => new(NeedKind.PathItem, id.ToString(), "test", DateTimeOffset.Now, qty);
 
+    private static readonly RoomKey Bank = new(1, 170);
+
     private sealed class Harness
     {
         public readonly Dictionary<int, List<RoomKey>> ShopRooms = new();
@@ -32,6 +34,13 @@ public sealed class PathItemShopRouterTests
         public bool EngineWalk;
         public readonly List<RoomKey> Walks = new();
 
+        // Bank leg. Cash is a live figure the buy/withdraw path reads; BuyCost
+        // maps (item, shopRoom) → per-copy copper (null = unpriced); BankRoom is
+        // the configured withdraw target (null = none).
+        public long Cash;
+        public readonly Dictionary<(int Item, RoomKey Shop), long> BuyCost = new();
+        public RoomKey? BankRoom;
+
         public void Carry(int id, int n = 1) => Carried[id] = n;
 
         public PathItemShopRouter Build() => new(
@@ -42,13 +51,17 @@ public sealed class PathItemShopRouterTests
             walkDestination: () => WalkDest,
             distanceBetween: (a, b) => Dist.TryGetValue((a, b), out int d) ? d : null,
             carriedCount: id => Carried.TryGetValue(id, out int c) ? c : 0,
+            cashOnHand: () => Cash,
+            buyCost: (item, shop) => BuyCost.TryGetValue((item, shop), out long c) ? c : (long?)null,
+            bankRoom: () => BankRoom,
             itemName: id => Names.TryGetValue(id, out string? n) ? n : null,
             isEnabled: _ => Enabled,
             engineWalkActive: () => EngineWalk,
             walkTo: Walks.Add,
             post: a => a(),                          // synchronous in tests
             log: null,
-            buyTimeout: TimeSpan.FromHours(1));       // real timer never fires mid-test
+            buyTimeout: TimeSpan.FromHours(1),        // real timer never fires mid-test
+            withdrawTimeout: TimeSpan.FromHours(1));
 
         // One shop (ShopA) selling item 42, three steps out, four steps on to dest.
         public Harness WithSingleShop()
@@ -56,6 +69,17 @@ public sealed class PathItemShopRouterTests
             ShopRooms[42] = new List<RoomKey> { ShopA };
             Dist[(Cur, ShopA)] = 3;
             Dist[(ShopA, Dest)] = 4;
+            return this;
+        }
+
+        // A configured, reachable bank plus a priced item, so the affordability
+        // gate has everything it needs to decide a withdraw run.
+        public Harness WithBank(long unitCost)
+        {
+            BankRoom = Bank;
+            BuyCost[(42, ShopA)] = unitCost;
+            Dist[(Cur, Bank)] = 1;
+            Dist[(Bank, Dest)] = 5;
             return this;
         }
     }
@@ -397,5 +421,203 @@ public sealed class PathItemShopRouterTests
 
         Assert.False(r.DetourActive);
         Assert.Empty(h.Walks);
+    }
+
+    // ----- Bank leg: withdraw before buying when short of cash ----------------
+
+    [Fact]
+    public void OnNeedPosted_AffordableOnHand_GoesStraightToShop()
+    {
+        var h = new Harness().WithSingleShop().WithBank(unitCost: 100);
+        h.Cash = 100;                              // covers the single copy
+        PathItemShopRouter r = h.Build();
+
+        r.OnNeedPosted(PathNeed(42));
+
+        Assert.Equal(ShopA, Assert.Single(h.Walks));   // no bank detour
+    }
+
+    [Fact]
+    public void OnNeedPosted_Unpriced_GoesStraightToShop()
+    {
+        var h = new Harness().WithSingleShop();
+        h.BankRoom = Bank;                          // bank set, but no BuyCost entry
+        h.Dist[(Cur, Bank)] = 1; h.Dist[(Bank, Dest)] = 5;
+        h.Cash = 0;
+        PathItemShopRouter r = h.Build();
+
+        r.OnNeedPosted(PathNeed(42));
+
+        Assert.Equal(ShopA, Assert.Single(h.Walks));   // unpriced → can't cost the run
+    }
+
+    [Fact]
+    public void OnNeedPosted_UnaffordableButNoBank_GoesToShop()
+    {
+        var h = new Harness().WithSingleShop();
+        h.BuyCost[(42, ShopA)] = 100;               // priced and unaffordable…
+        h.Cash = 10;
+        // …but no bank configured, so buy with cash on hand.
+        PathItemShopRouter r = h.Build();
+
+        r.OnNeedPosted(PathNeed(42));
+
+        Assert.Equal(ShopA, Assert.Single(h.Walks));
+    }
+
+    [Fact]
+    public void OnNeedPosted_UnaffordableWithBank_DetoursToBank()
+    {
+        var h = new Harness().WithSingleShop().WithBank(unitCost: 100);
+        h.Cash = 30;                                // 70 short
+        PathItemShopRouter r = h.Build();
+
+        r.OnNeedPosted(PathNeed(42));
+
+        Assert.True(r.DetourActive);
+        Assert.Equal(Bank, Assert.Single(h.Walks));    // bank first
+    }
+
+    [Fact]
+    public void OnNeedPosted_ShortfallDrivenByQuantity_DetoursToBank()
+    {
+        var h = new Harness().WithSingleShop().WithBank(unitCost: 40);
+        h.Cash = 100;                               // covers 2 copies, not 3 (cost 120)
+        PathItemShopRouter r = h.Build();
+
+        r.OnNeedPosted(PathNeed(42, qty: 3));
+
+        Assert.Equal(Bank, Assert.Single(h.Walks));
+    }
+
+    [Fact]
+    public void OnWalkEvent_ArriveAtBank_WithdrawsShortfall()
+    {
+        var h = new Harness().WithSingleShop().WithBank(unitCost: 100);
+        h.Cash = 30;
+        PathItemShopRouter r = h.Build();
+        r.OnNeedPosted(PathNeed(42));
+
+        r.OnWalkEvent(new WalkEvent(WalkEventKind.Finished, "reached", Bank));
+
+        Assert.Equal("with 70", Decode(Assert.Single(r.LastSentForTests)));
+        Assert.True(r.DetourActive);               // Withdrawing, still no shop walk
+        Assert.Single(h.Walks);
+    }
+
+    [Fact]
+    public void OnInventoryChanged_WithdrawSettles_ContinuesToShop()
+    {
+        var h = new Harness().WithSingleShop().WithBank(unitCost: 100);
+        h.Cash = 30;
+        PathItemShopRouter r = h.Build();
+        r.OnNeedPosted(PathNeed(42));
+        r.OnWalkEvent(new WalkEvent(WalkEventKind.Finished, "reached", Bank));
+
+        h.Cash = 100;                              // the withdraw landed
+        r.OnInventoryChanged();
+
+        Assert.Equal(2, h.Walks.Count);
+        Assert.Equal(Bank, h.Walks[0]);
+        Assert.Equal(ShopA, h.Walks[1]);
+    }
+
+    [Fact]
+    public void OnInventoryChanged_WithdrawStillShort_KeepsWaiting()
+    {
+        var h = new Harness().WithSingleShop().WithBank(unitCost: 100);
+        h.Cash = 30;
+        PathItemShopRouter r = h.Build();
+        r.OnNeedPosted(PathNeed(42));
+        r.OnWalkEvent(new WalkEvent(WalkEventKind.Finished, "reached", Bank));
+
+        h.Cash = 60;                               // partial — still under 100
+        r.OnInventoryChanged();
+
+        Assert.Single(h.Walks);                    // no shop walk yet
+        Assert.True(r.DetourActive);
+    }
+
+    [Fact]
+    public void OnWithdrawTimeout_BankTooPoor_HaltsAtBank()
+    {
+        var h = new Harness().WithSingleShop().WithBank(unitCost: 100);
+        h.Cash = 30;
+        PathItemShopRouter r = h.Build();
+        r.OnNeedPosted(PathNeed(42));
+        r.OnWalkEvent(new WalkEvent(WalkEventKind.Finished, "reached", Bank));
+
+        // Over-request silently no-ops — cash never moved. The window elapses.
+        r.OnWithdrawTimeout();
+
+        Assert.False(r.DetourActive);              // fail-out, no forced resume
+        Assert.Single(h.Walks);                    // only the bank walk
+    }
+
+    [Fact]
+    public void OnWalkEvent_BankUnreachable_ProceedsToShopWithCashOnHand()
+    {
+        var h = new Harness().WithSingleShop().WithBank(unitCost: 100);
+        h.Cash = 30;
+        PathItemShopRouter r = h.Build();
+        r.OnNeedPosted(PathNeed(42));
+
+        r.OnWalkEvent(new WalkEvent(WalkEventKind.Failed, "no path", Bank));
+
+        Assert.Equal(2, h.Walks.Count);
+        Assert.Equal(ShopA, h.Walks[1]);           // pressed on to the shop
+        Assert.True(r.DetourActive);
+    }
+
+    [Fact]
+    public void OnWalkEvent_ArriveAtBank_CashCaughtUp_SkipsWithdraw()
+    {
+        var h = new Harness().WithSingleShop().WithBank(unitCost: 100);
+        h.Cash = 30;
+        PathItemShopRouter r = h.Build();
+        r.OnNeedPosted(PathNeed(42));
+
+        h.Cash = 100;                              // a hand-off arrived during the walk
+        r.OnWalkEvent(new WalkEvent(WalkEventKind.Finished, "reached", Bank));
+
+        Assert.Empty(r.LastSentForTests);          // never issued a `with`
+        Assert.Equal(2, h.Walks.Count);
+        Assert.Equal(ShopA, h.Walks[1]);
+    }
+
+    [Fact]
+    public void OnWalkEvent_UserRedirectsWhileWithdrawing_AbandonsQuietly()
+    {
+        var h = new Harness().WithSingleShop().WithBank(unitCost: 100);
+        h.Cash = 30;
+        PathItemShopRouter r = h.Build();
+        r.OnNeedPosted(PathNeed(42));
+        r.OnWalkEvent(new WalkEvent(WalkEventKind.Finished, "reached", Bank));
+
+        r.OnWalkEvent(new WalkEvent(WalkEventKind.Stopped, "user walk", null));
+
+        Assert.False(r.DetourActive);
+        Assert.Single(h.Walks);                    // no forced resume
+    }
+
+    [Fact]
+    public void BankRun_FullFlow_WithdrawThenBuyThenResume()
+    {
+        var h = new Harness().WithSingleShop().WithBank(unitCost: 100);
+        h.Cash = 30;
+        PathItemShopRouter r = h.Build();
+        r.OnNeedPosted(PathNeed(42));                                  // → walk to bank
+        r.OnWalkEvent(new WalkEvent(WalkEventKind.Finished, "reached", Bank));
+
+        h.Cash = 100;                                                 // withdraw landed
+        r.OnInventoryChanged();                                       // → walk to shop
+        r.OnWalkEvent(new WalkEvent(WalkEventKind.Finished, "reached", ShopA));  // → buy
+        h.Carry(42);                                                  // buy landed
+        r.OnInventoryChanged();                                       // → resume
+
+        Assert.Equal(new[] { Bank, ShopA, Dest }, h.Walks.ToArray());
+        Assert.Equal("with 70", Decode(r.LastSentForTests[0]));
+        Assert.Equal("buy boat", Decode(r.LastSentForTests[1]));
+        Assert.False(r.DetourActive);
     }
 }

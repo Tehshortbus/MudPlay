@@ -10,9 +10,8 @@ namespace FujinTerm.Game.Map;
 // carrying, and a shop in the active set stocks that item, detour to the shop
 // that adds the fewest steps, buy the needed count (the whole party shortfall
 // the need carries — one buy per still-missing copy), then resume to the
-// original destination. Backs the item record's "Auto-obtain for path → buy if
-// needed" flag (ItemOverlay.BuyIfNeededForPath under the AutoObtainForPath
-// master opt-in).
+// original destination. Backs the item record's "Auto-obtain for path" flag
+// (ItemOverlay.AutoObtainForPath).
 //
 // Trigger. PathItemDemandTracker posts a PathItem need at walk-start;
 // OnNeedPosted (wired to NeedsRegistry.NeedPosted) reacts. The event fires only
@@ -27,6 +26,16 @@ namespace FujinTerm.Game.Map;
 // steps added to the trip. Distances use the same IRoomFilter the walker routes
 // with, so the estimate matches the walk that actually runs. Ties break on the
 // nearer shop, then room key order, for determinism.
+//
+// Banking. Once a shop is chosen, price the shortfall (unit buy cost × copies
+// still missing). If the leader's cash on hand won't cover it and a bank is
+// configured, detour to the bank FIRST, `with <shortfall-copper>` the
+// difference, wait for the withdraw to land (InventoryManager confirms it by
+// raising Changed with a larger purse), then continue to the shop. Over-request
+// is safe — an unaffordable withdraw silently no-ops, so cash stays put and the
+// withdraw window elapses: that's the "cost exceeds cash + bank" fail-out, which
+// halts at the bank for the user to handle. An unpriced item, or no bank to draw
+// from, skips the leg and buys with whatever's on hand.
 //
 // Scope. Detours apply only to a plain walk-to. When a loop or auto-lair run is
 // driving movement (engineWalkActive) the need is left to demand-driven
@@ -52,6 +61,8 @@ public sealed class PathItemShopRouter : IDisposable
     private enum Phase
     {
         Idle,
+        WalkingToBank,
+        Withdrawing,
         WalkingToShop,
         Buying,
     }
@@ -61,6 +72,9 @@ public sealed class PathItemShopRouter : IDisposable
     private readonly Func<RoomKey?> _walkDestination;
     private readonly Func<RoomKey, RoomKey, int?> _distanceBetween;
     private readonly Func<int, int> _carriedCount;
+    private readonly Func<long> _cashOnHand;
+    private readonly Func<int, RoomKey, long?> _buyCost;
+    private readonly Func<RoomKey?> _resolveBankRoom;
     private readonly Func<int, string?> _itemName;
     private readonly Func<int, bool> _isEnabled;
     private readonly Func<bool> _engineWalkActive;
@@ -68,14 +82,18 @@ public sealed class PathItemShopRouter : IDisposable
     private readonly Action<Action> _post;
     private readonly LogService? _log;
     private readonly TimeSpan _buyTimeout;
+    private readonly TimeSpan _withdrawTimeout;
     private readonly WireSender _wire = new();
     private readonly Timer _buyTimer;
+    private readonly Timer _withdrawTimer;
 
     private Phase _phase = Phase.Idle;
     private int _itemId;
     private int _targetCount = 1;
     private RoomKey _origDest;
     private RoomKey _shopRoom;
+    private RoomKey _bankRoomKey;
+    private long _costTarget;
 
     public PathItemShopRouter(
         Func<int, IReadOnlyList<RoomKey>> shopRoomsSellingItem,
@@ -83,19 +101,26 @@ public sealed class PathItemShopRouter : IDisposable
         Func<RoomKey?> walkDestination,
         Func<RoomKey, RoomKey, int?> distanceBetween,
         Func<int, int> carriedCount,
+        Func<long> cashOnHand,
+        Func<int, RoomKey, long?> buyCost,
+        Func<RoomKey?> bankRoom,
         Func<int, string?> itemName,
         Func<int, bool> isEnabled,
         Func<bool> engineWalkActive,
         Action<RoomKey> walkTo,
         Action<Action> post,
         LogService? log = null,
-        TimeSpan? buyTimeout = null)
+        TimeSpan? buyTimeout = null,
+        TimeSpan? withdrawTimeout = null)
     {
         ArgumentNullException.ThrowIfNull(shopRoomsSellingItem);
         ArgumentNullException.ThrowIfNull(currentRoom);
         ArgumentNullException.ThrowIfNull(walkDestination);
         ArgumentNullException.ThrowIfNull(distanceBetween);
         ArgumentNullException.ThrowIfNull(carriedCount);
+        ArgumentNullException.ThrowIfNull(cashOnHand);
+        ArgumentNullException.ThrowIfNull(buyCost);
+        ArgumentNullException.ThrowIfNull(bankRoom);
         ArgumentNullException.ThrowIfNull(itemName);
         ArgumentNullException.ThrowIfNull(isEnabled);
         ArgumentNullException.ThrowIfNull(engineWalkActive);
@@ -106,6 +131,9 @@ public sealed class PathItemShopRouter : IDisposable
         _walkDestination = walkDestination;
         _distanceBetween = distanceBetween;
         _carriedCount = carriedCount;
+        _cashOnHand = cashOnHand;
+        _buyCost = buyCost;
+        _resolveBankRoom = bankRoom;
         _itemName = itemName;
         _isEnabled = isEnabled;
         _engineWalkActive = engineWalkActive;
@@ -113,7 +141,10 @@ public sealed class PathItemShopRouter : IDisposable
         _post = post;
         _log = log;
         _buyTimeout = buyTimeout ?? TimeSpan.FromSeconds(8);
+        _withdrawTimeout = withdrawTimeout ?? TimeSpan.FromSeconds(8);
         _buyTimer = new Timer(_ => _post(OnBuyTimeout), null,
+            Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+        _withdrawTimer = new Timer(_ => _post(OnWithdrawTimeout), null,
             Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
     }
 
@@ -157,10 +188,45 @@ public sealed class PathItemShopRouter : IDisposable
         _targetCount = target;
         _origDest = dest;
         _shopRoom = shopRoom;
+
+        // Affordability gate. Price the shortfall and, if cash on hand won't
+        // cover it and a bank is configured, draw the difference first. An
+        // unpriced item (or no bank) falls through to a plain shop run and buys
+        // with whatever's on hand — a partial buy still helps.
+        int toBuy = Math.Max(1, target - _carriedCount(itemId));
+        if (NeedsBankRun(itemId, shopRoom, toBuy, out long cost, out RoomKey bank))
+        {
+            _costTarget = cost;
+            _bankRoomKey = bank;
+            _phase = Phase.WalkingToBank;
+            _log?.Info(LogCategory,
+                $"path item {itemId} ('{name}') costs {cost} copper, on hand {_cashOnHand()}"
+                + $" — withdrawing at bank {bank} before shop {shopRoom}");
+            _post(() => _walkTo(bank));
+            return;
+        }
+
+        _costTarget = 0;
         _phase = Phase.WalkingToShop;
         _log?.Info(LogCategory,
             $"path item {itemId} ('{name}') needed — detouring to shop at {shopRoom}");
         _post(() => _walkTo(shopRoom));
+    }
+
+    // True when the priced shortfall exceeds cash on hand and a bank is
+    // available to draw from — the caller should route to the bank first.
+    // Unpriced (no shop entry / zero cost) or bank-less items return false so the
+    // caller heads straight to the shop.
+    private bool NeedsBankRun(int itemId, RoomKey shopRoom, int toBuy, out long cost, out RoomKey bank)
+    {
+        cost = 0;
+        bank = default;
+        if (_buyCost(itemId, shopRoom) is not { } unit || unit <= 0) return false;
+        cost = unit * toBuy;
+        if (_cashOnHand() >= cost) return false;              // already affordable
+        if (_resolveBankRoom() is not { } configured) return false;   // nowhere to withdraw
+        bank = configured;
+        return true;
     }
 
     // Walker-event callback (wired to AutoWalkManager.Event). Advances the
@@ -170,6 +236,29 @@ public sealed class PathItemShopRouter : IDisposable
     {
         switch (_phase)
         {
+            case Phase.WalkingToBank:
+                if (e.Kind == WalkEventKind.Finished && KeyMatches(e.Destination, _bankRoomKey))
+                    BeginWithdrawing();
+                else if (e.Kind == WalkEventKind.Failed)
+                {
+                    // Bank unreachable — press on to the shop and buy with what's
+                    // on hand rather than abandoning the whole detour.
+                    _log?.Info(LogCategory,
+                        $"bank at {_bankRoomKey} unreachable ({e.Detail}) — buying at {_shopRoom} with cash on hand");
+                    _costTarget = 0;
+                    GoToShop();
+                }
+                else if (e.Kind == WalkEventKind.Stopped)
+                    Reset(); // user / another engine took over — abandon quietly
+                break;
+
+            case Phase.Withdrawing:
+                // Idle at the bank while the withdraw settles. A fresh walk means
+                // the user redirected — drop the detour and let them drive.
+                if (e.Kind is WalkEventKind.Started or WalkEventKind.Stopped)
+                    Reset();
+                break;
+
             case Phase.WalkingToShop:
                 if (e.Kind == WalkEventKind.Finished && KeyMatches(e.Destination, _shopRoom))
                     BeginBuying();
@@ -198,6 +287,17 @@ public sealed class PathItemShopRouter : IDisposable
     // found-first abort for an in-flight shop walk.
     public void OnInventoryChanged()
     {
+        if (_phase == Phase.Withdrawing)
+        {
+            // The withdraw echo raises Changed with a larger purse. Once cash on
+            // hand covers the buy, continue to the shop; a smaller bump (partial
+            // draw) leaves us waiting for the rest or the withdraw window.
+            if (_cashOnHand() < _costTarget) return;
+            _log?.Info(LogCategory,
+                $"withdraw settled ({_cashOnHand()} copper on hand) — continuing to shop {_shopRoom}");
+            GoToShop();
+            return;
+        }
         if (_phase is not (Phase.WalkingToShop or Phase.Buying)) return;
         if (_carriedCount(_itemId) < _targetCount) return;   // still short of the party's need
         _log?.Info(LogCategory, $"path item {_itemId} acquired (x{_targetCount}) — resuming to {_origDest}");
@@ -217,7 +317,51 @@ public sealed class PathItemShopRouter : IDisposable
         ResumeToPath();
     }
 
-    public void Dispose() => _buyTimer.Dispose();
+    // Withdraw-window elapsed. If cash still doesn't cover the buy the withdraw
+    // didn't land the shortfall — the bank held less than we asked, and an
+    // over-request silently no-ops (cash unchanged). We can't fund the buy, so
+    // halt at the bank and leave it for the user rather than walking on to a shop
+    // we can't pay at. Invoked on the UI thread via post; tests call it directly.
+    public void OnWithdrawTimeout()
+    {
+        if (_phase != Phase.Withdrawing) return;
+        if (_cashOnHand() >= _costTarget) return;   // race: OnInventoryChanged handled it
+        _log?.Warn(LogCategory,
+            $"withdraw for path item {_itemId} did not cover {_costTarget} copper"
+            + $" (on hand {_cashOnHand()}) — halting at bank {_bankRoomKey}; handle it manually");
+        Reset();
+    }
+
+    public void Dispose()
+    {
+        _buyTimer.Dispose();
+        _withdrawTimer.Dispose();
+    }
+
+    private void BeginWithdrawing()
+    {
+        _phase = Phase.Withdrawing;
+        long shortfall = _costTarget - _cashOnHand();
+        if (shortfall <= 0)
+        {
+            // Cash caught up during the walk (a party hand-off, say) — skip the
+            // withdraw and head straight on to the shop.
+            GoToShop();
+            return;
+        }
+        _log?.Info(LogCategory,
+            $"at bank {_bankRoomKey} — withdrawing {shortfall} copper for path item {_itemId}");
+        _wire.Send($"with {shortfall}");
+        ArmWithdrawTimer();
+    }
+
+    private void GoToShop()
+    {
+        DisarmWithdrawTimer();
+        _phase = Phase.WalkingToShop;
+        RoomKey shop = _shopRoom;
+        _post(() => _walkTo(shop));
+    }
 
     private void BeginBuying()
     {
@@ -237,6 +381,7 @@ public sealed class PathItemShopRouter : IDisposable
     private void ResumeToPath()
     {
         DisarmBuyTimer();
+        DisarmWithdrawTimer();
         RoomKey dest = _origDest;
         _phase = Phase.Idle;
         _post(() => _walkTo(dest));
@@ -245,6 +390,7 @@ public sealed class PathItemShopRouter : IDisposable
     private void Reset()
     {
         DisarmBuyTimer();
+        DisarmWithdrawTimer();
         _phase = Phase.Idle;
     }
 
@@ -253,6 +399,12 @@ public sealed class PathItemShopRouter : IDisposable
 
     private void DisarmBuyTimer()
         => _buyTimer.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+
+    private void ArmWithdrawTimer()
+        => _withdrawTimer.Change(_withdrawTimeout, Timeout.InfiniteTimeSpan);
+
+    private void DisarmWithdrawTimer()
+        => _withdrawTimer.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
 
     private bool TrySelectShop(RoomKey cur, RoomKey dest, int itemId, out RoomKey best)
         => TrySelectShop(_shopRoomsSellingItem(itemId), cur, dest, _distanceBetween, out best);

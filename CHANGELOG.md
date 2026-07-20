@@ -2,6 +2,17 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.80.0
+
+- Path-item auto-obtain simplified to one per-item toggle — the separate buy / drop-source / party-provision sub-checkboxes are gone, folded into a single "auto-obtain for path"
+- Party path-item provisioning now acquires a per-person quota (enough for every member), not just one, redistributing from members who already carry spares
+- Path-item shop router withdraws from the bank before buying when cash on hand is short but the bank covers it
+- Route picker gains a "send it" card to walk a gated route without acquiring; a sole item/ticket-gated route now surfaces in the picker instead of silently aborting
+- Desert/drown hazard buff now also re-raised reactively: the game's own lapse prompt (the desert "you suffer in the heat... you need water, soon!") fires one `use waterskin` when the predictive timer drifted and the buff dropped early
+- A lapse prompt with no swig confirmation — out of charges/waterskins — halts the walk instead of marching deeper into a hazard it can no longer counter
+- Lapse-damage spell is derived from the checkspell chain (desert spell 712), so the re-raise keys on the active set's message record, not hardcoded realm text
+- Bug report's room-hazard line now shows the derived lapse spell (whether the reactive re-raise can arm)
+
 ## 1.79.0
 
 - Hazard rooms countered by a `use`-cast buff (desert heat, drowning) now raise the buff mid-walk — `use`s the source item on approach, re-`use`ing when its duration lapses so a long crossing spends the fewest charges

@@ -16,9 +16,8 @@ public readonly record struct MonsterDropSpawn(
 // we're not carrying and no shop stocks it, find which monster drops it,
 // and — with the user's confirmation — reroute to the nearest room that
 // monster spawns in so they can hunt it, then resume to the original
-// destination. Backs the item record's "Auto-obtain for path → source from
-// drops" flag (ItemOverlay.SourceFromDropsForPath under the AutoObtainForPath
-// master opt-in).
+// destination. Backs the item record's "Auto-obtain for path" flag
+// (ItemOverlay.AutoObtainForPath).
 //
 // Division of labour with PathItemShopRouter. Both react to the same
 // NeedsRegistry.NeedPosted event and are mutually exclusive: the shop router

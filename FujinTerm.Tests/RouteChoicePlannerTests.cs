@@ -283,7 +283,7 @@ public sealed class RouteChoicePlannerTests
     }
 
     [Fact]
-    public void NoChoice_WhenNoFreeRoute()
+    public void OffersSoleItemRoute_WhenNoFreeAlternative()
     {
         WithGraph(ItemOnlyJson, (bfs, graph, filter) =>
         {
@@ -293,9 +293,14 @@ public sealed class RouteChoicePlannerTests
             RouteChoice? choice = RouteChoicePlanner.Evaluate(
                 bfs, filter, graph, new RoomKey(1, 1), new RoomKey(1, 9));
 
-            // The gate is the only way through — leave it to the plain walk,
-            // which surfaces the gated-only failure.
-            Assert.Null(choice);
+            // The item gate is the only way through — surface it (HasFreeRoute
+            // false) so the caller's flag logic decides whether to arm the
+            // acquisition pipeline or fail in place naming the item.
+            Assert.NotNull(choice);
+            Assert.False(choice!.HasFreeRoute);
+            Assert.Empty(choice.FreePath);
+            RouteRequirement req = Assert.Single(choice.Requirements);
+            Assert.Equal(RouteRequirementKind.CarryItem, req.Kind);
         });
     }
 

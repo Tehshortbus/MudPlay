@@ -470,8 +470,15 @@ public static class BugReportBuilder
             bool carried = names.Any(n => svc.Inventory.Snapshot.CarriedItems
                 .Any(c => c.Contains(n, StringComparison.OrdinalIgnoreCase)));
             string label = names.Count > 0 ? string.Join(" / ", names) : "(unnamed source)";
+            // LapseSpell 0 means the buff-absent damage cast wasn't derivable from
+            // the checkspell chain, so the reactive re-raise (fire on the lapse
+            // prompt) can't arm — only the predictive timer holds the buff.
+            string lapse = bc.LapseSpell > 0
+                ? bc.LapseSpell.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                : "none — reactive re-raise off";
             Kv(sb, $"Buff {bc.BuffSpell}",
-                $"{label} (dur ~{bc.DurationSeconds}s, carried: {(carried ? "yes" : "no")})");
+                $"{label} (dur ~{bc.DurationSeconds}s, carried: {(carried ? "yes" : "no")}, "
+                + $"lapse spell: {lapse})");
         }
 
         // Random-teleport maze solver — a "walker never reaches the asylum room /

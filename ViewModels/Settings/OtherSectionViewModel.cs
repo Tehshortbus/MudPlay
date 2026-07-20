@@ -116,12 +116,11 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     // still record. Read live by AutoDiscardManager.HideMode.
     [ObservableProperty] private bool _hideWhenDiscarding;
 
-    // Note: the former Buy/Hunt/Defer path-item toggles moved to per-item
-    // game-data flags on the item record (ItemOverlay.BuyIfNeededForPath /
-    // SourceFromDropsForPath / ProvisionPartyForPath, gated by the master
-    // AutoObtainForPath opt-in). The item-edit dialog is their sole editor —
-    // a path-enabling item is marked once and every route through it obeys the
-    // mark, so there's no global toggle here anymore.
+    // Note: the former Buy/Hunt/Defer path-item toggles moved to a single per-item
+    // game-data flag on the item record (ItemOverlay.AutoObtainForPath — checked
+    // means every acquisition method is in play). The item-edit dialog is its sole
+    // editor — a path-enabling item is marked once and every route through it obeys
+    // the mark, so there's no global toggle here anymore.
 
     // When checked and leading a party, route around level gates the whole
     // party can't clear instead of walking the leader through and leaving a

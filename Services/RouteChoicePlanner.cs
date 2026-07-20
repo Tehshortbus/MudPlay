@@ -24,9 +24,11 @@ public sealed record RouteRequirement(RouteRequirementKind Kind, IReadOnlyList<i
 // count, the shorter direct route's step count, the requirements the direct
 // route demands, and each route as a RoomKey sequence (source first, then every
 // hop's target) so the picker can draw a map preview of whichever the user
-// selects before committing. Produced either when the direct route is a genuine
-// shortcut that needs an acquirable item, or when NO gate-free route exists and
-// the only way there crosses a survivable room hazard.
+// selects before committing. Produced when the direct route is a genuine
+// shortcut that needs an acquirable item, OR when NO gate-free route exists and
+// the only way there crosses something acquirable (a survivable room hazard, or
+// an item / ticket / key gate). The caller decides what to do with a sole route
+// by its requirement shape; see RouteChoicePrompt.
 public sealed record RouteChoice(
     int FreeStepCount,
     int GatedStepCount,
@@ -42,9 +44,10 @@ public sealed record RouteChoice(
 
 // Compares the free-preferring route (acquirable gates active, so BFS detours
 // around them) against the direct route (gates suspended, so BFS crosses them as
-// if every gate item were carried). When the direct route saves steps AND needs
-// something acquirable, it returns a RouteChoice the picker offers the user;
-// otherwise null and the caller walks the plain free route.
+// if every gate item were carried). Returns a RouteChoice when the direct route
+// saves steps AND needs something acquirable, OR when no gate-free route exists
+// and the sole route crosses something acquirable (HasFreeRoute false). Null
+// means the free route is fine on its own — the caller walks it plainly.
 //
 // Only the four acquirable gates (item / ticket / key-door / hazard) are
 // suspended for the direct pass — level / toll / class gates stay active, so the
@@ -86,15 +89,14 @@ public static class RouteChoicePlanner
         bool hasFree = free is { Count: > 0 };
         if (!hasFree)
         {
-            // No gate-free route at all. Offer the direct route ONLY when every
-            // block is a survivable room hazard — carry + `use` (or buy) a counter
-            // and walk through, rather than aborting with "a room hazard you can't
-            // survive" when the counter is two rooms from a shop. An item / ticket
-            // / key gate that's the sole route stays a plain walk whose failure
-            // names the missing item (matching the acquire policy that item gates
-            // aren't auto-shopped from here).
-            if (reqs.Any(r => r.Kind != RouteRequirementKind.HazardProtection))
-                return null;
+            // No gate-free route at all — surface the sole route (HasFreeRoute
+            // false) and let the caller decide by its shape. A survivable-hazard
+            // route is offered in the picker (carry / buy / `use` a counter and
+            // walk through, rather than aborting with "a room hazard you can't
+            // survive"). A sole item / ticket / key route is governed there by the
+            // item's AutoObtainForPath flag: flagged arms the acquisition pipeline
+            // and crosses the gate; unflagged falls back to the plain walk whose
+            // failure names the missing item.
             return new RouteChoice(
                 0, gated.Count, reqs,
                 Array.Empty<RoomKey>(),

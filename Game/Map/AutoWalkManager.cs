@@ -539,11 +539,25 @@ public sealed class AutoWalkManager : IRecoverableEngine
     // deferral so the deferred dispatch replans the same gated route.
     private bool _deferredWalkThroughGates;
 
+    // Companion to _deferredWalkTarget: preserves the route picker's
+    // "arm the item-acquisition pipeline" choice (false only for the
+    // "direct — send it" mode) across the tracker-Pending deferral.
+    private bool _deferredWalkArmAcquisition = true;
+
     // planThroughAcquirableGates: when true, BFS plans the route as if every
     // acquirable gate item (raft / ticket / door key / hazard counter) were
     // already carried — the route picker's "direct" choice. Default false
     // keeps every existing caller on the free-preferring route.
-    public bool WalkTo(RoomKey destination, bool planThroughAcquirableGates = false)
+    //
+    // armItemAcquisition: when true (default), the walk-start announce posts a
+    // need for every gate item the route demands that we lack, arming the
+    // shop / drop / party-share pipeline to source it. The route picker's
+    // "direct — send it" choice passes false: it crosses the gates as-is
+    // without provisioning, trusting the user to already hold what's needed.
+    public bool WalkTo(
+        RoomKey destination,
+        bool planThroughAcquirableGates = false,
+        bool armItemAcquisition = true)
     {
         if (State is WalkState.Walking or WalkState.Paused)
         {
@@ -570,6 +584,7 @@ public sealed class AutoWalkManager : IRecoverableEngine
             }
             _deferredWalkTarget = destination;
             _deferredWalkThroughGates = planThroughAcquirableGates;
+            _deferredWalkArmAcquisition = armItemAcquisition;
             _destination = destination;       // populated so status surfaces show the target
             State = WalkState.Walking;
             Raise(new WalkEvent(WalkEventKind.Started,
@@ -578,10 +593,13 @@ public sealed class AutoWalkManager : IRecoverableEngine
             return true;
         }
 
-        return WalkToImmediate(destination, planThroughAcquirableGates);
+        return WalkToImmediate(destination, planThroughAcquirableGates, armItemAcquisition);
     }
 
-    private bool WalkToImmediate(RoomKey destination, bool planThroughAcquirableGates = false)
+    private bool WalkToImmediate(
+        RoomKey destination,
+        bool planThroughAcquirableGates = false,
+        bool armItemAcquisition = true)
     {
         // Callers may arrive here from the WalkTo entry (Idle) OR from
         // the deferred dispatch in OnTrackerStateChanged (Walking with
@@ -689,7 +707,10 @@ public sealed class AutoWalkManager : IRecoverableEngine
         // Announce the items this route demands so the demand-driven
         // auto-search can arm for anything we're not carrying. Best-effort:
         // walks the graph along the planned directions from the source room.
-        AnnouncePlannedItemRequirements(source.Key, path);
+        // Suppressed for the "direct — send it" choice: that route crosses the
+        // gates as-is without provisioning anything.
+        if (armItemAcquisition)
+            AnnouncePlannedItemRequirements(source.Key, path);
 
         // Announce the rooms this route crosses so the auto-light provisioner
         // can ready / buy a light for the darkest one before we step into it.
@@ -1297,9 +1318,11 @@ public sealed class AutoWalkManager : IRecoverableEngine
             && _path is null)
         {
             bool throughGates = _deferredWalkThroughGates;
+            bool armAcquisition = _deferredWalkArmAcquisition;
             _deferredWalkTarget = null;
             _deferredWalkThroughGates = false;
-            WalkToImmediate(deferred, throughGates);
+            _deferredWalkArmAcquisition = true;
+            WalkToImmediate(deferred, throughGates, armAcquisition);
             return;
         }
 
@@ -1486,9 +1509,11 @@ public sealed class AutoWalkManager : IRecoverableEngine
                 if (_tracker.State.Confidence == RoomConfidence.Confirmed)
                 {
                     bool throughGates = _deferredWalkThroughGates;
+                    bool armAcquisition = _deferredWalkArmAcquisition;
                     _deferredWalkTarget = null;
                     _deferredWalkThroughGates = false;
-                    WalkToImmediate(deferred, throughGates);
+                    _deferredWalkArmAcquisition = true;
+                    WalkToImmediate(deferred, throughGates, armAcquisition);
                 }
                 return;
             }
@@ -1615,6 +1640,7 @@ public sealed class AutoWalkManager : IRecoverableEngine
         _awaitingHiddenReveal = false;
         _deferredWalkTarget = null;
         _deferredWalkThroughGates = false;
+        _deferredWalkArmAcquisition = true;
         _retryCount = 0;
         _replanCount = 0;
         // Drop any AbandonedCombat hold this walk was carrying so a stopped /

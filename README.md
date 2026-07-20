@@ -1,11 +1,15 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.79.0**
-> - Hazard rooms countered by a `use`-cast buff now raise the buff mid-walk, re-`use`ing when it lapses
-> - A route blocked only by a survivable hazard is offered in the picker instead of aborting
-> - Route picker previews a "dropped by <monster>" tail for a gate item sourced from a drop
-> - Bug report shows the current room's checkspell hazard and whether its counter is carried
+> **Version 1.80.0**
+> - Path-item auto-obtain simplified to one per-item toggle — the buy / drop-source / party-provision sub-checkboxes are folded into a single "auto-obtain for path"
+> - Party path-item provisioning now acquires a per-person quota (enough for every member), redistributing from members carrying spares
+> - Path-item shop router withdraws from the bank before buying when cash on hand is short but the bank covers it
+> - Route picker gains a "send it" card to walk a gated route without acquiring; a sole item/ticket-gated route now surfaces instead of silently aborting
+> - Desert/drown hazard buff also re-raised reactively: the game's lapse prompt ("you need water, soon!") fires one `use waterskin` when the timer drifted and the buff dropped early
+> - A lapse prompt with no swig confirmation — out of charges — halts the walk instead of marching deeper into the hazard
+> - Lapse-damage spell derived from the checkspell chain, so the re-raise keys on the active set's message, not hardcoded text
+> - Bug report's room-hazard line now shows the derived lapse spell
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

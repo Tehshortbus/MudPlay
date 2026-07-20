@@ -10,15 +10,19 @@ namespace FujinTerm.ViewModels.Navigation;
 // (walk nothing) rather than a member of this enum.
 public enum RouteChoiceResult
 {
-    Free,    // the longer gate-free route
-    Gated,   // the shorter route through the acquirable gate(s)
+    Free,           // the longer gate-free route
+    Gated,          // the shorter gated route — acquire the missing items first
+    GatedNoAcquire, // the shorter gated route — "send it": cross as-is, no acquisition
 }
 
 // Free-vs-direct route picker. Shown only when RouteChoicePlanner found a direct
 // route that saves steps but crosses an acquirable gate the crosser can't yet
 // pass. Clicking a route selects it and previews its line on the map (no walk
-// yet); the Go button commits the selected route (the direct one arms the
-// acquisition pipeline for the missing items). Cancel / X walks nothing.
+// yet); the Go button commits the selected route. The direct route splits in two
+// when a gate-free detour exists: "acquire then go" arms the acquisition pipeline
+// for the missing items, while "send it" crosses the gates as-is on the user's
+// say-so (they already hold what's needed, or accept the failure). Cancel / X
+// walks nothing.
 public sealed partial class RouteChoiceDialogViewModel
     : ObservableObject, IDialogViewModel<RouteChoiceResult?>
 {
@@ -33,6 +37,7 @@ public sealed partial class RouteChoiceDialogViewModel
     public string Heading { get; }
     public string FreeSummary { get; }
     public string GatedSummary { get; }
+    public string SendItSummary { get; }
     public string RequirementSummary { get; }
 
     // False when there's no gate-free route — the direct (hazard-crossing) route
@@ -40,16 +45,25 @@ public sealed partial class RouteChoiceDialogViewModel
     // just walk it" note; only the direct route is selectable.
     public bool HasFreeRoute { get; }
 
+    // The "direct — send it" card (cross the gates as-is, no acquisition) is only
+    // offered when a gate-free detour also exists — i.e. the true two-route fork,
+    // where skipping acquisition is a meaningful third choice. When the gated
+    // route is the ONLY way there, the send-it/acquire split collapses to the
+    // single acquire card (chunk-4 flag logic governs that case, not the picker).
+    public bool ShowSendItCard => HasFreeRoute;
+
     // Which route the user has selected to preview. Null until they click one —
     // Go stays disabled until then, forcing the click-to-preview-then-Go flow.
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsFreeSelected))]
     [NotifyPropertyChangedFor(nameof(IsGatedSelected))]
+    [NotifyPropertyChangedFor(nameof(IsSendItSelected))]
     [NotifyCanExecuteChangedFor(nameof(GoCommand))]
     private RouteChoiceResult? _selectedRoute;
 
     public bool IsFreeSelected => SelectedRoute == RouteChoiceResult.Free;
     public bool IsGatedSelected => SelectedRoute == RouteChoiceResult.Gated;
+    public bool IsSendItSelected => SelectedRoute == RouteChoiceResult.GatedNoAcquire;
 
     public RouteChoiceDialogViewModel(
         RouteChoice choice,
@@ -69,8 +83,9 @@ public sealed partial class RouteChoiceDialogViewModel
             ? $"Free route — {Steps(choice.FreeStepCount)}, no items needed"
             : "No hazard-free route — every path there crosses a hazard you must counter";
         GatedSummary = HasFreeRoute
-            ? $"Direct route — {Steps(choice.GatedStepCount)}"
+            ? $"Direct — acquire then go — {Steps(choice.GatedStepCount)}"
             : $"Route — {Steps(choice.GatedStepCount)}";
+        SendItSummary = $"Direct — send it — {Steps(choice.GatedStepCount)}";
         RequirementSummary = "Requires "
             + DescribeRequirements(choice.Requirements, itemName, shopNameForItem, dropNameForItem);
     }
@@ -121,6 +136,15 @@ public sealed partial class RouteChoiceDialogViewModel
     {
         SelectedRoute = RouteChoiceResult.Gated;
         PreviewRequested?.Invoke(RouteChoiceResult.Gated);
+    }
+
+    [RelayCommand]
+    private void SelectSendIt()
+    {
+        if (!ShowSendItCard) return;   // no send-it card in the sole-route case
+        SelectedRoute = RouteChoiceResult.GatedNoAcquire;
+        // Same physical route as the gated acquire choice — preview its line.
+        PreviewRequested?.Invoke(RouteChoiceResult.GatedNoAcquire);
     }
 
     private bool CanGo => SelectedRoute is not null;

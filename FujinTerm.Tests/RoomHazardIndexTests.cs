@@ -186,6 +186,44 @@ public sealed class RoomHazardIndexTests : IDisposable
         Assert.Equal(0, counter.DurationSeconds);
     }
 
+    // A checkspell hazard whose buff-ABSENT branch casts a damage spell records
+    // that spell as the BuffCounter's LapseSpell — the desert's "you need water,
+    // soon!" (spell 712) the reactive re-raise keys on. The checkspell token's
+    // second int is the TB the room jumps to when the buff is absent; that block's
+    // `cast` is the lapse-damage spell.
+    [Fact]
+    public void CheckSpell_DerivesLapseSpell_FromAbsentBranchCast()
+    {
+        RoomHazardIndex idx = NewIndex(
+            Room(700),
+            """ [ { "Number": 700, "Abil-0": 148, "AbilVal-0": 50 } ] """,
+            """ [ { "Number": 60, "Abil-0": 43, "AbilVal-0": 300 } ] """,
+            """
+            [ { "Number": 50, "Action": "checkspell 300 51" },
+              { "Number": 51, "Action": "cast 712" } ]
+            """);
+
+        RoomHazardIndex.RoomHazard? h = idx.HazardForSpell(700);
+        Assert.NotNull(h);
+        Assert.Equal(712, Assert.Single(h!.BuffCounters).LapseSpell);
+    }
+
+    // A bare checkspell with no jump target → no derivable lapse spell (0). The
+    // reactive path then stays inert and only the predictive timer holds the buff.
+    [Fact]
+    public void CheckSpell_NoAbsentBranch_LapseSpellZero()
+    {
+        RoomHazardIndex idx = NewIndex(
+            Room(700),
+            """ [ { "Number": 700, "Abil-0": 148, "AbilVal-0": 50 } ] """,
+            """ [ { "Number": 60, "Abil-0": 43, "AbilVal-0": 300 } ] """,
+            """ [ { "Number": 50, "Action": "checkspell 300" } ] """);
+
+        RoomHazardIndex.RoomHazard? h = idx.HazardForSpell(700);
+        Assert.NotNull(h);
+        Assert.Equal(0, Assert.Single(h!.BuffCounters).LapseSpell);
+    }
+
     [Fact]
     public void LayeredProtections_RequireOneFromEachGroup()
     {

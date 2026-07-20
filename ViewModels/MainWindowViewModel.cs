@@ -662,6 +662,12 @@ public partial class MainWindowViewModel : ObservableObject
         // chat / combat / triggers / etc. all share one dispatch path.
         Lines.LineEmitted += line => AppServices.Current.Router.Dispatch(line);
 
+        // Reactive hazard-buff re-raise: a lapse-damage prompt (the desert's
+        // "you need water, soon!") mid-walk fires one `use` to re-raise, and a
+        // second prompt with no swig confirmation halts the walk (out of charges).
+        Lines.LineEmitted += line =>
+            AppServices.Current.AutoHazardCounterProvisioner.OnServerLine(line.Text);
+
         // who-list observer: subscribes to LineExtractor on its own
         // (the table is multi-line — needs state, doesn't fit
         // MessageRouter's stateless dispatch). Feeds every observed

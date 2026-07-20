@@ -846,10 +846,33 @@ comes from the stat screen / who line (`AlignmentTracker` / `PlayerStats`).
        carry **2–3 waterskins** into the desert. Provisioning must therefore stock enough total charges
        to cover the expected time in the hazard stretch, not just "one waterskin."
      - **Routing model:** carry the source item(s), `use` on entering the first hazard room to raise the
-       buff, and **re-`use` whenever the buff lapses while still inside a hazard room** (mirror the
-       light-readier's approach-hook cadence, but keyed on buff-expiry rather than per-room). Consuming a
-       charge each time; when charges run out mid-stretch and no spare waterskin remains, halt/ask rather
-       than walking a room unprotected.
+       buff, and **re-`use` whenever the buff lapses while still inside a hazard room**, consuming a charge
+       each time; when charges run out mid-stretch and no spare waterskin remains, halt rather than walking
+       a room unprotected.
+     - **[CONFIRMED by user] There is NO wear-off message for the waterskin buff.** So routine refresh
+       cannot be reactive — the client **must TIME it** (predictively re-`use` a margin before the buff's
+       `Dur` would expire; this is the PRIMARY refresh). The lapse prompt below is only a **reactive
+       backstop**: when the timer's estimate is off and the buff drops early, the room re-emits the prompt
+       and the client fires **exactly ONE** `use waterskin` to re-raise — not a client-side wear-off
+       reaction (there's no such line), but a correction to a mistimed timer.
+     - **Lapse / sandstorm spells are derivable from the checkspell chain.** `checkspell 711 2654` — the
+       token's second int (2654) is the buff-ABSENT target TB; that block's `cast` is the lapse-damage
+       spell. In the desert that's **spell 712 "desert damage"** (its CasterMessage is the thirst prompt);
+       **spell 713 "desert sandstorm"** is the separate random-chance teleport, not a lapse signal. The
+       client resolves the prompt via the Messages record linked to Spells#712, so it tracks the active
+       set rather than hardcoded realm text.
+     - **[CONFIRMED by user] Trigger + confirmation messages** (all in the Messages game-data table, so
+       match by record number, not hardcoded realm text). **These lines are plain text with no `{s}`
+       placeholder**, so they're matched by literal case-insensitive substring, not the caster-message
+       regex:
+       - Desert lapse prompt — drink now (Spells#712): `You suffer in the desert heat... you need water,
+         soon!` The game's own signal that the buff has lapsed while still in the hazard. Fire ONE
+         `use waterskin` on this line.
+       - Self re-`use` success (Spells#711): `You take a swig of water from your waterskin.` Confirms a
+         charge burned and buff 711 re-applied. A `use waterskin` that draws no such line before the NEXT
+         lapse prompt means charges/waterskins are exhausted → halt, don't walk on unprotected.
+       - Witnessing a party member drink: `<name> takes a swig of water from a waterskin.` How the leader
+         observes a follower successfully re-buffing (each member reacts to their own desert prompt).
 
   - **Routing takeaway:** a room is *safe to route through* if, for its `Room.Spell` hazard, the
     player satisfies the protection — holds a `failitem` item, wears/holds an item that `NegateSpell`s
@@ -1287,6 +1310,19 @@ Sources that feed a character's effective AC beyond the item/race/class/quest `+
     **both** a manual `dep` and the client's auto-deposit `dep`, so it's the authoritative
     both-paths signal. (Withdrawals mirror it: `You withdrew …` / `you withdrew …`.)
   - **Room survey** lists the full coin: `You notice 56 silver nobles, 198 copper farthings here.`
+- **[CONFIRMED by user, capture 2026-07-19] Bank-room commands: balance / withdraw / deposit.**
+  - **`bank`** prints the current balance: `Your balance at <Bank name> (#<n>) is:` then
+    `On deposit: <N> copper farthings [<G> gold crowns]` — parse `(\d+) copper farthings` for the
+    authoritative banked total in copper.
+  - **`with <amount>`** withdraws, where **`<amount>` is in copper farthings**; coins arrive in the
+    **largest denominations** (`with 2000` → 20 gold crowns). Success line: `You withdrew <amount> copper
+    farthings.` (echoes the requested copper amount).
+  - **Over-withdraw silently fails.** Requesting **more than the banked balance** produces **no output at
+    all** — no error line. So verify a withdraw by watching for the `You withdrew …` success line (its
+    absence within the reply window = failure), and/or read `bank` first and never request more than the
+    balance.
+  - **`dep <amount>`** deposits (amount in copper); confirmation names the actual carried denominations
+    (`You deposit 5 platinum pieces, 29 gold crowns, 7 silver nobles.`), as noted above.
 - **[CONFIRMED]** Item vs. coin disambiguation is by verb + shape. An **item** get is
   `You took <item>.`; an item drop is `You dropped <item>.` — the drop/hide verbs are **shared**
   with coins, so a colour-adjective item (`You dropped a silver key.`) is told apart from coin only

@@ -23,6 +23,11 @@ public sealed class RouteChoiceDialogViewModelTests
     private static RouteChoice Choice(params RouteRequirement[] reqs) =>
         new(FreeStepCount: 5, GatedStepCount: 2, reqs, FreeLine, GatedLine);
 
+    // Sole-route variant: no gate-free detour (empty FreePath), so the picker
+    // collapses the send-it/acquire split to the single acquire card.
+    private static RouteChoice SoleChoice(params RouteRequirement[] reqs) =>
+        new(FreeStepCount: 0, GatedStepCount: 2, reqs, System.Array.Empty<RoomKey>(), GatedLine);
+
     [Fact]
     public void CarryItemGate_WithShop_GetsBuyTail()
     {
@@ -236,5 +241,108 @@ public sealed class RouteChoiceDialogViewModelTests
 
         Assert.True(closeFired);
         Assert.Null(closed);
+    }
+
+    // ----- Send-it (direct — no acquire) third option ----------------------
+
+    [Fact]
+    public void SendItCard_ShownWhenFreeRouteExists()
+    {
+        var vm = PickerVm();
+        Assert.True(vm.HasFreeRoute);
+        Assert.True(vm.ShowSendItCard);
+    }
+
+    [Fact]
+    public void SendItCard_HiddenForSoleRoute()
+    {
+        // No gate-free detour: the acquire/send-it split collapses, so only the
+        // single acquire card is offered (chunk-4 flag logic owns the sole case).
+        var vm = new RouteChoiceDialogViewModel(
+            SoleChoice(new RouteRequirement(RouteRequirementKind.HazardProtection, new[] { 42 })),
+            "Sunbaked dune (1/9)", id => "a waterskin");
+
+        Assert.False(vm.HasFreeRoute);
+        Assert.False(vm.ShowSendItCard);
+    }
+
+    [Fact]
+    public void SelectSendIt_PreviewsGatedLine_EnablesGo_NoWalkYet()
+    {
+        var vm = PickerVm();
+        RouteChoiceResult? previewed = null;
+        bool closeFired = false;
+        vm.PreviewRequested += r => previewed = r;
+        vm.CloseRequested += _ => closeFired = true;
+
+        vm.SelectSendItCommand.Execute(null);
+
+        Assert.Equal(RouteChoiceResult.GatedNoAcquire, vm.SelectedRoute);
+        Assert.True(vm.IsSendItSelected);
+        Assert.False(vm.IsGatedSelected);
+        Assert.False(vm.IsFreeSelected);
+        Assert.Equal(RouteChoiceResult.GatedNoAcquire, previewed);
+        Assert.True(vm.GoCommand.CanExecute(null));
+        Assert.False(closeFired);
+    }
+
+    [Fact]
+    public void SelectSendIt_NoOp_WhenNoFreeRoute()
+    {
+        var vm = new RouteChoiceDialogViewModel(
+            SoleChoice(new RouteRequirement(RouteRequirementKind.HazardProtection, new[] { 42 })),
+            "Sunbaked dune (1/9)", id => "a waterskin");
+        bool previewed = false;
+        vm.PreviewRequested += _ => previewed = true;
+
+        vm.SelectSendItCommand.Execute(null);
+
+        Assert.Null(vm.SelectedRoute);
+        Assert.False(vm.IsSendItSelected);
+        Assert.False(previewed);
+    }
+
+    [Fact]
+    public void Go_ClosesWithGatedNoAcquire_AfterSendIt()
+    {
+        var vm = PickerVm();
+        RouteChoiceResult? closed = null;
+        vm.CloseRequested += r => closed = r;
+
+        vm.SelectSendItCommand.Execute(null);
+        vm.GoCommand.Execute(null);
+
+        Assert.Equal(RouteChoiceResult.GatedNoAcquire, closed);
+    }
+
+    [Fact]
+    public void SwitchAcrossAllThree_RepreviewsEachSelection()
+    {
+        var vm = PickerVm();
+        var previews = new List<RouteChoiceResult?>();
+        vm.PreviewRequested += r => previews.Add(r);
+
+        vm.SelectFreeCommand.Execute(null);
+        vm.SelectGatedCommand.Execute(null);
+        vm.SelectSendItCommand.Execute(null);
+
+        Assert.Equal(RouteChoiceResult.GatedNoAcquire, vm.SelectedRoute);
+        Assert.True(vm.IsSendItSelected);
+        Assert.Equal(
+            new RouteChoiceResult?[]
+            {
+                RouteChoiceResult.Free,
+                RouteChoiceResult.Gated,
+                RouteChoiceResult.GatedNoAcquire,
+            },
+            previews);
+    }
+
+    [Fact]
+    public void Summaries_DistinguishAcquireFromSendIt()
+    {
+        var vm = PickerVm();
+        Assert.Contains("acquire", vm.GatedSummary, System.StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("send it", vm.SendItSummary, System.StringComparison.OrdinalIgnoreCase);
     }
 }

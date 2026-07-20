@@ -23,6 +23,7 @@ public sealed class PartyPathItemGateTests
     {
         public readonly HashSet<int> Carried = new();
         public readonly Dictionary<int, int> SelfCounts = new();
+        public readonly Dictionary<int, int> PerPerson = new();
         public bool Enabled = true;
         public bool SearchEnabled = true;
         public bool InParty = true;
@@ -52,6 +53,7 @@ public sealed class PartyPathItemGateTests
                 },
                 itemName: id => Names.TryGetValue(id, out string? n) ? n : null,
                 isEnabled: _ => Enabled,
+                perPersonQuantity: id => PerPerson.TryGetValue(id, out int v) ? v : 1,
                 searchEnabled: () => SearchEnabled,
                 inParty: () => InParty,
                 selfIsLeader: () => IsLeader,
@@ -440,5 +442,98 @@ public sealed class PartyPathItemGateTests
 
         Assert.Empty(h.Sent);
         Assert.Equal(new[] { 1 }, h.Forwarded);
+    }
+
+    // ----- Per-person quota > 1 (waterskin-style items) -----------------------
+
+    [Fact]
+    public void Solo_PerPersonQuota_ForwardsQuota()
+    {
+        var h = new Harness { InParty = false };
+        h.Names[1] = "waterskin";
+        h.PerPerson[1] = 3;   // carry 3 for oneself
+        h.Gate.OnPathItemsRequired(new[] { 1 });
+
+        Assert.Equal((1, 3), Assert.Single(h.ForwardedReq));
+    }
+
+    [Fact]
+    public void Leader_QuotaTwo_ForwardsQuotaTimesPartySize()
+    {
+        var h = new Harness { IsLeader = true };
+        h.Names[1] = "waterskin";
+        h.PerPerson[1] = 2;
+        h.SelfCounts[1] = 0;
+        h.SetResult(1, ("Bob", 0));   // party of two, pool empty
+
+        h.Gate.OnPathItemsRequired(new[] { 1 });
+
+        // 2 per member × 2 members − 0 held = 4 copies the leader must acquire.
+        Assert.Equal((1, 4), Assert.Single(h.ForwardedReq));
+    }
+
+    [Fact]
+    public void Leader_QuotaTwo_GivesTwoToZeroHolder()
+    {
+        var h = new Harness { IsLeader = true };
+        h.Names[1] = "waterskin";
+        h.PerPerson[1] = 2;
+        h.SelfCounts[1] = 4;          // two spare above our own quota of 2
+        h.SetResult(1, ("Bob", 0));   // Bob needs both; pool 4 == 2 × 2
+
+        h.Gate.OnPathItemsRequired(new[] { 1 });
+
+        Assert.Equal(
+            new[] { "give waterskin to Bob\r", "give waterskin to Bob\r" },
+            h.Sent);
+        Assert.Empty(h.Forwarded);
+    }
+
+    [Fact]
+    public void Follower_QuotaTwo_BorrowsTwoFromSoleHolder()
+    {
+        var h = new Harness();   // follower (IsLeader false)
+        h.Names[1] = "waterskin";
+        h.PerPerson[1] = 2;
+        h.SelfCounts[1] = 0;
+        h.SetResult(1, ("Bob", 4));   // Bob keeps 2, can spare 2
+
+        h.Gate.OnPathItemsRequired(new[] { 1 });
+
+        Assert.Equal(
+            new[] { "@party give waterskin to Fujin\r", "@party give waterskin to Fujin\r" },
+            h.Sent);
+        Assert.Empty(h.Forwarded);
+    }
+
+    [Fact]
+    public void Follower_AlreadyHoldsQuota_Skipped()
+    {
+        var h = new Harness();
+        h.Names[1] = "waterskin";
+        h.PerPerson[1] = 2;
+        h.SelfCounts[1] = 2;          // already at quota
+
+        h.Gate.OnPathItemsRequired(new[] { 1 });
+
+        Assert.Empty(h.Sent);
+        Assert.Empty(h.Forwarded);
+        Assert.Equal(0, h.QueryCount);
+    }
+
+    [Fact]
+    public void Follower_SpareShortOfQuota_BorrowsThenForwardsRemainder()
+    {
+        var h = new Harness();
+        h.Names[1] = "waterskin";
+        h.PerPerson[1] = 3;
+        h.SelfCounts[1] = 0;
+        h.SetResult(1, ("Bob", 4));   // Bob keeps 3, can spare only 1
+
+        h.Gate.OnPathItemsRequired(new[] { 1 });
+
+        Assert.Equal("@party give waterskin to Fujin\r", Assert.Single(h.Sent));
+        // One borrowed, still two short of quota — demand pipeline wants the full 3.
+        Assert.Equal((1, 3), Assert.Single(h.ForwardedReq));
     }
 }
