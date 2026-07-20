@@ -2,6 +2,12 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.82.0
+
+- Navigation map button bar shows centered "Current room" and "Selected Room" map/room readouts between the Legend and Save chips
+- Lairs chip is now a three-stage toggle: uniform colour → respawn heat-map → off
+- Heat mode shades each lair by respawn time — fast lairs run hot (red), slow lairs run cold (blue)
+
 ## 1.81.0
 
 - Terminal font picker now lists every monospace font installed on the system, below the two bundled faces

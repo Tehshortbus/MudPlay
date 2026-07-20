@@ -511,12 +511,41 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
 
     // ----- Highlight chips + legend ---------------------------------
 
-    [ObservableProperty] private bool _highlightLairs = true;
+    // Lairs chip is a three-stage toggle: Uniform (all lairs one colour) ->
+    // Heat (shaded by respawn time) -> Off (no lair highlight) -> Uniform.
+    // HighlightLairs (the chip's active-fill flag) is derived: lit for Uniform
+    // + Heat, dark for Off.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HighlightLairs))]
+    [NotifyPropertyChangedFor(nameof(LairButtonLabel))]
+    private LairDisplayMode _lairMode = LairDisplayMode.Uniform;
+
+    public bool HighlightLairs => LairMode != LairDisplayMode.Off;
+
+    public string LairButtonLabel => LairMode switch
+    {
+        LairDisplayMode.Heat => "Lairs: heat",
+        LairDisplayMode.Off  => "Lairs: off",
+        _                    => "Lairs",
+    };
+
     [ObservableProperty] private bool _highlightShops = true;
     [ObservableProperty] private bool _highlightSpells = true;
     [ObservableProperty] private bool _legendVisible;
 
-    [RelayCommand] private void ToggleLairs()  => HighlightLairs  = !HighlightLairs;
+    // Per-room lair respawn times (seconds) for the visible layout, keyed by
+    // RoomKey. Built from the active layout's rooms via LairTimerStore; only
+    // rooms whose respawn time resolves appear. Bound to MapControl for the
+    // Heat display mode — rooms absent from this map fall back to the flat
+    // lair colour.
+    [ObservableProperty] private IReadOnlyDictionary<RoomKey, int>? _lairRespawnSeconds;
+
+    [RelayCommand] private void ToggleLairs() => LairMode = LairMode switch
+    {
+        LairDisplayMode.Uniform => LairDisplayMode.Heat,
+        LairDisplayMode.Heat    => LairDisplayMode.Off,
+        _                       => LairDisplayMode.Uniform,
+    };
     [RelayCommand] private void ToggleShops()  => HighlightShops  = !HighlightShops;
     [RelayCommand] private void ToggleSpells() => HighlightSpells = !HighlightSpells;
     [RelayCommand] private void ToggleLegend() => LegendVisible   = !LegendVisible;
@@ -533,6 +562,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     // occupying header chrome.
     partial void OnLayoutChanged(RoomLayout? value)
     {
+        RebuildLairRespawnSeconds(value);
         if (value is not { } l) return;
         int rooms = l.Positions.Count;
         string msg = $"map drawn — seed {l.LayoutRoot}, {rooms} room{(rooms == 1 ? "" : "s")}";
@@ -541,7 +571,36 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         _services.Log?.Info("Navigation", msg);
     }
 
-    [ObservableProperty] private RoomKey? _currentRoomKey;
+    // Recompute the per-room lair respawn map for the rooms in the current
+    // layout. Cheap — LairTimerStore caches its lookups — and only the visible
+    // rooms are queried, so it rebuilds on every layout swap without cost.
+    private void RebuildLairRespawnSeconds(RoomLayout? layout)
+    {
+        if (layout is null)
+        {
+            LairRespawnSeconds = null;
+            return;
+        }
+
+        Dictionary<RoomKey, int>? map = null;
+        foreach (RoomKey key in layout.Positions.Keys)
+        {
+            if (_services.RoomGraph.GetRoom(key) is not { HasLair: true }) continue;
+            if (_services.LairTimers.DefaultRespawnSeconds(key) is not { } secs) continue;
+            (map ??= new()).Add(key, secs);
+        }
+        LairRespawnSeconds = map;
+    }
+
+    // Button-bar readouts between the Legend and Save chips: the player's live
+    // room and the room currently boxed by the cyan selection, as "map/room"
+    // keys (em-dash when unset).
+    public string CurrentRoomText  => $"Current room: {(CurrentRoomKey is { } c ? c.ToString() : "—")}";
+    public string SelectedRoomText => $"Selected Room: {(SelectedRoomKey is { } s ? s.ToString() : "—")}";
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CurrentRoomText))]
+    private RoomKey? _currentRoomKey;
     partial void OnCurrentRoomKeyChanged(RoomKey? value) => RefreshPreviewPath();
     [ObservableProperty] private RoomKey? _destinationRoomKey;
 
@@ -599,7 +658,10 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     // renders a skull. Refreshed by RefreshDeathRooms.
     [ObservableProperty] private IReadOnlySet<RoomKey>? _deathRooms;
     [ObservableProperty] private bool _isAutoLairing;
-    [ObservableProperty] private RoomKey? _selectedRoomKey;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SelectedRoomText))]
+    private RoomKey? _selectedRoomKey;
 
     // Map crawler floor-step chords — kept in sync with the user's
     // u / d movement macros (Settings → Macros). When the user has

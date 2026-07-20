@@ -1,11 +1,10 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.81.0**
-> - Terminal font picker now lists every monospace font installed on the system, below the two bundled faces
-> - Proportional fonts filtered out (Latin advance-width probe), so a picked font can't mangle the fixed cell grid
-> - System fonts persist as their bare family name; a system copy of a bundled face is de-duplicated from the list
-> - Font catalogue is pre-built off the UI thread at startup, so opening Settings no longer stalls on the font scan
+> **Version 1.82.0**
+> - Navigation map button bar shows centered "Current room" and "Selected Room" map/room readouts between the Legend and Save chips
+> - Lairs chip is now a three-stage toggle: uniform colour → respawn heat-map → off
+> - Heat mode shades each lair by respawn time — fast lairs run hot (red), slow lairs run cold (blue)
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

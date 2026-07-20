@@ -356,8 +356,9 @@
                      OpenManagerCommand) — putting it here too would be
                      redundant. -->
                 <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4">
-                    <Button Classes="ToggleChip" Content="Lairs"
+                    <Button Classes="ToggleChip" Content="{Binding LairButtonLabel}"
                             Command="{Binding ToggleLairsCommand}"
+                            ToolTip.Tip="Lair highlight: click to cycle uniform colour → respawn heat-map → off."
                             Classes.LairFill="{Binding HighlightLairs}"/>
                     <Button Classes="ToggleChip" Content="Shops"
                             Command="{Binding ToggleShopsCommand}"
@@ -368,6 +369,24 @@
                     <Button Classes="ToggleChip" Content="Legend"
                             Command="{Binding ToggleLegendCommand}"
                             Classes.LegendFill="{Binding LegendVisible}"/>
+                </StackPanel>
+
+                <!-- Centred readouts filling the flex gap between the toggle
+                     chips and the action chips: the player's live room and the
+                     cyan-boxed selection, both as map/room keys. -->
+                <StackPanel Grid.Column="1"
+                            Orientation="Vertical"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Spacing="1">
+                    <TextBlock Text="{Binding CurrentRoomText}"
+                               HorizontalAlignment="Center"
+                               FontSize="12"
+                               Foreground="{StaticResource ChromeFgSecBrush}"/>
+                    <TextBlock Text="{Binding SelectedRoomText}"
+                               HorizontalAlignment="Center"
+                               FontSize="12"
+                               Foreground="{StaticResource ChromeFgSecBrush}"/>
                 </StackPanel>
 
                 <!-- Save — opens the appropriate editor dialog
@@ -442,7 +461,8 @@
                                  CurrentRoomKey="{Binding CurrentRoomKey}"
                                  DestinationRoomKey="{Binding DestinationRoomKey}"
                                  Graph="{Binding Graph}"
-                                 HighlightLairs="{Binding HighlightLairs}"
+                                 LairMode="{Binding LairMode}"
+                                 LairRespawnSeconds="{Binding LairRespawnSeconds}"
                                  HighlightShops="{Binding HighlightShops}"
                                  HighlightSpells="{Binding HighlightSpells}"
                                  WalkPath="{Binding WalkPath}"

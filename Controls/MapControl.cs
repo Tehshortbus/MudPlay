@@ -33,8 +33,14 @@ public sealed class MapControl : Control
     public static readonly StyledProperty<RoomGraphManager?> GraphProperty =
         AvaloniaProperty.Register<MapControl, RoomGraphManager?>(nameof(Graph));
 
-    public static readonly StyledProperty<bool> HighlightLairsProperty =
-        AvaloniaProperty.Register<MapControl, bool>(nameof(HighlightLairs), defaultValue: true);
+    public static readonly StyledProperty<LairDisplayMode> LairModeProperty =
+        AvaloniaProperty.Register<MapControl, LairDisplayMode>(nameof(LairMode), defaultValue: LairDisplayMode.Uniform);
+
+    // Per-room lair respawn times (seconds), consulted only in the Heat display
+    // mode to pick a hot/cold fill. Rooms absent from this map (unresolved
+    // timer) fall back to the flat lair colour.
+    public static readonly StyledProperty<IReadOnlyDictionary<RoomKey, int>?> LairRespawnSecondsProperty =
+        AvaloniaProperty.Register<MapControl, IReadOnlyDictionary<RoomKey, int>?>(nameof(LairRespawnSeconds));
 
     public static readonly StyledProperty<bool> HighlightShopsProperty =
         AvaloniaProperty.Register<MapControl, bool>(nameof(HighlightShops), defaultValue: true);
@@ -167,10 +173,16 @@ public sealed class MapControl : Control
         set => SetValue(GraphProperty, value);
     }
 
-    public bool HighlightLairs
+    public LairDisplayMode LairMode
     {
-        get => GetValue(HighlightLairsProperty);
-        set => SetValue(HighlightLairsProperty, value);
+        get => GetValue(LairModeProperty);
+        set => SetValue(LairModeProperty, value);
+    }
+
+    public IReadOnlyDictionary<RoomKey, int>? LairRespawnSeconds
+    {
+        get => GetValue(LairRespawnSecondsProperty);
+        set => SetValue(LairRespawnSecondsProperty, value);
     }
 
     public bool HighlightShops
@@ -427,6 +439,35 @@ public sealed class MapControl : Control
     private static readonly IPen   RoomBorderPen = new Pen(new SolidColorBrush(Color.Parse("#D0D0D0")), 1.0);
     private static readonly IPen   CurrentPen    = new Pen(new SolidColorBrush(Color.Parse("#FFD24D")), 2.0);
     private static readonly IPen   LairBorderPen  = new Pen(new SolidColorBrush(Color.Parse("#B36F9C")), 1.5);
+    // Lair-heat gradient (LairDisplayMode.Heat): hot -> cold, indexed 0..N-1.
+    // A fast-respawning lair (short delay) reads red; a slow one reads blue. A
+    // room's respawn seconds normalise onto [0,1] over HeatMinSeconds..
+    // HeatMaxSeconds and pick the nearest stop. Borders are lightened tints of
+    // the same stop. Precomputed so a Heat redraw allocates nothing.
+    private const double HeatMinSeconds = 30.0;
+    private const double HeatMaxSeconds = 600.0;
+    private static readonly IBrush[] HeatFills =
+    {
+        new SolidColorBrush(Color.Parse("#E5484D")),
+        new SolidColorBrush(Color.Parse("#F2711C")),
+        new SolidColorBrush(Color.Parse("#F5A623")),
+        new SolidColorBrush(Color.Parse("#F2C744")),
+        new SolidColorBrush(Color.Parse("#7DBE3C")),
+        new SolidColorBrush(Color.Parse("#2FB47C")),
+        new SolidColorBrush(Color.Parse("#2AA9C0")),
+        new SolidColorBrush(Color.Parse("#3B82F6")),
+    };
+    private static readonly IPen[] HeatBorders =
+    {
+        new Pen(new SolidColorBrush(Color.Parse("#F06E72")), 1.5),
+        new Pen(new SolidColorBrush(Color.Parse("#F5924E")), 1.5),
+        new Pen(new SolidColorBrush(Color.Parse("#F8BE5C")), 1.5),
+        new Pen(new SolidColorBrush(Color.Parse("#F6D877")), 1.5),
+        new Pen(new SolidColorBrush(Color.Parse("#9DD265")), 1.5),
+        new Pen(new SolidColorBrush(Color.Parse("#5AC79A")), 1.5),
+        new Pen(new SolidColorBrush(Color.Parse("#5AC1D3")), 1.5),
+        new Pen(new SolidColorBrush(Color.Parse("#6BA1F8")), 1.5),
+    };
     private static readonly IPen   ShopBorderPen  = new Pen(new SolidColorBrush(Color.Parse("#6A9CB6")), 1.5);
     private static readonly IPen   SpellBorderPen = new Pen(new SolidColorBrush(Color.Parse("#9C70CC")), 1.5);
     // Perpendicular "wall" bar drawn across a cast-on-walk exit's connector, in
@@ -579,7 +620,7 @@ public sealed class MapControl : Control
             });
         _hoverTimer.Stop();
         AffectsRender<MapControl>(LayoutProperty, CurrentRoomKeyProperty, DestinationRoomKeyProperty, GraphProperty,
-            HighlightLairsProperty, HighlightShopsProperty, HighlightSpellsProperty,
+            LairModeProperty, LairRespawnSecondsProperty, HighlightShopsProperty, HighlightSpellsProperty,
             WalkPathProperty, LoopPathProperty, LoopBuilderPathProperty, LoopBuilderWaypointsProperty,
             AutoLairWaypointsProperty, AutoLairApproachPathProperty,
             LoopApproachPreviewPathProperty, AvoidedRoomsProperty, StashRoomsProperty, LoopSequenceNumbersProperty,
@@ -1623,6 +1664,17 @@ public sealed class MapControl : Control
         ctx.DrawGeometry(pen.Brush, null, geo);
     }
 
+    // Map a lair's respawn seconds onto the hot->cold gradient. Short delays
+    // land at the hot (index 0) end, long delays at the cold end; the value is
+    // clamped to [HeatMinSeconds, HeatMaxSeconds] first.
+    private static (IBrush fill, IPen pen) HeatColorFor(int seconds)
+    {
+        double t = (seconds - HeatMinSeconds) / (HeatMaxSeconds - HeatMinSeconds);
+        t = Math.Clamp(t, 0.0, 1.0);
+        int i = (int)Math.Round(t * (HeatFills.Length - 1));
+        return (HeatFills[i], HeatBorders[i]);
+    }
+
     private void DrawRoomNode(DrawingContext ctx, Rect cell, RoomKey key)
     {
         double nodeSize = Math.Max(cell.Width * 0.45, 3.0);
@@ -1652,10 +1704,19 @@ public sealed class MapControl : Control
             fill = AutoLairFill;
             pen = AutoLairBorder;
         }
-        else if (HighlightLairs && room is { HasLair: true })
+        else if (LairMode != LairDisplayMode.Off && room is { HasLair: true })
         {
-            fill = LairFill;
-            pen = LairBorderPen;
+            if (LairMode == LairDisplayMode.Heat
+                && LairRespawnSeconds is { } respawn
+                && respawn.TryGetValue(key, out int secs))
+            {
+                (fill, pen) = HeatColorFor(secs);
+            }
+            else
+            {
+                fill = LairFill;
+                pen = LairBorderPen;
+            }
         }
         else if (HighlightShops && room is { Shop: > 0 })
         {
