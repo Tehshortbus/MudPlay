@@ -124,4 +124,9 @@ public sealed class GeneralSettings
 
     // Re-enable Auto-Search on reconnect. Default off.
     public bool ReEnableAutoSearchOnReconnect   { get; set; }
+
+    // Re-enable Auto-Train on reconnect. Default off. Auto-train's live flag
+    // lives in AutoTrainerSettings.AutoTrain (not AutoMode above), so the
+    // reconnect handler flips that entry rather than an AutoMode bit.
+    public bool ReEnableAutoTrainOnReconnect    { get; set; }
 }

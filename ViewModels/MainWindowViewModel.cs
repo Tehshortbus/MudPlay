@@ -3999,13 +3999,13 @@ public partial class MainWindowViewModel : ObservableObject
     // fires on an actual reconnect, never the first dial.
     private bool _hadDisconnectThisSession;
 
-    // Re-enable each auto-action whose Settings → Other "re-enable on
-    // reconnect" flag is ticked, by flipping its
-    // Models.Profile.AutoActionDefaults bit back ON in the active profile.
-    // Engines read AutoMode live (per-tick), so the persisted flip alone
-    // revives them; the two surfaced toggles (Combat / Heal-Rest)
-    // additionally get their observable reseeded so the toolbar badge
-    // matches. No-op when no profile is loaded or no flag is ticked.
+    // Re-enable each auto-action whose Settings → General "re-enable on
+    // reconnect" flag is ticked, by flipping its persisted state back ON in
+    // the active profile — AutoMode bits for the ten AutoMode engines, and the
+    // separate AutoTrainerSettings.AutoTrain bit for Auto-Train. Engines read
+    // their flag live (per-tick), so the persisted flip alone revives them;
+    // SyncAutoEngineTogglesFromProfile then reseeds the toolbar observables so
+    // the badges match. No-op when no profile is loaded or no flag is ticked.
     private void ReEnableAutoActionsOnReconnect()
     {
         Models.Profile.GeneralSettings general =
@@ -4020,7 +4020,8 @@ public partial class MainWindowViewModel : ObservableObject
                 || general.ReEnableAutoGetCashOnReconnect
                 || general.ReEnableAutoSneakOnReconnect
                 || general.ReEnableAutoHideOnReconnect
-                || general.ReEnableAutoSearchOnReconnect;
+                || general.ReEnableAutoSearchOnReconnect
+                || general.ReEnableAutoTrainOnReconnect;
         if (!any) return;
         if (AppServices.Current.Profile.Current is not { } profile) return;
 
@@ -4040,6 +4041,20 @@ public partial class MainWindowViewModel : ObservableObject
 
         profile.Settings["General"] =
             System.Text.Json.JsonSerializer.SerializeToElement(dto);
+
+        // Auto-train isn't an AutoMode bit — flip it in the "AutoTrainer" entry
+        // via read-modify-write so the trainer tab's other fields survive.
+        if (general.ReEnableAutoTrainOnReconnect)
+        {
+            Models.Profile.AutoTrainerSettings trainer = ReadAutoTrainerFromProfile(profile);
+            if (!trainer.AutoTrain)
+            {
+                trainer.AutoTrain = true;
+                profile.Settings["AutoTrainer"] =
+                    System.Text.Json.JsonSerializer.SerializeToElement(trainer);
+            }
+        }
+
         AppServices.Current.Profile.Save();
 
         // Reseed the surfaced observables (toolbar badges) from the freshly

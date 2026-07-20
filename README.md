@@ -1,12 +1,9 @@
 # FujinTerm
 
 <!-- current-version:start -->
-> **Version 1.84.0**
-> - Settings → Talk: new "Look back when a player looks at us" toggle — mirrors a `look` back when the game shows "&lt;name&gt; is looking at you." (skips self, includes party)
-> - Settings → Talk: new "Look at players to learn/update their inventories" toggle — looks at each non-party player who walks into the room (skips self and party)
-> - Both default off, sit next to "Greet players when first met"
-> - Settings → Talk: removed two redundant help-text captions (master kill-switch, @party disable)
-> - Action menu "Auto Search" toggle now enabled and wired to the live engine (was stuck disabled with a stale tooltip); separator above Auto Train removed
+> **Version 1.85.0**
+> - Settings → General: Auto-Train now listed in the "Auto-Engines enabled on start" section (mirrors the Auto-Trainer tab's master toggle)
+> - Settings → General: Auto-Train added to the "Re-enable on reconnect" section
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

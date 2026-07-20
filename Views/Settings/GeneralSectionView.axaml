@@ -234,6 +234,10 @@
                               IsEnabled="{Binding IsAutoSearchWired}"
                               Content="Auto-Search"
                               ToolTip.Tip="Walker auto-search for hidden exits. Wires in a future PR."/>
+                    <CheckBox IsChecked="{Binding AmAutoTrain,    Mode=TwoWay}"
+                              IsEnabled="{Binding IsAutoTrainWired}"
+                              Content="Auto-Train"
+                              ToolTip.Tip="Detour to a trainer and train when a level-up is available during a loop/auto-lair. Mirrors the master toggle on the Auto-Trainer tab."/>
                 </StackPanel>
 
                 <!-- Emergency hangup carve-out for fully-manual mode. When
@@ -287,6 +291,9 @@
                     <CheckBox IsChecked="{Binding ReEnableAutoSearchOnReconnect, Mode=TwoWay}"
                               Content="Auto-Search"
                               ToolTip.Tip="When checked: Auto-Search is re-enabled on reconnect if it was disabled during the session."/>
+                    <CheckBox IsChecked="{Binding ReEnableAutoTrainOnReconnect, Mode=TwoWay}"
+                              Content="Auto-Train"
+                              ToolTip.Tip="When checked: Auto-Train is re-enabled on reconnect if it was disabled during the session."/>
                 </StackPanel>
             </StackPanel>
 

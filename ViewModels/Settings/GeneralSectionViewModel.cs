@@ -40,12 +40,12 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
         "Manual-Mode Defaults", "Auto-Mode Defaults",
         "Auto-Engines enabled on start",
         "Auto-Combat", "Auto-Nuke",
-        "Auto-Heal", "Auto-Rest", "Auto-Bless", "Auto-Light",
+        "Auto-Heal", "Auto-Rest", "Auto-Bless", "Auto-Light", "Auto-Train",
         "Allow hangup in all-off mode",
         "Re-enable on reconnect", "Re-enable Auto-Combat", "Re-enable Auto-Nuke",
         "Re-enable Auto-Heal/Rest", "Re-enable Auto-Bless", "Re-enable Auto-Light",
         "Re-enable Auto-Get Items", "Re-enable Auto-Get Cash", "Re-enable Auto-Sneak",
-        "Re-enable Auto-Hide", "Re-enable Auto-Search",
+        "Re-enable Auto-Hide", "Re-enable Auto-Search", "Re-enable Auto-Train",
     };
 
     public override Control View => _view ??= new GeneralSectionView { DataContext = this };
@@ -169,6 +169,12 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private bool _amAutoHide;
     [ObservableProperty] private bool _amAutoSearch;
 
+    // Auto-train's boot state is a mirror onto AutoTrainerSettings.AutoTrain
+    // (the "AutoTrainer" entry), not AutoMode — the Auto-Trainer tab is the
+    // primary editor for it. Surfaced here for parity with the other engines'
+    // enabled-on-start checkboxes.
+    [ObservableProperty] private bool _amAutoTrain;
+
     // ----- Emergency hangup carve-out ---------------------------------
     // Lets the HealthManager emergency-hangup branch fire even when every
     // auto-engine is off. Sits next to the auto-engine switches because
@@ -189,6 +195,7 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private bool _reEnableAutoSneakOnReconnect;
     [ObservableProperty] private bool _reEnableAutoHideOnReconnect;
     [ObservableProperty] private bool _reEnableAutoSearchOnReconnect;
+    [ObservableProperty] private bool _reEnableAutoTrainOnReconnect;
 
     // ----- Wired-state flags ------------------------------------------
     // True when the matching engine is live. The view's CheckBox.IsEnabled binds
@@ -203,6 +210,7 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
     public bool IsAutoSneakWired    => true;    // StealthManager auto-sneak
     public bool IsAutoHideWired     => true;    // StealthManager auto-hide
     public bool IsAutoSearchWired   => true;    // AutoSearchManager — bare `sea` on room entry
+    public bool IsAutoTrainWired    => true;    // AutoTrainer walk engine (AutoTrainerSettings.AutoTrain)
 
     public GeneralSectionViewModel(ProfileService profile)
         : this(profile, AppServices.Current.Settings) { }
@@ -258,10 +266,25 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
             ReEnableAutoSneakOnReconnect    = ReEnableAutoSneakOnReconnect,
             ReEnableAutoHideOnReconnect     = ReEnableAutoHideOnReconnect,
             ReEnableAutoSearchOnReconnect   = ReEnableAutoSearchOnReconnect,
+            ReEnableAutoTrainOnReconnect    = ReEnableAutoTrainOnReconnect,
         };
 
         profile.Settings ??= new();
         profile.Settings[TabKey] = JsonSerializer.SerializeToElement(dto);
+
+        // Auto-train's boot flag isn't part of AutoMode — it lives in the
+        // "AutoTrainer" entry the Auto-Trainer tab owns. Read-modify-write only
+        // the AutoTrain bit so the tab's other fields (stats cascade, levels-to-
+        // keep, announce, disabled trainers) survive this Save. Clearing the
+        // stats cascade when train goes off mirrors the tab's own invariant.
+        AutoTrainerSettings trainer = ReadAutoTrainerOrDefault();
+        if (trainer.AutoTrain != AmAutoTrain)
+        {
+            trainer.AutoTrain = AmAutoTrain;
+            if (!AmAutoTrain) trainer.AutoTrainStats = false;
+            profile.Settings["AutoTrainer"] = JsonSerializer.SerializeToElement(trainer);
+        }
+
         _profile.Save(backup: BackupOnSave);
 
         // Push the char-tier display settings into the live DisplayConfig — a
@@ -327,6 +350,7 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
         AmAutoSneak    = a.AutoSneak;
         AmAutoHide     = a.AutoHide;
         AmAutoSearch   = a.AutoSearch;
+        AmAutoTrain    = ReadAutoTrainerOrDefault().AutoTrain;
 
         AllowHangupInAllOffMode         = dto.AllowHangupInAllOffMode;
         ReEnableAutoCombatOnReconnect   = dto.ReEnableAutoCombatOnReconnect;
@@ -339,6 +363,7 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
         ReEnableAutoSneakOnReconnect    = dto.ReEnableAutoSneakOnReconnect;
         ReEnableAutoHideOnReconnect     = dto.ReEnableAutoHideOnReconnect;
         ReEnableAutoSearchOnReconnect   = dto.ReEnableAutoSearchOnReconnect;
+        ReEnableAutoTrainOnReconnect    = dto.ReEnableAutoTrainOnReconnect;
     }
 
     private GeneralSettings ReadOrDefault()
@@ -349,6 +374,27 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
 
         return JsonSerializer.Deserialize<GeneralSettings>(json.GetRawText())
                ?? new GeneralSettings();
+    }
+
+    // The Auto-Trainer tab owns the "AutoTrainer" entry; this tab only mirrors
+    // its AutoTrain bit, so it reads that entry defensively (unset / malformed
+    // → defaults) rather than assuming the tab has ever been saved.
+    private AutoTrainerSettings ReadAutoTrainerOrDefault()
+    {
+        CharacterProfile? profile = _profile.Current;
+        if (profile?.Settings is null) return new AutoTrainerSettings();
+        if (!profile.Settings.TryGetValue("AutoTrainer", out JsonElement json)) return new AutoTrainerSettings();
+        try
+        {
+            return JsonSerializer.Deserialize<AutoTrainerSettings>(json.GetRawText())
+                   ?? new AutoTrainerSettings();
+        }
+        catch
+        {
+            // Malformed AutoTrainer JSON → treat as unset; the Auto-Trainer tab
+            // rewrites it cleanly on its next Save.
+            return new AutoTrainerSettings();
+        }
     }
 
     private AutoActionDefaults SnapshotAuto() => new()
@@ -401,6 +447,7 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
     partial void OnAmAutoSneakChanged(bool value)            => Dirty();
     partial void OnAmAutoHideChanged(bool value)             => Dirty();
     partial void OnAmAutoSearchChanged(bool value)           => Dirty();
+    partial void OnAmAutoTrainChanged(bool value)            => Dirty();
     partial void OnAllowHangupInAllOffModeChanged(bool value)         => Dirty();
     partial void OnReEnableAutoCombatOnReconnectChanged(bool value)   => Dirty();
     partial void OnReEnableAutoNukeOnReconnectChanged(bool value)     => Dirty();
@@ -412,6 +459,7 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
     partial void OnReEnableAutoSneakOnReconnectChanged(bool value)    => Dirty();
     partial void OnReEnableAutoHideOnReconnectChanged(bool value)     => Dirty();
     partial void OnReEnableAutoSearchOnReconnectChanged(bool value)   => Dirty();
+    partial void OnReEnableAutoTrainOnReconnectChanged(bool value)    => Dirty();
 
     // Belt + braces on top of RadioButton.GroupName — the View's GroupName handles
     // the click-time mutual-exclusion, this guarantees programmatic state changes

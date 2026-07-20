@@ -2,6 +2,11 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.85.0
+
+- Settings → General: Auto-Train now listed in the "Auto-Engines enabled on start" section (mirrors the Auto-Trainer tab's master toggle)
+- Settings → General: Auto-Train added to the "Re-enable on reconnect" section
+
 ## 1.84.0
 
 - Settings → Talk: new "Look back when a player looks at us" toggle — mirrors a `look` back when the game shows "&lt;name&gt; is looking at you." (skips self, includes party)
