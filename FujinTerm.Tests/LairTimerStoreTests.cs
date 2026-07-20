@@ -236,6 +236,48 @@ public sealed class LairTimerStoreTests : IDisposable
         Assert.Equal(5400, store.DefaultRespawnSeconds(new RoomKey(5, 100)));
     }
 
+    // ----- MaxDefaultRespawnSeconds ---------------------------------
+
+    [Fact]
+    public void MaxDefaultRespawnSeconds_ReturnsLongestLairInSet()
+    {
+        // Fixture has two lairs: 5/100 (AvgDelay 30min = 1800s) and 7/50
+        // (slowest monster regen 15min = 900s), plus non-lair 1/1. The
+        // whole-set max is the 1800s lair.
+        var (cache, graph, tracker) = BuildFixture();
+        using LairTimerStore store = new(cache, graph, tracker);
+
+        Assert.Equal(1800, store.MaxDefaultRespawnSeconds());
+    }
+
+    [Fact]
+    public void MaxDefaultRespawnSeconds_NoLairs_ReturnsNull()
+    {
+        // A set with only non-lair rooms resolves no respawn at all.
+        const string roomsNoLair = """
+            [
+              { "Map Number": 1, "Room Number": 1, "Name": "Lobby",
+                "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+                "N": "0", "S": "0", "E": "0", "W": "0",
+                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+            ]
+            """;
+        string setRoot = Path.Combine(AppPaths.GameDataRoot, _setName);
+        Directory.CreateDirectory(setRoot);
+        File.WriteAllText(Path.Combine(setRoot, "Rooms.json"),    roomsNoLair);
+        File.WriteAllText(Path.Combine(setRoot, "Lairs.json"),    "[]");
+        File.WriteAllText(Path.Combine(setRoot, "Monsters.json"), "[]");
+
+        GameDataCache cache = new();
+        cache.SwitchSet(_setName);
+        RoomGraphManager graph = new(cache);
+        graph.OnActiveSetChanged(_setName);
+        RoomTracker tracker = new(graph);
+        using LairTimerStore store = new(cache, graph, tracker);
+
+        Assert.Null(store.MaxDefaultRespawnSeconds());
+    }
+
     // ----- NextReadyAt / LastEntered no-arrival path ----------------
 
     [Fact]

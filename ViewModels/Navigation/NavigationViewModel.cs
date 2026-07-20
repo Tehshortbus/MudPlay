@@ -540,6 +540,11 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     // lair colour.
     [ObservableProperty] private IReadOnlyDictionary<RoomKey, int>? _lairRespawnSeconds;
 
+    // Whole-set longest lair respawn (seconds) — the black endpoint of the Heat
+    // gradient's tail. Bound to MapControl so a lair's shade stays fixed no
+    // matter which rooms are drawn.
+    [ObservableProperty] private int _lairMaxRespawnSeconds;
+
     [RelayCommand] private void ToggleLairs() => LairMode = LairMode switch
     {
         LairDisplayMode.Uniform => LairDisplayMode.Heat,
@@ -590,6 +595,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
             (map ??= new()).Add(key, secs);
         }
         LairRespawnSeconds = map;
+        LairMaxRespawnSeconds = _services.LairTimers.MaxDefaultRespawnSeconds() ?? 0;
     }
 
     // Button-bar readouts between the Legend and Save chips: the player's live

@@ -42,6 +42,12 @@ public sealed class MapControl : Control
     public static readonly StyledProperty<IReadOnlyDictionary<RoomKey, int>?> LairRespawnSecondsProperty =
         AvaloniaProperty.Register<MapControl, IReadOnlyDictionary<RoomKey, int>?>(nameof(LairRespawnSeconds));
 
+    // Whole-set longest lair respawn (seconds), the black endpoint of the Heat
+    // tail. Kept stable across layout swaps so a lair's shade doesn't shift
+    // with what's on screen.
+    public static readonly StyledProperty<int> LairMaxRespawnSecondsProperty =
+        AvaloniaProperty.Register<MapControl, int>(nameof(LairMaxRespawnSeconds));
+
     public static readonly StyledProperty<bool> HighlightShopsProperty =
         AvaloniaProperty.Register<MapControl, bool>(nameof(HighlightShops), defaultValue: true);
 
@@ -183,6 +189,12 @@ public sealed class MapControl : Control
     {
         get => GetValue(LairRespawnSecondsProperty);
         set => SetValue(LairRespawnSecondsProperty, value);
+    }
+
+    public int LairMaxRespawnSeconds
+    {
+        get => GetValue(LairMaxRespawnSecondsProperty);
+        set => SetValue(LairMaxRespawnSecondsProperty, value);
     }
 
     public bool HighlightShops
@@ -439,35 +451,55 @@ public sealed class MapControl : Control
     private static readonly IPen   RoomBorderPen = new Pen(new SolidColorBrush(Color.Parse("#D0D0D0")), 1.0);
     private static readonly IPen   CurrentPen    = new Pen(new SolidColorBrush(Color.Parse("#FFD24D")), 2.0);
     private static readonly IPen   LairBorderPen  = new Pen(new SolidColorBrush(Color.Parse("#B36F9C")), 1.5);
-    // Lair-heat gradient (LairDisplayMode.Heat): hot -> cold, indexed 0..N-1.
-    // A fast-respawning lair (short delay) reads red; a slow one reads blue. A
-    // room's respawn seconds normalise onto [0,1] over HeatMinSeconds..
-    // HeatMaxSeconds and pick the nearest stop. Borders are lightened tints of
-    // the same stop. Precomputed so a Heat redraw allocates nothing.
-    private const double HeatMinSeconds = 30.0;
-    private const double HeatMaxSeconds = 600.0;
-    private static readonly IBrush[] HeatFills =
+    // Lair-heat colours (LairDisplayMode.Heat). MajorMUD lair respawns start at
+    // 30s and step in 30s intervals, so a lair's colour is keyed to its 30s
+    // bucket, not a continuous gradient: bucket 0 = 30s .. bucket 9 = 5min are
+    // the fixed red->purple rainbow below (one distinct hue per step). Lairs
+    // slower than 5min ("the tail") fade purple->black over (5min, whole-set
+    // max], so the single longest lair in the game data lands on black; those
+    // shades are built on demand and memoised in _tailHeat. Borders are
+    // lightened tints so a near-black node stays visible on the dark map.
+    private const int HeatBaseSeconds  = 30;
+    private const int HeatStepSeconds  = 30;
+    private static readonly string[] HeatFixedHex =
     {
-        new SolidColorBrush(Color.Parse("#E5484D")),
-        new SolidColorBrush(Color.Parse("#F2711C")),
-        new SolidColorBrush(Color.Parse("#F5A623")),
-        new SolidColorBrush(Color.Parse("#F2C744")),
-        new SolidColorBrush(Color.Parse("#7DBE3C")),
-        new SolidColorBrush(Color.Parse("#2FB47C")),
-        new SolidColorBrush(Color.Parse("#2AA9C0")),
-        new SolidColorBrush(Color.Parse("#3B82F6")),
+        "#E64A4A", // 0:30 red
+        "#F07818", // 1:00 orange
+        "#ECC400", // 1:30 yellow
+        "#A6C82A", // 2:00 yellow-green
+        "#43B84E", // 2:30 green
+        "#22B58E", // 3:00 green / light-blue mix (teal)
+        "#34B9DE", // 3:30 light blue
+        "#3B7FE6", // 4:00 darker blue
+        "#6B54DC", // 4:30 blue-purple
+        "#A24BD6", // 5:00 purple
     };
-    private static readonly IPen[] HeatBorders =
+    private static readonly (IBrush fill, IPen pen)[] HeatFixed = BuildHeatFixed();
+    // Seconds at the last fixed stop (5min); the purple->black tail is anchored
+    // here.
+    private static readonly int HeatFixedMaxSeconds =
+        HeatBaseSeconds + (HeatFixedHex.Length - 1) * HeatStepSeconds;
+    // Memo for the >5min tail, keyed by (snapped-seconds, whole-set-max). Read
+    // and written on the UI thread only (render path), so no lock needed.
+    private static readonly Dictionary<(int snapped, int max), (IBrush fill, IPen pen)> _tailHeat = new();
+
+    private static (IBrush, IPen)[] BuildHeatFixed()
     {
-        new Pen(new SolidColorBrush(Color.Parse("#F06E72")), 1.5),
-        new Pen(new SolidColorBrush(Color.Parse("#F5924E")), 1.5),
-        new Pen(new SolidColorBrush(Color.Parse("#F8BE5C")), 1.5),
-        new Pen(new SolidColorBrush(Color.Parse("#F6D877")), 1.5),
-        new Pen(new SolidColorBrush(Color.Parse("#9DD265")), 1.5),
-        new Pen(new SolidColorBrush(Color.Parse("#5AC79A")), 1.5),
-        new Pen(new SolidColorBrush(Color.Parse("#5AC1D3")), 1.5),
-        new Pen(new SolidColorBrush(Color.Parse("#6BA1F8")), 1.5),
-    };
+        var stops = new (IBrush, IPen)[HeatFixedHex.Length];
+        for (int i = 0; i < HeatFixedHex.Length; i++)
+        {
+            Color c = Color.Parse(HeatFixedHex[i]);
+            stops[i] = (new SolidColorBrush(c), new Pen(new SolidColorBrush(LightenToward(c, Colors.White, 0.35)), 1.5));
+        }
+        return stops;
+    }
+
+    private static Color LightenToward(Color a, Color b, double t)
+    {
+        byte Mix(byte x, byte y) => (byte)Math.Round(x + (y - x) * t);
+        return Color.FromArgb(255, Mix(a.R, b.R), Mix(a.G, b.G), Mix(a.B, b.B));
+    }
+
     private static readonly IPen   ShopBorderPen  = new Pen(new SolidColorBrush(Color.Parse("#6A9CB6")), 1.5);
     private static readonly IPen   SpellBorderPen = new Pen(new SolidColorBrush(Color.Parse("#9C70CC")), 1.5);
     // Perpendicular "wall" bar drawn across a cast-on-walk exit's connector, in
@@ -620,7 +652,7 @@ public sealed class MapControl : Control
             });
         _hoverTimer.Stop();
         AffectsRender<MapControl>(LayoutProperty, CurrentRoomKeyProperty, DestinationRoomKeyProperty, GraphProperty,
-            LairModeProperty, LairRespawnSecondsProperty, HighlightShopsProperty, HighlightSpellsProperty,
+            LairModeProperty, LairRespawnSecondsProperty, LairMaxRespawnSecondsProperty, HighlightShopsProperty, HighlightSpellsProperty,
             WalkPathProperty, LoopPathProperty, LoopBuilderPathProperty, LoopBuilderWaypointsProperty,
             AutoLairWaypointsProperty, AutoLairApproachPathProperty,
             LoopApproachPreviewPathProperty, AvoidedRoomsProperty, StashRoomsProperty, LoopSequenceNumbersProperty,
@@ -1664,15 +1696,32 @@ public sealed class MapControl : Control
         ctx.DrawGeometry(pen.Brush, null, geo);
     }
 
-    // Map a lair's respawn seconds onto the hot->cold gradient. Short delays
-    // land at the hot (index 0) end, long delays at the cold end; the value is
-    // clamped to [HeatMinSeconds, HeatMaxSeconds] first.
-    private static (IBrush fill, IPen pen) HeatColorFor(int seconds)
+    // Which 30s respawn bucket a lair falls in: bucket 0 = 30s, 1 = 60s, ...
+    // Clamped at 0 so a sub-30s value still lands on the fastest (red) stop.
+    internal static int HeatBucketIndex(int seconds) =>
+        Math.Max(0, (int)Math.Round((seconds - HeatBaseSeconds) / (double)HeatStepSeconds));
+
+    // Fill + border for a lair's respawn seconds. Buckets 0..9 (30s..5min) use
+    // the fixed rainbow; slower lairs fade purple->black over (5min, maxSeconds]
+    // — maxSeconds is the whole-set longest lair, so it lands exactly on black.
+    private static (IBrush fill, IPen pen) HeatColorFor(int seconds, int maxSeconds)
     {
-        double t = (seconds - HeatMinSeconds) / (HeatMaxSeconds - HeatMinSeconds);
-        t = Math.Clamp(t, 0.0, 1.0);
-        int i = (int)Math.Round(t * (HeatFills.Length - 1));
-        return (HeatFills[i], HeatBorders[i]);
+        int bucket = HeatBucketIndex(seconds);
+        if (bucket < HeatFixed.Length) return HeatFixed[bucket];
+
+        int snapped = HeatBaseSeconds + bucket * HeatStepSeconds;
+        int max = Math.Max(maxSeconds, snapped);
+        var key = (snapped, max);
+        if (_tailHeat.TryGetValue(key, out (IBrush fill, IPen pen) cached)) return cached;
+
+        double denom = Math.Max(HeatStepSeconds, max - HeatFixedMaxSeconds);
+        double t = Math.Clamp((snapped - HeatFixedMaxSeconds) / denom, 0.0, 1.0);
+        Color purple = Color.Parse(HeatFixedHex[^1]);
+        Color fillColor = LightenToward(purple, Colors.Black, t);
+        var result = ((IBrush)new SolidColorBrush(fillColor),
+                      (IPen)new Pen(new SolidColorBrush(LightenToward(fillColor, Colors.White, 0.4)), 1.5));
+        _tailHeat[key] = result;
+        return result;
     }
 
     private void DrawRoomNode(DrawingContext ctx, Rect cell, RoomKey key)
@@ -1710,7 +1759,7 @@ public sealed class MapControl : Control
                 && LairRespawnSeconds is { } respawn
                 && respawn.TryGetValue(key, out int secs))
             {
-                (fill, pen) = HeatColorFor(secs);
+                (fill, pen) = HeatColorFor(secs, LairMaxRespawnSeconds);
             }
             else
             {

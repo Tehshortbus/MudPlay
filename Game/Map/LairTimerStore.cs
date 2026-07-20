@@ -30,6 +30,12 @@ public sealed class LairTimerStore : IDisposable
     private readonly Dictionary<RoomKey, DateTimeOffset> _lastEntered = new();
     private readonly object _arrivalLock = new();
 
+    // Whole-set longest respawn, computed once per active set (a scan of every
+    // lair room) then cached. The _computed flag distinguishes "no lair in set"
+    // (null result) from "not yet scanned".
+    private int? _maxRespawnSec;
+    private bool _maxRespawnComputed;
+
     // Time unit conversion for the AvgDelay field. Stock MajorMUD exports
     // AvgDelay in minutes-per-respawn; Paradigm / GreaterMUD differs.
     // First-cut assumption: stock minutes.
@@ -92,6 +98,26 @@ public sealed class LairTimerStore : IDisposable
         return last is null ? null : last.Value.AddSeconds(seconds);
     }
 
+    // Longest default respawn (seconds) across every lair room in the active
+    // game-data set, or null when the set has no resolvable lair. Drives the
+    // Navigation heat-map's coldest (black) endpoint so a lair's colour is
+    // stable regardless of which rooms are on screen. Scans all rooms on first
+    // call; cached until the active set changes.
+    public int? MaxDefaultRespawnSeconds()
+    {
+        if (_maxRespawnComputed) return _maxRespawnSec;
+
+        int max = 0;
+        foreach (Room room in _graph.Rooms)
+        {
+            if (!room.HasLair) continue;
+            if (DefaultRespawnSeconds(room.Key) is int s && s > max) max = s;
+        }
+        _maxRespawnSec = max > 0 ? max : null;
+        _maxRespawnComputed = true;
+        return _maxRespawnSec;
+    }
+
     // Force-clear per-room arrival history; used by the scheduler on Start.
     public void ResetArrivals()
     {
@@ -122,6 +148,8 @@ public sealed class LairTimerStore : IDisposable
         _respawnSecCache.Clear();
         _groupDelaySecCache.Clear();
         _monsterRegenSecCache.Clear();
+        _maxRespawnSec = null;
+        _maxRespawnComputed = false;
         _log?.Debug("LairTimerStore", "active set changed; respawn caches dropped.");
     }
 

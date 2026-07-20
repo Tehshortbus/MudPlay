@@ -373,18 +373,19 @@
 
                 <!-- Centred readouts filling the flex gap between the toggle
                      chips and the action chips: the player's live room and the
-                     cyan-boxed selection, both as map/room keys. -->
+                     cyan-boxed selection, side by side (single row) so they
+                     don't add height to the bar. -->
                 <StackPanel Grid.Column="1"
-                            Orientation="Vertical"
+                            Orientation="Horizontal"
                             HorizontalAlignment="Center"
                             VerticalAlignment="Center"
-                            Spacing="1">
+                            Spacing="18">
                     <TextBlock Text="{Binding CurrentRoomText}"
-                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center"
                                FontSize="12"
                                Foreground="{StaticResource ChromeFgSecBrush}"/>
                     <TextBlock Text="{Binding SelectedRoomText}"
-                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center"
                                FontSize="12"
                                Foreground="{StaticResource ChromeFgSecBrush}"/>
                 </StackPanel>
@@ -463,6 +464,7 @@
                                  Graph="{Binding Graph}"
                                  LairMode="{Binding LairMode}"
                                  LairRespawnSeconds="{Binding LairRespawnSeconds}"
+                                 LairMaxRespawnSeconds="{Binding LairMaxRespawnSeconds}"
                                  HighlightShops="{Binding HighlightShops}"
                                  HighlightSpells="{Binding HighlightSpells}"
                                  WalkPath="{Binding WalkPath}"

@@ -2,9 +2,9 @@
 
 <!-- current-version:start -->
 > **Version 1.82.0**
-> - Navigation map button bar shows centered "Current room" and "Selected Room" map/room readouts between the Legend and Save chips
+> - Navigation map button bar shows "Current room" and "Selected Room" map/room readouts side by side between the Legend and Save chips
 > - Lairs chip is now a three-stage toggle: uniform colour → respawn heat-map → off
-> - Heat mode shades each lair by respawn time — fast lairs run hot (red), slow lairs run cold (blue)
+> - Heat mode colours each lair by its 30-second respawn bucket — 30s red, stepping through the spectrum to 5min purple, longer lairs fading toward black (the game's slowest lair)
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->
