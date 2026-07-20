@@ -49,16 +49,12 @@
             <CheckBox Content="Disallow all remote control commands"
                       IsChecked="{Binding DisallowAllRemoteCommands, Mode=TwoWay}"
                       ToolTip.Tip="Hard kill-switch. When on, the engine ignores every inbound @-command regardless of channel / sender / handler."/>
-            <TextBlock Classes="HelpText"
-                       Text="Above every per-channel + per-player permission. No handler fires, no reply is sent."/>
             <TextBlock Classes="WarningText"
                        Text="⚠ Warning: this silently blocks ALL inbound @commands — including party heal / cure / coordination requests from your own group."/>
 
             <CheckBox Content="Disallow @party commands (from any party member)"
                       IsChecked="{Binding DisallowPartyCommands, Mode=TwoWay}"
                       ToolTip.Tip="Gates only the @party directive path (attack / rest / meditate / go / stat / i / par) for every active party member, not just the leader."/>
-            <TextBlock Classes="HelpText"
-                       Text="Makes @party and its sub-commands a no-op no matter who in the party sends it — useful for solo runs inside a party where party directives shouldn't steer this character. The coordination signals @wait / @ok / @comeback / @share are unaffected and still work for party members."/>
 
             <!-- ============ Per-channel disable (wired) ============ -->
             <TextBlock Classes="SectionHeader" Text="Per-channel disable"/>

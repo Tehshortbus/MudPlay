@@ -7,6 +7,7 @@ Notable changes per merged PR, **newest first**. The top of the [README](README.
 - Settings → Talk: new "Look back when a player looks at us" toggle — mirrors a `look` back when the game shows "&lt;name&gt; is looking at you." (skips self, includes party)
 - Settings → Talk: new "Look at players to learn/update their inventories" toggle — looks at each non-party player who walks into the room (skips self and party)
 - Both default off, sit next to "Greet players when first met"
+- Settings → Talk: removed two redundant help-text captions (master kill-switch, @party disable)
 
 ## 1.83.0
 
