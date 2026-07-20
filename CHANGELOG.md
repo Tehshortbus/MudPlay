@@ -2,6 +2,11 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a new feature or enhancement, **PATCH** = bug fixes (one increment per report handled).
 
+## 1.83.0
+
+- Navigation window gains a collapse/expand toggle beside the search box (▶ collapse the panels / ◀ bring them back)
+- Collapsing hides the search box, Selected-Room readout, action buttons, and the whole right-hand nav rail, and lowers the window's minimum width so the map can be dragged narrower
+
 ## 1.82.0
 
 - Navigation map button bar shows "Current room" and "Selected Room" map/room readouts side by side between the Legend and Save chips

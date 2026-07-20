@@ -604,6 +604,32 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     public string CurrentRoomText  => $"Current room: {(CurrentRoomKey is { } c ? c.ToString() : "—")}";
     public string SelectedRoomText => $"Selected Room: {(SelectedRoomKey is { } s ? s.ToString() : "—")}";
 
+    // Map-expand toggle. Expanded (default) is the full navigation UI — search
+    // box, action buttons, and the right-hand nav rail all visible. Collapsed
+    // hides that chrome so the map fills the window; the window's minimum width
+    // drops with it (WindowMinWidth) so it can actually be dragged narrower than
+    // the rail's fixed width would otherwise allow.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(MapCollapseGlyph))]
+    [NotifyPropertyChangedFor(nameof(MapCollapseTooltip))]
+    [NotifyPropertyChangedFor(nameof(WindowMinWidth))]
+    private bool _mapExpanded = true;
+
+    // Arrow points toward the panels it acts on: ▶ (toward the hidden-away right
+    // rail) while expanded, ◀ (pulling the rail back in) while collapsed.
+    public string MapCollapseGlyph => MapExpanded ? "▶" : "◀";
+
+    public string MapCollapseTooltip => MapExpanded
+        ? "Collapse the side panels to shrink the map."
+        : "Expand the side panels.";
+
+    // Floor the window can shrink to. The full layout needs the rail's width;
+    // collapsed, only the top chips + map do, so drop the floor to let the user
+    // pull the window in narrower on demand.
+    public double WindowMinWidth => MapExpanded ? 900 : 420;
+
+    [RelayCommand] private void ToggleMapExpanded() => MapExpanded = !MapExpanded;
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CurrentRoomText))]
     private RoomKey? _currentRoomKey;
