@@ -266,16 +266,18 @@ public sealed partial class CombatManager
                 // each round; the heartbeat re-announces only if the chooser's decision
                 // later changes. Set the bridge even when the cast is blocked so we
                 // stay in spell mode and retry next tick rather than swinging.
-                // bypassRoundCooldown is keyed to isGenuineNewEngage, NOT hardcoded true —
-                // a same-target re-announce (a resume, or a round-cycle phase switch) must
-                // respect the cooldown like any other re-cast. Bypassing it here raced a
-                // between-round survival cast for the round's single server-side cast slot:
-                // the server rejects the loser with "already cast this round", which blocks
-                // ALL casts (including the survival heal that's still waiting its turn) until
-                // the next tick clears the latch — actively delaying the heal at exactly the
-                // moment a losing fight needs it most.
+                // bypassRoundCooldown is unconditional, including a same-target resume:
+                // the attack spell recasts IMMEDIATELY after the heal/buff that
+                // interrupted it — that's the actual cadence (attack, heal-or-buff,
+                // attack, ...), not "wait a round". _spellAttackOwed (CastingDirector's
+                // attack-owed gate) is what enforces the OTHER half of that rule — no
+                // second heal/buff before this attack goes out — so by the time this
+                // runs, nothing is contesting the round's cast slot. An earlier attempt
+                // to fix a collision here by respecting the cooldown instead just forced
+                // a full extra round of the mob swinging free before the resume landed —
+                // worse, not better (bug reports addressed below).
                 _castingSpellTarget = picked.RawName;
-                if (_cast!.TryCast(decision.Spell!, picked.RawName, bypassRoundCooldown: isGenuineNewEngage))
+                if (_cast!.TryCast(decision.Spell!, picked.RawName, bypassRoundCooldown: true))
                 {
                     _spellChooser.MarkCast(decision, picked.RawName);
                     _lastCastAction = decision.Action;

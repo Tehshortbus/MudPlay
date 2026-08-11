@@ -808,21 +808,27 @@ public sealed class CombatManagerSpellsTests
         Assert.Equal("harm giant rat", h.LastSent);
     }
 
-    // A same-target re-announce (a resume, or a round-cycle phase switch) must
-    // respect the ordinary round cooldown like any other re-cast — bypassing it
-    // is reserved for a genuine fresh engage. Bypassing it races a between-round
-    // survival cast for the round's single server-side cast slot: losing that
-    // race gets rejected as "already cast this round", which blocks ALL casts
-    // (including the survival heal) until the next tick — delaying the heal at
-    // exactly the moment a losing fight needs it most.
+    // The attack spell recasts IMMEDIATELY after the heal/buff that interrupted
+    // it — engage, attack, heal-or-buff, attack, heal-or-buff, ... — not after
+    // waiting out the round cooldown. An earlier attempt to fix a collision here
+    // by respecting the cooldown instead just forced a full extra round of the
+    // mob swinging free before the resume landed (a live capture caught it
+    // exactly: armr fires, *Combat Off*, one full round of silence — the mob's
+    // free swing — then harm finally resumes). CastingDirector's attack-owed gate
+    // (CombatManager.IsSpellAttackOwed) is what actually prevents the collision
+    // this used to guard against — it stops a SECOND heal/buff from contesting
+    // the round, so by the time this resume runs nothing else wants the slot.
     //
-    // MinRecastInterval (500ms, unconditional) would also block a same-instant
-    // resend regardless of this fix, masking it behind Sent.Count alone at zero
-    // elapsed test time — so this asserts the FAILURE DETAIL instead: "cast-
-    // blocked" is the round-cooldown gate (not bypassed, this fix); "recast-
-    // interval" is the shorter burst guard a bypass would fall through to.
+    // A synchronous test has zero elapsed time between the simulated heal/buff
+    // send and this resume attempt, which no real production call ever sees —
+    // there's always network latency between a cast going out and the server's
+    // *Combat Off* coming back. That trips MinRecastInterval (500ms, unconditional,
+    // a burst-absorb guard unrelated to this fix) regardless of the fix under test.
+    // So this asserts the FAILURE DETAIL when one occurs: "recast-interval" (that
+    // unrelated burst guard) is fine; "cast-blocked" (the round cooldown this fix
+    // bypasses) would mean the regression is back.
     [Fact]
-    public void SpellMode_ResumeAfterInterrupt_RespectsRoundCooldown_NotBypassed()
+    public void SpellMode_ResumeAfterInterrupt_RecastsImmediately_NoRoundOfSilence()
     {
         using Harness h = new();
         h.Settings.ActionOrder = CombatActionOrder.SpellsFirst;
@@ -835,14 +841,14 @@ public sealed class CombatManagerSpellsTests
         List<(CastFailureReason Reason, string Detail)> failures = new();
         h.Cast.CastFailed += (reason, detail) => failures.Add((reason, detail));
 
-        // Something else (a survival heal) just used this round's single cast slot.
+        // A survival cast (heal/buff) just went out, same instant.
         h.Cast.NotifyExternalCastSent();
 
-        // That cast's *Combat Off* interrupt fires a resume for the SAME target.
+        // Its *Combat Off* interrupt must resume the SAME target's attack spell
+        // right away — no waiting for the next tick.
         h.Combat.NoteBetweenRoundCast();
         h.Feed("*Combat Off*");
 
-        (CastFailureReason Reason, string Detail) failure = Assert.Single(failures);
-        Assert.Equal("cast-blocked", failure.Detail);
+        Assert.DoesNotContain(failures, f => f.Detail == "cast-blocked");
     }
 }
