@@ -3145,6 +3145,11 @@ public sealed class AppServices
         // engine resume the weapon attack on the resulting *Combat Off*
         // instead of idling until the next round.
         CastDirector.CastFired += Combat.NoteBetweenRoundCast;
+        // The round after a survival cast belongs to the attack spell it
+        // interrupted — CastDirector must sit out until that resume lands, or it
+        // just re-claims the round the instant HP dips again and the attack never
+        // gets a turn back.
+        CastDirector.SetAttackOwedGate(() => Combat.IsSpellAttackOwed);
         // Same resume, but for a HAND-typed cast: a manual cast-code never
         // routes through CastDirector, so sniff the wire for one and arm the
         // identical signal. A cast-code is any Spells.Short in the active

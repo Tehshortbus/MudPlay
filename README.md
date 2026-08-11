@@ -1,9 +1,10 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.5.5**
+> **Version 3.5.8**
 > - Fixed combat freezing mid-fight after a self-heal or buff interrupted it: a resumed round-cycle fight no longer restarts its phase counter, and losing the round's cast slot to a survival heal no longer permanently wedges the engine out of retrying — both left the fight requiring manual input to continue
 > - A same-target spell re-announce (resume, or round-cycle phase switch) now respects the ordinary round cooldown instead of bypassing it — bypassing raced a between-round survival heal for the round's single cast slot, and losing that race blocked ALL casts, including the heal, until the next tick
+> - Fixed an attack-spell build getting stuck healing/buffing indefinitely and never attacking: a survival cast now strictly hands the very next round back to the owed attack spell instead of being free to re-claim it again the instant HP dips (which it always will while nothing is fighting back) — the cadence is a fixed attack / heal-or-buff / attack / heal-or-buff alternation, not a heal-until-HP-is-comfortable loop
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

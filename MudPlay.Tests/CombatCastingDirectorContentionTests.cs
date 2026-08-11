@@ -67,8 +67,10 @@ public sealed class CombatCastingDirectorContentionTests
                 readHealth: () => Health,
                 isEnabled: () => AutoHealRestEnabled,
                 log: Log);
-            // Mirrors AppServices: CastDirector.CastFired += Combat.NoteBetweenRoundCast.
+            // Mirrors AppServices: CastDirector.CastFired += Combat.NoteBetweenRoundCast,
+            // CastDirector.SetAttackOwedGate(() => Combat.IsSpellAttackOwed).
             Director.CastFired += Combat.NoteBetweenRoundCast;
+            Director.SetAttackOwedGate(() => Combat.IsSpellAttackOwed);
         }
 
         public void AddMonster(int number, string name)
@@ -160,5 +162,53 @@ public sealed class CombatCastingDirectorContentionTests
             $"attack spell was re-announced only {attackSpellSends} time(s) across 10 rounds of " +
             $"self-heal interrupts (heals sent: {healSends}) — combat is starved by the heal " +
             "winning every round's single cast slot. Sent: " + string.Join(" | ", h.AllSent));
+    }
+
+    // Reproduces the exact live transcript: "mihe, mihe, mihe, mihe" with no
+    // "harm" in between, while HP recovers each round (so the self-heal's own
+    // stale-repeat guard never suppresses it — this isn't that). The game allows
+    // one cast per round; a survival cast spending a round the attack spell was
+    // owed must be followed by that attack, not another survival cast. The cadence
+    // is a fixed alternation (attack, heal-or-buff, attack, heal-or-buff, ...),
+    // not something that relaxes just because HP is still below the heal trigger —
+    // it always will be, immediately after ANY hit lands, for as long as nothing
+    // is fighting back.
+    [Fact]
+    public void SpellsFirst_HealFiresEveryRound_AttackSpellAlternatesStrictly()
+    {
+        using Harness h = new();
+        h.CombatSettings.ActionOrder = CombatActionOrder.SpellsFirst;
+        h.CombatSettings.NormalAttackSpell = new CombatSpellSlot { SpellName = "harm", MinEnemies = 0 };
+        h.Spells.MinorHealSpell = "mihe";
+        h.Health.MinorHealCombatTrigger = 80;   // heals whenever HP <= 80% — true after almost any hit
+        h.AddMonster(1, "giant rat");
+
+        h.State.MaxHp = 100;
+        h.State.HasPromptData = true;
+        h.State.Hp = 100;
+
+        h.Feed("Also here: giant rat.");
+        Assert.Equal("harm giant rat", h.AllSent.Last());
+        h.State.InCombat = true;
+
+        int hp = 50;   // parked under the 80% trigger for every round below
+        for (int round = 0; round < 8; round++)
+        {
+            h.Tick();
+            hp = hp == 50 ? 55 : 50;   // oscillates so the heal is never a stale repeat
+            h.State.Hp = hp;
+            h.Feed("*Combat Off*");
+        }
+
+        List<string> combatCasts = h.AllSent
+            .Where(s => s is "harm giant rat" or "mihe")
+            .ToList();
+
+        for (int i = 1; i < combatCasts.Count; i++)
+        {
+            Assert.False(combatCasts[i - 1] == "mihe" && combatCasts[i] == "mihe",
+                "two self-heals fired back to back with no attack spell in between — " +
+                "the attack's round was skipped. Sequence: " + string.Join(" | ", combatCasts));
+        }
     }
 }

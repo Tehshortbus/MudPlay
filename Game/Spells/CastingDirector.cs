@@ -88,6 +88,7 @@ public sealed class CastingDirector : IDisposable
     private Action? _combatDebuffCommit;
     private Func<string, int?>? _manaCostLookup;
     private Func<bool>? _autoBlessEnabled;
+    private Func<bool>? _attackOwed;
     private Func<string, long?>? _itemCastDuration;
     private Func<string, bool>? _executeItemCast;
     private Func<string, int?>? _itemCastManaCost;
@@ -268,6 +269,17 @@ public sealed class CastingDirector : IDisposable
     {
         ArgumentNullException.ThrowIfNull(isEnabled);
         _autoBlessEnabled = isEnabled;
+    }
+
+    // Wire CombatManager.IsSpellAttackOwed. The game allows exactly one cast per
+    // round; when a survival cast just spent a round that owed the combat engine
+    // its attack-spell resume, EVERY category here must sit out entirely until
+    // that attack goes back out — not just Buffing. Left unwired, this fails open
+    // (never suppressed), matching every other gate's default.
+    public void SetAttackOwedGate(Func<bool> isAttackOwed)
+    {
+        ArgumentNullException.ThrowIfNull(isAttackOwed);
+        _attackOwed = isAttackOwed;
     }
 
     // Wire the buff-strip-room gate. When the predicate returns true, the current
@@ -534,6 +546,13 @@ public sealed class CastingDirector : IDisposable
         if (_state.MaxHp <= 0) return null;
         if (_state.Hp <= 0) return null;     // dead — DeathRecoveryManager owns this case
         if (_cast.IsCastBlocked) return null;
+        // A prior survival cast already spent a round the combat engine's attack
+        // spell was owed — sit out entirely so that resume can reclaim the very
+        // next round, rather than re-firing again ourselves the instant HP dips
+        // (which it always will while nothing is fighting back). No exception for
+        // urgency: engage / attack / heal-or-buff / attack / heal-or-buff / ... is
+        // the fixed cadence regardless of how the fight is going.
+        if (_attackOwed?.Invoke() == true) return null;
 
         SpellsSettings spells = _readSpells();
         HealthSettings health = _readHealth();
