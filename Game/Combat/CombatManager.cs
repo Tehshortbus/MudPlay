@@ -163,6 +163,20 @@ public sealed partial class CombatManager : IDisposable
     // — the fallback's whole point is to make our OWN independent pick this round.
     private bool _followDeferBypass;
 
+    // Set only for the duration of ResumeEngage's re-entrant OnEntitiesObserved
+    // call — the RawName that was engaged before the interrupt nulled
+    // _currentTarget to force the re-pick. DispatchRoundAction's target-change
+    // check falls back to this when set, so a resume that lands back on the SAME
+    // still-alive monster reads as a continuation, not a new fight — a nulled
+    // _currentTarget otherwise looks identical to a genuine kill/room-clear engage
+    // and wrongly restarts CustomRoundCycle's phase at round 0 every single
+    // interrupt (the reported "confused which attack to use" combat stall: a
+    // heal/buff mid-fight never lets the phase advance past its opening round).
+    // Null outside a resume, so every other call site's comparison (already
+    // correct — _currentTarget really is null there, a genuine new engage) is
+    // untouched.
+    private string? _resumeFromTarget;
+
     // Backstab flee-on-failure action, bound in AppServices to
     // HealthManager.RunFromBackstabFailure. null until wired; even when wired it
     // fires only on a detected failure AND when CombatSettings.RunIfBackstabFails
@@ -1849,6 +1863,7 @@ public sealed partial class CombatManager : IDisposable
     {
         _combatOff = false;
         _log?.Combat(LogCategory, "combat resumed after interrupt — re-engaging room");
+        _resumeFromTarget = _currentTarget;
         _currentTarget = null;     // force a fresh pick + equip
 
         // Bypass the follow-announce hold on this re-pick. We only get here mid-
@@ -1862,7 +1877,7 @@ public sealed partial class CombatManager : IDisposable
         // fallback would have chosen, minus the wasted round.
         _followDeferBypass = true;
         try { OnEntitiesObserved(live); }
-        finally { _followDeferBypass = false; }
+        finally { _followDeferBypass = false; _resumeFromTarget = null; }
     }
 
     // Round-paced wrapper over ResumeEngage: re-engages at most once per
@@ -1985,6 +2000,18 @@ public sealed partial class CombatManager : IDisposable
                 && TargetPresent(liveSpell, spellTarget)
                 && TryBuildCandidate(liveSpell, spellTarget) is { } spellCand)
             {
+                // Clear the interrupt flag before attempting the re-announce, mirroring
+                // ResumeEngage's weapon-mode path — NOT only inside DispatchRoundAction's
+                // TryCast-succeeded branch. This attempt can lose the round's single cast
+                // slot to a survival heal firing the same instant (CastingDirector.Evaluate
+                // runs immediately on the HP change that triggered this whole interrupt, not
+                // just on the tick boundary), and DispatchRoundAction's own comment ("stay in
+                // spell mode and retry next tick") only holds if OnCombatTick's heartbeat can
+                // actually run next tick — it bails immediately while _combatOff is true. Left
+                // set here, a single lost race parks the engine in spell mode with no path back
+                // to a retry: the reported "won't re-engage after buffing/healing, sits there
+                // until manual input" stall.
+                _combatOff = false;
                 _announcedSpellCode = null;
                 DispatchRoundAction(_readSettings(), spellCand, CountEngageable(liveSpell), liveSpell);
             }

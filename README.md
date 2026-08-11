@@ -1,9 +1,8 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.5.1**
-> - Startup animation preference is now install-wide — saved to the default profile and read at startup regardless of which character auto-loads, so turning it off stays off across relaunches and profile loads
-> - Fixed the animation briefly flashing when a named profile loads
+> **Version 3.5.4**
+> - Fixed combat freezing mid-fight after a self-heal or buff interrupted it: a resumed round-cycle fight no longer restarts its phase counter, and losing the round's cast slot to a survival heal no longer permanently wedges the engine out of retrying — both left the fight requiring manual input to continue
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

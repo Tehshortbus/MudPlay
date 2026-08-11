@@ -2,6 +2,11 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a brand-new feature or a large (~1000+ line) rewrite/expansion of an existing one, **PATCH** = bug fixes AND ordinary enhancements to existing features (one increment per bug report handled or per enhancement).
 
+## 3.5.4
+
+- Fixed combat freezing mid-fight after a self-heal or buff interrupted it: a resumed round-cycle fight no longer restarts its phase counter, and losing the round's cast slot to a survival heal no longer permanently wedges the engine out of retrying — both left the fight requiring manual input to continue
+- bug reports addressed: paradigm-20260811-080136, paradigm-20260811-090358, paradigm-20260811-094533
+
 ## 3.5.1
 
 - Startup animation preference is now install-wide — saved to the default profile and read at startup regardless of which character auto-loads, so turning it off stays off across relaunches and profile loads

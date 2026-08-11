@@ -178,8 +178,13 @@ public sealed partial class CombatManager
         // MaxCasts is per-target for those slots (the AoE slots stay per-room) — and
         // restarts the alternating-order phase so each new fight opens on the mode's
         // first phase. A same-target re-announce (a mid-fight decision switch, incl.
-        // the per-round alternation heartbeat) doesn't reset.
-        if (!string.Equals(_currentTarget, picked.RawName, StringComparison.OrdinalIgnoreCase))
+        // the per-round alternation heartbeat) doesn't reset. _resumeFromTarget
+        // stands in for _currentTarget when this dispatch came from ResumeEngage's
+        // re-pick: _currentTarget was deliberately nulled there to force the pick,
+        // which otherwise reads identically to a genuine kill/room-clear engage and
+        // resets the round-cycle phase on every interrupt (see _resumeFromTarget).
+        string? previousTarget = _resumeFromTarget ?? _currentTarget;
+        if (!string.Equals(previousTarget, picked.RawName, StringComparison.OrdinalIgnoreCase))
         {
             _spellChooser.ResetForNewTarget();
             _alternationRound = 0;

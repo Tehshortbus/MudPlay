@@ -771,4 +771,40 @@ public sealed class CombatManagerSpellsTests
         h.Tick();
         Assert.Equal(afterSwitch, h.Sent.Count);
     }
+
+    // A between-round self-heal / buff drops *Combat Off* and the resume
+    // path re-engages the SAME still-alive monster — that must read as a
+    // continuation, not a new fight, or the phase counter restarts on every
+    // interrupt and a round-cycle build heavy on self-heals never reaches its
+    // spell phase (the reported "won't re-engage after buffing, confused
+    // which attack to use").
+    [Fact]
+    public void CustomRoundCycle_ResumeAfterInterrupt_DoesNotResetPhase()
+    {
+        using Harness h = new();
+        h.Settings.ActionOrder = CombatActionOrder.CustomRoundCycle;
+        h.Settings.CycleRoundsPhysical = 3;
+        h.Settings.CycleRoundsSpell = 0;   // spells till death once reached
+        h.Settings.NormalAttackSpell = new CombatSpellSlot { SpellName = "harm", MinEnemies = 1 };
+        h.AddMonster(1, "giant rat");
+
+        // Round 0 (engage) — physical phase.
+        h.Feed("Also here: giant rat.");
+        Assert.Equal("a giant rat", h.LastSent);
+
+        // Round 1 — still physical, mid-phase.
+        h.Tick();
+
+        // A between-round cast (self-heal) interrupts the swing.
+        h.Combat.NoteBetweenRoundCast();
+        h.Feed("*Combat Off*");
+        Assert.Equal("a giant rat", h.LastSent);   // resumed with a weapon swing, still physical
+
+        // Rounds 2–3 — the phase boundary must land on schedule (round 3),
+        // exactly as if the interrupt never happened. A phase-counter reset
+        // on the resume would still be mid-physical here.
+        h.Tick();
+        h.Tick();
+        Assert.Equal("harm giant rat", h.LastSent);
+    }
 }
