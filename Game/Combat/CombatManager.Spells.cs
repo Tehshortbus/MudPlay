@@ -184,7 +184,9 @@ public sealed partial class CombatManager
         // which otherwise reads identically to a genuine kill/room-clear engage and
         // resets the round-cycle phase on every interrupt (see _resumeFromTarget).
         string? previousTarget = _resumeFromTarget ?? _currentTarget;
-        if (!string.Equals(previousTarget, picked.RawName, StringComparison.OrdinalIgnoreCase))
+        bool isGenuineNewEngage =
+            !string.Equals(previousTarget, picked.RawName, StringComparison.OrdinalIgnoreCase);
+        if (isGenuineNewEngage)
         {
             _spellChooser.ResetForNewTarget();
             _alternationRound = 0;
@@ -264,8 +266,16 @@ public sealed partial class CombatManager
                 // each round; the heartbeat re-announces only if the chooser's decision
                 // later changes. Set the bridge even when the cast is blocked so we
                 // stay in spell mode and retry next tick rather than swinging.
+                // bypassRoundCooldown is keyed to isGenuineNewEngage, NOT hardcoded true —
+                // a same-target re-announce (a resume, or a round-cycle phase switch) must
+                // respect the cooldown like any other re-cast. Bypassing it here raced a
+                // between-round survival cast for the round's single server-side cast slot:
+                // the server rejects the loser with "already cast this round", which blocks
+                // ALL casts (including the survival heal that's still waiting its turn) until
+                // the next tick clears the latch — actively delaying the heal at exactly the
+                // moment a losing fight needs it most.
                 _castingSpellTarget = picked.RawName;
-                if (_cast!.TryCast(decision.Spell!, picked.RawName, bypassRoundCooldown: true))
+                if (_cast!.TryCast(decision.Spell!, picked.RawName, bypassRoundCooldown: isGenuineNewEngage))
                 {
                     _spellChooser.MarkCast(decision, picked.RawName);
                     _lastCastAction = decision.Action;

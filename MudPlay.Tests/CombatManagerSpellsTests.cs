@@ -807,4 +807,42 @@ public sealed class CombatManagerSpellsTests
         h.Tick();
         Assert.Equal("harm giant rat", h.LastSent);
     }
+
+    // A same-target re-announce (a resume, or a round-cycle phase switch) must
+    // respect the ordinary round cooldown like any other re-cast — bypassing it
+    // is reserved for a genuine fresh engage. Bypassing it races a between-round
+    // survival cast for the round's single server-side cast slot: losing that
+    // race gets rejected as "already cast this round", which blocks ALL casts
+    // (including the survival heal) until the next tick — delaying the heal at
+    // exactly the moment a losing fight needs it most.
+    //
+    // MinRecastInterval (500ms, unconditional) would also block a same-instant
+    // resend regardless of this fix, masking it behind Sent.Count alone at zero
+    // elapsed test time — so this asserts the FAILURE DETAIL instead: "cast-
+    // blocked" is the round-cooldown gate (not bypassed, this fix); "recast-
+    // interval" is the shorter burst guard a bypass would fall through to.
+    [Fact]
+    public void SpellMode_ResumeAfterInterrupt_RespectsRoundCooldown_NotBypassed()
+    {
+        using Harness h = new();
+        h.Settings.ActionOrder = CombatActionOrder.SpellsFirst;
+        h.Settings.NormalAttackSpell = new CombatSpellSlot { SpellName = "harm", MinEnemies = 0 };
+        h.AddMonster(1, "giant rat");
+
+        h.Feed("Also here: giant rat.");
+        Assert.Equal("harm giant rat", h.LastSent);
+
+        List<(CastFailureReason Reason, string Detail)> failures = new();
+        h.Cast.CastFailed += (reason, detail) => failures.Add((reason, detail));
+
+        // Something else (a survival heal) just used this round's single cast slot.
+        h.Cast.NotifyExternalCastSent();
+
+        // That cast's *Combat Off* interrupt fires a resume for the SAME target.
+        h.Combat.NoteBetweenRoundCast();
+        h.Feed("*Combat Off*");
+
+        (CastFailureReason Reason, string Detail) failure = Assert.Single(failures);
+        Assert.Equal("cast-blocked", failure.Detail);
+    }
 }
