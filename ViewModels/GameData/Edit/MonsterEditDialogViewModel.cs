@@ -87,6 +87,14 @@ public sealed partial class MonsterEditDialogViewModel : ObservableObject, IDial
     // detection) wherever game data isn't wired, e.g. tests.
     private readonly Func<string, int?>? _resolveSpellShort;
 
+    // The inverse: a stored Spells.Number back to its cast-code, so re-opening
+    // the dialog on an override that auto-resolved from a typed code (e.g.
+    // "agon") shows "agon" again, not the internal number it resolved to
+    // (report paradigm-20260813-131658: "it keeps putting 22 in when I put the
+    // spell in"). Falls back to the raw number when unresolvable (e.g. the
+    // game-data set changed since the override was saved).
+    private readonly Func<int, string?>? _resolveSpellNumber;
+
     public MonsterEditDialogViewModel(
         string wccNoStr,
         string mdbName,
@@ -95,9 +103,11 @@ public sealed partial class MonsterEditDialogViewModel : ObservableObject, IDial
         IReadOnlyList<MdbInfoRow> mdbInfo,
         MonsterMessageRecord? messages = null,
         IReadOnlyList<SettingsTier>? writableTiers = null,
-        Func<string, int?>? resolveSpellShort = null)
+        Func<string, int?>? resolveSpellShort = null,
+        Func<int, string?>? resolveSpellNumber = null)
     {
         _resolveSpellShort = resolveSpellShort;
+        _resolveSpellNumber = resolveSpellNumber;
         WccNoStr      = wccNoStr;
         MonsterNumber = int.TryParse(wccNoStr, out int n) ? n : 0;
         Name          = existing?.Name ?? mdbName;
@@ -117,10 +127,14 @@ public sealed partial class MonsterEditDialogViewModel : ObservableObject, IDial
 
         PreAttackSpellId = (existing?.OverridePreAttackSpellId is { } pi) ? pi.ToString() : string.Empty;
         PreAttackCount   = (existing?.OverridePreAttackCount   is { } pc) ? pc.ToString() : string.Empty;
-        // A command override wins the box display; else fall back to the spell id.
+        // A command override wins the box display; else show the spell's cast-code
+        // when it resolves (round-trips a typed "agon" back to "agon", not its
+        // internal number), falling back to the bare number when it doesn't.
         AttackOverride   = existing?.OverrideAttackCommand is { Length: > 0 } cmd
             ? cmd
-            : (existing?.OverrideAttackSpellId is { } ai ? ai.ToString() : string.Empty);
+            : (existing?.OverrideAttackSpellId is { } ai
+                ? (_resolveSpellNumber?.Invoke(ai) ?? ai.ToString())
+                : string.Empty);
         AttackCount      = (existing?.OverrideAttackCount      is { } ac) ? ac.ToString() : string.Empty;
 
         DontBackstab = existing?.DontBackstab ?? false;

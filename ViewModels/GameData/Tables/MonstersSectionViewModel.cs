@@ -186,7 +186,10 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
             // "turn") onto the mana-gated spell rung instead of silently
             // falling through to a raw, ungated command — see
             // MonsterEditDialogViewModel.ParseAttackOverride.
-            resolveSpellShort: AppServices.Current.SpellShort.NumberByShort);
+            resolveSpellShort: AppServices.Current.SpellShort.NumberByShort,
+            // Inverse — shows the cast-code again on reopen instead of the
+            // internal Spells.Number it resolved to.
+            resolveSpellNumber: AppServices.Current.SpellShort.ShortByNumber);
 
         MonsterEditResult? result = await _dialogs.OpenWindowAsync<MonsterEditDialogViewModel, MonsterEditResult>(vm);
         if (result is null) return;
