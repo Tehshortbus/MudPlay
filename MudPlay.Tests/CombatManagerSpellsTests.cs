@@ -333,6 +333,48 @@ public sealed class CombatManagerSpellsTests
         Assert.Equal(sentAfterEngage, h.Sent.Count);
     }
 
+    // Reports paradigm-20260813-094954 / -095422 ("why do you sit there ...
+    // after you blessed yourself"): MonsterDeathWatcher's OWN exp+Off fallback
+    // (NoteUnattributedDeath) already handled this exact kill — dropped the
+    // corpse and re-picked/re-engaged a fresh survivor — before this class's
+    // independent exp+Off correlation gets its turn on the SAME *Combat Off*
+    // line (both watch the same "You gain N exp." + Off signal, unaware of
+    // each other). Without a guard, the second correlation reprocesses the
+    // same stale exp gain against _currentTarget, which is now the FRESH
+    // survivor, and drops it too — nothing re-engages until the next ~5s
+    // heartbeat. The existing _lastMatchedDeathAt guard only covers a
+    // *matched* death line; the fallback path needs the same protection.
+    [Fact]
+    public void KillInferredFromExp_AlreadyHandledByUnattributedDeath_DoesNotDropFreshSurvivor()
+    {
+        using Harness h = new();
+        h.Settings.NormalAttackSpell = new CombatSpellSlot { SpellName = "mmis", MinEnemies = 1 };
+        h.AddMonster(1, "giant rat");
+        h.AddMonster(2, "giant bat");
+
+        h.Feed("Also here: giant rat, giant bat.");
+        Assert.Equal("mmis giant rat", h.LastSent);   // engaged the rat, spell mode
+
+        // The rat's kill: exp gain, then MonsterDeathWatcher's fallback fires
+        // and re-engages the survivor (the bat) BEFORE the Off line below —
+        // mirrors the real subscriber order (MonsterDeathWatcher constructed,
+        // and so subscribed, before CombatManager).
+        h.Feed("You gain 100 experience.");
+        h.Combat.NoteUnattributedDeath();
+        // The fallback death re-picked the survivor — this is the state a real
+        // session reaches after enough wall-clock time has passed for its own
+        // fresh engage cast to clear CastCoordinator's real-time burst guard
+        // (immaterial to the bug under test, so not asserted here).
+        Assert.Equal("giant bat", h.Combat.CurrentTarget);
+
+        // The SAME kill's *Combat Off* now reaches this class's own exp+Off
+        // correlation. It must recognise the kill was already handled and
+        // leave the freshly-engaged bat alone rather than dropping it too.
+        h.Feed("*Combat Off*");
+
+        Assert.Equal("giant bat", h.Combat.CurrentTarget);   // NOT dropped
+    }
+
     // The other side of the gate: a mid-fight between-round cast's *Combat Off* (even
     // with an exp gain sitting nearby, e.g. party share-exp) is NOT a kill — the
     // resume must still re-announce the spell rather than dropping a live target.

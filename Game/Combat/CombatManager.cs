@@ -368,6 +368,19 @@ public sealed partial class CombatManager : IDisposable
     // _lastDeathAt, which the exp-inference itself stamps and so can't self-gate on.
     private DateTimeOffset _lastMatchedDeathAt = DateTimeOffset.MinValue;
 
+    // Same guard as _lastMatchedDeathAt, but for the OTHER "already handled this
+    // kill" path: NoteUnattributedDeath (the exp+Off fallback death, no specific
+    // death-line pattern — MonsterDeathWatcher's own docs call this the common
+    // case, not the edge). That path already re-picked and re-engaged a fresh
+    // survivor by the time this class's OWN independent exp+Off correlation
+    // (below) gets its turn on the SAME Off line — and without this guard it
+    // reprocesses the same stale exp gain against _currentTarget, which is now
+    // the FRESH survivor, not the actual corpse, and drops it — no re-engage
+    // until the next ~5s heartbeat catches the stall (reports
+    // paradigm-20260813-094954, paradigm-20260813-095422: "why do you sit there
+    // ... after you blessed yourself").
+    private DateTimeOffset _lastUnattributedDeathAt = DateTimeOffset.MinValue;
+
     // How long after a detected death a *Combat Off* is treated as the kill's Off
     // rather than a cast interrupt. A death line and its *Combat Off* arrive in the
     // same server burst (milliseconds apart), so this only needs to bridge that gap
@@ -2041,6 +2054,7 @@ public sealed partial class CombatManager : IDisposable
         // until it resolves — the exact window in which the between-round-cast
         // resume must not re-engage (see _lastDeathAt).
         _lastDeathAt = DateTimeOffset.Now;
+        _lastUnattributedDeathAt = _lastDeathAt;   // gates the exp-inference off — see field doc
         _attackSentSinceDeath = false;
 
         // Clear the target BEFORE the removal re-fires EntitiesObserved (mirrors
@@ -2179,11 +2193,14 @@ public sealed partial class CombatManager : IDisposable
             if (_currentTarget is not null
                 && DateTimeOffset.Now - _lastExpGainAt < ExpKillWindow
                 && DateTimeOffset.Now - _betweenRoundCastAt >= CastInterruptResumeWindow
-                // ...and NO matched death line just handled this kill. If one did,
-                // it already dropped the corpse and re-picked the next survivor —
-                // this *Combat Off* is that kill's Off, so inferring a second kill
-                // here would drop the fresh target and re-attack it (double-fire).
-                && DateTimeOffset.Now - _lastMatchedDeathAt >= DeathInterruptWindow)
+                // ...and NO matched death line, AND no unattributed/fallback death,
+                // just handled this kill. Either path already dropped the corpse and
+                // re-picked the next survivor — this *Combat Off* is that kill's Off,
+                // so inferring a second kill here would drop the FRESH target and
+                // re-attack it (double-fire), or — the reported symptom — just drop
+                // it with nothing picking it back up until the next heartbeat.
+                && DateTimeOffset.Now - _lastMatchedDeathAt >= DeathInterruptWindow
+                && DateTimeOffset.Now - _lastUnattributedDeathAt >= DeathInterruptWindow)
             {
                 _lastExpGainAt = DateTimeOffset.MinValue;   // consume — a later non-kill Off must not reuse it
                 _lastDeathAt = DateTimeOffset.Now;

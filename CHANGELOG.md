@@ -2,12 +2,13 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a brand-new feature or a large (~1000+ line) rewrite/expansion of an existing one, **PATCH** = bug fixes AND ordinary enhancements to existing features (one increment per bug report handled or per enhancement).
 
-## 3.8.42
+## 3.8.43
 
 - Fixed combat stalling at 0 mana when a per-monster forced attack-command override is a mana-costing ability (e.g. a Priest's `turn` verb): the server silently no-ops it with no error line, so the engine kept resending it every round while the player just stood there getting hit until a mana-regen tick let it land. At literal 0 mana, both the forced command and the spell cascade are now skipped in favor of the plain physical weapon attack, resuming automatically once mana recovers
 - Game Data → Monsters → Override Attack: typing a spell's cast-code (e.g. "turn") now auto-resolves to that spell's Number and lands on the mana-gated, cascading spell rung — same as typing the number directly. Previously only a numeric entry got that treatment; any other text (including a valid cast-code you'd actually type in-game) silently became a raw, ungated command instead
 - Fixed a self-sustaining cast-spam loop: a between-round survival cast (e.g. a self-heal) legitimately resumes the interrupted attack spell on its *Combat Off* — but casting the resumed spell drops its own *Combat Off* a moment later, which was re-triggering the SAME resume again, and again, dozens of times inside the 3-second interrupt window from one legitimate interrupt. The resume now fires at most once per interrupt
-- bug reports addressed: paradigm-20260813-064159, paradigm-20260813-070249, paradigm-20260813-081016
+- Fixed combat stalling for ~5s after a kill whose death routed through the exp+Off fallback (no specific death-line pattern — the common case, not the edge): the engine's own independent exp+Off kill-inference reprocessed the SAME kill signal a second time, after the fallback path had already dropped the corpse and re-engaged a fresh survivor, and incorrectly dropped that fresh (very much alive) survivor too. The existing double-processing guard only covered a *matched* death line; it now also covers the fallback/unattributed path
+- bug reports addressed: paradigm-20260813-064159, paradigm-20260813-070249, paradigm-20260813-081016, paradigm-20260813-094954, paradigm-20260813-095422
 
 ## 3.8.39
 
