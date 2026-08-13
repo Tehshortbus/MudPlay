@@ -106,7 +106,7 @@
                                 <TextBox   Grid.Row="1" Grid.Column="4" Text="{Binding PreAttackCount, Mode=TwoWay}"/>
 
                                 <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Override Attack"
-                                           ToolTip.Tip="Force a specific attack on this monster, over the global Combat-tab flow: a Spell.Number (cast through the attack-spell rung — set Max), OR a command / cast-code like &quot;attack&quot; or &quot;harm&quot; sent as-is each round."/>
+                                           ToolTip.Tip="Force a specific attack on this monster, over the global Combat-tab flow. A Spell.Number OR a spell's cast-code (e.g. &quot;turn&quot;) both cast through the mana-gated attack-spell rung (set Max) — a typed cast-code auto-resolves to its number. Anything else (e.g. &quot;attack&quot;, &quot;bash&quot;) is sent verbatim as a raw command every round, with no mana/cap gating."/>
                                 <TextBox   Grid.Row="2" Grid.Column="1" Text="{Binding AttackOverride, Mode=TwoWay}"/>
                                 <TextBlock Grid.Row="2" Grid.Column="3" Classes="FieldLabel" Text="Max"/>
                                 <TextBox   Grid.Row="2" Grid.Column="4" Text="{Binding AttackCount, Mode=TwoWay}"/>

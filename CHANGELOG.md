@@ -2,10 +2,11 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a brand-new feature or a large (~1000+ line) rewrite/expansion of an existing one, **PATCH** = bug fixes AND ordinary enhancements to existing features (one increment per bug report handled or per enhancement).
 
-## 3.8.40
+## 3.8.41
 
 - Fixed combat stalling at 0 mana when a per-monster forced attack-command override is a mana-costing ability (e.g. a Priest's `turn` verb): the server silently no-ops it with no error line, so the engine kept resending it every round while the player just stood there getting hit until a mana-regen tick let it land. At literal 0 mana, both the forced command and the spell cascade are now skipped in favor of the plain physical weapon attack, resuming automatically once mana recovers
-- bug reports addressed: paradigm-20260813-064159
+- Game Data → Monsters → Override Attack: typing a spell's cast-code (e.g. "turn") now auto-resolves to that spell's Number and lands on the mana-gated, cascading spell rung — same as typing the number directly. Previously only a numeric entry got that treatment; any other text (including a valid cast-code you'd actually type in-game) silently became a raw, ungated command instead
+- bug reports addressed: paradigm-20260813-064159, paradigm-20260813-070249
 
 ## 3.8.39
 

@@ -56,15 +56,17 @@ public sealed record MonsterOverlay
     // Cast count for OverrideAttackSpellId; null = 0.
     public int? OverrideAttackCount { get; init; }
 
-    // Override attack COMMAND — a raw verb ("attack", "bash") or spell
-    // cast-code ("harm") sent verbatim as this monster's attack, forced over
-    // the whole normal spell/weapon flow. Unlike OverrideAttackSpellId it
-    // carries no cast-rung gating (no mana floor, no per-room cap): it goes
-    // out like a weapon command and the server auto-repeats it each round. The
-    // user hand-picked it, so it also bypasses the "no effect" fallback — it's
-    // never second-guessed. null/blank = no command override. The editor keeps
-    // these two mutually exclusive: a numeric entry sets OverrideAttackSpellId,
-    // any other text sets this. See MonsterEditDialogViewModel.ParseAttackOverride.
+    // Override attack COMMAND — a raw verb ("attack", "bash") sent verbatim as
+    // this monster's attack, forced over the whole normal spell/weapon flow.
+    // Unlike OverrideAttackSpellId it carries no cast-rung gating (no mana
+    // floor, no per-room cap): it goes out like a weapon command and the
+    // server auto-repeats it each round. The user hand-picked it, so it also
+    // bypasses the "no effect" fallback — it's never second-guessed. null/blank
+    // = no command override. The editor keeps these two mutually exclusive: a
+    // numeric entry, or text that resolves to a known spell's cast-code, sets
+    // OverrideAttackSpellId instead (so a spell typed by its code still gets
+    // mana/cap gating); only text matching no spell sets this. See
+    // MonsterEditDialogViewModel.ParseAttackOverride.
     public string? OverrideAttackCommand { get; init; }
 
     // Suppress auto-BS attempts on this target.

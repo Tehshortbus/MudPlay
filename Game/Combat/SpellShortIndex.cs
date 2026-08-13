@@ -18,12 +18,17 @@ public sealed class SpellShortIndex
 {
     private readonly GameDataCache _cache;
     private Dictionary<int, string>? _byNumber;
+    private Dictionary<string, int>? _numberByShort;
 
     public SpellShortIndex(GameDataCache cache)
     {
         ArgumentNullException.ThrowIfNull(cache);
         _cache = cache;
-        _cache.ActiveSetChanged += _ => _byNumber = null;
+        _cache.ActiveSetChanged += _ =>
+        {
+            _byNumber = null;
+            _numberByShort = null;
+        };
     }
 
     // The spell's Short cast-code, or null when no Spells row carries that
@@ -32,6 +37,22 @@ public sealed class SpellShortIndex
     {
         if (number <= 0) return null;
         return Build().TryGetValue(number, out string? code) ? code : null;
+    }
+
+    // Reverse lookup: the Spells.Number that answers to a cast-code, or null
+    // when nothing matches (case-insensitive — cast-codes are typed by hand).
+    // Multiple spells can share a Short (e.g. several "turn"-coded undead
+    // spells) — any one of them resolves to the same wire text once
+    // ShortByNumber converts back, so which candidate wins is immaterial;
+    // first-seen wins for a stable result. Used by the Monster editor's
+    // "Override Attack" box to auto-resolve a typed cast-code onto the
+    // mana-gated spell rung instead of falling through to a raw, ungated
+    // command (report paradigm-20260813-070249).
+    public int? NumberByShort(string code)
+    {
+        if (string.IsNullOrWhiteSpace(code)) return null;
+        BuildReverse();
+        return _numberByShort!.TryGetValue(code.Trim(), out int number) ? number : null;
     }
 
     private Dictionary<int, string> Build()
@@ -65,5 +86,15 @@ public sealed class SpellShortIndex
         _cache.EvictTable("Spells");
         _byNumber = map;
         return map;
+    }
+
+    private void BuildReverse()
+    {
+        if (_numberByShort is not null) return;
+
+        Dictionary<string, int> map = new(StringComparer.OrdinalIgnoreCase);
+        foreach ((int number, string code) in Build())
+            map.TryAdd(code, number);
+        _numberByShort = map;
     }
 }

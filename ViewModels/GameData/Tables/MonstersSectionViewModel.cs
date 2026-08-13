@@ -175,13 +175,18 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
             existingMessages = _monsterMessages.FindByMonsterNumber(wccNum);
 
         MonsterEditDialogViewModel vm = new(
-            wccNoStr:      wcc,
-            mdbName:       row.Get("Name") ?? string.Empty,
-            existing:      existing,
-            currentTier:   row.SourceTier,
-            mdbInfo:       mdbInfo,
-            messages:      existingMessages,
-            writableTiers: _resolverRef?.WritableTiers());
+            wccNoStr:         wcc,
+            mdbName:          row.Get("Name") ?? string.Empty,
+            existing:         existing,
+            currentTier:      row.SourceTier,
+            mdbInfo:          mdbInfo,
+            messages:         existingMessages,
+            writableTiers:    _resolverRef?.WritableTiers(),
+            // Lets "Override Attack" auto-resolve a typed cast-code (e.g.
+            // "turn") onto the mana-gated spell rung instead of silently
+            // falling through to a raw, ungated command — see
+            // MonsterEditDialogViewModel.ParseAttackOverride.
+            resolveSpellShort: AppServices.Current.SpellShort.NumberByShort);
 
         MonsterEditResult? result = await _dialogs.OpenWindowAsync<MonsterEditDialogViewModel, MonsterEditResult>(vm);
         if (result is null) return;

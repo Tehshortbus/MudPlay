@@ -39,8 +39,10 @@ public sealed partial class MonsterEditDialogViewModel : ObservableObject, IDial
 
     [ObservableProperty] private string _preAttackSpellId = string.Empty;
     [ObservableProperty] private string _preAttackCount = string.Empty;
-    // "Override Attack" holds EITHER a Spell.Number (spell-rung, needs Max) OR a
-    // raw command / cast-code like "attack" or "harm" (sent as-is). See ParseAttackOverride.
+    // "Override Attack" holds a Spell.Number, OR a spell cast-code that resolves
+    // to one (both land on the mana-gated spell rung, needs Max), OR a raw verb
+    // like "attack"/"bash" that doesn't resolve to any spell (sent as-is, no
+    // gating). See ParseAttackOverride.
     [ObservableProperty] private string _attackOverride = string.Empty;
     [ObservableProperty] private string _attackCount = string.Empty;
 
@@ -79,6 +81,12 @@ public sealed partial class MonsterEditDialogViewModel : ObservableObject, IDial
 
     public string Title => $"Monster — {(Name.Length > 0 ? Name : $"#{WccNoStr}")}";
 
+    // Resolves a typed cast-code (e.g. "turn") to its Spells.Number, or null
+    // when the text doesn't match a known spell — see ParseAttackOverride.
+    // Optional so the dialog still works (falling back to numeric-only
+    // detection) wherever game data isn't wired, e.g. tests.
+    private readonly Func<string, int?>? _resolveSpellShort;
+
     public MonsterEditDialogViewModel(
         string wccNoStr,
         string mdbName,
@@ -86,8 +94,10 @@ public sealed partial class MonsterEditDialogViewModel : ObservableObject, IDial
         SettingsTier currentTier,
         IReadOnlyList<MdbInfoRow> mdbInfo,
         MonsterMessageRecord? messages = null,
-        IReadOnlyList<SettingsTier>? writableTiers = null)
+        IReadOnlyList<SettingsTier>? writableTiers = null,
+        Func<string, int?>? resolveSpellShort = null)
     {
+        _resolveSpellShort = resolveSpellShort;
         WccNoStr      = wccNoStr;
         MonsterNumber = int.TryParse(wccNoStr, out int n) ? n : 0;
         Name          = existing?.Name ?? mdbName;
@@ -134,7 +144,7 @@ public sealed partial class MonsterEditDialogViewModel : ObservableObject, IDial
     [RelayCommand]
     private void Save()
     {
-        (int? attackSpellId, string? attackCommand) = ParseAttackOverride(AttackOverride);
+        (int? attackSpellId, string? attackCommand) = ParseAttackOverride(AttackOverride, _resolveSpellShort);
         MonsterOverlay overlay = new()
         {
             Name                     = string.IsNullOrWhiteSpace(Name) ? null : Name,
@@ -278,17 +288,31 @@ public sealed partial class MonsterEditDialogViewModel : ObservableObject, IDial
 
     // The "Override Attack" box holds EITHER a Spell.Number (routed through the
     // mana-gated attack-spell rung — needs a Max cast count) OR a raw command /
-    // cast-code like "attack" or "harm" (sent verbatim, no gating). A positive
-    // integer reads as a spell id; any other non-empty text is a command; blank
-    // is no override. Exactly one of the pair is set (or both null) — the two are
-    // kept mutually exclusive so a species never carries both an id and a command.
-    // This is also why typing "attack" now persists: it lands as a command
-    // instead of being silently dropped by an int-only parse.
-    public static (int? SpellId, string? Command) ParseAttackOverride(string? text)
+    // verb like "attack" or "bash" (sent verbatim, no gating). A positive
+    // integer reads as a spell id directly; blank is no override.
+    //
+    // For any other text, resolveSpellShort (when supplied) gets first look: a
+    // typed cast-code that matches a known spell (e.g. "turn") resolves to that
+    // spell's Number and lands on the SAME mana-gated, cascading rung as typing
+    // the number directly — someone reasonably types the code they'd actually
+    // cast in-game, not an internal database id they have no way to know,
+    // and shouldn't silently lose mana/cap gating for it (report
+    // paradigm-20260813-070249: "it just means you use a different spell",
+    // not "ignore combat settings completely"). Only text that resolves to no
+    // known spell falls through to the raw command path — this is also why
+    // typing "attack" persists as a command instead of being silently dropped
+    // by an int-only parse (report paradigm-20260809-131642).
+    //
+    // Exactly one of the pair is set (or both null) — the two are kept mutually
+    // exclusive so a species never carries both an id and a command.
+    public static (int? SpellId, string? Command) ParseAttackOverride(
+        string? text, Func<string, int?>? resolveSpellShort = null)
     {
         if (string.IsNullOrWhiteSpace(text)) return (null, null);
         string trimmed = text.Trim();
-        return int.TryParse(trimmed, out int n) && n > 0 ? (n, null) : (null, trimmed);
+        if (int.TryParse(trimmed, out int n) && n > 0) return (n, null);
+        if (resolveSpellShort?.Invoke(trimmed) is { } resolved) return (resolved, null);
+        return (null, trimmed);
     }
 }
 
