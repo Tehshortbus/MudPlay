@@ -813,21 +813,22 @@ public sealed partial class CombatManager
         return ResolveSpellOverride(overlay.OverridePreAttackSpellId, overlay.OverridePreAttackCount);
     }
 
-    // Turn a per-monster override slot (Spell.Number + configured cast count) into
+    // Turn a per-monster override slot (Spell.Number + optional cast count) into
     // the Short cast-code and per-room cap the chooser needs, or (null, null) when
-    // the override is inactive. An override is active only when it's fully
-    // configured: the resolver is wired, a positive Spell.Number is set, the count
-    // is a positive cap (a null/zero count means "not really configured" — the
-    // overlay documents null = 0 — so we fall back to the global slot), and the
-    // number maps to a real Short cast-code (unknown number → fall back).
+    // the override is inactive. The override activates on a positive Spell.Number
+    // alone (report paradigm-20260813-132647: an override spell set with no Max
+    // was silently ignored, casting the global attack spell instead) — the count
+    // is only a per-room cast cap, and CastsOk already treats a null cap as
+    // unlimited, so a blank/zero count here means "no cap", not "not configured".
+    // Falls back when the number doesn't map to a real Short cast-code.
     private (string? Spell, int? Cap) ResolveSpellOverride(int? spellId, int? count)
     {
         if (_spellShortByNumber is null) return (null, null);
         if (spellId is not { } number || number <= 0) return (null, null);
-        int cap = count ?? 0;
-        if (cap <= 0) return (null, null);
         string? code = _spellShortByNumber(number);
-        return string.IsNullOrWhiteSpace(code) ? (null, null) : (code, cap);
+        if (string.IsNullOrWhiteSpace(code)) return (null, null);
+        int? cap = count is > 0 ? count : null;
+        return (code, cap);
     }
 
     // Choose the alternate weapon when (a) this species already produced a "no

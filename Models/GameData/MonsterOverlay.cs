@@ -44,7 +44,7 @@ public sealed record MonsterOverlay
     // choice. null = no per-monster override (use the global setting).
     public int? OverridePreAttackSpellId { get; init; }
 
-    // Cast count for OverridePreAttackSpellId; null = 0.
+    // Per-room cast cap for OverridePreAttackSpellId; null/0 = unlimited.
     public int? OverridePreAttackCount { get; init; }
 
     // Override attack spell — Spell.Number to cast as the primary attack on
@@ -53,7 +53,7 @@ public sealed record MonsterOverlay
     // per-monster override (use the global setting).
     public int? OverrideAttackSpellId { get; init; }
 
-    // Cast count for OverrideAttackSpellId; null = 0.
+    // Per-room cast cap for OverrideAttackSpellId; null/0 = unlimited.
     public int? OverrideAttackCount { get; init; }
 
     // Override attack COMMAND — a raw verb ("attack", "bash") sent verbatim as

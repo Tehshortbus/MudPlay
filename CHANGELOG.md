@@ -2,10 +2,11 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a brand-new feature or a large (~1000+ line) rewrite/expansion of an existing one, **PATCH** = bug fixes AND ordinary enhancements to existing features (one increment per bug report handled or per enhancement).
 
-## 3.8.52
+## 3.8.53
 
 - Game Data Browser: Override Attack now shows the cast-code you typed (e.g. "agon") when reopening the monster editor, instead of the resolved internal spell number
-- bug reports addressed: paradigm-20260813-131658
+- Per-monster Override Attack spell now fires with no Max set instead of being silently ignored — Max is an optional per-room cast cap, not a requirement to activate the override
+- bug reports addressed: paradigm-20260813-131658, paradigm-20260813-132647
 
 ## 3.8.51
 

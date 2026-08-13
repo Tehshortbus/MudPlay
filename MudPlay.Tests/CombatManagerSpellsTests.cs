@@ -546,19 +546,22 @@ public sealed class CombatManagerSpellsTests
     }
 
     [Fact]
-    public void AttackOverride_NullCount_FallsBackToConfiguredSlot()
+    public void AttackOverride_NullCount_StillActivatesWithUnlimitedCap()
     {
+        // report paradigm-20260813-132647: an override spell set with no Max
+        // was silently ignored, casting the global attack spell instead — the
+        // count is only a per-room cast cap (CastsOk already treats a null cap
+        // as unlimited), not a required activation gate.
         using Harness h = new();
         h.Settings.NormalAttackSpell = new CombatSpellSlot { SpellName = "harm", MinEnemies = 1 };
         h.SpellShorts[42] = "fireball";
-        // Spell set but no count (overlay documents null = 0) → not active.
         h.Overlays[1] = new MonsterOverlay { OverrideAttackSpellId = 42 };
         h.AddMonster(1, "giant rat");
 
         h.Feed("Also here: giant rat.");
 
-        Assert.Equal("harm giant rat", h.LastSent);
-        Assert.DoesNotContain("fireball giant rat", h.AllSent);
+        Assert.Equal("fireball giant rat", h.LastSent);
+        Assert.DoesNotContain("harm giant rat", h.AllSent);
     }
 
     [Fact]

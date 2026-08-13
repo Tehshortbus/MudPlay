@@ -40,9 +40,9 @@ public sealed partial class MonsterEditDialogViewModel : ObservableObject, IDial
     [ObservableProperty] private string _preAttackSpellId = string.Empty;
     [ObservableProperty] private string _preAttackCount = string.Empty;
     // "Override Attack" holds a Spell.Number, OR a spell cast-code that resolves
-    // to one (both land on the mana-gated spell rung, needs Max), OR a raw verb
-    // like "attack"/"bash" that doesn't resolve to any spell (sent as-is, no
-    // gating). See ParseAttackOverride.
+    // to one (both land on the mana-gated spell rung; Max is an optional per-room
+    // cap, blank = unlimited), OR a raw verb like "attack"/"bash" that doesn't
+    // resolve to any spell (sent as-is, no gating). See ParseAttackOverride.
     [ObservableProperty] private string _attackOverride = string.Empty;
     [ObservableProperty] private string _attackCount = string.Empty;
 

@@ -1,8 +1,9 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.8.52**
+> **Version 3.8.53**
 > - Game Data Browser: Override Attack now shows the cast-code you typed (e.g. "agon") when reopening the monster editor, instead of the resolved internal spell number
+> - Per-monster Override Attack spell now fires with no Max set instead of being silently ignored
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->
