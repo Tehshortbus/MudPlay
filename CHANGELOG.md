@@ -2,6 +2,10 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a brand-new feature or a large (~1000+ line) rewrite/expansion of an existing one, **PATCH** = bug fixes AND ordinary enhancements to existing features (one increment per bug report handled or per enhancement).
 
+## 3.9.0
+
+- New Combat tab checkbox: "Cycle Normal and Alternate attack spells" — when both are configured, turns Alternate from a one-way fallback into an active cycle. Instead of committing to the weapon once the cascade lapses, MudPlay keeps re-checking both spells every round: whichever is firing keeps firing until its own Max casts / Min mana / an immunity stops it, then swaps to the other — including back to Normal once it's affordable again. Off by default; no effect unless both spells are set.
+
 ## 3.8.20
 
 - Help window: a failed/missing guide asset now logs a warning instead of silently opening an empty compendium, so a "Help is empty" report has a program-log trail

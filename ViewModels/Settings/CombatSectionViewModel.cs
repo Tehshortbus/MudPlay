@@ -61,7 +61,7 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
         "When running away", "Go backwards if running", "Break combat before running",
         "Failure tracking", "No effect threshold",
         "Multi-attack", "Debuff single target", "Debuff AOE",
-        "Normal attack spell", "Alternate attack spell",
+        "Normal attack spell", "Alternate attack spell", "Cycle Normal and Alternate attack spells",
         "Min enemies", "Max casts per room", "Minimum mana per cast",
         "Show combat round totals", "Display",
     };
@@ -222,6 +222,13 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private string? _alternateAttackSpellName;
     [ObservableProperty] private int? _alternateAttackSpellMaxCastsPerRoom;
     [ObservableProperty] private int _alternateAttackSpellMinManaPerCast;
+
+    // When checked, Normal and Alternate attack spells cycle instead of
+    // Alternate being a one-way fallback: whichever fires keeps firing until it
+    // stops being castable (MaxCasts / mana / immunity), then the engine swaps
+    // to the other — including back to Normal once it's castable again. No
+    // effect unless both slots above are configured.
+    [ObservableProperty] private bool _alternateAttackSpells;
 
     // ----- Min-mana-per-cast conversion (mirrors the Health tab) -----
 
@@ -392,6 +399,7 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
                 MaxCastsPerRoom = ClampCasts(AlternateAttackSpellMaxCastsPerRoom),
                 MinManaPerCast  = ClampSpell(AlternateAttackSpellMinManaPerCast),
             },
+            AlternateAttackSpells = AlternateAttackSpells,
 
             ShowCombatRoundTotals = ShowCombatRoundTotals,
         };
@@ -497,6 +505,7 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
         AlternateAttackSpellName            = dto.AlternateAttackSpell.SpellName;
         AlternateAttackSpellMaxCastsPerRoom = dto.AlternateAttackSpell.MaxCastsPerRoom;
         AlternateAttackSpellMinManaPerCast  = dto.AlternateAttackSpell.MinManaPerCast;
+        AlternateAttackSpells               = dto.AlternateAttackSpells;
 
         ShowCombatRoundTotals = dto.ShowCombatRoundTotals;
     }
@@ -630,6 +639,7 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
     partial void OnAlternateAttackSpellNameChanged(string? value)          => MarkDirty();
     partial void OnAlternateAttackSpellMaxCastsPerRoomChanged(int? value)  => MarkDirty();
     partial void OnAlternateAttackSpellMinManaPerCastChanged(int value)    { OnPropertyChanged(nameof(AlternateAttackSpellMinManaPerCastConverted)); MarkDirty(); }
+    partial void OnAlternateAttackSpellsChanged(bool value)                => MarkDirty();
 
     // Display
     partial void OnShowCombatRoundTotalsChanged(bool value)      => MarkDirty();

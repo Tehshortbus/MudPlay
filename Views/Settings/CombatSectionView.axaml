@@ -399,6 +399,11 @@
                                Text="{Binding AlternateAttackSpellMinManaPerCastConverted}"/>
                 </Grid>
 
+                <CheckBox Content="Cycle Normal and Alternate attack spells"
+                          IsChecked="{Binding AlternateAttackSpells, Mode=TwoWay}"
+                          Margin="0,6,0,0"
+                          ToolTip.Tip="Off (default): Alternate is a one-way fallback used only once Normal can't fire, for the rest of this target. On: whichever spell is firing keeps firing until IT stops being castable (Max casts / mana / immunity), then the engine swaps to the other — including back to Normal once it's castable again. No effect unless both spells above are configured."/>
+
                 <!-- ============ Display ============ -->
                 <TextBlock Classes="SectionHeader" Text="Display"/>
                 <CheckBox Content="Show combat round totals"

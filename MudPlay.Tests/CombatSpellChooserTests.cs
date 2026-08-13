@@ -1256,4 +1256,213 @@ public sealed class CombatSpellChooserTests
         Assert.Equal(CombatSpellAction.Backstab,
             sut.Choose(settings, AltCtx(preferSpell: true, backstabPending: true)).Action);
     }
+
+    // ----- CombatSettings.AlternateAttackSpells cycling ------------------
+    // Off (default): Alternate is a one-way fallback — once Normal lapses and
+    // Alternate takes over, the per-target latch commits to the weapon/alternate
+    // for the rest of the fight even if Normal becomes castable again (pinned
+    // above under "Per-target weapon latch"). On: the engine keeps re-checking
+    // BOTH slots every round, so a lapsed slot can come back once it's eligible
+    // again — but it stays on whichever is currently firing until THAT one
+    // lapses, rather than yanking back to Normal the instant Normal recovers.
+
+    [Fact]
+    public void Cycling_SwitchesToAlternate_ThenBackToNormal_OnceAlternateItselfLapses()
+    {
+        CombatSpellChooser sut = new();
+        CombatSettings settings = new()
+        {
+            SpellManaThresholdMode = ThresholdMode.Absolute,
+            AlternateAttackSpells = true,
+            // Normal is only mana-gated (no cap) — recoverable once mana regens.
+            NormalAttackSpell = Slot("harm", minMana: 50),
+            // Alternate has a hard per-target cap — once spent it never comes
+            // back for this target, unlike a mana reserve.
+            AlternateAttackSpell = Slot("flame", minMana: 10, maxCasts: 1),
+        };
+
+        // Plenty of mana — Normal is checked first and is eligible.
+        CombatSpellDecision r1 = sut.Choose(settings, Ctx(mana: 100, maxMana: 100));
+        Assert.Equal(CombatSpellAction.NormalAttackSpell, r1.Action);
+        sut.MarkCast(r1, "a rat");
+
+        // Mana drops below Normal's reserve but still above Alternate's — cycles
+        // to Alternate instead of latching to the weapon.
+        CombatSpellDecision r2 = sut.Choose(settings, Ctx(mana: 30, maxMana: 100));
+        Assert.Equal(CombatSpellAction.AlternateAttackSpell, r2.Action);
+        Assert.Equal("flame", r2.Spell);
+        sut.MarkCast(r2, "a rat");
+
+        // Alternate's own cap (1) is now spent AND mana has regenerated above
+        // Normal's reserve — WITHOUT cycling this would stay latched to the
+        // weapon forever; WITH it, Normal resumes.
+        CombatSpellDecision r3 = sut.Choose(settings, Ctx(mana: 90, maxMana: 100));
+        Assert.Equal(CombatSpellAction.NormalAttackSpell, r3.Action);
+        Assert.Equal("harm", r3.Spell);
+    }
+
+    [Fact]
+    public void Cycling_StaysOnActiveSlot_UntilItLapses_EvenIfTheOtherIsAlsoEligible()
+    {
+        CombatSpellChooser sut = new();
+        CombatSettings settings = new()
+        {
+            SpellManaThresholdMode = ThresholdMode.Absolute,
+            AlternateAttackSpells = true,
+            NormalAttackSpell = Slot("harm", minMana: 50),
+            AlternateAttackSpell = Slot("flame", minMana: 10),
+        };
+
+        CombatSpellDecision r1 = sut.Choose(settings, Ctx(mana: 100, maxMana: 100));
+        Assert.Equal(CombatSpellAction.NormalAttackSpell, r1.Action);
+        sut.MarkCast(r1, "a rat");
+
+        // Drop below Normal's reserve — flips to Alternate.
+        CombatSpellDecision r2 = sut.Choose(settings, Ctx(mana: 30, maxMana: 100));
+        Assert.Equal(CombatSpellAction.AlternateAttackSpell, r2.Action);
+        sut.MarkCast(r2, "a rat");
+
+        // Mana is back up — Normal is eligible again too, but Alternate (the
+        // currently active slot) is STILL eligible, so the engine stays put
+        // rather than switching every round it can.
+        CombatSpellDecision r3 = sut.Choose(settings, Ctx(mana: 100, maxMana: 100));
+        Assert.Equal(CombatSpellAction.AlternateAttackSpell, r3.Action);
+    }
+
+    [Fact]
+    public void Cycling_BothSlotsIneligible_FallsToWeapon()
+    {
+        CombatSpellChooser sut = new();
+        CombatSettings settings = new()
+        {
+            SpellManaThresholdMode = ThresholdMode.Absolute,
+            AlternateAttackSpells = true,
+            NormalAttackSpell = Slot("harm", minMana: 50),
+            AlternateAttackSpell = Slot("flame", minMana: 50),
+        };
+
+        Assert.Equal(CombatSpellAction.WeaponAttack,
+            sut.Choose(settings, Ctx(mana: 10, maxMana: 100)).Action);
+    }
+
+    [Fact]
+    public void Cycling_MaxCastsDriven_SwitchesToAlternate_ThenBackToNormal_OnNewTarget()
+    {
+        CombatSpellChooser sut = new();
+        CombatSettings settings = new()
+        {
+            AlternateAttackSpells = true,
+            NormalAttackSpell = Slot("harm", maxCasts: 1),
+            AlternateAttackSpell = Slot("flame", maxCasts: 1),
+        };
+
+        CombatSpellDecision r1 = sut.Choose(settings, Ctx());
+        Assert.Equal(CombatSpellAction.NormalAttackSpell, r1.Action);
+        sut.MarkCast(r1, "a rat");
+
+        // Normal's cap is a hard per-target cap — spending it moves to Alternate.
+        CombatSpellDecision r2 = sut.Choose(settings, Ctx());
+        Assert.Equal(CombatSpellAction.AlternateAttackSpell, r2.Action);
+        sut.MarkCast(r2, "a rat");
+
+        // Both caps spent for THIS target → weapon (MaxCasts, unlike mana, never
+        // un-spends mid-fight).
+        Assert.Equal(CombatSpellAction.WeaponAttack, sut.Choose(settings, Ctx()).Action);
+
+        // A fresh target resets the per-target caps — Normal opens first again.
+        sut.ResetForNewTarget();
+        Assert.Equal(CombatSpellAction.NormalAttackSpell, sut.Choose(settings, Ctx()).Action);
+    }
+
+    [Fact]
+    public void Cycling_OnlyOneSlotConfigured_BehavesAsPlainCascade()
+    {
+        CombatSpellChooser sut = new();
+        CombatSettings settings = new()
+        {
+            SpellManaThresholdMode = ThresholdMode.Absolute,
+            AlternateAttackSpells = true,
+            NormalAttackSpell = Slot("harm", minMana: 50),
+            // No Alternate configured — cycling needs both slots, so this is a
+            // no-op and the plain cascade (with its permanent latch) applies.
+        };
+
+        CombatSpellDecision r1 = sut.Choose(settings, Ctx(mana: 60, maxMana: 100));
+        Assert.Equal(CombatSpellAction.NormalAttackSpell, r1.Action);
+        sut.MarkCast(r1, "a rat");
+
+        Assert.Equal(CombatSpellAction.WeaponAttack,
+            sut.Choose(settings, Ctx(mana: 40, maxMana: 100)).Action);
+
+        // Latched to the weapon (cycling never engaged) — mana regen doesn't help.
+        Assert.Equal(CombatSpellAction.WeaponAttack,
+            sut.Choose(settings, Ctx(mana: 90, maxMana: 100)).Action);
+    }
+
+    [Fact]
+    public void Cycling_AttackOverride_TakesPriorityAndIgnoresCycling()
+    {
+        CombatSpellChooser sut = new();
+        CombatSettings settings = new()
+        {
+            AlternateAttackSpells = true,
+            NormalAttackSpell = Slot("harm"),
+            AlternateAttackSpell = Slot("flame"),
+        };
+
+        // A per-monster override still occupies the Normal rung outright even
+        // with cycling on — it's a more specific, deliberate per-monster choice.
+        CombatSpellDecision d = sut.Choose(
+            settings, OverrideCtx(attackOverride: "fireball", attackCap: 3));
+
+        Assert.Equal(CombatSpellAction.NormalAttackSpell, d.Action);
+        Assert.Equal("fireball", d.Spell);
+    }
+
+    [Fact]
+    public void Cycling_ResetsToNormalFirst_OnNewTarget()
+    {
+        CombatSpellChooser sut = new();
+        CombatSettings settings = new()
+        {
+            SpellManaThresholdMode = ThresholdMode.Absolute,
+            AlternateAttackSpells = true,
+            NormalAttackSpell = Slot("harm", minMana: 50),
+            AlternateAttackSpell = Slot("flame", minMana: 10),
+        };
+
+        // Flip onto Alternate for this target.
+        sut.Choose(settings, Ctx(mana: 100, maxMana: 100));
+        CombatSpellDecision alt = sut.Choose(settings, Ctx(mana: 30, maxMana: 100));
+        Assert.Equal(CombatSpellAction.AlternateAttackSpell, alt.Action);
+        sut.MarkCast(alt, "a rat");
+
+        // A fresh target must reopen on Normal, not stay pinned to Alternate,
+        // even though both slots would be eligible again.
+        sut.ResetForNewTarget();
+        CombatSpellDecision fresh = sut.Choose(settings, Ctx(mana: 100, maxMana: 100));
+        Assert.Equal(CombatSpellAction.NormalAttackSpell, fresh.Action);
+    }
+
+    [Fact]
+    public void Cycling_IsIdempotent_RepeatedChooseWithoutMarkCast_StableDecision()
+    {
+        CombatSpellChooser sut = new();
+        CombatSettings settings = new()
+        {
+            SpellManaThresholdMode = ThresholdMode.Absolute,
+            AlternateAttackSpells = true,
+            NormalAttackSpell = Slot("harm", minMana: 50),
+            AlternateAttackSpell = Slot("flame", minMana: 10),
+        };
+
+        // Normal is ineligible this round — the first Choose() call flips the
+        // preference pointer to Alternate. Calling Choose again with the SAME
+        // context (no MarkCast in between) must keep returning Alternate, not
+        // toggle back to Normal or oscillate.
+        CombatSpellContext ctx = Ctx(mana: 30, maxMana: 100);
+        Assert.Equal(CombatSpellAction.AlternateAttackSpell, sut.Choose(settings, ctx).Action);
+        Assert.Equal(CombatSpellAction.AlternateAttackSpell, sut.Choose(settings, ctx).Action);
+        Assert.Equal(CombatSpellAction.AlternateAttackSpell, sut.Choose(settings, ctx).Action);
+    }
 }

@@ -1,9 +1,8 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.8.20**
-> - Help window: a failed/missing guide asset now logs a warning instead of silently opening an empty compendium, so a "Help is empty" report has a program-log trail
-> - Fixed a stale comment on the Help menu's composition describing the "Help topics…" item as a disabled placeholder — it's a live command
+> **Version 3.9.0**
+> - New Combat tab checkbox: "Cycle Normal and Alternate attack spells" — when both are configured, turns Alternate from a one-way fallback into an active cycle. Whichever spell is firing keeps firing until its own Max casts / Min mana / an immunity stops it, then MudPlay swaps to the other — including back to Normal once it's affordable again. Off by default.
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

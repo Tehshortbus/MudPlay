@@ -186,6 +186,17 @@ public sealed class CombatSettings
     // fire. Ignores MinEnemies.
     public CombatSpellSlot AlternateAttackSpell { get; set; } = new();
 
+    // When true, Normal and Alternate attack spells actively cycle instead of
+    // Alternate being a one-way fallback: whichever one is currently active
+    // keeps firing (server auto-repeat) until IT stops being castable (MaxCasts
+    // spent, mana reserve unmet, immune, level/resist-blocked) — at which point
+    // the engine switches to the other and keeps re-checking every round, so a
+    // later mana regen (or a cleared immunity) can switch back to Normal instead
+    // of committing to Alternate/weapon for the rest of the target. Off
+    // (default) keeps today's cascade: Normal → Alternate → weapon, with no way
+    // back once a slot lapses. No effect unless both slots are configured.
+    public bool AlternateAttackSpells { get; set; }
+
     // ----- Display --------------------------------------------------
 
     // Append the per-round damage roll-up to the terminal canvas after each

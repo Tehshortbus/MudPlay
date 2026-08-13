@@ -73,6 +73,17 @@ public sealed class CombatSpellChooser
     private bool _attackSpellLatchedOff;
     private bool _castSingleTargetAttackThisTarget;
 
+    // Which single-target attack slot CombatSettings.AlternateAttackSpells
+    // cycling prefers FIRST on the NEXT call — false = Normal, true = Alternate.
+    // Set directly in TryAttackSpell to match whichever slot it just picked.
+    // Safe despite Choose()'s "pure" contract for the cast COUNTERS (those use
+    // ++, so a redundant call would double-count) — this field only ever gets
+    // assigned, never incremented, so a repeated call with the same inputs just
+    // re-derives the same value; it doesn't accumulate. Reset to Normal (false)
+    // on a fresh target/room, matching the "fresh mob reopens on Normal"
+    // invariant the plain cascade already has.
+    private bool _activeIsAlternate;
+
     // Reset all per-room cast bookkeeping. Call when the room clears / the engine
     // starts a fresh engagement.
     public void ResetForNewRoom()
@@ -85,6 +96,7 @@ public sealed class CombatSpellChooser
         _singleDebuffedTargets.Clear();
         _attackSpellLatchedOff = false;
         _castSingleTargetAttackThisTarget = false;
+        _activeIsAlternate = false;
     }
 
     // Reset the per-TARGET single-target cast counters. The single-target slots
@@ -99,6 +111,7 @@ public sealed class CombatSpellChooser
         _alternateAttackCasts = 0;
         _attackSpellLatchedOff = false;
         _castSingleTargetAttackThisTarget = false;
+        _activeIsAlternate = false;
     }
 
     // Pick the round's combat action. Pure — does not mutate counters; the caller
@@ -154,8 +167,12 @@ public sealed class CombatSpellChooser
         // mana reserve is now unmet or its MaxCasts rounds are spent — latch to the
         // weapon for the rest of this target so a mana regen can't flip us back
         // mid-fight. Skipped when the weapon can't hit (we stay on the spell and
-        // wait for mana instead of committing to a useless swing).
-        if (preferSpell && ctx.SpellsAvailable
+        // wait for mana instead of committing to a useless swing), and skipped
+        // entirely when AlternateAttackSpells cycling is actually engaged (both
+        // slots configured) — there the whole point is to keep re-checking both
+        // slots every round so a later mana regen (or a cleared immunity) can
+        // bring back whichever slot just lapsed.
+        if (preferSpell && ctx.SpellsAvailable && !CyclingEngaged(settings)
             && _castSingleTargetAttackThisTarget && !ctx.WeaponIneffective)
             _attackSpellLatchedOff = true;
 
@@ -245,6 +262,8 @@ public sealed class CombatSpellChooser
         if (singleTargetSpent) return null;
 
         CombatSpellSlot normal = settings.NormalAttackSpell;
+        CombatSpellSlot alt = settings.AlternateAttackSpell;
+
         if (ctx.OverrideAttackSpell is { } attackOverride)
         {
             // Per-monster attack-spell override occupies the normal-attack rung:
@@ -253,10 +272,42 @@ public sealed class CombatSpellChooser
             // keep the physical constraints: the slot's mana floor and the
             // override's own per-room cast cap. Shares the normal-attack counter
             // (override and configured slot are mutually exclusive per monster).
+            // Takes priority over AlternateAttackSpells cycling — an override is a
+            // deliberate per-monster choice, more specific than the general toggle.
             if (CastsOk(ctx.OverrideAttackMaxCasts, _normalAttackCasts)
                 && ManaOk(normal, ctx, mode))
                 return new CombatSpellDecision(CombatSpellAction.NormalAttackSpell, attackOverride);
+            // Override present but not castable this round — fall through to the
+            // plain Alternate check below (matching the pre-cycling cascade); the
+            // override occupies the Normal rung outright, so cycling never applies.
         }
+        else if (CyclingEngaged(settings))
+        {
+            // Cycling: try whichever slot is currently active first, then the
+            // other — driven purely by the same eligibility gates the plain
+            // cascade below uses, so a slot that lapses (mana / MaxCasts /
+            // immunity) can come back once it's eligible again. Stay on the
+            // active slot as long as IT holds; only flip once it stops being
+            // castable (not the instant the other one becomes castable again) —
+            // so a fully-eligible Normal doesn't yank the engine off a
+            // still-eligible Alternate mid-fight.
+            (CombatSpellSlot firstSlot, CombatSpellAction firstAction, int firstCasts) = _activeIsAlternate
+                ? (alt, CombatSpellAction.AlternateAttackSpell, _alternateAttackCasts)
+                : (normal, CombatSpellAction.NormalAttackSpell, _normalAttackCasts);
+            (CombatSpellSlot secondSlot, CombatSpellAction secondAction, int secondCasts) = _activeIsAlternate
+                ? (normal, CombatSpellAction.NormalAttackSpell, _normalAttackCasts)
+                : (alt, CombatSpellAction.AlternateAttackSpell, _alternateAttackCasts);
+
+            if (AttackSpellEligible(firstSlot, ctx, firstAction, mode, firstCasts))
+                return new CombatSpellDecision(firstAction, firstSlot.SpellName!);
+            if (AttackSpellEligible(secondSlot, ctx, secondAction, mode, secondCasts))
+            {
+                _activeIsAlternate = !_activeIsAlternate;
+                return new CombatSpellDecision(secondAction, secondSlot.SpellName!);
+            }
+            return null;
+        }
+
         else if (IsConfigured(normal)
             && !IsImmune(ctx, CombatSpellAction.NormalAttackSpell)
             && !IsLevelBlocked(ctx, CombatSpellAction.NormalAttackSpell)
@@ -265,7 +316,6 @@ public sealed class CombatSpellChooser
             && ManaOk(normal, ctx, mode))
             return new CombatSpellDecision(CombatSpellAction.NormalAttackSpell, normal.SpellName!);
 
-        CombatSpellSlot alt = settings.AlternateAttackSpell;
         if (IsConfigured(alt)
             && !IsImmune(ctx, CombatSpellAction.AlternateAttackSpell)
             && !IsLevelBlocked(ctx, CombatSpellAction.AlternateAttackSpell)
@@ -276,6 +326,21 @@ public sealed class CombatSpellChooser
 
         return null;
     }
+
+    // Shared eligibility check for the AlternateAttackSpells cycling branch —
+    // the same gates the plain cascade above applies inline (configured, not
+    // observed-immune, not level-blocked, not elementally resisted, under the
+    // per-room cast cap, mana reserve met), extracted here because cycling needs
+    // to run it for whichever slot is "first" or "second" this round.
+    private static bool AttackSpellEligible(
+        CombatSpellSlot slot, in CombatSpellContext ctx, CombatSpellAction action,
+        ThresholdMode mode, int castsSoFar) =>
+        IsConfigured(slot)
+        && !IsImmune(ctx, action)
+        && !IsLevelBlocked(ctx, action)
+        && !IsResistBlocked(ctx, action)
+        && CastsOk(slot, castsSoFar)
+        && ManaOk(slot, ctx, mode);
 
     // Record that the engine successfully sent the cast for decision against
     // targetRawName. No-op for WeaponAttack. Keeps the per-room counters in step
@@ -312,6 +377,16 @@ public sealed class CombatSpellChooser
 
     private static bool IsConfigured(CombatSpellSlot slot) =>
         !string.IsNullOrWhiteSpace(slot.SpellName);
+
+    // AlternateAttackSpells only actually changes behavior when BOTH slots are
+    // configured — with just one, there's nothing to cycle between, so the
+    // plain cascade (and its permanent weapon latch) applies unchanged. Shared
+    // by Choose (to skip the latch) and TryAttackSpell (to enter the cycling
+    // branch) so the two conditions can't drift apart.
+    private static bool CyclingEngaged(CombatSettings settings) =>
+        settings.AlternateAttackSpells
+        && IsConfigured(settings.NormalAttackSpell)
+        && IsConfigured(settings.AlternateAttackSpell);
 
     // The current target's species is immune to this single-target attack spell
     // (a prior "Your spell has no effect on X." landed). Only the single-target
