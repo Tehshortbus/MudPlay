@@ -437,6 +437,42 @@ public sealed class CombatManagerSpellsTests
         Assert.DoesNotContain(failures, f => f.Detail == "recast-interval");
     }
 
+    // Report paradigm-20260813-081016 ("why did it spam turn like that"): the
+    // resume above correctly re-announces on the interrupt's *Combat Off* — but
+    // casting the resumed spell ITSELF drops *Combat Off* again a moment later
+    // (CONFIRMED mechanic, unlike a weapon swing). Without a per-interrupt
+    // guard, that self-caused Off satisfies the exact same "within
+    // CastInterruptResumeWindow of _betweenRoundCastAt" condition that fired
+    // the first resume, so it fires AGAIN — and each of those casts drops its
+    // OWN Off too, compounding into dozens of casts inside the 3s window from
+    // one legitimate interrupt. A single NoteBetweenRoundCast must resume
+    // exactly once, no matter how many further Off lines land before the
+    // window expires.
+    [Fact]
+    public void SpellMode_ResumeAfterInterrupt_FiresOnlyOnce_NotEveryOffInWindow()
+    {
+        using Harness h = new();
+        h.Settings.ActionOrder = CombatActionOrder.SpellsFirst;
+        h.Settings.NormalAttackSpell = new CombatSpellSlot { SpellName = "turn", MinEnemies = 0 };
+        h.AddMonster(1, "small zombie");
+
+        h.Feed("Also here: small zombie.");
+        Assert.Equal("turn small zombie", h.LastSent);
+
+        h.Cast.NotifyExternalCastSent();
+        h.Combat.NoteBetweenRoundCast();
+        h.Feed("*Combat Off*");
+        int sentAfterFirstResume = h.Sent.Count;
+        Assert.Equal("turn small zombie", h.LastSent);   // the one legitimate resume
+
+        // The resumed cast's own *Combat Off* lands — same interrupt window,
+        // no new NoteBetweenRoundCast (nothing else cast a survival spell).
+        // Fed repeatedly to mirror the live burst, which was dozens of lines.
+        for (int i = 0; i < 10; i++) h.Feed("*Combat Off*");
+
+        Assert.Equal(sentAfterFirstResume, h.Sent.Count);   // no further re-announces
+    }
+
     // ----- Auto-Nuke auto-engine gate ----------------------------------
 
     [Fact]

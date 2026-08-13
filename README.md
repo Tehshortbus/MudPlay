@@ -1,9 +1,10 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.8.41**
+> **Version 3.8.42**
 > - Fixed combat stalling at 0 mana when a per-monster forced attack-command override is a mana-costing ability (e.g. a Priest's `turn` verb): the engine now falls back to the plain physical weapon attack instead of silently resending a command the server no-ops, resuming automatically once mana recovers
 > - Game Data → Monsters → Override Attack: typing a spell's cast-code now auto-resolves to its Number and lands on the mana-gated, cascading spell rung — same as typing the number directly, instead of silently becoming an ungated raw command
+> - Fixed a self-sustaining cast-spam loop where a legitimate between-round-cast resume kept re-triggering off its own resulting *Combat Off*, firing dozens of casts from one interrupt — now fires at most once per interrupt
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->
