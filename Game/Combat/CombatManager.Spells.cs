@@ -202,6 +202,25 @@ public sealed partial class CombatManager
             _lastAlternationAdvanceAt = DateTimeOffset.MinValue;
         }
 
+        // Dead broke on mana: nothing that costs MA can possibly succeed, no
+        // matter what the spell cascade or a per-monster forced command says —
+        // a forced command in particular can BE a mana-costing ability (e.g. a
+        // Priest's "turn" verb for undead) rather than a free weapon swing, and
+        // the server silently no-ops it at 0 mana with no error line to react
+        // to (report paradigm-20260813-064159: sat there getting hit until a
+        // mana-regen tick let "turn" land again). Skip both the forced-command
+        // override and the spell cascade outright and swing the configured
+        // physical weapon instead; the very next round re-evaluates fresh, so
+        // the override/cascade resumes the instant mana ticks back up.
+        if (_readMana is not null && _readMana().Ma <= 0)
+        {
+            bool useAltWeapon = ShouldUseAlternateWeapon(settings, picked.ResolvedName, picked.MonsterNumber);
+            SendWeaponAttack(settings, picked.RawName, useAltWeapon, picked.Priority);
+            _currentTarget = picked.RawName;
+            _backstabOpenerConsumed = true;
+            return;
+        }
+
         // A per-monster forced attack COMMAND wins over the entire normal flow
         // (spell chooser + weapon pick): send it verbatim and let the server
         // auto-repeat it like any attack command. Announced once per target so a

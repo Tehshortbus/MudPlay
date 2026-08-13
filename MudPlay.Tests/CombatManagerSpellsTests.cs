@@ -1148,4 +1148,83 @@ public sealed class CombatManagerSpellsTests
         h.Tick();
         Assert.Equal(afterSwitch, h.Sent.Count);
     }
+
+    // ----- out-of-mana falls back to the physical weapon --------------
+    // Report paradigm-20260813-064159: a per-monster forced attack COMMAND can
+    // itself be a mana-costing ability (e.g. a Priest's "turn" verb for
+    // undead), not a free weapon swing. The server silently no-ops it at 0
+    // mana with no error line to react to, so the engine kept resending it
+    // every round while the player just stood there getting hit. At literal 0
+    // mana nothing that costs MA can succeed regardless of what the forced
+    // command or the spell cascade says, so both are skipped in favor of the
+    // plain physical weapon attack — resuming automatically once mana ticks
+    // back up (verified via the AlternateSpellPhysical order, which redrives
+    // DispatchRoundAction every round; see CombatManagerSpells.cs).
+
+    [Fact]
+    public void OutOfMana_ForcedCommandOverride_FallsBackToWeapon()
+    {
+        using Harness h = new();
+        h.Settings.NormalAttackCommand = "attack";
+        h.AddMonster(1, "large zombie");
+        h.Overlays[1] = new MonsterOverlay { OverrideAttackCommand = "turn" };
+        h.Ma = 0;
+
+        h.Feed("Also here: large zombie.");
+
+        Assert.Equal("attack large zombie", h.LastSent);
+    }
+
+    [Fact]
+    public void OutOfMana_ForcedCommandOverride_ResumesOnceManaRecovers()
+    {
+        using Harness h = new();
+        h.Settings.ActionOrder = CombatActionOrder.AlternateSpellPhysical;
+        h.Settings.NormalAttackCommand = "attack";
+        h.AddMonster(1, "large zombie");
+        h.Overlays[1] = new MonsterOverlay { OverrideAttackCommand = "turn" };
+        h.Ma = 0;
+
+        h.Feed("Also here: large zombie.");
+        Assert.Equal("attack large zombie", h.LastSent);
+
+        h.Ma = 40;
+        h.Tick();
+
+        Assert.Equal("turn large zombie", h.LastSent);
+    }
+
+    [Fact]
+    public void OutOfMana_NoForcedCommand_StillFallsBackToWeapon()
+    {
+        // Same 0-mana guard applies with no per-monster override at all — a
+        // configured NormalAttackSpell must not be attempted at 0 mana just
+        // because its MinManaPerCast happens to be unset (0 = no floor, not
+        // "free"; nothing that costs MA can land at literal 0).
+        using Harness h = new();
+        h.Settings.NormalAttackCommand = "attack";
+        h.Settings.NormalAttackSpell = new CombatSpellSlot { SpellName = "harm" };
+        h.AddMonster(1, "giant rat");
+        h.Ma = 0;
+
+        h.Feed("Also here: giant rat.");
+
+        Assert.Equal("attack giant rat", h.LastSent);
+    }
+
+    [Fact]
+    public void HasMana_ForcedCommandOverride_UsesOverrideNotWeapon()
+    {
+        // Sanity check the guard is mana-gated, not a blanket bypass of the
+        // override feature.
+        using Harness h = new();
+        h.Settings.NormalAttackCommand = "attack";
+        h.AddMonster(1, "large zombie");
+        h.Overlays[1] = new MonsterOverlay { OverrideAttackCommand = "turn" };
+        h.Ma = 40;
+
+        h.Feed("Also here: large zombie.");
+
+        Assert.Equal("turn large zombie", h.LastSent);
+    }
 }
