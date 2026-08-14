@@ -29,7 +29,7 @@
          (~1000+ line) rewrite/expansion of an existing one, PATCH = bug
          fixes AND ordinary enhancements to existing features (one bump per
          report handled or per enhancement). -->
-    <Version>3.11.0</Version>
+    <Version>3.11.1</Version>
 
     <!-- Memory footprint: pin the Workstation GC (one small heap) rather than
          the Server GC (a heap + background thread per core), which on a

@@ -2,6 +2,12 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a brand-new feature or a large (~1000+ line) rewrite/expansion of an existing one, **PATCH** = bug fixes AND ordinary enhancements to existing features (one increment per bug report handled or per enhancement).
 
+## 3.11.1
+
+- Help Topics: broken up the longest wall-of-text paragraphs (Chest Offload, Monsters table filters, navigation obstacle handling, and others) into shorter, scannable paragraphs and bullet groups
+- Help Topics: field labels (**Default:**, **What it does:**, **Important notes:**, etc.) now render in an accent color so they're scannable against surrounding prose
+- Help Topics: paragraphs starting with ⚠️ ("not currently functional" notes) now render in a tinted warning callout box instead of blending into normal text
+
 ## 3.11.0
 
 - Blocked walk-to messages now name the obstacle: which room the door is in, the direction, and what it takes to pass (the key and/or the picklocks/strength) — e.g. "a locked door south from 10/218 (Frozen Cavern) — needs the glass key, or 61 picklocks/strength" — instead of a bare "a locked door you can't open". Requirements are per-direction, so a door's far side (which may differ) is never confused for the way you're heading

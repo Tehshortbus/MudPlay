@@ -19,6 +19,17 @@ public static class HelpContentRenderer
     private static readonly IBrush CodeBrush = new SolidColorBrush(Color.Parse("#2AA198"));
     private static readonly IBrush GridLineBrush = new SolidColorBrush(Color.Parse("#40808080"));
 
+    // Field-label accent — the guide's recurring "**Default:** …", "**What it
+    // does:** …", "**Important notes:** …" convention. Coloring just the label
+    // (not the value text after it) gives every one of those ~150 entries a
+    // scannable field name without touching the markdown itself.
+    private static readonly IBrush LabelBrush = new SolidColorBrush(Color.Parse("#4E9BDE"));
+
+    // ⚠️-prefixed paragraphs (the guide's "not currently functional" callouts)
+    // get a tinted box instead of sitting flush with normal prose.
+    private static readonly IBrush WarningBackground = new SolidColorBrush(Color.Parse("#22E0A030"));
+    private static readonly IBrush WarningBorderBrush = new SolidColorBrush(Color.Parse("#80E0A030"));
+
     public static Control Render(string? body)
     {
         StackPanel panel = new() { Spacing = 9 };
@@ -45,14 +56,36 @@ public static class HelpContentRenderer
         return line.Contains('-');
     }
 
+    private static bool IsWarning(string line)
+    {
+        string t = line.TrimStart();
+        if (t.StartsWith("**", System.StringComparison.Ordinal)) t = t[2..];
+        return t.StartsWith("⚠️", System.StringComparison.Ordinal);
+    }
+
     // Each non-blank source line becomes its own wrapping paragraph block so the
     // guide's per-field labels ("**Default:** …", "**What it does:** …") get space
-    // between them (via the panel's Spacing) instead of stacking into a brick.
+    // between them (via the panel's Spacing) instead of stacking into a brick. A
+    // ⚠️-led line gets a tinted callout box instead of a plain paragraph, so a
+    // "not currently functional" note reads as a warning at a glance rather than
+    // blending into the surrounding explanation.
     private static int AppendParagraph(StackPanel panel, string[] lines, int i)
     {
         TextBlock tb = new() { TextWrapping = TextWrapping.Wrap };
         AppendRuns(tb.Inlines!, lines[i]);
-        panel.Children.Add(tb);
+
+        if (IsWarning(lines[i]))
+            panel.Children.Add(new Border
+            {
+                Background = WarningBackground,
+                BorderBrush = WarningBorderBrush,
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(4),
+                Padding = new Thickness(10, 7),
+                Child = tb,
+            });
+        else
+            panel.Children.Add(tb);
         return i + 1;
     }
 
@@ -139,6 +172,7 @@ public static class HelpContentRenderer
 
     private static void AppendRuns(InlineCollection inlines, string line, bool headerBold = false)
     {
+        bool first = true;
         foreach (HelpInline seg in HelpMarkup.ParseInline(line))
         {
             Run run = new(seg.Text);
@@ -151,8 +185,15 @@ public static class HelpContentRenderer
                     run.Foreground = CodeBrush;
                     break;
             }
+            // A bold run ending in ':' that opens the paragraph is a field label
+            // ("Default:", "What it does:", "Important notes:", …) — accent it so
+            // the field name is scannable at a glance, distinct from the value
+            // text that follows on the same line.
+            if (first && seg.Style == HelpInlineStyle.Bold && seg.Text.TrimEnd().EndsWith(':'))
+                run.Foreground = LabelBrush;
             if (headerBold) run.FontWeight = FontWeight.Bold;
             inlines.Add(run);
+            first = false;
         }
     }
 }
