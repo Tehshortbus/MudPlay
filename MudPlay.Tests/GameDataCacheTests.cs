@@ -209,6 +209,50 @@ public sealed class GameDataCacheTests : IDisposable
         Assert.Null(cache.GetRawTable("Monsters"));
     }
 
+    // ----- PrewarmAsync (startup head-start) --------------------------------
+
+    [Fact]
+    public async Task PrewarmAsync_ThenSwitchSet_ClaimsPrewarmedDoc()
+    {
+        SeedSet("alpha", ("Monsters", "[{\"Name\":\"Goblin\"}]"));
+        GameDataCache cache = NewCache();
+
+        await cache.PrewarmAsync("alpha", new[] { "Monsters" });
+        cache.SwitchSet("alpha");
+
+        Assert.NotNull(cache.GetRawTable("Monsters"));
+        // Claimed into the live cache, not left sitting in the prewarm bucket —
+        // a second read must not re-parse the file.
+        Assert.Contains("Monsters", cache.LoadedTables);
+    }
+
+    [Fact]
+    public async Task PrewarmAsync_WrongGuess_NeverActivated_LeavesRealCacheUntouched()
+    {
+        SeedSet("alpha", ("Monsters", "[]"));
+        SeedSet("beta",  ("Monsters", "[]"));
+        GameDataCache cache = NewCache();
+
+        // Guessed "alpha" would load, but "beta" actually became active — the
+        // wasted prewarm must not leak into beta's table cache.
+        await cache.PrewarmAsync("alpha", new[] { "Monsters" });
+        cache.SwitchSet("beta");
+
+        Assert.Empty(cache.LoadedTables);
+    }
+
+    [Fact]
+    public async Task PrewarmAsync_MissingTable_NoOp()
+    {
+        SeedSet("alpha");
+        GameDataCache cache = NewCache();
+
+        await cache.PrewarmAsync("alpha", new[] { "DefinitelyNotATable" });
+        cache.SwitchSet("alpha");
+
+        Assert.Null(cache.GetRawTable("DefinitelyNotATable"));
+    }
+
     // ----- ActiveRealm (Info.Legit derivation, MMUD Explorer parity) -------
 
     [Fact]

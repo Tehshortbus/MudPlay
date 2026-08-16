@@ -13,6 +13,12 @@ public sealed class AppServices
 {
     private static AppServices? _current;
 
+    // The tables worth a background head start at startup (see GameDataCache.
+    // PrewarmAsync below) — the three largest MDB exports by a wide margin, and
+    // the ones RoomGraphManager's set-switch rebuild (Rooms + Monsters) and the
+    // item-name / shop-stock indexes (Items) read on every cold launch.
+    private static readonly string[] StartupPrewarmTables = { "Rooms", "Monsters", "Items" };
+
     // The active service holder. Initialize must be called first.
     public static AppServices Current => _current
         ?? throw new InvalidOperationException(
@@ -1723,6 +1729,26 @@ public sealed class AppServices
         // audit (load / swap / close / re-home) rides the always-on Info stream.
         Profile.Log = bootstrapLog;
         Bbs = new BbsProfileStore();
+
+        // Startup head start: parse the big MDB tables for whatever profile "Auto-load
+        // last profile" is about to bring in, on a background thread, before Profile.Load
+        // below triggers the real (synchronous) GameData.SwitchSet — the same resolution
+        // ApplyActiveGameDataSet does later, just computed early from the not-yet-loaded
+        // startup profile's BBS pin. RoomGraphManager's set-switch rebuild is the biggest
+        // single cost on a cold launch (a full Rooms.json parse + graph build over
+        // thousands of rooms, done synchronously before the window even exists); this
+        // just gets GameDataCache's raw JsonDocument cache warm ahead of time so that
+        // work finds the parse already done. A wrong guess (auto-load off, or the
+        // predicted BBS/set doesn't match what actually loads) just wastes the
+        // background parse — GetRawTable falls back to its normal on-demand read either
+        // way, so this can't make startup any slower than it already is.
+        if (Settings.Current.StartupProfile() is { } startupPrediction)
+        {
+            string? predictedSet = Bbs.Get(startupPrediction.Bbs)?.ActiveGameDataSet
+                ?? Settings.Current.DefaultGameDataSet;
+            if (!string.IsNullOrWhiteSpace(predictedSet))
+                _ = GameData.PrewarmAsync(predictedSet, StartupPrewarmTables);
+        }
 
         // Resolver subscribes to Profile events for active-BBS tracking; build
         // it before Load() below so it catches the auto-load's ProfileLoaded

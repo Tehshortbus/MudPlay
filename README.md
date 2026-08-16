@@ -1,8 +1,8 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.18.1**
-> - Combat diagnostics for the caster-side per-round spell re-announce (e.g. `lbol`→`mmis` switch) — logs the switch with its timing vs the last attack / exp / death to pin a corpse-cast on the killing round (caster-side only). Investigating reports paradigm-20260815-135756 / -135853
+> **Version 3.18.2**
+> - Startup: the biggest MDB tables (Rooms/Monsters/Items) for the profile "Auto-load last profile" is about to bring in now start parsing on a background thread as soon as the predicted BBS/game-data set is known, concurrently with the rest of app construction and the BBS connect handshake — cuts real time-to-responsive on a cold launch (measured ~400ms off a ~2.4s AppServices.Initialize() against a 57k-room set); a wrong guess just falls back to today's on-demand read, so this can't make startup slower
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

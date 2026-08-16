@@ -35,6 +35,13 @@ public sealed class GameDataCache
 {
     private readonly Dictionary<string, JsonDocument> _tables = new(StringComparer.OrdinalIgnoreCase);
 
+    // Background-parsed tables for a set that ISN'T necessarily active yet — see
+    // PrewarmAsync. Keyed on the exact (set, table) pair so a wrong guess just sits
+    // here unclaimed instead of contaminating _tables for whatever set actually
+    // ends up active. Guarded by the same _tables lock; never touched by SwitchSet
+    // / EvictAll, which only ever own the live set's cache.
+    private readonly Dictionary<(string Set, string Table), JsonDocument> _prewarmed = new();
+
     // Root the cache walks (AppPaths.GameDataRoot). Captured at construction.
     public string GameDataRoot { get; }
 
@@ -164,6 +171,16 @@ public sealed class GameDataCache
         {
             if (_tables.TryGetValue(tableName, out JsonDocument? cached)) return cached;
 
+            // A PrewarmAsync call already parsed this table for the set that's now
+            // active, ahead of the switch — claim it instead of re-reading the file.
+            if (_prewarmed.Remove((ActiveSet, tableName), out JsonDocument? warmed))
+            {
+                _tables[tableName] = warmed;
+                Log?.Log(LogSeverity.Debug, "GameData",
+                    $"'{tableName}' claimed from background prewarm for '{ActiveSet}'.");
+                return warmed;
+            }
+
             string? path = ResolveTablePath(ActiveSet, tableName);
             if (path is null || !File.Exists(path)) return null;
 
@@ -175,6 +192,56 @@ public sealed class GameDataCache
             _tables[tableName] = doc;
             return doc;
         }
+    }
+
+    // Parse tableNames for setName on background threads, ahead of setName actually
+    // becoming ActiveSet. Startup's biggest latency sink is the synchronous Rooms.json
+    // parse + graph rebuild GameData.SwitchSet triggers the moment the auto-loaded
+    // profile resolves its BBS's game-data set — kicking the raw-JSON parse off early
+    // lets it run concurrently with the rest of AppServices construction and the BBS
+    // connect handshake that follows, instead of serially in front of both.
+    //
+    // Speculative and best-effort: if setName never becomes active (auto-load off, or
+    // the guess was wrong), the parsed documents just sit in _prewarmed unclaimed until
+    // the process exits. GetRawTable claims a match by exact (setName, tableName); a
+    // read/parse failure here is silently dropped — the real GetRawTable call a moment
+    // later hits the same failure through its normal (unprewarmed) path and reports it
+    // there instead of duplicating that handling on a background thread nobody's
+    // watching.
+    //
+    // Returns the aggregate Task so tests can await completion deterministically;
+    // production startup fires this and discards it (`_ = ...`) — nothing blocks on it.
+    public Task PrewarmAsync(string setName, IReadOnlyList<string> tableNames)
+    {
+        ArgumentNullException.ThrowIfNull(setName);
+        ArgumentNullException.ThrowIfNull(tableNames);
+
+        return Task.WhenAll(tableNames.Select(tableName => Task.Run(() =>
+            {
+                string? path = ResolveTablePath(setName, tableName);
+                if (path is null || !File.Exists(path)) return;
+
+                JsonDocument doc;
+                try
+                {
+                    byte[] bytes = File.ReadAllBytes(path);
+                    doc = JsonDocument.Parse(bytes);
+                }
+                catch
+                {
+                    return;
+                }
+
+                lock (_tables)
+                {
+                    if (_tables.ContainsKey(tableName) || _prewarmed.ContainsKey((setName, tableName)))
+                    {
+                        doc.Dispose();
+                        return;
+                    }
+                    _prewarmed[(setName, tableName)] = doc;
+                }
+            })));
     }
 
     // Try-get variant of GetRawTable.

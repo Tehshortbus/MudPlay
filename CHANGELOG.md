@@ -2,6 +2,11 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a brand-new feature or a large (~1000+ line) rewrite/expansion of an existing one, **PATCH** = bug fixes AND ordinary enhancements to existing features (one increment per bug report handled or per enhancement).
 
+## 3.18.2
+
+- Startup: the biggest MDB tables (Rooms/Monsters/Items) for the profile "Auto-load last profile" is about to bring in now start parsing on a background thread as soon as the predicted BBS/game-data set is known, concurrently with the rest of app construction and the BBS connect handshake — cuts real time-to-responsive on a cold launch (measured ~400ms off a ~2.4s AppServices.Initialize() against a 57k-room set); a wrong guess just falls back to today's on-demand read, so this can't make startup slower
+- bug reports addressed: paradigm-20260816-075942
+
 ## 3.18.1
 
 - Combat diagnostics: the caster-side per-round spell re-announce (the cascade/MaxCasts switch, e.g. `lbol`→`mmis`) now logs the switch with its timing relative to the last attack / exp / death — to pin a corpse-cast where the killing blow's damage line fires the re-announce ahead of the death being processed (caster-side only; physical is passive). Reports paradigm-20260815-135756 / -135853 under investigation
