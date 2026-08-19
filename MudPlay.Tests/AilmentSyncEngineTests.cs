@@ -80,10 +80,8 @@ public sealed class AilmentSyncEngineTests
         new(
             Id: MessageRecord.ComputeId(name, "", "", "", applied, ends),
             Name: name,
-            Action: MessageAction.Ignore,
             Flags: flags,
             RawFlagsHex: (ushort)flags,
-            Response: string.Empty,
             CasterMessage: string.Empty,
             TargetMessage: string.Empty,
             WitnessMessage: string.Empty,

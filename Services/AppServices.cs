@@ -1071,9 +1071,6 @@ public sealed class AppServices
     // by CastingDirector's Tier-2 cure path.
     public Game.Conditions.ConditionTracker Conditions { get; private set; } = null!;
 
-    // Sends a game-data message's Response command when its CasterMessage lands.
-    public Game.Conditions.MessageResponder MessageResponder { get; private set; } = null!;
-
     // Outbound ailment-sync engine — on a local curable ailment it
     // announces on say (.@poisoned etc.) so other MudPlay
     // clients mirror our state, and @waits the leader; on clear it @oks.
@@ -1377,6 +1374,11 @@ public sealed class AppServices
     // Opens the spell record (Message / Game-Data) dialog by Number from any surface —
     // the Navigation Room Info panel's room-spell link. Single-instance across callers.
     public SpellRecordDialogService SpellRecord { get; private set; } = null!;
+
+    // Opens an item's on-use / proc message editor from the item dialog's Message
+    // section — the Items-side mirror of SpellRecord. Item-claimed message records are
+    // authored here rather than the Messages tab. Single-instance across callers.
+    public ItemMessageDialogService ItemMessage { get; private set; } = null!;
 
     // Background audit comparing player-facing spells in the active
     // set against the Messages catalogue's Links field — surfaces a
@@ -1728,6 +1730,12 @@ public sealed class AppServices
         // already-migrated trees.
         LogService bootstrapLog = new();
         DataMigration.RunIfNeeded(bootstrapLog);
+
+        // One-time forced retirement of the pre-split Messages catalogue (legacy single
+        // Global seed + per-set messages.json), so existing installs land on the new
+        // realm-flavored seeds bootstrapped just above. Guarded by a marker; backs up to
+        // .bak first. Remove-after-rollout (tracked as a GitHub issue).
+        DataMigration.RetireLegacyMessagesOnce(bootstrapLog);
 
         _current = new AppServices(bootstrapLog);
         return _current;
@@ -3175,10 +3183,6 @@ public sealed class AppServices
         // lands in MainWindowViewModel alongside the other line
         // consumers.
         Conditions = new Game.Conditions.ConditionTracker(Messages, Log);
-        // Sends a game-data message's Response command when its CasterMessage
-        // lands (e.g. "desert damage" → "use water"). Wire-sender + line feed
-        // bound per-session by MainWindowViewModel.
-        MessageResponder = new Game.Conditions.MessageResponder(Messages, Log);
 
         // AilmentSyncEngine — outbound ailment broadcast. On catching a
         // curable ailment (or being held) it announces ".@poisoned" /
@@ -3495,6 +3499,10 @@ public sealed class AppServices
         // (the Room Info room-spell link), reusing the Spells tab's message-link flow + the
         // shared SpellInfoRowsBuilder. Messages (2366) is ready.
         SpellRecord = new SpellRecordDialogService(GameData, Messages, Dialogs);
+
+        // Item-side mirror of SpellRecord — opens an item's on-use / proc message
+        // editor from the item dialog's Message section.
+        ItemMessage = new ItemMessageDialogService(GameData, Messages, Dialogs);
 
         // Light catalogue + live carried illumination. The snapshot provider is
         // deferred (Inventory is assigned later in this method), so reading

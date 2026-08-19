@@ -110,6 +110,14 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject, IDispos
         _gameData.ActiveSetChanged += OnActiveSetChanged;
 
         SeedSections();
+
+        // Hide-when-empty tabs (Unfiltered Messages) re-evaluate their sidebar visibility
+        // whenever their rows change — a set switch reloads the catalogue, an edit adds or
+        // removes a row. AllRows is replaced wholesale on reload, so watch that property.
+        foreach (GameDataSectionViewModel s in Sections)
+            if (s.HideWhenEmpty && s is Tables.GameDataTableSectionViewModel t)
+                t.PropertyChanged += OnHideWhenEmptyRowsChanged;
+
         RebuildVisibleSections();
 
         SelectedSection = initialSectionId is not null
@@ -120,6 +128,14 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject, IDispos
 
     private void OnActiveSetChanged(string? set) => OnPropertyChanged(nameof(StatusText));
 
+    // A hide-when-empty section's row set was replaced (reload / edit) — re-evaluate the
+    // sidebar so the tab appears or disappears with its content.
+    private void OnHideWhenEmptyRowsChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(Tables.GameDataTableSectionViewModel.AllRows))
+            RebuildVisibleSections();
+    }
+
     // Detach from GameDataCache.ActiveSetChanged and dispose every section in Sections.
     // The browser window calls this from its Closed handler — without it each open leaks
     // the entire VM tree (sections subscribe to long-lived service events that pin their
@@ -128,7 +144,11 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject, IDispos
     {
         _gameData.ActiveSetChanged -= OnActiveSetChanged;
         foreach (GameDataSectionViewModel section in Sections)
+        {
+            if (section.HideWhenEmpty && section is Tables.GameDataTableSectionViewModel t)
+                t.PropertyChanged -= OnHideWhenEmptyRowsChanged;
             section.Dispose();
+        }
     }
 
     partial void OnSearchTextChanged(string value) => RebuildVisibleSections();
@@ -164,6 +184,12 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject, IDispos
             bool matches = filter.Length == 0 ||
                 s.SearchableLabels.Any(l => l.Contains(filter, StringComparison.OrdinalIgnoreCase));
             if (!matches) continue;
+
+            // Hide-when-empty tabs (Unfiltered Messages) drop out of the sidebar once
+            // their table has no rows — re-evaluated here on every reload via the row
+            // subscription wired in the ctor.
+            if (s.HideWhenEmpty && s is Tables.GameDataTableSectionViewModel te && te.AllRows.Count == 0)
+                continue;
 
             // Engine-backed sections live in EngineGroup; MDB-derived JSON tables and
             // their derived views (Unobtainable / Quest Flags) live in TableGroup — the

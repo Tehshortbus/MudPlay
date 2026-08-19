@@ -191,6 +191,16 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
         IReadOnlyList<ItemGiver>? givers =
             itemNum > 0 ? _itemSources?.GiversOf(itemNum) : null;
 
+        // On-use / proc message editing — item-claimed message records live with
+        // the item now (hidden from the Messages tab), so the dialog opens their
+        // editor via the shared ItemMessageDialogService. Null in a headless test
+        // (no AppServices) — the Message section then hides itself.
+        ItemMessageDialogService? itemMsg = AppServices.Current?.ItemMessage;
+        Func<Task<string?>>? editMsg = (itemMsg is not null && itemNum > 0)
+            ? () => itemMsg.OpenAsync(itemNum)
+            : null;
+        string? msgSummary = (itemMsg is not null && itemNum > 0) ? itemMsg.SummaryFor(itemNum) : null;
+
         ItemEditDialogViewModel vm = new(
             wccNoStr:         wcc,
             mdbName:          row.Get("Name") ?? string.Empty,
@@ -204,7 +214,9 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
             containerSources: containerSources,
             givers:           givers,
             shopSalesForCharm: ShopsForCharm,
-            droppedBy:        mdb.DroppedBy);
+            droppedBy:        mdb.DroppedBy,
+            editAttachedMessage:    editMsg,
+            attachedMessageSummary: msgSummary);
 
         // Replace any open item menu with the new one: a double-click on another
         // row swaps the shown item instead of opening a second window. Closing

@@ -352,19 +352,25 @@ public static class AppPaths
     public static string QuestsFileForBbs(string bbsName) =>
         Path.Combine(BbsFolder(bbsName), "quests.json");
 
-    // User-writable Messages seed JSON, hosted in the XDG-resolved Global/
-    // folder. Shared across every game-data set — the catalogue's message text
-    // (e.g. "You feel lucky") is universal across MajorMUD realms. MessageStore
-    // falls back to this when the user's per-set MessagesFile doesn't exist for
-    // the active set. Bootstrapped from BundledMessagesSeedFile on first app
-    // launch if missing; the user can hand-edit it (or delete it to re-bootstrap
-    // from the bundled copy).
-    public static string DefaultMessagesSeedFile =>
-        Path.Combine(DataRoot, "Global", "Messages.seed.json");
+    // User-writable Messages seed JSON for the given realm flavor, hosted in the
+    // XDG-resolved Global/ folder. Realm-flavored (stock / paradigm), each decoded
+    // from that realm's MegaMUD messages.md — the active set's Info.json[0].Legit
+    // picks which to apply (0/1 = stock, 2 = paradigm) via GameDataRealm.Resolve.
+    // MessageStore falls back to this when the per-set MessagesFile doesn't exist.
+    // Bootstrapped from the matching BundledMessagesSeedFile on first launch (or
+    // delete the Global copy to re-bootstrap from the bundled source).
+    public static string MessagesSeedFile(string realm) =>
+        Path.Combine(DataRoot, "Global", $"Messages.{realm}.seed.json");
 
-    // Read-only bundled copy shipped next to the executable — the bootstrap source.
-    public static string BundledMessagesSeedFile { get; } =
-        Path.Combine(AppContext.BaseDirectory, "Defaults", "Messages.seed.json");
+    // Read-only bundled copy of the realm's message seed, shipped next to the executable.
+    public static string BundledMessagesSeedFile(string realm) =>
+        Path.Combine(AppContext.BaseDirectory, "Defaults", $"Messages.{realm}.seed.json");
+
+    // The pre-split single universal Messages seed in Global/. Retained only so the
+    // one-time migration can detect and retire an existing user's stale copy — nothing
+    // reads it for message content anymore now that the seed is realm-flavored.
+    public static string LegacyMessagesSeedFile =>
+        Path.Combine(DataRoot, "Global", "Messages.seed.json");
 
     // User-writable Triggers seed JSON, hosted in the XDG-resolved Global/
     // folder. TriggerEngine falls back to this when a set has no per-set
@@ -422,7 +428,6 @@ public static class AppPaths
     public static void EnsureGlobalSeedsBootstrapped()
     {
         Directory.CreateDirectory(Path.Combine(DataRoot, "Global"));
-        TryCopySeed(BundledMessagesSeedFile,        DefaultMessagesSeedFile);
         TryCopySeed(BundledMonsterMessagesSeedFile, DefaultMonsterMessagesSeedFile);
         TryCopySeed(BundledTriggersSeedFile,        DefaultTriggersSeedFile);
         // The quest-defs seed is read-only — user edits live in the BBS-tier
@@ -433,7 +438,7 @@ public static class AppPaths
         SyncReadOnlySeed(BundledQuestDefsSeedFile,  DefaultQuestDefsSeedFile);
         TryCopySeed(BundledBossDefsSeedFile,        DefaultBossDefsSeedFile);
 
-        // MonsterOverlay + ItemOverlay seeds are realm-flavored —
+        // MonsterOverlay + ItemOverlay + Messages seeds are realm-flavored —
         // one file per realm family. The active set picks which to
         // apply via Info.Legit. Bootstrap every realm file we ship so
         // the user can browse / edit any seed without first having to
@@ -444,6 +449,8 @@ public static class AppPaths
                         MonsterOverlaySeedFile(realm));
             TryCopySeed(BundledItemOverlaySeedFile(realm),
                         ItemOverlaySeedFile(realm));
+            TryCopySeed(BundledMessagesSeedFile(realm),
+                        MessagesSeedFile(realm));
         }
     }
 

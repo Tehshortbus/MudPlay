@@ -47,9 +47,9 @@
             <TabItem Header="User Definitions">
               <Grid RowDefinitions="Auto,Auto,*" RowSpacing="10" Margin="0,8,0,0">
 
-            <!-- ===== Header fields (Name / Use / 4 perspective lines + EndsWith pair / Response) ===== -->
+            <!-- ===== Header fields (Name / Use / 4 perspective lines + EndsWith pair) ===== -->
             <Grid Grid.Row="0"
-                  ColumnDefinitions="100,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto"
+                  ColumnDefinitions="100,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto"
                   ColumnSpacing="8" RowSpacing="6">
 
                 <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Name"/>
@@ -82,17 +82,9 @@
                 <TextBlock Grid.Row="6" Grid.Column="0" Classes="FieldLabel" Text="Wears off"
                            ToolTip.Tip="Wear-off line YOU see when the buff/debuff above expires."/>
                 <TextBox   Grid.Row="6" Grid.Column="1" Text="{Binding AppliedEndsWith, Mode=TwoWay}"/>
-
-                <TextBlock Grid.Row="7" Grid.Column="0" Classes="FieldLabel" Text="Response"
-                           VerticalAlignment="Top" Margin="0,6,0,0"/>
-                <TextBox   Grid.Row="7" Grid.Column="1"
-                           Text="{Binding Response, Mode=TwoWay}"
-                           AcceptsReturn="True" TextWrapping="Wrap" MinHeight="56"
-                           FontFamily="{StaticResource FontMono}"
-                           ToolTip.Tip="Verbatim response — exactly as MegaMUD would display it. Use literal ^M (two characters) to separate commands; the runtime sends each as its own CR-terminated line."/>
             </Grid>
 
-            <!-- Under the Response field: when the record is valid, show the
+            <!-- Below the line fields: when the record is valid, show the
                  placeholder-token legend so an author knows which bracket pins
                  which capture slot (meaning on hover). When validation fails,
                  the red error replaces it. -->
@@ -128,108 +120,98 @@
                        Foreground="#FFE06D6D" FontSize="11" TextWrapping="Wrap"
                        IsVisible="{Binding HasError}"/>
 
-            <!-- ===== Effects + Action ===== -->
-            <Grid Grid.Row="2" ColumnDefinitions="*,*" ColumnSpacing="14">
+            <!-- ===== Links (top, full width) + Effects (two columns) ===== -->
+            <Grid Grid.Row="2" RowDefinitions="Auto,Auto" RowSpacing="10">
 
-                <!-- Left: Effect checkboxes — no section header (the
-                     column position + content makes it obvious). The
-                     three MegaMUD-specific find-mode flags (FindInText,
-                     FindInConversations, UseWhenChasing) are dropped
-                     from the UI entirely; the underlying bits round-
-                     trip as "reserved" via RawFlagsHex so importing
-                     a legacy file + re-saving doesn't strip them. -->
-                <Border Grid.Column="0"
+                <!-- Links stretch across the top: the game-data row(s) this message
+                     is anchored to. Always visible so the first link can be added on
+                     a brand-new record. A message is recognition only — it identifies
+                     a line and, via the Effects flags below, the condition it means;
+                     player responses to a seen line live in the Triggers table. -->
+                <Border Grid.Row="0"
                         BorderBrush="{StaticResource ChromeBorderBrush}"
                         BorderThickness="1" CornerRadius="3" Padding="10">
                     <StackPanel>
-                        <CheckBox Content="Blinded"             IsChecked="{Binding FlagBlinded, Mode=TwoWay}"/>
-                        <CheckBox Content="Confused"            IsChecked="{Binding FlagConfused, Mode=TwoWay}"/>
-                        <CheckBox Content="Poisoned"            IsChecked="{Binding FlagPoisoned, Mode=TwoWay}"/>
-                        <CheckBox Content="Diseased"            IsChecked="{Binding FlagDiseased, Mode=TwoWay}"/>
-                        <CheckBox Content="Losing HP's (on fire, etc.)" IsChecked="{Binding FlagLosingHp, Mode=TwoWay}"/>
-                        <CheckBox Content="HP regenerating"     IsChecked="{Binding FlagHpRegenerating, Mode=TwoWay}"/>
-                        <CheckBox Content="Mana regenerating"   IsChecked="{Binding FlagManaRegenerating, Mode=TwoWay}"/>
-                        <CheckBox Content="Movement prevented"  IsChecked="{Binding FlagMovementPrevented, Mode=TwoWay}"/>
-                        <CheckBox Content="Attack prevented"    IsChecked="{Binding FlagAttackPrevented, Mode=TwoWay}"/>
-                        <CheckBox Content="Ends combat"         IsChecked="{Binding FlagEndsCombat, Mode=TwoWay}"/>
-                        <CheckBox Content="Last action failed"  IsChecked="{Binding FlagLastActionFailed, Mode=TwoWay}"/>
-                        <CheckBox Content="Disabled (don't use)" IsChecked="{Binding FlagDisabled, Mode=TwoWay}"/>
+                        <TextBlock Classes="SectionHeader" Text="Links"/>
+                        <TextBlock Text="The spell / item / monster row(s) this message recognizes."
+                                   Classes="FieldLabel"
+                                   TextWrapping="Wrap" Margin="0,0,0,8"/>
+
+                        <!-- Existing links — each row has its own X button. -->
+                        <ItemsControl ItemsSource="{Binding LinkRows}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:LinkRow">
+                                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6" Margin="0,1">
+                                        <TextBlock Grid.Column="0"
+                                                   Text="{Binding Label}"
+                                                   Foreground="{StaticResource ChromeFgBrush}"
+                                                   FontFamily="{StaticResource FontMono}"
+                                                   FontSize="11"
+                                                   VerticalAlignment="Center"/>
+                                        <Button Grid.Column="1"
+                                                Content="×"
+                                                Padding="6,0"
+                                                MinWidth="22" MinHeight="22"
+                                                ToolTip.Tip="Remove this link"
+                                                Command="{Binding $parent[Window].((vm:MessageEditDialogViewModel)DataContext).RemoveLinkCommand}"
+                                                CommandParameter="{Binding}"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <!-- Add-link row: Table dropdown + Number textbox + Add. -->
+                        <Border Height="1" Margin="0,8"
+                                Background="{StaticResource ChromeBorderBrush}"/>
+                        <Grid ColumnDefinitions="*,80,Auto" ColumnSpacing="6">
+                            <ComboBox Grid.Column="0"
+                                      ItemsSource="{Binding LinkTables}"
+                                      SelectedItem="{Binding AddLinkTable, Mode=TwoWay}"
+                                      HorizontalAlignment="Stretch"/>
+                            <TextBox  Grid.Column="1"
+                                      Text="{Binding AddLinkNumber, Mode=TwoWay}"
+                                      PlaceholderText="Number"
+                                      FontFamily="{StaticResource FontMono}"/>
+                            <Button   Grid.Column="2"
+                                      Content="Add"
+                                      Command="{Binding AddLinkCommand}"/>
+                        </Grid>
+                        <TextBlock Text="{Binding AddLinkStatus}"
+                                   Foreground="{StaticResource ChromeFgMutedBrush}"
+                                   FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"/>
                     </StackPanel>
                 </Border>
 
-                <!-- Right: Action picker + Links panel -->
-                <StackPanel Grid.Column="1" Spacing="8">
-                    <Border BorderBrush="{StaticResource ChromeBorderBrush}"
-                            BorderThickness="1" CornerRadius="3" Padding="10">
-                        <StackPanel>
-                            <TextBlock Classes="SectionHeader" Text="Action"/>
-                            <TextBlock Text="What the engine does when this message fires."
-                                       Classes="FieldLabel"
-                                       TextWrapping="Wrap" Margin="0,0,0,8"/>
-                            <ComboBox ItemsSource="{Binding AvailableActions}"
-                                      SelectedItem="{Binding Action, Mode=TwoWay}"
-                                      HorizontalAlignment="Stretch"/>
-                        </StackPanel>
-                    </Border>
-
-                    <!-- Editable back-references to the game-data row(s)
-                         this message is associated with. Always
-                         visible so the user can add the first link on
-                         a brand-new record without hunting for the
-                         panel. -->
-                    <Border BorderBrush="{StaticResource ChromeBorderBrush}"
-                            BorderThickness="1" CornerRadius="3" Padding="10">
-                        <StackPanel>
-                            <TextBlock Classes="SectionHeader" Text="Links"/>
-                            <TextBlock Text="Game-data rows that fire this message."
-                                       Classes="FieldLabel"
-                                       TextWrapping="Wrap" Margin="0,0,0,8"/>
-
-                            <!-- Existing links — each row has its own X button. -->
-                            <ItemsControl ItemsSource="{Binding LinkRows}">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate x:DataType="vm:LinkRow">
-                                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6" Margin="0,1">
-                                            <TextBlock Grid.Column="0"
-                                                       Text="{Binding Label}"
-                                                       Foreground="{StaticResource ChromeFgBrush}"
-                                                       FontFamily="{StaticResource FontMono}"
-                                                       FontSize="11"
-                                                       VerticalAlignment="Center"/>
-                                            <Button Grid.Column="1"
-                                                    Content="×"
-                                                    Padding="6,0"
-                                                    MinWidth="22" MinHeight="22"
-                                                    ToolTip.Tip="Remove this link"
-                                                    Command="{Binding $parent[Window].((vm:MessageEditDialogViewModel)DataContext).RemoveLinkCommand}"
-                                                    CommandParameter="{Binding}"/>
-                                        </Grid>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-
-                            <!-- Add-link row: Table dropdown + Number textbox + Add. -->
-                            <Border Height="1" Margin="0,8"
-                                    Background="{StaticResource ChromeBorderBrush}"/>
-                            <Grid ColumnDefinitions="*,80,Auto" ColumnSpacing="6">
-                                <ComboBox Grid.Column="0"
-                                          ItemsSource="{Binding LinkTables}"
-                                          SelectedItem="{Binding AddLinkTable, Mode=TwoWay}"
-                                          HorizontalAlignment="Stretch"/>
-                                <TextBox  Grid.Column="1"
-                                          Text="{Binding AddLinkNumber, Mode=TwoWay}"
-                                          PlaceholderText="Number"
-                                          FontFamily="{StaticResource FontMono}"/>
-                                <Button   Grid.Column="2"
-                                          Content="Add"
-                                          Command="{Binding AddLinkCommand}"/>
-                            </Grid>
-                            <TextBlock Text="{Binding AddLinkStatus}"
-                                       Foreground="{StaticResource ChromeFgMutedBrush}"
-                                       FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"/>
-                        </StackPanel>
-                    </Border>
-                </StackPanel>
+                <!-- Effects: the condition this line means, as flag checkboxes. Two
+                     columns so all twelve stay visible on a short window. The three
+                     MegaMUD find-mode flags (FindInText / FindInConversations /
+                     UseWhenChasing) are dropped from the UI; their bits round-trip as
+                     "reserved" via RawFlagsHex so a legacy re-save keeps them. -->
+                <Border Grid.Row="1"
+                        BorderBrush="{StaticResource ChromeBorderBrush}"
+                        BorderThickness="1" CornerRadius="3" Padding="10">
+                    <StackPanel>
+                        <TextBlock Classes="SectionHeader" Text="Effects" Margin="0,0,0,8"/>
+                        <Grid ColumnDefinitions="*,*" ColumnSpacing="14">
+                            <StackPanel Grid.Column="0">
+                                <CheckBox Content="Blinded"             IsChecked="{Binding FlagBlinded, Mode=TwoWay}"/>
+                                <CheckBox Content="Confused"            IsChecked="{Binding FlagConfused, Mode=TwoWay}"/>
+                                <CheckBox Content="Poisoned"            IsChecked="{Binding FlagPoisoned, Mode=TwoWay}"/>
+                                <CheckBox Content="Diseased"            IsChecked="{Binding FlagDiseased, Mode=TwoWay}"/>
+                                <CheckBox Content="Losing HP's (on fire, etc.)" IsChecked="{Binding FlagLosingHp, Mode=TwoWay}"/>
+                                <CheckBox Content="HP regenerating"     IsChecked="{Binding FlagHpRegenerating, Mode=TwoWay}"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1">
+                                <CheckBox Content="Mana regenerating"   IsChecked="{Binding FlagManaRegenerating, Mode=TwoWay}"/>
+                                <CheckBox Content="Movement prevented"  IsChecked="{Binding FlagMovementPrevented, Mode=TwoWay}"/>
+                                <CheckBox Content="Attack prevented"    IsChecked="{Binding FlagAttackPrevented, Mode=TwoWay}"/>
+                                <CheckBox Content="Ends combat"         IsChecked="{Binding FlagEndsCombat, Mode=TwoWay}"/>
+                                <CheckBox Content="Last action failed"  IsChecked="{Binding FlagLastActionFailed, Mode=TwoWay}"/>
+                                <CheckBox Content="Disabled (don't use)" IsChecked="{Binding FlagDisabled, Mode=TwoWay}"/>
+                            </StackPanel>
+                        </Grid>
+                    </StackPanel>
+                </Border>
             </Grid>
 
               </Grid>

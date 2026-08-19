@@ -51,6 +51,13 @@ public sealed partial class ItemEditDialogViewModel : ObservableObject, IDialogV
     // during the ctor's initial load of a saved overlay.
     private readonly bool _initialized;
 
+    // Opens the item's on-use / proc message record editor and returns the
+    // refreshed one-line summary. Wired by the caller (browser Items tab / Item
+    // Finder) to ItemMessageDialogService; null when no message surface is
+    // available (e.g. a unit test builds the VM with no dialog service), which
+    // hides the Message section.
+    private readonly Func<Task<string?>>? _editAttachedMessage;
+
     [ObservableProperty] private string _name = string.Empty;
     [ObservableProperty] private SettingsTier _useTier = SettingsTier.Character;
 
@@ -80,6 +87,27 @@ public sealed partial class ItemEditDialogViewModel : ObservableObject, IDialogV
 
     // "All" is a legit MegaMUD sentinel here, so stored as a free string.
     [ObservableProperty] private string _maxToGet = string.Empty;
+
+    // ----- On-use / proc message -----
+
+    // One-line preview of the message record anchored to this item (its "use
+    // <item>" buff line or weapon-proc line), or "" when the item has none yet.
+    // Refreshed in place after the editor closes.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasAttachedMessage))]
+    [NotifyPropertyChangedFor(nameof(AttachedMessageDisplay))]
+    [NotifyPropertyChangedFor(nameof(AttachedMessageButtonText))]
+    private string _attachedMessageSummary = string.Empty;
+
+    // The Message section only shows when the caller supplied a message-editing
+    // surface — an item-claimed message is edited from here rather than the
+    // Messages tab, mirroring how a spell-claimed message is edited from Spells.
+    public bool CanEditAttachedMessage => _editAttachedMessage is not null;
+    public bool HasAttachedMessage => AttachedMessageSummary.Length > 0;
+    public string AttachedMessageDisplay =>
+        HasAttachedMessage ? AttachedMessageSummary : "No on-use message attached.";
+    public string AttachedMessageButtonText =>
+        HasAttachedMessage ? "Edit message…" : "Add message…";
 
     // Right-pane "Other Info" key/value list (read-only MDB fields).
     public IReadOnlyList<KeyValuePair<string, string>> MdbInfo { get; }
@@ -148,7 +176,9 @@ public sealed partial class ItemEditDialogViewModel : ObservableObject, IDialogV
         IReadOnlyList<ItemSource>? containerSources = null,
         IReadOnlyList<ItemGiver>? givers = null,
         Func<int, IReadOnlyList<ShopSaleRow>>? shopSalesForCharm = null,
-        IReadOnlyList<DroppedByRow>? droppedBy = null)
+        IReadOnlyList<DroppedByRow>? droppedBy = null,
+        Func<Task<string?>>? editAttachedMessage = null,
+        string? attachedMessageSummary = null)
     {
         WccNoStr     = wccNoStr;
         Name         = existing?.Name ?? mdbName;
@@ -181,7 +211,20 @@ public sealed partial class ItemEditDialogViewModel : ObservableObject, IDialogV
         MinToKeep = existing?.MinToKeep ?? string.Empty;
         MaxToGet  = existing?.MaxToGet  ?? string.Empty;
 
+        _editAttachedMessage   = editAttachedMessage;
+        AttachedMessageSummary = attachedMessageSummary ?? string.Empty;
+
         _initialized = true;
+    }
+
+    // Open the item's on-use / proc message editor, then refresh the section's
+    // summary from whatever the editor committed.
+    [RelayCommand]
+    private async Task EditAttachedMessage()
+    {
+        if (_editAttachedMessage is null) return;
+        string? summary = await _editAttachedMessage();
+        AttachedMessageSummary = summary ?? string.Empty;
     }
 
     // Seed a MegaMUD-parity default cap the first time Auto-buy is ticked so the

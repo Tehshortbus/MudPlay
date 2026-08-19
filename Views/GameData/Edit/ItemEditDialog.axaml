@@ -158,6 +158,27 @@
                                           ToolTip.Tip="When a route needs this item, acquire it automatically (party redistribute, shop buy via bank withdraw, or drop reroute) instead of failing the sole route or surfacing the choice in the route picker."/>
                             </Border>
 
+                            <!-- On-use / proc message — an item-claimed message record
+                                 (its "use <item>" buff line, or a weapon-proc line) is
+                                 authored / edited here, not from the Messages tab, mirroring
+                                 how a spell's message is edited from the Spells tab. Hidden
+                                 when the dialog was built with no message-editing surface. -->
+                            <TextBlock Classes="SectionHeader" Text="Message" Margin="0,10,0,4"
+                                       IsVisible="{Binding CanEditAttachedMessage}"/>
+                            <Border BorderBrush="{StaticResource ChromeBorderBrush}"
+                                    BorderThickness="1" CornerRadius="3" Padding="8"
+                                    HorizontalAlignment="Left"
+                                    IsVisible="{Binding CanEditAttachedMessage}">
+                                <StackPanel Spacing="6">
+                                    <TextBlock Text="{Binding AttachedMessageDisplay}"
+                                               TextWrapping="Wrap" MaxWidth="300"
+                                               Foreground="{StaticResource ChromeFgMutedBrush}"/>
+                                    <Button Content="{Binding AttachedMessageButtonText}"
+                                            Command="{Binding EditAttachedMessageCommand}"
+                                            HorizontalAlignment="Left"/>
+                                </StackPanel>
+                            </Border>
+
                         </StackPanel>
                     </ScrollViewer>
                 </Border>

@@ -23,18 +23,31 @@ public sealed class MessagesSectionViewModel : GameDataTableSectionViewModel, IE
     private readonly GameDataCache? _cache;
 
     public override string Id => "messages";
-    public override string Title => "Messages";
+    public override string Title => "Unfiltered Messages";
+
+    // Description banner (renders under the title): explains what lands here — the
+    // catalogue records NOT claimed by a spell or item (those are edited from the
+    // Spells / Items tabs). What remains is standalone condition detectors + orphans.
+    public override string? BannerText =>
+        "Messages not tied to a spell or item live here. A message linked to a spell is " +
+        "edited from the Spells tab, one linked to an item from the item dialog's Message " +
+        "section; only the leftovers — standalone condition detectors and orphaned records — " +
+        "show in this list.";
+
+    // When nothing is unfiltered, the tab hides itself from the sidebar (the browser
+    // re-checks on every reload) — an empty overflow bucket is just noise.
+    public override bool HideWhenEmpty => true;
 
     public override IReadOnlyList<string> Columns { get; } = new[]
     {
-        "Name", "Action", "Lines", "Preview",
+        "Name", "Lines", "Preview",
     };
 
     public override string SearchKeyColumn => "Name";
 
     public override IEnumerable<string> SearchableLabels => new[]
     {
-        Title, "message", "response", "condition", "pattern",
+        Title, "messages", "unfiltered", "response", "condition", "pattern",
         "blinded", "poisoned", "paralyzed", "confused", "diseased", "regenerating",
     };
 
@@ -89,10 +102,17 @@ public sealed class MessagesSectionViewModel : GameDataTableSectionViewModel, IE
         // it actually lives. A message whose Spells link is orphaned (the spell isn't in
         // this set) stays visible, so it isn't stranded with no editor to reach it.
         HashSet<int> spellNumbers = _cache?.RowNumbers("Spells") ?? new HashSet<int>();
+        HashSet<int> itemNumbers = _cache?.RowNumbers("Items") ?? new HashSet<int>();
 
         foreach (MessageRecord m in _store.Messages)
         {
             if (IsClaimedByExistingSpell(m, spellNumbers)) continue;
+            // An item-claimed message (its "use <item>" buff line or weapon-proc line)
+            // is edited from the item's dialog Message section, so hide it here — same
+            // rule as spell-claimed records. An orphaned Items link (item not in this
+            // set) does NOT claim it, so it stays visible with the Messages tab as its
+            // only reachable editor.
+            if (IsClaimedByExistingItem(m, itemNumbers)) continue;
             // Lines column = compact tag string showing which perspective
             // slots are populated, e.g. "C T W A•" (Caster+Target+Witness
             // + Applied pair). Preview column = first non-empty line for
@@ -102,7 +122,6 @@ public sealed class MessagesSectionViewModel : GameDataTableSectionViewModel, IE
             var dict = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
             {
                 ["Name"]    = m.Name,
-                ["Action"]  = m.Action.ToString(),
                 ["Lines"]   = lines,
                 ["Preview"] = preview,
             };
@@ -124,6 +143,20 @@ public sealed class MessagesSectionViewModel : GameDataTableSectionViewModel, IE
         foreach (GameDataLink link in m.Links)
             if (string.Equals(link.Table, "Spells", StringComparison.OrdinalIgnoreCase)
                 && spellNumbers.Contains(link.Number))
+                return true;
+        return false;
+    }
+
+    // True when the record is claimed by an item present in the active set — a Links
+    // back-reference to an Items row whose Number exists. Such records (on-use buffs,
+    // weapon procs) are edited from the item dialog's Message section, so the Messages
+    // tab hides them. An orphaned Items link (item not in this set) does NOT claim it.
+    internal static bool IsClaimedByExistingItem(MessageRecord m, HashSet<int> itemNumbers)
+    {
+        if (m.Links is null) return false;
+        foreach (GameDataLink link in m.Links)
+            if (string.Equals(link.Table, "Items", StringComparison.OrdinalIgnoreCase)
+                && itemNumbers.Contains(link.Number))
                 return true;
         return false;
     }
@@ -189,10 +222,8 @@ public sealed class MessagesSectionViewModel : GameDataTableSectionViewModel, IE
         MessageRecord blank = new(
             Id:              string.Empty,
             Name:            string.Empty,
-            Action:          MessageAction.Ignore,
             Flags:           MessageFlags.None,
             RawFlagsHex:     0,
-            Response:        string.Empty,
             CasterMessage:   string.Empty,
             TargetMessage:   string.Empty,
             WitnessMessage:  string.Empty,

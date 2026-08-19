@@ -57,16 +57,13 @@ public sealed class ConditionTrackerTests
         string name,
         MessageFlags flags,
         string applied,
-        string endsWith,
-        MessageAction action = MessageAction.Ignore)
+        string endsWith)
     {
         return new MessageRecord(
             Id: MessageRecord.ComputeId(name, "", "", "", applied, endsWith),
             Name: name,
-            Action: action,
             Flags: flags,
             RawFlagsHex: (ushort)flags,
-            Response: string.Empty,
             CasterMessage: string.Empty,
             TargetMessage: string.Empty,
             WitnessMessage: string.Empty,

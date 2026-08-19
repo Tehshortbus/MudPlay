@@ -123,10 +123,8 @@ public sealed class SpellsSectionViewModel : JsonTableSectionViewModel, IEditabl
             record = new MessageRecord(
                 Id:              string.Empty,
                 Name:            spellName,
-                Action:          MessageAction.Ignore,
                 Flags:           MessageFlags.None,
                 RawFlagsHex:     0,
-                Response:        string.Empty,
                 CasterMessage:   string.Empty,
                 TargetMessage:   string.Empty,
                 WitnessMessage:  string.Empty,

@@ -130,10 +130,8 @@ public sealed partial class SpellCoverageReportViewModel : ObservableObject
         MessageRecord blank = new(
             Id:              string.Empty,
             Name:            spell.Name,
-            Action:          MessageAction.Ignore,
             Flags:           MessageFlags.None,
             RawFlagsHex:     0,
-            Response:        string.Empty,
             CasterMessage:   string.Empty,
             TargetMessage:   string.Empty,
             WitnessMessage:  string.Empty,

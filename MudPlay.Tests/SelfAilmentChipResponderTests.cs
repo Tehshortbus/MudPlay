@@ -23,10 +23,8 @@ public sealed class SelfAilmentChipResponderTests
     private static MessageRecord Ail(string name, MessageFlags flags, string applied, string ends) => new(
         Id: MessageRecord.ComputeId(name, "", "", "", applied, ends),
         Name: name,
-        Action: MessageAction.Ignore,
         Flags: flags,
         RawFlagsHex: (ushort)flags,
-        Response: string.Empty,
         CasterMessage: string.Empty,
         TargetMessage: string.Empty,
         WitnessMessage: string.Empty,

@@ -806,8 +806,6 @@ public partial class MainWindowViewModel : ObservableObject
         // Messages record's AppliedMessage / AppliedEndsWith pair to
         // surface live ActiveFlags.
         AppServices.Current.Conditions.AttachLineExtractor(Lines);
-        // Game-data message Response auto-send (e.g. desert "use water").
-        AppServices.Current.MessageResponder.AttachLineExtractor(Lines);
         // Pyramid solver watches lines for the sphinx "concealed passage" cue, the
         // golden-lion-key pickup, and the scatter room name.
         AppServices.Current.PyramidSolver.AttachLineExtractor(Lines);
@@ -1138,8 +1136,6 @@ public partial class MainWindowViewModel : ObservableObject
         // Pyramid solver — its climb moves + door/sphinx commands ride the same
         // gate-wrapped pipeline.
         AppServices.Current.PyramidSolver.SetWireSender(engineSend);
-        // Message Response auto-send rides the same gate-wrapped pipeline.
-        AppServices.Current.MessageResponder.SetWireSender(engineSend);
         // Summon-on-death CR recheck rides the same gate-wrapped pipeline.
         AppServices.Current.SummonSettle.SetWireSender(engineSend);
         // Recovery gate's tier-3 look-sweep rides the same gate-wrapped pipeline

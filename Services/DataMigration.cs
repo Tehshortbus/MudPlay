@@ -89,4 +89,62 @@ public static class DataMigration
         }
         return moved;
     }
+
+    // One-time forced retirement of the pre-split message data. Before the Messages
+    // seed was realm-flavored, the catalogue lived in a single Global/Messages.seed.json
+    // and (once edited) per-set "game data/{set}/messages.json" — both of which OVERRIDE
+    // the new flavored bundled seeds, so an updated install would otherwise keep loading
+    // the stale, unsplit catalogue. This runs ONCE (guarded by a marker file), backing
+    // each stale file up to a sibling .bak before removing it, so the next set load falls
+    // through to the realm-flavored seed. A user who misses a hand-added record can
+    // recover it from the .bak.
+    //
+    // REMOVE-AFTER-ROLLOUT: this method and its startup call are defunct on any install
+    // that already carries the marker; delete them in a later release (tracked as a
+    // GitHub issue). Runs after EnsureGlobalSeedsBootstrapped has placed the flavored
+    // seeds, so the per-set delete leaves a valid seed to fall through to.
+    public static void RetireLegacyMessagesOnce(LogService log)
+    {
+        ArgumentNullException.ThrowIfNull(log);
+
+        string marker = Path.Combine(AppPaths.DataRoot, "Global", ".messages-flavored-migrated");
+        if (File.Exists(marker)) return;
+
+        int retired = BackupAndDelete(AppPaths.LegacyMessagesSeedFile, log);
+        if (Directory.Exists(AppPaths.GameDataRoot))
+            foreach (string setDir in Directory.EnumerateDirectories(AppPaths.GameDataRoot))
+                retired += BackupAndDelete(Path.Combine(setDir, "messages.json"), log);
+
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(marker)!);
+            File.WriteAllText(marker,
+                "The pre-split Messages catalogue was retired to .bak files; the app now loads the " +
+                "realm-flavored Messages.{stock,paradigm}.seed.json. Delete this marker to re-run.");
+        }
+        catch { /* no marker ⇒ re-runs next launch, harmlessly: the stale files are already gone */ }
+
+        if (retired > 0)
+            log.Info("DataMigration",
+                $"Retired {retired} pre-split message file(s) to .bak; catalogue now loads from the realm-flavored seeds.");
+    }
+
+    // Copy path → path.bak (overwriting a prior .bak) then delete the original. Returns 1
+    // on success, 0 when the file is absent or the move fails (left in place, logged).
+    private static int BackupAndDelete(string path, LogService log)
+    {
+        if (!File.Exists(path)) return 0;
+        try
+        {
+            File.Copy(path, path + ".bak", overwrite: true);
+            File.Delete(path);
+            log.Info("DataMigration", $"backed up + removed stale '{path}' → '{path}.bak'");
+            return 1;
+        }
+        catch (Exception ex)
+        {
+            log.Warn("DataMigration", $"could not retire '{path}': {ex.Message}");
+            return 0;
+        }
+    }
 }

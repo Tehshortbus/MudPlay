@@ -2876,3 +2876,40 @@ the attack rotation); the **AoE** debuff is gated by **Auto-Nuke**.
     is** (energy 1–1000) — a last-writer-wins lookup that picked a 0-energy monster
     duplicate misfiled a hand-cast `vamp` as in-between and the engine re-announced its
     attack over it. Classify a shared cast-code by "any entry combat", not the last one.
+
+## MegaMUD `messages.md` format *([CONFIRMED] 2026-08-17, user + decode of both stock/paramud files)*
+
+The MegaMUD "Messages/Responses" catalogue ships as a plain-text `messages.md` (one per
+game-type folder: `…(Stock)/Default/messages.md`, `…(Paramud)/Default/MESSAGES.md`). It is
+the ORIGINAL source our Messages seed (and Triggers seed) were derived from. Structure —
+**rigid, exactly 3 lines per record**, `\r\n`-terminated (validated: 612 stock / 840 paramud
+records, zero misalignment):
+
+- **Line 1** — `name : FLAGS(4-hex) : ACTION(decimal) : RESPONSE`
+  - `name` — the message name. **A spell's message is named exactly after the spell; an item's
+    after the item** (paramud names item procs after the item, e.g. `acid slasher`; stock used a
+    generic effect name, e.g. `acid hits`). This name is how message→spell/item is linked.
+  - `FLAGS` — the Effects checkboxes as an **additive hex bitfield**, identical bit layout to our
+    `MessageFlags`: `0001` Blinded, `0002` Confused, `0004` Poisoned, `0008` Losing-HP, `0010`
+    Movement-prevented, `0020` Attack-prevented, `0040` Diseased, `0080` HP-regen, `0100`
+    Find-in-conversations*, `0200` Mana-regen, `0400` Find-in-text*, `0800` reserved*, `1000`
+    Ends-combat, `2000` Last-action-failed, `4000` Use-when-chasing*, `8000` Disabled. (`*` = the
+    find-mode/chasing bits the importer strips.) Validated end-to-end against message text.
+  - `ACTION` — the Action radio, a top-down index 0–6 (0 Ignore, 1 Check-who's-in-room,
+    2 Wait-until-wears-off, 3 Rest-full-HP, 4 Rest-full-Mana, 5 Don't-rest-run, 6 Hangup).
+    **Read but NOT emitted** — every one of these is handled by the client's own engines /
+    settings, so a MudPlay message is recognition only and carries no action.
+  - `RESPONSE` — literal text the server-echo would trigger MegaMUD to send. **Read but NOT
+    emitted** — a player response to a seen line is a *Trigger* in MudPlay, not a message.
+- **Line 2** — the **Message** line (the pattern matched on the wire).
+- **Line 3** — the **Ends-with** line (wear-off). **Blank when the effect has no wear-off.**
+
+Tokens are `{dmg}` (numeric), `{target}`, `{source}` — already understood by
+`CasterMessageMatcher` — plus `{1}` = a user-defined **wildcard** handled by the Triggers matcher.
+
+**The .md is the source for THREE of our tables** (not just Messages): a record whose name matches
+a Spell → Messages seed w/ `Spells#N`; matches an Item → Messages seed w/ `Items#N`; carries an
+ailment flag / applied+wear-off → Messages seed (ConditionTracker detector); **everything else
+(pattern + response/action) → the Triggers seed** (e.g. `1 life left` → say warning + hangup; the
+separate `X end` records → response `stat` to refresh status). Decode → our record: Ends-with
+present OR ailment flag → `AppliedMessage`(+`AppliedEndsWith`); else → `CasterMessage`.

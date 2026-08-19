@@ -599,10 +599,8 @@ public sealed class CastingDirectorTests
             Messages.Messages.Add(new MessageRecord(
                 Id: MessageRecord.ComputeId(name, "", "", "", applied, endsWith),
                 Name: name,
-                Action: MessageAction.Ignore,
                 Flags: flags,
                 RawFlagsHex: (ushort)flags,
-                Response: string.Empty,
                 CasterMessage: string.Empty,
                 TargetMessage: string.Empty,
                 WitnessMessage: string.Empty,

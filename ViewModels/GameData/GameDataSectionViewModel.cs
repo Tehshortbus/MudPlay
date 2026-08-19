@@ -27,6 +27,11 @@ public abstract partial class GameDataSectionViewModel : ObservableObject, IDisp
     // (Unobtainable, Quest Flags) belong with the tables; engine tabs / placeholders don't.
     public virtual bool ShowInTableGroup => false;
 
+    // When true, the section is dropped from the sidebar entirely once it has no rows —
+    // an empty overflow tab (the Unfiltered Messages catalogue) is just noise. Default
+    // false: every other tab shows even when its table is empty.
+    public virtual bool HideWhenEmpty => false;
+
     // The editor UserControl rendered in the shell's content pane. Lazy — constructed on
     // first access so an unselected section pays no UI cost.
     public abstract Control View { get; }

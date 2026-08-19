@@ -7,11 +7,12 @@ using MudPlay.Services;
 
 namespace MudPlay.ViewModels.GameData.Edit;
 
-// View-model for the Game Data Browser → Messages tab's per-record edit dialog. Edits
-// one MessageRecord end-to-end: Name / Use-tier / four perspective line slots (Caster /
-// Target / Witness / Applied + AppliedEndsWith) / Action / Effects flags / Response /
-// Links. Commits on Save (Defaults tier writes back to MessageStore; other tiers are
-// stubbed for the future SettingsResolver.WriteGameDataAt path) or discards on Cancel.
+// View-model for the Game Data Browser → Unfiltered Messages tab's per-record edit
+// dialog. Edits one MessageRecord end-to-end: Name / Use-tier / four perspective line
+// slots (Caster / Target / Witness / Applied + AppliedEndsWith) / Effects flags / Links.
+// A message is recognition only — no action, no response (those live in Triggers).
+// Commits on Save (Defaults tier writes back to MessageStore; other tiers are stubbed
+// for the future SettingsResolver.WriteGameDataAt path) or discards on Cancel.
 //
 // Validation runs live — StatusMessage + HasError flag the dialog when Name is blank,
 // when no perspective line has any text (record would carry no matchable content), or
@@ -65,12 +66,6 @@ public sealed partial class MessageEditDialogViewModel : ObservableObject, IDial
     [NotifyPropertyChangedFor(nameof(CanSave))]
     private string _appliedEndsWith = string.Empty;
 
-    // Verbatim response field — stored exactly as MegaMUD's UI would display it, including
-    // literal ^M separators. No splitting happens here; the runtime consumer interprets
-    // ^M / CR as multi-step boundaries when actually sending.
-    [ObservableProperty] private string _response = string.Empty;
-    [ObservableProperty] private MessageAction _action = MessageAction.Ignore;
-
     // Typed effect flags — bound to checkboxes in the dialog. Twelve
     // bits surfaced; the three MegaMUD-specific find-mode flags are
     // NOT exposed in the UI (the importer strips them at read time).
@@ -86,9 +81,6 @@ public sealed partial class MessageEditDialogViewModel : ObservableObject, IDial
     [ObservableProperty] private bool _flagEndsCombat;
     [ObservableProperty] private bool _flagLastActionFailed;
     [ObservableProperty] private bool _flagDisabled;
-
-    public IReadOnlyList<MessageAction> AvailableActions { get; } =
-        Enum.GetValues<MessageAction>().ToArray();
 
     public IReadOnlyList<TierOption> AvailableTiers { get; } = new[]
     {
@@ -143,7 +135,7 @@ public sealed partial class MessageEditDialogViewModel : ObservableObject, IDial
 
     public string Title => _isNew ? "Message — (new)" : $"Message — {_original.Name}";
 
-    // Placeholder-token legend shown under the Response field so an author editing a
+    // Placeholder-token legend shown below the line fields so an author editing a
     // message line can see which bracket pins which capture slot (the meaning surfaces on
     // hover). Sourced from the matcher itself so the editor and the runtime interpreter
     // never drift.
@@ -226,8 +218,6 @@ public sealed partial class MessageEditDialogViewModel : ObservableObject, IDial
         WitnessMessage  = original.WitnessMessage;
         AppliedMessage  = original.AppliedMessage;
         AppliedEndsWith = original.AppliedEndsWith;
-        Response        = original.Response;
-        Action          = original.Action;
 
         FlagBlinded           = original.Flags.HasFlag(MessageFlags.Blinded);
         FlagConfused          = original.Flags.HasFlag(MessageFlags.Confused);
@@ -256,10 +246,8 @@ public sealed partial class MessageEditDialogViewModel : ObservableObject, IDial
                                  Name, CasterMessage, TargetMessage, WitnessMessage,
                                  AppliedMessage, AppliedEndsWith),
             Name:            Name,
-            Action:          Action,
             Flags:           typed,
             RawFlagsHex:     raw,
-            Response:        Response ?? string.Empty,
             CasterMessage:   CasterMessage   ?? string.Empty,
             TargetMessage:   TargetMessage   ?? string.Empty,
             WitnessMessage:  WitnessMessage  ?? string.Empty,

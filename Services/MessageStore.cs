@@ -5,9 +5,10 @@ namespace MudPlay.Services;
 
 // In-memory cache of the Messages/Responses catalogue for the active set.
 // Records are paired with the active game-data set on disk at
-// Data/game data/{set}/messages.json, falling back to the universal
-// wcc-derived seed at Data/Global/Messages.seed.json (bootstrapped from the
-// bundled Defaults/ copy on first launch).
+// Data/game data/{set}/messages.json, falling back to the realm-flavored seed at
+// Data/Global/Messages.{stock|paradigm}.seed.json (the realm is picked from the
+// set's Info.json Legit; each seed is decoded offline from that realm's MegaMUD
+// messages.md and bootstrapped from the bundled Defaults/ copy on first launch).
 //
 // Wiring: AppServices subscribes the store to
 // GameDataCache.ActiveSetChanged — on every set switch the file at
@@ -44,20 +45,22 @@ public sealed class MessageStore
     //   1. Per-set file AppPaths.MessagesFile
     //      (Data/game data/{set}/messages.json) — the canonical persisted
     //      state once a user has edited.
-    //   2. Universal seed AppPaths.DefaultMessagesSeedFile
-    //      (Data/Global/Messages.seed.json) — applies to every set; the
-    //      message text is universal across MajorMUD realms. Bootstrapped
-    //      from the bundled Defaults/ copy on first launch via
-    //      AppPaths.EnsureGlobalSeedsBootstrapped.
+    //   2. Realm-flavored seed AppPaths.MessagesSeedFile(realm)
+    //      (Data/Global/Messages.{stock|paradigm}.seed.json) — the realm is
+    //      resolved from the set's Info.json Legit (GameDataRealm.Resolve), since
+    //      a paradigm realm carries message records a stock realm doesn't, and
+    //      vice-versa. Bootstrapped from the bundled Defaults/ copies on first
+    //      launch via AppPaths.EnsureGlobalSeedsBootstrapped.
     // The seed itself is never written.
     public void Load(string? setName)
     {
         ActiveSet = setName;
         if (string.IsNullOrWhiteSpace(setName)) { Messages.ReplaceAll([]); return; }
 
+        string realm = GameDataRealm.Resolve(setName);
         List<MessageRecord> loaded =
             TryLoad(AppPaths.MessagesFile(setName)) ??
-            TryLoad(AppPaths.DefaultMessagesSeedFile) ??
+            TryLoad(AppPaths.MessagesSeedFile(realm)) ??
             [];
         Messages.ReplaceAll(loaded);
     }

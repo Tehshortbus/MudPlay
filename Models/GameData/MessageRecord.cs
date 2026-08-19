@@ -13,11 +13,12 @@ namespace MudPlay.Models.GameData;
 // semantically fits.
 //
 // Storage lives alongside the active game-data set at
-// Data/game data/{set}/messages.json with the universal seed at
-// Data/Global/Messages.seed.json (user-writable; bootstrapped from the
-// bundled Defaults/ copy on first launch). The seed is generated from the
-// wcc-export spell-messages.json via the offline gen_wcc_seed.py script;
-// user edits write back to the per-set file (creating it on first save).
+// Data/game data/{set}/messages.json with the realm-flavored seed at
+// Data/Global/Messages.{stock|paradigm}.seed.json (user-writable; bootstrapped
+// from the bundled Defaults/ copy on first launch, realm picked from the set's
+// Info.json Legit). Each seed is decoded offline from that realm's MegaMUD
+// messages.md by tools/decode_messages_md.py — a record's name attributes it to
+// its spell/item by name. User edits write back to the per-set file.
 //
 // Identity rule: Id is SHA1(Name | CasterMessage | TargetMessage |
 // WitnessMessage | AppliedMessage | AppliedEndsWith) truncated to 16
@@ -33,17 +34,20 @@ namespace MudPlay.Models.GameData;
 // paired with AppliedEndsWith. AppliedEndsWith: wear-off text, only
 // meaningful alongside a non-empty AppliedMessage. RawFlagsHex preserves
 // the full 16-bit flag word from the legacy MegaMUD format (reserved
-// 0x0800). Response keeps literal ^M separators. Links back-reference the
-// game-data rows this record is anchored to — usually one Spells#N,
-// possibly several when name-aliased variants share the same lines (e.g.
-// priest + druid resist cold).
+// 0x0800). Links back-reference the game-data rows this record is anchored
+// to — usually one Spells#N, possibly several when name-aliased variants
+// share the same lines (e.g. priest + druid resist cold).
+//
+// A message is RECOGNITION only — it identifies a line and (via Flags) the
+// condition it means. Player-defined RESPONSES to a seen line live in the
+// Triggers table, not here; the legacy per-message Response + Action fields
+// were retired with that split (nothing branched on Action, and the handful
+// of message Responses were the same lines already handled as triggers).
 public sealed record MessageRecord(
     string                       Id,
     string                       Name,
-    MessageAction                Action,
     MessageFlags                 Flags,
     ushort                       RawFlagsHex,
-    string                       Response,
     string                       CasterMessage,
     string                       TargetMessage,
     string                       WitnessMessage,
@@ -82,33 +86,6 @@ public sealed record MessageRecord(
 public readonly record struct GameDataLink(
     string Table,
     int    Number);
-
-// What the engine does when any of the record's lines fires. Values match
-// the legacy MegaMUD messages.md action code (single decimal digit) so
-// records round-trip through that format without translation.
-public enum MessageAction
-{
-    // Note the match for logging; take no engine action.
-    Ignore      = 0,
-
-    // Re-poll the current room state before the next decision.
-    RecheckRoom = 1,
-
-    // Pause the action loop until the condition expires.
-    WaitForEnd  = 2,
-
-    // Rest until HP is full before continuing.
-    RestHp      = 3,
-
-    // Rest / meditate until MA is full before continuing.
-    RestMana    = 4,
-
-    // Skip auto-rest and switch to auto-run while the condition is active.
-    Run         = 5,
-
-    // Drop the connection.
-    Hangup      = 6,
-}
 
 // Typed view of the message flag bitfield. Values match the legacy
 // MegaMUD messages.md 16-bit hex encoding so records round-trip through

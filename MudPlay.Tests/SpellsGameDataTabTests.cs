@@ -42,9 +42,7 @@ public sealed class SpellsGameDataTabTests : IDisposable
     // ----- default tab (MessageEditDialogViewModel.InitialTabIndex) -----
 
     private static MessageRecord Blank(string name) => new(
-        Id: string.Empty, Name: name, Action: MessageAction.Ignore,
-        Flags: MessageFlags.None, RawFlagsHex: 0, Response: string.Empty,
-        CasterMessage: string.Empty, TargetMessage: string.Empty,
+        Id: string.Empty, Name: name, Flags: MessageFlags.None, RawFlagsHex: 0, CasterMessage: string.Empty, TargetMessage: string.Empty,
         WitnessMessage: string.Empty, AppliedMessage: string.Empty,
         AppliedEndsWith: string.Empty, Links: null);
 
