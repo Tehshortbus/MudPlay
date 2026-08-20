@@ -734,6 +734,12 @@ See the [Keybindings](#keybindings) section below — the rebind dialog is launc
 **What it does:** This is a toolbar button, not a checkbox on a settings tab — but it's documented here because that's where you'll actually find it (look for the "no hangup" icon). When on, **no** automatic mechanism can drop your connection — not a remote `@hangup`, not the emergency low-HP hangup, nothing — only you disconnecting manually will end the session.
 **Important notes:** This is a hard override — it wins over the General tab's "Allow hangup in all-off mode" carve-out. One narrow exception still fires even with this on: a graceful log-off ahead of the BBS's nightly server cleanup, if you've opted into "reconnect after cleanup" on the BBS tab.
 
+### Sprint Mode (toolbar toggle)
+
+**Default:** Off
+**What it does:** Another toolbar-only toggle (fast-forward chevrons icon, next to the movement Start/Pause/Stop buttons) — not a settings-tab checkbox. When on, movement **never pauses to rest or wait for HP/MA to recover**, no matter how low they get; your configured heal spells still fire normally on their usual thresholds while you keep moving. Turning it on also **forces Auto Combat off** for as long as Sprint Mode stays on (whatever Auto Combat was set to comes back the moment you turn Sprint Mode back off) — there's no known mechanic where being engaged in combat blocks you from walking away, so a "never stop" mode has nothing to gain by fighting. Every other safety pause (avoid rooms, hazard/trap detours, teleport-maze solving, party sync, mortally-wounded) is untouched. The only thing that actually stops a sprinting character is death.
+**Important notes:** This is an "arrive or die" mode — use it deliberately, for a route you're confident the character can survive taking hits on the whole way. Because it forces Auto Combat off, a hostile room is walked straight through rather than fought.
+
 ---
 
 ## Keybindings
@@ -1823,6 +1829,7 @@ This section is a compact, technical lookup table for every setting documented a
 | Allow hangup in all-off mode | `false` | bool | `AllowHangupInAllOffMode` | Models/Profile/GeneralSettings.cs |
 | Re-enable on reconnect (11 flags) | `false` (all) | bool | `ReEnableAutoCombatOnReconnect` etc. | Models/Profile/GeneralSettings.cs |
 | Disable hangups (toolbar toggle) | `false` | bool | `DisableHangups` | Models/Profile/GeneralSettings.cs |
+| Sprint Mode (toolbar toggle) | `false` | bool | `SprintMode` | Models/Profile/GeneralSettings.cs |
 | Auto-load last profile (edited on MainWindow, not Settings) | `false` | bool | `GlobalSettings.AutoLoadLastProfile` | Models/Settings/GlobalSettings.cs |
 | Player cleanup days (edited on Other tab) | `90` | int, 0–3650 | `GlobalSettings.PlayerCleanupDays` | Models/Settings/GlobalSettings.cs |
 | Show toolbar | `true` | bool | `ToolbarSettings.Visible` | Models/Profile/ToolbarSettings.cs |

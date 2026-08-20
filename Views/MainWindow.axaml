@@ -172,6 +172,13 @@
                 <MenuItem Header="Deposit All" Command="{Binding DepositAllCommand}" ToolTip.Tip="Bank wealth down to the keep-on-hand floor"/>
                 <Separator/>
 
+                <!-- Never pause to rest/heal-wait; forces Auto Combat off for the
+                     duration (restored on turning it back off); still casts heals;
+                     only death stops it. -->
+                <MenuItem Header="Sprint Mode" ToggleType="CheckBox" IsChecked="{Binding IsSprintModeActive, Mode=TwoWay}"
+                          ToolTip.Tip="Never pause to rest — force Auto Combat off, keep casting heals, only death stops it"/>
+                <Separator/>
+
                 <!-- Master auto-responses switch. Snapshot logic lives in
                      AutoModeController, so this drives a Command (not a
                      two-way bool). Checked = auto-engines run; unchecked =

@@ -274,6 +274,20 @@ public partial class MainWindowViewModel : ObservableObject
     // disconnects, not auto-engines.
     [ObservableProperty] private bool _isDisableHangupsActive;
 
+    // Sprint Mode. When on, HealthManager never pauses movement to rest/heal-wait
+    // (still casts configured heal spells) and Auto Combat is temporarily forced
+    // off (restored on turning Sprint back off) since no known mechanic blocks
+    // movement due to being engaged — see OnIsSprintModeActiveChanged. Persisted
+    // in Models.Profile.GeneralSettings.SprintMode and reseeded on profile load
+    // like the auto-mode toggles. Not part of IsAllAutoOff — it's a movement
+    // mode, not an auto-engine.
+    [ObservableProperty] private bool _isSprintModeActive;
+
+    // Auto Combat's state captured the moment Sprint Mode turned it off, so
+    // turning Sprint back off can restore it. Session-only (not persisted) —
+    // null when Sprint isn't the one holding Auto Combat off.
+    private bool? _autoCombatBeforeSprint;
+
     // True when every wired auto-engine is off — drives the "Auto-All" master
     // toggle's depressed/checked state. Mirrors
     // Game.AutoModeController.AllWiredOff but computed from the live
@@ -1285,6 +1299,7 @@ public partial class MainWindowViewModel : ObservableObject
          && e.PropertyName != nameof(IsAutoHideActive)
          && e.PropertyName != nameof(IsAutoSearchActive)
          && e.PropertyName != nameof(IsDisableHangupsActive)
+         && e.PropertyName != nameof(IsSprintModeActive)
          && e.PropertyName != nameof(IsAllAutoOff)) return;
 
         foreach (ToolbarButtonItem row in ToolbarItems)
@@ -1307,6 +1322,9 @@ public partial class MainWindowViewModel : ObservableObject
                 break;
             case "ToggleDisableHangups":
                 row.IsActive = IsDisableHangupsActive;
+                break;
+            case "ToggleSprintMode":
+                row.IsActive = IsSprintModeActive;
                 break;
             case "ToggleAutoCombat":
                 row.IsActive = IsAutoCombatActive;
@@ -4555,6 +4573,13 @@ public partial class MainWindowViewModel : ObservableObject
     [RelayCommand]
     private void ToggleDisableHangups() => IsDisableHangupsActive = !IsDisableHangupsActive;
 
+    // Flip the live IsSprintModeActive bit (the partial OnXxxChanged hook
+    // persists it to GeneralSettings.SprintMode, forces/restores Auto Combat,
+    // and the toolbar IsActive badge follows). Bound from the toolbar /
+    // Action-menu / hotkey.
+    [RelayCommand]
+    private void ToggleSprintMode() => IsSprintModeActive = !IsSprintModeActive;
+
     // File-menu toggle for the app-level "reopen last profile on startup" setting.
     // Reads / writes GlobalSettings directly (it's global, not per-profile) so the
     // check state always reflects what startup will do; the getter needs no reseed.
@@ -4802,6 +4827,28 @@ public partial class MainWindowViewModel : ObservableObject
     partial void OnIsDisableHangupsActiveChanged(bool value)
         => PersistGeneralFlag("DisableHangups", value, g => g.DisableHangups = value);
 
+    partial void OnIsSprintModeActiveChanged(bool value)
+    {
+        PersistGeneralFlag("SprintMode", value, g => g.SprintMode = value);
+        // A profile reseed sets this without a real user toggle — skip the Auto
+        // Combat coupling so loading a character with Sprint already on doesn't
+        // stomp Auto Combat's own independently-reseeded value.
+        if (_suppressAutoEngineWriteback > 0) return;
+        if (value)
+        {
+            // No known MajorMUD mechanic blocks movement due to being engaged, so
+            // a "never stop moving" mode has nothing to fight for — force Auto
+            // Combat off for the duration. Remember the prior state to restore it.
+            _autoCombatBeforeSprint = IsAutoCombatActive;
+            if (IsAutoCombatActive) IsAutoCombatActive = false;
+        }
+        else if (_autoCombatBeforeSprint is { } prior)
+        {
+            _autoCombatBeforeSprint = null;
+            if (prior != IsAutoCombatActive) IsAutoCombatActive = prior;
+        }
+    }
+
     // Reset the LIVE auto-engine state (AutoMode) to the character's BASE modes —
     // the Settings → General base-modes checkboxes (GeneralSettings.AutoModeBase).
     // Called at profile load and at the first start of a loop / auto-lair circuit,
@@ -4892,6 +4939,7 @@ public partial class MainWindowViewModel : ObservableObject
                 : ReadGeneralFromProfile(profile);
             Models.Profile.AutoActionDefaults am = general.AutoMode;
             IsDisableHangupsActive = general.DisableHangups;
+            IsSprintModeActive   = general.SprintMode;
             IsAutoCombatActive   = am.AutoCombat;
             IsAutoNukeActive     = am.AutoNuke;
             IsAutoHealRestActive = am.AutoHealRest;

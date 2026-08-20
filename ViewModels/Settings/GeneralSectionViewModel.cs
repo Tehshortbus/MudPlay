@@ -322,6 +322,8 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
             // doesn't edit it, and Apply rebuilds GeneralSettings from scratch, so
             // without carrying it forward a Save here would reset it to false.
             DisableHangups                  = existing.DisableHangups,
+            // Same carry-through for the live "Sprint Mode" toolbar toggle.
+            SprintMode                      = existing.SprintMode,
             ReEnableAutoCombatOnReconnect   = ReEnableAutoCombatOnReconnect,
             ReEnableAutoNukeOnReconnect     = ReEnableAutoNukeOnReconnect,
             ReEnableAutoHealRestOnReconnect = ReEnableAutoHealRestOnReconnect,

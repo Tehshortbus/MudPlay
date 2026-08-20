@@ -1,8 +1,8 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.22.22**
-> - Fixed meditate never re-engaging after something (a self-bless, etc.) interrupted it in place — the auto-rest engine's confirm/interrupt tracking only recognized the "resting" position, never "meditating", so the latch got stuck and blocked every further re-send until the next room move
+> **Version 3.23.0**
+> - New **Sprint Mode** toolbar toggle: movement never pauses to rest/heal-wait (heal spells still cast normally), and Auto Combat is forced off for the duration and restored on exit — the only thing that stops a sprinting character is death; all other safety pathing (avoid rooms, hazards, traps, party sync) is unchanged
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

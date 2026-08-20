@@ -12,7 +12,7 @@ public static class ToolbarDefaults
 {
     // Action ids in default order. null marks a separator between groups:
     //   connection      → connect/disconnect, disable hangups
-    //   navigation/move → navigation, start / pause / stop movement
+    //   navigation/move → navigation, start / pause / stop movement, sprint mode
     //   panels          → party, backscroll
     //   auto-responses  → master switch + the on-by-default auto engines
     private static readonly string?[] _order =
@@ -24,6 +24,7 @@ public static class ToolbarDefaults
         "MovementStart",
         "MovementPause",
         "MovementStop",
+        "ToggleSprintMode",
         null,
         "OpenParty",
         "OpenBackscroll",
