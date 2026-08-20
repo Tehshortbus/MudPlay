@@ -2654,6 +2654,20 @@ glass jug               5               2 gold crowns
   rest once poison clears** (the poison falling edge drops the stale latch) — otherwise it
   sits standing below the rest floor forever, which is what report 092945 hit.
 
+## Casting a spell interrupts resting/meditating *([CONFIRMED] 2026-08-20, user)*
+
+- **Casting a spell on yourself (a self-bless, etc.) while resting or meditating breaks the
+  rest/meditate state** — position drops back to Standing, same as taking a hit or moving.
+  Reported as "meditate not re-engaging automatically after blessing while resting."
+- **Consequence for the auto-rest engine:** `HealthManager`'s confirm/interrupt latch
+  (`_restInFlight` / `_restConfirmedByPrompt`) only recognized `PlayerPosition.Resting`, never
+  `PlayerPosition.Meditating` — so a `meditate` send's confirmation step never fired, the
+  interruption step's guard never tripped either, and the latch stuck `true` forever after a
+  meditate got interrupted in place (no room move to fall back on and clear it via
+  `NoteRoomChanged`). Fixed by treating Resting and Meditating as the same "in a resting-family
+  position" state for the confirm/interrupt check — `rest` was never affected, since its
+  position always matched.
+
 ## Confusion fumbles — actions fail and must be re-sent *([CONFIRMED] 2026-07-14, user)*
 
 - Confusion does **not** block attacking (or acting) outright. Instead each action

@@ -1281,9 +1281,10 @@ public sealed class CastingDirector : IDisposable
     // MaRegen + WhenHpFull + WhenMaFull) and return the first configured slot due to
     // recast on us. Timing is gated by the Spells-tab self-bless toggles, mirroring
     // the party-bless gates: blocked during combat unless SelfBlessDuringCombat,
-    // blocked while resting unless SelfBlessWhileResting (default on). Both default
-    // to the prior hard-coded behaviour — self buffs out of combat only — so a
-    // profile that never touches the toggles behaves exactly as before.
+    // blocked during a triggered recovery rest unless SelfBlessWhileResting (both
+    // default OFF). Both default to the prior hard-coded behaviour — self buffs out
+    // of combat and outside an active recovery only — so a profile that never
+    // touches the toggles behaves exactly as before.
     //
     // HpRegenSpell deliberately does NOT live here: an HP-regen HoT is treated as
     // assisted healing, cast reactively by the minor-self-heal path

@@ -529,28 +529,32 @@ public sealed class HealthManager : IDisposable
         if (_state.Hp <= 0) return;
 
         // Rest-interruption recovery on a resting-state change. Two-step
-        // latch so we don't race the (Resting) prompt arrival:
-        //   1. We send `rest` and set _restInFlight=true.
-        //   2. On the FIRST Evaluate tick where Position==Resting, we
-        //      flip _restConfirmedByPrompt=true — the server has put
-        //      us into the resting state.
-        //   3. Any subsequent tick where Position!=Resting (server
-        //      broke our rest because we took damage, entered combat,
-        //      or moved) drops _restInFlight so the rest-out branch
-        //      below re-fires.
+        // latch so we don't race the (Resting)/(Meditating) prompt arrival:
+        //   1. We send `rest` or `meditate` and set _restInFlight=true.
+        //   2. On the FIRST Evaluate tick where Position is Resting OR
+        //      Meditating, we flip _restConfirmedByPrompt=true — the
+        //      server has put us into one of the two resting-family
+        //      positions (ChooseRestCommand picks whichever command the
+        //      moment calls for; either lands here).
+        //   3. Any subsequent tick where Position is neither (server
+        //      broke our rest because we took damage, entered combat, cast
+        //      a bless, or moved) drops _restInFlight so the rest-out
+        //      branch below re-fires.
         // Without step 2, a fast follow-up HP-changed tick that fires
-        // before the (Resting) prompt arrives would spuriously clear
-        // _restInFlight and double-send `rest`.
-        // The re-issue is gated on !InCombat — while a hostile is
-        // engaging us we let CombatManager handle the swing; the
-        // moment combat clears (CombatStateTracker flips InCombat
-        // false), Evaluate ticks again and the rest goes out.
-        if (_restInFlight && _state.Position == PlayerPosition.Resting)
+        // before the prompt arrives would spuriously clear _restInFlight
+        // and double-send the command. Checking only Resting here (report:
+        // meditate never re-engaged after a bless interrupted it) left
+        // step 2 permanently unreached for Meditating — _restConfirmedByPrompt
+        // never flipped true, so step 3's guard never tripped either, and
+        // _restInFlight stuck true until the next room move (NoteRoomChanged
+        // clears it unconditionally) masked the bug for movers but not for a
+        // party member sitting still recovering mana.
+        bool restingFamily = _state.Position is PlayerPosition.Resting or PlayerPosition.Meditating;
+        if (_restInFlight && restingFamily)
         {
             _restConfirmedByPrompt = true;
         }
-        else if (_restInFlight && _restConfirmedByPrompt
-                              && _state.Position != PlayerPosition.Resting)
+        else if (_restInFlight && _restConfirmedByPrompt && !restingFamily)
         {
             _restInFlight = false;
             _restConfirmedByPrompt = false;

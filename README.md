@@ -1,8 +1,8 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.22.21**
-> - Fixed max HP/mana drifting stale when equipping/removing gear that grants a flat pool bonus (e.g. severed head of Goru-Nezar's +50 mana) — the health engine's rest and "pool is full" checks now track the change immediately instead of waiting on a manual stat-screen check
+> **Version 3.22.22**
+> - Fixed meditate never re-engaging after something (a self-bless, etc.) interrupted it in place — the auto-rest engine's confirm/interrupt tracking only recognized the "resting" position, never "meditating", so the latch got stuck and blocked every further re-send until the next room move
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

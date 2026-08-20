@@ -1590,6 +1590,34 @@ public sealed class HealthManagerTests
         Assert.Contains("rest", h.SentLines);
     }
 
+    [Fact]
+    public void Meditate_ServerBreaksMeditate_OutOfCombat_ReMeditates()
+    {
+        // Report: meditate never re-engaged after a bless interrupted it.
+        // We meditate; server confirms (Meditating). A self-bless fires and
+        // knocks us back to (Standing) — same shape as Rest_ServerBreaksRest_
+        // OutOfCombat_ReRests, but for the Meditating position the confirm/
+        // interrupt latch used to never recognize at all.
+        HealthSettings s = new() { UseMeditateAbility = true };
+        using Harness h = new(s);
+        h.State.MaxHp = 200;
+        h.State.Hp = 200;         // HP healthy — only MA gates.
+        h.State.MaxMa = 100;
+        h.State.HasPromptData = true;
+        h.State.Ma = 20;          // below default rest trigger
+        Assert.Equal(1, h.SentLines.Count(l => l == "meditate"));
+
+        // Server prompt confirms we're meditating.
+        h.State.Position = PlayerPosition.Meditating;
+        Assert.True(h.Health.RestInFlight);
+
+        // A bless (or anything else) interrupts it in place — no room move.
+        h.State.Position = PlayerPosition.Standing;
+
+        Assert.Equal(2, h.SentLines.Count(l => l == "meditate"));
+        Assert.True(h.Health.RestInFlight);
+    }
+
     // ----- Hangup-on-emergency (Cluster 5c) -------------------------
 
     [Fact]

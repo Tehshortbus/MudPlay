@@ -2,6 +2,10 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a brand-new feature or a large (~1000+ line) rewrite/expansion of an existing one, **PATCH** = bug fixes AND ordinary enhancements to existing features (one increment per bug report handled or per enhancement).
 
+## 3.22.22
+
+- Fixed meditate never re-engaging after something (a self-bless, etc.) interrupted it in place — the auto-rest engine's confirm/interrupt tracking only recognized the "resting" position, never "meditating", so the latch got stuck and blocked every further re-send until the next room move
+
 ## 3.22.21
 
 - Fixed max HP/mana drifting stale when equipping/removing gear that grants a flat pool bonus (e.g. severed head of Goru-Nezar's +50 mana) — the health engine's rest and "pool is full" checks now track the change immediately instead of waiting on a manual stat-screen check
