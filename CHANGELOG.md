@@ -2,6 +2,11 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a brand-new feature or a large (~1000+ line) rewrite/expansion of an existing one, **PATCH** = bug fixes AND ordinary enhancements to existing features (one increment per bug report handled or per enhancement).
 
+## 3.23.1
+
+- Combat settings: fixed the **Debuff (single target)**, **Normal attack spell**, and **Alternate attack spell** cast-cap tooltips claiming "casts per room" when the engine has always enforced them per-target (a fresh mob gets its own allowance) — misled players into thinking the cap wasn't being honored when many mobs died in quick succession
+- bug reports addressed: paradigm-20260820-164102
+
 ## 3.23.0
 
 - New **Sprint Mode** toolbar toggle: movement never pauses to rest/heal-wait (heal spells still cast normally), and Auto Combat is forced off for the duration and restored on exit — the only thing that stops a sprinting character is death; all other safety pathing (avoid rooms, hazards, traps, party sync) is unchanged

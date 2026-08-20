@@ -1,8 +1,8 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.23.0**
-> - New **Sprint Mode** toolbar toggle: movement never pauses to rest/heal-wait (heal spells still cast normally), and Auto Combat is forced off for the duration and restored on exit — the only thing that stops a sprinting character is death; all other safety pathing (avoid rooms, hazards, traps, party sync) is unchanged
+> **Version 3.23.1**
+> - Combat settings: fixed the **Debuff (single target)**, **Normal attack spell**, and **Alternate attack spell** cast-cap tooltips claiming "casts per room" when the engine has always enforced them per-target (a fresh mob gets its own allowance) — misled players into thinking the cap wasn't being honored when many mobs died in quick succession
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

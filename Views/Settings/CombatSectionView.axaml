@@ -361,7 +361,7 @@
                     <NumericUpDown Grid.Column="3"
                                    Value="{Binding SingleTargetDebuffMaxCastsPerRoom, Mode=TwoWay}"
                                    Minimum="0" Maximum="100" FormatString="0" Increment="1" Width="100" HorizontalAlignment="Left"
-                                   ToolTip.Tip="Casts per room — blank = no limit, 0 = never cast (off), N = at most N."/>
+                                   ToolTip.Tip="Casts per target — blank = no limit, 0 = never cast (off), N = at most N."/>
                     <NumericUpDown Grid.Column="4"
                                    Value="{Binding SingleTargetDebuffMinManaPerCast, Mode=TwoWay}"
                                    Minimum="0" Maximum="{Binding SpellManaMax}" FormatString="0" Increment="1" Width="130" HorizontalAlignment="Left"
@@ -393,7 +393,7 @@
                     <NumericUpDown Grid.Column="3"
                                    Value="{Binding NormalAttackSpellMaxCastsPerRoom, Mode=TwoWay}"
                                    Minimum="0" Maximum="100" FormatString="0" Increment="1" Width="100" HorizontalAlignment="Left"
-                                   ToolTip.Tip="Casts per room — blank = no limit, 0 = never cast (off), N = at most N."/>
+                                   ToolTip.Tip="Casts per target — blank = no limit, 0 = never cast (off), N = at most N."/>
                     <NumericUpDown Grid.Column="4"
                                    Value="{Binding NormalAttackSpellMinManaPerCast, Mode=TwoWay}"
                                    Minimum="0" Maximum="{Binding SpellManaMax}" FormatString="0" Increment="1" Width="130" HorizontalAlignment="Left"
@@ -421,7 +421,7 @@
                     <NumericUpDown Grid.Column="3"
                                    Value="{Binding AlternateAttackSpellMaxCastsPerRoom, Mode=TwoWay}"
                                    Minimum="0" Maximum="100" FormatString="0" Increment="1" Width="100" HorizontalAlignment="Left"
-                                   ToolTip.Tip="Casts per room — blank = no limit, 0 = never cast (off), N = at most N."/>
+                                   ToolTip.Tip="Casts per target — blank = no limit, 0 = never cast (off), N = at most N."/>
                     <NumericUpDown Grid.Column="4"
                                    Value="{Binding AlternateAttackSpellMinManaPerCast, Mode=TwoWay}"
                                    Minimum="0" Maximum="{Binding SpellManaMax}" FormatString="0" Increment="1" Width="130" HorizontalAlignment="Left"
