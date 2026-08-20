@@ -80,6 +80,18 @@ public sealed class PromptParser : IDisposable
         if (maxMa > 0 && !knownNoMana) State.MaxMa = maxMa;
     }
 
+    // Adjust MaxHp / MaxMa by a signed delta when the worn set's flat pool
+    // bonus changes mid-session (see Game.Health.EquipmentMaxPoolSync) —
+    // composes with whatever base the ratchet/stat-screen already
+    // established rather than guessing an absolute ceiling. Routed through
+    // the parser to keep it the sole writer of the max fields. Floors each
+    // pool at 0 so an unexpected combination of deltas can't go negative.
+    public void ApplyEquipmentMaxDelta(int hpDelta, int maDelta)
+    {
+        if (hpDelta != 0) State.MaxHp = Math.Max(0, State.MaxHp + hpDelta);
+        if (maDelta != 0) State.MaxMa = Math.Max(0, State.MaxMa + maDelta);
+    }
+
     public void Dispose()
     {
         if (_disposed) return;

@@ -1,8 +1,8 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.22.20**
-> - Item-cast buffs (e.g. `#emerald-tipped crozier`) now free a `Worn`-bucketed off-hand blocker (a charm/skull the game's `i` text doesn't label `Off-Hand`) before wielding a two-handed cast item, and re-equip it after — previously the whole equip/use/restore sequence silently failed every recast
+> **Version 3.22.21**
+> - Fixed max HP/mana drifting stale when equipping/removing gear that grants a flat pool bonus (e.g. severed head of Goru-Nezar's +50 mana) — the health engine's rest and "pool is full" checks now track the change immediately instead of waiting on a manual stat-screen check
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

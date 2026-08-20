@@ -2,6 +2,10 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a brand-new feature or a large (~1000+ line) rewrite/expansion of an existing one, **PATCH** = bug fixes AND ordinary enhancements to existing features (one increment per bug report handled or per enhancement).
 
+## 3.22.21
+
+- Fixed max HP/mana drifting stale when equipping/removing gear that grants a flat pool bonus (e.g. severed head of Goru-Nezar's +50 mana) — the health engine's rest and "pool is full" checks now track the change immediately instead of waiting on a manual stat-screen check
+
 ## 3.22.20
 
 - Item-cast buffs (e.g. `#emerald-tipped crozier`) now free a `Worn`-bucketed off-hand blocker (a charm/skull the game's `i` text doesn't label `Off-Hand`) before wielding a two-handed cast item, and re-equip it after — previously the whole equip/use/restore sequence silently failed every recast

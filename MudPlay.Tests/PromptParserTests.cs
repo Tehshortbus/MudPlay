@@ -145,6 +145,41 @@ public sealed class PromptParserTests
     }
 
     [Fact]
+    public void EquipmentMaxDelta_ComposesWithPromptRatchet()
+    {
+        var (scanner, state, parser) = Setup();
+        Feed(scanner, "[HP=400/MA=184]:");            // ratchet learns 184.
+
+        parser.ApplyEquipmentMaxDelta(0, 50);          // equip +50-mana item.
+        Assert.Equal(234, state.MaxMa);
+
+        parser.ApplyEquipmentMaxDelta(0, -50);         // remove it again.
+        Assert.Equal(184, state.MaxMa);
+    }
+
+    [Fact]
+    public void EquipmentMaxDelta_FloorsAtZero()
+    {
+        var (scanner, state, parser) = Setup();
+        Feed(scanner, "[HP=20/MA=10]:");
+
+        parser.ApplyEquipmentMaxDelta(-100, -100);
+        Assert.Equal(0, state.MaxHp);
+        Assert.Equal(0, state.MaxMa);
+    }
+
+    [Fact]
+    public void EquipmentMaxDelta_ZeroDelta_LeavesMaxUntouched()
+    {
+        var (scanner, state, parser) = Setup();
+        Feed(scanner, "[HP=400/MA=184]:");
+
+        parser.ApplyEquipmentMaxDelta(0, 0);
+        Assert.Equal(400, state.MaxHp);
+        Assert.Equal(184, state.MaxMa);
+    }
+
+    [Fact]
     public void NoPromptDataYet_HasPromptDataIsFalse()
     {
         var (_, state, _) = Setup();

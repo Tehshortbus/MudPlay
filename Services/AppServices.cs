@@ -3610,6 +3610,33 @@ public sealed class AppServices
                 ? Game.Inventory.EquipmentSlotMap.InventorySlotForWornCode(worn)
                 : null);
         Profile.ProfileLoaded += _ => Inventory.MarkStale();
+
+        // Equipment-driven max HP/mana pool sync. A worn item can carry a flat
+        // pool bonus (Items.Abil 88 = +Max HP, Abil 69 = +Max Mana — e.g. the
+        // severed head of Goru-Nezar's +50 mana); PromptParser's high-water
+        // ratchet and periodic stat-screen resync don't react to that changing
+        // mid-session, so equip/remove could leave the health engine's rest and
+        // "pool is full" checks reading a stale ceiling. Reused
+        // CharacterCalculator.AggregateEquipmentStats (already the Character
+        // Info tab's live worn-set bonus reader) resolves the current total;
+        // reseeded (no delta applied) on profile load / active game-data set
+        // change so a character or realm swap doesn't diff against a
+        // now-meaningless prior total.
+        var equipmentMaxSync = new Game.Health.EquipmentMaxPoolSync(
+            equipped =>
+            {
+                Game.Calculators.EquipmentStatSummary totals =
+                    Game.Calculators.CharacterCalculator.AggregateEquipmentStats(equipped, GameData).Totals;
+                return (totals.PlusMaxHp, totals.PlusMaxMana);
+            },
+            Player.ApplyEquipmentMaxDelta);
+        Inventory.Changed += () =>
+        {
+            if (Inventory.IsLoaded) equipmentMaxSync.OnEquippedItemsChanged(Inventory.Snapshot.EquippedItems);
+        };
+        Profile.ProfileLoaded += _ => equipmentMaxSync.Reset();
+        GameData.ActiveSetChanged += _ => equipmentMaxSync.Reset();
+
         // Death-recovery deathpile capture. RoomTracker.NoteDeath
         // records the worn + carried items from the last-known `i` snapshot
         // onto the death record; DeathRecoveryManager.SimulateDeath captures
