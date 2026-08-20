@@ -1,10 +1,8 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.22.19**
-> - Navigation: the search-box dropdown now **groups results by source** — saved GOTO locations first, then boss-table targets, then rooms — instead of interleaving them by relevance
-> - Navigation: **door bashing is now rest-aware and uncapped** — a bashable door is bashed until it opens (no fixed attempt cap), pausing to rest to your rest-max whenever HP dips to the rest trigger; the old "Max bash attempts" setting is removed (picking keeps its cap)
-> - Combat: the **"clear hostiles when sneak broken by see-hidden monster"** toggle now force-clears the room with **Auto-Combat on or off** (previously combat-off only)
+> **Version 3.23.0**
+> - New **Sprint Mode** toolbar toggle: movement never pauses to rest/heal-wait (heal spells still cast normally), and Auto Combat is forced off for the duration and restored on exit — the only thing that stops a sprinting character is death; all other safety pathing (avoid rooms, hazards, traps, party sync) is unchanged
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

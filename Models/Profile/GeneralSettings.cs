@@ -122,6 +122,22 @@ public sealed class GeneralSettings
     // auto-mode toggles.
     public bool DisableHangups { get; set; }
 
+    // ----- Sprint Mode -------------------------------------------------
+
+    // When true, Game.Health.HealthManager never pauses movement to rest/heal-wait
+    // (both HealthRecoveryGate and ManaRecoveryGate stay suppressed, mirroring the
+    // per-waypoint DoNotRest mechanism but globally) — configured heal spells still
+    // fire on their normal HP/MA thresholds, and every other safety pause (avoid
+    // rooms, hazard/trap detours, party sync, mortally-wounded) is untouched. Turning
+    // it on also forces Auto Combat off for the duration (restored on turning it back
+    // off) since no MajorMUD mechanic blocks movement due to being engaged, so a
+    // "just keep moving" mode has nothing to fight for. The only thing that actually
+    // stops a sprinting character is death. Default false: this is a deliberate
+    // "arrive or die" opt-in, never the surprise. Char-tier; surfaced as the "Sprint
+    // Mode" toolbar toggle whose pressed state is remembered per character, like the
+    // auto-mode toggles.
+    public bool SprintMode { get; set; }
+
     // ----- Re-enable auto-actions on reconnect -----------------------
     // One flag per auto-action (1-to-1 with AutoMode above). When a
     // reconnect happens (a TCP connect following a prior in-session

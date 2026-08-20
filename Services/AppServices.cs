@@ -3153,16 +3153,18 @@ public sealed class AppServices
             isLeaderWaited: () => PartyState.SelfIsLeader && PartyEssentials.IsPaused,
             isSelfPoisoned: () => Conditions.IsPoisoned);
 
-        // Per-waypoint "do not rest in this room": true while a loop is running
-        // and the room we're standing in is one of its waypoints flagged
-        // DoNotRest — HealthManager then suppresses the rest hold so the loop
-        // advances out. Matched by room key (per-room), so it clears the instant
-        // the loop steps into any other room. Loops only.
+        // Rest-skip has two independent sources, either one suppresses both rest
+        // gates: (1) Sprint Mode — a global "never pause to rest" toggle (see
+        // ReadSprintMode); (2) the per-waypoint "do not rest in this room" flag —
+        // true while a loop is running and the room we're standing in is one of
+        // its waypoints flagged DoNotRest. Matched by room key (per-room), so it
+        // clears the instant the loop steps into any other room. Loops only.
         Health.SetDoNotRestSelector(() =>
-            LoopRunner.State != Game.Map.LoopState.Idle
-            && RoomTracker.State.CurrentRoom is { } here
-            && LoopRunner.CurrentLoop?.Waypoints is { } wps
-            && wps.Any(w => w.DoNotRest && w.Key.Equals(here.Key)));
+            ReadSprintMode()
+            || (LoopRunner.State != Game.Map.LoopState.Idle
+                && RoomTracker.State.CurrentRoom is { } here
+                && LoopRunner.CurrentLoop?.Waypoints is { } wps
+                && wps.Any(w => w.DoNotRest && w.Key.Equals(here.Key))));
 
         // Server-side resting state clears on move; drop our latch
         // too so the next threshold breach actually fires `rest`
@@ -5269,6 +5271,13 @@ public sealed class AppServices
     // without restarting an engine.
     private bool ReadDisableHangups() =>
         ReadSection<Models.Profile.GeneralSettings>(Profile.Current, "General").DisableHangups;
+
+    // Live read of Sprint Mode from the char-tier General section — the same
+    // store the toolbar toggle writes. Wired into HealthManager's rest-skip
+    // selector (see the SetDoNotRestSelector call above) so flipping the
+    // toggle takes effect without restarting an engine.
+    private bool ReadSprintMode() =>
+        ReadSection<Models.Profile.GeneralSettings>(Profile.Current, "General").SprintMode;
 
     // Buff-duration source: map a 4-letter cast code to the
     // buff's Models.GameData.MessageRecord.CasterMessage

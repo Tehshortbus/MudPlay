@@ -32,6 +32,8 @@
     <StreamGeometry x:Key="IconPlay">M7 5 V19 L19 12 Z</StreamGeometry>
     <StreamGeometry x:Key="IconPause">M8 5 V19 M16 5 V19</StreamGeometry>
     <StreamGeometry x:Key="IconStop">M6 6 H18 V18 H6 Z</StreamGeometry>
+    <!-- Sprint Mode: fast-forward chevrons — never stop moving. -->
+    <StreamGeometry x:Key="IconSprint">M3 5 L11 12 L3 19 M12 5 L20 12 L12 19</StreamGeometry>
 
     <!-- Capture / history -->
     <StreamGeometry x:Key="IconHistory">M21 12 A9 9 0 1 1 12 3 A9 9 0 1 1 21 12 Z M12 7 V12 L15 14 M3 12 H5</StreamGeometry>

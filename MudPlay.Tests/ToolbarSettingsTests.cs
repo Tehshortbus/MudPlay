@@ -26,6 +26,7 @@ public sealed class ToolbarSettingsTests
         "MovementStart",
         "MovementPause",
         "MovementStop",
+        "ToggleSprintMode",
         null,
         "OpenParty",
         "OpenBackscroll",
