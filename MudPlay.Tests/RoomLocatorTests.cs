@@ -47,12 +47,21 @@ public sealed class RoomLocatorTests : IDisposable
     //   1/10, 1/11 "Twin Hall" (N,E) — north leads to two "Hall" rooms with
     //        identical exits (1 shape); east leads to "Larder"/"Cellar"
     //        (2 shapes), so east should be preferred.
-    //   1/12 "Twin Hall" (N only) — east is unusable against {1/10, 1/12}.
+    //   1/12 "Twin Hall" (N only) — paired with 1/10, 1/11 against {N,E}:
+    //        east must be marked unusable (1/12 lacks it), not silently
+    //        scored off the other two, which would wrongly outrank north.
     //   1/20, 1/21 "Long Corridor" (N) — both north neighbours are the same
     //        shape, but north is still the only usable, hence chosen, exit.
     //   1/30, 1/31 "Crossing" (N,E) — north and east both split the pair
     //        into 2 distinct shapes; north wins the tie by compass order.
     //   1/40, 1/41 "Dead End" — no exits at all; nothing usable to move on.
+    //   1/50, 1/51 "Cache" (N) — 1/50's N target (1/950) is absent from the
+    //        graph, so GetRoom resolves it to null; north must come back
+    //        unusable, not merely low-scoring.
+    //   1/60 "Twin Gate" (N,S) and 1/61 "Twin Gate" (N,S,E) — same name,
+    //        1/61's mask is a strict superset of 1/60's. Observing {N,S}
+    //        must resolve to 1/60 alone via the exact bucket, never widen
+    //        to include 1/61.
     private const string FixtureGraph = """
         [
           { "Map Number": 1, "Room Number": 1, "Name": "Narrow Road",
@@ -122,6 +131,20 @@ public sealed class RoomLocatorTests : IDisposable
             "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
           { "Map Number": 1, "Room Number": 41, "Name": "Dead End",
             "N": "0", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+
+          { "Map Number": 1, "Room Number": 50, "Name": "Cache",
+            "N": "1/950", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 51, "Name": "Cache",
+            "N": "1/100", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+
+          { "Map Number": 1, "Room Number": 60, "Name": "Twin Gate",
+            "N": "1/911", "S": "1/912", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 61, "Name": "Twin Gate",
+            "N": "1/913", "S": "1/914", "E": "1/915", "W": "0",
             "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
         ]
         """;
@@ -147,6 +170,19 @@ public sealed class RoomLocatorTests : IDisposable
     }
 
     [Fact]
+    public void Seed_prefers_the_exact_bucket_over_the_superset_when_both_would_match()
+    {
+        // 1/61's mask is a strict superset of 1/60's under the same name, so
+        // a Seed that widened unconditionally (or before trying the exact
+        // bucket) would admit both. The exact bucket alone holds only 1/60.
+        RoomLocator locator = BuildLocator();
+
+        IReadOnlyList<RoomKey> seeded = locator.Seed(Obs("Twin Gate", Direction.N, Direction.S));
+
+        Assert.Equal(new[] { new RoomKey(1, 60) }, seeded);
+    }
+
+    [Fact]
     public void ChooseSplittingExit_prefers_the_direction_with_the_most_distinct_neighbours()
     {
         RoomLocator locator = BuildLocator();
@@ -161,10 +197,14 @@ public sealed class RoomLocatorTests : IDisposable
     [Fact]
     public void ChooseSplittingExit_skips_a_direction_a_candidate_lacks()
     {
+        // 1/10 and 1/11 both have east leading to a differently-named room
+        // (2 shapes) — enough to outrank north (1 shape) if east's missing
+        // candidate (1/12) were silently dropped instead of disqualifying
+        // the whole direction. Only marking east unusable returns north.
         RoomLocator locator = BuildLocator();
 
         Direction? chosen = locator.ChooseSplittingExit(
-            new[] { new RoomKey(1, 10), new RoomKey(1, 12) },
+            new[] { new RoomKey(1, 10), new RoomKey(1, 11), new RoomKey(1, 12) },
             Obs("Twin Hall", Direction.N, Direction.E));
 
         Assert.Equal(Direction.N, chosen);
@@ -202,6 +242,23 @@ public sealed class RoomLocatorTests : IDisposable
         Direction? chosen = locator.ChooseSplittingExit(
             new[] { new RoomKey(1, 40), new RoomKey(1, 41) },
             Obs("Dead End"));
+
+        Assert.Null(chosen);
+    }
+
+    [Fact]
+    public void ChooseSplittingExit_returns_null_when_a_listed_exits_target_is_unresolved()
+    {
+        // North is the only listed exit and both candidates have it, but
+        // 1/50's N target (1/950) isn't in the graph — GetRoom(exit.Target)
+        // resolves to null, so north must come back unusable rather than
+        // being scored (this is the branch the empty-Exits "Dead End" case
+        // above never reaches).
+        RoomLocator locator = BuildLocator();
+
+        Direction? chosen = locator.ChooseSplittingExit(
+            new[] { new RoomKey(1, 50), new RoomKey(1, 51) },
+            Obs("Cache", Direction.N));
 
         Assert.Null(chosen);
     }
