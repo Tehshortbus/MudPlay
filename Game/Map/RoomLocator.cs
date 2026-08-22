@@ -41,4 +41,62 @@ public sealed class RoomLocator
                 $"Seed('{observation.Name}'): exact empty, superset gave {wide.Count}.");
         return wide;
     }
+
+    // The listed exit that splits the candidate set furthest.
+    //
+    // Every candidate must have the exit and the graph must know where it
+    // leads — otherwise taking it presupposes which candidate we are, which
+    // is the question being asked. Among the usable ones, best is whichever
+    // reaches the most different-LOOKING rooms, since only a difference the
+    // board can show is evidence.
+    //
+    // A direction that splits nothing is still worth taking: it carries the
+    // whole set forward to a room where the neighbours do differ. Ties go to
+    // the first direction in compass order so a walk is reproducible.
+    //
+    // Null when no listed exit is usable at all — the walk should stop.
+    public Direction? ChooseSplittingExit(IReadOnlyCollection<RoomKey> candidates, RoomObservation here)
+    {
+        ArgumentNullException.ThrowIfNull(candidates);
+        if (candidates.Count == 0) return null;
+
+        Direction? best = null;
+        int bestShapes = 0;
+
+        // 0..9 only: Teleport (10) is synthesized and never a listed exit.
+        for (int i = 0; i <= (int)Direction.D; i++)
+        {
+            var dir = (Direction)i;
+            if (!here.Exits.Contains(dir)) continue;
+
+            var shapes = new HashSet<(string Name, uint ExitMask)>();
+            bool usable = true;
+
+            foreach (RoomKey candidate in candidates)
+            {
+                Room? source = _graph.GetRoom(candidate);
+                if (source is null || !source.Exits.TryGetValue(dir, out RoomExit exit))
+                {
+                    usable = false;
+                    break;
+                }
+                Room? destination = _graph.GetRoom(exit.Target);
+                if (destination is null)
+                {
+                    usable = false;
+                    break;
+                }
+                shapes.Add((destination.Name, destination.ExitMask));
+            }
+
+            if (!usable) continue;
+            if (best is null || shapes.Count > bestShapes)
+            {
+                best = dir;
+                bestShapes = shapes.Count;
+            }
+        }
+
+        return best;
+    }
 }
