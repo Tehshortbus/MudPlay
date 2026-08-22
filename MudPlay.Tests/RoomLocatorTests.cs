@@ -62,6 +62,13 @@ public sealed class RoomLocatorTests : IDisposable
     //        1/61's mask is a strict superset of 1/60's. Observing {N,S}
     //        must resolve to 1/60 alone via the exact bucket, never widen
     //        to include 1/61.
+    //   1/70, 1/71 "Hidden Alley" — 1/70 has a plain N exit only; 1/71 has
+    //        N plus a hidden E, so its displayed mask ({N}) is a strict
+    //        subset of its own graph mask ({N,E}) and happens to collide
+    //        with 1/70's. Observing {N} at 1/71 must still return 1/71 —
+    //        an index keyed on the full graph mask would bucket 1/71 under
+    //        {N,E} instead, so the exact lookup for {N} would hit only
+    //        1/70 and silently exclude the room actually being observed.
     private const string FixtureGraph = """
         [
           { "Map Number": 1, "Room Number": 1, "Name": "Narrow Road",
@@ -145,6 +152,13 @@ public sealed class RoomLocatorTests : IDisposable
             "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
           { "Map Number": 1, "Room Number": 61, "Name": "Twin Gate",
             "N": "1/913", "S": "1/914", "E": "1/915", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+
+          { "Map Number": 1, "Room Number": 70, "Name": "Hidden Alley",
+            "N": "1/916", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 71, "Name": "Hidden Alley",
+            "N": "1/917", "S": "0", "E": "1/918 (Hidden)", "W": "0",
             "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
         ]
         """;
@@ -180,6 +194,20 @@ public sealed class RoomLocatorTests : IDisposable
         IReadOnlyList<RoomKey> seeded = locator.Seed(Obs("Twin Gate", Direction.N, Direction.S));
 
         Assert.Equal(new[] { new RoomKey(1, 60) }, seeded);
+    }
+
+    [Fact]
+    public void Seed_includes_a_room_with_a_hidden_exit_even_when_its_full_mask_collides_with_a_twin()
+    {
+        // Regression: an index keyed on the graph's FULL exit mask buckets
+        // 1/71 (N + hidden E) under {N,E}, so observing what the board
+        // actually shows at 1/71 — {N} — would land in 1/70's bucket alone
+        // and silently exclude the room being observed.
+        RoomLocator locator = BuildLocator();
+
+        IReadOnlyList<RoomKey> seeded = locator.Seed(Obs("Hidden Alley", Direction.N));
+
+        Assert.Contains(new RoomKey(1, 71), seeded);
     }
 
     [Fact]
