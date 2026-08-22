@@ -18,21 +18,35 @@ public sealed class RoomLocator
     private readonly RoomGraphManager _graph;
     private readonly LogService? _log;
 
+    // Own exact-bucket index, keyed on what a display would actually show —
+    // NOT RoomGraphManager's (Name, full ExitMask) index, which is keyed on
+    // every exit the graph carries, hidden and text ones included.
+    // RoomTracker's tier-1 promotion depends on that full-mask index staying
+    // exactly as it is, so this seeds from a private one instead of touching
+    // it. Without this a room with a hidden or text exit is never a member
+    // of its own exact bucket by its own displayed mask — and if some
+    // unrelated room's full mask happens to match, Seed would return THAT
+    // room and never fall through to the superset search that would have
+    // found the true one. Rebuilt whenever the graph reloads.
+    private readonly Dictionary<(string Name, uint DisplayedMask), List<RoomKey>> _byDisplayedExits = new();
+
     public RoomLocator(RoomGraphManager graph, LogService? log = null)
     {
         ArgumentNullException.ThrowIfNull(graph);
         _graph = graph;
         _log = log;
+        _graph.GraphReloaded += RebuildDisplayedIndex;
+        RebuildDisplayedIndex();
     }
 
-    // Every room consistent with one display. Exact (name, exit-set) first;
-    // widen to the superset reading only if that admits nothing, since a
-    // closed door or unsearched hidden exit drops a bit the graph still
-    // carries — and "nowhere" is the wrong answer about a character that is
-    // plainly somewhere.
+    // Every room consistent with one display. Exact (name, displayed-mask)
+    // first, against the index above; widen to the superset reading only if
+    // that admits nothing, since a closed door or unsearched hidden exit
+    // drops a bit the graph still carries — and "nowhere" is the wrong
+    // answer about a character that is plainly somewhere.
     public IReadOnlyList<RoomKey> Seed(RoomObservation observation)
     {
-        IReadOnlyList<RoomKey> exact = _graph.FindCandidates(observation.Name, observation.Exits);
+        IReadOnlyList<RoomKey> exact = LookupDisplayed(observation.Name, observation.Exits);
         if (exact.Count > 0) return exact;
 
         IReadOnlyList<RoomKey> wide = _graph.FindByNameCoveringExits(observation.Name, observation.Exits);
@@ -98,5 +112,46 @@ public sealed class RoomLocator
         }
 
         return best;
+    }
+
+    private IReadOnlyList<RoomKey> LookupDisplayed(string name, IReadOnlySet<Direction> exits)
+    {
+        if (string.IsNullOrEmpty(name)) return Array.Empty<RoomKey>();
+        uint mask = 0;
+        foreach (Direction d in exits) mask |= 1u << (int)d;
+        return _byDisplayedExits.TryGetValue((name, mask), out List<RoomKey>? keys)
+            ? keys
+            : Array.Empty<RoomKey>();
+    }
+
+    private void RebuildDisplayedIndex()
+    {
+        _byDisplayedExits.Clear();
+        foreach (Room room in _graph.Rooms)
+        {
+            var key = (room.Name, DisplayedMask(room));
+            if (!_byDisplayedExits.TryGetValue(key, out List<RoomKey>? bucket))
+                _byDisplayedExits[key] = bucket = new List<RoomKey>();
+            bucket.Add(room.Key);
+        }
+    }
+
+    // What "Obvious exits:" actually prints for room, not every exit the row
+    // carries: SearchableHidden and MultiActionHidden don't appear on that
+    // line at all, and a Text exit crosses via a typed command rather than
+    // showing as a listed compass direction. 0..9 only — Teleport (10) is
+    // synthesized and never a row exit to begin with.
+    private static uint DisplayedMask(Room room)
+    {
+        uint mask = 0;
+        for (int i = 0; i <= (int)Direction.D; i++)
+        {
+            var dir = (Direction)i;
+            if (!room.Exits.TryGetValue(dir, out RoomExit exit)) continue;
+            if (exit.Hint is RoomExitHint.SearchableHidden or RoomExitHint.MultiActionHidden or RoomExitHint.Text)
+                continue;
+            mask |= 1u << i;
+        }
+        return mask;
     }
 }
