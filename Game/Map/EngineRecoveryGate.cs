@@ -76,6 +76,16 @@ public sealed class EngineRecoveryGate
     // constraint fed to FootprintMatcher.Step / StepBlind on its landing.
     private Direction _lastBacktrackReverse;
 
+    // Most recent genuine room render the wire produced for OUR OWN
+    // position — never a look-sweep peek of a neighbour (see
+    // OnRoomObserved, which skips caching while Sweeping). Seeds a forward
+    // locator walk when RoomTracker.State.CurrentRoom is unavailable (e.g.
+    // a genuinely Lost tracker has no Room object at all), and — even when
+    // it is available — is what a display actually showed rather than a
+    // graph Room's full exit mask, which can include hidden/text exits the
+    // display never printed.
+    private RoomObservation? _lastObserved;
+
     // What to run once the room clears (WaitingCombatClear resume).
     private Action? _combatClearResume;
 
@@ -160,6 +170,11 @@ public sealed class EngineRecoveryGate
     // neighbour handed to the sweep.
     public void OnRoomObserved(RoomObservation obs)
     {
+        // Cache every genuine render of OUR OWN room — everything except a
+        // Sweeping-phase call, which is a peeked NEIGHBOUR's display, not
+        // where we're actually standing.
+        if (_tier3Phase != Tier3Phase.Sweeping) _lastObserved = obs;
+
         switch (_tier3Phase)
         {
             case Tier3Phase.AwaitingLanding:
@@ -213,6 +228,7 @@ public sealed class EngineRecoveryGate
         _tier3.Clear();
         ResetTier3Orchestration();
         _awaitingAuthoritative = false;
+        _lastObserved = null;
         CurrentTier = TierLevel.Tier1;
 
         Room? here = _tracker.State.CurrentRoom;
@@ -233,6 +249,7 @@ public sealed class EngineRecoveryGate
         _tier3.Clear();
         ResetTier3Orchestration();
         _awaitingAuthoritative = false;
+        _lastObserved = null;
         SetTier(TierLevel.Tier1, "detach");
     }
 
@@ -480,8 +497,14 @@ public sealed class EngineRecoveryGate
 
         if (_anchor is null)
         {
-            // No anchor — can't backtrack. Terminal failure.
-            FailTier3("no anchor available; backtrack impossible");
+            // An anchor is what reverse-walking needs — somewhere to walk
+            // back TO. Without one (Attach seeds it from CurrentRoom, and a
+            // party follower who's gone genuinely Lost has no CurrentRoom at
+            // all — the gate sat inert the whole time it followed, so it
+            // never got a chance to anchor) reverse-walk has nothing to
+            // offer. Forward-walking only needs a cached observation, not an
+            // anchor — go straight there instead of failing outright.
+            BeginForwardWalk();
             return;
         }
 
@@ -700,21 +723,22 @@ public sealed class EngineRecoveryGate
         _engine.SendBacktrackMove(_lastBacktrackReverse);
     }
 
-    // Seed a forward LocatorWalk from wherever the tracker currently
-    // believes we are (the same source EscalateToTier3 uses to seed _tier3
-    // in the first place) and take its first step.
+    // Seed a forward LocatorWalk from the last genuine room render the wire
+    // produced (not RoomTracker.State.CurrentRoom — see _lastObserved) and
+    // take its first step. Doesn't need an anchor OR a Room object: a
+    // genuinely Lost tracker has neither, and the cached wire text is
+    // exactly what the display showed, unlike a graph Room's full exit
+    // mask, which can carry hidden/text exits no display ever printed.
     private void BeginForwardWalk()
     {
         if (_engine is null) return;
-        Room? here = _tracker.State.CurrentRoom;
-        if (here is null)
+        if (_lastObserved is not { } obs)
         {
-            FailTier3("no current room to seed the forward locator walk");
+            FailTier3("no observation available to seed the forward locator walk");
             return;
         }
 
         _forwardWalk ??= new LocatorWalk(_locator, _tier3, _engine.SendBacktrackMove);
-        var obs = new RoomObservation(here.Name, ExitMaskToSet(here.ExitMask));
 
         // _tier3 may already carry free narrowing (an in-place look-sweep
         // costs no movement — see BeginSweepOrAdvance/OnSweepComplete) that
@@ -730,7 +754,7 @@ public sealed class EngineRecoveryGate
         if (candidates.Count == 0) candidates = new HashSet<RoomKey>(freshSeed);
 
         _log?.Log(LogSeverity.Info, LogSource,
-            $"Tier3.forward: no executed history to reverse — starting forward locator walk from '{here.Name}' ({here.Key}) with {candidates.Count} candidate(s)");
+            $"Tier3.forward: no executed history to reverse — starting forward locator walk from '{obs.Name}' with {candidates.Count} candidate(s)");
 
         // Set the phase before calling in — BeginFrom can send the first
         // move synchronously, and a reentrant landing must see

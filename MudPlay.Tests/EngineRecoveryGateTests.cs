@@ -266,6 +266,41 @@ public sealed class EngineRecoveryGateTests : IDisposable
         ]
         """;
 
+    // Two "Crypt" twins (1/2, 1/3) that are indistinguishable from what a
+    // display actually shows: both list only a north exit. 1/3 ALSO has a
+    // west exit, but it's (Hidden) — RoomLocator's own displayed-mask index
+    // (built from what "Obvious exits:" would print) excludes it, so both
+    // twins share the SAME displayed bucket. Their full graph masks differ
+    // ({N} vs {N,W}) — a seed built from the full mask would exact-miss both
+    // buckets and fall through to the superset search, which (wrongly)
+    // narrows to just 1/3 with zero verification. North leads the twins to
+    // differently-named dead ends (Foo / Bar), so a real move can break them
+    // once the seed is genuinely {1/2, 1/3}.
+    private const string HiddenExitCryptGraphJson = """
+        [
+          { "Map Number": 1, "Room Number": 2, "Name": "Crypt",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "1/20", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 3, "Name": "Crypt",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "1/21", "S": "0", "E": "0", "W": "1/22 (Hidden)",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 20, "Name": "Foo",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "0", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 21, "Name": "Bar",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "0", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 22, "Name": "Vault",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "0", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+        ]
+        """;
+
     private (RoomGraphManager Graph, RoomTracker Tracker) NewGraphAndTracker(string set, string json)
     {
         Directory.CreateDirectory(Path.Combine(_root, set));
@@ -648,6 +683,7 @@ public sealed class EngineRecoveryGateTests : IDisposable
 
         ParkSuspectAtFork(tracker, Direction.N, Direction.E);
         gate.Attach(engine);   // anchor seeds the fork; NO NoteEngineStepSent calls
+        gate.OnRoomObserved(Obs("Fork", Direction.N, Direction.E));   // caches the wire render
 
         gate.NoteSuspectedMismatch("resumed after following, no executed history");
         engine.NextPlanned = Direction.S;   // not an exit of the fork {N,E}
@@ -673,6 +709,7 @@ public sealed class EngineRecoveryGateTests : IDisposable
 
         ParkSuspectAtFork(tracker, Direction.N, Direction.E);
         gate.Attach(engine);
+        gate.OnRoomObserved(Obs("Fork", Direction.N, Direction.E));   // caches the wire render
 
         gate.NoteSuspectedMismatch("resumed after following, no executed history");
         engine.NextPlanned = Direction.S;
@@ -709,6 +746,7 @@ public sealed class EngineRecoveryGateTests : IDisposable
         tracker.NoteRoomObserved(Obs("Nowhere", Direction.W));   // drop to Suspect, keep the Twin guess
 
         gate.Attach(engine);
+        gate.OnRoomObserved(Obs("Twin", Direction.N));   // caches the wire render
         gate.NoteSuspectedMismatch("resumed after following, no executed history");
         engine.NextPlanned = Direction.S;   // not an exit of Twin {N}
         gate.MayProceedWithPlannedStep();
@@ -741,6 +779,7 @@ public sealed class EngineRecoveryGateTests : IDisposable
 
         ParkSuspectAtFork(tracker, Direction.N, Direction.E);
         gate.Attach(engine);
+        gate.OnRoomObserved(Obs("Fork", Direction.N, Direction.E));   // caches the wire render
         gate.NoteSuspectedMismatch("resumed after following, no executed history");
         engine.NextPlanned = Direction.S;   // not an exit of the fork {N,E}
         gate.MayProceedWithPlannedStep();
@@ -789,6 +828,7 @@ public sealed class EngineRecoveryGateTests : IDisposable
 
         gate.Attach(engine);                     // anchor seeds one of the 3 Fox twins
         gate.SetLookSweepForTests(sweep);
+        gate.OnRoomObserved(Obs("Fox", Direction.N, Direction.E));   // caches the wire render
         gate.NoteSuspectedMismatch("resumed after following, no executed history");
         engine.NextPlanned = Direction.S;         // not an exit of Fox {N,E}
         gate.MayProceedWithPlannedStep();
@@ -807,5 +847,81 @@ public sealed class EngineRecoveryGateTests : IDisposable
         // splitting exit, since only there does the (wrongly re-included)
         // third twin diverge.
         Assert.Equal(Direction.N, Assert.Single(engine.Backtracks));
+    }
+
+    // THE user's bug: a party follower's engine sits inert (Attach never
+    // ran) for as long as it follows. If the character actually goes Lost
+    // while following — the wire showed a room the graph doesn't
+    // recognize, so RoomTracker.LandFromCandidateSearch's zero-candidate
+    // branch lands at Lost with CurrentRoom null — Attach then seeds
+    // _anchor from that null CurrentRoom, so it's null too. Reverse-walk
+    // has nothing to walk back to AND nothing to seed a footprint from; the
+    // only thing left is whatever the wire displayed just before Lost hit,
+    // cached via the gate's own OnRoomObserved feed. That must still send a
+    // move, not declare defeat having tried nothing.
+    [Fact]
+    public void Tier3_GenuinelyLostTracker_WalksForwardFromCachedObservation()
+    {
+        (RoomGraphManager graph, RoomTracker tracker) = NewGraphAndTracker("fwd-lost", TwinNeighbourGraphJson);
+        var gate = new EngineRecoveryGate(graph, tracker) { TryResync = _ => true };
+        var engine = new RecordingEngine();
+
+        // A fresh (Unknown) tracker fed a display matching no graph room at
+        // all lands at Lost with CurrentRoom null.
+        tracker.NoteRoomObserved(Obs("Nowhere In The Graph"));
+        Assert.Equal(RoomConfidence.Lost, tracker.State.Confidence);
+        Assert.Null(tracker.State.CurrentRoom);
+
+        gate.Attach(engine);
+        Assert.Null(gate.Anchor);   // seeded from the null CurrentRoom
+
+        // The wire still displayed something real just before we noticed
+        // we were lost — the gate's own observation feed caches it
+        // independent of whatever the tracker made of it.
+        gate.OnRoomObserved(Obs("Fork", Direction.N, Direction.E));
+
+        gate.NoteSuspectedMismatch("resumed after following, genuinely lost");
+        gate.OnAuthoritativeResyncFailed();   // reaches EscalateToTier3 without needing CurrentRoom
+
+        Assert.Equal(TierLevel.Tier3, gate.CurrentTier);
+        // The bug: this used to fail on the null-anchor guard with zero
+        // moves sent. Now the forward walk picks up from the cached render.
+        Assert.NotEmpty(engine.Backtracks);
+        Assert.Equal(0, engine.AbortCount);
+    }
+
+    // The forward walk seeds RoomLocator from what the wire actually
+    // displayed, not a synthesized full graph mask. 1/3's west exit is
+    // (Hidden) — never shown in "Obvious exits:" — so a display of the
+    // Crypt twins' shared room only ever shows north. Feeding RoomLocator
+    // that genuinely-displayed set finds both twins (honestly ambiguous,
+    // since nothing distinguishes them from what's visible) and sends a
+    // real move to break them; feeding it a full mask that includes the
+    // undiscovered west exit would exact-miss RoomLocator's own index,
+    // fall through to the superset search, and wrongly commit to 1/3 alone
+    // with zero verification.
+    [Fact]
+    public void Tier3_ForwardWalk_SeedsFromDisplayedExits_NotAFullGraphMask()
+    {
+        (RoomGraphManager graph, RoomTracker tracker) = NewGraphAndTracker("fwd-displayed-exits", HiddenExitCryptGraphJson);
+        var gate = new EngineRecoveryGate(graph, tracker) { TryResync = _ => true };
+        var engine = new RecordingEngine();
+
+        gate.Attach(engine);   // fresh tracker: CurrentRoom null, anchor null
+        Assert.Null(gate.Anchor);
+
+        // West is hidden — a real render of either twin shows north only.
+        gate.OnRoomObserved(Obs("Crypt", Direction.N));
+
+        gate.NoteSuspectedMismatch("resumed after following, no executed history");
+        gate.OnAuthoritativeResyncFailed();
+
+        // Both twins share the displayed exit set {N}, so RoomLocator's
+        // exact bucket finds both — genuinely ambiguous from what's
+        // visible. North (the only exit the walk even knows about) splits
+        // them (Foo vs Bar), so a real move goes out rather than silently
+        // committing to one twin.
+        Assert.Equal(Direction.N, Assert.Single(engine.Backtracks));
+        Assert.Empty(engine.Resumes);
     }
 }
