@@ -189,6 +189,38 @@ public sealed class EngineRecoveryGateTests : IDisposable
         ]
         """;
 
+    // Two identically-named, identically-exited "Twin" dead ends whose own
+    // single exit (N) leads to two DIFFERENT rooms that are themselves
+    // name+exit identical ("Dead", no exits) — so a forward locator walk can
+    // take a step (N is usable) but that step teaches it nothing (both
+    // targets look the same), and the landing room has no further exits to
+    // try. Used to exercise the Ambiguous outcome with a real, non-zero
+    // candidate count and step count.
+    private const string TwinDeadEndGraphJson = """
+        [
+          { "Map Number": 1, "Room Number": 1, "Name": "Start",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "1/2", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 2, "Name": "Twin",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "1/10", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 3, "Name": "Twin",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "1/11", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 10, "Name": "Dead",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "0", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 11, "Name": "Dead",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "0", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+        ]
+        """;
+
     private (RoomGraphManager Graph, RoomTracker Tracker) NewGraphAndTracker(string set, string json)
     {
         Directory.CreateDirectory(Path.Combine(_root, set));
@@ -553,5 +585,100 @@ public sealed class EngineRecoveryGateTests : IDisposable
         Assert.Equal(new RoomKey(1, 2), Assert.Single(engine.Resumes));
         Assert.Equal(0, engine.AbortCount);
         Assert.Equal(TierLevel.Tier1, gate.CurrentTier);
+    }
+
+    // ----- forward locator walk (no executed history to reverse) -----
+
+    // The reported bug: a party follower's engine never sends a move while
+    // it's following (PartyFollowerMovementGate holds it), so when tier 3
+    // kicks in after following ends, _executedSinceAnchor is empty.
+    // AdvanceReverseWalk used to fail terminally right there, having sent
+    // nothing. It must now hand off to a forward locator walk instead.
+    [Fact]
+    public void Tier3_NoExecutedHistory_WalksForwardInsteadOfFailing()
+    {
+        (RoomGraphManager graph, RoomTracker tracker) = NewGraphAndTracker("fwd-nohist", TwinNeighbourGraphJson);
+        var gate = new EngineRecoveryGate(graph, tracker);
+        var engine = new RecordingEngine();
+
+        ParkSuspectAtFork(tracker, Direction.N, Direction.E);
+        gate.Attach(engine);   // anchor seeds the fork; NO NoteEngineStepSent calls
+
+        gate.NoteSuspectedMismatch("resumed after following, no executed history");
+        engine.NextPlanned = Direction.S;   // not an exit of the fork {N,E}
+        bool proceed = gate.MayProceedWithPlannedStep();
+
+        Assert.False(proceed);
+        Assert.Equal(TierLevel.Tier3, gate.CurrentTier);
+        // The bug: this used to be empty and the engine aborted having tried
+        // nothing. Now the forward walk's own splitting move went out.
+        Assert.NotEmpty(engine.Backtracks);
+        Assert.Equal(0, engine.AbortCount);
+    }
+
+    // Same zero-history trigger, but this time the forward walk's landing
+    // converges: the tracker resumes at the recovered room via the engine's
+    // normal ResumeAfterRecovery callback, same as a reverse-walk success.
+    [Fact]
+    public void Tier3_ForwardWalk_Converges_ResumesEngineAtRecoveredRoom()
+    {
+        (RoomGraphManager graph, RoomTracker tracker) = NewGraphAndTracker("fwd-converge", TwinNeighbourGraphJson);
+        var gate = new EngineRecoveryGate(graph, tracker);
+        var engine = new RecordingEngine();
+
+        ParkSuspectAtFork(tracker, Direction.N, Direction.E);
+        gate.Attach(engine);
+
+        gate.NoteSuspectedMismatch("resumed after following, no executed history");
+        engine.NextPlanned = Direction.S;
+        gate.MayProceedWithPlannedStep();
+
+        // North splits the twins furthest (Alpha vs Gamma) — that's the move
+        // the forward walk sends first.
+        Assert.Equal(Direction.N, Assert.Single(engine.Backtracks));
+
+        // Landing renders Alpha — only the 1/2 twin's north neighbour is
+        // Alpha, so this converges the walk onto Alpha (1/10), the room the
+        // character now physically stands in.
+        gate.OnRoomObserved(Obs("Alpha", Direction.S));
+
+        Assert.Equal(new RoomKey(1, 10), Assert.Single(engine.Resumes));
+        Assert.Equal(0, engine.AbortCount);
+        Assert.Equal(TierLevel.Tier1, gate.CurrentTier);
+        Assert.Equal(new RoomKey(1, 10), gate.Anchor);
+    }
+
+    // The forward walk can also fail to converge — its own landing leaves
+    // more than one candidate standing with nothing left to try. The failure
+    // reason must carry the REAL candidate count, not a canned message.
+    [Fact]
+    public void Tier3_ForwardWalk_Ambiguous_FailsWithTruthfulCandidateCount()
+    {
+        (RoomGraphManager graph, RoomTracker tracker) = NewGraphAndTracker("fwd-ambiguous", TwinDeadEndGraphJson);
+        var gate = new EngineRecoveryGate(graph, tracker);
+        var engine = new RecordingEngine();
+
+        tracker.SetLocated(new RoomKey(1, 1));
+        tracker.NoteMoveSent(Direction.N);
+        tracker.NoteRoomObserved(Obs("Twin", Direction.N));
+        tracker.NoteRoomObserved(Obs("Nowhere", Direction.W));   // drop to Suspect, keep the Twin guess
+
+        gate.Attach(engine);
+        gate.NoteSuspectedMismatch("resumed after following, no executed history");
+        engine.NextPlanned = Direction.S;   // not an exit of Twin {N}
+        gate.MayProceedWithPlannedStep();
+
+        RecoveryFailedEvent? failed = null;
+        gate.RecoveryFailed += e => failed = e;
+
+        // Twin's only exit (N) leads two candidates to two name+exit
+        // identical "Dead" rooms — the step is taken but teaches nothing,
+        // and Dead has no further exits to try.
+        Assert.Equal(Direction.N, Assert.Single(engine.Backtracks));
+        gate.OnRoomObserved(Obs("Dead"));
+
+        Assert.Equal(1, engine.AbortCount);
+        Assert.NotNull(failed);
+        Assert.Contains("2", failed!.Value.Detail);
     }
 }

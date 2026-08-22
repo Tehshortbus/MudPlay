@@ -49,6 +49,16 @@ public sealed class EngineRecoveryGate
     private RoomKey? _anchor;
     private readonly List<Direction> _executedSinceAnchor = new();
     private readonly FootprintMatcher _tier3;
+    private readonly RoomLocator _locator;
+
+    // Forward localizing walk, used when AdvanceReverseWalk has no executed
+    // history to un-walk (a party follower's engine never sent a move — see
+    // AdvanceReverseWalk). Shares _tier3 as its matcher — LocatorWalk.Begin
+    // re-seeds it from the live observation, which is fine since the empty-
+    // history branch is only reached when the reverse-walk had nothing to
+    // narrow with anyway. Created lazily per tier-3 cycle; cleared with the
+    // rest of the orchestration state in ResetTier3Orchestration.
+    private LocatorWalk? _forwardWalk;
 
     // Tier-3 orchestration is a per-room phase machine. Idle when not
     // recovering. AwaitingLanding: a reverse move is in flight; the next lit
@@ -127,6 +137,7 @@ public sealed class EngineRecoveryGate
             matchesObservation: KeyMatchesObservation,
             log: log,
             depthCeiling: Tier3DepthCeiling);
+        _locator = new RoomLocator(graph, log);
     }
 
     // ----- external feeds (bound per-session by the main-window VM) ---
@@ -542,9 +553,19 @@ public sealed class EngineRecoveryGate
 
     // Lit backtrack landing: temporal-narrow by the reverse move we just made,
     // then (combat-gated) spatially-narrow with a look-sweep of this room.
+    // Routed to the forward locator walk instead when IT sent the
+    // outstanding move — the two walks never consume the same landing.
     private void HandleLitLanding(RoomObservation obs)
     {
         if (_engine is null) return;
+
+        if (_forwardWalk is { IsActive: true } forward)
+        {
+            LocateOutcome? outcome = forward.OnLanding(obs);
+            if (outcome is { } result) HandleForwardOutcome(result);
+            else _tier3Phase = Tier3Phase.AwaitingLanding;   // another move went out
+            return;
+        }
 
         _tier3.Step(_lastBacktrackReverse, obs);
         if (_tier3.IsConverged) { FinishTier3Success(_tier3.Candidates.Single()); return; }
@@ -559,6 +580,16 @@ public sealed class EngineRecoveryGate
     private void HandleDarkLanding()
     {
         if (_engine is null) return;
+
+        // LocatorWalk narrows by reading a rendered display — it has no
+        // dead-reckoning mode. A dark landing while it's driving leaves
+        // nothing to fold in, so fail rather than silently drift the two
+        // walks' state out of sync.
+        if (_forwardWalk is { IsActive: true })
+        {
+            FailTier3("forward locator walk landed in the dark; nothing rendered to narrow by");
+            return;
+        }
 
         // No combat gating wired (headless) → step immediately; otherwise hold
         // until a combat tick with the room clear, then dead-reckon.
@@ -642,10 +673,14 @@ public sealed class EngineRecoveryGate
         if (_engine is null) return;
         if (_executedSinceAnchor.Count == 0)
         {
-            // Fully reversed the executed history without converging. If the
-            // anchor itself had reconciled we'd have exited already, so this is
-            // a terminal failure.
-            FailTier3("backtrack exhausted to anchor without convergence");
+            // Nothing left to un-walk. Reverse-walk only has moves to reverse
+            // when the ENGINE sent them (NoteEngineStepSent); a party
+            // follower's engine is held idle by PartyFollowerMovementGate the
+            // whole time it follows, so this is the normal shape of that
+            // case, not a rare corner. Hand off to a forward locator walk —
+            // it re-seeds from the live observation and picks its own
+            // splitting exits — instead of failing having tried nothing.
+            BeginForwardWalk();
             return;
         }
 
@@ -659,10 +694,50 @@ public sealed class EngineRecoveryGate
         _engine.SendBacktrackMove(_lastBacktrackReverse);
     }
 
+    // Seed a forward LocatorWalk from wherever the tracker currently
+    // believes we are (the same source EscalateToTier3 uses to seed _tier3
+    // in the first place) and take its first step.
+    private void BeginForwardWalk()
+    {
+        if (_engine is null) return;
+        Room? here = _tracker.State.CurrentRoom;
+        if (here is null)
+        {
+            FailTier3("no current room to seed the forward locator walk");
+            return;
+        }
+
+        _forwardWalk ??= new LocatorWalk(_locator, _tier3, _engine.SendBacktrackMove);
+        var obs = new RoomObservation(here.Name, ExitMaskToSet(here.ExitMask));
+        _log?.Log(LogSeverity.Info, LogSource,
+            $"Tier3.forward: no executed history to reverse — starting forward locator walk from '{here.Name}' ({here.Key})");
+
+        LocateOutcome? outcome = _forwardWalk.Begin(obs);
+        if (outcome is { } result) HandleForwardOutcome(result);
+        else _tier3Phase = Tier3Phase.AwaitingLanding;
+    }
+
+    private void HandleForwardOutcome(LocateOutcome outcome)
+    {
+        switch (outcome.Kind)
+        {
+            case LocateOutcomeKind.Converged:
+                FinishTier3Success(outcome.Room);
+                break;
+            case LocateOutcomeKind.Ambiguous:
+                FailTier3($"one of {outcome.CandidateCount} rooms walking cannot tell apart");
+                break;
+            default:
+                FailTier3("no room in the loaded world matches this display");
+                break;
+        }
+    }
+
     private void ResetTier3Orchestration()
     {
         _tier3Phase = Tier3Phase.Idle;
         _combatClearResume = null;
+        _forwardWalk = null;
         _sweep?.Cancel();
     }
 
