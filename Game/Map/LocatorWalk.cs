@@ -41,7 +41,8 @@ public sealed class LocatorWalk
     // True while a move is outstanding and OnLanding is owed.
     public bool IsActive => _active;
 
-    // Moves sent so far this walk.
+    // Moves completed (landed) so far this walk — while a move is
+    // outstanding this reads one behind the number of sends.
     public int Steps { get; private set; }
 
     // Seed from the current display and take the first step if one is
@@ -56,6 +57,14 @@ public sealed class LocatorWalk
     }
 
     // Fold one landing into the candidate set and take the next step.
+    //
+    // A landing that arrives with no move outstanding is ignored by
+    // design, not an error: MudPlay genuinely emits passive room
+    // re-displays with no move behind them (see RoomTracker's
+    // IsRepeatRedisplayWithoutMove), and a caller can't tell those apart
+    // from a real landing before calling in. Null in that case means
+    // "nothing to do" — it is NOT the same null as "a move was sent, pump
+    // me again"; IsActive tells the two apart.
     public LocateOutcome? OnLanding(RoomObservation landed)
     {
         if (!_active) return null;

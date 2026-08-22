@@ -51,6 +51,10 @@ public sealed class LocatorWalkTests : IDisposable
     //   1/40, 1/41 "Long Corridor" (N) — each is a self-loop on N,  so the
     //        pair never narrows and never converges; a budget of 2 must
     //        exhaust with both still standing.
+    //   1/70, 1/71 "Dead End" — same (name, exit-set) with NO exits at
+    //        all, so a display of it lists nothing for ChooseSplittingExit
+    //        to try: it must report ambiguous without ever moving, rather
+    //        than the budget-exhaustion route the Long Corridor pair covers.
     private const string FixtureGraph = """
         [
           { "Map Number": 1, "Room Number": 1, "Name": "Narrow Road",
@@ -83,6 +87,13 @@ public sealed class LocatorWalkTests : IDisposable
             "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
           { "Map Number": 1, "Room Number": 41, "Name": "Long Corridor",
             "N": "1/41", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+
+          { "Map Number": 1, "Room Number": 70, "Name": "Dead End",
+            "N": "0", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 71, "Name": "Dead End",
+            "N": "0", "S": "0", "E": "0", "W": "0",
             "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
         ]
         """;
@@ -176,5 +187,55 @@ public sealed class LocatorWalkTests : IDisposable
         Assert.Equal(LocateOutcomeKind.Ambiguous, outcome!.Value.Kind);
         Assert.True(outcome.Value.CandidateCount > 1);
         Assert.Equal(2, outcome.Value.Steps);
+    }
+
+    [Fact]
+    public void Begin_reports_ambiguous_without_moving_when_no_listed_exit_is_usable()
+    {
+        var sent = new List<Direction>();
+        LocatorWalk walk = BuildWalk(sent);
+
+        LocateOutcome? outcome = walk.Begin(Obs("Dead End"));
+
+        Assert.Empty(sent);
+        Assert.Equal(LocateOutcomeKind.Ambiguous, outcome!.Value.Kind);
+        Assert.Equal(2, outcome.Value.CandidateCount);
+        Assert.Equal(0, outcome.Value.Steps);
+    }
+
+    [Fact]
+    public void A_landing_that_contradicts_every_candidate_reports_unknown()
+    {
+        var sent = new List<Direction>();
+        LocatorWalk walk = BuildWalk(sent);
+
+        LocateOutcome? first = walk.Begin(Obs("Twin Hall", Direction.N, Direction.E));
+        Assert.Null(first);
+        Assert.Equal(new[] { Direction.E }, sent);
+
+        // Neither east target ("Larder" nor "Cellar") is named this, so
+        // Step drops both — the set empties instead of narrowing.
+        LocateOutcome? outcome = walk.OnLanding(Obs("Nonsense Room"));
+
+        Assert.Equal(LocateOutcomeKind.Unknown, outcome!.Value.Kind);
+        Assert.Equal(1, outcome.Value.Steps);
+    }
+
+    [Fact]
+    public void OnLanding_with_no_move_outstanding_is_ignored()
+    {
+        var sent = new List<Direction>();
+        LocatorWalk walk = BuildWalk(sent);
+
+        // No Begin() call at all — this models a passive room re-display
+        // (RoomTracker.IsRepeatRedisplayWithoutMove) arriving with no move
+        // behind it. The pump must do nothing, not treat _lastSent's
+        // default value as a real move.
+        LocateOutcome? outcome = walk.OnLanding(Obs("Larder", Direction.W));
+
+        Assert.Null(outcome);
+        Assert.Empty(sent);
+        Assert.Equal(0, walk.Steps);
+        Assert.False(walk.IsActive);
     }
 }
