@@ -53,11 +53,13 @@ public sealed class EngineRecoveryGate
 
     // Forward localizing walk, used when AdvanceReverseWalk has no executed
     // history to un-walk (a party follower's engine never sent a move — see
-    // AdvanceReverseWalk). Shares _tier3 as its matcher — LocatorWalk.Begin
-    // re-seeds it from the live observation, which is fine since the empty-
-    // history branch is only reached when the reverse-walk had nothing to
-    // narrow with anyway. Created lazily per tier-3 cycle; cleared with the
-    // rest of the orchestration state in ResetTier3Orchestration.
+    // AdvanceReverseWalk). BeginForwardWalk seeds it via LocatorWalk.BeginFrom
+    // with _tier3's own candidates intersected against a fresh RoomLocator
+    // seed, not a plain re-seed — an in-place look-sweep ahead of this
+    // handoff already narrowed _tier3 for free (no movement spent), and
+    // re-seeding from scratch would throw that away. Created lazily per
+    // tier-3 cycle; cleared with the rest of the orchestration state in
+    // ResetTier3Orchestration.
     private LocatorWalk? _forwardWalk;
 
     // Tier-3 orchestration is a per-room phase machine. Idle when not
@@ -561,9 +563,13 @@ public sealed class EngineRecoveryGate
 
         if (_forwardWalk is { IsActive: true } forward)
         {
+            // Set the phase before calling in, matching AdvanceReverseWalk's
+            // convention — OnLanding can itself send the next move
+            // synchronously, and a reentrant landing must see AwaitingLanding
+            // already set rather than a stale phase.
+            _tier3Phase = Tier3Phase.AwaitingLanding;
             LocateOutcome? outcome = forward.OnLanding(obs);
             if (outcome is { } result) HandleForwardOutcome(result);
-            else _tier3Phase = Tier3Phase.AwaitingLanding;   // another move went out
             return;
         }
 
@@ -709,12 +715,29 @@ public sealed class EngineRecoveryGate
 
         _forwardWalk ??= new LocatorWalk(_locator, _tier3, _engine.SendBacktrackMove);
         var obs = new RoomObservation(here.Name, ExitMaskToSet(here.ExitMask));
-        _log?.Log(LogSeverity.Info, LogSource,
-            $"Tier3.forward: no executed history to reverse — starting forward locator walk from '{here.Name}' ({here.Key})");
 
-        LocateOutcome? outcome = _forwardWalk.Begin(obs);
+        // _tier3 may already carry free narrowing (an in-place look-sweep
+        // costs no movement — see BeginSweepOrAdvance/OnSweepComplete) that
+        // reached this point without converging or exhausting. Intersect it
+        // with a fresh seed rather than discarding it: both sets are sound
+        // evidence about the SAME room, so their intersection is sound and at
+        // least as narrow. RoomLocator keeps its own displayed-mask index,
+        // distinct from RoomGraphManager's — an empty intersection means the
+        // two disagree, and current evidence (the fresh seed) wins.
+        IReadOnlyList<RoomKey> freshSeed = _locator.Seed(obs);
+        var candidates = new HashSet<RoomKey>(_tier3.Candidates);
+        candidates.IntersectWith(freshSeed);
+        if (candidates.Count == 0) candidates = new HashSet<RoomKey>(freshSeed);
+
+        _log?.Log(LogSeverity.Info, LogSource,
+            $"Tier3.forward: no executed history to reverse — starting forward locator walk from '{here.Name}' ({here.Key}) with {candidates.Count} candidate(s)");
+
+        // Set the phase before calling in — BeginFrom can send the first
+        // move synchronously, and a reentrant landing must see
+        // AwaitingLanding already set rather than a stale phase.
+        _tier3Phase = Tier3Phase.AwaitingLanding;
+        LocateOutcome? outcome = _forwardWalk.BeginFrom(obs, candidates);
         if (outcome is { } result) HandleForwardOutcome(result);
-        else _tier3Phase = Tier3Phase.AwaitingLanding;
     }
 
     private void HandleForwardOutcome(LocateOutcome outcome)

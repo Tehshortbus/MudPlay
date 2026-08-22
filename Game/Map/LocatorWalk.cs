@@ -47,12 +47,20 @@ public sealed class LocatorWalk
 
     // Seed from the current display and take the first step if one is
     // needed. Returns an outcome when no walking is required at all.
-    public LocateOutcome? Begin(RoomObservation here)
+    public LocateOutcome? Begin(RoomObservation here) => BeginFrom(here, _locator.Seed(here));
+
+    // Same as Begin, but seeded from a caller-supplied candidate set instead
+    // of a fresh RoomLocator.Seed lookup. For a caller that already holds
+    // sound narrowing about the same room — e.g. a move-free look-sweep run
+    // before the walk started — re-seeding from scratch would silently
+    // throw that evidence away.
+    public LocateOutcome? BeginFrom(RoomObservation here, IEnumerable<RoomKey> candidates)
     {
+        ArgumentNullException.ThrowIfNull(candidates);
         _here = here;
         Steps = 0;
         _active = false;
-        _matcher.Reset(_locator.Seed(here));
+        _matcher.Reset(candidates);
         return Advance();
     }
 

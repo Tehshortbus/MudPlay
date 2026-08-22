@@ -221,6 +221,51 @@ public sealed class EngineRecoveryGateTests : IDisposable
         ]
         """;
 
+    // Three name+exit-identical "Fox" rooms (1/2, 1/3, 1/4) whose north exit
+    // ALL lead to the same shared room (Mid) — uninformative, ties every
+    // candidate — and whose east exit leads to East1 for 1/2 and 1/3 (twins
+    // on east too) but East2 for 1/4. An in-place look-sweep of Fox's own
+    // exits (peeking both north and east) reads the real east neighbour as
+    // East1 and drops 1/4 with zero movement, leaving {1/2, 1/3}. Within that
+    // pair every exit ties (they're full twins), so a forward walk that
+    // correctly starts from the intersected pair has no informative
+    // direction and takes the first listed one (north). A forward walk that
+    // instead re-seeds fresh from all three would see 1/4 diverge on east
+    // (two shapes) while north stays uninformative (one shape) and pick east
+    // as the falsely "best" splitting exit instead.
+    private const string SweepPreserveGraphJson = """
+        [
+          { "Map Number": 1, "Room Number": 1, "Name": "Start",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "1/2", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 2, "Name": "Fox",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "1/20", "S": "0", "E": "1/30", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 3, "Name": "Fox",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "1/20", "S": "0", "E": "1/30", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 4, "Name": "Fox",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "1/20", "S": "0", "E": "1/31", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 20, "Name": "Mid",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "0", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 30, "Name": "East1",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "0", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 31, "Name": "East2",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "0", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+        ]
+        """;
+
     private (RoomGraphManager Graph, RoomTracker Tracker) NewGraphAndTracker(string set, string json)
     {
         Directory.CreateDirectory(Path.Combine(_root, set));
@@ -680,5 +725,87 @@ public sealed class EngineRecoveryGateTests : IDisposable
         Assert.Equal(1, engine.AbortCount);
         Assert.NotNull(failed);
         Assert.Contains("2", failed!.Value.Detail);
+    }
+
+    // LocatorWalk has no dead-reckoning mode — it narrows only by reading a
+    // rendered display. A dark landing while the forward walk is active must
+    // fail cleanly rather than mis-route into the reverse-walk's blind-step
+    // path (which would leave LocatorWalk's own bookkeeping desynced from
+    // the shared _tier3 matcher).
+    [Fact]
+    public void Tier3_ForwardWalk_DarkLanding_FailsExplicitly()
+    {
+        (RoomGraphManager graph, RoomTracker tracker) = NewGraphAndTracker("fwd-dark", TwinNeighbourGraphJson);
+        var gate = new EngineRecoveryGate(graph, tracker);
+        var engine = new RecordingEngine();
+
+        ParkSuspectAtFork(tracker, Direction.N, Direction.E);
+        gate.Attach(engine);
+        gate.NoteSuspectedMismatch("resumed after following, no executed history");
+        engine.NextPlanned = Direction.S;   // not an exit of the fork {N,E}
+        gate.MayProceedWithPlannedStep();
+
+        // Forward walk's own north move went out.
+        Assert.Equal(Direction.N, Assert.Single(engine.Backtracks));
+
+        RecoveryFailedEvent? failed = null;
+        gate.RecoveryFailed += e => failed = e;
+
+        // RoomTracker only dead-reckons a dark landing from a Confirmed/
+        // Pending anchor (NoteMoveSentCore's policy) — exactly the trust
+        // tier-3 recovery itself doesn't have, since EscalateToTier3 only
+        // ever reaches the backtrack ladder when the tracker is NOT
+        // Confirmed (a Confirmed tracker short-circuits via
+        // TryTrustConfirmedTracker instead). Re-confirm the SAME fork room
+        // here purely to arm that one dead-reckon — standing in for
+        // whatever independently re-confirms position mid-recovery in a
+        // live session (e.g. a later Confirmed re-anchor elsewhere) — so the
+        // dark landing this asserts on can actually reach the gate.
+        tracker.SetLocated(new RoomKey(1, 2));
+        tracker.NoteMoveSent(Direction.N);
+        tracker.NoteDarkRoomEntered();
+
+        Assert.True(tracker.IsInDarkRoom);
+        Assert.Equal(1, engine.AbortCount);
+        Assert.NotNull(failed);
+        Assert.Contains("dark", failed!.Value.Detail);
+    }
+
+    // Pins Finding 1's fix: an in-place look-sweep ahead of the forward-walk
+    // handoff narrows _tier3 with zero movement, and that narrowing must
+    // survive the handoff rather than being discarded by a plain re-seed.
+    [Fact]
+    public void Tier3_ForwardWalk_PreservesSweepNarrowing_InsteadOfDiscardingIt()
+    {
+        (RoomGraphManager graph, RoomTracker tracker) = NewGraphAndTracker("fwd-sweep-preserve", SweepPreserveGraphJson);
+        var gate = new EngineRecoveryGate(graph, tracker);
+        var engine = new RecordingEngine();
+        RecoveryLookSweep sweep = RecordingSweep(out List<string> wire);
+
+        tracker.SetLocated(new RoomKey(1, 1));
+        tracker.NoteMoveSent(Direction.N);
+        tracker.NoteRoomObserved(Obs("Fox", Direction.N, Direction.E));
+        tracker.NoteRoomObserved(Obs("Nowhere", Direction.W));   // drop to Suspect, keep the Fox guess
+
+        gate.Attach(engine);                     // anchor seeds one of the 3 Fox twins
+        gate.SetLookSweepForTests(sweep);
+        gate.NoteSuspectedMismatch("resumed after following, no executed history");
+        engine.NextPlanned = Direction.S;         // not an exit of Fox {N,E}
+        gate.MayProceedWithPlannedStep();
+
+        // In-place sweep of the fork peeks both exits before any move.
+        Assert.Equal("look north\r", Assert.Single(wire));
+        gate.OnRoomObserved(Obs("Mid"));
+        Assert.Equal("look east\r", wire[1]);
+        gate.OnRoomObserved(Obs("East1"));
+
+        // The sweep alone narrowed 3 candidates to 2 (the 1/4 twin's east
+        // neighbour is East2, not East1) with zero movement. Preserved, the
+        // surviving pair ties on every exit (true twins) so the walk just
+        // takes the first listed direction, north. Discarded — re-seeding
+        // fresh from all 3 — east would falsely look like the best
+        // splitting exit, since only there does the (wrongly re-included)
+        // third twin diverge.
+        Assert.Equal(Direction.N, Assert.Single(engine.Backtracks));
     }
 }
