@@ -798,6 +798,21 @@ public static class BugReportBuilder
         // the raw value would show the UTC hour next to local ones — normalize.
         Kv(sb, "Last move sent", svc.RoomTracker.LastMoveSentAt?.ToLocalTime().ToString("HH:mm:ss") ?? "(never)");
 
+        // Passive relocalizer (engine-less recovery, Settings -> Other's "Walk
+        // to locate myself when lost") — a "when lost it did nothing" report
+        // needs the setting value, whether a walk was actually running, its
+        // working-set size, and what the last one found.
+        Kv(sb, "Relocalizer walk allowed", svc.PassiveRelocalizer.AllowWalking.ToString());
+        Kv(sb, "Relocalizer step budget", svc.PassiveRelocalizer.StepBudget.ToString());
+        Kv(sb, "Relocalizer walk active", svc.PassiveRelocalizer.IsWalkActive.ToString());
+        Kv(sb, "Relocalizer candidates", svc.PassiveRelocalizer.CandidateCount.ToString());
+        Kv(sb, "Relocalizer last outcome",
+            svc.PassiveRelocalizer.LastOutcome is { } locateOutcome
+                ? $"{locateOutcome.Kind} ({(locateOutcome.Kind == LocateOutcomeKind.Converged
+                    ? locateOutcome.Room.ToString() : $"{locateOutcome.CandidateCount} candidate(s)")}, "
+                    + $"{locateOutcome.Steps} step(s))"
+                : "(none yet)");
+
         IReadOnlyList<Game.Map.RoomKey> history = svc.RoomTracker.GetHistory();
         if (history.Count > 0)
         {

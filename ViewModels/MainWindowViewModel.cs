@@ -1207,8 +1207,8 @@ public partial class MainWindowViewModel : ObservableObject
         // so its `look <dir>` peeks can't land mid-password-prompt.
         AppServices.Current.Recovery.SetWireSender(engineSend);
         // Passive relocalizer's own walking tier rides the same gate-wrapped
-        // pipeline. Off by default (AllowWalking) until its settings surface
-        // lands; wiring the sender now costs nothing while it's dormant.
+        // pipeline. Gated by Settings -> Other's AllowWalking toggle (on by
+        // default); wiring the sender unconditionally costs nothing when off.
         AppServices.Current.PassiveRelocalizer.SetWireSender(engineSend);
         // SuicideHandler — bypasses the engine gate because it OWNS
         // the suicide flow (and needs its `suicide` + password sends

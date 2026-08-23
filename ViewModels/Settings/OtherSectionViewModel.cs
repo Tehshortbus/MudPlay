@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Text.Json;
 using Avalonia.Controls;
 using CommunityToolkit.Mvvm.ComponentModel;
+using MudPlay.Game.Map;
 using MudPlay.Models.Profile;
 using MudPlay.Models.Settings;
 using MudPlay.Services;
@@ -63,6 +64,9 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             yield return "Great Pyramid climb";
             yield return "Asylum solver";
             yield return "Maze solver";
+            yield return "Walk to locate myself when lost";
+            yield return "Locating walk step budget";
+            yield return "Relocalize";
             foreach (StubGroup g in StubGroups)
             foreach (StubField f in g.Fields)
                 yield return f.Label;
@@ -176,6 +180,15 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private bool _pyramidSolverEnabled = true;
     [ObservableProperty] private bool _asylumSolverEnabled = true;
 
+    // Passive relocalizer's walking tier — see OtherSettings.WalkToLocateWhenLost.
+    // Char-tier (per-character, like the other walker-behaviour toggles above).
+    // Default on: the reported bug is that the client does nothing while lost,
+    // so shipping this off by default wouldn't fix it. Read live via
+    // PassiveRelocalizer.AllowWalking / StepBudget, pushed on Apply + profile
+    // load through AppServices.ApplyOtherFromActiveProfile.
+    [ObservableProperty] private bool _walkToLocateWhenLost = true;
+    [ObservableProperty] private int _locateWalkStepBudget = RoomLocator.DefaultBudget;
+
     // ----- Inline stub catalog (un-wired fields) -----
 
     // The remaining un-wired Other-tab fields, rendered inline below the wired
@@ -253,6 +266,8 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
             MaxComebackBacktrackRooms = Math.Clamp(MaxComebackBacktrackRooms, 1, 50),
             AutoRequestComebackWhenLeftBehind = AutoRequestComebackWhenLeftBehind,
             ShowMonsterHpLookup   = ShowMonsterHpLookup,
+            WalkToLocateWhenLost  = WalkToLocateWhenLost,
+            LocateWalkStepBudget  = Math.Clamp(LocateWalkStepBudget, 1, 50),
         };
 
         profile.Settings ??= new();
@@ -312,6 +327,8 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
         MaxComebackBacktrackRooms = dto.MaxComebackBacktrackRooms;
         AutoRequestComebackWhenLeftBehind = dto.AutoRequestComebackWhenLeftBehind;
         ShowMonsterHpLookup = dto.ShowMonsterHpLookup;
+        WalkToLocateWhenLost = dto.WalkToLocateWhenLost;
+        LocateWalkStepBudget = dto.LocateWalkStepBudget;
         PlayerCleanupDays = _globalSettings?.Current.PlayerCleanupDays ?? 90;
         PyramidSolverEnabled = _globalSettings?.Current.PyramidSolverEnabled ?? true;
         AsylumSolverEnabled = _globalSettings?.Current.AsylumSolverEnabled ?? true;
@@ -352,6 +369,10 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
         // Auto-discard offload verb — live-mirror so the next discard uses
         // hide/drop per the edit without a profile reload.
         svcs.AutoDiscard.HideMode = dto.HideWhenDiscarding;
+        // Passive relocalizer's walking tier — live-mirror so the next lost
+        // transition honours the edit without a profile reload.
+        svcs.PassiveRelocalizer.AllowWalking = dto.WalkToLocateWhenLost;
+        svcs.PassiveRelocalizer.StepBudget = Math.Clamp(dto.LocateWalkStepBudget, 1, 50);
     }
 
     // ----- IsDirty plumbing -----
@@ -376,6 +397,8 @@ public sealed partial class OtherSectionViewModel : SettingsSectionViewModel
     partial void OnShowMonsterHpLookupChanged(bool value) => MarkDirty();
     partial void OnPyramidSolverEnabledChanged(bool value) => MarkDirty();
     partial void OnAsylumSolverEnabledChanged(bool value) => MarkDirty();
+    partial void OnWalkToLocateWhenLostChanged(bool value) => MarkDirty();
+    partial void OnLocateWalkStepBudgetChanged(int value) => MarkDirty();
 
     private void MarkDirty()
     {

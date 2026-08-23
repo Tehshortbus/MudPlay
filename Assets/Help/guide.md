@@ -180,6 +180,8 @@ When the only route somewhere is fully blocked but you can still reach the obsta
 
 If an avoid ends up walling off your only route somewhere, MudPlay tells you which room is the culprit — a **GOTO** to a blocked destination reports *"only route is blocked by user set avoid in room (map/room)"*, while auto-deposit and auto-train quietly skip and log it rather than getting stuck.
 
+**When MudPlay loses track of where you are.** If your room goes uncertain while nothing is actively walking you — most often because a party leader dragged you somewhere the map didn't expect — MudPlay tries to work it out on its own instead of just sitting there. It first replays your recent moves against the map for free (no commands sent); if that alone narrows it to one room, you're re-anchored silently. If it can't, and the **Walk to locate myself when lost** setting (Settings → Other, **on by default**) allows it, MudPlay takes a short walk to tell the remaining possibilities apart. It will not do this while you're following a party leader — the leader's drag always wins, and this never fights it. If neither step resolves it, you're still lost and can right-click the map and choose **I am here** to fix it by hand, same as before.
+
 ---
 
 # Party Play
@@ -1702,6 +1704,17 @@ Settings → Other. A catch-all tab for safety thresholds and walker (auto-pathi
 
 **Default:** On
 **What it does:** When you `look <monster>`, MudPlay shows its estimated remaining hit points — both in the status bar's **TGT HP:** slot and as a yellow line printed to the terminal (e.g. `[orc remaining Hitpoints: 35-48]`). Turning this off suppresses both.
+
+### Walk to locate myself when lost
+
+**Default:** On
+**What it does:** If MudPlay loses track of your room with no walker/loop/Auto-Lair actually running — the shape you end up in when a party leader drags you somewhere unexpected — it first tries to work out where you are for free, by replaying your recent moves against the map (no commands sent). If that alone can't narrow it down to one room, this setting lets it take a short walk to tell the remaining candidates apart. Turning it off leaves the free replay running but stops there — if that doesn't resolve it, you stay lost until you right-click the map and choose **I am here**.
+**Important notes:** This is the fix for "when lost, it just sits there and does nothing" — it's on by default for exactly that reason. It never moves you while you're following a party leader; the leader's own drag always wins.
+
+### Locating walk gives up after N steps
+
+**Default:** `12`
+**What it does:** Caps how many rooms the locating walk above will move you before giving up and reporting it can't tell the candidates apart. Only relevant when the toggle above is on.
 
 ### Enable the Great Pyramid climb solver / Enable the asylum (random-teleport maze) solver
 

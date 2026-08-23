@@ -200,6 +200,25 @@
                       Margin="0,8,0,0"
                       ToolTip.Tip="When checked (default): walking to a room inside a random-teleport maze pocket (the Warped Asylum) drives look-peeks and reshuffles until a route exists, then hands the final walk back. When unchecked: the walk fails normally. Applies to every character on this install."/>
 
+            <!-- Passive relocalizer's walking tier. Off falls back to free
+                 footstep replay only — no movement, stays lost. On (default)
+                 drives a short locating walk once replay alone can't narrow
+                 to one room. Never runs while following a party leader (the
+                 same follower gate every other movement engine honours). -->
+            <TextBlock Classes="FieldLabel" Text="When lost with no walker running:" Margin="0,14,0,0"/>
+            <CheckBox Content="Walk to locate myself when lost"
+                      IsChecked="{Binding WalkToLocateWhenLost, Mode=TwoWay}"
+                      ToolTip.Tip="When checked (default): if MudPlay loses track of your room with no walker/loop/auto-lair running — the shape a dragged party follower ends up in — free footstep replay runs first (zero bytes sent), and if that alone can't narrow to one room, MudPlay drives a short locating walk to split the possibilities. When unchecked: only the free replay runs; if that can't narrow it down, you stay lost until you mark your position on the map. Never walks while you're following a party leader. Applies only for this character."/>
+            <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,8,0,0" VerticalAlignment="Center">
+                <TextBlock Classes="FieldLabel" Text="Locating walk gives up after"/>
+                <NumericUpDown Value="{Binding LocateWalkStepBudget, Mode=TwoWay}"
+                               Minimum="1" Maximum="50" Increment="1"
+                               FormatString="0" ShowButtonSpinner="True"
+                               Width="120" MinWidth="120"
+                               ToolTip.Tip="Caps how many rooms the locating walk above will move you before giving up and reporting it can't tell the candidates apart. Default 12 — past that the resolution curve is flat, and every further step is a room you didn't choose to be in."/>
+                <TextBlock Classes="FieldLabel" Text="steps."/>
+            </StackPanel>
+
             <!-- Cleanup-Player-Database row: prose-style "Cleanup Player
                  Database after [spinner] days." — spinner widened from
                  90→120 so 4-digit values (e.g. 3650-day max) render

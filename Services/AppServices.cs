@@ -1441,8 +1441,9 @@ public sealed class AppServices
     // AutoWalkManager and LoopRunner both refuse to attach when CurrentRoom is
     // null. Without a driver in that state the client just sits there waiting
     // for the user to click the map. Free footstep replay always runs; the
-    // walking tier is opt-in (PassiveRelocalizer.AllowWalking, off by default
-    // until its settings surface lands).
+    // walking tier is Settings -> Other's "Walk to locate myself when lost"
+    // (PassiveRelocalizer.AllowWalking, on by default — see
+    // ApplyOtherFromActiveProfile).
     public Game.Map.PassiveRelocalizer PassiveRelocalizer { get; private set; } = null!;
 
     // Paradigm-only authoritative position re-sync. Fires `rm` on the gate's
@@ -6653,6 +6654,11 @@ public sealed class AppServices
         ComebackRequest.Enabled = dto.AutoRequestComebackWhenLeftBehind;
         // Auto-discard offload verb: hide <item> vs drop <item>.
         AutoDiscard.HideMode = dto.HideWhenDiscarding;
+        // Passive relocalizer's walking tier — see PassiveRelocalizer's own
+        // header comment for what Stage 1 (always-on, free) vs Stage 2 (this
+        // gate) do.
+        PassiveRelocalizer.AllowWalking = dto.WalkToLocateWhenLost;
+        PassiveRelocalizer.StepBudget = Math.Clamp(dto.LocateWalkStepBudget, 1, 50);
     }
 
     private void ResetOtherToDefaults()
@@ -6664,6 +6670,8 @@ public sealed class AppServices
         PartyComeback.MaxBacktrackRooms = defaults.MaxComebackBacktrackRooms;
         ComebackRequest.Enabled = defaults.AutoRequestComebackWhenLeftBehind;
         AutoDiscard.HideMode = defaults.HideWhenDiscarding;
+        PassiveRelocalizer.AllowWalking = defaults.WalkToLocateWhenLost;
+        PassiveRelocalizer.StepBudget = defaults.LocateWalkStepBudget;
     }
 
     // Push the loaded character's

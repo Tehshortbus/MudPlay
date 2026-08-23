@@ -2,6 +2,13 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a brand-new feature or a large (~1000+ line) rewrite/expansion of an existing one, **PATCH** = bug fixes AND ordinary enhancements to existing features (one increment per bug report handled or per enhancement).
 
+## 3.25.0
+
+- When MudPlay loses track of your room with no walker/loop/Auto-Lair running (the shape a dragged party follower ends up in), it now recovers on its own instead of sitting idle: free footstep replay runs first (no commands sent), and if that alone can't narrow it to one room, a short locating walk splits the remaining candidates
+- New Settings → Other toggle **Walk to locate myself when lost**, default **ON** — deliberately, since shipping this off by default wouldn't fix the "it just sits there" report it addresses; turning it off keeps the old free-replay-only behavior. It never walks you while you're following a party leader
+- New **Locating walk gives up after N steps** budget (default 12) caps how far that walk will move you before giving up
+- Bug Report captures the relocalizer's setting, step budget, whether a walk is active, its candidate count, and its last outcome
+
 ## 3.24.1
 
 - Combat: a capped single-target attack spell (e.g. `MaxCasts 1`) no longer fires past its cap against a fast caster — MaxCasts now counts directly off each observed cast-result line (grouping a multi-projectile spell's own damage lines into one cast) instead of RoundDamageTracker's 5s-ish round window, which could bundle more than one real cast into a single tally before it ever closed

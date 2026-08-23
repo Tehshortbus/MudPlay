@@ -22,11 +22,11 @@ namespace MudPlay.Game.Map;
 //     OnRoomObserved's cache) — a topology-only projection that disagrees
 //     with what's actually on screen refuses rather than asserts.
 //   Stage 2 — if replay alone leaves more than one candidate standing, drive
-//     a LocatorWalk to walk it out live. Gated behind AllowWalking (off by
-//     default — the settings surface lands in a later task) and, on every
-//     single send, behind MovementCoordinator's follower gate: marching a
-//     party follower out of the leader's drag is the one failure mode this
-//     driver must never cause.
+//     a LocatorWalk to walk it out live. Gated behind AllowWalking (Settings
+//     -> Other; on by default, since the whole point of this driver is that
+//     doing nothing was the reported bug) and, on every single send, behind
+//     MovementCoordinator's follower gate: marching a party follower out of
+//     the leader's drag is the one failure mode this driver must never cause.
 public sealed class PassiveRelocalizer : IDisposable
 {
     private const string LogSource = "PassiveRelocalizer";
@@ -67,10 +67,24 @@ public sealed class PassiveRelocalizer : IDisposable
     private RoomObservation? _lastLiveRender;
     private bool _lastLiveRenderIsFresh;
 
-    // Stage 2 (walking) only runs when true. Off by default until the
-    // settings surface that drives it lands. Stage 1 (pure replay) always
-    // runs regardless — it sends nothing, so there's nothing to opt into.
-    public bool AllowWalking { get; set; }
+    // Stage 2 (walking) only runs when true. Read live from Settings -> Other
+    // (OtherSettings.WalkToLocateWhenLost) by AppServices.ApplyOtherFromActiveProfile;
+    // defaults true here too so a not-yet-loaded profile still gets the fix.
+    // Stage 1 (pure replay) always runs regardless — it sends nothing, so
+    // there's nothing to opt into.
+    public bool AllowWalking { get; set; } = true;
+
+    // Step budget for a Stage-2 walk before it reports Ambiguous rather than
+    // keep moving the character. Mirrors RoomLocator.DefaultBudget; pushed
+    // live from OtherSettings.LocateWalkStepBudget the same way as AllowWalking.
+    public int StepBudget { get; set; } = RoomLocator.DefaultBudget;
+
+    // Last outcome a Stage-2 walk reported, and the working-set size behind
+    // it — a bug report's only window into whether a locating walk actually
+    // ran and what it found, since neither is otherwise observable state.
+    public LocateOutcome? LastOutcome { get; private set; }
+    public bool IsWalkActive => _walk is { IsActive: true };
+    public int CandidateCount => _matcher.Candidates.Count;
 
     public PassiveRelocalizer(
         RoomTracker tracker,
@@ -187,7 +201,10 @@ public sealed class PassiveRelocalizer : IDisposable
             return;
         }
 
-        _matcher.Reset(_locator.Seed(obs));
+        IReadOnlyList<RoomKey> seeded = _locator.Seed(obs);
+        _log?.Log(LogSeverity.Info, LogSource,
+            $"went {t.NewConfidence} with no engine attached — seeded {seeded.Count} candidate(s) from '{obs.Name}'.");
+        _matcher.Reset(seeded);
         ReplayRecentSteps();
 
         if (_matcher.IsConverged)
@@ -266,8 +283,10 @@ public sealed class PassiveRelocalizer : IDisposable
             return;
         }
 
+        _log?.Log(LogSeverity.Info, LogSource,
+            $"beginning a locating walk over {candidates.Count} candidate(s), budget={StepBudget}.");
         RoomObservation syntheticHere = SyntheticExitUnion(candidates);
-        _walk = new LocatorWalk(_locator, _matcher, Send);
+        _walk = new LocatorWalk(_locator, _matcher, Send, StepBudget);
         LocateOutcome? outcome = _walk.BeginFrom(syntheticHere, candidates);
         if (outcome is { } result) HandleOutcome(result);
     }
@@ -291,6 +310,7 @@ public sealed class PassiveRelocalizer : IDisposable
     private void HandleOutcome(LocateOutcome outcome)
     {
         _walk = null;
+        LastOutcome = outcome;
         if (outcome.Kind == LocateOutcomeKind.Converged)
         {
             _log?.Log(LogSeverity.Info, LogSource,

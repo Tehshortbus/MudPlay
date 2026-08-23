@@ -1,3 +1,5 @@
+using MudPlay.Game.Map;
+
 namespace MudPlay.Models.Profile;
 
 // Per-character "Other" settings — the misc bucket. Stored as the "Other" entry
@@ -125,4 +127,22 @@ public sealed class OtherSettings
     // Note: the party-bless gates (BlessWhileResting / BlessDuringCombat)
     // graduated to PartySettings — they sit on the Party tab next to the
     // bless slots they gate. CastingDirector reads them from there.
+
+    // When true (default), losing track of your room with no movement engine
+    // attached (the shape a dragged party follower ends up in) drives a short
+    // locating walk once free footstep replay alone can't narrow to one room
+    // — the fix for "when lost, it sits there and does nothing." Off falls
+    // back to the free replay only: no movement is sent, and you stay lost
+    // until you mark your own position (or something else narrows it).
+    // Never walks while you're a party follower — the follower gate holds it
+    // like every other movement engine. Char-tier; surfaced in Settings ->
+    // Other. Read live by Game.Map.PassiveRelocalizer.AllowWalking.
+    public bool WalkToLocateWhenLost { get; set; } = true;
+
+    // Step budget for that locating walk before it gives up and reports
+    // itself unable to tell the survivors apart, rather than keep moving the
+    // character indefinitely. Default mirrors RoomLocator.DefaultBudget;
+    // range 1..50. Char-tier; surfaced in Settings -> Other. Read live by
+    // Game.Map.PassiveRelocalizer.StepBudget.
+    public int LocateWalkStepBudget { get; set; } = RoomLocator.DefaultBudget;
 }
