@@ -1429,6 +1429,22 @@ public sealed class AppServices
     // executed-step history + tier-3 backtrack logic.
     public Game.Map.EngineRecoveryGate Recovery { get; private set; } = null!;
 
+    // Answers "which rooms could this display be?" for a driver with no
+    // graph-attached engine of its own — PassiveRelocalizer's own seed source.
+    // Separate instance from EngineRecoveryGate's private one; both are pure
+    // readers of the same graph, so a second index cache costs memory, not
+    // correctness.
+    public Game.Map.RoomLocator RoomLocator { get; private set; } = null!;
+
+    // Recovers a room fix when the tracker goes Suspect/Lost with no engine
+    // attached — the shape a dragged party follower ends up in, since
+    // AutoWalkManager and LoopRunner both refuse to attach when CurrentRoom is
+    // null. Without a driver in that state the client just sits there waiting
+    // for the user to click the map. Free footstep replay always runs; the
+    // walking tier is opt-in (PassiveRelocalizer.AllowWalking, off by default
+    // until its settings surface lands).
+    public Game.Map.PassiveRelocalizer PassiveRelocalizer { get; private set; } = null!;
+
     // Paradigm-only authoritative position re-sync. Fires `rm` on the gate's
     // request and re-anchors the tracker + gate from the Location: reply. Stock
     // realms no-op it and keep the heuristic recovery ladder.
@@ -2731,6 +2747,13 @@ public sealed class AppServices
         // MainWindowViewModel once the telnet client is up (matching
         // the PartyPoller / AutoPartyManager pattern).
         MovementCoordinator = new Game.Map.MovementCoordinator(Log);
+
+        // Own RoomLocator instance for the passive (engine-less) relocalizer —
+        // built once MovementCoordinator exists, since PassiveRelocalizer reads
+        // the party-follower gate off it.
+        RoomLocator = new Game.Map.RoomLocator(RoomGraph, Log);
+        PassiveRelocalizer = new Game.Map.PassiveRelocalizer(
+            RoomTracker, RoomLocator, RoomGraph, Recovery, MovementCoordinator, Log);
 
         // Party-vitals pause bridge — asserts MovementCoordinator's
         // PartyVitalsGate while any other party member's HP% is below the

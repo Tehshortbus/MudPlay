@@ -59,6 +59,11 @@ public sealed class RoomTracker
     public bool HasQueuedMoves => !_pending.IsEmpty;
     private readonly LinkedList<HistoryEntry> _history = new();
     private readonly List<DirectionDto> _recentSteps = new();
+
+    // Read-only view of the step record, including party follow-drags — the
+    // evidence PassiveRelocalizer replays. Writes stay with AppendStep so the
+    // single-writer discipline holds.
+    public IReadOnlyList<DirectionDto> RecentSteps => _recentSteps;
     // The room the buffered replay trail is anchored at — where we stood when the FIRST
     // still-buffered step was sent. TryReplayRecover projects _recentSteps from here, not
     // from _history.First (the newest CONFIRMED room), which drifts several rooms ahead of
