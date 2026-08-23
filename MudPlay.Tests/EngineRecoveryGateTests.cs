@@ -849,16 +849,23 @@ public sealed class EngineRecoveryGateTests : IDisposable
         Assert.Equal(Direction.N, Assert.Single(engine.Backtracks));
     }
 
-    // THE user's bug: a party follower's engine sits inert (Attach never
-    // ran) for as long as it follows. If the character actually goes Lost
-    // while following — the wire showed a room the graph doesn't
-    // recognize, so RoomTracker.LandFromCandidateSearch's zero-candidate
-    // branch lands at Lost with CurrentRoom null — Attach then seeds
-    // _anchor from that null CurrentRoom, so it's null too. Reverse-walk
-    // has nothing to walk back to AND nothing to seed a footprint from; the
-    // only thing left is whatever the wire displayed just before Lost hit,
-    // cached via the gate's own OnRoomObserved feed. That must still send a
-    // move, not declare defeat having tried nothing.
+    // Unit-level coverage of the gate's own null-anchor handling: given an
+    // engine that IS attached while the tracker is genuinely Lost (wire
+    // showed a room the graph doesn't recognize, so
+    // RoomTracker.LandFromCandidateSearch's zero-candidate branch lands at
+    // Lost with CurrentRoom null — Attach then seeds _anchor from that null
+    // CurrentRoom, so it's null too), reverse-walk has nothing to walk back
+    // to AND nothing to seed a footprint from; the only thing left is
+    // whatever the wire displayed just before Lost hit, cached via the
+    // gate's own OnRoomObserved feed. That must still send a move, not
+    // declare defeat having tried nothing.
+    //
+    // NOT a claim that this alone fixes "leave a party, instantly lost":
+    // AutoWalkManager and LoopRunner both refuse to Attach in the first
+    // place when CurrentRoom is null, so in production this branch is only
+    // reached by an engine that attached BEFORE going Lost. Whether an
+    // engine should attach anyway on a null CurrentRoom is a separate,
+    // out-of-scope question.
     [Fact]
     public void Tier3_GenuinelyLostTracker_WalksForwardFromCachedObservation()
     {
@@ -923,5 +930,80 @@ public sealed class EngineRecoveryGateTests : IDisposable
         // committing to one twin.
         Assert.Equal(Direction.N, Assert.Single(engine.Backtracks));
         Assert.Empty(engine.Resumes);
+    }
+
+    // Regression: RoomDisplayParser.RoomParsed fires OnRoomObserved for
+    // EVERY parsed display, including a player-typed `look <dir>` peek at
+    // any time, independent of recovery — the tracker just drops a peek as
+    // a preview instead of acting on it (RoomTracker.IsPeekSuppressed).
+    // Before this fix the gate had no equivalent guard, so a stray peek's
+    // NEIGHBOUR render would overwrite the cache of our own room, and a
+    // later forward walk would seed from wherever the player happened to
+    // look rather than from where they're actually standing.
+    [Fact]
+    public void OnRoomObserved_DuringPeekSuppression_DoesNotClobberCachedObservation()
+    {
+        (RoomGraphManager graph, RoomTracker tracker) = NewGraphAndTracker("fwd-peek-immune", TwinNeighbourGraphJson);
+        var gate = new EngineRecoveryGate(graph, tracker);
+        var engine = new RecordingEngine();
+
+        ParkSuspectAtFork(tracker, Direction.N, Direction.E);
+        gate.Attach(engine);
+        gate.OnRoomObserved(Obs("Fork", Direction.N, Direction.E));   // genuine render, cached
+
+        // A player types `look south` mid-session — nothing to do with
+        // recovery. The peeked neighbour's display parses through to
+        // OnRoomObserved exactly like a real landing would; only the
+        // tracker's own suppression flag marks it as a preview.
+        tracker.NoteLookSent();
+        gate.OnRoomObserved(Obs("Some Distant Room", Direction.W));
+
+        gate.NoteSuspectedMismatch("resumed after following, no executed history");
+        engine.NextPlanned = Direction.S;   // not an exit of the fork {N,E}
+        gate.MayProceedWithPlannedStep();
+
+        // Had the peek clobbered the cache, the walk would seed from "Some
+        // Distant Room" — absent from the graph, so RoomLocator.Seed finds
+        // nothing and no move goes out at all. Immune, it seeds from Fork
+        // and sends the same north-splitting move as the other
+        // zero-history tests.
+        Assert.Equal(Direction.N, Assert.Single(engine.Backtracks));
+    }
+
+    // The sibling terminal branch: _anchor is non-null (survives from an
+    // earlier strict 1-of-1) but RoomTracker.State.CurrentRoom has since
+    // gone null — "went Lost mid-flight" rather than "never had an
+    // anchor". OnGraphReloaded is a clean, realistic way to produce this:
+    // it nulls CurrentRoom without a strict Confirmed transition, so
+    // nothing refreshes (or clears) the gate's stale anchor. Reverse-walk
+    // still can't seed a footprint without a current room; the forward
+    // walk only needs the cached observation, same as the null-anchor case.
+    [Fact]
+    public void Tier3_StaleAnchor_CurrentRoomNowNull_WalksForwardFromCachedObservation()
+    {
+        (RoomGraphManager graph, RoomTracker tracker) = NewGraphAndTracker("fwd-stale-anchor", TwinNeighbourGraphJson);
+        var gate = new EngineRecoveryGate(graph, tracker) { TryResync = _ => true };
+        var engine = new RecordingEngine();
+
+        tracker.SetLocated(new RoomKey(1, 1));   // Confirmed at unique Start
+        gate.Attach(engine);
+        Assert.Equal(new RoomKey(1, 1), gate.Anchor);
+
+        // Active set reloads mid-session: CurrentRoom drops to null, but
+        // this isn't a strict-1-of-1 Confirmed transition, so the gate's
+        // anchor is never told to update — it stays stale at Start.
+        tracker.OnGraphReloaded();
+        Assert.Null(tracker.State.CurrentRoom);
+        Assert.Equal(new RoomKey(1, 1), gate.Anchor);
+
+        // The wire still displayed something real just before the reload.
+        gate.OnRoomObserved(Obs("Fork", Direction.N, Direction.E));
+
+        gate.NoteSuspectedMismatch("resumed after following, stale anchor");
+        gate.OnAuthoritativeResyncFailed();
+
+        Assert.Equal(TierLevel.Tier3, gate.CurrentTier);
+        Assert.NotEmpty(engine.Backtracks);
+        Assert.Equal(0, engine.AbortCount);
     }
 }

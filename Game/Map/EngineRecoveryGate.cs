@@ -165,15 +165,22 @@ public sealed class EngineRecoveryGate
     }
 
     // Fed every parsed room display (RoomDisplayParser.RoomParsed, which fires
-    // BEFORE the tracker's peek-suppression). Routed by tier-3 phase: a landing
-    // render advances the footprint; a render during a sweep is a peeked
-    // neighbour handed to the sweep.
+    // for EVERY parsed display — including a player-typed `look <dir>` peek —
+    // BEFORE the tracker's own peek-suppression drops it). Routed by tier-3
+    // phase: a landing render advances the footprint; a render during a sweep
+    // is a peeked neighbour handed to the sweep.
     public void OnRoomObserved(RoomObservation obs)
     {
-        // Cache every genuine render of OUR OWN room — everything except a
-        // Sweeping-phase call, which is a peeked NEIGHBOUR's display, not
-        // where we're actually standing.
-        if (_tier3Phase != Tier3Phase.Sweeping) _lastObserved = obs;
+        // Cache every genuine render of OUR OWN room. Two things are NOT
+        // that: a Sweeping-phase call (a peeked NEIGHBOUR the gate's own
+        // RecoveryLookSweep asked for), and ANY render that arrives while
+        // RoomTracker.IsPeekSuppressed() is armed — a player can type
+        // `look <dir>` at any time, independent of recovery, and that peek
+        // parses through to this event exactly like a real move's landing
+        // would. Caching either would silently redirect the next forward
+        // walk to seed from a room we aren't standing in.
+        if (_tier3Phase != Tier3Phase.Sweeping && !_tracker.IsPeekSuppressed())
+            _lastObserved = obs;
 
         switch (_tier3Phase)
         {
@@ -495,15 +502,24 @@ public sealed class EngineRecoveryGate
         SetTier(TierLevel.Tier3, reason);
         _engine.PauseForRecovery(reason);
 
+        // An anchor is what reverse-walking needs — somewhere to walk back
+        // TO. Forward-walking needs only a cached observation (see
+        // BeginForwardWalk), not an anchor and not a live Room object —
+        // route both "nothing to backtrack to" shapes there instead of
+        // failing outright: no anchor at all (Attach seeds it from
+        // CurrentRoom, so an engine that attached with no current room ends
+        // up here), and a prior anchor whose CurrentRoom has since gone null
+        // (an anchor survives from earlier, but the tracker isn't sure where
+        // we are RIGHT NOW — "went Lost mid-flight").
+        //
+        // Neither branch, on its own, rescues a party follower who has gone
+        // genuinely Lost: AutoWalkManager and LoopRunner both refuse to
+        // attach in the first place when CurrentRoom is null, so the gate's
+        // whole escalation path — this method included — is never entered
+        // for that exact case. That refusal is a separate, out-of-scope
+        // problem. This only fires for an engine that IS attached.
         if (_anchor is null)
         {
-            // An anchor is what reverse-walking needs — somewhere to walk
-            // back TO. Without one (Attach seeds it from CurrentRoom, and a
-            // party follower who's gone genuinely Lost has no CurrentRoom at
-            // all — the gate sat inert the whole time it followed, so it
-            // never got a chance to anchor) reverse-walk has nothing to
-            // offer. Forward-walking only needs a cached observation, not an
-            // anchor — go straight there instead of failing outright.
             BeginForwardWalk();
             return;
         }
@@ -513,7 +529,7 @@ public sealed class EngineRecoveryGate
         Room? here = _tracker.State.CurrentRoom;
         if (here is null)
         {
-            FailTier3("tracker has no current room; backtrack impossible");
+            BeginForwardWalk();
             return;
         }
 
