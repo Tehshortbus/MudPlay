@@ -1191,4 +1191,47 @@ public sealed class EngineRecoveryGateTests : IDisposable
         Assert.NotNull(failed);
         Assert.Contains("2", failed!.Value.Detail);
     }
+
+    // Same reentrant handoff as ReentrantHandoff_SeedsFromJustLandedRoom_
+    // NotStaleTrackerRecord, but this time a `look <dir>` is typed while the
+    // reverse-S backtrack is still in flight. RoomDisplayParser.RoomParsed
+    // fires OnRoomObserved for EVERY parsed render, peek included, so the
+    // "Landed" observation the gate receives here could just as well be that
+    // peek's own preview rather than the backtrack's genuine landing —
+    // OnRoomObserved's AwaitingLanding dispatch has no way to tell. With a
+    // peek in flight, BeginForwardWalk must fall back to RoomTracker's own
+    // LastAcceptedObservation ("Fork" {N,S}) instead of trusting the
+    // threaded render as the seed.
+    [Fact]
+    public void PeekArrivingDuringAwaitingLanding_DoesNotSeedTheForwardWalk()
+    {
+        (RoomGraphManager graph, RoomTracker tracker) = NewGraphAndTracker("fwd-peek-during-landing", ReentrantHandoffGraphJson);
+        var gate = new EngineRecoveryGate(graph, tracker);
+        var engine = new RecordingEngine();
+
+        ParkSuspectAt(tracker, new RoomKey(1, 1), Direction.N, Obs("Fork", Direction.N, Direction.S), Direction.E);
+        gate.Attach(engine);
+
+        gate.NoteEngineStepSent(Direction.N);
+        gate.NoteSuspectedMismatch("resumed after following, one step to reverse");
+        engine.NextPlanned = Direction.W;   // not an exit of Fork {N,S}
+        gate.MayProceedWithPlannedStep();
+
+        // Reverse of the recorded N is S — the one and only reverse move.
+        Assert.Equal(Direction.S, Assert.Single(engine.Backtracks));
+
+        tracker.NoteLookSent();
+        Assert.True(tracker.IsPeekSuppressed());
+        gate.OnRoomObserved(Obs("Landed"));
+
+        // Seeded from the peek ("Landed", no exits at all — see the sibling
+        // test), the walk would have nothing to try and fail immediately:
+        // Backtracks would stay [S], one abort, "2" in the failure detail.
+        // Seeded from LastAcceptedObservation ("Fork" {N,S}) instead, the
+        // walk finds the fork's own twin ambiguity and sends its splitting
+        // move — north and south tie (both lead to same-named, same-shaped
+        // twins), so compass order picks north.
+        Assert.Equal(new[] { Direction.S, Direction.N }, engine.Backtracks);
+        Assert.Equal(0, engine.AbortCount);
+    }
 }

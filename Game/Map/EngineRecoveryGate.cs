@@ -757,7 +757,20 @@ public sealed class EngineRecoveryGate
     private void BeginForwardWalk(RoomObservation? justObserved)
     {
         if (_engine is null) return;
-        if ((justObserved ?? _tracker.LastAcceptedObservation) is not { } obs)
+
+        // justObserved threaded through a reentrant landing is normally
+        // fresher than the tracker's own cache (see the comment below), but
+        // OnRoomObserved's AwaitingLanding dispatch feeds it EVERY parsed
+        // render — including a player-typed `look <dir>` peek — and can't
+        // tell that peek's own preview apart from the backtrack's genuine
+        // landing (PauseForRecovery pauses the engine, not the human typing).
+        // Trust justObserved only when no peek is in flight; a peek in
+        // flight falls back to RoomTracker's own accepted-observation
+        // record, which a peek this tracker drops never reaches.
+        RoomObservation? seed = !_tracker.IsPeekSuppressed()
+            ? justObserved ?? _tracker.LastAcceptedObservation
+            : _tracker.LastAcceptedObservation;
+        if (seed is not { } obs)
         {
             FailTier3("no observation available to seed the forward locator walk");
             return;
