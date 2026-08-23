@@ -119,8 +119,23 @@ public sealed class RoomTracker
     // to tell a passive redisplay of the same room — an Enter, a cash-on-ground
     // notice, a party arrival echo — apart from a genuine failed-move mismatch,
     // so a stationary player can't accrue Suspect strikes while standing still.
+    // Also exposed as LastAcceptedObservation below: this is set exactly once,
+    // at the end of NoteRoomObserved, only after that call has already decided
+    // the render is ours (a peek this tracker drops never reaches this
+    // assignment) — the single authority on "what did the wire last show us,
+    // for real," so callers needing that don't have to re-guess it themselves.
     private RoomObservation? _lastObservation;
     private DateTimeOffset _lastObservationAt;
+
+    // The most recent room render NoteRoomObserved accepted as our own
+    // position — never a peek it dropped (see NoteRoomObserved's peek-
+    // suppression handling: RoomTracker.IsPeekSuppressed() is a NON-consuming
+    // check that stays true across a genuine confirming render arriving in
+    // the same armed window right behind it, so a caller gating on that flag
+    // instead of this property can wrongly skip a real landing). Single
+    // writer: only NoteRoomObserved sets it. Null until the first accepted
+    // observation.
+    public RoomObservation? LastAcceptedObservation => _lastObservation;
 
     // The state class itself — bound by the UI, mutated only by this tracker.
     public RoomState State { get; } = new();

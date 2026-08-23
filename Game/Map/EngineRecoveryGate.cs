@@ -76,16 +76,6 @@ public sealed class EngineRecoveryGate
     // constraint fed to FootprintMatcher.Step / StepBlind on its landing.
     private Direction _lastBacktrackReverse;
 
-    // Most recent genuine room render the wire produced for OUR OWN
-    // position — never a look-sweep peek of a neighbour (see
-    // OnRoomObserved, which skips caching while Sweeping). Seeds a forward
-    // locator walk when RoomTracker.State.CurrentRoom is unavailable (e.g.
-    // a genuinely Lost tracker has no Room object at all), and — even when
-    // it is available — is what a display actually showed rather than a
-    // graph Room's full exit mask, which can include hidden/text exits the
-    // display never printed.
-    private RoomObservation? _lastObserved;
-
     // What to run once the room clears (WaitingCombatClear resume).
     private Action? _combatClearResume;
 
@@ -168,20 +158,18 @@ public sealed class EngineRecoveryGate
     // for EVERY parsed display — including a player-typed `look <dir>` peek —
     // BEFORE the tracker's own peek-suppression drops it). Routed by tier-3
     // phase: a landing render advances the footprint; a render during a sweep
-    // is a peeked neighbour handed to the sweep.
+    // is a peeked neighbour handed to the sweep. Does NOT cache the
+    // observation itself — BeginForwardWalk reads
+    // RoomTracker.LastAcceptedObservation instead. RoomTracker holds the
+    // pending-move context this event doesn't, so it — not this method — is
+    // the one place that can actually tell a peek from a landing; guessing
+    // here (this event fires before RoomTracker.NoteRoomObserved decides)
+    // risks both caching a peek AND, worse, skipping a genuine landing that
+    // happens to arrive inside an armed-but-unresolved peek-suppression
+    // window (RoomTracker.IsPeekSuppressed() is non-consuming — see its own
+    // NoteRoomObserved handling).
     public void OnRoomObserved(RoomObservation obs)
     {
-        // Cache every genuine render of OUR OWN room. Two things are NOT
-        // that: a Sweeping-phase call (a peeked NEIGHBOUR the gate's own
-        // RecoveryLookSweep asked for), and ANY render that arrives while
-        // RoomTracker.IsPeekSuppressed() is armed — a player can type
-        // `look <dir>` at any time, independent of recovery, and that peek
-        // parses through to this event exactly like a real move's landing
-        // would. Caching either would silently redirect the next forward
-        // walk to seed from a room we aren't standing in.
-        if (_tier3Phase != Tier3Phase.Sweeping && !_tracker.IsPeekSuppressed())
-            _lastObserved = obs;
-
         switch (_tier3Phase)
         {
             case Tier3Phase.AwaitingLanding:
@@ -235,7 +223,6 @@ public sealed class EngineRecoveryGate
         _tier3.Clear();
         ResetTier3Orchestration();
         _awaitingAuthoritative = false;
-        _lastObserved = null;
         CurrentTier = TierLevel.Tier1;
 
         Room? here = _tracker.State.CurrentRoom;
@@ -256,7 +243,6 @@ public sealed class EngineRecoveryGate
         _tier3.Clear();
         ResetTier3Orchestration();
         _awaitingAuthoritative = false;
-        _lastObserved = null;
         SetTier(TierLevel.Tier1, "detach");
     }
 
@@ -739,16 +725,18 @@ public sealed class EngineRecoveryGate
         _engine.SendBacktrackMove(_lastBacktrackReverse);
     }
 
-    // Seed a forward LocatorWalk from the last genuine room render the wire
-    // produced (not RoomTracker.State.CurrentRoom — see _lastObserved) and
-    // take its first step. Doesn't need an anchor OR a Room object: a
-    // genuinely Lost tracker has neither, and the cached wire text is
-    // exactly what the display showed, unlike a graph Room's full exit
-    // mask, which can carry hidden/text exits no display ever printed.
+    // Seed a forward LocatorWalk from RoomTracker's own record of the last
+    // room render it accepted as ours (not RoomTracker.State.CurrentRoom,
+    // and not a cache this gate maintains itself) and take its first step.
+    // Doesn't need an anchor OR a Room object: a genuinely Lost tracker has
+    // neither, and RoomTracker.LastAcceptedObservation is exactly what the
+    // display showed — never a peek RoomTracker itself dropped — unlike a
+    // graph Room's full exit mask, which can carry hidden/text exits no
+    // display ever printed.
     private void BeginForwardWalk()
     {
         if (_engine is null) return;
-        if (_lastObserved is not { } obs)
+        if (_tracker.LastAcceptedObservation is not { } obs)
         {
             FailTier3("no observation available to seed the forward locator walk");
             return;
