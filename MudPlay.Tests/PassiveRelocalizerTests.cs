@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using MudPlay.Game.Map;
+using MudPlay.Models.Profile;
 using MudPlay.Services;
 using Xunit;
 
@@ -317,6 +318,96 @@ public sealed class PassiveRelocalizerTests : IDisposable
 
         Assert.Empty(h.Sent);
         Assert.Null(h.Tracker.State.CurrentRoom);
+
+        relocalizer.Dispose();
+    }
+
+    /// <summary>
+    /// Finding 1's residual hole: RoomTracker.NoteDirectionFailed demotes
+    /// Confirmed -> Suspect off a "no exit" refusal reply, with NO room
+    /// render of its own. Hydrate seeds Confirmed at "Start" (1/1) with a
+    /// replay trail that WOULD converge on room C -- the freshness flag must
+    /// still refuse, because no render accompanied this specific transition.
+    /// </summary>
+    [Fact]
+    public void DirectionFailedTransition_HasNoRenderOfItsOwn_RefusesToLocate()
+    {
+        var h = new Harness(_root);
+
+        // Confirmed at Start (1/1) with a replay trail primed exactly like
+        // the convergent tests above -- Hydrate is the one path that seeds
+        // Confirmed without clearing RecentSteps (unlike SetLocated).
+        h.Tracker.Hydrate(new CharacterProfile
+        {
+            LastKnownRoom = new RoomRef(1, 1),
+            RecentSteps = new List<DirectionDto> { new(Direction.N), new(Direction.E) },
+        });
+
+        PassiveRelocalizer relocalizer = h.NewRelocalizer(allowWalking: true);
+
+        // A stale render from some earlier, unrelated point happens to match
+        // room C's signature -- exactly what the replay below converges on.
+        // Nothing else touches OnRoomObserved before the failure, so this is
+        // the only thing that could (wrongly) satisfy a freshness-blind
+        // match check.
+        relocalizer.OnRoomObserved(Obs("C"));
+
+        // Populates LastAcceptedObservation (Stage 1's seed) via a passive
+        // self-redisplay of the room we're already Confirmed in -- its OWN
+        // transition (Confirmed -> Confirmed) is a no-op for the relocalizer,
+        // so it does not touch the freshness cache above.
+        h.Tracker.NoteRoomObserved(Obs("Start", Direction.N, Direction.U));
+
+        // The refusal reply itself carries no render -- RoomDisplayParser
+        // never fires for it, so OnRoomObserved is never called here.
+        h.Tracker.NoteDirectionFailed();
+
+        Assert.Equal(RoomConfidence.Suspect, h.Tracker.State.Confidence);
+        Assert.Equal(new RoomKey(1, 1), h.Tracker.State.CurrentRoom!.Key);
+        Assert.Empty(h.Sent);
+
+        relocalizer.Dispose();
+    }
+
+    /// <summary>
+    /// A peek must never become the verification basis for an unrelated
+    /// later transition. The peeked render matches room C's signature --
+    /// exactly what the replay below converges on -- so if it were wrongly
+    /// cached as fresh, the direction-failed transition that follows (no
+    /// render of its own) would wrongly confirm.
+    /// </summary>
+    [Fact]
+    public void PeekPrecedingATransition_DoesNotBecomeTheVerificationBasis()
+    {
+        var h = new Harness(_root);
+
+        h.Tracker.Hydrate(new CharacterProfile
+        {
+            LastKnownRoom = new RoomRef(1, 1),
+            RecentSteps = new List<DirectionDto> { new(Direction.N), new(Direction.E) },
+        });
+
+        PassiveRelocalizer relocalizer = h.NewRelocalizer(allowWalking: true);
+
+        RoomObservation startRender = Obs("Start", Direction.N, Direction.U);
+        relocalizer.OnRoomObserved(startRender);
+        h.Tracker.NoteRoomObserved(startRender);
+
+        // The player peeks a neighbour that happens to render exactly like
+        // room C -- the room the replay below converges on. RoomDisplayParser
+        // fires OnRoomObserved for a peek's own preview just like any other
+        // render; RoomTracker itself drops it (IsPeekSuppressed, no pending
+        // move to match it against).
+        h.Tracker.NoteLookSent();
+        relocalizer.OnRoomObserved(Obs("C"));
+        h.Tracker.NoteRoomObserved(Obs("C"));
+
+        // The refusal reply itself carries no render of its own.
+        h.Tracker.NoteDirectionFailed();
+
+        Assert.NotEqual(RoomConfidence.Confirmed, h.Tracker.State.Confidence);
+        Assert.Equal(new RoomKey(1, 1), h.Tracker.State.CurrentRoom!.Key);
+        Assert.Empty(h.Sent);
 
         relocalizer.Dispose();
     }

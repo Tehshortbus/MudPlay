@@ -42,17 +42,26 @@ public sealed class PassiveRelocalizer : IDisposable
     private Action<byte[]>? _wireSender;
     private LocatorWalk? _walk;
 
-    // The most recent parsed render, cached unconditionally. RoomDisplayParser
-    // fires RoomParsed (reaching OnRoomObserved) BEFORE RoomTracker.NoteRoomObserved
-    // runs, and StateChanged fires from inside that dispatch — so by the time
-    // OnTrackerStateChanged reacts, this already holds the render that triggered
-    // the transition. Stage 1's replay is pure topology with no observation
-    // check of its own; this is what lets SetLocated be verified against what's
-    // actually on screen before it fires. A peek's own preview can land here
-    // too, but that's safe by construction: the worst a stale/wrong value can
-    // do is make the match check below wrongly REFUSE (stay lost), never
-    // wrongly CONFIRM, so no extra peek-guard is needed on the cache itself.
+    // The most recent NON-PEEK parsed render, plus whether it's still fresh
+    // for the transition about to consume it. RoomDisplayParser fires
+    // RoomParsed (reaching OnRoomObserved) BEFORE RoomTracker.NoteRoomObserved
+    // runs, and StateChanged fires from inside that dispatch — so when a
+    // render's own processing raises a Suspect/Lost transition, this cache
+    // genuinely holds the render that triggered it. But not every Suspect/Lost
+    // transition is render-driven — RoomTracker.NoteDirectionFailed's
+    // EnterSuspect, off a "no exit" refusal reply, carries no render at all —
+    // and KeyMatchesObservation is a name+subset-exits match, not an identity
+    // check, in a world with genuinely duplicate-signature rooms, so a stale
+    // cached render could coincidentally match the wrong candidate. The
+    // freshness flag is set true only on a genuine (non-peek) cache write and
+    // consumed — read once, then cleared — by the very next StateChanged
+    // dispatch, so a later, unrelated transition (no new render in between)
+    // always sees it as stale. Net guarantee: this can make Stage 1 wrongly
+    // REFUSE to locate (the safe direction — staying lost only idles), but it
+    // will never let Stage 1 CONFIRM against a render that is stale, peeked,
+    // or unrelated to the transition being processed.
     private RoomObservation? _lastLiveRender;
+    private bool _lastLiveRenderIsFresh;
 
     // Stage 2 (walking) only runs when true. Off by default until the
     // settings surface that drives it lands. Stage 1 (pure replay) always
@@ -95,7 +104,14 @@ public sealed class PassiveRelocalizer : IDisposable
     // EngineRecoveryGate.OnRoomObserved rides.
     public void OnRoomObserved(RoomObservation obs)
     {
-        _lastLiveRender = obs;
+        // Never cache a peek's own preview as verification ground truth —
+        // IsPeekSuppressed() is non-consuming (RoomTracker's own contract),
+        // so it's safe to check on every call.
+        if (!_tracker.IsPeekSuppressed())
+        {
+            _lastLiveRender = obs;
+            _lastLiveRenderIsFresh = true;
+        }
 
         if (_walk is not { IsActive: true } walk) return;
 
@@ -121,6 +137,17 @@ public sealed class PassiveRelocalizer : IDisposable
 
     private void OnTrackerStateChanged(RoomTransition t)
     {
+        // Consumed unconditionally, for EVERY transition, before any of the
+        // guards below — a render belongs to at most the one StateChanged
+        // dispatch its own NoteRoomObserved call raises (Confirmed included;
+        // most renders never touch Suspect/Lost at all). If it also precedes
+        // a LATER, unrelated transition — NoteDirectionFailed's EnterSuspect
+        // carries no render of its own — that later one must see it as
+        // stale, not fresh, so it's read once here regardless of what the
+        // rest of this method does with it.
+        bool renderIsFreshForThisTransition = _lastLiveRenderIsFresh;
+        _lastLiveRenderIsFresh = false;
+
         if (_gate.AttachedEngine is not null) return;   // never fight an attached engine
         if (t.NewConfidence is not (RoomConfidence.Suspect or RoomConfidence.Lost)) return;
         if (_walk is { IsActive: true }) return;         // already mid-walk from an earlier escalation
@@ -148,6 +175,14 @@ public sealed class PassiveRelocalizer : IDisposable
             // Confirmed can drive real movement from a false position, and
             // clears RecentSteps in the process, destroying the evidence that
             // produced the mistake. Staying lost only idles.
+            if (!renderIsFreshForThisTransition)
+            {
+                _log?.Log(LogSeverity.Info, LogSource,
+                    $"footstep replay converged on {found} but no render accompanied this " +
+                    "transition (a direction-failed reply, most likely) — refusing to locate; staying lost.");
+                return;
+            }
+
             if (_lastLiveRender is not { } live || !KeyMatchesObservation(found, live))
             {
                 _log?.Log(LogSeverity.Info, LogSource,
