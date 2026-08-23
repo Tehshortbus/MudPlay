@@ -313,6 +313,49 @@ public sealed class EngineRecoveryGateTests : IDisposable
         ]
         """;
 
+    // "Fork" twins {N,S} (1/2, 1/3) whose north exits lead to another twin
+    // pair ("Echo", both dead ends) and whose south exits lead to a THIRD
+    // twin pair ("Landed", also both dead ends). Reversing a single
+    // executed north step from either fork lands on a "Landed" twin — the
+    // Step survives as 2 candidates (not converged, not exhausted), and
+    // Landed's own empty exit set means the resulting forward-walk handoff
+    // finds nothing further to try. Used to drive a reverse-walk down to
+    // zero executed history via its OWN landing, forcing the
+    // BeginForwardWalk hand-off to fire reentrantly, inside the same
+    // OnRoomObserved call that delivered that landing.
+    private const string ReentrantHandoffGraphJson = """
+        [
+          { "Map Number": 1, "Room Number": 1, "Name": "Start",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "1/2", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 2, "Name": "Fork",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "1/30", "S": "1/40", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 3, "Name": "Fork",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "1/31", "S": "1/41", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 30, "Name": "Echo",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "0", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 31, "Name": "Echo",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "0", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 40, "Name": "Landed",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "0", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 41, "Name": "Landed",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "0", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+        ]
+        """;
+
     private (RoomGraphManager Graph, RoomTracker Tracker) NewGraphAndTracker(string set, string json)
     {
         Directory.CreateDirectory(Path.Combine(_root, set));
@@ -1095,5 +1138,57 @@ public sealed class EngineRecoveryGateTests : IDisposable
         Assert.Equal(TierLevel.Tier3, gate.CurrentTier);
         Assert.NotEmpty(engine.Backtracks);
         Assert.Equal(0, engine.AbortCount);
+    }
+
+    // The regression this round exists to kill, part 2: a landing that
+    // drains _executedSinceAnchor to zero hands off to BeginForwardWalk
+    // REENTRANTLY, still inside the very OnRoomObserved call that delivered
+    // that landing. RoomDisplayParser fires OnRoomObserved BEFORE
+    // RoomTracker.NoteRoomObserved processes the same render, so
+    // RoomTracker.LastAcceptedObservation is still the PREVIOUS room at
+    // that exact point — the fix threads the live observation through the
+    // landing chain instead of trusting the (here, stale) tracker property.
+    [Fact]
+    public void ReentrantHandoff_SeedsFromJustLandedRoom_NotStaleTrackerRecord()
+    {
+        (RoomGraphManager graph, RoomTracker tracker) = NewGraphAndTracker("fwd-reentrant", ReentrantHandoffGraphJson);
+        var gate = new EngineRecoveryGate(graph, tracker);
+        var engine = new RecordingEngine();
+
+        ParkSuspectAt(tracker, new RoomKey(1, 1), Direction.N, Obs("Fork", Direction.N, Direction.S), Direction.E);
+        gate.Attach(engine);   // anchor seeds Fork's key
+
+        // Exactly one executed step to reverse, so the reverse-walk landing
+        // itself drains history to zero and hands off reentrantly.
+        gate.NoteEngineStepSent(Direction.N);
+
+        gate.NoteSuspectedMismatch("resumed after following, one step to reverse");
+        engine.NextPlanned = Direction.W;   // not an exit of Fork {N,S}
+        gate.MayProceedWithPlannedStep();
+
+        // Reverse of the recorded N is S — the one and only reverse move.
+        Assert.Equal(Direction.S, Assert.Single(engine.Backtracks));
+
+        RecoveryFailedEvent? failed = null;
+        gate.RecoveryFailed += e => failed = e;
+
+        // Deliberately do NOT call tracker.NoteRoomObserved for this landing
+        // before feeding the gate — RoomTracker.LastAcceptedObservation
+        // stays "Fork" (stale), exactly as it would mid-dispatch in
+        // production, since RoomParsed fires OnRoomObserved first. The
+        // reverse-S landing is "Landed", a twin of two name-ambiguous dead
+        // ends reached from the two Fork twins — the forward-walk handoff
+        // this triggers must seed from THIS observation, not the stale one.
+        gate.OnRoomObserved(Obs("Landed"));
+
+        // "Landed" has no exits to try, so the forward walk reports
+        // Ambiguous immediately with NO further move — the reverse-S stays
+        // the only backtrack ever sent. Seeded from the stale "Fork"
+        // instead, the walk would see Fork's own north exit as usable and
+        // send a second, nonsensical move from a room already left behind.
+        Assert.Equal(Direction.S, Assert.Single(engine.Backtracks));
+        Assert.Equal(1, engine.AbortCount);
+        Assert.NotNull(failed);
+        Assert.Contains("2", failed!.Value.Detail);
     }
 }

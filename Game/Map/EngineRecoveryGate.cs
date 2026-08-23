@@ -504,9 +504,14 @@ public sealed class EngineRecoveryGate
         // whole escalation path — this method included — is never entered
         // for that exact case. That refusal is a separate, out-of-scope
         // problem. This only fires for an engine that IS attached.
+        // Called outside RoomDisplayParser's OnRoomObserved dispatch (via
+        // NoteSuspectedMismatch / MayProceedWithPlannedStep / an authoritative
+        // resync failure), so RoomTracker has already processed whatever it
+        // last saw — no live observation to hand BeginForwardWalk fresher
+        // than its own LastAcceptedObservation.
         if (_anchor is null)
         {
-            BeginForwardWalk();
+            BeginForwardWalk(justObserved: null);
             return;
         }
 
@@ -515,7 +520,7 @@ public sealed class EngineRecoveryGate
         Room? here = _tracker.State.CurrentRoom;
         if (here is null)
         {
-            BeginForwardWalk();
+            BeginForwardWalk(justObserved: null);
             return;
         }
 
@@ -572,10 +577,10 @@ public sealed class EngineRecoveryGate
     {
         if (_tracker.IsInDarkRoom)
         {
-            AdvanceReverseWalk();
+            AdvanceReverseWalk(justObserved: null);
             return;
         }
-        BeginSweepOrAdvance(new HashSet<Direction>(here.Exits.Keys));
+        BeginSweepOrAdvance(new HashSet<Direction>(here.Exits.Keys), justObserved: null);
     }
 
     // Lit backtrack landing: temporal-narrow by the reverse move we just made,
@@ -602,7 +607,14 @@ public sealed class EngineRecoveryGate
         if (_tier3.IsConverged) { FinishTier3Success(_tier3.Candidates.Single()); return; }
         if (_tier3.IsExhausted) { FailTier3("footprint exhausted after reverse step"); return; }
 
-        BeginSweepOrAdvance(new HashSet<Direction>(obs.Exits));
+        // Thread this render through as the possible forward-walk seed: if
+        // this landing is the one that drains _executedSinceAnchor to zero,
+        // AdvanceReverseWalk hands off to BeginForwardWalk reentrantly,
+        // still inside this same call — RoomDisplayParser fires OnRoomObserved
+        // BEFORE RoomTracker.NoteRoomObserved, so RoomTracker.LastAcceptedObservation
+        // would still read the PREVIOUS room at this exact point. Passing obs
+        // directly is strictly fresher than that stale read.
+        BeginSweepOrAdvance(new HashSet<Direction>(obs.Exits), justObserved: obs);
     }
 
     // Dark backtrack landing: the room never rendered, so the only constraint
@@ -637,22 +649,26 @@ public sealed class EngineRecoveryGate
         _tier3.StepBlind(_lastBacktrackReverse);
         _log?.Log(LogSeverity.Info, LogSource,
             $"Tier3.dark-step reverse={_lastBacktrackReverse} → {_tier3.Candidates.Count} candidate(s)");
-        EvaluateFootprint();
+        // A dark landing never renders — nothing to hand a forward walk that
+        // would beat RoomTracker.LastAcceptedObservation.
+        EvaluateFootprint(justObserved: null);
     }
 
     // Combat-gate a look-sweep (lit): clear the room before peeking. Skips
     // straight to the sweep when nothing hostile is present / no gate is wired.
-    private void BeginSweepOrAdvance(IReadOnlySet<Direction> ownExits)
+    // justObserved threads the live landing render through to a same-call
+    // BeginForwardWalk handoff — see HandleLitLanding.
+    private void BeginSweepOrAdvance(IReadOnlySet<Direction> ownExits, RoomObservation? justObserved)
     {
         if (_hostilesPresent?.Invoke() == true)
         {
             _tier3Phase = Tier3Phase.WaitingCombatClear;
-            _combatClearResume = () => StartSweep(ownExits);
+            _combatClearResume = () => StartSweep(ownExits, justObserved);
             _log?.Log(LogSeverity.Info, LogSource,
                 "Tier3: holding look-sweep until the room is clear of hostiles");
             return;
         }
-        StartSweep(ownExits);
+        StartSweep(ownExits, justObserved);
     }
 
     private void ResumeAfterCombatClear()
@@ -666,40 +682,40 @@ public sealed class EngineRecoveryGate
     // Peek every exit of the landing room and spatially narrow the footprint by
     // what the neighbours reveal. No sweep available (headless / no wire / no
     // exits) → decide on the temporal footprint alone.
-    private void StartSweep(IReadOnlySet<Direction> ownExits)
+    private void StartSweep(IReadOnlySet<Direction> ownExits, RoomObservation? justObserved)
     {
         if (_sweep is null || !_sweep.CanSweep)
         {
-            EvaluateFootprint();
+            EvaluateFootprint(justObserved);
             return;
         }
 
         _tier3Phase = Tier3Phase.Sweeping;
-        if (!_sweep.Begin(ownExits, OnSweepComplete))
-            EvaluateFootprint();
+        if (!_sweep.Begin(ownExits, neighbours => OnSweepComplete(neighbours, justObserved)))
+            EvaluateFootprint(justObserved);
     }
 
-    private void OnSweepComplete(IReadOnlyDictionary<Direction, RoomObservation> neighbours)
+    private void OnSweepComplete(IReadOnlyDictionary<Direction, RoomObservation> neighbours, RoomObservation? justObserved)
     {
         if (!Tier3Active) return;
         _tier3.FilterByNeighbours(neighbours);
         _log?.Log(LogSeverity.Info, LogSource,
             $"Tier3.look-sweep: {neighbours.Count} neighbour(s) → {_tier3.Candidates.Count} candidate(s)");
-        EvaluateFootprint();
+        EvaluateFootprint(justObserved);
     }
 
     // Converged → re-confirm; exhausted → fail; otherwise take one more reverse
     // step and keep growing the footprint.
-    private void EvaluateFootprint()
+    private void EvaluateFootprint(RoomObservation? justObserved)
     {
         if (_tier3.IsConverged) { FinishTier3Success(_tier3.Candidates.Single()); return; }
         if (_tier3.IsExhausted) { FailTier3("footprint exhausted — live world disagrees with the graph"); return; }
-        AdvanceReverseWalk();
+        AdvanceReverseWalk(justObserved);
     }
 
     // Pop the most-recent executed step, reverse it, and send it. The landing
     // (lit via OnRoomObserved, dark via the tracker) continues the footprint.
-    private void AdvanceReverseWalk()
+    private void AdvanceReverseWalk(RoomObservation? justObserved)
     {
         if (_engine is null) return;
         if (_executedSinceAnchor.Count == 0)
@@ -711,7 +727,7 @@ public sealed class EngineRecoveryGate
             // case, not a rare corner. Hand off to a forward locator walk —
             // it re-seeds from the live observation and picks its own
             // splitting exits — instead of failing having tried nothing.
-            BeginForwardWalk();
+            BeginForwardWalk(justObserved);
             return;
         }
 
@@ -725,18 +741,23 @@ public sealed class EngineRecoveryGate
         _engine.SendBacktrackMove(_lastBacktrackReverse);
     }
 
-    // Seed a forward LocatorWalk from RoomTracker's own record of the last
-    // room render it accepted as ours (not RoomTracker.State.CurrentRoom,
-    // and not a cache this gate maintains itself) and take its first step.
-    // Doesn't need an anchor OR a Room object: a genuinely Lost tracker has
-    // neither, and RoomTracker.LastAcceptedObservation is exactly what the
-    // display showed — never a peek RoomTracker itself dropped — unlike a
-    // graph Room's full exit mask, which can carry hidden/text exits no
-    // display ever printed.
-    private void BeginForwardWalk()
+    // Seed a forward LocatorWalk and take its first step. justObserved is the
+    // live render of a landing that reaches this point reentrantly, still
+    // inside the same OnRoomObserved call — see HandleLitLanding.
+    // RoomDisplayParser fires OnRoomObserved BEFORE RoomTracker.NoteRoomObserved
+    // processes the same render, so RoomTracker.LastAcceptedObservation would
+    // still read the PREVIOUS room at that exact point; the caller's own
+    // parameter is strictly fresher. Every other entry point (EscalateToTier3,
+    // a dark landing) runs outside that dispatch, where the tracker IS caught
+    // up, and passes null to fall back to it. Doesn't need an anchor OR a
+    // Room object either way: a genuinely Lost tracker has neither, and
+    // RoomTracker.LastAcceptedObservation is exactly what the display showed
+    // — never a peek RoomTracker itself dropped — unlike a graph Room's full
+    // exit mask, which can carry hidden/text exits no display ever printed.
+    private void BeginForwardWalk(RoomObservation? justObserved)
     {
         if (_engine is null) return;
-        if (_tracker.LastAcceptedObservation is not { } obs)
+        if ((justObserved ?? _tracker.LastAcceptedObservation) is not { } obs)
         {
             FailTier3("no observation available to seed the forward locator walk");
             return;
