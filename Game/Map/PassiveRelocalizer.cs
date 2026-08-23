@@ -17,7 +17,10 @@ namespace MudPlay.Game.Map;
 //     FootprintMatcher seeded from the last accepted observation. No
 //     per-step render is available for a step already taken, so this narrows
 //     by graph structure alone (StepBlind), never by matching a display —
-//     zero bytes sent either way.
+//     zero bytes sent either way. Before confirming, the converged room is
+//     still checked against the render that triggered the transition (see
+//     OnRoomObserved's cache) — a topology-only projection that disagrees
+//     with what's actually on screen refuses rather than asserts.
 //   Stage 2 — if replay alone leaves more than one candidate standing, drive
 //     a LocatorWalk to walk it out live. Gated behind AllowWalking (off by
 //     default — the settings surface lands in a later task) and, on every
@@ -38,6 +41,18 @@ public sealed class PassiveRelocalizer : IDisposable
 
     private Action<byte[]>? _wireSender;
     private LocatorWalk? _walk;
+
+    // The most recent parsed render, cached unconditionally. RoomDisplayParser
+    // fires RoomParsed (reaching OnRoomObserved) BEFORE RoomTracker.NoteRoomObserved
+    // runs, and StateChanged fires from inside that dispatch — so by the time
+    // OnTrackerStateChanged reacts, this already holds the render that triggered
+    // the transition. Stage 1's replay is pure topology with no observation
+    // check of its own; this is what lets SetLocated be verified against what's
+    // actually on screen before it fires. A peek's own preview can land here
+    // too, but that's safe by construction: the worst a stale/wrong value can
+    // do is make the match check below wrongly REFUSE (stay lost), never
+    // wrongly CONFIRM, so no extra peek-guard is needed on the cache itself.
+    private RoomObservation? _lastLiveRender;
 
     // Stage 2 (walking) only runs when true. Off by default until the
     // settings surface that drives it lands. Stage 1 (pure replay) always
@@ -77,11 +92,27 @@ public sealed class PassiveRelocalizer : IDisposable
     }
 
     // Fed every parsed room display (RoomDisplayParser.RoomParsed), same feed
-    // EngineRecoveryGate.OnRoomObserved rides. Only meaningful while a Stage
-    // 2 walk has a move outstanding; otherwise a no-op.
+    // EngineRecoveryGate.OnRoomObserved rides.
     public void OnRoomObserved(RoomObservation obs)
     {
+        _lastLiveRender = obs;
+
         if (_walk is not { IsActive: true } walk) return;
+
+        // An engine can attach between this walk's sends (Attach itself never
+        // touches us — only OnTrackerStateChanged's own entry guard checks
+        // AttachedEngine, and that only runs at walk START). Re-check here,
+        // before folding this landing in: feeding it to the walk would both
+        // send a second, uncoordinated move AND corrupt the shared matcher
+        // with a landing that may belong to the OTHER engine's own step.
+        if (_gate.AttachedEngine is not null)
+        {
+            _log?.Log(LogSeverity.Warn, LogSource,
+                "an engine attached mid-walk — abandoning the locating walk rather than fighting it.");
+            _walk = null;
+            return;
+        }
+
         LocateOutcome? outcome = walk.OnLanding(obs);
         if (outcome is { } result) HandleOutcome(result);
     }
@@ -110,8 +141,24 @@ public sealed class PassiveRelocalizer : IDisposable
         if (_matcher.IsConverged)
         {
             RoomKey found = _matcher.Candidates.Single();
+
+            // StepBlind is pure topology — it never checked the projected
+            // endpoint against anything actually on screen. Require that now,
+            // against the render that triggered this very transition: a wrong
+            // Confirmed can drive real movement from a false position, and
+            // clears RecentSteps in the process, destroying the evidence that
+            // produced the mistake. Staying lost only idles.
+            if (_lastLiveRender is not { } live || !KeyMatchesObservation(found, live))
+            {
+                _log?.Log(LogSeverity.Info, LogSource,
+                    $"footstep replay converged on {found} but the room on screen is " +
+                    (_lastLiveRender is { } l ? $"'{l.Name}'" : "unknown") +
+                    " — refusing to locate; staying lost.");
+                return;
+            }
+
             _log?.Log(LogSeverity.Info, LogSource,
-                $"footstep replay converged -> {found} with zero bytes sent.");
+                $"footstep replay converged -> {found}, confirmed by the room on screen, zero bytes sent.");
             _tracker.SetLocated(found);
             return;
         }

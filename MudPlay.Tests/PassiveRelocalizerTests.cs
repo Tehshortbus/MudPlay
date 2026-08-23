@@ -38,7 +38,11 @@ public sealed class PassiveRelocalizerTests : IDisposable
     // E leads to "C" (1/20); 1/2.N leads to "B" (1/11), a dead end. Replaying
     // N then E survives only the 1/1 branch (1/11 has no E exit), converging
     // on C. Replaying N alone splits the twins by name ("A" vs "B"), the
-    // walking tier's own splitting move.
+    // walking tier's own splitting move. C also carries a self-loop S exit
+    // that a bare "C" display never lists — RoomTracker's own exact (name,
+    // full-mask) search misses it (0 candidates, stays Suspect), but the
+    // relocalizer's own subset-based match still accepts a bare "C" render as
+    // consistent with standing in C, the live-render check Finding 1 added.
     private const string FixtureGraph = """
         [
           { "Map Number": 1, "Room Number": 1, "Name": "Start",
@@ -59,7 +63,7 @@ public sealed class PassiveRelocalizerTests : IDisposable
             "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
           { "Map Number": 1, "Room Number": 20, "Name": "C",
             "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
-            "N": "0", "S": "0", "E": "0", "W": "0",
+            "N": "0", "S": "1/20", "E": "0", "W": "0",
             "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
         ]
         """;
@@ -115,7 +119,10 @@ public sealed class PassiveRelocalizerTests : IDisposable
     /// <summary>
     /// A dragged follower's two steps (N then E) replayed against the
     /// ambiguous "Start" twins converge on the single room reachable by
-    /// both hops, with nothing sent to the wire.
+    /// both hops, with nothing sent to the wire — and the live render
+    /// (fed to OnRoomObserved exactly as RoomDisplayParser.RoomParsed would,
+    /// ahead of the tracker's own NoteRoomObserved call for the same render)
+    /// agrees with that room, so the confirm actually fires.
     /// </summary>
     [Fact]
     public void Replaying_follow_drags_narrows_without_sending_anything()
@@ -131,15 +138,50 @@ public sealed class PassiveRelocalizerTests : IDisposable
         // subscription only sees the ONE StateChanged this test cares about.
         PassiveRelocalizer relocalizer = h.NewRelocalizer(allowWalking: true);
 
-        // Any mismatching redisplay re-enters Suspect; LastAcceptedObservation
-        // still reads the "Start" render from before the drags (RoomTracker
-        // updates it only after its own switch statement returns), which is
-        // exactly the anchor replay needs.
-        h.Tracker.NoteRoomObserved(Obs("Nowhere", Direction.W));
+        // A bare "C" display: RoomTracker's own exact (name, full-mask)
+        // search misses it (C's real mask carries a self-loop S the display
+        // never lists), so the tracker itself stays Suspect on this render —
+        // exactly the shape that needs the relocalizer, not RoomTracker's own
+        // 1-of-1 fast path, to resolve it. Fed to the relocalizer first, then
+        // the tracker, mirroring production order (RoomParsed before
+        // RoomTracker.NoteRoomObserved for the same render).
+        RoomObservation liveRender = Obs("C");
+        relocalizer.OnRoomObserved(liveRender);
+        h.Tracker.NoteRoomObserved(liveRender);
 
         Assert.Empty(h.Sent);
         Assert.Equal(RoomConfidence.Confirmed, h.Tracker.State.Confidence);
         Assert.Equal(new RoomKey(1, 20), h.Tracker.State.CurrentRoom!.Key);
+
+        relocalizer.Dispose();
+    }
+
+    /// <summary>
+    /// Finding 1: Stage 1's replay is pure topology (FootprintMatcher.StepBlind
+    /// never checks a landing against a display) — it must not assert a
+    /// position that contradicts the room actually on screen. Same replay as
+    /// the test above (converges on C), but the render fed to OnRoomObserved —
+    /// and to the tracker, matching production order — names a room the graph
+    /// doesn't even have, so it cannot possibly be C. SetLocated must not fire.
+    /// </summary>
+    [Fact]
+    public void ConvergedReplay_ContradictingTheLiveRender_RefusesToLocate()
+    {
+        var h = new Harness(_root);
+
+        h.Tracker.NoteRoomObserved(Obs("Start", Direction.N, Direction.U));
+        h.Tracker.NoteFollowMove(Direction.N);
+        h.Tracker.NoteFollowMove(Direction.E);
+
+        PassiveRelocalizer relocalizer = h.NewRelocalizer(allowWalking: true);
+
+        RoomObservation contradicting = Obs("Nowhere", Direction.W);
+        relocalizer.OnRoomObserved(contradicting);
+        h.Tracker.NoteRoomObserved(contradicting);
+
+        Assert.Empty(h.Sent);
+        Assert.NotEqual(RoomConfidence.Confirmed, h.Tracker.State.Confidence);
+        Assert.Null(h.Tracker.State.CurrentRoom);
 
         relocalizer.Dispose();
     }
@@ -233,6 +275,48 @@ public sealed class PassiveRelocalizerTests : IDisposable
         // like the first test — assert it did NOT, i.e. it stayed inert.
         Assert.Null(h.Tracker.State.CurrentRoom);
         Assert.Equal(RoomConfidence.Suspect, h.Tracker.State.Confidence);
+
+        relocalizer.Dispose();
+    }
+
+    /// <summary>
+    /// Finding 2: OnTrackerStateChanged only checks AttachedEngine once, at
+    /// walk start — nothing re-checked it while the walk was pumping landings.
+    /// An engine attaching mid-walk must abandon the walk rather than fold a
+    /// landing into it: two uncoordinated drivers on the same wire, and the
+    /// matcher would misattribute the OTHER engine's landing to this walk's
+    /// own last-sent direction.
+    /// </summary>
+    [Fact]
+    public void AnEngineAttachingMidWalk_AbandonsTheWalk()
+    {
+        var h = new Harness(_root);
+
+        // First observation ever, so LastAcceptedObservation is null while
+        // THIS call's own StateChanged is in flight (RoomTracker assigns it
+        // only after the call returns) -- construct the relocalizer only
+        // after this lands, and trigger Stage 2 off a second mismatch, same
+        // as the other tests that need a real seed to work from.
+        h.Tracker.NoteRoomObserved(Obs("Start", Direction.N, Direction.U));
+
+        PassiveRelocalizer relocalizer = h.NewRelocalizer(allowWalking: true);
+
+        // No steps to replay -> Stage 2 starts immediately and sends its own
+        // splitting move (N: "A" vs "B" diverge by name; U ties, both twins
+        // loop back to "Start").
+        h.Tracker.NoteRoomObserved(Obs("Nowhere", Direction.W));
+        Assert.Single(h.Sent);
+        h.Sent.Clear();
+
+        h.Gate.Attach(new InertEngine());
+
+        // The move's own landing arrives — "A", which WOULD converge the walk
+        // (only the 1/1 twin's north neighbour is named "A") and confirm the
+        // player there if this landing were folded in.
+        relocalizer.OnRoomObserved(Obs("A", Direction.E));
+
+        Assert.Empty(h.Sent);
+        Assert.Null(h.Tracker.State.CurrentRoom);
 
         relocalizer.Dispose();
     }
