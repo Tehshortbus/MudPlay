@@ -25,8 +25,12 @@ namespace MudPlay.Game.Map;
 //     a LocatorWalk to walk it out live. Gated behind AllowWalking (Settings
 //     -> Other; on by default, since the whole point of this driver is that
 //     doing nothing was the reported bug) and, on every single send, behind
-//     MovementCoordinator's follower gate: marching a party follower out of
-//     the leader's drag is the one failure mode this driver must never cause.
+//     MovementCoordinator.IsPaused — every other autonomous engine in this
+//     codebase (AutoWalkManager, LoopRunner) gates its own sends the same
+//     way, and this driver has no upstream engine already enforcing it:
+//     marching a mortally wounded, held, confused, or combat-engaged
+//     character (or a party follower out of the leader's drag) is a failure
+//     mode this driver must never cause.
 public sealed class PassiveRelocalizer : IDisposable
 {
     private const string LogSource = "PassiveRelocalizer";
@@ -292,15 +296,20 @@ public sealed class PassiveRelocalizer : IDisposable
     }
 
     // The one send choke-point for Stage 2. Checked here, not at BeginWalk,
-    // so there's a single authority to reason about: the party role can flip
-    // mid-walk, and marching a follower out of the leader's drag is the one
-    // failure mode this driver must never cause.
+    // so there's a single authority to reason about: any gate can assert
+    // mid-walk (combat engaging, a knockdown, the party role flipping, ...),
+    // and this driver has no attached engine upstream already enforcing
+    // IsPaused for it the way AutoWalkManager's own SendNextStep does.
+    // Abandoning rather than skipping the send matters because LocatorWalk is
+    // a pump: a silently skipped send leaves IsActive true with nothing left
+    // to advance it, stalling the walk forever instead of surfacing as an
+    // outcome.
     private void Send(Direction direction)
     {
-        if (_coordinator.IsGateAsserted(MovementCoordinator.FollowerGate))
+        if (_coordinator.IsPaused)
         {
-            _log?.Log(LogSeverity.Warn, LogSource,
-                "follower gate asserted — abandoning the locating walk rather than fighting the leader's drag.");
+            _log?.Log(LogSeverity.Info, LogSource,
+                $"movement gate(s) asserted ({string.Join(", ", _coordinator.AssertedGates)}) — abandoning the locating walk rather than move through it.");
             _walk = null;
             return;
         }

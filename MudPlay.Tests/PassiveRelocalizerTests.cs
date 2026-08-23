@@ -214,6 +214,131 @@ public sealed class PassiveRelocalizerTests : IDisposable
     }
 
     /// <summary>
+    /// The follower gate isn't special-cased any more — every movement gate
+    /// blocks a send the same way Send checks MovementCoordinator.IsPaused,
+    /// not just the follower gate. Combat here stands in for the class: no
+    /// autonomous driver in this codebase may move a mortally wounded, held,
+    /// confused, or combat-engaged character. Mutation-proven: reverting the
+    /// guard to IsGateAsserted(FollowerGate) makes this fail (the move goes
+    /// out because Combat isn't the follower gate).
+    /// </summary>
+    [Fact]
+    public void NonFollowerGate_Combat_BlocksTheFirstSend()
+    {
+        var h = new Harness(_root);
+        h.Coordinator.AssertGate(MovementCoordinator.CombatGate, "test", "hostile revealed");
+
+        h.Tracker.NoteRoomObserved(Obs("Start", Direction.N, Direction.U));
+
+        PassiveRelocalizer relocalizer = h.NewRelocalizer(allowWalking: true);
+
+        // No steps recorded, so replay is a no-op and the twins are still
+        // ambiguous — Stage 2 is exactly what would otherwise fire here.
+        h.Tracker.NoteRoomObserved(Obs("Nowhere", Direction.W));
+
+        Assert.Empty(h.Sent);
+        Assert.False(relocalizer.IsWalkActive);
+
+        relocalizer.Dispose();
+    }
+
+    // Two Twins whose N exit both land on a room named "Mid" with the same
+    // single displayed exit (E) — unlike the twins fixture above (whose one
+    // splitting move fully converges the walk), this keeps the walk
+    // genuinely ambiguous after its first landing, so a gate asserted
+    // between the first send and its landing can be observed blocking the
+    // second send mid-walk rather than at BeginWalk.
+    private const string TwoHopFixtureGraph = """
+        [
+          { "Map Number": 1, "Room Number": 1, "Name": "Twin",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "1/10", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 2, "Name": "Twin",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "1/11", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 10, "Name": "Mid",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "0", "S": "0", "E": "1/20", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 11, "Name": "Mid",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "0", "S": "0", "E": "1/21", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 20, "Name": "P1",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "0", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 21, "Name": "P2",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "0", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+        ]
+        """;
+
+    /// <summary>
+    /// A gate asserting AFTER a walk's first send (mortally wounded mid-walk,
+    /// say) must block the second send just as hard as one asserted before
+    /// the first — and must abandon the walk rather than leave it reporting
+    /// active with no landing ever coming to unstick it, since LocatorWalk is
+    /// a pump. Mutation-proven: reverting the guard to
+    /// IsGateAsserted(FollowerGate) makes this fail — the second move goes
+    /// out and the walk stays reported active.
+    /// </summary>
+    [Fact]
+    public void NonFollowerGate_AssertedMidWalk_AbandonsRatherThanStalls()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "mudplay-passiverelocalizer-midwalk-" + Path.GetRandomFileName());
+        Directory.CreateDirectory(Path.Combine(root, "alpha"));
+        File.WriteAllText(Path.Combine(root, "alpha", "Rooms.json"), TwoHopFixtureGraph);
+        try
+        {
+            var cache = new GameDataCache(root);
+            cache.SwitchSet("alpha");
+            var graph = new RoomGraphManager(cache);
+            graph.OnActiveSetChanged("alpha");
+            var tracker = new RoomTracker(graph);
+            var locator = new RoomLocator(graph);
+            var gate = new EngineRecoveryGate(graph, tracker);
+            var coordinator = new MovementCoordinator();
+            var sent = new List<byte[]>();
+
+            tracker.NoteRoomObserved(Obs("Twin", Direction.N));
+
+            var relocalizer = new PassiveRelocalizer(tracker, locator, graph, gate, coordinator)
+            {
+                AllowWalking = true,
+            };
+            relocalizer.SetWireSender(sent.Add);
+
+            // Still ambiguous between the two Twins -> Stage 2 fires its one
+            // usable splitting move (N).
+            tracker.NoteRoomObserved(Obs("Nowhere", Direction.W));
+            Assert.Single(sent);
+            Assert.True(relocalizer.IsWalkActive);
+            sent.Clear();
+
+            // A gate asserts mid-walk, between this send and its landing.
+            coordinator.AssertGate(MovementCoordinator.MortallyWoundedGate, "test", "HP <= 0");
+
+            // Both Twins land on a room named "Mid" with the same displayed
+            // exit (E) — the walk stays ambiguous and would otherwise send E
+            // as its second splitting move right here.
+            relocalizer.OnRoomObserved(Obs("Mid", Direction.E));
+
+            Assert.Empty(sent);
+            Assert.False(relocalizer.IsWalkActive);
+
+            relocalizer.Dispose();
+        }
+        finally
+        {
+            try { Directory.Delete(root, recursive: true); } catch { /* best-effort */ }
+        }
+    }
+
+    /// <summary>
     /// The user's reported bug, as a test: a genuinely Lost tracker (null
     /// CurrentRoom) with a cached accepted observation must not just sit
     /// there — with walking allowed and no party gate asserted, it sends a
