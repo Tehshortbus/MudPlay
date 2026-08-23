@@ -1430,10 +1430,8 @@ public sealed class AppServices
     public Game.Map.EngineRecoveryGate Recovery { get; private set; } = null!;
 
     // Answers "which rooms could this display be?" for a driver with no
-    // graph-attached engine of its own — PassiveRelocalizer's own seed source.
-    // Separate instance from EngineRecoveryGate's private one; both are pure
-    // readers of the same graph, so a second index cache costs memory, not
-    // correctness.
+    // graph-attached engine of its own. Shared by EngineRecoveryGate's tier-3
+    // backtrack and PassiveRelocalizer — one graph index, not two.
     public Game.Map.RoomLocator RoomLocator { get; private set; } = null!;
 
     // Recovers a room fix when the tracker goes Suspect/Lost with no engine
@@ -2572,9 +2570,16 @@ public sealed class AppServices
         RoomTracker = new Game.Map.RoomTracker(RoomGraph, Log);
         RoomGraph.GraphReloaded += () => RoomTracker.OnGraphReloaded();
 
+        // Answers "which rooms could this display be?" for anything with no
+        // graph-attached engine of its own. Built once, here, and shared by
+        // EngineRecoveryGate's tier-3 backtrack AND PassiveRelocalizer below —
+        // both are pure readers of the same graph, so one instance is one
+        // index cache instead of two.
+        RoomLocator = new Game.Map.RoomLocator(RoomGraph, Log);
+
         // Shared engine-level recovery gate. Walker / LoopRunner /
         // AutoLair attach themselves on Start (next commits).
-        Recovery = new Game.Map.EngineRecoveryGate(RoomGraph, RoomTracker, Log);
+        Recovery = new Game.Map.EngineRecoveryGate(RoomGraph, RoomTracker, Log, RoomLocator);
         // Tier-3 look-sweep combat gate: clear the recovery room before peeking
         // (lit) / wait a combat tick for an ambush to reveal (dark). Reads the
         // predicate live so an auto-attack toggle is honoured; the tick drives
@@ -2749,10 +2754,8 @@ public sealed class AppServices
         // the PartyPoller / AutoPartyManager pattern).
         MovementCoordinator = new Game.Map.MovementCoordinator(Log);
 
-        // Own RoomLocator instance for the passive (engine-less) relocalizer —
-        // built once MovementCoordinator exists, since PassiveRelocalizer reads
-        // the party-follower gate off it.
-        RoomLocator = new Game.Map.RoomLocator(RoomGraph, Log);
+        // Reuses the RoomLocator built above alongside Recovery — see its
+        // comment there.
         PassiveRelocalizer = new Game.Map.PassiveRelocalizer(
             RoomTracker, RoomLocator, RoomGraph, Recovery, MovementCoordinator, Log);
 

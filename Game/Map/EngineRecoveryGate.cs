@@ -125,7 +125,11 @@ public sealed class EngineRecoveryGate
     // Fires when tier-3 recovery fails terminally. Caller surfaces the modeless info dialog.
     public event Action<RecoveryFailedEvent>? RecoveryFailed;
 
-    public EngineRecoveryGate(RoomGraphManager graph, RoomTracker tracker, LogService? log = null)
+    // locator lets a caller share one RoomLocator (and its graph index) across
+    // both this gate and another consumer (PassiveRelocalizer) instead of each
+    // building its own — same graph, so a second index costs memory for
+    // nothing. Null constructs a private one, so existing callers are unaffected.
+    public EngineRecoveryGate(RoomGraphManager graph, RoomTracker tracker, LogService? log = null, RoomLocator? locator = null)
     {
         ArgumentNullException.ThrowIfNull(graph);
         ArgumentNullException.ThrowIfNull(tracker);
@@ -139,7 +143,7 @@ public sealed class EngineRecoveryGate
             matchesObservation: KeyMatchesObservation,
             log: log,
             depthCeiling: Tier3DepthCeiling);
-        _locator = new RoomLocator(graph, log);
+        _locator = locator ?? new RoomLocator(graph, log);
     }
 
     // ----- external feeds (bound per-session by the main-window VM) ---
