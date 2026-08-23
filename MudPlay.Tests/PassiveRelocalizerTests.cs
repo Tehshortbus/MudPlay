@@ -411,4 +411,49 @@ public sealed class PassiveRelocalizerTests : IDisposable
 
         relocalizer.Dispose();
     }
+
+    /// <summary>
+    /// Stage 2 is a pump, not a seed or a verification -- OnRoomObserved must
+    /// not silently drop a peek while a walk is active (that risks the walk
+    /// hanging forever if the render was genuinely the walk's own landing
+    /// arriving inside an armed peek window), and must not fold it in
+    /// unfiltered either (that risks narrowing on a room the player was never
+    /// in). Abandoning the walk is the only option that can do neither.
+    /// </summary>
+    [Fact]
+    public void PeekArrivingDuringAnActiveWalk_AbandonsTheWalk()
+    {
+        var h = new Harness(_root);
+
+        h.Tracker.NoteRoomObserved(Obs("Start", Direction.N, Direction.U));
+
+        PassiveRelocalizer relocalizer = h.NewRelocalizer(allowWalking: true);
+
+        // No steps to replay -> Stage 2 starts immediately and sends its own
+        // splitting move.
+        h.Tracker.NoteRoomObserved(Obs("Nowhere", Direction.W));
+        Assert.Single(h.Sent);
+        h.Sent.Clear();
+
+        // A peek arrives while the walk's own move is still outstanding. "A"
+        // is exactly the render that WOULD converge the walk (see the
+        // engine-attach test above) if it were folded in unfiltered.
+        h.Tracker.NoteLookSent();
+        relocalizer.OnRoomObserved(Obs("A", Direction.E));
+        h.Tracker.NoteRoomObserved(Obs("A", Direction.E));   // dropped by RoomTracker as a peek; consumes the suppression window
+
+        Assert.Empty(h.Sent);
+        Assert.Null(h.Tracker.State.CurrentRoom);
+
+        // Prove the walk was actually abandoned, not merely skipped this one
+        // call: feed the identical landing again, now genuinely unsuppressed.
+        // A still-active walk would converge and confirm here; an abandoned
+        // one just refreshes the verification cache and does nothing further.
+        relocalizer.OnRoomObserved(Obs("A", Direction.E));
+
+        Assert.Empty(h.Sent);
+        Assert.Null(h.Tracker.State.CurrentRoom);
+
+        relocalizer.Dispose();
+    }
 }

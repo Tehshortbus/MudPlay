@@ -42,24 +42,28 @@ public sealed class PassiveRelocalizer : IDisposable
     private Action<byte[]>? _wireSender;
     private LocatorWalk? _walk;
 
-    // The most recent NON-PEEK parsed render, plus whether it's still fresh
-    // for the transition about to consume it. RoomDisplayParser fires
-    // RoomParsed (reaching OnRoomObserved) BEFORE RoomTracker.NoteRoomObserved
-    // runs, and StateChanged fires from inside that dispatch — so when a
-    // render's own processing raises a Suspect/Lost transition, this cache
-    // genuinely holds the render that triggered it. But not every Suspect/Lost
-    // transition is render-driven — RoomTracker.NoteDirectionFailed's
-    // EnterSuspect, off a "no exit" refusal reply, carries no render at all —
-    // and KeyMatchesObservation is a name+subset-exits match, not an identity
-    // check, in a world with genuinely duplicate-signature rooms, so a stale
-    // cached render could coincidentally match the wrong candidate. The
-    // freshness flag is set true only on a genuine (non-peek) cache write and
-    // consumed — read once, then cleared — by the very next StateChanged
-    // dispatch, so a later, unrelated transition (no new render in between)
-    // always sees it as stale. Net guarantee: this can make Stage 1 wrongly
+    // Stage 1's own verification cache — the most recent NON-PEEK parsed
+    // render, plus whether it's still fresh for the transition about to
+    // consume it. RoomDisplayParser fires RoomParsed (reaching OnRoomObserved)
+    // BEFORE RoomTracker.NoteRoomObserved runs, and StateChanged fires from
+    // inside that dispatch — so when a render's own processing raises a
+    // Suspect/Lost transition, this cache genuinely holds the render that
+    // triggered it. But not every Suspect/Lost transition is render-driven —
+    // RoomTracker.NoteDirectionFailed's EnterSuspect, off a "no exit" refusal
+    // reply, carries no render at all — and KeyMatchesObservation is a
+    // name+subset-exits match, not an identity check, in a world with
+    // genuinely duplicate-signature rooms, so a stale cached render could
+    // coincidentally match the wrong candidate. The freshness flag is set
+    // true only on a genuine (non-peek) cache write and consumed — read once,
+    // then cleared — by the very next StateChanged dispatch, so a later,
+    // unrelated transition (no new render in between) always sees it as
+    // stale. Net guarantee, Stage 1 only: this can make Stage 1 wrongly
     // REFUSE to locate (the safe direction — staying lost only idles), but it
     // will never let Stage 1 CONFIRM against a render that is stale, peeked,
-    // or unrelated to the transition being processed.
+    // or unrelated to the transition being processed. Stage 2 (OnRoomObserved's
+    // walk-pumping tail below) is a DIFFERENT hazard with its own guard — a
+    // peek arriving mid-walk abandons the walk outright rather than reading
+    // this cache at all; see the comment there.
     private RoomObservation? _lastLiveRender;
     private bool _lastLiveRenderIsFresh;
 
@@ -125,6 +129,27 @@ public sealed class PassiveRelocalizer : IDisposable
         {
             _log?.Log(LogSeverity.Warn, LogSource,
                 "an engine attached mid-walk — abandoning the locating walk rather than fighting it.");
+            _walk = null;
+            return;
+        }
+
+        // A peek here is a different hazard from the Stage-1 cache above: this
+        // is a PUMP, not a seed or a verification. Silently dropping the render
+        // (the seed's fix) would leave the walk waiting forever if this peek
+        // actually WAS the genuine landing arriving in an armed-but-unresolved
+        // peek window (the move-then-look race) — OnLanding would never fire
+        // again and IsActive would stay true with nothing left to pump it.
+        // Feeding it through unfiltered (no guard at all) risks the opposite:
+        // FootprintMatcher.Step narrows on a room the player was never in, or
+        // consumes the landing slot so the REAL landing moments later is
+        // dropped with _active already false. Abandoning the walk is the only
+        // option that can't hang, can't assert a false position, and can't
+        // misattribute a landing — same shape as the attached-engine case
+        // above. The user can retry; a later transition re-enters Stage 1.
+        if (_tracker.IsPeekSuppressed())
+        {
+            _log?.Log(LogSeverity.Info, LogSource,
+                "a peek arrived while the locating walk was active — abandoning it rather than risk a false landing.");
             _walk = null;
             return;
         }
