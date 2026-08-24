@@ -143,6 +143,23 @@ public sealed class PassiveRelocalizer : IDisposable
 
         if (_walk is not { IsActive: true } walk) return;
 
+        // Send only catches a Stop/Pause on the walk's OWN next attempted
+        // move — which needs a landing to arrive and pump it first. With a
+        // move already in flight when the user stops or pauses, the next
+        // render to arrive here would otherwise be folded into OnLanding as
+        // if it were that move's landing, narrowing (or even converging)
+        // the shared matcher off a hop the walk never made. Same shape as
+        // the attached-engine and peek guards right below, and the same
+        // reason: abandon, don't skip — a silently dropped landing leaves
+        // IsActive true with nothing left to pump it.
+        if (!_coordinator.AutomationEngaged || _coordinator.IsPaused)
+        {
+            _log?.Log(LogSeverity.Info, LogSource,
+                "automation stopped or paused mid-walk — abandoning the locating walk rather than fold this landing in.");
+            _walk = null;
+            return;
+        }
+
         // An engine can attach between this walk's sends (Attach itself never
         // touches us — only OnTrackerStateChanged's own entry guard checks
         // AttachedEngine, and that only runs at walk START). Re-check here,

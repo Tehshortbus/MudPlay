@@ -530,6 +530,144 @@ public sealed class PassiveRelocalizerTests : IDisposable
     }
 
     /// <summary>
+    /// The narrower hole behind AutomationDisengagedMidWalk_AbandonsRatherThanStalls:
+    /// Send only catches a Stop on the walk's OWN next move, which needs a
+    /// landing to arrive and pump it first. That test's fixture (TwoHopFixtureGraph)
+    /// happens to route the corrupted landing through a second splitting exit,
+    /// where the pre-existing Send-level check still catches it — masking
+    /// this hole. This one uses the "A"/"B"-named-twins fixture instead,
+    /// where the manually-typed render's name alone converges the matcher to
+    /// ONE room inside OnLanding itself, calling HandleOutcome -> SetLocated
+    /// WITHOUT ever reaching Send. Without the guard in OnRoomObserved (right
+    /// alongside the attached-engine and peek guards), this would fold a hand-
+    /// typed move into the walk's footprint and confirm the tracker at a room
+    /// the walk never actually reached. Mutation-proven: see the report for
+    /// the guard removed and this test observed to fail (CurrentRoom becomes
+    /// non-null, wrongly Confirmed at "A").
+    /// </summary>
+    [Fact]
+    public void AutomationDisengagedWithMoveInFlight_LandingIsNotFoldedIn()
+    {
+        var h = new Harness(_root);
+        h.Coordinator.EngageAutomation();
+
+        h.Tracker.NoteRoomObserved(Obs("Start", Direction.N, Direction.U));
+
+        PassiveRelocalizer relocalizer = h.NewRelocalizer(allowWalking: true);
+
+        // No steps to replay -> Stage 2 starts immediately and sends its own
+        // splitting move (N: "A" vs "B" diverge by name; U ties).
+        h.Tracker.NoteRoomObserved(Obs("Nowhere", Direction.W));
+        Assert.Single(h.Sent);
+        h.Sent.Clear();
+
+        // The user presses Stop with that move still outstanding.
+        h.Coordinator.DisengageAutomation();
+
+        // A render arrives — could be the player typing a move by hand now
+        // that nothing is supposed to be driving. "A" is exactly the render
+        // that WOULD converge the walk (only the 1/1 twin's north neighbour
+        // is named "A") and wrongly confirm the player there if folded in.
+        relocalizer.OnRoomObserved(Obs("A", Direction.E));
+
+        Assert.Empty(h.Sent);
+        Assert.False(relocalizer.IsWalkActive);
+        Assert.Null(h.Tracker.State.CurrentRoom);
+        Assert.NotEqual(RoomConfidence.Confirmed, h.Tracker.State.Confidence);
+
+        relocalizer.Dispose();
+    }
+
+    /// <summary>
+    /// Same hole, keyed to Pause (UserGate) instead of a full Stop —
+    /// symmetric with Pause_AbandonsAnInFlightLocatingWalk below, but proving
+    /// the landing-fold hazard rather than the send hazard.
+    /// AutomationEngaged stays true throughout (Pause holds, it doesn't
+    /// disengage), and Play afterward must still find a clean slate — this
+    /// only checks the walk was abandoned and nothing false was confirmed;
+    /// AutomationEngaged_...Play... below covers the fresh-restart half.
+    /// </summary>
+    [Fact]
+    public void Paused_WithMoveInFlight_LandingIsNotFoldedIn()
+    {
+        var h = new Harness(_root);
+        h.Coordinator.EngageAutomation();
+
+        h.Tracker.NoteRoomObserved(Obs("Start", Direction.N, Direction.U));
+
+        PassiveRelocalizer relocalizer = h.NewRelocalizer(allowWalking: true);
+
+        h.Tracker.NoteRoomObserved(Obs("Nowhere", Direction.W));
+        Assert.Single(h.Sent);
+        h.Sent.Clear();
+
+        // The user presses Pause with that move still outstanding — same
+        // gate MovementController.Pause / AutoLairManager.Pause assert.
+        h.Coordinator.AssertGate(MovementCoordinator.UserGate, "test", "user pause");
+
+        relocalizer.OnRoomObserved(Obs("A", Direction.E));
+
+        Assert.Empty(h.Sent);
+        Assert.False(relocalizer.IsWalkActive);
+        Assert.Null(h.Tracker.State.CurrentRoom);
+        Assert.NotEqual(RoomConfidence.Confirmed, h.Tracker.State.Confidence);
+        Assert.True(h.Coordinator.AutomationEngaged);
+
+        relocalizer.Dispose();
+    }
+
+    /// <summary>
+    /// After a Stop abandons an in-flight walk (with a landing arriving that
+    /// would have wrongly converged it — see AutomationDisengagedWithMoveInFlight_LandingIsNotFoldedIn),
+    /// pressing Play again and hitting a fresh Suspect/Lost transition must
+    /// start a NEW attempt re-seeded from the tracker's current state, not
+    /// resume or continue whatever the abandoned walk's corrupted matcher
+    /// held. There is only one code path that ever assigns _walk (BeginWalk,
+    /// reached from OnTrackerStateChanged's full reseed), so a fresh move
+    /// going out at all is already proof of a clean restart — nothing else
+    /// in this class could produce one.
+    /// </summary>
+    [Fact]
+    public void AfterAbandonOnStop_PlayAgain_StartsAFreshAttempt()
+    {
+        var h = new Harness(_root);
+        h.Coordinator.EngageAutomation();
+
+        h.Tracker.NoteRoomObserved(Obs("Start", Direction.N, Direction.U));
+
+        PassiveRelocalizer relocalizer = h.NewRelocalizer(allowWalking: true);
+
+        h.Tracker.NoteRoomObserved(Obs("Nowhere", Direction.W));
+        Assert.Single(h.Sent);
+        h.Sent.Clear();
+
+        h.Coordinator.DisengageAutomation();
+        relocalizer.OnRoomObserved(Obs("A", Direction.E));
+        Assert.False(relocalizer.IsWalkActive);
+        Assert.Null(h.Tracker.State.CurrentRoom);
+
+        // Play again. OnTrackerStateChanged always seeds from
+        // LastAcceptedObservation as it stood BEFORE the call that's
+        // currently dispatching (RoomTracker only assigns it at the very end
+        // of NoteRoomObserved, after StateChanged has already fired) — and
+        // that's been stuck on "Nowhere" (not a real room) since the very
+        // first transition above, because every render since then went
+        // straight to the relocalizer and never through the tracker. Refresh
+        // a real seed first (re-observing "Start"), then the actual
+        // triggering transition reads that refreshed value, exactly
+        // mirroring how the very first walk in this test got seeded.
+        h.Coordinator.EngageAutomation();
+        h.Tracker.NoteRoomObserved(Obs("Start", Direction.N, Direction.U));
+        h.Tracker.NoteRoomObserved(Obs("Nowhere", Direction.W));
+
+        Assert.True(relocalizer.IsWalkActive);
+        Assert.Single(h.Sent);
+        Assert.Equal("n\r", System.Text.Encoding.Latin1.GetString(h.Sent[0]));
+
+        relocalizer.Dispose();
+    }
+
+    /// <summary>
     /// Pause must abandon an in-flight Stage-2 walk exactly like any other
     /// movement gate (see NonFollowerGate_AssertedMidWalk_AbandonsRatherThanStalls),
     /// keyed to the actual gate MovementController.Pause / AutoLairManager.Pause
