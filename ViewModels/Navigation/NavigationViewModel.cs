@@ -2459,6 +2459,14 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
             if (_services.Walker.State is WalkState.Walking or WalkState.Paused)
                 _services.Walker.Stop("exp estimator requested");
             _services.MovementCoordinator.ClearGate(Game.Map.MovementCoordinator.UserGate);
+            // Unconditional, like the ClearGate above: entering Exp Estimator
+            // mode is a full stop from the user's perspective — same as the
+            // toolbar/Nav master Stop — so it must disarm
+            // PassiveRelocalizer's automation-intent latch even when neither
+            // guarded engine Stop() above fired (nothing active to route it
+            // through — the exact shape a Lost tracker with no attached
+            // engine leaves things in).
+            _services.MovementCoordinator.DisengageAutomation();
             if (CurrentMode == NavigationMode.AutoLair)
             {
                 if (!_services.AutoLair.IsActive) _services.AutoLair.Clear();
@@ -2597,6 +2605,9 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
             if (_services.Walker.State is WalkState.Walking or WalkState.Paused)
                 _services.Walker.Stop("loop mode requested");
             _services.MovementCoordinator.ClearGate(Game.Map.MovementCoordinator.UserGate);
+            // Unconditional, like the ClearGate above — see
+            // ToggleExpEstimatorMode's identical comment.
+            _services.MovementCoordinator.DisengageAutomation();
             if (CurrentMode == NavigationMode.AutoLair)
             {
                 if (!_services.AutoLair.IsActive) _services.AutoLair.Clear();
@@ -2751,6 +2762,9 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
             if (_services.Walker.State is WalkState.Walking or WalkState.Paused)
                 _services.Walker.Stop("lair mode requested");
             _services.MovementCoordinator.ClearGate(Game.Map.MovementCoordinator.UserGate);
+            // Unconditional, like the ClearGate above — see
+            // ToggleExpEstimatorMode's identical comment.
+            _services.MovementCoordinator.DisengageAutomation();
             if (CurrentMode == NavigationMode.LoopBuild)
                 ToggleLoopMode();
             CurrentMode = NavigationMode.AutoLair;

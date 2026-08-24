@@ -105,6 +105,15 @@ public sealed class PlayerDeathMovementHalt : IDisposable
         // remote nav action afterward runs freely.
         _stopEngines?.Invoke();
         _coordinator.ClearGate(MovementCoordinator.UserGate, AsserterName);
+        // Unconditional, not routed through the three guarded Stop() calls
+        // above: each engine's own Stop() no-ops when it's already idle (a
+        // walker that self-bailed to Idle chasing a genuinely Lost tracker,
+        // say), so nothing there is guaranteed to reach
+        // MovementCoordinator.DisengageAutomation(). Death is a full stop —
+        // same as the toolbar/Nav master Stop — so PassiveRelocalizer's
+        // Stage 2 must not survive the respawn and walk the freshly-dead
+        // character around the graveyard.
+        _coordinator.DisengageAutomation();
         _log?.Info(DeathLineWatcher.LogCategory,
             "Movement stopped after death — engines and destinations cleared.");
 
