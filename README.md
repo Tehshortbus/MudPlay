@@ -1,10 +1,15 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.24.1**
-> - Combat: a capped single-target attack spell (e.g. `MaxCasts 1`) no longer fires past its cap against a fast caster — MaxCasts now counts directly off each observed cast-result line (grouping a multi-projectile spell's own damage lines into one cast) instead of RoundDamageTracker's 5s-ish round window, which could bundle more than one real cast into a single tally before it ever closed
-> - Combat: a confirmed cast now applies to MaxCasts and arms its cap-switch immediately, instead of waiting for the next combat heartbeat — a mob's own hit/miss line could fire that heartbeat before either of a spell's projectile lines arrived, so the confirmed cast sat un-applied until the round after the server had already auto-repeated the capped spell
-> - Combat: the cap-switch's built-in delay (added to avoid a corpse-cast) shortened from 750ms to 200ms — still enough to catch a trailing kill packet, without eating enough of the round for the server to auto-repeat the capped spell first
+> **Version 3.25.0**
+> - A move refused while your position was already suspect (a stale room after falling, a mismatched observation, etc.) now actually triggers recovery instead of vanishing silently — previously the tracker only reacted to a refusal from a fully-trusted room, so once it started doubting itself a locked door or an impossible exit produced no further reaction at all
+> - Recovery (walk-to / loop / Auto-Lair) now reacts directly to a refused move instead of waiting for a room render that a refusal never produces
+> - Pressing Play (or an engine giving up) after you'd already gone lost now re-checks whether the self-recovery walk can run, instead of only checking at the moment you went lost
+> - When MudPlay loses track of your room with no walker/loop/Auto-Lair running (the shape a dragged party follower ends up in), it now recovers on its own instead of sitting idle: free footstep replay runs first (no commands sent), and if that alone can't narrow it to one room, a short locating walk splits the remaining candidates
+> - New Settings → Other toggle **Walk to locate myself when lost**, default **ON** — deliberately, since shipping this off by default wouldn't fix the "it just sits there" report it addresses; turning it off keeps the old free-replay-only behavior. It never walks you while you're following a party leader
+> - New **Locating walk gives up after N steps** budget (default 12) caps how far that walk will move you before giving up
+> - Bug Report captures the relocalizer's setting, step budget, whether a walk is active, its candidate count, and its last outcome
+> - Fixed: the locating walk above could also fire during ordinary manual play, or after you pressed Pause/Stop — "no engine attached" is also true in both of those. It now requires you to have actually started a walk-to, a loop, or Auto-Lair; pressing Stop or Pause abandons an in-flight locating walk immediately, and a run that's genuinely still going (lost mid-flight, engine unable to reattach) still recovers on its own
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

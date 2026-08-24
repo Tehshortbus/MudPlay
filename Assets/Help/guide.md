@@ -180,6 +180,8 @@ When the only route somewhere is fully blocked but you can still reach the obsta
 
 If an avoid ends up walling off your only route somewhere, MudPlay tells you which room is the culprit — a **GOTO** to a blocked destination reports *"only route is blocked by user set avoid in room (map/room)"*, while auto-deposit and auto-train quietly skip and log it rather than getting stuck.
 
+**When MudPlay loses track of where you are.** If your room goes uncertain, MudPlay tries to work it out on its own instead of just sitting there. It first replays your recent moves against the map for free (no commands sent, and this always runs — a party leader dragging you somewhere the map didn't expect is the most common case it clears up this way); if that alone narrows it to one room, you're re-anchored silently. If it can't, and a walk-to, a loop, or Auto-Lair is genuinely still trying to run (it went Lost mid-flight and can't get its bearings back on its own) and the **Walk to locate myself when lost** setting (Settings → Other, **on by default**) allows it, MudPlay takes a short walk to tell the remaining possibilities apart. It will never do this from manual play with nothing running, and pressing **Pause** or **Stop** cancels it immediately — same as it would any other automated move. If neither step resolves it, you're still lost and can right-click the map and choose **I am here** to fix it by hand, same as before.
+
 ---
 
 # Party Play
@@ -1702,6 +1704,17 @@ Settings → Other. A catch-all tab for safety thresholds and walker (auto-pathi
 
 **Default:** On
 **What it does:** When you `look <monster>`, MudPlay shows its estimated remaining hit points — both in the status bar's **TGT HP:** slot and as a yellow line printed to the terminal (e.g. `[orc remaining Hitpoints: 35-48]`). Turning this off suppresses both.
+
+### Walk to locate myself when lost
+
+**Default:** On
+**What it does:** If MudPlay loses track of your room, it first tries to work out where you are for free, by replaying your recent moves against the map (no commands sent) — this free replay always runs, whether or not anything is walking you. If that alone can't narrow it down to one room, and a walk-to / loop / Auto-Lair you started is genuinely still trying to run (it went Lost mid-flight and its own engine can't reattach), this setting lets it take a short walk to tell the remaining candidates apart. Turning it off leaves the free replay running but stops there — if that doesn't resolve it, you stay lost until you right-click the map and choose **I am here**.
+**Important notes:** This is the fix for "when lost, it just sits there and does nothing" — it's on by default for exactly that reason. It only walks you while you've actually started automation of your own: it never fires from manual play with nothing running, it never moves you while you're following a party leader, and pressing Pause or Stop abandons it immediately, same as it would any other automated move.
+
+### Locating walk gives up after N steps
+
+**Default:** `12`
+**What it does:** Caps how many rooms the locating walk above will move you before giving up and reporting it can't tell the candidates apart. Only relevant when the toggle above is on.
 
 ### Enable the Great Pyramid climb solver / Enable the asylum (random-teleport maze) solver
 

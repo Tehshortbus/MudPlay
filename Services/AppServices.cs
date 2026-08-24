@@ -1429,6 +1429,21 @@ public sealed class AppServices
     // executed-step history + tier-3 backtrack logic.
     public Game.Map.EngineRecoveryGate Recovery { get; private set; } = null!;
 
+    // Answers "which rooms could this display be?" for a driver with no
+    // graph-attached engine of its own. Shared by EngineRecoveryGate's tier-3
+    // backtrack and PassiveRelocalizer — one graph index, not two.
+    public Game.Map.RoomLocator RoomLocator { get; private set; } = null!;
+
+    // Recovers a room fix when the tracker goes Suspect/Lost with no engine
+    // attached — the shape a dragged party follower ends up in, since
+    // AutoWalkManager and LoopRunner both refuse to attach when CurrentRoom is
+    // null. Without a driver in that state the client just sits there waiting
+    // for the user to click the map. Free footstep replay always runs; the
+    // walking tier is Settings -> Other's "Walk to locate myself when lost"
+    // (PassiveRelocalizer.AllowWalking, on by default — see
+    // ApplyOtherFromActiveProfile).
+    public Game.Map.PassiveRelocalizer PassiveRelocalizer { get; private set; } = null!;
+
     // Paradigm-only authoritative position re-sync. Fires `rm` on the gate's
     // request and re-anchors the tracker + gate from the Location: reply. Stock
     // realms no-op it and keep the heuristic recovery ladder.
@@ -2555,9 +2570,16 @@ public sealed class AppServices
         RoomTracker = new Game.Map.RoomTracker(RoomGraph, Log);
         RoomGraph.GraphReloaded += () => RoomTracker.OnGraphReloaded();
 
+        // Answers "which rooms could this display be?" for anything with no
+        // graph-attached engine of its own. Built once, here, and shared by
+        // EngineRecoveryGate's tier-3 backtrack AND PassiveRelocalizer below —
+        // both are pure readers of the same graph, so one instance is one
+        // index cache instead of two.
+        RoomLocator = new Game.Map.RoomLocator(RoomGraph, Log);
+
         // Shared engine-level recovery gate. Walker / LoopRunner /
         // AutoLair attach themselves on Start (next commits).
-        Recovery = new Game.Map.EngineRecoveryGate(RoomGraph, RoomTracker, Log);
+        Recovery = new Game.Map.EngineRecoveryGate(RoomGraph, RoomTracker, Log, RoomLocator);
         // Tier-3 look-sweep combat gate: clear the recovery room before peeking
         // (lit) / wait a combat tick for an ambush to reveal (dark). Reads the
         // predicate live so an auto-attack toggle is honoured; the tick drives
@@ -2731,6 +2753,11 @@ public sealed class AppServices
         // MainWindowViewModel once the telnet client is up (matching
         // the PartyPoller / AutoPartyManager pattern).
         MovementCoordinator = new Game.Map.MovementCoordinator(Log);
+
+        // Reuses the RoomLocator built above alongside Recovery — see its
+        // comment there.
+        PassiveRelocalizer = new Game.Map.PassiveRelocalizer(
+            RoomTracker, RoomLocator, RoomGraph, Recovery, MovementCoordinator, Log);
 
         // Party-vitals pause bridge — asserts MovementCoordinator's
         // PartyVitalsGate while any other party member's HP% is below the
@@ -6630,6 +6657,11 @@ public sealed class AppServices
         ComebackRequest.Enabled = dto.AutoRequestComebackWhenLeftBehind;
         // Auto-discard offload verb: hide <item> vs drop <item>.
         AutoDiscard.HideMode = dto.HideWhenDiscarding;
+        // Passive relocalizer's walking tier — see PassiveRelocalizer's own
+        // header comment for what Stage 1 (always-on, free) vs Stage 2 (this
+        // gate) do.
+        PassiveRelocalizer.AllowWalking = dto.WalkToLocateWhenLost;
+        PassiveRelocalizer.StepBudget = Math.Clamp(dto.LocateWalkStepBudget, 1, 50);
     }
 
     private void ResetOtherToDefaults()
@@ -6641,6 +6673,8 @@ public sealed class AppServices
         PartyComeback.MaxBacktrackRooms = defaults.MaxComebackBacktrackRooms;
         ComebackRequest.Enabled = defaults.AutoRequestComebackWhenLeftBehind;
         AutoDiscard.HideMode = defaults.HideWhenDiscarding;
+        PassiveRelocalizer.AllowWalking = defaults.WalkToLocateWhenLost;
+        PassiveRelocalizer.StepBudget = defaults.LocateWalkStepBudget;
     }
 
     // Push the loaded character's

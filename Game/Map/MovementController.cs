@@ -164,6 +164,13 @@ public sealed class MovementController : IDisposable
         if (_walker.State is WalkState.Walking or WalkState.Paused)
             _walker.Stop("user stop from toolbar");
         _coordinator.ClearGate(MovementCoordinator.UserGate, nameof(MovementController));
+        // Unconditional, not routed through the three guards above: this is
+        // the toolbar's full-stop button, and it must disarm
+        // PassiveRelocalizer's automation-intent latch even when none of the
+        // three engines is currently active — exactly the shape a genuinely
+        // Lost tracker with no attached engine is in, which is the whole
+        // scenario that latch exists to gate.
+        _coordinator.DisengageAutomation();
     }
 
     // Auto-All kill switch engaged: suspend an in-flight navigation the same way a

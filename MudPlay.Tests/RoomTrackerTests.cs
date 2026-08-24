@@ -594,6 +594,108 @@ public sealed class RoomTrackerTests : IDisposable
         Assert.Equal(RoomConfidence.Confirmed, tracker.State.Confidence);
     }
 
+    // ----- direction-failed refusal -----------------------------------
+
+    /// <summary>
+    /// Sending a move while Suspect never advances Pending (RoomTracker holds
+    /// Confirmed/Pending only — no confirmed anchor to hang a prediction on), so
+    /// a refused move for it is the ONLY signal a stuck-Suspect session can
+    /// produce. The original guard (Confirmed-only) silently dropped this,
+    /// stranding the strike counter and never waking either recovery consumer
+    /// (report stock-20260824-081650).
+    /// </summary>
+    [Fact]
+    public void DirectionFailed_WhileAlreadySuspect_BumpsStrikeAndFiresStateChanged()
+    {
+        RoomTracker tracker = NewTracker();
+        tracker.SetLocated(new RoomKey(1, 1));
+
+        int stateChanges = 0;
+        tracker.StateChanged += _ => stateChanges++;
+
+        tracker.NoteDirectionFailed();
+        Assert.Equal(RoomConfidence.Suspect, tracker.State.Confidence);
+        Assert.Equal(1, tracker.State.SuspectStrikes);
+        Assert.Equal(1, stateChanges);
+
+        tracker.NoteDirectionFailed();
+        Assert.Equal(RoomConfidence.Suspect, tracker.State.Confidence);
+        Assert.Equal(2, tracker.State.SuspectStrikes);
+        Assert.Equal(2, stateChanges);
+    }
+
+    /// <summary>
+    /// A move sent while Confirmed flips Pending immediately (before any wire
+    /// round-trip), so a refusal arriving for it must NOT also demote a room we
+    /// already trust — that revert is NoteMoveBlocked's job (a closed door, a
+    /// level gate, "too heavy to move" are all legitimate refusals on a room
+    /// we're right about). Pending stays excluded even after loosening the
+    /// guard to cover Suspect.
+    /// </summary>
+    [Fact]
+    public void DirectionFailed_WhilePending_IsNoOp()
+    {
+        RoomTracker tracker = NewTracker();
+        tracker.SetLocated(new RoomKey(1, 1));
+        tracker.NoteMoveSent(Direction.N);
+        Assert.Equal(RoomConfidence.Pending, tracker.State.Confidence);
+
+        int stateChanges = 0;
+        tracker.StateChanged += _ => stateChanges++;
+
+        tracker.NoteDirectionFailed();
+
+        Assert.Equal(RoomConfidence.Pending, tracker.State.Confidence);
+        Assert.Equal(0, tracker.State.SuspectStrikes);
+        Assert.Equal(0, stateChanges);
+    }
+
+    /// <summary>
+    /// MovementRefused carries whether the refused move was the engine's own
+    /// (PendingMove.IsEngineIssued) — EngineRecoveryGate uses this to tell a
+    /// refusal on its own planned step apart from a manually-typed detour.
+    /// </summary>
+    [Fact]
+    public void DirectionFailed_EngineIssuedMove_ReportsWasEngineIssuedTrue()
+    {
+        RoomTracker tracker = NewTracker();
+        tracker.SetLocated(new RoomKey(1, 1));
+        tracker.NoteDirectionFailed();               // Confirmed -> Suspect, strike 1
+
+        tracker.NoteMoveSent(Direction.N);            // direct engine call; stays Suspect
+
+        MovementRefusedEvent? captured = null;
+        tracker.MovementRefused += e => captured = e;
+
+        tracker.NoteDirectionFailed();
+
+        Assert.NotNull(captured);
+        Assert.True(captured!.Value.WasEngineIssued);
+    }
+
+    /// <summary>
+    /// A manually-typed move that never matched an engine echo claim reports
+    /// WasEngineIssued false — the narrowing signal a benign mistyped exit
+    /// relies on to not drag recovery into an unwanted walk.
+    /// </summary>
+    [Fact]
+    public void DirectionFailed_ManualMove_ReportsWasEngineIssuedFalse()
+    {
+        RoomTracker tracker = NewTracker();
+        tracker.SetLocated(new RoomKey(1, 1));
+        tracker.NoteDirectionFailed();               // Confirmed -> Suspect, strike 1
+
+        tracker.NoteMoveSentByObserver(Direction.N); // unmatched echo -- manual; stays Suspect
+
+        MovementRefusedEvent? captured = null;
+        tracker.MovementRefused += e => captured = e;
+
+        tracker.NoteDirectionFailed();
+
+        Assert.NotNull(captured);
+        Assert.False(captured!.Value.WasEngineIssued);
+    }
+
     // ----- Located → Reconciling (silent desync) ---------------------
 
     [Fact]

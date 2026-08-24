@@ -823,6 +823,10 @@ public partial class MainWindowViewModel : ObservableObject
         // Same pre-suppression feed drives the recovery gate's tier-3 look-sweep
         // — it reads peeked neighbours the tracker would otherwise drop.
         _roomDisplayParser.RoomParsed += AppServices.Current.Recovery.OnRoomObserved;
+        // Same feed drives the passive (engine-less) relocalizer's own
+        // walking tier — it needs live landings the same way the recovery
+        // gate's forward walk does.
+        _roomDisplayParser.RoomParsed += AppServices.Current.PassiveRelocalizer.OnRoomObserved;
         _movementRefusalDetector = new Game.Map.MovementRefusalDetector(Lines,
             AppServices.Current.RoomTracker, AppServices.Current.Log);
         // Combat-gated-entry refusal: `break` → 3s → revert move so the driving
@@ -1202,6 +1206,10 @@ public partial class MainWindowViewModel : ObservableObject
         // Recovery gate's tier-3 look-sweep rides the same gate-wrapped pipeline
         // so its `look <dir>` peeks can't land mid-password-prompt.
         AppServices.Current.Recovery.SetWireSender(engineSend);
+        // Passive relocalizer's own walking tier rides the same gate-wrapped
+        // pipeline. Gated by Settings -> Other's AllowWalking toggle (on by
+        // default); wiring the sender unconditionally costs nothing when off.
+        AppServices.Current.PassiveRelocalizer.SetWireSender(engineSend);
         // SuicideHandler — bypasses the engine gate because it OWNS
         // the suicide flow (and needs its `suicide` + password sends
         // to land even while SuicidePasswordTracker has the gate

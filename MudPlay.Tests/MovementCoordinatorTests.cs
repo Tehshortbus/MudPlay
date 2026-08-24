@@ -330,4 +330,46 @@ public sealed class MovementCoordinatorTests
         Assert.Single(observed);
         Assert.Equal("asserted — gate=User", observed[0].Message);
     }
+
+    // ----- AutomationEngagedChanged -------------------------------------
+
+    [Fact]
+    public void EngageAutomation_FiresChangedTrue()
+    {
+        MovementCoordinator c = new();
+        bool? last = null;
+        c.AutomationEngagedChanged += v => last = v;
+
+        c.EngageAutomation();
+
+        Assert.True(c.AutomationEngaged);
+        Assert.True(last);
+    }
+
+    [Fact]
+    public void EngageAutomation_Idempotent_DoesNotRefire()
+    {
+        MovementCoordinator c = new();
+        int fires = 0;
+        c.AutomationEngagedChanged += _ => fires++;
+
+        c.EngageAutomation();
+        c.EngageAutomation();
+
+        Assert.Equal(1, fires);
+    }
+
+    [Fact]
+    public void DisengageAutomation_FiresChangedFalse()
+    {
+        MovementCoordinator c = new();
+        c.EngageAutomation();
+        bool? last = null;
+        c.AutomationEngagedChanged += v => last = v;
+
+        c.DisengageAutomation();
+
+        Assert.False(c.AutomationEngaged);
+        Assert.False(last);
+    }
 }

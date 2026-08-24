@@ -125,6 +125,31 @@ public sealed class MovementControllerTests : IDisposable
         Assert.False(h.Coordinator.IsPaused);
     }
 
+    /// <summary>
+    /// The toolbar's Stop must disarm MovementCoordinator.AutomationEngaged —
+    /// the latch PassiveRelocalizer's Stage 2 reads — even when none of the
+    /// three tracked engines is currently active to route the disarm through
+    /// its own Stop(reason). That's not a hypothetical: it's exactly the
+    /// shape a genuinely Lost tracker leaves things in (every engine refuses
+    /// to (re)attach with a null source room — see AutoWalkManager.WalkTo),
+    /// which is the whole scenario this latch exists to gate. Calling
+    /// EngageAutomation directly here (rather than driving a real WalkTo into
+    /// Lost) isolates the one behaviour under test: Stop's own unconditional
+    /// disarm, independent of the three guarded per-engine Stop() calls above
+    /// it.
+    /// </summary>
+    [Fact]
+    public void Stop_DisengagesAutomation_EvenWhenNoEngineIsActive()
+    {
+        using Harness h = NewHarness();
+        h.Coordinator.EngageAutomation();
+        Assert.True(h.Controller.IsIdle);   // none of the three engines active
+
+        h.Controller.Stop();
+
+        Assert.False(h.Coordinator.AutomationEngaged);
+    }
+
     [Fact]
     public void WalkerWalking_IsRunning()
     {

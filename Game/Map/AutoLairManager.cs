@@ -253,6 +253,18 @@ public sealed class AutoLairManager : IDisposable
             _log?.Warn("AutoLair", $"need at least 2 markers; have {_markers.Count}.");
             return false;
         }
+        // Arm BEFORE the lost-tracker bail just below, not after it — mirrors
+        // AutoWalkManager.WalkTo, which engages even on its own "no known
+        // source room" refusal (see the rationale there). A user starting
+        // Auto-Lair while genuinely Lost is exactly the case
+        // PassiveRelocalizer's Stage 2 exists to rescue; refusing to arm
+        // here would leave that attempt permanently un-rescuable. The
+        // marker-count guard above stays ahead of this line, though — that's
+        // a genuine misconfiguration (Auto-Lair was never actually set up),
+        // not a lost-tracker refusal, so a start blocked on it never
+        // meaningfully took and arming for it would be over-arming.
+        _coordinator?.EngageAutomation();
+
         if (_tracker.State.CurrentRoom is null)
         {
             _log?.Warn("AutoLair", "no current room — locate before starting Auto-Lair.");
@@ -281,6 +293,7 @@ public sealed class AutoLairManager : IDisposable
     public void Stop(string reason = "user stop")
     {
         if (!IsActive) return;
+        _coordinator?.DisengageAutomation();
         _schedulerTick.Stop();
         _entryTimer.Stop();
         _engageTimer.Stop();

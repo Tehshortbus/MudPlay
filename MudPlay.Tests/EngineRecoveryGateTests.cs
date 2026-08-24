@@ -121,6 +121,205 @@ public sealed class EngineRecoveryGateTests : IDisposable
         return (graph, new RoomTracker(graph));
     }
 
+    // Two same-named, same-exit "Twin" rooms (1/2, 1/3), each reachable from
+    // "Start" (1/1) and each with its own N exit to a distinct dead end. Genuinely
+    // ambiguous by (name, exits) — a Suspect demotion parked at one of them can't
+    // 1-of-1 re-anchor on name+exits alone, so tier-3's own seed search returns
+    // both and a real reverse-walk (not an instant convergence) is forced.
+    private const string TwinAnchorGraphJson = """
+        [
+          { "Map Number": 1, "Room Number": 1, "Name": "Start",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "1/2", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 2, "Name": "Twin",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "1/10", "S": "1/1", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 3, "Name": "Twin",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "1/11", "S": "1/1", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 10, "Name": "Dead",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "0", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 11, "Name": "Dead",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "0", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+        ]
+        """;
+
+    private (RoomGraphManager Graph, RoomTracker Tracker) NewTwinAnchorGraphAndTracker()
+    {
+        Directory.CreateDirectory(Path.Combine(_root, "twinanchor"));
+        File.WriteAllText(Path.Combine(_root, "twinanchor", "Rooms.json"), TwinAnchorGraphJson);
+        GameDataCache cache = new(_root);
+        cache.SwitchSet("twinanchor");
+        RoomGraphManager graph = new(cache);
+        graph.OnActiveSetChanged("twinanchor");
+        return (graph, new RoomTracker(graph));
+    }
+
+    // ----- movement-refused escalation ---------------------------------
+
+    /// <summary>
+    /// The captured deadlock (report stock-20260824-081650): an engine attached
+    /// while the tracker is ALREADY Suspect, sends its own planned step, and the
+    /// step is refused. No landing ever arrives, so the engine's own per-step
+    /// reconcile (NoteSuspectedMismatch) never fires on its own — RoomTracker's
+    /// MovementRefused event is the only thing that can still drive recovery.
+    /// </summary>
+    [Fact]
+    public void MovementRefused_EngineAttachedWhileTrackerSuspect_EscalatesRecovery()
+    {
+        (RoomGraphManager graph, RoomTracker tracker) = NewTwinAnchorGraphAndTracker();
+        tracker.SetLocated(new RoomKey(1, 2));
+        tracker.NoteDirectionFailed();               // Confirmed -> Suspect; CurrentRoom stays 1/2
+        Assert.Equal(RoomConfidence.Suspect, tracker.State.Confidence);
+
+        var gate = new EngineRecoveryGate(graph, tracker);
+        var engine = new RecordingEngine();
+        gate.Attach(engine);                          // attaches WHILE Suspect, mirroring the report
+
+        tracker.NoteMoveSent(Direction.N);             // engine's own planned step
+        gate.NoteEngineStepSent(Direction.N);
+
+        tracker.NoteDirectionFailed();                 // the refusal reply
+
+        Assert.Equal(TierLevel.Tier3, gate.CurrentTier);
+        Assert.Single(engine.Pauses);
+        Assert.Single(engine.Backtracks);
+        Assert.Equal(Direction.S, engine.Backtracks[0]);
+    }
+
+    /// <summary>
+    /// A refusal storm — the gate's own backtrack move also gets refused —
+    /// must not re-escalate or double-send while tier 3 is already active.
+    /// Mutation-proven: dropping the CurrentTier == Tier3 guard makes this
+    /// observe two pauses / two backtracks instead of one.
+    /// </summary>
+    [Fact]
+    public void MovementRefused_Storm_DoesNotReEscalateOnceTier3Active()
+    {
+        (RoomGraphManager graph, RoomTracker tracker) = NewTwinAnchorGraphAndTracker();
+        tracker.SetLocated(new RoomKey(1, 2));
+        tracker.NoteDirectionFailed();
+
+        var gate = new EngineRecoveryGate(graph, tracker);
+        var engine = new RecordingEngine();
+        gate.Attach(engine);
+
+        tracker.NoteMoveSent(Direction.N);
+        gate.NoteEngineStepSent(Direction.N);
+        tracker.NoteDirectionFailed();
+
+        Assert.Equal(TierLevel.Tier3, gate.CurrentTier);
+        Assert.Single(engine.Pauses);
+        Assert.Single(engine.Backtracks);
+
+        // The gate's own backtrack move (S) also refused -- mirrors what a real
+        // engine's SendBacktrackMove does (it calls NoteMoveSent itself;
+        // RecordingEngine is a bare double, so this reproduces that call).
+        tracker.NoteMoveSent(Direction.S);
+        tracker.NoteDirectionFailed();
+
+        Assert.Equal(TierLevel.Tier3, gate.CurrentTier);
+        Assert.Single(engine.Pauses);
+        Assert.Single(engine.Backtracks);
+    }
+
+    /// <summary>
+    /// A second refusal arriving while a Paradigm rm resync is already in
+    /// flight must not ALSO kick off a tier-3 backtrack alongside it — the two
+    /// recovery paths driving the wire at once would send conflicting moves.
+    /// Mutation-proven: dropping the pre-NoteSuspectedMismatch
+    /// AwaitingAuthoritativeResync check lets the second call flip the tier to
+    /// Tier2 (still caught by the second check before it reaches tier 3, but
+    /// observable as a tier leak).
+    /// </summary>
+    [Fact]
+    public void MovementRefused_WhileAwaitingAuthoritativeResync_DoesNotAlsoEscalate()
+    {
+        (RoomGraphManager graph, RoomTracker tracker) = NewTwinAnchorGraphAndTracker();
+        tracker.SetLocated(new RoomKey(1, 2));
+        tracker.NoteDirectionFailed();
+
+        var gate = new EngineRecoveryGate(graph, tracker) { TryResync = _ => true };
+        var engine = new RecordingEngine();
+        gate.Attach(engine);
+
+        tracker.NoteMoveSent(Direction.N);
+        gate.NoteEngineStepSent(Direction.N);
+        tracker.NoteDirectionFailed();                 // first refusal -> resync fast path
+
+        Assert.True(gate.AwaitingAuthoritativeResync);
+        Assert.Equal(TierLevel.Tier1, gate.CurrentTier);
+        Assert.Single(engine.Pauses);
+        Assert.Empty(engine.Backtracks);
+
+        tracker.NoteMoveSent(Direction.E);
+        gate.NoteEngineStepSent(Direction.E);
+        tracker.NoteDirectionFailed();                 // second refusal, still awaiting the rm reply
+
+        Assert.True(gate.AwaitingAuthoritativeResync);
+        Assert.Equal(TierLevel.Tier1, gate.CurrentTier);
+        Assert.Single(engine.Pauses);
+        Assert.Empty(engine.Backtracks);
+    }
+
+    /// <summary>
+    /// A manually-typed move refused while an engine is attached is not
+    /// evidence the engine's OWN plan is wrong (a mistyped exit, a door probed
+    /// by hand) — the gate must not react. Mutation-proven: dropping the
+    /// WasEngineIssued check makes this observe a Tier2/Tier3 escalation
+    /// instead of none.
+    /// </summary>
+    [Fact]
+    public void MovementRefused_ManualMoveWhileSuspect_DoesNotEscalateRecovery()
+    {
+        (RoomGraphManager graph, RoomTracker tracker) = NewGraphAndTracker();
+        tracker.SetLocated(new RoomKey(1, 1));
+        tracker.NoteDirectionFailed();               // Confirmed -> Suspect, no engine attached yet
+
+        var gate = new EngineRecoveryGate(graph, tracker);
+        var engine = new RecordingEngine();
+        gate.Attach(engine);                          // attaches while Suspect, same shape as the report
+
+        tracker.NoteMoveSentByObserver(Direction.N); // manual -- not the engine's own plan
+        tracker.NoteDirectionFailed();
+
+        Assert.Equal(TierLevel.Tier1, gate.CurrentTier);
+        Assert.Empty(engine.Pauses);
+        Assert.Empty(engine.Backtracks);
+        Assert.Equal(0, engine.AbortCount);
+    }
+
+    /// <summary>
+    /// Detached fires only when Detach() actually detaches something —
+    /// PassiveRelocalizer's re-evaluation trigger must not fire on a no-op
+    /// Detach() call on an already-empty gate.
+    /// </summary>
+    [Fact]
+    public void Detached_FiresOnlyOnARealDetach()
+    {
+        (RoomGraphManager graph, RoomTracker tracker) = NewGraphAndTracker();
+        var gate = new EngineRecoveryGate(graph, tracker);
+        int fires = 0;
+        gate.Detached += () => fires++;
+
+        gate.Detach();               // no engine attached -- no-op
+        Assert.Equal(0, fires);
+
+        gate.Attach(new RecordingEngine());
+        gate.Detach();
+        Assert.Equal(1, fires);
+
+        gate.Detach();                // already detached -- no-op again
+        Assert.Equal(1, fires);
+    }
+
     // A pair of name-identical "Fork" twins (1/2, 1/3) with the SAME exit set
     // {N,E} — indistinguishable by name+exits — but WHOSE NEIGHBOURS DIFFER:
     // 1/2's exits lead to Alpha/Beta, 1/3's to Gamma/Delta. A move-free
@@ -189,6 +388,173 @@ public sealed class EngineRecoveryGateTests : IDisposable
         ]
         """;
 
+    // Two identically-named, identically-exited "Twin" dead ends whose own
+    // single exit (N) leads to two DIFFERENT rooms that are themselves
+    // name+exit identical ("Dead", no exits) — so a forward locator walk can
+    // take a step (N is usable) but that step teaches it nothing (both
+    // targets look the same), and the landing room has no further exits to
+    // try. Used to exercise the Ambiguous outcome with a real, non-zero
+    // candidate count and step count.
+    private const string TwinDeadEndGraphJson = """
+        [
+          { "Map Number": 1, "Room Number": 1, "Name": "Start",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "1/2", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 2, "Name": "Twin",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "1/10", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 3, "Name": "Twin",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "1/11", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 10, "Name": "Dead",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "0", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 11, "Name": "Dead",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "0", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+        ]
+        """;
+
+    // Three name+exit-identical "Fox" rooms (1/2, 1/3, 1/4) whose north exit
+    // ALL lead to the same shared room (Mid) — uninformative, ties every
+    // candidate — and whose east exit leads to East1 for 1/2 and 1/3 (twins
+    // on east too) but East2 for 1/4. An in-place look-sweep of Fox's own
+    // exits (peeking both north and east) reads the real east neighbour as
+    // East1 and drops 1/4 with zero movement, leaving {1/2, 1/3}. Within that
+    // pair every exit ties (they're full twins), so a forward walk that
+    // correctly starts from the intersected pair has no informative
+    // direction and takes the first listed one (north). A forward walk that
+    // instead re-seeds fresh from all three would see 1/4 diverge on east
+    // (two shapes) while north stays uninformative (one shape) and pick east
+    // as the falsely "best" splitting exit instead.
+    private const string SweepPreserveGraphJson = """
+        [
+          { "Map Number": 1, "Room Number": 1, "Name": "Start",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "1/2", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 2, "Name": "Fox",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "1/20", "S": "0", "E": "1/30", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 3, "Name": "Fox",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "1/20", "S": "0", "E": "1/30", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 4, "Name": "Fox",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "1/20", "S": "0", "E": "1/31", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 20, "Name": "Mid",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "0", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 30, "Name": "East1",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "0", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 31, "Name": "East2",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "0", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+        ]
+        """;
+
+    // Two "Crypt" twins (1/2, 1/3) that are indistinguishable from what a
+    // display actually shows: both list only a north exit. Each ALSO has a
+    // second exit (1/2's west, 1/3's east), but both are (Hidden) —
+    // RoomLocator's own displayed-mask index (built from what "Obvious
+    // exits:" would print) excludes them, so both twins share the SAME
+    // displayed bucket {N}. Their FULL graph masks differ from each other
+    // AND from {N} exactly ({N,W} vs {N,E}) — RoomTracker's own exact
+    // (name, full-mask) search finds neither for a bare {N} observation, and
+    // its door-tolerant superset fallback finds BOTH (not a 1-of-1), so a
+    // fresh {N}-only "Crypt" observation genuinely lands Lost — with
+    // LastAcceptedObservation left pointing at that exact, graph-findable
+    // display rather than something the tracker also couldn't resolve. A
+    // seed built from either twin's full mask instead would exact-miss both
+    // displayed buckets and fall through to the superset search, which
+    // (wrongly) narrows to just the ONE twin whose hidden exit matches —
+    // silent, zero-verification overcommitment. North leads the twins to
+    // differently-named dead ends (Foo / Bar), so a real move can break them
+    // once the seed is genuinely {1/2, 1/3}.
+    private const string HiddenExitCryptGraphJson = """
+        [
+          { "Map Number": 1, "Room Number": 2, "Name": "Crypt",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "1/20", "S": "0", "E": "0", "W": "1/22 (Hidden)",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 3, "Name": "Crypt",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "1/21", "S": "0", "E": "1/23 (Hidden)", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 20, "Name": "Foo",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "0", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 21, "Name": "Bar",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "0", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 22, "Name": "Vault",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "0", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 23, "Name": "Sanctum",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "0", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+        ]
+        """;
+
+    // "Fork" twins {N,S} (1/2, 1/3) whose north exits lead to another twin
+    // pair ("Echo", both dead ends) and whose south exits lead to a THIRD
+    // twin pair ("Landed", also both dead ends). Reversing a single
+    // executed north step from either fork lands on a "Landed" twin — the
+    // Step survives as 2 candidates (not converged, not exhausted), and
+    // Landed's own empty exit set means the resulting forward-walk handoff
+    // finds nothing further to try. Used to drive a reverse-walk down to
+    // zero executed history via its OWN landing, forcing the
+    // BeginForwardWalk hand-off to fire reentrantly, inside the same
+    // OnRoomObserved call that delivered that landing.
+    private const string ReentrantHandoffGraphJson = """
+        [
+          { "Map Number": 1, "Room Number": 1, "Name": "Start",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "1/2", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 2, "Name": "Fork",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "1/30", "S": "1/40", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 3, "Name": "Fork",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "1/31", "S": "1/41", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 30, "Name": "Echo",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "0", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 31, "Name": "Echo",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "0", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 40, "Name": "Landed",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "0", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 41, "Name": "Landed",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "0", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+        ]
+        """;
+
     private (RoomGraphManager Graph, RoomTracker Tracker) NewGraphAndTracker(string set, string json)
     {
         Directory.CreateDirectory(Path.Combine(_root, set));
@@ -216,6 +582,30 @@ public sealed class EngineRecoveryGateTests : IDisposable
         tracker.NoteMoveSent(Direction.N);
         tracker.NoteRoomObserved(new RoomObservation("Fork", new HashSet<Direction>(forkExits)));
         tracker.NoteRoomObserved(Obs("Nowhere", Direction.W));
+    }
+
+    // Lands the tracker at `landing` via a predicted move from `start`
+    // (Confirmed), then knocks it OFF Confirmed WITHOUT losing `landing` as
+    // RoomTracker.LastAcceptedObservation: send a second move in a direction
+    // `landing`'s room doesn't actually have. RoomTracker can't resolve a
+    // predicted target for that, so NoteRoomObserved falls back to a fresh
+    // graph search on `landing`'s still-ambiguous name+exits (the "Neither
+    // predicted nor refused" path) — Suspect, CurrentRoom preserved at
+    // `landing`, and `landing` itself recorded as the last accepted
+    // observation. Unlike feeding an unrelated off-graph observation to
+    // force the same confidence drop (see ParkSuspectAtFork, still used by
+    // the reverse-walk tests that don't care what LastAcceptedObservation
+    // ends up as), this leaves it pointing at something a forward walk can
+    // actually seed from — exactly as if the wire had genuinely kept
+    // showing `landing` right up to the point recovery needs it.
+    private static void ParkSuspectAt(
+        RoomTracker tracker, RoomKey start, Direction toLanding, RoomObservation landing, Direction unresolvableDirection)
+    {
+        tracker.SetLocated(start);
+        tracker.NoteMoveSent(toLanding);
+        tracker.NoteRoomObserved(landing);
+        tracker.NoteMoveSent(unresolvableDirection);
+        tracker.NoteRoomObserved(landing);
     }
 
     private static RecoveryLookSweep RecordingSweep(out List<string> wire)
@@ -553,5 +943,494 @@ public sealed class EngineRecoveryGateTests : IDisposable
         Assert.Equal(new RoomKey(1, 2), Assert.Single(engine.Resumes));
         Assert.Equal(0, engine.AbortCount);
         Assert.Equal(TierLevel.Tier1, gate.CurrentTier);
+    }
+
+    // ----- forward locator walk (no executed history to reverse) -----
+
+    // The reported bug: a party follower's engine never sends a move while
+    // it's following (PartyFollowerMovementGate holds it), so when tier 3
+    // kicks in after following ends, _executedSinceAnchor is empty.
+    // AdvanceReverseWalk used to fail terminally right there, having sent
+    // nothing. It must now hand off to a forward locator walk instead.
+    [Fact]
+    public void Tier3_NoExecutedHistory_WalksForwardInsteadOfFailing()
+    {
+        (RoomGraphManager graph, RoomTracker tracker) = NewGraphAndTracker("fwd-nohist", TwinNeighbourGraphJson);
+        var gate = new EngineRecoveryGate(graph, tracker);
+        var engine = new RecordingEngine();
+
+        ParkSuspectAt(tracker, new RoomKey(1, 1), Direction.N, Obs("Fork", Direction.N, Direction.E), Direction.S);
+        gate.Attach(engine);   // anchor seeds the fork; NO NoteEngineStepSent calls
+
+        gate.NoteSuspectedMismatch("resumed after following, no executed history");
+        engine.NextPlanned = Direction.S;   // not an exit of the fork {N,E}
+        bool proceed = gate.MayProceedWithPlannedStep();
+
+        Assert.False(proceed);
+        Assert.Equal(TierLevel.Tier3, gate.CurrentTier);
+        // The bug: this used to be empty and the engine aborted having tried
+        // nothing. Now the forward walk's own splitting move went out.
+        Assert.NotEmpty(engine.Backtracks);
+        Assert.Equal(0, engine.AbortCount);
+    }
+
+    // Same zero-history trigger, but this time the forward walk's landing
+    // converges: the tracker resumes at the recovered room via the engine's
+    // normal ResumeAfterRecovery callback, same as a reverse-walk success.
+    [Fact]
+    public void Tier3_ForwardWalk_Converges_ResumesEngineAtRecoveredRoom()
+    {
+        (RoomGraphManager graph, RoomTracker tracker) = NewGraphAndTracker("fwd-converge", TwinNeighbourGraphJson);
+        var gate = new EngineRecoveryGate(graph, tracker);
+        var engine = new RecordingEngine();
+
+        ParkSuspectAt(tracker, new RoomKey(1, 1), Direction.N, Obs("Fork", Direction.N, Direction.E), Direction.S);
+        gate.Attach(engine);
+
+        gate.NoteSuspectedMismatch("resumed after following, no executed history");
+        engine.NextPlanned = Direction.S;
+        gate.MayProceedWithPlannedStep();
+
+        // North splits the twins furthest (Alpha vs Gamma) — that's the move
+        // the forward walk sends first.
+        Assert.Equal(Direction.N, Assert.Single(engine.Backtracks));
+
+        // Landing renders Alpha — only the 1/2 twin's north neighbour is
+        // Alpha, so this converges the walk onto Alpha (1/10), the room the
+        // character now physically stands in.
+        gate.OnRoomObserved(Obs("Alpha", Direction.S));
+
+        Assert.Equal(new RoomKey(1, 10), Assert.Single(engine.Resumes));
+        Assert.Equal(0, engine.AbortCount);
+        Assert.Equal(TierLevel.Tier1, gate.CurrentTier);
+        Assert.Equal(new RoomKey(1, 10), gate.Anchor);
+    }
+
+    // The forward walk can also fail to converge — its own landing leaves
+    // more than one candidate standing with nothing left to try. The failure
+    // reason must carry the REAL candidate count, not a canned message.
+    [Fact]
+    public void Tier3_ForwardWalk_Ambiguous_FailsWithTruthfulCandidateCount()
+    {
+        (RoomGraphManager graph, RoomTracker tracker) = NewGraphAndTracker("fwd-ambiguous", TwinDeadEndGraphJson);
+        var gate = new EngineRecoveryGate(graph, tracker);
+        var engine = new RecordingEngine();
+
+        ParkSuspectAt(tracker, new RoomKey(1, 1), Direction.N, Obs("Twin", Direction.N), Direction.S);
+
+        gate.Attach(engine);
+        gate.NoteSuspectedMismatch("resumed after following, no executed history");
+        engine.NextPlanned = Direction.S;   // not an exit of Twin {N}
+        gate.MayProceedWithPlannedStep();
+
+        RecoveryFailedEvent? failed = null;
+        gate.RecoveryFailed += e => failed = e;
+
+        // Twin's only exit (N) leads two candidates to two name+exit
+        // identical "Dead" rooms — the step is taken but teaches nothing,
+        // and Dead has no further exits to try.
+        Assert.Equal(Direction.N, Assert.Single(engine.Backtracks));
+        gate.OnRoomObserved(Obs("Dead"));
+
+        Assert.Equal(1, engine.AbortCount);
+        Assert.NotNull(failed);
+        Assert.Contains("2", failed!.Value.Detail);
+    }
+
+    // LocatorWalk has no dead-reckoning mode — it narrows only by reading a
+    // rendered display. A dark landing while the forward walk is active must
+    // fail cleanly rather than mis-route into the reverse-walk's blind-step
+    // path (which would leave LocatorWalk's own bookkeeping desynced from
+    // the shared _tier3 matcher).
+    [Fact]
+    public void Tier3_ForwardWalk_DarkLanding_FailsExplicitly()
+    {
+        (RoomGraphManager graph, RoomTracker tracker) = NewGraphAndTracker("fwd-dark", TwinNeighbourGraphJson);
+        var gate = new EngineRecoveryGate(graph, tracker);
+        var engine = new RecordingEngine();
+
+        ParkSuspectAt(tracker, new RoomKey(1, 1), Direction.N, Obs("Fork", Direction.N, Direction.E), Direction.S);
+        gate.Attach(engine);
+        gate.NoteSuspectedMismatch("resumed after following, no executed history");
+        engine.NextPlanned = Direction.W;   // not an exit of the fork {N,E}
+        gate.MayProceedWithPlannedStep();
+
+        // Forward walk's own north move went out.
+        Assert.Equal(Direction.N, Assert.Single(engine.Backtracks));
+
+        RecoveryFailedEvent? failed = null;
+        gate.RecoveryFailed += e => failed = e;
+
+        // RoomTracker only dead-reckons a dark landing from a Confirmed/
+        // Pending anchor (NoteMoveSentCore's policy) — exactly the trust
+        // tier-3 recovery itself doesn't have, since EscalateToTier3 only
+        // ever reaches the backtrack ladder when the tracker is NOT
+        // Confirmed (a Confirmed tracker short-circuits via
+        // TryTrustConfirmedTracker instead). Re-confirm the SAME fork room
+        // here purely to arm that one dead-reckon — standing in for
+        // whatever independently re-confirms position mid-recovery in a
+        // live session (e.g. a later Confirmed re-anchor elsewhere) — so the
+        // dark landing this asserts on can actually reach the gate.
+        tracker.SetLocated(new RoomKey(1, 2));
+        tracker.NoteMoveSent(Direction.N);
+        tracker.NoteDarkRoomEntered();
+
+        Assert.True(tracker.IsInDarkRoom);
+        Assert.Equal(1, engine.AbortCount);
+        Assert.NotNull(failed);
+        Assert.Contains("dark", failed!.Value.Detail);
+    }
+
+    // Pins Finding 1's fix: an in-place look-sweep ahead of the forward-walk
+    // handoff narrows _tier3 with zero movement, and that narrowing must
+    // survive the handoff rather than being discarded by a plain re-seed.
+    [Fact]
+    public void Tier3_ForwardWalk_PreservesSweepNarrowing_InsteadOfDiscardingIt()
+    {
+        (RoomGraphManager graph, RoomTracker tracker) = NewGraphAndTracker("fwd-sweep-preserve", SweepPreserveGraphJson);
+        var gate = new EngineRecoveryGate(graph, tracker);
+        var engine = new RecordingEngine();
+        RecoveryLookSweep sweep = RecordingSweep(out List<string> wire);
+
+        ParkSuspectAt(tracker, new RoomKey(1, 1), Direction.N, Obs("Fox", Direction.N, Direction.E), Direction.S);
+
+        gate.Attach(engine);                     // anchor seeds one of the 3 Fox twins
+        gate.SetLookSweepForTests(sweep);
+        gate.NoteSuspectedMismatch("resumed after following, no executed history");
+        engine.NextPlanned = Direction.S;         // not an exit of Fox {N,E}
+        gate.MayProceedWithPlannedStep();
+
+        // In-place sweep of the fork peeks both exits before any move.
+        Assert.Equal("look north\r", Assert.Single(wire));
+        gate.OnRoomObserved(Obs("Mid"));
+        Assert.Equal("look east\r", wire[1]);
+        gate.OnRoomObserved(Obs("East1"));
+
+        // The sweep alone narrowed 3 candidates to 2 (the 1/4 twin's east
+        // neighbour is East2, not East1) with zero movement. Preserved, the
+        // surviving pair ties on every exit (true twins) so the walk just
+        // takes the first listed direction, north. Discarded — re-seeding
+        // fresh from all 3 — east would falsely look like the best
+        // splitting exit, since only there does the (wrongly re-included)
+        // third twin diverge.
+        Assert.Equal(Direction.N, Assert.Single(engine.Backtracks));
+    }
+
+    // Unit-level coverage of the gate's own null-anchor handling: given an
+    // engine that IS attached while the tracker is genuinely Lost (a room
+    // whose exact (name, full-mask) identity the graph doesn't have, and
+    // whose door-tolerant superset search comes back ambiguous rather than
+    // 1-of-1 — RoomTracker.LandFromCandidateSearch's zero-candidate branch
+    // lands at Lost with CurrentRoom null — Attach then seeds _anchor from
+    // that null CurrentRoom, so it's null too), reverse-walk has nothing to
+    // walk back to AND nothing to seed a footprint from; the only thing
+    // left is RoomTracker's own LastAcceptedObservation — the same display
+    // that put it in Lost in the first place, which the tracker's exact
+    // search couldn't resolve but RoomLocator's displayed-mask index can.
+    // That must still send a move, not declare defeat having tried nothing.
+    //
+    // NOT a claim that this alone fixes "leave a party, instantly lost":
+    // AutoWalkManager and LoopRunner both refuse to Attach in the first
+    // place when CurrentRoom is null, so in production this branch is only
+    // reached by an engine that attached BEFORE going Lost. Whether an
+    // engine should attach anyway on a null CurrentRoom is a separate,
+    // out-of-scope question.
+    [Fact]
+    public void Tier3_GenuinelyLostTracker_WalksForwardFromCachedObservation()
+    {
+        (RoomGraphManager graph, RoomTracker tracker) = NewGraphAndTracker("fwd-lost", HiddenExitCryptGraphJson);
+        var gate = new EngineRecoveryGate(graph, tracker) { TryResync = _ => true };
+        var engine = new RecordingEngine();
+
+        // A fresh (Unknown) tracker fed the twins' shared {N}-only display:
+        // neither twin's FULL mask is exactly {N} (each hides a second
+        // exit), so the exact search finds 0; the superset fallback finds
+        // BOTH (not 1-of-1), so neither re-anchors — genuinely Lost.
+        tracker.NoteRoomObserved(Obs("Crypt", Direction.N));
+        Assert.Equal(RoomConfidence.Lost, tracker.State.Confidence);
+        Assert.Null(tracker.State.CurrentRoom);
+        Assert.Equal("Crypt", tracker.LastAcceptedObservation?.Name);
+
+        gate.Attach(engine);
+        Assert.Null(gate.Anchor);   // seeded from the null CurrentRoom
+
+        gate.NoteSuspectedMismatch("resumed after following, genuinely lost");
+        gate.OnAuthoritativeResyncFailed();   // reaches EscalateToTier3 without needing CurrentRoom
+
+        Assert.Equal(TierLevel.Tier3, gate.CurrentTier);
+        // The bug: this used to fail on the null-anchor guard with zero
+        // moves sent. Now the forward walk picks up from RoomTracker's own
+        // record of the last thing it genuinely saw.
+        Assert.NotEmpty(engine.Backtracks);
+        Assert.Equal(0, engine.AbortCount);
+    }
+
+    // The forward walk seeds RoomLocator from RoomTracker's own
+    // LastAcceptedObservation — what the wire actually displayed — not a
+    // synthesized full graph mask. Each Crypt twin's second exit is
+    // (Hidden), never shown in "Obvious exits:", so a display of either
+    // twin shows north only. Feeding RoomLocator that genuinely-displayed
+    // set finds both twins (honestly ambiguous, since nothing distinguishes
+    // them from what's visible) and sends a real move to break them;
+    // feeding it a full mask that includes an undiscovered hidden exit
+    // would exact-miss RoomLocator's own index, fall through to the
+    // superset search, and wrongly commit to a single twin with zero
+    // verification.
+    [Fact]
+    public void Tier3_ForwardWalk_SeedsFromDisplayedExits_NotAFullGraphMask()
+    {
+        (RoomGraphManager graph, RoomTracker tracker) = NewGraphAndTracker("fwd-displayed-exits", HiddenExitCryptGraphJson);
+        var gate = new EngineRecoveryGate(graph, tracker) { TryResync = _ => true };
+        var engine = new RecordingEngine();
+
+        // Fresh (Unknown) tracker, same genuinely-Lost shape as above: the
+        // {N}-only display matches neither twin's full mask exactly, and
+        // the superset fallback finds both, so RoomTracker can't resolve it
+        // either — but records it as LastAcceptedObservation regardless.
+        tracker.NoteRoomObserved(Obs("Crypt", Direction.N));
+        Assert.Null(tracker.State.CurrentRoom);
+
+        gate.Attach(engine);   // CurrentRoom null -> anchor null
+        Assert.Null(gate.Anchor);
+
+        gate.NoteSuspectedMismatch("resumed after following, no executed history");
+        gate.OnAuthoritativeResyncFailed();
+
+        // Both twins share the displayed exit set {N}, so RoomLocator's
+        // exact bucket finds both — genuinely ambiguous from what's
+        // visible. North (the only exit the walk even knows about) splits
+        // them (Foo vs Bar), so a real move goes out rather than silently
+        // committing to one twin.
+        Assert.Equal(Direction.N, Assert.Single(engine.Backtracks));
+        Assert.Empty(engine.Resumes);
+    }
+
+    // A player-typed `look <dir>` peek at any time, independent of
+    // recovery, parses through RoomDisplayParser.RoomParsed exactly like a
+    // real landing would — but RoomTracker.NoteRoomObserved drops it as a
+    // preview (RoomTracker.IsPeekSuppressed's underlying flag) rather than
+    // accepting it as our own room, so it never reaches
+    // LastAcceptedObservation. A forward walk reading that property is
+    // immune by construction: there's nothing for the gate to guess wrong.
+    [Fact]
+    public void PeekedNeighbour_NeverBecomesForwardWalkSeed()
+    {
+        (RoomGraphManager graph, RoomTracker tracker) = NewGraphAndTracker("fwd-peek-immune", TwinNeighbourGraphJson);
+        var gate = new EngineRecoveryGate(graph, tracker);
+        var engine = new RecordingEngine();
+
+        tracker.SetLocated(new RoomKey(1, 1));
+        tracker.NoteMoveSent(Direction.N);
+        tracker.NoteRoomObserved(Obs("Fork", Direction.N, Direction.E));   // Confirmed @ Fork
+        gate.Attach(engine);
+
+        // A player types `look west` well after the move already landed —
+        // no move is pending, so RoomTracker has nothing to match the
+        // render against and drops it outright as a peek.
+        tracker.NoteLookSent();
+        tracker.NoteRoomObserved(Obs("Some Distant Room", Direction.W));
+        Assert.Equal("Fork", tracker.LastAcceptedObservation?.Name);   // untouched
+
+        // Knock the tracker off Confirmed without touching
+        // LastAcceptedObservation: send a second move in a direction Fork
+        // doesn't have and re-observe Fork (RoomTracker's own "Neither
+        // predicted nor refused" fallback — see ParkSuspectAt).
+        tracker.NoteMoveSent(Direction.S);
+        tracker.NoteRoomObserved(Obs("Fork", Direction.N, Direction.E));
+        Assert.Equal(RoomConfidence.Suspect, tracker.State.Confidence);
+
+        gate.NoteSuspectedMismatch("resumed after following, no executed history");
+        engine.NextPlanned = Direction.W;   // not an exit of the fork {N,E}
+        gate.MayProceedWithPlannedStep();
+
+        // Had the peek become the seed, the walk would seed from "Some
+        // Distant Room" — absent from the graph, so RoomLocator.Seed finds
+        // nothing and no move goes out at all. It seeds from Fork instead
+        // and sends the same north-splitting move as the other
+        // zero-history tests.
+        Assert.Equal(Direction.N, Assert.Single(engine.Backtracks));
+    }
+
+    // The regression this round exists to kill. RoomTracker.IsPeekSuppressed()
+    // is non-consuming, and NoteRoomObserved deliberately keeps a peek window
+    // armed when a pending move's genuine confirming render arrives while a
+    // `look` is queued right behind it — a fast typist hits this every time
+    // (RoomTracker.cs's ObservationLooksLikePendingMoveOutcome guard, cited
+    // against report paradigm-20260813-201720 "move + look too fast"). A
+    // gate that gated its OWN cache on IsPeekSuppressed() (rather than
+    // reading RoomTracker.LastAcceptedObservation) would have WRONGLY
+    // skipped this genuine landing, since the flag reads "armed" for the
+    // whole window regardless of which observation arrives inside it.
+    [Fact]
+    public void GenuineLandingInsideArmedPeekWindow_StillSeedsForwardWalk()
+    {
+        (RoomGraphManager graph, RoomTracker tracker) = NewGraphAndTracker("fwd-fast-typist", TwinNeighbourGraphJson);
+        var gate = new EngineRecoveryGate(graph, tracker);
+        var engine = new RecordingEngine();
+
+        tracker.SetLocated(new RoomKey(1, 1));
+        gate.Attach(engine);
+
+        tracker.NoteMoveSent(Direction.N);   // Pending, predicted target = Fork (1/2)
+        tracker.NoteLookSent();              // fast typist: look queued right behind the move
+        Assert.True(tracker.IsPeekSuppressed());
+
+        // The server answers commands in order, so the move's own
+        // confirming render arrives first. RoomTracker recognizes it as the
+        // pending move's outcome (not the peek) and accepts it, even though
+        // the peek window is still armed and unresolved.
+        tracker.NoteRoomObserved(Obs("Fork", Direction.N, Direction.E));
+        Assert.True(tracker.IsPeekSuppressed());   // still armed — the peek itself hasn't arrived
+        Assert.Equal(RoomConfidence.Confirmed, tracker.State.Confidence);
+        Assert.Equal(new RoomKey(1, 2), tracker.State.CurrentRoom!.Key);
+        Assert.Equal("Fork", tracker.LastAcceptedObservation?.Name);
+
+        // Knock off Confirmed the same way the other forward-walk tests do.
+        tracker.NoteMoveSent(Direction.S);
+        tracker.NoteRoomObserved(Obs("Fork", Direction.N, Direction.E));
+        Assert.Equal(RoomConfidence.Suspect, tracker.State.Confidence);
+
+        gate.NoteSuspectedMismatch("resumed after following, no executed history");
+        engine.NextPlanned = Direction.W;   // not an exit of the fork {N,E}
+        gate.MayProceedWithPlannedStep();
+
+        Assert.Equal(Direction.N, Assert.Single(engine.Backtracks));
+    }
+
+    // The sibling terminal branch: _anchor is non-null (survives from an
+    // earlier strict 1-of-1) but RoomTracker.State.CurrentRoom has since
+    // gone null — "went Lost mid-flight" rather than "never had an
+    // anchor". OnGraphReloaded is a clean, realistic way to produce this:
+    // it nulls CurrentRoom without a strict Confirmed transition, so
+    // nothing refreshes (or clears) the gate's stale anchor. Reverse-walk
+    // still can't seed a footprint without a current room; the forward
+    // walk only needs the cached observation, same as the null-anchor case.
+    [Fact]
+    public void Tier3_StaleAnchor_CurrentRoomNowNull_WalksForwardFromCachedObservation()
+    {
+        (RoomGraphManager graph, RoomTracker tracker) = NewGraphAndTracker("fwd-stale-anchor", TwinNeighbourGraphJson);
+        var gate = new EngineRecoveryGate(graph, tracker) { TryResync = _ => true };
+        var engine = new RecordingEngine();
+
+        tracker.SetLocated(new RoomKey(1, 1));   // Confirmed at unique Start
+        gate.Attach(engine);
+        Assert.Equal(new RoomKey(1, 1), gate.Anchor);
+
+        // Active set reloads mid-session: CurrentRoom drops to null, but
+        // this isn't a strict-1-of-1 Confirmed transition, so the gate's
+        // anchor is never told to update — it stays stale at Start.
+        tracker.OnGraphReloaded();
+        Assert.Null(tracker.State.CurrentRoom);
+        Assert.Equal(new RoomKey(1, 1), gate.Anchor);
+
+        // The next thing the wire shows is the ambiguous Fork — from
+        // Unknown (post-reload), RoomTracker lands Suspect with CurrentRoom
+        // still null (ambiguous, no prior anchor room to preserve) but
+        // records Fork as LastAcceptedObservation regardless.
+        tracker.NoteRoomObserved(Obs("Fork", Direction.N, Direction.E));
+        Assert.Equal(RoomConfidence.Suspect, tracker.State.Confidence);
+        Assert.Null(tracker.State.CurrentRoom);
+
+        gate.NoteSuspectedMismatch("resumed after following, stale anchor");
+        gate.OnAuthoritativeResyncFailed();
+
+        Assert.Equal(TierLevel.Tier3, gate.CurrentTier);
+        Assert.NotEmpty(engine.Backtracks);
+        Assert.Equal(0, engine.AbortCount);
+    }
+
+    // The regression this round exists to kill, part 2: a landing that
+    // drains _executedSinceAnchor to zero hands off to BeginForwardWalk
+    // REENTRANTLY, still inside the very OnRoomObserved call that delivered
+    // that landing. RoomDisplayParser fires OnRoomObserved BEFORE
+    // RoomTracker.NoteRoomObserved processes the same render, so
+    // RoomTracker.LastAcceptedObservation is still the PREVIOUS room at
+    // that exact point — the fix threads the live observation through the
+    // landing chain instead of trusting the (here, stale) tracker property.
+    [Fact]
+    public void ReentrantHandoff_SeedsFromJustLandedRoom_NotStaleTrackerRecord()
+    {
+        (RoomGraphManager graph, RoomTracker tracker) = NewGraphAndTracker("fwd-reentrant", ReentrantHandoffGraphJson);
+        var gate = new EngineRecoveryGate(graph, tracker);
+        var engine = new RecordingEngine();
+
+        ParkSuspectAt(tracker, new RoomKey(1, 1), Direction.N, Obs("Fork", Direction.N, Direction.S), Direction.E);
+        gate.Attach(engine);   // anchor seeds Fork's key
+
+        // Exactly one executed step to reverse, so the reverse-walk landing
+        // itself drains history to zero and hands off reentrantly.
+        gate.NoteEngineStepSent(Direction.N);
+
+        gate.NoteSuspectedMismatch("resumed after following, one step to reverse");
+        engine.NextPlanned = Direction.W;   // not an exit of Fork {N,S}
+        gate.MayProceedWithPlannedStep();
+
+        // Reverse of the recorded N is S — the one and only reverse move.
+        Assert.Equal(Direction.S, Assert.Single(engine.Backtracks));
+
+        RecoveryFailedEvent? failed = null;
+        gate.RecoveryFailed += e => failed = e;
+
+        // Deliberately do NOT call tracker.NoteRoomObserved for this landing
+        // before feeding the gate — RoomTracker.LastAcceptedObservation
+        // stays "Fork" (stale), exactly as it would mid-dispatch in
+        // production, since RoomParsed fires OnRoomObserved first. The
+        // reverse-S landing is "Landed", a twin of two name-ambiguous dead
+        // ends reached from the two Fork twins — the forward-walk handoff
+        // this triggers must seed from THIS observation, not the stale one.
+        gate.OnRoomObserved(Obs("Landed"));
+
+        // "Landed" has no exits to try, so the forward walk reports
+        // Ambiguous immediately with NO further move — the reverse-S stays
+        // the only backtrack ever sent. Seeded from the stale "Fork"
+        // instead, the walk would see Fork's own north exit as usable and
+        // send a second, nonsensical move from a room already left behind.
+        Assert.Equal(Direction.S, Assert.Single(engine.Backtracks));
+        Assert.Equal(1, engine.AbortCount);
+        Assert.NotNull(failed);
+        Assert.Contains("2", failed!.Value.Detail);
+    }
+
+    // Same reentrant handoff as ReentrantHandoff_SeedsFromJustLandedRoom_
+    // NotStaleTrackerRecord, but this time a `look <dir>` is typed while the
+    // reverse-S backtrack is still in flight. RoomDisplayParser.RoomParsed
+    // fires OnRoomObserved for EVERY parsed render, peek included, so the
+    // "Landed" observation the gate receives here could just as well be that
+    // peek's own preview rather than the backtrack's genuine landing —
+    // OnRoomObserved's AwaitingLanding dispatch has no way to tell. With a
+    // peek in flight, BeginForwardWalk must fall back to RoomTracker's own
+    // LastAcceptedObservation ("Fork" {N,S}) instead of trusting the
+    // threaded render as the seed.
+    [Fact]
+    public void PeekArrivingDuringAwaitingLanding_DoesNotSeedTheForwardWalk()
+    {
+        (RoomGraphManager graph, RoomTracker tracker) = NewGraphAndTracker("fwd-peek-during-landing", ReentrantHandoffGraphJson);
+        var gate = new EngineRecoveryGate(graph, tracker);
+        var engine = new RecordingEngine();
+
+        ParkSuspectAt(tracker, new RoomKey(1, 1), Direction.N, Obs("Fork", Direction.N, Direction.S), Direction.E);
+        gate.Attach(engine);
+
+        gate.NoteEngineStepSent(Direction.N);
+        gate.NoteSuspectedMismatch("resumed after following, one step to reverse");
+        engine.NextPlanned = Direction.W;   // not an exit of Fork {N,S}
+        gate.MayProceedWithPlannedStep();
+
+        // Reverse of the recorded N is S — the one and only reverse move.
+        Assert.Equal(Direction.S, Assert.Single(engine.Backtracks));
+
+        tracker.NoteLookSent();
+        Assert.True(tracker.IsPeekSuppressed());
+        gate.OnRoomObserved(Obs("Landed"));
+
+        // Seeded from the peek ("Landed", no exits at all — see the sibling
+        // test), the walk would have nothing to try and fail immediately:
+        // Backtracks would stay [S], one abort, "2" in the failure detail.
+        // Seeded from LastAcceptedObservation ("Fork" {N,S}) instead, the
+        // walk finds the fork's own twin ambiguity and sends its splitting
+        // move — north and south tie (both lead to same-named, same-shaped
+        // twins), so compass order picks north.
+        Assert.Equal(new[] { Direction.S, Direction.N }, engine.Backtracks);
+        Assert.Equal(0, engine.AbortCount);
     }
 }

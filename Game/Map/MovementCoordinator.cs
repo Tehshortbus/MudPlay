@@ -189,6 +189,56 @@ public sealed class MovementCoordinator
     private readonly Queue<GateTransitionEntry> _history = new(HistoryCapacity);
     private readonly object _historyLock = new();
 
+    // True once the user has engaged autonomous movement (a walk-to, a loop,
+    // or Auto-Lair) and it hasn't been explicitly stopped since. Distinct
+    // from IsPaused (an asserted gate halts sends but leaves the engine
+    // engaged) and from "is an engine currently attached" to
+    // EngineRecoveryGate: a genuinely Lost tracker makes every engine refuse
+    // to (re)attach in the first place (AutoWalkManager.WalkTo /
+    // LoopRunner.StartInternal both bail on a null source room before ever
+    // touching the gate) — that refusal is the whole reason PassiveRelocalizer
+    // exists, so "attached" can't double as ITS gate for whether Stage 2 may
+    // run. This is the persistent latch it reads instead.
+    public bool AutomationEngaged { get; private set; }
+
+    // Fires only on a real AutomationEngaged flip (Engage/Disengage are both
+    // idempotent no-ops when already at the target state, matching
+    // PauseStateChanged's own "only real transitions" contract). PassiveRelocalizer
+    // is the reason this exists: a character can go Suspect/Lost BEFORE the user
+    // presses Play, and RoomTracker.StateChanged — the relocalizer's only other
+    // subscription — has nothing left to fire once the tracker is already sitting
+    // in that state, so engaging automation would otherwise never re-evaluate it.
+    public event Action<bool>? AutomationEngagedChanged;
+
+    // Called by AutoWalkManager.WalkTo / LoopRunner.StartInternal /
+    // AutoLairManager.Start — the one choke point each engine's own "start"
+    // funnels through regardless of which surface invoked it (toolbar,
+    // Navigation window, an internal detour/retry/reroute), so a latch wired
+    // into only one caller can't miss another. Idempotent.
+    public void EngageAutomation()
+    {
+        if (AutomationEngaged) return;
+        AutomationEngaged = true;
+        _log?.Info("Gate", "automation engaged");
+        AutomationEngagedChanged?.Invoke(true);
+    }
+
+    // Called by the same three engines' own Stop(reason), plus the toolbar
+    // and Navigation-window master Stop actions directly (those must disarm
+    // even when none of the three engines happens to be active — the exact
+    // shape PassiveRelocalizer's own Stage-2 walk runs in). Never called from
+    // an engine's internal failure teardown (AbortFromRecoveryFailure, a
+    // blocked-after-retries reset, ...) — those call their private Reset()
+    // directly, not Stop(), so the recovery walk this latch protects isn't
+    // disarmed by the very failure it exists to recover from.
+    public void DisengageAutomation()
+    {
+        if (!AutomationEngaged) return;
+        AutomationEngaged = false;
+        _log?.Info("Gate", "automation disengaged");
+        AutomationEngagedChanged?.Invoke(false);
+    }
+
     // True when at least one gate is asserting pause.
     public bool IsPaused => _assertedGates.Count > 0;
 

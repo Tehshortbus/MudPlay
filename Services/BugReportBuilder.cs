@@ -684,6 +684,10 @@ public static class BugReportBuilder
         // needs to point at the right engine.
         var gates = svc.MovementCoordinator.AssertedGates;
         Kv(sb, "Paused by", gates.Count > 0 ? string.Join(", ", gates) : "(nothing)");
+        // Gates the relocalizer's Stage-2 walk on positive user intent rather
+        // than "an engine is attached" — a "walked around while stopped"
+        // report needs to see this stuck true as the smoking gun.
+        Kv(sb, "Automation engaged", svc.MovementCoordinator.AutomationEngaged.ToString());
         // Whether the Auto-All kill switch is the one holding navigation — it
         // suspends an in-flight nav on engage and resumes it on restore.
         Kv(sb, "Auto-All suspended nav", svc.MovementControl.IsAutoAllSuspended.ToString());
@@ -797,6 +801,21 @@ public static class BugReportBuilder
         // instant so all the tracker's comparisons work either way, but printing
         // the raw value would show the UTC hour next to local ones — normalize.
         Kv(sb, "Last move sent", svc.RoomTracker.LastMoveSentAt?.ToLocalTime().ToString("HH:mm:ss") ?? "(never)");
+
+        // Passive relocalizer (engine-less recovery, Settings -> Other's "Walk
+        // to locate myself when lost") — a "when lost it did nothing" report
+        // needs the setting value, whether a walk was actually running, its
+        // working-set size, and what the last one found.
+        Kv(sb, "Relocalizer walk allowed", svc.PassiveRelocalizer.AllowWalking.ToString());
+        Kv(sb, "Relocalizer step budget", svc.PassiveRelocalizer.StepBudget.ToString());
+        Kv(sb, "Relocalizer walk active", svc.PassiveRelocalizer.IsWalkActive.ToString());
+        Kv(sb, "Relocalizer candidates", svc.PassiveRelocalizer.CandidateCount.ToString());
+        Kv(sb, "Relocalizer last outcome",
+            svc.PassiveRelocalizer.LastOutcome is { } locateOutcome
+                ? $"{locateOutcome.Kind} ({(locateOutcome.Kind == LocateOutcomeKind.Converged
+                    ? locateOutcome.Room.ToString() : $"{locateOutcome.CandidateCount} candidate(s)")}, "
+                    + $"{locateOutcome.Steps} step(s))"
+                : "(none yet)");
 
         IReadOnlyList<Game.Map.RoomKey> history = svc.RoomTracker.GetHistory();
         if (history.Count > 0)

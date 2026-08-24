@@ -786,6 +786,16 @@ public sealed class AutoWalkManager : IRecoverableEngine
                 Stop(reason: "superseded by new walk");
         }
 
+        // Every WalkTo caller (toolbar re-route, Navigation window, an
+        // internal detour/retry) expresses positive automation intent by
+        // calling this at all — engage unconditionally, even for the refusal
+        // paths below (no known source room, destination not in the graph):
+        // PassiveRelocalizer's Stage 2 needs to know the user asked for
+        // automation, not merely that this particular attempt succeeded.
+        // After the supersede handling above so a same-call "superseded by
+        // new walk" Stop (which disengages) can't win the race.
+        _coordinator.EngageAutomation();
+
         // In-flight moves still on the wire (typical when the user
         // clicks a new "walk to" before the current step has confirmed):
         // planning from tracker.CurrentRoom now would use a stale
@@ -1314,6 +1324,7 @@ public sealed class AutoWalkManager : IRecoverableEngine
     public void Stop(string reason = "user stop")
     {
         if (State == WalkState.Idle) return;
+        _coordinator.DisengageAutomation();
         RoomKey? dest = _destination;
         Reset();
         // Free any party-reform gate this walk was holding so a stopped user

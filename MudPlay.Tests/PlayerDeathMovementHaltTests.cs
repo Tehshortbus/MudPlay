@@ -111,6 +111,27 @@ public sealed class PlayerDeathMovementHaltTests
         Assert.DoesNotContain(MovementCoordinator.UserGate, h.Coord.AssertedGates);
     }
 
+    /// <summary>
+    /// The stubbed stopper here never touches the coordinator — matching the
+    /// real production shape where all three engines' own Stop(reason)
+    /// no-op because each is already idle (e.g. a walker that self-bailed
+    /// to Idle chasing a genuinely Lost tracker before death). Death must
+    /// still disengage MovementCoordinator.AutomationEngaged directly, the
+    /// same unconditional pattern as the UserGate clear right above it —
+    /// otherwise PassiveRelocalizer's Stage 2 survives the respawn and
+    /// walks the freshly-dead character around the graveyard.
+    /// </summary>
+    [Fact]
+    public void Death_DisengagesAutomation_EvenWhenTheStopperDoesNotTouchTheCoordinator()
+    {
+        using Harness h = new();
+        h.Coord.EngageAutomation();
+
+        h.Die();
+
+        Assert.False(h.Coord.AutomationEngaged);
+    }
+
     [Fact]
     public void Death_LeavesOtherGatesUntouched()
     {
