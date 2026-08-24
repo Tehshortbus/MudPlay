@@ -3846,6 +3846,12 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
             _services.Walker.Stop("user stop from Navigation");
 
         _services.MovementCoordinator.ClearGate(Game.Map.MovementCoordinator.UserGate);
+        // Unconditional, like the ClearGate above: the Navigation window's
+        // master Stop must disarm PassiveRelocalizer's automation-intent
+        // latch even when none of the three engines above was active to
+        // route it through their own Stop() — the exact shape a Lost tracker
+        // with no attached engine is in.
+        _services.MovementCoordinator.DisengageAutomation();
 
         if (CurrentMode == NavigationMode.LoopBuild)
         {

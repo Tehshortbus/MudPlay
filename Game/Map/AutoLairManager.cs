@@ -259,6 +259,10 @@ public sealed class AutoLairManager : IDisposable
             return false;
         }
 
+        // Past the guards — a genuine start. See
+        // MovementCoordinator.EngageAutomation.
+        _coordinator?.EngageAutomation();
+
         LastRunLairAt = DateTimeOffset.UtcNow;
         if (label is { Length: > 0 }) LastRunLairName = label;
 
@@ -281,6 +285,7 @@ public sealed class AutoLairManager : IDisposable
     public void Stop(string reason = "user stop")
     {
         if (!IsActive) return;
+        _coordinator?.DisengageAutomation();
         _schedulerTick.Stop();
         _entryTimer.Stop();
         _engageTimer.Stop();

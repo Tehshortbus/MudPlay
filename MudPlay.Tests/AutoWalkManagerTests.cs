@@ -139,6 +139,46 @@ public sealed class AutoWalkManagerTests : IDisposable
         Assert.Equal(WalkState.Idle, h.Walker.State);
     }
 
+    /// <summary>
+    /// A WalkTo that refuses to attach ("no known source room") must still
+    /// engage MovementCoordinator.AutomationEngaged — this refusal is exactly
+    /// the shape a genuinely Lost tracker leaves the walker in, and it's the
+    /// scenario PassiveRelocalizer's Stage 2 exists to rescue. Gating the
+    /// latch on the attach succeeding would silence the very driver it's
+    /// meant to unblock.
+    /// </summary>
+    [Fact]
+    public void WalkTo_NoSourceRoom_StillEngagesAutomation()
+    {
+        Harness h = NewHarness();
+        h.Walker.WalkTo(new RoomKey(1, 3));
+        Assert.True(h.Coordinator.AutomationEngaged);
+    }
+
+    [Fact]
+    public void WalkTo_Successful_EngagesAutomation()
+    {
+        Harness h = NewHarness();
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+
+        h.Walker.WalkTo(new RoomKey(1, 3));
+
+        Assert.True(h.Coordinator.AutomationEngaged);
+    }
+
+    [Fact]
+    public void Stop_DisengagesAutomation()
+    {
+        Harness h = NewHarness();
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Walker.WalkTo(new RoomKey(1, 3));
+        Assert.True(h.Coordinator.AutomationEngaged);
+
+        h.Walker.Stop("user stop from toolbar");
+
+        Assert.False(h.Coordinator.AutomationEngaged);
+    }
+
     [Fact]
     public void HaltForAbandonedCombat_AnyEngineActive_AssertsGateWhileWalkerIdle()
     {

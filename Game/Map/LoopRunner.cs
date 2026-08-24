@@ -572,6 +572,12 @@ public sealed class LoopRunner : IRecoverableEngine
             }
         }
 
+        // Every Start (fresh or a recovery reroute) expresses positive
+        // automation intent — after the supersede handling above so a
+        // same-call "superseded by new loop" Stop (which disengages) can't
+        // win the race. See MovementCoordinator.EngageAutomation.
+        _coordinator.EngageAutomation();
+
         _loop = loop;
         LastRunLoopName = loop.Name;   // retained past Stop/Reset for @path recovery
         LastRunLoopAt = DateTimeOffset.UtcNow;
@@ -823,6 +829,7 @@ public sealed class LoopRunner : IRecoverableEngine
     public void Stop(string reason = "user stop")
     {
         if (State == LoopState.Idle) return;
+        _coordinator.DisengageAutomation();
         string? name = _loop?.Name;
         _log?.Info("LoopRunner",
             $"Stop: loop='{name ?? "?"}' state={State} reason={reason}");

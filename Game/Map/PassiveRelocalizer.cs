@@ -24,13 +24,19 @@ namespace MudPlay.Game.Map;
 //   Stage 2 — if replay alone leaves more than one candidate standing, drive
 //     a LocatorWalk to walk it out live. Gated behind AllowWalking (Settings
 //     -> Other; on by default, since the whole point of this driver is that
-//     doing nothing was the reported bug) and, on every single send, behind
-//     MovementCoordinator.IsPaused — every other autonomous engine in this
-//     codebase (AutoWalkManager, LoopRunner) gates its own sends the same
-//     way, and this driver has no upstream engine already enforcing it:
+//     doing nothing was the reported bug), behind
+//     MovementCoordinator.AutomationEngaged (the user must have actually
+//     started a walk-to / loop / Auto-Lair — see the field for why "an
+//     engine is attached" can't be that signal), and, on every single send,
+//     behind MovementCoordinator.IsPaused — every other autonomous engine in
+//     this codebase (AutoWalkManager, LoopRunner) gates its own sends the
+//     same way, and this driver has no upstream engine already enforcing it:
 //     marching a mortally wounded, held, confused, or combat-engaged
 //     character (or a party follower out of the leader's drag) is a failure
-//     mode this driver must never cause.
+//     mode this driver must never cause. AutomationEngaged is re-checked at
+//     the same send choke-point as IsPaused, not just before the walk
+//     starts: a user Stop mid-walk must abandon it immediately, the same as
+//     a gate asserting mid-walk does.
 public sealed class PassiveRelocalizer : IDisposable
 {
     private const string LogSource = "PassiveRelocalizer";
@@ -251,6 +257,14 @@ public sealed class PassiveRelocalizer : IDisposable
             return;
         }
 
+        if (!_coordinator.AutomationEngaged)
+        {
+            _log?.Log(LogSeverity.Info, LogSource,
+                $"footstep replay narrowed to {_matcher.Candidates.Count} candidate(s); " +
+                "automation isn't engaged (no walk-to/loop/Auto-Lair running), staying put.");
+            return;
+        }
+
         if (!AllowWalking)
         {
             _log?.Log(LogSeverity.Info, LogSource,
@@ -306,6 +320,13 @@ public sealed class PassiveRelocalizer : IDisposable
     // outcome.
     private void Send(Direction direction)
     {
+        if (!_coordinator.AutomationEngaged)
+        {
+            _log?.Log(LogSeverity.Info, LogSource,
+                "automation is no longer engaged (user stop) — abandoning the locating walk rather than move through it.");
+            _walk = null;
+            return;
+        }
         if (_coordinator.IsPaused)
         {
             _log?.Log(LogSeverity.Info, LogSource,

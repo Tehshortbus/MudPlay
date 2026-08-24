@@ -254,6 +254,43 @@ public sealed class AutoLairManagerTests : IDisposable
 
     // ----- Stop -----------------------------------------------------
 
+    /// <summary>
+    /// Start/Stop must engage/disengage MovementCoordinator.AutomationEngaged
+    /// — the latch PassiveRelocalizer's Stage 2 reads instead of "an engine
+    /// is attached" (see MovementCoordinator.EngageAutomation). Built as its
+    /// own local harness (rather than the shared NewHarness(), which wires
+    /// AutoLairManager with no coordinator) so this doesn't change the
+    /// gate-less behaviour every other test in this file already relies on.
+    /// </summary>
+    [Fact]
+    public void Start_EngagesAutomation_Stop_Disengages()
+    {
+        Directory.CreateDirectory(Path.Combine(_root, "alpha"));
+        File.WriteAllText(Path.Combine(_root, "alpha", "Rooms.json"), GraphJson);
+        File.WriteAllText(Path.Combine(_root, "alpha", "Lairs.json"), LairsJson);
+        GameDataCache cache = new(_root);
+        cache.SwitchSet("alpha");
+        RoomGraphManager graph = new(cache);
+        graph.OnActiveSetChanged("alpha");
+        BfsMapper bfs = new(graph);
+        RoomTracker tracker = new(graph);
+        MovementCoordinator coord = new();
+        AutoWalkManager walker = new(graph, bfs, tracker, coord);
+        walker.SetWireSender(_ => { });
+        using LairTimerStore timers = new(cache, graph, tracker);
+        using AutoLairManager roam = new(walker, tracker, graph, bfs, timers, coordinator: coord);
+
+        tracker.SetLocated(new RoomKey(1, 1));
+        roam.Mark(new RoomKey(1, 1));
+        roam.Mark(new RoomKey(1, 3));
+
+        roam.Start();
+        Assert.True(coord.AutomationEngaged);
+
+        roam.Stop();
+        Assert.False(coord.AutomationEngaged);
+    }
+
     [Fact]
     public void Stop_DeactivatesAndCancelsWalker()
     {

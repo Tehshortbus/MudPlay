@@ -8,6 +8,7 @@ Notable changes per merged PR, **newest first**. The top of the [README](README.
 - New Settings → Other toggle **Walk to locate myself when lost**, default **ON** — deliberately, since shipping this off by default wouldn't fix the "it just sits there" report it addresses; turning it off keeps the old free-replay-only behavior. It never walks you while you're following a party leader
 - New **Locating walk gives up after N steps** budget (default 12) caps how far that walk will move you before giving up
 - Bug Report captures the relocalizer's setting, step budget, whether a walk is active, its candidate count, and its last outcome
+- Fixed: the locating walk above could also fire during ordinary manual play, or after you pressed Pause/Stop — "no engine attached" is also true in both of those. It now requires you to have actually started a walk-to, a loop, or Auto-Lair; pressing Stop or Pause abandons an in-flight locating walk immediately, and a run that's genuinely still going (lost mid-flight, engine unable to reattach) still recovers on its own
 
 ## 3.24.1
 

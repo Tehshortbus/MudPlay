@@ -12,9 +12,13 @@ namespace MudPlay.Tests;
 /// PassiveRelocalizer recovers a room fix while no engine is attached — the
 /// shape a dragged party follower is left in when the tracker goes Suspect
 /// or Lost, since AutoWalkManager and LoopRunner both refuse to attach with
-/// a null CurrentRoom. Covers the free footstep-replay tier, the party
-/// guard on the walking tier, and that a genuinely Lost tracker gets acted
-/// on instead of sitting idle.
+/// a null CurrentRoom. Covers the free footstep-replay tier (always on,
+/// sends nothing); the walking tier's gates — the party/combat/etc. movement
+/// gates, and MovementCoordinator.AutomationEngaged (the user must have
+/// actually started a walk-to / loop / Auto-Lair, not merely have no engine
+/// attached — that's also true of manual play and of a user Stop); and that
+/// a genuinely Lost tracker with automation actually running gets acted on
+/// instead of sitting idle.
 /// </summary>
 public sealed class PassiveRelocalizerTests : IDisposable
 {
@@ -198,6 +202,7 @@ public sealed class PassiveRelocalizerTests : IDisposable
     public void It_never_sends_a_move_while_the_follower_gate_is_asserted()
     {
         var h = new Harness(_root);
+        h.Coordinator.EngageAutomation();
         h.Coordinator.AssertGate(MovementCoordinator.FollowerGate, "test", "party follower");
 
         h.Tracker.NoteRoomObserved(Obs("Start", Direction.N, Direction.U));
@@ -226,6 +231,7 @@ public sealed class PassiveRelocalizerTests : IDisposable
     public void NonFollowerGate_Combat_BlocksTheFirstSend()
     {
         var h = new Harness(_root);
+        h.Coordinator.EngageAutomation();
         h.Coordinator.AssertGate(MovementCoordinator.CombatGate, "test", "hostile revealed");
 
         h.Tracker.NoteRoomObserved(Obs("Start", Direction.N, Direction.U));
@@ -302,6 +308,7 @@ public sealed class PassiveRelocalizerTests : IDisposable
             var locator = new RoomLocator(graph);
             var gate = new EngineRecoveryGate(graph, tracker);
             var coordinator = new MovementCoordinator();
+            coordinator.EngageAutomation();
             var sent = new List<byte[]>();
 
             tracker.NoteRoomObserved(Obs("Twin", Direction.N));
@@ -338,35 +345,51 @@ public sealed class PassiveRelocalizerTests : IDisposable
         }
     }
 
-    /// <summary>
-    /// The user's reported bug, as a test: a genuinely Lost tracker (null
-    /// CurrentRoom) with a cached accepted observation must not just sit
-    /// there — with walking allowed and no party gate asserted, it sends a
-    /// real move rather than waiting for the user to click the map.
-    /// </summary>
-    [Fact]
-    public void GenuinelyLostTracker_WithCachedObservation_StillActs()
+    // Shared Lost-inducing sequence for the AutomationEngaged tests below:
+    // escalate through the strike limit into Lost with a cached accepted
+    // observation, matching the shape a real engine's own attach-refusal
+    // leaves behind ("no known source room" — AutoWalkManager.WalkTo /
+    // LoopRunner.StartInternal both bail before EngineRecoveryGate.Attach
+    // when CurrentRoom is null). A filler self-loop move (U) between each
+    // repeat of the same ambiguous "Start" render bumps the tracker's move
+    // clock past IsRepeatRedisplayWithoutMove's guard without narrowing or
+    // breaking anything the replay depends on (U hops each twin back onto
+    // itself).
+    private static void DriveIntoLost(Harness h)
     {
-        var h = new Harness(_root);
-
-        // Escalate through the strike limit into Lost. A filler self-loop
-        // move (U) between each repeat of the same ambiguous "Start" render
-        // bumps the tracker's move clock past IsRepeatRedisplayWithoutMove's
-        // guard without narrowing or breaking anything the replay depends
-        // on (U hops each twin back onto itself).
         RoomObservation start = Obs("Start", Direction.N, Direction.U);
         h.Tracker.NoteRoomObserved(start);                 // Unknown -> Suspect (ambiguous), strikes=0
         h.Tracker.NoteFollowMove(Direction.U);
         h.Tracker.NoteRoomObserved(start);                 // strikes=1
         h.Tracker.NoteFollowMove(Direction.U);
         h.Tracker.NoteRoomObserved(start);                 // strikes=2
-
         h.Tracker.NoteFollowMove(Direction.U);
         Assert.Equal("Start", h.Tracker.LastAcceptedObservation?.Name);   // still the anchor, not yet reassigned
+    }
+
+    /// <summary>
+    /// The user's reported bug, as a test — the case that must still work:
+    /// automation was actually engaged (a walk-to / loop / Auto-Lair was
+    /// running), the tracker goes genuinely Lost mid-flight (null
+    /// CurrentRoom), and the real engine refuses to (re)attach for exactly
+    /// that reason. Stage 2 must still act — with walking allowed, no party
+    /// gate asserted, and AutomationEngaged still true (nothing stopped it),
+    /// it sends a real move rather than waiting for the user to click the
+    /// map. Mutation-proven: see the report for AutomationEngaged's check
+    /// removed and this test observed to still pass, then EngageAutomation
+    /// removed from THIS test and it observed to fail.
+    /// </summary>
+    [Fact]
+    public void AutomationEngaged_GenuinelyLostTracker_StillActs()
+    {
+        var h = new Harness(_root);
+        h.Coordinator.EngageAutomation();
+
+        DriveIntoLost(h);
 
         PassiveRelocalizer relocalizer = h.NewRelocalizer(allowWalking: true);
 
-        h.Tracker.NoteRoomObserved(start);                 // strikes=3 -> Lost, CurrentRoom null
+        h.Tracker.NoteRoomObserved(Obs("Start", Direction.N, Direction.U));   // strikes=3 -> Lost, CurrentRoom null
 
         Assert.Equal(RoomConfidence.Lost, h.Tracker.State.Confidence);
         Assert.Null(h.Tracker.State.CurrentRoom);
@@ -375,6 +398,203 @@ public sealed class PassiveRelocalizerTests : IDisposable
         Assert.NotEmpty(h.Sent);
 
         relocalizer.Dispose();
+    }
+
+    /// <summary>
+    /// The other half of the bug this branch fixes: manual play, with
+    /// automation never started at all, must never trigger an autonomous
+    /// walk — even for a genuinely Lost tracker in the exact shape the test
+    /// above proves Stage 2 CAN act on. Identical DriveIntoLost sequence,
+    /// walking allowed, no gate asserted — the only difference is
+    /// AutomationEngaged is never set. Mutation-proven: see the report for
+    /// the AutomationEngaged check removed from OnTrackerStateChanged and
+    /// this test observed to fail (a move goes out).
+    /// </summary>
+    [Fact]
+    public void AutomationNeverEngaged_GenuinelyLostTracker_StaysInert()
+    {
+        var h = new Harness(_root);
+        // No EngageAutomation call anywhere — this is manual play.
+
+        DriveIntoLost(h);
+
+        PassiveRelocalizer relocalizer = h.NewRelocalizer(allowWalking: true);
+
+        h.Tracker.NoteRoomObserved(Obs("Start", Direction.N, Direction.U));   // strikes=3 -> Lost, CurrentRoom null
+
+        Assert.Equal(RoomConfidence.Lost, h.Tracker.State.Confidence);
+        Assert.Null(h.Tracker.State.CurrentRoom);
+        Assert.Empty(h.Sent);
+
+        relocalizer.Dispose();
+    }
+
+    /// <summary>
+    /// The user's literal report ("when the client is paused or stopped and
+    /// it's lost, it's still stumbling around"): automation was running,
+    /// went Lost with no engine attached — the exact shape the test above
+    /// proves Stage 2 acts on — but the user pressed Stop before the next
+    /// transition. MovementController.Stop / NavigationViewModel.StopAll
+    /// disengage unconditionally, even though neither of the three tracked
+    /// engines was actually attached to route the disarm through its own
+    /// Stop(reason) — this pins that direct path. Mutation-proven: see the
+    /// report for the DisengageAutomation call removed and this test
+    /// observed to fail (a move goes out).
+    /// </summary>
+    [Fact]
+    public void AutomationDisengagedAfterStop_GenuinelyLostTracker_StaysInert()
+    {
+        var h = new Harness(_root);
+        h.Coordinator.EngageAutomation();
+
+        DriveIntoLost(h);
+
+        PassiveRelocalizer relocalizer = h.NewRelocalizer(allowWalking: true);
+
+        // The user presses Stop — nothing was actually attached (this IS the
+        // Lost-with-no-engine shape), so only the unconditional disarm
+        // matters here.
+        h.Coordinator.DisengageAutomation();
+
+        h.Tracker.NoteRoomObserved(Obs("Start", Direction.N, Direction.U));   // strikes=3 -> Lost, CurrentRoom null
+
+        Assert.Equal(RoomConfidence.Lost, h.Tracker.State.Confidence);
+        Assert.Null(h.Tracker.State.CurrentRoom);
+        Assert.Empty(h.Sent);
+
+        relocalizer.Dispose();
+    }
+
+    /// <summary>
+    /// Stop must abandon an in-flight Stage-2 walk immediately, not just
+    /// block a walk from starting (AutomationDisengagedAfterStop above
+    /// covers that half) — the same shape as a gate asserting mid-walk
+    /// (NonFollowerGate_AssertedMidWalk_AbandonsRatherThanStalls). Unlike
+    /// Pause, Stop actually disengages: a later Start must not find a stale
+    /// walk still pumping. Mutation-proven: see the report for the
+    /// AutomationEngaged check in Send removed and this test observed to
+    /// fail (the second move goes out and the walk stays reported active).
+    /// </summary>
+    [Fact]
+    public void AutomationDisengagedMidWalk_AbandonsRatherThanStalls()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "mudplay-passiverelocalizer-stopmidwalk-" + Path.GetRandomFileName());
+        Directory.CreateDirectory(Path.Combine(root, "alpha"));
+        File.WriteAllText(Path.Combine(root, "alpha", "Rooms.json"), TwoHopFixtureGraph);
+        try
+        {
+            var cache = new GameDataCache(root);
+            cache.SwitchSet("alpha");
+            var graph = new RoomGraphManager(cache);
+            graph.OnActiveSetChanged("alpha");
+            var tracker = new RoomTracker(graph);
+            var locator = new RoomLocator(graph);
+            var gate = new EngineRecoveryGate(graph, tracker);
+            var coordinator = new MovementCoordinator();
+            coordinator.EngageAutomation();
+            var sent = new List<byte[]>();
+
+            tracker.NoteRoomObserved(Obs("Twin", Direction.N));
+
+            var relocalizer = new PassiveRelocalizer(tracker, locator, graph, gate, coordinator)
+            {
+                AllowWalking = true,
+            };
+            relocalizer.SetWireSender(sent.Add);
+
+            // Still ambiguous between the two Twins -> Stage 2 fires its one
+            // usable splitting move (N).
+            tracker.NoteRoomObserved(Obs("Nowhere", Direction.W));
+            Assert.Single(sent);
+            Assert.True(relocalizer.IsWalkActive);
+            sent.Clear();
+
+            // The user presses Stop mid-walk — same disarm MovementController.Stop
+            // / NavigationViewModel.StopAll call unconditionally.
+            coordinator.DisengageAutomation();
+
+            // Both Twins land on a room named "Mid" with the same displayed
+            // exit (E) — the walk stays ambiguous and would otherwise send E
+            // as its second splitting move right here.
+            relocalizer.OnRoomObserved(Obs("Mid", Direction.E));
+
+            Assert.Empty(sent);
+            Assert.False(relocalizer.IsWalkActive);
+
+            relocalizer.Dispose();
+        }
+        finally
+        {
+            try { Directory.Delete(root, recursive: true); } catch { /* best-effort */ }
+        }
+    }
+
+    /// <summary>
+    /// Pause must abandon an in-flight Stage-2 walk exactly like any other
+    /// movement gate (see NonFollowerGate_AssertedMidWalk_AbandonsRatherThanStalls),
+    /// keyed to the actual gate MovementController.Pause / AutoLairManager.Pause
+    /// assert (UserGate) rather than a stand-in gate, and with
+    /// AutomationEngaged still true throughout — Pause holds the engine, it
+    /// doesn't disengage it (Resume must be able to pick the same run back
+    /// up). Mutation-proven: see the report for the IsPaused check in Send
+    /// removed and this test observed to fail (the second move goes out and
+    /// the walk stays reported active).
+    /// </summary>
+    [Fact]
+    public void Pause_AbandonsAnInFlightLocatingWalk()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "mudplay-passiverelocalizer-pause-" + Path.GetRandomFileName());
+        Directory.CreateDirectory(Path.Combine(root, "alpha"));
+        File.WriteAllText(Path.Combine(root, "alpha", "Rooms.json"), TwoHopFixtureGraph);
+        try
+        {
+            var cache = new GameDataCache(root);
+            cache.SwitchSet("alpha");
+            var graph = new RoomGraphManager(cache);
+            graph.OnActiveSetChanged("alpha");
+            var tracker = new RoomTracker(graph);
+            var locator = new RoomLocator(graph);
+            var gate = new EngineRecoveryGate(graph, tracker);
+            var coordinator = new MovementCoordinator();
+            coordinator.EngageAutomation();
+            var sent = new List<byte[]>();
+
+            tracker.NoteRoomObserved(Obs("Twin", Direction.N));
+
+            var relocalizer = new PassiveRelocalizer(tracker, locator, graph, gate, coordinator)
+            {
+                AllowWalking = true,
+            };
+            relocalizer.SetWireSender(sent.Add);
+
+            // Still ambiguous between the two Twins -> Stage 2 fires its one
+            // usable splitting move (N).
+            tracker.NoteRoomObserved(Obs("Nowhere", Direction.W));
+            Assert.Single(sent);
+            Assert.True(relocalizer.IsWalkActive);
+            sent.Clear();
+
+            // The user presses Pause mid-walk — the same UserGate
+            // MovementController.Pause / AutoLairManager.Pause assert.
+            coordinator.AssertGate(MovementCoordinator.UserGate, "test", "user pause");
+
+            // Both Twins land on a room named "Mid" with the same displayed
+            // exit (E) — the walk stays ambiguous and would otherwise send E
+            // as its second splitting move right here.
+            relocalizer.OnRoomObserved(Obs("Mid", Direction.E));
+
+            Assert.Empty(sent);
+            Assert.False(relocalizer.IsWalkActive);
+            // Pause holds, it doesn't disengage — Resume must find the same
+            // run still armed.
+            Assert.True(coordinator.AutomationEngaged);
+
+            relocalizer.Dispose();
+        }
+        finally
+        {
+            try { Directory.Delete(root, recursive: true); } catch { /* best-effort */ }
+        }
     }
 
     /// <summary>
@@ -417,6 +637,7 @@ public sealed class PassiveRelocalizerTests : IDisposable
     public void AnEngineAttachingMidWalk_AbandonsTheWalk()
     {
         var h = new Harness(_root);
+        h.Coordinator.EngageAutomation();
 
         // First observation ever, so LastAcceptedObservation is null while
         // THIS call's own StateChanged is in flight (RoomTracker assigns it
@@ -549,6 +770,7 @@ public sealed class PassiveRelocalizerTests : IDisposable
     public void PeekArrivingDuringAnActiveWalk_AbandonsTheWalk()
     {
         var h = new Harness(_root);
+        h.Coordinator.EngageAutomation();
 
         h.Tracker.NoteRoomObserved(Obs("Start", Direction.N, Direction.U));
 

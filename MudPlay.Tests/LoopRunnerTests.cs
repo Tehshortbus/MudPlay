@@ -187,6 +187,24 @@ public sealed class LoopRunnerTests : IDisposable
         Assert.Contains(h.Events, e => e.Kind == LoopEventKind.Stopped);
     }
 
+    /// <summary>
+    /// Start/Stop must engage/disengage MovementCoordinator.AutomationEngaged
+    /// — the latch PassiveRelocalizer's Stage 2 reads instead of "an engine
+    /// is attached" (see MovementCoordinator.EngageAutomation).
+    /// </summary>
+    [Fact]
+    public void Start_EngagesAutomation_Stop_Disengages()
+    {
+        Harness h = NewHarness();
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+
+        h.Runner.Start(AbCycle());
+        Assert.True(h.Coordinator.AutomationEngaged);
+
+        h.Runner.Stop();
+        Assert.False(h.Coordinator.AutomationEngaged);
+    }
+
     [Fact]
     public void RenameCurrentLoop_UpdatesLiveNameAndFiresRenamed_WithoutDisruptingRun()
     {
