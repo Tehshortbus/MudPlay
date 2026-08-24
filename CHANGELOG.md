@@ -2,7 +2,12 @@
 
 Notable changes per merged PR, **newest first**. The top of the [README](README.md) mirrors the most recent entry. Versioning follows semver (post-1.0), by change type: **MAJOR** = whole-program refactor, **MINOR** = a brand-new feature or a large (~1000+ line) rewrite/expansion of an existing one, **PATCH** = bug fixes AND ordinary enhancements to existing features (one increment per bug report handled or per enhancement).
 
-## 3.25.0
+## 3.25.1
+
+- A move refused while your position was already suspect (a stale room after falling, a mismatched observation, etc.) now actually triggers recovery instead of vanishing silently — previously the tracker only reacted to a refusal from a fully-trusted room, so once it started doubting itself a locked door or an impossible exit produced no further reaction at all
+- Recovery (walk-to / loop / Auto-Lair) now reacts directly to a refused move instead of waiting for a room render that a refusal never produces
+- Pressing Play (or an engine giving up) after you'd already gone lost now re-checks whether the self-recovery walk can run, instead of only checking at the moment you went lost
+- bug reports addressed: stock-20260824-081650
 
 - When MudPlay loses track of your room with no walker/loop/Auto-Lair running (the shape a dragged party follower ends up in), it now recovers on its own instead of sitting idle: free footstep replay runs first (no commands sent), and if that alone can't narrow it to one room, a short locating walk splits the remaining candidates
 - New Settings → Other toggle **Walk to locate myself when lost**, default **ON** — deliberately, since shipping this off by default wouldn't fix the "it just sits there" report it addresses; turning it off keeps the old free-replay-only behavior. It never walks you while you're following a party leader

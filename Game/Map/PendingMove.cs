@@ -13,11 +13,18 @@ public readonly record struct PendingMove(
     Direction? Cardinal,
     string? Command,
     DateTimeOffset SentAt,
-    bool IsFollowDrag = false)
+    bool IsFollowDrag = false,
+    // True when a walker/loop/auto-lair called NoteMoveSent directly (as opposed to
+    // a manually-typed move only observed via the wire echo). RoomTracker reads this
+    // off a refused move's head entry to tell EngineRecoveryGate whether a refusal is
+    // evidence the ENGINE's own plan is wrong, versus a benign manually-mistyped
+    // exit that happens to arrive while an engine is attached — escalating recovery
+    // on the latter would walk the character off for no reason.
+    bool IsEngineIssued = false)
 {
     // Cardinal-only shorthand for the common case.
-    public static PendingMove FromDirection(Direction d, DateTimeOffset when) =>
-        new(d, null, when);
+    public static PendingMove FromDirection(Direction d, DateTimeOffset when, bool isEngineIssued = false) =>
+        new(d, null, when, IsEngineIssued: isEngineIssued);
 
     // Text-exit move that doesn't map to a cardinal.
     public static PendingMove FromCommand(string command, DateTimeOffset when) =>

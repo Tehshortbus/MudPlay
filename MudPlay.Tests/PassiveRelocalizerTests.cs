@@ -941,4 +941,120 @@ public sealed class PassiveRelocalizerTests : IDisposable
 
         relocalizer.Dispose();
     }
+
+    // ----- re-evaluating on an enabling-condition change, not just a tracker
+    // transition (the "I hit play and nothing happened" report) ------------
+
+    /// <summary>
+    /// AutomationEngaged flipping true is not a RoomTracker transition, so
+    /// OnTrackerStateChanged never fires for it — without a dedicated
+    /// re-evaluation, a character already Suspect/Lost when the user presses
+    /// Play sits there forever even though Stage 2 can run now.
+    /// </summary>
+    [Fact]
+    public void AutomationEngaging_WithNoTrackerTransition_TriggersRelocalization()
+    {
+        var h = new Harness(_root);
+        PassiveRelocalizer relocalizer = h.NewRelocalizer(allowWalking: true);
+
+        // Ambiguous "Start" twins -> Suspect, CurrentRoom null. AutomationEngaged
+        // is false here, so the ordinary OnTrackerStateChanged path declines.
+        h.Tracker.NoteRoomObserved(Obs("Start", Direction.N, Direction.U));
+        Assert.Equal(RoomConfidence.Suspect, h.Tracker.State.Confidence);
+        Assert.Empty(h.Sent);
+
+        // The user presses Play. No further tracker event backs this.
+        h.Coordinator.EngageAutomation();
+
+        Assert.Single(h.Sent);
+
+        relocalizer.Dispose();
+    }
+
+    /// <summary>
+    /// Cold start: the client's very first render is already the ambiguous
+    /// pair (Unknown -> Suspect via LandFromCandidateSearch's ambiguous
+    /// branch, CurrentRoom null) — the shape a fresh client is in before the
+    /// user does anything. Pressing Play must still seed from the last
+    /// accepted render and attempt, not decline blind.
+    /// </summary>
+    [Fact]
+    public void ColdStart_AmbiguousSuspectWithNullRoom_ThenPlayPressed_SeedsFromLastAcceptedRender()
+    {
+        var h = new Harness(_root);
+        PassiveRelocalizer relocalizer = h.NewRelocalizer(allowWalking: true);
+
+        h.Tracker.NoteRoomObserved(Obs("Start", Direction.N, Direction.U));
+        Assert.Equal(RoomConfidence.Suspect, h.Tracker.State.Confidence);
+        Assert.Null(h.Tracker.State.CurrentRoom);
+        Assert.Empty(h.Sent);
+
+        h.Coordinator.EngageAutomation();
+
+        Assert.Equal(2, relocalizer.CandidateCount);
+        Assert.Single(h.Sent);
+
+        relocalizer.Dispose();
+    }
+
+    /// <summary>
+    /// A re-trigger while a walk from an earlier escalation is still active
+    /// must not start a second one. Uses the engine-detach trigger (Attach
+    /// then Detach) to fire a re-evaluation without touching AutomationEngaged
+    /// a second time (EngageAutomation is itself idempotent).
+    /// </summary>
+    [Fact]
+    public void Retrigger_WhileWalkActive_DoesNotStartSecondWalk()
+    {
+        var h = new Harness(_root);
+        h.Coordinator.EngageAutomation();
+        h.Tracker.NoteRoomObserved(Obs("Start", Direction.N, Direction.U));
+
+        PassiveRelocalizer relocalizer = h.NewRelocalizer(allowWalking: true);
+
+        // No steps to replay -> Stage 2 starts immediately off the ordinary
+        // tracker-transition path, leaving a walk genuinely active.
+        h.Tracker.NoteRoomObserved(Obs("Nowhere", Direction.W));
+        Assert.Single(h.Sent);
+        Assert.True(relocalizer.IsWalkActive);
+        int candidatesInFlight = relocalizer.CandidateCount;
+        Assert.NotEqual(0, candidatesInFlight);
+
+        // An engine attaching then detaching mid-walk re-fires the enabling-
+        // condition trigger with the walk still active. Without the
+        // walk-active guard this doesn't send a second move either (a
+        // re-seed lands on the same seeded set), but it DOES blow away the
+        // in-flight walk's shared FootprintMatcher state — corrupting the
+        // walk still waiting on its own landing.
+        h.Gate.Attach(new InertEngine());
+        h.Gate.Detach();
+
+        Assert.Single(h.Sent);   // still just the one send from above
+        Assert.True(relocalizer.IsWalkActive);
+        Assert.Equal(candidatesInFlight, relocalizer.CandidateCount);
+
+        relocalizer.Dispose();
+    }
+
+    /// <summary>
+    /// A re-trigger while the party follower gate is asserted must still send
+    /// nothing — every existing send-choke-point guard applies to a
+    /// re-triggered attempt exactly as it does to a tracker-driven one.
+    /// </summary>
+    [Fact]
+    public void Retrigger_WhileFollowerGateAsserted_StillNoMove()
+    {
+        var h = new Harness(_root);
+        h.Coordinator.AssertGate(MovementCoordinator.FollowerGate, "test", "party follower");
+
+        h.Tracker.NoteRoomObserved(Obs("Start", Direction.N, Direction.U));
+
+        PassiveRelocalizer relocalizer = h.NewRelocalizer(allowWalking: true);
+
+        h.Coordinator.EngageAutomation();
+
+        Assert.Empty(h.Sent);
+
+        relocalizer.Dispose();
+    }
 }

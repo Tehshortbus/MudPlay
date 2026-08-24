@@ -117,6 +117,8 @@ public sealed class PassiveRelocalizer : IDisposable
         _log = log;
         _matcher = new FootprintMatcher(ProbeHop, KeyMatchesObservation, log);
         _tracker.StateChanged += OnTrackerStateChanged;
+        _coordinator.AutomationEngagedChanged += OnAutomationEngagedChanged;
+        _gate.Detached += OnEnablingConditionChanged;
     }
 
     // Wire sender for Stage 2 — bound per-session once the telnet client is
@@ -199,7 +201,12 @@ public sealed class PassiveRelocalizer : IDisposable
         if (outcome is { } result) HandleOutcome(result);
     }
 
-    public void Dispose() => _tracker.StateChanged -= OnTrackerStateChanged;
+    public void Dispose()
+    {
+        _tracker.StateChanged -= OnTrackerStateChanged;
+        _coordinator.AutomationEngagedChanged -= OnAutomationEngagedChanged;
+        _gate.Detached -= OnEnablingConditionChanged;
+    }
 
     private void OnTrackerStateChanged(RoomTransition t)
     {
@@ -218,6 +225,42 @@ public sealed class PassiveRelocalizer : IDisposable
         if (t.NewConfidence is not (RoomConfidence.Suspect or RoomConfidence.Lost)) return;
         if (_walk is { IsActive: true }) return;         // already mid-walk from an earlier escalation
 
+        TryRelocalize(t.NewConfidence, renderIsFreshForThisTransition);
+    }
+
+    // AutomationEngagedChanged fires on both directions; only engaging can turn a
+    // "staying put" decision into an attempt, so disengaging is not a re-evaluation
+    // trigger.
+    private void OnAutomationEngagedChanged(bool engaged)
+    {
+        if (engaged) OnEnablingConditionChanged();
+    }
+
+    // Re-evaluate the CURRENT tracker state when one of this driver's own gating
+    // conditions changes with no RoomTracker transition backing it — the user
+    // pressing Play after the character already went Suspect/Lost, or the
+    // attached engine giving up and detaching. OnTrackerStateChanged only fires on
+    // a tracker transition, and neither of these is one, so a character stuck in
+    // Suspect/Lost before either condition became true would otherwise sit there
+    // forever even with Stage 2 fully able to run now.
+    private void OnEnablingConditionChanged()
+    {
+        if (_gate.AttachedEngine is not null) return;
+        if (_tracker.State.Confidence is not (RoomConfidence.Suspect or RoomConfidence.Lost)) return;
+        if (_walk is { IsActive: true }) return;
+
+        // No tracker transition backs this call, so there is no render that could
+        // genuinely belong to "the transition that just happened" — treat it as
+        // stale rather than risk Stage 1 confirming off a render from some earlier,
+        // unrelated point. Stage 2 (walking) doesn't depend on freshness.
+        TryRelocalize(_tracker.State.Confidence, renderIsFreshForThisTransition: false);
+    }
+
+    // Shared Stage 1 (replay) / Stage 2 (walk) attempt, driven either by a genuine
+    // RoomTracker transition (OnTrackerStateChanged) or a re-evaluation of the
+    // still-current state (OnEnablingConditionChanged).
+    private void TryRelocalize(RoomConfidence confidence, bool renderIsFreshForThisTransition)
+    {
         // CurrentRoom is exactly what's null in the Lost case this driver
         // exists for — LastAcceptedObservation is the last render the
         // tracker accepted as ours regardless.
@@ -230,7 +273,7 @@ public sealed class PassiveRelocalizer : IDisposable
 
         IReadOnlyList<RoomKey> seeded = _locator.Seed(obs);
         _log?.Log(LogSeverity.Info, LogSource,
-            $"went {t.NewConfidence} with no engine attached — seeded {seeded.Count} candidate(s) from '{obs.Name}'.");
+            $"{confidence} with no engine attached — seeded {seeded.Count} candidate(s) from '{obs.Name}'.");
         _matcher.Reset(seeded);
         ReplayRecentSteps();
 

@@ -201,6 +201,15 @@ public sealed class MovementCoordinator
     // run. This is the persistent latch it reads instead.
     public bool AutomationEngaged { get; private set; }
 
+    // Fires only on a real AutomationEngaged flip (Engage/Disengage are both
+    // idempotent no-ops when already at the target state, matching
+    // PauseStateChanged's own "only real transitions" contract). PassiveRelocalizer
+    // is the reason this exists: a character can go Suspect/Lost BEFORE the user
+    // presses Play, and RoomTracker.StateChanged — the relocalizer's only other
+    // subscription — has nothing left to fire once the tracker is already sitting
+    // in that state, so engaging automation would otherwise never re-evaluate it.
+    public event Action<bool>? AutomationEngagedChanged;
+
     // Called by AutoWalkManager.WalkTo / LoopRunner.StartInternal /
     // AutoLairManager.Start — the one choke point each engine's own "start"
     // funnels through regardless of which surface invoked it (toolbar,
@@ -211,6 +220,7 @@ public sealed class MovementCoordinator
         if (AutomationEngaged) return;
         AutomationEngaged = true;
         _log?.Info("Gate", "automation engaged");
+        AutomationEngagedChanged?.Invoke(true);
     }
 
     // Called by the same three engines' own Stop(reason), plus the toolbar
@@ -226,6 +236,7 @@ public sealed class MovementCoordinator
         if (!AutomationEngaged) return;
         AutomationEngaged = false;
         _log?.Info("Gate", "automation disengaged");
+        AutomationEngagedChanged?.Invoke(false);
     }
 
     // True when at least one gate is asserting pause.

@@ -121,6 +121,205 @@ public sealed class EngineRecoveryGateTests : IDisposable
         return (graph, new RoomTracker(graph));
     }
 
+    // Two same-named, same-exit "Twin" rooms (1/2, 1/3), each reachable from
+    // "Start" (1/1) and each with its own N exit to a distinct dead end. Genuinely
+    // ambiguous by (name, exits) — a Suspect demotion parked at one of them can't
+    // 1-of-1 re-anchor on name+exits alone, so tier-3's own seed search returns
+    // both and a real reverse-walk (not an instant convergence) is forced.
+    private const string TwinAnchorGraphJson = """
+        [
+          { "Map Number": 1, "Room Number": 1, "Name": "Start",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "1/2", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 2, "Name": "Twin",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "1/10", "S": "1/1", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 3, "Name": "Twin",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "1/11", "S": "1/1", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 10, "Name": "Dead",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "0", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 11, "Name": "Dead",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "0", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+        ]
+        """;
+
+    private (RoomGraphManager Graph, RoomTracker Tracker) NewTwinAnchorGraphAndTracker()
+    {
+        Directory.CreateDirectory(Path.Combine(_root, "twinanchor"));
+        File.WriteAllText(Path.Combine(_root, "twinanchor", "Rooms.json"), TwinAnchorGraphJson);
+        GameDataCache cache = new(_root);
+        cache.SwitchSet("twinanchor");
+        RoomGraphManager graph = new(cache);
+        graph.OnActiveSetChanged("twinanchor");
+        return (graph, new RoomTracker(graph));
+    }
+
+    // ----- movement-refused escalation ---------------------------------
+
+    /// <summary>
+    /// The captured deadlock (report stock-20260824-081650): an engine attached
+    /// while the tracker is ALREADY Suspect, sends its own planned step, and the
+    /// step is refused. No landing ever arrives, so the engine's own per-step
+    /// reconcile (NoteSuspectedMismatch) never fires on its own — RoomTracker's
+    /// MovementRefused event is the only thing that can still drive recovery.
+    /// </summary>
+    [Fact]
+    public void MovementRefused_EngineAttachedWhileTrackerSuspect_EscalatesRecovery()
+    {
+        (RoomGraphManager graph, RoomTracker tracker) = NewTwinAnchorGraphAndTracker();
+        tracker.SetLocated(new RoomKey(1, 2));
+        tracker.NoteDirectionFailed();               // Confirmed -> Suspect; CurrentRoom stays 1/2
+        Assert.Equal(RoomConfidence.Suspect, tracker.State.Confidence);
+
+        var gate = new EngineRecoveryGate(graph, tracker);
+        var engine = new RecordingEngine();
+        gate.Attach(engine);                          // attaches WHILE Suspect, mirroring the report
+
+        tracker.NoteMoveSent(Direction.N);             // engine's own planned step
+        gate.NoteEngineStepSent(Direction.N);
+
+        tracker.NoteDirectionFailed();                 // the refusal reply
+
+        Assert.Equal(TierLevel.Tier3, gate.CurrentTier);
+        Assert.Single(engine.Pauses);
+        Assert.Single(engine.Backtracks);
+        Assert.Equal(Direction.S, engine.Backtracks[0]);
+    }
+
+    /// <summary>
+    /// A refusal storm — the gate's own backtrack move also gets refused —
+    /// must not re-escalate or double-send while tier 3 is already active.
+    /// Mutation-proven: dropping the CurrentTier == Tier3 guard makes this
+    /// observe two pauses / two backtracks instead of one.
+    /// </summary>
+    [Fact]
+    public void MovementRefused_Storm_DoesNotReEscalateOnceTier3Active()
+    {
+        (RoomGraphManager graph, RoomTracker tracker) = NewTwinAnchorGraphAndTracker();
+        tracker.SetLocated(new RoomKey(1, 2));
+        tracker.NoteDirectionFailed();
+
+        var gate = new EngineRecoveryGate(graph, tracker);
+        var engine = new RecordingEngine();
+        gate.Attach(engine);
+
+        tracker.NoteMoveSent(Direction.N);
+        gate.NoteEngineStepSent(Direction.N);
+        tracker.NoteDirectionFailed();
+
+        Assert.Equal(TierLevel.Tier3, gate.CurrentTier);
+        Assert.Single(engine.Pauses);
+        Assert.Single(engine.Backtracks);
+
+        // The gate's own backtrack move (S) also refused -- mirrors what a real
+        // engine's SendBacktrackMove does (it calls NoteMoveSent itself;
+        // RecordingEngine is a bare double, so this reproduces that call).
+        tracker.NoteMoveSent(Direction.S);
+        tracker.NoteDirectionFailed();
+
+        Assert.Equal(TierLevel.Tier3, gate.CurrentTier);
+        Assert.Single(engine.Pauses);
+        Assert.Single(engine.Backtracks);
+    }
+
+    /// <summary>
+    /// A second refusal arriving while a Paradigm rm resync is already in
+    /// flight must not ALSO kick off a tier-3 backtrack alongside it — the two
+    /// recovery paths driving the wire at once would send conflicting moves.
+    /// Mutation-proven: dropping the pre-NoteSuspectedMismatch
+    /// AwaitingAuthoritativeResync check lets the second call flip the tier to
+    /// Tier2 (still caught by the second check before it reaches tier 3, but
+    /// observable as a tier leak).
+    /// </summary>
+    [Fact]
+    public void MovementRefused_WhileAwaitingAuthoritativeResync_DoesNotAlsoEscalate()
+    {
+        (RoomGraphManager graph, RoomTracker tracker) = NewTwinAnchorGraphAndTracker();
+        tracker.SetLocated(new RoomKey(1, 2));
+        tracker.NoteDirectionFailed();
+
+        var gate = new EngineRecoveryGate(graph, tracker) { TryResync = _ => true };
+        var engine = new RecordingEngine();
+        gate.Attach(engine);
+
+        tracker.NoteMoveSent(Direction.N);
+        gate.NoteEngineStepSent(Direction.N);
+        tracker.NoteDirectionFailed();                 // first refusal -> resync fast path
+
+        Assert.True(gate.AwaitingAuthoritativeResync);
+        Assert.Equal(TierLevel.Tier1, gate.CurrentTier);
+        Assert.Single(engine.Pauses);
+        Assert.Empty(engine.Backtracks);
+
+        tracker.NoteMoveSent(Direction.E);
+        gate.NoteEngineStepSent(Direction.E);
+        tracker.NoteDirectionFailed();                 // second refusal, still awaiting the rm reply
+
+        Assert.True(gate.AwaitingAuthoritativeResync);
+        Assert.Equal(TierLevel.Tier1, gate.CurrentTier);
+        Assert.Single(engine.Pauses);
+        Assert.Empty(engine.Backtracks);
+    }
+
+    /// <summary>
+    /// A manually-typed move refused while an engine is attached is not
+    /// evidence the engine's OWN plan is wrong (a mistyped exit, a door probed
+    /// by hand) — the gate must not react. Mutation-proven: dropping the
+    /// WasEngineIssued check makes this observe a Tier2/Tier3 escalation
+    /// instead of none.
+    /// </summary>
+    [Fact]
+    public void MovementRefused_ManualMoveWhileSuspect_DoesNotEscalateRecovery()
+    {
+        (RoomGraphManager graph, RoomTracker tracker) = NewGraphAndTracker();
+        tracker.SetLocated(new RoomKey(1, 1));
+        tracker.NoteDirectionFailed();               // Confirmed -> Suspect, no engine attached yet
+
+        var gate = new EngineRecoveryGate(graph, tracker);
+        var engine = new RecordingEngine();
+        gate.Attach(engine);                          // attaches while Suspect, same shape as the report
+
+        tracker.NoteMoveSentByObserver(Direction.N); // manual -- not the engine's own plan
+        tracker.NoteDirectionFailed();
+
+        Assert.Equal(TierLevel.Tier1, gate.CurrentTier);
+        Assert.Empty(engine.Pauses);
+        Assert.Empty(engine.Backtracks);
+        Assert.Equal(0, engine.AbortCount);
+    }
+
+    /// <summary>
+    /// Detached fires only when Detach() actually detaches something —
+    /// PassiveRelocalizer's re-evaluation trigger must not fire on a no-op
+    /// Detach() call on an already-empty gate.
+    /// </summary>
+    [Fact]
+    public void Detached_FiresOnlyOnARealDetach()
+    {
+        (RoomGraphManager graph, RoomTracker tracker) = NewGraphAndTracker();
+        var gate = new EngineRecoveryGate(graph, tracker);
+        int fires = 0;
+        gate.Detached += () => fires++;
+
+        gate.Detach();               // no engine attached -- no-op
+        Assert.Equal(0, fires);
+
+        gate.Attach(new RecordingEngine());
+        gate.Detach();
+        Assert.Equal(1, fires);
+
+        gate.Detach();                // already detached -- no-op again
+        Assert.Equal(1, fires);
+    }
+
     // A pair of name-identical "Fork" twins (1/2, 1/3) with the SAME exit set
     // {N,E} — indistinguishable by name+exits — but WHOSE NEIGHBOURS DIFFER:
     // 1/2's exits lead to Alpha/Beta, 1/3's to Gamma/Delta. A move-free

@@ -125,6 +125,14 @@ public sealed class EngineRecoveryGate
     // Fires when tier-3 recovery fails terminally. Caller surfaces the modeless info dialog.
     public event Action<RecoveryFailedEvent>? RecoveryFailed;
 
+    // Fires when Detach() actually detaches an engine (a no-op call on an
+    // already-empty gate stays silent). PassiveRelocalizer listens so a
+    // Suspect/Lost character it sat out because an engine was attached gets
+    // re-evaluated the moment that stops being true — detaching touches
+    // neither RoomTracker.StateChanged nor MovementCoordinator, so without this
+    // nothing else would ever tell it to look again.
+    public event Action? Detached;
+
     // locator lets a caller share one RoomLocator (and its graph index) across
     // both this gate and another consumer (PassiveRelocalizer) instead of each
     // building its own — same graph, so a second index costs memory for
@@ -137,6 +145,7 @@ public sealed class EngineRecoveryGate
         _tracker = tracker;
         _log = log;
         _tracker.StateChanged += OnTrackerStateChanged;
+        _tracker.MovementRefused += OnMovementRefused;
 
         _tier3 = new FootprintMatcher(
             probeHop: ProbeHop,
@@ -248,6 +257,7 @@ public sealed class EngineRecoveryGate
         ResetTier3Orchestration();
         _awaitingAuthoritative = false;
         SetTier(TierLevel.Tier1, "detach");
+        Detached?.Invoke();
     }
 
     // The engine just sent a planned move. The gate appends it to the
@@ -384,6 +394,40 @@ public sealed class EngineRecoveryGate
         {
             EscalateToTier3($"tier-2 budget exceeded ({_executedSinceAnchor.Count} steps without 1-of-1)");
         }
+    }
+
+    // RoomTracker's own signal that a movement command just got refused
+    // ("There is no exit in that direction!" / a closed door). A refusal
+    // produces no room render, so an attached engine's own per-step reconcile
+    // (NoteSuspectedMismatch) never fires — this is the ONLY way the gate
+    // learns the tracker's belief is wrong when the world stops confirming
+    // moves at all (report stock-20260824-081650: a stale-anchor engine that
+    // can neither land nor learn it's lost).
+    //
+    // Narrowed to engine-issued moves: a refusal on a manually-typed detour
+    // (a mistyped exit, the player probing a door by hand) is not evidence the
+    // ENGINE's route is wrong, and escalating on it would send the character
+    // off on an unwanted recovery walk for a benign refusal — see
+    // PendingMove.IsEngineIssued.
+    //
+    // Bounded against a refusal storm: once tier 3 is already running (or a
+    // Paradigm rm resync is in flight), further refusals are no-ops here —
+    // the recovery already in progress is what a repeat would otherwise
+    // duplicate. Escalates straight past tier 2's watch: unlike a mid-step
+    // name mismatch (where the engine keeps sending and tier 2 can still
+    // observe a later 1-of-1 or trip its own step budget), a refused move is
+    // proof the exit itself doesn't exist, and the engine sends nothing
+    // further for tier 2 to ever watch — waiting there would wait forever.
+    private void OnMovementRefused(MovementRefusedEvent e)
+    {
+        if (_engine is null) return;
+        if (!e.WasEngineIssued) return;
+        if (CurrentTier == TierLevel.Tier3 || _awaitingAuthoritative) return;
+
+        const string reason = "movement refused";
+        NoteSuspectedMismatch(reason);
+        if (_awaitingAuthoritative || CurrentTier == TierLevel.Tier3) return;
+        EscalateToTier3(reason);
     }
 
     // The Paradigm resolver got an authoritative `rm` Location: reply and

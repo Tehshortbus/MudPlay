@@ -173,6 +173,17 @@ public sealed class RoomTracker
     // step. The engines' own moves are echo-claimed and never fire this.
     public event Action? ManualMoveObserved;
 
+    // Fires from NoteDirectionFailed for every refusal it acts on (Confirmed or
+    // Suspect, per its own guard). EngineRecoveryGate is the consumer: a refused
+    // move produces no landing, so an attached engine's own per-step mismatch
+    // detection (NoteSuspectedMismatch) never runs — this is the only signal that
+    // reaches it. StateChanged already wakes PassiveRelocalizer for the
+    // no-engine-attached case (EnterSuspect raises it unconditionally, even
+    // Suspect -> Suspect), so this event carries the one extra fact the gate
+    // needs that StateChanged doesn't: whether the refused move was the engine's
+    // own (see PendingMove.IsEngineIssued).
+    public event Action<MovementRefusedEvent>? MovementRefused;
+
     public RoomTracker(RoomGraphManager graph) : this(graph, log: null) { }
 
     public RoomTracker(RoomGraphManager graph, LogService? log)
@@ -209,15 +220,35 @@ public sealed class RoomTracker
     // pending in the queue). So we conservatively demote on any direction-failed
     // reply while Confirmed — the next observation resolves cheaply via
     // candidate search.
+    //
+    // Also fires from Suspect, not just Confirmed: sending a move while Suspect
+    // never advances Pending (NoteMoveSentCore holds it at Suspect — no confirmed
+    // anchor to hang a prediction on), so a refusal is the ONLY signal a session
+    // stuck in Suspect can produce. The original Confirmed-only guard silently
+    // dropped it, and a refused move renders nothing to observe either — no
+    // strike, no escalation, ever — stranding the tracker at a stale anchor for
+    // as long as every retry kept getting refused too (report
+    // stock-20260824-081650). Pending is deliberately still excluded: a move
+    // sent from a room we trust reverts through NoteMoveBlocked's own
+    // Pending -> Confirmed path (MovementRefusalDetector), so a bonk there —
+    // closed door, level gate, "too heavy to move" — must not ALSO demote a
+    // room we already know is right.
     public void NoteDirectionFailed(DateTimeOffset? whenUtc = null)
     {
         DateTimeOffset when = whenUtc ?? DateTimeOffset.UtcNow;
-        if (State.Confidence != RoomConfidence.Confirmed) return;
+        if (State.Confidence is not (RoomConfidence.Confirmed or RoomConfidence.Suspect)) return;
         if (State.CurrentRoom is null) return;
+
+        // Capture before the drop below — EngineRecoveryGate uses this to tell a
+        // refusal on the engine's OWN planned step (strong evidence its route is
+        // wrong) apart from one on a manually-typed detour (not evidence the
+        // engine's plan is broken).
+        bool wasEngineIssued = _pending.TryPeek(out PendingMove head) && head.IsEngineIssued;
         // Drop the oldest in-flight cardinal — server rejected it. If
         // there are no pending moves, leave the queue alone.
         _pending.TryDequeue(out _);
         EnterSuspect(when, "direction failed reply observed");
+        MovementRefused?.Invoke(new MovementRefusedEvent(wasEngineIssued, when));
     }
 
     // ----- profile hydrate / save -------------------------------------
@@ -337,7 +368,7 @@ public sealed class RoomTracker
         }
         EnqueuePending(isFollowDrag
             ? PendingMove.FromFollowDrag(direction, when)
-            : PendingMove.FromDirection(direction, when));
+            : PendingMove.FromDirection(direction, when, isEngineIssued: isEngineAnnouncement));
         AppendStep(new DirectionDto(direction));
 
         if (State.Confidence is RoomConfidence.Confirmed or RoomConfidence.Pending)
@@ -427,7 +458,7 @@ public sealed class RoomTracker
         {
             _textEchoClaim = (command, when + EchoClaimExpiry);
         }
-        EnqueuePending(new PendingMove(cardinal, command, when));
+        EnqueuePending(new PendingMove(cardinal, command, when, IsEngineIssued: isEngineAnnouncement));
         AppendStep(new DirectionDto(cardinal, command));
 
         if (State.Confidence is RoomConfidence.Confirmed or RoomConfidence.Pending)
@@ -1638,3 +1669,8 @@ public readonly record struct RoomTransition(
 // prompt-handler decides whether to persist the new name back to the active
 // set's Rooms.json.
 public readonly record struct NameLearnedEvent(RoomKey Key, string ObservedName);
+
+// Payload of RoomTracker.MovementRefused. WasEngineIssued distinguishes a
+// refusal on an attached engine's own planned step from one on a manually-typed
+// move — see PendingMove.IsEngineIssued.
+public readonly record struct MovementRefusedEvent(bool WasEngineIssued, DateTimeOffset At);
