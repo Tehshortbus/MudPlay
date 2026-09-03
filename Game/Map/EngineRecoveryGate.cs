@@ -83,6 +83,11 @@ public sealed class EngineRecoveryGate
     // to the heuristic backtrack. Nothing advances the tiers while it's set.
     private bool _awaitingAuthoritative;
 
+    // One ground-truth locate per escalation. Its failure path re-enters
+    // EscalateToTier3, so without this the gate would ask, fail, and ask again.
+    // Cleared whenever we settle back at tier 1.
+    private bool _sysopLocateTried;
+
     // Optional Paradigm re-sync hook. When set, NoteSuspectedMismatch asks it to
     // fire `rm` before climbing the heuristic ladder; a true return means a
     // request is in flight and we should pause + wait. Null (or a false return)
@@ -100,6 +105,15 @@ public sealed class EngineRecoveryGate
     // exactly one of the two callbacks will fire; false (stock realm, no wire,
     // throttled) means the caller falls back to its existing heuristic path.
     public Func<string, Action<RoomKey>, Action, bool>? TryResyncOnce { get; set; }
+
+    // Optional ground-truth locator, consulted at the moment the gate would
+    // otherwise start reversing moves. Where the character has sysop powers on
+    // the BBS, `sys st` prints the room's true map/room number, and that
+    // strictly beats reverse-walking a footprint until one candidate survives.
+    // A true return means a request is in flight and the gate pauses for it
+    // exactly as it does for a Paradigm `rm`; null (or a false return) leaves
+    // the heuristic ladder untouched.
+    public Func<string, bool>? TrySysopLocate { get; set; }
 
     // Currently active engine, or null when nothing is attached.
     public IRecoverableEngine? AttachedEngine => _engine;
@@ -212,6 +226,7 @@ public sealed class EngineRecoveryGate
         _tier3.Clear();
         ResetTier3Orchestration();
         _awaitingAuthoritative = false;
+        _sysopLocateTried = false;
         CurrentTier = TierLevel.Tier1;
 
         Room? here = _tracker.State.CurrentRoom;
@@ -371,11 +386,12 @@ public sealed class EngineRecoveryGate
         }
     }
 
-    // The Paradigm resolver got an authoritative `rm` Location: reply and
-    // hard-located the tracker to `key`. Re-anchor the gate there by id
-    // (bypassing the 1-of-1 name-uniqueness wrinkle that a normal observation
-    // needs), drop to Tier1, and resume the engine from that anchor. If the key
-    // isn't in the active graph we can't anchor — fall back to the heuristic.
+    // An authoritative locator — the Paradigm resolver's `rm` Location: reply,
+    // or a sysop `sys st` room dump — hard-located the tracker to `key`.
+    // Re-anchor the gate there by id (bypassing the 1-of-1 name-uniqueness
+    // wrinkle that a normal observation needs), drop to Tier1, and resume the
+    // engine from that anchor. If the key isn't in the active graph we can't
+    // anchor — fall back to the heuristic.
     public void NoteAuthoritativePosition(RoomKey key)
     {
         if (_engine is null) return;
@@ -398,25 +414,29 @@ public sealed class EngineRecoveryGate
         _executedSinceAnchor.Clear();
         _tier3.Clear();
         ResetTier3Orchestration();
-        SetTier(TierLevel.Tier1, "authoritative rm resync");
+        SetTier(TierLevel.Tier1, "authoritative position resync");
         _log?.Log(LogSeverity.Info, LogSource, $"authoritative resync → anchored {key}");
         Recovered?.Invoke(key);
         _engine.ResumeAfterRecovery(key);
     }
 
-    // The Paradigm resolver's `rm` request didn't land (timeout, or the reported
-    // room isn't in the graph). Drop the wait flag and fall back to the
-    // heuristic recovery ladder. The engine is already paused from the
-    // resync-wait, so the natural next rung is the Tier3 footprint backtrack —
-    // Tier2 is a non-paused watch we can't re-enter from a paused engine.
+    // An authoritative locator we were waiting on didn't land — a Paradigm `rm`
+    // that timed out, a sysop `sys st` that came back empty, or either of them
+    // naming a room the active graph doesn't contain. Drop the wait flag and
+    // fall back to the heuristic recovery ladder. The engine is already paused
+    // from the resync-wait, so the natural next rung is the Tier3 footprint
+    // backtrack — Tier2 is a non-paused watch we can't re-enter from a paused
+    // engine. Re-entering EscalateToTier3 can't re-ask the same locator: the
+    // Paradigm path is guarded by _awaitingAuthoritative (now false, but its own
+    // throttle holds) and the sysop path by its one-per-escalation flag.
     public void OnAuthoritativeResyncFailed()
     {
         if (_engine is null) return;
         if (!_awaitingAuthoritative) return;
         _awaitingAuthoritative = false;
         _log?.Log(LogSeverity.Warn, LogSource,
-            "rm resync failed; falling back to heuristic backtrack");
-        EscalateToTier3("rm resync failed");
+            "authoritative resync failed; falling back to heuristic backtrack");
+        EscalateToTier3("authoritative resync failed");
     }
 
     // Check before sending the engine's next planned step. Returns true
@@ -428,10 +448,10 @@ public sealed class EngineRecoveryGate
         if (_engine is null) return true;
         if (_awaitingAuthoritative)
         {
-            // Paused mid-flight on an `rm` resync — hold every planned step
-            // until NoteAuthoritativePosition resumes us or the fallback fires.
+            // Paused mid-flight on an authoritative locator — hold every planned
+            // step until NoteAuthoritativePosition resumes us or the fallback fires.
             _log?.Log(LogSeverity.Info, LogSource,
-                $"MayProceed=false: awaiting authoritative rm resync; engine={_engine.Name} must wait");
+                $"MayProceed=false: awaiting authoritative position resync; engine={_engine.Name} must wait");
             return false;
         }
         if (CurrentTier == TierLevel.Tier3)
@@ -471,6 +491,12 @@ public sealed class EngineRecoveryGate
         // the confirmed key as authoritative and let the engine reroute from
         // it — the stock-realm analogue of the Paradigm `rm` resync.
         if (TryTrustConfirmedTracker(reason)) return;
+
+        // Ground truth beats the reverse-walk outright, so ask for it before
+        // committing to one. Deliberately AFTER the confirmed-tracker shortcut:
+        // that path costs nothing and already resolves the easy case, and this
+        // one spends a command on the wire.
+        if (TrySysopGroundTruth(reason)) return;
 
         _log?.Log(LogSeverity.Warn, LogSource,
             $"Tier3.start: {reason} (engine={_engine.Name} anchor={(_anchor?.ToString() ?? "(none)")} executed={_executedSinceAnchor.Count} steps)");
@@ -533,6 +559,26 @@ public sealed class EngineRecoveryGate
             $"trust-confirmed: re-anchored to {room.Key} ({room.Name}) instead of tier-3 backtrack — {reason}");
         Recovered?.Invoke(room.Key);
         _engine.ResumeAfterRecovery(room.Key);
+        return true;
+    }
+
+    // Ask the ground-truth locator (a sysop `sys st`) for our real room instead
+    // of reversing moves to deduce it. Reuses the authoritative-resync wait the
+    // Paradigm `rm` path already owns: the engine pauses, planned steps are
+    // held, and exactly one of NoteAuthoritativePosition / OnAuthoritativeResyncFailed
+    // follows. Returns true when it took over the escalation.
+    private bool TrySysopGroundTruth(string reason)
+    {
+        if (_engine is null) return false;
+        if (_awaitingAuthoritative) return false;
+        if (_sysopLocateTried) return false;
+        if (TrySysopLocate?.Invoke(reason) != true) return false;
+
+        _sysopLocateTried = true;
+        _awaitingAuthoritative = true;
+        _engine.PauseForRecovery($"awaiting sysop status: {reason}");
+        _log?.Log(LogSeverity.Info, LogSource,
+            $"sysop-locate: paused {_engine.Name}, awaiting `sys st` ground truth instead of backtracking (tier={CurrentTier})");
         return true;
     }
 
@@ -749,6 +795,11 @@ public sealed class EngineRecoveryGate
 
     private void SetTier(TierLevel target, string reason)
     {
+        // Settling at tier 1 ends the escalation, so the next one gets its own
+        // ground-truth locate. Cleared before the no-change early-return: an
+        // escalation that started FROM tier 1 and resolved there never changes
+        // tier, and would otherwise leave the flag stuck on.
+        if (target == TierLevel.Tier1) _sysopLocateTried = false;
         if (target == CurrentTier) return;
         TierLevel prev = CurrentTier;
         CurrentTier = target;

@@ -1063,6 +1063,10 @@ Settings → "BBS + Display" — despite the plain "BBS" name in some places, th
 
 That room number is exact, which makes it the fastest possible answer to "where am I?". Without it, a client that loses track of your position has to walk you backwards one room at a time, comparing what it sees against the map until only one room fits, and if that fails you're left right-clicking **I am here** on the map yourself. With sysop powers, one command replaces all of it.
 
+MudPlay asks in exactly two situations. The first is the moment a walk / loop / Auto-Lair is about to start reversing your moves to work out where you are — it asks the game instead, and if the answer comes back it re-anchors and carries on walking without a single backwards step. The second is when the tracker gives up outright and goes lost; rather than waiting for you to click **I am here**, it asks once and puts you back on the map. Either way, if the answer doesn't come back — refused, too slow, or naming a room your active game-data set doesn't contain — nothing changes: you get the same walk-backwards recovery and the same **Lost** dialog you'd get without sysop powers. It never guesses.
+
+Two things deliberately hold it back. It won't ask while a move you've already sent is still unconfirmed (the answer would describe the room you just left), so it waits for the move to land first, and it won't ask twice in quick succession — a tracker flickering in and out of lost costs you one command, not a stream of them. It also stays out of the way entirely while a teleport maze is being solved, since the maze solver does its own position fixing.
+
 **When you might change it:** Only tick it if you genuinely have sysop access on that board. On an ordinary account the command is refused, and MudPlay can't tell in advance — so it tries once, gets nothing back, and switches itself off for the rest of the session. That costs you a single rejected command, not a stream of them, but there's no benefit to ticking it hopefully. Left off, no `sys` command is ever sent.
 
 ### Automated Logon Menu Navigation

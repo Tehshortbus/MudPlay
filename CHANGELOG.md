@@ -1,5 +1,12 @@
 # Version history
 
+## 3.46.1
+
+- Navigation recovery asks the game where you are (`sys st`) instead of walking you backwards, when the character has sysop powers
+- A tracker that goes lost re-anchors itself the same way, instead of waiting for an "I am here" click
+- An unanswered, refused, or off-map answer falls straight back to the old backtrack — nothing is guessed
+- No probe goes out mid-move, during a maze solve, or twice in quick succession
+
 ## 3.46.0
 
 - Reads the game's `sysop status` room dump — for characters flagged with sysop / goto powers on their BBS

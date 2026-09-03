@@ -931,6 +931,14 @@ public static class BugReportBuilder
             svc.SysStatus.Available ? "available"
             : svc.SysStatus.AutoDisabled ? "auto-disabled (no room block came back)"
             : "off (no sysop powers set for this BBS)");
+        // What the last ground-truth locate actually did. "Recovery walked me
+        // backwards anyway" is unanswerable without it: the probe can be
+        // available and still have declined (throttled, queued behind a move) or
+        // failed (empty reply, room outside the active set).
+        Kv(sb, "Sysop locate",
+            svc.SysopLocate.RequestInFlight ? "in flight"
+            : svc.SysopLocate.LocateDeferred ? "queued behind movement"
+            : svc.SysopLocate.LastOutcome);
 
         IReadOnlyList<Game.Map.RoomKey> history = svc.RoomTracker.GetHistory();
         if (history.Count > 0)

@@ -1113,6 +1113,11 @@ public sealed class AppServices
     // BBS didn't answer. Sysop-gated per BBS.
     public Game.Map.SysStatusProbe SysStatus { get; private set; } = null!;
 
+    // Turns a sysop room dump into a located position: consulted by the
+    // recovery gate before it starts reversing moves, and self-triggered
+    // whenever the tracker goes Lost.
+    public Game.Map.SysopPositionResolver SysopLocate { get; private set; } = null!;
+
     // Paradigm-only mana-regen roll-spell reroll engine (nature tap / mana
     // flux, ability 145). Driven by CastDirector's self-buff
     // landing sink + AbilBreakdown; recasts a below-threshold
@@ -3550,6 +3555,21 @@ public sealed class AppServices
         // A fresh character starts with a clean slate — an earlier session's
         // failed probe shouldn't keep the capability off for the next one.
         Profile.ProfileLoaded += _ => SysStatus.ResetAutoDisable();
+
+        // Ground-truth position recovery. The gate asks before it commits to
+        // reversing moves, and the resolver asks for itself when the tracker
+        // goes Lost — the two cases that otherwise end at the "I am here" map
+        // click. Suppressed during a maze solve for the same reason the
+        // Paradigm resync is: the solver drives its own relocalization per
+        // landing and a second uncoordinated one would race it.
+        SysopLocate = new Game.Map.SysopPositionResolver(
+            SysStatus, RoomGraph, RoomTracker,
+            suppressed: () => MazeSolver.Active,
+            log: Log,
+            post: action => Avalonia.Threading.Dispatcher.UIThread.Post(action));
+        SysopLocate.PositionResolved += Recovery.NoteAuthoritativePosition;
+        SysopLocate.LocateFailed += Recovery.OnAuthoritativeResyncFailed;
+        Recovery.TrySysopLocate = SysopLocate.TryRequestLocate;
         ManaRegen = new Game.Spells.ManaRegenReroller(
             AbilBreakdown,
             readConfig: () =>

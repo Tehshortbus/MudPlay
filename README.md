@@ -1,13 +1,11 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.46.0**
-> - Reads the game's `sysop status` room dump — for characters flagged with sysop / goto powers on their BBS
-> - The dump's exact map/room number is the groundwork for recovering the client's position without walking backwards to work it out
-> - Sysop commands stay off unless you tick "I have sysop / goto powers"; one unanswered probe switches them off for the session
-> - Item lists in the dump survive the game's 80-column wrapping, which splits ids mid-number
-> - Items table's `Gettable` flag is now indexed, so room fixtures can be told apart from real loot
-> - Confirmed against live play: item entries are per-object with a stack count, ids can repeat, and dropped items show up immediately
+> **Version 3.46.1**
+> - Navigation recovery asks the game where you are (`sys st`) instead of walking you backwards, when the character has sysop powers
+> - A tracker that goes lost re-anchors itself the same way, instead of waiting for an "I am here" click
+> - An unanswered, refused, or off-map answer falls straight back to the old backtrack — nothing is guessed
+> - No probe goes out mid-move, during a maze solve, or twice in quick succession
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->
