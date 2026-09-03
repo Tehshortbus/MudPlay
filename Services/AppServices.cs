@@ -3571,7 +3571,7 @@ public sealed class AppServices
         SysopLocate.LocateFailed += Recovery.OnAuthoritativeResyncFailed;
         // The gate asks only from a recovery escalation, where the move being
         // unconfirmed IS the problem — so don't queue behind it.
-        Recovery.TrySysopLocate = reason => SysopLocate.TryRequestLocate(reason, deferWhileMoving: false);
+        Recovery.TrySysopLocate = reason => SysopLocate.TryRequestLocate(reason, forRecovery: true);
         ManaRegen = new Game.Spells.ManaRegenReroller(
             AbilBreakdown,
             readConfig: () =>

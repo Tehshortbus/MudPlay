@@ -271,7 +271,7 @@ public sealed class SysopPositionResolverTests : IDisposable
         h.Tracker.NoteMoveSent(Direction.N);
         Assert.Equal(RoomConfidence.Pending, h.Tracker.State.Confidence);
 
-        Assert.True(h.Resolver.TryRequestLocate("engine stalled", deferWhileMoving: false));
+        Assert.True(h.Resolver.TryRequestLocate("engine stalled", forRecovery: true));
 
         Assert.False(h.Resolver.LocateDeferred);
         Assert.Single(h.Sent);
@@ -287,9 +287,30 @@ public sealed class SysopPositionResolverTests : IDisposable
         using Harness h = new(_root);
         h.Tracker.NoteDeath(livesRemaining: 3);
 
-        Assert.True(h.Resolver.TryRequestLocate("engine stalled", deferWhileMoving: false));
+        Assert.True(h.Resolver.TryRequestLocate("engine stalled", forRecovery: true));
 
         Assert.True(h.Resolver.LocateDeferred);
         Assert.Empty(h.Sent);
     }
+
+    [Fact]
+    public async Task ConsecutiveRecoveryLocatesAreNotThrottledOut()
+    {
+        // The stall watchdog escalates every 10s, so a second stall always lands
+        // inside the 15s self-triggered throttle. Denying it drops the sweep into
+        // a backtrack that can't converge among identically-named rooms — which
+        // killed a live sweep 10 seconds after the first locate had just worked.
+        using Harness h = new(_root);
+
+        Assert.True(h.Resolver.TryRequestLocate("stall 1", forRecovery: true));
+        await h.ReplyWithRoom(1, 7);
+        Assert.Single(h.Resolved);
+
+        Assert.True(h.Resolver.TryRequestLocate("stall 2", forRecovery: true));
+        await h.ReplyWithRoom(1, 7);
+
+        Assert.Equal(2, h.Resolved.Count);
+        Assert.Equal(2, h.Sent.Count);
+    }
+
 }

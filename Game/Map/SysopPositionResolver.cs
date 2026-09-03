@@ -24,9 +24,18 @@ public sealed class SysopPositionResolver : IDisposable
 {
     private const string LogSource = "SysopLocate";
 
-    // Minimum spacing between locates. An oscillating tracker can flip Lost
-    // repeatedly; without this it would become a command loop.
+    // Minimum spacing between SELF-triggered locates. An oscillating tracker can
+    // flip Lost repeatedly; without this it would become a command loop.
     private static readonly TimeSpan MinLocateInterval = TimeSpan.FromSeconds(15);
+
+    // Recovery callers are NOT throttled. The stall watchdog escalates every 10s,
+    // so consecutive stalls land inside any window worth setting — a throttle
+    // longer than the gap between the events it serves denies every locate after
+    // the first, and the fallback is a backtrack that cannot converge among
+    // identically-named rooms, so the sweep dies. It needs no window of its own
+    // either: in-flight coalescing below means a second ask can't start until the
+    // first resolves or times out, the gate allows one locate per escalation, and
+    // escalations are already paced by that same watchdog.
 
     // How long a locate may sit queued behind unconfirmed movement before we
     // give up on it. Bounded because a caller that got `true` has paused an
@@ -104,14 +113,21 @@ public sealed class SysopPositionResolver : IDisposable
     // flight (or queued behind movement) — the caller should pause and wait for
     // exactly one of PositionResolved / LocateFailed. Returns false when no
     // probe can be started, so the caller keeps its existing path.
-    // deferWhileMoving: queue behind an unconfirmed move rather than asking now.
-    // Right for a healthy move — but the recovery gate only ever asks BECAUSE a
-    // move is stuck unconfirmed, so deferring there waits out the very condition
-    // the locate exists to resolve, then gives up and falls to a backtrack that
-    // can't converge in a house of identically-named rooms. Gate callers pass
-    // false. PendingRespawn still defers either way: after a death the respawn
-    // room's own observation is imminent and authoritative.
-    public bool TryRequestLocate(string reason, bool deferWhileMoving = true)
+    // forRecovery: this ask is a recovery escalation, not the resolver noticing
+    // the tracker went Lost on its own. Two guards written for the self-triggered
+    // case are wrong for it, and both fire exactly when the locate matters most:
+    //
+    //   * queuing behind an unconfirmed move — the gate only ever asks BECAUSE a
+    //     move is stuck unconfirmed, so waiting means waiting out the very thing
+    //     we're trying to resolve;
+    //   * the 15s throttle — the stall watchdog escalates every 10s, so a second
+    //     stall always lands inside that window and would be denied.
+    //
+    // Both fall through to a footprint backtrack, which cannot converge in a
+    // gang house of identically-named rooms — so the sweep dies. PendingRespawn
+    // still defers either way: after a death the respawn room's own observation
+    // is imminent and authoritative.
+    public bool TryRequestLocate(string reason, bool forRecovery = false)
     {
         if (_disposed) return false;
 
@@ -132,7 +148,7 @@ public sealed class SysopPositionResolver : IDisposable
         if (_inFlight || _deferredReason is not null) return true;
 
         DateTimeOffset now = DateTimeOffset.UtcNow;
-        if (now - _lastRequestAtUtc < MinLocateInterval)
+        if (!forRecovery && now - _lastRequestAtUtc < MinLocateInterval)
         {
             _log?.Log(LogSeverity.Info, LogSource,
                 $"locate throttled ({(now - _lastRequestAtUtc).TotalSeconds:F0}s since last); reason: {reason}");
@@ -147,7 +163,7 @@ public sealed class SysopPositionResolver : IDisposable
         // same case: let the respawn room's observation land first, and only
         // spend a command if that leaves us unresolved.
         bool movementUnsettled = _tracker.State.Confidence == RoomConfidence.PendingRespawn
-            || (deferWhileMoving && _tracker.State.Confidence == RoomConfidence.Pending);
+            || (!forRecovery && _tracker.State.Confidence == RoomConfidence.Pending);
         if (movementUnsettled)
         {
             _deferredReason = reason;
