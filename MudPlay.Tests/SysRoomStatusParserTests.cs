@@ -258,6 +258,112 @@ public sealed class SysRoomStatusParserTests
     }
 
     [Fact]
+    public void HeaderArrivingRightAfterAPromptStillParses()
+    {
+        // Live capture: the server prints the block onto the row the prompt is
+        // already sitting on — "[HP=639/MA=268]:Room 3551  Map: 1" — and
+        // LineExtractor splits that into a prompt line then the content. A
+        // parser that treats any prompt as the terminator drops the header and
+        // with it the entire dump.
+        (SysRoomStatusParser parser, List<SysRoomStatus> captured) = NewParser();
+
+        Arm(parser);
+        parser.FeedTestLine("You speed up.");
+        parser.FeedTestLine("[HP=639/MA=268]:", isPromptLine: true);
+        parser.FeedTestLine("Room 3551  Map: 1");
+        parser.FeedTestLine("Monsters: None");
+        parser.FeedTestLine("Items: None");
+        parser.FeedTestLine("Hidden items: None");
+        parser.FeedTestLine("[HP=639/MA=268]:", isPromptLine: true);
+
+        SysRoomStatus s = Assert.Single(captured);
+        Assert.Equal(new RoomKey(1, 3551), s.Room);
+    }
+
+    [Fact]
+    public void RepeatedIdsAreSeparateFloorObjects()
+    {
+        // Live capture: two black star keys dropped one at a time read as
+        // "172(0) 172(0)" — two objects of one each — while two diamonds read as
+        // "902(1)", one object of two. So an id can repeat, and a consumer must
+        // sum Count across entries rather than assume one entry per item.
+        (SysRoomStatusParser parser, List<SysRoomStatus> captured) = NewParser();
+
+        Arm(parser);
+        parser.FeedTestLine("Room 3551  Map: 1");
+        parser.FeedTestLine("Items: 736(0) 172(0) 172(0)");
+        parser.FeedTestLine("[HP=639/MA=268]:", isPromptLine: true);
+
+        SysRoomStatus s = Assert.Single(captured);
+        Assert.Equal(new[] { 736, 172, 172 }, s.Items.Select(i => i.ItemId));
+        Assert.Equal(3, s.Items.Sum(i => i.Count));
+        Assert.Equal(2, s.Items.Where(i => i.ItemId == 172).Sum(i => i.Count));
+    }
+
+    [Fact]
+    public void StackedItemCountsFromItsValue()
+    {
+        // The other live shape: two diamonds in one stack.
+        (SysRoomStatusParser parser, List<SysRoomStatus> captured) = NewParser();
+
+        Arm(parser);
+        parser.FeedTestLine("Room 3551  Map: 1");
+        parser.FeedTestLine("Items: 902(1)");
+        parser.FeedTestLine("[HP=639/MA=268]:", isPromptLine: true);
+
+        SysRoomStatus s = Assert.Single(captured);
+        Assert.Equal(2, Assert.Single(s.Items).Count);
+    }
+
+    [Fact]
+    public void PlacedItemsAndSpecificMonsterLinesDoNotPolluteTheLists()
+    {
+        // Live capture from room 224: the dump carries extra labelled lines the
+        // record doesn't model. They must not be read as continuations of the
+        // list above them.
+        (SysRoomStatusParser parser, List<SysRoomStatus> captured) = NewParser();
+
+        Arm(parser);
+        parser.FeedTestLine("Room 224  Map: 1");
+        parser.FeedTestLine("Specific Monster: 784-Mayor Godfrey [1/1]Last Killed:  00:00:00 (RG: 2)");
+        parser.FeedTestLine("Patrollable");
+        parser.FeedTestLine("Monsters: 2951");
+        parser.FeedTestLine("Items: 796(0) 29(0)");
+        parser.FeedTestLine("Hidden items: 185(0)");
+        parser.FeedTestLine("Placed items: 796 29");
+        parser.FeedTestLine("[HP=639/MA=268]:", isPromptLine: true);
+
+        SysRoomStatus s = Assert.Single(captured);
+        Assert.Equal(new[] { 796, 29 }, s.Items.Select(i => i.ItemId));
+        Assert.Equal(new[] { 185 }, s.HiddenItems.Select(i => i.ItemId));
+        Assert.Equal("2951", s.MonstersRaw);
+        Assert.True(s.HasMonsters);
+    }
+
+    [Fact]
+    public void ControllingRoomAndAreaLinesAreIgnored()
+    {
+        (SysRoomStatusParser parser, List<SysRoomStatus> captured) = NewParser();
+
+        Arm(parser);
+        parser.FeedTestLine("Room 1182  Map: 7");
+        parser.FeedTestLine("Min: 10 Max: 19 Group: Group 21 by Number: 0");
+        parser.FeedTestLine("Room Max: 3  Current: 2  Last Killed: 19:34:00 Delay: 5");
+        parser.FeedTestLine("Controlling Room: 1176");
+        parser.FeedTestLine("Current Area: Max: 160  Current: 133");
+        parser.FeedTestLine("Monsters: 4510 8407");
+        parser.FeedTestLine("Items: None");
+        parser.FeedTestLine("Hidden items: 192(0)");
+        parser.FeedTestLine("[HP=639/MA=268]:", isPromptLine: true);
+
+        SysRoomStatus s = Assert.Single(captured);
+        Assert.Equal(new RoomKey(7, 1182), s.Room);
+        Assert.Empty(s.Items);
+        Assert.Equal(new[] { 192 }, s.HiddenItems.Select(i => i.ItemId));
+        Assert.Equal("4510 8407", s.MonstersRaw);
+    }
+
+    [Fact]
     public void ExpiredWindowStopsScanning()
     {
         (SysRoomStatusParser parser, List<SysRoomStatus> captured) = NewParser();

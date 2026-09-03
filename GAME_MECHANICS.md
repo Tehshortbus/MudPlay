@@ -3375,7 +3375,7 @@ the attack rotation); the **AoE** debuff is gated by **Auto-Nuke**.
   - **Raises** your monster-targeting odds (a positive modifier) — useful for a tank drawing
     aggro, a cost for a squishy caster.
 
-## Sysop commands — `SYSOP STATUS` room dump *([CONFIRMED] 2026-09-02, user + official help text; item-value reading UNVERIFIED)*
+## Sysop commands — `SYSOP STATUS` room dump *([CONFIRMED] 2026-09-02, user + official help text + live capture)*
 
 Requires sysop privileges on the BBS. On an account without them the command is refused.
 
@@ -3384,9 +3384,15 @@ Forms, from the game's own help:
 - **`SYSOP STATUS`** (abbreviates to `sys st`) — debug dump for the room you are standing in.
   Intended for diagnosing monsters that stop or never stop regenerating.
 - **`SYSOP STATUS <user>`** — status of a named user, if they are currently playing.
-- **`SYSOP STATUS ROOM <room>`** — the same dump **for any room on any map**. The help
-  describes the argument as a bare room number obtained from WCC or from `SYS LIST USERS`;
-  whether that maps to our `map/room` pair is **UNVERIFIED**, so nothing sends this form yet.
+- **`SYSOP STATUS ROOM <room> <map>`** — the same dump **for any room on any map**. Argument
+  order is **room first, then map** *([CONFIRMED] 2026-09-02, live capture)*:
+  - `sys st room 224 1` → `Room 224  Map: 1` ✔
+  - `sys st room 1 224` → `Room error` (read as room 1 on map 224, which doesn't exist)
+  - `sys st room 1/224` → `Room 1  Map: 1` — the `map/room` form is **not** understood; it
+    takes the leading integer as the room and defaults the map to 1. Silently wrong rather
+    than rejected, so never send that shape.
+  - `sys st 224 1` (no `room` keyword) → `Cannot find user 224` — falls through to the
+    user-lookup form.
 - **`SYS LIST USERS`** — lists users and the room each is in.
 - **`MAP`** — generated map of the current area. The help warns it is recursive and has
   caused stack overflows; treat as unsafe to automate.
@@ -3413,14 +3419,37 @@ Hidden items: 1845(0) 14(0) 894(0) 223(0) 879(0) 870(0) 897(1) 876(1) 402(0) 430
   armed only by an outbound sysop status (a forged line would otherwise relocate the player).
 - **Item entries are `id(value)`** where the id is the MDB `Items.Number`. Every id in the
   captured dump resolves to a real item in the `realm2` set.
-- **[UNVERIFIED]** The parenthesised value is believed to be **quantity − 1**: `(0)` means
-  one present, `897(1)` means two pearls. *Confirming experiment: drop a second copy of an
-  item already on the floor and watch its entry move `(0)` → `(1)`.*
+- **[CONFIRMED, live capture 2026-09-02]** An entry is **one object on the floor**, and the
+  parenthesised value is that object's **stack size minus one** — `(0)` is a single item,
+  `(1)` a stack of two. **An id can repeat in one list.** Dropping two black star keys one at
+  a time gives `172(0) 172(0)` (two objects of one each); dropping two diamonds gives
+  `902(1)` (one object of two). The room's true count of an item is therefore the **sum** of
+  (value + 1) over every entry with that id, never a single-entry lookup. The room display
+  aggregates either shape identically ("You notice 2 black star key" / "You notice 2
+  diamond"), so it can't be used to tell the two apart.
+- **[CONFIRMED, live capture 2026-09-02]** **Player-dropped items DO appear** in `Items:`,
+  immediately. An empty room prints `Items: None` and `Hidden items: None` rather than
+  omitting the lines.
 - **[CONFIRMED, user]** **Non-gettable items DO appear** in these lists. The MDB `Items`
   table carries a `Gettable` column (0 = cannot be picked up; 453 of 2047 rows in `realm2`),
   so fixtures are filtered from data rather than by a refused `get`.
 - **[UNVERIFIED, user's read]** Items inside a **container** in the room, and items **held by
   a monster or player**, do *not* appear.
+- **[CONFIRMED, live capture 2026-09-02]** The `Monsters:` line carries space-separated bare
+  numbers (`Monsters: 4510 8407`), and those are **NOT `Monsters.Number`** — 4510 / 8407 /
+  2951 exist in no Monsters row of the `realm2` set, though the same dumps' `Specific
+  Monster: 784-Mayor Godfrey [1/1]` line does carry a real catalogue number. What the
+  `Monsters:` values identify is **unknown** (spawn instances, most likely). **Do not treat
+  them as monster ids.** For "is this specific monster here", read `Specific Monster:`.
+- **[CONFIRMED, live capture 2026-09-02]** Further conditional lines the dump can print:
+  `Controlling Room: <room>` (vs `No controlling room.`), `Current Area: Max: N Current: N`,
+  `Specific Monster: <number>-<name> [n/m]Last Killed: hh:mm:ss (RG: n)`, and
+  `Placed items: <id> <id>` — bare ids, no parens, listing which of `Items:` are the room's
+  **static placements**. Subtracting `Placed items` from `Items` isolates player drops.
+- **[CONFIRMED, live capture 2026-09-02]** The server frequently prints the block's first
+  line onto the row the prompt already occupies — `[HP=639/MA=268]:Room 3551  Map: 1`. Any
+  parser that treats a prompt as the block terminator must ignore prompts seen **before** the
+  room header, or it drops the entire dump.
 - **[UNVERIFIED]** The wording emitted when the command is **denied** is unknown — believed
   to be a generic "Command not recognized". Nothing depends on it: the client gates on the
   user's own sysop-powers flag and falls back to a timeout, not a string match.

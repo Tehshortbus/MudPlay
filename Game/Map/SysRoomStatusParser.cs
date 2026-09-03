@@ -87,7 +87,10 @@ public sealed partial class SysRoomStatusParser : IDisposable
         if (_windowOpenedAt is null) return;
         Avalonia.Threading.Dispatcher.UIThread.Post(() =>
         {
-            if (!_disposed && _windowOpenedAt is not null) CloseWindow("wire prompt");
+            // Same guard as the line path: the prompt that precedes the block
+            // isn't its terminator.
+            if (!_disposed && _windowOpenedAt is not null && _room is not null)
+                CloseWindow("wire prompt");
         });
     }
 
@@ -145,10 +148,15 @@ public sealed partial class SysRoomStatusParser : IDisposable
             return;
         }
 
-        // The prompt is the universal end-of-response marker.
+        // The prompt terminates the dump — but only once the dump has started.
+        // The server often prints the first line of the block onto the row the
+        // prompt is already sitting on ("[HP=639/MA=268]:Room 3551  Map: 1"),
+        // and LineExtractor splits that into a prompt line followed by the
+        // content. Treating every prompt as a terminator drops the header that
+        // arrives immediately after it, and with it the whole block.
         if (isPromptLine)
         {
-            CloseWindow("prompt");
+            if (_room is not null) CloseWindow("prompt");
             return;
         }
 

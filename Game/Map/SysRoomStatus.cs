@@ -5,12 +5,12 @@ namespace MudPlay.Game.Map;
 // One item entry from a sysop room-status dump: the MDB item Number and the
 // parenthesised value the game prints beside it ("521(0)").
 //
-// RawValue is stored verbatim and interpreted in exactly one place. The reading
-// is UNVERIFIED: it is believed to be quantity-1, so (0) means one present and
-// (1) means two. Every consumer goes through Count so a corrected reading is a
-// one-line change here rather than a hunt through the callers. The confirming
-// experiment is to drop a second copy of an item already on the floor and watch
-// its entry move from (0) to (1).
+// An entry is one object on the floor, and RawValue is that object's stack size
+// minus one — (0) is a single item, (1) is a stack of two. An item id can appear
+// MORE THAN ONCE in a list: dropping two black star keys one at a time reads
+// "172(0) 172(0)" (two objects of one each), while dropping two diamonds reads
+// "902(1)" (one object of two). So the room's true count of an item is the sum
+// of Count across every entry carrying that id — never a lookup of one entry.
 public readonly record struct SysRoomItem(int ItemId, int RawValue)
 {
     public int Count => RawValue + 1;
@@ -24,9 +24,13 @@ public readonly record struct SysRoomItem(int ItemId, int RawValue)
 // carrying them would be dead weight.
 //
 // MonstersRaw is the verbatim text after "Monsters:" rather than a parsed list.
-// The populated form of that line has never been captured — only "None" — so
-// splitting it would be guessing at a format. HasMonsters answers the only
-// question anything currently needs.
+// The populated form is space-separated bare numbers ("Monsters: 4510 8407"),
+// but those are NOT Monsters.Number — none of the observed values exist in the
+// active set's Monsters table, while the same dump's "Specific Monster:" line
+// does carry a real catalogue number ("784-Mayor Godfrey"). Until we know what
+// they identify, parsing them into ids would invent a meaning they may not have,
+// so the line is carried verbatim and HasMonsters answers the only question
+// anything currently asks.
 public sealed record SysRoomStatus(
     RoomKey Room,
     string MonstersRaw,

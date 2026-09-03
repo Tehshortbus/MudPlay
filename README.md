@@ -7,6 +7,7 @@
 > - Sysop commands stay off unless you tick "I have sysop / goto powers"; one unanswered probe switches them off for the session
 > - Item lists in the dump survive the game's 80-column wrapping, which splits ids mid-number
 > - Items table's `Gettable` flag is now indexed, so room fixtures can be told apart from real loot
+> - Confirmed against live play: item entries are per-object with a stack count, ids can repeat, and dropped items show up immediately
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->
