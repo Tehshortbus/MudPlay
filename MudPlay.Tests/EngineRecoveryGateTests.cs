@@ -307,6 +307,61 @@ public sealed class EngineRecoveryGateTests : IDisposable
     }
 
     [Fact]
+    public void NoteEngineStalled_StockRealm_GoesStraightToTier3()
+    {
+        // A stalled engine can't execute the further steps tier 2 watches for, so
+        // reporting a stall as a mismatch parks it there permanently. It must
+        // reach the ladder that can act on a stationary engine.
+        (RoomGraphManager graph, RoomTracker tracker) = NewGraphAndTracker("stall1", TwinSouthGraphJson);
+        var gate = new EngineRecoveryGate(graph, tracker) { TryResync = _ => false };
+        var engine = new RecordingEngine();
+        ParkSuspectAtFork(tracker, Direction.N, Direction.S);
+        gate.Attach(engine);
+        gate.NoteEngineStepSent(Direction.N);
+
+        gate.NoteEngineStalled("move never confirmed");
+
+        Assert.Equal(TierLevel.Tier3, gate.CurrentTier);
+        Assert.Single(engine.Pauses);
+        Assert.Equal(Direction.S, Assert.Single(engine.Backtracks));
+    }
+
+    [Fact]
+    public void NoteEngineStalled_PrefersTheAuthoritativeResyncWhenAvailable()
+    {
+        // Paradigm keeps its fast-path: one `rm` beats reversing moves, so a
+        // stall asks for it first and only falls to tier 3 if it doesn't land.
+        (RoomGraphManager graph, RoomTracker tracker) = NewGraphAndTracker("stall2", TwinSouthGraphJson);
+        List<string> asked = new();
+        var gate = new EngineRecoveryGate(graph, tracker)
+        {
+            TryResync = reason => { asked.Add(reason); return true; },
+        };
+        var engine = new RecordingEngine();
+        ParkSuspectAtFork(tracker, Direction.N, Direction.S);
+        gate.Attach(engine);
+        gate.NoteEngineStepSent(Direction.N);
+
+        gate.NoteEngineStalled("move never confirmed");
+
+        Assert.Single(asked);
+        Assert.True(gate.AwaitingAuthoritativeResync);
+        Assert.Empty(engine.Backtracks);
+        Assert.NotEqual(TierLevel.Tier3, gate.CurrentTier);
+    }
+
+    [Fact]
+    public void NoteEngineStalled_WithNoEngineAttached_IsNoOp()
+    {
+        (RoomGraphManager graph, RoomTracker tracker) = NewGraphAndTracker();
+        var gate = new EngineRecoveryGate(graph, tracker);
+
+        gate.NoteEngineStalled("nothing attached");
+
+        Assert.Equal(TierLevel.Tier1, gate.CurrentTier);
+    }
+
+    [Fact]
     public void EscalateToTier3_WithSysopLocate_PausesInsteadOfBacktracking()
     {
         (RoomGraphManager graph, RoomTracker tracker) = NewGraphAndTracker("maze3", TwinSouthGraphJson);

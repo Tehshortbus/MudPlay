@@ -1387,11 +1387,16 @@ public sealed class LoopRunner : IRecoverableEngine
         // on stock it runs the footprint backtrack; either way ResumeAfterRecovery
         // then advances (if we really arrived) or reroutes and re-sends (if we're
         // still at the source), so the interrupted move resumes without an overshoot.
+        //
+        // Reported as stalled, not as a mismatch: tier 2 watches for a 1-of-1 over
+        // the engine's NEXT few steps, and a wedged engine has none — reporting a
+        // mismatch here parks us in tier 2 forever, because this watchdog has
+        // already stopped itself and only a send or a resume re-arms it.
         if (State != LoopState.Running || !_stepInFlight) return;
         if (_tracker.State.Confidence != RoomConfidence.Pending) return;
         _log?.Warn("LoopRunner",
             $"step {_index + 1} in-flight stall: move Pending, unconfirmed for {StallWatchdogInterval.TotalSeconds:F0}s — escalating to recovery");
-        _recovery?.NoteSuspectedMismatch(
+        _recovery?.NoteEngineStalled(
             $"loop step {_index + 1} in-flight stall (move interrupted, never confirmed)");
     }
 

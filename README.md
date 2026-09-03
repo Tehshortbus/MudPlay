@@ -1,11 +1,9 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.46.1**
-> - Navigation recovery asks the game where you are (`sys st`) instead of walking you backwards, when the character has sysop powers
-> - A tracker that goes lost re-anchors itself the same way, instead of waiting for an "I am here" click
-> - An unanswered, refused, or off-map answer falls straight back to the old backtrack — nothing is guessed
-> - No probe goes out mid-move, during a maze solve, or twice in quick succession
+> **Version 3.46.2**
+> - Fixed a loop hanging forever when a move went out and never confirmed — on a realm with no `rm`, the stall escalation parked in a recovery tier that only advances while the engine is still walking, so a stopped engine waited there indefinitely
+> - A stalled engine now goes straight to the recovery ladder that can act on it: sysop ground truth if available, then the reverse-walk, then a clean "Lost" dialog
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

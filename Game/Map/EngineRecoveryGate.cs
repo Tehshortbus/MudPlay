@@ -358,21 +358,7 @@ public sealed class EngineRecoveryGate
         _log?.Log(LogSeverity.Info, LogSource,
             $"NoteSuspectedMismatch (tier={CurrentTier}): {reason}");
 
-        // Paradigm fast-path: ask the game for our authoritative position via
-        // `rm` before climbing the heuristic ladder. Pause the engine while the
-        // reply round-trips so it reports a stationary room;
-        // NoteAuthoritativePosition resumes us from that anchor, and
-        // OnAuthoritativeResyncFailed falls back to the backtrack on a miss.
-        // TryResync returns false on stock realms / when throttled, leaving the
-        // heuristic escalation below untouched.
-        if (!_awaitingAuthoritative && TryResync?.Invoke(reason) == true)
-        {
-            _awaitingAuthoritative = true;
-            _engine.PauseForRecovery($"awaiting rm resync: {reason}");
-            _log?.Log(LogSeverity.Info, LogSource,
-                $"resync-wait: paused {_engine.Name}, awaiting authoritative rm position (tier={CurrentTier})");
-            return;
-        }
+        if (TryParadigmResync(reason)) return;
 
         if (CurrentTier == TierLevel.Tier1)
             SetTier(TierLevel.Tier2, $"mismatch: {reason}");
@@ -384,6 +370,46 @@ public sealed class EngineRecoveryGate
         {
             EscalateToTier3($"tier-2 budget exceeded ({_executedSinceAnchor.Count} steps without 1-of-1)");
         }
+    }
+
+    // The engine can't take another step: a move went out, never confirmed, and
+    // its stall watchdog gave up waiting. This is NOT a suspected mismatch.
+    // Tier 2's contract is "the engine keeps executing the planned path while we
+    // watch for a 1-of-1 in the next few moves" — a wedged engine executes
+    // nothing, so tier 2 can never resolve, never reaches its step budget, and
+    // the caller's watchdog has already stopped itself. Landing here in tier 2
+    // is a permanent hang (a stock-realm loop stuck Pending in a same-named
+    // room), so a stall goes straight to the ladder that can act on a stationary
+    // engine: the Paradigm `rm` if there is one, otherwise tier 3 — ground truth
+    // if available, then the reverse-walk, then a clean Lost dialog. Any of
+    // those ends the wait; tier 2 doesn't.
+    public void NoteEngineStalled(string reason)
+    {
+        if (_engine is null) return;
+        _log?.Log(LogSeverity.Warn, LogSource,
+            $"NoteEngineStalled (tier={CurrentTier}): {reason}");
+
+        if (TryParadigmResync(reason)) return;
+        EscalateToTier3($"engine stalled: {reason}");
+    }
+
+    // Paradigm fast-path: ask the game for our authoritative position via `rm`
+    // before climbing the heuristic ladder. Pauses the engine while the reply
+    // round-trips so it reports a stationary room; NoteAuthoritativePosition
+    // resumes us from that anchor, and OnAuthoritativeResyncFailed falls back on
+    // a miss. Returns false on stock realms / when throttled / when already
+    // awaiting, leaving the caller's heuristic escalation untouched.
+    private bool TryParadigmResync(string reason)
+    {
+        if (_engine is null) return false;
+        if (_awaitingAuthoritative) return false;
+        if (TryResync?.Invoke(reason) != true) return false;
+
+        _awaitingAuthoritative = true;
+        _engine.PauseForRecovery($"awaiting rm resync: {reason}");
+        _log?.Log(LogSeverity.Info, LogSource,
+            $"resync-wait: paused {_engine.Name}, awaiting authoritative rm position (tier={CurrentTier})");
+        return true;
     }
 
     // An authoritative locator — the Paradigm resolver's `rm` Location: reply,

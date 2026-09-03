@@ -911,6 +911,36 @@ public sealed class LoopRunnerTests : IDisposable
     }
 
     [Fact]
+    public void InFlightStall_StockRealmWithNoResync_StillBreaksTheWedge()
+    {
+        // Every other stall test stubs TryResync => true, i.e. the Paradigm
+        // rm fast-path, so none of them exercised what a stock realm does. There
+        // the escalation landed in tier 2 — a watch that only advances as the
+        // engine executes FURTHER steps — and a wedged engine has none, so
+        // nothing paused, nothing sent, and the watchdog (already stopped, and
+        // re-armed only on a send or a resume) never fired again. The loop hung
+        // permanently.
+        Harness h = NewHarness(wireRecovery: true);
+        h.Gate!.TryResync = _ => false;   // stock realm: there is no `rm` to ask
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Runner.Start(AbCycle());
+        Assert.Single(h.Sent);
+        Assert.Equal(RoomConfidence.Pending, h.Tracker.State.Confidence);
+
+        h.Runner.FireStallWatchdogForTests();
+
+        // The escalation has to reach the tier-3 ladder, which can actually do
+        // something about a stationary engine.
+        // Control is handed to the tier-3 ladder, which can act on a stationary
+        // engine (ground truth, then the reverse-walk, then a clean Lost dialog).
+        // Tier 3's own convergence is covered in EngineRecoveryGateTests; what
+        // matters here is that we no longer park in tier 2 with nothing pending.
+        Assert.Equal(TierLevel.Tier3, h.Gate!.CurrentTier);
+        Assert.Equal(LoopState.Paused, h.Runner.State);
+        Assert.Contains(h.Events, e => e.Kind == LoopEventKind.Paused && e.Detail.Contains("stall"));
+    }
+
+    [Fact]
     public void InFlightStall_Watchdog_NoOpAfterLoopStopped()
     {
         // The watchdog must not escalate once the loop is no longer running — a
