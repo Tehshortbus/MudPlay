@@ -1,9 +1,8 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.46.2**
-> - Fixed a loop hanging forever when a move went out and never confirmed — on a realm with no `rm`, the stall escalation parked in a recovery tier that only advances while the engine is still walking, so a stopped engine waited there indefinitely
-> - A stalled engine now goes straight to the recovery ladder that can act on it: sysop ground truth if available, then the reverse-walk, then a clean "Lost" dialog
+> **Version 3.46.3**
+> - Fixed a loop sitting idle after position recovery succeeded — if the movement coordinator resumed the loop while recovery was still waiting for an answer, the step was held and the eventual "recovered" signal was dropped instead of restarting it
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

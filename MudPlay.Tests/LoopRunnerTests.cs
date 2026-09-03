@@ -941,6 +941,48 @@ public sealed class LoopRunnerTests : IDisposable
     }
 
     [Fact]
+    public void RecoveryResolvingWhileCoordinatorAlreadyResumed_StillDrivesTheStep()
+    {
+        // The gate pauses for an authoritative answer, but the MovementCoordinator
+        // resumes the loop on its own before that answer lands. Back in Running,
+        // SendNextStep declines on MayProceedWithPlannedStep and returns with no
+        // step in flight — and when recovery then resolves, ResumeAfterRecovery
+        // used to bail on `State != Paused`, so nothing ever re-drove the step and
+        // the loop sat idle forever.
+        Harness h = NewHarness(wireRecovery: true);
+        h.Gate!.TryResync = _ => false;              // stock realm
+        h.Gate!.TrySysopLocate = _ => true;          // ground truth is on its way
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Runner.Start(AbCycle());
+        Assert.Single(h.Sent);
+
+        // Coordinator pause (combat), then the stall escalation marks the gate as
+        // awaiting an authoritative position.
+        h.Coordinator.AssertGate(MovementCoordinator.CombatGate);
+        Assert.Equal(LoopState.Paused, h.Runner.State);
+        h.Gate!.NoteEngineStalled("move never confirmed");
+        Assert.True(h.Gate!.AwaitingAuthoritativeResync);
+
+        // The move actually landed while we were paused.
+        h.Tracker.NoteRoomObserved(new RoomObservation("B",
+            new HashSet<Direction> { Direction.N, Direction.S }));
+
+        // Coordinator clears on its own — the loop goes Running and advances, but
+        // the gate still holds the step.
+        h.Coordinator.ClearGate(MovementCoordinator.CombatGate);
+        Assert.Equal(LoopState.Running, h.Runner.State);
+        Assert.Single(h.Sent);                       // held by the gate, nothing sent
+
+        // Ground truth arrives. This has to actually move the loop again.
+        h.Tracker.SetLocated(new RoomKey(1, 2));
+        h.Gate!.NoteAuthoritativePosition(new RoomKey(1, 2));
+
+        Assert.Equal(LoopState.Running, h.Runner.State);
+        Assert.Equal(2, h.Sent.Count);
+        Assert.Equal("s\r", Encoding.Latin1.GetString(h.Sent[1]));
+    }
+
+    [Fact]
     public void InFlightStall_Watchdog_NoOpAfterLoopStopped()
     {
         // The watchdog must not escalate once the loop is no longer running — a

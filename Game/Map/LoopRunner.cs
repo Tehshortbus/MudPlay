@@ -342,8 +342,28 @@ public sealed class LoopRunner : IRecoverableEngine
 
     public void ResumeAfterRecovery(RoomKey recoveredAnchor)
     {
-        if (State != LoopState.Paused) return;
         if (_loop is null) return;
+
+        // Normally the gate paused us and we're Paused here. But the gate's pause
+        // and the MovementCoordinator's are separate: the coordinator can clear on
+        // its own while the gate is still awaiting an authoritative position, which
+        // puts us back in Running with the step HELD — SendNextStep declines on
+        // MayProceedWithPlannedStep and returns having sent nothing and armed
+        // nothing. Recovery finishing is the only thing left that can re-drive it,
+        // so bailing on `State != Paused` here stranded the loop idle forever
+        // (a Roomba sweep sat still after a sysop locate resolved correctly).
+        // A step already on the wire needs no push — its own confirmation advances us.
+        if (State == LoopState.Running)
+        {
+            if (_stepInFlight) return;
+            _log?.Info("LoopRunner",
+                $"ResumeAfterRecovery: recovered at {recoveredAnchor} while already Running "
+                + $"(step {_index + 1} was held by the gate); re-driving it");
+            SendNextStep();
+            return;
+        }
+
+        if (State != LoopState.Paused) return;
 
         // Engine policy for loops: if the recovered anchor matches the
         // step's expected target, advance. Otherwise the loop is
