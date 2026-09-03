@@ -2,7 +2,7 @@
 
 ## 3.46.4
 
-- Position recovery now asks the game where you are straight away when a move has stalled, instead of waiting for that move to settle first — the wait could only ever expire, and it was burning the one answer that works in a house full of identically-named rooms
+- Position recovery now asks the game where you are straight away when a move has stalled, instead of waiting for that move to settle first or being rate-limited out — both guards fired exactly when the answer was needed, and the fallback can't work in a house full of identically-named rooms
 
 ## 3.46.3
 
