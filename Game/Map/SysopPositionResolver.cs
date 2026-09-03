@@ -104,7 +104,14 @@ public sealed class SysopPositionResolver : IDisposable
     // flight (or queued behind movement) — the caller should pause and wait for
     // exactly one of PositionResolved / LocateFailed. Returns false when no
     // probe can be started, so the caller keeps its existing path.
-    public bool TryRequestLocate(string reason)
+    // deferWhileMoving: queue behind an unconfirmed move rather than asking now.
+    // Right for a healthy move — but the recovery gate only ever asks BECAUSE a
+    // move is stuck unconfirmed, so deferring there waits out the very condition
+    // the locate exists to resolve, then gives up and falls to a backtrack that
+    // can't converge in a house of identically-named rooms. Gate callers pass
+    // false. PendingRespawn still defers either way: after a death the respawn
+    // room's own observation is imminent and authoritative.
+    public bool TryRequestLocate(string reason, bool deferWhileMoving = true)
     {
         if (_disposed) return false;
 
@@ -139,7 +146,9 @@ public sealed class SysopPositionResolver : IDisposable
         // Queue behind the movement instead. Post-death PendingRespawn is the
         // same case: let the respawn room's observation land first, and only
         // spend a command if that leaves us unresolved.
-        if (_tracker.State.Confidence is RoomConfidence.Pending or RoomConfidence.PendingRespawn)
+        bool movementUnsettled = _tracker.State.Confidence == RoomConfidence.PendingRespawn
+            || (deferWhileMoving && _tracker.State.Confidence == RoomConfidence.Pending);
+        if (movementUnsettled)
         {
             _deferredReason = reason;
             _deferral?.Stop();

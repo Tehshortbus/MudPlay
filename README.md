@@ -1,7 +1,8 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.46.3**
+> **Version 3.46.4**
+> - Position recovery now asks the game where you are straight away when a move has stalled, instead of waiting for that move to settle first — the wait could only ever expire, and it was burning the one answer that works in a house full of identically-named rooms
 > - Fixed a loop sitting idle after position recovery succeeded — if the movement coordinator resumed the loop while recovery was still waiting for an answer, the step was held and the eventual "recovered" signal was dropped instead of restarting it
 >
 > See the [version history](CHANGELOG.md) for the full changelog.

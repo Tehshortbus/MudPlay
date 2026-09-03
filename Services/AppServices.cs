@@ -3569,7 +3569,9 @@ public sealed class AppServices
             post: action => Avalonia.Threading.Dispatcher.UIThread.Post(action));
         SysopLocate.PositionResolved += Recovery.NoteAuthoritativePosition;
         SysopLocate.LocateFailed += Recovery.OnAuthoritativeResyncFailed;
-        Recovery.TrySysopLocate = SysopLocate.TryRequestLocate;
+        // The gate asks only from a recovery escalation, where the move being
+        // unconfirmed IS the problem — so don't queue behind it.
+        Recovery.TrySysopLocate = reason => SysopLocate.TryRequestLocate(reason, deferWhileMoving: false);
         ManaRegen = new Game.Spells.ManaRegenReroller(
             AbilBreakdown,
             readConfig: () =>

@@ -87,19 +87,23 @@ public sealed class SysopPositionResolverTests : IDisposable
         }
 
         // The probe completes off a continuation, so every test that drives a
-        // reply has to let it run before asserting.
+        // reply has to let it run before asserting. Poll for the outcome rather
+        // than yielding a fixed number of times — a fixed count is a guess that
+        // gets flaky the moment the rest of the suite loads the scheduler.
         public async Task ReplyWithRoom(int map, int room)
         {
+            int before = Resolved.Count + Failures;
             Parser.FeedTestLine($"Room {room}  Map: {map}");
             Parser.FeedTestLine("Monsters: None");
             Parser.FeedTestLine("[HP=100]:", isPromptLine: true);
-            await Settle();
+            await SettleUntil(() => Resolved.Count + Failures > before);
         }
 
         public async Task FireProbeTimeout()
         {
+            int before = Resolved.Count + Failures;
             _currentDelay.TrySetResult();
-            await Settle();
+            await SettleUntil(() => Resolved.Count + Failures > before);
         }
 
         // Drives the tracker to Lost: from Unknown, an observation no graph room
@@ -107,9 +111,9 @@ public sealed class SysopPositionResolverTests : IDisposable
         public void DriveTrackerLost()
             => Tracker.NoteRoomObserved(new RoomObservation("Nowhere", new HashSet<Direction> { Direction.W }));
 
-        private static async Task Settle()
+        private static async Task SettleUntil(Func<bool> done)
         {
-            for (int i = 0; i < 8; i++) await Task.Yield();
+            for (int i = 0; i < 2000 && !done(); i++) await Task.Yield();
         }
 
         public void Dispose() => Probe.Dispose();
@@ -253,5 +257,39 @@ public sealed class SysopPositionResolverTests : IDisposable
         Assert.True(h.Resolver.TryRequestLocate("second"));
 
         Assert.Single(h.Sent);
+    }
+
+    [Fact]
+    public async Task RecoveryCallerAsksImmediatelyEvenMidMove()
+    {
+        // The gate only asks because a move is stuck unconfirmed. Queuing behind
+        // that move waits out the exact condition the locate is meant to break,
+        // then times out and drops us into a backtrack that can't converge among
+        // identically-named rooms.
+        using Harness h = new(_root);
+        h.Tracker.SetLocated(new RoomKey(1, 7));
+        h.Tracker.NoteMoveSent(Direction.N);
+        Assert.Equal(RoomConfidence.Pending, h.Tracker.State.Confidence);
+
+        Assert.True(h.Resolver.TryRequestLocate("engine stalled", deferWhileMoving: false));
+
+        Assert.False(h.Resolver.LocateDeferred);
+        Assert.Single(h.Sent);
+        await h.ReplyWithRoom(1, 7);
+        Assert.Equal(new RoomKey(1, 7), Assert.Single(h.Resolved));
+    }
+
+    [Fact]
+    public void PostDeathStillDefersEvenForARecoveryCaller()
+    {
+        // PendingRespawn is the one case where waiting is right regardless: the
+        // respawn room's own observation is imminent and authoritative.
+        using Harness h = new(_root);
+        h.Tracker.NoteDeath(livesRemaining: 3);
+
+        Assert.True(h.Resolver.TryRequestLocate("engine stalled", deferWhileMoving: false));
+
+        Assert.True(h.Resolver.LocateDeferred);
+        Assert.Empty(h.Sent);
     }
 }
