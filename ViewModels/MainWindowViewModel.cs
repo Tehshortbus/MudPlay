@@ -899,6 +899,9 @@ public partial class MainWindowViewModel : ObservableObject
         // abil-breakdown parser — feeds the mana-regen reroll engine the rolled
         // `spells:` slice of `abil 145` after a nature-tap / mana-flux landing.
         AppServices.Current.AbilBreakdown.AttachLineExtractor(Lines);
+        // Sysop room-status parser — reads the `sys st` block. Inert until an
+        // outbound sysop status arms it.
+        AppServices.Current.SysRoomStatus.AttachLineExtractor(Lines);
         // Inbound ailment chip-clear — PartyAilmentTracker watches server
         // lines for OUR cure spell landing on a party member (matched by the
         // cure spell's CasterMessage template) and clears that member's
@@ -991,6 +994,11 @@ public partial class MainWindowViewModel : ObservableObject
         // Settings → Talk reactive-look — needs the wire-sender to emit
         // look-back / look-on-arrival at other players.
         AppServices.Current.PlayerLook.SetWireSender(engineSend);
+
+        // Sysop room-status probe. Deliberately on the gate-wrapped sender that
+        // routes through SendUserInput: the parser arms off the outbound bytes,
+        // so a probe sent on the raw engine path would come back unrecognised.
+        AppServices.Current.SysStatus.SetWireSender(engineSend);
         // A user-typed `@timer sync` (instead of the Bosses-tab "Sync Timers…" button)
         // should still surface the responses — auto-open the merge window when we see
         // our own request go out on chat. See OnChatForTimerSync.
@@ -2980,6 +2988,11 @@ public partial class MainWindowViewModel : ObservableObject
         // conversation entry is attributed. Typed telepaths render on-screen
         // and are caught by the router's line sniff instead.
         AppServices.Current.Chat.ObserveOutbound(data);
+        // Sysop room-status parser — arms only on an outbound `sys st`. The gate
+        // is a security control here, not noise suppression: the block it parses
+        // drives a programmatic SetLocated, so an always-on match would let any
+        // line on our screen relocate the character.
+        AppServices.Current.SysRoomStatus.ObserveOutbound(data);
         var t = _telnet;
         if (t is not null) _ = FireSendAsync(t, data);
     }

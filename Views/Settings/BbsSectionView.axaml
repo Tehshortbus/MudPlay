@@ -250,7 +250,7 @@
                               IsEnabled="{Binding HasProfile}"
                               Margin="0,12,0,0"
                               Content="I have sysop / goto powers on this BBS"
-                              ToolTip.Tip="Per-character. Consumed by Phase 13 RemoteCommandManager (e.g. lets @goto run without a per-player permission check)."/>
+                              ToolTip.Tip="Per-character, per-BBS. Lets @goto run without a per-player permission check, and lets the client read the game's own room dump with `sys st` to recover its location when it gets lost. Leave off unless you really have sysop access — the commands are refused otherwise."/>
 
                     <TextBlock Classes="GroupHeader" Text="Automated Logon Menu Navigation"/>
 

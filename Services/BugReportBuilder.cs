@@ -923,6 +923,14 @@ public static class BugReportBuilder
         // instant so all the tracker's comparisons work either way, but printing
         // the raw value would show the UTC hour next to local ones — normalize.
         Kv(sb, "Last move sent", svc.RoomTracker.LastMoveSentAt?.ToLocalTime().ToString("HH:mm:ss") ?? "(never)");
+        // Sysop room-status capability. A "recovery didn't work" report needs to
+        // distinguish never-enabled from enabled-but-the-BBS-refused: the probe
+        // turns itself off after one unanswered attempt, and that leaves no other
+        // trace in the report.
+        Kv(sb, "Sysop status probe",
+            svc.SysStatus.Available ? "available"
+            : svc.SysStatus.AutoDisabled ? "auto-disabled (no room block came back)"
+            : "off (no sysop powers set for this BBS)");
 
         IReadOnlyList<Game.Map.RoomKey> history = svc.RoomTracker.GetHistory();
         if (history.Count > 0)

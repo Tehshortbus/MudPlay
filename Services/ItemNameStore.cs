@@ -15,6 +15,7 @@ namespace MudPlay.Services;
 // single pass, then evicts the raw JsonDocument. Only the fields these
 // indexes need (Number, Name, ItemType, Worn, Encum) are retained — full
 // item editing is owned by the Game Data browser and reads its own copy.
+// (Gettable is retained too — see _gettableByNumber.)
 public sealed class ItemNameStore
 {
     private readonly GameDataCache _cache;
@@ -58,6 +59,12 @@ public sealed class ItemNameStore
     // labels narrow past the top-level category (see WeaponTypeOf / ArmourTypeOf).
     private readonly Dictionary<int, int> _weaponTypeByNumber = new();
     private readonly Dictionary<int, int> _armourTypeByNumber = new();
+
+    // Item Number → Gettable (MDB flag; 0 means the item can't be picked up).
+    // Roughly a fifth of a realm's items are scenery-like fixtures. A sysop
+    // room dump lists them alongside real loot, so Roomba filters on this
+    // rather than discovering them by a refused get on every lap.
+    private readonly Dictionary<int, bool> _gettableByNumber = new();
 
     public string? ActiveSet { get; private set; }
 
@@ -168,6 +175,13 @@ public sealed class ItemNameStore
     public int? WornOf(int number)
         => _wornByNumber.TryGetValue(number, out int w) ? w : null;
 
+    // Whether the item can be picked up (MDB Gettable). Unknown ids and sets
+    // whose Items table predates the column both read as gettable — the flag
+    // exists to exclude fixtures we know about, and defaulting the other way
+    // would silently filter out every item in such a set.
+    public bool IsGettable(int number)
+        => !_gettableByNumber.TryGetValue(number, out bool gettable) || gettable;
+
     // Lower-case, trim, and strip a leading article / count token so a loose
     // room phrasing collapses to the canonical item name shape. Shared by the
     // reverse-index build and the FindByName lookup so both sides agree on
@@ -212,6 +226,15 @@ public sealed class ItemNameStore
            && el.TryGetInt32(out int v)
             ? v : 0;
 
+    // Gettable is the one flag whose absent-means-0 default would be actively
+    // wrong: a set without the column would read as "nothing can be picked up".
+    // Missing or non-numeric reads as gettable; only an explicit 0 is a fixture.
+    private static bool ReadGettable(JsonElement row)
+        => !row.TryGetProperty("Gettable", out JsonElement el)
+           || el.ValueKind != JsonValueKind.Number
+           || !el.TryGetInt32(out int v)
+           || v != 0;
+
     private static readonly string[] _articles = { "the ", "an ", "a ", "some " };
 
     private static bool IsCountToken(string token)
@@ -236,6 +259,7 @@ public sealed class ItemNameStore
         _itemTypeByNumber.Clear();
         _weaponTypeByNumber.Clear();
         _armourTypeByNumber.Clear();
+        _gettableByNumber.Clear();
         _weaponNames = Array.Empty<string>();
         _offHandNames = Array.Empty<string>();
         ActiveSet = setName;
@@ -283,6 +307,7 @@ public sealed class ItemNameStore
             _itemTypeByNumber[number] = itemType;
             _weaponTypeByNumber[number] = ReadInt(row, "WeaponType");
             _armourTypeByNumber[number] = ReadInt(row, "ArmourType");
+            _gettableByNumber[number] = ReadGettable(row);
 
             if (itemType == 1) weapons.Add(name);
             if (worn == 12) offHands.Add(name);

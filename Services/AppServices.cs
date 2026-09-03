@@ -1103,6 +1103,16 @@ public sealed class AppServices
     // rolled spells: slice of an abil 145 mana-regen read.
     public Game.AbilBreakdownParser AbilBreakdown { get; private set; } = null!;
 
+    // Parser for the sysop `sys st` room dump. Attached to the live
+    // line stream in the main VM, and armed only by an outbound sysop
+    // status — it writes location, so an unarmed match must never land.
+    public Game.Map.SysRoomStatusParser SysRoomStatus { get; private set; } = null!;
+
+    // Request/response wrapper over SysRoomStatus: sends the command and
+    // awaits the block, or resolves null when the capability is off or the
+    // BBS didn't answer. Sysop-gated per BBS.
+    public Game.Map.SysStatusProbe SysStatus { get; private set; } = null!;
+
     // Paradigm-only mana-regen roll-spell reroll engine (nature tap / mana
     // flux, ability 145). Driven by CastDirector's self-buff
     // landing sink + AbilBreakdown; recasts a below-threshold
@@ -3526,6 +3536,20 @@ public sealed class AppServices
         // PriorityBuffing against a due heal/cure and spends the one-cast-per-round
         // slot, rather than firing directly on the wire and bypassing both.
         AbilBreakdown = new Game.AbilBreakdownParser(Log);
+
+        // Sysop room dump. The parser is armed by the outbound `sys st` (routed
+        // from the main VM's send path); the probe turns it into a request the
+        // recovery and sweep engines can await. Gated on the character's
+        // existing per-BBS "I have sysop / goto powers" flag, so an ordinary
+        // account never sends one.
+        SysRoomStatus = new Game.Map.SysRoomStatusParser(PromptScanner, Log);
+        SysStatus = new Game.Map.SysStatusProbe(
+            SysRoomStatus,
+            capabilityEnabled: HasSysopPowersHere,
+            log: Log);
+        // A fresh character starts with a clean slate — an earlier session's
+        // failed probe shouldn't keep the capability off for the next one.
+        Profile.ProfileLoaded += _ => SysStatus.ResetAutoDisable();
         ManaRegen = new Game.Spells.ManaRegenReroller(
             AbilBreakdown,
             readConfig: () =>
@@ -7490,6 +7514,18 @@ public sealed class AppServices
             .FirstOrDefault();
         return first is null ? null : Bbs.Get(first);
     }
+
+    // Whether the loaded character has sysop / goto powers on the active BBS —
+    // the Settings → BBS credentials checkbox. Sysop powers are granted to an
+    // account on a board, so the flag lives per character per BBS. Gates the
+    // sysop-status probe: unticked, no `sys` command is ever sent. Credential
+    // keys are normalised case-insensitively on profile load, so the lookup
+    // matches however the BBS name was cased when it was saved.
+    private bool HasSysopPowersHere()
+        => ResolveActiveBbs()?.Name is { Length: > 0 } bbs
+           && Profile.Current?.BbsCredentials is { } creds
+           && creds.TryGetValue(bbs, out Models.Profile.BbsCredentials? cred)
+           && cred.HasSysopPowers;
 
     // Whether a name is a player currently in our room — the known-player gate for
     // others'-POV actions/emotes (they're room-local, so the actor is in the room's

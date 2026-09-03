@@ -3374,3 +3374,56 @@ the attack rotation); the **AoE** debuff is gated by **Auto-Nuke**.
     energy/mana saved**; it only spends when the mob survives to the caster's slot.
   - **Raises** your monster-targeting odds (a positive modifier) — useful for a tank drawing
     aggro, a cost for a squishy caster.
+
+## Sysop commands — `SYSOP STATUS` room dump *([CONFIRMED] 2026-09-02, user + official help text; item-value reading UNVERIFIED)*
+
+Requires sysop privileges on the BBS. On an account without them the command is refused.
+
+Forms, from the game's own help:
+
+- **`SYSOP STATUS`** (abbreviates to `sys st`) — debug dump for the room you are standing in.
+  Intended for diagnosing monsters that stop or never stop regenerating.
+- **`SYSOP STATUS <user>`** — status of a named user, if they are currently playing.
+- **`SYSOP STATUS ROOM <room>`** — the same dump **for any room on any map**. The help
+  describes the argument as a bare room number obtained from WCC or from `SYS LIST USERS`;
+  whether that maps to our `map/room` pair is **UNVERIFIED**, so nothing sends this form yet.
+- **`SYS LIST USERS`** — lists users and the room each is in.
+- **`MAP`** — generated map of the current area. The help warns it is recursive and has
+  caused stack overflows; treat as unsafe to automate.
+
+Captured dump (gang-house room, verbatim including the 80-column wrap):
+
+```
+Room 2187  Map: 1
+This room as Area: Max: 0  Current: 0
+Min: 0 Max: 0 Group: Lair by Number: 0
+Room Max: 5  Current: 0  Last Killed: 00:00:00 Delay: 0
+No controlling room.
+Patrollable
+Ganghouse
+Monsters: None
+Items: 521(0) 743(0) 882(0) 690(0) 464(0) 1484(0) 37(0) 890(0) 1443(0) 891(0) 47
+0(0) 466(0) 1461(0) 899(0) 420(0) 465(0)
+Hidden items: 1845(0) 14(0) 894(0) 223(0) 879(0) 870(0) 897(1) 876(1) 402(0) 430
+(0) 264(0) 905(0) 419(0) 422(0) 896(0)
+```
+
+- **`Room N  Map: M`** is the room's true identity — the same `map/room` pair the client
+  keys rooms on. This is authoritative location, which is why the parser that reads it is
+  armed only by an outbound sysop status (a forged line would otherwise relocate the player).
+- **Item entries are `id(value)`** where the id is the MDB `Items.Number`. Every id in the
+  captured dump resolves to a real item in the `realm2` set.
+- **[UNVERIFIED]** The parenthesised value is believed to be **quantity − 1**: `(0)` means
+  one present, `897(1)` means two pearls. *Confirming experiment: drop a second copy of an
+  item already on the floor and watch its entry move `(0)` → `(1)`.*
+- **[CONFIRMED, user]** **Non-gettable items DO appear** in these lists. The MDB `Items`
+  table carries a `Gettable` column (0 = cannot be picked up; 453 of 2047 rows in `realm2`),
+  so fixtures are filtered from data rather than by a refused `get`.
+- **[UNVERIFIED, user's read]** Items inside a **container** in the room, and items **held by
+  a monster or player**, do *not* appear.
+- **[UNVERIFIED]** The wording emitted when the command is **denied** is unknown — believed
+  to be a generic "Command not recognized". Nothing depends on it: the client gates on the
+  user's own sysop-powers flag and falls back to a timeout, not a string match.
+- The lists **wrap at the terminal margin mid-token** — `47` + `0(0)` is item `470`, `430` +
+  `(0)` splits an id from its value. Rejoin the block before tokenizing.
+- The dump carries **no `Obvious exits:` line**, so it is not mistakable for a room display.

@@ -1059,7 +1059,11 @@ Settings → "BBS + Display" — despite the plain "BBS" name in some places, th
 ### I have sysop / goto powers on this BBS
 
 **Default:** Off
-**What it does:** Marks this character as having elevated privileges on this specific board — e.g. lets the `@goto <player>` remote command skip a permission check that would otherwise apply.
+**What it does:** Marks this character as having elevated privileges on this specific board. Two things depend on it. It lets the `@goto <player>` remote command skip a permission check that would otherwise apply. And it lets MudPlay use the game's **`sysop status`** command (`sys st`), which prints the server's own debug dump for the room you're standing in — including the room's true map and room number.
+
+That room number is exact, which makes it the fastest possible answer to "where am I?". Without it, a client that loses track of your position has to walk you backwards one room at a time, comparing what it sees against the map until only one room fits, and if that fails you're left right-clicking **I am here** on the map yourself. With sysop powers, one command replaces all of it.
+
+**When you might change it:** Only tick it if you genuinely have sysop access on that board. On an ordinary account the command is refused, and MudPlay can't tell in advance — so it tries once, gets nothing back, and switches itself off for the rest of the session. That costs you a single rejected command, not a stream of them, but there's no benefit to ticking it hopefully. Left off, no `sys` command is ever sent.
 
 ### Automated Logon Menu Navigation
 

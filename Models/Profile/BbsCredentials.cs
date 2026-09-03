@@ -29,9 +29,10 @@ public sealed class BbsCredentials
     // and the door-game entry prompt before the MajorMUD session is live.
     public List<MenuStep> MenuNavSteps { get; set; } = new();
 
-    // This character has sysop / goto powers on the BBS — flips a few UI
-    // affordances (e.g., RemoteCommandManager assumes commands like
-    // @goto <player> are allowed without further gating). Per-character per-BBS
-    // because different characters on the same BBS can have different powers.
+    // This character has sysop / goto powers on the BBS. Two consumers:
+    // RemoteCommandManager assumes commands like @goto <player> are allowed
+    // without further gating, and SysStatusProbe reads it as the master gate on
+    // sending `sysop status` at all. Per-character per-BBS because different
+    // characters on the same BBS can have different powers.
     public bool HasSysopPowers { get; set; }
 }
